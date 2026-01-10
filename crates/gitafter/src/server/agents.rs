@@ -518,7 +518,7 @@ async fn bounty_payment(state: web::Data<AppState>, path: web::Path<String>) -> 
                         </main>
                     </body>
                     </html>"#,
-                    include_str!("./styles.css"),
+                    include_str!("../styles.css"),
                     &bounty_claim_id[..16],
                     amount_sats,
                     &recipient_pubkey[..8],

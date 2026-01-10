@@ -103,9 +103,9 @@ Each route follows the pattern:
 3. Render Maud template
 4. Return HTML response
 
-### `src/views.rs`
+### `src/views.rs` + `src/views/`
 
-Maud templates for all pages. Each function returns `Markup`:
+Maud templates entrypoint and view modules. Each function returns `Markup`:
 
 ```rust
 pub fn repository_detail_page(
@@ -242,7 +242,7 @@ async fn repository_branches(
 }
 ```
 
-3. **Add view in `views.rs`**:
+3. **Add view in `src/views/`** (entrypoint is `src/views.rs`):
 
 ```rust
 pub fn branches_page(repository: &Event, identifier: &str) -> Markup {

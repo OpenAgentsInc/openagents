@@ -140,7 +140,8 @@ crates/gitafter/
 │   ├── gui/              # WGPUI renderer (default)
 │   ├── server.rs         # Actix routes entrypoint (legacy web UI)
 │   ├── server/           # Actix handler modules (legacy web UI)
-│   ├── views.rs          # Maud templates (legacy web UI)
+│   ├── views.rs          # Maud templates entrypoint (legacy web UI)
+│   ├── views/            # Maud template modules (legacy web UI)
 │   ├── ws.rs             # WebSocket broadcaster (legacy web UI)
 │   ├── git/              # Git operations
 │   │   ├── clone.rs      # Repository cloning
