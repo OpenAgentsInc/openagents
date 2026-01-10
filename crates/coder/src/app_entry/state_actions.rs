@@ -149,6 +149,15 @@ impl AppState {
             "System",
             Some(gateway_keys),
         );
+        let lm_router_keys =
+            keybinding_labels(&self.settings.keybindings, KeyAction::OpenLmRouter, "Ctrl+Shift+L");
+        push_command(
+            command_palette_ids::LM_ROUTER_OPEN,
+            "Open LM Router",
+            "View LM router backends and models",
+            "System",
+            Some(lm_router_keys),
+        );
         let nip90_keys =
             keybinding_labels(&self.settings.keybindings, KeyAction::OpenNip90, "Ctrl+Shift+J");
         push_command(
@@ -463,6 +472,15 @@ impl AppState {
 
     pub(super) fn refresh_gateway(&mut self) {
         self.gateway.refresh();
+    }
+
+    pub(super) fn open_lm_router(&mut self) {
+        self.refresh_lm_router();
+        self.modal_state = ModalState::LmRouter;
+    }
+
+    pub(super) fn refresh_lm_router(&mut self) {
+        self.lm_router.refresh();
     }
 
     pub(super) fn connect_dvm(&mut self, relay_url: Option<String>) {

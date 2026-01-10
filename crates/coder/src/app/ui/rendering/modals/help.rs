@@ -57,6 +57,11 @@ fn render_help_modal(
                 KeyAction::OpenGateway,
                 "Ctrl+Shift+G",
             );
+            let lm_router_key = keybinding_labels(
+                &state.settings.keybindings,
+                KeyAction::OpenLmRouter,
+                "Ctrl+Shift+L",
+            );
             let nip90_key =
                 keybinding_labels(&state.settings.keybindings, KeyAction::OpenNip90, "Ctrl+Shift+J");
             let oanix_key =
@@ -94,6 +99,7 @@ fn render_help_modal(
                         format!("{} - Wallet", wallet_key),
                         format!("{} - DVM providers", dvm_key),
                         format!("{} - Gateway health", gateway_key),
+                        format!("{} - LM router", lm_router_key),
                         format!("{} - NIP-90 jobs", nip90_key),
                         format!("{} - OANIX manifest", oanix_key),
                         format!("{} - DSPy status", dspy_key),
@@ -161,6 +167,13 @@ fn render_help_modal(
                     vec![
                         "/gateway - open health".to_string(),
                         "/gateway refresh - refresh".to_string(),
+                    ],
+                ),
+                (
+                    "LM Router",
+                    vec![
+                        "/lm-router - open status".to_string(),
+                        "/lm-router refresh - refresh".to_string(),
                     ],
                 ),
                 (
