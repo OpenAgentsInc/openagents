@@ -22,6 +22,7 @@ pub(crate) enum ModalState {
     PermissionRules,
     Wallet,
     DvmProviders,
+    Gateway,
     Nip90Jobs,
     Oanix,
     Dspy,

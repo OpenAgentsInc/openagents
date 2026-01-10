@@ -52,6 +52,11 @@ fn render_help_modal(
                 keybinding_labels(&state.settings.keybindings, KeyAction::OpenWallet, "Ctrl+Shift+W");
             let dvm_key =
                 keybinding_labels(&state.settings.keybindings, KeyAction::OpenDvm, "Ctrl+Shift+P");
+            let gateway_key = keybinding_labels(
+                &state.settings.keybindings,
+                KeyAction::OpenGateway,
+                "Ctrl+Shift+G",
+            );
             let nip90_key =
                 keybinding_labels(&state.settings.keybindings, KeyAction::OpenNip90, "Ctrl+Shift+J");
             let oanix_key =
@@ -88,6 +93,7 @@ fn render_help_modal(
                         format!("{} - Settings", settings_key),
                         format!("{} - Wallet", wallet_key),
                         format!("{} - DVM providers", dvm_key),
+                        format!("{} - Gateway health", gateway_key),
                         format!("{} - NIP-90 jobs", nip90_key),
                         format!("{} - OANIX manifest", oanix_key),
                         format!("{} - DSPy status", dspy_key),
@@ -148,6 +154,13 @@ fn render_help_modal(
                         "/dvm - open providers".to_string(),
                         "/dvm connect <relay_url>; /dvm kind <id>".to_string(),
                         "/dvm refresh - refresh".to_string(),
+                    ],
+                ),
+                (
+                    "Gateway",
+                    vec![
+                        "/gateway - open health".to_string(),
+                        "/gateway refresh - refresh".to_string(),
                     ],
                 ),
                 (

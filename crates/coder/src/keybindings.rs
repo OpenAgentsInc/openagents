@@ -7,6 +7,7 @@ pub enum Action {
     OpenSettings,
     OpenWallet,
     OpenDvm,
+    OpenGateway,
     OpenNip90,
     OpenOanix,
     OpenDspy,
@@ -37,6 +38,7 @@ impl Action {
             Action::OpenSettings,
             Action::OpenWallet,
             Action::OpenDvm,
+            Action::OpenGateway,
             Action::OpenNip90,
             Action::OpenOanix,
             Action::OpenDspy,
@@ -54,6 +56,7 @@ impl Action {
             Action::OpenSettings => "settings",
             Action::OpenWallet => "wallet",
             Action::OpenDvm => "dvm",
+            Action::OpenGateway => "gateway",
             Action::OpenNip90 => "nip90",
             Action::OpenOanix => "oanix",
             Action::OpenDspy => "dspy",
@@ -71,6 +74,7 @@ impl Action {
             Action::OpenSettings => "Open settings",
             Action::OpenWallet => "Open wallet",
             Action::OpenDvm => "Open DVM providers",
+            Action::OpenGateway => "Open gateway",
             Action::OpenNip90 => "Open NIP-90 jobs",
             Action::OpenOanix => "Open OANIX",
             Action::OpenDspy => "Open DSPy",
@@ -88,6 +92,7 @@ impl Action {
             "settings" => Some(Action::OpenSettings),
             "wallet" => Some(Action::OpenWallet),
             "dvm" => Some(Action::OpenDvm),
+            "gateway" => Some(Action::OpenGateway),
             "nip90" => Some(Action::OpenNip90),
             "oanix" => Some(Action::OpenOanix),
             "dspy" => Some(Action::OpenDspy),
@@ -143,6 +148,15 @@ pub fn default_keybindings() -> Vec<Keybinding> {
                 ..Default::default()
             },
             action: Action::OpenDvm,
+        },
+        Keybinding {
+            key: Key::Character("g".to_string()),
+            modifiers: Modifiers {
+                ctrl: true,
+                shift: true,
+                ..Default::default()
+            },
+            action: Action::OpenGateway,
         },
         Keybinding {
             key: Key::Character("j".to_string()),
@@ -221,6 +235,15 @@ pub fn default_keybindings() -> Vec<Keybinding> {
                 ..Default::default()
             },
             action: Action::OpenDvm,
+        },
+        Keybinding {
+            key: Key::Character("g".to_string()),
+            modifiers: Modifiers {
+                meta: true,
+                shift: true,
+                ..Default::default()
+            },
+            action: Action::OpenGateway,
         },
         Keybinding {
             key: Key::Character("j".to_string()),
