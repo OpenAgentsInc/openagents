@@ -163,7 +163,7 @@ fn estimate_tokens(files: &[PathBuf], workspace_root: &Path) -> usize {
 }
 
 /// Determine task complexity based on files and tokens.
-fn determine_complexity(files: &[PathBuf], tokens: usize, description: &str) -> Complexity {
+pub fn determine_complexity(files: &[PathBuf], tokens: usize, description: &str) -> Complexity {
     let description_lower = description.to_lowercase();
 
     // Check for complexity indicators in description
