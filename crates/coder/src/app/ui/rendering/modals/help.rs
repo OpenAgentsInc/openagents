@@ -52,6 +52,8 @@ fn render_help_modal(
                 keybinding_labels(&state.settings.keybindings, KeyAction::OpenWallet, "Ctrl+Shift+W");
             let dspy_key =
                 keybinding_labels(&state.settings.keybindings, KeyAction::OpenDspy, "Ctrl+Shift+D");
+            let nip28_key =
+                keybinding_labels(&state.settings.keybindings, KeyAction::OpenNip28, "Ctrl+Shift+N");
             let left_sidebar = keybinding_labels(
                 &state.settings.keybindings,
                 KeyAction::ToggleLeftSidebar,
@@ -80,6 +82,7 @@ fn render_help_modal(
                         format!("{} - Settings", settings_key),
                         format!("{} - Wallet", wallet_key),
                         format!("{} - DSPy status", dspy_key),
+                        format!("{} - NIP-28 chat", nip28_key),
                         format!("{} - Toggle left sidebar", left_sidebar),
                         format!("{} - Toggle right sidebar", right_sidebar),
                         format!("{} - Toggle both sidebars", toggle_sidebars),
@@ -135,6 +138,14 @@ fn render_help_modal(
                     vec![
                         "/dspy - open status; /dspy refresh - refresh".to_string(),
                         "/dspy auto on|off; /dspy background on|off".to_string(),
+                    ],
+                ),
+                (
+                    "NIP-28 Chat",
+                    vec![
+                        "/nip28 - open chat; /nip28 connect <relay_url>".to_string(),
+                        "/nip28 channel <id|name>; /nip28 send <message>".to_string(),
+                        "/nip28 refresh - reconnect".to_string(),
                     ],
                 ),
             ];

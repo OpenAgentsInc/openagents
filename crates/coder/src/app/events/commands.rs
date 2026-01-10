@@ -22,6 +22,7 @@ pub(crate) enum ModalState {
     PermissionRules,
     Wallet,
     Dspy,
+    Nip28Chat,
     Config {
         tab: SettingsTab,
         selected: usize,

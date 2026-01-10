@@ -13,6 +13,7 @@ use crate::app::catalog::SkillSource;
 use crate::app::chat::MessageRole;
 use crate::app::config::{config_dir, SettingsTab};
 use crate::app::events::{keybinding_labels, ModalState};
+use crate::app::nip28::Nip28ConnectionStatus;
 use crate::app::{
     build_input, build_markdown_config, build_markdown_renderer, now_timestamp,
     AgentCardAction, HookLogEntry, HookModalView, HookSetting, ModelOption, SettingsInputMode,
@@ -136,6 +137,15 @@ impl AppState {
             "Review DSPy performance and auto-optimizer settings",
             "DSPy",
             Some(dspy_keys),
+        );
+        let nip28_keys =
+            keybinding_labels(&self.settings.keybindings, KeyAction::OpenNip28, "Ctrl+Shift+N");
+        push_command(
+            command_palette_ids::NIP28_OPEN,
+            "Open NIP-28 Chat",
+            "Join public Nostr chat channels",
+            "Nostr",
+            Some(nip28_keys),
         );
 
         push_command(
@@ -434,6 +444,50 @@ impl AppState {
                 err
             )),
         }
+    }
+
+    pub(super) fn open_nip28(&mut self) {
+        if matches!(
+            self.nip28.status,
+            Nip28ConnectionStatus::Disconnected | Nip28ConnectionStatus::Error(_)
+        ) {
+            self.nip28.connect();
+        }
+        self.modal_state = ModalState::Nip28Chat;
+    }
+
+    pub(super) fn connect_nip28(&mut self, relay_url: Option<String>) {
+        if let Some(url) = relay_url {
+            self.nip28.connect_to(url);
+        } else {
+            self.nip28.connect();
+        }
+    }
+
+    pub(super) fn set_nip28_channel(&mut self, channel: String) {
+        self.nip28.set_channel(channel);
+        self.push_system_message("NIP-28 channel updated.".to_string());
+    }
+
+    pub(super) fn send_nip28_message(&mut self, message: String) {
+        let channel = match &self.nip28.channel_id {
+            Some(channel) => channel.clone(),
+            None => {
+                self.push_system_message("NIP-28 channel not set.".to_string());
+                return;
+            }
+        };
+        if message.trim().is_empty() {
+            self.push_system_message("NIP-28 message is empty.".to_string());
+            return;
+        }
+        self.nip28.runtime.publish_chat_message(&channel, message.trim());
+        self.push_system_message("NIP-28 message sent.".to_string());
+    }
+
+    pub(super) fn refresh_nip28(&mut self) {
+        self.nip28.connect();
+        self.nip28.request_channel_setup();
     }
 
     pub(super) fn request_oanix_refresh(&mut self) {

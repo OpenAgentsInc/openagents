@@ -42,6 +42,7 @@ mod command_palette_ids {
     pub const AGENT_RELOAD: &str = "agents.reload";
     pub const WALLET_OPEN: &str = "wallet.open";
     pub const DSPY_OPEN: &str = "dspy.open";
+    pub const NIP28_OPEN: &str = "nip28.open";
     pub const SKILLS_LIST: &str = "skills.list";
     pub const SKILLS_RELOAD: &str = "skills.reload";
     pub const HOOKS_OPEN: &str = "hooks.open";

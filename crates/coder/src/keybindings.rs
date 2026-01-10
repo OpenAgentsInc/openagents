@@ -7,6 +7,7 @@ pub enum Action {
     OpenSettings,
     OpenWallet,
     OpenDspy,
+    OpenNip28,
     ToggleLeftSidebar,
     ToggleRightSidebar,
     ToggleSidebars,
@@ -33,6 +34,7 @@ impl Action {
             Action::OpenSettings,
             Action::OpenWallet,
             Action::OpenDspy,
+            Action::OpenNip28,
             Action::ToggleLeftSidebar,
             Action::ToggleRightSidebar,
             Action::ToggleSidebars,
@@ -46,6 +48,7 @@ impl Action {
             Action::OpenSettings => "settings",
             Action::OpenWallet => "wallet",
             Action::OpenDspy => "dspy",
+            Action::OpenNip28 => "nip28",
             Action::ToggleLeftSidebar => "sidebar_left",
             Action::ToggleRightSidebar => "sidebar_right",
             Action::ToggleSidebars => "sidebar_toggle",
@@ -59,6 +62,7 @@ impl Action {
             Action::OpenSettings => "Open settings",
             Action::OpenWallet => "Open wallet",
             Action::OpenDspy => "Open DSPy",
+            Action::OpenNip28 => "Open NIP-28 chat",
             Action::ToggleLeftSidebar => "Toggle left sidebar",
             Action::ToggleRightSidebar => "Toggle right sidebar",
             Action::ToggleSidebars => "Toggle sidebars",
@@ -72,6 +76,7 @@ impl Action {
             "settings" => Some(Action::OpenSettings),
             "wallet" => Some(Action::OpenWallet),
             "dspy" => Some(Action::OpenDspy),
+            "nip28" => Some(Action::OpenNip28),
             "sidebar_left" => Some(Action::ToggleLeftSidebar),
             "sidebar_right" => Some(Action::ToggleRightSidebar),
             "sidebar_toggle" => Some(Action::ToggleSidebars),
@@ -125,6 +130,15 @@ pub fn default_keybindings() -> Vec<Keybinding> {
             action: Action::OpenDspy,
         },
         Keybinding {
+            key: Key::Character("n".to_string()),
+            modifiers: Modifiers {
+                ctrl: true,
+                shift: true,
+                ..Default::default()
+            },
+            action: Action::OpenNip28,
+        },
+        Keybinding {
             key: Key::Character("[".to_string()),
             modifiers: Modifiers {
                 ctrl: true,
@@ -165,6 +179,15 @@ pub fn default_keybindings() -> Vec<Keybinding> {
                 ..Default::default()
             },
             action: Action::OpenDspy,
+        },
+        Keybinding {
+            key: Key::Character("n".to_string()),
+            modifiers: Modifiers {
+                meta: true,
+                shift: true,
+                ..Default::default()
+            },
+            action: Action::OpenNip28,
         },
         Keybinding {
             key: Key::Character("[".to_string()),

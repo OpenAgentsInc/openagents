@@ -12,6 +12,7 @@ use claude_agent_sdk::{query_with_permissions, QueryOptions, SdkMessage};
 use crate::app::catalog::build_hook_map;
 use crate::app::chat::{ChatMessage, MessageRole};
 use crate::app::events::{CommandAction, QueryControl, ResponseEvent};
+use crate::app::nip28::{Nip28ConnectionStatus, Nip28Event, Nip28Message};
 use crate::app::parsing::expand_prompt_text;
 use crate::app::permissions::{
     coder_mode_default_allow, extract_bash_command, is_read_only_tool, parse_coder_mode,
@@ -886,6 +887,84 @@ impl CoderApp {
         }
     }
 
+    pub(super) fn poll_nip28_events(&mut self) {
+        let Some(state) = &mut self.state else {
+            return;
+        };
+
+        let mut should_redraw = false;
+        loop {
+            let event = match state.nip28.runtime.event_rx.try_recv() {
+                Ok(event) => event,
+                Err(TryRecvError::Empty) => break,
+                Err(TryRecvError::Disconnected) => {
+                    state.nip28.status = Nip28ConnectionStatus::Error(
+                        "NIP-28 runtime disconnected".to_string(),
+                    );
+                    should_redraw = true;
+                    break;
+                }
+            };
+
+            match event {
+                Nip28Event::Connected => {
+                    state.nip28.status = Nip28ConnectionStatus::Connected;
+                    state.nip28.status_message = Some("Connected to relay".to_string());
+                    state.nip28.request_channel_setup();
+                    should_redraw = true;
+                }
+                Nip28Event::ConnectionFailed(error) => {
+                    state.nip28.status = Nip28ConnectionStatus::Error(error.clone());
+                    state.nip28.status_message = Some(error);
+                    should_redraw = true;
+                }
+                Nip28Event::AuthChallenge(challenge) => {
+                    state.nip28.authenticate(&challenge);
+                    state.nip28.status_message = Some("Authenticating...".to_string());
+                    should_redraw = true;
+                }
+                Nip28Event::Authenticated => {
+                    state.nip28.status = Nip28ConnectionStatus::Authenticated;
+                    state.nip28.status_message = Some("Authenticated".to_string());
+                    state.nip28.request_channel_setup();
+                    should_redraw = true;
+                }
+                Nip28Event::ChatMessage {
+                    id,
+                    pubkey,
+                    content,
+                    created_at,
+                } => {
+                    state.nip28.push_message(Nip28Message {
+                        _id: id,
+                        pubkey,
+                        content,
+                        created_at,
+                    });
+                    should_redraw = true;
+                }
+                Nip28Event::Published { _event_id: _ } => {
+                    state.nip28.status_message = Some("Message published".to_string());
+                    should_redraw = true;
+                }
+                Nip28Event::PublishFailed { error } => {
+                    state.nip28.status_message = Some(format!("Publish failed: {}", error));
+                    should_redraw = true;
+                }
+                Nip28Event::ChannelFound { channel_id, _name } => {
+                    state.nip28.mark_channel_ready(channel_id);
+                    state.nip28.status_message = Some("Channel ready".to_string());
+                    state.nip28.request_channel_setup();
+                    should_redraw = true;
+                }
+            }
+        }
+
+        if should_redraw {
+            state.window.request_redraw();
+        }
+    }
+
     pub(super) fn poll_autopilot_history(&mut self) {
         let Some(state) = &mut self.state else {
             return;
@@ -978,6 +1057,10 @@ impl CoderApp {
             }
             command_palette_ids::DSPY_OPEN => {
                 state.open_dspy();
+                None
+            }
+            command_palette_ids::NIP28_OPEN => {
+                state.open_nip28();
                 None
             }
             command_palette_ids::SKILLS_LIST => Some(handle_command(state, Command::Skills)),

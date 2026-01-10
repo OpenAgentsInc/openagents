@@ -291,6 +291,42 @@ pub(super) fn handle_command(state: &mut AppState, command: Command) -> CommandA
             state.set_dspy_background_optimization(enabled);
             CommandAction::None
         }
+        Command::Nip28 => {
+            state.open_nip28();
+            CommandAction::None
+        }
+        Command::Nip28Refresh => {
+            state.refresh_nip28();
+            state.open_nip28();
+            CommandAction::None
+        }
+        Command::Nip28Connect(relay_url) => {
+            if relay_url.trim().is_empty() {
+                state.push_system_message("NIP-28 relay URL is required.".to_string());
+            } else {
+                state.connect_nip28(Some(relay_url));
+                state.open_nip28();
+            }
+            CommandAction::None
+        }
+        Command::Nip28Channel(channel) => {
+            if channel.trim().is_empty() {
+                state.push_system_message("NIP-28 channel name or id is required.".to_string());
+            } else {
+                state.set_nip28_channel(channel);
+                state.open_nip28();
+            }
+            CommandAction::None
+        }
+        Command::Nip28Send(message) => {
+            if message.trim().is_empty() {
+                state.push_system_message("NIP-28 message is empty.".to_string());
+            } else {
+                state.send_nip28_message(message);
+                state.open_nip28();
+            }
+            CommandAction::None
+        }
         Command::Custom(name, args) => {
             if state.chat.is_thinking {
                 state.push_system_message(
@@ -675,6 +711,52 @@ pub(super) fn handle_modal_input(state: &mut AppState, key: &WinitKey) -> bool {
                 }
                 WinitKey::Character(c) if c.eq_ignore_ascii_case("r") => {
                     state.request_wallet_refresh();
+                }
+                _ => {}
+            }
+            state.window.request_redraw();
+            true
+        }
+        ModalState::Nip28Chat => {
+            match key {
+                WinitKey::Named(WinitNamedKey::Escape) => {
+                    state.modal_state = ModalState::None;
+                }
+                WinitKey::Named(WinitNamedKey::Enter) => {
+                    if let Err(err) = state.nip28.send_message() {
+                        state.nip28.status_message = Some(err);
+                    }
+                }
+                WinitKey::Named(WinitNamedKey::ArrowLeft) => {
+                    state.nip28.move_cursor_left();
+                }
+                WinitKey::Named(WinitNamedKey::ArrowRight) => {
+                    state.nip28.move_cursor_right();
+                }
+                WinitKey::Named(WinitNamedKey::Home) => {
+                    state.nip28.move_cursor_home();
+                }
+                WinitKey::Named(WinitNamedKey::End) => {
+                    state.nip28.move_cursor_end();
+                }
+                WinitKey::Named(WinitNamedKey::Backspace) => {
+                    state.nip28.backspace();
+                }
+                WinitKey::Named(WinitNamedKey::Delete) => {
+                    state.nip28.delete();
+                }
+                WinitKey::Character(c)
+                    if c.eq_ignore_ascii_case("r") && state.modifiers.control_key() =>
+                {
+                    state.refresh_nip28();
+                }
+                WinitKey::Character(c) => {
+                    if !state.modifiers.control_key()
+                        && !state.modifiers.super_key()
+                        && !state.modifiers.alt_key()
+                    {
+                        state.nip28.insert_text(c);
+                    }
                 }
                 _ => {}
             }
