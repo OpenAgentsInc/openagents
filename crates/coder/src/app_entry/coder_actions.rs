@@ -531,7 +531,7 @@ impl CoderApp {
 
         // Get window handle for triggering redraws from async task
         let window = state.window.clone();
-        let model_id = state.settings.selected_model.model_id().to_string();
+        // Don't pass Claude model to Codex - Codex uses its own OAuth and default model
         let resume_session = state.session.pending_resume_session
             .take()
             .or_else(|| {
@@ -550,11 +550,10 @@ impl CoderApp {
 
             let codex = Codex::new();
 
-            // Build thread options
+            // Build thread options - let Codex use its default model
             let mut thread_options = ThreadOptions::new()
                 .working_directory(&cwd)
-                .skip_git_repo_check(true)
-                .model(&model_id);
+                .skip_git_repo_check(true);
 
             // Map permission mode to sandbox mode
             if let Some(ref mode) = permission_mode {
@@ -617,7 +616,7 @@ impl CoderApp {
                                                     }.to_string())
                                                     .unwrap_or_default();
                                                 let _ = tx.send(ResponseEvent::SystemInit {
-                                                    model: model_id.clone(),
+                                                    model: "codex".to_string(),
                                                     permission_mode: mode_str,
                                                     session_id: started.thread_id,
                                                     tool_count: 0,
@@ -759,7 +758,7 @@ impl CoderApp {
                                             ThreadEvent::TurnCompleted(tc) => {
                                                 let _ = tx.send(ResponseEvent::Complete {
                                                     metadata: Some(crate::app::chat::MessageMetadata {
-                                                        model: Some(model_id.clone()),
+                                                        model: Some("codex".to_string()),
                                                         input_tokens: Some(tc.usage.input_tokens as u64),
                                                         output_tokens: Some(tc.usage.output_tokens as u64),
                                                         duration_ms: None,
