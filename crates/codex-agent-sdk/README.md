@@ -304,13 +304,18 @@ The status bar shows the current backend. Both backends share the same streaming
 ## Requirements
 
 - Codex CLI installed and in PATH
-- OpenAI API key configured (via `OPENAI_API_KEY` environment variable or Codex config)
+- Authenticated via Codex's built-in OAuth (run `codex` once to login)
 
 Install Codex:
 
 ```bash
-# See Codex documentation for installation
-# Typically: npm install -g @openai/codex
+npm install -g @openai/codex
+```
+
+Authenticate:
+
+```bash
+codex  # Opens browser for OAuth login
 ```
 
 Verify installation:
