@@ -307,6 +307,202 @@ This means the first decision might take a moment to initialize the LM, but all 
 
 **For Observability:** Every decision includes confidence scores and reasoning. When something goes wrong, you can see exactly why the system made the choices it did.
 
+---
+
+### How to Actually Use the Training Data (The Full Loop)
+
+DSPy training isn't magic — it's a concrete workflow. Here's exactly how it works:
+
+#### Step 1: Training Data Gets Collected Automatically
+
+Every time Adjutant makes a DSPy decision with confidence > 0.7, it records an example:
+
+```
+~/.openagents/adjutant/training/dataset.json
+```
+
+This file grows as you use the Coder. Each entry looks like:
+
+```json
+{
+  "complexity_examples": [
+    {
+      "task_description": "Add error handling to auth.rs",
+      "file_count": 3,
+      "estimated_tokens": 5000,
+      "keywords": ["error"],
+      "expected_complexity": "Medium",
+      "confidence": 0.85
+    }
+  ],
+  "delegation_examples": [...],
+  "rlm_trigger_examples": [...],
+  "planning_examples": [...],
+  "execution_examples": [...],
+  "synthesis_examples": [...]
+}
+```
+
+You can inspect this file anytime:
+```bash
+cat ~/.openagents/adjutant/training/dataset.json | jq .
+```
+
+#### Step 2: Run Optimization When You Have Enough Data
+
+Once you have 20-50+ examples per signature, you can optimize. Currently this is done programmatically:
+
+```rust
+use adjutant::dspy::{AdjutantModule, AdjutantTrainingDataset};
+use dsrs::{MIPROv2, Optimizer};
+
+// Load the training data you've collected
+let dataset = AdjutantTrainingDataset::load()?;
+println!("Loaded {} examples", dataset.len());
+
+// Convert to DSPy examples
+let planning_examples = dataset.planning_as_examples();
+let complexity_examples = dataset.complexity_as_examples();
+
+// Create module and optimizer
+let mut module = AdjutantModule::new();
+let optimizer = MIPROv2::builder()
+    .num_candidates(10)      // Try 10 different prompt variations
+    .num_trials(20)          // Run 20 optimization trials
+    .build();
+
+// Run optimization - this takes a few minutes
+// The optimizer tries different prompts and measures which work best
+optimizer.compile(&mut module, planning_examples).await?;
+
+// The module now has optimized instructions
+println!("Before: Break the given task into concrete, atomic subtasks.");
+println!("After:  {}", module.planner.get_signature().instruction());
+```
+
+**What MIPROv2 Actually Does:**
+1. Looks at your training examples (inputs → expected outputs)
+2. Generates candidate prompt variations
+3. Runs each candidate on the training data
+4. Scores results using the metrics in `metrics.rs`
+5. Keeps the best-performing prompt
+
+The output might change from:
+```
+"Break the given task into concrete, atomic subtasks."
+```
+to something like:
+```
+"Analyze the task description and repository context. Identify the minimal
+set of atomic changes needed. For each subtask, specify exactly one file
+and one action (read/edit/bash). Order subtasks by dependency."
+```
+
+This improved prompt produces better plans because it learned from your actual usage patterns.
+
+#### Step 3: Deploy the Optimized Module
+
+After optimization, you have two choices:
+
+**Option A: Use in Code**
+```rust
+// The module variable now has optimized instructions
+// Just use it directly
+let plan = module.plan("Fix the bug", "Description...", "Context...").await?;
+```
+
+**Option B: Save and Load Later**
+```rust
+// Save the optimized module
+module.save("~/.openagents/adjutant/optimized_module.json")?;
+
+// Later, load it
+let module = AdjutantModule::load("~/.openagents/adjutant/optimized_module.json")?;
+```
+
+#### Step 4: Measure Improvement
+
+The optimization produces a scorecard:
+
+```rust
+let result = optimizer.compile(&mut module, examples).await?;
+println!("Proxy score: {:.2}", result.scorecard.proxy_score);
+println!("Truth score: {:?}", result.scorecard.truth_score);
+```
+
+- **Proxy score**: Quick evaluation during optimization (0.0-1.0)
+- **Truth score**: Full evaluation with expensive metrics (optional)
+
+A good optimization might take proxy score from 0.65 → 0.82.
+
+#### The Optimization Loop (Long-Term)
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    DSPy Optimization Loop                        │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  1. USE THE SYSTEM                                               │
+│     └── Coder makes decisions with DSPy signatures              │
+│     └── High-confidence decisions get recorded                   │
+│                                                                  │
+│  2. COLLECT TRAINING DATA                                        │
+│     └── ~/.openagents/adjutant/training/dataset.json            │
+│     └── Wait until you have 20-50+ examples                      │
+│                                                                  │
+│  3. RUN OPTIMIZATION                                             │
+│     └── MIPROv2 tries prompt variations                          │
+│     └── Finds what works best for YOUR usage patterns            │
+│                                                                  │
+│  4. DEPLOY OPTIMIZED MODULE                                      │
+│     └── Better prompts = better decisions                        │
+│     └── Higher confidence = less fallback to legacy rules        │
+│                                                                  │
+│  5. REPEAT                                                       │
+│     └── Continue collecting data with new module                 │
+│     └── Re-optimize periodically as patterns change              │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+#### What's Coming: CLI Integration
+
+Future versions will have CLI commands:
+
+```bash
+# View training data stats
+autopilot dspy stats
+
+# Run optimization
+autopilot dspy optimize --signature planning --trials 20
+
+# Deploy optimized module
+autopilot dspy deploy ./optimized_module.json
+
+# A/B test old vs new
+autopilot dspy test --shadow-mode
+```
+
+For now, use the programmatic API or write a simple script.
+
+#### Why This Matters
+
+Traditional prompt engineering:
+- You tweak prompts by hand
+- Test on a few examples
+- Ship and hope it works
+- Repeat when it breaks
+
+DSPy workflow:
+- Define what you want (signature)
+- Let the system collect real usage data
+- Optimizer finds what actually works
+- Decisions get better automatically over time
+
+The system learns from its own successes. The more you use it, the better it gets.
+
+---
+
 **Philosophy (from Omar Khattab & Kevin Madura):**
 - DSPy is declarative AI programming, not just prompt optimization
 - Signatures decouple AI specification from ML techniques
