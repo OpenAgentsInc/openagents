@@ -371,27 +371,14 @@ impl Component for ContextMenu {
                 .with_corner_radius(4.0),
         );
 
-        // Draw solid menu background - fully opaque black
-        let menu_bg = Hsla::new(0.0, 0.0, 0.0, 1.0); // Pure black, fully opaque
-        let menu_border = Hsla::new(0.0, 0.0, 0.35, 1.0); // Visible border
+        // Draw solid menu background - #0a0a0a
+        let menu_bg = Hsla::new(0.0, 0.0, 0.039, 1.0); // #0a0a0a
+        let menu_border = Hsla::new(0.0, 0.0, 0.2, 1.0);
         cx.scene.draw_quad(
             Quad::new(menu_bounds)
                 .with_background(menu_bg)
                 .with_border(menu_border, 1.0)
                 .with_corner_radius(4.0),
-        );
-
-        // Draw inner fill slightly lighter for visual depth
-        let inner_bounds = Bounds::new(
-            menu_bounds.origin.x + 1.0,
-            menu_bounds.origin.y + 1.0,
-            menu_bounds.size.width - 2.0,
-            menu_bounds.size.height - 2.0,
-        );
-        cx.scene.draw_quad(
-            Quad::new(inner_bounds)
-                .with_background(Hsla::new(0.0, 0.0, 0.12, 1.0))
-                .with_corner_radius(3.0),
         );
 
         // Draw items
@@ -400,18 +387,7 @@ impl Component for ContextMenu {
 
         for (i, item) in self.items.iter().enumerate() {
             if item.is_separator {
-                // Draw separator line
-                let sep_y = y + self.separator_height / 2.0;
-                let sep_color = Hsla::new(0.0, 0.0, 0.30, 1.0); // visible separator
-                cx.scene.draw_quad(
-                    Quad::new(Bounds::new(
-                        menu_bounds.origin.x + self.padding + 8.0,
-                        sep_y,
-                        content_width - 16.0,
-                        1.0,
-                    ))
-                    .with_background(sep_color),
-                );
+                // Just add spacing, no visible line
                 y += self.separator_height;
                 continue;
             }
