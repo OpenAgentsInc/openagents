@@ -822,6 +822,3 @@ fn handle_dvm_result(
         }
     }
 }
-
-#[derive(Clone)]
-#[cfg(not(target_arch = "wasm32"))]
