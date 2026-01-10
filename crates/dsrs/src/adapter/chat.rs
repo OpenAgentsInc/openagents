@@ -11,6 +11,8 @@ use crate::{Cache, CallResult, Chat, Example, LM, Message, MetaSignature, Predic
 #[derive(Default, Clone)]
 pub struct ChatAdapter;
 
+const SIGNATURE_CACHE_KEY: &str = "__signature";
+
 fn get_type_hint(field: &Value) -> String {
     let schema = &field["schema"];
     let type_str = field["type"].as_str().unwrap_or("String");
@@ -30,6 +32,20 @@ fn get_type_hint(field: &Value) -> String {
 }
 
 impl ChatAdapter {
+    fn cache_key(signature: &dyn MetaSignature, inputs: &Example) -> Example {
+        let mut key = inputs.clone();
+        key.data.insert(
+            SIGNATURE_CACHE_KEY.to_string(),
+            Value::String(signature.signature_name().to_string()),
+        );
+        if !key.input_keys.contains(&SIGNATURE_CACHE_KEY.to_string()) {
+            key.input_keys.push(SIGNATURE_CACHE_KEY.to_string());
+        }
+        key.output_keys
+            .retain(|field| field != SIGNATURE_CACHE_KEY);
+        key
+    }
+
     fn get_field_attribute_list(
         &self,
         field_iter: impl Iterator<Item = (String, Value)>,
@@ -284,18 +300,21 @@ impl Adapter for ChatAdapter {
         inputs: Example,
         tools: Vec<Arc<dyn ToolDyn>>,
     ) -> Result<Prediction> {
+        let cache_key = Self::cache_key(signature, &inputs);
+
         // Check cache first (release lock immediately after checking)
         if lm.cache
             && let Some(cache) = lm.cache_handler.as_ref()
         {
-            let cache_key = inputs.clone();
             if let Some(cached) = cache.lock().await.get(cache_key).await? {
                 return Ok(cached);
             }
         }
 
         let messages = self.format(signature, inputs.clone());
-        let response = lm.call(messages, tools).await?;
+        let response = lm
+            .call_with_signature(Some(signature), messages, tools)
+            .await?;
         let prompt_str = response.chat.to_json().to_string();
 
         let mut output = self.parse_response(signature, response.output);
@@ -330,7 +349,7 @@ impl Adapter for ChatAdapter {
         {
             let (tx, rx) = tokio::sync::mpsc::channel(1);
             let cache_clone = cache.clone();
-            let inputs_clone = inputs.clone();
+            let inputs_clone = cache_key.clone();
 
             // Spawn the cache insert operation to avoid deadlock
             tokio::spawn(async move {

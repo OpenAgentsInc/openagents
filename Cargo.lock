@@ -3914,6 +3914,7 @@ dependencies = [
  "hf-hub 0.4.3",
  "indexmap 2.12.1",
  "kdam",
+ "lm-router",
  "nostr 0.1.0",
  "nostr-client",
  "parquet",

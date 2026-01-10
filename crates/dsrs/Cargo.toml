@@ -32,6 +32,7 @@ foyer = { version = "0.20.0", features = ["serde"]}
 tempfile = "3.23.0"
 rig-core = { git = "https://github.com/0xPlaygrounds/rig", rev = "e7849df" }
 enum_dispatch = "0.3.13"
+lm-router = { path = "../lm-router" }
 
 # Pylon integration (swarm inference via NIP-90)
 nostr = { path = "../nostr/core" }
