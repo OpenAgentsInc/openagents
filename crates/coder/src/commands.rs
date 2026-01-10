@@ -57,6 +57,8 @@ pub enum Command {
     DirectivesRefresh,
     Issues,
     IssuesRefresh,
+    AutopilotIssues,
+    AutopilotIssuesRefresh,
     Dspy,
     DspyRefresh,
     DspyAuto(bool),
@@ -353,6 +355,16 @@ const COMMAND_SPECS: &[CommandSpec] = &[
         requires_args: false,
     },
     CommandSpec {
+        usage: "/issue-tracker",
+        description: "Open autopilot issue tracker",
+        requires_args: false,
+    },
+    CommandSpec {
+        usage: "/issue-tracker refresh",
+        description: "Refresh autopilot issue tracker",
+        requires_args: false,
+    },
+    CommandSpec {
         usage: "/issues",
         description: "Open workspace issues",
         requires_args: false,
@@ -455,6 +467,7 @@ pub fn parse_command(input: &str) -> Option<Command> {
         "nip90" => parse_nip90_command(args),
         "oanix" => parse_oanix_command(args),
         "directives" | "directive" => parse_directives_command(args),
+        "issue-tracker" | "autopilot-issues" | "issue-db" => parse_issue_tracker_command(args),
         "issues" => parse_issues_command(args),
         "dspy" => parse_dspy_command(args),
         "nip28" => parse_nip28_command(args),
@@ -567,6 +580,15 @@ fn parse_directives_command(args: Vec<String>) -> Command {
         Some("refresh") => Command::DirectivesRefresh,
         Some("status") => Command::Directives,
         _ => Command::Directives,
+    }
+}
+
+fn parse_issue_tracker_command(args: Vec<String>) -> Command {
+    let mut parts = args.into_iter();
+    match parts.next().as_deref() {
+        Some("refresh") => Command::AutopilotIssuesRefresh,
+        Some("status") => Command::AutopilotIssues,
+        _ => Command::AutopilotIssues,
     }
 }
 

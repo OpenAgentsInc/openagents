@@ -10,3 +10,4 @@ mod oanix_tests;
 mod nip90_tests;
 mod issues_tests;
 mod directives_tests;
+mod autopilot_issues_tests;

@@ -11,6 +11,7 @@ use winit::keyboard::ModifiersState;
 use winit::window::Window;
 
 use crate::app::autopilot::AutopilotState;
+use crate::app::autopilot_issues::AutopilotIssuesState;
 use crate::app::catalog::CatalogState;
 use crate::app::chat::ChatState;
 use crate::app::config::SettingsState;
@@ -62,6 +63,7 @@ pub(crate) struct AppState {
     pub(crate) settings: SettingsState,
     pub(crate) permissions: PermissionState,
     pub(crate) autopilot: AutopilotState,
+    pub(crate) autopilot_issues: AutopilotIssuesState,
     pub(crate) wallet: WalletState,
     pub(crate) dspy: DspyState,
     pub(crate) dvm: DvmState,

@@ -1,4 +1,5 @@
 pub(crate) mod autopilot;
+pub(crate) mod autopilot_issues;
 pub(crate) mod catalog;
 pub(crate) mod chat;
 pub(crate) mod config;
