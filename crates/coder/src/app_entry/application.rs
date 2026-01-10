@@ -268,6 +268,7 @@ impl ApplicationHandler for CoderApp {
                 llama_server_process,
                 show_kitchen_sink: false,
                 kitchen_sink_scroll: 0.0,
+                help_scroll_offset: 0.0,
                 agent_selection: AgentSelection::default(),
                 agent_registry: AgentRegistry::new(),
             }
@@ -966,6 +967,12 @@ impl ApplicationHandler for CoderApp {
                 // Kitchen sink scroll handling
                 if state.show_kitchen_sink {
                     state.kitchen_sink_scroll = (state.kitchen_sink_scroll - dy * 40.0).max(0.0);
+                    state.window.request_redraw();
+                    return;
+                }
+                // Help modal scroll handling
+                if matches!(state.modal_state, ModalState::Help) {
+                    state.help_scroll_offset = (state.help_scroll_offset - dy * 40.0).max(0.0);
                     state.window.request_redraw();
                     return;
                 }

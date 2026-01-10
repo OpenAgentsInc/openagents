@@ -6,6 +6,7 @@ fn render_help_modal(
     logical_width: f32,
     logical_height: f32,
     _scale_factor: f32,
+    scroll_offset: f32,
 ) {
             // Render on layer 1 to be on top of all layer 0 content
             scene.set_layer(1);
@@ -24,9 +25,13 @@ fn render_help_modal(
                 .with_border(palette.panel_border, 1.0);
             scene.draw_quad(modal_bg);
 
+            // Content area bounds for clipping
+            let content_top = modal_y + 36.0;  // Below title
+            let content_bottom = modal_y + modal_height - 30.0;  // Above footer
+
             let mut y = modal_y + 16.0;
             let title_run = state.text_system.layout_styled_mono(
-                "Help",
+                "Help (scroll to see more)",
                 Point::new(modal_x + 16.0, y),
                 14.0,
                 palette.text_primary,
@@ -34,6 +39,9 @@ fn render_help_modal(
             );
             scene.draw_text(title_run);
             y += 20.0;
+
+            // Apply scroll offset to content starting position
+            y -= scroll_offset;
 
             let max_chars = ((modal_width - 32.0) / 7.0).max(20.0) as usize;
             let line_height = 14.0;
@@ -300,26 +308,32 @@ fn render_help_modal(
             ];
 
             for (title, lines) in sections {
-                let heading = state.text_system.layout_styled_mono(
-                    title,
-                    Point::new(modal_x + 16.0, y),
-                    12.0,
-                    palette.text_primary,
-                    wgpui::text::FontStyle::default(),
-                );
-                scene.draw_text(heading);
+                // Only draw if within visible content area
+                if y >= content_top - line_height && y <= content_bottom {
+                    let heading = state.text_system.layout_styled_mono(
+                        title,
+                        Point::new(modal_x + 16.0, y),
+                        12.0,
+                        palette.text_primary,
+                        wgpui::text::FontStyle::default(),
+                    );
+                    scene.draw_text(heading);
+                }
                 y += line_height;
 
                 for line in lines {
                     for wrapped in wrap_text(&line, max_chars) {
-                        let text_run = state.text_system.layout_styled_mono(
-                            &wrapped,
-                            Point::new(modal_x + 20.0, y),
-                            11.0,
-                            palette.text_muted,
-                            wgpui::text::FontStyle::default(),
-                        );
-                        scene.draw_text(text_run);
+                        // Only draw if within visible content area
+                        if y >= content_top - line_height && y <= content_bottom {
+                            let text_run = state.text_system.layout_styled_mono(
+                                &wrapped,
+                                Point::new(modal_x + 20.0, y),
+                                11.0,
+                                palette.text_muted,
+                                wgpui::text::FontStyle::default(),
+                            );
+                            scene.draw_text(text_run);
+                        }
                         y += line_height;
                     }
                 }
@@ -327,10 +341,11 @@ fn render_help_modal(
                 y += section_gap;
             }
 
-            y = modal_y + modal_height - 24.0;
+            // Draw footer (always visible, at fixed position)
+            let footer_y = modal_y + modal_height - 24.0;
             let footer_run = state.text_system.layout_styled_mono(
                 "Esc/F1 to close",
-                Point::new(modal_x + 16.0, y),
+                Point::new(modal_x + 16.0, footer_y),
                 12.0,
                 palette.text_faint,
                 wgpui::text::FontStyle::default(),
