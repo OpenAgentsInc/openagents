@@ -127,6 +127,17 @@ Or with specific provider tag:
 ["REQ", "handlers", {"kinds": [31990], "#k": ["5050"]}]
 ```
 
+### Optional semantic intent filter (extension)
+
+Nexus supports an optional `intent` field on filters for semantic routing when
+DSPy is configured:
+
+```json
+["REQ", "jobs", {"intent": "job_request", "since": 1720000000}]
+```
+
+If DSPy is unavailable, intent filtering falls back to kind-based matching.
+
 ---
 
 ## Event Validation
@@ -151,6 +162,10 @@ Or with specific provider tag:
 - Must have `p` tag with customer pubkey
 - Should have `request` tag with original request JSON
 - Content is the result payload
+
+### Semantic Classification (DSPy)
+- **Event intent**: classify intent from kind/content/tags
+- **Job kind**: classify job type + complexity from request payloads
 
 ### Handler Announcement (kind:31990)
 - Addressable/replaceable event
