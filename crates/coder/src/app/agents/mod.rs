@@ -38,4 +38,5 @@ mod registry;
 mod state;
 
 pub(crate) use backend::AgentKind;
+pub(crate) use registry::AgentRegistry;
 pub(crate) use state::{AgentBackendsEvent, AgentBackendsState, AgentBackendsStatus};

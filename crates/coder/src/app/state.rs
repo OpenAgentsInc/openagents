@@ -10,7 +10,7 @@ use wgpui::{TextInput, TextSystem};
 use winit::keyboard::ModifiersState;
 use winit::window::Window;
 
-use crate::app::agents::{AgentRegistry, AgentKind};
+use crate::app::agents::AgentRegistry;
 use crate::app::autopilot::AutopilotState;
 use crate::app::autopilot_issues::AutopilotIssuesState;
 use crate::app::config::AgentSelection;
@@ -91,5 +91,6 @@ pub(crate) struct AppState {
     /// Selected agent backend (Claude/Codex)
     pub(crate) agent_selection: AgentSelection,
     /// Agent availability registry
+    #[allow(dead_code)]
     pub(crate) agent_registry: AgentRegistry,
 }

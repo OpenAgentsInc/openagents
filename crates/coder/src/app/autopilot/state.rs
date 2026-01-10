@@ -12,6 +12,7 @@ pub(crate) struct AutopilotState {
     pub(crate) autopilot_interrupt_flag: Arc<AtomicBool>,
     pub(crate) autopilot_loop_iteration: usize,
     pub(crate) autopilot_max_iterations: usize,
+    #[allow(dead_code)]
     pub(crate) available_providers: Vec<adjutant::dspy::lm_config::LmProvider>,
 }
 
