@@ -59,21 +59,12 @@ impl CoderApp {
 
         // Check selected backend
         use crate::app::config::AgentKindConfig;
-        match state.agent_selection.agent {
-            AgentKindConfig::Claude => {
-                tracing::info!("Using Claude backend");
-                // Continue with Claude flow below
-            }
-            AgentKindConfig::Codex => {
-                tracing::info!("Using Codex backend");
-                // TODO: Implement Codex flow using codex-agent-sdk
-                // For now, show a placeholder message
-                state.push_system_message(
-                    "Codex backend is not yet fully implemented. Falling back to Claude.".to_string()
-                );
-                // Fall through to Claude for now
-            }
+        if matches!(state.agent_selection.agent, AgentKindConfig::Codex) {
+            tracing::info!("Using Codex backend");
+            self.submit_codex_prompt(prompt);
+            return;
         }
+        tracing::info!("Using Claude backend");
 
         let cwd = std::env::current_dir().unwrap_or_default();
         let active_agent = state.catalogs.active_agent.clone();
@@ -506,6 +497,309 @@ impl CoderApp {
                 }
                 Err(e) => {
                     tracing::error!("Query failed to start: {}", e);
+                    let _ = tx.send(ResponseEvent::Error(e.to_string()));
+                    window.request_redraw();
+                }
+            }
+        });
+    }
+
+    /// Submit a prompt to the Codex backend.
+    fn submit_codex_prompt(&mut self, prompt: String) {
+        let Some(state) = &mut self.state else {
+            return;
+        };
+
+        let cwd = std::env::current_dir().unwrap_or_default();
+        let expanded_prompt = match expand_prompt_text(&prompt, &cwd) {
+            Ok(result) => result,
+            Err(err) => {
+                state.push_system_message(err);
+                state.window.request_redraw();
+                return;
+            }
+        };
+
+        // Create channel for receiving responses
+        let (tx, rx) = mpsc::unbounded_channel();
+        let (control_tx, mut control_rx) = mpsc::unbounded_channel();
+        state.chat.response_rx = Some(rx);
+        state.chat.query_control_tx = Some(control_tx);
+        state.chat.is_thinking = true;
+        state.chat.streaming_markdown.reset();
+        state.catalogs.refresh_agent_cards(state.chat.is_thinking);
+
+        // Get window handle for triggering redraws from async task
+        let window = state.window.clone();
+        let model_id = state.settings.selected_model.model_id().to_string();
+        let resume_session = state.session.pending_resume_session
+            .take()
+            .or_else(|| {
+                if state.session.session_info.session_id.trim().is_empty() {
+                    None
+                } else {
+                    Some(state.session.session_info.session_id.clone())
+                }
+            });
+        let permission_mode = Some(state.permissions.coder_mode.to_sdk_permission_mode());
+
+        // Spawn async Codex query task
+        let handle = self.runtime_handle.clone();
+        handle.spawn(async move {
+            use codex_agent_sdk::{Codex, ThreadOptions, TurnOptions, ThreadEvent, ThreadItemDetails, SandboxMode, ApprovalMode};
+
+            let codex = Codex::new();
+
+            // Build thread options
+            let mut thread_options = ThreadOptions::new()
+                .working_directory(&cwd)
+                .skip_git_repo_check(true)
+                .model(&model_id);
+
+            // Map permission mode to sandbox mode
+            if let Some(ref mode) = permission_mode {
+                use claude_agent_sdk::protocol::PermissionMode;
+                let sandbox = match mode {
+                    PermissionMode::BypassPermissions => SandboxMode::DangerFullAccess,
+                    PermissionMode::Plan => SandboxMode::ReadOnly,
+                    _ => SandboxMode::WorkspaceWrite,
+                };
+                thread_options = thread_options.sandbox_mode(sandbox);
+
+                let approval = match mode {
+                    PermissionMode::BypassPermissions => ApprovalMode::Never,
+                    PermissionMode::Plan => ApprovalMode::Never,
+                    _ => ApprovalMode::OnRequest,
+                };
+                thread_options = thread_options.approval_policy(approval);
+            }
+
+            // Create or resume thread
+            let mut thread = if let Some(ref resume_id) = resume_session {
+                codex.resume_thread(resume_id, thread_options)
+            } else {
+                codex.start_thread(thread_options)
+            };
+
+            // Start streaming turn
+            let turn_options = TurnOptions::default();
+            match thread.run_streamed(expanded_prompt.as_str(), turn_options).await {
+                Ok(mut streamed) => {
+                    tracing::info!("Codex query stream started");
+
+                    // Track text accumulation for agent messages
+                    let mut current_message_text = String::new();
+
+                    loop {
+                        tokio::select! {
+                            Some(control) = control_rx.recv() => {
+                                match control {
+                                    QueryControl::Interrupt | QueryControl::Abort => {
+                                        let _ = tx.send(ResponseEvent::Error("Request interrupted.".to_string()));
+                                        window.request_redraw();
+                                        break;
+                                    }
+                                    _ => {}
+                                }
+                            }
+                            event = streamed.next() => {
+                                match event {
+                                    Some(Ok(ev)) => {
+                                        match ev {
+                                            ThreadEvent::ThreadStarted(started) => {
+                                                let mode_str = permission_mode.as_ref()
+                                                    .map(|m| match m {
+                                                        claude_agent_sdk::protocol::PermissionMode::Default => "default",
+                                                        claude_agent_sdk::protocol::PermissionMode::AcceptEdits => "acceptEdits",
+                                                        claude_agent_sdk::protocol::PermissionMode::BypassPermissions => "bypassPermissions",
+                                                        claude_agent_sdk::protocol::PermissionMode::Plan => "plan",
+                                                        claude_agent_sdk::protocol::PermissionMode::DontAsk => "dontAsk",
+                                                    }.to_string())
+                                                    .unwrap_or_default();
+                                                let _ = tx.send(ResponseEvent::SystemInit {
+                                                    model: model_id.clone(),
+                                                    permission_mode: mode_str,
+                                                    session_id: started.thread_id,
+                                                    tool_count: 0,
+                                                    tools: vec![],
+                                                    output_style: String::new(),
+                                                    slash_commands: vec![],
+                                                    mcp_servers: vec![],
+                                                });
+                                                window.request_redraw();
+                                            }
+                                            ThreadEvent::TurnStarted(_) => {
+                                                tracing::debug!("Codex turn started");
+                                            }
+                                            ThreadEvent::ItemStarted(item) => {
+                                                match &item.item.details {
+                                                    ThreadItemDetails::AgentMessage(_) => {
+                                                        current_message_text.clear();
+                                                    }
+                                                    ThreadItemDetails::CommandExecution(cmd) => {
+                                                        let _ = tx.send(ResponseEvent::ToolCallStart {
+                                                            name: "Bash".to_string(),
+                                                            tool_use_id: item.item.id.clone(),
+                                                        });
+                                                        let _ = tx.send(ResponseEvent::ToolCallInput {
+                                                            json: serde_json::json!({"command": cmd.command}).to_string(),
+                                                        });
+                                                        let _ = tx.send(ResponseEvent::ToolCallEnd);
+                                                        window.request_redraw();
+                                                    }
+                                                    ThreadItemDetails::FileChange(fc) => {
+                                                        let _ = tx.send(ResponseEvent::ToolCallStart {
+                                                            name: "Edit".to_string(),
+                                                            tool_use_id: item.item.id.clone(),
+                                                        });
+                                                        let paths: Vec<&str> = fc.changes.iter()
+                                                            .map(|c| c.path.as_str())
+                                                            .collect();
+                                                        let _ = tx.send(ResponseEvent::ToolCallInput {
+                                                            json: serde_json::json!({"files": paths}).to_string(),
+                                                        });
+                                                        let _ = tx.send(ResponseEvent::ToolCallEnd);
+                                                        window.request_redraw();
+                                                    }
+                                                    ThreadItemDetails::McpToolCall(tool) => {
+                                                        let _ = tx.send(ResponseEvent::ToolCallStart {
+                                                            name: format!("mcp__{}__{}", tool.server, tool.tool),
+                                                            tool_use_id: item.item.id.clone(),
+                                                        });
+                                                        let _ = tx.send(ResponseEvent::ToolCallInput {
+                                                            json: tool.arguments.to_string(),
+                                                        });
+                                                        let _ = tx.send(ResponseEvent::ToolCallEnd);
+                                                        window.request_redraw();
+                                                    }
+                                                    ThreadItemDetails::Reasoning(r) => {
+                                                        let _ = tx.send(ResponseEvent::Chunk(
+                                                            format!("*Thinking:* {}\n\n", r.text)
+                                                        ));
+                                                        window.request_redraw();
+                                                    }
+                                                    _ => {}
+                                                }
+                                            }
+                                            ThreadEvent::ItemUpdated(item) => {
+                                                if let ThreadItemDetails::AgentMessage(msg) = &item.item.details {
+                                                    // Send delta (new text since last update)
+                                                    if msg.text.len() > current_message_text.len() {
+                                                        let delta = &msg.text[current_message_text.len()..];
+                                                        if tx.send(ResponseEvent::Chunk(delta.to_string())).is_err() {
+                                                            break;
+                                                        }
+                                                        current_message_text = msg.text.clone();
+                                                        window.request_redraw();
+                                                    }
+                                                }
+                                            }
+                                            ThreadEvent::ItemCompleted(item) => {
+                                                match &item.item.details {
+                                                    ThreadItemDetails::AgentMessage(msg) => {
+                                                        // Send any remaining text
+                                                        if msg.text.len() > current_message_text.len() {
+                                                            let delta = &msg.text[current_message_text.len()..];
+                                                            let _ = tx.send(ResponseEvent::Chunk(delta.to_string()));
+                                                            window.request_redraw();
+                                                        }
+                                                        current_message_text.clear();
+                                                    }
+                                                    ThreadItemDetails::CommandExecution(cmd) => {
+                                                        let _ = tx.send(ResponseEvent::ToolResult {
+                                                            content: cmd.aggregated_output.clone(),
+                                                            is_error: matches!(cmd.status, codex_agent_sdk::CommandExecutionStatus::Failed),
+                                                            tool_use_id: Some(item.item.id.clone()),
+                                                            exit_code: cmd.exit_code,
+                                                            output_value: None,
+                                                        });
+                                                        window.request_redraw();
+                                                    }
+                                                    ThreadItemDetails::FileChange(fc) => {
+                                                        let paths: Vec<&str> = fc.changes.iter()
+                                                            .map(|c| c.path.as_str())
+                                                            .collect();
+                                                        let content = format!("Modified files: {}", paths.join(", "));
+                                                        let _ = tx.send(ResponseEvent::ToolResult {
+                                                            content,
+                                                            is_error: matches!(fc.status, codex_agent_sdk::PatchApplyStatus::Failed),
+                                                            tool_use_id: Some(item.item.id.clone()),
+                                                            exit_code: None,
+                                                            output_value: None,
+                                                        });
+                                                        window.request_redraw();
+                                                    }
+                                                    ThreadItemDetails::McpToolCall(tool) => {
+                                                        let content = if let Some(result) = &tool.result {
+                                                            serde_json::to_string_pretty(&result.content)
+                                                                .unwrap_or_default()
+                                                        } else if let Some(err) = &tool.error {
+                                                            err.message.clone()
+                                                        } else {
+                                                            String::new()
+                                                        };
+                                                        let _ = tx.send(ResponseEvent::ToolResult {
+                                                            content,
+                                                            is_error: tool.error.is_some(),
+                                                            tool_use_id: Some(item.item.id.clone()),
+                                                            exit_code: None,
+                                                            output_value: None,
+                                                        });
+                                                        window.request_redraw();
+                                                    }
+                                                    ThreadItemDetails::Error(err) => {
+                                                        let _ = tx.send(ResponseEvent::SystemMessage(
+                                                            format!("Codex error: {}", err.message)
+                                                        ));
+                                                        window.request_redraw();
+                                                    }
+                                                    _ => {}
+                                                }
+                                            }
+                                            ThreadEvent::TurnCompleted(tc) => {
+                                                let _ = tx.send(ResponseEvent::Complete {
+                                                    metadata: Some(crate::app::chat::MessageMetadata {
+                                                        model: Some(model_id.clone()),
+                                                        input_tokens: Some(tc.usage.input_tokens as u64),
+                                                        output_tokens: Some(tc.usage.output_tokens as u64),
+                                                        duration_ms: None,
+                                                        cost_msats: None,
+                                                    }),
+                                                });
+                                                window.request_redraw();
+                                                break;
+                                            }
+                                            ThreadEvent::TurnFailed(failed) => {
+                                                let _ = tx.send(ResponseEvent::Error(failed.error.message));
+                                                window.request_redraw();
+                                                break;
+                                            }
+                                            ThreadEvent::Error(err) => {
+                                                let _ = tx.send(ResponseEvent::Error(err.message));
+                                                window.request_redraw();
+                                                break;
+                                            }
+                                        }
+                                    }
+                                    Some(Err(e)) => {
+                                        tracing::error!("Codex stream error: {}", e);
+                                        let _ = tx.send(ResponseEvent::Error(e.to_string()));
+                                        window.request_redraw();
+                                        break;
+                                    }
+                                    None => {
+                                        let _ = tx.send(ResponseEvent::Complete { metadata: None });
+                                        window.request_redraw();
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    tracing::info!("Codex query stream ended");
+                }
+                Err(e) => {
+                    tracing::error!("Codex query failed to start: {}", e);
                     let _ = tx.send(ResponseEvent::Error(e.to_string()));
                     window.request_redraw();
                 }
