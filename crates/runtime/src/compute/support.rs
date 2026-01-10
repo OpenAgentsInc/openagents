@@ -1,3 +1,4 @@
+#[derive(Clone)]
 struct Executor {
     runtime: Arc<tokio::runtime::Runtime>,
 }
