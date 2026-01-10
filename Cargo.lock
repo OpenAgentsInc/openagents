@@ -2621,6 +2621,7 @@ dependencies = [
  "futures",
  "oanix",
  "pollster",
+ "reqwest",
  "serde",
  "serde_json",
  "tokio",

@@ -745,6 +745,314 @@ fn format_duration_ms(ms: u64) -> String {
     }
 }
 
+/// Format a reset timestamp as relative time (e.g., "3d", "5h", "30m")
+fn format_reset_time(timestamp: i64) -> String {
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0);
+    let diff = timestamp - now;
+
+    if diff <= 0 {
+        return "soon".to_string();
+    }
+    if diff < 3600 {
+        return format!("{}m", diff / 60);
+    }
+    if diff < 86400 {
+        return format!("{}h", diff / 3600);
+    }
+    format!("{}d", diff / 86400)
+}
+
+/// Parse rate limit headers from Anthropic API response
+/// Supports multiple header formats:
+/// - anthropic-ratelimit-unified-* (Claude Code format)
+/// - x-ratelimit-* (standard Anthropic API)
+fn parse_rate_limit_headers(headers: &reqwest::header::HeaderMap) -> Option<RateLimits> {
+    let mut limits = RateLimits::default();
+
+    // Helper to get header as string
+    let get_header = |name: &str| -> Option<&str> {
+        headers.get(name)?.to_str().ok()
+    };
+
+    // Try unified format first: anthropic-ratelimit-unified-7d-utilization (0-1 range)
+    let unified_claims = [
+        ("7d", "weekly"),
+        ("7ds", "sonnet"),
+        ("7do", "opus"),
+        ("5h", "session"),
+    ];
+
+    for (claim, name) in unified_claims {
+        let util_header = format!("anthropic-ratelimit-unified-{}-utilization", claim);
+        let reset_header = format!("anthropic-ratelimit-unified-{}-reset", claim);
+
+        if let Some(util_str) = get_header(&util_header) {
+            if let Ok(util_val) = util_str.parse::<f64>() {
+                let reset = get_header(&reset_header)
+                    .and_then(|s| s.parse::<i64>().ok())
+                    .map(format_reset_time)
+                    .unwrap_or_default();
+
+                let info = RateLimitInfo {
+                    name: name.to_string(),
+                    percent_used: util_val * 100.0,
+                    resets_at: reset,
+                };
+
+                if limits.primary.is_none() {
+                    limits.primary = Some(info);
+                } else if limits.secondary.is_none() {
+                    limits.secondary = Some(info);
+                    break;
+                }
+            }
+        }
+    }
+
+    // Try standard x-ratelimit headers (public Anthropic API)
+    if limits.primary.is_none() {
+        if let (Some(limit_str), Some(remaining_str)) = (
+            get_header("x-ratelimit-limit-requests"),
+            get_header("x-ratelimit-remaining-requests"),
+        ) {
+            if let (Ok(limit), Ok(remaining)) = (
+                limit_str.parse::<i64>(),
+                remaining_str.parse::<i64>(),
+            ) {
+                if limit > 0 {
+                    let used = limit - remaining;
+                    let percent = (used as f64 / limit as f64) * 100.0;
+
+                    // Parse reset time
+                    let reset = get_header("x-ratelimit-reset-requests")
+                        .map(|s| {
+                            // Format might be "60s" or ISO timestamp
+                            if s.ends_with('s') {
+                                s.trim_end_matches('s')
+                                    .parse::<i64>()
+                                    .ok()
+                                    .map(|secs| {
+                                        let now = SystemTime::now()
+                                            .duration_since(UNIX_EPOCH)
+                                            .map(|d| d.as_secs() as i64)
+                                            .unwrap_or(0);
+                                        format_reset_time(now + secs)
+                                    })
+                                    .unwrap_or_default()
+                            } else {
+                                s.to_string()
+                            }
+                        })
+                        .unwrap_or_default();
+
+                    limits.primary = Some(RateLimitInfo {
+                        name: "requests".to_string(),
+                        percent_used: percent,
+                        resets_at: reset,
+                    });
+                }
+            }
+        }
+
+        // Also try token limits
+        if let (Some(limit_str), Some(remaining_str)) = (
+            get_header("x-ratelimit-limit-tokens"),
+            get_header("x-ratelimit-remaining-tokens"),
+        ) {
+            if let (Ok(limit), Ok(remaining)) = (
+                limit_str.parse::<i64>(),
+                remaining_str.parse::<i64>(),
+            ) {
+                if limit > 0 {
+                    let used = limit - remaining;
+                    let percent = (used as f64 / limit as f64) * 100.0;
+
+                    let reset = get_header("x-ratelimit-reset-tokens")
+                        .map(|s| {
+                            if s.ends_with('s') {
+                                s.trim_end_matches('s')
+                                    .parse::<i64>()
+                                    .ok()
+                                    .map(|secs| {
+                                        let now = SystemTime::now()
+                                            .duration_since(UNIX_EPOCH)
+                                            .map(|d| d.as_secs() as i64)
+                                            .unwrap_or(0);
+                                        format_reset_time(now + secs)
+                                    })
+                                    .unwrap_or_default()
+                            } else {
+                                s.to_string()
+                            }
+                        })
+                        .unwrap_or_default();
+
+                    let info = RateLimitInfo {
+                        name: "tokens".to_string(),
+                        percent_used: percent,
+                        resets_at: reset,
+                    };
+
+                    if limits.primary.is_none() {
+                        limits.primary = Some(info);
+                    } else if limits.secondary.is_none() {
+                        limits.secondary = Some(info);
+                    }
+                }
+            }
+        }
+    }
+
+    if limits.primary.is_some() || limits.secondary.is_some() {
+        Some(limits)
+    } else {
+        None
+    }
+}
+
+/// Load OAuth access token from Claude credentials
+fn load_claude_oauth_token() -> Option<String> {
+    // Try Linux keyring via secret-tool first
+    #[cfg(target_os = "linux")]
+    {
+        if let Ok(output) = std::process::Command::new("secret-tool")
+            .args(["lookup", "service", "Claude Code-credentials"])
+            .output()
+        {
+            if output.status.success() {
+                if let Ok(json_str) = String::from_utf8(output.stdout) {
+                    if let Ok(json) = serde_json::from_str::<Value>(&json_str) {
+                        if let Some(token) = json
+                            .get("claudeAiOauth")
+                            .and_then(|o| o.get("accessToken"))
+                            .and_then(|v| v.as_str())
+                        {
+                            tracing::info!("Loaded OAuth token from Linux keyring");
+                            return Some(token.to_string());
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Try macOS keychain
+    #[cfg(target_os = "macos")]
+    {
+        let username = std::env::var("USER").ok()?;
+        if let Ok(output) = std::process::Command::new("security")
+            .args([
+                "find-generic-password",
+                "-s",
+                "Claude Code-credentials",
+                "-a",
+                &username,
+                "-w",
+            ])
+            .output()
+        {
+            if output.status.success() {
+                if let Ok(json_str) = String::from_utf8(output.stdout) {
+                    if let Ok(json) = serde_json::from_str::<Value>(&json_str.trim()) {
+                        if let Some(token) = json
+                            .get("claudeAiOauth")
+                            .and_then(|o| o.get("accessToken"))
+                            .and_then(|v| v.as_str())
+                        {
+                            tracing::info!("Loaded OAuth token from macOS keychain");
+                            return Some(token.to_string());
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Fall back to file-based credentials
+    let home = std::env::var("HOME").ok()?;
+    let paths = [
+        format!("{}/.claude/.credentials.json", home),
+        format!("{}/.claude/.credentials", home),
+    ];
+
+    for path in &paths {
+        if let Ok(contents) = std::fs::read_to_string(path) {
+            if let Ok(json) = serde_json::from_str::<Value>(&contents) {
+                if let Some(token) = json
+                    .get("claudeAiOauth")
+                    .and_then(|o| o.get("accessToken"))
+                    .and_then(|v| v.as_str())
+                {
+                    tracing::info!("Loaded OAuth token from {}", path);
+                    return Some(token.to_string());
+                }
+            }
+        }
+    }
+
+    tracing::warn!("No Claude OAuth credentials found");
+    None
+}
+
+/// Fetch rate limits by making a minimal API call using OAuth
+async fn fetch_rate_limits() -> Option<RateLimits> {
+    // Try OAuth first, fall back to API key
+    let (auth_header, auth_value) = if let Some(token) = load_claude_oauth_token() {
+        ("authorization", format!("Bearer {}", token))
+    } else if let Ok(api_key) = std::env::var("ANTHROPIC_API_KEY") {
+        ("x-api-key", api_key)
+    } else {
+        tracing::warn!("No OAuth token or API key available for rate limit fetch");
+        return None;
+    };
+
+    tracing::info!("Fetching rate limits...");
+
+    let client = reqwest::Client::new();
+    let mut request = client
+        .post("https://api.anthropic.com/v1/messages")
+        .header("content-type", "application/json")
+        .header("anthropic-version", "2023-06-01")
+        .header(auth_header, &auth_value);
+
+    // Add OAuth beta header if using OAuth
+    if auth_header == "authorization" {
+        request = request.header("anthropic-beta", "oauth-2025-04-20");
+    }
+
+    let response = match request
+        .body(r#"{"model":"claude-3-haiku-20240307","max_tokens":1,"messages":[{"role":"user","content":"x"}]}"#)
+        .send()
+        .await
+    {
+        Ok(r) => r,
+        Err(e) => {
+            tracing::warn!("Rate limit fetch failed: {}", e);
+            return None;
+        }
+    };
+
+    // Log response headers for debugging
+    for (name, value) in response.headers() {
+        if name.as_str().contains("ratelimit") || name.as_str().contains("limit") {
+            tracing::info!("Rate limit header: {} = {:?}", name, value);
+        }
+    }
+
+    let limits = parse_rate_limit_headers(response.headers());
+    if let Some(ref l) = limits {
+        if let Some(ref p) = l.primary {
+            tracing::info!("Rate limit: {} {:.1}% used, resets {}", p.name, p.percent_used, p.resets_at);
+        }
+    } else {
+        tracing::warn!("No rate limit data found in response headers");
+    }
+    limits
+}
+
 const SESSION_MODAL_WIDTH: f32 = 760.0;
 const SESSION_MODAL_HEIGHT: f32 = 520.0;
 const SESSION_CARD_HEIGHT: f32 = 100.0;
@@ -798,6 +1106,21 @@ struct SessionUsageStats {
     total_cost_usd: f64,
     duration_ms: u64,
     num_turns: u32,
+}
+
+/// Rate limit window info
+#[derive(Clone, Default)]
+struct RateLimitInfo {
+    name: String,
+    percent_used: f64,
+    resets_at: String,
+}
+
+/// Cached rate limits from API
+#[derive(Default, Clone)]
+struct RateLimits {
+    primary: Option<RateLimitInfo>,
+    secondary: Option<RateLimitInfo>,
 }
 
 /// A chat message
@@ -3540,6 +3863,8 @@ struct AppState {
     // Session info from SystemInit
     session_info: SessionInfo,
     session_usage: SessionUsageStats,
+    rate_limits: RateLimits,
+    rate_limit_rx: Option<mpsc::UnboundedReceiver<RateLimits>>,
     session_index: Vec<SessionEntry>,
     pending_resume_session: Option<String>,
     pending_fork_session: bool,
@@ -3785,6 +4110,14 @@ impl ApplicationHandler for CoderApp {
                 }
             });
 
+            // Fetch rate limits on startup
+            let (rate_limit_tx, rate_limit_rx) = mpsc::unbounded_channel();
+            tokio::spawn(async move {
+                if let Some(limits) = fetch_rate_limits().await {
+                    let _ = rate_limit_tx.send(limits);
+                }
+            });
+
             AppState {
                 window,
                 surface,
@@ -3826,6 +4159,8 @@ impl ApplicationHandler for CoderApp {
                     ..Default::default()
                 },
                 session_usage: SessionUsageStats::default(),
+                rate_limits: RateLimits::default(),
+                rate_limit_rx: Some(rate_limit_rx),
                 session_index,
                 pending_resume_session: None,
                 pending_fork_session: false,
@@ -3931,6 +4266,7 @@ impl ApplicationHandler for CoderApp {
         self.poll_hook_inspector_actions();
         self.poll_oanix_manifest();
         self.poll_autopilot_history();
+        self.poll_rate_limits();
 
         let Some(state) = &mut self.state else {
             return;
@@ -3947,12 +4283,18 @@ impl ApplicationHandler for CoderApp {
             state.right_sidebar_open,
         );
         let content_x = sidebar_layout.main.origin.x + OUTPUT_PADDING;
-        // Input bounds above status bar
+        // Input bounds above status bar (max width 768px, centered)
+        let max_input_width = 768.0_f32;
+        let available_input_width = sidebar_layout.main.size.width - INPUT_PADDING * 2.0;
+        let input_width = available_input_width.min(max_input_width);
+        let input_x = sidebar_layout.main.origin.x + (sidebar_layout.main.size.width - input_width) / 2.0;
+        // Dynamic input height based on line count (min 40px)
+        let input_height = state.input.current_height().max(40.0);
         let input_bounds = Bounds::new(
-            sidebar_layout.main.origin.x + INPUT_PADDING,
-            logical_height - INPUT_HEIGHT - INPUT_PADDING - STATUS_BAR_HEIGHT,
-            sidebar_layout.main.size.width - INPUT_PADDING * 2.0,
-            INPUT_HEIGHT,
+            input_x,
+            logical_height - input_height - INPUT_PADDING - STATUS_BAR_HEIGHT,
+            input_width,
+            input_height,
         );
         let permission_open = state
             .permission_dialog
@@ -6349,11 +6691,17 @@ impl AppState {
         logical_height: f32,
     ) -> ChatLayout {
         let viewport_top = OUTPUT_PADDING;
-        let content_x = sidebar_layout.main.origin.x + OUTPUT_PADDING;
+        // Dynamic input height based on line count (min 40px)
+        let input_height = self.input.current_height().max(40.0);
         let viewport_bottom =
-            logical_height - INPUT_HEIGHT - INPUT_PADDING * 2.0 - STATUS_BAR_HEIGHT - 8.0;
+            logical_height - input_height - INPUT_PADDING * 2.0 - STATUS_BAR_HEIGHT - 16.0;
         let viewport_height = (viewport_bottom - viewport_top).max(0.0);
-        let available_width = sidebar_layout.main.size.width - OUTPUT_PADDING * 2.0;
+
+        // Apply max width 768px and center content (matching input container)
+        let max_content_width = 768.0_f32;
+        let full_available_width = sidebar_layout.main.size.width - OUTPUT_PADDING * 2.0;
+        let available_width = full_available_width.min(max_content_width);
+        let content_x = sidebar_layout.main.origin.x + (sidebar_layout.main.size.width - available_width) / 2.0;
 
         let chat_font_size = self.settings.font_size;
         let chat_line_height = (chat_font_size * 1.4).round();
@@ -7958,6 +8306,21 @@ impl CoderApp {
         }
     }
 
+    fn poll_rate_limits(&mut self) {
+        let Some(state) = &mut self.state else {
+            return;
+        };
+
+        // Check if we received rate limits
+        if let Some(rx) = &mut state.rate_limit_rx {
+            if let Ok(limits) = rx.try_recv() {
+                state.rate_limits = limits;
+                state.rate_limit_rx = None; // Done receiving (one-shot)
+                state.window.request_redraw();
+            }
+        }
+    }
+
     fn execute_command_palette_action(&mut self, command_id: &str) -> Option<String> {
         let Some(state) = &mut self.state else {
             return None;
@@ -8205,6 +8568,78 @@ impl CoderApp {
                 wgpui::text::FontStyle::default(),
             );
             scene.draw_text(dur_run);
+            y += line_height + 16.0;
+
+            // Rate limits section
+            let green_color = Hsla::new(0.389, 0.7, 0.5, 1.0);
+
+            // Render each rate limit
+            let rate_limits_to_render: Vec<_> = [
+                state.rate_limits.primary.clone(),
+                state.rate_limits.secondary.clone(),
+            ]
+            .into_iter()
+            .flatten()
+            .collect();
+
+            if !rate_limits_to_render.is_empty() {
+                let header = state.text_system.layout_styled_mono(
+                    "RATE LIMITS",
+                    Point::new(x, y),
+                    font_size,
+                    label_color,
+                    wgpui::text::FontStyle::default(),
+                );
+                scene.draw_text(header);
+                y += line_height + 4.0;
+
+                for limit in rate_limits_to_render {
+                    // Limit name and percentage
+                    let limit_text = format!("{} {:.0}%", limit.name, limit.percent_used);
+                    let limit_run = state.text_system.layout_styled_mono(
+                        &limit_text,
+                        Point::new(x, y),
+                        font_size,
+                        muted_color,
+                        wgpui::text::FontStyle::default(),
+                    );
+                    scene.draw_text(limit_run);
+                    y += line_height;
+
+                    // Progress bar
+                    let bar_h = 4.0;
+                    scene.draw_quad(
+                        Quad::new(Bounds::new(x, y, w, bar_h))
+                            .with_background(Hsla::new(0.0, 0.0, 0.2, 1.0)),
+                    );
+                    let bar_color = if limit.percent_used < 50.0 {
+                        green_color
+                    } else if limit.percent_used < 75.0 {
+                        Hsla::new(0.125, 0.8, 0.5, 1.0) // yellow
+                    } else {
+                        Hsla::new(0.0, 0.8, 0.5, 1.0) // red
+                    };
+                    let fill_w = (w * limit.percent_used as f32 / 100.0).min(w);
+                    scene.draw_quad(
+                        Quad::new(Bounds::new(x, y, fill_w, bar_h)).with_background(bar_color),
+                    );
+                    y += bar_h + 2.0;
+
+                    // Reset time
+                    if !limit.resets_at.is_empty() {
+                        let reset_text = format!("resets {}", limit.resets_at);
+                        let reset_run = state.text_system.layout_styled_mono(
+                            &reset_text,
+                            Point::new(x, y),
+                            9.0,
+                            muted_color,
+                            wgpui::text::FontStyle::default(),
+                        );
+                        scene.draw_text(reset_run);
+                        y += line_height + 4.0;
+                    }
+                }
+            }
         }
 
         let chat_layout =
@@ -8282,12 +8717,20 @@ impl CoderApp {
         }
 
         let mut y = viewport_top - state.scroll_offset;
+        let mut inline_tools_render_idx = 0;
         for (i, msg) in state.messages.iter().enumerate() {
             let layout = &chat_layout.message_layouts[i];
             let msg_height = layout.height;
 
             if y + msg_height < viewport_top || y > viewport_bottom {
                 y += msg_height;
+                // Account for inline tools even when skipping off-screen messages
+                if inline_tools_render_idx < chat_layout.inline_tools.len()
+                    && chat_layout.inline_tools[inline_tools_render_idx].message_index == i
+                {
+                    y += chat_layout.inline_tools[inline_tools_render_idx].height + TOOL_PANEL_GAP;
+                    inline_tools_render_idx += 1;
+                }
                 continue;
             }
 
@@ -8377,6 +8820,14 @@ impl CoderApp {
                 }
             }
             y += msg_height;
+
+            // Account for inline tools after this message
+            if inline_tools_render_idx < chat_layout.inline_tools.len()
+                && chat_layout.inline_tools[inline_tools_render_idx].message_index == i
+            {
+                y += chat_layout.inline_tools[inline_tools_render_idx].height + TOOL_PANEL_GAP;
+                inline_tools_render_idx += 1;
+            }
         }
 
         if !state.streaming_markdown.source().is_empty() {
@@ -8460,7 +8911,9 @@ impl CoderApp {
         }
 
         // Input area background - flush with top of input box
-        let input_area_y = logical_height - INPUT_HEIGHT - INPUT_PADDING - STATUS_BAR_HEIGHT;
+        // Dynamic input height based on line count (min 40px)
+        let input_height = state.input.current_height().max(40.0);
+        let input_area_y = logical_height - input_height - INPUT_PADDING - STATUS_BAR_HEIGHT;
         let input_area_bounds = Bounds::new(
             sidebar_layout.main.origin.x,
             input_area_y,
@@ -8469,12 +8922,16 @@ impl CoderApp {
         );
         scene.draw_quad(Quad::new(input_area_bounds).with_background(palette.background));
 
-        // Input box
+        // Input box (max width 768px, centered)
+        let max_input_width = 768.0_f32;
+        let available_input_width = sidebar_layout.main.size.width - INPUT_PADDING * 2.0;
+        let input_width = available_input_width.min(max_input_width);
+        let input_x = sidebar_layout.main.origin.x + (sidebar_layout.main.size.width - input_width) / 2.0;
         let input_bounds = Bounds::new(
-            sidebar_layout.main.origin.x + INPUT_PADDING,
-            logical_height - INPUT_HEIGHT - INPUT_PADDING - STATUS_BAR_HEIGHT,
-            sidebar_layout.main.size.width - INPUT_PADDING * 2.0,
-            INPUT_HEIGHT,
+            input_x,
+            logical_height - input_height - INPUT_PADDING - STATUS_BAR_HEIGHT,
+            input_width,
+            input_height,
         );
 
         let mut paint_cx = PaintContext::new(&mut scene, &mut state.text_system, scale_factor);
@@ -8575,12 +9032,9 @@ impl CoderApp {
                 parts.push(format!("session {}", session_short));
             }
             let right_text = parts.join(" | ");
-            // Measure and right-align
+            // Measure and right-align within the 768px container
             let text_width = right_text.len() as f32 * 7.8; // Approx char width at 13pt
-            let right_x = sidebar_layout.main.origin.x
-                + sidebar_layout.main.size.width
-                - text_width
-                - OUTPUT_PADDING;
+            let right_x = input_x + input_width - text_width;
             let right_run = state.text_system.layout_styled_mono(
                 &right_text,
                 Point::new(right_x, status_y),
