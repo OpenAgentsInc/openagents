@@ -140,11 +140,15 @@ Loads active directives into context.
 ```rust
 let hook = DirectiveInjectionHook::new("/path/to/workspace")
     .with_config(DirectiveInjectionConfig {
-        include_completed: false,
+        include_active: true,
+        include_related: true,
         max_directives: 5,
-        format: DirectiveFormat::Summary,
+        priority_filter: None,
     });
 ```
+
+When DSPy is configured, directive status/priority parsing and semantic matching
+use learned classifiers with frontmatter-based fallbacks.
 
 #### CompactionContextHook
 

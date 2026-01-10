@@ -4,14 +4,16 @@ The agent-orchestrator integrates with OpenAgents-specific infrastructure for di
 
 ## Directives Integration
 
-Load and inject active directives into agent context.
+Load and inject active directives into agent context. When DSPy is configured,
+status, priority, and semantic matching use learned classifiers with a fallback
+to frontmatter heuristics.
 
 ### DirectiveContext
 
 ```rust
 pub struct DirectiveContext {
-    pub directives: Vec<DirectiveSummary>,
-    pub current: Option<String>,
+    pub active_directives: Vec<DirectiveSummary>,
+    pub current_directive: Option<String>,
 }
 
 pub struct DirectiveSummary {
@@ -19,7 +21,9 @@ pub struct DirectiveSummary {
     pub title: String,
     pub status: DirectiveStatus,
     pub priority: DirectivePriority,
-    pub summary: String,
+    pub created: Option<String>,
+    pub updated: Option<String>,
+    pub file_path: PathBuf,
 }
 ```
 
@@ -30,12 +34,12 @@ use agent_orchestrator::integrations::DirectiveContext;
 
 let ctx = DirectiveContext::load("/path/to/workspace").await?;
 
-// Get active directives
-for directive in ctx.active_directives() {
+// Active directives
+for directive in &ctx.active_directives {
     println!("{}: {}", directive.id, directive.title);
 }
 
-// Find related directive
+// Find related directive (DSPy semantic match when available)
 if let Some(d) = ctx.find_related(&["agent", "orchestration"]) {
     println!("Related: {}", d.id);
 }
@@ -48,10 +52,19 @@ let context_text = ctx.format_for_context();
 
 ```rust
 pub struct DirectiveInjectionConfig {
-    pub include_completed: bool,  // Include completed directives
-    pub max_directives: usize,    // Limit injected count
-    pub format: DirectiveFormat,  // Summary or Full
+    pub include_active: bool,
+    pub include_related: bool,
+    pub max_directives: usize,
+    pub priority_filter: Option<DirectivePriority>,
 }
+```
+
+```rust
+let config = DirectiveInjectionConfig::new()
+    .with_max(5)
+    .with_priority(DirectivePriority::High);
+
+let context_text = ctx.format_with_config(&config);
 ```
 
 ## Autopilot Integration
@@ -63,19 +76,14 @@ Hooks for issue claim/complete workflows.
 ```rust
 use agent_orchestrator::integrations::AutopilotIntegration;
 
-let autopilot = AutopilotIntegration::new(issue_store);
+let autopilot = AutopilotIntegration::new(issue_store, "session-123".to_string());
 
-// Get next issue
-let issue = autopilot.get_next_ready("claude")?;
+// Claim next issue (DSPy selection when available)
+let issue = autopilot.claim_next(Some("claude"));
 
-// Claim issue
-autopilot.claim_issue(issue.number, "session-123")?;
-
-// Complete issue
-autopilot.complete_issue(issue.number)?;
-
-// Block issue
-autopilot.block_issue(issue.number, "Waiting for dependency")?;
+// Complete or block the current issue
+autopilot.complete_current();
+autopilot.block_current("Waiting for dependency");
 ```
 
 ### IssueClaimHook

@@ -97,6 +97,14 @@ Task lifecycle:
 3. `get_output(block=true)` — Wait for completion
 4. `cancel()` — Stop a running task
 
+### DSPy Integrations
+
+When DSPy is configured, integrations use classifiers for:
+- Directive status/priority parsing and semantic matching
+- Issue selection from open queues
+
+Fallbacks remain in place when DSPy is unavailable.
+
 ## Data Flow
 
 ### Tool Execution
