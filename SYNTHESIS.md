@@ -39,8 +39,8 @@
 │                                                                          │
 │  APPLICATIONS                                                            │
 │  ┌───────────┐ ┌───────────┐ ┌───────────┐ ┌─────────────┐              │
-│  │ Autopilot │ │  Wallet   │ │ GitAfter  │ │ Marketplace │              │
-│  │    🟢     │ │    🟡     │ │    🔵     │ │     🟡      │              │
+│  │ Autopilot │ │  Coder    │ │  Onyx     │ │ GitAfter    │              │
+│  │    🟢     │ │    🟢     │ │    🟡     │ │     🔵      │              │
 │  └─────┬─────┘ └─────┬─────┘ └─────┬─────┘ └──────┬──────┘              │
 │        └─────────────┴─────────────┴──────────────┘                      │
 │                              │                                           │
@@ -505,7 +505,15 @@ Multi-rollout aggregation prevents overfitting to lucky samples. Evidence effici
 
 The protocol layer (Wave 0 in the roadmap) standardizes job schemas with canonical JSON hashing, version bump rules, and job hashes included in receipts. This prevents client/provider drift and enables replay—every job can be re-run deterministically to verify results.
 
-The result is a flywheel: successful sessions generate training data → dsrs optimization (cheap on Pylon swarm at 10 msats/call) → better prompts and routing policies → higher success rates → more training data. The compiled agent improves continuously without model retraining—DSPy finds latent requirements you didn't specify and optimizes for outcomes you can measure. See [docs/DSPY_ROADMAP.md](./docs/DSPY_ROADMAP.md) for the full implementation roadmap.
+The result is a flywheel: successful sessions generate training data → dsrs optimization (cheap on Pylon swarm at 10 msats/call) → better prompts and routing policies → higher success rates → more training data. The compiled agent improves continuously without model retraining—DSPy finds latent requirements you didn't specify and optimizes for outcomes you can measure.
+
+**The Self-Improving Autopilot (Wave 14).** The Adjutant execution engine implements this flywheel concretely. Every autopilot session is tracked: decisions made (complexity classification, delegation routing, RLM triggers), verification outcomes, and task success/failure. The SessionStore persists this data to `~/.openagents/adjutant/sessions/`. When a task completes, OutcomeFeedback links the final outcome to each decision—did the complexity estimate match actual iterations? Did delegation to Claude vs local tools lead to success? These labeled examples accumulate in LabeledExamplesStore.
+
+PerformanceTracker maintains rolling accuracy windows (default: 50 decisions) per signature. When accuracy drops below threshold or enough new examples accumulate, AutoOptimizer triggers MIPROv2 optimization on the weakest signature. The loop is automatic: run autopilot → decisions recorded → outcomes labeled → accuracy tracked → optimization triggered → better prompts deployed → run autopilot. The agent improves itself without human intervention.
+
+Decision pipelines drive this: ComplexityPipeline classifies task complexity (Low/Medium/High/VeryHigh), DelegationPipeline chooses execution path (claude_code/rlm/local_tools), RlmTriggerPipeline decides when recursive analysis is needed. Each pipeline is a DSPy module that can be optimized independently, promoting modularity and targeted improvement.
+
+See [docs/DSPY_ROADMAP.md](./docs/DSPY_ROADMAP.md) for the full implementation roadmap.
 
 The skills layer treats agent capabilities as products with versioning, licensing, and revenue splits. Developers who create useful skills publish to the marketplace, set terms and pricing, and earn revenue when others use them. The marketplace signer enforces license compliance before participating in threshold signatures authorizing purchases, ensuring creators are compensated and terms respected.
 
@@ -753,7 +761,11 @@ OpenAgents is implemented as a Cargo workspace with sixteen or more crates organ
 
 The visual layer now centers on WGPUI. The `crates/wgpui` crate provides the renderer, layout, and component primitives used across native apps. The legacy webview shell, template-based UI library, and storybook explorer were archived as part of the web stack removal.
 
-The autonomous execution crates handle agent operation. The autopilot crate is the autonomous task runner with complete trajectory logging, supporting multi-agent backends (Claude, Codex), issue-based workflows, JSON and rlog output formats, budget tracking, and session resumption. The recorder crate parses and validates session files in the rlog format, extracting metadata, calculating statistics, and enabling conversion to JSON for downstream processing.
+The autonomous execution crates handle agent operation. The adjutant crate is the execution engine powering autopilot with DSPy-powered decision making—it contains the decision pipelines (ComplexityPipeline, DelegationPipeline, RlmTriggerPipeline), session tracking, outcome feedback, performance monitoring, and auto-optimization infrastructure. The autopilot crate is the autonomous task runner built on adjutant, with complete trajectory logging, supporting multi-agent backends (Claude, Codex), issue-based workflows, JSON and rlog output formats, budget tracking, and session resumption. The recorder crate parses and validates session files in the rlog format, extracting metadata, calculating statistics, and enabling conversion to JSON for downstream processing.
+
+The product crates deliver user-facing applications. The coder crate is a GPU-accelerated terminal for Claude Code, built on wgpui for high-performance rendering. It provides a native desktop experience with Adjutant integration for autonomous mode, real-time visibility into agent execution, and the ability to interrupt or guide the agent at any point. The onyx crate is a local-first Markdown editor with live inline formatting, voice transcription via whisper.cpp, and local vault storage—no cloud sync required.
+
+The infrastructure crates provide unified abstractions. The gateway crate offers a single interface for talking to any AI backend (Ollama, llama.cpp, Apple FM Bridge, Claude, Cerebras), with auto-detection at startup, health checks, and failover. The protocol crate defines typed job schemas with deterministic hashing—every job type (code_chunk_analysis, retrieval_rerank, sandbox_run) has a versioned schema, verification mode (objective vs subjective), and provenance metadata enabling replay and verification.
 
 The marketplace and compute crates implement the economic layer. The marketplace crate provides the nine major subsystems: skills, agents, compute, coalitions, ledger, data, bounties, governance, and reputation. It supports pricing models from free to per-call to per-token to hybrid, revenue splits between creator and compute provider and platform and referrer, and a skill lifecycle from draft through review to approved to published. The compute crate is the NIP-90 Data Vending Machine provider with BIP39/NIP-06 identity management, a job processing pipeline, Ollama integration for local inference, secure storage using AES-256-GCM, and NIP-89 handler discovery.
 
