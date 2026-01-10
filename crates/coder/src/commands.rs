@@ -4,6 +4,8 @@ pub enum Command {
     Clear,
     Compact,
     Model,
+    Backend,      // Toggle between Claude/Codex
+    BackendSet(String),  // Set specific backend
     Undo,
     Cancel,
     Bug,
@@ -105,6 +107,16 @@ const COMMAND_SPECS: &[CommandSpec] = &[
         usage: "/model",
         description: "Select a Claude model",
         requires_args: false,
+    },
+    CommandSpec {
+        usage: "/backend",
+        description: "Toggle between Claude and Codex",
+        requires_args: false,
+    },
+    CommandSpec {
+        usage: "/backend <claude|codex>",
+        description: "Switch to a specific backend",
+        requires_args: true,
     },
     CommandSpec {
         usage: "/undo",
@@ -497,6 +509,7 @@ pub fn parse_command(input: &str) -> Option<Command> {
         "clear" => Command::Clear,
         "compact" => Command::Compact,
         "model" => Command::Model,
+        "backend" => parse_backend_command(args),
         "undo" => Command::Undo,
         "cancel" => Command::Cancel,
         "bug" => Command::Bug,
@@ -529,6 +542,15 @@ pub fn parse_command(input: &str) -> Option<Command> {
     };
 
     Some(parsed)
+}
+
+fn parse_backend_command(args: Vec<String>) -> Command {
+    let mut parts = args.into_iter();
+    match parts.next().as_deref() {
+        None => Command::Backend,  // Toggle
+        Some("toggle") => Command::Backend,
+        Some(name) => Command::BackendSet(name.to_string()),
+    }
 }
 
 fn parse_wallet_command(args: Vec<String>) -> Command {

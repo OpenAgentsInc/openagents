@@ -25,7 +25,8 @@ use crate::app::catalog::{
     load_skill_entries, CatalogState,
 };
 use crate::app::chat::{ChatSelection, ChatState};
-use crate::app::config::{mcp_project_file, SettingsState};
+use crate::app::agents::AgentRegistry;
+use crate::app::config::{mcp_project_file, AgentSelection, SettingsState};
 use crate::app::events::{
     convert_key_for_binding, convert_key_for_input, convert_modifiers, convert_mouse_button,
     CommandAction, CoderMode, ModalState,
@@ -267,6 +268,8 @@ impl ApplicationHandler for CoderApp {
                 llama_server_process,
                 show_kitchen_sink: false,
                 kitchen_sink_scroll: 0.0,
+                agent_selection: AgentSelection::default(),
+                agent_registry: AgentRegistry::new(),
             }
         });
 

@@ -10,8 +10,10 @@ use wgpui::{TextInput, TextSystem};
 use winit::keyboard::ModifiersState;
 use winit::window::Window;
 
+use crate::app::agents::{AgentRegistry, AgentKind};
 use crate::app::autopilot::AutopilotState;
 use crate::app::autopilot_issues::AutopilotIssuesState;
+use crate::app::config::AgentSelection;
 use crate::app::rlm::{RlmState, RlmTraceState};
 use crate::app::pylon_earnings::PylonEarningsState;
 use crate::app::pylon_jobs::PylonJobsState;
@@ -83,4 +85,8 @@ pub(crate) struct AppState {
     pub(crate) llama_server_process: Option<Child>,
     pub(crate) show_kitchen_sink: bool,
     pub(crate) kitchen_sink_scroll: f32,
+    /// Selected agent backend (Claude/Codex)
+    pub(crate) agent_selection: AgentSelection,
+    /// Agent availability registry
+    pub(crate) agent_registry: AgentRegistry,
 }

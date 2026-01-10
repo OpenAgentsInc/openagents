@@ -98,9 +98,9 @@ fn render_input(
         scene.draw_text(hint_run);
     }
 
-    // Right side: model, available open models, tools, session
-    if !state.session.session_info.model.is_empty() {
-        // Format: "haiku | gptoss | 18 tools | abc123"
+    // Right side: backend, model, available open models, tools, session
+    if !state.session.session_info.model.is_empty() || true {
+        // Format: "claude | haiku | gptoss | 18 tools | abc123"
         let model_short = state
             .session
             .session_info
@@ -115,7 +115,16 @@ fn render_input(
             &state.session.session_info.session_id
         };
         let mut parts = Vec::new();
-        parts.push(model_short);
+        // Add backend name first
+        use crate::app::config::AgentKindConfig;
+        let backend_name = match state.agent_selection.agent {
+            AgentKindConfig::Claude => "claude",
+            AgentKindConfig::Codex => "codex",
+        };
+        parts.push(backend_name.to_string());
+        if !model_short.is_empty() {
+            parts.push(model_short);
+        }
         // Add available open models (not Claude SDK since that's already shown)
         for provider in &state.autopilot.available_providers {
             if !matches!(provider, adjutant::dspy::lm_config::LmProvider::ClaudeSdk) {
