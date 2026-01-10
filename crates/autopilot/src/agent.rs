@@ -15,7 +15,7 @@ use std::sync::Arc;
 
 // DSPy planning integration (native-only)
 #[cfg(not(target_arch = "wasm32"))]
-use crate::dspy_planning::{PlanningInput, PlanningPipeline, PlanningResult};
+use crate::dspy_planning::{PlanningInput, PlanningPipeline};
 
 // DSPy execution integration (native-only)
 #[cfg(not(target_arch = "wasm32"))]

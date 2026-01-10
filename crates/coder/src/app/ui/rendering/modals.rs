@@ -34,6 +34,7 @@ fn render_modals(
         include!("modals/hooks.rs")
         include!("modals/tool_list.rs")
         include!("modals/permission_rules.rs")
+        include!("modals/wallet.rs")
         include!("modals/config.rs")
         include!("modals/mcp_config.rs")
         include!("modals/help.rs")

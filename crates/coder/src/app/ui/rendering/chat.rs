@@ -127,7 +127,7 @@ fn render_chat(
                             Point::new(content_x, y),
                             available_width,
                             &mut state.text_system,
-                            &mut scene,
+                            scene,
                         );
                     }
                 } else {
@@ -206,7 +206,7 @@ fn render_chat(
                 Point::new(content_x, y),
                 available_width,
                 &mut state.text_system,
-                &mut scene,
+                scene,
             );
         }
     } else if state.chat.is_thinking {
@@ -236,4 +236,3 @@ fn render_chat(
         scene.pop_clip();
     }
 }
-

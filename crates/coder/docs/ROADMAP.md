@@ -44,6 +44,7 @@ This document outlines the path to 100% implementation of the Claude Agent SDK i
 | Status bar | Done | Permission mode, model, tools, session |
 | Auto-scroll | Done | Scroll to bottom on new content |
 | Config persistence | Done | Model saved to ~/.openagents/coder/ |
+| Wallet status pane | Done | OANIX identity + Pylon wallet config |
 
 ### Not Implemented
 
@@ -194,6 +195,8 @@ pub enum Action {
 | `/undo` | Undo last message | Remove last user+assistant pair |
 | `/cancel` | Cancel current operation | Call `query.interrupt()` |
 | `/bug` | Report a bug | Open GitHub issues URL |
+| `/wallet` | Open wallet status | Modal with identity + config |
+| `/wallet refresh` | Refresh wallet status | Reload config + OANIX |
 
 ### 2.2 Session Commands
 
@@ -245,6 +248,7 @@ pub enum Action {
 - [x] Implement `/undo` (remove last exchange)
 - [x] Implement `/cancel` (interrupt query)
 - [x] Implement `/bug` (open URL)
+- [x] Implement `/wallet` + `/wallet refresh` commands
 - [x] Implement `/session list` with SessionCard
 - [x] Implement `/session resume <id>`
 - [x] Implement `/session fork`

@@ -19,6 +19,7 @@ pub(crate) enum ModalState {
     Hooks { view: HookModalView, selected: usize },
     ToolList { selected: usize },
     PermissionRules,
+    Wallet,
     Config {
         tab: SettingsTab,
         selected: usize,

@@ -10,12 +10,12 @@ pub(crate) mod state;
 pub(crate) mod tools;
 pub(crate) mod ui;
 pub(crate) mod utils;
+pub(crate) mod wallet;
 
 pub(crate) use state::AppState;
 pub use events::CoderMode;
 pub(crate) use catalog::{
-    AgentCardAction, AgentCardEvent, HookLogEntry, HookModalView, HookSetting, SkillCardAction,
-    SkillCardEvent,
+    AgentCardAction, HookLogEntry, HookModalView, HookSetting, SkillCardAction,
 };
 pub(crate) use config::{settings_rows, ModelOption, SettingsInputMode, SettingsSnapshot};
 pub(crate) use permissions::sanitize_tokens;

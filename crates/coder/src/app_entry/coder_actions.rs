@@ -3,6 +3,7 @@ use std::sync::Arc;
 use futures::StreamExt;
 use serde_json::Value;
 use tokio::sync::{mpsc, oneshot};
+use tokio::sync::mpsc::error::TryRecvError;
 
 use claude_agent_sdk::permissions::{CallbackPermissionHandler, PermissionRequest};
 use claude_agent_sdk::protocol::{PermissionMode, PermissionResult};
@@ -13,12 +14,13 @@ use crate::app::chat::{ChatMessage, MessageRole};
 use crate::app::events::{CommandAction, QueryControl, ResponseEvent};
 use crate::app::parsing::expand_prompt_text;
 use crate::app::permissions::{
-    extract_bash_command, is_read_only_tool, parse_coder_mode, pattern_matches, PermissionPending,
+    coder_mode_default_allow, extract_bash_command, is_read_only_tool, parse_coder_mode,
+    pattern_matches, PermissionPending,
 };
 use crate::app::session::SessionInfo;
 use crate::app::tools::tool_result_output;
 use crate::app::ui::render_app;
-use crate::app::{truncate_preview, CoderMode};
+use crate::app::CoderMode;
 use crate::commands::Command;
 
 use super::CoderApp;
@@ -27,7 +29,7 @@ use super::commands::handle_command;
 use super::settings::parse_mcp_status;
 
 impl CoderApp {
-    fn submit_prompt(&mut self, prompt: String) {
+    pub(super) fn submit_prompt(&mut self, prompt: String) {
         let Some(state) = &mut self.state else {
             return;
         };
@@ -486,7 +488,7 @@ impl CoderApp {
         });
     }
 
-    fn poll_responses(&mut self) {
+    pub(super) fn poll_responses(&mut self) {
         let Some(state) = &mut self.state else {
             return;
         };
@@ -698,7 +700,7 @@ impl CoderApp {
         }
     }
 
-    fn poll_permissions(&mut self) {
+    pub(super) fn poll_permissions(&mut self) {
         let Some(state) = &mut self.state else {
             return;
         };
@@ -732,7 +734,7 @@ impl CoderApp {
         }
     }
 
-    fn poll_command_palette_actions(&mut self) {
+    pub(super) fn poll_command_palette_actions(&mut self) {
         let actions = {
             let Some(state) = &mut self.state else {
                 return;
@@ -761,7 +763,7 @@ impl CoderApp {
         }
     }
 
-    fn poll_session_actions(&mut self) {
+    pub(super) fn poll_session_actions(&mut self) {
         let Some(state) = &mut self.state else {
             return;
         };
@@ -795,7 +797,7 @@ impl CoderApp {
         }
     }
 
-    fn poll_agent_actions(&mut self) {
+    pub(super) fn poll_agent_actions(&mut self) {
         let Some(state) = &mut self.state else {
             return;
         };
@@ -817,7 +819,7 @@ impl CoderApp {
         }
     }
 
-    fn poll_skill_actions(&mut self) {
+    pub(super) fn poll_skill_actions(&mut self) {
         let Some(state) = &mut self.state else {
             return;
         };
@@ -839,7 +841,7 @@ impl CoderApp {
         }
     }
 
-    fn poll_hook_inspector_actions(&mut self) {
+    pub(super) fn poll_hook_inspector_actions(&mut self) {
         let Some(state) = &mut self.state else {
             return;
         };
@@ -861,22 +863,30 @@ impl CoderApp {
         }
     }
 
-    fn poll_oanix_manifest(&mut self) {
+    pub(super) fn poll_oanix_manifest(&mut self) {
         let Some(state) = &mut self.state else {
             return;
         };
 
         // Check if we received a manifest to cache
         if let Some(rx) = &mut state.autopilot.oanix_manifest_rx {
-            if let Ok(manifest) = rx.try_recv() {
-                tracing::info!("Autopilot: cached OANIX manifest");
-                state.autopilot.oanix_manifest = Some(manifest);
-                state.autopilot.oanix_manifest_rx = None; // Done receiving
+            match rx.try_recv() {
+                Ok(manifest) => {
+                    tracing::info!("Autopilot: cached OANIX manifest");
+                    state.autopilot.oanix_manifest = Some(manifest);
+                    state.wallet.refresh(state.autopilot.oanix_manifest.as_ref());
+                    state.autopilot.oanix_manifest_rx = None; // Done receiving
+                }
+                Err(TryRecvError::Disconnected) => {
+                    tracing::warn!("Autopilot: OANIX manifest channel closed");
+                    state.autopilot.oanix_manifest_rx = None;
+                }
+                Err(TryRecvError::Empty) => {}
             }
         }
     }
 
-    fn poll_autopilot_history(&mut self) {
+    pub(super) fn poll_autopilot_history(&mut self) {
         let Some(state) = &mut self.state else {
             return;
         };
@@ -891,7 +901,7 @@ impl CoderApp {
         }
     }
 
-    fn poll_rate_limits(&mut self) {
+    pub(super) fn poll_rate_limits(&mut self) {
         let Some(state) = &mut self.state else {
             return;
         };
@@ -962,6 +972,10 @@ impl CoderApp {
             command_palette_ids::AGENTS_LIST => Some(handle_command(state, Command::Agents)),
             command_palette_ids::AGENT_CLEAR => Some(handle_command(state, Command::AgentClear)),
             command_palette_ids::AGENT_RELOAD => Some(handle_command(state, Command::AgentReload)),
+            command_palette_ids::WALLET_OPEN => {
+                state.open_wallet();
+                None
+            }
             command_palette_ids::SKILLS_LIST => Some(handle_command(state, Command::Skills)),
             command_palette_ids::SKILLS_RELOAD => Some(handle_command(state, Command::SkillsReload)),
             command_palette_ids::HOOKS_OPEN => Some(handle_command(state, Command::Hooks)),
@@ -992,10 +1006,51 @@ impl CoderApp {
         }
     }
 
-    fn render(&mut self) {
+    pub(super) fn render(&mut self) {
         let Some(state) = &mut self.state else {
             return;
         };
         render_app(state);
     }
+}
+
+fn extract_tool_call_start(event: &Value) -> Option<(String, String)> {
+    if event.get("type").and_then(|t| t.as_str()) != Some("content_block_start") {
+        return None;
+    }
+    let block = event.get("content_block")?;
+    if block.get("type").and_then(|t| t.as_str()) != Some("tool_use") {
+        return None;
+    }
+    let tool_name = block.get("name").and_then(|v| v.as_str())?.to_string();
+    let tool_id = block.get("id").and_then(|v| v.as_str())?.to_string();
+    Some((tool_name, tool_id))
+}
+
+fn extract_tool_input_delta(event: &Value) -> Option<String> {
+    if event.get("type").and_then(|t| t.as_str()) != Some("content_block_delta") {
+        return None;
+    }
+    let delta = event.get("delta")?;
+    if delta.get("type").and_then(|t| t.as_str()) != Some("input_json_delta") {
+        return None;
+    }
+    delta
+        .get("partial_json")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string())
+}
+
+fn extract_stream_text(event: &Value) -> Option<String> {
+    if event.get("type").and_then(|t| t.as_str()) != Some("content_block_delta") {
+        return None;
+    }
+    let delta = event.get("delta")?;
+    if delta.get("type").and_then(|t| t.as_str()) != Some("text_delta") {
+        return None;
+    }
+    delta
+        .get("text")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string())
 }

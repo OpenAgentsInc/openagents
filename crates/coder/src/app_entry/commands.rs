@@ -265,6 +265,15 @@ pub(super) fn handle_command(state: &mut AppState, command: Command) -> CommandA
             }
             CommandAction::None
         }
+        Command::Wallet => {
+            state.open_wallet();
+            CommandAction::None
+        }
+        Command::WalletRefresh => {
+            state.request_wallet_refresh();
+            state.open_wallet();
+            CommandAction::None
+        }
         Command::Custom(name, args) => {
             if state.chat.is_thinking {
                 state.push_system_message(
@@ -642,6 +651,19 @@ pub(super) fn handle_modal_input(state: &mut AppState, key: &WinitKey) -> bool {
             state.window.request_redraw();
             true
         }
+        ModalState::Wallet => {
+            match key {
+                WinitKey::Named(WinitNamedKey::Escape | WinitNamedKey::Enter) => {
+                    state.modal_state = ModalState::None;
+                }
+                WinitKey::Character(c) if c.eq_ignore_ascii_case("r") => {
+                    state.request_wallet_refresh();
+                }
+                _ => {}
+            }
+            state.window.request_redraw();
+            true
+        }
         ModalState::Help => {
             match key {
                 WinitKey::Named(WinitNamedKey::Escape | WinitNamedKey::Enter | WinitNamedKey::F1) => {
@@ -1011,3 +1033,39 @@ fn apply_custom_command_args(template: &str, args: &[String]) -> String {
 }
 
 fn open_url(url: &str) -> io::Result<()> {
+    #[cfg(target_os = "macos")]
+    {
+        let _ = ProcessCommand::new("open")
+            .arg(url)
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()?;
+        return Ok(());
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        let _ = ProcessCommand::new("cmd")
+            .args(["/C", "start", url])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()?;
+        return Ok(());
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        let _ = ProcessCommand::new("xdg-open")
+            .arg(url)
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()?;
+        return Ok(());
+    }
+
+    #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
+    Err(io::Error::new(
+        io::ErrorKind::Other,
+        "open_url not supported on this platform",
+    ))
+}

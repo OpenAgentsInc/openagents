@@ -4,7 +4,7 @@ fn paint_kitchen_sink(
     text_system: &mut TextSystem,
     scale_factor: f32,
     scroll_offset: f32,
-    palette: &UiPalette,
+    _palette: &UiPalette,
 ) {
     // Opaque background to cover content behind
     let overlay = Quad::new(bounds).with_background(Hsla::new(220.0, 0.15, 0.08, 1.0));
@@ -160,11 +160,31 @@ fn paint_kitchen_sink(
         .elapsed_secs(12.3);
 
     let child_tools = vec![
-        ChildTool::new(ToolType::Read, "Read", "Cargo.toml", ToolStatus::Success),
-        ChildTool::new(ToolType::Grep, "Grep", "mod.rs", ToolStatus::Success),
-        ChildTool::new(ToolType::Search, "Search", "dependency", ToolStatus::Running),
+        ChildTool {
+            tool_type: ToolType::Read,
+            name: "Read".to_string(),
+            params: "Cargo.toml".to_string(),
+            status: ToolStatus::Success,
+            elapsed_secs: Some(0.42),
+        },
+        ChildTool {
+            tool_type: ToolType::Grep,
+            name: "Grep".to_string(),
+            params: "mod.rs".to_string(),
+            status: ToolStatus::Success,
+            elapsed_secs: Some(0.33),
+        },
+        ChildTool {
+            tool_type: ToolType::Search,
+            name: "Search".to_string(),
+            params: "dependency".to_string(),
+            status: ToolStatus::Running,
+            elapsed_secs: None,
+        },
     ];
-    task_card = task_card.children(child_tools);
+    for child in child_tools {
+        task_card.add_child(child);
+    }
     task_card.paint(task_bounds, &mut paint_cx);
 
     y += 92.0;
@@ -182,12 +202,34 @@ fn paint_kitchen_sink(
 
     let diff_bounds = Bounds::new(content_x, y, content_width, 160.0);
     let diff_lines = vec![
-        DiffLine::new(DiffLineKind::Context, " fn main() {"),
-        DiffLine::new(DiffLineKind::Remove, "-    println!(\"Hello\");"),
-        DiffLine::new(DiffLineKind::Add, "+    println!(\"Hello, world!\");"),
-        DiffLine::new(DiffLineKind::Context, " }"),
+        DiffLine {
+            kind: DiffLineKind::Context,
+            content: " fn main() {".to_string(),
+            old_line: Some(1),
+            new_line: Some(1),
+        },
+        DiffLine {
+            kind: DiffLineKind::Deletion,
+            content: "    println!(\"Hello\");".to_string(),
+            old_line: Some(2),
+            new_line: None,
+        },
+        DiffLine {
+            kind: DiffLineKind::Addition,
+            content: "    println!(\"Hello, world!\");".to_string(),
+            old_line: None,
+            new_line: Some(2),
+        },
+        DiffLine {
+            kind: DiffLineKind::Context,
+            content: " }".to_string(),
+            old_line: Some(3),
+            new_line: Some(3),
+        },
     ];
-    let mut diff = DiffToolCall::new(diff_lines);
+    let mut diff = DiffToolCall::new("src/main.rs")
+        .lines(diff_lines)
+        .status(ToolStatus::Success);
     diff.paint(diff_bounds, &mut paint_cx);
 
     y += 180.0;
@@ -204,12 +246,26 @@ fn paint_kitchen_sink(
     y += 24.0;
 
     let matches = vec![
-        SearchMatch::new("src/main.rs", 42, "fn handle_error() {"),
-        SearchMatch::new("src/lib.rs", 101, "pub enum ErrorKind {"),
-        SearchMatch::new("src/utils.rs", 7, "error handling utilities"),
+        SearchMatch {
+            file: "src/main.rs".to_string(),
+            line: 42,
+            content: "fn handle_error() {".to_string(),
+        },
+        SearchMatch {
+            file: "src/lib.rs".to_string(),
+            line: 101,
+            content: "pub enum ErrorKind {".to_string(),
+        },
+        SearchMatch {
+            file: "src/utils.rs".to_string(),
+            line: 7,
+            content: "error handling utilities".to_string(),
+        },
     ];
     let search_bounds = Bounds::new(content_x, y, content_width, 140.0);
-    let mut search = SearchToolCall::new("error".to_string(), matches);
+    let mut search = SearchToolCall::new("error".to_string())
+        .matches(matches)
+        .status(ToolStatus::Success);
     search.paint(search_bounds, &mut paint_cx);
 
     y += 160.0;
@@ -227,7 +283,10 @@ fn paint_kitchen_sink(
 
     let output = "Compiling...\nFinished dev [unoptimized + debuginfo] target(s) in 2.13s";
     let terminal_bounds = Bounds::new(content_x, y, content_width, 90.0);
-    let mut terminal = TerminalToolCall::new(output.to_string());
+    let mut terminal = TerminalToolCall::new("cargo build")
+        .output(output)
+        .status(ToolStatus::Success)
+        .exit_code(0);
     terminal.paint(terminal_bounds, &mut paint_cx);
 
     y += 110.0;
@@ -267,10 +326,7 @@ fn paint_kitchen_sink(
     paint_cx.scene.draw_text(section_run);
     y += 24.0;
 
-    let mut dialog = PermissionDialog::new();
-    dialog.open();
-    dialog.set_title("Allow tool?");
-    dialog.set_message("Tool \"Bash\" wants to run: rm -rf /");
+    let mut dialog = PermissionDialog::new(PermissionType::Execute("rm -rf /".to_string()));
     let dialog_bounds = Bounds::new(content_x, y, 400.0, 140.0);
     dialog.paint(dialog_bounds, &mut paint_cx);
 
@@ -286,4 +342,3 @@ fn paint_kitchen_sink(
     );
     paint_cx.scene.draw_text(footer_run);
 }
-

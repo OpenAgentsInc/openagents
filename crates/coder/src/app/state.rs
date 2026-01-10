@@ -18,6 +18,7 @@ use crate::app::events::ModalState;
 use crate::app::permissions::PermissionState;
 use crate::app::session::SessionState;
 use crate::app::tools::ToolsState;
+use crate::app::wallet::WalletState;
 use crate::panels::PanelLayout;
 use wgpui::components::EventContext;
 use wgpui::renderer::Renderer;
@@ -53,6 +54,7 @@ pub(crate) struct AppState {
     pub(crate) settings: SettingsState,
     pub(crate) permissions: PermissionState,
     pub(crate) autopilot: AutopilotState,
+    pub(crate) wallet: WalletState,
     pub(crate) llama_server_process: Option<Child>,
     pub(crate) show_kitchen_sink: bool,
     pub(crate) kitchen_sink_scroll: f32,

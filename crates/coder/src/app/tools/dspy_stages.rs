@@ -8,6 +8,7 @@ pub(crate) struct DspyStageVisualization {
     /// Index of the message this stage is associated with.
     pub(crate) message_index: usize,
     /// Timestamp when this stage was received.
+    #[allow(dead_code)]
     pub(crate) timestamp: Instant,
 }
 

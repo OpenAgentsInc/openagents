@@ -1,5 +1,5 @@
 use crate::app::catalog::HookConfig;
-use crate::app::events::CoderMode;
+use crate::app::events::{format_keybinding, CoderMode};
 use crate::app::permissions;
 use crate::app::ui::theme_label;
 use crate::app::AppState;
@@ -29,7 +29,14 @@ pub(crate) struct SettingsSnapshot {
     pub(crate) mcp_runtime_count: usize,
     pub(crate) mcp_disabled_count: usize,
     pub(crate) hook_config: HookConfig,
-    pub(crate) keybindings: Vec<Keybinding>,
+    pub(crate) keybindings: Vec<KeybindingSummary>,
+}
+
+#[derive(Clone)]
+pub(crate) struct KeybindingSummary {
+    pub(crate) action: KeyAction,
+    pub(crate) label: String,
+    pub(crate) keys: Vec<String>,
 }
 
 impl SettingsSnapshot {
@@ -47,9 +54,31 @@ impl SettingsSnapshot {
             mcp_runtime_count: state.catalogs.mcp_runtime_servers.len(),
             mcp_disabled_count: state.catalogs.mcp_disabled_servers.len(),
             hook_config: state.catalogs.hook_config.clone(),
-            keybindings: state.settings.keybindings.clone(),
+            keybindings: summarize_keybindings(&state.settings.keybindings),
         }
     }
+}
+
+fn summarize_keybindings(bindings: &[Keybinding]) -> Vec<KeybindingSummary> {
+    let mut summaries = Vec::new();
+    for action in KeyAction::all() {
+        let mut keys: Vec<String> = bindings
+            .iter()
+            .filter(|binding| binding.action == *action)
+            .map(format_keybinding)
+            .collect();
+        keys.sort();
+        keys.dedup();
+        if keys.is_empty() {
+            keys.push("Unbound".to_string());
+        }
+        summaries.push(KeybindingSummary {
+            action: *action,
+            label: action.label().to_string(),
+            keys,
+        });
+    }
+    summaries
 }
 
 pub(crate) fn settings_rows(
