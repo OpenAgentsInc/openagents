@@ -3377,7 +3377,7 @@ fn build_input(settings: &CoderSettings) -> TextInput {
         .with_id(1)
         .font_size(settings.font_size)
         .padding(28.0, 10.0)
-        .background(palette.input_bg)
+        .background(palette.background)
         .border_color(palette.input_border)
         .border_color_focused(palette.input_border_focused)
         .text_color(palette.text_primary)
