@@ -173,6 +173,19 @@ impl TextInput {
         }
     }
 
+    /// Calculate the current height based on line count
+    pub fn current_height(&self) -> f32 {
+        let line_height = self.font_size * 1.4;
+        let line_count = self.value.lines().count().max(1);
+        // Handle trailing newline (lines() doesn't count it as an extra line)
+        let line_count = if self.value.ends_with('\n') {
+            line_count + 1
+        } else {
+            line_count
+        };
+        line_height * line_count as f32 + self.padding.1 * 2.0
+    }
+
     fn insert_str(&mut self, s: &str) {
         if self.cursor_pos <= self.value.len() {
             self.value.insert_str(self.cursor_pos, s);
@@ -181,7 +194,6 @@ impl TextInput {
         }
     }
 
-    #[cfg(test)]
     fn insert_char(&mut self, c: char) {
         if self.cursor_pos <= self.value.len() {
             self.value.insert(self.cursor_pos, c);
@@ -276,16 +288,49 @@ impl TextInput {
         }
     }
 
-    fn cursor_x_offset(&self) -> f32 {
-        let text_before_cursor = &self.value[..self.cursor_pos];
-        text_before_cursor.chars().count() as f32 * self.font_size * 0.6
+    /// Get the line number and column for the current cursor position
+    fn cursor_line_col(&self) -> (usize, usize) {
+        let text_before = &self.value[..self.cursor_pos.min(self.value.len())];
+        let line = text_before.matches('\n').count();
+        let col = text_before
+            .rfind('\n')
+            .map(|pos| self.cursor_pos - pos - 1)
+            .unwrap_or(self.cursor_pos);
+        (line, col)
     }
 
-    fn char_index_at_x(&self, x: f32, text_start_x: f32) -> usize {
+    /// Get the text on the current line before the cursor
+    fn text_before_cursor_on_line(&self) -> &str {
+        let text_before = &self.value[..self.cursor_pos.min(self.value.len())];
+        text_before.rfind('\n').map_or(text_before, |pos| &text_before[pos + 1..])
+    }
+
+    /// Get character index at a specific (x, y) position for multiline text
+    fn char_index_at_xy(&self, x: f32, y: f32, text_start_x: f32, text_start_y: f32) -> usize {
+        let line_height = self.font_size * 1.4;
+        let relative_y = (y - text_start_y).max(0.0);
+        let line_index = (relative_y / line_height) as usize;
+
+        let lines: Vec<&str> = self.value.split('\n').collect();
+        let target_line = line_index.min(lines.len().saturating_sub(1));
+
+        // Calculate byte offset to the start of target line
+        let mut byte_offset = 0;
+        for (i, line) in lines.iter().enumerate() {
+            if i == target_line {
+                break;
+            }
+            byte_offset += line.len() + 1; // +1 for the newline
+        }
+
+        // Calculate column within the line
         let relative_x = (x - text_start_x).max(0.0);
         let char_width = self.font_size * 0.6;
-        let char_index = (relative_x / char_width).round() as usize;
-        char_index.min(self.value.len())
+        let col = (relative_x / char_width).round() as usize;
+        let line_len = lines.get(target_line).map_or(0, |l| l.len());
+        let col = col.min(line_len);
+
+        (byte_offset + col).min(self.value.len())
     }
 }
 
@@ -310,7 +355,7 @@ impl Component for TextInput {
         );
 
         let text_x = bounds.origin.x + self.padding.0;
-        let text_y = bounds.origin.y + bounds.size.height * 0.5 - self.font_size * 0.55;
+        let line_height = self.font_size * 1.4;
 
         let display_text = if self.value.is_empty() {
             &self.placeholder
@@ -324,24 +369,31 @@ impl Component for TextInput {
             self.text_color
         };
 
+        // Render each line separately for multiline support
         if !display_text.is_empty() {
-            let text_run = if self.mono {
-                cx.text.layout_styled_mono(
-                    display_text,
-                    Point::new(text_x, text_y),
-                    self.font_size,
-                    text_color,
-                    FontStyle::default(),
-                )
-            } else {
-                cx.text.layout_mono(
-                    display_text,
-                    Point::new(text_x, text_y),
-                    self.font_size,
-                    text_color,
-                )
-            };
-            cx.scene.draw_text(text_run);
+            let lines: Vec<&str> = display_text.split('\n').collect();
+            for (i, line) in lines.iter().enumerate() {
+                let line_y = bounds.origin.y + self.padding.1 + line_height * i as f32 + self.font_size * 0.35;
+                if !line.is_empty() {
+                    let text_run = if self.mono {
+                        cx.text.layout_styled_mono(
+                            line,
+                            Point::new(text_x, line_y),
+                            self.font_size,
+                            text_color,
+                            FontStyle::default(),
+                        )
+                    } else {
+                        cx.text.layout_mono(
+                            line,
+                            Point::new(text_x, line_y),
+                            self.font_size,
+                            text_color,
+                        )
+                    };
+                    cx.scene.draw_text(text_run);
+                }
+            }
         }
 
         if self.focused {
@@ -350,9 +402,11 @@ impl Component for TextInput {
             let cursor_visible = (elapsed / 500) % 2 == 0;
 
             if cursor_visible {
-                let cursor_x = text_x + self.cursor_x_offset();
-                let cursor_y = bounds.origin.y + self.padding.1;
-                let cursor_height = bounds.size.height - self.padding.1 * 2.0;
+                let (cursor_line, _cursor_col) = self.cursor_line_col();
+                let text_before = self.text_before_cursor_on_line();
+                let cursor_x = text_x + text_before.chars().count() as f32 * self.font_size * 0.6;
+                let cursor_y = bounds.origin.y + self.padding.1 + line_height * cursor_line as f32;
+                let cursor_height = line_height;
 
                 cx.scene.draw_quad(
                     Quad::new(Bounds::new(cursor_x, cursor_y, 2.0, cursor_height))
@@ -381,7 +435,8 @@ impl Component for TextInput {
                         self.reset_cursor_blink();
 
                         let text_x = bounds.origin.x + self.padding.0;
-                        self.cursor_pos = self.char_index_at_x(*x, text_x);
+                        let text_y = bounds.origin.y + self.padding.1;
+                        self.cursor_pos = self.char_index_at_xy(*x, *y, text_x, text_y);
 
                         if let Some(id) = self.id {
                             cx.set_focus(id);
@@ -461,7 +516,14 @@ impl Component for TextInput {
                                 }
                             }
                             NamedKey::Enter => {
-                                self.notify_submit();
+                                if modifiers.shift {
+                                    // Shift+Enter: insert newline
+                                    self.delete_selection();
+                                    self.insert_char('\n');
+                                } else {
+                                    // Plain Enter: submit
+                                    self.notify_submit();
+                                }
                             }
                             NamedKey::Escape => {
                                 self.focused = false;
@@ -512,8 +574,7 @@ impl Component for TextInput {
     }
 
     fn size_hint(&self) -> (Option<f32>, Option<f32>) {
-        let height = self.font_size * 1.4 + self.padding.1 * 2.0;
-        (None, Some(height))
+        (None, Some(self.current_height()))
     }
 }
 
