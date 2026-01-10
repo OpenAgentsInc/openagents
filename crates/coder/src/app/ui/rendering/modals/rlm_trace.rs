@@ -1,6 +1,6 @@
-use crate::app::rlm::RlmStatus;
+use crate::app::rlm::RlmTraceStatus;
 
-fn render_rlm_modal(
+fn render_rlm_trace_modal(
     state: &mut AppState,
     scene: &mut Scene,
     palette: &UiPalette,
@@ -14,8 +14,8 @@ fn render_rlm_modal(
             let overlay = Quad::new(bounds).with_background(palette.overlay);
             scene.draw_quad(overlay);
 
-            let modal_width = RLM_MODAL_WIDTH;
-            let modal_height = RLM_MODAL_HEIGHT;
+            let modal_width = RLM_TRACE_MODAL_WIDTH;
+            let modal_height = RLM_TRACE_MODAL_HEIGHT;
             let modal_x = (logical_width - modal_width) / 2.0;
             let modal_y = modal_y_in_content(logical_height, modal_height);
             let modal_bounds = Bounds::new(modal_x, modal_y, modal_width, modal_height);
@@ -32,7 +32,7 @@ fn render_rlm_modal(
             let max_chars = ((modal_width - 32.0) / 7.0).max(20.0) as usize;
 
             let title_run = state.text_system.layout_styled_mono(
-                "RLM Runs",
+                "RLM Trace",
                 Point::new(label_x, y),
                 14.0,
                 palette.text_primary,
@@ -41,19 +41,19 @@ fn render_rlm_modal(
             scene.draw_text(title_run);
             y += 20.0;
 
-            let status = state.rlm.status.clone();
-            let snapshot = state.rlm.snapshot.clone();
+            let status = state.rlm_trace.status.clone();
+            let snapshot = state.rlm_trace.snapshot.clone();
 
             let status_color = match &status {
-                RlmStatus::Idle => palette.text_secondary,
-                RlmStatus::Refreshing => Hsla::new(35.0, 0.8, 0.6, 1.0),
-                RlmStatus::MissingDatabase | RlmStatus::NoHomeDir => {
-                    Hsla::new(35.0, 0.8, 0.6, 1.0)
-                }
-                RlmStatus::Error(_) => Hsla::new(0.0, 0.7, 0.55, 1.0),
+                RlmTraceStatus::Idle => palette.text_secondary,
+                RlmTraceStatus::Refreshing => Hsla::new(35.0, 0.8, 0.6, 1.0),
+                RlmTraceStatus::MissingDatabase
+                | RlmTraceStatus::NoHomeDir
+                | RlmTraceStatus::MissingRun => Hsla::new(35.0, 0.8, 0.6, 1.0),
+                RlmTraceStatus::Error(_) => Hsla::new(0.0, 0.7, 0.55, 1.0),
             };
 
-            draw_rlm_row(
+            draw_rlm_trace_row(
                 state,
                 scene,
                 palette,
@@ -86,7 +86,7 @@ fn render_rlm_modal(
                 .as_ref()
                 .map(|path| truncate_preview(&path.display().to_string(), 54))
                 .unwrap_or_else(|| "-".to_string());
-            draw_rlm_row(
+            draw_rlm_trace_row(
                 state,
                 scene,
                 palette,
@@ -100,7 +100,7 @@ fn render_rlm_modal(
             );
 
             let db_present = if snapshot.db_exists { "Yes" } else { "No" };
-            draw_rlm_row(
+            draw_rlm_trace_row(
                 state,
                 scene,
                 palette,
@@ -114,11 +114,11 @@ fn render_rlm_modal(
             );
 
             let last_refresh = state
-                .rlm
+                .rlm_trace
                 .last_refresh
                 .map(format_relative_time)
                 .unwrap_or_else(|| "Never".to_string());
-            draw_rlm_row(
+            draw_rlm_trace_row(
                 state,
                 scene,
                 palette,
@@ -131,109 +131,144 @@ fn render_rlm_modal(
                 palette.text_secondary,
             );
 
-            let mut running = 0;
-            let mut completed = 0;
-            let mut failed = 0;
-            let mut total_budget = 0;
-            let mut total_cost = 0;
-            let mut total_duration = 0;
-            for run in &snapshot.runs {
-                match run.status.as_str() {
-                    "running" => running += 1,
-                    "completed" => completed += 1,
-                    "failed" => failed += 1,
-                    _ => {}
+            if let Some(run) = snapshot.run.as_ref() {
+                let run_id = short_trace_run_id(&run.id);
+                draw_rlm_trace_row(
+                    state,
+                    scene,
+                    palette,
+                    label_x,
+                    value_x,
+                    &mut y,
+                    line_height,
+                    "Run ID",
+                    &run_id,
+                    palette.text_secondary,
+                );
+
+                let status_label = trace_run_status_label(&run.status);
+                let status_color = trace_run_status_color(&run.status, palette);
+                draw_rlm_trace_row(
+                    state,
+                    scene,
+                    palette,
+                    label_x,
+                    value_x,
+                    &mut y,
+                    line_height,
+                    "Run status",
+                    status_label,
+                    status_color,
+                );
+
+                draw_rlm_trace_row(
+                    state,
+                    scene,
+                    palette,
+                    label_x,
+                    value_x,
+                    &mut y,
+                    line_height,
+                    "Fragments",
+                    &run.fragment_count.to_string(),
+                    palette.text_secondary,
+                );
+
+                draw_rlm_trace_row(
+                    state,
+                    scene,
+                    palette,
+                    label_x,
+                    value_x,
+                    &mut y,
+                    line_height,
+                    "Budget",
+                    &format_sats_label(run.budget_sats),
+                    palette.text_secondary,
+                );
+                draw_rlm_trace_row(
+                    state,
+                    scene,
+                    palette,
+                    label_x,
+                    value_x,
+                    &mut y,
+                    line_height,
+                    "Cost",
+                    &format_sats_label(run.total_cost_sats),
+                    palette.text_secondary,
+                );
+                draw_rlm_trace_row(
+                    state,
+                    scene,
+                    palette,
+                    label_x,
+                    value_x,
+                    &mut y,
+                    line_height,
+                    "Duration",
+                    &format_duration_ms(run.total_duration_ms.max(0) as u64),
+                    palette.text_secondary,
+                );
+
+                let started = format_relative_time(run.created_at.max(0) as u64);
+                draw_rlm_trace_row(
+                    state,
+                    scene,
+                    palette,
+                    label_x,
+                    value_x,
+                    &mut y,
+                    line_height,
+                    "Started",
+                    &started,
+                    palette.text_secondary,
+                );
+
+                if let Some(completed_at) = run.completed_at {
+                    let completed = format_relative_time(completed_at.max(0) as u64);
+                    draw_rlm_trace_row(
+                        state,
+                        scene,
+                        palette,
+                        label_x,
+                        value_x,
+                        &mut y,
+                        line_height,
+                        "Completed",
+                        &completed,
+                        palette.text_secondary,
+                    );
                 }
-                total_budget += run.budget_sats;
-                total_cost += run.total_cost_sats;
-                total_duration += run.total_duration_ms;
+
+                let query_text = format!("Query: {}", run.query);
+                for line in wrap_text(&query_text, max_chars) {
+                    let run = state.text_system.layout_styled_mono(
+                        &line,
+                        Point::new(label_x, y),
+                        11.0,
+                        palette.text_secondary,
+                        wgpui::text::FontStyle::default(),
+                    );
+                    scene.draw_text(run);
+                    y += line_height;
+                }
+
+                if let Some(error) = run.error_message.as_ref() {
+                    let error_text = format!("Error: {}", error);
+                    for line in wrap_text(&error_text, max_chars) {
+                        let run = state.text_system.layout_styled_mono(
+                            &line,
+                            Point::new(label_x, y),
+                            11.0,
+                            palette.text_faint,
+                            wgpui::text::FontStyle::default(),
+                        );
+                        scene.draw_text(run);
+                        y += line_height;
+                    }
+                }
             }
-
-            draw_rlm_row(
-                state,
-                scene,
-                palette,
-                label_x,
-                value_x,
-                &mut y,
-                line_height,
-                "Runs",
-                &snapshot.runs.len().to_string(),
-                palette.text_secondary,
-            );
-            draw_rlm_row(
-                state,
-                scene,
-                palette,
-                label_x,
-                value_x,
-                &mut y,
-                line_height,
-                "Running",
-                &running.to_string(),
-                Hsla::new(210.0, 0.6, 0.6, 1.0),
-            );
-            draw_rlm_row(
-                state,
-                scene,
-                palette,
-                label_x,
-                value_x,
-                &mut y,
-                line_height,
-                "Completed",
-                &completed.to_string(),
-                Hsla::new(120.0, 0.6, 0.5, 1.0),
-            );
-            draw_rlm_row(
-                state,
-                scene,
-                palette,
-                label_x,
-                value_x,
-                &mut y,
-                line_height,
-                "Failed",
-                &failed.to_string(),
-                Hsla::new(0.0, 0.7, 0.55, 1.0),
-            );
-
-            draw_rlm_row(
-                state,
-                scene,
-                palette,
-                label_x,
-                value_x,
-                &mut y,
-                line_height,
-                "Budget",
-                &format_sats_label(total_budget),
-                palette.text_secondary,
-            );
-            draw_rlm_row(
-                state,
-                scene,
-                palette,
-                label_x,
-                value_x,
-                &mut y,
-                line_height,
-                "Cost",
-                &format_sats_label(total_cost),
-                palette.text_secondary,
-            );
-            draw_rlm_row(
-                state,
-                scene,
-                palette,
-                label_x,
-                value_x,
-                &mut y,
-                line_height,
-                "Duration",
-                &format_duration_ms(total_duration.max(0) as u64),
-                palette.text_secondary,
-            );
 
             y += 6.0;
             let list_top = y;
@@ -241,31 +276,14 @@ fn render_rlm_modal(
             let list_bottom = modal_y + modal_height - footer_height - 12.0;
 
             let mut lines: Vec<(String, Hsla)> = Vec::new();
-            for run in &snapshot.runs {
-                let status_label = run_status_label(&run.status);
-                let status_color = run_status_color(&run.status, palette);
-                let timestamp = run.completed_at.unwrap_or(run.created_at);
-                let time = format_relative_time(timestamp.max(0) as u64);
-                let run_id = short_run_id(&run.id);
-                let duration = format_duration_ms(run.total_duration_ms.max(0) as u64);
+            for event in &snapshot.events {
+                let time_label = format_trace_time(event.timestamp_ms);
                 let summary = format!(
-                    "{} {} {} f:{} cost:{} sats dur:{} - {}",
-                    time,
-                    status_label,
-                    run_id,
-                    run.fragment_count,
-                    format_sats(run.total_cost_sats.max(0) as u64),
-                    duration,
-                    run.query
+                    "#{} {} {} {}",
+                    event.seq, time_label, event.event_type, event.event_json
                 );
                 for wrapped in wrap_text(&summary, max_chars) {
-                    lines.push((wrapped, status_color));
-                }
-                if let Some(error) = run.error_message.as_ref() {
-                    let error_text = format!("error: {}", error);
-                    for wrapped in wrap_text(&error_text, max_chars) {
-                        lines.push((wrapped, Hsla::new(0.0, 0.7, 0.55, 1.0)));
-                    }
+                    lines.push((wrapped, palette.text_secondary));
                 }
             }
 
@@ -280,7 +298,7 @@ fn render_rlm_modal(
             let mut line_y = list_top;
             if lines.is_empty() {
                 let empty_run = state.text_system.layout_styled_mono(
-                    "No RLM runs yet.",
+                    "No trace events yet.",
                     Point::new(label_x, line_y),
                     11.0,
                     palette.text_faint,
@@ -303,7 +321,7 @@ fn render_rlm_modal(
 
             let footer_y = modal_y + modal_height - 24.0;
             let footer = state.text_system.layout_styled_mono(
-                "R refresh | T trace | Esc close",
+                "R refresh | Esc close",
                 Point::new(label_x, footer_y),
                 11.0,
                 palette.text_faint,
@@ -312,7 +330,7 @@ fn render_rlm_modal(
             scene.draw_text(footer);
 }
 
-fn draw_rlm_row(
+fn draw_rlm_trace_row(
     state: &mut AppState,
     scene: &mut Scene,
     palette: &UiPalette,
@@ -343,7 +361,7 @@ fn draw_rlm_row(
             *y += line_height;
 }
 
-fn run_status_label(status: &str) -> &str {
+fn trace_run_status_label(status: &str) -> &str {
     match status {
         "running" => "Running",
         "completed" => "Completed",
@@ -352,7 +370,7 @@ fn run_status_label(status: &str) -> &str {
     }
 }
 
-fn run_status_color(status: &str, palette: &UiPalette) -> Hsla {
+fn trace_run_status_color(status: &str, palette: &UiPalette) -> Hsla {
     match status {
         "running" => Hsla::new(210.0, 0.6, 0.6, 1.0),
         "completed" => Hsla::new(120.0, 0.6, 0.5, 1.0),
@@ -361,7 +379,7 @@ fn run_status_color(status: &str, palette: &UiPalette) -> Hsla {
     }
 }
 
-fn short_run_id(run_id: &str) -> String {
+fn short_trace_run_id(run_id: &str) -> String {
     if run_id.len() > 8 {
         format!("{}...", &run_id[..8])
     } else {
@@ -369,7 +387,12 @@ fn short_run_id(run_id: &str) -> String {
     }
 }
 
-fn format_sats_label(value: i64) -> String {
-    let value = value.max(0) as u64;
-    format!("{} sats", format_sats(value))
+fn format_trace_time(timestamp_ms: i64) -> String {
+    if timestamp_ms <= 0 {
+        return "0ms".to_string();
+    }
+    if timestamp_ms > 1_000_000_000_000 {
+        return format_relative_time((timestamp_ms / 1000) as u64);
+    }
+    format_duration_ms(timestamp_ms as u64)
 }

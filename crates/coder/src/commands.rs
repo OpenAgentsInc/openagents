@@ -61,6 +61,7 @@ pub enum Command {
     AutopilotIssuesRefresh,
     Rlm,
     RlmRefresh,
+    RlmTrace(Option<String>),
     Dspy,
     DspyRefresh,
     DspyAuto(bool),
@@ -377,6 +378,11 @@ const COMMAND_SPECS: &[CommandSpec] = &[
         requires_args: false,
     },
     CommandSpec {
+        usage: "/rlm trace [run_id]",
+        description: "Open RLM trace events",
+        requires_args: false,
+    },
+    CommandSpec {
         usage: "/issues",
         description: "Open workspace issues",
         requires_args: false,
@@ -609,6 +615,14 @@ fn parse_rlm_command(args: Vec<String>) -> Command {
     let mut parts = args.into_iter();
     match parts.next().as_deref() {
         Some("refresh") => Command::RlmRefresh,
+        Some("trace") | Some("events") => {
+            let run_id = parts.collect::<Vec<String>>().join(" ");
+            if run_id.trim().is_empty() {
+                Command::RlmTrace(None)
+            } else {
+                Command::RlmTrace(Some(run_id))
+            }
+        }
         Some("status") => Command::Rlm,
         _ => Command::Rlm,
     }

@@ -1367,6 +1367,10 @@ impl CoderApp {
                 state.open_rlm();
                 None
             }
+            command_palette_ids::RLM_TRACE_OPEN => {
+                state.open_rlm_trace(None);
+                None
+            }
             command_palette_ids::DSPY_OPEN => {
                 state.open_dspy();
                 None

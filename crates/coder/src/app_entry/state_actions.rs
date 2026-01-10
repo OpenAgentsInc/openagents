@@ -236,6 +236,15 @@ impl AppState {
             "RLM",
             Some(rlm_keys),
         );
+        let rlm_trace_keys =
+            keybinding_labels(&self.settings.keybindings, KeyAction::OpenRlmTrace, "Ctrl+Shift+Y");
+        push_command(
+            command_palette_ids::RLM_TRACE_OPEN,
+            "Open RLM Trace",
+            "Inspect trace events for recent RLM runs",
+            "RLM",
+            Some(rlm_trace_keys),
+        );
         let dspy_keys =
             keybinding_labels(&self.settings.keybindings, KeyAction::OpenDspy, "Ctrl+Shift+D");
         push_command(
@@ -659,6 +668,15 @@ impl AppState {
 
     pub(super) fn refresh_rlm(&mut self) {
         self.rlm.refresh();
+    }
+
+    pub(super) fn open_rlm_trace(&mut self, run_id: Option<String>) {
+        self.rlm_trace.refresh(run_id);
+        self.modal_state = ModalState::RlmTrace;
+    }
+
+    pub(super) fn refresh_rlm_trace(&mut self) {
+        self.rlm_trace.refresh_selected();
     }
 
     pub(super) fn open_dspy(&mut self) {
