@@ -1,6 +1,7 @@
 use crate::components::atoms::{ToolStatus, ToolType};
 use crate::components::context::{EventContext, PaintContext};
 use crate::components::{Component, ComponentId, EventResult};
+use crate::text::FontStyle;
 use crate::{Bounds, InputEvent, MouseButton, Point, Quad, theme};
 
 /// Child tool for nested display under Task tools
@@ -208,21 +209,23 @@ impl Component for ToolCallCard {
             Quad::new(Bounds::new(x, bounds.origin.y + 4.0, icon_size, icon_size))
                 .with_background(icon_color.with_alpha(0.2)),
         );
-        let icon_run = cx.text.layout(
+        let icon_run = cx.text.layout_styled_mono(
             icon_char,
             Point::new(x + 3.0, y),
             Self::FONT_SIZE,
             icon_color,
+            FontStyle::default(),
         );
         cx.scene.draw_text(icon_run);
 
         // Tool name
         let name_x = x + icon_size + 6.0;
-        let name_run = cx.text.layout(
+        let name_run = cx.text.layout_styled_mono(
             &self.tool_name,
             Point::new(name_x, y),
             Self::FONT_SIZE,
             theme::text::PRIMARY,
+            FontStyle::default(),
         );
         cx.scene.draw_text(name_run);
 
@@ -234,11 +237,12 @@ impl Component for ToolCallCard {
         if let Some(input) = &self.input {
             if available_width > 50.0 {
                 let truncated = Self::truncate_text(input, available_width, Self::DETAIL_FONT_SIZE);
-                let input_run = cx.text.layout(
+                let input_run = cx.text.layout_styled_mono(
                     &truncated,
                     Point::new(input_x, y),
                     Self::DETAIL_FONT_SIZE,
                     theme::text::MUTED,
+                    FontStyle::default(),
                 );
                 cx.scene.draw_text(input_run);
             }
@@ -259,11 +263,12 @@ impl Component for ToolCallCard {
             ToolStatus::Error => ("error".to_string(), theme::status::ERROR),
             ToolStatus::Cancelled => ("cancelled".to_string(), theme::text::MUTED),
         };
-        let status_run = cx.text.layout(
+        let status_run = cx.text.layout_styled_mono(
             status_text.as_str(),
             Point::new(status_x, y),
             Self::DETAIL_FONT_SIZE,
             status_color,
+            FontStyle::default(),
         );
         cx.scene.draw_text(status_run);
 
@@ -275,9 +280,13 @@ impl Component for ToolCallCard {
         } else {
             theme::text::MUTED
         };
-        let arrow_run = cx
-            .text
-            .layout(arrow, Point::new(arrow_x, y), Self::FONT_SIZE, arrow_color);
+        let arrow_run = cx.text.layout_styled_mono(
+            arrow,
+            Point::new(arrow_x, y),
+            Self::FONT_SIZE,
+            arrow_color,
+            FontStyle::default(),
+        );
         cx.scene.draw_text(arrow_run);
 
         // No bottom border - dense layout
@@ -288,11 +297,12 @@ impl Component for ToolCallCard {
             let mut detail_y = bounds.origin.y + Self::HEADER_HEIGHT + 2.0;
 
             if let Some(input) = &self.input {
-                let input_run = cx.text.layout(
+                let input_run = cx.text.layout_styled_mono(
                     input,
                     Point::new(x + indent, detail_y),
                     Self::DETAIL_FONT_SIZE,
                     theme::text::SECONDARY,
+                    FontStyle::default(),
                 );
                 cx.scene.draw_text(input_run);
                 detail_y += Self::LINE_HEIGHT;
@@ -309,11 +319,12 @@ impl Component for ToolCallCard {
                 } else {
                     output.clone()
                 };
-                let output_run = cx.text.layout(
+                let output_run = cx.text.layout_styled_mono(
                     &output_preview,
                     Point::new(x + indent, detail_y),
                     Self::DETAIL_FONT_SIZE,
                     theme::text::MUTED,
+                    FontStyle::default(),
                 );
                 cx.scene.draw_text(output_run);
             }
@@ -360,22 +371,24 @@ impl Component for ToolCallCard {
                         Quad::new(Bounds::new(child_x, child_y + 4.0, 12.0, 12.0))
                             .with_background(icon_color.with_alpha(0.2)),
                     );
-                    let icon_run = cx.text.layout(
+                    let icon_run = cx.text.layout_styled_mono(
                         icon_char,
                         Point::new(child_x + 2.0, child_text_y),
                         Self::DETAIL_FONT_SIZE,
                         icon_color,
+                        FontStyle::default(),
                     );
                     cx.scene.draw_text(icon_run);
 
                     // Child name
                     let name_x = child_x + 16.0;
                     let child_display = format!("{}", child.name);
-                    let name_run = cx.text.layout(
+                    let name_run = cx.text.layout_styled_mono(
                         &child_display,
                         Point::new(name_x, child_text_y),
                         Self::DETAIL_FONT_SIZE,
                         theme::text::SECONDARY,
+                        FontStyle::default(),
                     );
                     cx.scene.draw_text(name_run);
 
@@ -390,11 +403,12 @@ impl Component for ToolCallCard {
                             params_available,
                             Self::DETAIL_FONT_SIZE,
                         );
-                        let params_run = cx.text.layout(
+                        let params_run = cx.text.layout_styled_mono(
                             &params_truncated,
                             Point::new(params_x, child_text_y),
                             Self::DETAIL_FONT_SIZE,
                             theme::text::MUTED,
+                            FontStyle::default(),
                         );
                         cx.scene.draw_text(params_run);
                     }
@@ -414,11 +428,12 @@ impl Component for ToolCallCard {
                         ToolStatus::Error => ("✗".to_string(), theme::status::ERROR),
                         ToolStatus::Cancelled => ("—".to_string(), theme::text::MUTED),
                     };
-                    let status_run = cx.text.layout(
+                    let status_run = cx.text.layout_styled_mono(
                         status_text.as_str(),
                         Point::new(status_x, child_text_y),
                         Self::DETAIL_FONT_SIZE,
                         status_color,
+                        FontStyle::default(),
                     );
                     cx.scene.draw_text(status_run);
                 }

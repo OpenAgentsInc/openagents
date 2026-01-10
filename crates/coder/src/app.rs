@@ -10021,6 +10021,22 @@ fn format_tool_input(tool_name: &str, json_input: &str) -> String {
                     return desc.to_string();
                 }
             }
+            "AskUserQuestion" => {
+                // Extract questions and format nicely
+                if let Some(questions) = value.get("questions").and_then(|v| v.as_array()) {
+                    let question_texts: Vec<&str> = questions
+                        .iter()
+                        .filter_map(|q| q.get("question").and_then(|v| v.as_str()))
+                        .collect();
+                    if !question_texts.is_empty() {
+                        let joined = question_texts.join(" | ");
+                        if joined.len() > 80 {
+                            return format!("{}...", safe_truncate(&joined, 77));
+                        }
+                        return joined;
+                    }
+                }
+            }
             _ => {}
         }
         // Fallback: show truncated JSON
