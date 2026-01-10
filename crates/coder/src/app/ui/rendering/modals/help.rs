@@ -76,6 +76,8 @@ fn render_help_modal(
                 keybinding_labels(&state.settings.keybindings, KeyAction::OpenNip90, "Ctrl+Shift+J");
             let oanix_key =
                 keybinding_labels(&state.settings.keybindings, KeyAction::OpenOanix, "Ctrl+Shift+O");
+            let issues_key =
+                keybinding_labels(&state.settings.keybindings, KeyAction::OpenIssues, "Ctrl+Shift+I");
             let dspy_key =
                 keybinding_labels(&state.settings.keybindings, KeyAction::OpenDspy, "Ctrl+Shift+D");
             let nip28_key =
@@ -114,6 +116,7 @@ fn render_help_modal(
                         format!("{} - Spark wallet", spark_key),
                         format!("{} - NIP-90 jobs", nip90_key),
                         format!("{} - OANIX manifest", oanix_key),
+                        format!("{} - Issues", issues_key),
                         format!("{} - DSPy status", dspy_key),
                         format!("{} - NIP-28 chat", nip28_key),
                         format!("{} - Toggle left sidebar", left_sidebar),
@@ -213,6 +216,12 @@ fn render_help_modal(
                     "OANIX",
                     vec![
                         "/oanix - open manifest; /oanix refresh - refresh".to_string(),
+                    ],
+                ),
+                (
+                    "Issues",
+                    vec![
+                        "/issues - open workspace issues; /issues refresh - refresh".to_string(),
                     ],
                 ),
                 (

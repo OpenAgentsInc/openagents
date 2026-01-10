@@ -6,6 +6,7 @@ pub(crate) mod dspy;
 pub(crate) mod dvm;
 pub(crate) mod events;
 pub(crate) mod gateway;
+pub(crate) mod issues;
 pub(crate) mod lm_router;
 pub(crate) mod nexus;
 pub(crate) mod nip28;

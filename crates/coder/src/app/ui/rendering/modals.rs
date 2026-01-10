@@ -11,6 +11,7 @@ include!("modals/gateway.rs");
 include!("modals/lm_router.rs");
 include!("modals/nexus.rs");
 include!("modals/oanix.rs");
+include!("modals/issues.rs");
 include!("modals/spark_wallet.rs");
 include!("modals/dspy.rs");
 include!("modals/nip28.rs");
@@ -201,6 +202,17 @@ fn render_modals(
         }
         ModalState::Oanix => {
             render_oanix_modal(
+                state,
+                scene,
+                palette,
+                bounds,
+                logical_width,
+                logical_height,
+                scale_factor,
+            );
+        }
+        ModalState::Issues => {
+            render_issues_modal(
                 state,
                 scene,
                 palette,
