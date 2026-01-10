@@ -3,11 +3,14 @@ use std::io;
 
 use tokio::sync::mpsc;
 use wgpui::components::atoms::SessionStatus;
-use wgpui::components::molecules::{CheckpointRestore, SessionCard, SessionInfo as SessionCardInfo};
+use wgpui::components::molecules::{
+    CheckpointRestore, SessionAction, SessionCard, SessionInfo as SessionCardInfo,
+};
 
 use super::{CheckpointEntry, RateLimits, SessionEntry, SessionInfo, SessionUsageStats};
-use crate::app::chat::{ChatMessage, ChatState};
+use crate::app::chat::{ChatMessage, ChatState, MessageRole};
 use crate::app::config::session_messages_dir;
+use crate::app::events::ModalState;
 use crate::app::tools::ToolsState;
 use crate::app::{ModelOption, SessionCardEvent};
 
@@ -193,5 +196,206 @@ impl SessionState {
         tools.current_tool_input.clear();
         self.refresh_checkpoint_restore(&chat.messages);
         Ok(())
+    }
+
+    pub(crate) fn apply_history_limit(&mut self, limit: usize, chat_is_thinking: bool) {
+        let removed = super::apply_session_history_limit(&mut self.session_index, limit);
+        if !removed.is_empty() {
+            let _ = super::save_session_index(&self.session_index);
+            for removed_id in removed {
+                let _ = fs::remove_dir_all(session_messages_dir(&removed_id));
+            }
+            self.refresh_session_cards(chat_is_thinking);
+        }
+    }
+
+    pub(crate) fn handle_session_card_action(
+        &mut self,
+        action: SessionAction,
+        session_id: String,
+        chat: &mut ChatState,
+        tools: &mut ToolsState,
+        modal_state: &mut ModalState,
+    ) {
+        match action {
+            SessionAction::Select | SessionAction::Resume => {
+                self.begin_session_resume(session_id, chat, tools);
+                *modal_state = ModalState::None;
+            }
+            SessionAction::Fork => {
+                self.begin_session_fork_from(session_id, chat, tools);
+                *modal_state = ModalState::None;
+            }
+            SessionAction::Delete => {
+                chat.push_system_message("Session delete not implemented yet.".to_string());
+            }
+        }
+    }
+
+    pub(crate) fn handle_checkpoint_restore(&mut self, index: usize, chat: &mut ChatState) {
+        if let Some(entry) = self.checkpoint_entries.get(index) {
+            chat.request_rewind_files(entry.user_message_id.clone());
+        }
+    }
+
+    pub(crate) fn begin_session_fork_from(
+        &mut self,
+        session_id: String,
+        chat: &mut ChatState,
+        tools: &mut ToolsState,
+    ) {
+        let session_id = session_id.trim().to_string();
+        if session_id.is_empty() {
+            chat.push_system_message("Session id is required to fork.".to_string());
+            return;
+        }
+        self.pending_resume_session = Some(session_id.clone());
+        self.pending_fork_session = true;
+        self.session_info.session_id = session_id.clone();
+        if let Some(entry) = self.session_index.iter().find(|entry| entry.id == session_id) {
+            self.session_info.model = entry.model.clone();
+        }
+        match self.restore_session(&session_id, chat, tools) {
+            Ok(()) => chat.push_system_message(format!(
+                "Loaded cached history for session {}.",
+                session_id
+            )),
+            Err(_) => {
+                chat.messages.clear();
+                chat.push_system_message(format!(
+                    "No local history for session {} yet.",
+                    session_id
+                ));
+            }
+        }
+        chat.push_system_message(format!(
+            "Next message will fork session {}.",
+            session_id
+        ));
+        self.refresh_session_cards(chat.is_thinking);
+    }
+
+    pub(crate) fn begin_session_resume(
+        &mut self,
+        session_id: String,
+        chat: &mut ChatState,
+        tools: &mut ToolsState,
+    ) {
+        let session_id = session_id.trim().to_string();
+        if session_id.is_empty() {
+            chat.push_system_message("Session id is required to resume.".to_string());
+            return;
+        }
+        self.pending_resume_session = Some(session_id.clone());
+        self.pending_fork_session = false;
+        self.session_info.session_id = session_id.clone();
+        if let Some(entry) = self.session_index.iter().find(|entry| entry.id == session_id) {
+            self.session_info.model = entry.model.clone();
+        }
+        match self.restore_session(&session_id, chat, tools) {
+            Ok(()) => chat.push_system_message(format!(
+                "Loaded cached history for session {}.",
+                session_id
+            )),
+            Err(_) => {
+                chat.messages.clear();
+                chat.push_system_message(format!(
+                    "No local history for session {} yet.",
+                    session_id
+                ));
+            }
+        }
+        self.refresh_session_cards(chat.is_thinking);
+    }
+
+    pub(crate) fn begin_session_fork(&mut self, chat: &mut ChatState) {
+        if self.session_info.session_id.trim().is_empty() {
+            chat.push_system_message("No active session to fork.".to_string());
+            return;
+        }
+        self.pending_resume_session = Some(self.session_info.session_id.clone());
+        self.pending_fork_session = true;
+        chat.push_system_message("Next message will fork the current session.".to_string());
+    }
+
+    pub(crate) fn clear_conversation(&mut self, chat: &mut ChatState, tools: &mut ToolsState) {
+        if chat.is_thinking {
+            chat.push_system_message("Cannot clear while a response is in progress.".to_string());
+            return;
+        }
+        chat.messages.clear();
+        chat.streaming_markdown.reset();
+        chat.scroll_offset = 0.0;
+        tools.current_tool_name = None;
+        tools.current_tool_input.clear();
+        tools.current_tool_use_id = None;
+        tools.tool_history.clear();
+        self.session_info.session_id.clear();
+        self.session_info.tool_count = 0;
+        self.session_info.tools.clear();
+        self.pending_resume_session = None;
+        self.pending_fork_session = false;
+        self.checkpoint_entries.clear();
+        self.checkpoint_restore = CheckpointRestore::new();
+        self.refresh_session_cards(chat.is_thinking);
+    }
+
+    pub(crate) fn start_new_session(&mut self, chat: &mut ChatState, tools: &mut ToolsState) {
+        if chat.is_thinking {
+            chat.push_system_message("Cannot start new session while processing.".to_string());
+            return;
+        }
+        chat.messages.clear();
+        chat.streaming_markdown.reset();
+        chat.scroll_offset = 0.0;
+        tools.current_tool_name = None;
+        tools.current_tool_input.clear();
+        tools.current_tool_use_id = None;
+        tools.tool_history.clear();
+        self.session_usage = SessionUsageStats::default();
+        self.session_info.session_id.clear();
+        self.session_info.tool_count = 0;
+        self.session_info.tools.clear();
+        self.pending_resume_session = None;
+        self.pending_fork_session = false;
+        self.checkpoint_entries.clear();
+        self.checkpoint_restore = CheckpointRestore::new();
+        self.refresh_session_cards(chat.is_thinking);
+        chat.push_system_message("Started new session.".to_string());
+    }
+
+    pub(crate) fn undo_last_exchange(&mut self, chat: &mut ChatState) {
+        if chat.is_thinking {
+            chat.push_system_message("Cannot undo while a response is in progress.".to_string());
+            return;
+        }
+
+        let mut removed = 0;
+        while matches!(
+            chat.messages.last(),
+            Some(ChatMessage {
+                role: MessageRole::Assistant,
+                ..
+            })
+        ) {
+            chat.messages.pop();
+            removed += 1;
+        }
+        if matches!(
+            chat.messages.last(),
+            Some(ChatMessage {
+                role: MessageRole::User,
+                ..
+            })
+        ) {
+            chat.messages.pop();
+            removed += 1;
+        }
+
+        if removed == 0 {
+            chat.push_system_message("Nothing to undo.".to_string());
+        } else {
+            self.refresh_checkpoint_restore(&chat.messages);
+        }
     }
 }
