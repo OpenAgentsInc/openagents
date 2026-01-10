@@ -56,3 +56,107 @@ Render Autopilot as a single long-running conversation that streams tokens end-t
 - Should plan updates be shown as inline text or dedicated UI cards?
 - How should ACP thought chunks be styled (same as assistant text vs. muted)?
 - Do we want a stable session id for Autopilot ACP streams (resume/replay)?
+
+---
+
+## Addendum: Codebase Analysis & Recommendations (2026-01-10)
+
+Based on a deep exploration of the codebase, here are recommendations for each open question:
+
+### Q1: Plan updates — Inline text or dedicated UI cards?
+
+**Recommendation: Dedicated UI cards**
+
+**Evidence:**
+- DSPy stage cards already exist with full rendering infrastructure (`crates/coder/src/app/ui/rendering/dspy.rs`)
+- `DspyStage::TodoList` renders tasks with:
+  - Green accent (120°) border
+  - Status symbols: `□` pending, `◐` in-progress, `✓` complete, `✗` failed
+  - Colored status indicators per task
+- Current plan handling (`crates/coder/src/app/autopilot/handler.rs:408-428`) formats as plain text via `format_plan_update()` → `ResponseEvent::Chunk`, losing visual structure
+- The `SessionUpdate::Plan` → `DspyStage::TodoList` mapping is natural and reuses existing components
+
+**Implementation path:**
+1. In `acp_notification_to_response()`, convert `SessionUpdate::Plan` to `ResponseEvent::DspyStage(DspyStage::TodoList {...})`
+2. Map `acp::PlanEntryStatus` → `TodoStatus` (Pending/InProgress/Completed → Pending/InProgress/Complete)
+3. Remove `format_plan_update()` plain-text fallback
+
+### Q2: ACP thought chunks — Same as assistant or muted?
+
+**Recommendation: Muted styling**
+
+**Evidence:**
+- Palette already defines distinct colors (`crates/coder/src/app/ui/theme.rs:66-68`):
+  - `assistant_text`: Cyan HSL(180°, 50%, 70%) — bright, primary
+  - `thinking_text`: Gray HSL(0°, 0%, 50%) — significantly muted
+- Current implementation treats `AgentThoughtChunk` identically to `AgentMessageChunk` (both → `ResponseEvent::Chunk`)
+- The "thinking" indicator uses muted styling with "..." but doesn't render thought content distinctly
+
+**Rationale:**
+- Thoughts = internal reasoning users may want visibility into, but shouldn't compete with primary output
+- Matches Claude/Codex convention where extended thinking is visually subordinate
+- Allows power users to follow reasoning without overwhelming casual users
+
+**Implementation path:**
+1. Add `ResponseEvent::ThoughtChunk(String)` variant
+2. In `acp_notification_to_response()`, map `AgentThoughtChunk` → `ThoughtChunk` (not `Chunk`)
+3. In chat rendering, use `palette.thinking_text` for thought chunks
+4. Consider collapsible UI for long thought sequences
+
+### Q3: Stable session ID for resume/replay?
+
+**Recommendation: Yes — use existing session ID infrastructure**
+
+**Evidence from existing session architecture:**
+
+| Layer | ID Format | Location | Purpose |
+|-------|-----------|----------|---------|
+| Main session | `HHMMSS-{8-hex}` | `crates/autopilot/src/logger.rs:141-158` | Top-level identifier |
+| Per-phase SDK | Claude API tokens | `StartupState.{plan,exec,review,fix}_session_id` | API resume |
+| Adjutant DSPy | UUID v4 | `crates/adjutant/src/dspy/sessions.rs:159` | Decision tracking |
+| rlog replay | `replay_{session_id}` | `crates/autopilot/src/replay.rs:99` | Trajectory export |
+
+**Checkpoint system already supports resume:**
+- `SessionCheckpoint` (`crates/autopilot/src/checkpoint.rs:20-113`) stores:
+  - `session_id`, `phase`, `iteration`
+  - Per-phase event cursors (`plan_cursor`, `exec_cursor`, etc.)
+  - Per-phase SDK session IDs for API continuation
+- Storage: `~/.openagents/sessions/{session_id}/checkpoint.json`
+
+**Implementation path:**
+1. Use main `session_id` (HHMMSS-hex) as ACP stream `conversation_id`
+2. Embed session ID in ACP `_meta` for every notification
+3. Store ACP event cursor in checkpoint alongside phase cursors
+4. For replay: rlog header `id:` field already captures session ID
+5. For resume: checkpoint restores SDK session IDs for API continuation
+
+**Session ID lifecycle:**
+```
+autopilot run "task"
+    → generate_session_id() → "153045-a1b2c3d4"
+    → ACP stream with conversation_id = "153045-a1b2c3d4"
+    → checkpoint.json saves cursor + SDK session IDs
+    → [crash/interrupt]
+    → resume from checkpoint
+    → continue ACP stream with same conversation_id
+    → [complete]
+    → rlog export with id: "153045-a1b2c3d4"
+```
+
+### Summary Table
+
+| Question | Recommendation | Key Files |
+|----------|----------------|-----------|
+| Plan rendering | Dedicated cards (reuse `DspyStage::TodoList`) | `dspy.rs`, `handler.rs` |
+| Thought styling | Muted (`thinking_text` color) | `theme.rs`, `chat.rs` |
+| Session ID | Yes, use `HHMMSS-{8-hex}` format | `logger.rs`, `checkpoint.rs` |
+
+### References
+
+- ACP adapter converters: `crates/acp-adapter/src/converters/rlog.rs`
+- Coder event handling: `crates/coder/src/app/autopilot/handler.rs`
+- DSPy stage rendering: `crates/coder/src/app/ui/rendering/dspy.rs`
+- Theme/palette: `crates/coder/src/app/ui/theme.rs`
+- Session checkpoints: `crates/autopilot/src/checkpoint.rs`
+- Session ID generation: `crates/autopilot/src/logger.rs`
+- Session documentation: `crates/autopilot/docs/SESSIONS.md`
