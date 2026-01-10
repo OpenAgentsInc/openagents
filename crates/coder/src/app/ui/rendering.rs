@@ -26,7 +26,7 @@ use crate::app::nip28::Nip28ConnectionStatus;
 use crate::app::nip90::{Nip90ConnectionStatus, Nip90MessageKind};
 use crate::app::ui::{palette_for, split_into_words_for_layout, wrap_text, UiPalette};
 use crate::app::{
-    format_relative_time, hook_event_label, settings_rows, truncate_preview,
+    format_relative_time, hook_event_label, settings_rows, strip_markdown_markers, truncate_preview,
     HookModalView, HookSetting, ModelOption, SettingsInputMode, SettingsSnapshot,
 };
 use crate::keybindings::Action as KeyAction;

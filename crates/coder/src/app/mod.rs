@@ -42,7 +42,7 @@ pub(crate) use utils::{
     agent_capabilities, build_checkpoint_entries, build_input, build_markdown_config,
     build_markdown_document, build_markdown_renderer, default_auto_scroll, default_font_size,
     default_session_auto_save, default_session_history_limit, format_relative_time, hook_event_label,
-    now_timestamp, selection_point_cmp, truncate_bytes, truncate_preview,
+    now_timestamp, selection_point_cmp, strip_markdown_markers, truncate_bytes, truncate_preview,
 };
 
 

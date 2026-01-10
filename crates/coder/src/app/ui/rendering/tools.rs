@@ -62,8 +62,9 @@ fn render_tools(
         }
     }
 
-    // Render DSPy stage cards
+    // Render DSPy stage cards on layer 1 (above streaming text)
     {
+        scene.set_layer(1);
         let mut paint_cx = PaintContext::new(scene, &mut state.text_system, scale_factor);
         for dspy_layout in &chat_layout.dspy_stages {
             let stage_top = dspy_layout.y_offset;

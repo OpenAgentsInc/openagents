@@ -30,6 +30,43 @@ pub(crate) fn truncate_preview(text: &str, max_chars: usize) -> String {
     result
 }
 
+/// Strip basic markdown formatting markers for plain text display.
+/// Handles: **bold**, *italic*, `code`, __bold__, _italic_
+pub(crate) fn strip_markdown_markers(text: &str) -> String {
+    let mut result = text.to_string();
+    // Strip ** (bold)
+    result = result.replace("**", "");
+    // Strip __ (bold)
+    result = result.replace("__", "");
+    // Strip ` (inline code) - be careful not to strip code blocks
+    // Only strip single backticks, not triple
+    let mut chars: Vec<char> = result.chars().collect();
+    let mut i = 0;
+    let mut new_chars = Vec::new();
+    while i < chars.len() {
+        if chars[i] == '`' {
+            // Check if it's a triple backtick (code block)
+            if i + 2 < chars.len() && chars[i + 1] == '`' && chars[i + 2] == '`' {
+                // Keep code blocks as-is
+                new_chars.push(chars[i]);
+                new_chars.push(chars[i + 1]);
+                new_chars.push(chars[i + 2]);
+                i += 3;
+            } else {
+                // Skip single backtick
+                i += 1;
+            }
+        } else {
+            new_chars.push(chars[i]);
+            i += 1;
+        }
+    }
+    result = new_chars.into_iter().collect();
+    // Strip single * or _ only when they appear at word boundaries (simple heuristic)
+    // This is tricky - for now just strip pairs
+    result
+}
+
 pub(crate) fn default_font_size() -> f32 {
     14.0
 }

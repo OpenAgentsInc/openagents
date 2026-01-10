@@ -130,7 +130,8 @@ fn render_dspy_stage_card(
             confidence,
             ..
         } => {
-            let analysis_line = format!("Analysis: {}", truncate_preview(analysis, 160));
+            let clean_analysis = strip_markdown_markers(&truncate_preview(analysis, 160));
+            let analysis_line = format!("Analysis: {}", clean_analysis);
             for line in wrap_text(&analysis_line, 80) {
                 let run = cx.text.layout_styled_mono(
                     &line,
@@ -145,7 +146,7 @@ fn render_dspy_stage_card(
             y += 4.0;
 
             let complexity_line =
-                format!("Complexity: {} ({:.0}%)", complexity, confidence * 100.0);
+                format!("Complexity: {} · Confidence: {:.0}%", complexity, confidence * 100.0);
             let run = cx.text.layout_styled_mono(
                 &complexity_line,
                 Point::new(content_x, y),
@@ -156,7 +157,8 @@ fn render_dspy_stage_card(
             cx.scene.draw_text(run);
             y += small_line_height + 4.0;
 
-            let test_line = format!("Test: {}", truncate_preview(test_strategy, 160));
+            let clean_test = strip_markdown_markers(&truncate_preview(test_strategy, 160));
+            let test_line = format!("Test: {}", clean_test);
             for line in wrap_text(&test_line, 80) {
                 let run = cx.text.layout_styled_mono(
                     &line,
@@ -170,10 +172,12 @@ fn render_dspy_stage_card(
             }
             y += 6.0;
 
-            for (i, step) in implementation_steps.iter().enumerate() {
-                let line = format!("{}. {}", i + 1, step);
+            for step in implementation_steps.iter() {
+                // Steps are already numbered from LLM (e.g., "1. **Examine Current State**")
+                // Strip markdown markers and truncate
+                let clean_step = strip_markdown_markers(&truncate_preview(step, 80));
                 let run = cx.text.layout_styled_mono(
-                    &line,
+                    &clean_step,
                     Point::new(content_x, y),
                     small_font_size,
                     palette.text_primary,
@@ -197,7 +201,9 @@ fn render_dspy_stage_card(
                     crate::autopilot_loop::TodoStatus::Complete => Hsla::new(120.0 / 360.0, 0.6, 0.5, 1.0),
                     crate::autopilot_loop::TodoStatus::Failed => Hsla::new(0.0, 0.6, 0.5, 1.0),
                 };
-                let line = format!("{} {}", status_symbol, task.description);
+                // Strip markdown from todo description
+                let clean_desc = strip_markdown_markers(&truncate_preview(&task.description, 80));
+                let line = format!("{} {}", status_symbol, clean_desc);
                 let run = cx.text.layout_styled_mono(
                     &line,
                     Point::new(content_x, y),
@@ -214,12 +220,10 @@ fn render_dspy_stage_card(
             total_tasks,
             task_description,
         } => {
-            let status = format!(
-                "Task {}/{}: {}",
-                task_index + 1,
-                total_tasks,
-                task_description
-            );
+            // task_index is already 1-indexed from autopilot_loop
+            // Strip markdown from task description
+            let clean_desc = strip_markdown_markers(&truncate_preview(task_description, 60));
+            let status = format!("Task {}/{}: {}", task_index, total_tasks, clean_desc);
             let run = cx.text.layout_styled_mono(
                 &status,
                 Point::new(content_x, y),
@@ -233,10 +237,11 @@ fn render_dspy_stage_card(
             task_index,
             success,
         } => {
+            // task_index is already 1-indexed
             let status = if *success {
-                format!("Task {} completed", task_index + 1)
+                format!("Task {} completed", task_index)
             } else {
-                format!("Task {} failed", task_index + 1)
+                format!("Task {} failed", task_index)
             };
             let color = if *success {
                 Hsla::new(120.0 / 360.0, 0.6, 0.5, 1.0)
