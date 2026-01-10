@@ -221,15 +221,58 @@ Training data is stored at:
 }
 ```
 
+**ComplexityTrainingExample:** (decision pipeline)
+```rust
+{
+    task_description: String,
+    file_count: u32,
+    estimated_tokens: usize,
+    keywords: Vec<String>,
+    expected_complexity: String,
+    confidence: f32,
+}
+```
+
+**DelegationTrainingExample:** (decision pipeline)
+```rust
+{
+    task_description: String,
+    complexity: String,
+    file_count: u32,
+    estimated_tokens: usize,
+    should_delegate: bool,
+    delegation_target: String,
+    confidence: f32,
+}
+```
+
+**RlmTriggerTrainingExample:** (decision pipeline)
+```rust
+{
+    task_description: String,
+    complexity: String,
+    estimated_tokens: usize,
+    use_rlm: bool,
+    confidence: f32,
+}
+```
+
 #### TrainingCollector
 
-Auto-saves successful executions:
+Auto-saves successful executions and high-confidence decisions:
 
 ```rust
 let mut collector = TrainingCollector::new(auto_save: true)?;
+
+// Task execution examples (only recorded if successful)
 collector.record_planning(example)?;
 collector.record_execution(example)?;
 collector.record_synthesis(example)?;
+
+// Decision examples (only recorded if confidence > 0.7)
+collector.record_complexity(example)?;
+collector.record_delegation(example)?;
+collector.record_rlm_trigger(example)?;
 ```
 
 ### LM Configuration
@@ -255,6 +298,20 @@ let lm = create_lm(&LmProvider::Cerebras).await?;
 2. **Pylon Swarm** - Distributed inference via NIP-90 (requires `PYLON_MNEMONIC`)
 3. **Cerebras** - Fast, cheap execution (requires `CEREBRAS_API_KEY`)
 4. **Pylon Local** - Ollama fallback (requires Ollama running on :11434)
+
+**Adjutant LM Caching:**
+
+Adjutant caches the decision LM for efficiency. The LM is lazily initialized on first decision call and reused for all subsequent calls:
+
+```rust
+// Internal implementation - LM cached in Adjutant struct
+async fn get_or_create_decision_lm(&mut self) -> Option<Arc<LM>> {
+    if self.decision_lm.is_none() {
+        self.decision_lm = get_planning_lm().await.ok();
+    }
+    self.decision_lm.clone()
+}
+```
 
 ## Usage
 

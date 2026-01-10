@@ -48,9 +48,11 @@ pub mod rlm_agent;
 pub mod tiered;
 pub mod tools;
 
+use dsrs::LM;
 use futures::StreamExt;
 use oanix::{OanixManifest, WorkspaceManifest};
 use std::path::PathBuf;
+use std::sync::Arc;
 use thiserror::Error;
 use tokio::sync::mpsc;
 
@@ -159,12 +161,10 @@ pub struct Adjutant {
     session_id: Option<String>,
     /// Conversation history for local LLMs (they don't have session resumption)
     conversation_history: Vec<ConversationTurn>,
-    /// DSPy pipeline for complexity classification
-    complexity_pipeline: dspy::ComplexityPipeline,
-    /// DSPy pipeline for delegation decisions
-    delegation_pipeline: dspy::DelegationPipeline,
-    /// DSPy pipeline for RLM trigger decisions
-    rlm_pipeline: dspy::RlmTriggerPipeline,
+    /// Cached LM for decision pipelines (lazily initialized)
+    decision_lm: Option<Arc<LM>>,
+    /// Training data collector for decision pipelines
+    decision_training: Option<dspy::TrainingCollector>,
 }
 
 impl Adjutant {
@@ -184,9 +184,8 @@ impl Adjutant {
             workspace_root,
             session_id: None,
             conversation_history: Vec::new(),
-            complexity_pipeline: dspy::ComplexityPipeline::new(),
-            delegation_pipeline: dspy::DelegationPipeline::new(),
-            rlm_pipeline: dspy::RlmTriggerPipeline::new(),
+            decision_lm: None,
+            decision_training: dspy::TrainingCollector::new(true).ok(),
         })
     }
 
@@ -213,6 +212,22 @@ impl Adjutant {
     /// Get the conversation history.
     pub fn conversation_history(&self) -> &[ConversationTurn] {
         &self.conversation_history
+    }
+
+    /// Get or create the cached LM for decision pipelines.
+    async fn get_or_create_decision_lm(&mut self) -> Option<Arc<LM>> {
+        if self.decision_lm.is_none() {
+            match dspy::lm_config::get_planning_lm().await {
+                Ok(lm) => {
+                    tracing::debug!("Decision LM initialized");
+                    self.decision_lm = Some(lm);
+                }
+                Err(e) => {
+                    tracing::debug!("No LM available for decisions: {}", e);
+                }
+            }
+        }
+        self.decision_lm.clone()
     }
 
     /// Execute a task - Adjutant does the work itself.
@@ -309,7 +324,7 @@ impl Adjutant {
     }
 
     /// Determine if RLM should be used (DSPy-first with legacy fallback).
-    async fn determine_use_rlm(&self, task: &Task, plan: &TaskPlan) -> bool {
+    async fn determine_use_rlm(&mut self, task: &Task, plan: &TaskPlan) -> bool {
         let complexity_str = match plan.complexity {
             Complexity::Low => "Low",
             Complexity::Medium => "Medium",
@@ -323,8 +338,15 @@ impl Adjutant {
             estimated_tokens: plan.estimated_tokens,
         };
 
+        // Get or create cached LM, create ephemeral pipeline
+        let lm = self.get_or_create_decision_lm().await;
+        let pipeline = match lm {
+            Some(lm) => dspy::RlmTriggerPipeline::with_lm(lm),
+            None => dspy::RlmTriggerPipeline::new(),
+        };
+
         // Try DSPy pipeline first
-        match self.rlm_pipeline.should_trigger(&input).await {
+        match pipeline.should_trigger(&input).await {
             Ok(result) if result.confidence > 0.7 => {
                 tracing::debug!(
                     "DSPy RLM decision: use_rlm={}, confidence={:.2}, reasoning={}",
@@ -332,6 +354,18 @@ impl Adjutant {
                     result.confidence,
                     result.reasoning
                 );
+
+                // Record training example
+                if let Some(ref mut collector) = self.decision_training {
+                    let _ = collector.record_rlm_trigger(dspy::RlmTriggerTrainingExample {
+                        task_description: task.description.clone(),
+                        complexity: complexity_str.to_string(),
+                        estimated_tokens: plan.estimated_tokens,
+                        use_rlm: result.use_rlm,
+                        confidence: result.confidence,
+                    });
+                }
+
                 result.use_rlm
             }
             Ok(result) => {
@@ -349,7 +383,7 @@ impl Adjutant {
     }
 
     /// Determine delegation decision (DSPy-first with legacy fallback).
-    async fn determine_delegation(&self, task: &Task, plan: &TaskPlan) -> dspy::DelegationResult {
+    async fn determine_delegation(&mut self, task: &Task, plan: &TaskPlan) -> dspy::DelegationResult {
         let complexity_str = match plan.complexity {
             Complexity::Low => "Low",
             Complexity::Medium => "Medium",
@@ -364,8 +398,15 @@ impl Adjutant {
             estimated_tokens: plan.estimated_tokens,
         };
 
+        // Get or create cached LM, create ephemeral pipeline
+        let lm = self.get_or_create_decision_lm().await;
+        let pipeline = match lm {
+            Some(lm) => dspy::DelegationPipeline::with_lm(lm),
+            None => dspy::DelegationPipeline::new(),
+        };
+
         // Try DSPy pipeline first
-        match self.delegation_pipeline.decide(&input).await {
+        match pipeline.decide(&input).await {
             Ok(result) if result.confidence > 0.7 => {
                 tracing::debug!(
                     "DSPy delegation decision: should_delegate={}, target={}, confidence={:.2}",
@@ -373,6 +414,20 @@ impl Adjutant {
                     result.delegation_target,
                     result.confidence
                 );
+
+                // Record training example
+                if let Some(ref mut collector) = self.decision_training {
+                    let _ = collector.record_delegation(dspy::DelegationTrainingExample {
+                        task_description: task.description.clone(),
+                        complexity: complexity_str.to_string(),
+                        file_count: plan.files.len() as u32,
+                        estimated_tokens: plan.estimated_tokens,
+                        should_delegate: result.should_delegate,
+                        delegation_target: result.delegation_target.clone(),
+                        confidence: result.confidence,
+                    });
+                }
+
                 result
             }
             Ok(result) => {
@@ -706,16 +761,24 @@ impl Adjutant {
     }
 
     /// Determine complexity using DSPy pipeline (with legacy fallback).
-    async fn determine_complexity_dspy(&self, task: &Task, plan: &TaskPlan) -> Complexity {
+    async fn determine_complexity_dspy(&mut self, task: &Task, plan: &TaskPlan) -> Complexity {
+        let keywords = extract_complexity_keywords(&task.description);
         let input = dspy::ComplexityInput {
             task_description: task.description.clone(),
             file_count: plan.files.len() as u32,
             estimated_tokens: plan.estimated_tokens,
-            keywords: extract_complexity_keywords(&task.description),
+            keywords: keywords.clone(),
+        };
+
+        // Get or create cached LM, create ephemeral pipeline
+        let lm = self.get_or_create_decision_lm().await;
+        let pipeline = match lm {
+            Some(lm) => dspy::ComplexityPipeline::with_lm(lm),
+            None => dspy::ComplexityPipeline::new(),
         };
 
         // Try DSPy pipeline first
-        match self.complexity_pipeline.classify(&input).await {
+        match pipeline.classify(&input).await {
             Ok(result) if result.confidence > 0.7 => {
                 tracing::debug!(
                     "DSPy complexity decision: complexity={}, confidence={:.2}, reasoning={}",
@@ -723,6 +786,19 @@ impl Adjutant {
                     result.confidence,
                     result.reasoning
                 );
+
+                // Record training example
+                if let Some(ref mut collector) = self.decision_training {
+                    let _ = collector.record_complexity(dspy::ComplexityTrainingExample {
+                        task_description: task.description.clone(),
+                        file_count: plan.files.len() as u32,
+                        estimated_tokens: plan.estimated_tokens,
+                        keywords,
+                        expected_complexity: result.complexity.clone(),
+                        confidence: result.confidence,
+                    });
+                }
+
                 parse_complexity(&result.complexity)
             }
             Ok(result) => {
