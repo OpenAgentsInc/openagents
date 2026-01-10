@@ -245,6 +245,18 @@ impl AppState {
             "RLM",
             Some(rlm_trace_keys),
         );
+        let pylon_keys = keybinding_labels(
+            &self.settings.keybindings,
+            KeyAction::OpenPylonEarnings,
+            "Ctrl+Shift+E",
+        );
+        push_command(
+            command_palette_ids::PYLON_EARNINGS_OPEN,
+            "Open Pylon Earnings",
+            "Review provider earnings from pylon.db",
+            "Pylon",
+            Some(pylon_keys),
+        );
         let dspy_keys =
             keybinding_labels(&self.settings.keybindings, KeyAction::OpenDspy, "Ctrl+Shift+D");
         push_command(
@@ -677,6 +689,15 @@ impl AppState {
 
     pub(super) fn refresh_rlm_trace(&mut self) {
         self.rlm_trace.refresh_selected();
+    }
+
+    pub(super) fn open_pylon_earnings(&mut self) {
+        self.refresh_pylon_earnings();
+        self.modal_state = ModalState::PylonEarnings;
+    }
+
+    pub(super) fn refresh_pylon_earnings(&mut self) {
+        self.pylon_earnings.refresh();
     }
 
     pub(super) fn open_dspy(&mut self) {

@@ -92,6 +92,11 @@ fn render_help_modal(
                 keybinding_labels(&state.settings.keybindings, KeyAction::OpenRlm, "Ctrl+Shift+R");
             let rlm_trace_key =
                 keybinding_labels(&state.settings.keybindings, KeyAction::OpenRlmTrace, "Ctrl+Shift+Y");
+            let pylon_key = keybinding_labels(
+                &state.settings.keybindings,
+                KeyAction::OpenPylonEarnings,
+                "Ctrl+Shift+E",
+            );
             let dspy_key =
                 keybinding_labels(&state.settings.keybindings, KeyAction::OpenDspy, "Ctrl+Shift+D");
             let nip28_key =
@@ -135,6 +140,7 @@ fn render_help_modal(
                         format!("{} - Issue tracker", tracker_key),
                         format!("{} - RLM runs", rlm_key),
                         format!("{} - RLM trace", rlm_trace_key),
+                        format!("{} - Pylon earnings", pylon_key),
                         format!("{} - DSPy status", dspy_key),
                         format!("{} - NIP-28 chat", nip28_key),
                         format!("{} - Toggle left sidebar", left_sidebar),
@@ -260,6 +266,13 @@ fn render_help_modal(
                     vec![
                         "/rlm - open run history; /rlm refresh - refresh".to_string(),
                         "/rlm trace [run_id] - open trace events".to_string(),
+                    ],
+                ),
+                (
+                    "Pylon",
+                    vec![
+                        "/pylon - open earnings; /pylon refresh - refresh".to_string(),
+                        "/pylon earnings - open earnings; /pylon earnings refresh".to_string(),
                     ],
                 ),
                 (

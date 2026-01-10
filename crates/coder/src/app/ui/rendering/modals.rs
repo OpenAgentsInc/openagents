@@ -16,6 +16,7 @@ include!("modals/issues.rs");
 include!("modals/autopilot_issues.rs");
 include!("modals/rlm.rs");
 include!("modals/rlm_trace.rs");
+include!("modals/pylon_earnings.rs");
 include!("modals/spark_wallet.rs");
 include!("modals/dspy.rs");
 include!("modals/nip28.rs");
@@ -261,6 +262,17 @@ fn render_modals(
         }
         ModalState::RlmTrace => {
             render_rlm_trace_modal(
+                state,
+                scene,
+                palette,
+                bounds,
+                logical_width,
+                logical_height,
+                scale_factor,
+            );
+        }
+        ModalState::PylonEarnings => {
+            render_pylon_earnings_modal(
                 state,
                 scene,
                 palette,

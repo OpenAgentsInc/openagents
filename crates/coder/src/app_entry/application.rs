@@ -18,6 +18,7 @@ use winit::window::{CursorIcon, Window, WindowId};
 use crate::app::autopilot::AutopilotState;
 use crate::app::autopilot_issues::AutopilotIssuesState;
 use crate::app::rlm::{RlmState, RlmTraceState};
+use crate::app::pylon_earnings::PylonEarningsState;
 use crate::app::catalog::{
     load_agent_entries, load_hook_config, load_hook_scripts, load_mcp_project_servers,
     load_skill_entries, CatalogState,
@@ -251,6 +252,7 @@ impl ApplicationHandler for CoderApp {
                 autopilot_issues: AutopilotIssuesState::new(),
                 rlm: RlmState::new(),
                 rlm_trace: RlmTraceState::new(),
+                pylon_earnings: PylonEarningsState::new(),
                 wallet: WalletState::new(),
                 dspy: DspyState::new(),
                 dvm: DvmState::new(),
@@ -1174,6 +1176,7 @@ impl ApplicationHandler for CoderApp {
                                 KeyAction::OpenIssueTracker => state.open_issue_tracker(),
                                 KeyAction::OpenRlm => state.open_rlm(),
                                 KeyAction::OpenRlmTrace => state.open_rlm_trace(None),
+                                KeyAction::OpenPylonEarnings => state.open_pylon_earnings(),
                                 KeyAction::OpenDspy => state.open_dspy(),
                                 KeyAction::OpenNip28 => state.open_nip28(),
                                 KeyAction::ToggleLeftSidebar => state.toggle_left_sidebar(),

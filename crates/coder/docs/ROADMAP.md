@@ -59,6 +59,7 @@ This document outlines the path to 100% implementation of the Claude Agent SDK i
 | Issue tracker pane | Done | Autopilot issues from .openagents/autopilot.db |
 | RLM runs pane | Done | Recent RLM runs from ~/.openagents/pylon/rlm.db |
 | RLM trace pane | Done | Trace events and run metadata for latest run |
+| Pylon earnings pane | Done | Provider earnings from ~/.openagents/pylon/pylon.db |
 
 ### Not Implemented
 
@@ -940,3 +941,4 @@ pub enum SettingsTab {
 - 2026-01-10 21:02 UTC - Added issue tracker pane for autopilot.db with summaries, keybinding, and commands.
 - 2026-01-10 21:24 UTC - Added RLM runs pane backed by rlm.db with summary metrics, keybinding, and commands.
 - 2026-01-10 21:48 UTC - Added RLM trace pane with run metadata, trace event list, keybinding, and commands.
+- 2026-01-10 22:12 UTC - Added Pylon earnings pane with totals, source breakdown, keybinding, and commands.
