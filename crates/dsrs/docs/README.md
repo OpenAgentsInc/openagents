@@ -108,6 +108,7 @@ println!("Answer: {}", result.get("answer", None));
 | 10 | Complete | Tool Invocation Signatures (in `crates/runtime/`) |
 | 11 | Complete | Optimization Infrastructure (in `crates/autopilot/`) |
 | 12 | Complete | FRLM Integration (in `crates/frlm/`) |
+| 13 | Complete | Pipeline Wiring (decision pipelines in adjutant, runtime, orchestrator) |
 
 ## Key Paths
 
@@ -172,6 +173,49 @@ crates/dsrs/
 └── docs/
     └── *.md
 ```
+
+## Pipeline Pattern
+
+DSPy pipelines wrap signatures with LM management and fallback logic:
+
+```rust
+pub struct MyPipeline {
+    lm: Option<Arc<LM>>,
+}
+
+impl MyPipeline {
+    pub fn new() -> Self { Self { lm: None } }
+    pub fn with_lm(lm: Arc<LM>) -> Self { Self { lm: Some(lm) } }
+
+    pub async fn execute(&self, input: &MyInput) -> Result<MyResult> {
+        // 1. Check for configured LM, fallback to auto-detect
+        let lm = match &self.lm {
+            Some(lm) => lm.clone(),
+            None => get_planning_lm().await?,
+        };
+
+        // 2. Create signature and predictor
+        let sig = MySignature::new(input);
+        let predictor = Predict::new(sig).with_lm(lm);
+
+        // 3. Execute and parse result
+        let prediction = predictor.forward(example! {
+            "field" => input.value
+        }).await?;
+
+        Ok(MyResult {
+            output: get_string(&prediction, "output"),
+            confidence: get_f32(&prediction, "confidence"),
+        })
+    }
+}
+```
+
+This pattern is used across:
+- `crates/dsrs/src/pipelines/` - Retrieval pipelines
+- `crates/adjutant/src/dspy/decision_pipelines.rs` - Decision routing
+- `crates/agent-orchestrator/src/dspy_pipelines.rs` - Agent delegation
+- `crates/runtime/src/dspy_pipelines.rs` - Tool selection
 
 ## Usage with OpenAgents
 

@@ -217,6 +217,96 @@ cargo autopilot run "Fix the failing tests"
 
 **Core implementation:** `crates/dsrs/` — 5,771 LOC Rust DSPy implementation integrated into the workspace.
 
+### What DSPy Enables (Plain Language)
+
+DSPy fundamentally changes how AI agents make decisions. Instead of hand-crafting prompts and hoping they work, you declare *what* you want the AI to do using typed signatures, and let the system automatically discover the best way to achieve it.
+
+**The Problem It Solves:** Traditional AI development involves endless prompt tweaking. You write a prompt, test it, notice edge cases, add more instructions, break something else, and repeat forever. This doesn't scale — especially when you need to support multiple models (Claude, GPT-4, local LLMs) that each respond differently to the same prompt.
+
+**The DSPy Solution:** Instead of prompts, you write signatures:
+
+```rust
+#[Signature]
+struct TaskPlanner {
+    /// Detailed task description
+    #[input] task_description: String,
+    /// Files in the repository
+    #[input] file_count: u32,
+
+    /// Complexity classification: Low, Medium, High, VeryHigh
+    #[output] complexity: String,
+    /// Reasoning for the classification
+    #[output] reasoning: String,
+    /// Confidence score (0.0-1.0)
+    #[output] confidence: f32,
+}
+```
+
+This signature declares: "Given a task description and file count, produce a complexity classification with reasoning and confidence." The field names and doc comments act as mini-prompts. DSPy's optimizers (MIPROv2, GEPA) then automatically discover the best prompt phrasing, examples, and reasoning structure to reliably produce these outputs.
+
+### How DSPy Connects to Coder/Autopilot
+
+The Coder uses **Adjutant** as its execution engine. Adjutant now has DSPy integration at two levels:
+
+**Level 1: Task Execution (TieredExecutor)**
+The TieredExecutor uses three signatures for task execution:
+- `SubtaskPlanningSignature` — Breaks a task into atomic subtasks
+- `SubtaskExecutionSignature` — Executes individual subtasks (read, edit, bash)
+- `ResultSynthesisSignature` — Synthesizes subtask results into final outcome
+
+**Level 2: Decision Routing (Decision Pipelines)**
+Before executing, Adjutant uses DSPy to make intelligent routing decisions:
+- `ComplexityPipeline` — Classifies task complexity (Low/Medium/High/VeryHigh)
+- `DelegationPipeline` — Decides whether to delegate (to Claude Code, RLM, or local tools)
+- `RlmTriggerPipeline` — Decides whether RLM (Recursive Language Model) should be used
+
+**The Execution Flow:**
+```
+1. Coder receives task
+2. Adjutant.plan_task() discovers relevant files
+3. ComplexityPipeline classifies task complexity
+4. RlmTriggerPipeline decides if RLM is needed
+5. DelegationPipeline decides execution strategy
+6. Execute via chosen path (local tools, Claude Code, or RLM)
+7. Training data collected for optimization
+```
+
+**DSPy-First with Fallback:** Each decision pipeline uses a 0.7 confidence threshold. If the DSPy model returns a prediction with confidence above 0.7, it's used. Below that, the system falls back to legacy rule-based logic. This ensures reliability while collecting training data to improve the DSPy decisions over time.
+
+### Automatic Training Collection
+
+Every successful DSPy decision is recorded:
+- High-confidence complexity classifications
+- Delegation decisions and their outcomes
+- RLM trigger decisions
+
+Training data is saved to `~/.openagents/adjutant/training/dataset.json` and can be used to optimize the decision pipelines with MIPROv2. Over time, the system learns from its own successes.
+
+### LM Caching for Efficiency
+
+DSPy decisions require an LM (Language Model) to run. Adjutant uses lazy initialization — the LM is created on first decision and cached for all subsequent calls:
+
+```rust
+async fn get_or_create_decision_lm(&mut self) -> Option<Arc<LM>> {
+    if self.decision_lm.is_none() {
+        self.decision_lm = get_planning_lm().await.ok();
+    }
+    self.decision_lm.clone()
+}
+```
+
+This means the first decision might take a moment to initialize the LM, but all subsequent decisions reuse the same connection, making routing decisions fast.
+
+### What This Means in Practice
+
+**For Users:** The Coder is now smarter about when to use expensive resources. Instead of blindly delegating complex tasks to Claude Code (expensive) or running simple tasks through RLM (overkill), it makes intelligent decisions based on the actual task content.
+
+**For Optimization:** As the system collects training data, it can be optimized to make better decisions. A task that's initially misclassified as "High" complexity might, after optimization, be correctly classified as "Low" — saving resources.
+
+**For Model Portability:** Because decisions are expressed as signatures rather than prompts, switching from Claude to GPT-4 to a local LLM requires no prompt rewriting. The optimizer re-discovers the best approach for each model automatically.
+
+**For Observability:** Every decision includes confidence scores and reasoning. When something goes wrong, you can see exactly why the system made the choices it did.
+
 **Philosophy (from Omar Khattab & Kevin Madura):**
 - DSPy is declarative AI programming, not just prompt optimization
 - Signatures decouple AI specification from ML techniques
@@ -323,14 +413,20 @@ Shadow mode runs both old and new policy, ships old result, promotes only if new
 
 | Wave | Status | Description |
 |------|--------|-------------|
-| 0 | **Complete** | Protocol + Schema Registry (`crates/protocol/`) |
+| 0 | Complete | Protocol + Schema Registry (`crates/protocol/`) |
 | 1-2 | Complete | RLM + Autopilot signatures |
 | 2.5 | Complete | LaneMux (multi-provider LM auto-detection) |
-| 3 | **Complete** | Compiler Contract (manifest, callbacks, trace, sandbox) |
-| 4 | **Complete** | Retrieval, Signatures, Swarm Dispatch |
-| 5 | **Complete** | Eval Harness & Promotion Gates |
-| 6 | **Complete** | SwarmCompiler (cheap bootstrap + premium validation) |
-| 7+ | Planned | Privacy, OANIX, Agent Orchestrator, Tool Invocation |
+| 3 | Complete | Compiler Contract (manifest, callbacks, trace, sandbox) |
+| 4 | Complete | Retrieval, Signatures, Swarm Dispatch |
+| 5 | Complete | Eval Harness & Promotion Gates |
+| 6 | Complete | SwarmCompiler (cheap bootstrap + premium validation) |
+| 7 | Complete | Privacy Module (redaction, chunking, policy) |
+| 8 | Complete | OANIX DSPy Signatures |
+| 9 | Complete | Agent Orchestrator Signatures |
+| 10 | Complete | Tool Invocation Signatures |
+| 11 | Complete | Optimization Infrastructure (DspyHub, TrainingExtractor) |
+| 12 | Complete | FRLM Integration |
+| 13 | **Complete** | Pipeline Wiring (decision pipelines + LM caching + training collection) |
 
 See [docs/DSPY_ROADMAP.md](./docs/DSPY_ROADMAP.md) for full roadmap.
 
@@ -643,6 +739,8 @@ cargo build -p wgpui --target wasm32-unknown-unknown    # WASM
 | `nexus` | Nostr relay for job market |
 | `runtime` | Agent execution environment |
 | `autopilot` | Coding agent product |
+| `adjutant` | Execution engine with DSPy decision pipelines ([docs](./crates/adjutant/docs/README.md)) |
+| `coder` | UI for autonomous coding agent |
 | `wgpui` | GPU-rendered UI |
 | `spark` | Lightning wallet (Breez SDK) |
 | `compute` | NIP-90 DVM primitives |
@@ -653,6 +751,7 @@ cargo build -p wgpui --target wasm32-unknown-unknown    # WASM
 | `dsrs` | Rust DSPy - signatures, optimizers, DAG tracing ([docs](./crates/dsrs/docs/README.md)) |
 | `dsrs-macros` | Procedural macros for dsrs |
 | `protocol` | Typed job schemas, canonical hashing, verification |
+| `agent-orchestrator` | Multi-agent delegation with DSPy ([docs](./crates/agent-orchestrator/docs/)) |
 
 **RLM/FRLM execution venues:**
 
@@ -785,14 +884,17 @@ Issues are NOT done unless:
 | Nexus | v0.1 | NIP-90, NIP-42, NIP-89 |
 | Runtime | In progress | Tick engine, filesystem, /compute, /containers, /claude |
 | Autopilot | Alpha | Claude SDK integration, tunnel mode |
-| Autopilot DSPy | Wave 3 | Planning, Execution, Verification + Compiler Contract |
-| dsrs | **Wave 6** | SwarmCompiler, Eval Harness, Promotion Gates (see Wave 3-6) |
+| Autopilot DSPy | Wave 11 | Planning, Execution, Verification + Hub + Router |
+| Adjutant | **Wave 13** | Decision pipelines, LM caching, training collection |
+| dsrs | **Wave 13** | SwarmCompiler, Pipelines, Privacy, full integration |
 | WGPUI | Phase 16 | 377 tests, full component library |
 | RLM | Working | Claude + Ollama backends, MCP tools |
 | RLM DSPy | Wave 1 | DspyOrchestrator, provenance signatures |
 | FRLM | Working | Claude venue, trace persistence, dashboard sync |
-| Protocol | **Complete** | Job schemas, canonical hashing, verification modes |
-| OANIX | Wave 8 | Agent OS runtime (design) |
+| Protocol | Complete | Job schemas, canonical hashing, verification modes |
+| OANIX | Wave 8 | DSPy signatures complete |
+| Agent Orchestrator | Wave 9+13 | DSPy signatures + pipeline wiring |
+| Runtime Tools | Wave 10+13 | DSPy signatures + pipeline wiring |
 
 **Bitcoin network:** Default is `regtest` for testing. Mainnet available.
 

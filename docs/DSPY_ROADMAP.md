@@ -130,6 +130,13 @@ dsrs (Rust DSPy) is now integrated into the OpenAgents workspace at `crates/dsrs
   - RlmTriggerPipeline - Decide whether to use RLM for deep analysis
   - Wired into Adjutant.execute() with DSPy-first + legacy fallback
   - 31 tests passing
+- [x] **Adjutant LM Caching + Training Collection** (`crates/adjutant/src/lib.rs`)
+  - Lazy LM initialization with `get_or_create_decision_lm()`
+  - Cached LM shared across all decision pipeline calls
+  - Training data collection for decision pipelines:
+    - ComplexityTrainingExample, DelegationTrainingExample, RlmTriggerTrainingExample
+    - Records high-confidence (>0.7) decisions for MIPROv2 optimization
+    - Saved to `~/.openagents/adjutant/training/dataset.json`
 
 ---
 

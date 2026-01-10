@@ -52,16 +52,44 @@ cargo autopilot issue claim 123
 ## Execution Flow
 
 1. **Planning**: Analyzes task, finds relevant files, estimates complexity
-2. **Routing**: Decides execution strategy based on complexity:
-   - Low/Medium: Use local executor
-   - High: May still use local executor or delegate
-   - VeryHigh: Delegate to Claude Code
-   - Large context: Use RLM for distributed processing
-3. **Execution**: Runs the task using chosen strategy (priority order):
+2. **DSPy Complexity Override**: If LM available and confidence > 0.7, uses DSPy classification
+3. **DSPy Routing Decisions**:
+   - `determine_use_rlm()` - Should RLM be used? (DSPy-first with fallback)
+   - `determine_delegation()` - Should task be delegated? Where? (DSPy-first with fallback)
+4. **Execution**: Runs the task using chosen strategy (priority order):
    - **Claude Pro/Max** (if `claude` CLI is installed) - Best quality, uses subscription
    - **Cerebras TieredExecutor** (if CEREBRAS_API_KEY set) - Cost-effective tiered inference
    - **Analysis-only** - Returns file analysis without making changes
-4. **Synthesis**: Summarizes results, optionally commits changes
+5. **Synthesis**: Summarizes results, optionally commits changes
+6. **Training Collection**: Records high-confidence DSPy decisions for optimization
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    Adjutant.execute() Flow                  │
+├─────────────────────────────────────────────────────────────┤
+│  1. plan_task()                                             │
+│     └── Rule-based file discovery, initial complexity       │
+│                                                              │
+│  2. determine_complexity_dspy() [DSPy-first]                │
+│     └── Override complexity if confidence > 0.7             │
+│                                                              │
+│  3. determine_use_rlm() [DSPy-first]                        │
+│     └── RLM for large context analysis?                     │
+│                                                              │
+│  4. LM Provider Selection                                   │
+│     ├── LlamaCpp → execute_with_local_lm()                  │
+│     └── ClaudeSdk → ClaudeExecutor (with optional RLM)      │
+│                                                              │
+│  5. determine_delegation() [DSPy-first]                     │
+│     ├── claude_code → delegate_to_claude_code()             │
+│     ├── rlm → execute_with_rlm_delegate()                   │
+│     └── local_tools → execute_with_tools()                  │
+│                                                              │
+│  6. Legacy Fallback Rules (if DSPy confidence low)          │
+│     ├── complexity >= High → delegate                       │
+│     └── tokens > 100k → RLM                                 │
+└─────────────────────────────────────────────────────────────┘
+```
 
 ## Execution Priority
 
@@ -159,8 +187,10 @@ Adjutant integrates with [dsrs](../../dsrs/) (Rust DSPy implementation) for opti
 
 - **Typed Signatures**: Replace string prompts with `#[Signature]` structs
 - **Automatic Optimization**: MIPROv2 improves prompts from training data
-- **Training Collection**: Records successful executions for optimization
+- **Training Collection**: Records successful executions and decisions for optimization
 - **Evaluation Metrics**: Quantitative assessment of output quality
+- **Decision Pipelines**: DSPy-first routing for complexity, delegation, and RLM decisions
+- **LM Caching**: Lazy initialization and caching of decision LM for efficiency
 
 ### Quick Start
 
@@ -176,11 +206,23 @@ let result = executor.execute_dsrs(&task, &context, &mut tools).await?;
 
 ### Signatures
 
+**Task Execution Signatures:**
+
 | Signature | Replaces | Purpose |
 |-----------|----------|---------|
 | `SubtaskPlanningSignature` | `PLANNER_SYSTEM_PROMPT` | Break tasks into subtasks |
 | `SubtaskExecutionSignature` | `EXECUTOR_SYSTEM_PROMPT` | Execute individual subtasks |
 | `ResultSynthesisSignature` | `SYNTHESIZER_SYSTEM_PROMPT` | Synthesize final results |
+
+**Decision Pipeline Signatures:**
+
+| Signature | Purpose | Fallback |
+|-----------|---------|----------|
+| `ComplexityClassificationSignature` | Classify task complexity (Low/Medium/High/VeryHigh) | Rule-based heuristics |
+| `DelegationDecisionSignature` | Decide if/where to delegate (claude_code/rlm/local_tools) | Complexity thresholds |
+| `RlmTriggerSignature` | Decide if RLM should be used | Token count + keywords |
+
+Decision pipelines use a 0.7 confidence threshold - below that, they fall back to legacy rule-based logic.
 
 See [DSPY-INTEGRATION.md](./DSPY-INTEGRATION.md) for detailed documentation.
 
@@ -208,9 +250,24 @@ export CEREBRAS_API_KEY="csk-your-key-here"
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `CEREBRAS_API_KEY` | No* | Cerebras API key for tiered inference |
+| `CEREBRAS_API_KEY` | No | Cerebras API key for tiered inference |
+| `PYLON_MNEMONIC` | No | BIP-39 mnemonic for Pylon Swarm inference |
+| `ADJUTANT_ENABLE_RLM` | No | Enable RLM tools in Claude sessions (1/true) |
+| `RLM_BACKEND` | No | RLM backend selection (claude) |
 
-*Without Claude CLI or CEREBRAS_API_KEY, Adjutant falls back to analysis-only mode.
+### LM Provider Priority
+
+Adjutant auto-detects available LM providers in this priority order:
+
+| Priority | Provider | Requirements | Use Case |
+|----------|----------|--------------|----------|
+| 1 | **LlamaCpp** | `llama-server` on :8080 | Local execution with GPT-OSS |
+| 2 | **Claude SDK** | `claude` CLI installed | Pro/Max subscription |
+| 3 | **Pylon Swarm** | `PYLON_MNEMONIC` env var | Distributed NIP-90 inference |
+| 4 | **Cerebras** | `CEREBRAS_API_KEY` env var | Fast cloud inference |
+| 5 | **Pylon Local** | Ollama on :11434 | Local Ollama fallback |
+
+*Without any provider, Adjutant falls back to analysis-only mode.
 
 ### .env.local
 
@@ -249,7 +306,7 @@ if plan.estimated_tokens > 100_000 {
 ```
 crates/adjutant/
 ├── src/
-│   ├── lib.rs           # Main Adjutant struct, public exports
+│   ├── lib.rs           # Main Adjutant struct, LM caching, decision routing
 │   ├── planner.rs       # Task analysis and planning
 │   ├── executor.rs      # Task execution coordination
 │   ├── claude_executor.rs # Claude Pro/Max execution via SDK
@@ -260,11 +317,12 @@ crates/adjutant/
 │   ├── auth.rs          # Claude CLI detection
 │   ├── cli.rs           # CLI argument parsing
 │   ├── dspy/            # DSPy integration
-│   │   ├── mod.rs       # Module exports
-│   │   ├── lm_config.rs # Cerebras LM configuration
-│   │   ├── module.rs    # AdjutantModule + signatures
-│   │   ├── metrics.rs   # Evaluation metrics for MIPROv2
-│   │   └── training.rs  # Training data collection
+│   │   ├── mod.rs            # Module exports
+│   │   ├── lm_config.rs      # Multi-provider LM configuration
+│   │   ├── module.rs         # AdjutantModule + task execution signatures
+│   │   ├── decision_pipelines.rs # Decision routing signatures (complexity, delegation, RLM)
+│   │   ├── metrics.rs        # Evaluation metrics for MIPROv2
+│   │   └── training.rs       # Training data collection (execution + decisions)
 │   └── bin/main.rs      # Autopilot binary entry point
 └── docs/
     ├── README.md            # This file
