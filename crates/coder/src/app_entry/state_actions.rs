@@ -874,6 +874,7 @@ impl AppState {
     }
 
     pub(super) fn open_help(&mut self) {
+        self.help_scroll_offset = 0.0;
         self.modal_state = ModalState::Help;
     }
 

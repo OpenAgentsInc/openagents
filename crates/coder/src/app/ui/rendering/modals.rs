@@ -368,6 +368,7 @@ fn render_modals(
                 logical_width,
                 logical_height,
                 scale_factor,
+                state.help_scroll_offset,
             );
         }
         // Placeholder for new feature modals - render a basic "coming soon" overlay

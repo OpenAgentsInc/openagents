@@ -85,6 +85,7 @@ pub(crate) struct AppState {
     pub(crate) llama_server_process: Option<Child>,
     pub(crate) show_kitchen_sink: bool,
     pub(crate) kitchen_sink_scroll: f32,
+    pub(crate) help_scroll_offset: f32,
     /// Selected agent backend (Claude/Codex)
     pub(crate) agent_selection: AgentSelection,
     /// Agent availability registry
