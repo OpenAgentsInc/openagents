@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use wgpui::components::molecules::SessionAction;
 
 /// Session info from SystemInit.
 #[derive(Default)]
@@ -36,4 +37,10 @@ pub(crate) struct StoredMessage {
     pub(crate) content: String,
     #[serde(default)]
     pub(crate) uuid: Option<String>,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct SessionCardEvent {
+    pub(crate) action: SessionAction,
+    pub(crate) session_id: String,
 }
