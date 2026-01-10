@@ -180,6 +180,8 @@ Each pipeline has:
 
 ## Implementation Status
 
+### Foundation (Complete)
+
 | Wave | Description | Status |
 |------|-------------|--------|
 | Wave 0 | Protocol + Schema Registry | Complete |
@@ -196,7 +198,63 @@ Each pipeline has:
 | Wave 13 | Pipeline Wiring | Complete |
 | Wave 14 | Self-Improving Autopilot | Complete |
 
-See [DSPY_ROADMAP.md](../DSPY_ROADMAP.md) for full details.
+### Full Integration (Planned)
+
+| Wave | Description | Status |
+|------|-------------|--------|
+| Wave 15 | Tiered Executor DSPy Migration | Planned |
+| Wave 16 | RLM DSPy Integration | Planned |
+| Wave 17 | LM-Router DSPy Backend | Planned |
+| Wave 18 | Gateway DSPy Integration | Planned |
+| Wave 19 | Autopilot Heuristics → DSPy | Planned |
+| Wave 20 | Agent-Orchestrator & Nexus DSPy | Planned |
+| Wave 21 | Marketplace Security DSPy | Planned |
+
+See [DSPY_ROADMAP.md](../DSPY_ROADMAP.md) for full details and [signatures-catalog.md](./signatures-catalog.md) for the complete signature inventory.
+
+## Wave 15: Tiered Executor Migration
+
+The tiered executor (`crates/adjutant/src/tiered.rs`) currently has two modes:
+- **Gateway** (default): Uses hardcoded prompts with Cerebras GLM 4.7/Qwen-3-32B
+- **Dsrs**: Uses DSPy signatures from `crates/adjutant/src/dspy/module.rs`
+
+Wave 15 makes Dsrs the default, enabling:
+- Optimizable prompts via MIPROv2
+- Training data collection for all planning/execution/synthesis decisions
+- Self-improvement loop integration
+
+**Existing signatures (ready to use):**
+- `SubtaskPlanningSignature` — Break tasks into atomic subtasks
+- `SubtaskExecutionSignature` — Execute individual subtasks
+- `ResultSynthesisSignature` — Synthesize results into final outcome
+
+## Wave 16: RLM DSPy Integration
+
+The RLM engine (`crates/rlm/`) has 4 hardcoded prompt tiers:
+- `BASIC_SYSTEM_PROMPT` — Simple code execution
+- `CONTEXT_SYSTEM_PROMPT` — Full RLM with llm_query() (from paper)
+- `GUIDED_SYSTEM_PROMPT` — Apple FM tier
+- `MINIMAL_SYSTEM_PROMPT` — Small models
+
+Wave 16 replaces these with optimizable signatures:
+
+```rust
+#[Signature]
+struct RlmContextQuerySignature {
+    /// RLM query with context for recursive analysis.
+    /// Generate Python REPL code that uses llm_query() for sub-queries.
+    /// Use FINAL(answer) or FINAL_VAR(variable) when done.
+
+    #[input] query: String,
+    #[input] context_length: u64,
+    #[input] context_source: String,
+    #[output] reasoning: String,
+    #[output] code: String,
+    #[output] needs_continuation: bool,
+}
+```
+
+This enables learning optimal RLM strategies per model tier.
 
 ## Storage Layout
 
@@ -268,10 +326,17 @@ Different signatures benefit from different models:
 
 ## Related Documentation
 
-- [DSPY_ROADMAP.md](../DSPY_ROADMAP.md) — Full implementation roadmap
+### Strategy & Implementation
+- [DSPY_ROADMAP.md](../DSPY_ROADMAP.md) — Full implementation roadmap (Waves 0-21)
+- [signatures-catalog.md](./signatures-catalog.md) — Complete catalog of all DSPy signatures
+- [integration-guide.md](./integration-guide.md) — How to add DSPy to new components
+
+### Technical Reference
 - [rust.md](./rust.md) — dsrs usage guide
 - [rlm.md](./rlm.md) — DSPy + RLM integration
 - [crates/adjutant/docs/DSPY-INTEGRATION.md](../../crates/adjutant/docs/DSPY-INTEGRATION.md) — Self-improvement details
 - [crates/dsrs/docs/](../../crates/dsrs/docs/) — dsrs implementation docs
+
+### Philosophy
 - [Transcripts: State of DSPy](../transcripts/dspy/state-of-dspy.md) — Omar Khattab
 - [Transcripts: DSPy is All You Need](../transcripts/dspy/dspy-is-all-you-need.md) — Kevin Madura

@@ -15,10 +15,10 @@ use std::sync::Arc;
 /// Execution mode for the tiered executor.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ExecutionMode {
-    /// Use the original gateway-based execution.
-    #[default]
+    /// Use the original gateway-based execution (legacy fallback).
     Gateway,
     /// Use dsrs-powered execution with optimizable signatures.
+    #[default]
     Dsrs,
 }
 
@@ -105,13 +105,42 @@ impl TieredExecutor {
     }
 
     /// Execute a task using tiered inference.
+    ///
+    /// Routes to DSPy-powered execution (default) or gateway-based execution
+    /// based on the configured mode. DSPy execution enables optimizable
+    /// signatures and training data collection for MIPROv2 optimization.
     pub async fn execute(
+        &mut self,
+        task: &Task,
+        context: &str,
+        tools: &mut ToolRegistry,
+    ) -> Result<TaskResult, AdjutantError> {
+        match self.mode {
+            ExecutionMode::Dsrs => {
+                // Try DSPy-powered execution first
+                match self.execute_dsrs(task, context, tools).await {
+                    Ok(result) => Ok(result),
+                    Err(e) => {
+                        // Fallback to gateway if DSPy fails
+                        tracing::warn!("DSPy execution failed, falling back to gateway: {}", e);
+                        self.execute_gateway(task, context, tools).await
+                    }
+                }
+            }
+            ExecutionMode::Gateway => {
+                self.execute_gateway(task, context, tools).await
+            }
+        }
+    }
+
+    /// Execute a task using gateway-based inference (legacy path).
+    async fn execute_gateway(
         &self,
         task: &Task,
         context: &str,
         tools: &mut ToolRegistry,
     ) -> Result<TaskResult, AdjutantError> {
-        tracing::info!("TieredExecutor: Starting task '{}'", task.title);
+        tracing::info!("TieredExecutor (Gateway): Starting task '{}'", task.title);
 
         // PHASE 1: Plan with GLM 4.7 (smart)
         tracing::info!("Phase 1: Planning with {}", PLANNING_MODEL);

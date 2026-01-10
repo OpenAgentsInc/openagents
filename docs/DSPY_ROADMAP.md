@@ -175,7 +175,222 @@ dsrs (Rust DSPy) is now integrated into the OpenAgents workspace at `crates/dsrs
 
 ---
 
-## Wave 0: Protocol + Schema Registry (NEW)
+## Full Integration Waves (15-21)
+
+The following waves complete DSPy integration across the entire codebase, replacing all hardcoded prompts and heuristics with optimizable signatures.
+
+### Wave 15: Tiered Executor DSPy Migration (Planned)
+
+**Goal:** Replace hardcoded prompts in tiered.rs with the existing DSPy module.
+
+**Files:**
+- `crates/adjutant/src/tiered.rs` — Main target
+- `crates/adjutant/src/dspy/module.rs` — Existing signatures
+
+**Key Insight:** The DSPy module already exists. The executor has `ExecutionMode::Dsrs` but defaults to `Gateway`. Wave 15 makes Dsrs the default.
+
+**Tasks:**
+- [ ] Change default `ExecutionMode` from `Gateway` to `Dsrs`
+- [ ] Remove hardcoded `PLANNER_SYSTEM_PROMPT`, `EXECUTOR_SYSTEM_PROMPT`, `SYNTHESIZER_SYSTEM_PROMPT`
+- [ ] Update `plan_task()`, `execute_subtasks()`, `synthesize_results()` to use DSPy module
+- [ ] Ensure training collector records all decisions
+- [ ] Add fallback to Gateway mode if DSPy fails
+
+**New Signatures:** None (uses existing SubtaskPlanningSignature, SubtaskExecutionSignature, ResultSynthesisSignature)
+
+### Wave 16: RLM DSPy Integration (Planned)
+
+**Goal:** Replace hardcoded RLM prompts with optimizable signatures.
+
+**Files:**
+- `crates/rlm/src/prompts.rs` — 4 hardcoded prompts to replace
+- `crates/rlm/src/claude_client.rs` — Direct SDK calls
+- `crates/rlm/src/dspy.rs` — NEW
+
+**Hardcoded Prompts to Replace:**
+1. `BASIC_SYSTEM_PROMPT` — Simple code execution (line 39)
+2. `CONTEXT_SYSTEM_PROMPT` — Full RLM with llm_query() (line 70)
+3. `GUIDED_SYSTEM_PROMPT` — Apple FM tier (line 152)
+4. `MINIMAL_SYSTEM_PROMPT` — Small models (line 196)
+
+**Tasks:**
+- [ ] Create `RlmQuerySignature` — Basic RLM query
+- [ ] Create `RlmContextQuerySignature` — Context-aware RLM with llm_query()
+- [ ] Create `RlmGuidedQuerySignature` — Guided tier for Apple FM
+- [ ] Create `RlmCodeGenerationSignature` — Generate REPL code
+- [ ] Update `claude_client.rs` to use signatures
+- [ ] Keep PromptTier enum but route to appropriate signature
+- [ ] Add training collection for RLM queries
+
+**New Signatures:**
+```rust
+#[Signature]
+struct RlmContextQuerySignature {
+    /// RLM query with context for recursive analysis.
+    /// Generate Python REPL code that uses llm_query() for sub-queries.
+    /// Use FINAL(answer) or FINAL_VAR(variable) when done.
+
+    #[input] query: String,
+    #[input] context_length: u64,
+    #[input] context_source: String,
+    #[output] reasoning: String,
+    #[output] code: String,
+    #[output] needs_continuation: bool,
+}
+```
+
+### Wave 17: LM-Router DSPy Backend (Planned)
+
+**Goal:** Create DSPy-aware LM provider that wraps all backends.
+
+**Files:**
+- `crates/lm-router/src/backends/mod.rs` — Backend registry
+- `crates/lm-router/src/dspy_backend.rs` — NEW
+- `crates/dsrs/src/core/lm/lm_router.rs` — NEW
+
+**Tasks:**
+- [ ] Create `LmRouterLM` implementing dsrs `LM` trait
+- [ ] Support signature-based routing (cheap models for simple signatures)
+- [ ] Add signature-aware caching
+- [ ] Integrate with dsrs client registry
+
+### Wave 18: Gateway DSPy Integration (Planned)
+
+**Goal:** Wrap gateway calls in DSPy for structured tasks.
+
+**Files:**
+- `crates/gateway/src/lib.rs` — Gateway module
+- `crates/gateway/src/inference/cerebras.rs` — Cerebras backend
+- `crates/gateway/src/dspy.rs` — NEW
+
+**Tasks:**
+- [ ] Create `GatewayLM` implementing dsrs `LM` trait
+- [ ] Keep raw gateway for unstructured calls
+- [ ] Add `gateway.query_with_signature()` method
+- [ ] Integrate with dsrs tracing
+
+### Wave 19: Autopilot Heuristics → DSPy (Planned)
+
+**Goal:** Replace keyword matching with learned signatures.
+
+**Files:**
+- `crates/autopilot/src/dspy_planning.rs` — `is_complex_task()` heuristics
+- `crates/autopilot/src/dspy_verify.rs` — Status detection
+- `crates/autopilot/src/dspy_optimization.rs` — Validation logic
+
+**Tasks:**
+- [ ] Create `TaskComplexityClassifier` — Replace keyword heuristics
+- [ ] Create `BuildStatusClassifier` — Learn build failure patterns
+- [ ] Create `TestStatusClassifier` — Learn test failure patterns
+- [ ] Create `PathValidationSignature` — Learn valid path patterns
+- [ ] Create `ActionableStepSignature` — Learn actionable language
+- [ ] Wire all to training collection
+
+**New Signatures:**
+```rust
+#[Signature]
+struct TaskComplexityClassifier {
+    /// Classify task complexity for planning depth.
+    #[input] task_description: String,
+    #[input] file_count: u32,
+    #[input] codebase_context: String,
+    #[output] complexity: String,     // Simple/Moderate/Complex/VeryComplex
+    #[output] reasoning: String,
+    #[output] confidence: f32,
+}
+
+#[Signature]
+struct BuildStatusClassifier {
+    /// Classify build output status.
+    #[input] build_output: String,
+    #[input] command: String,
+    #[output] status: String,         // Success/Warning/Error/Fatal
+    #[output] error_type: String,
+    #[output] actionable: bool,
+}
+```
+
+### Wave 20: Agent-Orchestrator & Nexus DSPy (Planned)
+
+**Goal:** Add semantic understanding to event/directive handling.
+
+**Files:**
+- `crates/agent-orchestrator/src/integrations/directives.rs` — Directive parsing
+- `crates/agent-orchestrator/src/integrations/autopilot.rs` — Issue selection
+- `crates/nexus/src/filter.rs` — Event filtering
+- `crates/nexus/src/protocol/nip90.rs` — Job classification
+
+**Tasks:**
+- [ ] Create `DirectiveStatusParser` — Learn status from text
+- [ ] Create `DirectivePriorityClassifier` — Learn priority from context
+- [ ] Create `DirectiveMatchingSignature` — Semantic matching
+- [ ] Create `IssueSelectionSignature` — Learn issue prioritization
+- [ ] Create `EventIntentClassifier` — Classify event intent from content
+- [ ] Create `JobKindClassifier` — Learn NIP-90 job types
+
+**New Signatures:**
+```rust
+#[Signature]
+struct IssueSelectionSignature {
+    /// Select next issue to work on.
+    #[input] open_issues: String,
+    #[input] agent_capabilities: String,
+    #[input] recent_work: String,
+    #[output] selected_issue_id: String,
+    #[output] reasoning: String,
+    #[output] estimated_complexity: String,
+}
+
+#[Signature]
+struct EventIntentClassifier {
+    /// Classify Nostr event intent.
+    #[input] event_kind: u32,
+    #[input] event_content: String,
+    #[input] event_tags: String,
+    #[output] intent: String,
+    #[output] priority: String,
+    #[output] requires_response: bool,
+}
+```
+
+### Wave 21: Marketplace Security DSPy (Planned)
+
+**Goal:** Learn security policies instead of hardcoding.
+
+**Files:**
+- `crates/marketplace/src/skills/execution.rs` — Permission/resource validation
+- `crates/marketplace/src/dspy_security.rs` — NEW
+
+**Tasks:**
+- [ ] Create `FilesystemPermissionSignature` — Learn safe permissions
+- [ ] Create `ResourceLimitSignature` — Learn appropriate limits
+- [ ] Create `SafePathValidationSignature` — Learn path safety patterns
+- [ ] Create `SkillSecurityClassifier` — Classify skill risk level
+- [ ] Add human-in-the-loop for high-risk decisions (Critical/High only)
+
+**Security Policy:**
+- `Low` and `Medium` risk: Execute with audit logging
+- `High` and `Critical` risk: Require human approval
+- All decisions logged for review
+
+**New Signatures:**
+```rust
+#[Signature]
+struct SkillSecurityClassifier {
+    /// Classify security risk of a skill execution.
+    #[input] skill_manifest: String,
+    #[input] requested_permissions: String,
+    #[input] execution_context: String,
+    #[output] risk_level: String,     // Low/Medium/High/Critical
+    #[output] concerns: String,       // JSON array
+    #[output] recommended_sandbox: String,
+    #[output] requires_approval: bool,
+}
+```
+
+---
+
+## Wave 0: Protocol + Schema Registry (Complete)
 
 **Why first:** If you don't do this, every client/provider will drift and "replayability" collapses.
 
@@ -1391,6 +1606,8 @@ For each signature, track:
 - [Kevin Madura: DSPy is All You Need](./transcripts/dspy/dspy-is-all-you-need.md) — Practical tutorial transcript
 
 ### Implementation
+- [Signatures Catalog](./dspy/signatures-catalog.md) — Complete inventory of all DSPy signatures
+- [Integration Guide](./dspy/integration-guide.md) — How to add DSPy to new components
 - [dsrs Crate](../crates/dsrs/) — Rust DSPy implementation (5,771 LOC)
 - [dsrs Documentation](../crates/dsrs/docs/) — Architecture, signatures, retrieval, evaluation
 - [Adjutant DSPy Integration](../crates/adjutant/docs/DSPY-INTEGRATION.md) — Self-improvement system
