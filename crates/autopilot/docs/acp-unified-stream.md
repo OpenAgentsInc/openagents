@@ -4,8 +4,8 @@
 Render Autopilot as a single long-running conversation that streams tokens end-to-end, while still surfacing planning/todo/execution phases. The UI should consume one ACP event stream instead of bespoke DSPy markers or phase-specific buffers.
 
 ## Current State (2026-01)
-- **Adjutant Autopilot loop** emits plain text chunks plus DSPy stage markers (`<<DSPY_STAGE:...>>`) for UI cards.
-- **Coder** parses these markers and renders DSPy stage cards alongside chat output.
+- **Adjutant Autopilot loop** supports both legacy DSPy stage markers (ChannelOutput) and ACP notifications (AcpChannelOutput).
+- **Coder** consumes ACP notifications for Autopilot and can render DSPy stage cards via `_meta.openagents_dspy_stage`.
 - **Autopilot CLI/service** has distinct phase streams (plan/exec/review/fix) and stores per-phase events.
 
 ## Options Considered
