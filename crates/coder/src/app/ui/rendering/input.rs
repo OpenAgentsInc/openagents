@@ -115,7 +115,7 @@ fn render_input(
             &state.session.session_info.session_id
         };
         let mut parts = Vec::new();
-        // Add backend name first
+        // Add current backend name
         use crate::app::config::AgentKindConfig;
         let backend_name = match state.agent_selection.agent {
             AgentKindConfig::Claude => "claude",
@@ -124,12 +124,6 @@ fn render_input(
         parts.push(backend_name.to_string());
         if !model_short.is_empty() {
             parts.push(model_short);
-        }
-        // Add available open models (not Claude SDK since that's already shown)
-        for provider in &state.autopilot.available_providers {
-            if !matches!(provider, adjutant::dspy::lm_config::LmProvider::ClaudeSdk) {
-                parts.push(provider.short_name().to_string());
-            }
         }
         if let Some(summary) = state.catalogs.mcp_status_summary() {
             parts.push(summary);
