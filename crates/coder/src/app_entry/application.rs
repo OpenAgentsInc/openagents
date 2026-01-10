@@ -41,6 +41,7 @@ use crate::app::ui::{
 };
 use crate::app::wallet::WalletState;
 use crate::app::dspy::DspyState;
+use crate::app::nip28::Nip28State;
 use crate::app::{build_input, AppState, HookModalView};
 use crate::commands::parse_command;
 use crate::keybindings::{match_action, Action as KeyAction};
@@ -241,6 +242,7 @@ impl ApplicationHandler for CoderApp {
                 autopilot: AutopilotState::new(oanix_manifest_rx, available_providers),
                 wallet: WalletState::new(),
                 dspy: DspyState::new(),
+                nip28: Nip28State::new(),
                 llama_server_process,
                 show_kitchen_sink: false,
                 kitchen_sink_scroll: 0.0,
@@ -270,6 +272,7 @@ impl ApplicationHandler for CoderApp {
         self.poll_skill_actions();
         self.poll_hook_inspector_actions();
         self.poll_oanix_manifest();
+        self.poll_nip28_events();
         self.poll_autopilot_history();
         self.poll_rate_limits();
 
@@ -1137,6 +1140,7 @@ impl ApplicationHandler for CoderApp {
                                 KeyAction::OpenSettings => state.open_config(),
                                 KeyAction::OpenWallet => state.open_wallet(),
                                 KeyAction::OpenDspy => state.open_dspy(),
+                                KeyAction::OpenNip28 => state.open_nip28(),
                                 KeyAction::ToggleLeftSidebar => state.toggle_left_sidebar(),
                                 KeyAction::ToggleRightSidebar => state.toggle_right_sidebar(),
                                 KeyAction::ToggleSidebars => state.toggle_sidebars(),

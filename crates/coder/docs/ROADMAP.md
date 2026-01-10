@@ -46,6 +46,7 @@ This document outlines the path to 100% implementation of the Claude Agent SDK i
 | Config persistence | Done | Model saved to ~/.openagents/coder/ |
 | Wallet status pane | Done | OANIX identity + Pylon wallet config |
 | DSPy status pane | Done | Sessions + performance + auto-optimizer |
+| NIP-28 chat pane | Done | Public Nostr chat with relay + channel |
 
 ### Not Implemented
 
@@ -913,3 +914,5 @@ pub enum SettingsTab {
 - 2026-01-10 10:47 UTC - Refactored Coder rendering: split the pipeline into `app/ui/rendering/` submodules (base/layout/modals/etc), extracted layout helpers/constants, and delegated `CoderApp::render` to `render_app`.
 - 2026-01-10 11:22 UTC - Split `app.rs` into focused app_entry submodules (application, commands, hooks, settings, state_actions), keeping the entrypoint slim while preserving behavior.
 - 2026-01-10 16:56 UTC - Added DSPy status pane with auto-optimizer controls, keybinding, and command palette entry.
+- 2026-01-10 17:13 UTC - Added NIP-28 chat pane with relay/channel controls, keybinding, and chat input.
+- 2026-01-10 17:34 UTC - Hardened NIP-28 pane with channel id detection, post-auth setup retry, and unit tests.

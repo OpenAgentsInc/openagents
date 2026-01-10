@@ -39,6 +39,11 @@ pub enum Command {
     DspyRefresh,
     DspyAuto(bool),
     DspyBackground(bool),
+    Nip28,
+    Nip28Connect(String),
+    Nip28Channel(String),
+    Nip28Send(String),
+    Nip28Refresh,
     Custom(String, Vec<String>),
 }
 
@@ -245,6 +250,31 @@ const COMMAND_SPECS: &[CommandSpec] = &[
         description: "Enable or disable background optimization",
         requires_args: true,
     },
+    CommandSpec {
+        usage: "/nip28",
+        description: "Open NIP-28 chat",
+        requires_args: false,
+    },
+    CommandSpec {
+        usage: "/nip28 connect <relay_url>",
+        description: "Connect to a Nostr relay for chat",
+        requires_args: true,
+    },
+    CommandSpec {
+        usage: "/nip28 channel <id|name>",
+        description: "Join or create a chat channel",
+        requires_args: true,
+    },
+    CommandSpec {
+        usage: "/nip28 send <message>",
+        description: "Send a chat message",
+        requires_args: true,
+    },
+    CommandSpec {
+        usage: "/nip28 refresh",
+        description: "Reconnect and resubscribe to chat",
+        requires_args: false,
+    },
 ];
 
 pub fn command_specs() -> &'static [CommandSpec] {
@@ -286,6 +316,7 @@ pub fn parse_command(input: &str) -> Option<Command> {
         "hooks" => parse_hooks_command(args),
         "wallet" => parse_wallet_command(args),
         "dspy" => parse_dspy_command(args),
+        "nip28" => parse_nip28_command(args),
         _ => Command::Custom(command, args),
     };
 
@@ -314,6 +345,28 @@ fn parse_dspy_command(args: Vec<String>) -> Command {
             .map(Command::DspyBackground)
             .unwrap_or(Command::Dspy),
         Some(other) => Command::Custom(format!("dspy {}", other), parts.collect()),
+    }
+}
+
+fn parse_nip28_command(args: Vec<String>) -> Command {
+    let mut parts = args.into_iter();
+    match parts.next().as_deref() {
+        None => Command::Nip28,
+        Some("open") => Command::Nip28,
+        Some("refresh") => Command::Nip28Refresh,
+        Some("connect") => {
+            let relay = parts.collect::<Vec<String>>().join(" ");
+            Command::Nip28Connect(relay)
+        }
+        Some("channel") => {
+            let channel = parts.collect::<Vec<String>>().join(" ");
+            Command::Nip28Channel(channel)
+        }
+        Some("send") => {
+            let message = parts.collect::<Vec<String>>().join(" ");
+            Command::Nip28Send(message)
+        }
+        Some(other) => Command::Custom(format!("nip28 {}", other), parts.collect()),
     }
 }
 
