@@ -124,6 +124,12 @@ dsrs (Rust DSPy) is now integrated into the OpenAgents workspace at `crates/dsrs
   - RetrievalRouterPipeline - Route to appropriate lane (ripgrep/lsp/semantic/git)
   - CandidateRerankPipeline - LLM-based reranking
   - 9 pipeline tests passing
+- [x] **Adjutant Decision Pipelines** (`crates/adjutant/src/dspy/decision_pipelines.rs`)
+  - ComplexityPipeline - Classify task complexity (Low/Medium/High/VeryHigh)
+  - DelegationPipeline - Decide whether/where to delegate (claude_code/rlm/local_tools)
+  - RlmTriggerPipeline - Decide whether to use RLM for deep analysis
+  - Wired into Adjutant.execute() with DSPy-first + legacy fallback
+  - 31 tests passing
 
 ---
 

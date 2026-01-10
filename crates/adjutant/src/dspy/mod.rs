@@ -10,12 +10,15 @@
 //! - **metrics**: Evaluation metrics for each phase
 //! - **training**: Training data collection and storage
 //! - **lm_config**: Cerebras LM configuration for dsrs
+//! - **decision_pipelines**: Decision signatures and pipeline wrappers for routing (complexity, delegation, RLM trigger)
 
+pub mod decision_pipelines;
 pub mod lm_config;
 pub mod metrics;
 pub mod module;
 pub mod training;
 
+pub use decision_pipelines::*;
 pub use lm_config::*;
 pub use metrics::*;
 pub use module::*;
