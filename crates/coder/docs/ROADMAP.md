@@ -906,3 +906,4 @@ pub enum SettingsTab {
 - 2026-01-09 13:24 UTC - Built tabbed settings modal with search, permissions/MCP/hooks/keyboard controls, keybinding capture, and theme-aware UI updates.
 - 2026-01-09 - Implemented true Autopilot loop (`autopilot_loop.rs`): autonomous execution that loops Adjutant until task succeeds with verification (cargo check + cargo test), definitive failure, max iterations (10), or user interrupt (Escape).
 - 2026-01-10 10:47 UTC - Refactored Coder rendering: moved the render pipeline into `app/ui/rendering.rs`, extracted layout helpers/constants, and delegated `CoderApp::render` to `render_app`.
+- 2026-01-10 11:22 UTC - Split `app.rs` into focused app_entry submodules (application, commands, hooks, settings, state_actions), keeping the entrypoint slim while preserving behavior.
