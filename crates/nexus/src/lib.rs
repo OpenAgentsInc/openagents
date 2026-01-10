@@ -26,6 +26,7 @@
 //!
 //! See [README.md](../README.md) for deployment options and documentation.
 
+pub mod dspy;
 pub mod filter;
 pub mod protocol;
 

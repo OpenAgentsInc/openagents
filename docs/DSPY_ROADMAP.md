@@ -303,7 +303,7 @@ struct BuildStatusClassifier {
 }
 ```
 
-### Wave 20: Agent-Orchestrator & Nexus DSPy (Planned)
+### Wave 20: Agent-Orchestrator & Nexus DSPy (Complete)
 
 **Goal:** Add semantic understanding to event/directive handling.
 
@@ -314,12 +314,12 @@ struct BuildStatusClassifier {
 - `crates/nexus/src/protocol/nip90.rs` — Job classification
 
 **Tasks:**
-- [ ] Create `DirectiveStatusParser` — Learn status from text
-- [ ] Create `DirectivePriorityClassifier` — Learn priority from context
-- [ ] Create `DirectiveMatchingSignature` — Semantic matching
-- [ ] Create `IssueSelectionSignature` — Learn issue prioritization
-- [ ] Create `EventIntentClassifier` — Classify event intent from content
-- [ ] Create `JobKindClassifier` — Learn NIP-90 job types
+- [x] Create `DirectiveStatusParser` — Learn status from text
+- [x] Create `DirectivePriorityClassifier` — Learn priority from context
+- [x] Create `DirectiveMatchingSignature` — Semantic matching
+- [x] Create `IssueSelectionSignature` — Learn issue prioritization
+- [x] Create `EventIntentClassifier` — Classify event intent from content
+- [x] Create `JobKindClassifier` — Learn NIP-90 job types
 
 **New Signatures:**
 ```rust

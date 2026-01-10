@@ -1,7 +1,77 @@
 use crate::error::{Error, Result};
+use dsrs::{example, Predict, Prediction, Predictor, Signature, GLOBAL_SETTINGS};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::future::Future;
+use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::{Path, PathBuf};
+
+// ============================================================================
+// DSPy Signatures
+// ============================================================================
+
+#[Signature]
+struct DirectiveStatusParser {
+    /// Parse directive status from text.
+
+    /// Directive content (including frontmatter if available)
+    #[input]
+    directive_text: String,
+
+    /// Status: Active/Pending/Complete/Blocked
+    #[output]
+    status: String,
+
+    /// Confidence in the classification
+    #[output]
+    confidence: f32,
+}
+
+#[Signature]
+struct DirectivePriorityClassifier {
+    /// Classify directive priority from context.
+
+    /// Directive content
+    #[input]
+    directive_text: String,
+
+    /// Additional context (frontmatter, title, metadata)
+    #[input]
+    context: String,
+
+    /// Priority: Critical/High/Medium/Low
+    #[output]
+    priority: String,
+
+    /// Rationale for the priority
+    #[output]
+    reasoning: String,
+}
+
+#[Signature]
+struct DirectiveMatchingSignature {
+    /// Semantic matching between directive and a query.
+
+    /// Directive title or summary
+    #[input]
+    directive_text: String,
+
+    /// Query or keyword list
+    #[input]
+    query: String,
+
+    /// Whether this directive matches the query
+    #[output]
+    matches: bool,
+
+    /// Confidence in the match
+    #[output]
+    confidence: f32,
+
+    /// Matching rationale
+    #[output]
+    reasoning: String,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum DirectiveStatus {
@@ -134,17 +204,27 @@ impl DirectiveContext {
             .unwrap_or_default()
             .to_string();
 
-        let status = frontmatter
+        let status_fallback = frontmatter
             .get("status")
             .and_then(|v| v.as_str())
             .map(parse_status)
             .unwrap_or_default();
 
-        let priority = frontmatter
+        let priority_fallback = frontmatter
             .get("priority")
             .and_then(|v| v.as_str())
             .map(parse_priority)
             .unwrap_or_default();
+
+        let status = match Self::classify_status(&content).await {
+            Some((status, confidence)) if confidence >= 0.6 => status,
+            _ => status_fallback,
+        };
+
+        let priority_context = Self::build_priority_context(&title, &content, &frontmatter);
+        let priority = Self::classify_priority(&content, &priority_context)
+            .await
+            .unwrap_or(priority_fallback);
 
         let created = frontmatter
             .get("created")
@@ -165,6 +245,49 @@ impl DirectiveContext {
             updated,
             file_path: path.to_path_buf(),
         })
+    }
+
+    async fn classify_status(content: &str) -> Option<(DirectiveStatus, f32)> {
+        if !dspy_ready() {
+            return None;
+        }
+
+        let parser = Predict::new(DirectiveStatusParser::new());
+        let example = example! {
+            "directive_text": "input" => content.to_string(),
+        };
+
+        let prediction = parser.forward(example).await.ok()?;
+        let status_label = get_string(&prediction, "status");
+        let confidence = get_f32(&prediction, "confidence");
+
+        Some((status_from_label(&status_label), confidence))
+    }
+
+    async fn classify_priority(content: &str, context: &str) -> Option<DirectivePriority> {
+        if !dspy_ready() {
+            return None;
+        }
+
+        let classifier = Predict::new(DirectivePriorityClassifier::new());
+        let example = example! {
+            "directive_text": "input" => content.to_string(),
+            "context": "input" => context.to_string(),
+        };
+
+        let prediction = classifier.forward(example).await.ok()?;
+        let priority_label = get_string(&prediction, "priority");
+
+        Some(priority_from_label(&priority_label))
+    }
+
+    fn build_priority_context(
+        title: &str,
+        _content: &str,
+        frontmatter: &HashMap<String, serde_yaml::Value>,
+    ) -> String {
+        let frontmatter_text = serde_yaml::to_string(frontmatter).unwrap_or_default();
+        format!("title: {}\nfrontmatter:\n{}", title, frontmatter_text)
     }
 
     pub fn format_for_context(&self) -> String {
@@ -216,12 +339,41 @@ impl DirectiveContext {
     }
 
     pub fn find_related(&self, keywords: &[&str]) -> Option<&DirectiveSummary> {
+        let query = keywords.join(" ");
+        if let Some(found) = self.find_related_dspy(&query) {
+            return Some(found);
+        }
+
         self.active_directives.iter().find(|d| {
             let title_lower = d.title.to_lowercase();
             keywords
                 .iter()
                 .any(|k| title_lower.contains(&k.to_lowercase()))
         })
+    }
+
+    fn find_related_dspy(&self, query: &str) -> Option<&DirectiveSummary> {
+        if !dspy_ready() {
+            return None;
+        }
+
+        let matcher = Predict::new(DirectiveMatchingSignature::new());
+        for directive in &self.active_directives {
+            let example = example! {
+                "directive_text": "input" => directive.title.clone(),
+                "query": "input" => query.to_string(),
+            };
+
+            let prediction = run_prediction(matcher.forward(example))?;
+            let matches = prediction_bool(&prediction, "matches")?;
+            let confidence = get_f32(&prediction, "confidence");
+
+            if matches && confidence >= 0.5 {
+                return Some(directive);
+            }
+        }
+
+        None
     }
 
     pub fn get_by_id(&self, id: &str) -> Option<&DirectiveSummary> {
@@ -234,6 +386,69 @@ impl DirectiveContext {
 
     pub fn active_count(&self) -> usize {
         self.active_directives.len()
+    }
+}
+
+fn dspy_ready() -> bool {
+    GLOBAL_SETTINGS.read().unwrap().is_some()
+}
+
+fn run_prediction<F>(future: F) -> Option<Prediction>
+where
+    F: Future<Output = std::result::Result<Prediction, anyhow::Error>>,
+{
+    if !dspy_ready() {
+        return None;
+    }
+
+    let result = if let Ok(handle) = tokio::runtime::Handle::try_current() {
+        catch_unwind(AssertUnwindSafe(|| {
+            tokio::task::block_in_place(|| handle.block_on(future))
+        }))
+    } else if let Ok(runtime) = tokio::runtime::Runtime::new() {
+        catch_unwind(AssertUnwindSafe(|| runtime.block_on(future)))
+    } else {
+        return None;
+    };
+
+    match result {
+        Ok(Ok(prediction)) => Some(prediction),
+        _ => None,
+    }
+}
+
+fn get_string(prediction: &Prediction, key: &str) -> String {
+    let val = prediction.get(key, None);
+    if let Some(s) = val.as_str() {
+        s.to_string()
+    } else {
+        val.to_string().trim_matches('"').to_string()
+    }
+}
+
+fn get_f32(prediction: &Prediction, key: &str) -> f32 {
+    let val = prediction.get(key, None);
+    if let Some(n) = val.as_f64() {
+        n as f32
+    } else if let Some(s) = val.as_str() {
+        s.parse().unwrap_or(0.0)
+    } else {
+        0.0
+    }
+}
+
+fn prediction_bool(prediction: &Prediction, key: &str) -> Option<bool> {
+    let val = prediction.get(key, None);
+    if let Some(b) = val.as_bool() {
+        Some(b)
+    } else if let Some(s) = val.as_str() {
+        match s.to_lowercase().as_str() {
+            "true" | "yes" | "1" => Some(true),
+            "false" | "no" | "0" => Some(false),
+            _ => None,
+        }
+    } else {
+        None
     }
 }
 
@@ -263,16 +478,24 @@ fn extract_yaml_frontmatter(content: &str) -> Result<HashMap<String, serde_yaml:
 }
 
 fn parse_status(s: &str) -> DirectiveStatus {
+    status_from_label(s)
+}
+
+fn parse_priority(s: &str) -> DirectivePriority {
+    priority_from_label(s)
+}
+
+fn status_from_label(s: &str) -> DirectiveStatus {
     match s.to_lowercase().as_str() {
-        "active" => DirectiveStatus::Active,
-        "completed" | "done" => DirectiveStatus::Completed,
+        "active" | "pending" => DirectiveStatus::Active,
+        "complete" | "completed" | "done" => DirectiveStatus::Completed,
         "blocked" => DirectiveStatus::Blocked,
         "paused" | "on-hold" => DirectiveStatus::Paused,
         _ => DirectiveStatus::Active,
     }
 }
 
-fn parse_priority(s: &str) -> DirectivePriority {
+fn priority_from_label(s: &str) -> DirectivePriority {
     match s.to_lowercase().as_str() {
         "critical" | "urgent" => DirectivePriority::Critical,
         "high" => DirectivePriority::High,
