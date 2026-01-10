@@ -306,7 +306,7 @@ impl Adapter for ChatAdapter {
         if lm.cache
             && let Some(cache) = lm.cache_handler.as_ref()
         {
-            if let Some(cached) = cache.lock().await.get(cache_key).await? {
+            if let Some(cached) = cache.lock().await.get(cache_key.clone()).await? {
                 return Ok(cached);
             }
         }
