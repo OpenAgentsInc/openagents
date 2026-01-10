@@ -9895,16 +9895,25 @@ impl CoderApp {
             }
         }
 
-        // Kitchen sink storybook overlay
+        // Kitchen sink storybook overlay (clipped to exclude input area)
         if state.show_kitchen_sink {
+            let input_area_height = INPUT_HEIGHT + INPUT_PADDING + STATUS_BAR_HEIGHT;
+            let kitchen_sink_bounds = Bounds::new(
+                bounds.origin.x,
+                bounds.origin.y,
+                bounds.size.width,
+                bounds.size.height - input_area_height,
+            );
+            scene.push_clip(kitchen_sink_bounds);
             paint_kitchen_sink(
-                bounds,
+                kitchen_sink_bounds,
                 &mut scene,
                 &mut state.text_system,
                 scale_factor,
                 state.kitchen_sink_scroll,
                 &palette,
             );
+            scene.pop_clip();
         }
 
         if state.command_palette.is_open() {
