@@ -120,6 +120,12 @@ pub struct IssueSummary {
     pub number: u32,
     /// Issue title
     pub title: String,
+    /// Issue description (for staleness checks)
+    #[serde(default)]
+    pub description: Option<String>,
+    /// Issue type (bug, feature, task)
+    #[serde(default)]
+    pub issue_type: Option<String>,
     /// Status (open, in_progress, completed)
     pub status: String,
     /// Priority
@@ -128,6 +134,15 @@ pub struct IssueSummary {
     pub is_blocked: bool,
     /// Reason for being blocked (if any)
     pub blocked_reason: Option<String>,
+    /// When the issue was created (ISO-8601)
+    #[serde(default)]
+    pub created_at: Option<String>,
+    /// When the issue was last updated (ISO-8601)
+    #[serde(default)]
+    pub updated_at: Option<String>,
+    /// When the issue was last validated by an agent (ISO-8601)
+    #[serde(default)]
+    pub last_checked: Option<String>,
 }
 
 /// Hardware manifest - CPU, RAM, GPU.
