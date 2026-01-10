@@ -88,6 +88,8 @@ fn render_help_modal(
                 KeyAction::OpenIssueTracker,
                 "Ctrl+Shift+A",
             );
+            let rlm_key =
+                keybinding_labels(&state.settings.keybindings, KeyAction::OpenRlm, "Ctrl+Shift+R");
             let dspy_key =
                 keybinding_labels(&state.settings.keybindings, KeyAction::OpenDspy, "Ctrl+Shift+D");
             let nip28_key =
@@ -129,6 +131,7 @@ fn render_help_modal(
                         format!("{} - Directives", directives_key),
                         format!("{} - Issues", issues_key),
                         format!("{} - Issue tracker", tracker_key),
+                        format!("{} - RLM runs", rlm_key),
                         format!("{} - DSPy status", dspy_key),
                         format!("{} - NIP-28 chat", nip28_key),
                         format!("{} - Toggle left sidebar", left_sidebar),
@@ -247,6 +250,12 @@ fn render_help_modal(
                     vec![
                         "/issue-tracker - open tracker; /issue-tracker refresh - refresh"
                             .to_string(),
+                    ],
+                ),
+                (
+                    "RLM Runs",
+                    vec![
+                        "/rlm - open run history; /rlm refresh - refresh".to_string(),
                     ],
                 ),
                 (

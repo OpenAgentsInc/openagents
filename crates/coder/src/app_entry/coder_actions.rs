@@ -1363,6 +1363,10 @@ impl CoderApp {
                 state.open_issue_tracker();
                 None
             }
+            command_palette_ids::RLM_OPEN => {
+                state.open_rlm();
+                None
+            }
             command_palette_ids::DSPY_OPEN => {
                 state.open_dspy();
                 None

@@ -59,6 +59,8 @@ pub enum Command {
     IssuesRefresh,
     AutopilotIssues,
     AutopilotIssuesRefresh,
+    Rlm,
+    RlmRefresh,
     Dspy,
     DspyRefresh,
     DspyAuto(bool),
@@ -365,6 +367,16 @@ const COMMAND_SPECS: &[CommandSpec] = &[
         requires_args: false,
     },
     CommandSpec {
+        usage: "/rlm",
+        description: "Open RLM run history",
+        requires_args: false,
+    },
+    CommandSpec {
+        usage: "/rlm refresh",
+        description: "Refresh RLM run history",
+        requires_args: false,
+    },
+    CommandSpec {
         usage: "/issues",
         description: "Open workspace issues",
         requires_args: false,
@@ -468,6 +480,7 @@ pub fn parse_command(input: &str) -> Option<Command> {
         "oanix" => parse_oanix_command(args),
         "directives" | "directive" => parse_directives_command(args),
         "issue-tracker" | "autopilot-issues" | "issue-db" => parse_issue_tracker_command(args),
+        "rlm" => parse_rlm_command(args),
         "issues" => parse_issues_command(args),
         "dspy" => parse_dspy_command(args),
         "nip28" => parse_nip28_command(args),
@@ -589,6 +602,15 @@ fn parse_issue_tracker_command(args: Vec<String>) -> Command {
         Some("refresh") => Command::AutopilotIssuesRefresh,
         Some("status") => Command::AutopilotIssues,
         _ => Command::AutopilotIssues,
+    }
+}
+
+fn parse_rlm_command(args: Vec<String>) -> Command {
+    let mut parts = args.into_iter();
+    match parts.next().as_deref() {
+        Some("refresh") => Command::RlmRefresh,
+        Some("status") => Command::Rlm,
+        _ => Command::Rlm,
     }
 }
 

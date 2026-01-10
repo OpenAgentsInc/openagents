@@ -16,6 +16,7 @@ pub enum Action {
     OpenDirectives,
     OpenIssues,
     OpenIssueTracker,
+    OpenRlm,
     OpenDspy,
     OpenNip28,
     ToggleLeftSidebar,
@@ -53,6 +54,7 @@ impl Action {
             Action::OpenDirectives,
             Action::OpenIssues,
             Action::OpenIssueTracker,
+            Action::OpenRlm,
             Action::OpenDspy,
             Action::OpenNip28,
             Action::ToggleLeftSidebar,
@@ -77,6 +79,7 @@ impl Action {
             Action::OpenDirectives => "directives",
             Action::OpenIssues => "issues",
             Action::OpenIssueTracker => "issue_tracker",
+            Action::OpenRlm => "rlm",
             Action::OpenDspy => "dspy",
             Action::OpenNip28 => "nip28",
             Action::ToggleLeftSidebar => "sidebar_left",
@@ -101,6 +104,7 @@ impl Action {
             Action::OpenDirectives => "Open workspace directives",
             Action::OpenIssues => "Open workspace issues",
             Action::OpenIssueTracker => "Open issue tracker",
+            Action::OpenRlm => "Open RLM runs",
             Action::OpenDspy => "Open DSPy",
             Action::OpenNip28 => "Open NIP-28 chat",
             Action::ToggleLeftSidebar => "Toggle left sidebar",
@@ -125,6 +129,7 @@ impl Action {
             "directives" => Some(Action::OpenDirectives),
             "issues" => Some(Action::OpenIssues),
             "issue_tracker" => Some(Action::OpenIssueTracker),
+            "rlm" => Some(Action::OpenRlm),
             "dspy" => Some(Action::OpenDspy),
             "nip28" => Some(Action::OpenNip28),
             "sidebar_left" => Some(Action::ToggleLeftSidebar),
@@ -250,6 +255,15 @@ pub fn default_keybindings() -> Vec<Keybinding> {
                 ..Default::default()
             },
             action: Action::OpenIssueTracker,
+        },
+        Keybinding {
+            key: Key::Character("r".to_string()),
+            modifiers: Modifiers {
+                ctrl: true,
+                shift: true,
+                ..Default::default()
+            },
+            action: Action::OpenRlm,
         },
         Keybinding {
             key: Key::Character("i".to_string()),
@@ -391,6 +405,15 @@ pub fn default_keybindings() -> Vec<Keybinding> {
                 ..Default::default()
             },
             action: Action::OpenIssueTracker,
+        },
+        Keybinding {
+            key: Key::Character("r".to_string()),
+            modifiers: Modifiers {
+                meta: true,
+                shift: true,
+                ..Default::default()
+            },
+            action: Action::OpenRlm,
         },
         Keybinding {
             key: Key::Character("i".to_string()),
