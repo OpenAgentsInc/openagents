@@ -6,6 +6,7 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
+use async_trait::async_trait;
 use futures::StreamExt;
 use serde_json::Value;
 use tokio::sync::{mpsc, oneshot};
@@ -165,6 +166,7 @@ impl ClaudeSession {
     }
 }
 
+#[async_trait]
 impl AgentSession for ClaudeSession {
     async fn prompt(&mut self, text: &str) -> anyhow::Result<()> {
         let mut options = QueryOptions::new()
@@ -197,13 +199,10 @@ impl AgentSession for ClaudeSession {
         options.max_thinking_tokens = self.config.max_thinking_tokens;
         options.persist_session = self.config.persist_session;
 
-        if !self.config.mcp_servers.is_empty() {
-            options.mcp_servers = self.config.mcp_servers.clone();
-        }
-
-        if !self.config.agents.is_empty() {
-            options.agents = self.config.agents.clone();
-        }
+        // Note: mcp_servers and agents in AgentConfig are Vec<Value>
+        // but QueryOptions expects HashMap<String, McpServerConfig/AgentDefinition>.
+        // Conversion will be added when we fully integrate the agent backends.
+        // For now, these are passed through the main coder_actions.rs flow.
 
         // Use bypass permissions for now - the full permission handling
         // will be added when we refactor coder_actions.rs
@@ -238,7 +237,7 @@ impl AgentSession for ClaudeSession {
 
     async fn mcp_server_status(&mut self) -> anyhow::Result<serde_json::Value> {
         if let Some(stream) = &mut self.stream {
-            stream.mcp_server_status().await
+            stream.mcp_server_status().await.map_err(|e| anyhow::anyhow!("{}", e))
         } else {
             Ok(serde_json::json!({}))
         }
@@ -246,7 +245,7 @@ impl AgentSession for ClaudeSession {
 
     async fn rewind_files(&mut self, user_message_id: &str) -> anyhow::Result<()> {
         if let Some(stream) = &mut self.stream {
-            stream.rewind_files(user_message_id).await
+            stream.rewind_files(user_message_id).await.map_err(|e| anyhow::anyhow!("{}", e))
         } else {
             Ok(())
         }

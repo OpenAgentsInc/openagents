@@ -16,6 +16,18 @@ use winit::keyboard::{Key as WinitKey, ModifiersState, NamedKey as WinitNamedKey
 use winit::window::{CursorIcon, Window, WindowId};
 
 use crate::app::autopilot::AutopilotState;
+use crate::app::autopilot_issues::AutopilotIssuesState;
+use crate::app::dspy::DspyState;
+use crate::app::dvm::DvmState;
+use crate::app::gateway::GatewayState;
+use crate::app::lm_router::LmRouterState;
+use crate::app::nexus::NexusState;
+use crate::app::nip28::Nip28State;
+use crate::app::nip90::Nip90State;
+use crate::app::pylon_earnings::PylonEarningsState;
+use crate::app::rlm::{RlmState, RlmTraceState};
+use crate::app::spark_wallet::SparkWalletState;
+use crate::app::wallet::WalletState;
 use crate::app::catalog::{
     load_agent_entries, load_hook_config, load_hook_scripts, load_mcp_project_servers,
     load_skill_entries, CatalogState,
@@ -237,6 +249,19 @@ impl ApplicationHandler for CoderApp {
                     permission_config.bash_deny_patterns,
                 ),
                 autopilot: AutopilotState::new(oanix_manifest_rx, available_providers),
+                autopilot_issues: AutopilotIssuesState::default(),
+                rlm: RlmState::default(),
+                rlm_trace: RlmTraceState::default(),
+                pylon_earnings: PylonEarningsState::default(),
+                wallet: WalletState::new(),
+                dspy: DspyState::new(),
+                dvm: DvmState::default(),
+                gateway: GatewayState::default(),
+                lm_router: LmRouterState::default(),
+                nexus: NexusState::default(),
+                spark_wallet: SparkWalletState::default(),
+                nip28: Nip28State::default(),
+                nip90: Nip90State::default(),
                 llama_server_process,
                 show_kitchen_sink: false,
                 kitchen_sink_scroll: 0.0,
@@ -1134,6 +1159,21 @@ impl ApplicationHandler for CoderApp {
                                 KeyAction::ToggleLeftSidebar => state.toggle_left_sidebar(),
                                 KeyAction::ToggleRightSidebar => state.toggle_right_sidebar(),
                                 KeyAction::ToggleSidebars => state.toggle_sidebars(),
+                                KeyAction::OpenWallet => state.modal_state = ModalState::Wallet,
+                                KeyAction::OpenDvm => state.modal_state = ModalState::DvmProviders,
+                                KeyAction::OpenGateway => state.modal_state = ModalState::Gateway,
+                                KeyAction::OpenLmRouter => state.modal_state = ModalState::LmRouter,
+                                KeyAction::OpenNexus => state.modal_state = ModalState::Nexus,
+                                KeyAction::OpenSparkWallet => state.modal_state = ModalState::SparkWallet,
+                                KeyAction::OpenNip90 => state.modal_state = ModalState::Nip90Jobs,
+                                KeyAction::OpenOanix => state.modal_state = ModalState::Oanix,
+                                KeyAction::OpenDirectives => state.modal_state = ModalState::Directives,
+                                KeyAction::OpenIssues | KeyAction::OpenIssueTracker => state.modal_state = ModalState::Issues,
+                                KeyAction::OpenRlm => state.modal_state = ModalState::Rlm,
+                                KeyAction::OpenRlmTrace => state.modal_state = ModalState::RlmTrace,
+                                KeyAction::OpenPylonEarnings => state.modal_state = ModalState::PylonEarnings,
+                                KeyAction::OpenDspy => state.modal_state = ModalState::Dspy,
+                                KeyAction::OpenNip28 => state.modal_state = ModalState::Nip28Chat,
                             }
                             state.window.request_redraw();
                             return;
