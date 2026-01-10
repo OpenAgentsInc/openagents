@@ -346,7 +346,7 @@ struct EventIntentClassifier {
 }
 ```
 
-### Wave 21: Marketplace Security DSPy (Planned)
+### Wave 21: Marketplace Security DSPy (Complete)
 
 **Goal:** Learn security policies instead of hardcoding.
 
@@ -355,11 +355,11 @@ struct EventIntentClassifier {
 - `crates/marketplace/src/dspy_security.rs` — NEW
 
 **Tasks:**
-- [ ] Create `FilesystemPermissionSignature` — Learn safe permissions
-- [ ] Create `ResourceLimitSignature` — Learn appropriate limits
-- [ ] Create `SafePathValidationSignature` — Learn path safety patterns
-- [ ] Create `SkillSecurityClassifier` — Classify skill risk level
-- [ ] Add human-in-the-loop for high-risk decisions (Critical/High only)
+- [x] Create `FilesystemPermissionSignature` — Learn safe permissions
+- [x] Create `ResourceLimitSignature` — Learn appropriate limits
+- [x] Create `SafePathValidationSignature` — Learn path safety patterns
+- [x] Create `SkillSecurityClassifier` — Classify skill risk level
+- [x] Add human-in-the-loop for high-risk decisions (Critical/High only)
 
 **Security Policy:**
 - `Low` and `Medium` risk: Execute with audit logging

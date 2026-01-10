@@ -30,6 +30,7 @@ pub mod data_contribution;
 pub mod db;
 pub mod discovery;
 pub mod disputes;
+pub mod dspy_security;
 pub mod dvm;
 pub mod geo_routing;
 pub mod job_routing;
@@ -103,6 +104,9 @@ pub use discovery::{SearchFilters, SkillListing, SortOrder, discover_local_skill
 pub use disputes::{
     Dispute, DisputeError, DisputeResolution, DisputeStatus, DisputeType, Evidence, EvidenceType,
     RefundMethod, RefundRequest, RefundResult, RefundStatus, RefundTrigger, ResolutionDecision,
+};
+pub use dspy_security::{
+    PermissionDecision, ResourceLimitDecision, RiskLevel, SafePathDecision, SkillSecurityDecision,
 };
 pub use dvm::{DvmJobRequest, DvmJobResult, DvmOffer, DvmResultStatus, DvmTag};
 pub use geo_routing::{DataResidencyPolicy, GeoLocation, GeoRoutingPolicy, OrgGeoPolicy, Region};

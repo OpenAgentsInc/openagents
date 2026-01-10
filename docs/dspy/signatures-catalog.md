@@ -52,10 +52,10 @@ DSPy signatures are typed input/output contracts for LLM tasks. Each signature:
 | **20** | agent-orchestrator | IssueSelectionSignature | Prioritize issues | Complete |
 | **20** | nexus | EventIntentClassifier | Classify event intent | Complete |
 | **20** | nexus | JobKindClassifier | Classify NIP-90 job types | Complete |
-| **21** | marketplace | SkillSecurityClassifier | Classify skill risk | Planned |
-| **21** | marketplace | FilesystemPermissionSignature | Learn safe permissions | Planned |
-| **21** | marketplace | ResourceLimitSignature | Learn resource limits | Planned |
-| **21** | marketplace | SafePathValidationSignature | Learn path safety | Planned |
+| **21** | marketplace | SkillSecurityClassifier | Classify skill risk | Complete |
+| **21** | marketplace | FilesystemPermissionSignature | Learn safe permissions | Complete |
+| **21** | marketplace | ResourceLimitSignature | Learn resource limits | Complete |
+| **21** | marketplace | SafePathValidationSignature | Learn path safety | Complete |
 
 ---
 
