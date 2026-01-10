@@ -122,7 +122,8 @@ fn render_input(
             AgentKindConfig::Codex => "codex",
         };
         parts.push(backend_name.to_string());
-        if !model_short.is_empty() {
+        // Only show model for Claude backend (Codex uses its own model selection)
+        if matches!(state.agent_selection.agent, AgentKindConfig::Claude) && !model_short.is_empty() {
             parts.push(model_short);
         }
         if let Some(summary) = state.catalogs.mcp_status_summary() {

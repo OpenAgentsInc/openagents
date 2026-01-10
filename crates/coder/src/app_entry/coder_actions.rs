@@ -531,16 +531,8 @@ impl CoderApp {
 
         // Get window handle for triggering redraws from async task
         let window = state.window.clone();
-        // Don't pass Claude model to Codex - Codex uses its own OAuth and default model
-        let resume_session = state.session.pending_resume_session
-            .take()
-            .or_else(|| {
-                if state.session.session_info.session_id.trim().is_empty() {
-                    None
-                } else {
-                    Some(state.session.session_info.session_id.clone())
-                }
-            });
+        // Don't try to resume Codex with Claude session IDs - they're incompatible
+        // TODO: Track Codex thread IDs separately if resume is needed
         let permission_mode = Some(state.permissions.coder_mode.to_sdk_permission_mode());
 
         // Spawn async Codex query task
@@ -573,12 +565,8 @@ impl CoderApp {
                 thread_options = thread_options.approval_policy(approval);
             }
 
-            // Create or resume thread
-            let mut thread = if let Some(ref resume_id) = resume_session {
-                codex.resume_thread(resume_id, thread_options)
-            } else {
-                codex.start_thread(thread_options)
-            };
+            // Create new thread (resume not supported yet for Codex)
+            let mut thread = codex.start_thread(thread_options);
 
             // Start streaming turn
             let turn_options = TurnOptions::default();
