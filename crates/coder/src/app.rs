@@ -68,19 +68,33 @@ use crate::commands::{parse_command, Command};
 use crate::keybindings::{default_keybindings, match_action, Action as KeyAction, Keybinding};
 use crate::panels::PanelLayout;
 
+mod chat;
 mod config;
+mod events;
 mod parsing;
+mod session;
+mod tools;
 mod ui;
 
+use chat::{
+    ChatLayout, ChatLineLayout, ChatMessage, ChatSelection, ChatSelectionPoint, InlineToolsLayout,
+    MessageLayout, MessageLayoutBuilder, MessageMetadata, MessageRole,
+};
 use config::{
     config_dir, config_file, hook_config_file, keybindings_file, mcp_project_file,
     permission_config_file, session_index_file, session_messages_dir, session_messages_file,
-    sessions_dir,
+    sessions_dir, CoderSettings, SettingsItem, SettingsRow, SettingsTab, StoredKeybinding,
+    StoredModifiers,
 };
+pub use events::CoderMode;
+use events::{CommandAction, ModalState, QueryControl, ResponseEvent};
 use parsing::{
     build_context_injection, build_todo_context, expand_prompt_text, first_nonempty_line,
     frontmatter_list, frontmatter_scalar, parse_frontmatter, Frontmatter,
 };
+use session::{CheckpointEntry, RateLimitInfo, RateLimits, SessionEntry, SessionInfo,
+    SessionUsageStats, StoredMessage};
+use tools::{DspyStageLayout, DspyStageVisualization, ToolDetail, ToolPanelBlock, ToolVisualization};
 use ui::{palette_for, theme_label, split_into_words_for_layout, wrap_text, ThemeSetting, UiPalette};
 
 fn selection_point_cmp(a: &ChatSelectionPoint, b: &ChatSelectionPoint) -> std::cmp::Ordering {
@@ -912,187 +926,6 @@ const TOOL_PANEL_GAP: f32 = 8.0;
 const TOOL_HISTORY_LIMIT: usize = 100;
 const TOOL_SEARCH_MATCH_LIMIT: usize = 200;
 
-/// Message role in the conversation
-#[derive(Clone, Copy, PartialEq)]
-enum MessageRole {
-    User,
-    Assistant,
-}
-
-/// Metadata about a message response
-#[derive(Clone, Default)]
-struct MessageMetadata {
-    /// Model used to generate response
-    model: Option<String>,
-    /// Input tokens
-    input_tokens: Option<u64>,
-    /// Output tokens
-    output_tokens: Option<u64>,
-    /// Generation time in milliseconds
-    duration_ms: Option<u64>,
-    /// Cost in millisatoshis (if applicable)
-    cost_msats: Option<u64>,
-}
-
-/// Session-level usage stats for Claude API
-#[derive(Default, Clone)]
-struct SessionUsageStats {
-    input_tokens: u64,
-    output_tokens: u64,
-    total_cost_usd: f64,
-    duration_ms: u64,
-    num_turns: u32,
-}
-
-/// Rate limit window info
-#[derive(Clone, Default)]
-struct RateLimitInfo {
-    name: String,
-    percent_used: f64,
-    resets_at: String,
-}
-
-/// Cached rate limits from API
-#[derive(Default, Clone)]
-struct RateLimits {
-    primary: Option<RateLimitInfo>,
-    secondary: Option<RateLimitInfo>,
-}
-
-/// A chat message
-struct ChatMessage {
-    role: MessageRole,
-    content: String,
-    /// Parsed markdown document for assistant messages
-    document: Option<MarkdownDocument>,
-    uuid: Option<String>,
-    /// Response metadata (model, tokens, timing)
-    metadata: Option<MessageMetadata>,
-}
-
-#[derive(Clone, Copy, Debug)]
-struct ChatSelectionPoint {
-    message_index: usize,
-    offset: usize,
-}
-
-#[derive(Clone, Copy, Debug)]
-struct ChatSelection {
-    anchor: ChatSelectionPoint,
-    focus: ChatSelectionPoint,
-}
-
-impl ChatSelection {
-    fn is_empty(&self) -> bool {
-        self.anchor.message_index == self.focus.message_index && self.anchor.offset == self.focus.offset
-    }
-
-    fn normalized(&self) -> (ChatSelectionPoint, ChatSelectionPoint) {
-        if selection_point_cmp(&self.anchor, &self.focus).is_gt() {
-            (self.focus, self.anchor)
-        } else {
-            (self.anchor, self.focus)
-        }
-    }
-}
-
-#[derive(Clone, Debug)]
-struct ChatLineLayout {
-    message_index: usize,
-    text: String,
-    x: f32,
-    y: f32,
-    line_height: f32,
-    font_size: f32,
-    display_range: std::ops::Range<usize>,
-}
-
-#[derive(Clone, Debug)]
-struct MessageLayout {
-    height: f32,
-    display_text: String,
-    lines: Vec<ChatLineLayout>,
-}
-
-/// Layout for tools shown inline after a specific message
-struct InlineToolsLayout {
-    message_index: usize,
-    y_offset: f32,  // Y position in content coordinates (before scroll adjustment)
-    height: f32,
-    blocks: Vec<ToolPanelBlock>,
-}
-
-/// Layout for DSPy stage cards displayed inline in chat
-struct DspyStageLayout {
-    message_index: usize,
-    y_offset: f32,
-    height: f32,
-    stage_index: usize,
-}
-
-struct ChatLayout {
-    viewport_top: f32,
-    viewport_bottom: f32,
-    content_x: f32,
-    available_width: f32,
-    chat_font_size: f32,
-    chat_line_height: f32,
-    message_layouts: Vec<MessageLayout>,
-    streaming_height: f32,
-    /// Inline tool layouts positioned after their associated messages
-    inline_tools: Vec<InlineToolsLayout>,
-    /// DSPy stage layouts positioned inline in chat
-    dspy_stages: Vec<DspyStageLayout>,
-}
-
-struct MessageLayoutBuilder {
-    message_index: usize,
-    display_text: String,
-    lines: Vec<ChatLineLayout>,
-}
-
-impl MessageLayoutBuilder {
-    fn new(message_index: usize) -> Self {
-        Self {
-            message_index,
-            display_text: String::new(),
-            lines: Vec::new(),
-        }
-    }
-
-    fn push_line(&mut self, text: String, x: f32, y: f32, line_height: f32, font_size: f32) {
-        if !self.display_text.is_empty() {
-            self.display_text.push('\n');
-        }
-        let start = self.display_text.len();
-        self.display_text.push_str(&text);
-        let end = self.display_text.len();
-        self.lines.push(ChatLineLayout {
-            message_index: self.message_index,
-            text,
-            x,
-            y,
-            line_height,
-            font_size,
-            display_range: start..end,
-        });
-    }
-
-    fn push_gap(&mut self) {
-        if !self.display_text.is_empty() {
-            self.display_text.push('\n');
-        }
-    }
-
-    fn build(self, height: f32) -> MessageLayout {
-        MessageLayout {
-            height,
-            display_text: self.display_text,
-            lines: self.lines,
-        }
-    }
-}
-
 #[derive(Clone, Debug)]
 struct LinePrefix {
     text: String,
@@ -1101,235 +934,13 @@ struct LinePrefix {
     font_size: f32,
 }
 
-/// Events from the async query task
-enum ResponseEvent {
-    Chunk(String),
-    ToolCallStart { name: String, tool_use_id: String },
-    ToolCallInput { json: String },
-    ToolCallEnd,
-    ToolResult {
-        content: String,
-        is_error: bool,
-        tool_use_id: Option<String>,
-        exit_code: Option<i32>,
-        output_value: Option<Value>,
-    },
-    ToolProgress {
-        tool_use_id: String,
-        tool_name: String,
-        elapsed_secs: f64,
-    },
-    UserMessageId { uuid: String },
-    SystemMessage(String),
-    Complete { metadata: Option<MessageMetadata> },
-    Error(String),
-    SystemInit {
-        model: String,
-        permission_mode: String,
-        session_id: String,
-        tool_count: usize,
-        tools: Vec<String>,
-        output_style: String,
-        slash_commands: Vec<String>,
-        mcp_servers: Vec<McpServerStatus>,
-    },
-    McpStatus {
-        servers: Vec<McpServerStatus>,
-        error: Option<String>,
-    },
-    HookLog(HookLogEntry),
-    DspyStage(DspyStage),
-}
-
-enum ToolDetail {
-    None,
-    Search(SearchToolCall),
-    Terminal(TerminalToolCall),
-    Diff(DiffToolCall),
-}
-
-impl ToolDetail {
-    fn height(&self) -> f32 {
-        match self {
-            ToolDetail::None => 0.0,
-            ToolDetail::Search(detail) => detail.size_hint().1.unwrap_or(0.0),
-            ToolDetail::Terminal(detail) => detail.size_hint().1.unwrap_or(0.0),
-            ToolDetail::Diff(detail) => detail.size_hint().1.unwrap_or(0.0),
-        }
-    }
-
-    fn paint(&mut self, bounds: Bounds, cx: &mut PaintContext) {
-        match self {
-            ToolDetail::None => {}
-            ToolDetail::Search(detail) => detail.paint(bounds, cx),
-            ToolDetail::Terminal(detail) => detail.paint(bounds, cx),
-            ToolDetail::Diff(detail) => detail.paint(bounds, cx),
-        }
-    }
-
-    fn event(&mut self, event: &InputEvent, bounds: Bounds, cx: &mut EventContext) -> EventResult {
-        match self {
-            ToolDetail::None => EventResult::Ignored,
-            ToolDetail::Search(detail) => detail.event(event, bounds, cx),
-            ToolDetail::Terminal(detail) => detail.event(event, bounds, cx),
-            ToolDetail::Diff(detail) => detail.event(event, bounds, cx),
-        }
-    }
-}
-
-struct ToolVisualization {
-    tool_use_id: String,
-    name: String,
-    tool_type: ToolType,
-    status: ToolStatus,
-    input: Option<String>,
-    input_value: Option<Value>,
-    output: Option<String>,
-    output_value: Option<Value>,
-    elapsed_secs: Option<f64>,
-    exit_code: Option<i32>,
-    card_expanded: bool,
-    card: ToolCallCard,
-    detail: ToolDetail,
-    /// Index of the message this tool is associated with (for inline rendering)
-    message_index: usize,
-}
-
-impl ToolVisualization {
-    fn new(tool_use_id: String, name: String, tool_type: ToolType, message_index: usize) -> Self {
-        let card = ToolCallCard::new(tool_type, name.clone());
-        let mut tool = Self {
-            tool_use_id,
-            name,
-            tool_type,
-            status: ToolStatus::Running,
-            input: None,
-            input_value: None,
-            output: None,
-            output_value: None,
-            elapsed_secs: None,
-            exit_code: None,
-            card_expanded: false,
-            card,
-            detail: ToolDetail::None,
-            message_index,
-        };
-        tool.refresh_components();
-        tool
-    }
-
-    fn refresh_components(&mut self) {
-        self.refresh_card();
-        self.refresh_detail();
-    }
-
-    fn refresh_card(&mut self) {
-        // For Task tools, combine name and description into the display name
-        let display_name = if self.tool_type == ToolType::Task {
-            if let Some(input) = &self.input {
-                format!("{} {}", self.name, input)
-            } else {
-                self.name.clone()
-            }
-        } else {
-            self.name.clone()
-        };
-
-        let mut card = ToolCallCard::new(self.tool_type, display_name)
-            .status(self.status)
-            .expanded(self.card_expanded);
-        // For Task tools, don't repeat input since it's already in the name
-        if self.tool_type != ToolType::Task {
-            if let Some(input) = &self.input {
-                card = card.input(input.clone());
-            }
-        }
-        if let Some(output) = &self.output {
-            card = card.output(output.clone());
-        }
-        if let Some(elapsed) = self.elapsed_secs {
-            card = card.elapsed_secs(elapsed);
-        }
-        self.card = card;
-    }
-
-    fn refresh_detail(&mut self) {
-        self.detail = build_tool_detail(self);
-    }
-
-    fn sync_expanded_from_card(&mut self) -> bool {
-        let expanded = self.card.is_expanded();
-        if expanded != self.card_expanded {
-            self.card_expanded = expanded;
-            self.refresh_detail();
-            true
-        } else {
-            false
-        }
-    }
-}
-
-/// Visualization data for a DSPy pipeline stage
-struct DspyStageVisualization {
-    stage: DspyStage,
-    /// Index of the message this stage is associated with
-    message_index: usize,
-    /// Timestamp when this stage was received
-    timestamp: std::time::Instant,
-}
-
-impl DspyStageVisualization {
-    fn new(stage: DspyStage, message_index: usize) -> Self {
-        Self {
-            stage,
-            message_index,
-            timestamp: std::time::Instant::now(),
-        }
-    }
-}
-
 struct PermissionPending {
     request: PermissionRequest,
     respond_to: oneshot::Sender<PermissionResult>,
 }
 
-enum QueryControl {
-    Interrupt,
-    RewindFiles { user_message_id: String },
-    #[allow(dead_code)]
-    Abort,
-    FetchMcpStatus,
-}
-
-enum CommandAction {
-    None,
-    SubmitPrompt(String),
-}
-
 /// Session info from SystemInit
-#[derive(Default)]
-struct SessionInfo {
-    model: String,
-    permission_mode: String,
-    session_id: String,
-    tool_count: usize,
-    tools: Vec<String>,
-    #[allow(dead_code)]
-    output_style: String,
-    #[allow(dead_code)]
-    slash_commands: Vec<String>,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-struct SessionEntry {
-    id: String,
-    created_at: u64,
-    updated_at: u64,
-    last_message: String,
-    message_count: usize,
-    model: String,
-}
-
+/// Session info from SystemInit
 #[derive(Clone, Debug)]
 struct SessionCardEvent {
     action: SessionAction,
@@ -1392,20 +1003,6 @@ struct PermissionHistoryEntry {
     detail: Option<String>,
 }
 
-#[derive(Clone, Debug)]
-struct CheckpointEntry {
-    user_message_id: String,
-    label: String,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-struct StoredMessage {
-    role: String,
-    content: String,
-    #[serde(default)]
-    uuid: Option<String>,
-}
-
 /// Available models for selection
 #[derive(Clone, Copy, PartialEq, Debug)]
 enum ModelOption {
@@ -1453,168 +1050,11 @@ impl ModelOption {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
-struct CoderSettings {
-    #[serde(default)]
-    theme: ThemeSetting,
-    #[serde(default = "default_font_size")]
-    font_size: f32,
-    #[serde(default = "default_auto_scroll")]
-    auto_scroll: bool,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    model: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    max_thinking_tokens: Option<u32>,
-    #[serde(default = "default_session_auto_save")]
-    session_auto_save: bool,
-    #[serde(default = "default_session_history_limit")]
-    session_history_limit: usize,
-}
-
-impl Default for CoderSettings {
-    fn default() -> Self {
-        Self {
-            theme: ThemeSetting::Dark,
-            font_size: default_font_size(),
-            auto_scroll: default_auto_scroll(),
-            model: None,
-            max_thinking_tokens: None,
-            session_auto_save: default_session_auto_save(),
-            session_history_limit: default_session_history_limit(),
-        }
-    }
-}
-
-/// Modal state for slash commands
-enum ModalState {
-    None,
-    ModelPicker { selected: usize },
-    SessionList { selected: usize },
-    AgentList { selected: usize },
-    SkillList { selected: usize },
-    Hooks { view: HookModalView, selected: usize },
-    ToolList { selected: usize },
-    PermissionRules,
-    Config {
-        tab: SettingsTab,
-        selected: usize,
-        search: String,
-        input_mode: SettingsInputMode,
-    },
-    Help,
-    McpConfig { selected: usize },
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum SettingsTab {
-    General,
-    Model,
-    Permissions,
-    Sessions,
-    Mcp,
-    Hooks,
-    Keyboard,
-}
-
-impl SettingsTab {
-    fn all() -> &'static [SettingsTab] {
-        &[
-            SettingsTab::General,
-            SettingsTab::Model,
-            SettingsTab::Permissions,
-            SettingsTab::Sessions,
-            SettingsTab::Mcp,
-            SettingsTab::Hooks,
-            SettingsTab::Keyboard,
-        ]
-    }
-
-    fn label(&self) -> &'static str {
-        match self {
-            SettingsTab::General => "General",
-            SettingsTab::Model => "Model",
-            SettingsTab::Permissions => "Permissions",
-            SettingsTab::Sessions => "Sessions",
-            SettingsTab::Mcp => "MCP",
-            SettingsTab::Hooks => "Hooks",
-            SettingsTab::Keyboard => "Keyboard",
-        }
-    }
-}
-
-/// Internal mode representation for Coder UI
-/// Maps to PermissionMode for SDK calls, with Autopilot as a special case
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub enum CoderMode {
-    /// Auto-approve all tool use (maps to PermissionMode::BypassPermissions)
-    BypassPermissions,
-    /// Read-only mode, deny write operations (maps to PermissionMode::Plan)
-    #[default]
-    Plan,
-    /// Autopilot mode - bypasses Claude SDK, uses DSPy/Adjutant (placeholder)
-    Autopilot,
-}
-
-impl CoderMode {
-    /// Convert to SDK PermissionMode (returns BypassPermissions for Autopilot since it auto-approves)
-    fn to_sdk_permission_mode(&self) -> PermissionMode {
-        match self {
-            CoderMode::BypassPermissions => PermissionMode::BypassPermissions,
-            CoderMode::Plan => PermissionMode::Plan,
-            CoderMode::Autopilot => PermissionMode::BypassPermissions, // Auto-approve when SDK is used
-        }
-    }
-
-    /// Whether this mode auto-approves all permissions
-    fn auto_approves_all(&self) -> bool {
-        matches!(self, CoderMode::BypassPermissions | CoderMode::Autopilot)
-    }
-}
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum SettingsInputMode {
     Normal,
     Search,
     Capture(KeyAction),
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum SettingsItem {
-    Theme,
-    FontSize,
-    AutoScroll,
-    DefaultModel,
-    MaxThinkingTokens,
-    PermissionMode,
-    PermissionDefaultAllow,
-    PermissionRules,
-    PermissionAllowList,
-    PermissionDenyList,
-    PermissionBashAllowList,
-    PermissionBashDenyList,
-    SessionAutoSave,
-    SessionHistoryLimit,
-    SessionStoragePath,
-    McpSummary,
-    McpOpenConfig,
-    McpReloadProject,
-    McpRefreshStatus,
-    HookToolBlocker,
-    HookToolLogger,
-    HookOutputTruncator,
-    HookContextInjection,
-    HookTodoEnforcer,
-    HookOpenPanel,
-    Keybinding(KeyAction),
-    KeybindingReset,
-}
-
-struct SettingsRow {
-    item: SettingsItem,
-    label: String,
-    value: String,
-    hint: Option<String>,
 }
 
 #[derive(Clone)]
@@ -2305,21 +1745,6 @@ fn settings_model_option(settings: &CoderSettings) -> ModelOption {
 
 fn update_settings_model(settings: &mut CoderSettings, model: ModelOption) {
     settings.model = Some(model.model_id().to_string());
-}
-
-#[derive(Serialize, Deserialize)]
-struct StoredModifiers {
-    shift: bool,
-    ctrl: bool,
-    alt: bool,
-    meta: bool,
-}
-
-#[derive(Serialize, Deserialize)]
-struct StoredKeybinding {
-    action: String,
-    key: String,
-    modifiers: StoredModifiers,
 }
 
 fn key_to_string(key: &UiKey) -> String {
@@ -11852,13 +11277,6 @@ struct HookEventLayout {
     inspector_bounds: Bounds,
     row_bounds: Vec<(usize, Bounds)>,
 }
-
-struct ToolPanelBlock {
-    index: usize,
-    card_bounds: Bounds,
-    detail_bounds: Option<Bounds>,
-}
-
 
 fn session_list_layout(
     logical_width: f32,
