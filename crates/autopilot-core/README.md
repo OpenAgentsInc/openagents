@@ -4,7 +4,7 @@ Core logic for Autopilot - the autonomous engine that powers AI coding tasks.
 
 ## Overview
 
-Autopilot Core runs Claude SDK queries against your codebase to analyze code, fix bugs, implement features, and more. It supports two execution modes:
+Autopilot Core runs Claude/Codex SDK queries (plus local LLM/tool fallbacks) against your codebase to analyze code, fix bugs, implement features, and more. It supports two execution modes:
 
 | Mode | Command | Cost | Execution |
 |------|---------|------|-----------|

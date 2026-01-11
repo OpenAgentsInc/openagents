@@ -298,6 +298,8 @@ export CEREBRAS_API_KEY="csk-your-key-here"
 |----------|----------|-------------|
 | `CEREBRAS_API_KEY` | No | Cerebras API key for tiered inference |
 | `PYLON_MNEMONIC` | No | BIP-39 mnemonic for Pylon Swarm inference |
+| `PYLON_LOCAL_MODEL` | No | Override Ollama model for Pylon Local (DSPy planning) |
+| `OLLAMA_MODEL` | No | Alias for `PYLON_LOCAL_MODEL` |
 | `ADJUTANT_ENABLE_RLM` | No | Enable RLM tools in Claude sessions (1/true) |
 | `RLM_BACKEND` | No | RLM backend selection (claude) |
 | `AUTOPILOT_BACKEND` | No | Override backend selection (auto/claude/codex/local-llm/local-tools) |
@@ -312,7 +314,7 @@ Adjutant auto-detects available DSPy LM providers in this priority order:
 | 2 | **Claude SDK** | `claude` CLI installed | Pro/Max subscription |
 | 3 | **Pylon Swarm** | `PYLON_MNEMONIC` env var | Distributed NIP-90 inference |
 | 4 | **Cerebras** | `CEREBRAS_API_KEY` env var | Fast cloud inference |
-| 5 | **Pylon Local** | Ollama on :11434 | Local Ollama fallback |
+| 5 | **Pylon Local** | Ollama on :11434 | Local Ollama fallback (auto-selects available model) |
 
 *Without any provider, Adjutant falls back to analysis-only mode.
 

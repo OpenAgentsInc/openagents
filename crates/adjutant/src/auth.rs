@@ -9,6 +9,8 @@ use std::path::PathBuf;
 const CLAUDE_PATHS: &[&str] = &[
     // Standard installation location
     ".claude/local/claude",
+    // npm global
+    ".npm-global/bin/claude",
     // Homebrew on macOS
     "/opt/homebrew/bin/claude",
     "/usr/local/bin/claude",
