@@ -117,7 +117,7 @@ pub(crate) fn tool_type_for_name(name: &str) -> ToolType {
     match normalized.as_str() {
         "read" => ToolType::Read,
         "write" | "todowrite" => ToolType::Write,
-        "edit" | "notebookedit" => ToolType::Edit,
+        "edit" | "notebookedit" | "diff" => ToolType::Edit,
         "bash" | "bashoutput" | "killbash" => ToolType::Bash,
         "glob" => ToolType::Glob,
         "grep" => ToolType::Grep,
