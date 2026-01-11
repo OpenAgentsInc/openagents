@@ -70,6 +70,7 @@ impl ClaudeSdkModel {
         while let Some(msg) = stream.next().await {
             match msg {
                 Ok(SdkMessage::Result(result)) => {
+                    tracing::debug!("ClaudeSdk: received Result message");
                     // Final result - extract the text
                     match result {
                         SdkResultMessage::Success(success) => {
@@ -103,23 +104,33 @@ impl ClaudeSdkModel {
                     break;
                 }
                 Ok(SdkMessage::Assistant(assistant)) => {
+                    tracing::debug!("ClaudeSdk: received Assistant message");
                     // Stream assistant messages to callback
                     if let Some((cb, call_id)) = callback {
                         // Extract text from assistant message
                         if let Some(text) = extract_assistant_text(&assistant) {
+                            tracing::info!("ClaudeSdk streaming {} chars from Assistant", text.len());
                             cb.on_lm_token(call_id, &text);
                         }
                     }
                 }
                 Ok(SdkMessage::StreamEvent(event)) => {
                     // Stream events contain delta tokens
+                    let event_json = serde_json::to_string(&event.event).unwrap_or_default();
                     if let Some((cb, call_id)) = callback {
                         if let Some(text) = extract_stream_text(&event) {
+                            tracing::trace!("ClaudeSdk streaming delta: {} chars", text.len());
                             cb.on_lm_token(call_id, &text);
+                        } else {
+                            // Log when we get an event but can't extract text
+                            let event_type = event.event.get("type").and_then(|t| t.as_str()).unwrap_or("unknown");
+                            tracing::trace!("ClaudeSdk: StreamEvent type={}, no text extracted: {}", event_type, event_json);
                         }
                     }
                 }
-                Ok(_) => {} // Ignore other message types
+                Ok(other) => {
+                    tracing::debug!("ClaudeSdk: ignoring message type: {:?}", std::mem::discriminant(&other));
+                } // Ignore other message types
                 Err(e) => {
                     return Err(CompletionError::ProviderError(format!(
                         "Stream error: {}",
@@ -162,14 +173,34 @@ fn extract_assistant_text(assistant: &claude_agent_sdk::SdkAssistantMessage) -> 
 /// Extract text from stream event.
 fn extract_stream_text(event: &claude_agent_sdk::SdkStreamEvent) -> Option<String> {
     // SdkStreamEvent.event is a serde_json::Value containing streaming updates
-    // Look for content_block_delta events with text delta
     let event_type = event.event.get("type").and_then(|t| t.as_str())?;
+
+    // Standard Claude API: content_block_delta with text_delta
     if event_type == "content_block_delta" {
         let delta = event.event.get("delta")?;
         if delta.get("type").and_then(|t| t.as_str()) == Some("text_delta") {
             return delta.get("text").and_then(|t| t.as_str()).map(|s| s.to_string());
         }
+        // Also try direct text field in delta
+        if let Some(text) = delta.get("text").and_then(|t| t.as_str()) {
+            return Some(text.to_string());
+        }
     }
+
+    // Alternative: message_delta with text
+    if event_type == "message_delta" {
+        if let Some(delta) = event.event.get("delta") {
+            if let Some(text) = delta.get("text").and_then(|t| t.as_str()) {
+                return Some(text.to_string());
+            }
+        }
+    }
+
+    // Alternative: direct text field in event
+    if let Some(text) = event.event.get("text").and_then(|t| t.as_str()) {
+        return Some(text.to_string());
+    }
+
     None
 }
 
