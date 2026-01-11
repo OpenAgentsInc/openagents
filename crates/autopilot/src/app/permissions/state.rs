@@ -7,12 +7,17 @@ use super::request::{PermissionRequest, PermissionResult};
 use super::{PermissionHistoryEntry, PermissionPending};
 use super::rules::{
     add_unique, coder_mode_default_allow, extract_bash_command, permission_detail_for_request,
-    permission_type_for_request, remove_items, sanitize_tokens, save_permission_config,
+    pattern_matches, permission_type_for_request, remove_items, sanitize_tokens, save_permission_config,
     split_permission_tokens, PermissionConfig,
 };
 use crate::app::events::CoderMode;
 use crate::app::session::SessionInfo;
 use wgpui::components::atoms::PermissionAction;
+
+struct AutoDecision {
+    result: PermissionResult,
+    label: &'static str,
+}
 
 pub(crate) struct PermissionState {
     pub(crate) coder_mode: CoderMode,
@@ -63,11 +68,94 @@ impl PermissionState {
     }
 
     pub(crate) fn enqueue_permission_prompt(&mut self, pending: PermissionPending) {
+        if let Some(decision) = self.auto_decision_for_request(&pending.request) {
+            let detail = permission_detail_for_request(&pending.request);
+            self.record_permission_history(&pending.request, decision.label, detail);
+            let _ = pending.respond_to.send(decision.result);
+            return;
+        }
         if self.permission_pending.is_some() || self.permission_dialog.is_some() {
             self.permission_queue.push_back(pending);
             return;
         }
         self.start_permission_prompt(pending);
+    }
+
+    fn auto_decision_for_request(&self, request: &PermissionRequest) -> Option<AutoDecision> {
+        if matches!(self.coder_mode, CoderMode::BypassPermissions) {
+            return Some(AutoDecision {
+                result: PermissionResult::Allow {
+                    updated_input: request.input.clone(),
+                    updated_permissions: None,
+                    tool_use_id: Some(request.tool_use_id.clone()),
+                    accept_for_session: None,
+                },
+                label: "auto allow",
+            });
+        }
+
+        if self.is_request_denied(request) {
+            return Some(AutoDecision {
+                result: PermissionResult::Deny {
+                    message: "Permission denied by rules.".to_string(),
+                    interrupt: None,
+                    tool_use_id: Some(request.tool_use_id.clone()),
+                },
+                label: "auto deny",
+            });
+        }
+
+        if self.is_request_allowed(request) {
+            return Some(AutoDecision {
+                result: PermissionResult::Allow {
+                    updated_input: request.input.clone(),
+                    updated_permissions: None,
+                    tool_use_id: Some(request.tool_use_id.clone()),
+                    accept_for_session: Some(false),
+                },
+                label: "auto allow",
+            });
+        }
+
+        if self.permission_default_allow {
+            return Some(AutoDecision {
+                result: PermissionResult::Allow {
+                    updated_input: request.input.clone(),
+                    updated_permissions: None,
+                    tool_use_id: Some(request.tool_use_id.clone()),
+                    accept_for_session: None,
+                },
+                label: "auto allow",
+            });
+        }
+
+        None
+    }
+
+    fn is_request_allowed(&self, request: &PermissionRequest) -> bool {
+        self.matches_tool_rules(&request.tool_name, &self.permission_allow_tools)
+            || self.matches_bash_patterns(request, &self.permission_allow_bash_patterns)
+    }
+
+    fn is_request_denied(&self, request: &PermissionRequest) -> bool {
+        self.matches_tool_rules(&request.tool_name, &self.permission_deny_tools)
+            || self.matches_bash_patterns(request, &self.permission_deny_bash_patterns)
+    }
+
+    fn matches_tool_rules(&self, tool_name: &str, rules: &[String]) -> bool {
+        rules.iter().any(|rule| rule.eq_ignore_ascii_case(tool_name))
+    }
+
+    fn matches_bash_patterns(&self, request: &PermissionRequest, patterns: &[String]) -> bool {
+        if !matches!(request.tool_name.as_str(), "Bash" | "KillBash") {
+            return false;
+        }
+        let Some(command) = extract_bash_command(&request.input) else {
+            return false;
+        };
+        patterns
+            .iter()
+            .any(|pattern| pattern_matches(pattern, &command))
     }
 
     fn start_permission_prompt(&mut self, pending: PermissionPending) {
@@ -115,12 +203,14 @@ impl PermissionState {
                     updated_input: request.input.clone(),
                     updated_permissions: request.suggestions.clone(),
                     tool_use_id: Some(request.tool_use_id.clone()),
+                    accept_for_session: Some(false),
                 }
             }
             PermissionAction::AllowOnce => PermissionResult::Allow {
                 updated_input: request.input.clone(),
                 updated_permissions: None,
                 tool_use_id: Some(request.tool_use_id.clone()),
+                accept_for_session: Some(true),
             },
             PermissionAction::Deny => PermissionResult::Deny {
                 message: "User denied permission.".to_string(),
