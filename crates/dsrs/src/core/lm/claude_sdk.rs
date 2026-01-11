@@ -59,7 +59,8 @@ impl ClaudeSdkModel {
     ) -> Result<String, CompletionError> {
         let options = QueryOptions::new()
             .max_turns(self.max_turns.unwrap_or(1))
-            .tools(ToolsConfig::none()); // No tools for pure LM completion
+            .tools(ToolsConfig::none()) // No tools for pure LM completion
+            .include_partial_messages(true); // Enable streaming token events
 
         let mut stream = query(prompt, options)
             .await
