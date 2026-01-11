@@ -17,13 +17,12 @@
 //! 3. **Todo List** - Generate actionable task list
 //! 4. **Execution** - Work through tasks with tool calls
 
-use crate::dspy::{SessionOutcome, SessionStore, SelfImprover, VerificationRecord};
+use crate::dspy::{SelfImprover, SessionOutcome, SessionStore, VerificationRecord};
 use crate::dspy_orchestrator::DspyOrchestrator;
 use crate::{Adjutant, Task, TaskResult};
 use agent_client_protocol_schema as acp;
-use dsrs::callbacks::DspyCallback;
-use uuid::Uuid;
 use chrono::Local;
+use dsrs::callbacks::DspyCallback;
 use serde::{Deserialize, Serialize};
 use std::io::Write;
 use std::path::PathBuf;
@@ -32,6 +31,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::process::Command;
 use tokio::sync::mpsc;
+use uuid::Uuid;
 
 // ============================================================================
 // DSPy Stage Types for UI Display
@@ -284,12 +284,19 @@ impl AutopilotOutput for CliOutput {
                     println!("│   {}. {}", i + 1, step);
                 }
                 println!("│ Test strategy: {}", test_strategy);
-                println!("│ Complexity: {} | Confidence: {:.0}%", complexity, confidence * 100.0);
+                println!(
+                    "│ Complexity: {} | Confidence: {:.0}%",
+                    complexity,
+                    confidence * 100.0
+                );
                 println!("└─────────────────────────────────────────────────────────────┘\n");
             }
             DspyStage::TodoList { tasks } => {
                 println!("\n┌─────────────────────────────────────────────────────────────┐");
-                println!("│ ✅ Todo List ({} tasks)                                      │", tasks.len());
+                println!(
+                    "│ ✅ Todo List ({} tasks)                                      │",
+                    tasks.len()
+                );
                 println!("├─────────────────────────────────────────────────────────────┤");
                 for task in &tasks {
                     let checkbox = match task.status {
@@ -307,9 +314,15 @@ impl AutopilotOutput for CliOutput {
                 total_tasks,
                 task_description,
             } => {
-                println!("\n🔧 Working on task {} of {}: {}\n", task_index, total_tasks, task_description);
+                println!(
+                    "\n🔧 Working on task {} of {}: {}\n",
+                    task_index, total_tasks, task_description
+                );
             }
-            DspyStage::TaskComplete { task_index, success } => {
+            DspyStage::TaskComplete {
+                task_index,
+                success,
+            } => {
                 if success {
                     println!("✓ Task {} complete\n", task_index);
                 } else {
@@ -324,7 +337,10 @@ impl AutopilotOutput for CliOutput {
                 println!("\n┌─────────────────────────────────────────────────────────────┐");
                 println!("│ 🎯 Execution Complete                                       │");
                 println!("├─────────────────────────────────────────────────────────────┤");
-                println!("│ Total: {} | Successful: {} | Failed: {}", total_tasks, successful, failed);
+                println!(
+                    "│ Total: {} | Successful: {} | Failed: {}",
+                    total_tasks, successful, failed
+                );
                 println!("└─────────────────────────────────────────────────────────────┘\n");
             }
         }
@@ -421,9 +437,10 @@ pub struct AcpEventSender {
 
 impl AcpEventSender {
     pub fn send_update(&self, update: acp::SessionUpdate) {
-        let _ = self
-            .tx
-            .send(acp::SessionNotification::new(self.session_id.clone(), update));
+        let _ = self.tx.send(acp::SessionNotification::new(
+            self.session_id.clone(),
+            update,
+        ));
     }
 }
 
@@ -462,9 +479,10 @@ impl AcpChannelOutput {
     }
 
     fn send_update(&self, update: acp::SessionUpdate) {
-        let _ = self
-            .tx
-            .send(acp::SessionNotification::new(self.session_id.clone(), update));
+        let _ = self.tx.send(acp::SessionNotification::new(
+            self.session_id.clone(),
+            update,
+        ));
     }
 
     fn session_meta(&self) -> acp::Meta {
@@ -631,7 +649,10 @@ impl AutopilotOutput for AcpChannelOutput {
                     meta,
                 );
             }
-            DspyStage::TaskComplete { task_index, success } => {
+            DspyStage::TaskComplete {
+                task_index,
+                success,
+            } => {
                 let status = if success {
                     TodoStatus::Complete
                 } else {
@@ -736,7 +757,10 @@ impl<O: AutopilotOutput> AutopilotLoop<O> {
                 &self.original_task.title,
                 &self.original_task.description,
             );
-            tracing::debug!("Started session tracking for task: {}", self.original_task.id);
+            tracing::debug!(
+                "Started session tracking for task: {}",
+                self.original_task.id
+            );
         }
 
         // ============================================================
@@ -744,10 +768,8 @@ impl<O: AutopilotOutput> AutopilotLoop<O> {
         // ============================================================
 
         // Create orchestrator for DSPy stages
-        let orchestrator = DspyOrchestrator::new(
-            self.adjutant.decision_lm(),
-            self.adjutant.tools().clone(),
-        );
+        let orchestrator =
+            DspyOrchestrator::new(self.adjutant.decision_lm(), self.adjutant.tools().clone());
 
         // Stage 1: Environment Assessment
         let assessment = match orchestrator
@@ -773,10 +795,7 @@ impl<O: AutopilotOutput> AutopilotLoop<O> {
             Ok(p) => p,
             Err(e) => {
                 self.output.error(&format!("Planning failed: {}", e));
-                self.complete_session(
-                    SessionOutcome::Error(format!("Planning failed: {}", e)),
-                    0,
-                );
+                self.complete_session(SessionOutcome::Error(format!("Planning failed: {}", e)), 0);
                 return AutopilotResult::Error(format!("Planning failed: {}", e));
             }
         };
@@ -1020,7 +1039,10 @@ impl<O: AutopilotOutput> AutopilotLoop<O> {
                 &self.original_task.title,
                 &self.original_task.description,
             );
-            tracing::debug!("Started session tracking for task: {}", self.original_task.id);
+            tracing::debug!(
+                "Started session tracking for task: {}",
+                self.original_task.id
+            );
         }
 
         loop {
@@ -1160,7 +1182,8 @@ impl<O: AutopilotOutput> AutopilotLoop<O> {
 
             // Check for definitive failure
             if self.is_definitive_failure(&result) {
-                self.output.token("\n\n--- Definitive failure detected ---\n");
+                self.output
+                    .token("\n\n--- Definitive failure detected ---\n");
                 let outcome = SessionOutcome::Failed {
                     reason: "Definitive failure detected".to_string(),
                     error: result.error.clone(),
@@ -1179,7 +1202,11 @@ impl<O: AutopilotOutput> AutopilotLoop<O> {
         if let Some(ref mut store) = self.session_store {
             match store.complete_session(outcome, iterations) {
                 Ok(session_id) => {
-                    tracing::info!("Session {} completed with {} iterations", session_id, iterations);
+                    tracing::info!(
+                        "Session {} completed with {} iterations",
+                        session_id,
+                        iterations
+                    );
 
                     // Process self-improvement (outcome feedback + optimization check)
                     if let Ok(session) = store.get_session(&session_id) {
@@ -1369,10 +1396,7 @@ impl<O: AutopilotOutput> AutopilotLoop<O> {
 
         // Check for TypeScript/JavaScript files
         let has_ts_js = result.modified_files.iter().any(|f| {
-            f.ends_with(".ts")
-                || f.ends_with(".tsx")
-                || f.ends_with(".js")
-                || f.ends_with(".jsx")
+            f.ends_with(".ts") || f.ends_with(".tsx") || f.ends_with(".js") || f.ends_with(".jsx")
         });
 
         if has_ts_js {
@@ -1404,7 +1428,8 @@ impl<O: AutopilotOutput> AutopilotLoop<O> {
 
         // If no files modified or no tests to run, consider it passed
         if result.modified_files.is_empty() && passed {
-            self.output.token("  No files modified, accepting LLM verdict\n");
+            self.output
+                .token("  No files modified, accepting LLM verdict\n");
         }
 
         let reason = reasons.join(", ");
