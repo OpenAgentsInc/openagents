@@ -5,7 +5,7 @@
 //!
 //! # Overview
 //!
-//! Developer trajectories captured from Codex Code, Cursor, Codex, and other
+//! Developer trajectories captured from Codex, Cursor, and other
 //! AI coding assistants contain valuable training signal:
 //!
 //! - Initial state: Git commit hash (real environment, no simulation)
@@ -62,7 +62,7 @@ pub struct TrajectorySession {
     /// Unique session identifier
     pub session_id: String,
 
-    /// Source of the trajectory (codex, cursor, codex, etc.)
+    /// Source of the trajectory (codex, cursor, etc.)
     pub source: String,
 
     /// Local file path to original trajectory log
@@ -96,7 +96,7 @@ pub struct TrajectorySession {
 /// Configuration for trajectory contribution
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TrajectoryConfig {
-    /// Sources to scan (codex, cursor, codex)
+    /// Sources to scan (codex, cursor)
     pub sources: Vec<String>,
 
     /// Auto-contribute without manual review

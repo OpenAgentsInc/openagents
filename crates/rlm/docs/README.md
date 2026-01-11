@@ -197,7 +197,7 @@ RLM integrates with Codex in two ways:
 RLM exposes tools via an MCP server that Codex can invoke:
 
 ```bash
-# Configure in Codex Code settings
+# Configure in Codex settings
 {
   "mcpServers": {
     "rlm": {

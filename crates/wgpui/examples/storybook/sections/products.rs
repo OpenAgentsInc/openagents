@@ -2226,11 +2226,6 @@ impl Storybook {
                     Some(15),
                 ),
                 (
-                    TrajectorySource::Codex,
-                    Some(ContributionStatus::Scanned),
-                    Some(8),
-                ),
-                (
                     TrajectorySource::Windsurf,
                     Some(ContributionStatus::Redacted),
                     Some(23),

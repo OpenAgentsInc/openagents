@@ -4,7 +4,7 @@
 //!
 //! # Usage
 //!
-//! Configure in Codex Code settings:
+//! Configure in Codex settings:
 //! ```json
 //! {
 //!   "mcpServers": {

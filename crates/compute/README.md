@@ -30,7 +30,7 @@ The compute crate implements a NIP-90 DVM provider that allows users to monetize
 - **5932**: PatchGen - Generate patches from issues/requirements
 - **5933**: CodeReview - Review code with structured feedback
 
-Bazaar jobs require an **agent backend** (e.g., Codex Code) and support pay-after-verify semantics.
+Bazaar jobs require an **agent backend** (e.g., Codex) and support pay-after-verify semantics.
 
 ## Architecture
 
@@ -89,7 +89,7 @@ Bazaar jobs require an **agent backend** (e.g., Codex Code) and support pay-afte
 
 4. **AgentRegistry** (`backends/agent.rs`):
    - Manages agent backends for complex, multi-step tasks
-   - Routes Bazaar jobs to appropriate agent (e.g., Codex Code)
+   - Routes Bazaar jobs to appropriate agent (e.g., Codex)
 
 5. **CodexCodeBackend** (`backends/codex_code.rs`):
    - Executes Codex in sandboxed environment
@@ -593,9 +593,9 @@ The primary agent backend, using Codex with sandbox isolation:
 ```rust
 use compute::backends::{CodexCodeBackend, CodexCodeConfig, IsolationMode};
 
-// Auto-detect Codex Code availability
+// Auto-detect Codex availability
 if let Some(codex) = CodexCodeBackend::detect().await {
-    println!("Codex Code available!");
+    println!("Codex available!");
     println!("Supported kinds: {:?}", codex.capabilities().supported_kinds());
 }
 
@@ -673,7 +673,7 @@ for issue in result.issues {
 - [x] Nostr relay integration
 - [x] Spark wallet integration
 - [x] Agent backend abstraction (AgentBackend trait)
-- [x] Codex Code backend (PatchGen, CodeReview, SandboxRun)
+- [x] Codex backend (PatchGen, CodeReview, SandboxRun)
 - [x] Bazaar job kinds (5930-5933)
 - [ ] Lightning invoice generation
 - [ ] Payment verification

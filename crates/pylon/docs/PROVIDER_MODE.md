@@ -62,10 +62,10 @@ Customer                    Nostr Relays                    Provider (Pylon)
 
 | Kind | Description | Backend |
 |------|-------------|---------|
-| 5930 | SandboxRun | Codex Code |
-| 5931 | RepoIndex | Codex Code |
-| 5932 | PatchGen | Codex Code |
-| 5933 | CodeReview | Codex Code |
+| 5930 | SandboxRun | Codex |
+| 5931 | RepoIndex | Codex |
+| 5932 | PatchGen | Codex |
+| 5933 | CodeReview | Codex |
 
 ## Inference Backends
 
@@ -111,7 +111,7 @@ macOS-only, uses Apple Silicon Neural Engine.
 
 Agent backends handle complex, multi-step tasks that require tool execution, repository access, and sandboxed environments.
 
-### Codex Code
+### Codex
 
 Primary agent backend for Bazaar jobs. Uses Codex with sandbox isolation.
 

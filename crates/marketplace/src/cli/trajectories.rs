@@ -18,7 +18,7 @@ pub struct TrajectoriesCommands {
 pub enum TrajectoriesSubcommand {
     /// Scan local sources for trajectory data
     Scan {
-        /// Source to scan (codex, cursor, codex), defaults to all configured
+        /// Source to scan (codex, cursor), defaults to all configured
         #[arg(long)]
         source: Option<String>,
 

@@ -153,10 +153,10 @@ fn validate_config(config: &ProjectConfig) -> ConfigResult<()> {
         ));
     }
 
-    // Codex Code max turns must be positive
+    // Codex max turns must be positive
     if config.codex_code.max_turns_per_subtask == 0 {
         return Err(ConfigError::ValidationError(
-            "Codex Code max turns per subtask must be positive".into(),
+            "Codex max turns per subtask must be positive".into(),
         ));
     }
 

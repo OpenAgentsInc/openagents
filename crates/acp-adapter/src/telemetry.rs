@@ -2,7 +2,7 @@
 //!
 //! Provides ActionEvent tracking for all tool use events that flow through
 //! the ACP adapter, enabling APM (Actions Per Minute) measurement for both
-//! Codex Code and Codex interactions.
+//! Codex CLI and Codex interactions.
 
 use agent_client_protocol_schema as acp;
 use serde_json::Value;

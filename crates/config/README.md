@@ -8,7 +8,7 @@ The config crate implements user stories **CONF-001 through CONF-033**, covering
 
 - Basic configuration loading and saving (CONF-001..005)
 - Safety and healer configuration (CONF-010..013)
-- Codex Code integration settings (CONF-020..024)
+- Codex integration settings (CONF-020..024)
 - Sandbox execution configuration (CONF-030..033)
 
 Configuration is stored at `.openagents/project.json` relative to your project root. Missing fields are automatically filled with sensible defaults.
@@ -73,9 +73,9 @@ assert!(config.healer.enabled);
 | `sessionDir` | `String` | `".openagents/sessions"` | Session storage |
 | `runLogDir` | `String` | `".openagents/run-logs"` | Run log storage |
 
-## Codex Code Configuration
+## Codex Configuration
 
-Settings for Codex Code integration.
+Settings for Codex integration.
 
 ```rust
 use config::{CodexCodeConfig, PermissionMode};

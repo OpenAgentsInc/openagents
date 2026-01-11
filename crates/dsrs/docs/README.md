@@ -121,7 +121,7 @@ crates/dsrs/
 │   │   ├── module.rs       # Module, Optimizable traits
 │   │   ├── settings.rs     # Global LM + callback configuration
 │   │   └── lm/
-│   │       ├── codex_sdk.rs  # Codex Code headless
+│   │       ├── codex_sdk.rs  # Codex headless
 │   │       └── pylon.rs       # Pylon LM provider
 │   ├── predictors/
 │   │   ├── predict.rs      # Base Predict with callbacks

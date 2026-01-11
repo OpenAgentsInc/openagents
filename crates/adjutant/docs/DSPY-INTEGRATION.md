@@ -294,7 +294,7 @@ let lm = create_lm(&LmProvider::Cerebras).await?;
 ```
 
 **Provider Priority:**
-1. **Codex SDK** - Uses Codex Code headless mode (requires `codex` CLI)
+1. **Codex SDK** - Uses Codex headless mode (requires `codex` CLI)
 2. **Pylon Swarm** - Distributed inference via NIP-90 (requires `PYLON_MNEMONIC`)
 3. **Cerebras** - Fast, cheap execution (requires `CEREBRAS_API_KEY`)
 4. **Pylon Local** - Ollama fallback (requires Ollama running on :11434)

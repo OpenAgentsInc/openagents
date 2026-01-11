@@ -10,7 +10,7 @@ DSPy should control the *decision-making flow* (planning, routing, verification)
 
 1. DSPy signatures make structured decisions about what to do
 2. DSPy orchestrates the overall task flow
-3. Agent SDKs (Codex, Codex, or ACP) execute tool-heavy subtasks via constrained queries
+3. Agent SDKs (Codex, or ACP) execute tool-heavy subtasks via constrained queries
 4. Output is constrained to DSPy signature schemas using structured outputs
 
 ```
@@ -101,7 +101,7 @@ The ACP adapter provides a unified interface for both SDKs via the Agent Client 
 ```rust
 use acp_adapter::{AcpAgentConnection, AgentCommand};
 
-// Works with any ACP-compatible agent (Codex, Codex, custom)
+// Works with any ACP-compatible agent (Codex, custom)
 let connection = AcpAgentConnection::stdio(
     "codex",  // or "codex"
     AgentCommand::new("codex").args(["--output-format", "stream-json"]),
@@ -186,7 +186,7 @@ impl UnifiedAgentExecutor {
         connection.prompt(&session.session_id, prompt).await?;
 
         // Collect notifications and convert to unified result
-        // ACP normalizes events from both Codex and Codex
+        // ACP normalizes events from both Codex CLI and Codex
         self.collect_result(&session).await
     }
 }
@@ -204,7 +204,7 @@ impl UnifiedAgentExecutor {
 
 ### Option 3: Bidirectional Delegation
 
-Codex and Codex can delegate to each other based on task requirements:
+Codex CLI and Codex can delegate to each other based on task requirements:
 
 ```rust
 // DSPy decides Codex should handle this, but Codex can delegate to Codex
@@ -286,7 +286,7 @@ struct AgentExecutionSignature {
 
 #### 2. Multi-Agent Executor
 
-Support both Codex and Codex:
+Support both Codex CLI and Codex:
 
 ```rust
 pub struct MultiAgentExecutor {
@@ -584,7 +584,7 @@ let custom_agent = AcpAgentConnection::stdio(
     &cwd,
 ).await?;
 
-// Works the same as Codex or Codex
+// Works the same as Codex
 let session = custom_agent.new_session(cwd.clone()).await?;
 custom_agent.prompt(&session.session_id, &prompt).await?;
 ```
@@ -606,7 +606,7 @@ To add a new ACP-compatible agent:
 | `crates/adjutant/src/dspy/schema_gen.rs` | Signature → JSON Schema conversion |
 | `crates/codex-agent-sdk/src/query.rs` | Codex SDK query interface |
 | `crates/codex-agent-sdk/src/thread.rs` | Codex SDK thread interface |
-| `crates/acp-adapter/src/agents/` | ACP wrappers for Codex and Codex |
+| `crates/acp-adapter/src/agents/` | ACP wrappers for Codex CLI and Codex |
 
 ## Summary
 

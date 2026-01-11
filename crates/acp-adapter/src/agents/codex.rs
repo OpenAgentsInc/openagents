@@ -84,7 +84,7 @@ pub async fn connect_codex(
     }
 
     // Build command arguments
-    // Note: Codex uses a different CLI structure than Codex Code
+    // Note: Codex uses a different CLI structure than Codex
     let mut command = AgentCommand::new(&executable);
 
     // Use exec subcommand for interactive mode

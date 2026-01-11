@@ -325,7 +325,7 @@ Different signatures benefit from different models:
 
 ## LM Provider Priority
 
-1. **Codex SDK** — Uses Codex Code headless mode
+1. **Codex SDK** — Uses Codex headless mode
 2. **Llama.cpp/GPT-OSS** — Local OpenAI-compatible server (default :8080)
 3. **Pylon Swarm** — Distributed inference via NIP-90
 4. **Cerebras** — Fast, cheap execution

@@ -88,7 +88,7 @@ fn print_compute(manifest: &OanixManifest) {
             } else {
                 println!("       Install Ollama: https://ollama.com");
             }
-            println!("       Or install Codex CLI: https://codex.ai/codex-code");
+            println!("       Or install Codex CLI: https://codex.ai/codex");
         }
     } else {
         for backend in &manifest.compute.backends {

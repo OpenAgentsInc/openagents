@@ -77,15 +77,15 @@ cargo build --release -p pylon
 
 ### Autopilot UI — AI Coding Terminal
 
-GPU-accelerated terminal interface for Codex Code and Codex. Built on wgpui for high-performance rendering.
+GPU-accelerated terminal interface for Codex CLI and Codex. Built on wgpui for high-performance rendering.
 
 Autopilot UI reimagines the AI coding experience as a native desktop application rather than a web interface or CLI tool. The entire UI is GPU-rendered via wgpui, giving you buttery-smooth scrolling through long conversations, instant Markdown rendering, and the responsiveness you'd expect from a proper terminal emulator. It's designed for developers who live in their terminal and want AI coding assistants to feel like a natural extension of that workflow.
 
 Under the hood, Autopilot UI integrates multiple AI backends:
-- **Codex** (via codex-agent-sdk) — OpenAI's Codex Code CLI
-- **Codex** (via codex-agent-sdk) — OpenAI's Codex CLI
+- **Codex CLI** (via codex-agent-sdk) — OpenAI's Codex CLI
+- **Codex** (via codex-agent-sdk) — OpenAI's Codex API
 
-Switch between backends with `/backend codex` or `/backend codex`. The status bar shows the current backend. Both backends share the same UI rendering, streaming, and tool visualization infrastructure.
+Switch between backends with `/backend` (toggle) or `/backend codex` (select Codex). The status bar shows the current backend. Both backends share the same UI rendering, streaming, and tool visualization infrastructure.
 
 Autopilot UI also integrates the Adjutant execution engine for autonomous "autopilot" mode. When you give it a task, Adjutant uses DSPy-optimized decision making to classify complexity, choose the right execution path (Codex SDK or RLM), and iterate until the task is complete. The UI provides real-time visibility into what the agent is doing, with the ability to interrupt, guide, or take over at any point.
 
@@ -94,7 +94,7 @@ cargo run -p autopilot
 ```
 
 **Features:**
-- Terminal-style interaction with Codex or Codex
+- Terminal-style interaction with Codex
 - Multi-backend support (`/backend` command to switch)
 - Autonomous autopilot loop (adjutant integration)
 - MCP server management
@@ -104,9 +104,8 @@ cargo run -p autopilot
 
 **Backend toggle:**
 ```bash
-/backend             # Toggle between Codex and Codex
-/backend codex      # Switch to Codex
-/backend codex       # Switch to Codex (requires `codex` CLI installed)
+/backend             # Toggle between Codex CLI and Codex
+/backend codex      # Switch to Codex (requires `codex` CLI installed)
 ```
 
 The Autopilot UI integrates Adjutant for task execution with DSPy-powered decision making and self-improvement.
@@ -488,7 +487,7 @@ Tracks usage per model for billing and context optimization.
 | Crate | Purpose |
 |-------|---------|
 | `pylon` | Node software (provider + host) |
-| `coder` | GPU terminal for Codex Code |
+| `coder` | GPU terminal for Codex |
 | `onyx` | Local-first Markdown editor |
 | `gitafter` | Nostr-native git collaboration |
 | `autopilot` | Autonomous coding agent |
@@ -504,7 +503,7 @@ Tracks usage per model for billing and context optimization.
 | `rlm` | Recursive language model |
 | `frlm` | Federated RLM |
 | `spark` | Lightning wallet (Breez SDK) |
-| `codex-agent-sdk` | Rust SDK for Codex Code |
+| `codex-agent-sdk` | Rust SDK for Codex |
 | `codex-agent-sdk` | Rust SDK for OpenAI Codex |
 | `voice` | Voice transcription (whisper.cpp) |
 | `voice-daemon` | macOS menu bar daemon |
@@ -530,7 +529,7 @@ Stage only your own files. Other agents may have uncommitted work.
 git commit -m "$(cat <<'EOF'
 Short description of change
 
-🤖 Generated with [Codex Code](https://codex.com/codex-code)
+🤖 Generated with [Codex](https://codex.com/codex)
 
 Co-Authored-By: Codex <noreply@openai.com>
 EOF

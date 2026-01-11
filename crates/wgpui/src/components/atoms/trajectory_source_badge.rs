@@ -1,6 +1,6 @@
 //! Trajectory source badge for marketplace data contribution.
 //!
-//! Shows the source of trajectory data (Codex, Cursor, Codex, etc.).
+//! Shows the source of trajectory data (Codex, Cursor, Windsurf, etc.).
 
 use crate::components::context::{EventContext, PaintContext};
 use crate::components::{Component, ComponentId, EventResult};
@@ -12,7 +12,6 @@ pub enum TrajectorySource {
     #[default]
     Codex,
     Cursor,
-    Codex,
     Windsurf,
     Custom,
 }
@@ -22,7 +21,6 @@ impl TrajectorySource {
         match self {
             TrajectorySource::Codex => "Codex",
             TrajectorySource::Cursor => "Cursor",
-            TrajectorySource::Codex => "Codex",
             TrajectorySource::Windsurf => "Windsurf",
             TrajectorySource::Custom => "Custom",
         }
@@ -30,9 +28,8 @@ impl TrajectorySource {
 
     pub fn icon(&self) -> &'static str {
         match self {
-            TrajectorySource::Codex => "◆",
-            TrajectorySource::Cursor => "▸",
             TrajectorySource::Codex => "⟨⟩",
+            TrajectorySource::Cursor => "▸",
             TrajectorySource::Windsurf => "~",
             TrajectorySource::Custom => "◇",
         }
@@ -40,9 +37,8 @@ impl TrajectorySource {
 
     pub fn color(&self) -> Hsla {
         match self {
-            TrajectorySource::Codex => Hsla::new(30.0, 0.8, 0.55, 1.0), // Orange (OpenAI)
-            TrajectorySource::Cursor => Hsla::new(200.0, 0.7, 0.5, 1.0), // Blue
             TrajectorySource::Codex => Hsla::new(160.0, 0.6, 0.45, 1.0), // Teal (OpenAI)
+            TrajectorySource::Cursor => Hsla::new(200.0, 0.7, 0.5, 1.0), // Blue
             TrajectorySource::Windsurf => Hsla::new(220.0, 0.7, 0.55, 1.0), // Indigo
             TrajectorySource::Custom => Hsla::new(0.0, 0.0, 0.5, 1.0),   // Gray
         }

@@ -106,9 +106,9 @@ enum Commands {
         limit: i64,
     },
 
-    /// Convert Codex Code JSONL session to .rlog format
+    /// Convert Codex JSONL session to .rlog format
     Convert {
-        /// Path to the Codex Code .jsonl file
+        /// Path to the Codex .jsonl file
         file: PathBuf,
 
         /// Git repository SHA (auto-detect from cwd if not specified)
@@ -135,7 +135,7 @@ enum Commands {
         #[arg(long, default_value = "true")]
         include_queue_ops: bool,
 
-        /// Include raw Codex Code JSONL events as comments (may contain sensitive data)
+        /// Include raw Codex JSONL events as comments (may contain sensitive data)
         #[arg(long, default_value = "false")]
         include_raw_events: bool,
 

@@ -571,7 +571,7 @@ The `/codex` mount enables agents to command one or more Codex instances. Key in
 - Wired tool-approval workflow and append-only tool logs for both SDK-backed and tunnel sessions; output watch reconciles budget on completion/failure.
 - Added tunnel auth surfaces (`/codex/auth/{tunnels,challenge,status}`), provider health/endpoints surfaces, and admin-only policy/pool/proxy writes via `AgentEnv`.
 - Added runtime tests for `/codex/new` usage/idempotency and output watch; exported `/codex` APIs in `crates/runtime/src/lib.rs` and added required deps.
-- Added default Codex Code container image definition + docs (`docker/codex/`, `docs/codex/container-image.md`) and a local smoke-test helper (`scripts/codex-container-smoke-test.sh`) with Apple Container directory-mount guidance.
+- Added default Codex container image definition + docs (`docker/codex/`, `docs/codex/container-image.md`) and a local smoke-test helper (`scripts/codex-container-smoke-test.sh`) with Apple Container directory-mount guidance.
 
 ### Exit Criteria
 

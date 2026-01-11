@@ -10,20 +10,18 @@ use std::str::FromStr;
 /// Supported trajectory sources
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum TrajectorySource {
-    /// Codex Code trajectories
-    CodexCode,
-    /// Cursor trajectories
-    Cursor,
     /// Codex trajectories
     Codex,
+    /// Cursor trajectories
+    Cursor,
 }
 
 impl TrajectorySource {
     /// Get standard log directory for this source
     pub fn default_log_dir(&self) -> Option<PathBuf> {
         match self {
-            Self::CodexCode => {
-                // Try multiple locations for Codex Code logs
+            Self::Codex => {
+                // Try multiple locations for Codex logs
                 // 1. Check docs/logs/ in current directory (OpenAgents project structure)
                 let docs_logs = PathBuf::from("docs/logs");
                 if docs_logs.exists() && docs_logs.is_dir() {
@@ -38,17 +36,12 @@ impl TrajectorySource {
                 let home = std::env::var("HOME").ok()?;
                 Some(PathBuf::from(home).join(".cursor/logs"))
             }
-            Self::Codex => {
-                let home = std::env::var("HOME").ok()?;
-                Some(PathBuf::from(home).join(".codex/logs"))
-            }
         }
     }
 
     /// Get the identifier string for this source
     pub fn as_str(&self) -> &'static str {
         match self {
-            Self::CodexCode => "codex",
             Self::Cursor => "cursor",
             Self::Codex => "codex",
         }
@@ -60,9 +53,8 @@ impl FromStr for TrajectorySource {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
-            "codex" => Ok(Self::CodexCode),
-            "cursor" => Ok(Self::Cursor),
             "codex" => Ok(Self::Codex),
+            "cursor" => Ok(Self::Cursor),
             _ => Err(format!("Unknown trajectory source: {}", s)),
         }
     }
@@ -140,7 +132,7 @@ impl TrajectoryCollector {
             });
         }
 
-        // Recursively scan for .rlog files (Codex Code format)
+        // Recursively scan for .rlog files (Codex format)
         self.scan_directory_recursive(dir, source, &mut sessions, &mut errors);
 
         let session_count = sessions.len();
@@ -505,15 +497,11 @@ mod tests {
     fn test_trajectory_source_parsing() {
         assert_eq!(
             TrajectorySource::from_str("codex"),
-            Ok(TrajectorySource::CodexCode)
+            Ok(TrajectorySource::Codex)
         );
         assert_eq!(
             TrajectorySource::from_str("cursor"),
             Ok(TrajectorySource::Cursor)
-        );
-        assert_eq!(
-            TrajectorySource::from_str("codex"),
-            Ok(TrajectorySource::Codex)
         );
         assert!(TrajectorySource::from_str("unknown").is_err());
     }

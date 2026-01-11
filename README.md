@@ -12,7 +12,7 @@ This is not another AI wrapper or chatbot framework. This is the full stack for 
 
 **Autopilot is 4x more productive than interactive coding assistants.**
 
-We measured it. When you use Codex Code or Cursor interactively, you're the bottleneck — reading output, thinking, typing the next command. Your AI runs at ~4.5 actions per minute because it's waiting on you. Autopilot runs autonomously at ~19 actions per minute. Same AI, same capabilities, 4x the throughput.
+We measured it. When you use Codex or Cursor interactively, you're the bottleneck — reading output, thinking, typing the next command. Your AI runs at ~4.5 actions per minute because it's waiting on you. Autopilot runs autonomously at ~19 actions per minute. Same AI, same capabilities, 4x the throughput.
 
 But raw speed isn't the point. The point is **leverage**.
 
@@ -250,7 +250,7 @@ openagents/
 │   ├── compute/            NIP-90 compute provider
 │   │
 │   ├── # AGENT SDKS
-│   ├── codex-agent-sdk/   Rust SDK for Codex Code CLI
+│   ├── codex-agent-sdk/   Rust SDK for Codex CLI
 │   ├── codex-agent-sdk/    OpenAI Codex integration
 │   ├── agent-orchestrator/ Multi-agent coordination framework
 │   │
@@ -293,7 +293,7 @@ cargo run -p wgpui --example component_showcase --features desktop
 [Full documentation →](crates/wgpui/README.md)
 
 #### `autopilot`
-Autopilot UI + CLI entrypoint built on WGPUI with Codex and Codex backends.
+Autopilot UI + CLI entrypoint built on WGPUI with Codex CLI and Codex backends.
 
 ```bash
 # Launch UI
@@ -311,7 +311,7 @@ cargo run -p autopilot -- run "Fix all compiler warnings"
 Autonomous task runner with complete trajectory logging. Used by the `autopilot` binary and service layers.
 
 Features:
-- Multi-agent support (Codex, Codex)
+- Multi-agent support (Codex)
 - Issue-based workflow
 - JSON + rlog output formats
 - Budget tracking
@@ -457,7 +457,7 @@ MCP server exposing issue tracking tools:
 
 - 13 tools (create, claim, complete, block, etc.)
 - JSON-RPC 2.0 over stdio
-- Used by Codex Code autopilot
+- Used by Codex autopilot
 - Plan mode integration
 
 [Full documentation →](crates/issues-mcp/README.md)
@@ -475,7 +475,7 @@ println!("Max tasks: {}", config.max_tasks_per_run);
 ```
 
 Supports:
-- Codex Code settings
+- Codex settings
 - Sandbox configuration
 - Healer rules
 - Parallel execution
@@ -486,7 +486,7 @@ Supports:
 ### Agent SDKs
 
 #### `codex-agent-sdk`
-Rust SDK for Codex Code CLI:
+Rust SDK for Codex CLI:
 
 ```rust
 use codex_agent_sdk::{query, QueryOptions};
@@ -984,7 +984,7 @@ nostr event --kind 5050 \
 
 ### Multi-Agent Workflow
 
-Delegate between Codex and Codex for complex tasks:
+Delegate between Codex CLI and Codex for complex tasks:
 
 ```rust
 use codex_agent_sdk::{query, QueryOptions};
