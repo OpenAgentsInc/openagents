@@ -17,6 +17,7 @@ pub(crate) enum PermissionResult {
         updated_input: Value,
         updated_permissions: Option<Value>,
         tool_use_id: Option<String>,
+        accept_for_session: Option<bool>,
     },
     Deny {
         message: String,

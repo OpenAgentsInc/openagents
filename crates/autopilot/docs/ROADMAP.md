@@ -12,7 +12,11 @@ coverage of approvals, tool results, and review flows while preserving local
 session continuity and the existing Adjutant-driven autopilot mode. The roadmap
 prioritizes robust transport, event mapping, and session persistence first, then
 builds toward config, auth, MCP, and skills integration that matches the app-server
-API surface.
+API surface. Codex should run as a sidecar runtime controlled over JSONL, with an
+adapter boundary that keeps Autopilot free to orchestrate other runtimes later. The
+event stream should double as the telemetry spine, with raw JSONL and normalized
+events persisted for replay and evaluation, and approvals treated as the autonomy
+control surface rather than a one-off dialog.
 
 ## Current State (v0.1 snapshot)
 
@@ -27,7 +31,9 @@ The remaining gaps are concentrated in app-server parity: Codex thread resume is
 not wired, the tool list is empty for the Codex path, and approval requests are not
 surfaced to the user. Catalog discovery for agents, skills, hooks, and MCP exists
 in the UI but does not yet drive Codex runs, and local session metadata is not
-linked to Codex rollouts.
+linked to Codex rollouts. There is no runtime adapter boundary yet, approvals lack
+policy-driven auto decisions, and app-server runs do not capture a raw + normalized
+trace for replay or evaluation.
 
 ## Milestones
 
@@ -64,26 +70,30 @@ should behave consistently across both the Codex SDK stream and app-server strea
 
 Scope: connect server-initiated approval requests
 (`item/commandExecution/requestApproval` and `item/fileChange/requestApproval`) to
-the existing permission dialogs and rule persistence. Coder modes should map to
-`approvalPolicy` and `sandboxPolicy`, and the client must respond with accept or
-decline (including `acceptSettings` when relevant). Declined or failed approvals
-must render final item status so the user can see what happened.
+the existing permission dialogs and rule persistence, and apply allow/deny rules to
+auto-decide when possible. Coder modes should map to `approvalPolicy` and
+`sandboxPolicy`, and the client must respond with accept or decline (including
+`acceptSettings` when relevant). Declined or failed approvals must render final
+item status so the user can see what happened.
 
 Acceptance: a dangerous command or file edit triggers a permission dialog, user
-choice gates execution, and the chosen rule updates persist to disk. Subsequent
-requests honor the new rules without restarting the app.
+choice gates execution, and allow/deny updates persist to disk. Subsequent requests
+honor the new rules without restarting the app, and "allow once" vs "allow always"
+map to the correct approval response behavior.
 
 ### M4: Sessions, history, and review
 
 Scope: adopt `thread/list`, `thread/resume`, and `thread/archive` and connect them
 to the session list, resume, fork, and export UI. Store Codex `threadId` alongside
-local session metadata so rollouts can be resumed and archived from the UI. Add
+local session metadata so rollouts can be resumed and archived from the UI, and
+capture raw JSONL wire logs plus normalized event traces for replay and eval. Add
 `review/start` support for inline and detached reviews and render entered/exited
 review items in the chat timeline or a dedicated view.
 
 Acceptance: session list shows Codex rollouts, resume uses `thread/resume`, and
 review results appear in the UI in a way that mirrors CLI behavior. Session metadata
-should remain consistent between local files and Codex rollouts.
+should remain consistent between local files and Codex rollouts, and each run has
+trace artifacts that can be replayed without re-running the model.
 
 ### M5: Config, auth, models, MCP, and skills
 
@@ -92,7 +102,9 @@ controls, wire `config/read` and write endpoints for persistent settings, and ad
 auth flows for `account/read`, `account/login/start`, `account/login/cancel`,
 `account/logout`, and rate limit notifications. MCP endpoints
 (`mcpServerStatus/list`, `mcpServer/oauth/login`) should drive MCP status and tool
-lists, and `skills/list` should feed skill discovery with a refresh path.
+lists, and `skills/list` should feed skill discovery with a refresh path. Map
+Autopilot skills to Codex skills or MCP tools so capability discovery happens at
+the start of each run.
 
 Acceptance: changing models or settings in the UI updates Codex configuration on
 disk, auth state changes are reflected in the UI, and MCP/skill lists populate with
@@ -109,14 +121,27 @@ and recoverable.
 Acceptance: Autopilot mode can complete a turn via app-server end-to-end, and test
 coverage exists for thread start, turn stream, and approval accept/decline paths.
 
+### M7: Runtime adapters and orchestration
+
+Scope: introduce a runtime adapter interface so Codex is one sidecar runtime behind
+a stable boundary, add runtime pooling with per-job isolation, and normalize event
+streams into a persistent trace format that feeds HUD metrics. Define a policy
+layer that can auto-approve or defer approvals based on rules, and allow multi-step
+workflows to schedule tasks at item boundaries (planner/executor/tester style).
+
+Acceptance: Autopilot can select a runtime via the adapter, spin up isolated Codex
+instances, persist raw and normalized traces, and apply a policy-driven approval
+decision without requiring a UI prompt.
+
 ## Dependencies and risks
 
 The app-server protocol may evolve and require schema regeneration, so the client
 must track versions carefully. Codex binary availability and auth requirements are
 prerequisites for most flows, and mapping local session metadata to Codex rollouts
-must preserve user-visible history without losing data.
+must preserve user-visible history without losing data. Codex should remain a
+sidecar process rather than an embedded library to keep lifecycle control and
+multi-runtime swaps safe.
 
 ## Out of scope (for now)
 
-This roadmap does not add new non-Codex backends beyond the existing Codex
-integration and does not cover multi-user sync or cloud session sharing.
+This roadmap does not cover multi-user sync or cloud session sharing.

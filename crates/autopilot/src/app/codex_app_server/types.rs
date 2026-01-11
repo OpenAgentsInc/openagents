@@ -277,6 +277,14 @@ pub enum ApprovalDecision {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct ApprovalAcceptSettings {
+    pub for_session: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ApprovalResponse {
     pub decision: ApprovalDecision,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub accept_settings: Option<ApprovalAcceptSettings>,
 }

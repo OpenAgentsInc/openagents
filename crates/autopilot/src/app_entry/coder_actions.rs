@@ -5,6 +5,7 @@ use std::sync::Arc;
 use serde_json::Value;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::error::TryRecvError;
+use tokio::sync::oneshot;
 
 use crate::app::agents::AgentBackendsEvent;
 use crate::app::chat::{ChatMessage, MessageRole};
@@ -18,7 +19,8 @@ use crate::app::events::{CommandAction, ModalState, QueryControl, ResponseEvent}
 use crate::app::nip28::{Nip28ConnectionStatus, Nip28Event, Nip28Message};
 use crate::app::nip90::{Nip90ConnectionStatus, Nip90Event};
 use crate::app::parsing::expand_prompt_text;
-use crate::app::permissions::{coder_mode_default_allow, parse_coder_mode};
+use crate::app::permissions::{coder_mode_default_allow, parse_coder_mode, PermissionPending};
+use crate::app::permissions::request::{PermissionRequest, PermissionResult};
 use crate::app::session::SessionInfo;
 use crate::app::ui::render_app;
 use crate::app::CoderMode;
@@ -88,11 +90,17 @@ impl AutopilotApp {
 
         if use_app_server_transport() {
             tracing::info!("Using Codex app-server transport");
+            let (permission_tx, permission_rx) = mpsc::unbounded_channel();
+            let (permission_action_tx, permission_action_rx) = mpsc::unbounded_channel();
+            state.permissions.permission_requests_rx = Some(permission_rx);
+            state.permissions.permission_action_tx = Some(permission_action_tx);
+            state.permissions.permission_action_rx = Some(permission_action_rx);
             self.submit_codex_prompt_app_server(
                 expanded_prompt,
                 cwd,
                 coder_mode,
                 tx,
+                permission_tx,
                 control_rx,
                 window,
             );
@@ -344,6 +352,7 @@ impl AutopilotApp {
         cwd: PathBuf,
         coder_mode: CoderMode,
         tx: mpsc::UnboundedSender<ResponseEvent>,
+        permission_tx: mpsc::UnboundedSender<PermissionPending>,
         mut control_rx: mpsc::UnboundedReceiver<QueryControl>,
         window: Arc<winit::window::Window>,
     ) {
@@ -447,6 +456,7 @@ impl AutopilotApp {
             let mut reasoning_with_delta: HashSet<String> = HashSet::new();
             let mut diff_tool_ids: HashSet<String> = HashSet::new();
             let mut latest_token_usage: Option<app_server::ThreadTokenUsage> = None;
+            let mut approval_items: HashMap<String, Value> = HashMap::new();
 
             let mut completed = false;
             while !completed {
@@ -550,6 +560,7 @@ impl AutopilotApp {
                                                 &tx,
                                                 &mut command_outputs,
                                                 &mut file_change_outputs,
+                                                &mut approval_items,
                                                 &window,
                                             );
                                         }
@@ -570,6 +581,7 @@ impl AutopilotApp {
                                                 &mut file_change_outputs,
                                                 &mut agent_message_with_delta,
                                                 &mut reasoning_with_delta,
+                                                &mut approval_items,
                                                 &window,
                                             );
                                         }
@@ -678,7 +690,16 @@ impl AutopilotApp {
                         }
                     }
                     Some(request) = request_rx.recv() => {
-                        handle_app_server_request(&client, &tx, coder_mode, request, &window).await;
+                        handle_app_server_request(
+                            &client,
+                            &tx,
+                            coder_mode,
+                            &permission_tx,
+                            &approval_items,
+                            request,
+                            &window,
+                        )
+                        .await;
                     }
                     else => {
                         completed = true;
@@ -1734,47 +1755,121 @@ fn sandbox_mode_for_mode(mode: CoderMode) -> app_server::SandboxMode {
     }
 }
 
+#[derive(Clone, Copy)]
+enum ApprovalKind {
+    CommandExecution,
+    FileChange,
+}
+
 async fn handle_app_server_request(
     client: &app_server::AppServerClient,
     tx: &mpsc::UnboundedSender<ResponseEvent>,
     coder_mode: CoderMode,
+    permission_tx: &mpsc::UnboundedSender<PermissionPending>,
+    approval_items: &HashMap<String, Value>,
     request: app_server::AppServerRequest,
     window: &Arc<winit::window::Window>,
 ) {
-    let decision = if coder_mode.auto_approves_all() {
-        app_server::ApprovalDecision::Accept
-    } else {
-        app_server::ApprovalDecision::Decline
-    };
-
     let app_server::AppServerRequest { id, method, params } = request;
-    let mut reason = None;
-    match method.as_str() {
+    let params_value = params.clone();
+
+    let parsed = match method.as_str() {
         "item/commandExecution/requestApproval" => {
-            if let Some(params) = params {
-                if let Ok(parsed) = serde_json::from_value::<
-                    app_server::CommandExecutionRequestApprovalParams,
-                >(params) {
-                    reason = parsed.reason;
-                }
-            }
+            params.and_then(|value| {
+                serde_json::from_value::<app_server::CommandExecutionRequestApprovalParams>(value)
+                    .ok()
+            })
+            .map(|parsed| (ApprovalKind::CommandExecution, parsed.item_id, parsed.reason))
         }
-        "item/fileChange/requestApproval" => {
-            if let Some(params) = params {
-                if let Ok(parsed) =
-                    serde_json::from_value::<app_server::FileChangeRequestApprovalParams>(params)
-                {
-                    reason = parsed.reason;
-                }
-            }
-        }
+        "item/fileChange/requestApproval" => params
+            .and_then(|value| {
+                serde_json::from_value::<app_server::FileChangeRequestApprovalParams>(value).ok()
+            })
+            .map(|parsed| (ApprovalKind::FileChange, parsed.item_id, parsed.reason)),
         _ => {
             tracing::warn!("Unhandled app-server request: {}", method);
+            None
         }
-    }
+    };
+
+    let Some((kind, item_id, reason)) = parsed else {
+        let _ = tx.send(ResponseEvent::SystemMessage(
+            "Approval request unsupported.".to_string(),
+        ));
+        let _ = client
+            .respond(
+                id,
+                &app_server::ApprovalResponse {
+                    decision: app_server::ApprovalDecision::Decline,
+                    accept_settings: None,
+                },
+            )
+            .await;
+        window.request_redraw();
+        return;
+    };
+
+    let approval_item = approval_items.get(&item_id).cloned();
+    let permission_request = build_permission_request(
+        kind,
+        item_id.clone(),
+        reason.clone(),
+        approval_item.as_ref(),
+        params_value.as_ref(),
+    );
+
+    let decision_result = if let Some(request) = permission_request {
+        let (response_tx, response_rx) = oneshot::channel();
+        if permission_tx
+            .send(PermissionPending {
+                request,
+                respond_to: response_tx,
+            })
+            .is_err()
+        {
+            None
+        } else {
+            window.request_redraw();
+            response_rx.await.ok()
+        }
+    } else {
+        None
+    };
+
+    let (decision, accept_settings, decline_reason) = match decision_result {
+        Some(PermissionResult::Allow {
+            accept_for_session,
+            ..
+        }) => {
+            let accept_settings = if matches!(kind, ApprovalKind::CommandExecution) {
+                accept_for_session.map(|for_session| app_server::ApprovalAcceptSettings {
+                    for_session,
+                })
+            } else {
+                None
+            };
+            (app_server::ApprovalDecision::Accept, accept_settings, None)
+        }
+        Some(PermissionResult::Deny { message, .. }) => {
+            (app_server::ApprovalDecision::Decline, None, Some(message))
+        }
+        None => {
+            let decision = if coder_mode.auto_approves_all() {
+                app_server::ApprovalDecision::Accept
+            } else {
+                app_server::ApprovalDecision::Decline
+            };
+            let decline_reason = if matches!(decision, app_server::ApprovalDecision::Decline) {
+                reason.clone()
+            } else {
+                None
+            };
+            (decision, None, decline_reason)
+        }
+    };
 
     if matches!(decision, app_server::ApprovalDecision::Decline) {
-        let label = reason.unwrap_or_else(|| "No reason provided.".to_string());
+        let label = decline_reason.unwrap_or_else(|| "No reason provided.".to_string());
         let _ = tx.send(ResponseEvent::SystemMessage(format!(
             "Approval declined: {}",
             label
@@ -1782,7 +1877,13 @@ async fn handle_app_server_request(
     }
 
     if let Err(err) = client
-        .respond(id, &app_server::ApprovalResponse { decision })
+        .respond(
+            id,
+            &app_server::ApprovalResponse {
+                decision,
+                accept_settings,
+            },
+        )
         .await
     {
         let _ = tx.send(ResponseEvent::Error(format!(
@@ -1792,6 +1893,83 @@ async fn handle_app_server_request(
     }
 
     window.request_redraw();
+}
+
+fn build_permission_request(
+    kind: ApprovalKind,
+    item_id: String,
+    reason: Option<String>,
+    approval_item: Option<&Value>,
+    params: Option<&Value>,
+) -> Option<PermissionRequest> {
+    match kind {
+        ApprovalKind::CommandExecution => {
+            let command = params
+                .and_then(command_string_from_params)
+                .or_else(|| approval_item.and_then(command_string_from_item));
+            let mut input = serde_json::json!({});
+            if let Some(command) = command {
+                input["command"] = Value::String(command);
+            }
+            Some(PermissionRequest {
+                tool_name: "Bash".to_string(),
+                tool_use_id: item_id,
+                input,
+                suggestions: None,
+                blocked_path: None,
+                decision_reason: reason,
+            })
+        }
+        ApprovalKind::FileChange => {
+            let (paths, first_path, _) = approval_item
+                .map(extract_file_changes)
+                .unwrap_or_default();
+            let mut input = serde_json::json!({ "files": paths });
+            if let Some(path) = first_path.clone() {
+                input["file_path"] = Value::String(path);
+            }
+            Some(PermissionRequest {
+                tool_name: "Edit".to_string(),
+                tool_use_id: item_id,
+                input,
+                suggestions: None,
+                blocked_path: first_path,
+                decision_reason: reason,
+            })
+        }
+    }
+}
+
+fn command_string_from_params(params: &Value) -> Option<String> {
+    params
+        .get("parsedCmd")
+        .and_then(value_to_command_string)
+        .or_else(|| params.get("command").and_then(value_to_command_string))
+}
+
+fn command_string_from_item(item: &Value) -> Option<String> {
+    item.get("command").and_then(value_to_command_string)
+}
+
+fn value_to_command_string(value: &Value) -> Option<String> {
+    match value {
+        Value::String(text) => {
+            if text.trim().is_empty() {
+                None
+            } else {
+                Some(text.to_string())
+            }
+        }
+        Value::Array(parts) => {
+            let items: Vec<&str> = parts.iter().filter_map(|val| val.as_str()).collect();
+            if items.is_empty() {
+                None
+            } else {
+                Some(items.join(" "))
+            }
+        }
+        _ => None,
+    }
 }
 
 fn append_tool_output(buffers: &mut HashMap<String, String>, item_id: &str, delta: &str) {
@@ -1836,6 +2014,7 @@ fn handle_app_server_item_started(
     tx: &mpsc::UnboundedSender<ResponseEvent>,
     command_outputs: &mut HashMap<String, String>,
     file_change_outputs: &mut HashMap<String, String>,
+    approval_items: &mut HashMap<String, Value>,
     window: &Arc<winit::window::Window>,
 ) {
     let Some(item_type) = item.get("type").and_then(Value::as_str) else {
@@ -1846,11 +2025,8 @@ fn handle_app_server_item_started(
             let Some(id) = item_id(item) else {
                 return;
             };
-            let command = item
-                .get("command")
-                .and_then(Value::as_str)
-                .unwrap_or("")
-                .to_string();
+            approval_items.insert(id.clone(), item.clone());
+            let command = command_string_from_item(item).unwrap_or_default();
             command_outputs.entry(id.clone()).or_default();
             let _ = tx.send(ResponseEvent::ToolCallStart {
                 name: "Bash".to_string(),
@@ -1866,6 +2042,7 @@ fn handle_app_server_item_started(
             let Some(id) = item_id(item) else {
                 return;
             };
+            approval_items.insert(id.clone(), item.clone());
             let (paths, first_path, _) = extract_file_changes(item);
             let mut input = serde_json::json!({ "files": paths });
             if let Some(path) = first_path {
@@ -1938,6 +2115,7 @@ fn handle_app_server_item_completed(
     file_change_outputs: &mut HashMap<String, String>,
     agent_message_with_delta: &mut HashSet<String>,
     reasoning_with_delta: &mut HashSet<String>,
+    approval_items: &mut HashMap<String, Value>,
     window: &Arc<winit::window::Window>,
 ) {
     let Some(item_type) = item.get("type").and_then(Value::as_str) else {
@@ -1983,6 +2161,7 @@ fn handle_app_server_item_completed(
             let Some(id) = item_id(item) else {
                 return;
             };
+            approval_items.remove(&id);
             let status = item
                 .get("status")
                 .and_then(Value::as_str)
@@ -2017,6 +2196,7 @@ fn handle_app_server_item_completed(
             let Some(id) = item_id(item) else {
                 return;
             };
+            approval_items.remove(&id);
             let status = item
                 .get("status")
                 .and_then(Value::as_str)
