@@ -25,55 +25,61 @@ pub async fn boot() -> anyhow::Result<OanixManifest> {
 /// Boot OANIX with custom configuration.
 ///
 /// Respects skip flags and retry settings from the config.
+/// Runs all discovery phases in parallel for faster startup.
 pub async fn boot_with_config(config: BootConfig) -> anyhow::Result<OanixManifest> {
     let start = Instant::now();
 
-    // Phase 1: Hardware discovery
-    let hardware = if config.skip_hardware {
-        debug!("Skipping hardware discovery");
-        HardwareManifest::unknown()
-    } else {
-        retry_discovery("hardware", config.retries, || discover_hardware()).await?
-    };
-
-    // Phase 2: Compute backend discovery
-    let compute = if config.skip_compute {
-        debug!("Skipping compute discovery");
-        ComputeManifest::empty()
-    } else {
-        retry_discovery("compute", config.retries, || discover_compute()).await?
-    };
-
-    // Phase 3: Network discovery
-    let network = if config.skip_network {
-        debug!("Skipping network discovery");
-        NetworkManifest::offline()
-    } else {
-        retry_discovery("network", config.retries, || discover_network()).await?
-    };
-
-    // Phase 4: Identity discovery
-    let identity = if config.skip_identity {
-        debug!("Skipping identity discovery");
-        IdentityManifest::unknown()
-    } else {
-        retry_discovery("identity", config.retries, || discover_identity()).await?
-    };
-
-    // Phase 5: Workspace discovery
-    let workspace = if config.skip_workspace {
-        debug!("Skipping workspace discovery");
-        None
-    } else {
-        retry_discovery("workspace", config.retries, || discover_workspace()).await?
-    };
+    // Run all discovery phases in parallel
+    let (hardware_result, compute_result, network_result, identity_result, workspace_result) =
+        tokio::join!(
+            async {
+                if config.skip_hardware {
+                    debug!("Skipping hardware discovery");
+                    Ok(HardwareManifest::unknown())
+                } else {
+                    retry_discovery("hardware", config.retries, || discover_hardware()).await
+                }
+            },
+            async {
+                if config.skip_compute {
+                    debug!("Skipping compute discovery");
+                    Ok(ComputeManifest::empty())
+                } else {
+                    retry_discovery("compute", config.retries, || discover_compute()).await
+                }
+            },
+            async {
+                if config.skip_network {
+                    debug!("Skipping network discovery");
+                    Ok(NetworkManifest::offline())
+                } else {
+                    retry_discovery("network", config.retries, || discover_network()).await
+                }
+            },
+            async {
+                if config.skip_identity {
+                    debug!("Skipping identity discovery");
+                    Ok(IdentityManifest::unknown())
+                } else {
+                    retry_discovery("identity", config.retries, || discover_identity()).await
+                }
+            },
+            async {
+                if config.skip_workspace {
+                    debug!("Skipping workspace discovery");
+                    Ok(None)
+                } else {
+                    retry_discovery("workspace", config.retries, || discover_workspace()).await
+                }
+            },
+        );
 
     Ok(OanixManifest {
-        hardware,
-        compute,
-        network,
-        identity,
-        workspace,
+        hardware: hardware_result?,
+        compute: compute_result?,
+        network: network_result?,
+        identity: identity_result?,
+        workspace: workspace_result?,
         discovered_at: start,
     })
 }
