@@ -82,25 +82,19 @@ fn render_dspy_stage_card(
             workspace,
             active_directive,
             open_issues,
-            compute_backends,
             priority_action,
             urgency,
             reasoning,
+            ..
         } => {
             let directive = active_directive.as_deref().unwrap_or("None");
-            let backends = if compute_backends.is_empty() {
-                "None".to_string()
-            } else {
-                compute_backends.join(", ")
-            };
-            let status_line = format!("{} open · backends: {}", open_issues, backends);
             let priority_line = format!("{} ({})", priority_action, urgency);
             let reasoning_line = truncate_preview(reasoning, 140);
             let mut items = vec![
                 ("System".to_string(), truncate_preview(system_info, 120)),
                 ("Workspace".to_string(), truncate_preview(workspace, 120)),
                 ("Directive".to_string(), truncate_preview(directive, 120)),
-                ("Status".to_string(), status_line),
+                ("Open issues".to_string(), open_issues.to_string()),
                 ("Priority".to_string(), priority_line),
             ];
             if !reasoning_line.is_empty() {
