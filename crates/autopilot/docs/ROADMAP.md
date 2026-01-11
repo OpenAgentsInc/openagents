@@ -953,3 +953,4 @@ pub enum SettingsTab {
 - 2026-01-11 06:25 UTC - Fixed dsrs sync LM init to avoid nested tokio runtime panics and validated `autopilot-cli run` with ACP/DSPy loop.
 - 2026-01-11 06:44 UTC - Auto-selected Ollama model for DSPy/Pylon local runs, fixed Claude ACP XML filtering, and validated CLI runs across local-tools/Codex/Claude backends.
 - 2026-01-11 06:52 UTC - Filtered tool XML tags from DSPy streaming tokens and validated `cargo autopilot run` with Codex backend.
+- 2026-01-11 07:01 UTC - Validated CLI edit flow (Codex create + Claude write with tool read-before-write), plus env override coverage for `AUTOPILOT_BACKEND`.
