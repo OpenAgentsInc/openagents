@@ -11,7 +11,7 @@ name = "adjutant"
 path = "src/lib.rs"
 
 [[bin]]
-name = "autopilot"
+name = "autopilot-cli"
 path = "src/bin/main.rs"
 
 [dependencies]
@@ -56,7 +56,7 @@ ctrlc = "3.4"
 futures = "0.3"
 reqwest = { workspace = true, features = ["stream", "json"] }
 gpt-oss = { version = "0.1.0", path = "../gpt-oss" }
-autopilot = { version = "0.1.0", path = "../autopilot" }
+autopilot-core = { version = "0.1.0", path = "../autopilot-core" }
 
 [dev-dependencies]
 tempfile = { workspace = true }

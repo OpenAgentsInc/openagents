@@ -5,6 +5,7 @@ members = [
     "crates/agent",
     "crates/agent-orchestrator",
     "crates/autopilot",
+    "crates/autopilot-core",
     "crates/autopilot-container",
     "crates/autopilot-service",
     "crates/autopilot-shell",
@@ -27,7 +28,6 @@ members = [
     "crates/fm-bridge-agent",
     "crates/claude-agent-sdk",
     "crates/codex-agent-sdk",
-    "crates/coder",
     "crates/daytona",
     "crates/opencode-sdk",
     "crates/nostr/core",
@@ -107,7 +107,7 @@ path = "src/bin/agent_runner.rs"
 [dependencies]
 # OpenAgents crates
 agent = { path = "crates/agent" }
-autopilot = { path = "crates/autopilot" }
+autopilot-core = { path = "crates/autopilot-core" }
 autopilot-service = { path = "crates/autopilot-service" }
 autopilot-shell = { path = "crates/autopilot-shell" }
 wallet = { path = "crates/wallet" }

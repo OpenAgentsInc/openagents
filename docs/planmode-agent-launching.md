@@ -180,7 +180,7 @@ The Explore and Design phase prompts now include:
 
 ## Testing
 
-All helper functions have comprehensive unit tests in `crates/autopilot/src/planmode.rs`:
+All helper functions have comprehensive unit tests in `crates/autopilot-core/src/planmode.rs`:
 
 ```bash
 cargo test -p autopilot planmode

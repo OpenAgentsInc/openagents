@@ -6,7 +6,7 @@ description = "Autopilot runtime service layer for IDE and CLI"
 publish = false
 
 [dependencies]
-autopilot = { path = "../autopilot" }
+autopilot-core = { path = "../autopilot-core" }
 issues = { path = "../issues" }
 anyhow = { workspace = true }
 serde = { workspace = true, features = ["derive"] }

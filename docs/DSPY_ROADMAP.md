@@ -43,10 +43,10 @@ dsrs (Rust DSPy) is now integrated into the OpenAgents workspace at `crates/dsrs
 - [x] `crates/rlm/src/dspy_bridge.rs` - LM configuration and cost tracking
 
 ### Wave 2: Autopilot Signatures (Complete)
-- [x] `crates/autopilot/src/dspy_planning.rs` - PlanningSignature + DeepPlanningSignature
-- [x] `crates/autopilot/src/dspy_execution.rs` - ExecutionStrategySignature + ToolSelectionSignature
-- [x] `crates/autopilot/src/dspy_verify.rs` - Verification + ExecutionReviewSignature
-- [x] `crates/autopilot/src/dspy_optimization.rs` - Metrics + training data infrastructure
+- [x] `crates/autopilot-core/src/dspy_planning.rs` - PlanningSignature + DeepPlanningSignature
+- [x] `crates/autopilot-core/src/dspy_execution.rs` - ExecutionStrategySignature + ToolSelectionSignature
+- [x] `crates/autopilot-core/src/dspy_verify.rs` - Verification + ExecutionReviewSignature
+- [x] `crates/autopilot-core/src/dspy_optimization.rs` - Metrics + training data infrastructure
 
 ### Wave 2.5: LaneMux (Multi-Provider LM) (Complete)
 - [x] `crates/dsrs/src/core/lm/claude_sdk.rs` - Claude Code headless via claude-agent-sdk
@@ -92,15 +92,15 @@ dsrs (Rust DSPy) is now integrated into the OpenAgents workspace at `crates/dsrs
 - [x] 10 tests passing in openagents-runtime
 
 ### Wave 11: Optimization Infrastructure (Complete)
-- [x] `crates/autopilot/src/dspy_hub.rs` - DspyHub for module storage
+- [x] `crates/autopilot-core/src/dspy_hub.rs` - DspyHub for module storage
   - Save/load optimized modules with demos
   - Query promoted modules by signature
   - A/B routing strategies (Promoted, Shadow, ABTest)
-- [x] `crates/autopilot/src/dspy_training.rs` - TrainingExtractor
+- [x] `crates/autopilot-core/src/dspy_training.rs` - TrainingExtractor
   - Parse JSONL session logs
   - Extract planning, execution, verification examples
   - Success criteria filtering
-- [x] `crates/autopilot/src/dspy_router.rs` - SignatureRouter
+- [x] `crates/autopilot-core/src/dspy_router.rs` - SignatureRouter
   - Route by compiled_id or strategy
   - Shadow mode comparison tracking
   - Promotion decision support
@@ -267,9 +267,9 @@ The following waves complete DSPy integration across the entire codebase, replac
 **Goal:** Replace keyword matching with learned signatures.
 
 **Files:**
-- `crates/autopilot/src/dspy_planning.rs` — `is_complex_task()` heuristics
-- `crates/autopilot/src/dspy_verify.rs` — Status detection
-- `crates/autopilot/src/dspy_optimization.rs` — Validation logic
+- `crates/autopilot-core/src/dspy_planning.rs` — `is_complex_task()` heuristics
+- `crates/autopilot-core/src/dspy_verify.rs` — Status detection
+- `crates/autopilot-core/src/dspy_optimization.rs` — Validation logic
 
 **Tasks:**
 - [x] Create `TaskComplexityClassifier` — Replace keyword heuristics
@@ -1119,7 +1119,7 @@ Then:
 ## Wave 6: Swarm-Backed Optimization
 
 ### 6.1 SwarmCompiler
-**File:** `crates/autopilot/src/dspy_compiler.rs`
+**File:** `crates/autopilot-core/src/dspy_compiler.rs`
 
 ```rust
 pub struct SwarmCompiler {
@@ -1146,7 +1146,7 @@ impl SwarmCompiler {
 - With swarm optimization: ~$0.10 (96.7% reduction)
 
 ### 6.2 TraceExtractor
-**File:** `crates/autopilot/src/trace_extraction.rs`
+**File:** `crates/autopilot-core/src/trace_extraction.rs`
 
 Extract training examples from successful sessions:
 
@@ -1286,7 +1286,7 @@ Universal tool selection and interpretation layer. All signatures implement `Met
 
 ## Wave 11: Optimization Infrastructure - COMPLETE
 
-*Implemented in `crates/autopilot/`*
+*Implemented in `crates/autopilot-core/`*
 
 Production-ready optimization pipeline with module storage, training data extraction, and A/B routing.
 
@@ -1322,9 +1322,9 @@ pub use dspy_training::{ExtractedExamples, SavedTrainingPaths, SuccessCriteria, 
 ```
 
 ### Files Created
-- `crates/autopilot/src/dspy_hub.rs` - Module storage hub
-- `crates/autopilot/src/dspy_training.rs` - Training data extraction
-- `crates/autopilot/src/dspy_router.rs` - A/B routing and shadow mode
+- `crates/autopilot-core/src/dspy_hub.rs` - Module storage hub
+- `crates/autopilot-core/src/dspy_training.rs` - Training data extraction
+- `crates/autopilot-core/src/dspy_router.rs` - A/B routing and shadow mode
 
 ---
 

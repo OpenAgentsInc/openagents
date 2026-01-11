@@ -2,11 +2,11 @@
 
 ## Status
 
-**COMPLETE**: GPT-OSS is runnable via `autopilot run --agent gpt-oss` with tool loop support and trajectory capture.
+**LEGACY**: GPT-OSS/local inference is disabled in Autopilot v0.1 (Claude/Codex only). This guide is preserved for future re-enablement.
 
 ## What Changed
 
-- Added `run_gpt_oss_agent()` in `crates/autopilot/src/main.rs` using `gpt-oss-agent` sessions.
+- Added `run_gpt_oss_agent()` in `crates/autopilot-core/src/main.rs` using `gpt-oss-agent` sessions.
 - Added model alias resolution for GPT-OSS (`20b`/`120b`) and default fallback for Claude aliases.
 - Added GPT-OSS base URL resolution via `GPT_OSS_URL` (fallback `GPT_OSS_SERVER_URL`).
 - Trajectory capture maps GPT-OSS history into `StepType` entries (user, assistant, thinking, tool calls/results).

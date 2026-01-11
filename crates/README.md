@@ -17,8 +17,8 @@ The agent-orchestrator crate provides a control plane for coordinating multiple 
 ## auth
 The auth crate handles token-based authentication for local services by generating or loading a per-user token, storing it with restrictive permissions, and validating with constant-time comparison.
 
-## autopilot
-The autopilot crate is the core autonomous runner for code tasks. It drives plan, execute, review, and fix phases using agent SDKs, emits structured `StartupState` and `ClaudeEvent` streams, and persists `SessionCheckpoint` data for resume/replay. It also runs preflight checks, integrates with issues storage, and writes rlog trajectories.
+## autopilot-core
+The autopilot-core crate is the core autonomous runner for code tasks. It drives plan, execute, review, and fix phases using agent SDKs, emits structured `StartupState` and `ClaudeEvent` streams, and persists `SessionCheckpoint` data for resume/replay. It also runs preflight checks, integrates with issues storage, and writes rlog trajectories.
 
 ## autopilot-container
 The autopilot-container crate wraps Autopilot in an HTTP service designed for Cloudflare Containers. It handles repo cloning, run startup, and WebSocket streaming, powering the paid web execution path.
@@ -47,11 +47,11 @@ The claude-agent-sdk crate is a Rust SDK for the Claude Code CLI. It manages ses
 ## claude-mcp
 The claude-mcp crate is an MCP server that exposes Claude Code as JSON-RPC stdio tools. It wraps claude-agent-sdk to provide query execution, session management, and permission configuration for MCP-aware clients.
 
-## coder
-The coder crate is a GPU-accelerated terminal UI for Claude Code and Codex, providing a desktop application for local autonomous agent interaction. Built on the wgpui library, it renders rich Markdown text, manages user sessions and permissions, and integrates with both Claude Agent SDK and Codex Agent SDK for headless agent execution. The `/backend` command toggles between Claude and Codex backends at runtime, with the status bar showing the current backend selection. The crate implements an autonomous autopilot loop (re-exported from adjutant) for continuous task execution, supports MCP server management, and provides a command palette for interactive control. Key types include `CoderApp` for application state and event handling, the `Command` enum for user commands like `/help`, `/clear`, `/model`, `/backend`, and session management, and `PanelLayout` for UI organization. It serves as the primary user-facing interface for autonomous agents and interactive coding workflows.
+## autopilot
+The autopilot crate is a GPU-accelerated terminal UI for Claude Code and Codex, providing a desktop application for local autonomous agent interaction. Built on the wgpui library, it renders rich Markdown text, manages user sessions and permissions, and integrates with both Claude Agent SDK and Codex Agent SDK for headless agent execution. The `/backend` command toggles between Claude and Codex backends at runtime, with the status bar showing the current backend selection. The crate implements an autonomous autopilot loop (re-exported from adjutant) for continuous task execution, supports MCP server management, and provides a command palette for interactive control. Key types include `AutopilotApp` for application state and event handling, the `Command` enum for user commands like `/help`, `/clear`, `/model`, `/backend`, and session management, and `PanelLayout` for UI organization. It serves as the primary user-facing interface for autonomous agents and interactive coding workflows.
 
 ## codex-agent-sdk
-The codex-agent-sdk crate is a Rust SDK for the OpenAI Codex CLI agent. It provides thread/session management, streaming events, and configurable sandbox, model, and approval settings. The SDK is used by the Coder desktop app for Codex backend support, mapping ThreadEvent variants (ItemStarted, ItemUpdated, ItemCompleted, TurnCompleted, Error) to the shared ResponseEvent types for UI rendering.
+The codex-agent-sdk crate is a Rust SDK for the OpenAI Codex CLI agent. It provides thread/session management, streaming events, and configurable sandbox, model, and approval settings. The SDK is used by the Autopilot desktop app for Codex backend support, mapping ThreadEvent variants (ItemStarted, ItemUpdated, ItemCompleted, TurnCompleted, Error) to the shared ResponseEvent types for UI rendering.
 
 ## compute
 The compute crate implements a NIP-90 DVM provider that sells compute on Nostr. It listens for job requests, bids/invoices, executes inference or agent backends, and publishes results back to relays. It also defines UnifiedIdentity (Nostr plus Spark) and backend registries for job handling.

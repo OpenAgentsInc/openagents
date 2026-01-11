@@ -1,5 +1,5 @@
 //! Authentication management for OpenAgents
 //!
-//! Re-exports from the autopilot crate for backwards compatibility.
+//! Re-exports from autopilot-core for backwards compatibility.
 
-pub use autopilot::auth::*;
+pub use autopilot_core::auth::*;

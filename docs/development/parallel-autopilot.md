@@ -329,7 +329,7 @@ services:
 
 ## Programmatic API
 
-Use the Rust API from `crates/autopilot/src/parallel/`:
+Use the Rust API from `crates/autopilot-core/src/parallel/`:
 
 ### Basic Usage
 

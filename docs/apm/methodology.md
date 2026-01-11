@@ -154,8 +154,8 @@ When combining data from multiple machines:
 ## File References
 
 - **Report template**: [`docs/apm/report-YYYYMMDD.md`](report-20251222.md)
-- **APM calculation code**: [`crates/autopilot/src/apm.rs`](../../crates/autopilot/src/apm.rs)
-- **APM parser**: [`crates/autopilot/src/apm_parser.rs`](../../crates/autopilot/src/apm_parser.rs)
+- **APM calculation code**: [`crates/autopilot-core/src/apm.rs`](../../crates/autopilot-core/src/apm.rs)
+- **APM parser**: [`crates/autopilot-core/src/apm_parser.rs`](../../crates/autopilot-core/src/apm_parser.rs)
 
 ## Historical Reports
 

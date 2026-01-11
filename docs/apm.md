@@ -340,17 +340,17 @@ If APM seems wrong:
 
 To extend APM tracking:
 
-1. **Add new event types**: Update `APMEventType` in `crates/autopilot/src/apm_storage.rs`
-2. **Add new windows**: Update `APMWindow` in `crates/autopilot/src/apm.rs`
+1. **Add new event types**: Update `APMEventType` in `crates/autopilot-core/src/apm_storage.rs`
+2. **Add new windows**: Update `APMWindow` in `crates/autopilot-core/src/apm.rs`
 3. **Add new sources**: Update `APMSource` (e.g., for codex agent)
 4. **Add new metrics**: Extend `APMSnapshot` struct
 
-See `crates/autopilot/src/apm_storage.rs` for implementation details.
+See `crates/autopilot-core/src/apm_storage.rs` for implementation details.
 
 ## References
 
 - Directive d-016: Measure Actions Per Minute (APM)
-- `crates/autopilot/src/apm.rs`: APM calculation logic
-- `crates/autopilot/src/apm_storage.rs`: Database storage layer
-- `crates/autopilot/src/lib.rs`: TrajectoryCollector integration
-- `crates/autopilot/src/main.rs`: CLI commands
+- `crates/autopilot-core/src/apm.rs`: APM calculation logic
+- `crates/autopilot-core/src/apm_storage.rs`: Database storage layer
+- `crates/autopilot-core/src/lib.rs`: TrajectoryCollector integration
+- `crates/autopilot-core/src/main.rs`: CLI commands

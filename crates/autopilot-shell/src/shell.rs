@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use std::sync::mpsc::{self, Receiver, TryRecvError};
 use std::sync::{Arc, Mutex};
 
-use autopilot::{ClaudeModel, LogLine, LogStatus, SessionCheckpoint, StartupSection};
+use autopilot_core::{ClaudeModel, LogLine, LogStatus, SessionCheckpoint, StartupSection};
 use autopilot_service::{
     AutopilotRuntime, DaemonStatus, LogSection, RuntimeSnapshot, SessionEvent, SessionPhase,
 };

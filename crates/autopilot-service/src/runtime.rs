@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 use std::time::Instant;
 
-use autopilot::{
+use autopilot_core::{
     ClaudeModel, ClaudeUsageData, LogLine, LogStatus, SessionCheckpoint, StartupPhase,
     StartupSection, StartupState, ACP_PHASE_META_KEY, ACP_TOOL_NAME_META_KEY,
     ACP_TOOL_PROGRESS_META_KEY,

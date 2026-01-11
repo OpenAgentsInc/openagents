@@ -897,7 +897,7 @@ loop {
 
 ### FULL AUTO MODE Rules
 
-From `crates/autopilot/README.md`:
+From `crates/autopilot-core/README.md`:
 
 - **NEVER stop** - Continue loop until budget exhausted
 - **NEVER output summaries** - "I've completed X issues" is a STOP SIGNAL
@@ -1228,8 +1228,8 @@ Should show: `2025-12-20T10:30:00Z` (not epoch or local time)
 ## Related Documentation
 
 - **MCP Server**: `crates/issues-mcp/README.md` - JSON-RPC interface
-- **Autopilot System**: `crates/autopilot/README.md` - FULL AUTO MODE workflow
-- **CLI**: `crates/autopilot/README.md` - `cargo autopilot issue` commands
+- **Autopilot System**: `crates/autopilot-core/README.md` - FULL AUTO MODE workflow
+- **CLI**: `crates/autopilot-core/README.md` - `autopilot issue` commands
 
 ## License
 

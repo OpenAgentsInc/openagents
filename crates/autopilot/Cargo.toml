@@ -2,77 +2,66 @@
 name = "autopilot"
 version.workspace = true
 edition.workspace = true
-authors.workspace = true
 license.workspace = true
-publish.workspace = true
-description = "Autopilot - autonomous agent runtime"
+description = "GPU-accelerated terminal UI for Autopilot"
 
-[lib]
+[[bin]]
 name = "autopilot"
-path = "src/lib.rs"
-crate-type = ["cdylib", "rlib"]
-
-[[example]]
-name = "preflight_demo"
-path = "examples/preflight_demo.rs"
-
-[features]
-default = ["native"]
-native = [
-    "tokio/rt-multi-thread",
-    "reqwest/blocking",
-    "dep:dirs",
-    "dep:octocrab",
-    "dep:pylon",
-    "dep:dsrs",
-]
-wasm = [
-    "openagents-runtime/browser",
-    "dep:wasm-bindgen",
-    "dep:wasm-bindgen-futures",
-    "dep:web-sys",
-    "dep:gloo-net",
-    "dep:js-sys",
-    "dep:console_error_panic_hook",
-]
+path = "src/main.rs"
 
 [dependencies]
-# Core dependencies (both native and wasm)
-openagents-runtime = { version = "0.1.0", path = "../runtime", default-features = false }
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-anyhow = "1"
-tracing = "0.1"
-chrono = { version = "0.4", default-features = false, features = ["serde", "std"] }
-regex = "1.12.2"
-futures-util = "0.3"
+# GPU UI
+wgpui = { path = "../wgpui", default-features = false, features = ["desktop"] }
+wgpu = { workspace = true }
+
+# Desktop
+winit = { workspace = true }
+pollster = { workspace = true }
+arboard = "3.4"
+
+# Time
+web-time = "1.1.0"
+
+# Agent integrations
+claude-agent-sdk = { path = "../claude-agent-sdk" }
+codex-agent-sdk = { path = "../codex-agent-sdk" }
 agent-client-protocol-schema = { version = "0.10" }
+clap = { workspace = true }
 
-# Tokio (feature-gated for native)
-tokio = { version = "1", features = ["macros", "sync"] }
+# Agent discovery
+which = "7.0"
 
-# Native-only dependencies
-reqwest = { version = "0.12", features = ["json", "stream"], optional = false }
-dirs = { version = "5", optional = true }
-octocrab = { version = "0.49.4", optional = true }
-pylon = { path = "../pylon", optional = true }
+# Autopilot/Adjutant
+adjutant = { path = "../adjutant" }
+oanix = { path = "../oanix" }
+gateway = { path = "../gateway" }
+lm-router = { path = "../lm-router" }
+openagents-spark = { path = "../spark" }
+issues = { workspace = true }
+anyhow = { workspace = true }
+nostr = { path = "../nostr/core" }
+nostr-client = { path = "../nostr/client" }
+rusqlite = { version = "0.31", features = ["bundled"] }
 
-# DSPy integration for typed signature pipelines (native only)
-dsrs = { path = "../dsrs", optional = true }
+# Async runtime
+tokio = { version = "1", features = ["rt-multi-thread", "sync", "macros"] }
 
-# WASM-only dependencies
-wasm-bindgen = { version = "0.2", optional = true }
-wasm-bindgen-futures = { version = "0.4", optional = true }
-web-sys = { version = "0.3", optional = true, features = ["Window", "console"] }
-gloo-net = { version = "0.6", optional = true }
-js-sys = { version = "0.3", optional = true }
-console_error_panic_hook = { version = "0.1", optional = true }
-
-[target.'cfg(target_arch = "wasm32")'.dependencies]
-getrandom = { version = "0.2", features = ["js"] }
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+futures.workspace = true
+serde_json.workspace = true
+serde = { workspace = true, features = ["derive"] }
+dirs = "6.0.0"
+async-trait = { workspace = true }
+toml = { workspace = true }
+reqwest = { workspace = true, features = ["json"] }
+dsrs = { version = "0.1.0", path = "../dsrs" }
+uuid = { workspace = true }
 
 [dev-dependencies]
-tempfile = { workspace = true }
+chrono = { workspace = true }
 
-[lints]
-workspace = true
+[package.metadata.bundle]
+name = "Autopilot"
+identifier = "com.openagents.autopilot"

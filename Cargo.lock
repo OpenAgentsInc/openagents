@@ -255,7 +255,7 @@ dependencies = [
  "agent-client-protocol-schema",
  "anyhow",
  "async-trait",
- "autopilot",
+ "autopilot-core",
  "bon",
  "chrono",
  "clap",
@@ -1233,6 +1233,66 @@ checksum = "c08606f8c3cbf4ce6ec8e28fb0014a2c086708fe954eaa885384a6165172e7e8"
 name = "autopilot"
 version = "0.1.0"
 dependencies = [
+ "adjutant",
+ "agent-client-protocol-schema",
+ "anyhow",
+ "arboard",
+ "async-trait",
+ "chrono",
+ "clap",
+ "claude-agent-sdk",
+ "codex-agent-sdk",
+ "dirs 6.0.0",
+ "dsrs",
+ "futures",
+ "gateway",
+ "issues",
+ "lm-router",
+ "nostr 0.1.0",
+ "nostr-client",
+ "oanix",
+ "openagents-spark",
+ "pollster",
+ "reqwest",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "tokio",
+ "toml 0.8.2",
+ "tracing",
+ "tracing-subscriber",
+ "uuid",
+ "web-time",
+ "wgpu",
+ "wgpui",
+ "which 7.0.3",
+ "winit",
+]
+
+[[package]]
+name = "autopilot-container"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "axum 0.8.8",
+ "chrono",
+ "claude-agent-sdk",
+ "futures-util",
+ "git2",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tower 0.5.2",
+ "tower-http",
+ "tracing",
+ "tracing-subscriber",
+ "uuid",
+]
+
+[[package]]
+name = "autopilot-core"
+version = "0.1.0"
+dependencies = [
  "agent-client-protocol-schema",
  "anyhow",
  "chrono",
@@ -1259,32 +1319,12 @@ dependencies = [
 ]
 
 [[package]]
-name = "autopilot-container"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "axum 0.8.8",
- "chrono",
- "claude-agent-sdk",
- "futures-util",
- "git2",
- "serde",
- "serde_json",
- "tokio",
- "tower 0.5.2",
- "tower-http",
- "tracing",
- "tracing-subscriber",
- "uuid",
-]
-
-[[package]]
 name = "autopilot-service"
 version = "0.1.0"
 dependencies = [
  "agent-client-protocol-schema",
  "anyhow",
- "autopilot",
+ "autopilot-core",
  "issues",
  "serde",
  "serde_json",
@@ -1295,7 +1335,7 @@ dependencies = [
 name = "autopilot-shell"
 version = "0.1.0"
 dependencies = [
- "autopilot",
+ "autopilot-core",
  "autopilot-service",
  "chrono",
  "claude-agent-sdk",
@@ -2628,45 +2668,6 @@ dependencies = [
  "core-foundation 0.10.1",
  "core-graphics-types 0.2.0",
  "objc",
-]
-
-[[package]]
-name = "coder"
-version = "0.1.0"
-dependencies = [
- "adjutant",
- "agent-client-protocol-schema",
- "anyhow",
- "arboard",
- "async-trait",
- "chrono",
- "claude-agent-sdk",
- "codex-agent-sdk",
- "dirs 6.0.0",
- "dsrs",
- "futures",
- "gateway",
- "issues",
- "lm-router",
- "nostr 0.1.0",
- "nostr-client",
- "oanix",
- "openagents-spark",
- "pollster",
- "reqwest",
- "rusqlite",
- "serde",
- "serde_json",
- "tokio",
- "toml 0.8.2",
- "tracing",
- "tracing-subscriber",
- "uuid",
- "web-time",
- "wgpu",
- "wgpui",
- "which 7.0.3",
- "winit",
 ]
 
 [[package]]
@@ -9577,7 +9578,7 @@ dependencies = [
  "anyhow",
  "assert_cmd",
  "async-trait",
- "autopilot",
+ "autopilot-core",
  "autopilot-service",
  "autopilot-shell",
  "base64 0.22.1",

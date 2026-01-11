@@ -811,13 +811,13 @@ impl<O: AutopilotOutput> AutopilotLoop<O> {
                     confidence: 0.5,
                 });
                 // Create a minimal planning result
-                autopilot::PlanningResult {
+                autopilot_core::PlanningResult {
                     analysis: "Using original task description".to_string(),
                     files_to_modify: plan.files.iter().map(|p| p.display().to_string()).collect(),
                     implementation_steps: vec![self.original_task.description.clone()],
                     test_strategy: "Run cargo check/test after changes".to_string(),
                     risk_factors: vec![],
-                    complexity: autopilot::Complexity::Medium,
+                    complexity: autopilot_core::Complexity::Medium,
                     confidence: 0.5,
                 }
             }

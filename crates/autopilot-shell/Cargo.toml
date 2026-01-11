@@ -9,7 +9,7 @@ description = "Unified autopilot shell with HUD effects and dock-based layout"
 [dependencies]
 wgpui = { path = "../wgpui", features = ["desktop"] }
 autopilot-service = { path = "../autopilot-service" }
-autopilot = { path = "../autopilot" }
+autopilot-core = { path = "../autopilot-core" }
 claude-agent-sdk = { path = "../claude-agent-sdk" }
 tracing = "0.1"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }

@@ -1536,8 +1536,8 @@ impl NeobankService {
 4. Integrate with Neobank for payments
 
 **Key files:**
-- `crates/autopilot/src/mesh_client.rs` (new)
-- `crates/autopilot/src/verification.rs` (new)
+- `crates/autopilot-core/src/mesh_client.rs` (new)
+- `crates/autopilot-core/src/verification.rs` (new)
 - `crates/neobank/src/mesh_payments.rs` (new)
 
 ### Phase 3: Additional Job Types

@@ -327,10 +327,10 @@ async fn test_with_mock() {
 
 ## Integration with OpenAgents
 
-### Autopilot Usage
+### Legacy Autopilot Usage (disabled in v0.1)
 
 ```rust
-// In crates/autopilot/src/main.rs
+// Legacy example (removed from Autopilot v0.1)
 use local_inference::LocalModelBackend;
 use gpt_oss::GptOssClient;
 

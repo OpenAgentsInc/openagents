@@ -23,7 +23,7 @@ pub use advanced::{
     CostRecord, CostTracker, CostTrackingHook, MultiBackendRouter, PendingApproval,
     SolverAgentCoordinator, ThresholdConfig,
 };
-pub use autopilot::{AutopilotIntegration, IssueClaimHook, IssueCompleteHook};
+pub use autopilot_core::{AutopilotIntegration, IssueClaimHook, IssueCompleteHook};
 pub use directives::{DirectiveContext, DirectiveInjectionConfig, DirectiveSummary};
 pub use frostr_bridge::{
     FrostShareInfo, FrostrBridgeError, generate_threshold_identity, generate_threshold_shares,

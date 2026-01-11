@@ -223,7 +223,7 @@ This shouldn't happen due to atomic claims. If it does:
 | `docker/autopilot/Dockerfile` | Container image definition |
 | `docker/autopilot/docker-compose.yml` | Container orchestration |
 | `scripts/parallel-autopilot.sh` | CLI wrapper script |
-| `crates/autopilot/src/parallel/` | Rust orchestration library |
+| `crates/autopilot-core/src/parallel/` | Rust orchestration library |
 | `crates/autopilot-gui/src/views/parallel.rs` | GUI view |
 | `crates/autopilot-gui/src/server/parallel.rs` | HTTP API |
 

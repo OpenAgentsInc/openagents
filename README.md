@@ -148,12 +148,12 @@ The autonomous coding agent:
 ├──────────────────────────────────────────────────────────────────────────┤
 │                                                                          │
 │  APPLICATIONS                                                            │
-│  ┌───────────┐ ┌───────────┐ ┌───────────┐ ┌───────────┐ ┌───────────┐  │
-│  │ Autopilot │ │  Coder    │ │  Onyx     │ │ GitAfter  │ │  Neobank  │  │
-│  │(Autonomous│ │ (GPU      │ │ (Markdown │ │  (Git on  │ │ (Treasury │  │
-│  │  Coding)  │ │ Terminal) │ │  Editor)  │ │  Nostr)   │ │ + Budget) │  │
-│  └─────┬─────┘ └─────┬─────┘ └─────┬─────┘ └─────┬─────┘ └─────┬─────┘  │
-│        └─────────────┴─────────────┴─────────────┴─────────────┘        │
+│  ┌───────────┐ ┌───────────┐ ┌───────────┐ ┌───────────┐  │
+│  │ Autopilot │ │  Onyx     │ │ GitAfter  │ │  Neobank  │  │
+│  │(Autonomous│ │ (Markdown │ │  (Git on  │ │ (Treasury │  │
+│  │  Coding)  │ │  Editor)  │ │  Nostr)   │ │ + Budget) │  │
+│  └─────┬─────┘ └─────┬─────┘ └─────┬─────┘ └─────┬─────┘  │
+│        └─────────────┴─────────────┴─────────────┘        │
 │                                    │                                     │
 │  PROTOCOL LAYER                    │                                     │
 │  ┌─────────────────────────────────┴──────────────────────────────────┐  │
@@ -211,7 +211,7 @@ cargo run -p wgpui --example component_showcase --features desktop
 ### Installation
 
 ```bash
-# Install autopilot CLI
+# Install Autopilot (UI + CLI)
 cargo install --path crates/autopilot
 
 # Install recorder CLI
@@ -227,8 +227,8 @@ OpenAgents is a Cargo workspace with 40+ crates organized by functionality:
 openagents/
 ├── crates/
 │   ├── # PRODUCTS
-│   ├── autopilot/          Autonomous coding agent
-│   ├── coder/              GPU-accelerated terminal for Claude Code
+│   ├── autopilot/          Autopilot UI + CLI (main binary)
+│   ├── autopilot-core/     Autopilot execution engine (library)
 │   ├── onyx/               Local-first Markdown editor
 │   ├── gitafter/           Agent-native Git on Nostr (NIP-34)
 │   ├── pylon/              Node software (provider + host modes)
@@ -292,21 +292,23 @@ cargo run -p wgpui --example component_showcase --features desktop
 
 [Full documentation →](crates/wgpui/README.md)
 
-### Autonomous Execution
-
 #### `autopilot`
-Autonomous task runner with complete trajectory logging:
+Autopilot UI + CLI entrypoint built on WGPUI with Claude and Codex backends.
 
 ```bash
-# Run a task
-cargo autopilot run "Fix all compiler warnings"
+# Launch UI
+cargo run -p autopilot
 
-# Full-auto mode (process all issues)
-cargo autopilot run --full-auto --project myproject
-
-# Analyze trajectory
-cargo autopilot analyze logs/session.json
+# Run a task (CLI mode)
+cargo run -p autopilot -- run "Fix all compiler warnings"
 ```
+
+[Full documentation →](crates/autopilot/docs/ROADMAP.md)
+
+### Autonomous Execution
+
+#### `autopilot-core`
+Autonomous task runner with complete trajectory logging. Used by the `autopilot` binary and service layers.
 
 Features:
 - Multi-agent support (Claude, Codex)
@@ -315,7 +317,7 @@ Features:
 - Budget tracking
 - Session resumption
 
-[Full documentation →](crates/autopilot/README.md)
+[Full documentation →](crates/autopilot-core/README.md)
 
 #### `recorder`
 Session format parser and validator for .rlog files:

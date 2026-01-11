@@ -15,7 +15,7 @@ For the full vision, see [SYNTHESIS.md](./SYNTHESIS.md). For the agent OS concep
 │                                                                              │
 │  PRODUCTS (user-facing)                                                      │
 │  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ ┌─────────────────────────┐│
-│  │   Coder     │ │    Onyx     │ │  GitAfter   │ │   openagents.com        ││
+│  │ Autopilot   │ │    Onyx     │ │  GitAfter   │ │   openagents.com        ││
 │  │ (AI coding) │ │  (editor)   │ │   (git)     │ │   (web dashboard)       ││
 │  └──────┬──────┘ └──────┬──────┘ └──────┬──────┘ └───────────┬─────────────┘│
 │         │               │               │                     │              │
@@ -75,22 +75,22 @@ cargo build --release -p pylon
 
 ---
 
-### Coder — AI Coding Terminal
+### Autopilot UI — AI Coding Terminal
 
 GPU-accelerated terminal interface for Claude Code and Codex. Built on wgpui for high-performance rendering.
 
-Coder reimagines the AI coding experience as a native desktop application rather than a web interface or CLI tool. The entire UI is GPU-rendered via wgpui, giving you buttery-smooth scrolling through long conversations, instant Markdown rendering, and the responsiveness you'd expect from a proper terminal emulator. It's designed for developers who live in their terminal and want AI coding assistants to feel like a natural extension of that workflow.
+Autopilot UI reimagines the AI coding experience as a native desktop application rather than a web interface or CLI tool. The entire UI is GPU-rendered via wgpui, giving you buttery-smooth scrolling through long conversations, instant Markdown rendering, and the responsiveness you'd expect from a proper terminal emulator. It's designed for developers who live in their terminal and want AI coding assistants to feel like a natural extension of that workflow.
 
-Under the hood, Coder integrates multiple AI backends:
+Under the hood, Autopilot UI integrates multiple AI backends:
 - **Claude** (via claude-agent-sdk) — Anthropic's Claude Code CLI
 - **Codex** (via codex-agent-sdk) — OpenAI's Codex CLI
 
 Switch between backends with `/backend claude` or `/backend codex`. The status bar shows the current backend. Both backends share the same UI rendering, streaming, and tool visualization infrastructure.
 
-Coder also integrates the Adjutant execution engine for autonomous "autopilot" mode. When you give it a task, Adjutant uses DSPy-optimized decision making to classify complexity, choose the right execution path (Claude SDK, local inference, or RLM), and iterate until the task is complete. The UI provides real-time visibility into what the agent is doing, with the ability to interrupt, guide, or take over at any point.
+Autopilot UI also integrates the Adjutant execution engine for autonomous "autopilot" mode. When you give it a task, Adjutant uses DSPy-optimized decision making to classify complexity, choose the right execution path (Claude SDK or RLM), and iterate until the task is complete. The UI provides real-time visibility into what the agent is doing, with the ability to interrupt, guide, or take over at any point.
 
 ```bash
-cargo run -p coder
+cargo run -p autopilot
 ```
 
 **Features:**
@@ -109,7 +109,7 @@ cargo run -p coder
 /backend codex       # Switch to Codex (requires `codex` CLI installed)
 ```
 
-The Coder integrates Adjutant for task execution with DSPy-powered decision making and self-improvement.
+The Autopilot UI integrates Adjutant for task execution with DSPy-powered decision making and self-improvement.
 
 ---
 
@@ -542,11 +542,11 @@ EOF
 ```bash
 # Products
 cargo build --release -p pylon
-cargo run -p coder
+cargo run -p autopilot
 cargo run -p onyx
 cargo run -p gitafter
 
-# Autopilot
+# Autopilot (CLI)
 cargo build -p autopilot
 ./target/release/autopilot run "your prompt"
 
@@ -575,7 +575,7 @@ Issues are NOT done unless:
 | Component | Status | Notes |
 |-----------|--------|-------|
 | Pylon | v0.1 | Provider mode working, host mode partial |
-| Coder | Active | Multi-backend (Claude/Codex), autonomous loop with adjutant |
+| Autopilot UI | Active | Multi-backend (Claude/Codex), autonomous loop with adjutant |
 | Onyx | Alpha | Core editing works |
 | GitAfter | v0.1 | NIP-34 integration |
 | Nexus | v0.1 | NIP-90, NIP-42, NIP-89 |
@@ -599,8 +599,8 @@ Issues are NOT done unless:
 # Start provider (earn sats)
 pylon init && pylon start -f -m provider
 
-# Run Coder
-cargo run -p coder
+# Run Autopilot UI
+cargo run -p autopilot
 
 # Run Autopilot
 ./target/release/autopilot run "Fix the bug"

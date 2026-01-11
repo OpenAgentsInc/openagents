@@ -58,6 +58,6 @@ See [docs/README.md](docs/README.md) for detailed API documentation and architec
 
 ## Related
 
-- [autopilot](../autopilot/) - Core autopilot logic
+- [autopilot-core](../autopilot-core/) - Core autopilot logic
 - [claude-agent-sdk](../claude-agent-sdk/) - Rust SDK for Claude Code
 - [web/worker](../web/worker/) - Cloudflare Worker that manages containers

@@ -12,7 +12,7 @@
 use crate::autopilot_loop::{AutopilotOutput, DspyStage, TodoStatus, TodoTask};
 use crate::{Task, TaskPlan, ToolRegistry};
 use anyhow::Result;
-use autopilot::{PlanningInput, PlanningPipeline, PlanningResult};
+use autopilot_core::{PlanningInput, PlanningPipeline, PlanningResult};
 use dsrs::LM;
 use oanix::OanixManifest;
 use std::sync::Arc;
@@ -282,7 +282,7 @@ mod tests {
             implementation_steps: steps,
             test_strategy: "Run cargo test".to_string(),
             risk_factors: vec![],
-            complexity: autopilot::Complexity::Low,
+            complexity: autopilot_core::Complexity::Low,
             confidence: 0.9,
         };
 
