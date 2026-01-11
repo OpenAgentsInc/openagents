@@ -695,18 +695,41 @@ impl AutopilotOutput for AcpChannelOutput {
 
 /// DspyCallback implementation for AcpChannelOutput.
 /// This enables streaming tokens from DSPy pipelines to the UI.
+/// Filter out DSPy format markers from streaming text.
+fn filter_dspy_markers(text: &str) -> String {
+    use regex::Regex;
+    use std::sync::OnceLock;
+
+    static DSPY_MARKER_RE: OnceLock<Regex> = OnceLock::new();
+    let re = DSPY_MARKER_RE.get_or_init(|| {
+        // Match DSPy format markers like [[ ## fieldname ## ]]
+        Regex::new(r"\[\[\s*##\s*[^#]+\s*##\s*\]\]").unwrap()
+    });
+
+    let filtered = re.replace_all(text, "");
+    let result = filtered.trim();
+    if result.is_empty() {
+        String::new()
+    } else {
+        result.to_string()
+    }
+}
+
 impl DspyCallback for AcpChannelOutput {
     fn on_lm_stream_start(&self, call_id: Uuid, model: &str) {
-        tracing::debug!("DSPy LM stream started: {} ({})", call_id, model);
+        tracing::info!("DSPy LM stream started: {} ({})", call_id, model);
     }
 
     fn on_lm_token(&self, _call_id: Uuid, token: &str) {
-        // Stream the token to the UI via the token_tx channel
-        let _ = self.token_tx.send(token.to_string());
+        // Filter out DSPy format markers before sending to UI
+        let filtered = filter_dspy_markers(token);
+        if !filtered.is_empty() {
+            let _ = self.token_tx.send(filtered);
+        }
     }
 
     fn on_lm_stream_end(&self, call_id: Uuid) {
-        tracing::debug!("DSPy LM stream ended: {}", call_id);
+        tracing::info!("DSPy LM stream ended: {}", call_id);
     }
 }
 
@@ -803,6 +826,7 @@ impl<O: AutopilotOutput> AutopilotLoop<O> {
         };
 
         // Run DSPy planning pipeline to get implementation steps
+        tracing::info!("Autopilot: starting DSPy planning pipeline...");
         let callback = self.output.dspy_callback();
         let dspy_plan = match orchestrator
             .create_plan_with_callback(&self.original_task, &plan, &self.output, callback)
@@ -837,6 +861,10 @@ impl<O: AutopilotOutput> AutopilotLoop<O> {
                 }
             }
         };
+        tracing::info!(
+            "Autopilot: DSPy planning complete, {} implementation steps",
+            dspy_plan.implementation_steps.len()
+        );
 
         // Create todo list from the plan
         let mut todos = orchestrator.create_todo_list(&dspy_plan, &self.output);
