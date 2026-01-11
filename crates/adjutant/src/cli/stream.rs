@@ -400,10 +400,10 @@ impl<W: Write> CliAcpRenderer<W> {
 
     fn render_tool_update(&mut self, update: acp::ToolCallUpdate) {
         if let Some(meta) = update.meta.as_ref() {
-            if let Some(progress) = meta.get(autopilot::ACP_TOOL_PROGRESS_META_KEY) {
+            if let Some(progress) = meta.get(autopilot_core::ACP_TOOL_PROGRESS_META_KEY) {
                 if let Some(elapsed_secs) = progress.as_f64() {
                     let tool_name = meta
-                        .get(autopilot::ACP_TOOL_NAME_META_KEY)
+                        .get(autopilot_core::ACP_TOOL_NAME_META_KEY)
                         .and_then(|name| name.as_str())
                         .unwrap_or("tool");
                     let indent = self.tool_indent.clone();
@@ -433,7 +433,7 @@ impl<W: Write> CliAcpRenderer<W> {
         let tool_name = update
             .meta
             .as_ref()
-            .and_then(|meta| meta.get(autopilot::ACP_TOOL_NAME_META_KEY))
+            .and_then(|meta| meta.get(autopilot_core::ACP_TOOL_NAME_META_KEY))
             .and_then(|value| value.as_str())
             .map(|name| name.to_string())
             .or_else(|| self.tools.get(&tool_id).map(|meta| meta.name.clone()))

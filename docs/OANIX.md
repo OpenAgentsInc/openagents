@@ -566,7 +566,7 @@ OANIX Boot:
 - [crates/runtime/docs/PRIOR-ART.md](crates/runtime/docs/PRIOR-ART.md) - WANIX, Plan 9, original OANIX
 - [crates/runtime/](crates/runtime/) - Current runtime implementation
 - [crates/pylon/](crates/pylon/) - Node software
-- [crates/autopilot/](crates/autopilot/) - Current coding agent
+- [crates/autopilot-core/](crates/autopilot-core/) - Current coding agent
 
 ---
 

@@ -107,7 +107,7 @@ println!("Answer: {}", result.get("answer", None));
 | 8 | Complete | OANIX DSPy Signatures (in `crates/oanix/`) |
 | 9 | Complete | Agent Orchestrator Signatures (in `crates/agent-orchestrator/`) |
 | 10 | Complete | Tool Invocation Signatures (in `crates/runtime/`) |
-| 11 | Complete | Optimization Infrastructure (in `crates/autopilot/`) |
+| 11 | Complete | Optimization Infrastructure (in `crates/autopilot-core/`) |
 | 12 | Complete | FRLM Integration (in `crates/frlm/`) |
 | 13 | Complete | Pipeline Wiring (decision pipelines in adjutant, runtime, orchestrator) |
 

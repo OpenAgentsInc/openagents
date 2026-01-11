@@ -230,6 +230,6 @@ See [web/docs/README.md](../../web/docs/README.md) for worker API documentation.
 
 ## Related Documentation
 
-- [Autopilot README](../../autopilot/README.md) - Core autopilot logic
+- [Autopilot Core README](../../autopilot-core/README.md) - Core autopilot logic
 - [Claude Agent SDK](../../claude-agent-sdk/README.md) - SDK for running Claude queries
 - [Web Docs](../../web/docs/README.md) - Worker API and container routes

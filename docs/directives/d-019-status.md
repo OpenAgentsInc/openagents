@@ -144,7 +144,9 @@ The GPT-OSS integration has made significant progress with core infrastructure c
 
 ---
 
-### ⚠️ Phase 5: GUI & Autopilot Integration (v0.5) - PARTIALLY COMPLETE
+### ⚠️ Phase 5: GUI & Autopilot Integration (v0.5) - DEFERRED (v0.1)
+
+**Status:** GPT-OSS/local inference is disabled for Autopilot v0.1 (Claude/Codex only). The items below are legacy notes for future re-enablement.
 
 **Completed Items:**
 - ✅ Added "gpt-oss" option to autopilot CLI (`--agent gpt-oss`)
@@ -152,9 +154,9 @@ The GPT-OSS integration has made significant progress with core infrastructure c
 - ✅ Model aliases (`20b`/`120b`) and `GPT_OSS_URL`/`GPT_OSS_SERVER_URL` support
 
 **Files Modified:**
-- `crates/autopilot/src/cli.rs:32` - `--agent` flag with "gpt-oss" option
-- `crates/autopilot/src/main.rs` - GPT-OSS runner + dispatch
-- `crates/autopilot/src/lib.rs` - session_id header update + result setter
+- `crates/autopilot-core/src/cli.rs:32` - `--agent` flag with "gpt-oss" option
+- `crates/autopilot-core/src/main.rs` - GPT-OSS runner + dispatch
+- `crates/autopilot-core/src/lib.rs` - session_id header update + result setter
 
 **Incomplete Items:**
 - ❌ No "gpt-oss" option in GUI agent selection dropdown

@@ -349,9 +349,9 @@ struct RlmCodeGenerationSignature {
 ### Wave 19: Autopilot Heuristics
 
 ```rust
-// crates/autopilot/src/dspy_planning.rs
-// crates/autopilot/src/dspy_verify.rs
-// crates/autopilot/src/dspy_optimization.rs
+// crates/autopilot-core/src/dspy_planning.rs
+// crates/autopilot-core/src/dspy_verify.rs
+// crates/autopilot-core/src/dspy_optimization.rs
 
 #[Signature]
 struct TaskComplexityClassifier {
@@ -591,7 +591,7 @@ This enables:
 | runtime | `crates/runtime/src/dspy_tools.rs` |
 | frlm | `crates/frlm/src/dspy_signatures.rs` |
 | rlm | `crates/rlm/src/dspy.rs` (Wave 16) |
-| autopilot | `crates/autopilot/src/dspy_planning.rs`, `crates/autopilot/src/dspy_verify.rs`, `crates/autopilot/src/dspy_optimization.rs` (Wave 19) |
+| autopilot | `crates/autopilot-core/src/dspy_planning.rs`, `crates/autopilot-core/src/dspy_verify.rs`, `crates/autopilot-core/src/dspy_optimization.rs` (Wave 19) |
 | agent-orchestrator | `crates/agent-orchestrator/src/integrations/directives.rs`, `crates/agent-orchestrator/src/integrations/autopilot.rs` (Wave 20) |
 | nexus | `crates/nexus/src/dspy.rs` (Wave 20) |
 | marketplace | `crates/marketplace/src/dspy_security.rs` (Wave 21) |
@@ -737,4 +737,4 @@ ToolResultSignature    → success, extracted_facts, step_utility   ← LEARNING
 
 - [dsrs/docs/SIGNATURES.md](../../crates/dsrs/docs/SIGNATURES.md) - Full signature specs
 - [adjutant/docs/DSPY-INTEGRATION.md](../../crates/adjutant/docs/DSPY-INTEGRATION.md) - Self-improvement loop
-- [autopilot/docs/EXECUTION_FLOW.md](../../crates/autopilot/docs/EXECUTION_FLOW.md) - Execution flow details
+- [autopilot/docs/EXECUTION_FLOW.md](../../crates/autopilot-core/docs/EXECUTION_FLOW.md) - Execution flow details

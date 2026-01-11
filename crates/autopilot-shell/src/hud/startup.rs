@@ -1,6 +1,6 @@
 //! Startup animation sequence
 
-use autopilot::{ClaudeModel, LogStatus, StartupPhase, StartupState, wrap_text};
+use autopilot_core::{ClaudeModel, LogStatus, StartupPhase, StartupState, wrap_text};
 use std::time::Instant;
 use wgpui::{
     Bounds, Component, EventContext, EventResult, Hsla, InputEvent, PaintContext, Point,

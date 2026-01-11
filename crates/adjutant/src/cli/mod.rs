@@ -13,9 +13,9 @@ pub mod status;
 
 use clap::{Parser, Subcommand};
 
-/// Autopilot - AI-powered coding assistant
+/// Autopilot CLI - AI-powered coding assistant
 #[derive(Parser)]
-#[command(name = "autopilot")]
+#[command(name = "autopilot-cli")]
 #[command(about = "AI-powered coding assistant that works on your issues")]
 pub struct AutopilotCli {
     #[command(subcommand)]

@@ -181,7 +181,7 @@ pub async fn status(_args: StatusArgs) -> Result<()> {
 
     if !any_ready {
         println!("  (none ready yet - need at least {} examples)", min_examples);
-        println!("\n  Tip: Use the Coder normally to collect training data.");
+        println!("\n  Tip: Use the Autopilot UI normally to collect training data.");
         println!("  High-confidence decisions (>70%) are automatically recorded.");
     } else {
         println!("\n  Run: autopilot dspy optimize --signature <name>");
@@ -238,7 +238,7 @@ pub async fn optimize(args: OptimizeArgs) -> Result<()> {
     if examples.len() < args.min_examples {
         anyhow::bail!(
             "Need at least {} examples, have {}.\n\
-             Collect more training data by using the Coder normally.\n\
+             Collect more training data by using the Autopilot UI normally.\n\
              High-confidence decisions are automatically recorded.",
             args.min_examples,
             examples.len()
@@ -334,7 +334,7 @@ pub async fn export(args: ExportArgs) -> Result<()> {
 
     if dataset.is_empty() {
         println!("No training data to export.");
-        println!("\nCollect data by using the Coder normally.");
+        println!("\nCollect data by using the Autopilot UI normally.");
         return Ok(());
     }
 

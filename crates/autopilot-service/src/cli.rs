@@ -1,7 +1,7 @@
 use std::io::{self, Write};
 use std::time::{Duration, Instant};
 
-use autopilot::{ClaudeModel, LogStatus, StartupPhase, StartupState};
+use autopilot_core::{ClaudeModel, LogStatus, StartupPhase, StartupState};
 
 pub fn run_cli(verbose: bool) -> anyhow::Result<()> {
     if verbose {
