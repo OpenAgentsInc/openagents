@@ -66,6 +66,21 @@ pub trait DspyCallback: Send + Sync {
         let _ = (call_id, result, usage);
     }
 
+    /// Called when LM streaming begins.
+    fn on_lm_stream_start(&self, call_id: Uuid, model: &str) {
+        let _ = (call_id, model);
+    }
+
+    /// Called for each streamed token from the LM.
+    fn on_lm_token(&self, call_id: Uuid, token: &str) {
+        let _ = (call_id, token);
+    }
+
+    /// Called when LM streaming ends.
+    fn on_lm_stream_end(&self, call_id: Uuid) {
+        let _ = call_id;
+    }
+
     /// Called when an optimizer evaluates a candidate.
     fn on_optimizer_candidate(&self, candidate_id: &str, metrics: &HashMap<String, f32>) {
         let _ = (candidate_id, metrics);
@@ -188,6 +203,25 @@ impl DspyCallback for LoggingCallback {
         }
     }
 
+    fn on_lm_stream_start(&self, call_id: Uuid, model: &str) {
+        if self.verbose {
+            println!("[DSRS] [{:.8}] LM '{}' streaming started", call_id, model);
+        }
+    }
+
+    fn on_lm_token(&self, call_id: Uuid, token: &str) {
+        if self.verbose {
+            // Only log token length to avoid spamming stdout
+            println!("[DSRS] [{:.8}] Token: {} chars", call_id, token.len());
+        }
+    }
+
+    fn on_lm_stream_end(&self, call_id: Uuid) {
+        if self.verbose {
+            println!("[DSRS] [{:.8}] LM streaming ended", call_id);
+        }
+    }
+
     fn on_optimizer_candidate(&self, candidate_id: &str, metrics: &HashMap<String, f32>) {
         println!(
             "[DSRS] Optimizer candidate '{}': {:?}",
@@ -277,6 +311,24 @@ impl DspyCallback for CompositeCallback {
         }
     }
 
+    fn on_lm_stream_start(&self, call_id: Uuid, model: &str) {
+        for cb in &self.callbacks {
+            cb.on_lm_stream_start(call_id, model);
+        }
+    }
+
+    fn on_lm_token(&self, call_id: Uuid, token: &str) {
+        for cb in &self.callbacks {
+            cb.on_lm_token(call_id, token);
+        }
+    }
+
+    fn on_lm_stream_end(&self, call_id: Uuid) {
+        for cb in &self.callbacks {
+            cb.on_lm_stream_end(call_id);
+        }
+    }
+
     fn on_optimizer_candidate(&self, candidate_id: &str, metrics: &HashMap<String, f32>) {
         for cb in &self.callbacks {
             cb.on_optimizer_candidate(candidate_id, metrics);
@@ -324,6 +376,17 @@ pub enum CollectedEvent {
         call_id: Uuid,
         success: bool,
         usage: LmUsage,
+    },
+    LmStreamStart {
+        call_id: Uuid,
+        model: String,
+    },
+    LmToken {
+        call_id: Uuid,
+        token: String,
+    },
+    LmStreamEnd {
+        call_id: Uuid,
     },
     OptimizerCandidate {
         candidate_id: String,
@@ -391,6 +454,26 @@ impl DspyCallback for CollectingCallback {
             call_id,
             success: result.is_ok(),
             usage: usage.clone(),
+        });
+    }
+
+    fn on_lm_stream_start(&self, call_id: Uuid, model: &str) {
+        self.events.lock().unwrap().push(CollectedEvent::LmStreamStart {
+            call_id,
+            model: model.to_string(),
+        });
+    }
+
+    fn on_lm_token(&self, call_id: Uuid, token: &str) {
+        self.events.lock().unwrap().push(CollectedEvent::LmToken {
+            call_id,
+            token: token.to_string(),
+        });
+    }
+
+    fn on_lm_stream_end(&self, call_id: Uuid) {
+        self.events.lock().unwrap().push(CollectedEvent::LmStreamEnd {
+            call_id,
         });
     }
 

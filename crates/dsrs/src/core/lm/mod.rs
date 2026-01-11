@@ -20,6 +20,7 @@ use std::{collections::HashMap, sync::Arc};
 use tokio::sync::Mutex;
 
 use crate::{Cache, CallResult, Example, MetaSignature, Prediction, ResponseCache};
+use crate::callbacks::DspyCallback;
 
 #[derive(Clone, Debug)]
 pub struct LMResponse {
@@ -320,6 +321,16 @@ impl LM {
         messages: Chat,
         tools: Vec<Arc<dyn ToolDyn>>,
     ) -> Result<LMResponse> {
+        self.call_with_signature_streaming(signature, messages, tools, None).await
+    }
+
+    pub async fn call_with_signature_streaming(
+        &self,
+        signature: Option<&dyn MetaSignature>,
+        messages: Chat,
+        tools: Vec<Arc<dyn ToolDyn>>,
+        callback: Option<&dyn DspyCallback>,
+    ) -> Result<LMResponse> {
         use rig::OneOrMany;
         use rig::completion::CompletionRequest;
 
@@ -357,6 +368,14 @@ impl LM {
             anyhow::anyhow!("LM client not initialized. Call build() on LMBuilder.")
         })?;
 
+        // Generate call ID for streaming callbacks
+        let call_id = uuid::Uuid::new_v4();
+
+        // Signal stream start
+        if let Some(cb) = callback {
+            cb.on_lm_stream_start(call_id, &self.model);
+        }
+
         let (response, usage_override) = match client.as_ref() {
             LMClient::LmRouter(router) => {
                 let completion = router
@@ -372,9 +391,19 @@ impl LM {
         // Handle the response
         let mut tool_loop_result = None;
         let first_choice = match response.choice.first() {
-            AssistantContent::Text(text) => Message::assistant(&text.text),
+            AssistantContent::Text(text) => {
+                // Emit the text as a token for streaming
+                if let Some(cb) = callback {
+                    cb.on_lm_token(call_id, &text.text);
+                }
+                Message::assistant(&text.text)
+            }
             AssistantContent::Reasoning(reasoning) => {
-                Message::assistant(reasoning.reasoning.join("\n"))
+                let text = reasoning.reasoning.join("\n");
+                if let Some(cb) = callback {
+                    cb.on_lm_token(call_id, &text);
+                }
+                Message::assistant(text)
             }
             AssistantContent::ToolCall(tool_call) if !tools.is_empty() => {
                 // Only execute tool loop if we have tools available
@@ -406,6 +435,11 @@ impl LM {
 
         let mut full_chat = messages.clone();
         full_chat.push_message(first_choice.clone());
+
+        // Signal stream end
+        if let Some(cb) = callback {
+            cb.on_lm_stream_end(call_id);
+        }
 
         Ok(LMResponse {
             output: first_choice,

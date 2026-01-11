@@ -21,6 +21,7 @@
 //! println!("Files to modify: {:?}", result.files_to_modify);
 //! ```
 
+use dsrs::callbacks::DspyCallback;
 use dsrs::{example, LM, Predict, Predictor, Signature};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -341,6 +342,15 @@ impl PlanningPipeline {
         &self,
         input: &PlanningInput,
     ) -> anyhow::Result<(String, f32)> {
+        self.classify_complexity_with_callback(input, None).await
+    }
+
+    /// Classify task complexity using DSPy with streaming callback.
+    async fn classify_complexity_with_callback(
+        &self,
+        input: &PlanningInput,
+        callback: Option<&dyn DspyCallback>,
+    ) -> anyhow::Result<(String, f32)> {
         let classifier = Predict::new(TaskComplexityClassifier::new());
         let file_count = input
             .relevant_files
@@ -355,7 +365,7 @@ impl PlanningPipeline {
         };
 
         let prediction = if let Some(lm) = &self.lm {
-            classifier.forward_with_config(example, lm.clone()).await?
+            classifier.forward_with_streaming(example, lm.clone(), callback).await?
         } else {
             classifier.forward(example).await?
         };
@@ -368,16 +378,27 @@ impl PlanningPipeline {
 
     /// Run the planning pipeline.
     pub async fn plan(&self, input: &PlanningInput) -> anyhow::Result<PlanningResult> {
-        let (complexity_label, confidence) =
-            self.classify_complexity(input).await.unwrap_or_else(|_| ("".to_string(), 0.0));
+        self.plan_with_callback(input, None).await
+    }
+
+    /// Run the planning pipeline with streaming callback.
+    pub async fn plan_with_callback(
+        &self,
+        input: &PlanningInput,
+        callback: Option<&dyn DspyCallback>,
+    ) -> anyhow::Result<PlanningResult> {
+        let (complexity_label, confidence) = self
+            .classify_complexity_with_callback(input, callback)
+            .await
+            .unwrap_or_else(|_| ("".to_string(), 0.0));
 
         let use_deep_planning = Self::should_use_deep_planning(&complexity_label, confidence)
             .unwrap_or_else(|| Self::heuristic_complexity(input));
 
         let prediction = if use_deep_planning {
-            self.run_deep_planning(input).await?
+            self.run_deep_planning_with_callback(input, callback).await?
         } else {
-            self.run_basic_planning(input).await?
+            self.run_basic_planning_with_callback(input, callback).await?
         };
 
         // Parse results
@@ -402,6 +423,15 @@ impl PlanningPipeline {
 
     /// Run basic planning for simpler tasks.
     async fn run_basic_planning(&self, input: &PlanningInput) -> anyhow::Result<dsrs::Prediction> {
+        self.run_basic_planning_with_callback(input, None).await
+    }
+
+    /// Run basic planning with streaming callback.
+    async fn run_basic_planning_with_callback(
+        &self,
+        input: &PlanningInput,
+        callback: Option<&dyn DspyCallback>,
+    ) -> anyhow::Result<dsrs::Prediction> {
         let planner = Predict::new(PlanningSignature::new());
 
         let example = example! {
@@ -411,7 +441,7 @@ impl PlanningPipeline {
         };
 
         let prediction = if let Some(lm) = &self.lm {
-            planner.forward_with_config(example, lm.clone()).await?
+            planner.forward_with_streaming(example, lm.clone(), callback).await?
         } else {
             planner.forward(example).await?
         };
@@ -421,6 +451,15 @@ impl PlanningPipeline {
 
     /// Run deep planning with chain-of-thought for complex tasks.
     async fn run_deep_planning(&self, input: &PlanningInput) -> anyhow::Result<dsrs::Prediction> {
+        self.run_deep_planning_with_callback(input, None).await
+    }
+
+    /// Run deep planning with streaming callback.
+    async fn run_deep_planning_with_callback(
+        &self,
+        input: &PlanningInput,
+        callback: Option<&dyn DspyCallback>,
+    ) -> anyhow::Result<dsrs::Prediction> {
         let deep_planner = Predict::new(DeepPlanningSignature::new());
 
         let code_patterns = input
@@ -436,7 +475,7 @@ impl PlanningPipeline {
         };
 
         let prediction = if let Some(lm) = &self.lm {
-            deep_planner.forward_with_config(example, lm.clone()).await?
+            deep_planner.forward_with_streaming(example, lm.clone(), callback).await?
         } else {
             deep_planner.forward(example).await?
         };

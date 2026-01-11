@@ -6,6 +6,7 @@ pub use chat::*;
 pub use pylon_sandbox::*;
 pub use swarm_dispatch::*;
 
+use crate::callbacks::DspyCallback;
 use crate::{Chat, Example, LM, Message, MetaSignature, Prediction};
 use anyhow::Result;
 use async_trait::async_trait;
@@ -28,5 +29,15 @@ pub trait Adapter: Send + Sync + 'static {
         signature: &dyn MetaSignature,
         inputs: Example,
         tools: Vec<Arc<dyn ToolDyn>>,
+    ) -> Result<Prediction>;
+
+    /// Call with streaming callback support.
+    async fn call_streaming(
+        &self,
+        lm: Arc<LM>,
+        signature: &dyn MetaSignature,
+        inputs: Example,
+        tools: Vec<Arc<dyn ToolDyn>>,
+        callback: Option<&dyn DspyCallback>,
     ) -> Result<Prediction>;
 }

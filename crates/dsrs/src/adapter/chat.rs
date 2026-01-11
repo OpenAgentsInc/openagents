@@ -5,6 +5,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use super::Adapter;
+use crate::callbacks::DspyCallback;
 use crate::serde_utils::get_iter_from_value;
 use crate::{Cache, CallResult, Chat, Example, LM, Message, MetaSignature, Prediction};
 
@@ -300,6 +301,17 @@ impl Adapter for ChatAdapter {
         inputs: Example,
         tools: Vec<Arc<dyn ToolDyn>>,
     ) -> Result<Prediction> {
+        self.call_streaming(lm, signature, inputs, tools, None).await
+    }
+
+    async fn call_streaming(
+        &self,
+        lm: Arc<LM>,
+        signature: &dyn MetaSignature,
+        inputs: Example,
+        tools: Vec<Arc<dyn ToolDyn>>,
+        callback: Option<&dyn DspyCallback>,
+    ) -> Result<Prediction> {
         let cache_key = Self::cache_key(signature, &inputs);
 
         // Check cache first (release lock immediately after checking)
@@ -313,7 +325,7 @@ impl Adapter for ChatAdapter {
 
         let messages = self.format(signature, inputs.clone());
         let response = lm
-            .call_with_signature(Some(signature), messages, tools)
+            .call_with_signature_streaming(Some(signature), messages, tools, callback)
             .await?;
         let prompt_str = response.chat.to_json().to_string();
 
