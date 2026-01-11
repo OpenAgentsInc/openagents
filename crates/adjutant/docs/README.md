@@ -64,6 +64,12 @@ cargo autopilot issue claim 123
 [AI] Updated error handling and added tests.
 ```
 
+Verbose logs (stderr) are opt-in via `RUST_LOG`:
+
+```bash
+RUST_LOG=adjutant=info cargo autopilot run "Summarize README.md"
+```
+
 ## Execution Flow
 
 1. **Planning**: Analyzes task, finds relevant files, estimates complexity
