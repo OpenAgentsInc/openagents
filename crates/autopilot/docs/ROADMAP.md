@@ -955,3 +955,7 @@ pub enum SettingsTab {
 - 2026-01-11 06:52 UTC - Filtered tool XML tags from DSPy streaming tokens and validated `cargo autopilot run` with Codex backend.
 - 2026-01-11 07:01 UTC - Validated CLI edit flow (Codex create + Claude write with tool read-before-write), plus env override coverage for `AUTOPILOT_BACKEND`.
 - 2026-01-11 07:19 UTC - Added no-verify test policy note in Autopilot tasks and validated CLI runs (DSPy status, Codex OK, Codex create, Claude delete).
+- 2026-01-11 07:28 UTC - Added no-verify test-strategy override for DSPy planning output, documented CLI vs GUI invocation, and queued fresh CLI validations.
+- 2026-01-11 07:41 UTC - Filtered non-actionable DSPy todo steps, deduped redundant summary tasks, and added orchestration tests.
+- 2026-01-11 07:47 UTC - Ensured DSPy todo steps carry original task context to reduce drift during multi-step CLI runs.
+- 2026-01-11 07:50 UTC - Normalized numbered DSPy steps for filtering/dedupe and revalidated CLI runs (autopilot-cli OK; autopilot README summary).

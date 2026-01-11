@@ -18,6 +18,88 @@ use dsrs::callbacks::DspyCallback;
 use oanix::OanixManifest;
 use std::sync::Arc;
 
+fn has_action_verb(step: &str) -> bool {
+    const VERBS: [&str; 18] = [
+        "read",
+        "write",
+        "update",
+        "add",
+        "remove",
+        "delete",
+        "create",
+        "edit",
+        "modify",
+        "verify",
+        "check",
+        "run",
+        "summarize",
+        "summarise",
+        "provide",
+        "respond",
+        "list",
+        "search",
+    ];
+
+    VERBS.iter().any(|verb| step.contains(verb))
+}
+
+fn normalize_step(step: &str) -> String {
+    let trimmed = step.trim();
+    let stripped = trimmed.trim_start_matches(|c: char| {
+        c.is_ascii_digit()
+            || c.is_whitespace()
+            || matches!(c, '.' | ')' | '-' | '*' | ':' | '•')
+    });
+    stripped.to_lowercase()
+}
+
+fn is_summary_step(step: &str) -> bool {
+    step.contains("summary")
+        || step.contains("summarize")
+        || step.contains("summarise")
+        || step.contains("synthesize")
+        || step.contains("one sentence")
+        || step.contains("one-sentence")
+}
+
+fn is_non_actionable_step(step: &str) -> bool {
+    let normalized = normalize_step(step);
+    if normalized.is_empty() {
+        return true;
+    }
+
+    if normalized.starts_with("summary:") {
+        return true;
+    }
+
+    let always_skip_prefixes = [
+        "no implementation",
+        "no file modifications",
+        "no code changes",
+        "no changes required",
+        "none required",
+        "none",
+        "not applicable",
+    ];
+
+    if always_skip_prefixes
+        .iter()
+        .any(|prefix| normalized.starts_with(prefix))
+    {
+        return true;
+    }
+
+    let conditional_prefixes = ["no tests", "no testing"];
+    if conditional_prefixes
+        .iter()
+        .any(|prefix| normalized.starts_with(prefix))
+    {
+        return !has_action_verb(&normalized);
+    }
+
+    false
+}
+
 /// Format bytes as human-readable string.
 fn format_bytes(bytes: u64) -> String {
     const KB: u64 = 1024;
@@ -154,7 +236,7 @@ impl DspyOrchestrator {
         plan: &TaskPlan,
         output: &O,
     ) -> Result<PlanningResult> {
-        self.create_plan_with_callback(task, plan, output, None)
+        self.create_plan_with_callback(task, plan, output, None, None)
             .await
     }
 
@@ -168,6 +250,7 @@ impl DspyOrchestrator {
         plan: &TaskPlan,
         output: &O,
         callback: Option<&dyn DspyCallback>,
+        test_strategy_override: Option<String>,
     ) -> Result<PlanningResult> {
         // Build repository summary
         let repo_summary = self.get_repo_summary();
@@ -194,7 +277,10 @@ impl DspyOrchestrator {
             PlanningPipeline::new()
         };
 
-        let result = pipeline.plan_with_callback(&input, callback).await?;
+        let mut result = pipeline.plan_with_callback(&input, callback).await?;
+        if let Some(test_strategy) = test_strategy_override {
+            result.test_strategy = test_strategy;
+        }
 
         // Emit planning stage to UI
         output.emit_stage(DspyStage::Planning {
@@ -218,9 +304,26 @@ impl DspyOrchestrator {
         plan: &PlanningResult,
         output: &O,
     ) -> Vec<TodoTask> {
-        let tasks: Vec<TodoTask> = plan
+        let mut filtered_steps: Vec<&String> = plan
             .implementation_steps
             .iter()
+            .filter(|step| !is_non_actionable_step(step))
+            .collect();
+
+        let mut summary_seen = false;
+        filtered_steps.retain(|step| {
+            let normalized = normalize_step(step);
+            if is_summary_step(&normalized) {
+                if summary_seen {
+                    return false;
+                }
+                summary_seen = true;
+            }
+            true
+        });
+
+        let tasks: Vec<TodoTask> = filtered_steps
+            .into_iter()
             .enumerate()
             .map(|(i, step)| TodoTask {
                 index: i + 1,
@@ -230,9 +333,11 @@ impl DspyOrchestrator {
             .collect();
 
         // Emit todo list to UI
-        output.emit_stage(DspyStage::TodoList {
-            tasks: tasks.clone(),
-        });
+        if !tasks.is_empty() {
+            output.emit_stage(DspyStage::TodoList {
+                tasks: tasks.clone(),
+            });
+        }
 
         tasks
     }
@@ -317,5 +422,88 @@ mod tests {
         assert_eq!(tasks[0].index, 1);
         assert_eq!(tasks[0].description, "Read the file");
         assert_eq!(tasks[0].status, TodoStatus::Pending);
+    }
+
+    #[test]
+    fn filters_non_actionable_steps() {
+        let steps = vec![
+            "Read README.md".to_string(),
+            "Summary: OpenAgents does X".to_string(),
+            "No tests required".to_string(),
+            "3. No file modifications needed".to_string(),
+            "Verify output matches expectation".to_string(),
+        ];
+
+        let planning_result = PlanningResult {
+            analysis: "Test analysis".to_string(),
+            files_to_modify: vec![],
+            implementation_steps: steps,
+            test_strategy: "Run cargo test".to_string(),
+            risk_factors: vec![],
+            complexity: autopilot_core::Complexity::Low,
+            confidence: 0.9,
+        };
+
+        struct MockOutput;
+        impl AutopilotOutput for MockOutput {
+            fn iteration_start(&self, _: usize, _: usize) {}
+            fn token(&self, _: &str) {}
+            fn verification_start(&self) {}
+            fn verification_result(&self, _: bool, _: &str) {}
+            fn error(&self, _: &str) {}
+            fn interrupted(&self) {}
+            fn max_iterations(&self, _: usize) {}
+            fn emit_stage(&self, _: DspyStage) {}
+        }
+
+        let tools = ToolRegistry::new(std::path::PathBuf::from("."));
+        let orchestrator = DspyOrchestrator::new(None, tools);
+        let tasks = orchestrator.create_todo_list(&planning_result, &MockOutput);
+
+        assert_eq!(tasks.len(), 2);
+        assert_eq!(tasks[0].description, "Read README.md");
+        assert_eq!(tasks[1].description, "Verify output matches expectation");
+    }
+
+    #[test]
+    fn dedupes_summary_steps() {
+        let steps = vec![
+            "Read README.md".to_string(),
+            "Synthesize the key information into one sentence".to_string(),
+            "Report the summary".to_string(),
+        ];
+
+        let planning_result = PlanningResult {
+            analysis: "Test analysis".to_string(),
+            files_to_modify: vec![],
+            implementation_steps: steps,
+            test_strategy: "Run cargo test".to_string(),
+            risk_factors: vec![],
+            complexity: autopilot_core::Complexity::Low,
+            confidence: 0.9,
+        };
+
+        struct MockOutput;
+        impl AutopilotOutput for MockOutput {
+            fn iteration_start(&self, _: usize, _: usize) {}
+            fn token(&self, _: &str) {}
+            fn verification_start(&self) {}
+            fn verification_result(&self, _: bool, _: &str) {}
+            fn error(&self, _: &str) {}
+            fn interrupted(&self) {}
+            fn max_iterations(&self, _: usize) {}
+            fn emit_stage(&self, _: DspyStage) {}
+        }
+
+        let tools = ToolRegistry::new(std::path::PathBuf::from("."));
+        let orchestrator = DspyOrchestrator::new(None, tools);
+        let tasks = orchestrator.create_todo_list(&planning_result, &MockOutput);
+
+        assert_eq!(tasks.len(), 2);
+        assert_eq!(tasks[0].description, "Read README.md");
+        assert_eq!(
+            tasks[1].description,
+            "Synthesize the key information into one sentence"
+        );
     }
 }
