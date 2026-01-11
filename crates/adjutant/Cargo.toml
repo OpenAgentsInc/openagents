@@ -57,6 +57,7 @@ futures = "0.3"
 reqwest = { workspace = true, features = ["stream", "json"] }
 gpt-oss = { version = "0.1.0", path = "../gpt-oss" }
 autopilot-core = { version = "0.1.0", path = "../autopilot-core" }
+regex = "1.12.2"
 
 [dev-dependencies]
 tempfile = { workspace = true }

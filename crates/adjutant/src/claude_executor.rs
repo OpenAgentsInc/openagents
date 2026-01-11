@@ -219,9 +219,13 @@ impl ClaudeExecutor {
                 // Stream events - extract and send text deltas immediately
                 Ok(SdkMessage::StreamEvent(event)) => {
                     if let Some(text) = extract_stream_text(&event) {
-                        chunk_count += 1;
-                        tracing::debug!(chunk = chunk_count, len = text.len(), "Stream chunk");
-                        let _ = token_tx.send(text.clone());
+                        // Filter out XML tool use tags from display
+                        let filtered = filter_tool_xml(&text);
+                        if !filtered.is_empty() {
+                            chunk_count += 1;
+                            tracing::debug!(chunk = chunk_count, len = filtered.len(), "Stream chunk");
+                            let _ = token_tx.send(filtered);
+                        }
                         full_response.push_str(&text);
                     }
                 }
@@ -232,7 +236,11 @@ impl ClaudeExecutor {
                         // Don't double-send if we already got it via StreamEvent
                         // Only send if it's new content
                         if !full_response.ends_with(&text) {
-                            let _ = token_tx.send(text.clone());
+                            // Filter out XML tool use tags from display
+                            let filtered = filter_tool_xml(&text);
+                            if !filtered.is_empty() {
+                                let _ = token_tx.send(filtered);
+                            }
                             full_response.push_str(&text);
                         }
                     }
@@ -572,4 +580,27 @@ fn extract_assistant_text(message: &serde_json::Value) -> Option<String> {
     }
 
     None
+}
+
+/// Filter out XML tool use tags from display text.
+///
+/// Claude outputs tool calls in XML format like `<function_calls>...</function_calls>`.
+/// These should not be shown to the user in the streaming output.
+fn filter_tool_xml(text: &str) -> String {
+    use regex::Regex;
+    use std::sync::OnceLock;
+
+    static TOOL_XML_RE: OnceLock<Regex> = OnceLock::new();
+    let re = TOOL_XML_RE.get_or_init(|| {
+        // Match various XML-like tool patterns
+        Regex::new(r"(?s)<(function_calls|antml:function_calls|antml:invoke|antml:parameter)[^>]*>.*?</\1>|<(function_calls|antml:function_calls|antml:invoke|antml:parameter)[^>]*/?>|</(function_calls|antml:function_calls|antml:invoke|antml:parameter)>").unwrap()
+    });
+
+    let filtered = re.replace_all(text, "").to_string();
+    // Also trim any resulting whitespace-only strings
+    if filtered.trim().is_empty() {
+        String::new()
+    } else {
+        filtered
+    }
 }
