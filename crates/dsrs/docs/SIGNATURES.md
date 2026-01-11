@@ -229,6 +229,281 @@ let sig = AgentMemorySignature::new();
 use dsrs::signatures::agent_memory::{is_simple_redundant, simple_similarity};
 ```
 
+## Plan IR & Execution
+
+Unified types for planning and execution across Adjutant and Autopilot.
+
+### PlanIR (Canonical Intermediate Representation)
+
+Both planning stacks (Adjutant's `SubtaskPlanningSignature` and Autopilot's `PlanningSignature`) emit this unified format:
+
+```rust
+use dsrs::ir::{PlanIR, PlanStep, StepIntent, VerificationStrategy, Complexity};
+
+/// Canonical plan format emitted by all planning signatures.
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct PlanIR {
+    /// High-level analysis of the task
+    pub analysis: String,
+
+    /// Ordered list of steps to execute
+    pub steps: Vec<PlanStep>,
+
+    /// How to verify completion
+    pub verification_strategy: VerificationStrategy,
+
+    /// Overall task complexity
+    pub complexity: Complexity,
+
+    /// Planner confidence (0.0-1.0)
+    pub confidence: f32,
+}
+
+/// A single step in the plan.
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct PlanStep {
+    /// Unique identifier (e.g., "step-1", "step-2a")
+    pub id: String,
+
+    /// Human-readable description
+    pub description: String,
+
+    /// What this step achieves
+    pub intent: StepIntent,
+
+    /// Files expected to be touched
+    pub target_files: Vec<String>,
+
+    /// Step IDs this depends on (for parallel execution)
+    pub depends_on: Vec<String>,
+
+    /// Max iterations for this step (per-step loop budget)
+    pub max_iterations: u8,
+}
+
+/// Classification of what a step does.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+pub enum StepIntent {
+    /// Read/search to understand (file_read, ripgrep, lsp)
+    Investigate,
+
+    /// Edit files (file_edit)
+    Modify,
+
+    /// Run tests/build (shell)
+    Verify,
+
+    /// Combine results from prior steps
+    Synthesize,
+}
+
+/// How to verify task completion.
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct VerificationStrategy {
+    /// Commands to run (e.g., ["cargo check", "cargo test"])
+    pub commands: Vec<String>,
+
+    /// What constitutes success
+    pub success_criteria: String,
+
+    /// Max verification retries
+    pub max_retries: u8,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+pub enum Complexity {
+    Low,
+    Medium,
+    High,
+    VeryHigh,
+}
+```
+
+**Migration path:**
+- Adjutant's `SubtaskPlanningSignature.subtasks` → `PlanIR.steps`
+- Autopilot's `PlanningSignature.implementation_steps` → `PlanIR.steps`
+- Both emit the same IR, downstream doesn't care which planner ran
+
+### ToolCallSignature (Merged Execution)
+
+Replaces the redundant `ExecutionStrategySignature` + `ToolSelectionSignature` pair.
+**One LLM call per step instead of two.**
+
+```rust
+use dsrs::signatures::ToolCallSignature;
+
+/// Merged signature for tool selection and invocation.
+/// Combines what was previously ExecutionStrategySignature + ToolSelectionSignature.
+#[Signature]
+pub struct ToolCallSignature {
+    /// Current plan step description
+    #[input]
+    pub step: String,
+
+    /// Step intent from PlanIR (Investigate/Modify/Verify/Synthesize)
+    #[input]
+    pub step_intent: String,
+
+    /// JSON array of available tool specs
+    #[input]
+    pub available_tools: String,
+
+    /// JSON array of recent tool calls + results (last 5)
+    #[input]
+    pub execution_history: String,
+
+    /// Relevant file contents (truncated)
+    #[input]
+    pub file_context: String,
+
+    /// Selected tool: "shell" | "file_read" | "file_edit" | "ripgrep" | "lsp"
+    #[output]
+    pub tool: String,
+
+    /// JSON tool parameters (command, path, content, etc.)
+    #[output]
+    pub params: String,
+
+    /// What we expect to learn or change
+    #[output]
+    pub expected_outcome: String,
+
+    /// Step completion estimate (0.0-1.0)
+    #[output]
+    pub progress: f32,
+
+    /// Should we stop and ask the human?
+    #[output]
+    pub needs_user_input: bool,
+}
+
+// Usage:
+let sig = ToolCallSignature::new();
+let predictor = Predict::new(sig);
+
+let result = predictor.forward(example! {
+    "step" : "input" => "Run tests to identify failures",
+    "step_intent" : "input" => "Verify",
+    "available_tools" : "input" => r#"["shell", "file_read", "ripgrep"]"#,
+    "execution_history" : "input" => "[]",
+    "file_context" : "input" => ""
+}).await?;
+
+let tool = result.get("tool", None).as_str();  // "shell"
+let params = result.get("params", None);        // {"command": "cargo test"}
+```
+
+**Why merged:**
+- Previous: ExecutionStrategySignature chose action + params, ToolSelectionSignature re-chose tool + params
+- Now: Single decision point, no redundant work, clearer training signal
+
+### ToolResultSignature (Learning Signal)
+
+Interprets tool results and computes step utility. This is the **learning signal gold** that enables outcome-coupled optimization.
+
+```rust
+use dsrs::signatures::{ToolResultSignature, ToolSuccess};
+
+/// Interprets tool execution results for learning.
+#[Signature]
+pub struct ToolResultSignature {
+    /// Tool that was executed
+    #[input]
+    pub tool: String,
+
+    /// Parameters used
+    #[input]
+    pub params: String,
+
+    /// Tool output (truncated stdout/stderr, max 2000 chars)
+    #[input]
+    pub output: String,
+
+    /// Exit code (0 = success for shell commands)
+    #[input]
+    pub exit_code: i32,
+
+    /// Original step intent
+    #[input]
+    pub step_intent: String,
+
+    /// Did the tool succeed? "YES" | "PARTIAL" | "NO"
+    #[output]
+    pub success: String,
+
+    /// JSON: facts extracted from output (errors found, files identified, etc.)
+    #[output]
+    pub extracted_facts: String,
+
+    /// Should we continue with this step or move on?
+    #[output]
+    pub should_continue: bool,
+
+    /// Step utility score: -1.0 to +1.0 (THE LEARNING SIGNAL)
+    #[output]
+    pub step_utility: f32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ToolSuccess {
+    Yes,
+    Partial,
+    No,
+}
+```
+
+**Step utility metric:**
+
+| Score | Meaning | Example |
+|-------|---------|---------|
+| +1.0 | Directly advances goal | Found the bug, tests now pass |
+| +0.5 | Partial progress | Narrowed down to 3 files |
+| 0.0 | No-op | Search returned nothing, no harm |
+| -0.5 | Wasted effort | Repeated same search, opened same file again |
+| -1.0 | Made things worse | Broke the build, added more test failures |
+
+**Integration with training:**
+
+```rust
+// After each tool execution:
+let result = tool_result_predictor.forward(/* ... */).await?;
+let utility: f32 = result.get("step_utility", None).as_f64().unwrap_or(0.0) as f32;
+
+// Record for MIPRO optimization
+training_collector.record_tool_call(LabeledToolCall {
+    signature: "ToolCallSignature".into(),
+    inputs: tool_call_inputs,
+    outputs: tool_call_outputs,
+    step_utility: utility,
+    verification_delta: prev_failing_tests - curr_failing_tests,
+    cost_tokens: tokens_used,
+    cost_tool_calls: 1,
+    was_repeated: history.contains(&tool_call_hash),
+});
+```
+
+### Execution Flow Comparison
+
+**v1 (Current):** 2 LLM calls per step
+```
+ExecutionStrategySignature → next_action, action_params
+ToolSelectionSignature     → selected_tool, tool_params   ← REDUNDANT
+Tool Execution
+(no interpretation)
+```
+
+**v2 (Proposed):** 2 LLM calls per step, but second is for learning
+```
+ToolCallSignature      → tool, params, expected_outcome
+Tool Execution
+ToolResultSignature    → success, extracted_facts, step_utility   ← LEARNING SIGNAL
+```
+
+**Net effect:**
+- Same call count, but second call now captures outcome signal
+- Training data includes step_utility for better MIPRO optimization
+- Reduces format-only metrics, adds outcome-coupled metrics
+
 ## Using Signatures
 
 ### With Predict

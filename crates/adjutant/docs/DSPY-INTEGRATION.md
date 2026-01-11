@@ -685,6 +685,248 @@ autopilot dspy auto-optimize --min-hours 12
     └── auto_optimizer.json
 ```
 
+## Counterfactual Recording (Proposed)
+
+To enable comparison between DSPy decisions and legacy rules, and to support proper shadow mode, we need to record what the alternative path would have done.
+
+### DecisionRecord Extensions
+
+The existing `DecisionRecord` struct is extended with counterfactual fields:
+
+```rust
+// crates/adjutant/src/dspy/sessions.rs
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct DecisionRecord {
+    // Existing fields
+    pub signature: String,
+    pub inputs_hash: String,
+    pub dspy_output: serde_json::Value,
+    pub dspy_confidence: f32,
+    pub dspy_latency_ms: u64,
+
+    // NEW: Counterfactual tracking
+    /// What the legacy rule-based system would have output
+    pub legacy_output: Option<serde_json::Value>,
+
+    /// Whether we fell back to legacy (confidence < threshold, parse error, etc.)
+    pub fallback_used: bool,
+
+    /// Why fallback was used (if applicable)
+    pub fallback_reason: Option<FallbackReason>,
+
+    /// Which provider lane was used ("claude" | "swarm" | "local")
+    pub provider_lane: String,
+
+    /// What lane legacy would have used (for lane routing analysis)
+    pub provider_lane_without_dspy: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub enum FallbackReason {
+    /// DSPy confidence below threshold (includes the confidence value)
+    LowConfidence(f32),
+
+    /// Failed to parse DSPy output
+    ParseError(String),
+
+    /// DSPy call timed out
+    Timeout,
+
+    /// Required tool not available
+    ToolMissing(String),
+
+    /// No LM provider available
+    ProviderUnavailable,
+}
+```
+
+### Recording Counterfactuals
+
+```rust
+// When making a decision, record both paths:
+let dspy_result = complexity_pipeline.classify(&task).await;
+let legacy_result = legacy_complexity_rules(&task);  // Run legacy too
+
+let record = DecisionRecord {
+    signature: "ComplexityClassifier".into(),
+    inputs_hash: hash_inputs(&task),
+    dspy_output: serde_json::to_value(&dspy_result)?,
+    dspy_confidence: dspy_result.confidence,
+    dspy_latency_ms: elapsed.as_millis() as u64,
+
+    // Counterfactual
+    legacy_output: Some(serde_json::to_value(&legacy_result)?),
+    fallback_used: dspy_result.confidence < 0.7,
+    fallback_reason: if dspy_result.confidence < 0.7 {
+        Some(FallbackReason::LowConfidence(dspy_result.confidence))
+    } else {
+        None
+    },
+    provider_lane: "claude".into(),
+    provider_lane_without_dspy: Some("local".into()),
+};
+
+session.decisions.push(record);
+```
+
+### Shadow Mode Analysis
+
+With counterfactuals recorded, we can analyze:
+
+```rust
+// After session completes with outcome
+for decision in session.decisions.iter() {
+    if let Some(legacy) = &decision.legacy_output {
+        let dspy_correct = decision.was_correct.unwrap_or(false);
+        let legacy_would_match = would_legacy_succeed(&legacy, &session.outcome);
+
+        if dspy_correct && !legacy_would_match {
+            // DSPy won - record as training signal
+            metrics.dspy_wins += 1;
+        } else if !dspy_correct && legacy_would_match {
+            // Legacy would have won - DSPy needs improvement
+            metrics.legacy_wins += 1;
+        }
+    }
+}
+```
+
+## Outcome-Coupled Metrics (Proposed)
+
+Current training only captures format correctness (valid JSON, proper field names). This is necessary but not sufficient for good agent performance.
+
+### The Problem
+
+Existing metrics reward:
+- Valid JSON output ✓
+- Correct field types ✓
+- Reasonable confidence values ✓
+
+Missing signals:
+- Did this tool call actually help?
+- Did verification improve after this step?
+- Was this a repeated/wasted action?
+- How much did this cost?
+
+### LabeledToolCall Structure
+
+```rust
+// crates/adjutant/src/dspy/training.rs
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct LabeledToolCall {
+    /// Which signature was used
+    pub signature: String,
+
+    /// Signature inputs (hashed for dedup)
+    pub inputs: serde_json::Value,
+
+    /// Signature outputs
+    pub outputs: serde_json::Value,
+
+    // Outcome-coupled labels (computed post-hoc)
+
+    /// Step utility from ToolResultSignature (-1.0 to +1.0)
+    pub step_utility: f32,
+
+    /// Change in failing tests after this step (negative = improvement)
+    pub verification_delta: i32,
+
+    /// Tokens used for this call
+    pub cost_tokens: u32,
+
+    /// Tool calls made (usually 1)
+    pub cost_tool_calls: u32,
+
+    /// Did we make this exact call before in this session?
+    pub was_repeated: bool,
+}
+```
+
+### Step Utility Metric
+
+Computed by `ToolResultSignature` after each tool execution:
+
+| Score | Meaning | Example |
+|-------|---------|---------|
+| +1.0 | Directly advances goal | Found the bug, tests now pass |
+| +0.5 | Partial progress | Narrowed down to 3 files |
+| 0.0 | No-op | Search returned nothing, no harm |
+| -0.5 | Wasted effort | Repeated same search, opened same file again |
+| -1.0 | Made things worse | Broke the build, added more test failures |
+
+### Scoring Function for MIPRO
+
+The combined score for training optimization:
+
+```rust
+fn compute_step_score(call: &LabeledToolCall) -> f32 {
+    let mut score = 0.0;
+
+    // Step utility (40% weight) - the core learning signal
+    score += call.step_utility * 0.4;
+
+    // Verification improvement (30% weight)
+    if call.verification_delta < 0 {
+        // Fewer failures = good
+        score += 0.3;
+    }
+
+    // Repetition penalty (20% weight)
+    if call.was_repeated {
+        score -= 0.2;
+    }
+
+    // Cost penalty (10% weight, capped)
+    let cost_penalty = (call.cost_tokens as f32 / 10000.0).min(0.1);
+    score -= cost_penalty;
+
+    score
+}
+```
+
+### Recording During Execution
+
+```rust
+// After each tool execution in the autopilot loop:
+let tool_result = tool_result_predictor.forward(/* ... */).await?;
+
+let labeled = LabeledToolCall {
+    signature: "ToolCallSignature".into(),
+    inputs: tool_call_inputs.clone(),
+    outputs: tool_call_outputs.clone(),
+    step_utility: tool_result.get("step_utility").as_f32().unwrap_or(0.0),
+    verification_delta: prev_failing - curr_failing,
+    cost_tokens: tokens_used,
+    cost_tool_calls: 1,
+    was_repeated: execution_history.contains(&call_hash),
+};
+
+training_collector.record_tool_call(labeled)?;
+```
+
+### Storage
+
+```
+~/.openagents/adjutant/training/
+├── dataset.json              # Existing format-correct examples
+├── labeled/
+│   ├── complexity.json       # Labeled decision examples
+│   ├── delegation.json
+│   ├── rlm_trigger.json
+│   └── tool_calls.json       # NEW: Outcome-coupled tool call examples
+└── metrics/
+    └── step_utility_histogram.json  # NEW: Distribution of step utilities
+```
+
+### Benefits
+
+1. **Better MIPRO optimization** - Rewards outcomes, not just format
+2. **Cost awareness** - Penalizes expensive wasteful calls
+3. **Repetition detection** - Agents learn to avoid loops
+4. **Verification coupling** - Training signal tied to actual success
+
 ## Future Improvements
 
 1. ~~**Parallel Optimization** - Optimize all three signatures simultaneously~~ (Now prioritizes lowest-accuracy)
@@ -693,6 +935,8 @@ autopilot dspy auto-optimize --min-hours 12
 4. **Custom Metrics** - Task-specific evaluation functions
 5. ~~**Model Selection** - Dynamic model routing based on complexity~~ (LaneMux)
 6. **Pattern Learning** - Extract failure patterns to warn about risky tasks
+7. **Counterfactual Analysis** - Compare DSPy vs legacy decisions offline
+8. **Step Utility Optimization** - Train on outcome-coupled metrics
 
 ## See Also
 

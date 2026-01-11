@@ -56,6 +56,9 @@ DSPy signatures are typed input/output contracts for LLM tasks. Each signature:
 | **21** | marketplace | FilesystemPermissionSignature | Learn safe permissions | Complete |
 | **21** | marketplace | ResourceLimitSignature | Learn resource limits | Complete |
 | **21** | marketplace | SafePathValidationSignature | Learn path safety | Complete |
+| **v2** | dsrs | PlanIR | Unified plan intermediate representation | Proposed |
+| **v2** | dsrs | ToolCallSignature | Merged execution (replaces ExecutionStrategy + ToolSelection) | Proposed |
+| **v2** | dsrs | ToolResultSignature | Interpret tool results + step_utility learning signal | Proposed |
 
 ---
 
@@ -592,3 +595,146 @@ This enables:
 | agent-orchestrator | `crates/agent-orchestrator/src/integrations/directives.rs`, `crates/agent-orchestrator/src/integrations/autopilot.rs` (Wave 20) |
 | nexus | `crates/nexus/src/dspy.rs` (Wave 20) |
 | marketplace | `crates/marketplace/src/dspy_security.rs` (Wave 21) |
+
+---
+
+## Proposed: Architecture Refactor (v2)
+
+These signatures address architectural issues identified in the current design.
+
+### Problem: Two Planning Stacks
+
+Currently Adjutant and Autopilot have divergent planning outputs:
+- Adjutant: `SubtaskPlanningSignature.subtasks` → JSON string
+- Autopilot: `PlanningSignature.implementation_steps` → Vec<String>
+
+### Solution: Unified PlanIR
+
+```rust
+// crates/dsrs/src/ir/plan.rs (NEW)
+
+/// Canonical plan format emitted by all planning signatures.
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct PlanIR {
+    pub analysis: String,
+    pub steps: Vec<PlanStep>,
+    pub verification_strategy: VerificationStrategy,
+    pub complexity: Complexity,
+    pub confidence: f32,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct PlanStep {
+    pub id: String,
+    pub description: String,
+    pub intent: StepIntent,           // Investigate/Modify/Verify/Synthesize
+    pub target_files: Vec<String>,
+    pub depends_on: Vec<String>,
+    pub max_iterations: u8,           // Per-step loop budget
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub enum StepIntent {
+    Investigate,    // file_read, ripgrep, lsp
+    Modify,         // file_edit
+    Verify,         // shell (tests/build)
+    Synthesize,     // combine results
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct VerificationStrategy {
+    pub commands: Vec<String>,
+    pub success_criteria: String,
+    pub max_retries: u8,
+}
+```
+
+### Problem: Redundant Execution Signatures
+
+Currently each todo step requires 2 LLM calls:
+1. `ExecutionStrategySignature` → next_action, action_params
+2. `ToolSelectionSignature` → selected_tool, tool_params (OVERLAPS)
+
+### Solution: ToolCallSignature (Merged)
+
+```rust
+// Replaces ExecutionStrategySignature + ToolSelectionSignature
+// One LLM call per step instead of two.
+
+#[Signature]
+pub struct ToolCallSignature {
+    /// Select and invoke the appropriate tool for the current step.
+
+    #[input] pub step: String,              // Current plan step description
+    #[input] pub step_intent: String,       // From PlanIR (Investigate/Modify/Verify)
+    #[input] pub available_tools: String,   // JSON array of tool specs
+    #[input] pub execution_history: String, // Recent tool calls + results (last 5)
+    #[input] pub file_context: String,      // Relevant file contents (truncated)
+
+    #[output] pub tool: String,             // "shell" | "file_read" | "file_edit" | "ripgrep"
+    #[output] pub params: String,           // JSON tool parameters
+    #[output] pub expected_outcome: String, // What we expect to learn/change
+    #[output] pub progress: f32,            // Step completion estimate (0.0-1.0)
+    #[output] pub needs_user_input: bool,   // Stop and ask human?
+}
+```
+
+### Problem: No Step-Level Learning Signal
+
+Current training only captures format correctness metrics (valid JSON, etc.).
+Missing: outcome-coupled signals like "did this tool call help?"
+
+### Solution: ToolResultSignature
+
+```rust
+// Interprets tool results and computes step_utility (the learning signal gold).
+
+#[Signature]
+pub struct ToolResultSignature {
+    /// Interpret tool execution results and assess utility.
+
+    #[input] pub tool: String,
+    #[input] pub params: String,
+    #[input] pub output: String,            // Truncated stdout/stderr (max 2000 chars)
+    #[input] pub exit_code: i32,
+    #[input] pub step_intent: String,
+
+    #[output] pub success: String,          // "YES" | "PARTIAL" | "NO"
+    #[output] pub extracted_facts: String,  // JSON: what we learned
+    #[output] pub should_continue: bool,    // Continue with this step?
+    #[output] pub step_utility: f32,        // -1.0 to +1.0 (THE LEARNING SIGNAL)
+}
+```
+
+**Step utility scale:**
+
+| Score | Meaning | Example |
+|-------|---------|---------|
+| +1.0 | Directly advances goal | Found the bug, tests now pass |
+| +0.5 | Partial progress | Narrowed down to 3 files |
+| 0.0 | No-op | Search returned nothing, no harm |
+| -0.5 | Wasted effort | Repeated same search, opened same file again |
+| -1.0 | Made things worse | Broke the build, added more test failures |
+
+### Execution Flow Comparison
+
+**v1 (Current):**
+```
+ExecutionStrategySignature → next_action, action_params
+ToolSelectionSignature     → selected_tool, tool_params   ← REDUNDANT
+Tool Execution
+(no interpretation)
+```
+
+**v2 (Proposed):**
+```
+ToolCallSignature      → tool, params, expected_outcome
+Tool Execution
+ToolResultSignature    → success, extracted_facts, step_utility   ← LEARNING SIGNAL
+```
+
+### See Also
+
+- [dsrs/docs/SIGNATURES.md](../../crates/dsrs/docs/SIGNATURES.md) - Full signature specs
+- [adjutant/docs/DSPY-INTEGRATION.md](../../crates/adjutant/docs/DSPY-INTEGRATION.md) - Self-improvement loop
+- [autopilot/docs/EXECUTION_FLOW.md](../../crates/autopilot/docs/EXECUTION_FLOW.md) - Execution flow details
