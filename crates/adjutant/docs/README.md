@@ -42,8 +42,11 @@ Adjutant is the core execution engine for autonomous coding tasks. It:
 # Set Cerebras API key for AI-powered execution
 export CEREBRAS_API_KEY="csk-your-key-here"
 
-# Run a task
+# Run a task (fast boot skips network/compute discovery)
 cargo autopilot run "Add error handling to auth.rs"
+
+# Full environment scan (slower)
+cargo autopilot run "Add error handling to auth.rs" --full-boot
 
 # Claim and work on a GitHub issue
 cargo autopilot issue claim 123
