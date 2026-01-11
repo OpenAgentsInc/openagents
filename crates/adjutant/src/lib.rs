@@ -237,7 +237,7 @@ impl Adjutant {
     }
 
     /// Get or create the cached LM for decision pipelines.
-    async fn get_or_create_decision_lm(&mut self) -> Option<Arc<LM>> {
+    pub async fn get_or_create_decision_lm(&mut self) -> Option<Arc<LM>> {
         if self.decision_lm.is_none() {
             match dspy::lm_config::get_planning_lm().await {
                 Ok(lm) => {
