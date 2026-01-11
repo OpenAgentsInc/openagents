@@ -908,7 +908,7 @@ pub enum SettingsTab {
 
 ---
 
-*Last updated: 2026-01-10*
+*Last updated: 2026-01-11*
 
 ## Execution Log
 - 2026-01-09 07:58 UTC - Added command, panel, and keybinding modules; refactored Autopilot UI state to AppState with new core fields.
@@ -949,3 +949,4 @@ pub enum SettingsTab {
 - 2026-01-10 - Implemented multi-backend support (Claude/Codex): agent abstraction layer with AgentBackend/AgentSession traits, `/backend` toggle command, and full Codex integration via codex-agent-sdk with event mapping to ResponseEvent.
 - 2026-01-10 23:02 UTC - Added agent backends pane with CLI availability, model selection, keybinding, and commands.
 - 2026-01-11 06:01 UTC - Wired Autopilot CLI to use ACP streaming + DSPy loop for tasks/issues, added Codex executor support, and backend selection flags/env wiring.
+- 2026-01-11 06:10 UTC - Added ACP tool-result updates for Claude streaming, aligned CLI command name with autopilot alias, and captured CLI renderer tool completion output.

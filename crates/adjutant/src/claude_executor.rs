@@ -542,6 +542,44 @@ fn forward_acp_update(acp_sender: &Option<AcpEventSender>, msg: &SdkMessage) {
         return;
     }
 
+    if let SdkMessage::User(user_msg) = msg {
+        if let Some(content) = user_msg.message.get("content").and_then(|c| c.as_array()) {
+            for block in content {
+                let block_type = block.get("type").and_then(|t| t.as_str());
+                if block_type != Some("tool_result") {
+                    continue;
+                }
+                let tool_use_id = block
+                    .get("tool_use_id")
+                    .and_then(|id| id.as_str())
+                    .or(user_msg.parent_tool_use_id.as_deref());
+                let Some(tool_use_id) = tool_use_id else {
+                    continue;
+                };
+                let is_error = block.get("is_error").and_then(|v| v.as_bool()).unwrap_or(false);
+                let raw_output = if let Some(result) = &user_msg.tool_use_result {
+                    result.clone()
+                } else {
+                    block.get("content").cloned().unwrap_or(serde_json::Value::Null)
+                };
+                let status = if is_error {
+                    acp::ToolCallStatus::Failed
+                } else {
+                    acp::ToolCallStatus::Completed
+                };
+                let fields = acp::ToolCallUpdateFields::new()
+                    .status(status)
+                    .raw_output(raw_output);
+                let update = acp::ToolCallUpdate::new(
+                    acp::ToolCallId::new(tool_use_id.to_string()),
+                    fields,
+                );
+                sender.send_update(acp::SessionUpdate::ToolCallUpdate(update));
+            }
+        }
+        return;
+    }
+
     let Some(notification) = sdk_message_to_notification(&sender.session_id, msg) else {
         return;
     };
