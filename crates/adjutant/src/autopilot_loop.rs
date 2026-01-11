@@ -767,9 +767,11 @@ impl<O: AutopilotOutput> AutopilotLoop<O> {
         // DSPy Planning Stages (before main execution loop)
         // ============================================================
 
+        // Initialize the decision LM before creating orchestrator (required for streaming)
+        let decision_lm = self.adjutant.get_or_create_decision_lm().await;
+
         // Create orchestrator for DSPy stages
-        let orchestrator =
-            DspyOrchestrator::new(self.adjutant.decision_lm(), self.adjutant.tools().clone());
+        let orchestrator = DspyOrchestrator::new(decision_lm, self.adjutant.tools().clone());
 
         // Stage 1: Environment Assessment
         let assessment = match orchestrator
