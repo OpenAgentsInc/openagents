@@ -1,6 +1,8 @@
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use serde_json::Value;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::error::TryRecvError;
 
@@ -20,6 +22,7 @@ use crate::app::permissions::{coder_mode_default_allow, parse_coder_mode};
 use crate::app::session::SessionInfo;
 use crate::app::ui::render_app;
 use crate::app::CoderMode;
+use crate::autopilot_loop::{DspyStage, TodoStatus, TodoTask};
 use crate::commands::Command;
 
 use super::AutopilotApp;
@@ -409,7 +412,7 @@ impl AutopilotApp {
             };
 
             let _ = tx.send(ResponseEvent::SystemInit {
-                model: model_name,
+                model: model_name.clone(),
                 permission_mode: coder_mode.mode_label().to_string(),
                 session_id: thread_id.clone(),
                 tool_count: 0,
@@ -437,6 +440,13 @@ impl AutopilotApp {
                     return;
                 }
             };
+
+            let mut command_outputs: HashMap<String, String> = HashMap::new();
+            let mut file_change_outputs: HashMap<String, String> = HashMap::new();
+            let mut agent_message_with_delta: HashSet<String> = HashSet::new();
+            let mut reasoning_with_delta: HashSet<String> = HashSet::new();
+            let mut diff_tool_ids: HashSet<String> = HashSet::new();
+            let mut latest_token_usage: Option<app_server::ThreadTokenUsage> = None;
 
             let mut completed = false;
             while !completed {
@@ -479,6 +489,7 @@ impl AutopilotApp {
                                 if let Some(params) = notification.params {
                                     match serde_json::from_value::<app_server::AgentMessageDeltaNotification>(params) {
                                         Ok(event) => {
+                                            agent_message_with_delta.insert(event.item_id);
                                             let _ = tx.send(ResponseEvent::Chunk(event.delta));
                                             window.request_redraw();
                                         }
@@ -488,13 +499,157 @@ impl AutopilotApp {
                                     }
                                 }
                             }
+                            "item/reasoning/summaryTextDelta" => {
+                                if let Some(params) = notification.params {
+                                    match serde_json::from_value::<app_server::ReasoningSummaryTextDeltaNotification>(params) {
+                                        Ok(event) => {
+                                            reasoning_with_delta.insert(event.item_id);
+                                            let _ = tx.send(ResponseEvent::ThoughtChunk(event.delta));
+                                            window.request_redraw();
+                                        }
+                                        Err(err) => {
+                                            tracing::warn!(error = %err, "Failed to parse reasoning summary delta");
+                                        }
+                                    }
+                                }
+                            }
+                            "item/reasoning/textDelta" => {
+                                if let Some(params) = notification.params {
+                                    match serde_json::from_value::<app_server::ReasoningTextDeltaNotification>(params) {
+                                        Ok(event) => {
+                                            reasoning_with_delta.insert(event.item_id);
+                                            let _ = tx.send(ResponseEvent::ThoughtChunk(event.delta));
+                                            window.request_redraw();
+                                        }
+                                        Err(err) => {
+                                            tracing::warn!(error = %err, "Failed to parse reasoning text delta");
+                                        }
+                                    }
+                                }
+                            }
+                            "item/commandExecution/outputDelta" => {
+                                if let Some(params) = notification.params {
+                                    if let Ok(event) = serde_json::from_value::<app_server::CommandExecutionOutputDeltaNotification>(params) {
+                                        append_tool_output(&mut command_outputs, &event.item_id, &event.delta);
+                                    }
+                                }
+                            }
+                            "item/fileChange/outputDelta" => {
+                                if let Some(params) = notification.params {
+                                    if let Ok(event) = serde_json::from_value::<app_server::FileChangeOutputDeltaNotification>(params) {
+                                        append_tool_output(&mut file_change_outputs, &event.item_id, &event.delta);
+                                    }
+                                }
+                            }
+                            "item/started" => {
+                                if let Some(params) = notification.params {
+                                    match serde_json::from_value::<app_server::ItemStartedNotification>(params) {
+                                        Ok(event) => {
+                                            handle_app_server_item_started(
+                                                &event.item,
+                                                &tx,
+                                                &mut command_outputs,
+                                                &mut file_change_outputs,
+                                                &window,
+                                            );
+                                        }
+                                        Err(err) => {
+                                            tracing::warn!(error = %err, "Failed to parse item started notification");
+                                        }
+                                    }
+                                }
+                            }
+                            "item/completed" => {
+                                if let Some(params) = notification.params {
+                                    match serde_json::from_value::<app_server::ItemCompletedNotification>(params) {
+                                        Ok(event) => {
+                                            handle_app_server_item_completed(
+                                                &event.item,
+                                                &tx,
+                                                &mut command_outputs,
+                                                &mut file_change_outputs,
+                                                &mut agent_message_with_delta,
+                                                &mut reasoning_with_delta,
+                                                &window,
+                                            );
+                                        }
+                                        Err(err) => {
+                                            tracing::warn!(error = %err, "Failed to parse item completed notification");
+                                        }
+                                    }
+                                }
+                            }
+                            "turn/diff/updated" => {
+                                if let Some(params) = notification.params {
+                                    if let Ok(event) = serde_json::from_value::<app_server::TurnDiffUpdatedNotification>(params) {
+                                        handle_app_server_turn_diff(
+                                            &event,
+                                            &mut diff_tool_ids,
+                                            &tx,
+                                            &window,
+                                        );
+                                    }
+                                }
+                            }
+                            "turn/plan/updated" => {
+                                if let Some(params) = notification.params {
+                                    if let Ok(event) = serde_json::from_value::<app_server::TurnPlanUpdatedNotification>(params) {
+                                        if let Some(stage) = plan_steps_to_dspy_stage(&event.plan) {
+                                            let _ = tx.send(ResponseEvent::DspyStage(stage));
+                                        }
+                                        if let Some(explanation) = event.explanation.as_ref() {
+                                            let explanation = explanation.trim();
+                                            if !explanation.is_empty() {
+                                                let _ = tx.send(ResponseEvent::SystemMessage(format!(
+                                                    "Plan update: {}",
+                                                    explanation
+                                                )));
+                                            }
+                                        }
+                                        window.request_redraw();
+                                    }
+                                }
+                            }
+                            "thread/tokenUsage/updated" => {
+                                if let Some(params) = notification.params {
+                                    if let Ok(event) = serde_json::from_value::<app_server::ThreadTokenUsageUpdatedNotification>(params) {
+                                        latest_token_usage = Some(event.token_usage.clone());
+                                    }
+                                }
+                            }
+                            "thread/compacted" => {
+                                if let Some(params) = notification.params {
+                                    if let Ok(event) = serde_json::from_value::<app_server::ContextCompactedNotification>(params) {
+                                        let message = format!(
+                                            "Context compacted for thread {} (turn {}).",
+                                            event.thread_id,
+                                            event.turn_id
+                                        );
+                                        let _ = tx.send(ResponseEvent::SystemMessage(message));
+                                        window.request_redraw();
+                                    }
+                                }
+                            }
                             "turn/completed" => {
                                 if let Some(params) = notification.params {
                                     if let Ok(event) = serde_json::from_value::<app_server::TurnCompletedNotification>(params) {
                                         tracing::debug!("App-server turn completed: {}", event.turn.id);
                                     }
                                 }
-                                let _ = tx.send(ResponseEvent::Complete { metadata: None });
+                                let metadata = latest_token_usage.as_ref().map(|usage| {
+                                    let input_total =
+                                        usage.input_tokens.saturating_add(usage.cached_input_tokens);
+                                    let input_tokens = u64::try_from(input_total).unwrap_or(0);
+                                    let output_tokens = u64::try_from(usage.output_tokens).unwrap_or(0);
+                                    crate::app::chat::MessageMetadata {
+                                        model: Some(model_name.clone()),
+                                        input_tokens: Some(input_tokens),
+                                        output_tokens: Some(output_tokens),
+                                        duration_ms: None,
+                                        cost_msats: None,
+                                    }
+                                });
+                                let _ = tx.send(ResponseEvent::Complete { metadata });
                                 window.request_redraw();
                                 completed = true;
                             }
@@ -1637,4 +1792,377 @@ async fn handle_app_server_request(
     }
 
     window.request_redraw();
+}
+
+fn append_tool_output(buffers: &mut HashMap<String, String>, item_id: &str, delta: &str) {
+    if delta.is_empty() {
+        return;
+    }
+    buffers
+        .entry(item_id.to_string())
+        .or_default()
+        .push_str(delta);
+}
+
+fn handle_app_server_turn_diff(
+    event: &app_server::TurnDiffUpdatedNotification,
+    diff_tool_ids: &mut HashSet<String>,
+    tx: &mpsc::UnboundedSender<ResponseEvent>,
+    window: &Arc<winit::window::Window>,
+) {
+    let tool_use_id = format!("turn-diff-{}", event.turn_id);
+    if diff_tool_ids.insert(tool_use_id.clone()) {
+        let _ = tx.send(ResponseEvent::ToolCallStart {
+            name: "Diff".to_string(),
+            tool_use_id: tool_use_id.clone(),
+        });
+        let _ = tx.send(ResponseEvent::ToolCallInput {
+            json: serde_json::json!({ "file_path": "turn diff" }).to_string(),
+        });
+        let _ = tx.send(ResponseEvent::ToolCallEnd);
+    }
+    let _ = tx.send(ResponseEvent::ToolResult {
+        content: String::new(),
+        is_error: false,
+        tool_use_id: Some(tool_use_id),
+        exit_code: None,
+        output_value: Some(serde_json::json!({ "diff": event.diff })),
+    });
+    window.request_redraw();
+}
+
+fn handle_app_server_item_started(
+    item: &Value,
+    tx: &mpsc::UnboundedSender<ResponseEvent>,
+    command_outputs: &mut HashMap<String, String>,
+    file_change_outputs: &mut HashMap<String, String>,
+    window: &Arc<winit::window::Window>,
+) {
+    let Some(item_type) = item.get("type").and_then(Value::as_str) else {
+        return;
+    };
+    match item_type {
+        "commandExecution" => {
+            let Some(id) = item_id(item) else {
+                return;
+            };
+            let command = item
+                .get("command")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .to_string();
+            command_outputs.entry(id.clone()).or_default();
+            let _ = tx.send(ResponseEvent::ToolCallStart {
+                name: "Bash".to_string(),
+                tool_use_id: id.clone(),
+            });
+            let _ = tx.send(ResponseEvent::ToolCallInput {
+                json: serde_json::json!({ "command": command }).to_string(),
+            });
+            let _ = tx.send(ResponseEvent::ToolCallEnd);
+            window.request_redraw();
+        }
+        "fileChange" => {
+            let Some(id) = item_id(item) else {
+                return;
+            };
+            let (paths, first_path, _) = extract_file_changes(item);
+            let mut input = serde_json::json!({ "files": paths });
+            if let Some(path) = first_path {
+                input["file_path"] = Value::String(path);
+            }
+            file_change_outputs.entry(id.clone()).or_default();
+            let _ = tx.send(ResponseEvent::ToolCallStart {
+                name: "Edit".to_string(),
+                tool_use_id: id.clone(),
+            });
+            let _ = tx.send(ResponseEvent::ToolCallInput {
+                json: input.to_string(),
+            });
+            let _ = tx.send(ResponseEvent::ToolCallEnd);
+            window.request_redraw();
+        }
+        "mcpToolCall" => {
+            let Some(id) = item_id(item) else {
+                return;
+            };
+            let server = item_string(item, "server").unwrap_or_else(|| "server".to_string());
+            let tool = item_string(item, "tool").unwrap_or_else(|| "tool".to_string());
+            let name = format!("mcp__{}__{}", server, tool);
+            let args = item
+                .get("arguments")
+                .cloned()
+                .unwrap_or(Value::Null);
+            let _ = tx.send(ResponseEvent::ToolCallStart {
+                name,
+                tool_use_id: id.clone(),
+            });
+            let _ = tx.send(ResponseEvent::ToolCallInput {
+                json: serde_json::to_string(&args).unwrap_or_default(),
+            });
+            let _ = tx.send(ResponseEvent::ToolCallEnd);
+            window.request_redraw();
+        }
+        "webSearch" => {
+            let query = item_string(item, "query").unwrap_or_else(|| "unknown".to_string());
+            let _ = tx.send(ResponseEvent::SystemMessage(format!(
+                "Web search requested: {}",
+                query
+            )));
+            window.request_redraw();
+        }
+        "enteredReviewMode" => {
+            let review = item_string(item, "review").unwrap_or_else(|| "review".to_string());
+            let _ = tx.send(ResponseEvent::SystemMessage(format!(
+                "Review started: {}",
+                review
+            )));
+            window.request_redraw();
+        }
+        "imageView" => {
+            let path = item_string(item, "path").unwrap_or_else(|| "unknown".to_string());
+            let _ = tx.send(ResponseEvent::SystemMessage(format!(
+                "Image view requested: {}",
+                path
+            )));
+            window.request_redraw();
+        }
+        _ => {}
+    }
+}
+
+fn handle_app_server_item_completed(
+    item: &Value,
+    tx: &mpsc::UnboundedSender<ResponseEvent>,
+    command_outputs: &mut HashMap<String, String>,
+    file_change_outputs: &mut HashMap<String, String>,
+    agent_message_with_delta: &mut HashSet<String>,
+    reasoning_with_delta: &mut HashSet<String>,
+    window: &Arc<winit::window::Window>,
+) {
+    let Some(item_type) = item.get("type").and_then(Value::as_str) else {
+        return;
+    };
+    match item_type {
+        "agentMessage" => {
+            let Some(id) = item_id(item) else {
+                return;
+            };
+            if agent_message_with_delta.remove(&id) {
+                return;
+            }
+            if let Some(text) = item.get("text").and_then(Value::as_str) {
+                let _ = tx.send(ResponseEvent::Chunk(text.to_string()));
+                window.request_redraw();
+            }
+        }
+        "reasoning" => {
+            let Some(id) = item_id(item) else {
+                return;
+            };
+            if reasoning_with_delta.remove(&id) {
+                return;
+            }
+            let summary = item
+                .get("summary")
+                .and_then(Value::as_array)
+                .map(|parts| join_string_array(parts));
+            let content = item
+                .get("content")
+                .and_then(Value::as_array)
+                .map(|parts| join_string_array(parts));
+            let text = summary
+                .filter(|value| !value.trim().is_empty())
+                .or_else(|| content.filter(|value| !value.trim().is_empty()));
+            if let Some(text) = text {
+                let _ = tx.send(ResponseEvent::ThoughtChunk(text));
+                window.request_redraw();
+            }
+        }
+        "commandExecution" => {
+            let Some(id) = item_id(item) else {
+                return;
+            };
+            let status = item
+                .get("status")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .to_ascii_lowercase();
+            let aggregated = item
+                .get("aggregatedOutput")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .to_string();
+            let buffered = command_outputs.remove(&id).unwrap_or_default();
+            let output = if !aggregated.trim().is_empty() {
+                aggregated
+            } else {
+                buffered
+            };
+            let exit_code = item
+                .get("exitCode")
+                .and_then(Value::as_i64)
+                .map(|code| code as i32);
+            let is_error = matches!(status.as_str(), "failed" | "declined");
+            let _ = tx.send(ResponseEvent::ToolResult {
+                content: output,
+                is_error,
+                tool_use_id: Some(id),
+                exit_code,
+                output_value: None,
+            });
+            window.request_redraw();
+        }
+        "fileChange" => {
+            let Some(id) = item_id(item) else {
+                return;
+            };
+            let status = item
+                .get("status")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .to_ascii_lowercase();
+            let (paths, _first_path, diff) = extract_file_changes(item);
+            let buffered = file_change_outputs.remove(&id).unwrap_or_default();
+            let diff_text = diff
+                .filter(|value| !value.trim().is_empty())
+                .or_else(|| {
+                    if buffered.trim().is_empty() {
+                        None
+                    } else {
+                        Some(buffered)
+                    }
+                });
+            let output_value = diff_text.map(|text| serde_json::json!({ "diff": text }));
+            let content = if paths.is_empty() {
+                "File change completed.".to_string()
+            } else {
+                format!("Modified files: {}", paths.join(", "))
+            };
+            let is_error = matches!(status.as_str(), "failed" | "declined");
+            let _ = tx.send(ResponseEvent::ToolResult {
+                content,
+                is_error,
+                tool_use_id: Some(id),
+                exit_code: None,
+                output_value,
+            });
+            window.request_redraw();
+        }
+        "mcpToolCall" => {
+            let Some(id) = item_id(item) else {
+                return;
+            };
+            let mut is_error = false;
+            let mut output_value = None;
+            let content = if let Some(error) = item.get("error") {
+                is_error = true;
+                error
+                    .get("message")
+                    .and_then(Value::as_str)
+                    .unwrap_or("MCP tool error")
+                    .to_string()
+            } else if let Some(result) = item.get("result") {
+                output_value = Some(result.clone());
+                serde_json::to_string_pretty(result).unwrap_or_default()
+            } else {
+                String::new()
+            };
+            let _ = tx.send(ResponseEvent::ToolResult {
+                content,
+                is_error,
+                tool_use_id: Some(id),
+                exit_code: None,
+                output_value,
+            });
+            window.request_redraw();
+        }
+        "webSearch" => {
+            let query = item_string(item, "query").unwrap_or_else(|| "unknown".to_string());
+            let _ = tx.send(ResponseEvent::SystemMessage(format!(
+                "Web search completed: {}",
+                query
+            )));
+            window.request_redraw();
+        }
+        "exitedReviewMode" => {
+            if let Some(review) = item.get("review").and_then(Value::as_str) {
+                let _ = tx.send(ResponseEvent::Chunk(review.to_string()));
+                window.request_redraw();
+            }
+        }
+        "imageView" => {
+            let path = item_string(item, "path").unwrap_or_else(|| "unknown".to_string());
+            let _ = tx.send(ResponseEvent::SystemMessage(format!(
+                "Image view completed: {}",
+                path
+            )));
+            window.request_redraw();
+        }
+        _ => {}
+    }
+}
+
+fn item_id(item: &Value) -> Option<String> {
+    item.get("id").and_then(Value::as_str).map(|s| s.to_string())
+}
+
+fn item_string(item: &Value, key: &str) -> Option<String> {
+    item.get(key).and_then(Value::as_str).map(|s| s.to_string())
+}
+
+fn join_string_array(parts: &[Value]) -> String {
+    parts
+        .iter()
+        .filter_map(|value| value.as_str())
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn extract_file_changes(item: &Value) -> (Vec<String>, Option<String>, Option<String>) {
+    let mut paths = Vec::new();
+    let mut first_path = None;
+    let mut first_diff = None;
+    if let Some(changes) = item.get("changes").and_then(Value::as_array) {
+        for change in changes {
+            if let Some(path) = change.get("path").and_then(Value::as_str) {
+                if first_path.is_none() {
+                    first_path = Some(path.to_string());
+                }
+                paths.push(path.to_string());
+            }
+            if first_diff.is_none() {
+                if let Some(diff) = change.get("diff").and_then(Value::as_str) {
+                    first_diff = Some(diff.to_string());
+                }
+            }
+        }
+    }
+    (paths, first_path, first_diff)
+}
+
+fn plan_steps_to_dspy_stage(steps: &[app_server::TurnPlanStep]) -> Option<DspyStage> {
+    if steps.is_empty() {
+        return None;
+    }
+    let tasks = steps
+        .iter()
+        .enumerate()
+        .map(|(idx, step)| TodoTask {
+            index: idx + 1,
+            description: step.step.clone(),
+            status: plan_status_to_todo_status(&step.status),
+        })
+        .collect();
+    Some(DspyStage::TodoList { tasks })
+}
+
+fn plan_status_to_todo_status(status: &str) -> TodoStatus {
+    match status.trim().to_ascii_lowercase().as_str() {
+        "pending" => TodoStatus::Pending,
+        "inprogress" | "in_progress" | "in-progress" => TodoStatus::InProgress,
+        "completed" | "complete" => TodoStatus::Complete,
+        "failed" | "error" => TodoStatus::Failed,
+        _ => TodoStatus::Pending,
+    }
 }
