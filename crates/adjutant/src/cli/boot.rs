@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use oanix::{boot, boot_with_config, BootConfig, OanixManifest};
 
-use crate::auth::get_claude_path;
+use crate::auth::{get_claude_path, get_codex_path};
 
 #[derive(Debug, Clone)]
 pub struct ToolCheck {
@@ -41,7 +41,7 @@ pub fn quick_tool_checks() -> Vec<ToolCheck> {
         },
         ToolCheck {
             name: "codex",
-            path: find_codex_cli(),
+            path: get_codex_path(),
         },
     ]
 }
@@ -56,22 +56,4 @@ pub fn print_quick_checks() {
         }
     }
     println!();
-}
-
-fn find_codex_cli() -> Option<PathBuf> {
-    if let Ok(path) = which::which("codex") {
-        return Some(path);
-    }
-
-    let mut candidates = Vec::new();
-    if let Some(home) = dirs::home_dir() {
-        candidates.push(home.join(".npm-global/bin/codex"));
-        candidates.push(home.join(".local/bin/codex"));
-        candidates.push(home.join("node_modules/.bin/codex"));
-    }
-
-    candidates.push(PathBuf::from("/usr/local/bin/codex"));
-    candidates.push(PathBuf::from("/opt/homebrew/bin/codex"));
-
-    candidates.into_iter().find(|path| path.exists())
 }

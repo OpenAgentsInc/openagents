@@ -6,12 +6,11 @@ use crate::{Adjutant, Task};
 use oanix::WorkspaceManifest;
 use std::path::Path;
 
-/// Work on the active directive when no issues are available.
-pub async fn work_on_directive(
+/// Build a task from a directive file and print directive context.
+pub fn build_directive_task(
     workspace: &WorkspaceManifest,
     directive_id: &str,
-    adjutant: &mut Adjutant,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<Task> {
     // Find the directive
     let directive = workspace
         .directives
@@ -37,14 +36,23 @@ pub async fn work_on_directive(
     println!();
 
     // Create task from directive
-    let task = Task::new(
+    Ok(Task::new(
         directive_id,
         &directive.title,
         format!(
             "Continue work on directive {}:\n\n{}",
             directive_id, content
         ),
-    );
+    ))
+}
+
+/// Work on the active directive when no issues are available.
+pub async fn work_on_directive(
+    workspace: &WorkspaceManifest,
+    directive_id: &str,
+    adjutant: &mut Adjutant,
+) -> anyhow::Result<()> {
+    let task = build_directive_task(workspace, directive_id)?;
 
     let result = adjutant.execute(&task).await?;
 

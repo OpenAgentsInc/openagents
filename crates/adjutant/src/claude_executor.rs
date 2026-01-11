@@ -12,6 +12,8 @@
 use crate::autopilot_loop::AcpEventSender;
 use crate::rlm_agent::rlm_agent_definition;
 use crate::{AdjutantError, Task, TaskResult, ToolRegistry};
+use acp_adapter::converters::sdk_to_acp::sdk_message_to_notification;
+use agent_client_protocol_schema as acp;
 use claude_agent_sdk::{
     query, McpServerConfig, QueryOptions, SdkMessage, SdkResultMessage, SdkStreamEvent, ToolsConfig,
 };
@@ -183,7 +185,7 @@ impl ClaudeExecutor {
         &self,
         task: &Task,
         token_tx: mpsc::UnboundedSender<String>,
-        _acp_sender: Option<AcpEventSender>,
+        acp_sender: Option<AcpEventSender>,
     ) -> Result<TaskResult, AdjutantError> {
         tracing::info!(
             "ClaudeExecutor: Streaming Claude Pro/Max for task '{}'",
@@ -231,6 +233,7 @@ impl ClaudeExecutor {
                 }
                 // Assistant messages - also stream their content
                 Ok(SdkMessage::Assistant(msg)) => {
+                    forward_acp_update(&acp_sender, &SdkMessage::Assistant(msg.clone()));
                     if let Some(text) = extract_assistant_text(&msg.message) {
                         tracing::debug!(len = text.len(), "Assistant message chunk");
                         // Don't double-send if we already got it via StreamEvent
@@ -301,6 +304,7 @@ impl ClaudeExecutor {
                 },
                 // Tool progress - log for now
                 Ok(SdkMessage::ToolProgress(prog)) => {
+                    forward_acp_update(&acp_sender, &SdkMessage::ToolProgress(prog.clone()));
                     tracing::debug!(tool = %prog.tool_name, elapsed = prog.elapsed_time_seconds, "Tool progress");
                 }
                 // System messages - log
@@ -312,7 +316,9 @@ impl ClaudeExecutor {
                     tracing::debug!("Auth status: authenticating={}", auth.is_authenticating);
                 }
                 // User messages - echo, ignore
-                Ok(SdkMessage::User(_)) => {}
+                Ok(SdkMessage::User(msg)) => {
+                    forward_acp_update(&acp_sender, &SdkMessage::User(msg));
+                }
                 // Errors
                 Err(e) => {
                     tracing::warn!("Stream error: {}", e);
@@ -494,6 +500,58 @@ impl ClaudeExecutor {
             error: None,
             session_id: None,
         })
+    }
+}
+
+fn forward_acp_update(acp_sender: &Option<AcpEventSender>, msg: &SdkMessage) {
+    let Some(sender) = acp_sender.as_ref() else {
+        return;
+    };
+
+    if let SdkMessage::Assistant(asst) = msg {
+        if let Some(content) = asst.message.get("content").and_then(|c| c.as_array()) {
+            for block in content {
+                let block_type = block.get("type").and_then(|t| t.as_str());
+                match block_type {
+                    Some("tool_use") => {
+                        let name = block.get("name").and_then(|n| n.as_str()).unwrap_or("");
+                        let id = block.get("id").and_then(|i| i.as_str()).unwrap_or("");
+                        let input = block.get("input").cloned().unwrap_or_default();
+                        let tool_call = acp::ToolCall::new(
+                            acp::ToolCallId::new(id.to_string()),
+                            name.to_string(),
+                        )
+                        .raw_input(input)
+                        .status(acp::ToolCallStatus::InProgress);
+                        sender.send_update(acp::SessionUpdate::ToolCall(tool_call));
+                    }
+                    Some("thinking") => {
+                        if let Some(text) = block.get("thinking").and_then(|t| t.as_str()) {
+                            if !text.is_empty() {
+                                let chunk = acp::ContentChunk::new(acp::ContentBlock::Text(
+                                    acp::TextContent::new(text.to_string()),
+                                ));
+                                sender.send_update(acp::SessionUpdate::AgentThoughtChunk(chunk));
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+        return;
+    }
+
+    let Some(notification) = sdk_message_to_notification(&sender.session_id, msg) else {
+        return;
+    };
+    match notification.update {
+        acp::SessionUpdate::ToolCall(_)
+        | acp::SessionUpdate::ToolCallUpdate(_)
+        | acp::SessionUpdate::AgentThoughtChunk(_) => {
+            sender.send_update(notification.update);
+        }
+        _ => {}
     }
 }
 

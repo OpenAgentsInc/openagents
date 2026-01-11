@@ -252,6 +252,7 @@ dependencies = [
 name = "adjutant"
 version = "0.1.0"
 dependencies = [
+ "acp-adapter",
  "agent-client-protocol-schema",
  "anyhow",
  "async-trait",
@@ -260,6 +261,7 @@ dependencies = [
  "chrono",
  "clap",
  "claude-agent-sdk",
+ "codex-agent-sdk",
  "ctrlc",
  "dirs 5.0.1",
  "dsrs",
