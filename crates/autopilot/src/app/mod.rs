@@ -3,6 +3,7 @@ pub(crate) mod autopilot;
 pub(crate) mod autopilot_issues;
 pub(crate) mod catalog;
 pub(crate) mod chat;
+pub(crate) mod codex_app_server;
 pub(crate) mod config;
 pub(crate) mod directives;
 pub(crate) mod dspy;
