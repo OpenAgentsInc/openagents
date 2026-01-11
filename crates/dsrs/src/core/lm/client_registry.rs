@@ -10,6 +10,7 @@ use std::borrow::Cow;
 use std::sync::Arc;
 
 use super::claude_sdk::{self, ClaudeSdkModel};
+use super::codex_sdk::{self, CodexSdkModel};
 use super::lm_router::LmRouterLM;
 use super::pylon::{PylonCompletionModel, PylonConfig};
 
@@ -39,6 +40,7 @@ pub enum LMClient {
     Deepseek(deepseek::CompletionModel<reqwest::Client>),
     Pylon(PylonCompletionModel),
     ClaudeSdk(ClaudeSdkModel),
+    CodexSdk(CodexSdkModel),
     LmRouter(LmRouterLM),
 }
 
@@ -358,9 +360,13 @@ impl LMClient {
                 // Uses Claude Code headless mode via claude-agent-sdk
                 Self::claude_sdk()
             }
+            "codex-sdk" | "codex" => {
+                // Uses Codex CLI headless mode via codex-agent-sdk
+                Self::codex_sdk()
+            }
             _ => {
                 anyhow::bail!(
-                    "Unsupported provider: {}. Supported providers are: openai, anthropic, gemini, groq, openrouter, ollama, pylon, claude-sdk, lm-router",
+                    "Unsupported provider: {}. Supported providers are: openai, anthropic, gemini, groq, openrouter, ollama, pylon, claude-sdk, codex-sdk, lm-router",
                     provider
                 );
             }
@@ -435,6 +441,21 @@ impl LMClient {
             );
         }
         Ok(LMClient::ClaudeSdk(ClaudeSdkModel::new()))
+    }
+
+    // ============ Codex SDK factory methods ============
+
+    /// Create Codex SDK client using Codex CLI headless mode.
+    ///
+    /// This is the primary provider for dsrs completions.
+    /// Requires `codex` CLI to be installed and authenticated.
+    pub fn codex_sdk() -> Result<Self> {
+        if !codex_sdk::has_codex_cli() {
+            anyhow::bail!(
+                "Codex CLI not found. Ensure `codex` is in your PATH."
+            );
+        }
+        Ok(LMClient::CodexSdk(CodexSdkModel::new()))
     }
 }
 

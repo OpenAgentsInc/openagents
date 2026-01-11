@@ -1,5 +1,6 @@
 pub mod chat;
 pub mod claude_sdk;
+pub mod codex_sdk;
 pub mod client_registry;
 pub mod lm_router;
 pub mod pylon;
@@ -7,6 +8,7 @@ pub mod usage;
 
 pub use chat::*;
 pub use claude_sdk::*;
+pub use codex_sdk::*;
 pub use client_registry::*;
 pub use lm_router::*;
 pub use pylon::*;
@@ -409,6 +411,28 @@ impl LM {
                 let prompt = build_prompt_from_messages(&messages);
                 let cb_pair = callback.map(|cb| (cb, call_id));
                 let result_text = claude_model
+                    .complete_streaming(&prompt, cb_pair)
+                    .await?;
+
+                // Build response from result text
+                let response = rig::completion::CompletionResponse {
+                    choice: rig::OneOrMany::one(AssistantContent::Text(rig::message::Text {
+                        text: result_text,
+                    })),
+                    usage: rig::completion::Usage {
+                        input_tokens: 0,
+                        output_tokens: 0,
+                        total_tokens: 0,
+                    },
+                    raw_response: (),
+                };
+                (response, None)
+            }
+            LMClient::CodexSdk(codex_model) => {
+                // Use streaming completion for CodexSdk
+                let prompt = build_prompt_from_messages(&messages);
+                let cb_pair = callback.map(|cb| (cb, call_id));
+                let result_text = codex_model
                     .complete_streaming(&prompt, cb_pair)
                     .await?;
 

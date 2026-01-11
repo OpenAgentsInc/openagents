@@ -3974,6 +3974,7 @@ dependencies = [
  "bip39",
  "bon",
  "claude-agent-sdk",
+ "codex-agent-sdk",
  "csv",
  "dirs 5.0.1",
  "dsrs-macros",
