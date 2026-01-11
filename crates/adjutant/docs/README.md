@@ -49,6 +49,18 @@ cargo autopilot run "Add error handling to auth.rs"
 cargo autopilot issue claim 123
 ```
 
+### CLI Streaming Output
+
+`autopilot run` streams the same ACP event flow used by the desktop app, formatted as concise CLI lines:
+
+```
+[DSPY] planning: complexity=Medium confidence=82%
+[DSPY] files: src/auth.rs
+[TOOL] start bash: command=rg "auth" src
+[TOOL] done bash ok
+[AI] Updated error handling and added tests.
+```
+
 ## Execution Flow
 
 1. **Planning**: Analyzes task, finds relevant files, estimates complexity

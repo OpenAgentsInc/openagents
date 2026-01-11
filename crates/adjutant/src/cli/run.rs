@@ -1,13 +1,18 @@
 //! Run command - start the autopilot loop
 
-use crate::autopilot_loop::{AutopilotConfig, AutopilotLoop, AutopilotResult, CliOutput};
+use crate::autopilot_loop::{
+    generate_session_id, AcpChannelOutput, AutopilotConfig, AutopilotLoop, AutopilotResult,
+};
 use crate::cli::blocker::{analyze_blockers, print_blocker_summary};
 use crate::cli::directive::work_on_directive;
+use crate::cli::stream::CliAcpRenderer;
 use crate::{Adjutant, Task};
+use agent_client_protocol_schema as acp;
 use clap::Args;
 use oanix::{boot, WorkspaceManifest};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use tokio::sync::mpsc;
 
 /// Run command arguments
 #[derive(Args)]
@@ -66,16 +71,33 @@ pub async fn run(args: RunArgs) -> anyhow::Result<()> {
             verify_completion: true,
         };
 
-        // Run the autopilot loop
-        let loop_runner = AutopilotLoop::new(
-            adjutant,
-            task,
-            config,
-            CliOutput,
-            interrupt_flag,
-        );
+        let (acp_tx, mut acp_rx) = mpsc::unbounded_channel::<acp::SessionNotification>();
+        let session_id = generate_session_id();
+        let output = AcpChannelOutput::new(session_id, acp_tx);
 
-        let result = loop_runner.run().await;
+        // Run the autopilot loop with ACP streaming
+        let loop_runner = AutopilotLoop::new(adjutant, task, config, output, interrupt_flag);
+        let mut renderer = CliAcpRenderer::new(std::io::stdout());
+
+        let mut loop_fut = Box::pin(loop_runner.run());
+        let result = loop {
+            tokio::select! {
+                res = &mut loop_fut => {
+                    break res;
+                }
+                maybe = acp_rx.recv() => {
+                    if let Some(notification) = maybe {
+                        renderer.handle_notification(notification);
+                    }
+                }
+            }
+        };
+
+        while let Ok(notification) = acp_rx.try_recv() {
+            renderer.handle_notification(notification);
+        }
+        renderer.finish();
+
         print_autopilot_result(&result);
         return Ok(());
     }

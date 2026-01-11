@@ -7,6 +7,7 @@ pub mod directive;
 pub mod dspy;
 pub mod issue;
 pub mod run;
+pub mod stream;
 pub mod status;
 
 use clap::{Parser, Subcommand};
