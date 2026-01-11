@@ -50,7 +50,6 @@ pub struct RunArgs {
 #[derive(Clone, Copy, Debug, ValueEnum, PartialEq, Eq)]
 pub enum BackendChoice {
     Auto,
-    Claude,
     Codex,
     #[value(name = "local-llm", alias = "llama", alias = "gptoss")]
     LocalLlm,
@@ -64,7 +63,6 @@ impl BackendChoice {
         let value = value.trim().to_lowercase();
         match value.as_str() {
             "auto" => Some(BackendChoice::Auto),
-            "claude" => Some(BackendChoice::Claude),
             "codex" => Some(BackendChoice::Codex),
             "local-llm" | "llama" | "gptoss" => Some(BackendChoice::LocalLlm),
             "local-tools" | "tools" => Some(BackendChoice::LocalTools),
@@ -75,7 +73,6 @@ impl BackendChoice {
     fn label(self) -> &'static str {
         match self {
             BackendChoice::Auto => "auto",
-            BackendChoice::Claude => "claude",
             BackendChoice::Codex => "codex",
             BackendChoice::LocalLlm => "local-llm",
             BackendChoice::LocalTools => "local-tools",
@@ -87,7 +84,6 @@ impl From<BackendChoice> for ExecutionBackend {
     fn from(value: BackendChoice) -> Self {
         match value {
             BackendChoice::Auto => ExecutionBackend::Auto,
-            BackendChoice::Claude => ExecutionBackend::Claude,
             BackendChoice::Codex => ExecutionBackend::Codex,
             BackendChoice::LocalLlm => ExecutionBackend::LocalLlm,
             BackendChoice::LocalTools => ExecutionBackend::LocalTools,
@@ -487,7 +483,6 @@ mod tests {
 
     #[test]
     fn maps_backend_choices() {
-        assert_eq!(ExecutionBackend::from(BackendChoice::Claude), ExecutionBackend::Claude);
         assert_eq!(ExecutionBackend::from(BackendChoice::Codex), ExecutionBackend::Codex);
         assert_eq!(ExecutionBackend::from(BackendChoice::LocalLlm), ExecutionBackend::LocalLlm);
         assert_eq!(ExecutionBackend::from(BackendChoice::LocalTools), ExecutionBackend::LocalTools);

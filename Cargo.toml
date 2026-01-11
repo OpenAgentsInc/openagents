@@ -26,7 +26,6 @@ members = [
     "crates/testing",
     "crates/fm-bridge",
     "crates/fm-bridge-agent",
-    "crates/claude-agent-sdk",
     "crates/codex-agent-sdk",
     "crates/daytona",
     "crates/opencode-sdk",
@@ -115,7 +114,6 @@ marketplace = { path = "crates/marketplace" }
 gitafter = { path = "crates/gitafter" }
 pylon = { path = "crates/pylon" }
 rlm = { path = "crates/rlm" }
-claude-agent-sdk = { path = "crates/claude-agent-sdk" }
 acp-adapter = { path = "crates/acp-adapter" }
 gpt-oss-agent = { path = "crates/gpt-oss-agent" }
 gpt-oss = { path = "crates/gpt-oss" }
@@ -210,7 +208,6 @@ publish = false
 [workspace.dependencies]
 # OpenAgents workspace crates
 issues = { path = "crates/issues" }
-claude-agent-sdk = { path = "crates/claude-agent-sdk" }
 codex-agent-sdk = { path = "crates/codex-agent-sdk" }
 nostr = { path = "crates/nostr/core" }
 

@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use oanix::{boot, boot_with_config, BootConfig, OanixManifest};
 
-use crate::auth::{get_claude_path, get_codex_path};
+use crate::auth::get_codex_path;
 
 #[derive(Debug, Clone)]
 pub struct ToolCheck {
@@ -35,10 +35,6 @@ pub async fn boot_full() -> anyhow::Result<OanixManifest> {
 /// Quick checks for common agent binaries.
 pub fn quick_tool_checks() -> Vec<ToolCheck> {
     vec![
-        ToolCheck {
-            name: "claude",
-            path: get_claude_path(),
-        },
         ToolCheck {
             name: "codex",
             path: get_codex_path(),

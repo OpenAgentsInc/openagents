@@ -16,7 +16,6 @@
 
 pub mod bridge_manager;
 pub mod cli;
-pub mod claude_tunnel;
 pub mod config;
 pub mod daemon;
 pub mod db;

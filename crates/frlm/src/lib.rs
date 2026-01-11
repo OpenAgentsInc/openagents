@@ -46,8 +46,6 @@ pub mod types;
 pub mod verification;
 #[cfg(feature = "trace-db")]
 pub mod trace_db;
-#[cfg(feature = "claude")]
-pub mod claude_executor;
 
 #[cfg(test)]
 mod bench_stats;
@@ -61,8 +59,6 @@ pub use trace::{TraceEmitter, TraceEvent};
 pub use types::*;
 #[cfg(feature = "trace-db")]
 pub use trace_db::TraceDbWriter;
-#[cfg(feature = "claude")]
-pub use claude_executor::ClaudeLocalExecutor;
 
 // DSPy signatures for FRLM
 pub use dspy_signatures::{

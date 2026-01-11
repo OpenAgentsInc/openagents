@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use std::sync::mpsc::{self, Receiver, TryRecvError};
 use std::sync::{Arc, Mutex};
 
-use autopilot_core::{ClaudeModel, LogLine, LogStatus, SessionCheckpoint, StartupSection};
+use autopilot_core::{AgentModel, LogLine, LogStatus, SessionCheckpoint, StartupSection};
 use autopilot_service::{
     AutopilotRuntime, DaemonStatus, LogSection, RuntimeSnapshot, SessionEvent, SessionPhase,
 };
@@ -147,18 +147,8 @@ impl AutopilotShell {
 
         // Create sessions panel directly (like system_panel)
         let mut sessions_panel = SessionsPanel::new();
-        // Load recent sessions from ~/.claude/projects/
-        let claude_sessions = crate::claude_sessions::list_claude_sessions();
-        let sessions: Vec<SessionInfo> = claude_sessions
-            .into_iter()
-            .take(5)
-            .map(|s| SessionInfo {
-                id: s.session_id,
-                timestamp: s.timestamp,
-                model: "sonnet".to_string(), // Claude sessions don't store model
-                is_current: false,
-            })
-            .collect();
+        // No external sessions to load - sessions created by autopilot will be shown
+        let sessions: Vec<SessionInfo> = Vec::new();
         sessions_panel.set_sessions(sessions);
 
         // Create right dock (empty - we render system panel directly for data access)
@@ -182,7 +172,7 @@ impl AutopilotShell {
         // Status bar
         let status_bar = StatusBar::new().items(vec![
             StatusItem::text("phase", "Idle").left(),
-            StatusItem::text("agent", "Claude").right(),
+            StatusItem::text("agent", "Agent").right(),
         ]);
 
         // Keymap with default bindings, then shell overrides
@@ -237,14 +227,16 @@ impl AutopilotShell {
                     if !multiplier.is_empty() {
                         format!("Claude Max ({})", multiplier)
                     } else {
-                        "Claude Max".to_string()
+                        "Agent Pro".to_string()
                     }
                 }
-                "pro" => "Claude Pro".to_string(),
+                "pro" => "Agent".to_string(),
                 _ => sub.to_string(),
             };
             system_panel.update_limits(vec![UsageLimit {
                 name: sub_display,
+                used: 0,
+                limit: 0,
                 percent_used: 0.0, // Will update from API responses
                 resets_at: "usage updates on API calls".to_string(),
             }]);
@@ -261,7 +253,7 @@ impl AutopilotShell {
             background: HudBackground::new(),
             startup: None, // Skip startup animation, show UI immediately
             status_bar,
-            runtime: AutopilotRuntime::new_idle(ClaudeModel::Sonnet),
+            runtime: AutopilotRuntime::new_idle(AgentModel::Sonnet),
             last_line_count: 0,
             last_section_count: 0,
             expanded_sections: HashSet::new(), // All sections start collapsed
@@ -291,19 +283,9 @@ impl AutopilotShell {
         // Create left dock (empty - we render sessions panel directly)
         let left_dock = Dock::new(DockPosition::Left, 280.0);
 
-        // Create sessions panel directly - load from ~/.claude/projects/
+        // Create sessions panel directly - no external sessions to load
         let mut sessions_panel = SessionsPanel::new();
-        let claude_sessions = crate::claude_sessions::list_claude_sessions();
-        let sessions: Vec<SessionInfo> = claude_sessions
-            .into_iter()
-            .take(5)
-            .map(|s| SessionInfo {
-                id: s.session_id.clone(),
-                timestamp: s.timestamp,
-                model: "sonnet".to_string(),
-                is_current: s.session_id == current_session_id,
-            })
-            .collect();
+        let sessions: Vec<SessionInfo> = Vec::new();
         sessions_panel.set_sessions(sessions);
 
         // Create right dock (empty - we render system panel directly for data access)
@@ -327,7 +309,7 @@ impl AutopilotShell {
         // Status bar
         let status_bar = StatusBar::new().items(vec![
             StatusItem::text("phase", "Resumed").left(),
-            StatusItem::text("agent", "Claude").right(),
+            StatusItem::text("agent", "Agent").right(),
         ]);
 
         // Keymap
@@ -370,16 +352,18 @@ impl AutopilotShell {
             let sub_display = match sub {
                 "max" => {
                     if !multiplier.is_empty() {
-                        format!("Claude Max ({})", multiplier)
+                        format!("Agent Pro ({})", multiplier)
                     } else {
-                        "Claude Max".to_string()
+                        "Agent Pro".to_string()
                     }
                 }
-                "pro" => "Claude Pro".to_string(),
+                "pro" => "Agent".to_string(),
                 _ => sub.to_string(),
             };
             system_panel.update_limits(vec![UsageLimit {
                 name: sub_display,
+                used: 0,
+                limit: 0,
                 percent_used: 0.0,
                 resets_at: "usage updates on API calls".to_string(),
             }]);
@@ -534,7 +518,7 @@ impl AutopilotShell {
 
         // Add Claude (non-section) lines
         for line in lines {
-            if line.section == Some(StartupSection::Claude) && !line.text.trim().is_empty() {
+            if line.section == Some(StartupSection::Agent) && !line.text.trim().is_empty() {
                 self.thread_view.push_entry(
                     ThreadEntry::new(ThreadEntryType::System, Text::new(line.text.clone()))
                         .copyable_text(line.text.clone()),
@@ -548,7 +532,7 @@ impl AutopilotShell {
         if lines.len() > self.last_line_count {
             for line in lines.iter().skip(self.last_line_count) {
                 // Only add Claude section lines (startup sections are in collapsible)
-                if line.section == Some(StartupSection::Claude) && !line.text.trim().is_empty() {
+                if line.section == Some(StartupSection::Agent) && !line.text.trim().is_empty() {
                     self.thread_view.push_entry(
                         ThreadEntry::new(ThreadEntryType::System, Text::new(line.text.clone()))
                             .copyable_text(line.text.clone()),
@@ -1016,6 +1000,8 @@ impl AutopilotShell {
                 if let Some(ref primary) = snapshot.primary {
                     limits.push(UsageLimit {
                         name: primary.window_name().to_string(),
+                        used: 0,
+                        limit: 0,
                         percent_used: primary.used_percent,
                         resets_at: primary.format_reset(),
                     });
@@ -1025,6 +1011,8 @@ impl AutopilotShell {
                 if let Some(ref secondary) = snapshot.secondary {
                     limits.push(UsageLimit {
                         name: secondary.window_name().to_string(),
+                        used: 0,
+                        limit: 0,
                         percent_used: secondary.used_percent,
                         resets_at: secondary.format_reset(),
                     });
@@ -1040,196 +1028,32 @@ impl AutopilotShell {
         match action {
             SessionAction::ResumeSession {
                 session_id,
-                resume_at,
-                fork_session,
+                resume_at: _,
+                fork_session: _,
             } => {
-                // Load Claude Code session from ~/.claude/projects/
-                if let Some(file_path) = crate::claude_sessions::find_session_file(&session_id) {
-                    let messages = crate::claude_sessions::load_session_messages(&file_path);
-
-                    // Clear current thread view
-                    self.thread_view.clear();
-                    self.pending_tools.clear();
-                    self.pending_tool_meta.clear();
-                    self.active_tasks.clear();
-                    self.task_children.clear();
-
-                    // Add header
-                    let header =
-                        format!("Loaded session: {}", &session_id[..8.min(session_id.len())]);
-                    self.thread_view.push_entry(
-                        ThreadEntry::new(ThreadEntryType::System, Text::new(&header))
-                            .copyable_text(&session_id),
-                    );
-
-                    let mut resume_details = Vec::new();
-                    if fork_session {
-                        resume_details.push("fork=on".to_string());
-                    } else {
-                        resume_details.push("fork=off".to_string());
-                    }
-                    if let Some(ref at) = resume_at {
-                        let short_at = &at[..8.min(at.len())];
-                        resume_details.push(format!("resume_at={}", short_at));
-                    }
-                    if !resume_details.is_empty() {
-                        let resume_desc = resume_details.join(", ");
-                        self.thread_view.push_entry(
-                            ThreadEntry::new(
-                                ThreadEntryType::System,
-                                Text::new(&format!("Resume options: {}", resume_desc)),
-                            )
-                            .copyable_text(resume_desc),
-                        );
-                    }
-
-                    // Group child tools by parent Task ID for nesting
-                    let mut task_children_map: HashMap<
-                        String,
-                        Vec<&crate::claude_sessions::SessionMessage>,
-                    > = HashMap::new();
-                    for msg in &messages {
-                        if let Some(parent_id) = &msg.parent_task_id {
-                            task_children_map
-                                .entry(parent_id.clone())
-                                .or_default()
-                                .push(msg);
-                        }
-                    }
-
-                    // Add all messages from the session
-                    for msg in &messages {
-                        // Skip child tools - they'll be nested under their parent Task
-                        if msg.parent_task_id.is_some() {
-                            continue;
-                        }
-
-                        if msg.is_tool_use {
-                            // Create ToolCallCard for tool messages
-                            let tool_name = msg.tool_name.as_deref().unwrap_or("unknown");
-                            let tool_type = tool_type_from_name(tool_name);
-
-                            // Determine status from result
-                            let status = match (&msg.tool_output, msg.is_error) {
-                                (Some(_), Some(true)) => ToolStatus::Error,
-                                (Some(_), _) => ToolStatus::Success,
-                                (None, _) => ToolStatus::Pending,
-                            };
-
-                            let mut card = ToolCallCard::new(tool_type, tool_name).status(status);
-
-                            // Add input params
-                            if let Some(input) = &msg.tool_input {
-                                card = card.input(input.clone());
-                            }
-
-                            // Add output
-                            if let Some(output) = &msg.tool_output {
-                                card = card.output(output.clone());
-                            }
-
-                            // Add child tools for Task
-                            if tool_name == "Task" {
-                                if let Some(tool_id) = &msg.tool_id {
-                                    if let Some(children) = task_children_map.get(tool_id) {
-                                        for child_msg in children {
-                                            let child_name =
-                                                child_msg.tool_name.as_deref().unwrap_or("unknown");
-                                            let child_type = tool_type_from_name(child_name);
-                                            let child_status = match child_msg.is_error {
-                                                Some(true) => ToolStatus::Error,
-                                                Some(false) => ToolStatus::Success,
-                                                None => {
-                                                    if child_msg.tool_output.is_some() {
-                                                        ToolStatus::Success
-                                                    } else {
-                                                        ToolStatus::Pending
-                                                    }
-                                                }
-                                            };
-
-                                            card.add_child(ChildTool {
-                                                tool_type: child_type,
-                                                name: child_name.to_string(),
-                                                params: child_msg
-                                                    .tool_input
-                                                    .clone()
-                                                    .unwrap_or_default(),
-                                                status: child_status,
-                                                elapsed_secs: None,
-                                            });
-                                        }
-                                    }
-                                }
-                            }
-
-                            self.thread_view
-                                .push_entry(ThreadEntry::new(ThreadEntryType::Tool, card));
-                        } else {
-                            // Text message
-                            let entry_type = if msg.role == "user" {
-                                ThreadEntryType::User
-                            } else {
-                                ThreadEntryType::Assistant
-                            };
-
-                            // Truncate very long messages for display
-                            let display_content = if msg.content.len() > 500 {
-                                format!("{}...", &msg.content[..500])
-                            } else {
-                                msg.content.clone()
-                            };
-
-                            self.thread_view.push_entry(
-                                ThreadEntry::new(entry_type, Text::new(&display_content))
-                                    .copyable_text(&msg.content),
-                            );
-                        }
-                    }
-
-                    // Store session ID/options for resume when Full Auto is toggled
-                    self.resumed_session_id = Some(session_id.clone());
-                    self.resumed_session_at = resume_at.clone();
-                    self.resumed_fork_session = fork_session;
-
-                    // Show ready to resume message
-                    self.thread_view.push_entry(
-                        ThreadEntry::new(
-                            ThreadEntryType::System,
-                            Text::new("Session loaded. Toggle Full Auto (cmd-a) to continue."),
-                        )
-                        .copyable_text("Toggle Full Auto to continue"),
-                    );
-                    self.thread_view.push_entry(
-                        ThreadEntry::new(
-                            ThreadEntryType::System,
-                            Text::new("Adjust resume options in the sidebar before continuing."),
-                        )
-                        .copyable_text("Adjust resume options in the sidebar before continuing."),
-                    );
-
-                    // Mark as current in the list
-                    self.refresh_sessions_list(&session_id);
-                } else {
-                    let err_msg = format!("Session not found: {}", session_id);
-                    self.thread_view.push_entry(
-                        ThreadEntry::new(ThreadEntryType::Error, Text::new(&err_msg))
-                            .copyable_text(&err_msg),
-                    );
-                }
+                // Session resume not available - external session loading removed
+                let msg = format!("Session resume not available for: {}", &session_id[..8.min(session_id.len())]);
+                self.thread_view.push_entry(
+                    ThreadEntry::new(ThreadEntryType::System, Text::new(&msg))
+                        .copyable_text(&msg),
+                );
+                self.thread_view.push_entry(
+                    ThreadEntry::new(ThreadEntryType::System, Text::new("Use Codex CLI for session management"))
+                        .copyable_text("Use Codex CLI for session management"),
+                );
             }
             SessionAction::SetModel(model) => {
                 info!("Setting model to: {:?}", model);
 
-                // Convert wgpui Model to ClaudeModel
+                // Convert wgpui Model to AgentModel
                 use wgpui::components::atoms::Model;
-                let claude_model = match model {
-                    Model::ClaudeSonnet => ClaudeModel::Sonnet,
-                    Model::ClaudeOpus => ClaudeModel::Opus,
-                    _ => ClaudeModel::Sonnet, // Fallback for other models
+                let agent_model = match model {
+                    Model::ClaudeSonnet => AgentModel::Sonnet,
+                    Model::ClaudeOpus => AgentModel::Opus,
+                    _ => AgentModel::Sonnet, // Fallback for other models
                 };
 
-                self.runtime.set_model(claude_model);
+                self.runtime.set_model(agent_model);
             }
             SessionAction::Interrupt => {
                 info!("Interrupting current query");
@@ -1253,7 +1077,7 @@ impl AutopilotShell {
                 self.task_children.clear();
 
                 // Reset runtime
-                self.runtime.reset(ClaudeModel::Sonnet);
+                self.runtime.reset(AgentModel::Sonnet);
 
                 self.resumed_session_id = None;
                 self.resumed_session_at = None;
@@ -1271,129 +1095,19 @@ impl AutopilotShell {
         }
     }
 
-    /// Start resuming a Claude Code session via the SDK
+    /// Start resuming a session (stub - SDK removed)
     fn start_session_resume(
         &mut self,
         session_id: String,
-        resume_at: Option<String>,
-        fork_session: bool,
+        _resume_at: Option<String>,
+        _fork_session: bool,
     ) {
-        use claude_agent_sdk::{QueryOptions, SdkMessage};
-        use futures::StreamExt;
+        info!("Session resume requested for: {} (feature disabled)", session_id);
 
-        info!("Starting session resume for: {}", session_id);
-
-        // Create channel for SDK messages
-        let (tx, rx) = mpsc::channel::<SdkMessageEvent>();
-        self.sdk_message_rx = Some(rx);
-
-        // Get model from runtime
-        let model = self.runtime.model().as_str().to_string();
-
-        // Spawn async task to resume session
-        std::thread::spawn(move || {
-            let rt = match tokio::runtime::Runtime::new() {
-                Ok(rt) => rt,
-                Err(e) => {
-                    let _ = tx.send(SdkMessageEvent::Error(format!(
-                        "Failed to create runtime: {}",
-                        e
-                    )));
-                    return;
-                }
-            };
-
-            rt.block_on(async move {
-                // Build options for resume
-                let mut options = QueryOptions::new()
-                    .resume(session_id.clone())
-                    .model(&model)
-                    .max_turns(100)
-                    .fork_session(fork_session);
-
-                if let Some(ref message_id) = resume_at {
-                    options = options.resume_session_at(message_id.clone());
-                }
-
-                // Resume the session
-                let mut session =
-                    match claude_agent_sdk::unstable_v2_resume_session(session_id, options).await {
-                        Ok(s) => s,
-                        Err(e) => {
-                            let _ = tx.send(SdkMessageEvent::Error(format!(
-                                "Failed to resume session: {}",
-                                e
-                            )));
-                            return;
-                        }
-                    };
-
-                let mut last_session_id: Option<String> = None;
-
-                // Send empty message to continue (SDK will pick up from history)
-                if let Err(e) = session.send("").await {
-                    let _ = tx.send(SdkMessageEvent::Error(format!("Failed to send: {}", e)));
-                    return;
-                }
-
-                // Stream messages from session
-                loop {
-                    if let Some(current_id) = session.session_id().map(|id| id.to_string()) {
-                        if last_session_id.as_deref() != Some(current_id.as_str()) {
-                            let _ = tx.send(SdkMessageEvent::SessionId(current_id.clone()));
-                            last_session_id = Some(current_id);
-                        }
-                    }
-
-                    let msg_result = session.receive().next().await;
-                    let Some(msg_result) = msg_result else {
-                        break;
-                    };
-
-                    match msg_result {
-                        Ok(msg) => match msg {
-                            SdkMessage::Assistant(a) => {
-                                // Extract text content from assistant message (message is serde_json::Value)
-                                if let Some(content) =
-                                    a.message.get("content").and_then(|c| c.as_array())
-                                {
-                                    for block in content {
-                                        if let Some(text) =
-                                            block.get("text").and_then(|t| t.as_str())
-                                        {
-                                            let _ = tx.send(SdkMessageEvent::AssistantText(
-                                                text.to_string(),
-                                            ));
-                                        }
-                                        if let Some(name) =
-                                            block.get("name").and_then(|n| n.as_str())
-                                        {
-                                            let _ = tx.send(SdkMessageEvent::ToolUse {
-                                                name: name.to_string(),
-                                            });
-                                        }
-                                    }
-                                }
-                            }
-                            SdkMessage::Result(_) => {
-                                let _ = tx.send(SdkMessageEvent::Completed);
-                                break;
-                            }
-                            _ => {}
-                        },
-                        Err(e) => {
-                            let _ = tx.send(SdkMessageEvent::Error(format!("Stream error: {}", e)));
-                            break;
-                        }
-                    }
-                }
-            });
-        });
-
-        // Add status message
+        // Add status message - feature not available
         self.thread_view.push_entry(
-            ThreadEntry::new(ThreadEntryType::System, Text::new("Resuming session..."))
-                .copyable_text("Resuming session..."),
+            ThreadEntry::new(ThreadEntryType::System, Text::new("Session resume not available - use Codex CLI"))
+                .copyable_text("Session resume not available"),
         );
     }
 
@@ -1457,18 +1171,9 @@ impl AutopilotShell {
     }
 
     /// Refresh the sessions list in the sidebar
-    fn refresh_sessions_list(&mut self, current_id: &str) {
-        let claude_sessions = crate::claude_sessions::list_claude_sessions();
-        let sessions: Vec<SessionInfo> = claude_sessions
-            .into_iter()
-            .take(5)
-            .map(|s| SessionInfo {
-                id: s.session_id.clone(),
-                timestamp: s.timestamp,
-                model: "sonnet".to_string(),
-                is_current: s.session_id == current_id,
-            })
-            .collect();
+    fn refresh_sessions_list(&mut self, _current_id: &str) {
+        // External session loading removed - no sessions to display
+        let sessions: Vec<SessionInfo> = Vec::new();
         self.sessions_panel.set_sessions(sessions);
     }
 }

@@ -12,7 +12,6 @@ description = "Agent Client Protocol adapter for OpenAgents"
 agent-client-protocol-schema = { version = "0.10", features = ["unstable"] }
 
 # OpenAgents crates
-claude-agent-sdk = { path = "../claude-agent-sdk" }
 codex-agent-sdk = { path = "../codex-agent-sdk" }
 recorder = { path = "../recorder" }
 

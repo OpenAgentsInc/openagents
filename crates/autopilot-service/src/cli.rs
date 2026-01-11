@@ -1,7 +1,7 @@
 use std::io::{self, Write};
 use std::time::{Duration, Instant};
 
-use autopilot_core::{ClaudeModel, LogStatus, StartupPhase, StartupState};
+use autopilot_core::{AgentModel, LogStatus, StartupPhase, StartupState};
 
 pub fn run_cli(verbose: bool) -> anyhow::Result<()> {
     if verbose {
@@ -15,12 +15,12 @@ pub fn run_cli(verbose: bool) -> anyhow::Result<()> {
 
     let model = match std::env::var("AUTOPILOT_MODEL").as_deref() {
         Ok("opus") | Ok("Opus") | Ok("OPUS") => {
-            println!("Model: Claude Opus");
-            ClaudeModel::Opus
+            println!("Model: Opus Model");
+            AgentModel::Opus
         }
         _ => {
-            println!("Model: Claude Sonnet");
-            ClaudeModel::Sonnet
+            println!("Model: Sonnet Model");
+            AgentModel::Sonnet
         }
     };
 

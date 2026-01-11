@@ -69,13 +69,7 @@ fn status() -> Result<()> {
 
     println!();
 
-    // Check Anthropic specifically
-    if auth::has_anthropic_auth() {
-        println!("Anthropic auth: Ready");
-    } else {
-        println!("Anthropic auth: Not configured");
-        println!("  Run 'openagents auth import' to import from OpenCode");
-    }
+    println!("Auth check complete.");
 
     Ok(())
 }

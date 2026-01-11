@@ -3,7 +3,7 @@
 //! Enables session resume across:
 //! - Full Auto toggle off/on
 //! - Application restarts
-//! - Claude SDK conversation resume
+//! - Agent SDK conversation resume
 
 use std::fs;
 use std::path::PathBuf;
@@ -12,8 +12,7 @@ use chrono::{DateTime, Local};
 use serde::{Deserialize, Serialize};
 use agent_client_protocol_schema as acp;
 
-use crate::claude::ClaudeEvent;
-use crate::startup::{ClaudeModel, LogLine, StartupPhase};
+use crate::startup::{AgentEvent, AgentModel, LogLine, StartupPhase};
 use crate::verification::TerminationChecklist;
 
 /// Current checkpoint format version.
@@ -43,41 +42,41 @@ pub struct SessionCheckpoint {
     /// Current iteration number (for fix loops).
     pub iteration: u32,
 
-    /// Which Claude model is being used.
-    pub model: ClaudeModel,
+    /// Which Agent model is being used.
+    pub model: AgentModel,
 
-    /// Claude SDK session ID for plan phase (for API resume).
-    pub claude_session_id: Option<String>,
+    /// Agent SDK session ID for plan phase (for API resume).
+    pub plan_session_id: Option<String>,
 
-    /// Claude SDK session ID for execution phase.
+    /// Agent SDK session ID for execution phase.
     pub exec_session_id: Option<String>,
 
-    /// Claude SDK session ID for review phase.
+    /// Agent SDK session ID for review phase.
     pub review_session_id: Option<String>,
 
-    /// Claude SDK session ID for fix phase.
+    /// Agent SDK session ID for fix phase.
     pub fix_session_id: Option<String>,
 
     /// Events from the planning phase.
-    pub claude_events: Vec<ClaudeEvent>,
+    pub plan_events: Vec<AgentEvent>,
 
     /// Full accumulated text from planning phase.
-    pub claude_full_text: String,
+    pub plan_full_text: String,
 
     /// Events from the execution phase.
-    pub exec_events: Vec<ClaudeEvent>,
+    pub exec_events: Vec<AgentEvent>,
 
     /// Full accumulated text from execution phase.
     pub exec_full_text: String,
 
     /// Events from the review phase.
-    pub review_events: Vec<ClaudeEvent>,
+    pub review_events: Vec<AgentEvent>,
 
     /// Full accumulated text from review phase.
     pub review_full_text: String,
 
     /// Events from the fix phase.
-    pub fix_events: Vec<ClaudeEvent>,
+    pub fix_events: Vec<AgentEvent>,
 
     /// Full accumulated text from fix phase.
     pub fix_full_text: String,

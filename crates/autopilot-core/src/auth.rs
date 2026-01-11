@@ -200,39 +200,6 @@ pub fn get_provider_auth(provider: &str) -> Result<Option<AuthEntry>> {
     Ok(entry)
 }
 
-/// Check if we have valid Anthropic auth
-pub fn has_anthropic_auth() -> bool {
-    let has_auth = matches!(get_provider_auth("anthropic"), Ok(Some(_)));
-    if has_auth {
-        info!("Anthropic auth is configured");
-    } else {
-        warn!("Anthropic auth is NOT configured");
-    }
-    has_auth
-}
-
-/// Get the Anthropic API key if available
-pub fn get_anthropic_api_key() -> Result<Option<String>> {
-    match get_provider_auth("anthropic")? {
-        Some(AuthEntry::Api { key }) => {
-            debug!("Got Anthropic API key");
-            Ok(Some(key))
-        }
-        Some(AuthEntry::Oauth { access, .. }) => {
-            debug!("Got Anthropic OAuth access token");
-            Ok(Some(access))
-        }
-        Some(AuthEntry::Wellknown { token, .. }) => {
-            debug!("Got Anthropic wellknown token");
-            Ok(Some(token))
-        }
-        None => {
-            debug!("No Anthropic auth found");
-            Ok(None)
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -254,20 +221,20 @@ mod tests {
     #[test]
     fn test_auth_entry_deserialization() {
         let json = r#"{
-            "anthropic": {
+            "openai": {
+                "type": "api",
+                "key": "sk-test"
+            },
+            "google": {
                 "type": "oauth",
                 "refresh": "test-refresh",
                 "access": "test-access",
                 "expires": 1234567890
-            },
-            "openai": {
-                "type": "api",
-                "key": "sk-test"
             }
         }"#;
 
         let store: AuthStore = serde_json::from_str(json).unwrap();
-        assert!(store.contains_key("anthropic"));
         assert!(store.contains_key("openai"));
+        assert!(store.contains_key("google"));
     }
 }

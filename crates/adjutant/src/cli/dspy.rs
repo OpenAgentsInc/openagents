@@ -264,7 +264,7 @@ pub async fn optimize(args: OptimizeArgs) -> Result<()> {
                  \n\
                  Optimization requires an LM. Options:\n\
                  - Start llama-server on :8080\n\
-                 - Install Claude CLI (claude)\n\
+                 - Install Codex CLI (codex)\n\
                  - Set CEREBRAS_API_KEY\n\
                  - Start Ollama on :11434",
                 e

@@ -1,10 +1,10 @@
 //! Task execution - do the actual work using tools.
 //!
-//! Prioritizes Claude (via claude-agent-sdk) if the CLI is available,
+//! Prioritizes Codex (via codex-agent-sdk) if the CLI is available,
 //! falls back to Cerebras TieredExecutor, then to analysis-only mode.
 
-use crate::auth::has_claude_cli;
-use crate::claude_executor::ClaudeExecutor;
+use crate::auth::has_codex_cli;
+use crate::codex_executor::CodexExecutor;
 use crate::tiered::TieredExecutor;
 use crate::{AdjutantError, Task, TaskPlan, ToolRegistry};
 use std::path::Path;
@@ -62,8 +62,8 @@ impl TaskResult {
 ///
 /// This is where Adjutant does the actual work:
 /// 1. Read relevant files to build context
-/// 2. Use ClaudeExecutor (Claude Pro/Max) if available - PRIORITY
-/// 3. Fall back to TieredExecutor (Cerebras) if Claude unavailable
+/// 2. Use CodexExecutor if available - PRIORITY
+/// 3. Fall back to TieredExecutor (Cerebras) if Codex unavailable
 /// 4. Fall back to analysis-only if neither is available
 pub async fn execute_with_tools(
     tools: &mut ToolRegistry,
@@ -89,19 +89,19 @@ pub async fn execute_with_tools(
         plan.files.len()
     );
 
-    // PRIORITY 1: Use Claude if CLI is available (Pro/Max subscription)
-    if has_claude_cli() {
-        tracing::info!("Claude CLI detected - using ClaudeExecutor (Pro/Max)");
-        let executor = ClaudeExecutor::new(workspace_root);
-        match executor.execute(task, &context, tools).await {
+    // PRIORITY 1: Use Codex if CLI is available
+    if has_codex_cli() {
+        tracing::info!("Codex CLI detected - using CodexExecutor");
+        let executor = CodexExecutor::new(workspace_root);
+        match executor.execute(task).await {
             Ok(result) => return Ok(result),
             Err(e) => {
-                // Claude failed (maybe not authenticated), fall through to Cerebras
-                tracing::warn!("ClaudeExecutor failed: {}. Falling back to Cerebras.", e);
+                // Codex failed, fall through to Cerebras
+                tracing::warn!("CodexExecutor failed: {}. Falling back to Cerebras.", e);
             }
         }
     } else {
-        tracing::info!("Claude CLI not found, checking Cerebras...");
+        tracing::info!("Codex CLI not found, checking Cerebras...");
     }
 
     // PRIORITY 2: Use TieredExecutor (Cerebras GLM 4.7 + Qwen-3-32B)
@@ -120,7 +120,7 @@ pub async fn execute_with_tools(
                 success: true,
                 summary: format!(
                     "Analyzed task '{}'. Found {} relevant files totaling {} tokens.\n\
-                     Install Claude CLI for Pro/Max execution, or set CEREBRAS_API_KEY for tiered inference.",
+                     Install Codex CLI for execution, or set CEREBRAS_API_KEY for tiered inference.",
                     task.title,
                     plan.files.len(),
                     plan.estimated_tokens

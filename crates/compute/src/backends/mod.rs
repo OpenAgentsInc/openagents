@@ -11,12 +11,11 @@
 //!
 //! ## Agent Backends
 //! Complex agentic tasks for Bazaar jobs (NIP-90 kinds 5930-5933):
-//! - Claude Code (via `claude` CLI or API)
+//! - Codex CLI
 //! - Future: SWE-agent, Aider, etc.
 
 pub mod agent;
 mod apple_fm;
-pub mod claude_code;
 #[cfg(all(feature = "gpt-oss-metal", target_os = "macos"))]
 mod gpt_oss_metal;
 mod llamacpp;
@@ -26,7 +25,6 @@ pub use agent::{
     AgentBackend, AgentCapabilities, AgentError, AgentRegistry, AgentBackendStatus, JobProgress,
 };
 pub use apple_fm::{AppleFmBackend, FmSession, FmToolDefinition, FmTranscriptMessage};
-pub use claude_code::{ClaudeCodeBackend, ClaudeCodeConfig, IsolationMode};
 #[cfg(all(feature = "gpt-oss-metal", target_os = "macos"))]
 pub use gpt_oss_metal::GptOssMetalBackend;
 pub use llamacpp::LlamaCppBackend;
