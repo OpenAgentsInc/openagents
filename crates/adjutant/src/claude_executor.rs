@@ -582,25 +582,36 @@ fn extract_assistant_text(message: &serde_json::Value) -> Option<String> {
     None
 }
 
-/// Filter out XML tool use tags from display text.
+/// Filter out XML tool use tags and DSPy format markers from display text.
 ///
 /// Claude outputs tool calls in XML format like `<function_calls>...</function_calls>`.
+/// DSPy outputs format markers like `[[ ## fieldname ## ]]`.
 /// These should not be shown to the user in the streaming output.
 fn filter_tool_xml(text: &str) -> String {
     use regex::Regex;
     use std::sync::OnceLock;
 
     static TOOL_XML_RE: OnceLock<Regex> = OnceLock::new();
-    let re = TOOL_XML_RE.get_or_init(|| {
+    static DSPY_MARKER_RE: OnceLock<Regex> = OnceLock::new();
+
+    let xml_re = TOOL_XML_RE.get_or_init(|| {
         // Match various XML-like tool patterns
         Regex::new(r"(?s)<(function_calls|antml:function_calls|antml:invoke|antml:parameter)[^>]*>.*?</\1>|<(function_calls|antml:function_calls|antml:invoke|antml:parameter)[^>]*/?>|</(function_calls|antml:function_calls|antml:invoke|antml:parameter)>").unwrap()
     });
 
-    let filtered = re.replace_all(text, "").to_string();
+    let dspy_re = DSPY_MARKER_RE.get_or_init(|| {
+        // Match DSPy format markers like [[ ## fieldname ## ]]
+        Regex::new(r"\[\[\s*##\s*[^#]+\s*##\s*\]\]").unwrap()
+    });
+
+    let filtered = xml_re.replace_all(text, "");
+    let filtered = dspy_re.replace_all(&filtered, "");
+
     // Also trim any resulting whitespace-only strings
-    if filtered.trim().is_empty() {
+    let result = filtered.trim();
+    if result.is_empty() {
         String::new()
     } else {
-        filtered
+        result.to_string()
     }
 }
