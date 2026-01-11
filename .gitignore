@@ -17,13 +17,13 @@ expo/web-dist/
 *.tgz
 /src-tauri/
 packages/tricoder/tmp.ts
-docs/logs/claude
+docs/logs/codex
 .maestro/
 
-# Claude Code local configuration
+# Codex Code local configuration
 settings.local.json
-.claude/settings.local.json
-CLAUDE.local.md
+.codex/settings.local.json
+AGENTS.local.md
 
 # Environment files (ignore all .env permutations)
 .env
