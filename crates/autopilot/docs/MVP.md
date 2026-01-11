@@ -24,7 +24,7 @@ This opens the Autopilot desktop app.
 Alternately Autopilot can be steered via CLI commands.
 
 ```bash
-autopilot-cli --help
+autopilot run --help
 ```
 
 ### 3. Connect Codex
@@ -63,4 +63,3 @@ Autopilot responses use DSPy signatures and optimizations. Read more about our D
 - **Tools and permissions**: Tool calls/results render for Codex and Adjutant. Permission modes map to Codex sandbox/approval policies, but interactive permission prompts are not yet hooked to backend events and the tool list remains empty on the Codex path.
 - **Catalogs and config**: Agents, skills, hooks, and MCP configs are discovered from `.openagents` and `~/.openagents` (plus `.mcp.json`) with UI management, but they are not yet applied to Codex/Adjutant runs.
 - **Panels and telemetry**: OANIX, directives/issues, autopilot issues (`.openagents/autopilot.db`), Pylon earnings/jobs, RLM runs/trace, Spark wallet, DVM providers, NIP-90 jobs, NIP-28 chat, Nexus stats, LM router, and Gateway health all have panels with refreshable data sources.
-
