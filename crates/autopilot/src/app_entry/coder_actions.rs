@@ -846,6 +846,10 @@ impl AutopilotApp {
                 ResponseEvent::ThoughtChunk(text) => {
                     if let Some(last) = state.chat.messages.last_mut() {
                         if last.role == MessageRole::AssistantThought {
+                            // Add newline between thought chunks for proper formatting
+                            if !last.content.is_empty() && !last.content.ends_with('\n') {
+                                last.content.push('\n');
+                            }
                             last.content.push_str(&text);
                         } else {
                             state.chat.messages.push(ChatMessage {
