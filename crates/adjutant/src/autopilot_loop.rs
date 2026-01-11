@@ -187,6 +187,10 @@ pub trait AutopilotOutput: Send {
     /// This sends a special marker that the UI can parse to render
     /// stage cards showing progress through the DSPy pipeline.
     fn emit_stage(&self, stage: DspyStage);
+    /// Returns a sender for ACP session notifications if available.
+    fn acp_sender(&self) -> Option<AcpEventSender> {
+        None
+    }
 }
 
 /// CLI output implementation - prints to stdout
@@ -401,6 +405,20 @@ pub struct AcpChannelOutput {
     tx: mpsc::UnboundedSender<acp::SessionNotification>,
     token_tx: mpsc::UnboundedSender<String>,
     todos: Mutex<Vec<TodoTask>>,
+}
+
+#[derive(Clone)]
+pub struct AcpEventSender {
+    pub session_id: acp::SessionId,
+    pub tx: mpsc::UnboundedSender<acp::SessionNotification>,
+}
+
+impl AcpEventSender {
+    pub fn send_update(&self, update: acp::SessionUpdate) {
+        let _ = self
+            .tx
+            .send(acp::SessionNotification::new(self.session_id.clone(), update));
+    }
 }
 
 impl AcpChannelOutput {
@@ -669,6 +687,13 @@ impl AutopilotOutput for AcpChannelOutput {
             }
         }
     }
+
+    fn acp_sender(&self) -> Option<AcpEventSender> {
+        Some(AcpEventSender {
+            session_id: self.session_id.clone(),
+            tx: self.tx.clone(),
+        })
+    }
 }
 
 /// Autonomous autopilot loop runner.
@@ -858,7 +883,12 @@ impl<O: AutopilotOutput> AutopilotLoop<O> {
 
             // Execute the task with streaming
             let result = if let Some(token_sender) = self.output.token_sender() {
-                match self.adjutant.execute_streaming(&task, token_sender).await {
+                let acp_sender = self.output.acp_sender();
+                match self
+                    .adjutant
+                    .execute_streaming(&task, token_sender, acp_sender)
+                    .await
+                {
                     Ok(r) => r,
                     Err(e) => {
                         self.output.error(&e.to_string());
@@ -882,7 +912,10 @@ impl<O: AutopilotOutput> AutopilotLoop<O> {
                     }
                 });
 
-                let exec_result = self.adjutant.execute_streaming(&task, iter_token_tx).await;
+                let exec_result = self
+                    .adjutant
+                    .execute_streaming(&task, iter_token_tx, None)
+                    .await;
                 let _ = print_handle.await;
 
                 match exec_result {
@@ -1035,7 +1068,12 @@ impl<O: AutopilotOutput> AutopilotLoop<O> {
             // For CLI outputs, spawn a task that prints immediately as tokens arrive
             let result = if let Some(token_sender) = self.output.token_sender() {
                 // UI context: pass sender directly for real-time streaming
-                match self.adjutant.execute_streaming(&task, token_sender).await {
+                let acp_sender = self.output.acp_sender();
+                match self
+                    .adjutant
+                    .execute_streaming(&task, token_sender, acp_sender)
+                    .await
+                {
                     Ok(r) => r,
                     Err(e) => {
                         self.output.error(&e.to_string());
@@ -1055,7 +1093,11 @@ impl<O: AutopilotOutput> AutopilotLoop<O> {
                 });
 
                 // Execute the task
-                let result = match self.adjutant.execute_streaming(&task, iter_token_tx).await {
+                let result = match self
+                    .adjutant
+                    .execute_streaming(&task, iter_token_tx, None)
+                    .await
+                {
                     Ok(r) => r,
                     Err(e) => {
                         // Wait for print task to finish

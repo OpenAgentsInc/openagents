@@ -162,3 +162,8 @@ pub use agent::{AutopilotAgent, AutopilotConfig, AutopilotPhase, AutopilotState}
 // Browser exports - WASM only
 #[cfg(feature = "wasm")]
 pub use browser::{init_runtime, list_agents, spawn_autopilot, spawn_autopilot_with_config, tick_agent};
+
+pub const ACP_PHASE_META_KEY: &str = "openagents_phase";
+pub const ACP_SESSION_META_KEY: &str = "openagents_session_id";
+pub const ACP_TOOL_PROGRESS_META_KEY: &str = "openagents_tool_progress_secs";
+pub const ACP_TOOL_NAME_META_KEY: &str = "openagents_tool_name";

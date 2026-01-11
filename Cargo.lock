@@ -1233,6 +1233,7 @@ checksum = "c08606f8c3cbf4ce6ec8e28fb0014a2c086708fe954eaa885384a6165172e7e8"
 name = "autopilot"
 version = "0.1.0"
 dependencies = [
+ "agent-client-protocol-schema",
  "anyhow",
  "chrono",
  "console_error_panic_hook",
@@ -1281,6 +1282,7 @@ dependencies = [
 name = "autopilot-service"
 version = "0.1.0"
 dependencies = [
+ "agent-client-protocol-schema",
  "anyhow",
  "autopilot",
  "issues",

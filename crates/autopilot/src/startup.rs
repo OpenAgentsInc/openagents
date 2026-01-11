@@ -1,4 +1,5 @@
 use chrono::Local;
+use agent_client_protocol_schema as acp;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::sync::mpsc;
@@ -207,6 +208,7 @@ pub struct StartupState {
     pub claude_session_id: Option<String>,
     pub claude_events: Vec<ClaudeEvent>,
     pub claude_full_text: String,
+    pub acp_events: Vec<acp::SessionNotification>,
     pub plan_path: Option<PathBuf>,
     exec_receiver: Option<mpsc::Receiver<ClaudeToken>>,
     pub exec_session_id: Option<String>,
@@ -227,6 +229,8 @@ pub struct StartupState {
     pub fix_session_id: Option<String>,
     pub fix_events: Vec<ClaudeEvent>,
     pub fix_full_text: String,
+    acp_pending_tools: Vec<AcpPendingTool>,
+    acp_tool_counter: u64,
     pub force_stopped: bool,
     pub force_stop_reason: Option<String>,
     pub report_path: Option<PathBuf>,
@@ -239,6 +243,14 @@ pub struct StartupState {
     pub user_prompt: Option<String>,
     /// DSPy structured planning result
     pub dspy_plan: Option<PlanningResult>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct AcpPendingTool {
+    id: acp::ToolCallId,
+    name: String,
+    phase: &'static str,
+    params: String,
 }
 
 impl StartupState {
@@ -266,6 +278,7 @@ impl StartupState {
             claude_session_id: None,
             claude_events: Vec::new(),
             claude_full_text: String::new(),
+            acp_events: Vec::new(),
             plan_path: None,
             exec_receiver: None,
             exec_session_id: None,
@@ -286,6 +299,8 @@ impl StartupState {
             fix_session_id: None,
             fix_events: Vec::new(),
             fix_full_text: String::new(),
+            acp_pending_tools: Vec::new(),
+            acp_tool_counter: 0,
             force_stopped: false,
             force_stop_reason: None,
             report_path: None,
@@ -318,6 +333,7 @@ impl StartupState {
             claude_session_id: None,
             claude_events: Vec::new(),
             claude_full_text: String::new(),
+            acp_events: Vec::new(),
             plan_path: None,
             exec_receiver: None,
             exec_session_id: None,
@@ -338,6 +354,8 @@ impl StartupState {
             fix_session_id: None,
             fix_events: Vec::new(),
             fix_full_text: String::new(),
+            acp_pending_tools: Vec::new(),
+            acp_tool_counter: 0,
             force_stopped: false,
             force_stop_reason: None,
             report_path: None,
@@ -1121,11 +1139,13 @@ impl StartupState {
                             if let Some(ClaudeEvent::Text(s)) = self.claude_events.last_mut() {
                                 s.push_str(&text);
                             } else {
-                                self.claude_events.push(ClaudeEvent::Text(text));
+                                self.claude_events.push(ClaudeEvent::Text(text.clone()));
                             }
+                            self.push_acp_text("plan", text);
                             self.update_claude_streaming_line(elapsed);
                         }
                         ClaudeToken::ToolUse { name, params } => {
+                            let params_clone = params.clone();
                             self.claude_events.push(ClaudeEvent::Tool {
                                 name: name.clone(),
                                 params,
@@ -1133,6 +1153,7 @@ impl StartupState {
                                 output: None,
                                 is_error: false,
                             });
+                            self.push_acp_tool_use("plan", name, params_clone);
                             self.update_claude_streaming_line(elapsed);
                         }
                         ClaudeToken::ToolDone {
@@ -1169,6 +1190,7 @@ impl StartupState {
                             }
                             // Push completion event with output so shell receives it
                             if let Some(params) = params {
+                                let output_clone = output.clone();
                                 self.claude_events.push(ClaudeEvent::Tool {
                                     name: name.clone(),
                                     params,
@@ -1176,6 +1198,9 @@ impl StartupState {
                                     output,
                                     is_error,
                                 });
+                                self.push_acp_tool_done("plan", name, output_clone, is_error);
+                            } else {
+                                self.push_acp_tool_done("plan", name, output.clone(), is_error);
                             }
                             self.update_claude_streaming_line(elapsed);
                         }
@@ -1184,9 +1209,10 @@ impl StartupState {
                             elapsed_secs,
                         } => {
                             self.claude_events.push(ClaudeEvent::ToolProgress {
-                                tool_name,
+                                tool_name: tool_name.clone(),
                                 elapsed_secs,
                             });
+                            self.push_acp_tool_progress("plan", tool_name, elapsed_secs);
                         }
                         ClaudeToken::SessionId(session_id) => {
                             if self.claude_session_id.as_deref() != Some(session_id.as_str()) {
@@ -1393,11 +1419,13 @@ impl StartupState {
                             if let Some(ClaudeEvent::Text(s)) = self.exec_events.last_mut() {
                                 s.push_str(&text);
                             } else {
-                                self.exec_events.push(ClaudeEvent::Text(text));
+                                self.exec_events.push(ClaudeEvent::Text(text.clone()));
                             }
+                            self.push_acp_text("exec", text);
                             self.update_exec_streaming_line(elapsed);
                         }
                         ClaudeToken::ToolUse { name, params } => {
+                            let params_clone = params.clone();
                             self.exec_events.push(ClaudeEvent::Tool {
                                 name: name.clone(),
                                 params,
@@ -1405,6 +1433,7 @@ impl StartupState {
                                 output: None,
                                 is_error: false,
                             });
+                            self.push_acp_tool_use("exec", name, params_clone);
                             self.update_exec_streaming_line(elapsed);
                         }
                         ClaudeToken::ToolDone {
@@ -1441,6 +1470,7 @@ impl StartupState {
                             }
                             // Push completion event with output
                             if let Some(params) = params {
+                                let output_clone = output.clone();
                                 self.exec_events.push(ClaudeEvent::Tool {
                                     name: name.clone(),
                                     params,
@@ -1448,6 +1478,9 @@ impl StartupState {
                                     output,
                                     is_error,
                                 });
+                                self.push_acp_tool_done("exec", name, output_clone, is_error);
+                            } else {
+                                self.push_acp_tool_done("exec", name, output.clone(), is_error);
                             }
                             self.update_exec_streaming_line(elapsed);
                         }
@@ -1456,9 +1489,10 @@ impl StartupState {
                             elapsed_secs,
                         } => {
                             self.exec_events.push(ClaudeEvent::ToolProgress {
-                                tool_name,
+                                tool_name: tool_name.clone(),
                                 elapsed_secs,
                             });
+                            self.push_acp_tool_progress("exec", tool_name, elapsed_secs);
                         }
                         ClaudeToken::SessionId(session_id) => {
                             if self.exec_session_id.as_deref() != Some(session_id.as_str()) {
@@ -1605,11 +1639,13 @@ impl StartupState {
                             if let Some(ClaudeEvent::Text(s)) = self.review_events.last_mut() {
                                 s.push_str(&text);
                             } else {
-                                self.review_events.push(ClaudeEvent::Text(text));
+                                self.review_events.push(ClaudeEvent::Text(text.clone()));
                             }
+                            self.push_acp_text("review", text);
                             self.update_review_streaming_line(elapsed);
                         }
                         ClaudeToken::ToolUse { name, params } => {
+                            let params_clone = params.clone();
                             self.review_events.push(ClaudeEvent::Tool {
                                 name: name.clone(),
                                 params,
@@ -1617,6 +1653,7 @@ impl StartupState {
                                 output: None,
                                 is_error: false,
                             });
+                            self.push_acp_tool_use("review", name, params_clone);
                             self.update_review_streaming_line(elapsed);
                         }
                         ClaudeToken::ToolDone {
@@ -1653,6 +1690,7 @@ impl StartupState {
                             }
                             // Push completion event with output
                             if let Some(params) = params {
+                                let output_clone = output.clone();
                                 self.review_events.push(ClaudeEvent::Tool {
                                     name: name.clone(),
                                     params,
@@ -1660,6 +1698,9 @@ impl StartupState {
                                     output,
                                     is_error,
                                 });
+                                self.push_acp_tool_done("review", name, output_clone, is_error);
+                            } else {
+                                self.push_acp_tool_done("review", name, output.clone(), is_error);
                             }
                             self.update_review_streaming_line(elapsed);
                         }
@@ -1668,9 +1709,10 @@ impl StartupState {
                             elapsed_secs,
                         } => {
                             self.review_events.push(ClaudeEvent::ToolProgress {
-                                tool_name,
+                                tool_name: tool_name.clone(),
                                 elapsed_secs,
                             });
+                            self.push_acp_tool_progress("review", tool_name, elapsed_secs);
                         }
                         ClaudeToken::SessionId(session_id) => {
                             if self.review_session_id.as_deref() != Some(session_id.as_str()) {
@@ -1969,11 +2011,13 @@ impl StartupState {
                             if let Some(ClaudeEvent::Text(s)) = self.fix_events.last_mut() {
                                 s.push_str(&text);
                             } else {
-                                self.fix_events.push(ClaudeEvent::Text(text));
+                                self.fix_events.push(ClaudeEvent::Text(text.clone()));
                             }
+                            self.push_acp_text("fix", text);
                             self.update_fix_streaming_line(elapsed);
                         }
                         ClaudeToken::ToolUse { name, params } => {
+                            let params_clone = params.clone();
                             self.fix_events.push(ClaudeEvent::Tool {
                                 name: name.clone(),
                                 params,
@@ -1981,6 +2025,7 @@ impl StartupState {
                                 output: None,
                                 is_error: false,
                             });
+                            self.push_acp_tool_use("fix", name, params_clone);
                             self.update_fix_streaming_line(elapsed);
                         }
                         ClaudeToken::ToolDone {
@@ -2017,6 +2062,7 @@ impl StartupState {
                             }
                             // Push completion event with output
                             if let Some(params) = params {
+                                let output_clone = output.clone();
                                 self.fix_events.push(ClaudeEvent::Tool {
                                     name: name.clone(),
                                     params,
@@ -2024,6 +2070,9 @@ impl StartupState {
                                     output,
                                     is_error,
                                 });
+                                self.push_acp_tool_done("fix", name, output_clone, is_error);
+                            } else {
+                                self.push_acp_tool_done("fix", name, output.clone(), is_error);
                             }
                             self.update_fix_streaming_line(elapsed);
                         }
@@ -2032,9 +2081,10 @@ impl StartupState {
                             elapsed_secs,
                         } => {
                             self.fix_events.push(ClaudeEvent::ToolProgress {
-                                tool_name,
+                                tool_name: tool_name.clone(),
                                 elapsed_secs,
                             });
+                            self.push_acp_tool_progress("fix", tool_name, elapsed_secs);
                         }
                         ClaudeToken::SessionId(session_id) => {
                             if self.fix_session_id.as_deref() != Some(session_id.as_str()) {
@@ -2289,6 +2339,156 @@ impl StartupState {
         {
             line.status = LogStatus::Success;
         }
+    }
+
+    fn acp_session_id(&self) -> acp::SessionId {
+        acp::SessionId::new(self.session_id.clone())
+    }
+
+    fn acp_meta(&self, phase: &'static str) -> acp::Meta {
+        let mut meta = acp::Meta::new();
+        meta.insert(
+            crate::ACP_PHASE_META_KEY.to_string(),
+            serde_json::Value::String(phase.to_string()),
+        );
+        meta.insert(
+            crate::ACP_SESSION_META_KEY.to_string(),
+            serde_json::Value::String(self.session_id.clone()),
+        );
+        meta
+    }
+
+    fn push_acp_text(&mut self, phase: &'static str, text: String) {
+        let content =
+            acp::ContentBlock::Text(acp::TextContent::new(text).meta(self.acp_meta(phase)));
+        let chunk = acp::ContentChunk::new(content);
+        let notification = acp::SessionNotification::new(
+            self.acp_session_id(),
+            acp::SessionUpdate::AgentMessageChunk(chunk),
+        );
+        self.acp_events.push(notification);
+    }
+
+    fn tool_kind_for_name(name: &str) -> acp::ToolKind {
+        match name {
+            "Read" | "Glob" | "Grep" => acp::ToolKind::Read,
+            "Edit" | "Write" => acp::ToolKind::Edit,
+            "Bash" => acp::ToolKind::Execute,
+            "Task" => acp::ToolKind::Think,
+            _ => acp::ToolKind::Other,
+        }
+    }
+
+    fn push_acp_tool_use(&mut self, phase: &'static str, name: String, params: String) {
+        let id = acp::ToolCallId::new(format!("{}-tool-{}", phase, self.acp_tool_counter));
+        self.acp_tool_counter = self.acp_tool_counter.saturating_add(1);
+        let raw_input = serde_json::from_str(&params)
+            .unwrap_or_else(|_| serde_json::Value::String(params.clone()));
+        let tool_call = acp::ToolCall::new(id.clone(), name.clone())
+            .kind(Self::tool_kind_for_name(&name))
+            .status(acp::ToolCallStatus::InProgress)
+            .raw_input(raw_input)
+            .meta(self.acp_meta(phase));
+        self.acp_events.push(acp::SessionNotification::new(
+            self.acp_session_id(),
+            acp::SessionUpdate::ToolCall(tool_call),
+        ));
+        self.acp_pending_tools.push(AcpPendingTool {
+            id,
+            name,
+            phase,
+            params,
+        });
+    }
+
+    fn push_acp_tool_done(
+        &mut self,
+        phase: &'static str,
+        name: String,
+        output: Option<String>,
+        is_error: bool,
+    ) {
+        let pending_idx = self
+            .acp_pending_tools
+            .iter()
+            .rposition(|tool| tool.name == name && tool.phase == phase);
+        let (tool_id, params) = if let Some(idx) = pending_idx {
+            let pending = self.acp_pending_tools.remove(idx);
+            (pending.id, pending.params)
+        } else {
+            let id = acp::ToolCallId::new(format!("{}-tool-{}", phase, self.acp_tool_counter));
+            self.acp_tool_counter = self.acp_tool_counter.saturating_add(1);
+            (id, String::new())
+        };
+
+        let mut fields = acp::ToolCallUpdateFields::new();
+        let status = if is_error {
+            acp::ToolCallStatus::Failed
+        } else {
+            acp::ToolCallStatus::Completed
+        };
+        let raw_input = serde_json::from_str(&params)
+            .unwrap_or_else(|_| serde_json::Value::String(params.clone()));
+        let raw_output = if let Some(output) = output {
+            if is_error {
+                serde_json::json!({ "error": output })
+            } else {
+                serde_json::json!({ "content": output })
+            }
+        } else if is_error {
+            serde_json::json!({ "error": "Tool failed." })
+        } else {
+            serde_json::json!({ "content": "" })
+        };
+        fields = fields
+            .status(status)
+            .raw_output(raw_output)
+            .raw_input(raw_input);
+
+        let mut meta = self.acp_meta(phase);
+        meta.insert(
+            crate::ACP_TOOL_NAME_META_KEY.to_string(),
+            serde_json::Value::String(name),
+        );
+        let update = acp::ToolCallUpdate::new(tool_id, fields).meta(meta);
+        self.acp_events.push(acp::SessionNotification::new(
+            self.acp_session_id(),
+            acp::SessionUpdate::ToolCallUpdate(update),
+        ));
+
+        let _ = params;
+    }
+
+    fn push_acp_tool_progress(
+        &mut self,
+        phase: &'static str,
+        tool_name: String,
+        elapsed_secs: f64,
+    ) {
+        let pending = self
+            .acp_pending_tools
+            .iter()
+            .rposition(|tool| tool.name == tool_name && tool.phase == phase);
+        let Some(idx) = pending else {
+            return;
+        };
+        let tool_id = self.acp_pending_tools[idx].id.clone();
+        let mut fields = acp::ToolCallUpdateFields::new();
+        fields = fields.status(acp::ToolCallStatus::InProgress);
+        let mut meta = self.acp_meta(phase);
+        meta.insert(
+            crate::ACP_TOOL_PROGRESS_META_KEY.to_string(),
+            serde_json::Value::from(elapsed_secs),
+        );
+        meta.insert(
+            crate::ACP_TOOL_NAME_META_KEY.to_string(),
+            serde_json::Value::String(tool_name),
+        );
+        let update = acp::ToolCallUpdate::new(tool_id, fields).meta(meta);
+        self.acp_events.push(acp::SessionNotification::new(
+            self.acp_session_id(),
+            acp::SessionUpdate::ToolCallUpdate(update),
+        ));
     }
 
     pub fn update_claude_streaming_line(&mut self, elapsed: f32) {
@@ -2624,10 +2824,6 @@ impl StartupState {
     /// The cursors are provided by the runtime, since they track event delivery.
     pub fn create_checkpoint(
         &self,
-        plan_cursor: usize,
-        exec_cursor: usize,
-        review_cursor: usize,
-        fix_cursor: usize,
         acp_cursor: usize,
         working_dir: PathBuf,
     ) -> SessionCheckpoint {
@@ -2657,11 +2853,13 @@ impl StartupState {
             fix_events: self.fix_events.clone(),
             fix_full_text: self.fix_full_text.clone(),
             // Cursors
-            plan_cursor,
-            exec_cursor,
-            review_cursor,
-            fix_cursor,
+            plan_cursor: 0,
+            exec_cursor: 0,
+            review_cursor: 0,
+            fix_cursor: 0,
             acp_cursor,
+            acp_events: self.acp_events.clone(),
+            acp_tool_counter: self.acp_tool_counter,
             // State
             lines: self.lines.clone(),
             plan_path: self.plan_path.clone(),
@@ -2694,6 +2892,7 @@ impl StartupState {
             claude_session_id: cp.claude_session_id,
             claude_events: cp.claude_events,
             claude_full_text: cp.claude_full_text,
+            acp_events: cp.acp_events,
             plan_path: cp.plan_path,
             exec_receiver: None,
             exec_session_id: cp.exec_session_id,
@@ -2714,6 +2913,8 @@ impl StartupState {
             fix_session_id: cp.fix_session_id,
             fix_events: cp.fix_events,
             fix_full_text: cp.fix_full_text,
+            acp_pending_tools: Vec::new(),
+            acp_tool_counter: cp.acp_tool_counter,
             force_stopped: cp.force_stopped,
             force_stop_reason: cp.force_stop_reason,
             report_path: None,

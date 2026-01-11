@@ -46,6 +46,7 @@ tracing = "0.1"
 chrono = { version = "0.4", default-features = false, features = ["serde", "std"] }
 regex = "1.12.2"
 futures-util = "0.3"
+agent-client-protocol-schema = { version = "0.10" }
 
 # Tokio (feature-gated for native)
 tokio = { version = "1", features = ["macros", "sync"] }

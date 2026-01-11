@@ -2,9 +2,11 @@ use std::path::PathBuf;
 use std::time::Instant;
 
 use autopilot::{
-    ClaudeEvent, ClaudeModel, ClaudeUsageData, LogLine, LogStatus, SessionCheckpoint, StartupPhase,
-    StartupSection, StartupState,
+    ClaudeModel, ClaudeUsageData, LogLine, LogStatus, SessionCheckpoint, StartupPhase,
+    StartupSection, StartupState, ACP_PHASE_META_KEY, ACP_TOOL_NAME_META_KEY,
+    ACP_TOOL_PROGRESS_META_KEY,
 };
+use agent_client_protocol_schema as acp;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -70,10 +72,6 @@ pub struct RuntimeSnapshot {
 pub struct AutopilotRuntime {
     started_at: Instant,
     state: StartupState,
-    plan_cursor: usize,
-    exec_cursor: usize,
-    review_cursor: usize,
-    fix_cursor: usize,
     acp_cursor: usize,
 }
 
@@ -82,10 +80,6 @@ impl AutopilotRuntime {
         Self {
             started_at: Instant::now(),
             state: StartupState::with_model(model),
-            plan_cursor: 0,
-            exec_cursor: 0,
-            review_cursor: 0,
-            fix_cursor: 0,
             acp_cursor: 0,
         }
     }
@@ -95,10 +89,6 @@ impl AutopilotRuntime {
         Self {
             started_at: Instant::now(),
             state: StartupState::new_idle(model),
-            plan_cursor: 0,
-            exec_cursor: 0,
-            review_cursor: 0,
-            fix_cursor: 0,
             acp_cursor: 0,
         }
     }
@@ -110,30 +100,7 @@ impl AutopilotRuntime {
 
     pub fn snapshot(&mut self) -> RuntimeSnapshot {
         let mut events = Vec::new();
-        Self::append_events(
-            &self.state.claude_events,
-            SessionPhase::Plan,
-            &mut self.plan_cursor,
-            &mut events,
-        );
-        Self::append_events(
-            &self.state.exec_events,
-            SessionPhase::Execute,
-            &mut self.exec_cursor,
-            &mut events,
-        );
-        Self::append_events(
-            &self.state.review_events,
-            SessionPhase::Review,
-            &mut self.review_cursor,
-            &mut events,
-        );
-        Self::append_events(
-            &self.state.fix_events,
-            SessionPhase::Fix,
-            &mut self.fix_cursor,
-            &mut events,
-        );
+        Self::append_acp_events(&self.state.acp_events, &mut self.acp_cursor, &mut events);
 
         // Build sections from log lines for collapsible UI
         let sections = Self::build_sections(&self.state.lines);
@@ -210,10 +177,6 @@ impl AutopilotRuntime {
     /// Save a checkpoint of the current runtime state.
     pub fn save_checkpoint(&self, working_dir: PathBuf) -> Result<PathBuf, std::io::Error> {
         let checkpoint = self.state.create_checkpoint(
-            self.plan_cursor,
-            self.exec_cursor,
-            self.review_cursor,
-            self.fix_cursor,
             self.acp_cursor,
             working_dir,
         );
@@ -222,19 +185,11 @@ impl AutopilotRuntime {
 
     /// Create a runtime from a saved checkpoint.
     pub fn from_checkpoint(cp: SessionCheckpoint) -> Self {
-        let plan_cursor = cp.plan_cursor;
-        let exec_cursor = cp.exec_cursor;
-        let review_cursor = cp.review_cursor;
-        let fix_cursor = cp.fix_cursor;
         let acp_cursor = cp.acp_cursor;
 
         Self {
             started_at: Instant::now(),
             state: StartupState::from_checkpoint(cp),
-            plan_cursor,
-            exec_cursor,
-            review_cursor,
-            fix_cursor,
             acp_cursor,
         }
     }
@@ -269,10 +224,6 @@ impl AutopilotRuntime {
     pub fn reset(&mut self, model: ClaudeModel) {
         self.started_at = Instant::now();
         self.state = StartupState::with_model(model);
-        self.plan_cursor = 0;
-        self.exec_cursor = 0;
-        self.review_cursor = 0;
-        self.fix_cursor = 0;
         self.acp_cursor = 0;
     }
 
@@ -280,10 +231,6 @@ impl AutopilotRuntime {
     pub fn reset_to_idle(&mut self, model: ClaudeModel) {
         self.started_at = Instant::now();
         self.state = StartupState::new_idle(model);
-        self.plan_cursor = 0;
-        self.exec_cursor = 0;
-        self.review_cursor = 0;
-        self.fix_cursor = 0;
         self.acp_cursor = 0;
     }
 
@@ -314,9 +261,8 @@ impl AutopilotRuntime {
         self.state.user_prompt.as_deref()
     }
 
-    fn append_events(
-        source: &[ClaudeEvent],
-        phase: SessionPhase,
+    fn append_acp_events(
+        source: &[acp::SessionNotification],
         cursor: &mut usize,
         out: &mut Vec<SessionEvent>,
     ) {
@@ -325,37 +271,148 @@ impl AutopilotRuntime {
         }
 
         for event in &source[*cursor..] {
-            match event {
-                ClaudeEvent::Text(content) => out.push(SessionEvent::Text {
+            if let Some(mapped) = Self::acp_notification_to_session_event(event) {
+                out.push(mapped);
+            }
+        }
+
+        *cursor = source.len();
+    }
+
+    fn acp_notification_to_session_event(
+        notification: &acp::SessionNotification,
+    ) -> Option<SessionEvent> {
+        match &notification.update {
+            acp::SessionUpdate::AgentMessageChunk(chunk) => {
+                let (phase, text) = Self::extract_phase_and_text(&chunk.content)?;
+                Some(SessionEvent::Text { phase, content: text })
+            }
+            acp::SessionUpdate::AgentThoughtChunk(chunk) => {
+                let (phase, text) = Self::extract_phase_and_text(&chunk.content)?;
+                Some(SessionEvent::Text { phase, content: text })
+            }
+            acp::SessionUpdate::ToolCall(call) => {
+                let phase = Self::extract_phase_from_meta(call.meta.as_ref())?;
+                let params = call
+                    .raw_input
+                    .as_ref()
+                    .map(|input| input.to_string())
+                    .unwrap_or_default();
+                Some(SessionEvent::Tool {
                     phase,
-                    content: content.clone(),
-                }),
-                ClaudeEvent::Tool {
+                    name: call.title.clone(),
+                    params,
+                    done: false,
+                    output: None,
+                    is_error: false,
+                })
+            }
+            acp::SessionUpdate::ToolCallUpdate(update) => {
+                if let Some(meta) = update.meta.as_ref() {
+                    if let Some(progress) = meta.get(ACP_TOOL_PROGRESS_META_KEY) {
+                        if let Some(elapsed_secs) = progress.as_f64() {
+                            let tool_name = meta
+                                .get(ACP_TOOL_NAME_META_KEY)
+                                .and_then(|name| name.as_str())
+                                .unwrap_or("tool")
+                                .to_string();
+                            let phase = Self::extract_phase_from_meta(Some(meta))?;
+                            return Some(SessionEvent::ToolProgress {
+                                phase,
+                                tool_name,
+                                elapsed_secs,
+                            });
+                        }
+                    }
+                }
+
+                let phase = Self::extract_phase_from_meta(update.meta.as_ref())?;
+                let status = update
+                    .fields
+                    .status
+                    .unwrap_or(acp::ToolCallStatus::InProgress);
+                let done = matches!(
+                    status,
+                    acp::ToolCallStatus::Completed | acp::ToolCallStatus::Failed
+                );
+                let is_error = matches!(status, acp::ToolCallStatus::Failed);
+                let output = update
+                    .fields
+                    .raw_output
+                    .as_ref()
+                    .and_then(Self::format_tool_output);
+                let name = update
+                    .meta
+                    .as_ref()
+                    .and_then(|meta| meta.get(ACP_TOOL_NAME_META_KEY))
+                    .and_then(|value| value.as_str())
+                    .map(|name| name.to_string())
+                    .unwrap_or_else(|| update.tool_call_id.to_string());
+                let params = update
+                    .fields
+                    .raw_input
+                    .as_ref()
+                    .map(|input| input.to_string())
+                    .unwrap_or_default();
+                Some(SessionEvent::Tool {
+                    phase,
                     name,
                     params,
                     done,
                     output,
                     is_error,
-                } => out.push(SessionEvent::Tool {
-                    phase,
-                    name: name.clone(),
-                    params: params.clone(),
-                    done: *done,
-                    output: output.clone(),
-                    is_error: *is_error,
-                }),
-                ClaudeEvent::ToolProgress {
-                    tool_name,
-                    elapsed_secs,
-                } => out.push(SessionEvent::ToolProgress {
-                    phase,
-                    tool_name: tool_name.clone(),
-                    elapsed_secs: *elapsed_secs,
-                }),
+                })
+            }
+            _ => None,
+        }
+    }
+
+    fn extract_phase_and_text(content: &acp::ContentBlock) -> Option<(SessionPhase, String)> {
+        let phase = match content {
+            acp::ContentBlock::Text(text) => Self::extract_phase_from_meta(text.meta.as_ref())?,
+            _ => return None,
+        };
+        let text = match content {
+            acp::ContentBlock::Text(text) => text.text.clone(),
+            _ => return None,
+        };
+        Some((phase, text))
+    }
+
+    fn extract_phase_from_meta(meta: Option<&acp::Meta>) -> Option<SessionPhase> {
+        let phase = meta?
+            .get(ACP_PHASE_META_KEY)
+            .and_then(|value| value.as_str())?;
+        match phase {
+            "plan" => Some(SessionPhase::Plan),
+            "exec" => Some(SessionPhase::Execute),
+            "review" => Some(SessionPhase::Review),
+            "fix" => Some(SessionPhase::Fix),
+            _ => None,
+        }
+    }
+
+    fn format_tool_output(value: &serde_json::Value) -> Option<String> {
+        if let Some(content) = value.get("content").and_then(|v| v.as_str()) {
+            return Some(content.to_string());
+        }
+        if let Some(error) = value.get("error").and_then(|v| v.as_str()) {
+            return Some(format!("Error: {}", error));
+        }
+        let stdout = value.get("stdout").and_then(|v| v.as_str()).unwrap_or("");
+        let stderr = value.get("stderr").and_then(|v| v.as_str()).unwrap_or("");
+        if !stdout.is_empty() || !stderr.is_empty() {
+            if !stdout.is_empty() && !stderr.is_empty() {
+                return Some(format!("{}\n\nstderr:\n{}", stdout, stderr));
+            }
+            if !stdout.is_empty() {
+                return Some(stdout.to_string());
+            }
+            if !stderr.is_empty() {
+                return Some(stderr.to_string());
             }
         }
-
-        *cursor = source.len();
+        Some(value.to_string())
     }
 }
 

@@ -476,6 +476,7 @@ impl Adjutant {
         &mut self,
         task: &Task,
         token_tx: mpsc::UnboundedSender<String>,
+        acp_sender: Option<crate::autopilot_loop::AcpEventSender>,
     ) -> Result<TaskResult, AdjutantError> {
         tracing::info!("Adjutant streaming task: {}", task.title);
 
@@ -489,7 +490,9 @@ impl Adjutant {
             // Use local LlamaCpp/GPT-OSS with streaming
             Some(dspy::lm_config::LmProvider::LlamaCpp) => {
                 tracing::info!("Streaming with local llama.cpp/GPT-OSS");
-                return self.stream_with_local_lm(task, &plan, token_tx).await;
+                return self
+                    .stream_with_local_lm(task, &plan, token_tx, acp_sender)
+                    .await;
             }
             // For other providers, fall back to non-streaming
             _ => {
@@ -510,11 +513,13 @@ impl Adjutant {
         task: &Task,
         plan: &TaskPlan,
         token_tx: mpsc::UnboundedSender<String>,
+        acp_sender: Option<crate::autopilot_loop::AcpEventSender>,
     ) -> Result<TaskResult, AdjutantError> {
         use gpt_oss::{
             GptOssClient, GptOssResponsesRequest, GptOssToolDefinition, GptOssToolFunction,
             GptOssToolChoice,
         };
+        use agent_client_protocol_schema as acp;
         use std::path::Path;
 
         // Build initial context from relevant files
@@ -675,6 +680,15 @@ impl Adjutant {
             },
         ];
 
+        fn tool_kind_for_name(name: &str) -> acp::ToolKind {
+            match name {
+                "read_file" | "glob" | "grep" => acp::ToolKind::Read,
+                "edit_file" | "write_file" => acp::ToolKind::Edit,
+                "bash" => acp::ToolKind::Execute,
+                _ => acp::ToolKind::Other,
+            }
+        }
+
         // Build initial prompt
         let system_prompt = format!(
             "You are an AI coding assistant with access to tools. Use the tools to complete the task.\n\n\
@@ -739,6 +753,7 @@ impl Adjutant {
         let mut task_completed = false;
         let mut task_success = false;
         let mut iteration = 0;
+        let mut tool_call_counter = 0_u64;
         const MAX_TOOL_ITERATIONS: usize = 20;
 
         // Tool calling loop
@@ -787,6 +802,29 @@ impl Adjutant {
             for tool_call in tool_calls {
                 let tool_name = &tool_call.name;
                 let args = &tool_call.arguments;
+                let tool_call_id = if let Some(id) = tool_call.id.clone() {
+                    acp::ToolCallId::new(id)
+                } else {
+                    tool_call_counter = tool_call_counter.saturating_add(1);
+                    acp::ToolCallId::new(format!("local-tool-{}", tool_call_counter))
+                };
+                let tool_kind = tool_kind_for_name(tool_name);
+                let raw_input = serde_json::from_str(&args.to_string())
+                    .unwrap_or_else(|_| serde_json::Value::String(args.to_string()));
+
+                if let Some(sender) = &acp_sender {
+                    let mut meta = acp::Meta::new();
+                    meta.insert(
+                        crate::autopilot_loop::SESSION_ID_META_KEY.to_string(),
+                        serde_json::Value::String(sender.session_id.to_string()),
+                    );
+                    let tool_event = acp::ToolCall::new(tool_call_id.clone(), tool_name)
+                        .kind(tool_kind)
+                        .status(acp::ToolCallStatus::InProgress)
+                        .raw_input(raw_input.clone())
+                        .meta(meta);
+                    sender.send_update(acp::SessionUpdate::ToolCall(tool_event));
+                }
 
                 let _ = token_tx.send(format!("\n**[Tool: {}]**\n", tool_name));
 
@@ -852,6 +890,36 @@ impl Adjutant {
                 } else {
                     tool_result.content.clone()
                 };
+
+                if let Some(sender) = &acp_sender {
+                    let mut fields = acp::ToolCallUpdateFields::new();
+                    let status = if tool_result.success {
+                        acp::ToolCallStatus::Completed
+                    } else {
+                        acp::ToolCallStatus::Failed
+                    };
+                    let raw_output = if tool_result.success {
+                        serde_json::json!({
+                            "content": tool_result.content.clone(),
+                            "success": true
+                        })
+                    } else {
+                        serde_json::json!({
+                            "error": tool_result.error.clone().unwrap_or_default(),
+                            "stdout": tool_result.content.clone(),
+                            "success": false
+                        })
+                    };
+                    fields = fields.status(status).raw_output(raw_output);
+                    let mut meta = acp::Meta::new();
+                    meta.insert(
+                        crate::autopilot_loop::SESSION_ID_META_KEY.to_string(),
+                        serde_json::Value::String(sender.session_id.to_string()),
+                    );
+                    let update =
+                        acp::ToolCallUpdate::new(tool_call_id.clone(), fields).meta(meta);
+                    sender.send_update(acp::SessionUpdate::ToolCallUpdate(update));
+                }
 
                 if tool_result.success {
                     let _ = token_tx.send(format!("Result: {}\n", result_preview));

@@ -10,13 +10,14 @@ use std::path::PathBuf;
 
 use chrono::{DateTime, Local};
 use serde::{Deserialize, Serialize};
+use agent_client_protocol_schema as acp;
 
 use crate::claude::ClaudeEvent;
 use crate::startup::{ClaudeModel, LogLine, StartupPhase};
 use crate::verification::TerminationChecklist;
 
 /// Current checkpoint format version.
-pub const CHECKPOINT_VERSION: u32 = 2;
+pub const CHECKPOINT_VERSION: u32 = 3;
 
 /// Session checkpoint for resume functionality.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -96,6 +97,14 @@ pub struct SessionCheckpoint {
     /// Cursor for ACP events (unified stream).
     #[serde(default)]
     pub acp_cursor: usize,
+
+    /// Unified ACP event buffer.
+    #[serde(default)]
+    pub acp_events: Vec<acp::SessionNotification>,
+
+    /// ACP tool id counter.
+    #[serde(default)]
+    pub acp_tool_counter: u64,
 
     /// All log lines.
     pub lines: Vec<LogLine>,
