@@ -959,3 +959,4 @@ pub enum SettingsTab {
 - 2026-01-11 07:41 UTC - Filtered non-actionable DSPy todo steps, deduped redundant summary tasks, and added orchestration tests.
 - 2026-01-11 07:47 UTC - Ensured DSPy todo steps carry original task context to reduce drift during multi-step CLI runs.
 - 2026-01-11 07:50 UTC - Normalized numbered DSPy steps for filtering/dedupe and revalidated CLI runs (autopilot-cli OK; autopilot README summary).
+- 2026-01-11 07:54 UTC - Validated `cargo autopilot` CLI path with Claude OK response plus Codex create + Claude delete roundtrip.
