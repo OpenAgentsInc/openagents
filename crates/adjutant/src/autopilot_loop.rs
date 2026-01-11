@@ -21,6 +21,8 @@ use crate::dspy::{SessionOutcome, SessionStore, SelfImprover, VerificationRecord
 use crate::dspy_orchestrator::DspyOrchestrator;
 use crate::{Adjutant, Task, TaskResult};
 use agent_client_protocol_schema as acp;
+use dsrs::callbacks::DspyCallback;
+use uuid::Uuid;
 use chrono::Local;
 use serde::{Deserialize, Serialize};
 use std::io::Write;
@@ -189,6 +191,10 @@ pub trait AutopilotOutput: Send {
     fn emit_stage(&self, stage: DspyStage);
     /// Returns a sender for ACP session notifications if available.
     fn acp_sender(&self) -> Option<AcpEventSender> {
+        None
+    }
+    /// Returns a DspyCallback reference for streaming tokens during DSPy pipeline execution.
+    fn dspy_callback(&self) -> Option<&dyn DspyCallback> {
         None
     }
 }
@@ -660,6 +666,27 @@ impl AutopilotOutput for AcpChannelOutput {
             tx: self.tx.clone(),
         })
     }
+
+    fn dspy_callback(&self) -> Option<&dyn DspyCallback> {
+        Some(self)
+    }
+}
+
+/// DspyCallback implementation for AcpChannelOutput.
+/// This enables streaming tokens from DSPy pipelines to the UI.
+impl DspyCallback for AcpChannelOutput {
+    fn on_lm_stream_start(&self, call_id: Uuid, model: &str) {
+        tracing::debug!("DSPy LM stream started: {} ({})", call_id, model);
+    }
+
+    fn on_lm_token(&self, _call_id: Uuid, token: &str) {
+        // Stream the token to the UI via the token_tx channel
+        let _ = self.token_tx.send(token.to_string());
+    }
+
+    fn on_lm_stream_end(&self, call_id: Uuid) {
+        tracing::debug!("DSPy LM stream ended: {}", call_id);
+    }
 }
 
 /// Autonomous autopilot loop runner.
@@ -755,8 +782,9 @@ impl<O: AutopilotOutput> AutopilotLoop<O> {
         };
 
         // Run DSPy planning pipeline to get implementation steps
+        let callback = self.output.dspy_callback();
         let dspy_plan = match orchestrator
-            .create_plan(&self.original_task, &plan, &self.output)
+            .create_plan_with_callback(&self.original_task, &plan, &self.output, callback)
             .await
         {
             Ok(p) => p,

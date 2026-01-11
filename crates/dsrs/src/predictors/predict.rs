@@ -3,6 +3,7 @@ use rig::tool::ToolDyn;
 use std::sync::Arc;
 use uuid::Uuid;
 
+use crate::callbacks::DspyCallback;
 use crate::core::{MetaSignature, Optimizable, get_callback};
 use crate::{ChatAdapter, Example, GLOBAL_SETTINGS, LM, Prediction, adapter::Adapter};
 
@@ -111,12 +112,21 @@ impl super::Predictor for Predict {
         inputs: Example,
         lm: Arc<LM>,
     ) -> anyhow::Result<Prediction> {
+        self.forward_with_streaming(inputs, lm, None).await
+    }
+
+    async fn forward_with_streaming(
+        &self,
+        inputs: Example,
+        lm: Arc<LM>,
+        callback: Option<&dyn DspyCallback>,
+    ) -> anyhow::Result<Prediction> {
         // Generate unique call ID for callbacks
         let call_id = Uuid::new_v4();
-        let callback = get_callback();
+        let global_callback = get_callback();
 
         // Emit module start callback
-        callback.on_module_start(call_id, "Predict", &inputs);
+        global_callback.on_module_start(call_id, "Predict", &inputs);
 
         let trace_node_id = if crate::trace::is_tracing() {
             let input_id = if let Some(id) = inputs.node_id {
@@ -143,7 +153,7 @@ impl super::Predictor for Predict {
         };
 
         let result = ChatAdapter
-            .call(lm, self.signature.as_ref(), inputs, self.tools.clone())
+            .call_streaming(lm, self.signature.as_ref(), inputs, self.tools.clone(), callback)
             .await;
 
         // Handle result and emit callbacks
@@ -155,13 +165,13 @@ impl super::Predictor for Predict {
                 }
 
                 // Emit module end callback (success)
-                callback.on_module_end(call_id, Ok(&prediction));
+                global_callback.on_module_end(call_id, Ok(&prediction));
 
                 Ok(prediction)
             }
             Err(e) => {
                 // Emit module end callback (error)
-                callback.on_module_end(call_id, Err(&e));
+                global_callback.on_module_end(call_id, Err(&e));
                 Err(e)
             }
         }

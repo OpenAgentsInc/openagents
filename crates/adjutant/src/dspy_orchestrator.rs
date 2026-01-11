@@ -13,6 +13,7 @@ use crate::autopilot_loop::{AutopilotOutput, DspyStage, TodoStatus, TodoTask};
 use crate::{Task, TaskPlan, ToolRegistry};
 use anyhow::Result;
 use autopilot_core::{PlanningInput, PlanningPipeline, PlanningResult};
+use dsrs::callbacks::DspyCallback;
 use dsrs::LM;
 use oanix::OanixManifest;
 use std::sync::Arc;
@@ -156,6 +157,20 @@ impl DspyOrchestrator {
         plan: &TaskPlan,
         output: &O,
     ) -> Result<PlanningResult> {
+        self.create_plan_with_callback(task, plan, output, None).await
+    }
+
+    /// Stage 2: Planning with streaming callback.
+    ///
+    /// Creates a structured implementation plan using the PlanningPipeline.
+    /// Emits the plan to the UI and streams tokens via callback.
+    pub async fn create_plan_with_callback<O: AutopilotOutput>(
+        &self,
+        task: &Task,
+        plan: &TaskPlan,
+        output: &O,
+        callback: Option<&dyn DspyCallback>,
+    ) -> Result<PlanningResult> {
         // Build repository summary
         let repo_summary = self.get_repo_summary();
 
@@ -181,7 +196,7 @@ impl DspyOrchestrator {
             PlanningPipeline::new()
         };
 
-        let result = pipeline.plan(&input).await?;
+        let result = pipeline.plan_with_callback(&input, callback).await?;
 
         // Emit planning stage to UI
         output.emit_stage(DspyStage::Planning {
