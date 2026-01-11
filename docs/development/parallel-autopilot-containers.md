@@ -161,24 +161,10 @@ N=$(( OPEN_ISSUES < MAX_AGENTS ? OPEN_ISSUES : MAX_AGENTS ))
 scripts/parallel-autopilot.sh start $N
 ```
 
-## GUI Control
+## GUI Control (v0.1)
 
-The autopilot-gui provides a visual interface for managing parallel agents:
-
-1. Launch GUI: `cargo run -p autopilot-gui`
-2. Navigate to "Parallel Agents" tab
-3. Use Start/Stop buttons to control agents
-4. View real-time status and logs per agent
-
-### HTTP API
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/parallel` | GET | Parallel agents page (HTML) |
-| `/api/parallel/start` | POST | Start N agents, body: `{count: 3}` |
-| `/api/parallel/stop` | POST | Stop all running agents |
-| `/api/parallel/status` | GET | JSON status of all agents |
-| `/api/parallel/logs/:id` | GET | SSE stream of container logs |
+Autopilot v0.1 does not ship a GUI or HTTP API for parallel orchestration.
+Use `scripts/parallel-autopilot.sh` for management.
 
 ## Troubleshooting
 
@@ -223,9 +209,6 @@ This shouldn't happen due to atomic claims. If it does:
 | `docker/autopilot/Dockerfile` | Container image definition |
 | `docker/autopilot/docker-compose.yml` | Container orchestration |
 | `scripts/parallel-autopilot.sh` | CLI wrapper script |
-| `crates/autopilot-core/src/parallel/` | Rust orchestration library |
-| `crates/autopilot-gui/src/views/parallel.rs` | GUI view |
-| `crates/autopilot-gui/src/server/parallel.rs` | HTTP API |
 
 ## Related
 
