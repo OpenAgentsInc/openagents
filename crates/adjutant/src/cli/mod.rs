@@ -15,7 +15,7 @@ use clap::{Parser, Subcommand};
 
 /// Autopilot CLI - AI-powered coding assistant
 #[derive(Parser)]
-#[command(name = "autopilot-cli")]
+#[command(name = "autopilot")]
 #[command(about = "AI-powered coding assistant that works on your issues")]
 pub struct AutopilotCli {
     #[command(subcommand)]
