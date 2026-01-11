@@ -948,3 +948,4 @@ pub enum SettingsTab {
 - 2026-01-10 22:34 UTC - Added Pylon jobs pane with status counts, pricing totals, keybinding, and commands.
 - 2026-01-10 - Implemented multi-backend support (Claude/Codex): agent abstraction layer with AgentBackend/AgentSession traits, `/backend` toggle command, and full Codex integration via codex-agent-sdk with event mapping to ResponseEvent.
 - 2026-01-10 23:02 UTC - Added agent backends pane with CLI availability, model selection, keybinding, and commands.
+- 2026-01-11 06:01 UTC - Wired Autopilot CLI to use ACP streaming + DSPy loop for tasks/issues, added Codex executor support, and backend selection flags/env wiring.

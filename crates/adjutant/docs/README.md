@@ -7,7 +7,8 @@ The agent that DOES THE WORK. Named after StarCraft's command & control AI.
 Adjutant is the core execution engine for autonomous coding tasks. It:
 - Analyzes tasks to determine complexity and relevant files
 - Uses tools directly (Read, Edit, Bash, Glob, Grep)
-- Employs tiered inference for cost-effective execution
+- Supports Claude + Codex CLI backends for agentic execution
+- Employs tiered inference for cost-effective fallback
 - Delegates to Claude Code for highly complex tasks
 
 ## Architecture
@@ -28,8 +29,8 @@ Adjutant is the core execution engine for autonomous coding tasks. It:
 ┌─────────────────────────────────────────────────────────────┐
 │                       ADJUTANT                              │
 │  The actual agent that DOES THE WORK                        │
-│  - Prioritizes Claude (Pro/Max) via claude-agent-sdk        │
-│  - Falls back to Cerebras TieredExecutor                    │
+│  - Prioritizes Claude/Codex via agent SDKs                  │
+│  - Falls back to local LLM or Cerebras TieredExecutor       │
 │  - Uses tools directly (Read, Edit, Bash, Glob, Grep)       │
 │  - Uses RLM for large context analysis                      │
 │  - Delegates to Claude Code for very complex work           │
@@ -47,6 +48,9 @@ cargo autopilot run "Add error handling to auth.rs"
 
 # Full environment scan (slower)
 cargo autopilot run "Add error handling to auth.rs" --full-boot
+
+# Force a specific backend
+cargo autopilot run "Add error handling to auth.rs" --backend codex
 
 # Claim and work on a GitHub issue
 cargo autopilot issue claim 123
@@ -77,10 +81,11 @@ RUST_LOG=adjutant=info cargo autopilot run "Summarize README.md"
 3. **DSPy Routing Decisions**:
    - `determine_use_rlm()` - Should RLM be used? (DSPy-first with fallback)
    - `determine_delegation()` - Should task be delegated? Where? (DSPy-first with fallback)
-4. **Execution**: Runs the task using chosen strategy (priority order):
+4. **Execution**: Runs the task using chosen backend (priority order, or `--backend` override):
    - **Claude Pro/Max** (if `claude` CLI is installed) - Best quality, uses subscription
-   - **Cerebras TieredExecutor** (if CEREBRAS_API_KEY set) - Cost-effective tiered inference
-   - **Analysis-only** - Returns file analysis without making changes
+   - **Codex CLI** (if `codex` CLI is installed) - OpenAI agent execution
+   - **Local LLM** (llama.cpp/GPT-OSS) - Tool-calling loop on your machine
+   - **TieredExecutor / analysis-only** - Cost-effective or fallback execution
 5. **Synthesis**: Summarizes results, optionally commits changes
 6. **Training Collection**: Records high-confidence DSPy decisions for optimization
 
@@ -97,9 +102,11 @@ RUST_LOG=adjutant=info cargo autopilot run "Summarize README.md"
 │  3. determine_use_rlm() [DSPy-first]                        │
 │     └── RLM for large context analysis?                     │
 │                                                              │
-│  4. LM Provider Selection                                   │
-│     ├── LlamaCpp → execute_with_local_lm()                  │
-│     └── ClaudeSdk → ClaudeExecutor (with optional RLM)      │
+│  4. Execution Backend Selection                              │
+│     ├── Claude → ClaudeExecutor (with optional RLM)         │
+│     ├── Codex → CodexExecutor                                │
+│     ├── LocalLlm → GPT-OSS tool loop                         │
+│     └── fallback → delegation / tool executor                │
 │                                                              │
 │  5. determine_delegation() [DSPy-first]                     │
 │     ├── claude_code → delegate_to_claude_code()             │
@@ -122,11 +129,15 @@ RUST_LOG=adjutant=info cargo autopilot run "Summarize README.md"
 │           │                         (Pro/Max subscription)   │
 │           NO                                                 │
 │           ▼                                                  │
-│  2. CEREBRAS_API_KEY set? ──YES──►  TieredExecutor          │
-│           │                         (GLM 4.7 + Qwen-3-32B)   │
+│  2. Codex CLI detected?   ──YES──►  CodexExecutor           │
+│           │                         (OpenAI agent)           │
 │           NO                                                 │
 │           ▼                                                  │
-│  3. Fall back to analysis-only mode                         │
+│  3. Local LLM online?     ──YES──►  GPT-OSS tool loop        │
+│           │                         (llama.cpp/gpt-oss)      │
+│           NO                                                 │
+│           ▼                                                  │
+│  4. Fall back to TieredExecutor / analysis-only             │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -260,7 +271,21 @@ Install the Claude CLI to use your existing Claude subscription:
 claude auth login
 ```
 
-**Priority 2: Cerebras API**
+**Priority 2: Codex CLI**
+
+Install Codex for OpenAI-backed agent execution:
+```bash
+npm install -g @openai/codex
+```
+
+**Priority 3: Local LLM (llama.cpp/GPT-OSS)**
+
+Run a local server (default port 8080 or 8000):
+```bash
+llama-server --port 8080
+```
+
+**Priority 4: Cerebras API**
 
 Set the API key for tiered inference:
 ```bash
@@ -275,10 +300,11 @@ export CEREBRAS_API_KEY="csk-your-key-here"
 | `PYLON_MNEMONIC` | No | BIP-39 mnemonic for Pylon Swarm inference |
 | `ADJUTANT_ENABLE_RLM` | No | Enable RLM tools in Claude sessions (1/true) |
 | `RLM_BACKEND` | No | RLM backend selection (claude) |
+| `AUTOPILOT_BACKEND` | No | Override backend selection (auto/claude/codex/local-llm/local-tools) |
 
 ### LM Provider Priority
 
-Adjutant auto-detects available LM providers in this priority order:
+Adjutant auto-detects available DSPy LM providers in this priority order:
 
 | Priority | Provider | Requirements | Use Case |
 |----------|----------|--------------|----------|
@@ -331,11 +357,12 @@ crates/adjutant/
 │   ├── planner.rs       # Task analysis and planning
 │   ├── executor.rs      # Task execution coordination
 │   ├── claude_executor.rs # Claude Pro/Max execution via SDK
+│   ├── codex_executor.rs # Codex execution via SDK
 │   ├── rlm_agent.rs     # RLM custom agent definition
 │   ├── tiered.rs        # TieredExecutor (Gateway + DSPy modes)
 │   ├── delegate.rs      # Claude Code and RLM delegation
 │   ├── tools.rs         # Tool registry (Read, Edit, Bash, etc.)
-│   ├── auth.rs          # Claude CLI detection
+│   ├── auth.rs          # Claude/Codex CLI detection
 │   ├── autopilot_loop.rs # Autonomous loop with session tracking
 │   ├── cli/             # CLI commands
 │   │   ├── mod.rs            # Command routing

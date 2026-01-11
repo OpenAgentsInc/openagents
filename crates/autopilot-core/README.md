@@ -73,6 +73,9 @@ Configuration is stored in `~/.openagents/folders/<path-hash>/` (not committed t
 # Run Autopilot with a prompt
 autopilot run "Implement user authentication"
 
+# Force a backend (auto/claude/codex/local-llm/local-tools)
+autopilot run "Implement user authentication" --backend codex
+
 # Check status
 autopilot status
 
@@ -89,6 +92,7 @@ autopilot issue claim <id>
 |----------|-------------|
 | `ANTHROPIC_API_KEY` | Claude API key (required for cloud mode) |
 | `OPENAGENTS_CONFIG` | Custom config directory path |
+| `AUTOPILOT_BACKEND` | Override backend selection for CLI runs |
 
 ### Config File
 
@@ -103,6 +107,8 @@ model = "claude-sonnet-4-5-20250929"
 max_turns = 50
 max_budget_usd = 10.0
 ```
+
+CLI runs can override the backend using `--backend` or `AUTOPILOT_BACKEND`.
 
 ## Related Crates
 
