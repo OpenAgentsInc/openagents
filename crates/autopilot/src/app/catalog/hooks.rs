@@ -49,7 +49,6 @@ pub(crate) struct HookScriptCatalog {
     pub(crate) user_path: Option<PathBuf>,
 }
 
-#[derive(Clone)]
 fn hook_project_dir(cwd: &Path) -> PathBuf {
     cwd.join(".openagents").join("hooks")
 }

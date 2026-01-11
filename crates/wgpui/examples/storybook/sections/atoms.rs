@@ -18,7 +18,7 @@ use wgpui::components::molecules::{DiffHeader, DiffType, MessageHeader, ToolHead
 use wgpui::components::organisms::{
     SearchToolCall, TerminalToolCall, ThreadEntry, ThreadEntryType, ToolCallCard, UserMessage,
 };
-use wgpui::{Bounds, InputEvent, Key, MouseButton, PaintContext, Point, Text, theme};
+use wgpui::{Bounds, Component, InputEvent, Key, MouseButton, PaintContext, Point, Text, theme};
 
 use crate::constants::{GAP, SECTION_GAP};
 use crate::helpers::{center_bounds, component_event, draw_panel, panel_height, panel_inner};

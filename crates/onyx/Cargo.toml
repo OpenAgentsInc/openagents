@@ -6,9 +6,16 @@ authors.workspace = true
 license.workspace = true
 description = "Local-first Markdown note editor with live inline formatting"
 
+[lib]
+name = "onyx"
+path = "src/lib.rs"
+test = false
+doctest = false
+
 [[bin]]
 name = "onyx"
 path = "src/main.rs"
+test = false
 
 [dependencies]
 # OpenAgents crates

@@ -13,14 +13,14 @@ use wgpui::components::atoms::{
     TrustTier,
 };
 use wgpui::components::molecules::{
-    BalanceCard, InvoiceDisplay, InvoiceInfo, InvoiceType, PaymentDirection, PaymentInfo,
-    PaymentRow, RelayInfo, RelayRow, WalletBalance,
+    BalanceCard, DiffType, InvoiceDisplay, InvoiceInfo, InvoiceType, PaymentDirection,
+    PaymentInfo, PaymentRow, RelayInfo, RelayRow, WalletBalance,
 };
 use wgpui::components::organisms::{
     AssistantMessage, DiffLine, DiffLineKind, DiffToolCall, SearchMatch, SearchToolCall,
     TerminalToolCall, ToolCallCard, UserMessage,
 };
-use wgpui::{Bounds, PaintContext, Point, Quad, theme};
+use wgpui::{Bounds, Component, PaintContext, Point, Quad, theme};
 
 use crate::constants::SECTION_GAP;
 use crate::helpers::{draw_panel, panel_height};

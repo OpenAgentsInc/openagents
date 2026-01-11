@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::time::Duration;
 
 use wgpui::components::hud::{DotShape, DotsGrid, DotsOrigin, DrawDirection, FrameAnimation, FrameStyle};
-use wgpui::{Animation, Bounds, Easing, Hsla, PaintContext, Point, Quad, SpringAnimation, theme};
+use wgpui::{Animation, Bounds, Component, Easing, Hsla, PaintContext, Point, Quad, SpringAnimation, theme};
 
 use crate::helpers::demo_frame;
 

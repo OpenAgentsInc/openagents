@@ -122,7 +122,7 @@ pub struct ProjectInfo {
 /// Inference provider availability
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InferenceInfo {
-    /// Cloud API providers available (Codex/Codex)
+    /// Cloud API providers available (Codex)
     pub cloud_providers: Vec<String>,
 
     /// Whether any swarm providers are configured
@@ -239,9 +239,6 @@ impl ComputeMix {
 /// Available CLI tools
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolsInfo {
-    /// Codex CLI path and version
-    pub codex: Option<ToolInfo>,
-
     /// Codex CLI path and version
     pub codex: Option<ToolInfo>,
 
@@ -426,10 +423,7 @@ impl PreflightConfig {
         // Tools
         lines.push("## Available Tools".to_string());
         if let Some(ref codex) = self.tools.codex {
-            lines.push(format!("- codex: {}", codex.path.display()));
-        }
-        if let Some(ref codex) = self.tools.codex {
-            lines.push(format!("- codex: {}", codex.path.display()));
+            lines.push(format!("- Codex CLI: {}", codex.path.display()));
         }
         if let Some(ref opencode) = self.tools.opencode {
             lines.push(format!("- opencode: {}", opencode.path.display()));
@@ -662,16 +656,11 @@ fn detect_inference() -> InferenceInfo {
     let mut cloud_providers = Vec::new();
     let mut env_vars = HashMap::new();
 
-    // Check cloud API keys (Codex/Codex)
-    let openai_key = std::env::var("OPENAI_API_KEY").is_ok();
+    // Check cloud API keys (Codex)
     let openai_key = std::env::var("OPENAI_API_KEY").is_ok();
 
     env_vars.insert("OPENAI_API_KEY".to_string(), openai_key);
-    env_vars.insert("OPENAI_API_KEY".to_string(), openai_key);
 
-    if openai_key {
-        cloud_providers.push("openai".to_string());
-    }
     if openai_key {
         cloud_providers.push("openai".to_string());
     }
@@ -692,7 +681,6 @@ fn detect_tools() -> ToolsInfo {
     debug!("Detecting CLI tools");
 
     ToolsInfo {
-        codex: detect_tool("codex"),
         codex: detect_tool("codex"),
         opencode: detect_tool("opencode"),
         git: detect_tool("git"),

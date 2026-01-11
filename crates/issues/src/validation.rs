@@ -180,7 +180,6 @@ pub fn validate_description(description: Option<&str>) -> Result<Option<String>,
 ///
 /// // Valid agents
 /// assert_eq!(validate_agent("codex"), Ok("codex".to_string()));
-/// assert_eq!(validate_agent("codex"), Ok("codex".to_string()));
 ///
 /// // Invalid agent names (error)
 /// assert_eq!(
@@ -202,7 +201,7 @@ pub fn validate_description(description: Option<&str>) -> Result<Option<String>,
 /// ```
 pub fn validate_agent(agent: &str) -> Result<String, ValidationError> {
     match agent {
-        "codex" | "codex" => Ok(agent.to_string()),
+        "codex" => Ok(agent.to_string()),
         other => Err(ValidationError::InvalidAgent(other.to_string())),
     }
 }
@@ -306,13 +305,6 @@ mod tests {
     }
 
     // Agent validation tests
-    #[test]
-    fn test_valid_agent_codex() {
-        let result = validate_agent("codex");
-        assert!(result.is_ok());
-        assert_eq!(result.unwrap(), "codex");
-    }
-
     #[test]
     fn test_valid_agent_codex() {
         let result = validate_agent("codex");

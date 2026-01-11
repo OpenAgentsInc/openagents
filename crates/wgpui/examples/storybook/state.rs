@@ -1,10 +1,9 @@
 use web_time::Instant;
 
 use wgpui::components::atoms::{Mode, Model, StreamingIndicator};
-use wgpui::components::molecules::{AssistantMessage, CheckpointRestore, ModeSelector, ModelSelector, PermissionBar, ThinkingBlock};
-use wgpui::components::organisms::PermissionDialog;
-use wgpui::components::organisms::ThreadControls;
-use wgpui::{Animation, Bounds, EventContext, Easing, Hsla, InputEvent, MouseButton, PaintContext, Point, Quad, Text, theme};
+use wgpui::components::molecules::{CheckpointRestore, ModeSelector, ModelSelector, PermissionBar, ThinkingBlock};
+use wgpui::components::organisms::{AssistantMessage, PermissionDialog, ThreadControls};
+use wgpui::{Animation, Bounds, Component, EventContext, Easing, Hsla, InputEvent, MouseButton, PaintContext, Point, Quad, Text, theme};
 
 use crate::constants::{
     GAP, HEADER_HEIGHT, MARGIN, NAV_ITEM_HEIGHT, NAV_WIDTH, PANEL_PADDING, SECTION_APM_METRICS,
@@ -34,27 +33,27 @@ pub(crate) struct StoryLayout {
 }
 
 pub(crate) struct Storybook {
-    nav_items: Vec<&'static str>,
-    active_section: usize,
-    hover_nav: Option<usize>,
-    scroll_offsets: Vec<f32>,
-    cursor_position: Point,
-    event_context: EventContext,
-    last_tick: Instant,
-    light_frame_anim: Animation<f32>,
-    glow_pulse_anim: Animation<f32>,
-    mode_selector: ModeSelector,
-    model_selector: ModelSelector,
-    permission_bar: PermissionBar,
-    thinking_block: ThinkingBlock,
-    checkpoint_restore: CheckpointRestore,
-    thread_controls: ThreadControls,
-    streaming_indicator: StreamingIndicator,
-    assistant_message: AssistantMessage,
-    permission_dialog: PermissionDialog,
-    focus_demo: FocusDemo,
-    show_permission_dialog: bool,
-    toolcall_demo: ToolcallDemo,
+    pub(crate) nav_items: Vec<&'static str>,
+    pub(crate) active_section: usize,
+    pub(crate) hover_nav: Option<usize>,
+    pub(crate) scroll_offsets: Vec<f32>,
+    pub(crate) cursor_position: Point,
+    pub(crate) event_context: EventContext,
+    pub(crate) last_tick: Instant,
+    pub(crate) light_frame_anim: Animation<f32>,
+    pub(crate) glow_pulse_anim: Animation<f32>,
+    pub(crate) mode_selector: ModeSelector,
+    pub(crate) model_selector: ModelSelector,
+    pub(crate) permission_bar: PermissionBar,
+    pub(crate) thinking_block: ThinkingBlock,
+    pub(crate) checkpoint_restore: CheckpointRestore,
+    pub(crate) thread_controls: ThreadControls,
+    pub(crate) streaming_indicator: StreamingIndicator,
+    pub(crate) assistant_message: AssistantMessage,
+    pub(crate) permission_dialog: PermissionDialog,
+    pub(crate) focus_demo: FocusDemo,
+    pub(crate) show_permission_dialog: bool,
+    pub(crate) toolcall_demo: ToolcallDemo,
 }
 
 impl Storybook {

@@ -3,7 +3,7 @@ use wgpui::components::hud::{
     CornerConfig, DrawDirection, Frame, FrameAnimation, NotificationLevel, ResizablePane, Reticle,
     Scanlines, SignalMeter, StatusBar, StatusBarPosition, StatusItem, Tooltip, TooltipPosition,
 };
-use wgpui::{Bounds, Hsla, PaintContext, Point, Quad, theme};
+use wgpui::{Bounds, Component, Hsla, PaintContext, Point, Quad, theme};
 
 use crate::constants::{
     BG_TILE_GAP, BG_TILE_H, BG_TILE_W, LIGHT_DEMO_FRAMES_INNER_H, LIGHT_DEMO_HERO_INNER_H,

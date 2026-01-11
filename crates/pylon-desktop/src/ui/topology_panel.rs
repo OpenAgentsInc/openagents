@@ -73,6 +73,7 @@ fn draw_venue_legend(
     let venues = [
         (ExecutionVenue::Local, "Local (FM)"),
         (ExecutionVenue::Swarm, "Swarm (NIP-90)"),
+        (ExecutionVenue::Codex, "Codex (Cloud)"),
         (ExecutionVenue::Datacenter, "Datacenter"),
     ];
 
