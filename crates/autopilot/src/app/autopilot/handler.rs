@@ -10,6 +10,7 @@ use tokio::sync::mpsc;
 
 use crate::autopilot_loop::{AutopilotConfig, AutopilotLoop, AutopilotResult, DspyStage};
 use crate::app::chat::MessageMetadata;
+use crate::app::config::AgentKindConfig;
 use crate::app::events::ResponseEvent;
 use crate::app::AppState;
 
@@ -20,9 +21,22 @@ pub(crate) fn submit_autopilot_prompt(
 ) {
     tracing::info!("Autopilot mode: starting autonomous loop");
 
-    // Check which LM provider will be used
-    let provider = adjutant::dspy::lm_config::detect_provider();
-    tracing::info!("Autopilot: detected LM provider: {:?}", provider);
+    // Check user's selected backend (from /backend command)
+    let selected_backend = state.agent_selection.agent;
+    let use_codex = matches!(selected_backend, AgentKindConfig::Codex);
+    tracing::info!(
+        "Autopilot: user selected backend={:?}, use_codex={}",
+        selected_backend,
+        use_codex
+    );
+
+    // Check which LM provider will be used (for logging only)
+    let provider = if use_codex {
+        adjutant::dspy::lm_config::detect_provider()
+    } else {
+        adjutant::dspy::lm_config::detect_provider_skip_codex()
+    };
+    tracing::info!("Autopilot: will use LM provider: {:?}", provider);
 
     // Create channels for receiving responses (same pattern as Claude)
     let (tx, rx) = mpsc::unbounded_channel();
@@ -116,8 +130,8 @@ pub(crate) fn submit_autopilot_prompt(
             Ok(adjutant) => {
                 tracing::info!("Autopilot: Adjutant initialized, starting autonomous loop");
 
-                // Configure dsrs global settings with detected LM provider
-                if let Err(e) = adjutant::dspy::lm_config::configure_dsrs().await {
+                // Configure dsrs global settings with user-selected backend preference
+                if let Err(e) = adjutant::dspy::lm_config::configure_dsrs_with_preference(use_codex).await {
                     tracing::error!("Autopilot: failed to configure dsrs: {}", e);
                     let _ = tx.send(ResponseEvent::Error(format!(
                         "Failed to configure LM: {}",

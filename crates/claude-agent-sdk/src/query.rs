@@ -510,6 +510,17 @@ impl Query {
         Ok(())
     }
 
+    /// Gracefully shutdown the query, ensuring process cleanup.
+    ///
+    /// This kills the CLI process and waits for it to exit, ensuring
+    /// child processes (like MCP servers) are properly cleaned up.
+    pub async fn shutdown(&self) -> Result<()> {
+        let mut transport = self.transport.lock().await;
+        transport.kill().await?;
+        transport.wait().await?;
+        Ok(())
+    }
+
     /// Change the permission mode.
     pub async fn set_permission_mode(&self, mode: PermissionMode) -> Result<()> {
         self.send_control_request(ControlRequestData::SetPermissionMode(

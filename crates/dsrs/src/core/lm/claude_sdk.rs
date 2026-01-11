@@ -2,14 +2,26 @@
 //!
 //! Uses the existing SDK which wraps Claude CLI headless mode.
 //! Priority: Best quality inference when Claude CLI is available.
+//!
+//! IMPORTANT: This implementation reuses a single CLI process across
+//! all completions to avoid memory leaks. Each `query()` call would
+//! spawn a new process, so we use the Session API instead.
 
 use anyhow::Result;
-use claude_agent_sdk::{QueryOptions, SdkMessage, SdkResultMessage, ToolsConfig, query};
+use claude_agent_sdk::{QueryOptions, SdkMessage, SdkResultMessage, ToolsConfig, Session, unstable_v2_create_session};
 use futures::StreamExt;
 use rig::OneOrMany;
 use rig::completion::{CompletionError, CompletionRequest, CompletionResponse, Usage};
 use rig::message::{AssistantContent, Text};
 use crate::callbacks::DspyCallback;
+use std::sync::OnceLock;
+use tokio::sync::Mutex;
+
+/// Global session for CLI process reuse.
+///
+/// This prevents spawning a new Claude CLI process for each completion,
+/// which would leak memory (6GB+ per process with MCP servers).
+static CLAUDE_SESSION: OnceLock<Mutex<Option<Session>>> = OnceLock::new();
 
 /// Check if Claude CLI is available.
 ///
@@ -25,6 +37,9 @@ pub fn has_claude_cli() -> bool {
 ///
 /// This provider uses Claude Code's headless mode for inference,
 /// leveraging the user's existing Claude subscription (Pro/Max).
+///
+/// IMPORTANT: This reuses a single CLI process across all completions
+/// via the Session API to avoid memory leaks.
 #[derive(Clone)]
 pub struct ClaudeSdkModel {
     /// Maximum turns for the query (1 = single completion)
@@ -51,109 +66,143 @@ impl ClaudeSdkModel {
 
     /// Execute completion with streaming callback.
     ///
-    /// Streams tokens to the callback as they arrive, then returns the final result.
+    /// Reuses a single CLI process across all completions via Session API.
     pub async fn complete_streaming(
         &self,
         prompt: &str,
         callback: Option<(&dyn DspyCallback, uuid::Uuid)>,
     ) -> Result<String, CompletionError> {
-        let options = QueryOptions::new()
-            .max_turns(self.max_turns.unwrap_or(1))
-            .tools(ToolsConfig::none()) // No tools for pure LM completion
-            .include_partial_messages(true); // Enable streaming token events
+        // Get or create the global session
+        let session_lock = CLAUDE_SESSION.get_or_init(|| Mutex::new(None));
+        let mut session_guard = session_lock.lock().await;
 
-        let mut stream = query(prompt, options)
-            .await
-            .map_err(|e| CompletionError::ProviderError(format!("Failed to start query: {}", e)))?;
+        // Create session if needed
+        if session_guard.is_none() {
+            tracing::info!("ClaudeSdk: creating persistent session (spawning CLI process)");
+            let options = QueryOptions::new()
+                .max_turns(self.max_turns.unwrap_or(1))
+                .tools(ToolsConfig::none())
+                .include_partial_messages(true);
 
-        let mut result_text = String::new();
-
-        while let Some(msg) = stream.next().await {
-            match msg {
-                Ok(SdkMessage::Result(result)) => {
-                    tracing::debug!("ClaudeSdk: received Result message");
-                    // Final result - extract the text
-                    match result {
-                        SdkResultMessage::Success(success) => {
-                            result_text = success.result;
-                        }
-                        SdkResultMessage::ErrorDuringExecution(err) => {
-                            return Err(CompletionError::ProviderError(format!(
-                                "Claude error: {}",
-                                err.errors.join(", ")
-                            )));
-                        }
-                        SdkResultMessage::ErrorMaxTurns(err) => {
-                            return Err(CompletionError::ProviderError(format!(
-                                "Max turns exceeded: {}",
-                                err.errors.join(", ")
-                            )));
-                        }
-                        SdkResultMessage::ErrorMaxBudget(err) => {
-                            return Err(CompletionError::ProviderError(format!(
-                                "Max budget exceeded: {}",
-                                err.errors.join(", ")
-                            )));
-                        }
-                        SdkResultMessage::ErrorMaxStructuredOutputRetries(err) => {
-                            return Err(CompletionError::ProviderError(format!(
-                                "Structured output retries exceeded: {}",
-                                err.errors.join(", ")
-                            )));
-                        }
-                    }
-                    break;
+            match unstable_v2_create_session(options).await {
+                Ok(session) => {
+                    *session_guard = Some(session);
                 }
-                Ok(SdkMessage::Assistant(assistant)) => {
-                    tracing::debug!("ClaudeSdk: received Assistant message");
-                    // Stream assistant messages to callback
-                    if let Some((cb, call_id)) = callback {
-                        // Extract text from assistant message
-                        if let Some(text) = extract_assistant_text(&assistant) {
-                            tracing::info!("ClaudeSdk streaming {} chars from Assistant", text.len());
-                            cb.on_lm_token(call_id, &text);
-                        }
-                    }
-                }
-                Ok(SdkMessage::StreamEvent(event)) => {
-                    // Stream events contain delta tokens
-                    let event_json = serde_json::to_string(&event.event).unwrap_or_default();
-                    if let Some((cb, call_id)) = callback {
-                        if let Some(text) = extract_stream_text(&event) {
-                            tracing::trace!("ClaudeSdk streaming delta: {} chars", text.len());
-                            cb.on_lm_token(call_id, &text);
-                        } else {
-                            // Log when we get an event but can't extract text
-                            let event_type = event.event.get("type").and_then(|t| t.as_str()).unwrap_or("unknown");
-                            tracing::trace!("ClaudeSdk: StreamEvent type={}, no text extracted: {}", event_type, event_json);
-                        }
-                    }
-                }
-                Ok(other) => {
-                    tracing::debug!("ClaudeSdk: ignoring message type: {:?}", std::mem::discriminant(&other));
-                } // Ignore other message types
                 Err(e) => {
                     return Err(CompletionError::ProviderError(format!(
-                        "Stream error: {}",
+                        "Failed to create session: {}",
                         e
                     )));
                 }
             }
         }
 
-        if result_text.is_empty() {
-            return Err(CompletionError::ProviderError(
-                "No response from Claude".into(),
-            ));
-        }
+        tracing::info!("ClaudeSdk: sending prompt to existing session");
 
-        Ok(result_text)
+        // Scope the session borrow to avoid borrow checker issues
+        let result = {
+            let session = session_guard.as_mut().unwrap();
+
+            // Send the prompt
+            if let Err(e) = session.send(prompt).await {
+                return Err(CompletionError::ProviderError(format!(
+                    "Failed to send prompt: {}",
+                    e
+                )));
+            }
+
+            // Receive response
+            let mut result_text = String::new();
+
+            while let Some(msg) = session.receive().next().await {
+                match msg {
+                    Ok(SdkMessage::Result(result)) => {
+                        tracing::debug!("ClaudeSdk: received Result message");
+                        match result {
+                            SdkResultMessage::Success(success) => {
+                                result_text = success.result;
+                            }
+                            SdkResultMessage::ErrorDuringExecution(err) => {
+                                return Err(CompletionError::ProviderError(format!(
+                                    "Claude error: {}",
+                                    err.errors.join(", ")
+                                )));
+                            }
+                            SdkResultMessage::ErrorMaxTurns(err) => {
+                                return Err(CompletionError::ProviderError(format!(
+                                    "Max turns exceeded: {}",
+                                    err.errors.join(", ")
+                                )));
+                            }
+                            SdkResultMessage::ErrorMaxBudget(err) => {
+                                return Err(CompletionError::ProviderError(format!(
+                                    "Max budget exceeded: {}",
+                                    err.errors.join(", ")
+                                )));
+                            }
+                            SdkResultMessage::ErrorMaxStructuredOutputRetries(err) => {
+                                return Err(CompletionError::ProviderError(format!(
+                                    "Structured output retries exceeded: {}",
+                                    err.errors.join(", ")
+                                )));
+                            }
+                        }
+                        break;
+                    }
+                    Ok(SdkMessage::Assistant(assistant)) => {
+                        tracing::debug!("ClaudeSdk: received Assistant message");
+                        if let Some((cb, call_id)) = callback {
+                            if let Some(text) = extract_assistant_text(&assistant) {
+                                tracing::info!(
+                                    "ClaudeSdk streaming {} chars from Assistant",
+                                    text.len()
+                                );
+                                cb.on_lm_token(call_id, &text);
+                            }
+                        }
+                    }
+                    Ok(SdkMessage::StreamEvent(event)) => {
+                        if let Some((cb, call_id)) = callback {
+                            if let Some(text) = extract_stream_text(&event) {
+                                tracing::trace!("ClaudeSdk streaming delta: {} chars", text.len());
+                                cb.on_lm_token(call_id, &text);
+                            } else {
+                                let event_type = event
+                                    .event
+                                    .get("type")
+                                    .and_then(|t| t.as_str())
+                                    .unwrap_or("unknown");
+                                tracing::trace!("ClaudeSdk: StreamEvent type={}, no text", event_type);
+                            }
+                        }
+                    }
+                    Ok(_other) => {
+                        tracing::debug!("ClaudeSdk: ignoring message type");
+                    }
+                    Err(e) => {
+                        return Err(CompletionError::ProviderError(format!(
+                            "Stream error: {}",
+                            e
+                        )));
+                    }
+                }
+            }
+
+            if result_text.is_empty() {
+                Err(CompletionError::ProviderError(
+                    "No response from Claude".into(),
+                ))
+            } else {
+                Ok(result_text)
+            }
+        };
+
+        result
     }
 }
 
 /// Extract text from assistant message.
 fn extract_assistant_text(assistant: &claude_agent_sdk::SdkAssistantMessage) -> Option<String> {
-    // SdkAssistantMessage.message is a serde_json::Value containing content blocks
     let content = assistant.message.get("content")?;
     let blocks = content.as_array()?;
     let mut text = String::new();
@@ -173,7 +222,6 @@ fn extract_assistant_text(assistant: &claude_agent_sdk::SdkAssistantMessage) -> 
 
 /// Extract text from stream event.
 fn extract_stream_text(event: &claude_agent_sdk::SdkStreamEvent) -> Option<String> {
-    // SdkStreamEvent.event is a serde_json::Value containing streaming updates
     let event_type = event.event.get("type").and_then(|t| t.as_str())?;
 
     // Standard Claude API: content_block_delta with text_delta
@@ -182,7 +230,6 @@ fn extract_stream_text(event: &claude_agent_sdk::SdkStreamEvent) -> Option<Strin
         if delta.get("type").and_then(|t| t.as_str()) == Some("text_delta") {
             return delta.get("text").and_then(|t| t.as_str()).map(|s| s.to_string());
         }
-        // Also try direct text field in delta
         if let Some(text) = delta.get("text").and_then(|t| t.as_str()) {
             return Some(text.to_string());
         }

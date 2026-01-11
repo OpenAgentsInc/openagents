@@ -43,8 +43,12 @@ bip39 = "2.2"
 protocol = { path = "../protocol" }
 uuid = { version = "1.1", features = ["v4"] }
 
-# Claude SDK integration (headless mode)
+# Claude SDK integration (headless mode, deprecated)
 claude-agent-sdk = { path = "../claude-agent-sdk" }
+
+# Codex SDK integration (headless mode, primary)
+codex-agent-sdk = { path = "../codex-agent-sdk" }
+
 which = "7.0"
 dirs = "5.0"
 tracing.workspace = true

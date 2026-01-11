@@ -287,7 +287,7 @@ impl AutopilotApp {
                 }
             }));
 
-            tracing::info!("Starting query...");
+            tracing::info!("Starting Claude query: model={}", model_id);
 
             match query_with_permissions(&expanded_prompt, options, permissions).await {
                 Ok(mut stream) => {
@@ -519,6 +519,10 @@ impl AutopilotApp {
                             }
                         }
                     }
+                    // Ensure proper cleanup of CLI process and MCP servers
+                    if let Err(e) = stream.shutdown().await {
+                        tracing::warn!("Query shutdown failed: {}", e);
+                    }
                     tracing::info!("Query stream ended");
                 }
                 Err(e) => {
@@ -595,6 +599,7 @@ impl AutopilotApp {
             let mut thread = codex.start_thread(thread_options);
 
             // Start streaming turn
+            tracing::info!("Starting Codex query");
             let turn_options = TurnOptions::default();
             match thread.run_streamed(expanded_prompt.as_str(), turn_options).await {
                 Ok(mut streamed) => {
