@@ -383,6 +383,28 @@ impl LM {
                     .await?;
                 (completion.response, Some(completion.usage))
             }
+            LMClient::ClaudeSdk(claude_model) => {
+                // Use streaming completion for ClaudeSdk
+                let prompt = build_prompt_from_messages(&messages);
+                let cb_pair = callback.map(|cb| (cb, call_id));
+                let result_text = claude_model
+                    .complete_streaming(&prompt, cb_pair)
+                    .await?;
+
+                // Build response from result text
+                let response = rig::completion::CompletionResponse {
+                    choice: rig::OneOrMany::one(AssistantContent::Text(rig::message::Text {
+                        text: result_text,
+                    })),
+                    usage: rig::completion::Usage {
+                        input_tokens: 0,
+                        output_tokens: 0,
+                        total_tokens: 0,
+                    },
+                    raw_response: (),
+                };
+                (response, None)
+            }
             _ => (client.completion(request).await?, None),
         };
 
@@ -561,4 +583,25 @@ impl DummyLM {
             .await
             .unwrap()
     }
+}
+
+/// Build a prompt string from a Chat for ClaudeSdk streaming.
+fn build_prompt_from_messages(chat: &Chat) -> String {
+    let mut parts = Vec::new();
+
+    for msg in &chat.messages {
+        match msg {
+            Message::System { content } => {
+                parts.push(format!("System: {}", content));
+            }
+            Message::User { content } => {
+                parts.push(format!("User: {}", content));
+            }
+            Message::Assistant { content } => {
+                parts.push(format!("Assistant: {}", content));
+            }
+        }
+    }
+
+    parts.join("\n\n")
 }

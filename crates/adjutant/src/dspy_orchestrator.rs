@@ -13,8 +13,8 @@ use crate::autopilot_loop::{AutopilotOutput, DspyStage, TodoStatus, TodoTask};
 use crate::{Task, TaskPlan, ToolRegistry};
 use anyhow::Result;
 use autopilot_core::{PlanningInput, PlanningPipeline, PlanningResult};
-use dsrs::callbacks::DspyCallback;
 use dsrs::LM;
+use dsrs::callbacks::DspyCallback;
 use oanix::OanixManifest;
 use std::sync::Arc;
 
@@ -157,7 +157,8 @@ impl DspyOrchestrator {
         plan: &TaskPlan,
         output: &O,
     ) -> Result<PlanningResult> {
-        self.create_plan_with_callback(task, plan, output, None).await
+        self.create_plan_with_callback(task, plan, output, None)
+            .await
     }
 
     /// Stage 2: Planning with streaming callback.
@@ -241,10 +242,7 @@ impl DspyOrchestrator {
 
     /// Get a summary of the repository from workspace info.
     fn get_repo_summary(&self) -> String {
-        format!(
-            "Repository at {}",
-            self.tools.workspace_root().display()
-        )
+        format!("Repository at {}", self.tools.workspace_root().display())
     }
 
     /// Find relevant files for a task using the tool registry.

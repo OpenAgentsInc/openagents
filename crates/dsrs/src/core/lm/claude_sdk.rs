@@ -9,6 +9,7 @@ use futures::StreamExt;
 use rig::OneOrMany;
 use rig::completion::{CompletionError, CompletionRequest, CompletionResponse, Usage};
 use rig::message::{AssistantContent, Text};
+use crate::callbacks::DspyCallback;
 
 /// Check if Claude CLI is available.
 ///
@@ -45,6 +46,17 @@ impl ClaudeSdkModel {
     ///
     /// Streams the response and returns the final result text.
     pub async fn complete(&self, prompt: &str) -> Result<String, CompletionError> {
+        self.complete_streaming(prompt, None).await
+    }
+
+    /// Execute completion with streaming callback.
+    ///
+    /// Streams tokens to the callback as they arrive, then returns the final result.
+    pub async fn complete_streaming(
+        &self,
+        prompt: &str,
+        callback: Option<(&dyn DspyCallback, uuid::Uuid)>,
+    ) -> Result<String, CompletionError> {
         let options = QueryOptions::new()
             .max_turns(self.max_turns.unwrap_or(1))
             .tools(ToolsConfig::none()); // No tools for pure LM completion
@@ -90,8 +102,22 @@ impl ClaudeSdkModel {
                     }
                     break;
                 }
-                Ok(SdkMessage::Assistant(_)) => {
-                    // Streaming assistant messages - we wait for the final result
+                Ok(SdkMessage::Assistant(assistant)) => {
+                    // Stream assistant messages to callback
+                    if let Some((cb, call_id)) = callback {
+                        // Extract text from assistant message
+                        if let Some(text) = extract_assistant_text(&assistant) {
+                            cb.on_lm_token(call_id, &text);
+                        }
+                    }
+                }
+                Ok(SdkMessage::StreamEvent(event)) => {
+                    // Stream events contain delta tokens
+                    if let Some((cb, call_id)) = callback {
+                        if let Some(text) = extract_stream_text(&event) {
+                            cb.on_lm_token(call_id, &text);
+                        }
+                    }
                 }
                 Ok(_) => {} // Ignore other message types
                 Err(e) => {
@@ -111,6 +137,40 @@ impl ClaudeSdkModel {
 
         Ok(result_text)
     }
+}
+
+/// Extract text from assistant message.
+fn extract_assistant_text(assistant: &claude_agent_sdk::SdkAssistantMessage) -> Option<String> {
+    // SdkAssistantMessage.message is a serde_json::Value containing content blocks
+    let content = assistant.message.get("content")?;
+    let blocks = content.as_array()?;
+    let mut text = String::new();
+    for block in blocks {
+        if block.get("type").and_then(|t| t.as_str()) == Some("text") {
+            if let Some(t) = block.get("text").and_then(|t| t.as_str()) {
+                text.push_str(t);
+            }
+        }
+    }
+    if text.is_empty() {
+        None
+    } else {
+        Some(text)
+    }
+}
+
+/// Extract text from stream event.
+fn extract_stream_text(event: &claude_agent_sdk::SdkStreamEvent) -> Option<String> {
+    // SdkStreamEvent.event is a serde_json::Value containing streaming updates
+    // Look for content_block_delta events with text delta
+    let event_type = event.event.get("type").and_then(|t| t.as_str())?;
+    if event_type == "content_block_delta" {
+        let delta = event.event.get("delta")?;
+        if delta.get("type").and_then(|t| t.as_str()) == Some("text_delta") {
+            return delta.get("text").and_then(|t| t.as_str()).map(|s| s.to_string());
+        }
+    }
+    None
 }
 
 // Implement CompletionProvider
