@@ -112,7 +112,10 @@ pub async fn execute_with_tools(
         }
         Err(e) => {
             // PRIORITY 3: Fall back to analysis-only mode
-            tracing::warn!("No inference backend available: {}. Using analysis-only mode.", e);
+            tracing::info!(
+                "No inference backend available: {}. Using analysis-only mode.",
+                e
+            );
             Ok(TaskResult {
                 success: true,
                 summary: format!(

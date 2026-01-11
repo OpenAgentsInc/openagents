@@ -75,7 +75,9 @@ impl super::Predictor for Predict {
 
         let (adapter, lm) = {
             let guard = GLOBAL_SETTINGS.read().unwrap();
-            let settings = guard.as_ref().unwrap();
+            let Some(settings) = guard.as_ref() else {
+                anyhow::bail!("DSPy settings not initialized");
+            };
             (settings.adapter.clone(), Arc::clone(&settings.lm))
         }; // guard is dropped here
 

@@ -795,7 +795,12 @@ impl<O: AutopilotOutput> AutopilotLoop<O> {
         {
             Ok(p) => p,
             Err(e) => {
-                tracing::warn!("DSPy planning failed, using original task: {}", e);
+                let err_msg = e.to_string();
+                if err_msg.contains("DSPy settings not initialized") {
+                    tracing::debug!("DSPy planning skipped: {}", err_msg);
+                } else {
+                    tracing::warn!("DSPy planning failed, using original task: {}", err_msg);
+                }
                 // Emit a basic planning stage with just the original task
                 self.output.emit_stage(DspyStage::Planning {
                     analysis: "Using original task description".to_string(),
