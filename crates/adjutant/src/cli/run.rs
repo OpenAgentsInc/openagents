@@ -5,12 +5,12 @@ use crate::autopilot_loop::{
 };
 use crate::cli::blocker::{analyze_blockers, print_blocker_summary};
 use crate::cli::boot::{boot_fast, boot_full, print_quick_checks};
-use crate::cli::directive::work_on_directive;
+use crate::cli::directive::build_directive_task;
 use crate::cli::stream::CliAcpRenderer;
-use crate::{Adjutant, Task};
+use crate::{Adjutant, ExecutionBackend, Task};
 use agent_client_protocol_schema as acp;
-use clap::Args;
-use oanix::WorkspaceManifest;
+use clap::{Args, ValueEnum};
+use oanix::{OanixManifest, WorkspaceManifest};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tokio::sync::mpsc;
@@ -32,6 +32,67 @@ pub struct RunArgs {
     /// Run full environment discovery (slower)
     #[arg(long)]
     pub full_boot: bool,
+
+    /// Execution backend (auto, claude, codex, local-llm, local-tools)
+    #[arg(long, value_enum, default_value_t = BackendChoice::Auto)]
+    pub backend: BackendChoice,
+
+    /// Maximum iterations for the autopilot loop
+    #[arg(long, default_value_t = 10)]
+    pub max_iterations: usize,
+
+    /// Skip verification after completion
+    #[arg(long)]
+    pub no_verify: bool,
+}
+
+/// Supported execution backends for the CLI.
+#[derive(Clone, Copy, Debug, ValueEnum, PartialEq, Eq)]
+pub enum BackendChoice {
+    Auto,
+    Claude,
+    Codex,
+    #[value(name = "local-llm", alias = "llama", alias = "gptoss")]
+    LocalLlm,
+    #[value(name = "local-tools", alias = "tools")]
+    LocalTools,
+}
+
+impl BackendChoice {
+    fn from_env() -> Option<Self> {
+        let value = std::env::var("AUTOPILOT_BACKEND").ok()?;
+        let value = value.trim().to_lowercase();
+        match value.as_str() {
+            "auto" => Some(BackendChoice::Auto),
+            "claude" => Some(BackendChoice::Claude),
+            "codex" => Some(BackendChoice::Codex),
+            "local-llm" | "llama" | "gptoss" => Some(BackendChoice::LocalLlm),
+            "local-tools" | "tools" => Some(BackendChoice::LocalTools),
+            _ => None,
+        }
+    }
+
+    fn label(self) -> &'static str {
+        match self {
+            BackendChoice::Auto => "auto",
+            BackendChoice::Claude => "claude",
+            BackendChoice::Codex => "codex",
+            BackendChoice::LocalLlm => "local-llm",
+            BackendChoice::LocalTools => "local-tools",
+        }
+    }
+}
+
+impl From<BackendChoice> for ExecutionBackend {
+    fn from(value: BackendChoice) -> Self {
+        match value {
+            BackendChoice::Auto => ExecutionBackend::Auto,
+            BackendChoice::Claude => ExecutionBackend::Claude,
+            BackendChoice::Codex => ExecutionBackend::Codex,
+            BackendChoice::LocalLlm => ExecutionBackend::LocalLlm,
+            BackendChoice::LocalTools => ExecutionBackend::LocalTools,
+        }
+    }
 }
 
 /// Run the autopilot loop
@@ -52,65 +113,29 @@ pub async fn run(args: RunArgs) -> anyhow::Result<()> {
         boot_fast().await?
     };
 
-    // Create Adjutant
-    let mut adjutant = Adjutant::new(manifest.clone())?;
+    let backend_choice = resolve_backend_choice(&args);
+    println!("Backend: {}", backend_choice.label());
+    let backend: ExecutionBackend = backend_choice.into();
+
+    // Set up interrupt handling
+    let interrupt_flag = Arc::new(AtomicBool::new(false));
+    let int_flag = interrupt_flag.clone();
+    ctrlc::set_handler(move || {
+        int_flag.store(true, Ordering::Relaxed);
+    })?;
 
     // Determine what to work on
-    if let Some(task_desc) = args.task {
+    if let Some(task_desc) = args.task.as_deref() {
         // Ad-hoc task with full autopilot loop
-        let task = Task::new("adhoc", "Ad-hoc Task", &task_desc);
+        let task = Task::new("adhoc", "Ad-hoc Task", task_desc);
         println!();
         println!("Working on ad-hoc task: {}", task.title);
         println!("Press Ctrl+C to interrupt");
         println!();
 
-        // Set up interrupt handling
-        let interrupt_flag = Arc::new(AtomicBool::new(false));
-        let int_flag = interrupt_flag.clone();
-        ctrlc::set_handler(move || {
-            int_flag.store(true, Ordering::Relaxed);
-        })?;
-
-        // Configure autopilot loop
-        let workspace_root = manifest
-            .workspace
-            .as_ref()
-            .map(|w| w.root.clone())
-            .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
-
-        let config = AutopilotConfig {
-            max_iterations: 10,
-            workspace_root,
-            verify_completion: true,
-        };
-
-        let (acp_tx, mut acp_rx) = mpsc::unbounded_channel::<acp::SessionNotification>();
-        let session_id = generate_session_id();
-        let output = AcpChannelOutput::new(session_id, acp_tx);
-
-        // Run the autopilot loop with ACP streaming
-        let loop_runner = AutopilotLoop::new(adjutant, task, config, output, interrupt_flag);
-        let mut renderer = CliAcpRenderer::new(std::io::stdout());
-
-        let mut loop_fut = Box::pin(loop_runner.run());
-        let result = loop {
-            tokio::select! {
-                res = &mut loop_fut => {
-                    break res;
-                }
-                maybe = acp_rx.recv() => {
-                    if let Some(notification) = maybe {
-                        renderer.handle_notification(notification);
-                    }
-                }
-            }
-        };
-
-        while let Ok(notification) = acp_rx.try_recv() {
-            renderer.handle_notification(notification);
-        }
-        renderer.finish();
-
+        let adjutant = build_adjutant(&manifest, backend)?;
+        let config = build_autopilot_config(&manifest, &args);
+        let result = run_autopilot_task(adjutant, task, config, interrupt_flag.clone()).await;
         print_autopilot_result(&result);
         return Ok(());
     }
@@ -129,6 +154,11 @@ pub async fn run(args: RunArgs) -> anyhow::Result<()> {
         println!();
 
         loop {
+            if interrupt_flag.load(Ordering::Relaxed) {
+                println!("Interrupted by user.");
+                break;
+            }
+
             // Find next available issue
             let next_issue = workspace
                 .issues
@@ -147,17 +177,19 @@ pub async fn run(args: RunArgs) -> anyhow::Result<()> {
                     println!("Claiming issue #{}: {}", issue.number, issue.title);
 
                     // Create task from issue summary
-                    // Note: In a full implementation, we'd load the full issue
                     let task = Task::new(
                         format!("#{}", issue.number),
                         &issue.title,
                         format!("Issue #{}: {}", issue.number, issue.title),
                     );
 
-                    let result = adjutant.execute(&task).await?;
-                    print_result(&result);
+                    let adjutant = build_adjutant(&manifest, backend)?;
+                    let config = build_autopilot_config(&manifest, &args);
+                    let result =
+                        run_autopilot_task(adjutant, task, config, interrupt_flag.clone()).await;
+                    print_autopilot_result(&result);
 
-                    if !result.success {
+                    if !matches!(result, AutopilotResult::Success(_)) {
                         println!("Task failed, waiting before retry...");
                         tokio::time::sleep(std::time::Duration::from_secs(30)).await;
                     }
@@ -211,12 +243,23 @@ pub async fn run(args: RunArgs) -> anyhow::Result<()> {
                     format!("Issue #{}: {}", issue.number, issue.title),
                 );
 
-                let result = adjutant.execute(&task).await?;
-                print_result(&result);
+                let adjutant = build_adjutant(&manifest, backend)?;
+                let config = build_autopilot_config(&manifest, &args);
+                let result =
+                    run_autopilot_task(adjutant, task, config, interrupt_flag.clone()).await;
+                print_autopilot_result(&result);
             }
             None => {
                 // No actionable issues - use smart fallback
-                find_work_when_blocked(workspace, &mut adjutant).await?;
+                let config = build_autopilot_config(&manifest, &args);
+                find_work_when_blocked(
+                    workspace,
+                    &manifest,
+                    backend,
+                    config,
+                    interrupt_flag.clone(),
+                )
+                .await?;
             }
         }
     }
@@ -224,36 +267,67 @@ pub async fn run(args: RunArgs) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn print_result(result: &crate::TaskResult) {
-    println!();
-    println!("{}", "=".repeat(55));
-
-    if result.success {
-        println!("Task completed successfully");
+fn resolve_backend_choice(args: &RunArgs) -> BackendChoice {
+    if args.backend == BackendChoice::Auto {
+        BackendChoice::from_env().unwrap_or(args.backend)
     } else {
-        println!("Task failed");
+        args.backend
     }
+}
 
-    println!();
-    println!("Summary: {}", result.summary);
+fn build_autopilot_config(manifest: &OanixManifest, args: &RunArgs) -> AutopilotConfig {
+    let workspace_root = manifest
+        .workspace
+        .as_ref()
+        .map(|w| w.root.clone())
+        .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
 
-    if !result.modified_files.is_empty() {
-        println!();
-        println!("Modified files:");
-        for file in &result.modified_files {
-            println!("  - {}", file);
+    AutopilotConfig {
+        max_iterations: args.max_iterations,
+        workspace_root,
+        verify_completion: !args.no_verify,
+    }
+}
+
+fn build_adjutant(manifest: &OanixManifest, backend: ExecutionBackend) -> anyhow::Result<Adjutant> {
+    let mut adjutant = Adjutant::new(manifest.clone())?;
+    adjutant.set_execution_backend(backend);
+    Ok(adjutant)
+}
+
+async fn run_autopilot_task(
+    adjutant: Adjutant,
+    task: Task,
+    config: AutopilotConfig,
+    interrupt_flag: Arc<AtomicBool>,
+) -> AutopilotResult {
+    let (acp_tx, mut acp_rx) = mpsc::unbounded_channel::<acp::SessionNotification>();
+    let session_id = generate_session_id();
+    let output = AcpChannelOutput::new(session_id, acp_tx);
+
+    let loop_runner = AutopilotLoop::new(adjutant, task, config, output, interrupt_flag);
+    let mut renderer = CliAcpRenderer::new(std::io::stdout());
+
+    let mut loop_fut = Box::pin(loop_runner.run());
+    let result = loop {
+        tokio::select! {
+            res = &mut loop_fut => {
+                break res;
+            }
+            maybe = acp_rx.recv() => {
+                if let Some(notification) = maybe {
+                    renderer.handle_notification(notification);
+                }
+            }
         }
-    }
+    };
 
-    if let Some(hash) = &result.commit_hash {
-        println!();
-        println!("Commit: {}", hash);
+    while let Ok(notification) = acp_rx.try_recv() {
+        renderer.handle_notification(notification);
     }
+    renderer.finish();
 
-    if let Some(error) = &result.error {
-        println!();
-        println!("Error: {}", error);
-    }
+    result
 }
 
 fn print_autopilot_result(result: &AutopilotResult) {
@@ -310,7 +384,10 @@ fn print_autopilot_result(result: &AutopilotResult) {
 /// 2. Falls back to working on the active directive
 async fn find_work_when_blocked(
     workspace: &WorkspaceManifest,
-    adjutant: &mut Adjutant,
+    manifest: &OanixManifest,
+    backend: ExecutionBackend,
+    config: AutopilotConfig,
+    interrupt_flag: Arc<AtomicBool>,
 ) -> anyhow::Result<()> {
     println!();
     println!("No actionable issues. Analyzing blockers...");
@@ -376,8 +453,9 @@ async fn find_work_when_blocked(
         println!("Starting unblocking work...");
         println!();
 
-        let result = adjutant.execute(&task).await?;
-        print_result(&result);
+        let adjutant = build_adjutant(manifest, backend)?;
+        let result = run_autopilot_task(adjutant, task, config.clone(), interrupt_flag.clone()).await;
+        print_autopilot_result(&result);
         return Ok(());
     }
 
@@ -386,7 +464,10 @@ async fn find_work_when_blocked(
     println!("No clear unblocking path. Checking active directive...");
 
     if let Some(directive_id) = &workspace.active_directive {
-        work_on_directive(workspace, directive_id, adjutant).await?;
+        let task = build_directive_task(workspace, directive_id)?;
+        let adjutant = build_adjutant(manifest, backend)?;
+        let result = run_autopilot_task(adjutant, task, config, interrupt_flag.clone()).await;
+        print_autopilot_result(&result);
     } else {
         println!();
         println!("No active directive set.");
@@ -398,4 +479,17 @@ async fn find_work_when_blocked(
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn maps_backend_choices() {
+        assert_eq!(ExecutionBackend::from(BackendChoice::Claude), ExecutionBackend::Claude);
+        assert_eq!(ExecutionBackend::from(BackendChoice::Codex), ExecutionBackend::Codex);
+        assert_eq!(ExecutionBackend::from(BackendChoice::LocalLlm), ExecutionBackend::LocalLlm);
+        assert_eq!(ExecutionBackend::from(BackendChoice::LocalTools), ExecutionBackend::LocalTools);
+    }
 }

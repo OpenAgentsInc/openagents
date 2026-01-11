@@ -23,8 +23,8 @@
 //! ┌─────────────────────────────────────────────────────────────┐
 //! │                       ADJUTANT                               │
 //! │  The actual agent that DOES THE WORK                         │
-//! │  - Prioritizes Claude (Pro/Max) via claude-agent-sdk         │
-//! │  - Falls back to Cerebras TieredExecutor                     │
+//! │  - Prioritizes Claude/Codex via agent SDKs                   │
+//! │  - Falls back to local LLM or Cerebras TieredExecutor        │
 //! │  - Uses tools directly (Read, Edit, Bash, Glob, Grep)        │
 //! │  - Delegates to Claude Code for very complex work            │
 //! │  - Uses RLM for large context analysis                       │
@@ -34,13 +34,15 @@
 //! ## Execution Priority
 //!
 //! 1. **Claude Pro/Max** - If Claude CLI is installed, use `claude-agent-sdk`
-//! 2. **Cerebras TieredExecutor** - If CEREBRAS_API_KEY is set
-//! 3. **Analysis-only** - If neither is available
+//! 2. **Codex CLI** - If Codex CLI is installed, use `codex-agent-sdk`
+//! 3. **Local LLM** - If llama.cpp/GPT-OSS is available
+//! 4. **Tiered/Analysis** - If Cerebras is configured or as a fallback
 
 pub mod auth;
 pub mod autopilot_loop;
 pub mod cli;
 pub mod claude_executor;
+pub mod codex_executor;
 pub mod delegate;
 pub mod dspy;
 pub mod dspy_orchestrator;
@@ -57,8 +59,9 @@ use std::sync::Arc;
 use thiserror::Error;
 use tokio::sync::mpsc;
 
-pub use auth::{get_claude_path, has_claude_cli};
+pub use auth::{get_claude_path, get_codex_path, has_claude_cli, has_codex_cli};
 pub use claude_executor::ClaudeExecutor;
+pub use codex_executor::CodexExecutor;
 pub use executor::TaskResult;
 pub use planner::{Complexity, TaskPlan};
 pub use rlm_agent::{rlm_agent_definition, rlm_agent_with_write_access};
@@ -149,6 +152,41 @@ impl Task {
     }
 }
 
+/// Preferred execution backend for Autopilot tasks.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ExecutionBackend {
+    Auto,
+    Claude,
+    Codex,
+    LocalLlm,
+    LocalTools,
+}
+
+impl ExecutionBackend {
+    fn resolve(self) -> Option<Self> {
+        match self {
+            ExecutionBackend::Auto => {
+                if auth::has_claude_cli() {
+                    return Some(ExecutionBackend::Claude);
+                }
+                if auth::has_codex_cli() {
+                    return Some(ExecutionBackend::Codex);
+                }
+                if dspy::lm_config::check_llamacpp_available() {
+                    return Some(ExecutionBackend::LocalLlm);
+                }
+                None
+            }
+            ExecutionBackend::Claude => auth::has_claude_cli().then_some(self),
+            ExecutionBackend::Codex => auth::has_codex_cli().then_some(self),
+            ExecutionBackend::LocalLlm => {
+                dspy::lm_config::check_llamacpp_available().then_some(self)
+            }
+            ExecutionBackend::LocalTools => Some(self),
+        }
+    }
+}
+
 /// A turn in the conversation history.
 #[derive(Debug, Clone)]
 pub struct ConversationTurn {
@@ -166,6 +204,8 @@ pub struct Adjutant {
     workspace_root: PathBuf,
     /// Session ID for conversation continuity (used with Claude SDK)
     session_id: Option<String>,
+    /// Preferred execution backend (overrides auto-detection)
+    execution_backend: ExecutionBackend,
     /// Conversation history for local LLMs (they don't have session resumption)
     conversation_history: Vec<ConversationTurn>,
     /// Cached LM for decision pipelines (lazily initialized)
@@ -193,6 +233,7 @@ impl Adjutant {
             conversation_history: Vec::new(),
             decision_lm: None,
             decision_training: dspy::TrainingCollector::new(true).ok(),
+            execution_backend: ExecutionBackend::Auto,
         })
     }
 
@@ -224,6 +265,16 @@ impl Adjutant {
     /// Get the current session ID.
     pub fn session_id(&self) -> Option<&str> {
         self.session_id.as_deref()
+    }
+
+    /// Set preferred execution backend.
+    pub fn set_execution_backend(&mut self, backend: ExecutionBackend) {
+        self.execution_backend = backend;
+    }
+
+    /// Get current execution backend preference.
+    pub fn execution_backend(&self) -> ExecutionBackend {
+        self.execution_backend
     }
 
     /// Set conversation history (for resuming with local LLMs).
@@ -279,18 +330,18 @@ impl Adjutant {
         // 2. Determine if RLM mode should be used (DSPy-first with fallback)
         let use_rlm = self.determine_use_rlm(task, &plan).await;
 
-        // 3. Check which LM provider to use (respects priority: LlamaCpp > Claude > others)
-        let provider = dspy::lm_config::detect_provider();
-        tracing::info!("Adjutant: using LM provider: {:?}", provider);
+        // 3. Check which execution backend to use
+        let resolved_backend = self.execution_backend.resolve();
+        tracing::info!("Adjutant: using execution backend: {:?}", resolved_backend);
 
-        match provider {
-            // Use local LlamaCpp/GPT-OSS - execute with local LM
-            Some(dspy::lm_config::LmProvider::LlamaCpp) => {
-                tracing::info!("Executing with local llama.cpp/GPT-OSS");
-                return self.execute_with_local_lm(task, &plan).await;
-            }
-            // Use Claude SDK
-            Some(dspy::lm_config::LmProvider::ClaudeSdk) => {
+        if resolved_backend.is_none() && self.execution_backend != ExecutionBackend::Auto {
+            return Err(AdjutantError::ExecutionFailed(
+                "Requested backend unavailable. Use --backend auto to fall back.".to_string(),
+            ));
+        }
+
+        match resolved_backend {
+            Some(ExecutionBackend::Claude) => {
                 let context = self.build_context(&plan).await?;
                 let executor = ClaudeExecutor::new(&self.workspace_root);
 
@@ -305,8 +356,21 @@ impl Adjutant {
                 tracing::info!("Using Claude standard execution");
                 return executor.execute(task, &context, &mut self.tools).await;
             }
-            // Other providers - use local tools
-            _ => {}
+            Some(ExecutionBackend::Codex) => {
+                let executor = CodexExecutor::new(&self.workspace_root);
+                tracing::info!("Using Codex standard execution");
+                return executor.execute(task).await;
+            }
+            Some(ExecutionBackend::LocalLlm) => {
+                tracing::info!("Executing with local llama.cpp/GPT-OSS");
+                return self.execute_with_local_lm(task, &plan).await;
+            }
+            Some(ExecutionBackend::LocalTools) => {
+                tracing::info!("Executing with local tool executor");
+                return self.execute_with_tools(task, &plan).await;
+            }
+            Some(ExecutionBackend::Auto) => {}
+            None => {}
         }
 
         // 4. Check delegation decision (DSPy-first with fallback)
@@ -483,28 +547,48 @@ impl Adjutant {
         // 1. Plan the task
         let plan = self.plan_task(task).await?;
 
-        // 2. Check which LM provider to use
-        let provider = dspy::lm_config::detect_provider();
+        // 2. Check which execution backend to use
+        let resolved_backend = self.execution_backend.resolve();
+        tracing::info!("Adjutant: streaming backend: {:?}", resolved_backend);
 
-        match provider {
-            // Use local LlamaCpp/GPT-OSS with streaming
-            Some(dspy::lm_config::LmProvider::LlamaCpp) => {
+        if resolved_backend.is_none() && self.execution_backend != ExecutionBackend::Auto {
+            return Err(AdjutantError::ExecutionFailed(
+                "Requested backend unavailable. Use --backend auto to fall back.".to_string(),
+            ));
+        }
+
+        match resolved_backend {
+            Some(ExecutionBackend::LocalLlm) => {
                 tracing::info!("Streaming with local llama.cpp/GPT-OSS");
                 return self
                     .stream_with_local_lm(task, &plan, token_tx, acp_sender)
                     .await;
             }
-            // Use Claude SDK with streaming
-            Some(dspy::lm_config::LmProvider::ClaudeSdk) => {
+            Some(ExecutionBackend::Claude) => {
                 tracing::info!("Streaming with Claude SDK");
                 return self
                     .stream_with_claude_sdk(task, token_tx, acp_sender)
                     .await;
             }
-            // For other providers, fall back to non-streaming
-            _ => {
+            Some(ExecutionBackend::Codex) => {
+                let executor = CodexExecutor::new(&self.workspace_root);
+                tracing::info!("Streaming with Codex");
+                return executor
+                    .execute_streaming(task, token_tx, acp_sender)
+                    .await;
+            }
+            Some(ExecutionBackend::LocalTools) => {
                 let result = self.execute(task).await?;
-                // Send the complete result as a single chunk
+                let _ = token_tx.send(result.summary.clone());
+                return Ok(result);
+            }
+            Some(ExecutionBackend::Auto) => {
+                let result = self.execute(task).await?;
+                let _ = token_tx.send(result.summary.clone());
+                return Ok(result);
+            }
+            None => {
+                let result = self.execute(task).await?;
                 let _ = token_tx.send(result.summary.clone());
                 return Ok(result);
             }

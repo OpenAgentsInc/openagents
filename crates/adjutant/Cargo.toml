@@ -23,6 +23,8 @@ rlm = { path = "../rlm" }
 issues = { path = "../issues" }
 gateway = { path = "../gateway" }
 claude-agent-sdk = { path = "../claude-agent-sdk" }
+codex-agent-sdk = { path = "../codex-agent-sdk" }
+acp-adapter = { path = "../acp-adapter" }
 dsrs = { path = "../dsrs" }
 dsrs-macros = { path = "../dsrs-macros" }
 
