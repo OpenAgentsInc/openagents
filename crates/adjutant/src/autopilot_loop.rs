@@ -731,6 +731,7 @@ impl DspyCallback for AcpChannelOutput {
         // Filter out DSPy format markers before sending to UI
         let filtered = filter_dspy_markers(token);
         if !filtered.is_empty() {
+            tracing::trace!("DSPy on_lm_token: sending {} chars to UI", filtered.len());
             let _ = self.token_tx.send(filtered);
         }
     }
