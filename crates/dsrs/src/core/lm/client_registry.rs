@@ -305,8 +305,8 @@ impl LMClient {
                 Ok(LMClient::Groq(groq::CompletionModel::new(client, model_id)))
             }
             "lm-router" | "lmrouter" | "router" => {
-                let rt = tokio::runtime::Handle::current();
-                rt.block_on(async {
+                let model_id = model_id.to_string();
+                super::block_on_detached(async move {
                     let detected = lm_router::backends::auto_detect_router().await?;
                     let default_model = detected.default_model.clone().ok_or_else(|| {
                         anyhow::anyhow!("lm-router auto-detect found no default model")
@@ -314,7 +314,7 @@ impl LMClient {
                     let model = if model_id.is_empty() || model_id == "auto" {
                         default_model
                     } else {
-                        model_id.to_string()
+                        model_id
                     };
 
                     let mut lm = LmRouterLM::new(Arc::new(detected.router), model);
@@ -332,15 +332,16 @@ impl LMClient {
             }
             "pylon" => {
                 // model_id: "local", "swarm", "hybrid", or "local:ollama", etc.
-                let rt = tokio::runtime::Handle::current();
-                rt.block_on(async {
+                let model_id = model_id.to_string();
+                let api_key = api_key.map(|key| key.to_string());
+                super::block_on_detached(async move {
                     if model_id == "swarm" {
-                        let mnemonic = api_key.ok_or_else(|| {
+                        let mnemonic = api_key.as_deref().ok_or_else(|| {
                             anyhow::anyhow!("pylon:swarm requires mnemonic as api_key")
                         })?;
                         Self::pylon_swarm(mnemonic).await
                     } else if model_id == "hybrid" {
-                        let mnemonic = api_key.ok_or_else(|| {
+                        let mnemonic = api_key.as_deref().ok_or_else(|| {
                             anyhow::anyhow!("pylon:hybrid requires mnemonic as api_key")
                         })?;
                         Self::pylon_hybrid(mnemonic).await

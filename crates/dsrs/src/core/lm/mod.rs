@@ -16,6 +16,7 @@ use anyhow::Result;
 use rig::{completion::AssistantContent, message::ToolCall, message::ToolChoice, tool::ToolDyn};
 
 use bon::Builder;
+use std::future::Future;
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::Mutex;
 
@@ -58,7 +59,7 @@ pub struct LM {
 
 impl Default for LM {
     fn default() -> Self {
-        tokio::runtime::Handle::current().block_on(async { Self::builder().build().await.unwrap() })
+        block_on_detached(async { Self::builder().build().await.unwrap() })
     }
 }
 
@@ -75,6 +76,26 @@ impl Clone for LM {
             cache_handler: self.cache_handler.clone(),
             client: self.client.clone(),
         }
+    }
+}
+
+fn block_on_detached<F, T>(future: F) -> T
+where
+    F: Future<Output = T> + Send + 'static,
+    T: Send + 'static,
+{
+    if tokio::runtime::Handle::try_current().is_ok() {
+        std::thread::spawn(move || {
+            let runtime = tokio::runtime::Runtime::new()
+                .expect("failed to create runtime for detached blocking call");
+            runtime.block_on(future)
+        })
+        .join()
+        .expect("detached runtime thread panicked")
+    } else {
+        let runtime = tokio::runtime::Runtime::new()
+            .expect("failed to create runtime for detached blocking call");
+        runtime.block_on(future)
     }
 }
 
