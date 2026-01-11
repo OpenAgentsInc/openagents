@@ -1,4 +1,4 @@
-/// Session-level usage stats for Claude API.
+/// Session-level usage stats for the active API.
 #[derive(Default, Clone)]
 pub(crate) struct SessionUsageStats {
     pub(crate) input_tokens: u64,

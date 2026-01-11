@@ -324,7 +324,7 @@ def generate_gallery_html():
 
     <footer>
         <p>Built with <a href="https://github.com/OpenAgentsInc/openagents">OpenAgents</a> •
-        Powered by <a href="https://claude.ai">Claude</a> •
+        Powered by <a href="https://codex.ai">Codex</a> •
         <a href="https://github.com/OpenAgentsInc/openagents/issues">Report Issues</a></p>
         <p style="margin-top: 20px; font-size: 0.9em;">
             These are real, unedited autopilot sessions. No cherry-picking, no manual intervention.

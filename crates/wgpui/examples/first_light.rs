@@ -129,7 +129,7 @@ impl Default for DemoState {
             status_bar: StatusBar::new().items(vec![
                 StatusItem::mode("mode", Mode::Normal).left(),
                 StatusItem::text("file", "first_light.rs").center(),
-                StatusItem::model("model", Model::Claude).right(),
+                StatusItem::model("model", Model::Codex).right(),
                 StatusItem::status("status", Status::Online).right(),
             ]),
             notifications: Notifications::new(),
@@ -573,7 +573,7 @@ fn demo_atoms(
     cx.scene.draw_text(label2);
 
     ax = x + width - 160.0;
-    ModelBadge::new(Model::Claude).paint(Bounds::new(ax, ay, 70.0, 20.0), &mut cx);
+    ModelBadge::new(Model::Codex).paint(Bounds::new(ax, ay, 70.0, 20.0), &mut cx);
     ax += 75.0;
     ModelBadge::new(Model::Gpt4).paint(Bounds::new(ax, ay, 70.0, 20.0), &mut cx);
 
@@ -615,13 +615,13 @@ fn demo_molecules(
 
     let mut cx = PaintContext::new(scene, text_system, 1.0);
 
-    MessageHeader::assistant(Model::Claude)
-        .author("Claude")
+    MessageHeader::assistant(Model::Codex)
+        .author("Codex")
         .timestamp("Just now")
         .paint(Bounds::new(x + 8.0, *y + 8.0, width - 16.0, 32.0), &mut cx);
 
     ModeSelector::new(Mode::Normal).paint(Bounds::new(x + 12.0, *y + 50.0, 120.0, 28.0), &mut cx);
-    ModelSelector::new(Model::Claude)
+    ModelSelector::new(Model::Codex)
         .paint(Bounds::new(x + 145.0, *y + 50.0, 120.0, 28.0), &mut cx);
 
     let label = text_system.layout(

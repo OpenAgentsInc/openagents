@@ -523,13 +523,13 @@ async fn test_trajectory_session_and_events() {
     let session_content = TrajectorySessionContent::new(
         "traj_session_456",
         1703000000, // started_at
-        "claude-sonnet-4.5",
+        "codex-sonnet-4.5",
     )
     .with_total_events(2);
 
     assert_eq!(session_content.session_id, "traj_session_456");
     assert_eq!(session_content.started_at, 1703000000);
-    assert_eq!(session_content.model, "claude-sonnet-4.5");
+    assert_eq!(session_content.model, "codex-sonnet-4.5");
     assert_eq!(session_content.total_events, 2);
 
     let session = TrajectorySession::new(

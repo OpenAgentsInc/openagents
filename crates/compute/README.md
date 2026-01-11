@@ -30,7 +30,7 @@ The compute crate implements a NIP-90 DVM provider that allows users to monetize
 - **5932**: PatchGen - Generate patches from issues/requirements
 - **5933**: CodeReview - Review code with structured feedback
 
-Bazaar jobs require an **agent backend** (e.g., Claude Code) and support pay-after-verify semantics.
+Bazaar jobs require an **agent backend** (e.g., Codex Code) and support pay-after-verify semantics.
 
 ## Architecture
 
@@ -57,7 +57,7 @@ Bazaar jobs require an **agent backend** (e.g., Claude Code) and support pay-aft
 │  ┌─────────────────┐  ┌─────────────────────────────────┐   │
 │  │ BackendRegistry │  │ AgentRegistry                    │   │
 │  │ (Inference)     │  │ (Bazaar Jobs)                    │   │
-│  │ - Ollama        │  │ - ClaudeCodeBackend              │   │
+│  │ - Ollama        │  │ - CodexCodeBackend              │   │
 │  │ - llama.cpp     │  │   └── PatchGen, CodeReview       │   │
 │  │ - Apple FM      │  │   └── SandboxRun, RepoIndex      │   │
 │  └─────────────────┘  └─────────────────────────────────┘   │
@@ -89,10 +89,10 @@ Bazaar jobs require an **agent backend** (e.g., Claude Code) and support pay-aft
 
 4. **AgentRegistry** (`backends/agent.rs`):
    - Manages agent backends for complex, multi-step tasks
-   - Routes Bazaar jobs to appropriate agent (e.g., Claude Code)
+   - Routes Bazaar jobs to appropriate agent (e.g., Codex Code)
 
-5. **ClaudeCodeBackend** (`backends/claude_code.rs`):
-   - Executes Claude in sandboxed environment
+5. **CodexCodeBackend** (`backends/codex_code.rs`):
+   - Executes Codex in sandboxed environment
    - Supports PatchGen, CodeReview, SandboxRun jobs
    - Isolation modes: local, container, gvisor
 
@@ -586,33 +586,33 @@ pub trait AgentBackend: Send + Sync {
 }
 ```
 
-### ClaudeCodeBackend
+### CodexCodeBackend
 
-The primary agent backend, using Claude with sandbox isolation:
+The primary agent backend, using Codex with sandbox isolation:
 
 ```rust
-use compute::backends::{ClaudeCodeBackend, ClaudeCodeConfig, IsolationMode};
+use compute::backends::{CodexCodeBackend, CodexCodeConfig, IsolationMode};
 
-// Auto-detect Claude Code availability
-if let Some(claude) = ClaudeCodeBackend::detect().await {
-    println!("Claude Code available!");
-    println!("Supported kinds: {:?}", claude.capabilities().supported_kinds());
+// Auto-detect Codex Code availability
+if let Some(codex) = CodexCodeBackend::detect().await {
+    println!("Codex Code available!");
+    println!("Supported kinds: {:?}", codex.capabilities().supported_kinds());
 }
 
 // Manual configuration
-let config = ClaudeCodeConfig {
+let config = CodexCodeConfig {
     isolation_mode: IsolationMode::Container,
     max_workers: 3,
-    model: "claude-sonnet-4".to_string(),
+    model: "codex-sonnet-4".to_string(),
     default_time_limit_secs: 900,
     ..Default::default()
 };
-let backend = ClaudeCodeBackend::with_config(config).await?;
+let backend = CodexCodeBackend::with_config(config).await?;
 ```
 
 **Detection Requirements:**
-- `ANTHROPIC_API_KEY` environment variable, OR
-- `claude` CLI in PATH
+- `OPENAI_API_KEY` environment variable, OR
+- `codex` CLI in PATH
 
 ### PatchGen Jobs (kind 5932)
 
@@ -630,7 +630,7 @@ let request = PatchGenRequest {
         exclude: vec!["src/tests/**".to_string()],
     }),
     max_time_secs: Some(600),
-    model: Some("claude-sonnet-4".to_string()),
+    model: Some("codex-sonnet-4".to_string()),
 };
 
 // Result includes patch and verification
@@ -651,7 +651,7 @@ let request = CodeReviewRequest {
     git_ref: Some("feature-branch".to_string()),
     input: ReviewInput::Diff("--- a/file.rs\n+++ b/file.rs\n...".to_string()),
     review_focus: vec!["security".to_string(), "performance".to_string()],
-    model: Some("claude-sonnet-4".to_string()),
+    model: Some("codex-sonnet-4".to_string()),
     ..Default::default()
 };
 
@@ -673,7 +673,7 @@ for issue in result.issues {
 - [x] Nostr relay integration
 - [x] Spark wallet integration
 - [x] Agent backend abstraction (AgentBackend trait)
-- [x] Claude Code backend (PatchGen, CodeReview, SandboxRun)
+- [x] Codex Code backend (PatchGen, CodeReview, SandboxRun)
 - [x] Bazaar job kinds (5930-5933)
 - [ ] Lightning invoice generation
 - [ ] Payment verification

@@ -38,7 +38,7 @@ pub(crate) fn submit_autopilot_prompt(
     };
     tracing::info!("Autopilot: will use LM provider: {:?}", provider);
 
-    // Create channels for receiving responses (same pattern as Claude)
+    // Create channels for receiving responses.
     let (tx, rx) = mpsc::unbounded_channel();
     state.chat.response_rx = Some(rx);
     state.chat.is_thinking = true;

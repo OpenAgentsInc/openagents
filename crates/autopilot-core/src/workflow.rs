@@ -168,7 +168,7 @@ mod tests {
     #[test]
     fn test_format_receipt() {
         let receipt = WorkflowReceipt {
-            model: "claude-sonnet-4-5-20250929".to_string(),
+            model: "codex-sonnet-4-5-20250929".to_string(),
             duration_seconds: 480,
             tokens_input: 150000,
             tokens_output: 8000,
@@ -181,7 +181,7 @@ mod tests {
         };
 
         let comment = format_receipt_comment(&receipt);
-        assert!(comment.contains("claude-sonnet-4-5-20250929"));
+        assert!(comment.contains("codex-sonnet-4-5-20250929"));
         assert!(comment.contains("480 seconds"));
         assert!(comment.contains("$0.4200"));
         assert!(comment.contains("42 / 42 passed"));

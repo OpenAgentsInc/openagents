@@ -82,7 +82,7 @@ pub enum AutonomyLevel {
 ```rust
 use agent_orchestrator::{AgentIdentity, AutonomyLevel, ThresholdConfig};
 
-let identity = AgentIdentity::new("agent_pubkey", "MyAgent", "claude-sonnet-4")
+let identity = AgentIdentity::new("agent_pubkey", "MyAgent", "codex-sonnet-4")
     .with_autonomy(AutonomyLevel::SemiAutonomous)
     .with_operator("operator_pubkey")
     .with_threshold(ThresholdConfig::new(2, 3).with_signers(signers));
@@ -101,7 +101,7 @@ Route different agents to different AI providers.
 
 ```rust
 pub enum BackendProvider {
-    Claude,   // Anthropic Claude API
+    Codex,   // OpenAI Codex API
     OpenAI,   // OpenAI API
     Codex,    // OpenAI Codex
     GptOss,   // Local GPT-OSS inference
@@ -127,9 +127,9 @@ pub struct BackendConfig {
 ```rust
 use agent_orchestrator::{MultiBackendRouter, BackendProvider, BackendConfig};
 
-let router = MultiBackendRouter::new(BackendProvider::Claude)
+let router = MultiBackendRouter::new(BackendProvider::Codex)
     // Add backends
-    .add_backend(BackendConfig::claude("sonnet-4"))
+    .add_backend(BackendConfig::codex("sonnet-4"))
     .add_backend(BackendConfig::openai("gpt-4"))
     .add_backend(BackendConfig::local("llama3", "http://localhost:11434"))
     // Route specific agents
@@ -142,7 +142,7 @@ assert_eq!(backend.unwrap().provider, BackendProvider::OpenAI);
 
 // Default backend for unmapped agents
 let backend = router.get_backend("sisyphus");
-assert_eq!(backend.unwrap().provider, BackendProvider::Claude);
+assert_eq!(backend.unwrap().provider, BackendProvider::Codex);
 
 // List enabled backends
 let enabled = router.list_enabled();
@@ -151,7 +151,7 @@ let enabled = router.list_enabled();
 ### Cost Calculation
 
 ```rust
-let config = BackendConfig::claude("sonnet-4");
+let config = BackendConfig::codex("sonnet-4");
 
 // 3 sats per 1k input, 15 sats per 1k output
 let cost = config.calculate_cost(10_000, 5_000);
@@ -193,7 +193,7 @@ let tracker = CostTracker::new()
 // Record cost
 tracker.record(CostRecord {
     agent_name: "sisyphus".to_string(),
-    backend: BackendProvider::Claude,
+    backend: BackendProvider::Codex,
     input_tokens: 10_000,
     output_tokens: 5_000,
     cost_sats: 105,
@@ -311,15 +311,15 @@ let threshold = ThresholdConfig::new(2, 3)
     .with_signers(vec![pk1, pk2, pk3])
     .with_group_pubkey(group_pk);
 
-let identity = AgentIdentity::new(&agent_pk, "ProductionAgent", "claude-sonnet-4")
+let identity = AgentIdentity::new(&agent_pk, "ProductionAgent", "codex-sonnet-4")
     .with_threshold(threshold)
     .with_autonomy(AutonomyLevel::SemiAutonomous)
     .with_operator(&operator_pk);
 
 // 2. Configure multi-backend routing
 let router = Arc::new(
-    MultiBackendRouter::new(BackendProvider::Claude)
-        .add_backend(BackendConfig::claude("sonnet-4"))
+    MultiBackendRouter::new(BackendProvider::Codex)
+        .add_backend(BackendConfig::codex("sonnet-4"))
         .add_backend(BackendConfig::openai("gpt-4"))
         .add_backend(BackendConfig::local("llama3", "http://localhost:11434"))
         .route_agent("oracle", BackendProvider::OpenAI)
@@ -390,7 +390,7 @@ tracker.record(CostRecord { ... })?;
 
 ```rust
 // Future: Route to decentralized compute
-let router = MultiBackendRouter::new(BackendProvider::Claude)
+let router = MultiBackendRouter::new(BackendProvider::Codex)
     .add_dvm_backend(DvmConfig {
         relay_urls: vec!["wss://relay.damus.io"],
         job_kind: 5050,  // Text generation

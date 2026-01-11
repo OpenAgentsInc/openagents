@@ -1,7 +1,7 @@
 //! Integration tests for ACP adapter
 //!
 //! Comprehensive E2E tests covering:
-//! - Full prompt flow with mock Claude Code agent
+//! - Full prompt flow with mock Codex Code agent
 //! - Full prompt flow with mock Codex agent
 //! - Session lifecycle (create, prompt, cancel, close)
 //! - Permission handling across both agents
@@ -288,13 +288,13 @@ fn main() {
 }
 
 #[tokio::test]
-async fn test_claude_code_session_lifecycle() {
-    let binary_path = create_mock_agent_binary("claude");
+async fn test_codex_code_session_lifecycle() {
+    let binary_path = create_mock_agent_binary("codex");
     let cwd = std::env::current_dir().unwrap();
 
     let command = AgentCommand::new(binary_path);
 
-    let connection = AcpAgentConnection::stdio("mock-claude", command, &cwd)
+    let connection = AcpAgentConnection::stdio("mock-codex", command, &cwd)
         .await
         .expect("Failed to create connection");
 
@@ -653,7 +653,7 @@ async fn test_telemetry_end_to_end() {
     // Create APM session
     let session_id = "test-telemetry-session";
     conn.execute(
-        "INSERT INTO apm_sessions (id, source, started_at) VALUES (?1, 'ClaudeCode', datetime('now'))",
+        "INSERT INTO apm_sessions (id, source, started_at) VALUES (?1, 'CodexCode', datetime('now'))",
         [session_id],
     ).unwrap();
     drop(conn);

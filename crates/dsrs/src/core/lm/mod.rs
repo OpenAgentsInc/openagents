@@ -109,7 +109,7 @@ impl LM {
     /// 2. Local OpenAI-compatible: `base_url` only (no `api_key`)
     ///    → Uses OpenAI client for vLLM/local servers (dummy key)
     /// 3. Provider via model string: no `base_url`, model in "provider:model" format
-    ///    → Uses provider-specific client (openai, anthropic, gemini, etc.)
+    ///    → Uses provider-specific client (openai, openai, gemini, etc.)
     async fn initialize_client(mut self) -> Result<Self> {
         // Determine which build case based on what's provided
         let client = match (&self.base_url, &self.api_key, &self.model) {

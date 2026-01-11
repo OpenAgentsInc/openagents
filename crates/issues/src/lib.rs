@@ -19,7 +19,7 @@
 //!     Some("It crashes on startup"),
 //!     issue::Priority::High,
 //!     issue::IssueType::Bug,
-//!     None, // agent (defaults to "claude")
+//!     None, // agent (defaults to "codex")
 //!     None, // directive_id
 //!     None, // project_id
 //! ).unwrap();

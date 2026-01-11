@@ -18,7 +18,7 @@ pub struct TrajectoriesCommands {
 pub enum TrajectoriesSubcommand {
     /// Scan local sources for trajectory data
     Scan {
-        /// Source to scan (claude, cursor, codex), defaults to all configured
+        /// Source to scan (codex, cursor, codex), defaults to all configured
         #[arg(long)]
         source: Option<String>,
 
@@ -530,7 +530,7 @@ async fn execute_config(
         println!("Current configuration:");
         println!("  Auto-contribution: disabled");
         println!("  Minimum quality: 0.50");
-        println!("  Sources: claude");
+        println!("  Sources: codex");
         println!("  Redaction level: standard");
     }
 

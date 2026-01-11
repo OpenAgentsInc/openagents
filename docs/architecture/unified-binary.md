@@ -134,7 +134,7 @@ pub struct AppState {
     pub broadcaster: Arc<WsBroadcaster>,
     pub active_tab: RwLock<Tab>,
     pub full_auto: RwLock<bool>,
-    pub claude_info: RwLock<ClaudeInfo>,
+    pub codex_info: RwLock<CodexInfo>,
 }
 ```
 
@@ -603,5 +603,5 @@ Ensure:
 ## Related Documentation
 
 - `d-010` directive: Full specification
-- `CLAUDE.md`: Running commands
+- `AGENTS.md`: Running commands
 - Individual crate READMEs for feature details

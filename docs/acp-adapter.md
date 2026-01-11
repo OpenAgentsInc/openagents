@@ -19,7 +19,7 @@ This document provides comprehensive documentation for the ACP (Agent Client Pro
 
 ## Architecture
 
-The ACP adapter sits between OpenAgents applications (desktop GUI, CLI) and AI coding agents (Claude Code, Codex), providing a standardized communication layer.
+The ACP adapter sits between OpenAgents applications (desktop GUI, CLI) and AI coding agents (Codex Code, Codex), providing a standardized communication layer.
 
 ### Component Diagram
 
@@ -49,7 +49,7 @@ The ACP adapter sits between OpenAgents applications (desktop GUI, CLI) and AI c
 │                                                                    │
 │ ┌─────────────────┐  ┌─────────────────┐  ┌───────────────────┐  │
 │ │ RlogReplay      │  │ RlogStreamer    │  │ Agent Wrappers    │  │
-│ │ (Playback)      │  │ (Recording)     │  │ (Claude, Codex)   │  │
+│ │ (Playback)      │  │ (Recording)     │  │ (Codex, Codex)   │  │
 │ └─────────────────┘  └─────────────────┘  └───────────────────┘  │
 └────────────────────────┬───────────────────────────────────────────┘
                          │
@@ -57,7 +57,7 @@ The ACP adapter sits between OpenAgents applications (desktop GUI, CLI) and AI c
                          ▼
 ┌────────────────────────────────────────────────────────────────────┐
 │                    Agent Subprocess                                │
-│                  (Claude Code / Codex)                             │
+│                  (Codex Code / Codex)                             │
 │                                                                    │
 │  Implements ACP Server:                                            │
 │  - initialize → AgentCapabilities                                  │
@@ -72,7 +72,7 @@ The ACP adapter sits between OpenAgents applications (desktop GUI, CLI) and AI c
 1. **Protocol-first**: All communication follows ACP JSON-RPC 2.0 specification
 2. **Transport agnostic**: Currently stdio, but extensible to WebSocket, HTTP, etc.
 3. **Recording by default**: All sessions can be recorded to rlog for replay
-4. **Multi-agent**: Same API works with Claude Code, Codex, or custom agents
+4. **Multi-agent**: Same API works with Codex Code, Codex, or custom agents
 5. **Permission flexibility**: From auto-approve to full UI delegation
 
 ## Core Concepts
@@ -87,7 +87,7 @@ Every agent interaction follows this sequence:
 
 **1. Spawn subprocess**
 ```rust
-let child = tokio::process::Command::new("claude")
+let child = tokio::process::Command::new("codex")
     .args(["--output-format", "stream-json"])
     .stdin(Stdio::piped())
     .stdout(Stdio::piped())
@@ -289,10 +289,10 @@ impl AgentCommand {
 
 Example:
 ```rust
-let cmd = AgentCommand::new("/usr/local/bin/claude")
+let cmd = AgentCommand::new("/usr/local/bin/codex")
     .arg("--output-format").arg("stream-json")
-    .arg("--model").arg("claude-sonnet-4-5")
-    .env("ANTHROPIC_API_KEY", "sk-ant-...");
+    .arg("--model").arg("codex-sonnet-4-5")
+    .env("OPENAI_API_KEY", "sk-ant-...");
 ```
 
 #### OpenAgentsClient
@@ -410,7 +410,7 @@ GET /api/acp/sessions
   "sessions": [
     {
       "sessionId": "session-abc123",
-      "agent": "claude",
+      "agent": "codex",
       "cwd": "/home/user/project",
       "state": "running",
       "createdAt": "2025-12-23T17:48:27Z"
@@ -428,8 +428,8 @@ POST /api/acp/sessions
 **Request:**
 ```json
 {
-  "agent": "claude",          // "claude" | "codex"
-  "model": "claude-sonnet-4-5",  // optional
+  "agent": "codex",          // "codex" | "codex"
+  "model": "codex-sonnet-4-5",  // optional
   "cwd": "/home/user/project"    // optional, defaults to server cwd
 }
 ```
@@ -438,7 +438,7 @@ POST /api/acp/sessions
 ```json
 {
   "sessionId": "session-abc123",
-  "agent": "claude",
+  "agent": "codex",
   "cwd": "/home/user/project",
   "state": "ready",
   "createdAt": "2025-12-23T17:48:27Z"
@@ -512,7 +512,7 @@ GET /api/acp/sessions/{sessionId}
 ```json
 {
   "sessionId": "session-abc123",
-  "agent": "claude",
+  "agent": "codex",
   "cwd": "/home/user/project",
   "state": "running",
   "createdAt": "2025-12-23T17:48:27Z",
@@ -545,22 +545,22 @@ data: {"toolCallId":"tool-1","status":"completed","content":"File contents..."}
 
 ## Usage Examples
 
-### Example 1: Simple Claude Code Session
+### Example 1: Simple Codex Code Session
 
 ```rust
-use acp_adapter::agents::claude::{connect_claude, ClaudeAgentConfig};
+use acp_adapter::agents::codex::{connect_codex, CodexAgentConfig};
 use std::path::PathBuf;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let cwd = PathBuf::from("/home/user/myproject");
 
-    // Connect to Claude Code
-    let config = ClaudeAgentConfig::new()
-        .model("claude-sonnet-4-5")
+    // Connect to Codex Code
+    let config = CodexAgentConfig::new()
+        .model("codex-sonnet-4-5")
         .max_turns(100);
 
-    let connection = connect_claude(config, &cwd).await?;
+    let connection = connect_codex(config, &cwd).await?;
 
     // Create session
     let session = connection.new_session(cwd.clone()).await?;
@@ -582,7 +582,7 @@ async fn main() -> anyhow::Result<()> {
 
 ```rust
 use acp_adapter::{AcpAgentConnection, OpenAgentsClient, UiPermissionHandler};
-use acp_adapter::agents::{claude::connect_claude, codex::connect_codex};
+use acp_adapter::agents::{codex::connect_codex, codex::connect_codex};
 use tokio::sync::mpsc;
 
 #[tokio::main]
@@ -605,18 +605,18 @@ async fn main() -> anyhow::Result<()> {
     });
 
     // Connect to both agents
-    let claude = connect_claude(Default::default(), &cwd).await?;
+    let codex = connect_codex(Default::default(), &cwd).await?;
     let codex = connect_codex(Default::default(), &cwd).await?;
 
     // Create sessions
-    let claude_session = claude.new_session(cwd.clone()).await?;
+    let codex_session = codex.new_session(cwd.clone()).await?;
     let codex_session = codex.new_session(cwd.clone()).await?;
 
     // Race them on the same task
     let task = "Implement a binary search tree";
 
     tokio::try_join!(
-        claude.prompt(&claude_session.session_id, task),
+        codex.prompt(&codex_session.session_id, task),
         codex.prompt(&codex_session.session_id, task)
     )?;
 
@@ -647,7 +647,7 @@ async fn main() -> anyhow::Result<()> {
     let streamer = RlogStreamer::new(stream_config).await?;
 
     // Start session
-    let connection = connect_claude(Default::default(), &cwd).await?;
+    let connection = connect_codex(Default::default(), &cwd).await?;
     let session = connection.new_session(cwd.clone()).await?;
 
     streamer.start(&session.session_id, "Fix bugs").await?;
@@ -839,8 +839,8 @@ use acp_adapter::streaming::RlogHeaderInfo;
 
 let header = RlogHeaderInfo {
     session_id: session_id.to_string(),
-    agent: "claude".to_string(),
-    model: Some("claude-sonnet-4-5".to_string()),
+    agent: "codex".to_string(),
+    model: Some("codex-sonnet-4-5".to_string()),
     cwd: "/home/user/project".to_string(),
     initial_prompt: "Implement feature X".to_string(),
     started_at: chrono::Utc::now(),
@@ -867,11 +867,11 @@ The adapter includes bidirectional converters for various formats.
 
 ### SDK to ACP
 
-Convert Claude SDK messages to ACP notifications:
+Convert Codex SDK messages to ACP notifications:
 
 ```rust
 use acp_adapter::converters::sdk_to_acp::message_to_notification;
-use claude_agent_sdk::Message;
+use codex_agent_sdk::Message;
 
 let sdk_message = Message::AgentMessage { content: "Hello" };
 let notification = message_to_notification(&sdk_message, &session_id)?;
@@ -1051,12 +1051,12 @@ async fn main() -> std::io::Result<()> {
 ### Integrating with Desktop GUI (wry)
 
 ```rust
-use acp_adapter::agents::claude::connect_claude;
+use acp_adapter::agents::codex::connect_codex;
 use wry::application::window::Window;
 
 fn setup_acp_integration(window: &Window) {
     tauri::async_runtime::spawn(async move {
-        let connection = connect_claude(Default::default(), &PathBuf::from(".")).await.unwrap();
+        let connection = connect_codex(Default::default(), &PathBuf::from(".")).await.unwrap();
 
         // Expose to webview
         window.eval(&format!(
@@ -1071,16 +1071,16 @@ fn setup_acp_integration(window: &Window) {
 
 ### Agent Not Found
 
-**Error:** `AgentNotFound: Claude Code executable not found`
+**Error:** `AgentNotFound: Codex Code executable not found`
 
 **Solution:**
 ```bash
-# Install Claude Code
-npm install -g @anthropic-ai/claude-code
+# Install Codex Code
+npm install -g @openai-ai/codex-code
 
 # Or specify custom path
-let config = ClaudeAgentConfig::new()
-    .executable_path("/custom/path/to/claude");
+let config = CodexAgentConfig::new()
+    .executable_path("/custom/path/to/codex");
 ```
 
 ### Initialization Timeout
@@ -1099,7 +1099,7 @@ std::env::set_var("RUST_LOG", "acp_adapter=debug");
 tracing_subscriber::fmt::init();
 
 // Check stderr from agent
-let mut cmd = tokio::process::Command::new("claude");
+let mut cmd = tokio::process::Command::new("codex");
 cmd.stderr(std::process::Stdio::piped());
 ```
 
@@ -1168,7 +1168,7 @@ let (tx, rx) = mpsc::channel(100);  // Backpressure after 100
 
 **Error:** Codex tool calls don't appear in UI
 
-**Cause:** Codex uses different event types than Claude
+**Cause:** Codex uses different event types than Codex
 
 **Solution:**
 ```rust

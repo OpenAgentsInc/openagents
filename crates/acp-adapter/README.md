@@ -1,12 +1,12 @@
 # ACP Adapter
 
-Agent Client Protocol (ACP) adapter for OpenAgents, enabling standardized communication between OpenAgents applications and AI coding agents (Claude Code, Codex, and future agents).
+Agent Client Protocol (ACP) adapter for OpenAgents, enabling standardized communication between OpenAgents applications and AI coding agents (Codex Code, Codex, and future agents).
 
 ## Overview
 
-The ACP adapter wraps existing agent SDKs (`claude-agent-sdk`, `codex-agent-sdk`) to provide a unified protocol-based interface. It handles:
+The ACP adapter wraps existing agent SDKs (`codex-agent-sdk`, `codex-agent-sdk`) to provide a unified protocol-based interface. It handles:
 
-- **Multi-agent support** - Work with Claude Code, Codex, or any ACP-compatible agent
+- **Multi-agent support** - Work with Codex Code, Codex, or any ACP-compatible agent
 - **Protocol standardization** - JSON-RPC 2.0 communication following the ACP specification
 - **Session management** - Create, track, and manage agent sessions
 - **Session replay** - Record and replay sessions from rlog files
@@ -42,19 +42,19 @@ The ACP adapter wraps existing agent SDKs (`claude-agent-sdk`, `codex-agent-sdk`
 ### Basic Usage
 
 ```rust
-use acp_adapter::agents::claude::{connect_claude, ClaudeAgentConfig};
+use acp_adapter::agents::codex::{connect_codex, CodexAgentConfig};
 use std::path::PathBuf;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    // Connect to Claude Code
+    // Connect to Codex Code
     let cwd = PathBuf::from("/path/to/workspace");
-    let config = ClaudeAgentConfig::new()
-        .model("claude-sonnet-4-5")
+    let config = CodexAgentConfig::new()
+        .model("codex-sonnet-4-5")
         .max_turns(100)
         .permission_mode("default");
 
-    let connection = connect_claude(config, &cwd).await?;
+    let connection = connect_codex(config, &cwd).await?;
 
     // Create a session
     let session = connection.new_session(cwd.clone()).await?;
@@ -318,10 +318,10 @@ impl<P: PermissionHandler> acp::Client for OpenAgentsClient<P> {
 
 ### Agent Configuration
 
-#### Claude Code
+#### Codex Code
 
 ```rust
-pub struct ClaudeAgentConfig {
+pub struct CodexAgentConfig {
     pub executable_path: Option<PathBuf>,
     pub model: Option<String>,
     pub max_turns: Option<u32>,
@@ -330,7 +330,7 @@ pub struct ClaudeAgentConfig {
     pub max_budget_usd: Option<f64>,
 }
 
-impl ClaudeAgentConfig {
+impl CodexAgentConfig {
     pub fn new() -> Self;
     pub fn executable_path(self, path: impl Into<PathBuf>) -> Self;
     pub fn model(self, model: impl Into<String>) -> Self;
@@ -340,8 +340,8 @@ impl ClaudeAgentConfig {
     pub fn max_budget_usd(self, budget: f64) -> Self;
 }
 
-pub async fn connect_claude(
-    config: ClaudeAgentConfig,
+pub async fn connect_codex(
+    config: CodexAgentConfig,
     root_dir: &Path
 ) -> Result<AcpAgentConnection>;
 ```
@@ -376,7 +376,7 @@ The adapter includes bidirectional converters for various formats:
 
 ### SDK <-> ACP
 
-- `converters::sdk_to_acp` - Convert Claude SDK messages to ACP notifications
+- `converters::sdk_to_acp` - Convert Codex SDK messages to ACP notifications
 - `converters::acp_to_sdk` - Convert ACP requests to SDK types
 
 ### ACP <-> rlog
@@ -395,12 +395,12 @@ When integrating with a web UI (e.g., Actix server), you can expose ACP sessions
 
 ```rust
 use actix_web::{get, post, delete, web, HttpResponse};
-use acp_adapter::{AcpAgentConnection, agents::claude::connect_claude};
+use acp_adapter::{AcpAgentConnection, agents::codex::connect_codex};
 use serde::{Deserialize, Serialize};
 
 #[derive(Deserialize)]
 struct CreateSessionRequest {
-    agent: String,  // "claude" or "codex"
+    agent: String,  // "codex" or "codex"
     model: Option<String>,
     cwd: Option<PathBuf>,
 }
@@ -412,7 +412,7 @@ async fn create_session(
 ) -> HttpResponse {
     // Create connection
     let connection = match req.agent.as_str() {
-        "claude" => connect_claude(config, &cwd).await,
+        "codex" => connect_codex(config, &cwd).await,
         "codex" => connect_codex(config, &cwd).await,
         _ => return HttpResponse::BadRequest().body("Unknown agent"),
     };
@@ -462,15 +462,15 @@ See `docs/acp-adapter.md` for complete REST API documentation.
 
 **Solution**:
 ```bash
-# For Claude Code
-npm install -g @anthropic-ai/claude-code
+# For Codex Code
+npm install -g @openai-ai/codex-code
 
 # For Codex
 npm install -g codex-agent
 
 # Or specify explicit path
-let config = ClaudeAgentConfig::new()
-    .executable_path("/custom/path/to/claude");
+let config = CodexAgentConfig::new()
+    .executable_path("/custom/path/to/codex");
 ```
 
 ### Connection timeout during initialization
@@ -489,7 +489,7 @@ use tracing_subscriber;
 tracing_subscriber::fmt::init();
 
 // Check stderr output from agent
-let mut cmd = tokio::process::Command::new("claude");
+let mut cmd = tokio::process::Command::new("codex");
 cmd.stderr(std::process::Stdio::piped());
 ```
 
@@ -558,7 +558,7 @@ let (tx, rx) = mpsc::channel(100);  // Backpressure after 100 pending
 
 **Problem**: Codex CommandExecution, FileChange, etc. don't show in UI
 
-**Cause**: Codex uses different event types than Claude SDK
+**Cause**: Codex uses different event types than Codex SDK
 
 **Solution**: Ensure Codex converter is being used:
 
@@ -582,7 +582,7 @@ Integration tests require agent binaries to be installed:
 
 ```bash
 # Install test dependencies
-npm install -g @anthropic-ai/claude-code codex-agent
+npm install -g @openai-ai/codex-code codex-agent
 
 # Run integration tests
 cargo test --test integration_tests

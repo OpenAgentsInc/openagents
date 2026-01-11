@@ -30,7 +30,7 @@ The agent-orchestrator crate provides a layered architecture for managing AI age
 │                      Backend Layer                              │
 │                                                                 │
 │  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐          │
-│  │  Claude  │ │  OpenAI  │ │  Codex   │ │ GPT-OSS  │          │
+│  │  Codex  │ │  OpenAI  │ │  Codex   │ │ GPT-OSS  │          │
 │  │   API    │ │   API    │ │   API    │ │  Local   │          │
 │  └──────────┘ └──────────┘ └──────────┘ └──────────┘          │
 │                                                                 │
@@ -257,7 +257,7 @@ hooks.register(MyHook);
 ### Custom Backends
 
 ```rust
-let router = MultiBackendRouter::new(BackendProvider::Claude)
+let router = MultiBackendRouter::new(BackendProvider::Codex)
     .add_backend(BackendConfig {
         provider: BackendProvider::Local,
         model: "custom-model".to_string(),

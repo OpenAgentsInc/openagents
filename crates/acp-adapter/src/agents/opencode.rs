@@ -345,10 +345,10 @@ mod tests {
         let config = OpencodeAgentConfig::new()
             .port(5000)
             .hostname("localhost")
-            .model("claude-sonnet-4");
+            .model("codex-sonnet-4");
 
         assert_eq!(config.port, 5000);
         assert_eq!(config.hostname, "localhost");
-        assert_eq!(config.model, Some("claude-sonnet-4".to_string()));
+        assert_eq!(config.model, Some("codex-sonnet-4".to_string()));
     }
 }

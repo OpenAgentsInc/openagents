@@ -13,7 +13,7 @@ use wgpui::markdown::MarkdownParser;
 
 #[derive(Clone, Copy)]
 pub(crate) enum AutopilotAction {
-    StartClaude,
+    StartCodex,
 }
 
 /// Centered overlay chat pane for the autopilot agent.
@@ -24,8 +24,8 @@ pub(crate) struct AutopilotChatPane {
     backdrop_bounds: Bounds,
     footer_bounds: Bounds,
     footer_button_bounds: Bounds,
-    start_claude_visible: bool,
-    start_claude_button: Button,
+    start_codex_visible: bool,
+    start_codex_button: Button,
     event_ctx: EventContext,
     actions: Rc<RefCell<Vec<AutopilotAction>>>,
 }
@@ -34,13 +34,13 @@ impl AutopilotChatPane {
     pub(crate) fn new() -> Self {
         let actions = Rc::new(RefCell::new(Vec::new()));
         let actions_handle = actions.clone();
-        let start_claude_button = Button::new("Start Claude")
+        let start_codex_button = Button::new("Start Codex")
             .variant(ButtonVariant::Primary)
             .padding(10.0, 4.0)
             .on_click(move || {
                 actions_handle
                     .borrow_mut()
-                    .push(AutopilotAction::StartClaude);
+                    .push(AutopilotAction::StartCodex);
             });
         Self {
             thread: ThreadView::new().auto_scroll(true),
@@ -49,8 +49,8 @@ impl AutopilotChatPane {
             backdrop_bounds: Bounds::ZERO,
             footer_bounds: Bounds::ZERO,
             footer_button_bounds: Bounds::ZERO,
-            start_claude_visible: false,
-            start_claude_button,
+            start_codex_visible: false,
+            start_codex_button,
             event_ctx: EventContext::new(),
             actions,
         }
@@ -59,7 +59,7 @@ impl AutopilotChatPane {
     /// Show the chat pane with a greeting message.
     pub(crate) fn show(&mut self, github_username: &str) {
         self.visible = true;
-        self.start_claude_visible = false;
+        self.start_codex_visible = false;
         self.thread.clear();
 
         let greeting = format!("Hello {}, I am your first Autopilot.", github_username);
@@ -71,9 +71,9 @@ impl AutopilotChatPane {
         self.visible = false;
     }
 
-    /// Enable the CTA for starting the Claude tunnel flow.
-    pub(crate) fn enable_claude_cta(&mut self) {
-        self.start_claude_visible = true;
+    /// Enable the CTA for starting the Codex tunnel flow.
+    pub(crate) fn enable_codex_cta(&mut self) {
+        self.start_codex_visible = true;
     }
 
     pub(crate) fn take_actions(&mut self) -> Vec<AutopilotAction> {
@@ -182,7 +182,7 @@ impl AutopilotChatPane {
 
         self.footer_bounds = Bounds::ZERO;
         self.footer_button_bounds = Bounds::ZERO;
-        if self.start_claude_visible {
+        if self.start_codex_visible {
             let footer_height = 36.0;
             self.footer_bounds = Bounds::new(
                 self.bounds.origin.x + 12.0,
@@ -220,7 +220,7 @@ impl AutopilotChatPane {
                 .with_corner_radius(4.0),
         );
 
-        let footer_height = if self.start_claude_visible {
+        let footer_height = if self.start_codex_visible {
             self.footer_bounds.size.height + 12.0
         } else {
             0.0
@@ -236,7 +236,7 @@ impl AutopilotChatPane {
 
         self.thread.paint(content_bounds, cx);
 
-        if self.start_claude_visible {
+        if self.start_codex_visible {
             // Divider line
             cx.scene.draw_quad(
                 Quad::new(Bounds::new(
@@ -254,8 +254,8 @@ impl AutopilotChatPane {
                 self.footer_bounds.size.width - self.footer_button_bounds.size.width - 8.0,
                 self.footer_bounds.size.height - 16.0,
             );
-            Text::new("Run the full Claude agent locally.").paint(label_bounds, cx);
-            self.start_claude_button
+            Text::new("Run the full Codex agent locally.").paint(label_bounds, cx);
+            self.start_codex_button
                 .paint(self.footer_button_bounds, cx);
         }
     }
@@ -266,7 +266,7 @@ impl AutopilotChatPane {
             return EventResult::Ignored;
         }
 
-        let footer_height = if self.start_claude_visible {
+        let footer_height = if self.start_codex_visible {
             self.footer_bounds.size.height + 12.0
         } else {
             0.0
@@ -289,9 +289,9 @@ impl AutopilotChatPane {
             }
             InputEvent::MouseMove { x, y } => {
                 let point = Point::new(*x, *y);
-                if self.start_claude_visible && self.footer_bounds.contains(point) {
+                if self.start_codex_visible && self.footer_bounds.contains(point) {
                     let _ = self
-                        .start_claude_button
+                        .start_codex_button
                         .event(&event, self.footer_button_bounds, &mut self.event_ctx);
                 }
                 if content_bounds.contains(point) {
@@ -300,9 +300,9 @@ impl AutopilotChatPane {
             }
             InputEvent::MouseDown { x, y, .. } | InputEvent::MouseUp { x, y, .. } => {
                 let point = Point::new(*x, *y);
-                if self.start_claude_visible && self.footer_bounds.contains(point) {
+                if self.start_codex_visible && self.footer_bounds.contains(point) {
                     let result = self
-                        .start_claude_button
+                        .start_codex_button
                         .event(&event, self.footer_button_bounds, &mut self.event_ctx);
                     if matches!(result, EventResult::Handled) {
                         return result;

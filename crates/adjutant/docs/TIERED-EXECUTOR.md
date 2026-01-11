@@ -2,8 +2,8 @@
 
 The TieredExecutor uses a two-model architecture for cost-effective AI-powered task execution.
 
-> **Note:** TieredExecutor is now the **fallback** when Claude CLI is not available.
-> If the `claude` CLI is installed (Pro/Max subscription), Adjutant uses `ClaudeExecutor` instead.
+> **Note:** TieredExecutor is now the **fallback** when Codex CLI is not available.
+> If the `codex` CLI is installed (Pro/Max subscription), Adjutant uses `CodexExecutor` instead.
 > See [README.md](./README.md) for the full execution priority.
 
 ## Execution Modes
@@ -157,7 +157,7 @@ For a typical task with 5 subtasks:
 
 Comparison:
 - Using GLM 4.7 for everything: ~$0.05
-- Using Claude: ~$0.15
+- Using Codex: ~$0.15
 
 ## Usage
 

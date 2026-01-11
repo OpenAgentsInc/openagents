@@ -265,7 +265,7 @@ impl InputOverlay {
                 MouseButton::Middle => theme::status::INFO.with_alpha(opacity * 0.5),
             };
 
-            // Draw a circle as a square (no border-radius per CLAUDE.md)
+            // Draw a circle as a square (no border-radius per AGENTS.md)
             let bounds = Bounds::new(
                 ripple.position.x - radius,
                 ripple.position.y - radius,

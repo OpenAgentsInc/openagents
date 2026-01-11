@@ -4,7 +4,7 @@ pub enum Command {
     Clear,
     Compact,
     Model,
-    Backend,      // Toggle between Claude/Codex
+    Backend,      // Toggle between backends
     BackendSet(String),  // Set specific backend
     Undo,
     Cancel,
@@ -107,16 +107,16 @@ const COMMAND_SPECS: &[CommandSpec] = &[
     },
     CommandSpec {
         usage: "/model",
-        description: "Select a Claude model",
+        description: "Select a model",
         requires_args: false,
     },
     CommandSpec {
         usage: "/backend",
-        description: "Toggle between Claude and Codex",
+        description: "Toggle between backends",
         requires_args: false,
     },
     CommandSpec {
-        usage: "/backend <claude|codex>",
+        usage: "/backend codex",
         description: "Switch to a specific backend",
         requires_args: true,
     },

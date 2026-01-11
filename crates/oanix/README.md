@@ -69,7 +69,7 @@ Ready. What would you like to do?
 │  "How do agents run?"                       │
 │  ├── Tick model                             │
 │  ├── Filesystem abstraction                 │
-│  └── /compute, /containers, /claude         │
+│  └── /compute, /containers, /codex         │
 └─────────────────────────────────────────────┘
 ```
 

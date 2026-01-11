@@ -10,7 +10,7 @@
 //! use agent_orchestrator::integrations::frostr_bridge::{generate_threshold_identity, FrostShareInfo};
 //!
 //! // Generate a new threshold-protected agent identity
-//! let (identity, shares) = generate_threshold_identity("MyAgent", "claude-sonnet-4", 2, 3)?;
+//! let (identity, shares) = generate_threshold_identity("MyAgent", "codex-sonnet-4", 2, 3)?;
 //!
 //! assert!(identity.is_threshold_protected());
 //! assert_eq!(shares.len(), 3);
@@ -150,7 +150,7 @@ pub fn generate_threshold_shares(
 ///
 /// # Arguments
 /// * `name` - Agent name
-/// * `model` - Model identifier (e.g., "claude-sonnet-4")
+/// * `model` - Model identifier (e.g., "codex-sonnet-4")
 /// * `threshold` - Minimum shares needed to sign (k)
 /// * `total` - Total shares to create (n)
 ///
@@ -225,11 +225,11 @@ mod tests {
 
     #[test]
     fn test_generate_threshold_identity() {
-        let (identity, shares) = generate_threshold_identity("TestAgent", "claude-sonnet-4", 2, 3)
+        let (identity, shares) = generate_threshold_identity("TestAgent", "codex-sonnet-4", 2, 3)
             .expect("should generate identity");
 
         assert_eq!(identity.name, "TestAgent");
-        assert_eq!(identity.model, "claude-sonnet-4");
+        assert_eq!(identity.model, "codex-sonnet-4");
         assert!(identity.is_threshold_protected());
         assert_eq!(shares.len(), 3);
     }

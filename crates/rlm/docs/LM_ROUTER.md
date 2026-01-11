@@ -171,7 +171,7 @@ let router = LmRouter::builder()
     .add_backend(backend1)
     .add_backend(backend2)
     .route_model("gpt-4", "backend-1")
-    .route_model("claude-3", "backend-2")
+    .route_model("codex-3", "backend-2")
     .build();
 ```
 

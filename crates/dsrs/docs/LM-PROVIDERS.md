@@ -1,6 +1,6 @@
 # LM Providers
 
-dsrs supports 14+ LM providers via rig-core, with special integrations for Claude SDK and Pylon.
+dsrs supports 14+ LM providers via rig-core, with special integrations for Codex SDK and Pylon.
 
 ## Provider Hierarchy
 
@@ -10,7 +10,7 @@ dsrs supports 14+ LM providers via rig-core, with special integrations for Claud
 ├─────────────────────────────────────────────────────────────┤
 │  HIGH PRIORITY (Premium)                                     │
 │  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐          │
-│  │ Claude SDK  │  │  Claude API │  │   GPT-4     │          │
+│  │ Codex SDK  │  │  Codex API │  │   GPT-4     │          │
 │  │  (headless) │  │  (direct)   │  │  (OpenAI)   │          │
 │  └─────────────┘  └─────────────┘  └─────────────┘          │
 │                                                              │
@@ -34,27 +34,27 @@ dsrs supports 14+ LM providers via rig-core, with special integrations for Claud
 use dsrs::prelude::*;
 
 // Simple configuration
-dsrs::configure(LM::new("claude-3-sonnet"));
+dsrs::configure(LM::new("codex-3-sonnet"));
 
 // With caching
-dsrs::configure(LM::new("claude-3-sonnet").with_cache(true));
+dsrs::configure(LM::new("codex-3-sonnet").with_cache(true));
 
 // With custom adapter
 dsrs::configure_with_adapter(
-    LM::new("claude-3-sonnet"),
+    LM::new("codex-3-sonnet"),
     MyCustomAdapter,
 );
 ```
 
-## Claude SDK Provider
+## Codex SDK Provider
 
-Headless Claude Code CLI integration for tool use and agentic workflows.
+Headless Codex Code CLI integration for tool use and agentic workflows.
 
 ```rust
-use dsrs::core::lm::claude_sdk::ClaudeSdkLM;
+use dsrs::core::lm::codex_sdk::CodexSdkLM;
 
-let lm = ClaudeSdkLM::new()
-    .with_model("claude-3-sonnet")
+let lm = CodexSdkLM::new()
+    .with_model("codex-3-sonnet")
     .with_timeout(Duration::from_secs(60))
     .with_working_dir("/path/to/repo");
 
@@ -68,8 +68,8 @@ dsrs::configure(lm.into());
 - Streaming responses
 
 **Requirements:**
-- `claude-agent-sdk` crate
-- Claude Code CLI installed
+- `codex-agent-sdk` crate
+- Codex Code CLI installed
 
 ## Pylon Provider
 
@@ -112,7 +112,7 @@ Automatic provider selection based on availability and cost.
 use dsrs::core::lm::LaneMux;
 
 let mux = LaneMux::new()
-    .add_lane("premium", ClaudeSdkLM::new())
+    .add_lane("premium", CodexSdkLM::new())
     .add_lane("fast", GroqLM::new())
     .add_lane("cheap", PylonLM::new_swarm("wss://nexus.openagents.com"))
     .add_lane("local", PylonLM::new_local());
@@ -137,8 +137,8 @@ let result = predictor.forward(inputs).await?;  // Uses best available
 
 | Provider | Speed | Cost | Quality | Local |
 |----------|-------|------|---------|-------|
-| Claude SDK | Medium | $$$ | Excellent | No |
-| Claude API | Medium | $$$ | Excellent | No |
+| Codex SDK | Medium | $$$ | Excellent | No |
+| Codex API | Medium | $$$ | Excellent | No |
 | GPT-4 | Medium | $$$ | Excellent | No |
 | Gemini Pro | Fast | $$ | Good | No |
 | Groq | Very Fast | $ | Good | No |
@@ -175,10 +175,10 @@ println!("Total tokens: {}", total_usage.total_tokens);
 
 ## Provider-Specific Features
 
-### Anthropic/Claude
+### OpenAI/Codex
 
 ```rust
-let lm = LM::new("claude-3-opus")
+let lm = LM::new("codex-3-opus")
     .with_max_tokens(4096)
     .with_temperature(0.7);
 ```
@@ -211,7 +211,7 @@ let lm = LM::new("groq/mixtral-8x7b")
 
 | Variable | Description |
 |----------|-------------|
-| `ANTHROPIC_API_KEY` | Anthropic API key |
+| `OPENAI_API_KEY` | OpenAI API key |
 | `OPENAI_API_KEY` | OpenAI API key |
 | `GOOGLE_API_KEY` | Google AI API key |
 | `GROQ_API_KEY` | Groq API key |

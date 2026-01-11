@@ -11,7 +11,7 @@
 //! - `["d", "<session-id>"]` - Unique session identifier
 //! - `["tick", "<tick-request-id>"]` - Links to tick request
 //! - `["started_at", "1703000000"]` - Start timestamp
-//! - `["model", "claude-sonnet-4.5"]` - Model used
+//! - `["model", "codex-sonnet-4.5"]` - Model used
 //! - `["visibility", "public|private"]` - Public or private trajectory
 //!
 //! Content: Session metadata
@@ -21,7 +21,7 @@
 //!   "session_id": "session-123",
 //!   "started_at": 1703000000,
 //!   "ended_at": 1703001000,
-//!   "model": "claude-sonnet-4.5",
+//!   "model": "codex-sonnet-4.5",
 //!   "total_events": 42,
 //!   "trajectory_hash": "sha256-of-all-events"
 //! }
@@ -497,18 +497,18 @@ mod tests {
 
     #[test]
     fn test_trajectory_session_content_creation() {
-        let content = TrajectorySessionContent::new("session-123", 1703000000, "claude-sonnet-4.5");
+        let content = TrajectorySessionContent::new("session-123", 1703000000, "codex-sonnet-4.5");
         assert_eq!(content.session_id, "session-123");
         assert_eq!(content.started_at, 1703000000);
         assert_eq!(content.ended_at, None);
-        assert_eq!(content.model, "claude-sonnet-4.5");
+        assert_eq!(content.model, "codex-sonnet-4.5");
         assert_eq!(content.total_events, 0);
         assert_eq!(content.trajectory_hash, None);
     }
 
     #[test]
     fn test_trajectory_session_content_builder() {
-        let content = TrajectorySessionContent::new("session-123", 1703000000, "claude-sonnet-4.5")
+        let content = TrajectorySessionContent::new("session-123", 1703000000, "codex-sonnet-4.5")
             .with_end_time(1703001000)
             .with_total_events(42)
             .with_hash("sha256-test");
@@ -520,7 +520,7 @@ mod tests {
 
     #[test]
     fn test_trajectory_session_content_serialization() {
-        let content = TrajectorySessionContent::new("session-123", 1703000000, "claude-sonnet-4.5")
+        let content = TrajectorySessionContent::new("session-123", 1703000000, "codex-sonnet-4.5")
             .with_end_time(1703001000)
             .with_total_events(42);
 
@@ -568,7 +568,7 @@ mod tests {
 
     #[test]
     fn test_trajectory_session_creation() {
-        let content = TrajectorySessionContent::new("session-123", 1703000000, "claude-sonnet-4.5");
+        let content = TrajectorySessionContent::new("session-123", 1703000000, "codex-sonnet-4.5");
         let session = TrajectorySession::new(content, "tick-456", TrajectoryVisibility::Public);
 
         assert_eq!(session.content.session_id, "session-123");
@@ -578,7 +578,7 @@ mod tests {
 
     #[test]
     fn test_trajectory_session_tags() {
-        let content = TrajectorySessionContent::new("session-123", 1703000000, "claude-sonnet-4.5")
+        let content = TrajectorySessionContent::new("session-123", 1703000000, "codex-sonnet-4.5")
             .with_end_time(1703001000);
         let session = TrajectorySession::new(content, "tick-456", TrajectoryVisibility::Private);
 
@@ -587,7 +587,7 @@ mod tests {
         assert_eq!(tags[0], vec!["d", "session-123"]);
         assert_eq!(tags[1], vec!["tick", "tick-456"]);
         assert_eq!(tags[2], vec!["started_at", "1703000000"]);
-        assert_eq!(tags[3], vec!["model", "claude-sonnet-4.5"]);
+        assert_eq!(tags[3], vec!["model", "codex-sonnet-4.5"]);
         assert_eq!(tags[4], vec!["visibility", "private"]);
         assert_eq!(tags[5], vec!["ended_at", "1703001000"]);
     }
@@ -759,7 +759,7 @@ mod tests {
 
         let hash = TrajectorySessionContent::calculate_hash(&events).unwrap();
 
-        let content = TrajectorySessionContent::new("session-123", 1703000000, "claude-sonnet-4.5")
+        let content = TrajectorySessionContent::new("session-123", 1703000000, "codex-sonnet-4.5")
             .with_hash(&hash);
 
         assert!(content.verify_hash(&events).is_ok());
@@ -772,7 +772,7 @@ mod tests {
 
         let wrong_hash = "0".repeat(64);
 
-        let content = TrajectorySessionContent::new("session-123", 1703000000, "claude-sonnet-4.5")
+        let content = TrajectorySessionContent::new("session-123", 1703000000, "codex-sonnet-4.5")
             .with_hash(wrong_hash);
 
         assert!(content.verify_hash(&events).is_err());
@@ -782,7 +782,7 @@ mod tests {
     fn test_verify_hash_no_hash() {
         let events = vec![r#"{"type":"ToolUse"}"#.to_string()];
 
-        let content = TrajectorySessionContent::new("session-123", 1703000000, "claude-sonnet-4.5");
+        let content = TrajectorySessionContent::new("session-123", 1703000000, "codex-sonnet-4.5");
 
         let result = content.verify_hash(&events);
         assert!(result.is_err());
@@ -819,7 +819,7 @@ mod tests {
         let hash = TrajectorySessionContent::calculate_hash(&events).unwrap();
 
         // Create session with hash
-        let content = TrajectorySessionContent::new("session-123", 1703000000, "claude-sonnet-4.5")
+        let content = TrajectorySessionContent::new("session-123", 1703000000, "codex-sonnet-4.5")
             .with_end_time(1703001000)
             .with_total_events(2)
             .with_hash(&hash);

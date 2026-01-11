@@ -126,7 +126,7 @@ impl AutopilotRuntime {
     fn build_sections(lines: &[LogLine]) -> Vec<LogSection> {
         use std::collections::HashMap;
 
-        // Collect lines by section (only non-Claude sections are collapsible)
+        // Collect lines by section (only non-Codex sections are collapsible)
         let mut section_lines: HashMap<StartupSection, Vec<LogLine>> = HashMap::new();
         let section_order = [
             StartupSection::Auth,
@@ -138,7 +138,7 @@ impl AutopilotRuntime {
 
         for line in lines {
             if let Some(section) = line.section {
-                // Only group startup sections, not Claude
+                // Only group startup sections, not Codex
                 if section != StartupSection::Agent {
                     section_lines.entry(section).or_default().push(line.clone());
                 }

@@ -93,7 +93,7 @@ use dsrs::prelude::*;
 
 // Set callback during configuration
 configure_with_callback(
-    LM::new("claude-3-sonnet"),
+    LM::new("codex-3-sonnet"),
     ChatAdapter,
     LoggingCallback::new(),
 );

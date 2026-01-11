@@ -164,7 +164,7 @@ async fn test_dataset_publish_flow() {
     let now = Utc::now();
     let start_date = now - chrono::Duration::days(90);
     let metadata = DatasetMetadata::new(
-        vec!["claude-code".to_string(), "cursor".to_string()],
+        vec!["codex-code".to_string(), "cursor".to_string()],
         vec![
             "rust".to_string(),
             "python".to_string(),
@@ -259,7 +259,7 @@ async fn test_dataset_publish_flow() {
         parsed_listing
             .metadata
             .sources
-            .contains(&"claude-code".to_string())
+            .contains(&"codex-code".to_string())
     );
     assert_eq!(parsed_listing.metadata.languages.len(), 3);
     assert_eq!(parsed_listing.metadata.quality_score, 0.92);
@@ -645,7 +645,7 @@ fn test_dataset_metadata_creation() {
 fn test_data_listing_serialization() {
     let now = Utc::now();
     let metadata = DatasetMetadata::new(
-        vec!["claude".to_string()],
+        vec!["codex".to_string()],
         vec!["rust".to_string()],
         (now - chrono::Duration::days(7), now),
         0.9,

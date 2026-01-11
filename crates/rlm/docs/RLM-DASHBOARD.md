@@ -22,7 +22,7 @@ A W&B-style experiment tracking and visualization dashboard for Recursive Langua
 │           │                         │                         │              │
 │           │                         │                         │              │
 │  ┌────────▼────────┐       ┌────────▼────────┐       ┌────────▼────────┐   │
-│  │  Claude SDK     │       │  Pylon/Nexus    │       │  openagents.com │   │
+│  │  Codex SDK     │       │  Pylon/Nexus    │       │  openagents.com │   │
 │  │  (sessions)     │       │  (infra)        │       │  (web UI)       │   │
 │  └─────────────────┘       └─────────────────┘       └─────────────────┘   │
 │                                                                              │
@@ -195,7 +195,7 @@ pub struct Run {
 
 pub struct RunConfig {
     pub method: String,                // "base", "rlm", "summary-agent"
-    pub model: String,                 // "claude-3", "llama-3"
+    pub model: String,                 // "codex-3", "llama-3"
     pub chunk_size: usize,
     pub max_depth: usize,
     pub quorum: f32,

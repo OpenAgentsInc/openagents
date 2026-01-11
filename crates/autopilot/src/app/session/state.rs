@@ -86,10 +86,7 @@ impl SessionState {
                 };
                 let duration = entry.updated_at.saturating_sub(entry.created_at);
                 let timestamp = super::super::format_relative_time(entry.updated_at);
-                let model = entry
-                    .model
-                    .replace("claude-", "")
-                    .replace("-2025", "");
+                let model = entry.model.replace("-2025", "");
                 let info = SessionCardInfo::new(entry.id.clone(), title)
                     .status(status)
                     .duration(duration)

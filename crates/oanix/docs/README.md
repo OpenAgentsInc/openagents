@@ -19,7 +19,7 @@ OANIX is the OS layer that wraps the OpenAgents runtime. It discovers the local 
 │  "How do agents run?"                       │
 │  ├── Tick model                             │
 │  ├── Filesystem abstraction                 │
-│  └── /compute, /containers, /claude         │
+│  └── /compute, /containers, /codex         │
 └─────────────────────────────────────────────┘
 ```
 
@@ -95,7 +95,7 @@ pub struct InferenceBackend {
 
 | Backend | Detection Method | Endpoint |
 |---------|------------------|----------|
-| Claude CLI | File exists at `~/.claude/local/claude` | Subprocess |
+| Codex CLI | File exists at `~/.codex/local/codex` | Subprocess |
 | Cerebras | `CEREBRAS_API_KEY` env var | `https://api.cerebras.ai/v1` |
 | Ollama | HTTP check :11434 | `http://localhost:11434` |
 | Apple FM | macOS + Metal check | In-process |
@@ -104,7 +104,7 @@ pub struct InferenceBackend {
 **Execution Priority:**
 
 When Adjutant executes tasks, it uses backends in this order:
-1. **Claude CLI** (Pro/Max subscription) - Best quality, uses existing subscription
+1. **Codex CLI** (Pro/Max subscription) - Best quality, uses existing subscription
 2. **Cerebras** (tiered inference) - Cost-effective GLM 4.7 + Qwen-3-32B
 3. **Analysis-only** - Returns file analysis without AI execution
 
@@ -375,7 +375,7 @@ Hardware
   GPU: Metal (Apple M3 Pro GPU)
 
 Compute Backends
-  [OK] Claude CLI (Pro/Max) - PRIORITY
+  [OK] Codex CLI (Pro/Max) - PRIORITY
   [OK] Ollama (localhost:11434) - 3 models
        ├── llama3.2:latest
        ├── qwen2.5:7b
@@ -383,7 +383,7 @@ Compute Backends
   [--] Apple FM: Not available
   [--] llama.cpp: Not available
 
-  Execution: Claude Pro/Max (priority)
+  Execution: Codex Pro/Max (priority)
 
 Network
   [OK] Internet connectivity

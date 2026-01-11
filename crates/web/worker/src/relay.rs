@@ -6,7 +6,7 @@
 //! ## Connection Flow
 //!
 //! 1. User logs in via GitHub OAuth in browser
-//! 2. User connects Claude OAuth (gets Claude tokens)
+//! 2. User connects Codex OAuth (gets Codex tokens)
 //! 3. Browser creates a tunnel session via POST /api/tunnel/register
 //! 4. User runs `openagents connect` on their machine
 //! 5. Tunnel client connects to DO via WebSocket with session token

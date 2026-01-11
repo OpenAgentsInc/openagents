@@ -158,12 +158,12 @@ fn build_context_sections(label: &str, path: &Path, contents: &str) -> String {
     )
 }
 
-fn candidate_claude_paths(cwd: &Path) -> Vec<PathBuf> {
+fn candidate_agent_paths(cwd: &Path) -> Vec<PathBuf> {
     let mut paths = Vec::new();
-    paths.push(cwd.join("CLAUDE.md"));
-    paths.push(cwd.join(".claude").join("CLAUDE.md"));
+    paths.push(cwd.join("AGENTS.md"));
+    paths.push(cwd.join(".openagents").join("AGENTS.md"));
     if let Some(home) = dirs::home_dir() {
-        paths.push(home.join(".claude").join("CLAUDE.md"));
+        paths.push(home.join(".openagents").join("AGENTS.md"));
     }
     paths
 }
@@ -172,20 +172,20 @@ fn candidate_todo_paths(cwd: &Path) -> Vec<PathBuf> {
     let mut paths = Vec::new();
     paths.push(cwd.join("TODO.md"));
     paths.push(cwd.join("todo.md"));
-    paths.push(cwd.join(".claude").join("TODO.md"));
+    paths.push(cwd.join(".openagents").join("TODO.md"));
     if let Some(home) = dirs::home_dir() {
-        paths.push(home.join(".claude").join("TODO.md"));
+        paths.push(home.join(".openagents").join("TODO.md"));
     }
     paths
 }
 
 pub(crate) fn build_context_injection(cwd: &Path) -> Option<String> {
     let mut sections = Vec::new();
-    for path in candidate_claude_paths(cwd) {
+    for path in candidate_agent_paths(cwd) {
         if path.is_file() {
             if let Ok(contents) = read_file_limited(&path) {
                 if !contents.trim().is_empty() {
-                    sections.push(build_context_sections("CLAUDE.md", &path, &contents));
+                    sections.push(build_context_sections("AGENTS.md", &path, &contents));
                 }
             }
         }

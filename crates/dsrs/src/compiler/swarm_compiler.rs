@@ -95,13 +95,13 @@ impl SwarmCompileConfig {
 ///
 /// Uses a two-phase approach:
 /// 1. **Bootstrap**: Use cheap LM (Pylon swarm) for candidate generation
-/// 2. **Validate**: Use premium LM (Claude/GPT-4) for final evaluation
+/// 2. **Validate**: Use premium LM (Codex/GPT-4) for final evaluation
 ///
 /// This achieves ~96% cost reduction compared to premium-only approaches.
 pub struct SwarmCompiler {
     /// Cheap LM for bootstrap (Pylon swarm, ~10 msats/call).
     bootstrap_lm: Arc<dyn LMProvider>,
-    /// Premium LM for validation (Claude/GPT-4, ~1000 msats/call).
+    /// Premium LM for validation (Codex/GPT-4, ~1000 msats/call).
     validation_lm: Arc<dyn LMProvider>,
     /// Budget tracking.
     budget: BudgetManager,

@@ -1,6 +1,6 @@
 use std::fs;
 
-use claude_agent_sdk::permissions::PermissionRequest;
+use super::request::PermissionRequest;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use wgpui::components::organisms::PermissionType;

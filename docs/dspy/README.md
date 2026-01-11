@@ -24,7 +24,7 @@ From [Omar Khattab](../transcripts/dspy/state-of-dspy.md) and [Kevin Madura](../
 
 4. **Optimizers find latent requirements.** MIPROv2/GEPA discover things you didn't think to specify—like "always capitalize names" or "include file paths in responses."
 
-5. **Model portability without rewriting.** The same signature works across Claude, GPT-4, Llama, Ollama. Only the adapter changes.
+5. **Model portability without rewriting.** The same signature works across Codex, GPT-4, Llama, Ollama. Only the adapter changes.
 
 6. **Tight iteration loops.** Build a signature in 3 lines, test it, refine it, optimize it. No prompt engineering rabbit holes.
 
@@ -168,7 +168,7 @@ Three DSPy pipelines drive autonomous execution:
 Classifies task complexity: Low / Medium / High / VeryHigh
 
 ### DelegationPipeline
-Decides execution path: `claude_code` / `rlm` / `local_tools`
+Decides execution path: `codex_code` / `rlm` / `local_tools`
 
 ### RlmTriggerPipeline
 Decides when recursive analysis is needed
@@ -246,7 +246,7 @@ The RLM engine (`crates/rlm/`) has 4 hardcoded prompt tiers to replace:
 ```
 
 **Remaining work:**
-- Wire signatures to `claude_client.rs` via dsrs Predict
+- Wire signatures to `codex_client.rs` via dsrs Predict
 - Route PromptTier enum to appropriate signature
 - Add training data collection
 
@@ -314,18 +314,18 @@ Different signatures benefit from different models:
 
 | Signature Type | Recommended Model | Reasoning |
 |----------------|-------------------|-----------|
-| Planning (Deep) | Claude Opus | Complex reasoning |
-| Planning (Simple) | Claude Sonnet | Balance speed/quality |
-| Execution | Claude Sonnet | Balance speed/quality |
-| Review/Verify | Claude Haiku | Fast validation |
+| Planning (Deep) | Codex Opus | Complex reasoning |
+| Planning (Simple) | Codex Sonnet | Balance speed/quality |
+| Execution | Codex Sonnet | Balance speed/quality |
+| Review/Verify | Codex Haiku | Fast validation |
 | Optimization (iterations) | Pylon Swarm | Cheap, high volume |
-| Optimization (validation) | Claude/GPT-4 | Final quality check |
+| Optimization (validation) | Codex/GPT-4 | Final quality check |
 | Retrieval Router | Pylon Local | Fast, cheap policy |
 | Evidence Ranker | Pylon Swarm | Parallelizable |
 
 ## LM Provider Priority
 
-1. **Claude SDK** — Uses Claude Code headless mode
+1. **Codex SDK** — Uses Codex Code headless mode
 2. **Llama.cpp/GPT-OSS** — Local OpenAI-compatible server (default :8080)
 3. **Pylon Swarm** — Distributed inference via NIP-90
 4. **Cerebras** — Fast, cheap execution

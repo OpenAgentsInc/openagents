@@ -18,9 +18,9 @@ impl ModelSelector {
             id: None,
             current_model: current,
             available_models: vec![
-                Model::ClaudeSonnet,
-                Model::ClaudeOpus,
-                Model::ClaudeHaiku,
+                Model::CodexSonnet,
+                Model::CodexOpus,
+                Model::CodexHaiku,
                 Model::Gpt4o,
                 Model::GptOss,
                 Model::Gemini,
@@ -68,7 +68,7 @@ impl ModelSelector {
 
 impl Default for ModelSelector {
     fn default() -> Self {
-        Self::new(Model::ClaudeSonnet)
+        Self::new(Model::CodexSonnet)
     }
 }
 
@@ -207,8 +207,8 @@ mod tests {
 
     #[test]
     fn test_model_selector_new() {
-        let selector = ModelSelector::new(Model::ClaudeSonnet);
-        assert_eq!(selector.current_model(), Model::ClaudeSonnet);
+        let selector = ModelSelector::new(Model::CodexSonnet);
+        assert_eq!(selector.current_model(), Model::CodexSonnet);
         assert!(!selector.is_expanded());
     }
 
@@ -224,13 +224,13 @@ mod tests {
 
     #[test]
     fn test_model_selector_includes_gpt_oss() {
-        let selector = ModelSelector::new(Model::ClaudeSonnet);
+        let selector = ModelSelector::new(Model::CodexSonnet);
         assert!(selector.available_models.contains(&Model::GptOss));
     }
 
     #[test]
     fn test_set_model() {
-        let mut selector = ModelSelector::new(Model::Claude);
+        let mut selector = ModelSelector::new(Model::Codex);
         selector.set_model(Model::Gemini);
         assert_eq!(selector.current_model(), Model::Gemini);
     }

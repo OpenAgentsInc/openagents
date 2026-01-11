@@ -9,8 +9,8 @@ use wgpui::{
     NamedKey, Platform, Point, Scene, WebPlatform, run_animation_loop, setup_resize_observer,
 };
 
-use crate::claude_agent;
-use crate::claude_chat::ClaudeChatAction;
+use crate::codex_agent;
+use crate::codex_chat::CodexChatAction;
 use crate::hud::{
     dispatch_hud_event, ensure_hud_session, fetch_live_hud, get_hud_context, init_hud_runtime,
     stop_metrics_poll, update_hud_settings, HudContext,
@@ -524,10 +524,10 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                     let _ = state.gptoss.handle_event(&InputEvent::MouseMove { x, y });
                 }
 
-                if state.claude_chat.visible {
+                if state.codex_chat.visible {
                     overlay_active = true;
                     let _ = state
-                        .claude_chat
+                        .codex_chat
                         .handle_event(InputEvent::MouseMove { x, y });
                 } else if state.autopilot_chat.visible {
                     overlay_active = true;
@@ -565,7 +565,7 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
             };
             let click_pos = Point::new(event.offset_x() as f32, event.offset_y() as f32);
 
-            if state.claude_chat.visible || state.autopilot_chat.visible {
+            if state.codex_chat.visible || state.autopilot_chat.visible {
                 return;
             }
 
@@ -1268,9 +1268,9 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
             let input_event = InputEvent::MouseDown { button, x, y, .. };
             let mut overlay_active = false;
             if let Ok(mut state) = state_clone.try_borrow_mut() {
-                if state.claude_chat.visible {
+                if state.codex_chat.visible {
                     overlay_active = true;
-                    let _ = state.claude_chat.handle_event(input_event.clone());
+                    let _ = state.codex_chat.handle_event(input_event.clone());
                 } else if state.autopilot_chat.visible {
                     overlay_active = true;
                     let _ = state.autopilot_chat.handle_event(input_event.clone());
@@ -1307,9 +1307,9 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
             let input_event = InputEvent::MouseUp { button, x, y };
             let mut overlay_active = false;
             if let Ok(mut state) = state_clone.try_borrow_mut() {
-                if state.claude_chat.visible {
+                if state.codex_chat.visible {
                     overlay_active = true;
-                    let _ = state.claude_chat.handle_event(input_event.clone());
+                    let _ = state.codex_chat.handle_event(input_event.clone());
                 } else if state.autopilot_chat.visible {
                     overlay_active = true;
                     let _ = state.autopilot_chat.handle_event(input_event.clone());
@@ -1508,8 +1508,8 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                 };
 
                 // Handle overlays first (they are on top)
-                if state.claude_chat.visible && state.claude_chat.contains(point) {
-                    let _ = state.claude_chat.handle_event(scroll);
+                if state.codex_chat.visible && state.codex_chat.contains(point) {
+                    let _ = state.codex_chat.handle_event(scroll);
                     return;
                 }
                 if state.autopilot_chat.visible && state.autopilot_chat.contains(point) {
@@ -1564,7 +1564,7 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
             let Ok(state) = state_clone.try_borrow() else {
                 return;
             };
-            if state.claude_chat.visible || state.autopilot_chat.visible {
+            if state.codex_chat.visible || state.autopilot_chat.visible {
                 let _ = canvas2.style().set_property("cursor", "default");
                 return;
             }
@@ -1709,8 +1709,8 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                 let start_on_enter = matches!(key, Key::Named(NamedKey::Enter));
                 let input_event = InputEvent::KeyDown { key, modifiers };
                 if let Ok(mut state) = state_clone.try_borrow_mut() {
-                    if state.claude_chat.visible {
-                        handled = state.claude_chat.handle_event(input_event.clone());
+                    if state.codex_chat.visible {
+                        handled = state.codex_chat.handle_event(input_event.clone());
                     } else if state.view == AppView::RepoSelector {
                         handled = state.editor_workspace.handle_key_event(input_event.clone());
                     } else if state.view == AppView::GptOssPage {
@@ -1822,7 +1822,7 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
         }
 
         let autopilot_actions = state.autopilot_chat.take_actions();
-        let claude_actions = state.claude_chat.take_actions();
+        let codex_actions = state.codex_chat.take_actions();
         let selected_repo = state.selected_repo.clone();
 
         match state.view {
@@ -2000,31 +2000,31 @@ pub async fn start_demo(canvas_id: &str) -> Result<(), JsValue> {
                     if let Ok(mut guard) = state_handle.try_borrow_mut() {
                         guard.autopilot_chat.hide();
                     }
-                    claude_agent::start_claude_chat(state_handle.clone(), repo);
+                    codex_agent::start_codex_chat(state_handle.clone(), repo);
                 }
             }
         }
 
-        if !claude_actions.is_empty() {
-            for action in claude_actions {
+        if !codex_actions.is_empty() {
+            for action in codex_actions {
                 match action {
-                    ClaudeChatAction::SendPrompt(prompt) => {
+                    CodexChatAction::SendPrompt(prompt) => {
                         if let Ok(mut guard) = state_handle.try_borrow_mut() {
-                            let _ = guard.claude_chat.take_input();
+                            let _ = guard.codex_chat.take_input();
                         }
-                        claude_agent::send_prompt(state_handle.clone(), prompt);
+                        codex_agent::send_prompt(state_handle.clone(), prompt);
                     }
-                    ClaudeChatAction::SendCurrentInput => {
-                        claude_agent::send_current_input(state_handle.clone());
+                    CodexChatAction::SendCurrentInput => {
+                        codex_agent::send_current_input(state_handle.clone());
                     }
-                    ClaudeChatAction::CopyConnectCommand => {
-                        claude_agent::copy_connect_command(state_handle.clone());
+                    CodexChatAction::CopyConnectCommand => {
+                        codex_agent::copy_connect_command(state_handle.clone());
                     }
-                    ClaudeChatAction::ApproveTool => {
-                        claude_agent::respond_tool_approval(state_handle.clone(), true);
+                    CodexChatAction::ApproveTool => {
+                        codex_agent::respond_tool_approval(state_handle.clone(), true);
                     }
-                    ClaudeChatAction::DenyTool => {
-                        claude_agent::respond_tool_approval(state_handle.clone(), false);
+                    CodexChatAction::DenyTool => {
+                        codex_agent::respond_tool_approval(state_handle.clone(), false);
                     }
                 }
             }

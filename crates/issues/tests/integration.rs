@@ -227,13 +227,13 @@ fn test_agent_filtering_in_ready_queue() {
     let conn = init_memory_db().unwrap();
 
     // Create issues for different agents
-    let claude_high = create_issue(
+    let codex_high = create_issue(
         &conn,
-        "Claude high task",
+        "Codex high task",
         None,
         Priority::High,
         IssueType::Task,
-        Some("claude"),
+        Some("codex"),
         None,
         None,
     )
@@ -251,13 +251,13 @@ fn test_agent_filtering_in_ready_queue() {
     )
     .unwrap();
 
-    let _claude_medium = create_issue(
+    let _codex_medium = create_issue(
         &conn,
-        "Claude medium task",
+        "Codex medium task",
         None,
         Priority::Medium,
         IssueType::Task,
-        Some("claude"),
+        Some("codex"),
         None,
         None,
     )
@@ -267,11 +267,11 @@ fn test_agent_filtering_in_ready_queue() {
     let next = get_next_ready_issue(&conn, None).unwrap().unwrap();
     assert_eq!(next.id, codex_urgent.id);
 
-    // With claude filter, should skip codex and return claude high
-    let next = get_next_ready_issue(&conn, Some("claude"))
+    // With codex filter, should skip codex and return codex high
+    let next = get_next_ready_issue(&conn, Some("codex"))
         .unwrap()
         .unwrap();
-    assert_eq!(next.id, claude_high.id);
+    assert_eq!(next.id, codex_high.id);
 
     // With codex filter, should only return codex issues
     let next = get_next_ready_issue(&conn, Some("codex")).unwrap().unwrap();
@@ -285,11 +285,11 @@ fn test_agent_filtering_in_ready_queue() {
             .is_none()
     );
 
-    // But claude issues still available
-    let next = get_next_ready_issue(&conn, Some("claude"))
+    // But codex issues still available
+    let next = get_next_ready_issue(&conn, Some("codex"))
         .unwrap()
         .unwrap();
-    assert_eq!(next.id, claude_high.id);
+    assert_eq!(next.id, codex_high.id);
 }
 
 #[test]

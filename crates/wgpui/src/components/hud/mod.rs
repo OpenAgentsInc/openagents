@@ -102,7 +102,7 @@ mod tests {
         let mut bar = StatusBar::new();
         bar.add_item(StatusItem::mode("mode", Mode::Plan).left());
         bar.add_item(StatusItem::text("file", "main.rs").center());
-        bar.add_item(StatusItem::model("model", Model::Claude).right());
+        bar.add_item(StatusItem::model("model", Model::Codex).right());
         bar.add_item(StatusItem::status("status", Status::Online).right());
 
         bar.remove_item("nonexistent");

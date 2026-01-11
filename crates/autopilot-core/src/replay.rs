@@ -193,7 +193,7 @@ impl ReplayBundle {
                     None
                 }
             })
-            .unwrap_or_else(|| "claude-sonnet-4-5-20250929".to_string());
+            .unwrap_or_else(|| "codex-sonnet-4-5-20250929".to_string());
 
         // Calculate default playback speed (2x for demo)
         let playback_speed = 2.0;

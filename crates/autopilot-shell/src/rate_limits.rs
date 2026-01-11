@@ -1,12 +1,12 @@
-//! Rate limit fetching from Claude API
+//! Rate limit fetching from Codex API
 //!
-//! Fetches live rate limit data from Claude API response headers.
+//! Fetches live rate limit data from Codex API response headers.
 //! Works with OAuth authentication using the oauth-2025-04-20 beta.
 //!
 //! Headers parsed:
-//! - anthropic-ratelimit-unified-{claim}-utilization (0-1 usage)
-//! - anthropic-ratelimit-unified-{claim}-reset (unix timestamp)
-//! - anthropic-ratelimit-unified-status (allowed/allowed_warning/rejected)
+//! - openai-ratelimit-unified-{claim}-utilization (0-1 usage)
+//! - openai-ratelimit-unified-{claim}-reset (unix timestamp)
+//! - openai-ratelimit-unified-status (allowed/allowed_warning/rejected)
 //! Claims: 7d (weekly), 5h (session), 7ds (sonnet), 7do (opus)
 
 use chrono::{DateTime, Utc};
@@ -16,7 +16,7 @@ use tokio::sync::RwLock;
 use tracing::{debug, error, info, warn};
 
 /// API endpoint for rate limit fetching (only works with API key, not OAuth)
-const API_URL: &str = "https://api.anthropic.com/v1/messages";
+const API_URL: &str = "https://api.openai.com/v1/messages";
 
 /// Rate limit type from API
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -135,14 +135,14 @@ pub struct RateLimitSnapshot {
 
 /// Parse rate limits from HTTP response headers
 /// Supports multiple header formats:
-/// - x-codex-* headers (Claude Code legacy)
-/// - anthropic-ratelimit-unified-* headers (Claude Code current)
-/// - x-ratelimit-* headers (public Anthropic API)
+/// - x-codex-* headers (Codex Code legacy)
+/// - openai-ratelimit-unified-* headers (Codex Code current)
+/// - x-ratelimit-* headers (public OpenAI API)
 pub fn parse_rate_limits(headers: &HeaderMap) -> RateLimitSnapshot {
-    // Try anthropic-ratelimit-unified headers first (current Claude Code format)
+    // Try openai-ratelimit-unified headers first (current Codex Code format)
     let unified = parse_unified_rate_limit(headers);
 
-    // Then try x-codex headers (Claude Code legacy infrastructure)
+    // Then try x-codex headers (Codex Code legacy infrastructure)
     let primary = parse_rate_limit_window(
         headers,
         "x-codex-primary-used-percent",
@@ -157,7 +157,7 @@ pub fn parse_rate_limits(headers: &HeaderMap) -> RateLimitSnapshot {
         "x-codex-secondary-reset-at",
     );
 
-    // Also try standard x-ratelimit headers (public Anthropic API)
+    // Also try standard x-ratelimit headers (public OpenAI API)
     let standard_limit = parse_standard_rate_limit(headers);
 
     // Merge: prefer unified, then codex, then standard
@@ -180,20 +180,20 @@ const RATE_LIMIT_CLAIMS: &[(&str, RateLimitType, i64)] = &[
     ("5h", RateLimitType::FiveHour, 300),   // session - 5 hours in minutes
 ];
 
-/// Parse unified rate limit headers from current Claude Code
-/// Headers: anthropic-ratelimit-unified-{claim}-utilization, anthropic-ratelimit-unified-{claim}-reset
+/// Parse unified rate limit headers from current Codex Code
+/// Headers: openai-ratelimit-unified-{claim}-utilization, openai-ratelimit-unified-{claim}-reset
 fn parse_unified_rate_limit(headers: &HeaderMap) -> Option<RateLimitWindow> {
     // Check status first - if present, we have rate limit info
-    let status = parse_header_str(headers, "anthropic-ratelimit-unified-status");
+    let status = parse_header_str(headers, "openai-ratelimit-unified-status");
 
     // Get the representative claim if specified
     let _representative =
-        parse_header_str(headers, "anthropic-ratelimit-unified-representative-claim");
+        parse_header_str(headers, "openai-ratelimit-unified-representative-claim");
 
     // Try each claim type to find utilization data
     for (claim, limit_type, window_minutes) in RATE_LIMIT_CLAIMS {
-        let utilization_header = format!("anthropic-ratelimit-unified-{}-utilization", claim);
-        let reset_header = format!("anthropic-ratelimit-unified-{}-reset", claim);
+        let utilization_header = format!("openai-ratelimit-unified-{}-utilization", claim);
+        let reset_header = format!("openai-ratelimit-unified-{}-reset", claim);
 
         if let Some(utilization_str) = parse_header_str(headers, &utilization_header) {
             // Utilization is 0-1, convert to percentage
@@ -243,7 +243,7 @@ fn parse_unified_rate_limit(headers: &HeaderMap) -> Option<RateLimitWindow> {
     };
 
     // Parse reset time from generic reset header
-    let reset_str = parse_header_str(headers, "anthropic-ratelimit-unified-reset");
+    let reset_str = parse_header_str(headers, "openai-ratelimit-unified-reset");
     let resets_at = reset_str.and_then(|s| {
         s.parse::<i64>().ok().or_else(|| {
             chrono::DateTime::parse_from_rfc3339(s)
@@ -260,7 +260,7 @@ fn parse_unified_rate_limit(headers: &HeaderMap) -> Option<RateLimitWindow> {
     })
 }
 
-/// Parse standard x-ratelimit-* headers from Anthropic public API
+/// Parse standard x-ratelimit-* headers from OpenAI public API
 fn parse_standard_rate_limit(headers: &HeaderMap) -> Option<RateLimitWindow> {
     // Standard headers: x-ratelimit-limit-requests, x-ratelimit-remaining-requests, etc.
     let limit = parse_header_i64(headers, "x-ratelimit-limit-requests")?;
@@ -374,9 +374,9 @@ fn parse_header_str<'a>(headers: &'a HeaderMap, name: &str) -> Option<&'a str> {
     headers.get(name)?.to_str().ok()
 }
 
-/// Claude OAuth credentials from ~/.claude/.credentials
+/// Codex OAuth credentials from ~/.codex/.credentials
 #[derive(Debug, Clone)]
-struct ClaudeCredentials {
+struct CodexCredentials {
     #[allow(dead_code)]
     access_token: String,
     #[allow(dead_code)]
@@ -385,7 +385,7 @@ struct ClaudeCredentials {
     rate_limit_tier: Option<String>,
 }
 
-fn load_claude_credentials() -> Option<ClaudeCredentials> {
+fn load_codex_credentials() -> Option<CodexCredentials> {
     // Try macOS keychain first (current credentials)
     if let Some(creds) = load_from_keychain() {
         return Some(creds);
@@ -394,8 +394,8 @@ fn load_claude_credentials() -> Option<ClaudeCredentials> {
     // Fall back to file-based credentials
     let home = std::env::var("HOME").ok()?;
     let paths = [
-        format!("{}/.claude/.credentials", home),
-        format!("{}/.claude/.credentialsold", home),
+        format!("{}/.codex/.credentials", home),
+        format!("{}/.codex/.credentialsold", home),
     ];
 
     for path in &paths {
@@ -404,12 +404,12 @@ fn load_claude_credentials() -> Option<ClaudeCredentials> {
         }
     }
 
-    error!("No Claude credentials found");
+    error!("No Codex credentials found");
     None
 }
 
 /// Load credentials from macOS keychain
-fn load_from_keychain() -> Option<ClaudeCredentials> {
+fn load_from_keychain() -> Option<CodexCredentials> {
     #[cfg(target_os = "macos")]
     {
         // Get current username
@@ -420,7 +420,7 @@ fn load_from_keychain() -> Option<ClaudeCredentials> {
             .args([
                 "find-generic-password",
                 "-s",
-                "Claude Code-credentials",
+                "Codex Code-credentials",
                 "-a",
                 &username,
                 "-w",
@@ -444,16 +444,16 @@ fn load_from_keychain() -> Option<ClaudeCredentials> {
 }
 
 /// Load credentials from a file path
-fn load_from_file(path: &str) -> Option<ClaudeCredentials> {
+fn load_from_file(path: &str) -> Option<CodexCredentials> {
     let contents = std::fs::read_to_string(path).ok()?;
     parse_credentials_json(&contents, path)
 }
 
 /// Parse credentials JSON (shared between keychain and file)
-fn parse_credentials_json(json_str: &str, source: &str) -> Option<ClaudeCredentials> {
+fn parse_credentials_json(json_str: &str, source: &str) -> Option<CodexCredentials> {
     let json: serde_json::Value = serde_json::from_str(json_str).ok()?;
 
-    let oauth = json.get("claudeAiOauth")?;
+    let oauth = json.get("codexAiOauth")?;
 
     let access_token = oauth
         .get("accessToken")
@@ -475,8 +475,8 @@ fn parse_credentials_json(json_str: &str, source: &str) -> Option<ClaudeCredenti
         .and_then(|v| v.as_str())
         .map(String::from);
 
-    info!("Loaded Claude credentials from {}", source);
-    Some(ClaudeCredentials {
+    info!("Loaded Codex credentials from {}", source);
+    Some(CodexCredentials {
         access_token,
         refresh_token,
         subscription_type,
@@ -484,20 +484,20 @@ fn parse_credentials_json(json_str: &str, source: &str) -> Option<ClaudeCredenti
     })
 }
 
-/// Rate limit fetcher - uses OAuth credentials like Claude Code CLI does
+/// Rate limit fetcher - uses OAuth credentials like Codex Code CLI does
 #[derive(Clone)]
 pub struct RateLimitFetcher {
     client: reqwest::Client,
     api_key: Option<String>,
-    credentials: Option<ClaudeCredentials>,
+    credentials: Option<CodexCredentials>,
     latest: Arc<RwLock<Option<RateLimitSnapshot>>>,
 }
 
 impl RateLimitFetcher {
     pub fn new() -> Self {
-        // Try ANTHROPIC_API_KEY first (works with public API)
-        let api_key = std::env::var("ANTHROPIC_API_KEY").ok();
-        let credentials = load_claude_credentials();
+        // Try OPENAI_API_KEY first (works with public API)
+        let api_key = std::env::var("OPENAI_API_KEY").ok();
+        let credentials = load_codex_credentials();
 
         Self {
             client: reqwest::Client::new(),
@@ -522,7 +522,7 @@ impl RateLimitFetcher {
         self.credentials.as_ref()?.subscription_type.as_deref()
     }
 
-    /// Get rate limit tier from credentials (e.g., "default_claude_max_20x")
+    /// Get rate limit tier from credentials (e.g., "default_codex_max_20x")
     pub fn rate_limit_tier(&self) -> Option<&str> {
         self.credentials.as_ref()?.rate_limit_tier.as_deref()
     }
@@ -552,8 +552,8 @@ impl RateLimitFetcher {
             self.client
                 .post(API_URL)
                 .header("content-type", "application/json")
-                .header("anthropic-version", "2023-06-01")
-                .header("anthropic-beta", "oauth-2025-04-20")
+                .header("openai-version", "2023-06-01")
+                .header("openai-beta", "oauth-2025-04-20")
                 .header("authorization", format!("Bearer {}", creds.access_token))
         } else if let Some(ref api_key) = self.api_key {
             // Fall back to API key
@@ -561,7 +561,7 @@ impl RateLimitFetcher {
             self.client
                 .post(API_URL)
                 .header("content-type", "application/json")
-                .header("anthropic-version", "2023-06-01")
+                .header("openai-version", "2023-06-01")
                 .header("x-api-key", api_key)
         } else {
             return Err("No credentials available".to_string());
@@ -569,7 +569,7 @@ impl RateLimitFetcher {
 
         // Minimal request body - Haiku is cheapest, max_tokens=1 to minimize usage
         let body = serde_json::json!({
-            "model": "claude-3-haiku-20240307",
+            "model": "codex-3-haiku-20240307",
             "max_tokens": 1,
             "messages": [{"role": "user", "content": "x"}]
         });
@@ -611,7 +611,7 @@ impl RateLimitFetcher {
     }
 
     /// Update rate limits from API response headers
-    /// Call this when receiving responses from Claude API through autopilot
+    /// Call this when receiving responses from Codex API through autopilot
     pub async fn update_from_headers(&self, headers: &reqwest::header::HeaderMap) {
         let snapshot = parse_rate_limits(headers);
 

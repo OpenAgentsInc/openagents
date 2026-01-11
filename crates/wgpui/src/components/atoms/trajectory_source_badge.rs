@@ -1,6 +1,6 @@
 //! Trajectory source badge for marketplace data contribution.
 //!
-//! Shows the source of trajectory data (Claude, Cursor, Codex, etc.).
+//! Shows the source of trajectory data (Codex, Cursor, Codex, etc.).
 
 use crate::components::context::{EventContext, PaintContext};
 use crate::components::{Component, ComponentId, EventResult};
@@ -10,7 +10,7 @@ use crate::{Bounds, Hsla, InputEvent, Point, Quad, theme};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum TrajectorySource {
     #[default]
-    Claude,
+    Codex,
     Cursor,
     Codex,
     Windsurf,
@@ -20,7 +20,7 @@ pub enum TrajectorySource {
 impl TrajectorySource {
     pub fn label(&self) -> &'static str {
         match self {
-            TrajectorySource::Claude => "Claude",
+            TrajectorySource::Codex => "Codex",
             TrajectorySource::Cursor => "Cursor",
             TrajectorySource::Codex => "Codex",
             TrajectorySource::Windsurf => "Windsurf",
@@ -30,7 +30,7 @@ impl TrajectorySource {
 
     pub fn icon(&self) -> &'static str {
         match self {
-            TrajectorySource::Claude => "◆",
+            TrajectorySource::Codex => "◆",
             TrajectorySource::Cursor => "▸",
             TrajectorySource::Codex => "⟨⟩",
             TrajectorySource::Windsurf => "~",
@@ -40,7 +40,7 @@ impl TrajectorySource {
 
     pub fn color(&self) -> Hsla {
         match self {
-            TrajectorySource::Claude => Hsla::new(30.0, 0.8, 0.55, 1.0), // Orange (Anthropic)
+            TrajectorySource::Codex => Hsla::new(30.0, 0.8, 0.55, 1.0), // Orange (OpenAI)
             TrajectorySource::Cursor => Hsla::new(200.0, 0.7, 0.5, 1.0), // Blue
             TrajectorySource::Codex => Hsla::new(160.0, 0.6, 0.45, 1.0), // Teal (OpenAI)
             TrajectorySource::Windsurf => Hsla::new(220.0, 0.7, 0.55, 1.0), // Indigo
@@ -218,7 +218,7 @@ mod tests {
 
     #[test]
     fn test_trajectory_source() {
-        assert_eq!(TrajectorySource::Claude.label(), "Claude");
+        assert_eq!(TrajectorySource::Codex.label(), "Codex");
         assert_eq!(TrajectorySource::Cursor.label(), "Cursor");
     }
 }

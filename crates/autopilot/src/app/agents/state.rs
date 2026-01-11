@@ -102,7 +102,7 @@ impl AgentBackendsState {
         let mut settings = AllAgentSettings::default();
         settings.selected = selection;
         if let Some(model_id) = settings.selected.model_id.clone() {
-            settings.claude.default_model = Some(model_id);
+            settings.codex.default_model = Some(model_id);
         }
 
         Self {
@@ -205,7 +205,6 @@ impl AgentBackendsState {
     pub(crate) fn model_index_for_kind(&self, kind: AgentKind) -> usize {
         let models = self.models_for_kind(kind);
         let configured = match kind {
-            AgentKind::Claude => self.settings.claude.default_model.as_ref(),
             AgentKind::Codex => self.settings.codex.default_model.as_ref(),
         };
         match configured {
@@ -224,17 +223,13 @@ impl AgentBackendsState {
             Some(id) => AgentSelection::with_model(agent_kind, id.clone()),
             None => AgentSelection::new(agent_kind),
         };
-        let per_agent = match kind {
-            AgentKind::Claude => &mut self.settings.claude,
-            AgentKind::Codex => &mut self.settings.codex,
-        };
-        per_agent.default_model = model_id;
+        self.settings.codex.default_model = model_id;
     }
 }
 
 impl Default for AgentBackendsState {
     fn default() -> Self {
-        Self::new(ModelOption::Opus)
+        Self::new(ModelOption::Default)
     }
 }
 
@@ -295,8 +290,7 @@ async fn run_agent_backends_loop(
 
 fn kind_sort_key(kind: AgentKind) -> usize {
     match kind {
-        AgentKind::Claude => 0,
-        AgentKind::Codex => 1,
+        AgentKind::Codex => 0,
     }
 }
 

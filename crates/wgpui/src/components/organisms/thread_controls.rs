@@ -22,9 +22,9 @@ impl ThreadControls {
         Self {
             id: None,
             mode: Mode::Normal,
-            model: Model::ClaudeSonnet,
+            model: Model::CodexSonnet,
             mode_selector: ModeSelector::new(Mode::Normal),
-            model_selector: ModelSelector::new(Model::ClaudeSonnet),
+            model_selector: ModelSelector::new(Model::CodexSonnet),
             on_mode_change: None,
             on_model_change: None,
             on_run: None,
@@ -274,7 +274,7 @@ mod tests {
     fn test_thread_controls_new() {
         let controls = ThreadControls::new();
         assert_eq!(controls.current_mode(), Mode::Normal);
-        assert_eq!(controls.current_model(), Model::ClaudeSonnet);
+        assert_eq!(controls.current_model(), Model::CodexSonnet);
         assert!(!controls.is_running());
     }
 
@@ -283,12 +283,12 @@ mod tests {
         let controls = ThreadControls::new()
             .with_id(1)
             .mode(Mode::Plan)
-            .model(Model::ClaudeOpus)
+            .model(Model::CodexOpus)
             .running(true);
 
         assert_eq!(controls.id, Some(1));
         assert_eq!(controls.current_mode(), Mode::Plan);
-        assert_eq!(controls.current_model(), Model::ClaudeOpus);
+        assert_eq!(controls.current_model(), Model::CodexOpus);
         assert!(controls.is_running());
     }
 

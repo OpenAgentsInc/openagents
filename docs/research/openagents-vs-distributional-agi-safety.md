@@ -228,7 +228,7 @@ This fragments the agent economy into institution-controlled silos.
 - Nostr enables any agent to verify any other agent
 - MCP enables any agent to use any tool
 
-> "Labs fighting each other (OpenAI vs Anthropic vs Google) destroys exponential value. Our neutrality (work with ALL harnesses) captures the Reed's Law advantage."
+> "Labs fighting each other (OpenAI vs OpenAI vs Google) destroys exponential value. Our neutrality (work with ALL harnesses) captures the Reed's Law advantage."
 
 **What DeepMind Could Learn**: If safety requires sandboxes, and sandboxes fragment the market, then safety measures destroy the coalition value they're trying to protect. There may be designs where safety infrastructure is itself built on neutral protocols, enabling safety without fragmentation.
 

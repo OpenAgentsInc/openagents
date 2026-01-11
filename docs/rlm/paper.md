@@ -691,7 +691,7 @@ Production deployment reveals that orchestration strategy must adapt to model ca
 
 | Tier | Target Models | Orchestration | Features |
 |------|--------------|---------------|----------|
-| Full | GPT-5, Claude | Model-driven | `llm_query()`, REPL, full meta-reasoning |
+| Full | GPT-5, Codex | Model-driven | `llm_query()`, REPL, full meta-reasoning |
 | Guided | Apple FM, Llama-7B | Engine-driven | Simple prompts, no imports, step-by-step |
 | Minimal | <3B models | Engine-driven | Single-instruction, atomic tasks only |
 

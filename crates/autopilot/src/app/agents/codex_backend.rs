@@ -227,7 +227,7 @@ impl AgentSession for CodexSession {
     }
 
     async fn interrupt(&mut self) -> anyhow::Result<()> {
-        // Codex doesn't have a direct interrupt mechanism like Claude
+        // Codex doesn't have a direct interrupt mechanism.
         // The streamed turn will be dropped when we reset
         self.streamed_turn = None;
         Ok(())
@@ -243,7 +243,7 @@ impl AgentSession for CodexSession {
     }
 
     async fn mcp_server_status(&mut self) -> anyhow::Result<serde_json::Value> {
-        // Codex doesn't have MCP integration in the same way as Claude
+        // Codex doesn't have MCP integration in the same way.
         Ok(serde_json::json!({}))
     }
 

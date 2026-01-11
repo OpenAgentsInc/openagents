@@ -372,7 +372,7 @@ pub fn list_issues_by_directive(
                 issue_type: crate::issue::IssueType::from_str(&row.get::<_, String>("issue_type")?),
                 agent: row
                     .get::<_, Option<String>>("agent")?
-                    .unwrap_or_else(|| "claude".to_string()),
+                    .unwrap_or_else(|| "codex".to_string()),
                 directive_id: row.get("directive_id")?,
                 project_id: row.get("project_id")?,
                 is_blocked: row.get::<_, i32>("is_blocked")? != 0,

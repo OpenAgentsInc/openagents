@@ -160,7 +160,7 @@ mod tests {
     fn test_high_quality_trajectory() {
         let session = TrajectorySession {
             session_id: "test".to_string(),
-            source: "claude".to_string(),
+            source: "codex".to_string(),
             path: "/tmp/test.rlog".into(),
             initial_commit: Some("abc123".to_string()),
             final_commit: Some("def456".to_string()),
@@ -181,7 +181,7 @@ mod tests {
     fn test_low_quality_trajectory() {
         let session = TrajectorySession {
             session_id: "test".to_string(),
-            source: "claude".to_string(),
+            source: "codex".to_string(),
             path: "/tmp/test.rlog".into(),
             initial_commit: None,
             final_commit: None,

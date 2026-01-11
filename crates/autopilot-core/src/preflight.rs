@@ -122,7 +122,7 @@ pub struct ProjectInfo {
 /// Inference provider availability
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InferenceInfo {
-    /// Cloud API providers available (Claude/Codex)
+    /// Cloud API providers available (Codex/Codex)
     pub cloud_providers: Vec<String>,
 
     /// Whether any swarm providers are configured
@@ -239,8 +239,8 @@ impl ComputeMix {
 /// Available CLI tools
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolsInfo {
-    /// Claude CLI path and version
-    pub claude: Option<ToolInfo>,
+    /// Codex CLI path and version
+    pub codex: Option<ToolInfo>,
 
     /// Codex CLI path and version
     pub codex: Option<ToolInfo>,
@@ -425,8 +425,8 @@ impl PreflightConfig {
 
         // Tools
         lines.push("## Available Tools".to_string());
-        if let Some(ref claude) = self.tools.claude {
-            lines.push(format!("- claude: {}", claude.path.display()));
+        if let Some(ref codex) = self.tools.codex {
+            lines.push(format!("- codex: {}", codex.path.display()));
         }
         if let Some(ref codex) = self.tools.codex {
             lines.push(format!("- codex: {}", codex.path.display()));
@@ -545,7 +545,7 @@ fn detect_auth() -> AuthInfo {
     let mut providers = HashMap::new();
 
     // Check known providers
-    for provider in &["anthropic", "openai"] {
+    for provider in &["openai", "openai"] {
         let entry = auth::get_provider_auth(provider).ok().flatten();
         let authenticated = entry.is_some();
 
@@ -577,12 +577,12 @@ fn detect_auth() -> AuthInfo {
     }
 
     // Also check environment variables for API keys
-    if std::env::var("ANTHROPIC_API_KEY").is_ok()
-        && !authenticated_providers.contains(&"anthropic".to_string())
+    if std::env::var("OPENAI_API_KEY").is_ok()
+        && !authenticated_providers.contains(&"openai".to_string())
     {
-        authenticated_providers.push("anthropic".to_string());
+        authenticated_providers.push("openai".to_string());
         providers.insert(
-            "anthropic".to_string(),
+            "openai".to_string(),
             ProviderAuth {
                 authenticated: true,
                 auth_type: Some("env".to_string()),
@@ -662,15 +662,15 @@ fn detect_inference() -> InferenceInfo {
     let mut cloud_providers = Vec::new();
     let mut env_vars = HashMap::new();
 
-    // Check cloud API keys (Claude/Codex)
-    let anthropic_key = std::env::var("ANTHROPIC_API_KEY").is_ok();
+    // Check cloud API keys (Codex/Codex)
+    let openai_key = std::env::var("OPENAI_API_KEY").is_ok();
     let openai_key = std::env::var("OPENAI_API_KEY").is_ok();
 
-    env_vars.insert("ANTHROPIC_API_KEY".to_string(), anthropic_key);
+    env_vars.insert("OPENAI_API_KEY".to_string(), openai_key);
     env_vars.insert("OPENAI_API_KEY".to_string(), openai_key);
 
-    if anthropic_key {
-        cloud_providers.push("anthropic".to_string());
+    if openai_key {
+        cloud_providers.push("openai".to_string());
     }
     if openai_key {
         cloud_providers.push("openai".to_string());
@@ -692,7 +692,7 @@ fn detect_tools() -> ToolsInfo {
     debug!("Detecting CLI tools");
 
     ToolsInfo {
-        claude: detect_tool("claude"),
+        codex: detect_tool("codex"),
         codex: detect_tool("codex"),
         opencode: detect_tool("opencode"),
         git: detect_tool("git"),

@@ -65,7 +65,6 @@ fn render_input(
     // Add current backend name
     use crate::app::config::AgentKindConfig;
     let backend_name = match state.agent_selection.agent {
-        AgentKindConfig::Claude => "claude",
         AgentKindConfig::Codex => "codex",
     };
     parts.push(backend_name.to_string());

@@ -113,7 +113,7 @@ Checkpoint storage for resumable autopilot sessions.
 
 **Checkpoint Contents**:
 - Session metadata (ID, timing, phase)
-- Claude API session IDs for resume
+- Codex API session IDs for resume
 - Event history (plan, exec, review, fix phases)
 - Log lines and cursor positions
 - Working directory reference

@@ -5,10 +5,10 @@ use crate::{Bounds, Hsla, InputEvent, Point, Quad, theme};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Model {
     #[default]
-    Claude,
-    ClaudeSonnet,
-    ClaudeOpus,
-    ClaudeHaiku,
+    Codex,
+    CodexSonnet,
+    CodexOpus,
+    CodexHaiku,
     Gpt4,
     Gpt4o,
     GptOss,
@@ -20,10 +20,10 @@ pub enum Model {
 impl Model {
     fn label(&self) -> &'static str {
         match self {
-            Model::Claude => "Claude",
-            Model::ClaudeSonnet => "Sonnet",
-            Model::ClaudeOpus => "Opus",
-            Model::ClaudeHaiku => "Haiku",
+            Model::Codex => "Codex",
+            Model::CodexSonnet => "Sonnet",
+            Model::CodexOpus => "Opus",
+            Model::CodexHaiku => "Haiku",
             Model::Gpt4 => "GPT-4",
             Model::Gpt4o => "GPT-4o",
             Model::GptOss => "GPT-OSS",
@@ -35,8 +35,8 @@ impl Model {
 
     fn color(&self) -> Hsla {
         match self {
-            // Claude models: bright orange for high visibility
-            Model::Claude | Model::ClaudeSonnet | Model::ClaudeOpus | Model::ClaudeHaiku => {
+            // Codex models: bright orange for high visibility
+            Model::Codex | Model::CodexSonnet | Model::CodexOpus | Model::CodexHaiku => {
                 Hsla::new(25.0, 0.9, 0.65, 1.0)
             }
             // GPT models: bright cyan/teal
@@ -162,20 +162,20 @@ mod tests {
 
     #[test]
     fn test_model_badge_new() {
-        let badge = ModelBadge::new(Model::ClaudeSonnet);
-        assert_eq!(badge.model(), Model::ClaudeSonnet);
+        let badge = ModelBadge::new(Model::CodexSonnet);
+        assert_eq!(badge.model(), Model::CodexSonnet);
     }
 
     #[test]
     fn test_model_labels() {
-        assert_eq!(Model::ClaudeSonnet.label(), "Sonnet");
+        assert_eq!(Model::CodexSonnet.label(), "Sonnet");
         assert_eq!(Model::Gpt4o.label(), "GPT-4o");
         assert_eq!(Model::GptOss.label(), "GPT-OSS");
     }
 
     #[test]
     fn test_set_model() {
-        let mut badge = ModelBadge::new(Model::Claude);
+        let mut badge = ModelBadge::new(Model::Codex);
         badge.set_model(Model::Gemini);
         assert_eq!(badge.model(), Model::Gemini);
     }

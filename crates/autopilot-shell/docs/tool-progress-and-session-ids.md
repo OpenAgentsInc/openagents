@@ -7,7 +7,7 @@ AutopilotShell listens for SessionEvent::ToolProgress and updates running ToolCa
 - Child tool progress is also tracked by updating Task child entries and rebuilding the parent card.
 
 ## Session IDs in the system panel
-The system panel shows both the autopilot session ID and per-phase Claude SDK session IDs. RuntimeSnapshot exposes these IDs, and the shell forwards them into the Claude usage panel for visibility and copy.
+The system panel shows both the autopilot session ID and per-phase Codex SDK session IDs. RuntimeSnapshot exposes these IDs, and the shell forwards them into the Codex usage panel for visibility and copy.
 
 ## Resume options
 The Sessions panel includes resume controls for SDK sessions:

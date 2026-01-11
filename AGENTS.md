@@ -7,7 +7,7 @@ Decentralized AI compute marketplace. Run inference, earn Bitcoin.
 | Product | Description | Status |
 |---------|-------------|--------|
 | **Pylon** | Node software for compute marketplace (provider + host) | v0.1 |
-| **Coder** | GPU-accelerated terminal for Claude Code | Active |
+| **Coder** | GPU-accelerated terminal for Codex | Active |
 | **Onyx** | Local-first Markdown editor | Alpha |
 | **GitAfter** | Nostr-native git collaboration (NIP-34) | v0.1 |
 | **Autopilot** | Autonomous coding agent | Active |

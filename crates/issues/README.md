@@ -8,7 +8,7 @@ The `issues` crate is a **lightweight issue tracking library** backed by SQLite.
 
 - **Issue lifecycle** - Create, claim, complete, block issues with status tracking
 - **Priority queue** - Get next ready issue sorted by priority and age
-- **Multi-agent support** - Filter issues by agent (claude, codex)
+- **Multi-agent support** - Filter issues by agent (codex, codex)
 - **Project management** - Track multiple projects with sessions
 - **Session tracking** - Monitor autopilot runs with budget and completion metrics
 - **Automatic numbering** - Sequential issue numbers with trigger-based sync
@@ -39,13 +39,13 @@ let issue = issue::create_issue(
     Some("Users can't log in after upgrade"),
     Priority::Urgent,
     IssueType::Bug,
-    Some("claude"), // agent
+    Some("codex"), // agent
 )?;
 
 println!("Created issue #{}: {}", issue.number, issue.title);
 
 // Get next ready issue
-if let Some(next) = issue::get_next_ready_issue(&conn, Some("claude"))? {
+if let Some(next) = issue::get_next_ready_issue(&conn, Some("codex"))? {
     println!("Next task: #{} - {}", next.number, next.title);
 
     // Claim it
@@ -72,7 +72,7 @@ let issue = issue::create_issue(
     None,
     Priority::Medium,
     IssueType::Task,
-    None, // defaults to "claude"
+    None, // defaults to "codex"
 )?;
 
 assert_eq!(issue.number, 1);
@@ -164,7 +164,7 @@ pub struct Issue {
     pub status: Status,
     pub priority: Priority,
     pub issue_type: IssueType,
-    pub agent: String,                  // "claude" or "codex"
+    pub agent: String,                  // "codex" or "codex"
     pub is_blocked: bool,
     pub blocked_reason: Option<String>,
     pub claimed_by: Option<String>,     // run_id
@@ -185,7 +185,7 @@ pub fn create_issue(
     description: Option<&str>,
     priority: Priority,
     issue_type: IssueType,
-    agent: Option<&str>, // defaults to "claude"
+    agent: Option<&str>, // defaults to "codex"
 ) -> Result<Issue>
 ```
 
@@ -197,7 +197,7 @@ let issue = issue::create_issue(
     Some("Document database schema, API, state transitions..."),
     Priority::Medium,
     IssueType::Task,
-    Some("claude"),
+    Some("codex"),
 )?;
 ```
 
@@ -300,8 +300,8 @@ Examples:
 // Get next issue for any agent
 let next = issue::get_next_ready_issue(&conn, None)?;
 
-// Get next issue for claude
-let claude_next = issue::get_next_ready_issue(&conn, Some("claude"))?;
+// Get next issue for codex
+let codex_next = issue::get_next_ready_issue(&conn, Some("codex"))?;
 
 // Get next issue for codex
 let codex_next = issue::get_next_ready_issue(&conn, Some("codex"))?;
@@ -612,7 +612,7 @@ CREATE TABLE issues (
     status TEXT NOT NULL DEFAULT 'open',
     priority TEXT DEFAULT 'medium',
     issue_type TEXT DEFAULT 'task',
-    agent TEXT NOT NULL DEFAULT 'claude',
+    agent TEXT NOT NULL DEFAULT 'codex',
     is_blocked INTEGER DEFAULT 0,
     blocked_reason TEXT,
     claimed_by TEXT,
@@ -871,7 +871,7 @@ The issues crate is the **storage layer** for the autopilot system:
 ```rust
 loop {
     // 1. Get next issue
-    let Some(issue) = issue::get_next_ready_issue(&conn, Some("claude"))? else {
+    let Some(issue) = issue::get_next_ready_issue(&conn, Some("codex"))? else {
         // No issues available - analyze codebase and create new one
         let new_issue = issue::create_issue(&conn, ...)?;
         continue;
@@ -918,7 +918,7 @@ let mut budget = 0.0;
 
 loop {
     // Get next ready issue
-    let Some(next) = issue::get_next_ready_issue(&conn, Some("claude"))? else {
+    let Some(next) = issue::get_next_ready_issue(&conn, Some("codex"))? else {
         // Create new issue
         let new_issue = issue::create_issue(
             &conn,
@@ -926,7 +926,7 @@ loop {
             None,
             Priority::Medium,
             IssueType::Task,
-            Some("claude"),
+            Some("codex"),
         )?;
         continue;
     };

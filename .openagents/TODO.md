@@ -517,8 +517,8 @@ P0 focus IDs: none.
   - [x] Session management (`session.rs`)
   - [x] Permission handling (`permissions.rs`)
   - [x] Streaming/telemetry (`streaming.rs`, `telemetry.rs`)
-- [x] **Claude Code Integration** ✅
-  - [x] `agents/claude.rs` - Full Claude subprocess support
+- [x] **Codex Code Integration** ✅
+  - [x] `agents/codex.rs` - Full Codex subprocess support
   - [x] stdio protocol communication
   - [x] Permission handling via UiPermissionHandler
 - [x] **Codex Integration** ✅

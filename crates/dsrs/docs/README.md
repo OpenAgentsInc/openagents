@@ -26,7 +26,7 @@ struct QuestionAnswer {
 let predictor = Predict::new(QuestionAnswer::default());
 
 // Configure LM
-dsrs::configure(LM::new("claude-3-sonnet"));
+dsrs::configure(LM::new("codex-3-sonnet"));
 
 // Run inference
 let result = predictor.forward(example! {
@@ -44,7 +44,7 @@ println!("Answer: {}", result.get("answer", None));
 | **Predictors** | `Predict`, `ChainOfThought`, `Refine` for different reasoning patterns |
 | **Optimizers** | COPRO, MIPROv2, GEPA, Pareto for automatic prompt optimization |
 | **DAG Tracing** | Graph/Node types for execution visualization |
-| **14+ LM Providers** | OpenAI, Anthropic, Gemini, Groq, Ollama, Pylon, Claude SDK, etc. |
+| **14+ LM Providers** | OpenAI, OpenAI, Gemini, Groq, Ollama, Pylon, Codex SDK, etc. |
 | **Callbacks** | Observability hooks for HUD integration |
 | **Caching** | Hybrid memory + disk caching via foyer |
 
@@ -75,7 +75,7 @@ println!("Answer: {}", result.get("answer", None));
 │                                                              │
 │  LM PROVIDERS (via rig-core)                                 │
 │  ┌─────────────────────────────────────────────────────────┐│
-│  │ Claude SDK │ Pylon │ Ollama │ OpenAI │ Anthropic │ ... ││
+│  │ Codex SDK │ Pylon │ Ollama │ OpenAI │ OpenAI │ ... ││
 │  └─────────────────────────────────────────────────────────┘│
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -121,7 +121,7 @@ crates/dsrs/
 │   │   ├── module.rs       # Module, Optimizable traits
 │   │   ├── settings.rs     # Global LM + callback configuration
 │   │   └── lm/
-│   │       ├── claude_sdk.rs  # Claude Code headless
+│   │       ├── codex_sdk.rs  # Codex Code headless
 │   │       └── pylon.rs       # Pylon LM provider
 │   ├── predictors/
 │   │   ├── predict.rs      # Base Predict with callbacks

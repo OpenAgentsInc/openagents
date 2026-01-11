@@ -580,7 +580,7 @@ mod tests {
         let start = Utc::now();
         let end = Utc::now();
         let metadata = DatasetMetadata::new(
-            vec!["claude-code".to_string()],
+            vec!["codex-code".to_string()],
             vec!["rust".to_string(), "python".to_string()],
             (start, end),
             0.85,

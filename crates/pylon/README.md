@@ -192,11 +192,11 @@ Everything is embedded:
 | `pylon infer` | Run a local inference request |
 | `pylon api` | Run local HTTP API for completions |
 
-### Claude Tunnel
+### Codex Tunnel
 
 | Command | Description |
 |---------|-------------|
-| `pylon connect --tunnel-url <url>` | Connect local Claude tunnel for web UI |
+| `pylon connect --tunnel-url <url>` | Connect local Codex tunnel for web UI |
 
 ### Provider Mode
 
@@ -256,10 +256,10 @@ default_model = "llama3.2"
 # Backend preference order
 backend_preference = ["ollama", "llamacpp", "apple_fm"]
 
-# Claude tunnel settings
-[claude]
+# Codex tunnel settings
+[codex]
 enabled = true
-model = "claude-sonnet-4-20250514"
+model = "codex-sonnet-4-20250514"
 autonomy = "supervised"  # full | supervised | restricted | read_only
 approval_required_tools = ["Write", "Edit", "Bash"]
 
@@ -412,7 +412,7 @@ Pylon is under active development. Current status:
 - [x] Payment integration (Spark/Lightning)
 - [x] Daemon mode (background process with PID file)
 - [x] CLI commands (init, start, stop, status, doctor, agent, wallet, etc.)
-- [x] Claude tunnel integration
+- [x] Codex tunnel integration
 - [x] Wallet CLI (balance, status, address, invoice, pay, history, fund)
 - [x] Configuration system
 - [ ] Host mode (full agent lifecycle management)

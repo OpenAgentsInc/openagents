@@ -405,7 +405,7 @@ mod tests {
     fn test_contribution_request_creation() {
         let session = TrajectorySession {
             session_id: "test-123".to_string(),
-            source: "claude".to_string(),
+            source: "codex".to_string(),
             path: "/tmp/test.rlog".into(),
             initial_commit: Some("abc".to_string()),
             final_commit: Some("def".to_string()),
@@ -471,7 +471,7 @@ mod tests {
 
         let session = TrajectorySession {
             session_id: "test-session-1".to_string(),
-            source: "claude".to_string(),
+            source: "codex".to_string(),
             path: test_file,
             initial_commit: Some("abc123".to_string()),
             final_commit: Some("def456".to_string()),

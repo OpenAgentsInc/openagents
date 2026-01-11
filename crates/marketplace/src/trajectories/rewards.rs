@@ -120,7 +120,7 @@ mod tests {
 
         let session = TrajectorySession {
             session_id: "test".to_string(),
-            source: "claude".to_string(),
+            source: "codex".to_string(),
             path: "/tmp/test.rlog".into(),
             initial_commit: Some("abc".to_string()),
             final_commit: Some("def".to_string()),
@@ -146,7 +146,7 @@ mod tests {
 
         let session = TrajectorySession {
             session_id: "test".to_string(),
-            source: "claude".to_string(),
+            source: "codex".to_string(),
             path: "/tmp/test.rlog".into(),
             initial_commit: None,
             final_commit: None,

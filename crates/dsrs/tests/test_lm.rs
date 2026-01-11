@@ -209,10 +209,10 @@ async fn test_lm_cache_direct_operations() {
 async fn test_lm_cache_with_different_models() {
     unsafe {
         std::env::set_var("OPENAI_API_KEY", "test");
-        std::env::set_var("ANTHROPIC_API_KEY", "test");
+        std::env::set_var("OPENAI_API_KEY", "test");
     }
     // Test that cache works with different model configurations
-    let models = vec!["openai:gpt-3.5-turbo", "anthropic:claude-3-haiku-20240307"];
+    let models = vec!["openai:gpt-3.5-turbo", "openai:codex-3-haiku-20240307"];
 
     for model in models {
         let lm = LM::builder()

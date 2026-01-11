@@ -1,9 +1,7 @@
-use std::collections::HashMap;
 use std::fs;
 use std::io::{self, Write};
 use std::path::PathBuf;
 
-use claude_agent_sdk::{AgentDefinition, SettingSource};
 use tokio::sync::mpsc;
 use wgpui::components::hud::Command as PaletteCommand;
 use wgpui::components::molecules::SessionAction;
@@ -935,31 +933,6 @@ impl AppState {
             self.push_system_message("Active agent cleared.".to_string());
         }
         self.catalogs.refresh_agent_cards(self.chat.is_thinking);
-    }
-
-    pub(super) fn agent_definitions_for_query(&self) -> HashMap<String, AgentDefinition> {
-        let mut agents = HashMap::new();
-        for entry in &self.catalogs.agent_entries {
-            agents.insert(entry.name.clone(), entry.definition.clone());
-        }
-        agents
-    }
-
-    pub(super) fn setting_sources_for_query(&self) -> Vec<SettingSource> {
-        let mut sources = Vec::new();
-        if self.catalogs.skill_entries
-            .iter()
-            .any(|entry| entry.source == SkillSource::Project)
-        {
-            sources.push(SettingSource::Project);
-        }
-        if self.catalogs.skill_entries
-            .iter()
-            .any(|entry| entry.source == SkillSource::User)
-        {
-            sources.push(SettingSource::User);
-        }
-        sources
     }
 
     pub(super) fn push_hook_log(&mut self, entry: HookLogEntry) {

@@ -34,7 +34,7 @@ RLMs expose the **same external interface as an LLM** (accepts string prompt, pr
 
 ### 2.2 Key Differentiator
 
-Unlike prior approaches (Anthropic subagents, THREAD, Context Folding) that focus on recursive task decomposition but cannot scale inputs beyond context windows, RLMs treat the **prompt itself as an external object** that can be symbolically manipulated. (p2)
+Unlike prior approaches (OpenAI subagents, THREAD, Context Folding) that focus on recursive task decomposition but cannot scale inputs beyond context windows, RLMs treat the **prompt itself as an external object** that can be symbolically manipulated. (p2)
 
 ### 2.3 Implementation Details (p4, Appendix D p24-28)
 

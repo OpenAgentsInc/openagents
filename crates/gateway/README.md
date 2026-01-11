@@ -26,7 +26,7 @@ LLM text generation. The primary gateway type.
 **Providers:**
 - Cerebras (GLM 4.7, Llama variants) - BLAZING fast
 - OpenAI (GPT-4, o1, o3)
-- Anthropic (Claude, Opus)
+- OpenAI (Codex, Opus)
 - Google (Gemini)
 - Groq (fast Llama/Mixtral)
 - Together.ai (open models)
@@ -88,7 +88,7 @@ Model fine-tuning/training.
 
 **Providers:**
 - OpenAI (fine-tuning)
-- Anthropic (fine-tuning)
+- OpenAI (fine-tuning)
 - Together.ai
 - Modal
 - Cerebras (training)
@@ -215,7 +215,7 @@ crates/
         trait.rs             # InferenceGateway trait
         cerebras.rs          # Cerebras impl
         openai.rs            # OpenAI impl
-        anthropic.rs         # Anthropic impl
+        openai.rs         # OpenAI impl
         pylon.rs             # Pylon swarm impl
 
       embedding/
@@ -491,10 +491,10 @@ api_key_env = "OPENAI_API_KEY"
 default_model = "gpt-4o"
 priority = 2
 
-[gateways.inference.anthropic]
+[gateways.inference.openai]
 enabled = true
-api_key_env = "ANTHROPIC_API_KEY"
-default_model = "claude-sonnet-4-20250514"
+api_key_env = "OPENAI_API_KEY"
+default_model = "codex-sonnet-4-20250514"
 priority = 3
 
 [gateways.inference.pylon]
@@ -613,7 +613,7 @@ impl GatewayRegistry {
             let gw: Arc<dyn InferenceGateway> = match cfg.provider.as_str() {
                 "cerebras" => Arc::new(CerebrasGateway::new(cfg)?),
                 "openai" => Arc::new(OpenAIGateway::new(cfg)?),
-                "anthropic" => Arc::new(AnthropicGateway::new(cfg)?),
+                "openai" => Arc::new(OpenAIGateway::new(cfg)?),
                 "pylon" => Arc::new(PylonGateway::new(cfg)?),
                 _ => continue,
             };
@@ -934,7 +934,7 @@ impl InferenceGateway for PylonGateway {
 **Priority order** in GatewayRegistry:
 1. Cerebras (fast, cheap for small models)
 2. OpenAI (reliable, expensive)
-3. Anthropic (Claude for complex tasks)
+3. OpenAI (Codex for complex tasks)
 4. Pylon swarm (decentralized fallback, Bitcoin-native)
 
 ---
@@ -1104,6 +1104,6 @@ futures = "0.3"
 2. How do gateways interact with Nostr? NIP-89-style discovery for third-party gateways?
 3. Rate limiting strategy - per-gateway or global?
 4. Caching layer for identical requests?
-5. How do gateways expose in MCP for Claude Code integration?
+5. How do gateways expose in MCP for Codex Code integration?
 6. Should OpenAgents run a public gateway proxy at api.openagents.com?
 7. How does billing work when using OpenAgents proxy vs direct keys?

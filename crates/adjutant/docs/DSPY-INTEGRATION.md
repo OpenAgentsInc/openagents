@@ -286,7 +286,7 @@ let execution_lm = get_execution_lm().await?;
 
 // Check what provider is being used
 if let Some(provider) = get_active_provider() {
-    println!("Using: {}", provider);  // e.g., "Claude SDK (headless)"
+    println!("Using: {}", provider);  // e.g., "Codex SDK (headless)"
 }
 
 // Force specific provider
@@ -294,7 +294,7 @@ let lm = create_lm(&LmProvider::Cerebras).await?;
 ```
 
 **Provider Priority:**
-1. **Claude SDK** - Uses Claude Code headless mode (requires `claude` CLI)
+1. **Codex SDK** - Uses Codex Code headless mode (requires `codex` CLI)
 2. **Pylon Swarm** - Distributed inference via NIP-90 (requires `PYLON_MNEMONIC`)
 3. **Cerebras** - Fast, cheap execution (requires `CEREBRAS_API_KEY`)
 4. **Pylon Local** - Ollama fallback (requires Ollama running on :11434)
@@ -412,7 +412,7 @@ Decides whether to delegate task execution and to which target.
 | `file_count` | String | input | Number of files |
 | `estimated_tokens` | String | input | Estimated context tokens |
 | `should_delegate` | bool | output | Whether to delegate |
-| `delegation_target` | String | output | claude_code, rlm, or local_tools |
+| `delegation_target` | String | output | codex_code, rlm, or local_tools |
 | `reasoning` | String | output | Explanation of decision |
 | `confidence` | f32 | output | Confidence score (0.0-1.0) |
 
@@ -451,7 +451,7 @@ pub async fn execute(&mut self, task: &Task) -> Result<TaskResult, AdjutantError
 
     if delegation.should_delegate && delegation.confidence > 0.7 {
         match delegation.delegation_target.as_str() {
-            "claude_code" => return self.delegate_to_claude_code(task).await,
+            "codex_code" => return self.delegate_to_codex_code(task).await,
             "rlm" => return self.execute_with_rlm_delegate(task, &plan).await,
             _ => {} // local_tools - fall through
         }
@@ -480,7 +480,7 @@ crates/adjutant/src/dspy/
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| (none) | Claude SDK | Uses `claude` CLI authentication |
+| (none) | Codex SDK | Uses `codex` CLI authentication |
 | `PYLON_MNEMONIC` | Pylon Swarm | BIP-39 mnemonic for NIP-90 signing |
 | `CEREBRAS_API_KEY` | Cerebras | Cerebras API key |
 | (none) | Pylon Local | Auto-detects Ollama on :11434 |
@@ -715,7 +715,7 @@ pub struct DecisionRecord {
     /// Why fallback was used (if applicable)
     pub fallback_reason: Option<FallbackReason>,
 
-    /// Which provider lane was used ("claude" | "swarm" | "local")
+    /// Which provider lane was used ("codex" | "swarm" | "local")
     pub provider_lane: String,
 
     /// What lane legacy would have used (for lane routing analysis)
@@ -763,7 +763,7 @@ let record = DecisionRecord {
     } else {
         None
     },
-    provider_lane: "claude".into(),
+    provider_lane: "codex".into(),
     provider_lane_without_dspy: Some("local".into()),
 };
 

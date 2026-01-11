@@ -18,7 +18,7 @@ Render Autopilot as a single long-running conversation that streams tokens end-t
    - Doesn’t directly solve the UI unification problem.
 
 3) **Emit ACP notifications from Autopilot (Chosen)**  
-   - Aligns with existing ACP paths for Claude/Codex.
+   - Aligns with existing ACP paths for Codex/Codex.
    - Lets UI consume one stream (AgentMessageChunk/AgentThoughtChunk/Plan/ToolCall*).
    - Keeps phase metadata without separate panes or buffers.
 
@@ -44,7 +44,7 @@ Render Autopilot as a single long-running conversation that streams tokens end-t
 ## Implications
 - **Phase visibility** remains, but is now embedded in the same stream.
 - **ACP unification** enables reuse of ACP tooling (replay, telemetry, rlog) across Autopilot.
-- **Streaming parity** with Claude/Codex for UIs and future shells.
+- **Streaming parity** with Codex/Codex for UIs and future shells.
 
 ## Follow-up Work
 - Emit structured ACP `ToolCall`/`ToolCallUpdate` from Adjutant tool execution (local LM path).
@@ -94,7 +94,7 @@ Based on a deep exploration of the codebase, here are recommendations for each o
 
 **Rationale:**
 - Thoughts = internal reasoning users may want visibility into, but shouldn't compete with primary output
-- Matches Claude/Codex convention where extended thinking is visually subordinate
+- Matches Codex/Codex convention where extended thinking is visually subordinate
 - Allows power users to follow reasoning without overwhelming casual users
 
 **Implementation path:**
@@ -112,7 +112,7 @@ Based on a deep exploration of the codebase, here are recommendations for each o
 | Layer | ID Format | Location | Purpose |
 |-------|-----------|----------|---------|
 | Main session | `HHMMSS-{8-hex}` | `crates/autopilot-core/src/logger.rs:141-158` | Top-level identifier |
-| Per-phase SDK | Claude API tokens | `StartupState.{plan,exec,review,fix}_session_id` | API resume |
+| Per-phase SDK | Codex API tokens | `StartupState.{plan,exec,review,fix}_session_id` | API resume |
 | Adjutant DSPy | UUID v4 | `crates/adjutant/src/dspy/sessions.rs:159` | Decision tracking |
 | rlog replay | `replay_{session_id}` | `crates/autopilot-core/src/replay.rs:99` | Trajectory export |
 

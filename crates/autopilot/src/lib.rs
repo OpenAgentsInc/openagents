@@ -1,6 +1,6 @@
 //! Autopilot - Terminal-style AI coding interface
 //!
-//! This crate provides a GPU-accelerated terminal UI for Claude Code and Codex.
+//! This crate provides a GPU-accelerated terminal UI for Codex.
 
 #[path = "app_entry.rs"]
 mod app_entry;

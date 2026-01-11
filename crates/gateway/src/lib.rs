@@ -1,7 +1,7 @@
 //! Gateway abstraction for external AI services
 //!
 //! This crate provides a unified interface for accessing various AI service providers
-//! like Cerebras, OpenAI, Anthropic, and others.
+//! like Cerebras, OpenAI, OpenAI, and others.
 //!
 //! # Example
 //!

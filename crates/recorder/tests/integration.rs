@@ -41,8 +41,8 @@ fn complete_header() -> String {
 format: rlog/1
 id: session_full_001
 mode: auto
-model: claude-sonnet-4-5
-agent: claude
+model: codex-sonnet-4-5
+agent: codex
 version: 0.1.0
 repo: https://github.com/user/repo
 repo_sha: abc123def456789
@@ -96,8 +96,8 @@ fn test_parse_complete_header() {
     let session = result.unwrap();
     assert_eq!(session.header.id, "session_full_001");
     assert_eq!(session.header.mode, Some("auto".to_string()));
-    assert_eq!(session.header.model, Some("claude-sonnet-4-5".to_string()));
-    assert_eq!(session.header.agent, Some("claude".to_string()));
+    assert_eq!(session.header.model, Some("codex-sonnet-4-5".to_string()));
+    assert_eq!(session.header.agent, Some("codex".to_string()));
     assert_eq!(session.header.branch, Some("main".to_string()));
     assert_eq!(session.header.dirty, Some(false));
     assert_eq!(session.header.runner, Some("autopilot".to_string()));

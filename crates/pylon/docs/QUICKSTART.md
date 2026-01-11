@@ -62,16 +62,16 @@ pylon start -f
 pylon status
 ```
 
-## Step 5: Connect Local Claude (Optional)
+## Step 5: Connect Local Codex (Optional)
 
-If you want Claude to run on your machine for the web UI, connect the tunnel session:
+If you want Codex to run on your machine for the web UI, connect the tunnel session:
 
 ```bash
 # From the web UI, copy the tunnel URL and run:
 pylon connect --tunnel-url wss://openagents-web.openagents.workers.dev/api/tunnel/ws/tunnel?session_id=...&token=...
 ```
 
-Keep this running while you use the Claude chat overlay.
+Keep this running while you use the Codex chat overlay.
 
 ## Step 6: Verify Everything Works
 

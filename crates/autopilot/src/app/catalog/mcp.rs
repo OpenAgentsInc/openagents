@@ -3,10 +3,35 @@ use std::fs;
 use std::io;
 use std::path::Path;
 
-use claude_agent_sdk::McpServerConfig;
 use serde_json::Value;
 
 use super::super::config::mcp_project_file;
+
+#[derive(Clone, Debug)]
+pub(crate) enum McpServerConfig {
+    Stdio {
+        command: String,
+        args: Option<Vec<String>>,
+        env: Option<HashMap<String, String>>,
+    },
+    Sse {
+        url: String,
+        headers: Option<HashMap<String, String>>,
+    },
+    Http {
+        url: String,
+        headers: Option<HashMap<String, String>>,
+    },
+    Sdk {
+        name: String,
+    },
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct McpServerStatus {
+    pub(crate) name: String,
+    pub(crate) status: String,
+}
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum McpServerSource {

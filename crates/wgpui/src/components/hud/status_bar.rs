@@ -371,7 +371,7 @@ mod tests {
             .items(vec![
                 StatusItem::mode("mode", Mode::Normal).left(),
                 StatusItem::text("file", "main.rs").center(),
-                StatusItem::model("model", Model::Claude).right(),
+                StatusItem::model("model", Model::Codex).right(),
             ]);
 
         assert_eq!(bar.id, Some(1));

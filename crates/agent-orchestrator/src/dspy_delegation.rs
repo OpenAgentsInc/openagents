@@ -86,7 +86,7 @@ impl Default for DelegationSignature {
 
 Available agents:
 - oracle: Architecture and design decisions, complex debugging, security analysis (GPT-5.2, read-only)
-- librarian: External library docs, API usage examples, OSS reference lookup (Claude Sonnet, read-only)
+- librarian: External library docs, API usage examples, OSS reference lookup (Codex Sonnet, read-only)
 - explore: Find code in codebase, locate definitions, trace references, pattern search (Grok-3, read-only)
 - frontend: UI/UX design, CSS styling, visual components (Gemini Pro, can edit)
 - docwriter: README, API docs, guides, code comments (Gemini Pro, can edit)

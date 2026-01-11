@@ -254,7 +254,7 @@ mod tests {
 format: rlog/1
 id: test-session
 repo_sha: abc123def
-model: claude-sonnet-4
+model: codex-sonnet-4
 cwd: /test/path
 ---
 
@@ -290,7 +290,7 @@ td: [completed] Read file [in_progress] Process data
         assert_eq!(header.format, "rlog/1");
         assert_eq!(header.id, "test-session");
         assert_eq!(header.repo_sha, "abc123def");
-        assert_eq!(header.model, Some("claude-sonnet-4".to_string()));
+        assert_eq!(header.model, Some("codex-sonnet-4".to_string()));
         assert_eq!(header.cwd, Some("/test/path".to_string()));
     }
 

@@ -25,7 +25,7 @@ pub fn builtin_agents() -> HashMap<String, AgentConfig> {
 
 pub fn sisyphus_config() -> AgentConfig {
     AgentConfig {
-        model: "anthropic/claude-opus-4-5".to_string(),
+        model: "openai/codex-opus-4-5".to_string(),
         prompt: SISYPHUS_PROMPT.to_string(),
         temperature: 0.1,
         description: "Primary orchestrator - delegates to specialists, manages workflow"
@@ -72,7 +72,7 @@ pub fn oracle_config() -> AgentConfig {
 
 pub fn librarian_config() -> AgentConfig {
     AgentConfig {
-        model: "anthropic/claude-sonnet-4".to_string(),
+        model: "openai/codex-sonnet-4".to_string(),
         prompt: LIBRARIAN_PROMPT.to_string(),
         temperature: 0.2,
         description: "External docs expert - GitHub search, OSS reference".to_string(),

@@ -25,7 +25,7 @@ curl -s -X POST https://llm.stripe.com/chat/completions \
   -H "Content-Type: application/json" \
   -H "X-Stripe-Customer-ID: $CUSTOMER_ID" \
   -d '{
-    "model": "anthropic/claude-sonnet-4.5",
+    "model": "openai/codex-sonnet-4.5",
     "messages": [{"role": "user", "content": "Say hello in 5 words or less"}],
     "max_tokens": 50
   }' | jq .
@@ -39,7 +39,7 @@ curl -s -X POST https://llm.stripe.com/chat/completions \
   -H "Content-Type: application/json" \
   -H "X-Stripe-Customer-ID: $CUSTOMER_ID" \
   -d '{
-    "model": "anthropic/claude-sonnet-4.5",
+    "model": "openai/codex-sonnet-4.5",
     "messages": [{"role": "user", "content": "What files are in the src folder?"}],
     "max_tokens": 200,
     "tools": [
@@ -69,7 +69,7 @@ curl -s -X POST https://llm.stripe.com/chat/completions \
   -H "Content-Type: application/json" \
   -H "X-Stripe-Customer-ID: $CUSTOMER_ID" \
   -d '{
-    "model": "anthropic/claude-sonnet-4.5",
+    "model": "openai/codex-sonnet-4.5",
     "messages": [
       {"role": "user", "content": "List the src folder"},
       {

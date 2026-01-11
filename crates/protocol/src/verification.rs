@@ -179,7 +179,7 @@ mod tests {
 
     #[test]
     fn test_serde_roundtrip() {
-        let v = Verification::subjective_with_judge(2).with_judge_model("claude-3");
+        let v = Verification::subjective_with_judge(2).with_judge_model("codex-3");
         let json = serde_json::to_string(&v).unwrap();
         let parsed: Verification = serde_json::from_str(&json).unwrap();
         assert_eq!(v, parsed);

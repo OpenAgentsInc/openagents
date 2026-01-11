@@ -97,7 +97,7 @@ impl Storybook {
             // Model badges
             x = inner.origin.x;
             let model_y = inner.origin.y + 35.0;
-            for model in &[Model::ClaudeSonnet, Model::ClaudeOpus, Model::ClaudeHaiku] {
+            for model in &[Model::CodexSonnet, Model::CodexOpus, Model::CodexHaiku] {
                 let mut badge = ModelBadge::new(*model);
                 badge.paint(Bounds::new(x, model_y, 100.0, 22.0), cx);
                 x += 110.0;
@@ -418,7 +418,7 @@ impl Storybook {
             x = inner.origin.x;
             let traj_y = rep_y + 35.0;
             for source in &[
-                TrajectorySource::Claude,
+                TrajectorySource::Codex,
                 TrajectorySource::Cursor,
                 TrajectorySource::Codex,
             ] {
@@ -624,7 +624,7 @@ impl Storybook {
 
         draw_panel("Headers", headers, cx, |inner, cx| {
             let row_height = 28.0;
-            let mut header = MessageHeader::assistant(Model::ClaudeHaiku).timestamp("12:42");
+            let mut header = MessageHeader::assistant(Model::CodexHaiku).timestamp("12:42");
             header.paint(
                 Bounds::new(inner.origin.x, inner.origin.y, inner.size.width, row_height),
                 cx,

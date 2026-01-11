@@ -3,10 +3,10 @@
 This directory contains the Rust crates that power OpenAgents. Each section below provides a single-paragraph overview of a crate to explain its role in the workspace. Descriptions call out core responsibilities, primary interfaces, and key dependencies so overlap is easy to spot. Nested crates use paths like `nostr/core` or `web/worker`.
 
 ## acp-adapter
-The acp-adapter crate implements the Agent Client Protocol (ACP) adapter used to talk to external coding agents over JSON-RPC 2.0. It wraps SDKs like claude-agent-sdk and codex-agent-sdk, manages sessions and permission handling, and converts ACP notifications to and from rlog streams for recorder and UI replay.
+The acp-adapter crate implements the Agent Client Protocol (ACP) adapter used to talk to external coding agents over JSON-RPC 2.0. It wraps SDKs like codex-agent-sdk and codex-agent-sdk, manages sessions and permission handling, and converts ACP notifications to and from rlog streams for recorder and UI replay.
 
 ## adjutant
-The adjutant crate is the autonomous task execution agent, named after StarCraft's command & control AI. It prioritizes Claude Pro/Max via claude-agent-sdk, falls back to Cerebras TieredExecutor, and uses tools directly (Read, Edit, Bash, Glob, Grep). For complex analysis it integrates RLM for large context processing, and can delegate to Claude Code for very complex work. The crate owns task planning, complexity assessment, and execution routing logic through DSPy decision pipelines that classify complexity, determine delegation targets, and trigger RLM usage. It implements a complete self-improvement loop: session tracking records all decisions made during execution, outcome feedback links task success/failure to decision correctness, performance tracking maintains rolling accuracy per signature type, and auto-optimization triggers MIPROv2 when accuracy drops or enough labeled examples accumulate. CLI commands (`autopilot dspy sessions`, `autopilot dspy performance`, `autopilot dspy auto-optimize`) provide visibility into the learning process.
+The adjutant crate is the autonomous task execution agent, named after StarCraft's command & control AI. It prioritizes Codex Pro/Max via codex-agent-sdk, falls back to Cerebras TieredExecutor, and uses tools directly (Read, Edit, Bash, Glob, Grep). For complex analysis it integrates RLM for large context processing, and can delegate to Codex Code for very complex work. The crate owns task planning, complexity assessment, and execution routing logic through DSPy decision pipelines that classify complexity, determine delegation targets, and trigger RLM usage. It implements a complete self-improvement loop: session tracking records all decisions made during execution, outcome feedback links task success/failure to decision correctness, performance tracking maintains rolling accuracy per signature type, and auto-optimization triggers MIPROv2 when accuracy drops or enough labeled examples accumulate. CLI commands (`autopilot dspy sessions`, `autopilot dspy performance`, `autopilot dspy auto-optimize`) provide visibility into the learning process.
 
 ## agent
 The agent crate defines the core data model for sovereign agents: configs, lifecycle states, spawn requests, and registry persistence. It owns identity and wallet metadata but does not schedule or execute agents itself; runtimes like Pylon and Nexus build on these types.
@@ -18,7 +18,7 @@ The agent-orchestrator crate provides a control plane for coordinating multiple 
 The auth crate handles token-based authentication for local services by generating or loading a per-user token, storing it with restrictive permissions, and validating with constant-time comparison.
 
 ## autopilot-core
-The autopilot-core crate is the core autonomous runner for code tasks. It drives plan, execute, review, and fix phases using agent SDKs, emits structured `StartupState` and `ClaudeEvent` streams, and persists `SessionCheckpoint` data for resume/replay. It also runs preflight checks, integrates with issues storage, and writes rlog trajectories.
+The autopilot-core crate is the core autonomous runner for code tasks. It drives plan, execute, review, and fix phases using agent SDKs, emits structured `StartupState` and `CodexEvent` streams, and persists `SessionCheckpoint` data for resume/replay. It also runs preflight checks, integrates with issues storage, and writes rlog trajectories.
 
 ## autopilot-container
 The autopilot-container crate wraps Autopilot in an HTTP service designed for Cloudflare Containers. It handles repo cloning, run startup, and WebSocket streaming, powering the paid web execution path.
@@ -41,14 +41,14 @@ The bench-harness crate is the experiment backbone for benchmark replication. It
 ## bench-runner
 The bench-runner crate is a CLI for running RLM paper replication experiments. It wires bench-harness, bench-datasets, and rlm-methods together with lm-router backends, supports dataset/method selection, and can emit tables or ablation analyses from stored results.
 
-## claude-agent-sdk
-The claude-agent-sdk crate is a Rust SDK for the Claude Code CLI. It manages sessions and streaming, exposes permission and budget controls, and supports interrupt/abort flows for UI-driven stop behavior.
+## codex-agent-sdk
+The codex-agent-sdk crate is a Rust SDK for the Codex Code CLI. It manages sessions and streaming, exposes permission and budget controls, and supports interrupt/abort flows for UI-driven stop behavior.
 
-## claude-mcp
-The claude-mcp crate is an MCP server that exposes Claude Code as JSON-RPC stdio tools. It wraps claude-agent-sdk to provide query execution, session management, and permission configuration for MCP-aware clients.
+## codex-mcp
+The codex-mcp crate is an MCP server that exposes Codex Code as JSON-RPC stdio tools. It wraps codex-agent-sdk to provide query execution, session management, and permission configuration for MCP-aware clients.
 
 ## autopilot
-The autopilot crate is a GPU-accelerated terminal UI for Claude Code and Codex, providing a desktop application for local autonomous agent interaction. Built on the wgpui library, it renders rich Markdown text, manages user sessions and permissions, and integrates with both Claude Agent SDK and Codex Agent SDK for headless agent execution. The `/backend` command toggles between Claude and Codex backends at runtime, with the status bar showing the current backend selection. The crate implements an autonomous autopilot loop (re-exported from adjutant) for continuous task execution, supports MCP server management, and provides a command palette for interactive control. Key types include `AutopilotApp` for application state and event handling, the `Command` enum for user commands like `/help`, `/clear`, `/model`, `/backend`, and session management, and `PanelLayout` for UI organization. It serves as the primary user-facing interface for autonomous agents and interactive coding workflows.
+The autopilot crate is a GPU-accelerated terminal UI for Codex Code and Codex, providing a desktop application for local autonomous agent interaction. Built on the wgpui library, it renders rich Markdown text, manages user sessions and permissions, and integrates with both Codex Agent SDK and Codex Agent SDK for headless agent execution. The `/backend` command toggles between Codex and Codex backends at runtime, with the status bar showing the current backend selection. The crate implements an autonomous autopilot loop (re-exported from adjutant) for continuous task execution, supports MCP server management, and provides a command palette for interactive control. Key types include `AutopilotApp` for application state and event handling, the `Command` enum for user commands like `/help`, `/clear`, `/model`, `/backend`, and session management, and `PanelLayout` for UI organization. It serves as the primary user-facing interface for autonomous agents and interactive coding workflows.
 
 ## codex-agent-sdk
 The codex-agent-sdk crate is a Rust SDK for the OpenAI Codex CLI agent. It provides thread/session management, streaming events, and configurable sandbox, model, and approval settings. The SDK is used by the Autopilot desktop app for Codex backend support, mapping ThreadEvent variants (ItemStarted, ItemUpdated, ItemCompleted, TurnCompleted, Error) to the shared ResponseEvent types for UI rendering.
@@ -57,7 +57,7 @@ The codex-agent-sdk crate is a Rust SDK for the OpenAI Codex CLI agent. It provi
 The compute crate implements a NIP-90 DVM provider that sells compute on Nostr. It listens for job requests, bids/invoices, executes inference or agent backends, and publishes results back to relays. It also defines UnifiedIdentity (Nostr plus Spark) and backend registries for job handling.
 
 ## config
-The config crate loads, validates, and writes `.openagents/project.json`. It centralizes defaults for models, safety, sandboxing, Claude settings, and other Autopilot runtime constraints.
+The config crate loads, validates, and writes `.openagents/project.json`. It centralizes defaults for models, safety, sandboxing, Codex settings, and other Autopilot runtime constraints.
 
 ## daytona
 The daytona crate is a Rust SDK for the Daytona sandbox API, covering sandbox lifecycle, file operations, git actions, and command execution models.
@@ -84,7 +84,7 @@ The frlm crate implements Federated Recursive Language Models, orchestrating dis
 The frostr crate implements FROSTR threshold Schnorr signing for Nostr identities, including key sharing and signing flows for k-of-n setups.
 
 ## gateway
-The gateway crate provides a unified abstraction layer between agents and external AI service providers such as Cerebras, OpenAI, and Anthropic. It defines the `Gateway` trait as the base interface for all gateways (covering gateway type, provider identification, configuration status, and capabilities) and the `InferenceGateway` trait specifically for LLM providers with methods for model listing, chat completion, streaming, and health checks. The crate handles authentication through multiple strategies including user-provided API keys, OpenAgents proxy, and Pylon swarm routing, and implements priority-based request routing with fallback mechanisms. Key types include `ChatRequest` and `ChatResponse` for LLM interactions, `Capability` enum for feature detection (TextGeneration, ChatCompletion, Streaming, Vision, Embedding, ImageGeneration), `ModelInfo` for model metadata including context length and pricing, and `GatewayHealth` for availability monitoring. Currently implements Cerebras Cloud (GLM 4.7, Llama variants) with architecture ready for additional providers. The gateway serves as the "system calls" of the OANIX runtime, enabling agents to access external AI capabilities through a swappable, unified interface.
+The gateway crate provides a unified abstraction layer between agents and external AI service providers such as Cerebras, OpenAI, and OpenAI. It defines the `Gateway` trait as the base interface for all gateways (covering gateway type, provider identification, configuration status, and capabilities) and the `InferenceGateway` trait specifically for LLM providers with methods for model listing, chat completion, streaming, and health checks. The crate handles authentication through multiple strategies including user-provided API keys, OpenAgents proxy, and Pylon swarm routing, and implements priority-based request routing with fallback mechanisms. Key types include `ChatRequest` and `ChatResponse` for LLM interactions, `Capability` enum for feature detection (TextGeneration, ChatCompletion, Streaming, Vision, Embedding, ImageGeneration), `ModelInfo` for model metadata including context length and pricing, and `GatewayHealth` for availability monitoring. Currently implements Cerebras Cloud (GLM 4.7, Llama variants) with architecture ready for additional providers. The gateway serves as the "system calls" of the OANIX runtime, enabling agents to access external AI capabilities through a swappable, unified interface.
 
 ## gitafter
 The gitafter crate powers the GitAfter desktop app, a Nostr-native GitHub alternative. It ties local git operations to NIP-34 events and provides a UI for repos, issues, and patches.
@@ -168,19 +168,19 @@ The protocol crate provides the foundation for typed job schemas with determinis
 The recorder crate parses, validates, and repairs rlog session logs. It also ships a CLI for stats, parsing, and formatting so trajectories remain auditable.
 
 ## relay
-The relay crate defines the WebSocket protocol shared by the browser, worker, and tunnel client. It includes session registration/status structs and message envelopes for StartTask, Autopilot streaming, and Claude tunnel session control.
+The relay crate defines the WebSocket protocol shared by the browser, worker, and tunnel client. It includes session registration/status structs and message envelopes for StartTask, Autopilot streaming, and Codex tunnel session control.
 
 ## relay-worker
 The relay-worker crate is a Cloudflare Worker Nostr relay focused on the inference network. It implements NIP-01/11/28/32/42/90 routing with Durable Objects and D1 storage, and serves a minimal HTTP info page.
 
 ## rlm
-The rlm crate is the Recursive Language Model execution engine. It provides the orchestration loop, command parsing, executor interfaces, span provenance tracking, and optional DSPy integration for recursive tool-driven reasoning over documents. It includes an MCP server binary (`rlm-mcp-server`) exposing `rlm_query` and `rlm_fanout` tools for Claude integration (with configurable Ollama or Claude backends via `RLM_BACKEND` env var), and supports Claude as an LlmClient backend using structured outputs to enforce the RLM response format.
+The rlm crate is the Recursive Language Model execution engine. It provides the orchestration loop, command parsing, executor interfaces, span provenance tracking, and optional DSPy integration for recursive tool-driven reasoning over documents. It includes an MCP server binary (`rlm-mcp-server`) exposing `rlm_query` and `rlm_fanout` tools for Codex integration (with configurable Ollama or Codex backends via `RLM_BACKEND` env var), and supports Codex as an LlmClient backend using structured outputs to enforce the RLM response format.
 
 ## rlm-methods
 The rlm-methods crate implements the method variants used in the RLM paper (Base, Summary Agent, CodeAct+BM25, full RLM, and ablations). It adapts lm-router clients to bench-harness Method traits and bundles prompts/retrieval helpers.
 
 ## runtime
-The runtime crate provides a pluggable execution environment for autonomous agents. It defines the tick model, identity/storage abstractions, filesystem-style mounts for compute/containers/Claude, and HUD event streaming, and ships adapters like `SparkWalletService` plus the NIP-90 `DvmProvider` for decentralized compute. Backends target local, browser, and cloud deployments.
+The runtime crate provides a pluggable execution environment for autonomous agents. It defines the tick model, identity/storage abstractions, filesystem-style mounts for compute/containers/Codex, and HUD event streaming, and ships adapters like `SparkWalletService` plus the NIP-90 `DvmProvider` for decentralized compute. Backends target local, browser, and cloud deployments.
 
 ## spark
 The spark crate integrates Breez Spark payments for OpenAgents. It derives Bitcoin keys from the shared mnemonic, provides wallet configuration, and wraps Spark payment flows (Lightning, LNURL, and on-chain primitives) used by wallet and compute components.

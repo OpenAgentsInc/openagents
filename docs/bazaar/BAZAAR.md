@@ -11,7 +11,7 @@ Eric S. Raymond contrasted two ways software gets built:
 - **Cathedral**: Centrally planned, closed, release rarely, one "priesthood" decides what ships
 - **Bazaar**: Open participation, many parallel contributors, fast iteration, ideas compete in public, value emerges from the crowd
 
-The Bazaar is literally a bazaar: anyone can show up with capability (their Claude, their agent, their compute), take work, get paid, build reputation, and iterate.
+The Bazaar is literally a bazaar: anyone can show up with capability (their Codex, their agent, their compute), take work, get paid, build reputation, and iterate.
 
 **What the Bazaar promises:**
 - **Open entry**: Anyone can supply work (agents, skills, compute)
@@ -34,7 +34,7 @@ The Bazaar enables a two-sided economy:
 
 **Core Principle:** Agent monetization == selling verifiable contracts.
 
-We do NOT sell "Claude access" or allow arbitrary prompts from strangers. We sell **work products with objective verification** - patches that apply and pass tests, reviews that reference real code, indexes that validate against schema.
+We do NOT sell "Codex access" or allow arbitrary prompts from strangers. We sell **work products with objective verification** - patches that apply and pass tests, reviews that reference real code, indexes that validate against schema.
 
 ### The Flywheel
 
@@ -57,7 +57,7 @@ Users pay Autopilot
 
 4. **"Release early, release often" → "clear often"**: Many small jobs, verified outputs, fast settlement, tight feedback loops.
 
-5. **No platform monopoly**: No single vendor owns supply, no single lab owns distribution. Bring your own Claude, bring your own agent, bring your own hardware.
+5. **No platform monopoly**: No single vendor owns supply, no single lab owns distribution. Bring your own Codex, bring your own agent, bring your own hardware.
 
 ### What This Document Covers
 
@@ -74,7 +74,7 @@ Users pay Autopilot
 
 ### 1.1 Overview
 
-Contributors run provider nodes using the `pylon` infrastructure, extended with Claude worker capabilities:
+Contributors run provider nodes using the `pylon` infrastructure, extended with Codex worker capabilities:
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
@@ -82,7 +82,7 @@ Contributors run provider nodes using the `pylon` infrastructure, extended with 
 ├─────────────────────────────────────────────────────────────────────┤
 │                                                                      │
 │  ┌──────────────────┐  ┌──────────────────┐  ┌──────────────────┐  │
-│  │  Claude Worker   │  │  Claude Worker   │  │  LLM Backend     │  │
+│  │  Codex Worker   │  │  Codex Worker   │  │  LLM Backend     │  │
 │  │  (Agent SDK)     │  │  (Agent SDK)     │  │  (Ollama/etc)    │  │
 │  └────────┬─────────┘  └────────┬─────────┘  └────────┬─────────┘  │
 │           └────────────────┬────────────────────────────┘           │
@@ -111,19 +111,19 @@ Contributors run provider nodes using the `pylon` infrastructure, extended with 
 
 ### 1.2 Security Model: Credentials Stay Local
 
-**Critical requirement:** Provider Claude credentials NEVER leave the provider's machine.
+**Critical requirement:** Provider Codex credentials NEVER leave the provider's machine.
 
-The security model uses tunnel-based authentication (from `/claude` mount architecture):
+The security model uses tunnel-based authentication (from `/codex` mount architecture):
 
 ```
 Provider Machine                     Mesh / Buyers
-├── Anthropic API Key                     │
-├── Local Claude Proxy                    │
+├── OpenAI API Key                     │
+├── Local Codex Proxy                    │
 │   ├── Handles authentication            │
-│   ├── Routes to Claude (Anthropic API)  │
+│   ├── Routes to Codex (OpenAI API)  │
 │   └── Tracks usage/limits               │
 └── Tunnel Endpoint ◄────────────────────────── Job Requests
-    ├── wss://provider.ngrok.io/claude         (via Nostr)
+    ├── wss://provider.ngrok.io/codex         (via Nostr)
     ├── Nostr-signed authentication
     └── Domain allowlist enforcement
 ```
@@ -153,20 +153,20 @@ docker run \
   --tmpfs /workspace:rw,noexec,nosuid \
   --pids-limit 100 \
   --memory 4g \
-  -v /var/run/anthropic-proxy.sock:/var/run/anthropic-proxy.sock:ro \
+  -v /var/run/openai-proxy.sock:/var/run/openai-proxy.sock:ro \
   -v /filtered-repo:/repo:ro \
-  claude-worker
+  codex-worker
 ```
 
 ### 1.4 Provider CLI
 
 ```bash
-# Start provider with Claude compute
-openagents provider serve --claude-code \
-  --capacity 3 \                    # Max concurrent Claude sessions
+# Start provider with Codex compute
+openagents provider serve --codex-code \
+  --capacity 3 \                    # Max concurrent Codex sessions
   --job-types "PatchGen,CodeReview" \
   --isolation container \           # container|gvisor|firecracker
-  --tunnel ngrok                    # Tunnel provider for Claude proxy
+  --tunnel ngrok                    # Tunnel provider for Codex proxy
 
 # Check provider status
 openagents provider status
@@ -210,9 +210,9 @@ impl AgentJobType {
     }
 }
 
-/// Claude worker pool configuration
+/// Codex worker pool configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ClaudeWorkerPool {
+pub struct CodexWorkerPool {
     /// Number of concurrent workers
     pub capacity: u32,
     /// Isolation mode per worker
@@ -221,9 +221,9 @@ pub struct ClaudeWorkerPool {
     pub job_types: Vec<AgentJobType>,
     /// Per-type pricing (sats)
     pub pricing: HashMap<AgentJobType, JobPricing>,
-    /// Tool allowlist for Claude sessions
+    /// Tool allowlist for Codex sessions
     pub allowed_tools: Vec<String>,
-    /// Model preference (e.g., "claude-sonnet-4-*")
+    /// Model preference (e.g., "codex-sonnet-4-*")
     pub model_pattern: String,
     /// Maximum context tokens per session
     pub max_context_tokens: u64,
@@ -272,7 +272,7 @@ pub enum PricingUnit {
     Flat,
 }
 
-/// Tunnel configuration for Claude proxy
+/// Tunnel configuration for Codex proxy
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TunnelConfig {
     /// Tunnel provider (ngrok, cloudflare, nostr)
@@ -314,7 +314,7 @@ pub enum TunnelAuth {
 
 **Purpose:** Generate a working patch from an issue description or bug report.
 
-This is the flagship job type - the most compelling demonstration of "Claude doing real work."
+This is the flagship job type - the most compelling demonstration of "Codex doing real work."
 
 #### Request Schema
 
@@ -332,9 +332,9 @@ pub struct PatchGenRequest {
     pub repo_ref: String,
     /// Optional subdirectory to focus on
     pub subdir: Option<String>,
-    /// Paths Claude is allowed to modify
+    /// Paths Codex is allowed to modify
     pub allowed_paths: Vec<String>,
-    /// Paths Claude must not touch
+    /// Paths Codex must not touch
     pub disallowed_paths: Vec<String>,
     /// Test command to run for verification
     pub test_command: String,
@@ -638,7 +638,7 @@ Each job type produces artifacts that enable pay-after-verify:
                     ┌──────────────────────────────────────────────┐
                     │              PROVIDER (Pylon)                 │
                     │  ┌─────────────────────────────────────────┐ │
-                    │  │           Claude Worker                  │ │
+                    │  │           Codex Worker                  │ │
                     │  │  • Analyze issue                        │ │
                     │  │  • Generate patch                       │ │
                     │  │  • Run tests                            │ │
@@ -1047,7 +1047,7 @@ For jobs involving skills or data from the marketplace:
 
 | Recipient | Share | Notes |
 |-----------|-------|-------|
-| Compute Provider | 70% | The Claude instance owner |
+| Compute Provider | 70% | The Codex instance owner |
 | Skill Creator | 15% | If job uses a marketplace skill |
 | Platform | 10% | OpenAgents network fee |
 | Referrer | 5% | If buyer was referred |
@@ -1090,7 +1090,7 @@ Providers advertise capabilities via NIP-89 handler info events:
 {
   "kind": 31990,
   "pubkey": "<provider_pubkey>",
-  "content": "{\"name\":\"Alice's Claude\",\"description\":\"Fast PatchGen\",\"website\":\"...\"}",
+  "content": "{\"name\":\"Alice's Codex\",\"description\":\"Fast PatchGen\",\"website\":\"...\"}",
   "tags": [
     ["d", "<provider_id>"],
     ["k", "5932"],
@@ -1107,7 +1107,7 @@ Providers advertise capabilities via NIP-89 handler info events:
 
     ["capacity", "3"],
     ["isolation", "container"],
-    ["model", "claude-sonnet-4-*"],
+    ["model", "codex-sonnet-4-*"],
 
     ["region", "us-west"],
     ["schedule", "always"],
@@ -1392,15 +1392,15 @@ impl MeshClient {
 }
 ```
 
-### 6.2 Runtime /claude Mount
+### 6.2 Runtime /codex Mount
 
-The `/claude` mount's tunnel-based architecture enables agents to delegate work to the mesh:
+The `/codex` mount's tunnel-based architecture enables agents to delegate work to the mesh:
 
 ```rust
-/// Delegation from local Claude to mesh
-pub struct ClaudeMeshDelegator {
-    /// Local Claude session
-    local_session: ClaudeSession,
+/// Delegation from local Codex to mesh
+pub struct CodexMeshDelegator {
+    /// Local Codex session
+    local_session: CodexSession,
     /// Mesh client for external work
     mesh_client: Arc<MeshClient>,
     /// Delegation policy
@@ -1427,7 +1427,7 @@ pub enum Complexity {
     High,
 }
 
-impl ClaudeMeshDelegator {
+impl CodexMeshDelegator {
     /// Decide whether to delegate task to mesh
     pub fn should_delegate(&self, task: &Task) -> DelegationDecision {
         if !self.policy.enabled {
@@ -1518,13 +1518,13 @@ impl NeobankService {
 
 ### Phase 1: Provider Foundation
 
-1. Extend `pylon` with Claude worker pool management
+1. Extend `pylon` with Codex worker pool management
 2. Implement PatchGen job handler (kind 5932/6932)
 3. Add trajectory logging to worker execution
 4. Basic NIP-89 announcements with job types
 
 **Key files:**
-- `crates/pylon/src/claude_worker.rs` (new)
+- `crates/pylon/src/codex_worker.rs` (new)
 - `crates/pylon/src/provider.rs` (extend)
 - `crates/compute/src/domain/patch_gen.rs` (new)
 
@@ -1567,8 +1567,8 @@ impl NeobankService {
 
 ## References
 
-- [GTM-claude.md](/home/christopherdavid/code/backroom/live/GTM-claude.md) - Vision document
-- [Runtime CLAUDE.md](../crates/runtime/docs/CLAUDE.md) - Tunnel/security model
+- [GTM-codex.md](/home/christopherdavid/code/backroom/live/GTM-codex.md) - Vision document
+- [Runtime AGENTS.md](../crates/runtime/docs/AGENTS.md) - Tunnel/security model
 - [Runtime README](../crates/runtime/README.md) - Runtime architecture
 - [NIP-90 Implementation](../crates/nostr/core/src/nip90.rs) - Existing job protocol
 - [Autopilot PROJECT-SPEC](autopilot/PROJECT-SPEC.md) - Autopilot phases

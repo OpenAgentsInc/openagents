@@ -2,7 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
-use openagents_relay::ClaudeSessionAutonomy;
+use openagents_relay::CodexSessionAutonomy;
 
 /// Pylon configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -35,9 +35,9 @@ pub struct PylonConfig {
     /// Spark wallet auth token
     #[serde(default)]
     pub spark_token: Option<String>,
-    /// Claude tunnel configuration
+    /// Codex tunnel configuration
     #[serde(default)]
-    pub claude: ClaudeConfig,
+    pub codex: CodexConfig,
 }
 
 fn default_network() -> String {
@@ -71,23 +71,23 @@ impl Default for PylonConfig {
             enable_payments: true, // Enabled by default
             spark_url: None,
             spark_token: None,
-            claude: ClaudeConfig::default(),
+            codex: CodexConfig::default(),
         }
     }
 }
 
-/// Claude tunnel configuration for local Claude sessions.
+/// Codex tunnel configuration for local Codex sessions.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ClaudeConfig {
-    /// Whether Claude tunnel support is enabled.
-    #[serde(default = "default_claude_enabled")]
+pub struct CodexConfig {
+    /// Whether Codex tunnel support is enabled.
+    #[serde(default = "default_codex_enabled")]
     pub enabled: bool,
     /// Default model to use.
-    #[serde(default = "default_claude_model")]
+    #[serde(default = "default_codex_model")]
     pub model: String,
     /// Autonomy level for tool approvals.
     #[serde(default)]
-    pub autonomy: ClaudeSessionAutonomy,
+    pub autonomy: CodexSessionAutonomy,
     /// Tools that require approval when autonomy is supervised.
     #[serde(default = "default_approval_tools")]
     pub approval_required_tools: Vec<String>,
@@ -100,20 +100,20 @@ pub struct ClaudeConfig {
     /// Default max cost per session (micro-USD).
     #[serde(default)]
     pub max_cost_usd: Option<u64>,
-    /// Default working directory for Claude sessions.
+    /// Default working directory for Codex sessions.
     #[serde(default)]
     pub cwd: Option<PathBuf>,
-    /// Optional explicit path to Claude executable.
+    /// Optional explicit path to Codex executable.
     #[serde(default)]
     pub executable_path: Option<PathBuf>,
 }
 
-impl Default for ClaudeConfig {
+impl Default for CodexConfig {
     fn default() -> Self {
         Self {
             enabled: true,
-            model: default_claude_model(),
-            autonomy: ClaudeSessionAutonomy::default(),
+            model: default_codex_model(),
+            autonomy: CodexSessionAutonomy::default(),
             approval_required_tools: default_approval_tools(),
             allowed_tools: Vec::new(),
             blocked_tools: Vec::new(),
@@ -124,12 +124,12 @@ impl Default for ClaudeConfig {
     }
 }
 
-fn default_claude_enabled() -> bool {
+fn default_codex_enabled() -> bool {
     true
 }
 
-fn default_claude_model() -> String {
-    "claude-sonnet-4-20250514".to_string()
+fn default_codex_model() -> String {
+    "codex-sonnet-4-20250514".to_string()
 }
 
 fn default_approval_tools() -> Vec<String> {

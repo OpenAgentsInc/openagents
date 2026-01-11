@@ -2,7 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 
-/// Claude Code permission mode
+/// Codex Code permission mode
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub enum PermissionMode {
@@ -62,17 +62,17 @@ pub enum MergeStrategy {
     Parallel,
 }
 
-/// Claude Code configuration
+/// Codex Code configuration
 ///
-/// CONF-020..024: Claude Code settings
+/// CONF-020..024: Codex Code settings
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ClaudeCodeConfig {
-    /// Whether Claude Code is enabled
+pub struct CodexCodeConfig {
+    /// Whether Codex Code is enabled
     #[serde(default = "default_true")]
     pub enabled: bool,
 
-    /// Prefer Claude Code for complex tasks
+    /// Prefer Codex Code for complex tasks
     #[serde(default = "default_true")]
     pub prefer_for_complex_tasks: bool,
 
@@ -89,7 +89,7 @@ pub struct ClaudeCodeConfig {
     pub fallback_to_minimal: bool,
 }
 
-impl Default for ClaudeCodeConfig {
+impl Default for CodexCodeConfig {
     fn default() -> Self {
         Self {
             enabled: true,
@@ -511,9 +511,9 @@ pub struct ProjectConfig {
     pub run_log_dir: String,
 
     // Nested configurations
-    /// Claude Code settings
+    /// Codex Code settings
     #[serde(default)]
-    pub claude_code: ClaudeCodeConfig,
+    pub codex_code: CodexCodeConfig,
 
     /// Sandbox settings
     #[serde(default)]
@@ -569,7 +569,7 @@ impl ProjectConfig {
             id_prefix: "oa".into(),
             session_dir: ".openagents/sessions".into(),
             run_log_dir: ".openagents/run-logs".into(),
-            claude_code: ClaudeCodeConfig::default(),
+            codex_code: CodexCodeConfig::default(),
             sandbox: SandboxConfig::default(),
             parallel_execution: ParallelExecutionConfig::default(),
             trajectory: TrajectoryConfig::default(),
@@ -707,7 +707,7 @@ mod tests {
         assert_eq!(config.default_branch, "main");
         assert!(config.allow_push);
         assert!(!config.allow_force_push);
-        assert!(config.claude_code.enabled);
+        assert!(config.codex_code.enabled);
         assert!(config.sandbox.enabled);
     }
 
@@ -730,9 +730,9 @@ mod tests {
 
     #[test]
     fn test_permission_modes() {
-        let json = r#"{"projectId": "test", "claudeCode": {"permissionMode": "plan"}}"#;
+        let json = r#"{"projectId": "test", "codexCode": {"permissionMode": "plan"}}"#;
         let config: ProjectConfig = serde_json::from_str(json).unwrap();
-        assert_eq!(config.claude_code.permission_mode, PermissionMode::Plan);
+        assert_eq!(config.codex_code.permission_mode, PermissionMode::Plan);
     }
 
     #[test]

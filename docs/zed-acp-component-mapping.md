@@ -1,10 +1,10 @@
-# Zed ACP Component Mapping: How Zed Renders Claude Code Conversations
+# Zed ACP Component Mapping: How Zed Renders Codex Code Conversations
 
-This document provides a detailed analysis of how Zed renders Claude Code conversations through the Agent Client Protocol (ACP), mapping UI components to protocol types for OpenAgents integration planning.
+This document provides a detailed analysis of how Zed renders Codex Code conversations through the Agent Client Protocol (ACP), mapping UI components to protocol types for OpenAgents integration planning.
 
 ## Executive Summary
 
-Zed's Claude Code integration uses ACP (Agent Client Protocol) as the standardized communication layer between the IDE and AI agents. The UI is built around three core concepts:
+Zed's Codex Code integration uses ACP (Agent Client Protocol) as the standardized communication layer between the IDE and AI agents. The UI is built around three core concepts:
 1. **AcpThread** - Represents a conversation session with an agent
 2. **AgentThreadEntry** - Individual entries in a conversation (user messages, assistant messages, tool calls)
 3. **AcpThreadView** - The GPUI component that renders the conversation
@@ -30,7 +30,7 @@ Zed's Claude Code integration uses ACP (Agent Client Protocol) as the standardiz
 ├─────────────────────────────────────────────────────────────────────────┤
 │  agent_servers/src/                                                      │
 │  ├── acp.rs               → AcpConnection (JSON-RPC stdio transport)    │
-│  ├── claude.rs            → ClaudeCode AgentServer wrapper              │
+│  ├── codex.rs            → CodexCode AgentServer wrapper              │
 │  ├── codex.rs             → Codex AgentServer wrapper                   │
 │  └── gemini.rs            → Gemini AgentServer wrapper                  │
 └─────────────────────────────────────────────────────────────────────────┘
@@ -38,7 +38,7 @@ Zed's Claude Code integration uses ACP (Agent Client Protocol) as the standardiz
                                     │ JSON-RPC 2.0 over stdio
                                     ▼
 ┌─────────────────────────────────────────────────────────────────────────┐
-│                     Agent Subprocess (Claude Code)                       │
+│                     Agent Subprocess (Codex Code)                       │
 │  - Receives initialize, session/new, session/prompt requests            │
 │  - Sends SessionNotification with SessionUpdate events                   │
 └─────────────────────────────────────────────────────────────────────────┘
@@ -150,7 +150,7 @@ The terminal view (`TerminalView`) is embedded in the conversation with `set_emb
 
 ### 4. Permission System
 
-When Claude Code needs authorization for a tool:
+When Codex Code needs authorization for a tool:
 
 ```rust
 ToolCallStatus::WaitingForConfirmation {
@@ -333,7 +333,7 @@ Since OpenAgents uses Maud+HTMX (server-rendered) instead of GPUI:
 ### ACP Adapter Usage
 
 Our `acp-adapter` crate should:
-1. Spawn Claude Code with ACP protocol
+1. Spawn Codex Code with ACP protocol
 2. Receive `SessionNotification` events
 3. Convert to rlog format for replay
 4. Expose REST API for GUI consumption

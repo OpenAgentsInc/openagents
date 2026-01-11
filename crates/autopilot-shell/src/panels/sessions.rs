@@ -82,10 +82,10 @@ impl SessionsPanel {
         Self {
             sessions: Vec::new(),
             hovered_index: None,
-            model_selector: ModelSelector::new(Model::ClaudeSonnet).models(vec![
-                Model::ClaudeSonnet,
-                Model::ClaudeOpus,
-                Model::ClaudeHaiku,
+            model_selector: ModelSelector::new(Model::CodexSonnet).models(vec![
+                Model::CodexSonnet,
+                Model::CodexOpus,
+                Model::CodexHaiku,
             ]),
             is_running: false,
             new_session_hovered: false,

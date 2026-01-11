@@ -1,6 +1,6 @@
 [Unit]
 Description=Autopilot Daemon - AI worker supervisor
-Documentation=file:///home/christopherdavid/code/openagents/CLAUDE.md
+Documentation=file:///home/christopherdavid/code/openagents/AGENTS.md
 After=network.target
 
 [Service]

@@ -1,16 +1,8 @@
-use std::sync::Arc;
-
 use futures::StreamExt;
-use serde_json::Value;
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::mpsc;
 use tokio::sync::mpsc::error::TryRecvError;
 
-use claude_agent_sdk::permissions::{CallbackPermissionHandler, PermissionRequest};
-use claude_agent_sdk::protocol::{PermissionMode, PermissionResult};
-use claude_agent_sdk::{query_with_permissions, QueryOptions, SdkMessage};
-
 use crate::app::agents::AgentBackendsEvent;
-use crate::app::catalog::build_hook_map;
 use crate::app::chat::{ChatMessage, MessageRole};
 use crate::app::dvm::{DvmEvent, DvmStatus};
 use crate::app::gateway::GatewayEvent;
@@ -21,12 +13,8 @@ use crate::app::events::{CommandAction, ModalState, QueryControl, ResponseEvent}
 use crate::app::nip28::{Nip28ConnectionStatus, Nip28Event, Nip28Message};
 use crate::app::nip90::{Nip90ConnectionStatus, Nip90Event};
 use crate::app::parsing::expand_prompt_text;
-use crate::app::permissions::{
-    coder_mode_default_allow, extract_bash_command, is_read_only_tool, parse_coder_mode,
-    pattern_matches, PermissionPending,
-};
+use crate::app::permissions::{coder_mode_default_allow, parse_coder_mode};
 use crate::app::session::SessionInfo;
-use crate::app::tools::tool_result_output;
 use crate::app::ui::render_app;
 use crate::app::CoderMode;
 use crate::commands::Command;
@@ -34,7 +22,6 @@ use crate::commands::Command;
 use super::AutopilotApp;
 use super::command_palette_ids;
 use super::commands::handle_command;
-use super::settings::parse_mcp_status;
 
 impl AutopilotApp {
     pub(super) fn submit_prompt(&mut self, prompt: String) {
@@ -58,480 +45,8 @@ impl AutopilotApp {
             return;
         }
 
-        // Check selected backend
-        use crate::app::config::AgentKindConfig;
-        if matches!(state.agent_selection.agent, AgentKindConfig::Codex) {
-            tracing::info!("Using Codex backend");
-            self.submit_codex_prompt(prompt);
-            return;
-        }
-        tracing::info!("Using Claude backend");
-
-        let cwd = std::env::current_dir().unwrap_or_default();
-        let active_agent = state.catalogs.active_agent.clone();
-        let expanded_prompt = match expand_prompt_text(&prompt, &cwd) {
-            Ok(result) => result,
-            Err(err) => {
-                state.push_system_message(err);
-                state.window.request_redraw();
-                return;
-            }
-        };
-        let expanded_prompt = if let Some(agent) = active_agent.as_ref() {
-            format!("Use the {} subagent for this request.\n\n{}", agent, expanded_prompt)
-        } else {
-            expanded_prompt
-        };
-
-        // Create channel for receiving responses
-        let (tx, rx) = mpsc::unbounded_channel();
-        let (control_tx, mut control_rx) = mpsc::unbounded_channel();
-        let (permission_tx, permission_rx) = mpsc::unbounded_channel();
-        let (permission_action_tx, permission_action_rx) = mpsc::unbounded_channel();
-        state.chat.response_rx = Some(rx);
-        state.chat.query_control_tx = Some(control_tx);
-        state.permissions.permission_requests_rx = Some(permission_rx);
-        state.permissions.permission_action_tx = Some(permission_action_tx.clone());
-        state.permissions.permission_action_rx = Some(permission_action_rx);
-        state.permissions.permission_queue.clear();
-        state.permissions.permission_pending = None;
-        state.permissions.permission_dialog = None;
-        state.chat.is_thinking = true;
-        state.chat.streaming_markdown.reset();
-        state.catalogs.refresh_agent_cards(state.chat.is_thinking);
-
-        // Get window handle for triggering redraws from async task
-        let window = state.window.clone();
-        let model_id = state.settings.selected_model.model_id().to_string();
-        let resume_session = state.session.pending_resume_session
-            .take()
-            .or_else(|| {
-                if state.session.session_info.session_id.trim().is_empty() {
-                    None
-                } else {
-                    Some(state.session.session_info.session_id.clone())
-                }
-            });
-        let fork_session = state.session.pending_fork_session;
-        state.session.pending_fork_session = false;
-        let permission_mode = Some(state.permissions.coder_mode.to_sdk_permission_mode());
-        let output_style = state.permissions.output_style.clone();
-        let allowed_tools = state.permissions.tools_allowed.clone();
-        let disallowed_tools = state.permissions.tools_disallowed.clone();
-        let permission_allow_tools = state.permissions.permission_allow_tools.clone();
-        let permission_deny_tools = state.permissions.permission_deny_tools.clone();
-        let permission_allow_bash_patterns = state.permissions.permission_allow_bash_patterns.clone();
-        let permission_deny_bash_patterns = state.permissions.permission_deny_bash_patterns.clone();
-        let permission_default_allow = state.permissions.permission_default_allow;
-        let mcp_servers = state.catalogs.merged_mcp_servers();
-        let agent_definitions = state.agent_definitions_for_query();
-        let setting_sources = state.setting_sources_for_query();
-        let hook_config = state.catalogs.hook_config.clone();
-        let hook_scripts = state.catalogs.hook_scripts.clone();
-        let max_thinking_tokens = state.settings.coder_settings.max_thinking_tokens;
-        let persist_session = state.settings.coder_settings.session_auto_save;
-
-        // Spawn async query task
-        let handle = self.runtime_handle.clone();
-        handle.spawn(async move {
-            let hook_cwd = cwd.clone();
-            let mut options = QueryOptions::new()
-                .cwd(cwd)
-                .include_partial_messages(true) // Enable streaming deltas
-                .model(&model_id);
-
-            options.max_thinking_tokens = max_thinking_tokens;
-            options.persist_session = persist_session;
-
-            if let Some(mode) = permission_mode.clone() {
-                options = options.permission_mode(mode);
-            }
-            if let Some(resume_id) = resume_session {
-                options = options.resume(resume_id);
-            }
-            if fork_session {
-                options = options.fork_session(true);
-            }
-            if !allowed_tools.is_empty() {
-                options.allowed_tools = Some(allowed_tools);
-            }
-            if !disallowed_tools.is_empty() {
-                options.disallowed_tools = Some(disallowed_tools);
-            }
-            if let Some(style) = output_style {
-                options
-                    .extra_args
-                    .insert("output-style".to_string(), Some(style));
-            }
-            if !mcp_servers.is_empty() {
-                options.mcp_servers = mcp_servers;
-            }
-            if !agent_definitions.is_empty() {
-                options.agents = agent_definitions;
-            }
-            if !setting_sources.is_empty() {
-                options.setting_sources = setting_sources;
-            }
-            if let Some(hooks) = build_hook_map(hook_cwd, hook_config, hook_scripts, tx.clone()) {
-                options = options.hooks(hooks);
-            }
-
-            let permission_window = window.clone();
-            let permissions = Arc::new(CallbackPermissionHandler::new(move |request: PermissionRequest| {
-                let permission_tx = permission_tx.clone();
-                let permission_window = permission_window.clone();
-                let permission_mode = permission_mode.clone();
-                let permission_allow_tools = permission_allow_tools.clone();
-                let permission_deny_tools = permission_deny_tools.clone();
-                let permission_allow_bash_patterns = permission_allow_bash_patterns.clone();
-                let permission_deny_bash_patterns = permission_deny_bash_patterns.clone();
-                async move {
-                    let tool_name = request.tool_name.clone();
-
-                    if tool_name == "Bash" {
-                        if let Some(command) = extract_bash_command(&request.input) {
-                            if permission_deny_bash_patterns
-                                .iter()
-                                .any(|pattern| pattern_matches(pattern, &command))
-                            {
-                                return Ok(PermissionResult::Deny {
-                                    message: format!("Bash command denied by rule: {}", command),
-                                    interrupt: None,
-                                    tool_use_id: Some(request.tool_use_id.clone()),
-                                });
-                            }
-                            if permission_allow_bash_patterns
-                                .iter()
-                                .any(|pattern| pattern_matches(pattern, &command))
-                            {
-                                return Ok(PermissionResult::Allow {
-                                    updated_input: request.input.clone(),
-                                    updated_permissions: request.suggestions.clone(),
-                                    tool_use_id: Some(request.tool_use_id.clone()),
-                                });
-                            }
-                        }
-                    }
-
-                    if permission_deny_tools.iter().any(|tool| tool == &tool_name) {
-                        return Ok(PermissionResult::Deny {
-                            message: format!("Tool {} is denied by rule.", tool_name),
-                            interrupt: None,
-                            tool_use_id: Some(request.tool_use_id.clone()),
-                        });
-                    }
-                    if permission_allow_tools.iter().any(|tool| tool == &tool_name) {
-                        return Ok(PermissionResult::Allow {
-                            updated_input: request.input.clone(),
-                            updated_permissions: request.suggestions.clone(),
-                            tool_use_id: Some(request.tool_use_id.clone()),
-                        });
-                    }
-
-                    if let Some(mode) = permission_mode.as_ref() {
-                        match mode {
-                            PermissionMode::BypassPermissions | PermissionMode::AcceptEdits => {
-                                return Ok(PermissionResult::Allow {
-                                    updated_input: request.input.clone(),
-                                    updated_permissions: request.suggestions.clone(),
-                                    tool_use_id: Some(request.tool_use_id.clone()),
-                                });
-                            }
-                            PermissionMode::DontAsk => {
-                                return Ok(PermissionResult::Deny {
-                                    message: format!("Permission denied for tool {}.", tool_name),
-                                    interrupt: Some(true),
-                                    tool_use_id: Some(request.tool_use_id.clone()),
-                                });
-                            }
-                            PermissionMode::Plan => {
-                                if is_read_only_tool(&tool_name) {
-                                    return Ok(PermissionResult::Allow {
-                                        updated_input: request.input.clone(),
-                                        updated_permissions: None,
-                                        tool_use_id: Some(request.tool_use_id.clone()),
-                                    });
-                                }
-                                return Ok(PermissionResult::Deny {
-                                    message: format!("Plan mode denies tool {}.", tool_name),
-                                    interrupt: Some(true),
-                                    tool_use_id: Some(request.tool_use_id.clone()),
-                                });
-                            }
-                            PermissionMode::Default => {}
-                        }
-                    }
-
-                    if permission_default_allow {
-                        return Ok(PermissionResult::Allow {
-                            updated_input: request.input.clone(),
-                            updated_permissions: request.suggestions.clone(),
-                            tool_use_id: Some(request.tool_use_id.clone()),
-                        });
-                    }
-
-                    let (respond_to, response_rx) = oneshot::channel();
-                    let pending = PermissionPending { request, respond_to };
-                    if permission_tx.send(pending).is_err() {
-                        return Ok(PermissionResult::deny_and_interrupt(
-                            "Permission prompt unavailable.",
-                        ));
-                    }
-                    permission_window.request_redraw();
-                    match response_rx.await {
-                        Ok(result) => Ok(result),
-                        Err(_) => Ok(PermissionResult::deny_and_interrupt(
-                            "Permission prompt interrupted.",
-                        )),
-                    }
-                }
-            }));
-
-            tracing::info!("Starting Claude query: model={}", model_id);
-
-            match query_with_permissions(&expanded_prompt, options, permissions).await {
-                Ok(mut stream) => {
-                    tracing::info!("Query stream started");
-                    let mut interrupt_requested = false;
-
-                    loop {
-                        if interrupt_requested {
-                            if let Err(e) = stream.interrupt().await {
-                                tracing::error!("Interrupt failed: {}", e);
-                                let _ = tx.send(ResponseEvent::Error(e.to_string()));
-                                window.request_redraw();
-                                break;
-                            }
-                            interrupt_requested = false;
-                        }
-
-                        tokio::select! {
-                            Some(control) = control_rx.recv() => {
-                                match control {
-                                    QueryControl::Interrupt => {
-                                        interrupt_requested = true;
-                                    }
-                                    QueryControl::RewindFiles { user_message_id } => {
-                                        match stream.rewind_files(&user_message_id).await {
-                                            Ok(()) => {
-                                                let _ = tx.send(ResponseEvent::SystemMessage(
-                                                    "Checkpoint restore requested.".to_string(),
-                                                ));
-                                            }
-                                            Err(err) => {
-                                                let _ = tx.send(ResponseEvent::SystemMessage(
-                                                    format!("Checkpoint restore failed: {}", err),
-                                                ));
-                                            }
-                                        }
-                                        window.request_redraw();
-                                    }
-                                    QueryControl::Abort => {
-                                        if let Err(e) = stream.abort().await {
-                                            tracing::error!("Abort failed: {}", e);
-                                            let _ = tx.send(ResponseEvent::Error(e.to_string()));
-                                        } else {
-                                            let _ = tx.send(ResponseEvent::Error("Request aborted.".to_string()));
-                                        }
-                                        window.request_redraw();
-                                        break;
-                                    }
-                                    QueryControl::FetchMcpStatus => {
-                                        match stream.mcp_server_status().await {
-                                            Ok(value) => {
-                                                match parse_mcp_status(&value) {
-                                                    Ok(servers) => {
-                                                        let _ = tx.send(ResponseEvent::McpStatus {
-                                                            servers,
-                                                            error: None,
-                                                        });
-                                                    }
-                                                    Err(err) => {
-                                                        let _ = tx.send(ResponseEvent::McpStatus {
-                                                            servers: Vec::new(),
-                                                            error: Some(err),
-                                                        });
-                                                    }
-                                                }
-                                            }
-                                            Err(err) => {
-                                                let _ = tx.send(ResponseEvent::McpStatus {
-                                                    servers: Vec::new(),
-                                                    error: Some(err.to_string()),
-                                                });
-                                            }
-                                        }
-                                        window.request_redraw();
-                                    }
-                                }
-                            }
-                            msg = stream.next() => {
-                                match msg {
-                                    Some(Ok(SdkMessage::Assistant(m))) => {
-                                        // Don't extract text here - we get it from STREAM_EVENT deltas
-                                        // The ASSISTANT message contains the full text which would duplicate
-                                        tracing::trace!("ASSISTANT: (skipping text extraction, using stream events)");
-                                        tracing::trace!("  full message: {:?}", m.message);
-                                    }
-                                    Some(Ok(SdkMessage::StreamEvent(e))) => {
-                                        tracing::trace!("STREAM_EVENT: {:?}", e.event);
-                                        // Check for tool call start
-                                        if let Some((tool_name, tool_id)) = extract_tool_call_start(&e.event) {
-                                            tracing::debug!("  -> tool call start: {}", tool_name);
-                                            let _ = tx.send(ResponseEvent::ToolCallStart {
-                                                name: tool_name,
-                                                tool_use_id: tool_id,
-                                            });
-                                            window.request_redraw();
-                                        }
-                                        // Check for tool input delta
-                                        else if let Some(json) = extract_tool_input_delta(&e.event) {
-                                            let _ = tx.send(ResponseEvent::ToolCallInput { json });
-                                            window.request_redraw();
-                                        }
-                                        // Check for content_block_stop (tool call end)
-                                        else if e.event.get("type").and_then(|t| t.as_str()) == Some("content_block_stop") {
-                                            let _ = tx.send(ResponseEvent::ToolCallEnd);
-                                            window.request_redraw();
-                                        }
-                                        // Extract streaming text delta
-                                        else if let Some(text) = extract_stream_text(&e.event) {
-                                            tracing::trace!("  -> stream text: {}", text);
-                                            if tx.send(ResponseEvent::Chunk(text)).is_err() {
-                                                break;
-                                            }
-                                            window.request_redraw();
-                                        }
-                                    }
-                                    Some(Ok(SdkMessage::System(s))) => {
-                                        tracing::debug!("SYSTEM: {:?}", s);
-                                        // Extract init info
-                                        if let claude_agent_sdk::SdkSystemMessage::Init(init) = s {
-                                    let _ = tx.send(ResponseEvent::SystemInit {
-                                        model: init.model.clone(),
-                                        permission_mode: init.permission_mode.clone(),
-                                        session_id: init.session_id.clone(),
-                                        tool_count: init.tools.len(),
-                                        tools: init.tools.clone(),
-                                        output_style: init.output_style.clone(),
-                                        slash_commands: init.slash_commands.clone(),
-                                        mcp_servers: init.mcp_servers.clone(),
-                                    });
-                                    window.request_redraw();
-                                }
-                                    }
-                                    Some(Ok(SdkMessage::User(u))) => {
-                                        tracing::trace!("USER message received (tool result)");
-                                        if let Some(uuid) = u.uuid.clone() {
-                                            let _ = tx.send(ResponseEvent::UserMessageId { uuid });
-                                            window.request_redraw();
-                                        }
-                                        // Extract tool results from USER messages
-                                        if let Some(content) = u.message.get("content").and_then(|c| c.as_array()) {
-                                            for item in content {
-                                                if item.get("type").and_then(|t| t.as_str()) == Some("tool_result") {
-                                                    let tool_use_id = item
-                                                        .get("tool_use_id")
-                                                        .or_else(|| item.get("toolUseId"))
-                                                        .or_else(|| item.get("toolUseID"))
-                                                        .and_then(|v| v.as_str())
-                                                        .map(|v| v.to_string())
-                                                        .or_else(|| u.parent_tool_use_id.clone());
-                                                    let is_error = item
-                                                        .get("is_error")
-                                                        .or_else(|| item.get("isError"))
-                                                        .and_then(|e| e.as_bool())
-                                                        .unwrap_or(false);
-                                                    let content_value = item.get("content").cloned().unwrap_or(Value::Null);
-                                                    let (result_content, exit_code, output_value) =
-                                                        tool_result_output(&content_value, u.tool_use_result.as_ref());
-                                                    let _ = tx.send(ResponseEvent::ToolResult {
-                                                        content: result_content,
-                                                        is_error,
-                                                        tool_use_id,
-                                                        exit_code,
-                                                        output_value,
-                                                    });
-                                                    window.request_redraw();
-                                                }
-                                            }
-                                        }
-                                    }
-                                    Some(Ok(SdkMessage::ToolProgress(tp))) => {
-                                        tracing::trace!(
-                                            "TOOL_PROGRESS: {} - {:.1}s",
-                                            tp.tool_name,
-                                            tp.elapsed_time_seconds
-                                        );
-                                        let _ = tx.send(ResponseEvent::ToolProgress {
-                                            tool_use_id: tp.tool_use_id.clone(),
-                                            tool_name: tp.tool_name.clone(),
-                                            elapsed_secs: tp.elapsed_time_seconds,
-                                        });
-                                        window.request_redraw();
-                                    }
-                                    Some(Ok(SdkMessage::AuthStatus(a))) => {
-                                        tracing::debug!("AUTH_STATUS: {:?}", a);
-                                    }
-                                    Some(Ok(SdkMessage::Result(r))) => {
-                                        tracing::debug!("RESULT received");
-                                        // Extract metadata from result
-                                        let metadata = match r {
-                                            claude_agent_sdk::SdkResultMessage::Success(s) => {
-                                                Some(crate::app::chat::MessageMetadata {
-                                                    model: Some(model_id.clone()),
-                                                    input_tokens: Some(s.usage.input_tokens),
-                                                    output_tokens: Some(s.usage.output_tokens),
-                                                    duration_ms: Some(s.duration_ms),
-                                                    cost_msats: None,
-                                                })
-                                            }
-                                            // All error variants contain ResultError with same structure
-                                            claude_agent_sdk::SdkResultMessage::ErrorDuringExecution(e)
-                                            | claude_agent_sdk::SdkResultMessage::ErrorMaxTurns(e)
-                                            | claude_agent_sdk::SdkResultMessage::ErrorMaxBudget(e)
-                                            | claude_agent_sdk::SdkResultMessage::ErrorMaxStructuredOutputRetries(e) => {
-                                                Some(crate::app::chat::MessageMetadata {
-                                                    model: Some(model_id.clone()),
-                                                    input_tokens: Some(e.usage.input_tokens),
-                                                    output_tokens: Some(e.usage.output_tokens),
-                                                    duration_ms: Some(e.duration_ms),
-                                                    cost_msats: None,
-                                                })
-                                            }
-                                        };
-                                        let _ = tx.send(ResponseEvent::Complete { metadata });
-                                        window.request_redraw();
-                                        break;
-                                    }
-                                    Some(Err(e)) => {
-                                        tracing::error!("ERROR: {}", e);
-                                        let _ = tx.send(ResponseEvent::Error(e.to_string()));
-                                        window.request_redraw();
-                                        break;
-                                    }
-                                    None => {
-                                        let _ = tx.send(ResponseEvent::Complete { metadata: None });
-                                        window.request_redraw();
-                                        break;
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    // Ensure proper cleanup of CLI process and MCP servers
-                    if let Err(e) = stream.shutdown().await {
-                        tracing::warn!("Query shutdown failed: {}", e);
-                    }
-                    tracing::info!("Query stream ended");
-                }
-                Err(e) => {
-                    tracing::error!("Query failed to start: {}", e);
-                    let _ = tx.send(ResponseEvent::Error(e.to_string()));
-                    window.request_redraw();
-                }
-            }
-        });
+        tracing::info!("Using Codex backend");
+        self.submit_codex_prompt(prompt);
     }
 
     /// Submit a prompt to the Codex backend.
@@ -561,9 +76,9 @@ impl AutopilotApp {
 
         // Get window handle for triggering redraws from async task
         let window = state.window.clone();
-        // Don't try to resume Codex with Claude session IDs - they're incompatible
+        // Don't try to resume Codex with legacy session IDs - they're incompatible
         // TODO: Track Codex thread IDs separately if resume is needed
-        let permission_mode = Some(state.permissions.coder_mode.to_sdk_permission_mode());
+        let coder_mode = state.permissions.coder_mode;
 
         // Spawn async Codex query task
         let handle = self.runtime_handle.clone();
@@ -578,22 +93,9 @@ impl AutopilotApp {
                 .skip_git_repo_check(true);
 
             // Map permission mode to sandbox mode
-            if let Some(ref mode) = permission_mode {
-                use claude_agent_sdk::protocol::PermissionMode;
-                let sandbox = match mode {
-                    PermissionMode::BypassPermissions => SandboxMode::DangerFullAccess,
-                    PermissionMode::Plan => SandboxMode::ReadOnly,
-                    _ => SandboxMode::WorkspaceWrite,
-                };
-                thread_options = thread_options.sandbox_mode(sandbox);
-
-                let approval = match mode {
-                    PermissionMode::BypassPermissions => ApprovalMode::Never,
-                    PermissionMode::Plan => ApprovalMode::Never,
-                    _ => ApprovalMode::OnRequest,
-                };
-                thread_options = thread_options.approval_policy(approval);
-            }
+            thread_options = thread_options
+                .sandbox_mode(coder_mode.sandbox_mode())
+                .approval_policy(coder_mode.approval_mode());
 
             // Create new thread (resume not supported yet for Codex)
             let mut thread = codex.start_thread(thread_options);
@@ -625,15 +127,7 @@ impl AutopilotApp {
                                     Some(Ok(ev)) => {
                                         match ev {
                                             ThreadEvent::ThreadStarted(started) => {
-                                                let mode_str = permission_mode.as_ref()
-                                                    .map(|m| match m {
-                                                        claude_agent_sdk::protocol::PermissionMode::Default => "default",
-                                                        claude_agent_sdk::protocol::PermissionMode::AcceptEdits => "acceptEdits",
-                                                        claude_agent_sdk::protocol::PermissionMode::BypassPermissions => "bypassPermissions",
-                                                        claude_agent_sdk::protocol::PermissionMode::Plan => "plan",
-                                                        claude_agent_sdk::protocol::PermissionMode::DontAsk => "dontAsk",
-                                                    }.to_string())
-                                                    .unwrap_or_default();
+                                                let mode_str = coder_mode.mode_label().to_string();
                                                 let _ = tx.send(ResponseEvent::SystemInit {
                                                     model: "codex".to_string(),
                                                     permission_mode: mode_str,
@@ -970,7 +464,7 @@ impl AutopilotApp {
                             if let Some(ms) = meta.duration_ms {
                                 state.session.session_usage.duration_ms += ms;
                             }
-                            // Cost estimation: ~$3/M input, ~$15/M output for Claude Opus
+                            // Cost estimation: placeholder for model pricing
                             let cost = (meta.input_tokens.unwrap_or(0) as f64 * 3.0 / 1_000_000.0)
                                      + (meta.output_tokens.unwrap_or(0) as f64 * 15.0 / 1_000_000.0);
                             state.session.session_usage.total_cost_usd += cost;
@@ -1841,45 +1335,4 @@ impl AutopilotApp {
         };
         render_app(state);
     }
-}
-
-fn extract_tool_call_start(event: &Value) -> Option<(String, String)> {
-    if event.get("type").and_then(|t| t.as_str()) != Some("content_block_start") {
-        return None;
-    }
-    let block = event.get("content_block")?;
-    if block.get("type").and_then(|t| t.as_str()) != Some("tool_use") {
-        return None;
-    }
-    let tool_name = block.get("name").and_then(|v| v.as_str())?.to_string();
-    let tool_id = block.get("id").and_then(|v| v.as_str())?.to_string();
-    Some((tool_name, tool_id))
-}
-
-fn extract_tool_input_delta(event: &Value) -> Option<String> {
-    if event.get("type").and_then(|t| t.as_str()) != Some("content_block_delta") {
-        return None;
-    }
-    let delta = event.get("delta")?;
-    if delta.get("type").and_then(|t| t.as_str()) != Some("input_json_delta") {
-        return None;
-    }
-    delta
-        .get("partial_json")
-        .and_then(|v| v.as_str())
-        .map(|s| s.to_string())
-}
-
-fn extract_stream_text(event: &Value) -> Option<String> {
-    if event.get("type").and_then(|t| t.as_str()) != Some("content_block_delta") {
-        return None;
-    }
-    let delta = event.get("delta")?;
-    if delta.get("type").and_then(|t| t.as_str()) != Some("text_delta") {
-        return None;
-    }
-    delta
-        .get("text")
-        .and_then(|v| v.as_str())
-        .map(|s| s.to_string())
 }

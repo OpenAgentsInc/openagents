@@ -2,8 +2,7 @@ use std::collections::VecDeque;
 
 use tokio::sync::mpsc;
 use wgpui::components::organisms::PermissionDialog;
-use claude_agent_sdk::permissions::PermissionRequest;
-use claude_agent_sdk::protocol::PermissionResult;
+use super::request::{PermissionRequest, PermissionResult};
 
 use super::{PermissionHistoryEntry, PermissionPending};
 use super::rules::{

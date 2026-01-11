@@ -320,7 +320,7 @@ During the "Reason" phase, agents use NIP-90 job requests for LLM inference:
   "content": "",
   "tags": [
     ["i", "<prompt with goals, perception, context>", "text"],
-    ["param", "model", "claude-3"],
+    ["param", "model", "codex-3"],
     ["param", "max_tokens", "1000"],
     ["output", "application/json"],
     ["encrypted"]
@@ -366,7 +366,7 @@ A trajectory session is an addressable event that defines a run:
   "content": "",
   "tags": [
     ["d", "<session-id>"],
-    ["model", "claude-opus-4"],
+    ["model", "codex-opus-4"],
     ["started_at", "<unix-timestamp>"],
     ["h", "<group-id>"],  // if posted to a group
     ["p", "<compute-provider-pubkey>"],  // participants

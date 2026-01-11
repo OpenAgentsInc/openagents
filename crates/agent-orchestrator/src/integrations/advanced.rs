@@ -2,7 +2,7 @@
 //!
 //! - FROSTR integration for threshold-protected agent identity
 //! - NIP-SA solver agent coordination
-//! - Multi-backend support (Claude, OpenAI, local models)
+//! - Multi-backend support (Codex, OpenAI, local models)
 //! - Agent cost tracking and budget enforcement
 
 use crate::hooks::{Hook, HookResult, ToolCall, ToolOutput};
@@ -99,7 +99,7 @@ impl AgentIdentity {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum BackendProvider {
-    Claude,
+    Codex,
     OpenAI,
     Codex,
     GptOss,
@@ -109,7 +109,7 @@ pub enum BackendProvider {
 impl BackendProvider {
     pub fn as_str(&self) -> &'static str {
         match self {
-            BackendProvider::Claude => "claude",
+            BackendProvider::Codex => "codex",
             BackendProvider::OpenAI => "openai",
             BackendProvider::Codex => "codex",
             BackendProvider::GptOss => "gpt-oss",
@@ -129,9 +129,9 @@ pub struct BackendConfig {
 }
 
 impl BackendConfig {
-    pub fn claude(model: &str) -> Self {
+    pub fn codex(model: &str) -> Self {
         Self {
-            provider: BackendProvider::Claude,
+            provider: BackendProvider::Codex,
             model: model.to_string(),
             endpoint: None,
             cost_per_1k_input: 3,
@@ -542,7 +542,7 @@ mod tests {
 
     #[test]
     fn test_agent_identity() {
-        let identity = AgentIdentity::new("pubkey", "TestAgent", "claude-sonnet-4")
+        let identity = AgentIdentity::new("pubkey", "TestAgent", "codex-sonnet-4")
             .with_autonomy(AutonomyLevel::SemiAutonomous)
             .with_operator("operator-pk");
 
@@ -560,29 +560,29 @@ mod tests {
         ]);
 
         let identity =
-            AgentIdentity::new("pubkey", "TestAgent", "claude-sonnet-4").with_threshold(threshold);
+            AgentIdentity::new("pubkey", "TestAgent", "codex-sonnet-4").with_threshold(threshold);
 
         assert!(identity.is_threshold_protected());
     }
 
     #[test]
     fn test_backend_config_cost() {
-        let config = BackendConfig::claude("sonnet-4");
+        let config = BackendConfig::codex("sonnet-4");
         let cost = config.calculate_cost(1000, 500);
         assert_eq!(cost, 3 + 7);
     }
 
     #[test]
     fn test_multi_backend_router() {
-        let router = MultiBackendRouter::new(BackendProvider::Claude)
-            .add_backend(BackendConfig::claude("sonnet-4"))
+        let router = MultiBackendRouter::new(BackendProvider::Codex)
+            .add_backend(BackendConfig::codex("sonnet-4"))
             .add_backend(BackendConfig::openai("gpt-4"))
             .route_agent("oracle", BackendProvider::OpenAI);
 
         assert!(router.get_backend("sisyphus").is_some());
         assert_eq!(
             router.get_backend("sisyphus").unwrap().provider,
-            BackendProvider::Claude
+            BackendProvider::Codex
         );
 
         assert!(router.get_backend("oracle").is_some());
@@ -602,7 +602,7 @@ mod tests {
 
         let record = CostRecord {
             agent_name: "test-agent".to_string(),
-            backend: BackendProvider::Claude,
+            backend: BackendProvider::Codex,
             input_tokens: 1000,
             output_tokens: 500,
             cost_sats: 100,
@@ -634,7 +634,7 @@ mod tests {
         for i in 0..5 {
             let record = CostRecord {
                 agent_name: "test-agent".to_string(),
-                backend: BackendProvider::Claude,
+                backend: BackendProvider::Codex,
                 input_tokens: 100,
                 output_tokens: 50,
                 cost_sats: 100,
@@ -649,7 +649,7 @@ mod tests {
 
     #[test]
     fn test_solver_coordinator_approval() {
-        let identity = AgentIdentity::new("pk", "Agent", "claude");
+        let identity = AgentIdentity::new("pk", "Agent", "codex");
         let coordinator = SolverAgentCoordinator::new(identity);
 
         let id = coordinator.request_approval("purchase_skill", "Buy web-scraper skill", 500);

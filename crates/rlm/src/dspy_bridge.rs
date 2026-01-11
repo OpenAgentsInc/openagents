@@ -75,7 +75,7 @@ use lm_router::{LmRouter, LmResponse};
 ///
 /// # Arguments
 ///
-/// * `model` - Model identifier (e.g., "openai:gpt-4o-mini", "anthropic:claude-3-sonnet")
+/// * `model` - Model identifier (e.g., "openai:gpt-4o-mini", "openai:codex-3-sonnet")
 /// * `api_key` - Optional API key (reads from env vars if not provided)
 /// * `base_url` - Optional base URL for OpenAI-compatible APIs
 ///

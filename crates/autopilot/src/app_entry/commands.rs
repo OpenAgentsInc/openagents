@@ -51,29 +51,21 @@ pub(super) fn handle_command(state: &mut AppState, command: Command) -> CommandA
             CommandAction::None
         }
         Command::Backend => {
-            // Toggle between Claude and Codex (status bar shows current backend)
-            let new_agent = match state.agent_selection.agent {
-                AgentKindConfig::Claude => AgentKindConfig::Codex,
-                AgentKindConfig::Codex => AgentKindConfig::Claude,
-            };
-            tracing::info!("Backend switched to: {:?}", new_agent);
-            state.agent_selection.agent = new_agent;
+            // Toggle between backends (Codex only for now).
+            tracing::info!("Backend switched to: Codex");
+            state.agent_selection.agent = AgentKindConfig::Codex;
             CommandAction::None
         }
         Command::BackendSet(name) => {
             let lower = name.to_lowercase();
             match lower.as_str() {
-                "claude" => {
-                    state.agent_selection.agent = AgentKindConfig::Claude;
-                    tracing::info!("Backend set to: Claude");
-                }
                 "codex" | "openai" => {
                     state.agent_selection.agent = AgentKindConfig::Codex;
                     tracing::info!("Backend set to: Codex");
                 }
                 _ => {
                     state.push_system_message(format!(
-                        "Unknown backend: {}. Available: claude, codex",
+                        "Unknown backend: {}. Available: codex",
                         name
                     ));
                 }
@@ -587,13 +579,13 @@ pub(super) fn handle_modal_input(state: &mut AppState, key: &WinitKey) -> bool {
                 WinitKey::Character(c) => {
                     match c.as_str() {
                         "1" => {
-                            state.settings.selected_model = ModelOption::Opus;
+                            state.settings.selected_model = ModelOption::Default;
                         }
                         "2" => {
-                            state.settings.selected_model = ModelOption::Sonnet;
+                            state.settings.selected_model = ModelOption::Mini;
                         }
                         "3" => {
-                            state.settings.selected_model = ModelOption::Haiku;
+                            state.settings.selected_model = ModelOption::Reasoning;
                         }
                         _ => {}
                     }
@@ -725,7 +717,7 @@ pub(super) fn handle_modal_input(state: &mut AppState, key: &WinitKey) -> bool {
             let selected_kind = kinds
                 .get(*selected)
                 .copied()
-                .unwrap_or(AgentKind::Claude);
+                .unwrap_or(AgentKind::Codex);
             let models = state.agent_backends.models_for_kind(selected_kind);
             let max_model_index = models.len();
             if *model_selected > max_model_index {
@@ -746,13 +738,11 @@ pub(super) fn handle_modal_input(state: &mut AppState, key: &WinitKey) -> bool {
                     };
                     state.agent_backends.set_selection(selected_kind, model_id.clone());
                     state.agent_selection = state.agent_backends.settings.selected.clone();
-                    if selected_kind == AgentKind::Claude {
-                        let model = model_id
-                            .as_deref()
-                            .map(ModelOption::from_id)
-                            .unwrap_or(ModelOption::Opus);
-                        state.update_selected_model(model);
-                    }
+                    let model = model_id
+                        .as_deref()
+                        .map(ModelOption::from_id)
+                        .unwrap_or(ModelOption::Default);
+                    state.update_selected_model(model);
                     state.push_system_message(format!(
                         "Agent backend set to {}.",
                         state.agent_backends.settings.selected.display_name()
@@ -764,7 +754,7 @@ pub(super) fn handle_modal_input(state: &mut AppState, key: &WinitKey) -> bool {
                         let next_kind = kinds
                             .get(*selected)
                             .copied()
-                            .unwrap_or(AgentKind::Claude);
+                            .unwrap_or(AgentKind::Codex);
                         *model_selected = state.agent_backends.model_index_for_kind(next_kind);
                     }
                 }
@@ -774,7 +764,7 @@ pub(super) fn handle_modal_input(state: &mut AppState, key: &WinitKey) -> bool {
                         let next_kind = kinds
                             .get(*selected)
                             .copied()
-                            .unwrap_or(AgentKind::Claude);
+                            .unwrap_or(AgentKind::Codex);
                         *model_selected = state.agent_backends.model_index_for_kind(next_kind);
                     }
                 }
@@ -1566,10 +1556,10 @@ fn resolve_output_style(name: &str) -> io::Result<Option<PathBuf>> {
 
     let mut candidates = Vec::new();
     if let Ok(cwd) = std::env::current_dir() {
-        candidates.push(cwd.join(".claude").join("output-styles").join(&file_name));
+        candidates.push(cwd.join(".openagents").join("output-styles").join(&file_name));
     }
     if let Some(home) = dirs::home_dir() {
-        candidates.push(home.join(".claude").join("output-styles").join(&file_name));
+        candidates.push(home.join(".openagents").join("output-styles").join(&file_name));
     }
 
     for path in candidates {
@@ -1595,10 +1585,10 @@ fn resolve_custom_command_path(name: &str) -> io::Result<Option<PathBuf>> {
 
     let mut candidates = Vec::new();
     if let Ok(cwd) = std::env::current_dir() {
-        candidates.push(cwd.join(".claude").join("commands").join(&file_name));
+        candidates.push(cwd.join(".openagents").join("commands").join(&file_name));
     }
     if let Some(home) = dirs::home_dir() {
-        candidates.push(home.join(".claude").join("commands").join(&file_name));
+        candidates.push(home.join(".openagents").join("commands").join(&file_name));
     }
 
     for path in candidates {

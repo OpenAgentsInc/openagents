@@ -219,9 +219,9 @@ async fn run_exploration(
             match run_agent_loop(&state, &repo, &initial_context).await {
                 Ok(_) => {
                     let mut state_guard = state.borrow_mut();
-                    state_guard.autopilot_chat.enable_claude_cta();
+                    state_guard.autopilot_chat.enable_codex_cta();
                     state_guard.autopilot_chat.push_system_message(
-                        "Ready for a full local Claude run. Click Start Claude below.",
+                        "Ready for a full local Codex run. Click Start Codex below.",
                     );
                 }
                 Err(e) => {
@@ -1158,10 +1158,10 @@ async fn stream_ai_with_retry(
 async fn fetch_ai_with_tools(messages: &[Message]) -> Result<AiResponse, String> {
     let window = web_sys::window().ok_or("No window")?;
 
-    // NOTE: Model MUST be anthropic/claude-sonnet-4.5 - DO NOT CHANGE
+    // NOTE: Model MUST be openai/codex-sonnet-4.5 - DO NOT CHANGE
     let body = serde_json::json!({
         "messages": messages,
-        "model": "anthropic/claude-sonnet-4.5",
+        "model": "openai/codex-sonnet-4.5",
         "max_tokens": 4096,
         "tools": get_tools(),
         "tool_choice": "auto",
@@ -1211,10 +1211,10 @@ async fn stream_ai_with_tools(
 ) -> Result<AiResponse, String> {
     let window = web_sys::window().ok_or("No window")?;
 
-    // NOTE: Model MUST be anthropic/claude-sonnet-4.5 - DO NOT CHANGE
+    // NOTE: Model MUST be openai/codex-sonnet-4.5 - DO NOT CHANGE
     let body = serde_json::json!({
         "messages": messages,
-        "model": "anthropic/claude-sonnet-4.5",
+        "model": "openai/codex-sonnet-4.5",
         "max_tokens": 4096,
         "tools": get_tools(),
         "tool_choice": "auto",

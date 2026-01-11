@@ -290,7 +290,7 @@ fn default_fx_cache() -> u64 { 300 } // 5 minutes
 ```
 
 **Why USD:**
-- Providers price in USD (OpenAI, Cloudflare, Anthropic)
+- Providers price in USD (OpenAI, Cloudflare, OpenAI)
 - Users set budgets in USD ("$10/day")
 - Stable unit for cost comparison and limits
 - No constant recalculation as BTC price moves

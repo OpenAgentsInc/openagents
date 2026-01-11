@@ -481,7 +481,7 @@ Agents need AI compute. The runtime provides a portable abstraction for accessin
 ### Why Abstract Compute?
 
 Without a compute abstraction:
-- Agent code is tied to specific providers (OpenAI, Anthropic, Ollama, etc.)
+- Agent code is tied to specific providers (OpenAI, OpenAI, Ollama, etc.)
 - Budget enforcement is inconsistent
 - Retries cause double-billing
 - Streaming patterns vary wildly across providers

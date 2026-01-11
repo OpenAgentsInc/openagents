@@ -12,7 +12,7 @@ This is not another AI wrapper or chatbot framework. This is the full stack for 
 
 **Autopilot is 4x more productive than interactive coding assistants.**
 
-We measured it. When you use Claude Code or Cursor interactively, you're the bottleneck — reading output, thinking, typing the next command. Your AI runs at ~4.5 actions per minute because it's waiting on you. Autopilot runs autonomously at ~19 actions per minute. Same AI, same capabilities, 4x the throughput.
+We measured it. When you use Codex Code or Cursor interactively, you're the bottleneck — reading output, thinking, typing the next command. Your AI runs at ~4.5 actions per minute because it's waiting on you. Autopilot runs autonomously at ~19 actions per minute. Same AI, same capabilities, 4x the throughput.
 
 But raw speed isn't the point. The point is **leverage**.
 
@@ -64,7 +64,7 @@ This isn't just theory. It's how biological intelligence works, how markets work
 
 **Reed's Law creates an unassailable moat.**
 
-The value of a network with N participants scales as 2^N possible coalitions. A unified marketplace connecting ALL agents, ALL skills, and ALL data creates exponential network effects that siloed competitors cannot match. Labs fight each other (OpenAI vs Anthropic vs Google). We're neutral infrastructure that works with everyone.
+The value of a network with N participants scales as 2^N possible coalitions. A unified marketplace connecting ALL agents, ALL skills, and ALL data creates exponential network effects that siloed competitors cannot match. Labs fight each other (OpenAI vs OpenAI vs Google). We're neutral infrastructure that works with everyone.
 
 **Your data has value. You should get paid for it.**
 
@@ -250,7 +250,7 @@ openagents/
 │   ├── compute/            NIP-90 compute provider
 │   │
 │   ├── # AGENT SDKS
-│   ├── claude-agent-sdk/   Rust SDK for Claude Code CLI
+│   ├── codex-agent-sdk/   Rust SDK for Codex Code CLI
 │   ├── codex-agent-sdk/    OpenAI Codex integration
 │   ├── agent-orchestrator/ Multi-agent coordination framework
 │   │
@@ -293,7 +293,7 @@ cargo run -p wgpui --example component_showcase --features desktop
 [Full documentation →](crates/wgpui/README.md)
 
 #### `autopilot`
-Autopilot UI + CLI entrypoint built on WGPUI with Claude and Codex backends.
+Autopilot UI + CLI entrypoint built on WGPUI with Codex and Codex backends.
 
 ```bash
 # Launch UI
@@ -311,7 +311,7 @@ cargo run -p autopilot -- run "Fix all compiler warnings"
 Autonomous task runner with complete trajectory logging. Used by the `autopilot` binary and service layers.
 
 Features:
-- Multi-agent support (Claude, Codex)
+- Multi-agent support (Codex, Codex)
 - Issue-based workflow
 - JSON + rlog output formats
 - Budget tracking
@@ -406,10 +406,10 @@ let issue = issue::create_issue(
     Some("Users can't log in"),
     Priority::Urgent,
     IssueType::Bug,
-    Some("claude"),
+    Some("codex"),
 )?;
 
-let next = issue::get_next_ready_issue(&conn, Some("claude"))?;
+let next = issue::get_next_ready_issue(&conn, Some("codex"))?;
 ```
 
 Features:
@@ -457,7 +457,7 @@ MCP server exposing issue tracking tools:
 
 - 13 tools (create, claim, complete, block, etc.)
 - JSON-RPC 2.0 over stdio
-- Used by Claude Code autopilot
+- Used by Codex Code autopilot
 - Plan mode integration
 
 [Full documentation →](crates/issues-mcp/README.md)
@@ -475,7 +475,7 @@ println!("Max tasks: {}", config.max_tasks_per_run);
 ```
 
 Supports:
-- Claude Code settings
+- Codex Code settings
 - Sandbox configuration
 - Healer rules
 - Parallel execution
@@ -485,11 +485,11 @@ Supports:
 
 ### Agent SDKs
 
-#### `claude-agent-sdk`
-Rust SDK for Claude Code CLI:
+#### `codex-agent-sdk`
+Rust SDK for Codex Code CLI:
 
 ```rust
-use claude_agent_sdk::{query, QueryOptions};
+use codex_agent_sdk::{query, QueryOptions};
 use futures::StreamExt;
 
 let mut stream = query(
@@ -509,7 +509,7 @@ Features:
 - Streaming support
 - Rust-only extensions (abort())
 
-[Full documentation →](crates/claude-agent-sdk/README.md)
+[Full documentation →](crates/codex-agent-sdk/README.md)
 
 #### `codex-agent-sdk`
 Rust SDK for OpenAI Codex CLI:
@@ -690,7 +690,7 @@ cargo add tokio --features full
 - **NEVER** push --force to main
 - **NEVER** commit unless explicitly asked
 - **NEVER** use destructive commands without asking
-- Commits include co-author line for Claude
+- Commits include co-author line for Codex
 
 ### Code Style
 
@@ -829,12 +829,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Some("Users report increasing memory usage over time"),
         Priority::Urgent,
         IssueType::Bug,
-        Some("claude"),
+        Some("codex"),
     )?;
     println!("Created issue #{}", bug.number);
 
-    // Get next highest priority issue for Claude
-    let next = issue::get_next_ready_issue(&conn, Some("claude"))?;
+    // Get next highest priority issue for Codex
+    let next = issue::get_next_ready_issue(&conn, Some("codex"))?;
     if let Some(issue) = next {
         println!("Next task: {} (priority: {:?})", issue.title, issue.priority);
 
@@ -984,29 +984,29 @@ nostr event --kind 5050 \
 
 ### Multi-Agent Workflow
 
-Delegate between Claude and Codex for complex tasks:
+Delegate between Codex and Codex for complex tasks:
 
 ```rust
-use claude_agent_sdk::{query, QueryOptions};
+use codex_agent_sdk::{query, QueryOptions};
 use codex_agent_sdk::{Codex, ThreadOptions, TurnOptions};
 use futures::StreamExt;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Start with Claude for code review
-    let mut claude_stream = query(
+    // Start with Codex for code review
+    let mut codex_stream = query(
         "Review crates/auth/src/lib.rs for security issues",
         QueryOptions::new()
     ).await?;
 
     let mut review = String::new();
-    while let Some(msg) = claude_stream.next().await {
+    while let Some(msg) = codex_stream.next().await {
         if let Some(text) = msg?.text_delta {
             review.push_str(&text);
         }
     }
 
-    println!("Claude's review:\n{}", review);
+    println!("Codex's review:\n{}", review);
 
     // Delegate fixes to Codex
     let codex = Codex::new();
@@ -1020,7 +1020,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let turn = thread.run(&fix_prompt, TurnOptions::default()).await?;
     println!("Codex implemented fixes:\n{}", turn.final_response);
 
-    // Return to Claude for verification
+    // Return to Codex for verification
     let verify_stream = query(
         "Verify the security fixes are correct",
         QueryOptions::new()
@@ -1032,7 +1032,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-This workflow leverages each agent's strengths: Claude for analysis/review, Codex for implementation.
+This workflow leverages each agent's strengths: Codex for analysis/review, Codex for implementation.
 
 ## Documentation
 

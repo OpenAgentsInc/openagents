@@ -1,7 +1,7 @@
 //! PatchGen job types for NIP-90 compute marketplace (Bazaar)
 //!
 //! PatchGen jobs generate code patches from issue descriptions using agentic AI.
-//! The provider runs Claude Code (or similar) in a sandbox to understand the codebase
+//! The provider runs Codex Code (or similar) in a sandbox to understand the codebase
 //! and produce a verifiable patch.
 
 use serde::{Deserialize, Serialize};
@@ -71,7 +71,7 @@ pub struct PatchGenRequest {
     pub path_filter: PathFilter,
     /// Maximum time limit in seconds
     pub time_limit_secs: u32,
-    /// Model preference (e.g., "claude-sonnet-4", "claude-opus-4")
+    /// Model preference (e.g., "codex-sonnet-4", "codex-opus-4")
     pub model: Option<String>,
     /// Additional context or constraints
     pub context: Option<String>,
@@ -551,14 +551,14 @@ mod tests {
         )
         .with_issue_url("https://github.com/owner/repo/issues/42")
         .with_time_limit(1800)
-        .with_model("claude-sonnet-4")
+        .with_model("codex-sonnet-4")
         .with_context("Use the existing theme system")
         .with_tests(true)
         .with_test_command("cargo test");
 
         assert_eq!(request.issue_url, Some("https://github.com/owner/repo/issues/42".to_string()));
         assert_eq!(request.time_limit_secs, 1800);
-        assert_eq!(request.model, Some("claude-sonnet-4".to_string()));
+        assert_eq!(request.model, Some("codex-sonnet-4".to_string()));
         assert_eq!(request.context, Some("Use the existing theme system".to_string()));
         assert_eq!(request.test_command, Some("cargo test".to_string()));
     }
@@ -607,13 +607,13 @@ mod tests {
             "abc123def456",
         )
         .with_trajectory("traj-001")
-        .with_model("claude-sonnet-4")
+        .with_model("codex-sonnet-4")
         .with_summary("Fixed the login bug by adding null check")
         .add_file("src/main.rs")
         .with_duration(60000);
 
         assert_eq!(result.trajectory_id, Some("traj-001".to_string()));
-        assert_eq!(result.model_used, "claude-sonnet-4");
+        assert_eq!(result.model_used, "codex-sonnet-4");
         assert_eq!(result.duration_ms, 60000);
         assert!(result.files_modified.contains(&"src/main.rs".to_string()));
     }
@@ -621,7 +621,7 @@ mod tests {
     #[test]
     fn test_patch_gen_result_serialization() {
         let result = PatchGenResult::new("diff content", "sha256hash")
-            .with_model("claude-sonnet-4")
+            .with_model("codex-sonnet-4")
             .with_summary("Test summary");
 
         let json = result.to_metadata_json().unwrap();

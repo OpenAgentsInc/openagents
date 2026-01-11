@@ -191,7 +191,7 @@ impl TrajectoryPublisher {
         };
 
         // Create final session content with hash
-        let content = TrajectorySessionContent::new(&session_id, self.session_start, "claude")
+        let content = TrajectorySessionContent::new(&session_id, self.session_start, "codex")
             .with_end_time(now)
             .with_total_events(self.sequence)
             .with_hash(&trajectory_hash);

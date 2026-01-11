@@ -482,17 +482,17 @@ These are enforced by the pre-commit hook (see `.git/hooks/pre-commit`).
 - **Timers** - Use `js_sys::Promise` with `window.set_timeout()`
 - **Storage** - Use `web_sys::Storage` (localStorage) or IndexedDB
 
-## Claude Tunnel Overlay
+## Codex Tunnel Overlay
 
-After the intro agent finishes, the Autopilot overlay exposes a **Start Claude** CTA.
-This opens a separate Claude chat overlay that:
+After the intro agent finishes, the Autopilot overlay exposes a **Start Codex** CTA.
+This opens a separate Codex chat overlay that:
 
 - Registers a tunnel session via `/api/tunnel/register`
 - Shows the `openagents pylon connect --tunnel-url ...` command
-- Streams Claude output from the local Pylon tunnel client
+- Streams Codex output from the local Pylon tunnel client
 - Prompts for tool approvals when required
 
-The browser remains the UI while Claude runs locally on the user's machine.
+The browser remains the UI while Codex runs locally on the user's machine.
 
 ## Future Enhancements
 

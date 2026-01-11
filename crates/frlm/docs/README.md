@@ -25,7 +25,7 @@ FRLM extends the RLM (Recursive Language Model) execution model with federation 
                     │            │            │
                     ▼            ▼            ▼
               ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐
-              │  Local   │ │  Swarm   │ │  Remote  │ │  Claude  │
+              │  Local   │ │  Swarm   │ │  Remote  │ │  Codex  │
               │ (FM/RLM) │ │ (NIP-90) │ │  (API)   │ │  (SDK)   │
               └──────────┘ └──────────┘ └──────────┘ └──────────┘
 ```
@@ -137,8 +137,8 @@ Every operation emits structured trace events for observability:
 | `RunDone` | FRLM run completed |
 
 The `SubQueryExecute` event includes:
-- `venue`: Execution venue (`Local`, `Swarm`, `Datacenter`, `Claude`)
-- `model_id`: Optional model identifier (e.g., `claude-opus-4-5-20251101`)
+- `venue`: Execution venue (`Local`, `Swarm`, `Datacenter`, `Codex`)
+- `model_id`: Optional model identifier (e.g., `codex-opus-4-5-20251101`)
 
 ## Integration
 
@@ -181,15 +181,15 @@ impl LocalExecutor for FmLocalExecutor {
 }
 ```
 
-### Claude Backend (Feature: `claude`)
+### Codex Backend (Feature: `codex`)
 
-Use Claude (Pro/Max) as the execution backend via `ClaudeLocalExecutor`:
+Use Codex (Pro/Max) as the execution backend via `CodexLocalExecutor`:
 
 ```rust
-use frlm::ClaudeLocalExecutor;  // Requires `claude` feature
+use frlm::CodexLocalExecutor;  // Requires `codex` feature
 
-let executor = ClaudeLocalExecutor::new("/path/to/workspace")
-    .with_model("claude-opus-4-5-20251101");
+let executor = CodexLocalExecutor::new("/path/to/workspace")
+    .with_model("codex-opus-4-5-20251101");
 
 let mut conductor = FrlmConductor::with_defaults();
 let result = conductor.run(program, &submitter, Some(&executor)).await?;
@@ -199,13 +199,13 @@ Enable the feature in `Cargo.toml`:
 
 ```toml
 [dependencies]
-frlm = { path = "../frlm", features = ["claude"] }
+frlm = { path = "../frlm", features = ["codex"] }
 ```
 
-The `ClaudeLocalExecutor`:
-- Wraps `ClaudeLlmClient` from the `rlm` crate
+The `CodexLocalExecutor`:
+- Wraps `CodexLlmClient` from the `rlm` crate
 - Uses structured outputs to enforce the RLM response format
-- Reports `Venue::Claude` for trace events
+- Reports `Venue::Codex` for trace events
 
 ## Execution Venues
 
@@ -216,7 +216,7 @@ FRLM supports multiple execution venues tracked in trace events:
 | `Local` | Local inference via FM Bridge, Ollama, or llama.cpp |
 | `Swarm` | Distributed execution via NIP-90 |
 | `Datacenter` | Remote API (e.g., Crusoe) |
-| `Claude` | Claude via claude-agent-sdk |
+| `Codex` | Codex via codex-agent-sdk |
 | `Unknown` | Fallback for unknown venues |
 
 ## DSPy Signatures
@@ -275,7 +275,7 @@ crates/frlm/
 │   ├── trace_db.rs        # SQLite persistence for traces
 │   ├── types.rs           # Core types (Fragment, SubQuery, Venue)
 │   ├── dspy_signatures.rs # DSPy signatures for map-reduce
-│   ├── claude_executor.rs # Claude backend (feature: claude)
+│   ├── codex_executor.rs # Codex backend (feature: codex)
 │   └── error.rs           # Error types
 └── docs/
     └── README.md          # This file
@@ -286,7 +286,7 @@ crates/frlm/
 | Feature | Description |
 |---------|-------------|
 | `trace-db` | SQLite persistence for trace events |
-| `claude` | Claude as execution backend via claude-agent-sdk |
+| `codex` | Codex as execution backend via codex-agent-sdk |
 
 **Note:** DSPy integration via `dsrs` is always enabled (not feature-gated).
 

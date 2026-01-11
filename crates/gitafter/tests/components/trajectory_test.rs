@@ -90,7 +90,7 @@ fn test_trajectory_session_info() {
         <div class="trajectory-session">
             <h4>Session Information</h4>
             <p>Session ID: <code>session-abc-123</code></p>
-            <p>Model: Claude Sonnet 4.5</p>
+            <p>Model: Codex Sonnet 4.5</p>
             <p>Tokens: 1,234</p>
         </div>
     "#;

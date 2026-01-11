@@ -577,7 +577,7 @@ impl Storybook {
                 .items(vec![
                     StatusItem::mode("mode", Mode::Plan).left(),
                     StatusItem::text("file", "src/main.rs").center(),
-                    StatusItem::model("model", Model::ClaudeOpus).right(),
+                    StatusItem::model("model", Model::CodexOpus).right(),
                     StatusItem::status("status", Status::Online).right(),
                 ]);
             top_bar.paint(top_bar_bounds, cx);
@@ -597,7 +597,7 @@ impl Storybook {
                     StatusItem::text("branch", "main").left(),
                     StatusItem::text("line", "Ln 42, Col 8").center(),
                     StatusItem::status("status", Status::Busy).right(),
-                    StatusItem::model("model", Model::ClaudeSonnet).right(),
+                    StatusItem::model("model", Model::CodexSonnet).right(),
                 ]);
             bot_bar.paint(bot_bar_bounds, cx);
         });

@@ -18,7 +18,7 @@ impl AssistantMessage {
         Self {
             id: None,
             content: content.into(),
-            model: Model::ClaudeSonnet,
+            model: Model::CodexSonnet,
             timestamp: None,
             streaming: false,
             streaming_indicator: StreamingIndicator::new(),
@@ -153,8 +153,8 @@ mod tests {
 
     #[test]
     fn test_assistant_message_new() {
-        let msg = AssistantMessage::new("Hello from Claude");
-        assert_eq!(msg.content(), "Hello from Claude");
+        let msg = AssistantMessage::new("Hello from Codex");
+        assert_eq!(msg.content(), "Hello from Codex");
         assert!(!msg.is_streaming());
     }
 
@@ -162,12 +162,12 @@ mod tests {
     fn test_assistant_message_builder() {
         let msg = AssistantMessage::new("Response")
             .with_id(1)
-            .model(Model::ClaudeOpus)
+            .model(Model::CodexOpus)
             .streaming(true)
             .timestamp("12:30 PM");
 
         assert_eq!(msg.id, Some(1));
-        assert_eq!(msg.model, Model::ClaudeOpus);
+        assert_eq!(msg.model, Model::CodexOpus);
         assert!(msg.is_streaming());
     }
 

@@ -1,6 +1,7 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use claude_agent_sdk::{AgentModel, HookEvent};
+use super::catalog::agents::AgentModel;
+use super::catalog::types::HookEvent;
 use wgpui::markdown::{MarkdownConfig, MarkdownDocument, MarkdownRenderer as MdRenderer, StreamingMarkdown};
 use wgpui::TextInput;
 
@@ -166,9 +167,9 @@ pub(crate) fn build_checkpoint_entries(messages: &[ChatMessage]) -> Vec<Checkpoi
 
 fn agent_model_label(model: AgentModel) -> &'static str {
     match model {
-        AgentModel::Opus => "opus",
-        AgentModel::Sonnet => "sonnet",
-        AgentModel::Haiku => "haiku",
+        AgentModel::Default => "default",
+        AgentModel::Mini => "mini",
+        AgentModel::Reasoning => "reasoning",
         AgentModel::Inherit => "inherit",
     }
 }

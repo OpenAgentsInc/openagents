@@ -299,7 +299,7 @@ This section tracks which user stories have implemented tests.
 | 12.1.3 | CI scans for stub patterns | Integration | `tests/no_stubs.rs` |
 | 12.1.4 | Allowed exceptions list with justification | Integration | `tests/no_stubs.rs` |
 | **d-016: APM Metrics** ||||
-| 16.1.1 | APM calculated from Claude Code JSONL logs | Unit | `crates/autopilot/src/apm_parser.rs` |
+| 16.1.1 | APM calculated from Codex Code JSONL logs | Unit | `crates/autopilot/src/apm_parser.rs` |
 | 16.1.2 | APM calculated from autopilot trajectory logs | Unit | `crates/autopilot/src/apm_parser.rs` |
 | 16.1.3 | APM tracked across multiple time windows | Unit | `crates/autopilot/src/apm_storage.rs` |
 | 16.2.1 | See current APM in the CLI | Integration | `tests/cli_integration.rs` |
@@ -307,9 +307,9 @@ This section tracks which user stories have implemented tests.
 | 16.2.3 | APM color-coded by tier | Unit | `crates/autopilot/src/apm.rs` |
 | 16.2.4 | APM history charts | Unit | `crates/wgpui/src/components/molecules/apm_session_row.rs` |
 | **d-017: ACP Integration** ||||
-| 17.1.1 | Send ACP messages to Claude Code | Integration | `crates/acp-adapter/tests/integration_tests.rs` |
+| 17.1.1 | Send ACP messages to Codex Code | Integration | `crates/acp-adapter/tests/integration_tests.rs` |
 | 17.1.2 | ACP event streaming | Unit + Visual | `crates/wgpui/src/testing/chat_tests.rs` |
-| 17.1.3 | Switch between Claude/Codex backends | Integration | `crates/acp-adapter/tests/integration_tests.rs` |
+| 17.1.3 | Switch between Codex/Codex backends | Integration | `crates/acp-adapter/tests/integration_tests.rs` |
 | 17.1.4 | Convert ACP events to rlog format | Unit | `crates/acp-adapter/src/converters/rlog.rs` |
 | 17.2.1 | Start an ACP session | Integration | `crates/acp-adapter/tests/integration_tests.rs` |
 | 17.2.2 | Send messages and receive responses | Integration | `crates/acp-adapter/tests/integration_tests.rs` |
@@ -1222,7 +1222,7 @@ This section tracks which user stories have implemented tests.
 
 | ID | Priority | User Story |
 |----|----------|------------|
-| 16.1.1 | P0 | As an operator, I want APM calculated from Claude Code JSONL logs, so that interactive usage is tracked. |
+| 16.1.1 | P0 | As an operator, I want APM calculated from Codex Code JSONL logs, so that interactive usage is tracked. |
 | 16.1.2 | P0 | As an operator, I want APM calculated from autopilot trajectory logs, so that autonomous usage is tracked. |
 | 16.1.3 | P1 | As an operator, I want APM tracked across multiple time windows, so that I can see trends. |
 
@@ -1251,9 +1251,9 @@ This section tracks which user stories have implemented tests.
 
 | ID | Priority | User Story |
 |----|----------|------------|
-| 17.1.1 | P0 | As a developer, I want to send ACP messages to Claude Code, so that sessions work. |
-| 17.1.2 | P0 | As a developer, I want to receive ACP events from Claude Code, so that responses stream. |
-| 17.1.3 | P1 | As a developer, I want to switch between Claude/Codex backends, so that I can choose agents. |
+| 17.1.1 | P0 | As a developer, I want to send ACP messages to Codex Code, so that sessions work. |
+| 17.1.2 | P0 | As a developer, I want to receive ACP events from Codex Code, so that responses stream. |
+| 17.1.3 | P1 | As a developer, I want to switch between Codex/Codex backends, so that I can choose agents. |
 | 17.1.4 | P1 | As a developer, I want to convert ACP events to rlog format, so that replay works. |
 
 ### Session Management

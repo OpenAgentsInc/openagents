@@ -79,7 +79,7 @@ use agent_orchestrator::integrations::AutopilotIntegration;
 let autopilot = AutopilotIntegration::new(issue_store, "session-123".to_string());
 
 // Claim next issue (DSPy selection when available)
-let issue = autopilot.claim_next(Some("claude"));
+let issue = autopilot.claim_next(Some("codex"));
 
 // Complete or block the current issue
 autopilot.complete_current();
@@ -153,7 +153,7 @@ use agent_orchestrator::integrations::TrajectoryLogger;
 let logger = TrajectoryLogger::new("/path/to/logs");
 
 // Log session start
-logger.session_start("session-123", "claude-sonnet-4").await?;
+logger.session_start("session-123", "codex-sonnet-4").await?;
 
 // Log tool call
 logger.tool_call("read", &params, &output).await?;

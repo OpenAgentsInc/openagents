@@ -1,16 +1,10 @@
-use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::AtomicU64;
-use std::sync::Arc;
 
-use claude_agent_sdk::{HookCallbackMatcher, HookEvent};
+use super::types::HookEvent;
 use serde::{Deserialize, Serialize};
-use tokio::sync::mpsc;
 
 use super::super::config::{config_dir, hook_config_file};
-use super::super::events::ResponseEvent;
-use crate::app::{CoderHookCallback, HookCallbackKind};
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(crate) enum HookScriptSource {
@@ -56,19 +50,12 @@ pub(crate) struct HookScriptCatalog {
 }
 
 #[derive(Clone)]
-pub(crate) struct HookRuntimeConfig {
-    pub(crate) cwd: PathBuf,
-    pub(crate) config: HookConfig,
-    pub(crate) log_tx: mpsc::UnboundedSender<ResponseEvent>,
-    pub(crate) counter: Arc<AtomicU64>,
-}
-
 fn hook_project_dir(cwd: &Path) -> PathBuf {
-    cwd.join(".claude").join("hooks")
+    cwd.join(".openagents").join("hooks")
 }
 
 fn hook_user_dir() -> Option<PathBuf> {
-    dirs::home_dir().map(|home| home.join(".claude").join("hooks"))
+    dirs::home_dir().map(|home| home.join(".openagents").join("hooks"))
 }
 
 fn normalize_hook_name(name: &str) -> String {
@@ -206,105 +193,4 @@ pub(crate) fn save_hook_config(config: &HookConfig) {
             let _ = fs::write(hook_config_file(), content);
         }
     }
-}
-
-pub(crate) fn build_hook_map(
-    cwd: PathBuf,
-    config: HookConfig,
-    scripts: Vec<HookScriptEntry>,
-    log_tx: mpsc::UnboundedSender<ResponseEvent>,
-) -> Option<HashMap<HookEvent, Vec<HookCallbackMatcher>>> {
-    let runtime = Arc::new(HookRuntimeConfig {
-        cwd,
-        config,
-        log_tx,
-        counter: Arc::new(AtomicU64::new(1)),
-    });
-    let mut hooks: HashMap<HookEvent, Vec<HookCallbackMatcher>> = HashMap::new();
-
-    if runtime.config.tool_blocker {
-        add_hook_matcher(
-            &mut hooks,
-            HookEvent::PreToolUse,
-            hook_matcher(HookCallbackKind::ToolBlocker, runtime.clone()),
-        );
-    }
-    if runtime.config.tool_logger {
-        add_hook_matcher(
-            &mut hooks,
-            HookEvent::PreToolUse,
-            hook_matcher(HookCallbackKind::ToolLogger, runtime.clone()),
-        );
-        add_hook_matcher(
-            &mut hooks,
-            HookEvent::PostToolUse,
-            hook_matcher(HookCallbackKind::ToolLogger, runtime.clone()),
-        );
-        add_hook_matcher(
-            &mut hooks,
-            HookEvent::PostToolUseFailure,
-            hook_matcher(HookCallbackKind::ToolLogger, runtime.clone()),
-        );
-    }
-    if runtime.config.output_truncator {
-        add_hook_matcher(
-            &mut hooks,
-            HookEvent::PostToolUse,
-            hook_matcher(HookCallbackKind::OutputTruncator, runtime.clone()),
-        );
-    }
-    if runtime.config.context_injection || runtime.config.todo_enforcer {
-        add_hook_matcher(
-            &mut hooks,
-            HookEvent::UserPromptSubmit,
-            hook_matcher(HookCallbackKind::ContextEnforcer, runtime.clone()),
-        );
-        add_hook_matcher(
-            &mut hooks,
-            HookEvent::SessionStart,
-            hook_matcher(HookCallbackKind::ContextEnforcer, runtime.clone()),
-        );
-    }
-
-    for script in scripts {
-        add_hook_matcher(
-            &mut hooks,
-            script.event,
-            hook_script_matcher(script, runtime.clone()),
-        );
-    }
-
-    if hooks.is_empty() {
-        None
-    } else {
-        Some(hooks)
-    }
-}
-
-fn add_hook_matcher(
-    hooks: &mut HashMap<HookEvent, Vec<HookCallbackMatcher>>,
-    event: HookEvent,
-    matcher: HookCallbackMatcher,
-) {
-    hooks.entry(event).or_default().push(matcher);
-}
-
-fn hook_matcher(kind: HookCallbackKind, runtime: Arc<HookRuntimeConfig>) -> HookCallbackMatcher {
-    HookCallbackMatcher::new().hook(Arc::new(CoderHookCallback::new(kind, runtime)))
-}
-
-fn hook_script_matcher(
-    entry: HookScriptEntry,
-    runtime: Arc<HookRuntimeConfig>,
-) -> HookCallbackMatcher {
-    let mut matcher = if let Some(pattern) = entry.matcher.clone() {
-        HookCallbackMatcher::with_matcher(pattern)
-    } else {
-        HookCallbackMatcher::new()
-    };
-    matcher = matcher.timeout(crate::app::HOOK_SCRIPT_TIMEOUT_SECS as u32);
-    matcher.hook(Arc::new(CoderHookCallback::new(
-        HookCallbackKind::Script(entry),
-        runtime,
-    )))
 }

@@ -39,14 +39,14 @@ async fn fetch(mut req: Request, env: Env, _ctx: Context) -> Result<Response> {
         (Method::Get, "/api/auth/github/callback") => routes::auth::github_callback(req, env).await,
         (Method::Post, "/api/auth/logout") => routes::auth::logout(req, env).await,
 
-        // Claude Auth routes (OAuth with PKCE)
-        (Method::Get, "/api/auth/claude/start") => routes::claude_auth::claude_start(req, env).await,
-        (Method::Get, "/api/auth/claude/callback") => routes::claude_auth::claude_callback(req, env).await,
-        (Method::Get, "/api/auth/claude/status") => routes::claude_auth::claude_status(req, env).await,
-        (Method::Post, "/api/auth/claude/disconnect") => routes::claude_auth::claude_disconnect(req, env).await,
-        (Method::Post, "/api/auth/claude/link") => {
+        // Codex Auth routes (OAuth with PKCE)
+        (Method::Get, "/api/auth/codex/start") => routes::codex_auth::codex_start(req, env).await,
+        (Method::Get, "/api/auth/codex/callback") => routes::codex_auth::codex_callback(req, env).await,
+        (Method::Get, "/api/auth/codex/status") => routes::codex_auth::codex_status(req, env).await,
+        (Method::Post, "/api/auth/codex/disconnect") => routes::codex_auth::codex_disconnect(req, env).await,
+        (Method::Post, "/api/auth/codex/link") => {
             let body = req.text().await?;
-            routes::claude_auth::claude_link(req, env, body).await
+            routes::codex_auth::codex_link(req, env, body).await
         }
         (Method::Get, "/api/auth/me") => {
             // Return current user or null

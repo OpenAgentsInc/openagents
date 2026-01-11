@@ -27,7 +27,7 @@ impl ChatApplication {
             feedback: ThreadFeedback::new(),
             status_bar: StatusBar::new().items(vec![
                 StatusItem::mode("mode", Mode::Normal).left(),
-                StatusItem::model("model", Model::Claude).right(),
+                StatusItem::model("model", Model::Codex).right(),
             ]),
             command_palette: CommandPalette::new().commands(vec![
                 Command::new("new", "New Conversation").keybinding("Cmd+N"),
@@ -246,7 +246,7 @@ mod tests {
     fn test_mode_and_model() {
         let mut app = ChatApplication::new("Test");
         app.set_mode(Mode::Plan);
-        app.set_model(Model::ClaudeSonnet);
+        app.set_model(Model::CodexSonnet);
     }
 
     #[test]

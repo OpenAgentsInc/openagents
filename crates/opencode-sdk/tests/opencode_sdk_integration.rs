@@ -28,8 +28,8 @@ fn user_message_json(session_id: &str) -> serde_json::Value {
         "time": { "created": 1.0 },
         "agent": "default",
         "model": {
-            "providerID": "anthropic",
-            "modelID": "claude-sonnet-4"
+            "providerID": "openai",
+            "modelID": "codex-sonnet-4"
         }
     })
 }
@@ -160,12 +160,12 @@ async fn test_provider_list() {
         .and(path("/provider"))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!([
             {
-                "id": "anthropic",
-                "name": "Anthropic",
+                "id": "openai",
+                "name": "OpenAI",
                 "models": [
                     {
-                        "id": "claude-sonnet-4",
-                        "name": "Claude Sonnet 4"
+                        "id": "codex-sonnet-4",
+                        "name": "Codex Sonnet 4"
                     }
                 ]
             }
@@ -178,15 +178,15 @@ async fn test_provider_list() {
 
     let providers = client.provider_list().await.expect("providers");
     assert_eq!(providers.len(), 1);
-    assert_eq!(providers[0].id, "anthropic");
-    assert_eq!(providers[0].name, "Anthropic");
+    assert_eq!(providers[0].id, "openai");
+    assert_eq!(providers[0].name, "OpenAI");
     assert!(
         providers[0]
             .models
             .as_ref()
             .unwrap()
             .iter()
-            .any(|model| model.id == "claude-sonnet-4")
+            .any(|model| model.id == "codex-sonnet-4")
     );
 }
 

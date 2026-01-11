@@ -1,10 +1,10 @@
 use crate::agent::{Agent, AgentContext, AgentState};
 use crate::budget::BudgetPolicy;
-use crate::claude::{
-    ClaudeCapabilities, ClaudeChunk, ClaudeError, ClaudeFs, ClaudeModelInfo, ClaudePolicy,
-    ClaudeProvider, ClaudeProviderInfo, ClaudeProviderStatus, ClaudeRequest,
-    ClaudeResponse, ClaudeRouter, ClaudeSessionAutonomy, ClaudeSessionStatus, ClaudeUsage,
-    SessionState as ClaudeSessionState, ToolLogEntry,
+use crate::codex::{
+    CodexCapabilities, CodexChunk, CodexError, CodexFs, CodexModelInfo, CodexPolicy,
+    CodexProvider, CodexProviderInfo, CodexProviderStatus, CodexRequest,
+    CodexResponse, CodexRouter, CodexSessionAutonomy, CodexSessionStatus, CodexUsage,
+    SessionState as CodexSessionState, ToolLogEntry,
 };
 use crate::compute::{
     ComputeChunk, ComputeError, ComputeFs, ComputeKind, ComputePolicy, ComputeProvider,
@@ -529,13 +529,13 @@ fn test_compute_stream_fallback_for_non_streaming_provider() {
 }
 
 #[test]
-fn test_claude_new_usage_and_idempotency() {
-    let mut router = ClaudeRouter::new();
-    router.register(Arc::new(TestClaudeProvider::new()));
-    let policy = ClaudePolicy {
+fn test_codex_new_usage_and_idempotency() {
+    let mut router = CodexRouter::new();
+    router.register(Arc::new(TestCodexProvider::new()));
+    let policy = CodexPolicy {
         require_idempotency: true,
         require_max_cost: true,
-        ..ClaudePolicy::default()
+        ..CodexPolicy::default()
     };
     let budget = BudgetPolicy {
         per_tick_usd: 10,
@@ -545,8 +545,8 @@ fn test_claude_new_usage_and_idempotency() {
     };
     let journal = Arc::new(MemoryJournal::new());
     let signer: Arc<dyn SigningService> = Arc::new(NostrSigner::new());
-    let claude = ClaudeFs::new(
-        AgentId::from("agent-claude"),
+    let codex = CodexFs::new(
+        AgentId::from("agent-codex"),
         router,
         policy,
         budget,
@@ -554,21 +554,21 @@ fn test_claude_new_usage_and_idempotency() {
         signer,
     );
 
-    let mut request = ClaudeRequest::new("claude-test");
+    let mut request = CodexRequest::new("codex-test");
     request.max_cost_usd = Some(5);
-    request.idempotency_key = Some("claude-1".to_string());
+    request.idempotency_key = Some("codex-1".to_string());
 
-    let response = submit_claude(&claude, &request);
+    let response = submit_codex(&codex, &request);
     let session_id = response["session_id"]
         .as_str()
         .expect("session_id")
         .to_string();
 
-    let usage_bytes = read_handle(claude.open("usage", OpenFlags::read()).unwrap());
+    let usage_bytes = read_handle(codex.open("usage", OpenFlags::read()).unwrap());
     let usage: serde_json::Value = serde_json::from_slice(&usage_bytes).expect("usage");
     assert_eq!(usage["tick"]["reserved_usd"].as_u64(), Some(5));
 
-    let mut prompt = claude
+    let mut prompt = codex
         .open(
             &format!("sessions/{}/prompt", session_id),
             OpenFlags::write(),
@@ -578,7 +578,7 @@ fn test_claude_new_usage_and_idempotency() {
     prompt.flush().unwrap();
 
     let _ = read_handle(
-        claude
+        codex
             .open(
                 &format!("sessions/{}/response", session_id),
                 OpenFlags::read(),
@@ -586,21 +586,21 @@ fn test_claude_new_usage_and_idempotency() {
             .unwrap(),
     );
 
-    let usage_bytes = read_handle(claude.open("usage", OpenFlags::read()).unwrap());
+    let usage_bytes = read_handle(codex.open("usage", OpenFlags::read()).unwrap());
     let usage: serde_json::Value = serde_json::from_slice(&usage_bytes).expect("usage");
     assert_eq!(usage["tick"]["spent_usd"].as_u64(), Some(1));
     assert_eq!(usage["tick"]["reserved_usd"].as_u64(), Some(0));
 
-    let response_again = submit_claude(&claude, &request);
+    let response_again = submit_codex(&codex, &request);
     let session_id_again = response_again["session_id"].as_str().expect("session_id");
     assert_eq!(session_id_again, session_id);
 }
 
 #[test]
-fn test_claude_output_watch() {
-    let mut router = ClaudeRouter::new();
-    router.register(Arc::new(TestClaudeProvider::new()));
-    let policy = ClaudePolicy::default();
+fn test_codex_output_watch() {
+    let mut router = CodexRouter::new();
+    router.register(Arc::new(TestCodexProvider::new()));
+    let policy = CodexPolicy::default();
     let budget = BudgetPolicy {
         per_tick_usd: 10,
         per_day_usd: 10,
@@ -609,8 +609,8 @@ fn test_claude_output_watch() {
     };
     let journal = Arc::new(MemoryJournal::new());
     let signer: Arc<dyn SigningService> = Arc::new(NostrSigner::new());
-    let claude = ClaudeFs::new(
-        AgentId::from("agent-claude-stream"),
+    let codex = CodexFs::new(
+        AgentId::from("agent-codex-stream"),
         router,
         policy,
         budget,
@@ -618,14 +618,14 @@ fn test_claude_output_watch() {
         signer,
     );
 
-    let request = ClaudeRequest::new("claude-test");
-    let response = submit_claude(&claude, &request);
+    let request = CodexRequest::new("codex-test");
+    let response = submit_codex(&codex, &request);
     let session_id = response["session_id"]
         .as_str()
         .expect("session_id")
         .to_string();
 
-    let mut prompt = claude
+    let mut prompt = codex
         .open(
             &format!("sessions/{}/prompt", session_id),
             OpenFlags::write(),
@@ -634,7 +634,7 @@ fn test_claude_output_watch() {
     prompt.write(b"hello").unwrap();
     prompt.flush().unwrap();
 
-    let mut watch = claude
+    let mut watch = codex
         .watch(&format!("sessions/{}/output", session_id))
         .expect("watch")
         .expect("handle");
@@ -643,8 +643,8 @@ fn test_claude_output_watch() {
         Some(WatchEvent::Data(data)) => data,
         _ => panic!("no data"),
     };
-    let chunk: ClaudeChunk = serde_json::from_slice(&first_data).expect("chunk");
-    assert!(matches!(chunk.chunk_type, crate::claude::ChunkType::Done));
+    let chunk: CodexChunk = serde_json::from_slice(&first_data).expect("chunk");
+    assert!(matches!(chunk.chunk_type, crate::codex::ChunkType::Done));
 }
 
 #[test]
@@ -1447,7 +1447,7 @@ fn submit_container(fs: &ContainerFs, request: &ContainerRequest) -> serde_json:
     serde_json::from_slice(&response).expect("response json")
 }
 
-fn submit_claude(fs: &ClaudeFs, request: &ClaudeRequest) -> serde_json::Value {
+fn submit_codex(fs: &CodexFs, request: &CodexRequest) -> serde_json::Value {
     let mut handle = fs.open("new", OpenFlags::write()).expect("open");
     let bytes = serde_json::to_vec(request).expect("serialize");
     handle.write(&bytes).expect("write");
@@ -1459,7 +1459,7 @@ fn submit_claude(fs: &ClaudeFs, request: &ClaudeRequest) -> serde_json::Value {
 static JOB_COUNTER: AtomicUsize = AtomicUsize::new(1);
 static SESSION_COUNTER: AtomicUsize = AtomicUsize::new(1);
 static EXEC_COUNTER: AtomicUsize = AtomicUsize::new(1);
-static CLAUDE_SESSION_COUNTER: AtomicUsize = AtomicUsize::new(1);
+static CODEX_SESSION_COUNTER: AtomicUsize = AtomicUsize::new(1);
 
 #[derive(Clone)]
 struct TestProvider {
@@ -1748,12 +1748,12 @@ impl ComputeProvider for TestProvider {
 }
 
 #[derive(Clone)]
-struct TestClaudeProvider {
-    sessions: Arc<RwLock<HashMap<String, ClaudeSessionState>>>,
-    chunks: Arc<std::sync::Mutex<HashMap<String, VecDeque<ClaudeChunk>>>>,
+struct TestCodexProvider {
+    sessions: Arc<RwLock<HashMap<String, CodexSessionState>>>,
+    chunks: Arc<std::sync::Mutex<HashMap<String, VecDeque<CodexChunk>>>>,
 }
 
-impl TestClaudeProvider {
+impl TestCodexProvider {
     fn new() -> Self {
         Self {
             sessions: Arc::new(RwLock::new(HashMap::new())),
@@ -1763,29 +1763,29 @@ impl TestClaudeProvider {
 
     fn next_id() -> String {
         format!(
-            "claude-{}",
-            CLAUDE_SESSION_COUNTER.fetch_add(1, Ordering::SeqCst)
+            "codex-{}",
+            CODEX_SESSION_COUNTER.fetch_add(1, Ordering::SeqCst)
         )
     }
 }
 
-impl ClaudeProvider for TestClaudeProvider {
+impl CodexProvider for TestCodexProvider {
     fn id(&self) -> &str {
-        "test-claude"
+        "test-codex"
     }
 
-    fn info(&self) -> ClaudeProviderInfo {
-        ClaudeProviderInfo {
-            id: "test-claude".to_string(),
-            name: "Test Claude".to_string(),
-            models: vec![ClaudeModelInfo {
-                id: "claude-test".to_string(),
-                name: "Claude Test".to_string(),
+    fn info(&self) -> CodexProviderInfo {
+        CodexProviderInfo {
+            id: "test-codex".to_string(),
+            name: "Test Codex".to_string(),
+            models: vec![CodexModelInfo {
+                id: "codex-test".to_string(),
+                name: "Codex Test".to_string(),
                 context_length: 1024,
                 output_limit: 512,
                 pricing: None,
             }],
-            capabilities: ClaudeCapabilities {
+            capabilities: CodexCapabilities {
                 streaming: true,
                 resume: true,
                 fork: true,
@@ -1793,7 +1793,7 @@ impl ClaudeProvider for TestClaudeProvider {
                 vision: false,
             },
             pricing: None,
-            status: ClaudeProviderStatus::Available,
+            status: CodexProviderStatus::Available,
         }
     }
 
@@ -1802,12 +1802,12 @@ impl ClaudeProvider for TestClaudeProvider {
     }
 
     fn supports_model(&self, model: &str) -> bool {
-        model == "claude-test"
+        model == "codex-test"
     }
 
-    fn create_session(&self, request: ClaudeRequest) -> std::result::Result<String, ClaudeError> {
+    fn create_session(&self, request: CodexRequest) -> std::result::Result<String, CodexError> {
         let session_id = Self::next_id();
-        let state = ClaudeSessionState::Ready {
+        let state = CodexSessionState::Ready {
             created_at: Timestamp::now(),
         };
         self.sessions
@@ -1818,9 +1818,9 @@ impl ClaudeProvider for TestClaudeProvider {
             let mut chunks = self.chunks.lock().unwrap_or_else(|e| e.into_inner());
             chunks.insert(
                 session_id.clone(),
-                VecDeque::from(vec![ClaudeChunk {
+                VecDeque::from(vec![CodexChunk {
                     session_id: session_id.clone(),
-                    chunk_type: crate::claude::ChunkType::Text,
+                    chunk_type: crate::codex::ChunkType::Text,
                     delta: Some("ok".to_string()),
                     tool: None,
                     usage: None,
@@ -1830,7 +1830,7 @@ impl ClaudeProvider for TestClaudeProvider {
         Ok(session_id)
     }
 
-    fn get_session(&self, session_id: &str) -> Option<ClaudeSessionState> {
+    fn get_session(&self, session_id: &str) -> Option<CodexSessionState> {
         self.sessions
             .read()
             .unwrap_or_else(|e| e.into_inner())
@@ -1838,12 +1838,12 @@ impl ClaudeProvider for TestClaudeProvider {
             .cloned()
     }
 
-    fn send_prompt(&self, session_id: &str, _prompt: &str) -> std::result::Result<(), ClaudeError> {
-        let response = ClaudeResponse {
+    fn send_prompt(&self, session_id: &str, _prompt: &str) -> std::result::Result<(), CodexError> {
+        let response = CodexResponse {
             session_id: session_id.to_string(),
-            status: ClaudeSessionStatus::Complete,
+            status: CodexSessionStatus::Complete,
             response: Some("ok".to_string()),
-            usage: Some(ClaudeUsage {
+            usage: Some(CodexUsage {
                 input_tokens: 1,
                 output_tokens: 1,
                 cache_read_tokens: 0,
@@ -1852,8 +1852,8 @@ impl ClaudeProvider for TestClaudeProvider {
             }),
             cost_usd: 1,
             reserved_usd: 0,
-            provider_id: "test-claude".to_string(),
-            model: "claude-test".to_string(),
+            provider_id: "test-codex".to_string(),
+            model: "codex-test".to_string(),
             tunnel_endpoint: None,
         };
         self.sessions
@@ -1861,16 +1861,16 @@ impl ClaudeProvider for TestClaudeProvider {
             .unwrap_or_else(|e| e.into_inner())
             .insert(
                 session_id.to_string(),
-                ClaudeSessionState::Complete(response),
+                CodexSessionState::Complete(response),
             );
         self.chunks
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .entry(session_id.to_string())
             .or_insert_with(VecDeque::new)
-            .push_back(ClaudeChunk {
+            .push_back(CodexChunk {
                 session_id: session_id.to_string(),
-                chunk_type: crate::claude::ChunkType::Done,
+                chunk_type: crate::codex::ChunkType::Done,
                 delta: None,
                 tool: None,
                 usage: None,
@@ -1881,11 +1881,11 @@ impl ClaudeProvider for TestClaudeProvider {
     fn poll_output(
         &self,
         session_id: &str,
-    ) -> std::result::Result<Option<ClaudeChunk>, ClaudeError> {
+    ) -> std::result::Result<Option<CodexChunk>, CodexError> {
         let mut chunks = self.chunks.lock().unwrap_or_else(|e| e.into_inner());
         let queue = chunks
             .get_mut(session_id)
-            .ok_or(ClaudeError::SessionNotFound)?;
+            .ok_or(CodexError::SessionNotFound)?;
         Ok(queue.pop_front())
     }
 
@@ -1893,23 +1893,23 @@ impl ClaudeProvider for TestClaudeProvider {
         &self,
         _session_id: &str,
         _approved: bool,
-    ) -> std::result::Result<(), ClaudeError> {
+    ) -> std::result::Result<(), CodexError> {
         Ok(())
     }
 
-    fn fork_session(&self, _session_id: &str) -> std::result::Result<String, ClaudeError> {
-        let mut request = ClaudeRequest::new("claude-test");
-        request.autonomy = Some(ClaudeSessionAutonomy::Supervised);
+    fn fork_session(&self, _session_id: &str) -> std::result::Result<String, CodexError> {
+        let mut request = CodexRequest::new("codex-test");
+        request.autonomy = Some(CodexSessionAutonomy::Supervised);
         self.create_session(request)
     }
 
-    fn stop(&self, session_id: &str) -> std::result::Result<(), ClaudeError> {
+    fn stop(&self, session_id: &str) -> std::result::Result<(), CodexError> {
         self.sessions
             .write()
             .unwrap_or_else(|e| e.into_inner())
             .insert(
                 session_id.to_string(),
-                ClaudeSessionState::Failed {
+                CodexSessionState::Failed {
                     error: "stopped".to_string(),
                     at: Timestamp::now(),
                 },
@@ -1917,11 +1917,11 @@ impl ClaudeProvider for TestClaudeProvider {
         Ok(())
     }
 
-    fn pause(&self, _session_id: &str) -> std::result::Result<(), ClaudeError> {
+    fn pause(&self, _session_id: &str) -> std::result::Result<(), CodexError> {
         Ok(())
     }
 
-    fn resume(&self, _session_id: &str) -> std::result::Result<(), ClaudeError> {
+    fn resume(&self, _session_id: &str) -> std::result::Result<(), CodexError> {
         Ok(())
     }
 
@@ -1929,7 +1929,7 @@ impl ClaudeProvider for TestClaudeProvider {
         Some(Vec::new())
     }
 
-    fn pending_tool(&self, _session_id: &str) -> Option<crate::claude::PendingToolInfo> {
+    fn pending_tool(&self, _session_id: &str) -> Option<crate::codex::PendingToolInfo> {
         None
     }
 }

@@ -160,7 +160,7 @@ let response = ChunkAnalysisResponse {
         },
     ],
     confidence: 0.9,
-    provenance: Provenance::new("claude-3-sonnet")
+    provenance: Provenance::new("codex-3-sonnet")
         .with_input_hash(job_hash.unwrap())
         .with_tokens(500, 150),
 };

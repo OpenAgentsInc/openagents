@@ -74,8 +74,8 @@ impl OpenRouterBackend {
             models: vec![
                 "openai/gpt-4o".to_string(),
                 "openai/gpt-4o-mini".to_string(),
-                "anthropic/claude-3.5-sonnet".to_string(),
-                "anthropic/claude-3-haiku".to_string(),
+                "openai/codex-3.5-sonnet".to_string(),
+                "openai/codex-3-haiku".to_string(),
                 "google/gemini-pro".to_string(),
             ],
             default_model: "openai/gpt-4o-mini".to_string(),
@@ -95,8 +95,8 @@ impl OpenRouterBackend {
             models: vec![
                 "openai/gpt-4o".to_string(),
                 "openai/gpt-4o-mini".to_string(),
-                "anthropic/claude-3.5-sonnet".to_string(),
-                "anthropic/claude-3-haiku".to_string(),
+                "openai/codex-3.5-sonnet".to_string(),
+                "openai/codex-3-haiku".to_string(),
                 "google/gemini-pro".to_string(),
             ],
             default_model: "openai/gpt-4o-mini".to_string(),
@@ -119,8 +119,8 @@ impl LmBackend for OpenRouterBackend {
         let actual_model = match model {
             "gpt-4o" | "gpt-4" => "openai/gpt-4o",
             "gpt-4o-mini" | "gpt-4-mini" => "openai/gpt-4o-mini",
-            "claude-3.5-sonnet" | "claude-sonnet" => "anthropic/claude-3.5-sonnet",
-            "claude-3-haiku" | "claude-haiku" => "anthropic/claude-3-haiku",
+            "codex-3.5-sonnet" | "codex-sonnet" => "openai/codex-3.5-sonnet",
+            "codex-3-haiku" | "codex-haiku" => "openai/codex-3-haiku",
             "gemini-pro" => "google/gemini-pro",
             "apple-fm" => &self.default_model, // Map default model
             _ if model.contains('/') => model, // Already in OpenRouter format

@@ -393,7 +393,7 @@ wgpui includes a full component library following Atomic Design principles:
 - `StatusDot` - Online/offline/busy/away/error indicator
 - `ToolIcon` - Icons for different tool types
 - `ModeBadge` - Mode indicator (Normal/Plan/Act/Code/Chat)
-- `ModelBadge` - Model indicator (Claude/GPT-4/Gemini)
+- `ModelBadge` - Model indicator (Codex/GPT-4/Gemini)
 - `StreamingIndicator` - Animated streaming dots
 - `ThinkingToggle` - Toggle for thinking visibility
 - `ToolStatusBadge` - Status badges for tool calls
