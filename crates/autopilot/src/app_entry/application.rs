@@ -1247,9 +1247,16 @@ impl ApplicationHandler for AutopilotApp {
     }
 
     fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
-        // Continuously request redraws when input is focused for cursor blinking
+        // Continuously request redraws when:
+        // - Input is focused (cursor blinking)
+        // - Streaming content (real-time updates)
+        // - Thinking indicator active
         if let Some(state) = &self.state {
-            if state.input.is_focused() {
+            let needs_redraw = state.input.is_focused()
+                || !state.chat.streaming_markdown.source().is_empty()
+                || state.chat.is_thinking
+                || state.tools.has_running();
+            if needs_redraw {
                 state.window.request_redraw();
             }
         }

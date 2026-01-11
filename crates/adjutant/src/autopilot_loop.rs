@@ -599,47 +599,13 @@ impl AutopilotOutput for AcpChannelOutput {
     fn emit_stage(&self, stage: DspyStage) {
         let meta = self.dspy_meta(&stage);
         match stage {
-            DspyStage::EnvironmentAssessment {
-                system_info,
-                workspace,
-                active_directive,
-                open_issues,
-                compute_backends,
-                priority_action,
-                urgency,
-                reasoning,
-            } => {
-                let mut lines = vec![
-                    "Environment assessment".to_string(),
-                    format!("System: {}", system_info),
-                    format!("Workspace: {}", workspace),
-                    format!("Open issues: {}", open_issues),
-                    format!("Compute: {}", compute_backends.join(", ")),
-                    format!("Priority: {} | Urgency: {}", priority_action, urgency),
-                    format!("Reasoning: {}", reasoning),
-                ];
-                if let Some(directive) = active_directive {
-                    lines.insert(3, format!("Active directive: {}", directive));
-                }
-                self.send_thought_with_meta(lines.join("\n"), meta);
+            DspyStage::EnvironmentAssessment { .. } => {
+                // Card renders all details, just send minimal thought for the meta
+                self.send_thought_with_meta(String::new(), meta);
             }
-            DspyStage::Planning {
-                analysis,
-                files_to_modify,
-                implementation_steps,
-                test_strategy,
-                complexity,
-                confidence,
-            } => {
-                let lines = vec![
-                    "Planning".to_string(),
-                    format!("Analysis: {}", analysis),
-                    format!("Files: {}", files_to_modify.join(", ")),
-                    format!("Steps: {}", implementation_steps.join(" | ")),
-                    format!("Test strategy: {}", test_strategy),
-                    format!("Complexity: {} (confidence {:.0}%)", complexity, confidence * 100.0),
-                ];
-                self.send_thought_with_meta(lines.join("\n"), meta);
+            DspyStage::Planning { .. } => {
+                // Card renders all details, just send minimal thought for the meta
+                self.send_thought_with_meta(String::new(), meta);
             }
             DspyStage::TodoList { tasks } => {
                 self.set_tasks(tasks);

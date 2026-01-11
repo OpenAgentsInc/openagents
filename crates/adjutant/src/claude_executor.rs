@@ -9,13 +9,15 @@
 //! - `execute_with_rlm()`: Adds RLM tools and agent for deep analysis
 //! - MCP server: Claude can invoke `rlm_query` and `rlm_fanout` tools
 
+use crate::autopilot_loop::AcpEventSender;
 use crate::rlm_agent::rlm_agent_definition;
 use crate::{AdjutantError, Task, TaskResult, ToolRegistry};
 use claude_agent_sdk::{
-    query, McpServerConfig, QueryOptions, SdkMessage, SdkResultMessage, ToolsConfig,
+    query, McpServerConfig, QueryOptions, SdkMessage, SdkResultMessage, SdkStreamEvent, ToolsConfig,
 };
 use futures::StreamExt;
 use std::path::Path;
+use tokio::sync::mpsc;
 
 /// Executor that uses Claude via claude-agent-sdk.
 ///
@@ -166,6 +168,153 @@ impl ClaudeExecutor {
         Ok(TaskResult {
             success,
             summary,
+            modified_files,
+            commit_hash: None,
+            error: None,
+            session_id: None,
+        })
+    }
+
+    /// Execute a task with streaming output.
+    ///
+    /// This method streams tokens to the UI in real-time as they arrive from Claude,
+    /// rather than waiting for the complete response.
+    pub async fn execute_streaming(
+        &self,
+        task: &Task,
+        token_tx: mpsc::UnboundedSender<String>,
+        _acp_sender: Option<AcpEventSender>,
+    ) -> Result<TaskResult, AdjutantError> {
+        tracing::info!(
+            "ClaudeExecutor: Streaming Claude Pro/Max for task '{}'",
+            task.title
+        );
+
+        // Build prompt from task
+        let prompt = task.to_prompt();
+
+        // Configure query options
+        let options = QueryOptions::new()
+            .cwd(&self.workspace_root)
+            .tools(ToolsConfig::claude_code_preset())
+            .max_turns(20)
+            .include_partial_messages(true); // Enable streaming events
+
+        // Run query
+        let mut stream = query(&prompt, options)
+            .await
+            .map_err(|e| AdjutantError::ExecutionFailed(format!("Claude query failed: {}", e)))?;
+
+        // Track results
+        let mut summary = String::new();
+        let modified_files = Vec::new();
+        let mut success = false;
+        let mut full_response = String::new();
+
+        tracing::debug!("Starting Claude SDK stream processing");
+        let mut chunk_count = 0u64;
+
+        while let Some(msg_result) = stream.next().await {
+            match msg_result {
+                // Stream events - extract and send text deltas immediately
+                Ok(SdkMessage::StreamEvent(event)) => {
+                    if let Some(text) = extract_stream_text(&event) {
+                        chunk_count += 1;
+                        tracing::debug!(chunk = chunk_count, len = text.len(), "Stream chunk");
+                        let _ = token_tx.send(text.clone());
+                        full_response.push_str(&text);
+                    }
+                }
+                // Assistant messages - also stream their content
+                Ok(SdkMessage::Assistant(msg)) => {
+                    if let Some(text) = extract_assistant_text(&msg.message) {
+                        tracing::debug!(len = text.len(), "Assistant message chunk");
+                        // Don't double-send if we already got it via StreamEvent
+                        // Only send if it's new content
+                        if !full_response.ends_with(&text) {
+                            let _ = token_tx.send(text.clone());
+                            full_response.push_str(&text);
+                        }
+                    }
+                }
+                // Final result - capture success/failure
+                Ok(SdkMessage::Result(result)) => match result {
+                    SdkResultMessage::Success(s) => {
+                        success = true;
+                        summary = s.result.clone();
+                        tracing::info!(
+                            "Claude streaming completed: {} turns, ${:.4} cost",
+                            s.num_turns,
+                            s.total_cost_usd
+                        );
+                    }
+                    SdkResultMessage::ErrorDuringExecution(e) => {
+                        let error_msg = e.errors.join("; ");
+                        tracing::error!("Claude error during streaming: {}", error_msg);
+                        return Ok(TaskResult {
+                            success: false,
+                            summary: full_response,
+                            modified_files: Vec::new(),
+                            commit_hash: None,
+                            error: Some(format!("Claude error: {}", error_msg)),
+                            session_id: None,
+                        });
+                    }
+                    SdkResultMessage::ErrorMaxTurns(e) => {
+                        return Ok(TaskResult {
+                            success: false,
+                            summary: full_response,
+                            modified_files: Vec::new(),
+                            commit_hash: None,
+                            error: Some(format!("Max turns ({}) exceeded", e.num_turns)),
+                            session_id: None,
+                        });
+                    }
+                    SdkResultMessage::ErrorMaxBudget(e) => {
+                        return Ok(TaskResult {
+                            success: false,
+                            summary: full_response,
+                            modified_files: Vec::new(),
+                            commit_hash: None,
+                            error: Some(format!("Max budget (${:.2}) exceeded", e.total_cost_usd)),
+                            session_id: None,
+                        });
+                    }
+                    SdkResultMessage::ErrorMaxStructuredOutputRetries(e) => {
+                        return Ok(TaskResult {
+                            success: false,
+                            summary: full_response,
+                            modified_files: Vec::new(),
+                            commit_hash: None,
+                            error: Some(format!("Structured output retries exceeded: {}", e.errors.join("; "))),
+                            session_id: None,
+                        });
+                    }
+                },
+                // Tool progress - log for now
+                Ok(SdkMessage::ToolProgress(prog)) => {
+                    tracing::debug!(tool = %prog.tool_name, elapsed = prog.elapsed_time_seconds, "Tool progress");
+                }
+                // System messages - log
+                Ok(SdkMessage::System(sys)) => {
+                    tracing::debug!("System message: {:?}", sys);
+                }
+                // Auth status - log
+                Ok(SdkMessage::AuthStatus(auth)) => {
+                    tracing::debug!("Auth status: authenticating={}", auth.is_authenticating);
+                }
+                // User messages - echo, ignore
+                Ok(SdkMessage::User(_)) => {}
+                // Errors
+                Err(e) => {
+                    tracing::warn!("Stream error: {}", e);
+                }
+            }
+        }
+
+        Ok(TaskResult {
+            success,
+            summary: if summary.is_empty() { full_response } else { summary },
             modified_files,
             commit_hash: None,
             error: None,
@@ -338,4 +487,89 @@ impl ClaudeExecutor {
             session_id: None,
         })
     }
+}
+
+/// Extract text from a Claude stream event.
+///
+/// Stream events contain SSE-style deltas. The text is typically in:
+/// - `event.delta.text` for content block deltas
+/// - `event.text` for direct text events
+fn extract_stream_text(event: &SdkStreamEvent) -> Option<String> {
+    // Try content_block_delta format: event.delta.text
+    if let Some(delta) = event.event.get("delta") {
+        if let Some(text) = delta.get("text") {
+            if let Some(s) = text.as_str() {
+                if !s.is_empty() {
+                    return Some(s.to_string());
+                }
+            }
+        }
+    }
+
+    // Try direct text field
+    if let Some(text) = event.event.get("text") {
+        if let Some(s) = text.as_str() {
+            if !s.is_empty() {
+                return Some(s.to_string());
+            }
+        }
+    }
+
+    // Try content array format (for full messages)
+    if let Some(content) = event.event.get("content") {
+        if let Some(arr) = content.as_array() {
+            let mut combined = String::new();
+            for item in arr {
+                if let Some(text) = item.get("text") {
+                    if let Some(s) = text.as_str() {
+                        combined.push_str(s);
+                    }
+                }
+            }
+            if !combined.is_empty() {
+                return Some(combined);
+            }
+        }
+    }
+
+    None
+}
+
+/// Extract text content from an assistant message.
+///
+/// The message is typically an API response with content blocks.
+fn extract_assistant_text(message: &serde_json::Value) -> Option<String> {
+    // Try content array
+    if let Some(content) = message.get("content") {
+        if let Some(arr) = content.as_array() {
+            let mut combined = String::new();
+            for item in arr {
+                // Check for text content blocks
+                if item.get("type").and_then(|t| t.as_str()) == Some("text") {
+                    if let Some(text) = item.get("text") {
+                        if let Some(s) = text.as_str() {
+                            combined.push_str(s);
+                        }
+                    }
+                }
+            }
+            if !combined.is_empty() {
+                return Some(combined);
+            }
+        }
+    }
+
+    // Try direct text field
+    if let Some(text) = message.get("text") {
+        if let Some(s) = text.as_str() {
+            return Some(s.to_string());
+        }
+    }
+
+    // Try message as string directly
+    if let Some(s) = message.as_str() {
+        return Some(s.to_string());
+    }
+
+    None
 }

@@ -123,9 +123,25 @@ impl AppState {
         };
         total_content_height += streaming_height;
 
-        // Add inline tools for streaming/current message
-        // During streaming, tools are associated with messages.len() (the next message index)
+        // Add DSPy stages and inline tools for streaming/current message
+        // During streaming, these are associated with messages.len() (the next message index)
         let streaming_msg_index = self.chat.messages.len();
+
+        // DSPy stages for streaming message (positioned after streaming content)
+        if let Some(stage_indices) = dspy_by_message.get(&streaming_msg_index) {
+            for &stage_idx in stage_indices {
+                let stage_height = self.measure_dspy_stage_height(stage_idx, available_width);
+                dspy_stage_layouts.push(DspyStageLayout {
+                    message_index: streaming_msg_index,
+                    y_offset: total_content_height,
+                    height: stage_height,
+                    stage_index: stage_idx,
+                });
+                total_content_height += stage_height + TOOL_PANEL_GAP;
+            }
+        }
+
+        // Inline tools for streaming message
         if let Some(tool_indices) = tools_by_message.get(&streaming_msg_index) {
             if !tool_indices.is_empty() {
                 let inline_layout = self.build_inline_tools_layout(
@@ -301,24 +317,18 @@ impl AppState {
                 workspace,
                 active_directive,
                 open_issues,
-                compute_backends,
                 priority_action,
                 urgency,
                 reasoning,
+                ..
             } => {
-                let backends = if compute_backends.is_empty() {
-                    "None".to_string()
-                } else {
-                    compute_backends.join(", ")
-                };
-                let status_line = format!("{} open · backends: {}", open_issues, backends);
                 let priority_line = format!("{} ({})", priority_action, urgency);
 
                 let items: Vec<(&str, String)> = vec![
                     ("System", truncate_preview(system_info, 120)),
                     ("Workspace", truncate_preview(workspace, 120)),
                     ("Directive", truncate_preview(active_directive.as_deref().unwrap_or("None"), 120)),
-                    ("Status", status_line),
+                    ("Open issues", open_issues.to_string()),
                     ("Priority", priority_line),
                     ("Reasoning", truncate_preview(reasoning, 140)),
                 ];

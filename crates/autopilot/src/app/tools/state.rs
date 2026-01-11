@@ -6,6 +6,12 @@ use crate::autopilot_loop::DspyStage;
 use super::{DspyStageVisualization, ToolVisualization};
 use super::parsing::{format_tool_input, tool_type_for_name};
 
+/// Check if two DspyStage values are the same variant (ignoring contents).
+/// Used for deduplication - we only want one card per stage type per message.
+fn same_stage_variant(a: &DspyStage, b: &DspyStage) -> bool {
+    std::mem::discriminant(a) == std::mem::discriminant(b)
+}
+
 pub(crate) struct ToolsState {
     pub(crate) current_tool_name: Option<String>,
     pub(crate) current_tool_input: String,
@@ -158,6 +164,20 @@ impl ToolsState {
     }
 
     pub(crate) fn push_dspy_stage(&mut self, stage: DspyStage, message_index: usize) {
+        // For stages that can be updated (TodoList, Planning, EnvironmentAssessment),
+        // replace existing one for the same message to avoid duplicates.
+        // These stages are sent multiple times as they get updated.
+        if let Some(existing) = self
+            .dspy_stages
+            .iter_mut()
+            .find(|v| v.message_index == message_index && same_stage_variant(&v.stage, &stage))
+        {
+            // Replace the existing stage with the updated one
+            existing.stage = stage;
+            return;
+        }
+
+        // For first occurrence of any stage type, append
         let viz = DspyStageVisualization::new(stage, message_index);
         self.dspy_stages.push(viz);
     }

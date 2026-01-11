@@ -494,6 +494,13 @@ impl Adjutant {
                     .stream_with_local_lm(task, &plan, token_tx, acp_sender)
                     .await;
             }
+            // Use Claude SDK with streaming
+            Some(dspy::lm_config::LmProvider::ClaudeSdk) => {
+                tracing::info!("Streaming with Claude SDK");
+                return self
+                    .stream_with_claude_sdk(task, token_tx, acp_sender)
+                    .await;
+            }
             // For other providers, fall back to non-streaming
             _ => {
                 let result = self.execute(task).await?;
@@ -977,6 +984,22 @@ impl Adjutant {
             },
             session_id: self.session_id.clone(),
         })
+    }
+
+    /// Stream response from Claude SDK with real-time token output.
+    ///
+    /// This method streams tokens from the Claude SDK to the UI in real-time,
+    /// rather than waiting for the complete response before displaying anything.
+    async fn stream_with_claude_sdk(
+        &mut self,
+        task: &Task,
+        token_tx: mpsc::UnboundedSender<String>,
+        acp_sender: Option<crate::autopilot_loop::AcpEventSender>,
+    ) -> Result<TaskResult, AdjutantError> {
+        let executor = ClaudeExecutor::new(&self.workspace_root);
+        executor
+            .execute_streaming(task, token_tx, acp_sender)
+            .await
     }
 
     /// Execute task using local LM (llama.cpp/GPT-OSS).
