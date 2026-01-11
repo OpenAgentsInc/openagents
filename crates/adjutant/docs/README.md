@@ -476,7 +476,7 @@ Adjutant is the execution engine behind Coder's **Autopilot mode**. When you swi
 ### Key Features
 
 - **Autonomous Loop**: Keeps calling Adjutant until task succeeds or max iterations (10) reached
-- **Verification**: After LLM reports success, runs `cargo check` + `cargo test` to verify
+- **Verification**: After LLM reports success, runs `cargo check` + `cargo test` to verify (skip with `--no-verify`, which also tells the agent to avoid tests unless explicitly requested)
 - **Interrupt**: Press Escape to stop the loop cleanly
 - **Iteration Context**: Each iteration gets context from previous attempts
 
