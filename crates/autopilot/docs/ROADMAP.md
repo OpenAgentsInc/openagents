@@ -950,3 +950,4 @@ pub enum SettingsTab {
 - 2026-01-10 23:02 UTC - Added agent backends pane with CLI availability, model selection, keybinding, and commands.
 - 2026-01-11 06:01 UTC - Wired Autopilot CLI to use ACP streaming + DSPy loop for tasks/issues, added Codex executor support, and backend selection flags/env wiring.
 - 2026-01-11 06:10 UTC - Added ACP tool-result updates for Claude streaming, aligned CLI command name with autopilot alias, and captured CLI renderer tool completion output.
+- 2026-01-11 06:25 UTC - Fixed dsrs sync LM init to avoid nested tokio runtime panics and validated `autopilot-cli run` with ACP/DSPy loop.
