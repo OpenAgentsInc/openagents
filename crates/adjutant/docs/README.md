@@ -9,7 +9,7 @@ Adjutant is the core execution engine for autonomous coding tasks. It:
 - Uses tools directly (Read, Edit, Bash, Glob, Grep)
 - Supports Codex + Codex CLI backends for agentic execution
 - Employs tiered inference for cost-effective fallback
-- Delegates to Codex Code for highly complex tasks
+- Delegates to Codex for highly complex tasks
 
 ## Architecture
 
@@ -33,7 +33,7 @@ Adjutant is the core execution engine for autonomous coding tasks. It:
 │  - Falls back to local LLM or Cerebras TieredExecutor       │
 │  - Uses tools directly (Read, Edit, Bash, Glob, Grep)       │
 │  - Uses RLM for large context analysis                      │
-│  - Delegates to Codex Code for very complex work           │
+│  - Delegates to Codex for very complex work           │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -165,7 +165,7 @@ pub struct Task {
 | `Low` | Single file, simple edit | TieredExecutor |
 | `Medium` | Multi-file, moderate scope | TieredExecutor |
 | `High` | Complex refactoring, many files | TieredExecutor or delegate |
-| `VeryHigh` | Architectural changes, 30+ files | Codex Code delegation |
+| `VeryHigh` | Architectural changes, 30+ files | Codex delegation |
 
 ### Tools
 
@@ -269,7 +269,7 @@ See [DSPY-INTEGRATION.md](./DSPY-INTEGRATION.md) for detailed documentation.
 
 Install the Codex CLI to use your existing Codex subscription:
 ```bash
-# Install Codex CLI (see https://codex.ai/codex-code)
+# Install Codex CLI (see https://codex.ai/codex)
 # Then authenticate:
 codex auth login
 ```
@@ -339,7 +339,7 @@ If Cerebras is not configured:
 
 ## Delegation
 
-For very complex tasks, Adjutant delegates to Codex Code:
+For very complex tasks, Adjutant delegates to Codex:
 
 ```rust
 // When complexity >= VeryHigh or files > 20
@@ -365,7 +365,7 @@ crates/adjutant/
 │   ├── codex_executor.rs # Codex execution via SDK
 │   ├── rlm_agent.rs     # RLM custom agent definition
 │   ├── tiered.rs        # TieredExecutor (Gateway + DSPy modes)
-│   ├── delegate.rs      # Codex Code and RLM delegation
+│   ├── delegate.rs      # Codex and RLM delegation
 │   ├── tools.rs         # Tool registry (Read, Edit, Bash, etc.)
 │   ├── auth.rs          # Codex/Codex CLI detection
 │   ├── autopilot_loop.rs # Autonomous loop with session tracking

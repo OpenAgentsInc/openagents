@@ -2,7 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 
-/// Codex Code permission mode
+/// Codex permission mode
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub enum PermissionMode {
@@ -62,17 +62,17 @@ pub enum MergeStrategy {
     Parallel,
 }
 
-/// Codex Code configuration
+/// Codex configuration
 ///
-/// CONF-020..024: Codex Code settings
+/// CONF-020..024: Codex settings
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CodexCodeConfig {
-    /// Whether Codex Code is enabled
+    /// Whether Codex is enabled
     #[serde(default = "default_true")]
     pub enabled: bool,
 
-    /// Prefer Codex Code for complex tasks
+    /// Prefer Codex for complex tasks
     #[serde(default = "default_true")]
     pub prefer_for_complex_tasks: bool,
 
@@ -511,7 +511,7 @@ pub struct ProjectConfig {
     pub run_log_dir: String,
 
     // Nested configurations
-    /// Codex Code settings
+    /// Codex settings
     #[serde(default)]
     pub codex_code: CodexCodeConfig,
 

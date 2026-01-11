@@ -24,7 +24,7 @@ Autopilot uses a **dual-format logging system** to balance human readability wit
 | File | Purpose | Content |
 |------|---------|---------|
 | `.rlog` | Human-readable summary | Truncated content (200 chars messages, 150 thinking, 100 tool output) |
-| `.jsonl` | Full data capture | Untruncated, Codex Code SDK compatible |
+| `.jsonl` | Full data capture | Untruncated, Codex SDK compatible |
 
 **File naming convention:**
 ```
@@ -42,7 +42,7 @@ docs/logs/20251222/
 
 ### JSONL Companion Format
 
-The JSONL companion file uses Codex Code SDK format (same as `~/.codex/projects/*.jsonl`):
+The JSONL companion file uses Codex SDK format (same as `~/.codex/projects/*.jsonl`):
 
 ```jsonl
 {"type":"user","message":{"content":"Fix the login bug"},"timestamp":"2025-12-22T10:00:00Z"}
@@ -55,7 +55,7 @@ The JSONL companion file uses Codex Code SDK format (same as `~/.codex/projects/
 - No truncation - full content preserved
 - Machine-parseable JSON
 - Includes token metrics per message
-- Compatible with Codex Code tooling
+- Compatible with Codex tooling
 
 ### Subagent Sessions
 
@@ -101,11 +101,11 @@ For APM (Actions Per Minute) calculations, always use JSONL files:
 
 `mode`, `model`, `agent`, `version`, `repo`, `branch`, `dirty`, `sandbox_id`, `runner`, `toolset`, `skills`, `mcp`, `budget`, `duration`, `classification`, `notes`, and any `extra.*` fields.
 
-### Codex Code Header Fields (optional)
+### Codex Header Fields (optional)
 
-When converting from Codex Code JSONL, these additional fields are captured:
+When converting from Codex JSONL, these additional fields are captured:
 
-- `client_version` - Codex Code client version (e.g., "2.0.71")
+- `client_version` - Codex client version (e.g., "2.0.71")
 - `slug` - Human-readable session name (e.g., "mighty-wishing-music")
 - `cwd` - Working directory path
 - `tokens_total_in` - Session total input tokens
@@ -155,9 +155,9 @@ These fields are extracted when present anywhere in a line:
 
 The parser also extracts the result after `→` as `result`.
 
-### Codex Code Metadata Fields
+### Codex Metadata Fields
 
-When converting from Codex Code, these additional fields may appear:
+When converting from Codex, these additional fields may appear:
 
 - `parent=` - Parent message UUID (for threading)
 - `sig=` - Thinking block signature (optional, for verification)
@@ -167,7 +167,7 @@ When converting from Codex Code, these additional fields may appear:
 - `interrupted` - Flag indicating tool was interrupted
 - `model=` - Model ID for this specific message
 
-### Codex Code Comment Types
+### Codex Comment Types
 
 File snapshots, queue operations, and raw events are converted to comments:
 
@@ -212,7 +212,7 @@ o: id=call_1 → [ok]
 @end summary="checked auth"
 ```
 
-## Example (Codex Code Conversion)
+## Example (Codex Conversion)
 
 ```
 ---

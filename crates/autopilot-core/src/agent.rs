@@ -748,7 +748,7 @@ impl AutopilotAgent {
     /// Submit a PatchGen job.
     fn submit_patch_gen_job(&self, plan: &str) -> std::result::Result<String, String> {
         let request = serde_json::json!({
-            "model": "codex-code",
+            "model": "codex",
             "kind": "patch_gen",
             "input": {
                 "repo": self.repo_url,
@@ -776,7 +776,7 @@ impl AutopilotAgent {
     /// Submit a CodeReview job.
     fn submit_code_review_job(&self, diff: &str) -> std::result::Result<String, String> {
         let request = serde_json::json!({
-            "model": "codex-code",
+            "model": "codex",
             "kind": "code_review",
             "input": {
                 "diff": diff,

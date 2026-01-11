@@ -1,10 +1,10 @@
 # Autopilot UI: Codex Agent SDK 100% Implementation Roadmap
 
-> A comprehensive roadmap to achieve full parity with Codex Code CLI
+> A comprehensive roadmap to achieve full parity with Codex CLI
 
 ## Executive Summary
 
-This document outlines the path to 100% implementation of the Codex Agent SDK in the Autopilot desktop application. The goal is complete feature parity with Codex Code CLI, leveraging the existing wgpui component library.
+This document outlines the path to 100% implementation of the Codex Agent SDK in the Autopilot desktop application. The goal is complete feature parity with Codex CLI, leveraging the existing wgpui component library.
 
 **Current State**: ~15% complete (basic chat, model selection, streaming)
 **Target State**: 100% SDK coverage + full CLI parity
@@ -200,7 +200,7 @@ pub enum Action {
 
 ## Phase 2: Slash Commands
 
-**Goal**: Implement all Codex Code CLI slash commands
+**Goal**: Implement all Codex CLI slash commands
 
 ### 2.1 Built-in Commands
 

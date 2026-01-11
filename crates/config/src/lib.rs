@@ -3,7 +3,7 @@
 //! Implements user stories CONF-001 through CONF-033:
 //! - Basic config loading (CONF-001..005)
 //! - Safety configuration (CONF-010..013)
-//! - Codex Code configuration (CONF-020..024)
+//! - Codex configuration (CONF-020..024)
 //! - Sandbox configuration (CONF-030..033)
 //!
 //! Configuration is stored in `.openagents/project.json`.

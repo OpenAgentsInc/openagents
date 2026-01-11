@@ -117,7 +117,7 @@ impl ContributionStatus {
 /// Metadata about a data contribution
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ContributionMetadata {
-    /// Source application (e.g., "codex-code", "cursor", "vscode")
+    /// Source application (e.g., "codex", "cursor", "vscode")
     pub source: String,
 
     /// Session duration in seconds (for SessionTrace)
@@ -442,12 +442,12 @@ mod tests {
 
     #[test]
     fn test_contribution_metadata() {
-        let metadata = ContributionMetadata::new("codex-code", true)
+        let metadata = ContributionMetadata::new("codex", true)
             .with_duration_secs(3600)
             .with_tools(vec!["bash".to_string(), "edit".to_string()])
             .with_languages(vec!["rust".to_string(), "python".to_string()]);
 
-        assert_eq!(metadata.source, "codex-code");
+        assert_eq!(metadata.source, "codex");
         assert!(metadata.anonymized);
         assert_eq!(metadata.duration_secs, Some(3600));
         assert_eq!(metadata.tools_used.len(), 2);
@@ -456,7 +456,7 @@ mod tests {
 
     #[test]
     fn test_metadata_validation() {
-        let valid = ContributionMetadata::new("codex-code", true);
+        let valid = ContributionMetadata::new("codex", true);
         assert!(valid.validate(DataContributionType::SessionTrace).is_ok());
 
         let not_anonymized = ContributionMetadata::new("cursor", false);
@@ -488,7 +488,7 @@ mod tests {
 
     #[test]
     fn test_data_contribution_creation() {
-        let metadata = ContributionMetadata::new("codex-code", true);
+        let metadata = ContributionMetadata::new("codex", true);
         let contribution = DataContribution::new(
             "contrib1",
             "contributor123",
@@ -509,7 +509,7 @@ mod tests {
 
     #[test]
     fn test_contribution_invalid_hash() {
-        let metadata = ContributionMetadata::new("codex-code", true);
+        let metadata = ContributionMetadata::new("codex", true);
         let result = DataContribution::new(
             "contrib2",
             "contributor123",
@@ -523,7 +523,7 @@ mod tests {
 
     #[test]
     fn test_contribution_lifecycle() {
-        let metadata = ContributionMetadata::new("codex-code", true);
+        let metadata = ContributionMetadata::new("codex", true);
         let mut contribution = DataContribution::new(
             "contrib3",
             "contributor123",
@@ -595,7 +595,7 @@ mod tests {
 
     #[test]
     fn test_data_contribution_serde() {
-        let metadata = ContributionMetadata::new("codex-code", true);
+        let metadata = ContributionMetadata::new("codex", true);
         let contribution = DataContribution::new(
             "contrib5",
             "contributor789",

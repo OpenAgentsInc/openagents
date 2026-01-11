@@ -1,6 +1,6 @@
-//! Codex Code JSONL to Recorder format converter
+//! Codex JSONL to Recorder format converter
 //!
-//! Converts Codex Code session files (`.jsonl`) to Recorder format (`.rlog`).
+//! Converts Codex session files (`.jsonl`) to Recorder format (`.rlog`).
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -34,7 +34,7 @@ pub struct ConvertOptions {
     pub include_snapshots: bool,
     /// Include queue-operation events as comments
     pub include_queue_ops: bool,
-    /// Include raw Codex Code JSONL events as comments
+    /// Include raw Codex JSONL events as comments
     pub include_raw_events: bool,
 }
 
@@ -209,7 +209,7 @@ struct SessionMeta {
     first_timestamp: Option<String>,
 }
 
-/// Convert a Codex Code JSONL file to Recorder format
+/// Convert a Codex JSONL file to Recorder format
 ///
 /// **Memory usage**: Loads the entire file into memory. For very large JSONL files (>100MB),
 /// consider processing in batches. The conversion accumulates output lines before writing the
@@ -223,7 +223,7 @@ pub fn convert_file(
     convert_content(&content, repo_sha, options)
 }
 
-/// Convert Codex Code JSONL content to Recorder format
+/// Convert Codex JSONL content to Recorder format
 pub fn convert_content(
     content: &str,
     repo_sha: &str,

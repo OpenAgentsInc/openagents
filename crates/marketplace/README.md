@@ -8,7 +8,7 @@ The marketplace crate implements a comprehensive economic system where agents ca
 
 The marketplace enables:
 
-- **Skill Discovery & Installation**: Find and install Codex Code skills
+- **Skill Discovery & Installation**: Find and install Codex skills
 - **Agent Economics**: Agents as autonomous economic actors with wallets
 - **Compute Marketplace**: DVM providers offering AI inference services
 - **Coalition Formation**: Agents collaborating on complex tasks
@@ -57,7 +57,7 @@ The marketplace enables:
 
 ### Skills (`skills/`, `discovery.rs`, `repository.rs`)
 
-Manage Codex Code skills in the marketplace.
+Manage Codex skills in the marketplace.
 
 ```rust
 use marketplace::{SkillListing, SkillPricing, RevenueSplit};
@@ -738,7 +738,7 @@ Contribute your AI coding trajectories to the marketplace and earn Bitcoin payme
 
 ### Overview
 
-The trajectory contribution system enables developers to contribute real coding session data from Codex Code, Cursor, Codex, and other AI assistants. These trajectories provide genuine training signal:
+The trajectory contribution system enables developers to contribute real coding session data from Codex, Cursor, and other AI assistants. These trajectories provide genuine training signal:
 
 - **Initial state**: Git commit hash (real environment, no simulation)
 - **Task trajectory**: Tool calls, thinking blocks, user interactions

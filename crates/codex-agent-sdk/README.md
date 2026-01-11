@@ -224,7 +224,7 @@ let streamed = thread.run_streamed("prompt", TurnOptions::default()).await?;
 
 ## Bi-directional Delegation
 
-Codex and Codex can delegate to each other:
+Codex CLI and Codex can delegate to each other:
 
 ### Codex → Codex
 

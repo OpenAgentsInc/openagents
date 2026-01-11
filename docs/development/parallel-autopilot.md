@@ -255,7 +255,7 @@ FROM rust:1.85-bookworm
 RUN apt-get update && apt-get install -y \
     sqlite3 git curl build-essential
 
-# Install Codex Code CLI
+# Install Codex CLI
 RUN curl -fsSL https://install.codex.com | sh
 
 # Build autopilot binary
@@ -280,7 +280,7 @@ CMD ["/usr/local/bin/autopilot", "--full-auto"]
 Key points:
 
 - Uses Rust 1.85 base image for consistent toolchain
-- Installs Codex Code CLI for agent execution
+- Installs Codex CLI for agent execution
 - Pre-builds autopilot binary for faster startup
 - Creates non-root user matching host UID for file permissions
 - Mounts `/workspace` from worktree

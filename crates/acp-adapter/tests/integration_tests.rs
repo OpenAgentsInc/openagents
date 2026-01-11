@@ -1,7 +1,7 @@
 //! Integration tests for ACP adapter
 //!
 //! Comprehensive E2E tests covering:
-//! - Full prompt flow with mock Codex Code agent
+//! - Full prompt flow with mock Codex agent
 //! - Full prompt flow with mock Codex agent
 //! - Session lifecycle (create, prompt, cancel, close)
 //! - Permission handling across both agents

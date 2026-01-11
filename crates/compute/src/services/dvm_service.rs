@@ -149,7 +149,7 @@ pub struct DvmService {
     relay_service: Arc<RelayService>,
     /// Backend registry for inference (Ollama, Apple FM, Llama.cpp)
     backend_registry: Arc<RwLock<BackendRegistry>>,
-    /// Agent registry for Bazaar jobs (Codex Code, etc.)
+    /// Agent registry for Bazaar jobs (Codex, etc.)
     agent_registry: Arc<RwLock<AgentRegistry>>,
     /// Optional Spark wallet for payments
     wallet: Arc<RwLock<Option<Arc<SparkWallet>>>>,

@@ -135,14 +135,14 @@ pub struct RateLimitSnapshot {
 
 /// Parse rate limits from HTTP response headers
 /// Supports multiple header formats:
-/// - x-codex-* headers (Codex Code legacy)
-/// - openai-ratelimit-unified-* headers (Codex Code current)
+/// - x-codex-* headers (Codex legacy)
+/// - openai-ratelimit-unified-* headers (Codex current)
 /// - x-ratelimit-* headers (public OpenAI API)
 pub fn parse_rate_limits(headers: &HeaderMap) -> RateLimitSnapshot {
-    // Try openai-ratelimit-unified headers first (current Codex Code format)
+    // Try openai-ratelimit-unified headers first (current Codex format)
     let unified = parse_unified_rate_limit(headers);
 
-    // Then try x-codex headers (Codex Code legacy infrastructure)
+    // Then try x-codex headers (Codex legacy infrastructure)
     let primary = parse_rate_limit_window(
         headers,
         "x-codex-primary-used-percent",
@@ -180,7 +180,7 @@ const RATE_LIMIT_CLAIMS: &[(&str, RateLimitType, i64)] = &[
     ("5h", RateLimitType::FiveHour, 300),   // session - 5 hours in minutes
 ];
 
-/// Parse unified rate limit headers from current Codex Code
+/// Parse unified rate limit headers from current Codex
 /// Headers: openai-ratelimit-unified-{claim}-utilization, openai-ratelimit-unified-{claim}-reset
 fn parse_unified_rate_limit(headers: &HeaderMap) -> Option<RateLimitWindow> {
     // Check status first - if present, we have rate limit info
@@ -420,7 +420,7 @@ fn load_from_keychain() -> Option<CodexCredentials> {
             .args([
                 "find-generic-password",
                 "-s",
-                "Codex Code-credentials",
+                "Codex-credentials",
                 "-a",
                 &username,
                 "-w",
@@ -484,7 +484,7 @@ fn parse_credentials_json(json_str: &str, source: &str) -> Option<CodexCredentia
     })
 }
 
-/// Rate limit fetcher - uses OAuth credentials like Codex Code CLI does
+/// Rate limit fetcher - uses OAuth credentials like Codex CLI does
 #[derive(Clone)]
 pub struct RateLimitFetcher {
     client: reqwest::Client,

@@ -162,7 +162,7 @@ docker run \
 
 ```bash
 # Start provider with Codex compute
-openagents provider serve --codex-code \
+openagents provider serve --codex \
   --capacity 3 \                    # Max concurrent Codex sessions
   --job-types "PatchGen,CodeReview" \
   --isolation container \           # container|gvisor|firecracker

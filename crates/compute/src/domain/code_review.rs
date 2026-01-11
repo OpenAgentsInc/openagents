@@ -1,7 +1,7 @@
 //! CodeReview job types for NIP-90 compute marketplace (Bazaar)
 //!
 //! CodeReview jobs analyze code changes and provide structured feedback.
-//! The provider runs Codex Code (or similar) to review patches, PRs, or diffs.
+//! The provider runs Codex (or similar) to review patches, PRs, or diffs.
 
 use serde::{Deserialize, Serialize};
 

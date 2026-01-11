@@ -123,7 +123,7 @@ pub struct Header {
     #[serde(default)]
     pub notes: Option<String>,
 
-    // Codex Code specific fields
+    // Codex specific fields
     #[serde(default)]
     pub client_version: Option<String>,
 
@@ -215,7 +215,7 @@ pub struct ParsedLine {
     pub level: Option<String>,
     pub result: Option<String>,
 
-    // Codex Code specific metadata
+    // Codex specific metadata
     pub parent_uuid: Option<String>,
     pub signature: Option<String>,
     pub tokens_in: Option<u64>,
@@ -293,7 +293,7 @@ pub struct SessionStats {
     pub has_timestamps: bool,
     pub blob_references: usize,
     pub redacted_values: usize,
-    // Codex Code specific stats
+    // Codex specific stats
     pub thinking_blocks: usize,
     pub todos_updates: usize,
     pub total_tokens_in: u64,
@@ -388,7 +388,7 @@ lazy_static! {
     static ref RE_LEVEL: Regex = Regex::new(r"\blevel=(\w+)").unwrap();
     static ref RE_RESULT: Regex = Regex::new(r"→\s*(.+)$").unwrap();
 
-    // Codex Code specific field extraction
+    // Codex specific field extraction
     static ref RE_PARENT: Regex = Regex::new(r"\bparent=([a-f0-9-]+)").unwrap();
     static ref RE_SIG: Regex = Regex::new(r"\bsig=(\S+)").unwrap();
     static ref RE_TOKENS_IN: Regex = Regex::new(r"\btokens_in=(\d+)").unwrap();
@@ -563,7 +563,7 @@ fn parse_line(line_number: usize, raw: &str) -> ParsedLine {
     let level = RE_LEVEL.captures(&content).map(|c| c[1].to_string());
     let result = RE_RESULT.captures(&content).map(|c| c[1].to_string());
 
-    // Codex Code specific metadata
+    // Codex specific metadata
     let parent_uuid = RE_PARENT.captures(&content).map(|c| c[1].to_string());
     let signature = RE_SIG.captures(&content).map(|c| c[1].to_string());
     let tokens_in = RE_TOKENS_IN

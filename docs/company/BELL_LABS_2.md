@@ -124,9 +124,9 @@ The "ultrathink" isn't just humans thinking together — it's the hybrid human-A
 
 Bell Labs built tools that amplified human capability. We build mech suits.
 
-> "Codex Code's agent SDK is very, very, very good... but just by putting it in this mech suit, we were able to get it to code reliably overnight."
+> "Codex's agent SDK is very, very, very good... but just by putting it in this mech suit, we were able to get it to code reliably overnight."
 
-**Autopilot** is an open-source harness that wraps Codex Code (or any coding agent) in a Rust CLI with a background daemon. The core loop: convert user directives into specific issues, systematically implement them, test and document as it goes. If it runs out of directives, it improves the codebase by adding tests and documentation until it receives new work.
+**Autopilot** is an open-source harness that wraps Codex (or any coding agent) in a Rust CLI with a background daemon. The core loop: convert user directives into specific issues, systematically implement them, test and document as it goes. If it runs out of directives, it improves the codebase by adding tests and documentation until it receives new work.
 
 The results speak for themselves:
 
@@ -134,7 +134,7 @@ The results speak for themselves:
 >
 > "Usually... code degrades over time. [With Autopilot] the code is getting better over time. It's amazing."
 
-**Autopilot is 4x more productive than interactive coding assistants.** We measured it. When you use Codex Code or Cursor interactively, you're the bottleneck — reading output, thinking, typing the next command. Your AI runs at ~4.5 actions per minute because it's waiting on you. Autopilot runs autonomously at ~19 actions per minute. Same AI, same capabilities, 4x the throughput.
+**Autopilot is 4x more productive than interactive coding assistants.** We measured it. When you use Codex or Cursor interactively, you're the bottleneck — reading output, thinking, typing the next command. Your AI runs at ~4.5 actions per minute because it's waiting on you. Autopilot runs autonomously at ~19 actions per minute. Same AI, same capabilities, 4x the throughput.
 
 But raw speed isn't the point. The point is **leverage**.
 
@@ -247,7 +247,7 @@ Following the Red Hat pattern: give away the technology, sell the services.
 **Open (free for everyone):**
 - Nostr protocol implementation
 - Lightning integration libraries
-- Agent SDKs (Codex, Codex, etc.)
+- Agent SDKs (Codex, etc.)
 - Trajectory format specifications
 - All core infrastructure
 

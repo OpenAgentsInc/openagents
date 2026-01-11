@@ -19,7 +19,7 @@ This document provides comprehensive documentation for the ACP (Agent Client Pro
 
 ## Architecture
 
-The ACP adapter sits between OpenAgents applications (desktop GUI, CLI) and AI coding agents (Codex Code, Codex), providing a standardized communication layer.
+The ACP adapter sits between OpenAgents applications (desktop GUI, CLI) and AI coding agents (Codex), providing a standardized communication layer.
 
 ### Component Diagram
 
@@ -49,7 +49,7 @@ The ACP adapter sits between OpenAgents applications (desktop GUI, CLI) and AI c
 │                                                                    │
 │ ┌─────────────────┐  ┌─────────────────┐  ┌───────────────────┐  │
 │ │ RlogReplay      │  │ RlogStreamer    │  │ Agent Wrappers    │  │
-│ │ (Playback)      │  │ (Recording)     │  │ (Codex, Codex)   │  │
+│ │ (Playback)      │  │ (Recording)     │  │ (Codex)   │  │
 │ └─────────────────┘  └─────────────────┘  └───────────────────┘  │
 └────────────────────────┬───────────────────────────────────────────┘
                          │
@@ -57,7 +57,7 @@ The ACP adapter sits between OpenAgents applications (desktop GUI, CLI) and AI c
                          ▼
 ┌────────────────────────────────────────────────────────────────────┐
 │                    Agent Subprocess                                │
-│                  (Codex Code / Codex)                             │
+│                  (Codex CLI / Codex)                             │
 │                                                                    │
 │  Implements ACP Server:                                            │
 │  - initialize → AgentCapabilities                                  │
@@ -72,7 +72,7 @@ The ACP adapter sits between OpenAgents applications (desktop GUI, CLI) and AI c
 1. **Protocol-first**: All communication follows ACP JSON-RPC 2.0 specification
 2. **Transport agnostic**: Currently stdio, but extensible to WebSocket, HTTP, etc.
 3. **Recording by default**: All sessions can be recorded to rlog for replay
-4. **Multi-agent**: Same API works with Codex Code, Codex, or custom agents
+4. **Multi-agent**: Same API works with Codex, or custom agents
 5. **Permission flexibility**: From auto-approve to full UI delegation
 
 ## Core Concepts
@@ -545,7 +545,7 @@ data: {"toolCallId":"tool-1","status":"completed","content":"File contents..."}
 
 ## Usage Examples
 
-### Example 1: Simple Codex Code Session
+### Example 1: Simple Codex Session
 
 ```rust
 use acp_adapter::agents::codex::{connect_codex, CodexAgentConfig};
@@ -555,7 +555,7 @@ use std::path::PathBuf;
 async fn main() -> anyhow::Result<()> {
     let cwd = PathBuf::from("/home/user/myproject");
 
-    // Connect to Codex Code
+    // Connect to Codex
     let config = CodexAgentConfig::new()
         .model("codex-sonnet-4-5")
         .max_turns(100);
@@ -1071,12 +1071,12 @@ fn setup_acp_integration(window: &Window) {
 
 ### Agent Not Found
 
-**Error:** `AgentNotFound: Codex Code executable not found`
+**Error:** `AgentNotFound: Codex executable not found`
 
 **Solution:**
 ```bash
-# Install Codex Code
-npm install -g @openai-ai/codex-code
+# Install Codex
+npm install -g @openai-ai/codex
 
 # Or specify custom path
 let config = CodexAgentConfig::new()

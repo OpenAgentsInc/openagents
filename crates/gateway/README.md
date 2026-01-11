@@ -1104,6 +1104,6 @@ futures = "0.3"
 2. How do gateways interact with Nostr? NIP-89-style discovery for third-party gateways?
 3. Rate limiting strategy - per-gateway or global?
 4. Caching layer for identical requests?
-5. How do gateways expose in MCP for Codex Code integration?
+5. How do gateways expose in MCP for Codex integration?
 6. Should OpenAgents run a public gateway proxy at api.openagents.com?
 7. How does billing work when using OpenAgents proxy vs direct keys?

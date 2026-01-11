@@ -1,7 +1,7 @@
 //! PatchGen job types for NIP-90 compute marketplace (Bazaar)
 //!
 //! PatchGen jobs generate code patches from issue descriptions using agentic AI.
-//! The provider runs Codex Code (or similar) in a sandbox to understand the codebase
+//! The provider runs Codex (or similar) in a sandbox to understand the codebase
 //! and produce a verifiable patch.
 
 use serde::{Deserialize, Serialize};

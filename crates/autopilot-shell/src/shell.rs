@@ -107,7 +107,7 @@ pub struct AutopilotShell {
     // Working directory for checkpoint saves
     working_dir: PathBuf,
 
-    // Session resume state (for Codex Code session continuation)
+    // Session resume state (for Codex session continuation)
     resumed_session_id: Option<String>,
     resumed_session_at: Option<String>,
     resumed_fork_session: bool,

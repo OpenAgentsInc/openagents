@@ -1,12 +1,12 @@
 # ACP Adapter
 
-Agent Client Protocol (ACP) adapter for OpenAgents, enabling standardized communication between OpenAgents applications and AI coding agents (Codex Code, Codex, and future agents).
+Agent Client Protocol (ACP) adapter for OpenAgents, enabling standardized communication between OpenAgents applications and AI coding agents (Codex, and future agents).
 
 ## Overview
 
 The ACP adapter wraps existing agent SDKs (`codex-agent-sdk`, `codex-agent-sdk`) to provide a unified protocol-based interface. It handles:
 
-- **Multi-agent support** - Work with Codex Code, Codex, or any ACP-compatible agent
+- **Multi-agent support** - Work with Codex, or any ACP-compatible agent
 - **Protocol standardization** - JSON-RPC 2.0 communication following the ACP specification
 - **Session management** - Create, track, and manage agent sessions
 - **Session replay** - Record and replay sessions from rlog files
@@ -47,7 +47,7 @@ use std::path::PathBuf;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    // Connect to Codex Code
+    // Connect to Codex
     let cwd = PathBuf::from("/path/to/workspace");
     let config = CodexAgentConfig::new()
         .model("codex-sonnet-4-5")
@@ -318,7 +318,7 @@ impl<P: PermissionHandler> acp::Client for OpenAgentsClient<P> {
 
 ### Agent Configuration
 
-#### Codex Code
+#### Codex
 
 ```rust
 pub struct CodexAgentConfig {
@@ -462,8 +462,8 @@ See `docs/acp-adapter.md` for complete REST API documentation.
 
 **Solution**:
 ```bash
-# For Codex Code
-npm install -g @openai-ai/codex-code
+# For Codex
+npm install -g @openai-ai/codex
 
 # For Codex
 npm install -g codex-agent
@@ -582,7 +582,7 @@ Integration tests require agent binaries to be installed:
 
 ```bash
 # Install test dependencies
-npm install -g @openai-ai/codex-code codex-agent
+npm install -g @openai-ai/codexx-agent
 
 # Run integration tests
 cargo test --test integration_tests

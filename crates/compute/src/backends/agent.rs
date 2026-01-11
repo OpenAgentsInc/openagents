@@ -7,7 +7,7 @@
 //! - Multi-turn reasoning
 //! - Sandboxed execution environments
 //!
-//! Examples: Codex Code, SWE-agent, Aider, Devin
+//! Examples: Codex, SWE-agent, Aider, Devin
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -153,7 +153,7 @@ pub struct AgentCapabilities {
 }
 
 impl AgentCapabilities {
-    /// Create capabilities for a Codex Code backend
+    /// Create capabilities for a Codex backend
     pub fn codex_code() -> Self {
         Self {
             patch_gen: true,

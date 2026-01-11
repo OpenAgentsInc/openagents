@@ -49,7 +49,7 @@ dsrs (Rust DSPy) is now integrated into the OpenAgents workspace at `crates/dsrs
 - [x] `crates/autopilot-core/src/dspy_optimization.rs` - Metrics + training data infrastructure
 
 ### Wave 2.5: LaneMux (Multi-Provider LM) (Complete)
-- [x] `crates/dsrs/src/core/lm/codex_sdk.rs` - Codex Code headless via codex-agent-sdk
+- [x] `crates/dsrs/src/core/lm/codex_sdk.rs` - Codex headless via codex-agent-sdk
 - [x] `crates/dsrs/src/core/lm/pylon.rs` - Pylon LM provider (local/swarm/hybrid)
 - [x] `crates/adjutant/src/dspy/lm_config.rs` - Multi-provider with auto-detection
 

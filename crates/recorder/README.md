@@ -11,7 +11,7 @@ The format is designed for:
 - **Real-time streaming** - Tail logs as they're written, each line self-contained
 - **Auditability** - Cryptographically verify session work for payments
 - **Training data** - Extract successful patterns for agent improvement
-- **Platform independence** - Unified format across Codex Code, OpenAI, and custom systems
+- **Platform independence** - Unified format across Codex, OpenAI, and custom systems
 
 ## File Structure
 
@@ -106,7 +106,7 @@ o: id=call_93 → [error] permission denied
 
 ### Thinking
 
-Agent reasoning blocks (Codex Code):
+Agent reasoning blocks (Codex):
 ```rlog
 th: Let me analyze the authentication flow...
   This requires checking the login handler and session validation.
@@ -219,7 +219,7 @@ Lines can include optional metadata anywhere in the content:
 - `attempt=<N>` or `attempt=<N/M>` - Retry attempts
 - `level=<debug|info|warn|error>` - Log level
 
-### Codex Code Fields
+### Codex Fields
 
 - `parent=<uuid>` - Parent message UUID (threading)
 - `sig=<hash>` - Thinking block signature
@@ -258,13 +258,13 @@ repo: openagents
 branch: main
 dirty: false          # Working directory dirty flag
 sandbox_id: sb_42
-runner: codex-code
+runner: codex
 budget: "$10"
 duration: "1h"
 classification: public
 notes: "Fixing auth bug"
 
-# Codex Code specific
+# Codex specific
 client_version: "2.0.71"
 slug: mighty-wishing-music
 cwd: /path/to/project
@@ -373,7 +373,7 @@ Has timestamps: yes
 Blob references: 2
 Redacted values: 1
 
-Tokens (Codex Code)
+Tokens (Codex)
 --------------------
 Input: 21,890
 Output: 1,250
@@ -503,9 +503,9 @@ for line in &session.lines {
 }
 ```
 
-## Codex Code Conversion
+## Codex Conversion
 
-The `convert` module converts Codex Code JSONL to rlog format:
+The `convert` module converts Codex JSONL to rlog format:
 
 ```rust
 use recorder::convert::convert_codex_code_to_rlog;
@@ -517,7 +517,7 @@ std::fs::write("session.rlog", rlog)?;
 
 Command-line:
 ```bash
-# Convert Codex Code JSONL to rlog
+# Convert Codex JSONL to rlog
 recorder convert session.jsonl --output session.rlog
 ```
 
@@ -676,7 +676,7 @@ cargo test -p recorder test_parse_line_types
 crates/recorder/
 ├── src/
 │   ├── lib.rs         # Parser, validator, core types
-│   ├── convert.rs     # Codex Code JSONL → rlog
+│   ├── convert.rs     # Codex JSONL → rlog
 │   ├── export.rs      # Database export (feature: export)
 │   └── main.rs        # CLI binary
 ├── docs/
@@ -695,7 +695,7 @@ The parser is designed for streaming:
 Benchmarks:
 - Parse 10,000 lines: ~15ms
 - Validate 10,000 lines: ~25ms
-- Convert Codex Code (1,000 messages): ~50ms
+- Convert Codex (1,000 messages): ~50ms
 
 ## Future Work
 

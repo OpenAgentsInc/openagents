@@ -420,7 +420,7 @@ impl Storybook {
             for source in &[
                 TrajectorySource::Codex,
                 TrajectorySource::Cursor,
-                TrajectorySource::Codex,
+                TrajectorySource::Windsurf,
             ] {
                 let mut badge = TrajectorySourceBadge::new(*source);
                 badge.paint(Bounds::new(x, traj_y, 90.0, 22.0), cx);

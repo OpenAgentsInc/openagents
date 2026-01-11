@@ -48,7 +48,7 @@ dsrs::configure_with_adapter(
 
 ## Codex SDK Provider
 
-Headless Codex Code CLI integration for tool use and agentic workflows.
+Headless Codex CLI integration for tool use and agentic workflows.
 
 ```rust
 use dsrs::core::lm::codex_sdk::CodexSdkLM;
@@ -69,7 +69,7 @@ dsrs::configure(lm.into());
 
 **Requirements:**
 - `codex-agent-sdk` crate
-- Codex Code CLI installed
+- Codex CLI installed
 
 ## Pylon Provider
 
