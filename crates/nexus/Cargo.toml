@@ -10,6 +10,7 @@ name = "nexus"
 path = "src/lib.rs"
 
 [dependencies]
+anyhow = "1"
 dsrs = { path = "../dsrs" }
 getrandom = "0.2"
 hex = { workspace = true }

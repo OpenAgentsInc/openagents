@@ -327,6 +327,7 @@ impl TestHarness {
                 button: MouseButton::Left,
                 x,
                 y,
+                modifiers: _,
             } => {
                 let point = Point::new(*x, *y);
                 if !bar.contains(point) {

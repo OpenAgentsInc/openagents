@@ -1,4 +1,4 @@
-use wgpui::{Bounds, PaintContext, Quad, Text, theme};
+use wgpui::{Bounds, Component, PaintContext, Quad, Text, theme};
 
 use crate::constants::PANEL_PADDING;
 use crate::state::Storybook;

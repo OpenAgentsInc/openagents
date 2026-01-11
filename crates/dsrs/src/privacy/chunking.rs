@@ -202,7 +202,8 @@ impl Chunker {
 
         let mut chunks = Vec::new();
         let mut start = 0;
-        let step = max_chars.saturating_sub(overlap_chars);
+        let overlap_chars = overlap_chars.min(max_chars.saturating_sub(1));
+        let step = max_chars.saturating_sub(overlap_chars).max(1);
 
         while start < content.len() {
             let end = (start + max_chars).min(content.len());

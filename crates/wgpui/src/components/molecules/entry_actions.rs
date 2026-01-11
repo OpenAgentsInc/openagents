@@ -258,6 +258,7 @@ impl Component for EntryActions {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Modifiers;
     use std::cell::Cell;
     use std::rc::Rc;
 
@@ -304,6 +305,7 @@ mod tests {
             button: MouseButton::Left,
             x,
             y,
+            modifiers: Modifiers::default(),
         };
         let mut cx = EventContext::new();
         let result = actions.event(&event, bounds, &mut cx);

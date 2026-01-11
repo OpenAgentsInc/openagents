@@ -101,7 +101,6 @@ impl AgentIdentity {
 pub enum BackendProvider {
     Codex,
     OpenAI,
-    Codex,
     GptOss,
     Local,
 }
@@ -111,7 +110,6 @@ impl BackendProvider {
         match self {
             BackendProvider::Codex => "codex",
             BackendProvider::OpenAI => "openai",
-            BackendProvider::Codex => "codex",
             BackendProvider::GptOss => "gpt-oss",
             BackendProvider::Local => "local",
         }

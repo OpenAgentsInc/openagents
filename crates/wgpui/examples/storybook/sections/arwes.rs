@@ -5,7 +5,7 @@ use wgpui::components::hud::{
     GridLinesBackground, LineDirection, MovingLinesBackground, PuffsBackground,
 };
 use wgpui::{
-    AnimatorState, Bounds, Hsla, Illuminator, PaintContext, Point, TextDecipher,
+    AnimatorState, Bounds, Component, Hsla, Illuminator, PaintContext, Point, TextDecipher,
     TextEffectTiming, TextSequence, theme,
 };
 

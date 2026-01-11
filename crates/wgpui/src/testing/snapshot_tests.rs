@@ -8,7 +8,7 @@ fn scene_snapshot_string(scene: &Scene) -> String {
     let mut output = String::new();
 
     output.push_str("quads:\n");
-    for quad in &scene.quads {
+    for (_, quad) in &scene.quads {
         output.push_str(&format!(
             "  bounds: {:?}, background: {:?}, border_width: {}\n",
             quad.bounds, quad.background, quad.border_width
@@ -16,7 +16,7 @@ fn scene_snapshot_string(scene: &Scene) -> String {
     }
 
     output.push_str("text_runs:\n");
-    for run in &scene.text_runs {
+    for (_, run) in &scene.text_runs {
         output.push_str(&format!(
             "  origin: {:?}, glyphs: {}, font_size: {}\n",
             run.origin,

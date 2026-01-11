@@ -16,8 +16,8 @@ fn test_legacy_deprecation_messages() {
         wallet::deprecation::legacy_warning(),
         marketplace::deprecation::legacy_warning(),
         gitafter::deprecation::legacy_warning(),
-        autopilot::deprecation::autopilot_warning(),
-        autopilot::deprecation::autopilotd_warning(),
+        autopilot_core::deprecation::autopilot_warning(),
+        autopilot_core::deprecation::autopilotd_warning(),
     ];
 
     for warning in warnings {

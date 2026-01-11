@@ -142,6 +142,7 @@ pub struct RlmIteration {
 pub enum ExecutionVenue {
     Local,
     Swarm,
+    Codex,
     Datacenter,
     Unknown,
 }
@@ -151,6 +152,7 @@ impl ExecutionVenue {
         match self {
             ExecutionVenue::Local => "Local (FM)",
             ExecutionVenue::Swarm => "Swarm (NIP-90)",
+            ExecutionVenue::Codex => "Codex (Cloud)",
             ExecutionVenue::Datacenter => "Datacenter",
             ExecutionVenue::Unknown => "Unknown",
         }
@@ -160,6 +162,7 @@ impl ExecutionVenue {
         match self {
             ExecutionVenue::Local => wgpui::Hsla::new(145.0/360.0, 0.7, 0.45, 1.0),     // Green
             ExecutionVenue::Swarm => wgpui::Hsla::new(45.0/360.0, 0.9, 0.55, 1.0),      // Orange
+            ExecutionVenue::Codex => wgpui::Hsla::new(210.0/360.0, 0.7, 0.55, 1.0),     // Blue
             ExecutionVenue::Datacenter => wgpui::Hsla::new(280.0/360.0, 0.6, 0.5, 1.0), // Purple
             ExecutionVenue::Unknown => wgpui::Hsla::new(0.0, 0.0, 0.5, 1.0),            // Gray
         }
@@ -210,6 +213,7 @@ impl VenueTopology {
             let (x, y) = match venue {
                 ExecutionVenue::Local => (0.25, 0.7),
                 ExecutionVenue::Swarm => (0.5, 0.7 + (self.venue_nodes.len() as f32 * 0.05)),
+                ExecutionVenue::Codex => (0.75, 0.55),
                 ExecutionVenue::Datacenter => (0.75, 0.7),
                 ExecutionVenue::Unknown => (0.5, 0.9),
             };

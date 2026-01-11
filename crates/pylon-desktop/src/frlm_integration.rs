@@ -280,6 +280,7 @@ impl FrlmIntegration {
                 let execution_venue = match venue {
                     frlm::types::Venue::Local => ExecutionVenue::Local,
                     frlm::types::Venue::Swarm => ExecutionVenue::Swarm,
+                    frlm::types::Venue::Codex => ExecutionVenue::Codex,
                     frlm::types::Venue::Datacenter => ExecutionVenue::Datacenter,
                     frlm::types::Venue::Unknown => ExecutionVenue::Unknown,
                 };

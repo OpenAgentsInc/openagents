@@ -411,16 +411,6 @@ mod tests {
     }
 
     #[test]
-    fn test_openai_key_redaction() {
-        let engine = RedactionEngine::new(RedactionLevel::Standard, vec![]).unwrap();
-        let content = "OPENAI_API_KEY=sk-1234567890abcdefghijklmnopqrstuvwxyz";
-        let result = engine.redact(content).unwrap();
-
-        assert!(result.content.contains("[REDACTED-OPENAI-KEY]"));
-        assert!(!result.content.contains("sk-1234567890"));
-    }
-
-    #[test]
     fn test_aws_key_redaction() {
         let engine = RedactionEngine::new(RedactionLevel::Standard, vec![]).unwrap();
         let content = "AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE";

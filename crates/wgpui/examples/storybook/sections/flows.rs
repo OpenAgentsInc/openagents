@@ -1,6 +1,6 @@
 use wgpui::components::atoms::{
-    AgentStatus, AgentType, ApmGauge, ApmLevel, BreadcrumbItem, Mode, RelayStatus, SessionBreadcrumb,
-    SessionStatus, SessionStatusBadge, ToolStatus, ToolType,
+    AgentStatus, AgentType, ApmGauge, ApmLevel, BreadcrumbItem, IssueStatus, Mode, RelayStatus,
+    SessionBreadcrumb, SessionStatus, SessionStatusBadge, ToolStatus, ToolType, TrajectoryStatus,
 };
 use wgpui::components::molecules::{
     AddressCard, AddressType, AgentProfileCard, AgentProfileInfo, ApmComparisonCard,
@@ -9,10 +9,11 @@ use wgpui::components::molecules::{
     DmMessage, EncryptionStatus, EntryActions, IssueInfo, IssueLabel, IssueRow, MnemonicDisplay,
     PermissionBar, PermissionDecision, PermissionHistory, PermissionHistoryItem, PermissionRule,
     PermissionRuleRow, PermissionScope, PrEvent, PrEventType, PrTimelineItem, ProviderCard,
-    ProviderInfo, ProviderSpecs, ProviderStatus, RepoCard, RepoInfo, RepoVisibility, ReviewState,
-    SessionCard, SessionInfo, SessionSearchBar, SigningRequestCard, SigningRequestInfo,
-    SigningType, SigningUrgency, SkillCard, SkillCategory, SkillInfo, SkillInstallStatus,
-    TerminalHeader, TransactionDirection, TransactionInfo, TransactionRow, ZapCard, ZapInfo,
+    ProviderInfo, ProviderSpecs, ProviderStatus, RelayInfo, RepoCard, RepoInfo, RepoVisibility,
+    ReviewState, SessionCard, SessionInfo, SessionSearchBar, SigningRequestCard,
+    SigningRequestInfo, SigningType, SigningUrgency, SkillCard, SkillCategory, SkillInfo,
+    SkillInstallStatus, TerminalHeader, TransactionDirection, TransactionInfo, TransactionRow,
+    ZapCard, ZapInfo,
 };
 use wgpui::components::organisms::{
     AgentAction, AgentGoal, AgentGoalStatus, AgentStateInspector, ApmLeaderboard, DmThread,
@@ -22,7 +23,7 @@ use wgpui::components::organisms::{
     ZapFlow,
 };
 use wgpui::components::sections::{MessageEditor, ThreadFeedback, ThreadHeader, TrajectoryEntry, TrajectoryView};
-use wgpui::{Bounds, PaintContext, Point, Quad, theme};
+use wgpui::{Bounds, Component, Hsla, PaintContext, Point, Quad, theme};
 
 use crate::constants::SECTION_GAP;
 use crate::helpers::{draw_panel, panel_height};

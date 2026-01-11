@@ -1544,7 +1544,7 @@ fn min_max_balance(points: &[BalancePoint]) -> (u128, u128) {
 mod tests {
     use super::*;
     use spark::{Payment, PaymentMethod, PaymentStatus, PaymentType};
-    use wgpui::InputEvent;
+    use wgpui::{InputEvent, Modifiers};
 
     fn click_at(view: &mut WalletView, bounds: Bounds, x: f32, y: f32) {
         let mut cx = EventContext::new();
@@ -1552,6 +1552,7 @@ mod tests {
             button: MouseButton::Left,
             x,
             y,
+            modifiers: Modifiers::default(),
         };
         let up = InputEvent::MouseUp {
             button: MouseButton::Left,

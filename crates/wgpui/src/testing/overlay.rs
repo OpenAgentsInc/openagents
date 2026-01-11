@@ -6,7 +6,7 @@
 use crate::animation::Easing;
 use crate::components::{Component, ComponentId, EventResult};
 use crate::components::{EventContext, PaintContext};
-use crate::{Bounds, InputEvent, MouseButton, Point, Quad, theme};
+use crate::{Bounds, InputEvent, Modifiers, MouseButton, Point, Quad, theme};
 use std::collections::VecDeque;
 use std::time::{Duration, Instant};
 
@@ -407,6 +407,7 @@ fn format_key_display(key: &crate::Key, modifiers: &crate::Modifiers) -> String 
             crate::NamedKey::Backspace => "Backspace".to_string(),
             crate::NamedKey::Delete => "Delete".to_string(),
             crate::NamedKey::Tab => "Tab".to_string(),
+            crate::NamedKey::Space => "Space".to_string(),
             crate::NamedKey::Home => "Home".to_string(),
             crate::NamedKey::End => "End".to_string(),
             crate::NamedKey::ArrowUp => "↑".to_string(),
