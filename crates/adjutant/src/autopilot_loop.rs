@@ -775,6 +775,15 @@ impl<O: AutopilotOutput> AutopilotLoop<O> {
         }
     }
 
+    fn apply_test_policy(&self, task: &mut Task) {
+        if !self.config.verify_completion {
+            task.acceptance_criteria.push(
+                "Do not run tests unless explicitly requested; verification is disabled for this run."
+                    .to_string(),
+            );
+        }
+    }
+
     /// Run the autopilot loop until completion.
     pub async fn run(mut self) -> AutopilotResult {
         let mut iteration = 0;
@@ -930,11 +939,12 @@ impl<O: AutopilotOutput> AutopilotLoop<O> {
             todo.status = TodoStatus::InProgress;
 
             // Create task for this todo item
-            let task = Task::new(
+            let mut task = Task::new(
                 format!("{}-step{}", self.original_task.id, todo.index),
                 format!("Step {} of {}", todo.index, total_todos),
                 &todo.description,
             );
+            self.apply_test_policy(&mut task);
 
             // Execute the task with streaming
             let result = if let Some(token_sender) = self.output.token_sender() {
@@ -1115,11 +1125,12 @@ impl<O: AutopilotOutput> AutopilotLoop<O> {
             let prompt = self.build_iteration_prompt(iteration, &last_result);
 
             // Create task for this iteration
-            let task = Task::new(
+            let mut task = Task::new(
                 format!("{}-iter{}", self.original_task.id, iteration),
                 self.original_task.title.clone(),
                 prompt,
             );
+            self.apply_test_policy(&mut task);
 
             // Execute the task with streaming
             // For channel-based outputs (UI), pass sender directly for real-time streaming

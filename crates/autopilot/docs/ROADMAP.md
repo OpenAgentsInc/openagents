@@ -954,3 +954,4 @@ pub enum SettingsTab {
 - 2026-01-11 06:44 UTC - Auto-selected Ollama model for DSPy/Pylon local runs, fixed Claude ACP XML filtering, and validated CLI runs across local-tools/Codex/Claude backends.
 - 2026-01-11 06:52 UTC - Filtered tool XML tags from DSPy streaming tokens and validated `cargo autopilot run` with Codex backend.
 - 2026-01-11 07:01 UTC - Validated CLI edit flow (Codex create + Claude write with tool read-before-write), plus env override coverage for `AUTOPILOT_BACKEND`.
+- 2026-01-11 07:19 UTC - Added no-verify test policy note in Autopilot tasks and validated CLI runs (DSPy status, Codex OK, Codex create, Claude delete).
