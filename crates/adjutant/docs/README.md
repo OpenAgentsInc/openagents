@@ -56,6 +56,8 @@ cargo autopilot run "Add error handling to auth.rs" --backend codex
 cargo autopilot issue claim 123
 ```
 
+Note: `cargo autopilot` with no args launches the GPU desktop UI. Use a subcommand (like `run` or `status`) for CLI mode.
+
 ### CLI Streaming Output
 
 `autopilot run` streams the same ACP event flow used by the desktop app, formatted as concise CLI lines:
@@ -81,13 +83,14 @@ RUST_LOG=adjutant=info cargo autopilot run "Summarize README.md"
 3. **DSPy Routing Decisions**:
    - `determine_use_rlm()` - Should RLM be used? (DSPy-first with fallback)
    - `determine_delegation()` - Should task be delegated? Where? (DSPy-first with fallback)
-4. **Execution**: Runs the task using chosen backend (priority order, or `--backend` override):
+4. **Todo Cleanup**: Filters non-actionable DSPy steps (summary/no-tests lines) and dedupes redundant summary steps
+5. **Execution**: Runs each step with original task context using the chosen backend (priority order, or `--backend` override):
    - **Claude Pro/Max** (if `claude` CLI is installed) - Best quality, uses subscription
    - **Codex CLI** (if `codex` CLI is installed) - OpenAI agent execution
    - **Local LLM** (llama.cpp/GPT-OSS) - Tool-calling loop on your machine
    - **TieredExecutor / analysis-only** - Cost-effective or fallback execution
-5. **Synthesis**: Summarizes results, optionally commits changes
-6. **Training Collection**: Records high-confidence DSPy decisions for optimization
+6. **Synthesis**: Summarizes results, optionally commits changes
+7. **Training Collection**: Records high-confidence DSPy decisions for optimization
 
 ```
 ┌─────────────────────────────────────────────────────────────┐

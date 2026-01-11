@@ -784,6 +784,21 @@ impl<O: AutopilotOutput> AutopilotLoop<O> {
         }
     }
 
+    fn test_strategy_hint(&self) -> String {
+        if self.config.verify_completion {
+            "Run cargo check/test after changes".to_string()
+        } else {
+            "Skip tests (verification disabled for this run)".to_string()
+        }
+    }
+
+    fn build_step_description(&self, todo: &TodoTask, total_todos: usize) -> String {
+        format!(
+            "Original task:\n{}\n\nStep {}/{}: {}\n\nFollow the original task requirements and output format.",
+            self.original_task.description, todo.index, total_todos, todo.description
+        )
+    }
+
     /// Run the autopilot loop until completion.
     pub async fn run(mut self) -> AutopilotResult {
         let mut iteration = 0;
@@ -844,8 +859,16 @@ impl<O: AutopilotOutput> AutopilotLoop<O> {
         // Run DSPy planning pipeline to get implementation steps
         tracing::info!("Autopilot: starting DSPy planning pipeline...");
         let callback = self.output.dspy_callback();
+        let test_strategy_override = (!self.config.verify_completion)
+            .then(|| self.test_strategy_hint());
         let dspy_plan = match orchestrator
-            .create_plan_with_callback(&self.original_task, &plan, &self.output, callback)
+            .create_plan_with_callback(
+                &self.original_task,
+                &plan,
+                &self.output,
+                callback,
+                test_strategy_override,
+            )
             .await
         {
             Ok(p) => p,
@@ -861,7 +884,7 @@ impl<O: AutopilotOutput> AutopilotLoop<O> {
                     analysis: "Using original task description".to_string(),
                     files_to_modify: plan.files.iter().map(|p| p.display().to_string()).collect(),
                     implementation_steps: vec![self.original_task.description.clone()],
-                    test_strategy: "Run cargo check/test after changes".to_string(),
+                    test_strategy: self.test_strategy_hint(),
                     complexity: format!("{:?}", plan.complexity),
                     confidence: 0.5,
                 });
@@ -870,7 +893,7 @@ impl<O: AutopilotOutput> AutopilotLoop<O> {
                     analysis: "Using original task description".to_string(),
                     files_to_modify: plan.files.iter().map(|p| p.display().to_string()).collect(),
                     implementation_steps: vec![self.original_task.description.clone()],
-                    test_strategy: "Run cargo check/test after changes".to_string(),
+                    test_strategy: self.test_strategy_hint(),
                     risk_factors: vec![],
                     complexity: autopilot_core::Complexity::Medium,
                     confidence: 0.5,
@@ -942,8 +965,9 @@ impl<O: AutopilotOutput> AutopilotLoop<O> {
             let mut task = Task::new(
                 format!("{}-step{}", self.original_task.id, todo.index),
                 format!("Step {} of {}", todo.index, total_todos),
-                &todo.description,
+                self.build_step_description(todo, total_todos),
             );
+            task.acceptance_criteria = self.original_task.acceptance_criteria.clone();
             self.apply_test_policy(&mut task);
 
             // Execute the task with streaming
