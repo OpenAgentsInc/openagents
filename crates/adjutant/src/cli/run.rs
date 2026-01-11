@@ -4,12 +4,13 @@ use crate::autopilot_loop::{
     generate_session_id, AcpChannelOutput, AutopilotConfig, AutopilotLoop, AutopilotResult,
 };
 use crate::cli::blocker::{analyze_blockers, print_blocker_summary};
+use crate::cli::boot::{boot_fast, boot_full, print_quick_checks};
 use crate::cli::directive::work_on_directive;
 use crate::cli::stream::CliAcpRenderer;
 use crate::{Adjutant, Task};
 use agent_client_protocol_schema as acp;
 use clap::Args;
-use oanix::{boot, WorkspaceManifest};
+use oanix::WorkspaceManifest;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tokio::sync::mpsc;
@@ -27,6 +28,10 @@ pub struct RunArgs {
 
     /// Ad-hoc task description (instead of issue)
     pub task: Option<String>,
+
+    /// Run full environment discovery (slower)
+    #[arg(long)]
+    pub full_boot: bool,
 }
 
 /// Run the autopilot loop
@@ -35,9 +40,17 @@ pub async fn run(args: RunArgs) -> anyhow::Result<()> {
     println!("{}", "=".repeat(55));
     println!();
     println!("Booting...");
+    if !args.full_boot {
+        println!("Fast boot: skipping network/compute discovery.");
+    }
+    print_quick_checks();
 
     // Boot OANIX
-    let manifest = boot().await?;
+    let manifest = if args.full_boot {
+        boot_full().await?
+    } else {
+        boot_fast().await?
+    };
 
     // Create Adjutant
     let mut adjutant = Adjutant::new(manifest.clone())?;

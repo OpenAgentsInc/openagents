@@ -3,6 +3,7 @@
 //! These are the user-facing commands for the autopilot system.
 
 pub mod blocker;
+pub mod boot;
 pub mod directive;
 pub mod dspy;
 pub mod issue;
@@ -64,7 +65,7 @@ pub async fn execute(cli: AutopilotCli) -> anyhow::Result<()> {
     match cli.command {
         None => {
             // Default: show status and await direction
-            status::run(status::StatusArgs {}).await
+            status::run(status::StatusArgs { full_boot: false }).await
         }
         Some(Commands::Run(args)) => run::run(args).await,
         Some(Commands::Status(args)) => status::run(args).await,

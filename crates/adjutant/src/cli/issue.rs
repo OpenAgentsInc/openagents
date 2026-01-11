@@ -1,7 +1,7 @@
 //! Issue management commands
 
 use clap::Args;
-use oanix::boot;
+use crate::cli::boot::boot_fast;
 
 /// List issues arguments
 #[derive(Args)]
@@ -34,7 +34,7 @@ pub struct ShowArgs {
 
 /// List open issues
 pub async fn list(args: ListArgs) -> anyhow::Result<()> {
-    let manifest = boot().await?;
+    let manifest = boot_fast().await?;
 
     let workspace = manifest
         .workspace
@@ -120,7 +120,7 @@ fn print_issue_line(issue: &oanix::IssueSummary) {
 
 /// Claim an issue to work on
 pub async fn claim(args: ClaimArgs) -> anyhow::Result<()> {
-    let manifest = boot().await?;
+    let manifest = boot_fast().await?;
 
     let workspace = manifest
         .workspace
@@ -184,7 +184,7 @@ pub async fn claim(args: ClaimArgs) -> anyhow::Result<()> {
 
 /// Complete an issue
 pub async fn complete(args: CompleteArgs) -> anyhow::Result<()> {
-    let manifest = boot().await?;
+    let manifest = boot_fast().await?;
 
     let workspace = manifest
         .workspace
@@ -235,7 +235,7 @@ pub async fn complete(args: CompleteArgs) -> anyhow::Result<()> {
 
 /// Show issue details
 pub async fn show(args: ShowArgs) -> anyhow::Result<()> {
-    let manifest = boot().await?;
+    let manifest = boot_fast().await?;
 
     let workspace = manifest
         .workspace
