@@ -3,13 +3,12 @@
 //! Supports multiple LM providers with smart priority/fallback:
 //! 1. Codex CLI headless (via codex-agent-sdk) - Primary provider
 //! 2. llama.cpp/GPT-OSS - Local inference fallback
-//! 3. Claude Code headless (via claude-agent-sdk) - Deprecated
-//! 4. Pylon swarm - Distributed inference via NIP-90
-//! 5. Cerebras - Fast, cheap tiered execution
-//! 6. Pylon local (Ollama) - Fallback when nothing else available
+//! 3. Pylon swarm - Distributed inference via NIP-90
+//! 4. Cerebras - Fast, cheap tiered execution
+//! 5. Pylon local (Ollama) - Fallback when nothing else available
 
 use anyhow::Result;
-use dsrs::{configure, has_claude_cli, has_codex_cli, ChatAdapter, LMClient, LM};
+use dsrs::{configure, has_codex_cli, ChatAdapter, LMClient, LM};
 use std::sync::Arc;
 
 /// Provider priority for LM selection.
@@ -19,8 +18,6 @@ pub enum LmProvider {
     CodexSdk,
     /// llama.cpp/GPT-OSS: Local OSS models via OpenAI-compatible API
     LlamaCpp,
-    /// Claude Code headless via claude-agent-sdk (deprecated)
-    ClaudeSdk,
     /// Pylon swarm: distributed inference via NIP-90
     PylonSwarm,
     /// Cerebras: OpenAI-compatible fast inference
@@ -34,7 +31,6 @@ impl std::fmt::Display for LmProvider {
         match self {
             LmProvider::CodexSdk => write!(f, "Codex SDK (headless)"),
             LmProvider::LlamaCpp => write!(f, "llama.cpp/GPT-OSS (local)"),
-            LmProvider::ClaudeSdk => write!(f, "Claude SDK (deprecated)"),
             LmProvider::PylonSwarm => write!(f, "Pylon Swarm (NIP-90)"),
             LmProvider::Cerebras => write!(f, "Cerebras"),
             LmProvider::PylonLocal => write!(f, "Pylon Local (Ollama)"),
@@ -48,7 +44,6 @@ impl LmProvider {
         match self {
             LmProvider::CodexSdk => "codex-sdk",
             LmProvider::LlamaCpp => "gptoss",
-            LmProvider::ClaudeSdk => "claude-sdk",
             LmProvider::PylonSwarm => "swarm",
             LmProvider::Cerebras => "cerebras",
             LmProvider::PylonLocal => "ollama",
@@ -61,10 +56,9 @@ impl LmProvider {
 /// Priority order:
 /// 1. Codex CLI available → CodexSdk (primary provider)
 /// 2. llama.cpp/GPT-OSS running on localhost:8080 → LlamaCpp
-/// 3. Claude CLI available → ClaudeSdk (deprecated, will be removed)
-/// 4. PYLON_MNEMONIC set → PylonSwarm
-/// 5. CEREBRAS_API_KEY set → Cerebras
-/// 6. Ollama running on localhost:11434 → PylonLocal
+/// 3. PYLON_MNEMONIC set → PylonSwarm
+/// 4. CEREBRAS_API_KEY set → Cerebras
+/// 5. Ollama running on localhost:11434 → PylonLocal
 pub fn detect_provider() -> Option<LmProvider> {
     // Priority 1: Codex via SDK (primary provider)
     if has_codex_cli() {
@@ -76,22 +70,17 @@ pub fn detect_provider() -> Option<LmProvider> {
         return Some(LmProvider::LlamaCpp);
     }
 
-    // Priority 3: Claude via SDK (deprecated, will be removed)
-    if has_claude_cli() {
-        return Some(LmProvider::ClaudeSdk);
-    }
-
-    // Priority 4: Pylon swarm (requires mnemonic)
+    // Priority 3: Pylon swarm (requires mnemonic)
     if std::env::var("PYLON_MNEMONIC").is_ok() {
         return Some(LmProvider::PylonSwarm);
     }
 
-    // Priority 5: Cerebras
+    // Priority 4: Cerebras
     if std::env::var("CEREBRAS_API_KEY").is_ok() {
         return Some(LmProvider::Cerebras);
     }
 
-    // Priority 6: Check for local Ollama
+    // Priority 5: Check for local Ollama
     if check_ollama_available() {
         return Some(LmProvider::PylonLocal);
     }
@@ -110,9 +99,6 @@ pub fn detect_all_providers() -> Vec<LmProvider> {
     }
     if check_llamacpp_available() {
         providers.push(LmProvider::LlamaCpp);
-    }
-    if has_claude_cli() {
-        providers.push(LmProvider::ClaudeSdk);
     }
     if std::env::var("PYLON_MNEMONIC").is_ok() {
         providers.push(LmProvider::PylonSwarm);
@@ -221,17 +207,6 @@ pub async fn create_lm(provider: &LmProvider) -> Result<LM> {
                 .temperature(0.7)
                 .max_tokens(4000)
                 .build()
-                .await
-        }
-        LmProvider::ClaudeSdk => {
-            let client = LMClient::claude_sdk()?;
-            LM::builder()
-                .model("claude-sdk:default".to_string())
-                .temperature(0.7)
-                .max_tokens(4000)
-                .build()
-                .await?
-                .with_client(client)
                 .await
         }
         LmProvider::PylonSwarm => {
@@ -356,22 +331,17 @@ pub fn detect_provider_skip_codex() -> Option<LmProvider> {
         return Some(LmProvider::LlamaCpp);
     }
 
-    // Priority 2: Claude via SDK (deprecated fallback)
-    if has_claude_cli() {
-        return Some(LmProvider::ClaudeSdk);
-    }
-
-    // Priority 3: Pylon swarm (requires mnemonic)
+    // Priority 2: Pylon swarm (requires mnemonic)
     if std::env::var("PYLON_MNEMONIC").is_ok() {
         return Some(LmProvider::PylonSwarm);
     }
 
-    // Priority 4: Cerebras
+    // Priority 3: Cerebras
     if std::env::var("CEREBRAS_API_KEY").is_ok() {
         return Some(LmProvider::Cerebras);
     }
 
-    // Priority 5: Check for local Ollama
+    // Priority 4: Check for local Ollama
     if check_ollama_available() {
         return Some(LmProvider::PylonLocal);
     }

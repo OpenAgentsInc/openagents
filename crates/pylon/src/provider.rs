@@ -4,7 +4,7 @@ use crate::bridge_manager::BridgeManager;
 use crate::config::PylonConfig;
 use crate::neobank_service::{NeobankConfig, NeobankService, TreasuryStatus};
 use compute::backends::{
-    AgentBackend, AgentRegistry, BackendRegistry, ClaudeCodeBackend,
+    AgentRegistry, BackendRegistry,
 };
 #[cfg(feature = "ml-native")]
 use ml::{MlProvider, MlProviderConfig};
@@ -177,19 +177,8 @@ impl PylonProvider {
             tracing::info!("Detected inference backends: {}", backends.join(", "));
         }
 
-        // Auto-detect agent backends (Claude Code, etc.)
-        let mut agent_registry = AgentRegistry::new();
-
-        if let Some(claude) = ClaudeCodeBackend::detect().await {
-            let caps = claude.capabilities();
-            tracing::info!(
-                "Detected Claude Code backend (supports kinds: {:?})",
-                caps.supported_kinds()
-            );
-            agent_registry.register("claude_code", Arc::new(RwLock::new(claude)));
-        } else {
-            tracing::info!("Claude Code not available (no API key or CLI)");
-        }
+        // Agent registry for Bazaar jobs
+        let agent_registry = AgentRegistry::new();
 
         // Create relay service
         let relay_service = if config.relays.is_empty() {

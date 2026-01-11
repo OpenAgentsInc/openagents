@@ -2,7 +2,6 @@
 
 mod agent;
 mod api;
-mod connect;
 mod compute;
 mod doctor;
 mod earnings;
@@ -50,8 +49,6 @@ pub enum Commands {
     Infer(infer::InferArgs),
     /// Show compute mix (all available compute options)
     Compute(compute::ComputeArgs),
-    /// Connect a Claude tunnel session
-    Connect(connect::ConnectArgs),
     /// Manage wallet (Spark/Lightning)
     Wallet(wallet::WalletArgs),
     /// Submit and track NIP-90 jobs (buyer mode)
@@ -75,7 +72,6 @@ pub async fn execute(cli: PylonCli) -> anyhow::Result<()> {
         Commands::Earnings(args) => earnings::run(args).await,
         Commands::Infer(args) => infer::run(args).await,
         Commands::Compute(args) => compute::run(args).await,
-        Commands::Connect(args) => connect::run(args).await,
         Commands::Wallet(args) => wallet::run(args).await,
         Commands::Job(args) => job::run(args).await,
         Commands::Rlm(args) => rlm::run(args).await,

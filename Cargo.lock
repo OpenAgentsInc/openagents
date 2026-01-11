@@ -26,7 +26,6 @@ dependencies = [
  "anyhow",
  "async-trait",
  "chrono",
- "claude-agent-sdk",
  "codex-agent-sdk",
  "futures",
  "recorder",
@@ -260,7 +259,6 @@ dependencies = [
  "bon",
  "chrono",
  "clap",
- "claude-agent-sdk",
  "codex-agent-sdk",
  "ctrlc",
  "dirs 5.0.1",
@@ -1243,7 +1241,6 @@ dependencies = [
  "async-trait",
  "chrono",
  "clap",
- "claude-agent-sdk",
  "codex-agent-sdk",
  "dirs 6.0.0",
  "dsrs",
@@ -1279,7 +1276,6 @@ dependencies = [
  "anyhow",
  "axum 0.8.8",
  "chrono",
- "claude-agent-sdk",
  "futures-util",
  "git2",
  "serde",
@@ -1341,7 +1337,6 @@ dependencies = [
  "autopilot-core",
  "autopilot-service",
  "chrono",
- "claude-agent-sdk",
  "dirs 5.0.1",
  "futures",
  "reqwest",
@@ -2588,22 +2583,6 @@ name = "clap_lex"
 version = "0.7.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a1d728cc89cf3aee9ff92b05e62b19ee65a02b5702cff7d5a377e32c6ae29d8d"
-
-[[package]]
-name = "claude-agent-sdk"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "futures",
- "serde",
- "serde_json",
- "thiserror 2.0.17",
- "tokio",
- "tokio-test",
- "tracing",
- "tracing-subscriber",
- "which 7.0.3",
-]
 
 [[package]]
 name = "claxon"
@@ -3973,7 +3952,6 @@ dependencies = [
  "async-trait",
  "bip39",
  "bon",
- "claude-agent-sdk",
  "codex-agent-sdk",
  "csv",
  "dirs 5.0.1",
@@ -9592,7 +9570,6 @@ dependencies = [
  "bitcoin",
  "chrono",
  "clap",
- "claude-agent-sdk",
  "colored 2.2.0",
  "compute",
  "ctrlc",
@@ -9654,7 +9631,6 @@ dependencies = [
  "bech32 0.11.1",
  "bitcoin",
  "clap",
- "claude-agent-sdk",
  "compute",
  "daytona",
  "dsrs",
@@ -10944,7 +10920,6 @@ dependencies = [
  "bip39",
  "chrono",
  "clap",
- "claude-agent-sdk",
  "compute",
  "dirs 5.0.1",
  "dotenvy",
@@ -11806,7 +11781,6 @@ dependencies = [
  "anyhow",
  "async-trait",
  "clap",
- "claude-agent-sdk",
  "dsrs",
  "fm-bridge",
  "futures",

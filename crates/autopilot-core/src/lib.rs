@@ -14,8 +14,6 @@ pub mod checkpoint;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod ci;
 #[cfg(not(target_arch = "wasm32"))]
-pub mod claude;
-#[cfg(not(target_arch = "wasm32"))]
 pub mod github;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod logger;
@@ -58,18 +56,12 @@ pub mod dspy_verify;
 #[cfg(not(target_arch = "wasm32"))]
 pub use auth::{
     AuthEntry, AuthStatus, AuthStore, check_openagents_auth, check_opencode_auth,
-    copy_opencode_auth, get_provider_auth, has_anthropic_auth, openagents_auth_path,
+    copy_opencode_auth, get_provider_auth, openagents_auth_path,
     opencode_auth_path,
 };
 
 #[cfg(not(target_arch = "wasm32"))]
 pub use ci::{CICheckResult, CIClient, CIStatus, CISystem, CheckDetail, detect_test_command};
-
-#[cfg(not(target_arch = "wasm32"))]
-pub use claude::{
-    ClaudeEvent, ClaudeToken, ClaudeUsageData, run_claude_execution, run_claude_planning,
-    run_claude_review,
-};
 
 #[cfg(not(target_arch = "wasm32"))]
 pub use logger::{LogEntry, SessionLogger, generate_session_id};
@@ -93,7 +85,10 @@ pub use pylon_integration::{
 };
 
 #[cfg(not(target_arch = "wasm32"))]
-pub use startup::{ClaudeModel, LogLine, LogStatus, StartupPhase, StartupSection, StartupState};
+pub use startup::{
+    AgentEvent, AgentModel, AgentToken, UsageData, LogLine, LogStatus, StartupPhase,
+    StartupSection, StartupState, run_agent_execution, run_agent_planning, run_agent_review,
+};
 
 #[cfg(not(target_arch = "wasm32"))]
 pub use streaming::query_issue_summary;

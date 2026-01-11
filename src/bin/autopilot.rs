@@ -273,6 +273,7 @@ impl ApplicationHandler for App {
                         button: mouse_button,
                         x,
                         y,
+                        modifiers: wgpui::Modifiers::default(),
                     }
                 } else {
                     InputEvent::MouseUp {

@@ -3,7 +3,6 @@
 //! Combines HUD effects with dock-based IDE layout for the autopilot interface.
 
 mod actions;
-pub mod claude_sessions;
 mod components;
 mod dock;
 mod hud;

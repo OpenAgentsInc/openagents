@@ -11,11 +11,102 @@ use crate::dspy_planning::PlanningResult;
 
 use crate::auth;
 use crate::checkpoint::SessionCheckpoint;
-use crate::claude::{
-    ClaudeEvent, ClaudeToken, ClaudeUsageData, run_claude_execution, run_claude_planning,
-    run_claude_review,
-};
 use crate::logger::{SessionLogger, generate_session_id};
+
+/// Agent event types for streaming output
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum AgentEvent {
+    Text(String),
+    Tool {
+        name: String,
+        #[serde(default)]
+        params: serde_json::Value,
+        output: Option<String>,
+        done: bool,
+        #[serde(default)]
+        is_error: bool,
+    },
+    ToolProgress {
+        name: String,
+        elapsed: f32,
+    },
+}
+
+/// Token usage data for tracking costs
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct UsageData {
+    pub input_tokens: u64,
+    pub output_tokens: u64,
+    pub cache_read_tokens: u64,
+    pub cache_write_tokens: u64,
+    #[serde(default)]
+    pub total_cost_usd: f64,
+    pub duration_ms: Option<u64>,
+    pub duration_api_ms: Option<u64>,
+    pub num_turns: Option<u64>,
+    pub context_window: Option<u64>,
+    pub model: Option<String>,
+}
+
+/// Token event for streaming
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum AgentToken {
+    Text(String),
+    Chunk(String),
+    Usage(UsageData),
+    Done(String),
+    SessionId(String),
+    Error(String),
+    ToolUse {
+        name: String,
+        params: serde_json::Value,
+    },
+    ToolDone {
+        name: String,
+        output: String,
+        is_error: bool,
+    },
+    Progress {
+        name: String,
+        elapsed_secs: f64,
+    },
+}
+
+/// Stub for run_agent_planning (agent-specific implementation removed)
+pub fn run_agent_planning(
+    _workspace: &PathBuf,
+    _issue_summary: &str,
+    _assessment: &str,
+    _model: AgentModel,
+    _resume_session_id: Option<String>,
+    tx: mpsc::Sender<AgentToken>,
+    _logger: Option<SessionLogger>,
+) {
+    let _ = tx.send(AgentToken::Done("Agent backend not configured - use Codex CLI or configure an inference backend".to_string()));
+}
+
+/// Stub for run_agent_execution (agent-specific implementation removed)
+pub fn run_agent_execution(
+    _prompt: &str,
+    _model: AgentModel,
+    _resume_session_id: Option<String>,
+    tx: mpsc::Sender<AgentToken>,
+    _logger: Option<SessionLogger>,
+) {
+    let _ = tx.send(AgentToken::Done("Agent backend not configured - use Codex CLI or configure an inference backend".to_string()));
+}
+
+/// Stub for run_agent_review (agent-specific implementation removed)
+pub fn run_agent_review(
+    _prompt: &str,
+    _model: AgentModel,
+    _exec_result: &str,
+    _resume_session_id: Option<String>,
+    tx: mpsc::Sender<AgentToken>,
+    _logger: Option<SessionLogger>,
+) {
+    let _ = tx.send(AgentToken::Done("Agent backend not configured - use Codex CLI or configure an inference backend".to_string()));
+}
 use crate::preflight::PreflightConfig;
 use crate::report::{
     AfterActionReport, collect_session_stats, generate_questions_for_user,
@@ -28,17 +119,17 @@ use crate::verification::{
 };
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
-pub enum ClaudeModel {
+pub enum AgentModel {
     #[default]
     Sonnet,
     Opus,
 }
 
-impl ClaudeModel {
+impl AgentModel {
     pub fn as_str(&self) -> &'static str {
         match self {
-            ClaudeModel::Sonnet => "claude-sonnet-4-5-20250929",
-            ClaudeModel::Opus => "claude-opus-4-5-20251101",
+            AgentModel::Sonnet => "sonnet",
+            AgentModel::Opus => "opus",
         }
     }
 }
@@ -70,7 +161,7 @@ pub enum StartupSection {
     Tools,
     Pylon,
     Compute,
-    Claude,
+    Agent,
 }
 
 impl StartupSection {
@@ -111,7 +202,7 @@ impl StartupSection {
                 let backends = details.iter().filter(|l| l.text.contains("[OK]")).count();
                 format!("Compute: {} local backend(s)", backends)
             }
-            StartupSection::Claude => "Claude session".to_string(),
+            StartupSection::Agent => "Agent session".to_string(),
         }
     }
 
@@ -149,8 +240,8 @@ pub enum StartupPhase {
     DetectingCompute,
     ComputeMixReady,
     // Continue with existing phases
-    PlanningWithClaude,
-    StreamingClaudePlan,
+    Planning,
+    StreamingPlan,
     WritingPlan,
     ExecutingPlan,
     StreamingExecution,
@@ -167,7 +258,7 @@ impl StartupPhase {
     /// Map a phase to its logical section for UI grouping.
     pub fn section(&self) -> StartupSection {
         match self {
-            StartupPhase::Idle => StartupSection::Claude, // Idle shows in main area
+            StartupPhase::Idle => StartupSection::Agent, // Idle shows in main area
 
             StartupPhase::CheckingOpenCode
             | StartupPhase::CheckingOpenAgents
@@ -184,7 +275,7 @@ impl StartupPhase {
                 StartupSection::Compute
             }
 
-            _ => StartupSection::Claude,
+            _ => StartupSection::Agent,
         }
     }
 }
@@ -194,21 +285,21 @@ pub struct StartupState {
     pub phase: StartupPhase,
     pub phase_started: f32,
     pub preflight_config: Option<PreflightConfig>,
-    pub model: ClaudeModel,
+    pub model: AgentModel,
     issue_summary: Option<String>,
-    claude_receiver: Option<mpsc::Receiver<ClaudeToken>>,
-    pub claude_session_id: Option<String>,
-    pub claude_events: Vec<ClaudeEvent>,
-    pub claude_full_text: String,
+    agent_receiver: Option<mpsc::Receiver<AgentToken>>,
+    pub plan_session_id: Option<String>,
+    pub plan_events: Vec<AgentEvent>,
+    pub plan_full_text: String,
     pub acp_events: Vec<acp::SessionNotification>,
     pub plan_path: Option<PathBuf>,
-    exec_receiver: Option<mpsc::Receiver<ClaudeToken>>,
+    exec_receiver: Option<mpsc::Receiver<AgentToken>>,
     pub exec_session_id: Option<String>,
-    pub exec_events: Vec<ClaudeEvent>,
+    pub exec_events: Vec<AgentEvent>,
     pub exec_full_text: String,
-    review_receiver: Option<mpsc::Receiver<ClaudeToken>>,
+    review_receiver: Option<mpsc::Receiver<AgentToken>>,
     pub review_session_id: Option<String>,
-    pub review_events: Vec<ClaudeEvent>,
+    pub review_events: Vec<AgentEvent>,
     pub review_full_text: String,
     pub iteration: u32,
     pub session_logger: Option<SessionLogger>,
@@ -217,9 +308,9 @@ pub struct StartupState {
     pub start_instant: Instant,
     verification_runner: Option<VerificationRunner>,
     pub last_checklist: Option<TerminationChecklist>,
-    fix_receiver: Option<mpsc::Receiver<ClaudeToken>>,
+    fix_receiver: Option<mpsc::Receiver<AgentToken>>,
     pub fix_session_id: Option<String>,
-    pub fix_events: Vec<ClaudeEvent>,
+    pub fix_events: Vec<AgentEvent>,
     pub fix_full_text: String,
     acp_pending_tools: Vec<AcpPendingTool>,
     acp_tool_counter: u64,
@@ -229,8 +320,8 @@ pub struct StartupState {
     // Pylon integration
     pub compute_mix: Option<crate::preflight::ComputeMix>,
     pylon_started: bool,
-    // Session usage tracking (accumulated from ClaudeToken::Usage)
-    pub session_usage: ClaudeUsageData,
+    // Session usage tracking (accumulated from AgentToken::Usage)
+    pub session_usage: UsageData,
     /// User-provided prompt for this session (if started from UI)
     pub user_prompt: Option<String>,
     /// DSPy structured planning result
@@ -247,10 +338,10 @@ struct AcpPendingTool {
 
 impl StartupState {
     pub fn new() -> Self {
-        Self::with_model(ClaudeModel::default())
+        Self::with_model(AgentModel::default())
     }
 
-    pub fn with_model(model: ClaudeModel) -> Self {
+    pub fn with_model(model: AgentModel) -> Self {
         let session_id = generate_session_id();
         let session_logger = SessionLogger::new(&session_id).ok();
         let start_time = Local::now();
@@ -263,10 +354,10 @@ impl StartupState {
             preflight_config: None,
             model,
             issue_summary: None,
-            claude_receiver: None,
-            claude_session_id: None,
-            claude_events: Vec::new(),
-            claude_full_text: String::new(),
+            agent_receiver: None,
+            plan_session_id: None,
+            plan_events: Vec::new(),
+            plan_full_text: String::new(),
             acp_events: Vec::new(),
             plan_path: None,
             exec_receiver: None,
@@ -295,14 +386,14 @@ impl StartupState {
             report_path: None,
             compute_mix: None,
             pylon_started: false,
-            session_usage: ClaudeUsageData::default(),
+            session_usage: UsageData::default(),
             user_prompt: None,
             dspy_plan: None,
         }
     }
 
     /// Create a new state in Idle mode, waiting for user input.
-    pub fn new_idle(model: ClaudeModel) -> Self {
+    pub fn new_idle(model: AgentModel) -> Self {
         let session_id = generate_session_id();
         let session_logger = SessionLogger::new(&session_id).ok();
         let start_time = Local::now();
@@ -315,10 +406,10 @@ impl StartupState {
             preflight_config: None,
             model,
             issue_summary: None,
-            claude_receiver: None,
-            claude_session_id: None,
-            claude_events: Vec::new(),
-            claude_full_text: String::new(),
+            agent_receiver: None,
+            plan_session_id: None,
+            plan_events: Vec::new(),
+            plan_full_text: String::new(),
             acp_events: Vec::new(),
             plan_path: None,
             exec_receiver: None,
@@ -347,14 +438,14 @@ impl StartupState {
             report_path: None,
             compute_mix: None,
             pylon_started: false,
-            session_usage: ClaudeUsageData::default(),
+            session_usage: UsageData::default(),
             user_prompt: None,
             dspy_plan: None,
         }
     }
 
     /// Create a new state with a specific prompt, ready to start execution.
-    pub fn new_with_prompt(prompt: String, model: ClaudeModel) -> Self {
+    pub fn new_with_prompt(prompt: String, model: AgentModel) -> Self {
         let mut state = Self::with_model(model);
         state.user_prompt = Some(prompt);
         state
@@ -562,19 +653,12 @@ impl StartupState {
             StartupPhase::AuthComplete => {
                 if phase_time > 0.3
                     && !self.lines.iter().any(|l| {
-                        l.text.contains("Auth ready") || l.text.contains("Anthropic auth not")
+                        l.text.contains("Auth ready")
                     })
                 {
-                    if auth::has_anthropic_auth() {
-                        info!("Anthropic auth is ready");
-                        self.add_line("", LogStatus::Info, elapsed);
-                        self.add_line("Auth ready.", LogStatus::Success, elapsed);
-                    } else {
-                        warn!("Anthropic auth not configured");
-                        self.add_line("", LogStatus::Info, elapsed);
-                        self.add_line("Anthropic auth not configured.", LogStatus::Error, elapsed);
-                        self.add_line("Run: opencode auth login", LogStatus::Info, elapsed);
-                    }
+                    info!("Auth check complete");
+                    self.add_line("", LogStatus::Info, elapsed);
+                    self.add_line("Auth ready.", LogStatus::Success, elapsed);
                     self.phase = StartupPhase::RunningPreflight;
                     self.phase_started = elapsed;
                 }
@@ -879,33 +963,25 @@ impl StartupState {
                         }
                     }
 
-                    // Continue to Claude phases if auth available
-                    if auth::has_anthropic_auth() {
-                        self.phase = StartupPhase::PlanningWithClaude;
-                        self.phase_started = elapsed;
-                    } else {
-                        self.add_line("", LogStatus::Info, elapsed);
-                        self.add_line("Claude auth not available.", LogStatus::Info, elapsed);
-                        self.add_line("Ready for tasks.", LogStatus::Success, elapsed);
-                        self.phase = StartupPhase::Complete;
-                        self.phase_started = elapsed;
-                    }
+                    // Continue to Agent phases
+                    self.phase = StartupPhase::Planning;
+                    self.phase_started = elapsed;
                 }
             }
 
-            StartupPhase::PlanningWithClaude => {
+            StartupPhase::Planning => {
                 if !self
                     .lines
                     .iter()
-                    .any(|l| l.text.contains("Creating plan with Claude"))
+                    .any(|l| l.text.contains("Creating plan"))
                 {
                     self.add_line("", LogStatus::Info, elapsed);
                     let iteration = self.iteration;
                     if iteration == 1 {
-                        self.add_line("Creating plan with Claude...", LogStatus::Pending, elapsed);
+                        self.add_line("Creating plan...", LogStatus::Pending, elapsed);
                     } else {
                         self.add_line(
-                            &format!("Creating plan (iteration {}) with Claude...", iteration),
+                            &format!("Creating plan (iteration {})...", iteration),
                             LogStatus::Pending,
                             elapsed,
                         );
@@ -923,13 +999,13 @@ impl StartupState {
                     let assessment = String::new();
                     let model = self.model;
                     let logger = self.session_logger.clone();
-                    let resume_session_id = self.claude_session_id.clone();
+                    let resume_session_id = self.plan_session_id.clone();
 
                     let (tx, rx) = mpsc::channel();
-                    self.claude_receiver = Some(rx);
+                    self.agent_receiver = Some(rx);
 
                     std::thread::spawn(move || {
-                        run_claude_planning(
+                        run_agent_planning(
                             &cwd,
                             &issue_summary,
                             &assessment,
@@ -940,14 +1016,14 @@ impl StartupState {
                         );
                     });
 
-                    self.phase = StartupPhase::StreamingClaudePlan;
+                    self.phase = StartupPhase::StreamingPlan;
                     self.phase_started = elapsed;
                 }
             }
 
-            StartupPhase::StreamingClaudePlan => {
-                if self.claude_receiver.is_none() {
-                    if let Some(session_id) = self.claude_session_id.clone() {
+            StartupPhase::StreamingPlan => {
+                if self.agent_receiver.is_none() {
+                    if let Some(session_id) = self.plan_session_id.clone() {
                         let cwd = std::env::current_dir().unwrap_or_default();
                         let issue_summary = self
                             .issue_summary
@@ -962,10 +1038,10 @@ impl StartupState {
                         let logger = self.session_logger.clone();
 
                         let (tx, rx) = mpsc::channel();
-                        self.claude_receiver = Some(rx);
+                        self.agent_receiver = Some(rx);
 
                         std::thread::spawn(move || {
-                            run_claude_planning(
+                            run_agent_planning(
                                 &cwd,
                                 &issue_summary,
                                 &assessment,
@@ -979,7 +1055,7 @@ impl StartupState {
                 }
 
                 let mut tokens = Vec::new();
-                if let Some(ref rx) = self.claude_receiver {
+                if let Some(ref rx) = self.agent_receiver {
                     while let Ok(token) = rx.try_recv() {
                         tokens.push(token);
                     }
@@ -987,36 +1063,36 @@ impl StartupState {
 
                 for token in tokens {
                     match token {
-                        ClaudeToken::Chunk(text) => {
-                            self.claude_full_text.push_str(&text);
-                            if let Some(ClaudeEvent::Text(s)) = self.claude_events.last_mut() {
+                        AgentToken::Text(text) | AgentToken::Chunk(text) => {
+                            self.plan_full_text.push_str(&text);
+                            if let Some(AgentEvent::Text(s)) = self.plan_events.last_mut() {
                                 s.push_str(&text);
                             } else {
-                                self.claude_events.push(ClaudeEvent::Text(text.clone()));
+                                self.plan_events.push(AgentEvent::Text(text.clone()));
                             }
                             self.push_acp_text("plan", text);
-                            self.update_claude_streaming_line(elapsed);
+                            self.update_agent_streaming_line(elapsed);
                         }
-                        ClaudeToken::ToolUse { name, params } => {
-                            let params_clone = params.clone();
-                            self.claude_events.push(ClaudeEvent::Tool {
+                        AgentToken::ToolUse { name, params } => {
+                            let params_str = params.to_string();
+                            self.plan_events.push(AgentEvent::Tool {
                                 name: name.clone(),
                                 params,
                                 done: false,
                                 output: None,
                                 is_error: false,
                             });
-                            self.push_acp_tool_use("plan", name, params_clone);
-                            self.update_claude_streaming_line(elapsed);
+                            self.push_acp_tool_use("plan", name, params_str);
+                            self.update_agent_streaming_line(elapsed);
                         }
-                        ClaudeToken::ToolDone {
+                        AgentToken::ToolDone {
                             name,
                             output,
                             is_error,
                         } => {
                             // Find the matching tool and get its params
-                            let params = self.claude_events.iter().rev().find_map(|e| {
-                                if let ClaudeEvent::Tool {
+                            let params = self.plan_events.iter().rev().find_map(|e| {
+                                if let AgentEvent::Tool {
                                     name: n,
                                     params,
                                     done,
@@ -1033,8 +1109,8 @@ impl StartupState {
                                 }
                             });
                             // Mark original as done (for done counting)
-                            for event in self.claude_events.iter_mut().rev() {
-                                if let ClaudeEvent::Tool { name: n, done, .. } = event {
+                            for event in self.plan_events.iter_mut().rev() {
+                                if let AgentEvent::Tool { name: n, done, .. } = event {
                                     if n == &name && !*done {
                                         *done = true;
                                         break;
@@ -1043,46 +1119,46 @@ impl StartupState {
                             }
                             // Push completion event with output so shell receives it
                             if let Some(params) = params {
-                                let output_clone = output.clone();
-                                self.claude_events.push(ClaudeEvent::Tool {
+                                let output_clone = Some(output.clone());
+                                self.plan_events.push(AgentEvent::Tool {
                                     name: name.clone(),
                                     params,
                                     done: true,
-                                    output,
+                                    output: Some(output),
                                     is_error,
                                 });
                                 self.push_acp_tool_done("plan", name, output_clone, is_error);
                             } else {
-                                self.push_acp_tool_done("plan", name, output.clone(), is_error);
+                                self.push_acp_tool_done("plan", name, Some(output.clone()), is_error);
                             }
-                            self.update_claude_streaming_line(elapsed);
+                            self.update_agent_streaming_line(elapsed);
                         }
-                        ClaudeToken::Progress {
-                            tool_name,
+                        AgentToken::Progress {
+                            name,
                             elapsed_secs,
                         } => {
-                            self.claude_events.push(ClaudeEvent::ToolProgress {
-                                tool_name: tool_name.clone(),
-                                elapsed_secs,
+                            self.plan_events.push(AgentEvent::ToolProgress {
+                                name: name.clone(),
+                                elapsed: elapsed_secs as f32,
                             });
-                            self.push_acp_tool_progress("plan", tool_name, elapsed_secs);
+                            self.push_acp_tool_progress("plan", name, elapsed_secs);
                         }
-                        ClaudeToken::SessionId(session_id) => {
-                            if self.claude_session_id.as_deref() != Some(session_id.as_str()) {
+                        AgentToken::SessionId(session_id) => {
+                            if self.plan_session_id.as_deref() != Some(session_id.as_str()) {
                                 self.add_line(
-                                    &format!("  Claude session id (plan): {}", session_id),
+                                    &format!("  Agent session id (plan): {}", session_id),
                                     LogStatus::Info,
                                     elapsed,
                                 );
                             }
-                            self.claude_session_id = Some(session_id);
+                            self.plan_session_id = Some(session_id);
                         }
-                        ClaudeToken::Done(plan) => {
-                            self.claude_receiver = None;
+                        AgentToken::Done(plan) => {
+                            self.agent_receiver = None;
                             if let Some(line) = self
                                 .lines
                                 .iter_mut()
-                                .find(|l| l.text.contains("Creating plan with Claude"))
+                                .find(|l| l.text.contains("Creating plan"))
                             {
                                 line.status = LogStatus::Success;
                             }
@@ -1129,20 +1205,20 @@ impl StartupState {
                             self.phase_started = elapsed;
                             return;
                         }
-                        ClaudeToken::Error(e) => {
+                        AgentToken::Error(e) => {
                             self.add_line(
-                                &format!("  Claude error: {}", e),
+                                &format!("  Agent error: {}", e),
                                 LogStatus::Error,
                                 elapsed,
                             );
-                            self.claude_receiver = None;
+                            self.agent_receiver = None;
                             self.add_line("", LogStatus::Info, elapsed);
                             self.add_line("Ready for tasks.", LogStatus::Success, elapsed);
                             self.phase = StartupPhase::Complete;
                             self.phase_started = elapsed;
                             return;
                         }
-                        ClaudeToken::Usage(usage) => {
+                        AgentToken::Usage(usage) => {
                             // Accumulate usage data for session stats
                             tracing::info!(
                                 "[STARTUP] Received Usage token: input={}, output={}, cost=${:.4}",
@@ -1187,7 +1263,7 @@ impl StartupState {
                 self.add_line("", LogStatus::Info, elapsed);
 
                 let summary_lines: Vec<String> = self
-                    .claude_full_text
+                    .plan_full_text
                     .lines()
                     .filter(|l| l.starts_with("##") || l.starts_with("- ") || l.starts_with("1."))
                     .take(8)
@@ -1210,22 +1286,22 @@ impl StartupState {
                 // Check for this specific iteration to allow multiple iterations
                 let iteration = self.iteration;
                 let exec_marker = if iteration == 1 {
-                    "Executing plan with Claude...".to_string()
+                    "Executing plan...".to_string()
                 } else {
                     format!("Executing plan (iteration {})", iteration)
                 };
                 if !self.lines.iter().any(|l| l.text.contains(&exec_marker)) {
                     if iteration == 1 {
-                        self.add_line("Executing plan with Claude...", LogStatus::Pending, elapsed);
+                        self.add_line("Executing plan...", LogStatus::Pending, elapsed);
                     } else {
                         self.add_line(
-                            &format!("Executing plan (iteration {}) with Claude...", iteration),
+                            &format!("Executing plan (iteration {})...", iteration),
                             LogStatus::Pending,
                             elapsed,
                         );
                     }
 
-                    let plan = self.claude_full_text.clone();
+                    let plan = self.plan_full_text.clone();
                     let model = self.model;
                     let logger = self.session_logger.clone();
                     let resume_session_id = self.exec_session_id.clone();
@@ -1234,7 +1310,7 @@ impl StartupState {
                     self.exec_receiver = Some(rx);
 
                     std::thread::spawn(move || {
-                        run_claude_execution(&plan, model, resume_session_id, tx, logger);
+                        run_agent_execution(&plan, model, resume_session_id, tx, logger);
                     });
 
                     self.phase = StartupPhase::StreamingExecution;
@@ -1245,7 +1321,7 @@ impl StartupState {
             StartupPhase::StreamingExecution => {
                 if self.exec_receiver.is_none() {
                     if let Some(session_id) = self.exec_session_id.clone() {
-                        let plan = self.claude_full_text.clone();
+                        let plan = self.plan_full_text.clone();
                         let model = self.model;
                         let logger = self.session_logger.clone();
 
@@ -1253,7 +1329,7 @@ impl StartupState {
                         self.exec_receiver = Some(rx);
 
                         std::thread::spawn(move || {
-                            run_claude_execution(&plan, model, Some(session_id), tx, logger);
+                            run_agent_execution(&plan, model, Some(session_id), tx, logger);
                         });
                     }
                 }
@@ -1267,36 +1343,36 @@ impl StartupState {
 
                 for token in tokens {
                     match token {
-                        ClaudeToken::Chunk(text) => {
+                        AgentToken::Text(text) | AgentToken::Chunk(text) => {
                             self.exec_full_text.push_str(&text);
-                            if let Some(ClaudeEvent::Text(s)) = self.exec_events.last_mut() {
+                            if let Some(AgentEvent::Text(s)) = self.exec_events.last_mut() {
                                 s.push_str(&text);
                             } else {
-                                self.exec_events.push(ClaudeEvent::Text(text.clone()));
+                                self.exec_events.push(AgentEvent::Text(text.clone()));
                             }
                             self.push_acp_text("exec", text);
                             self.update_exec_streaming_line(elapsed);
                         }
-                        ClaudeToken::ToolUse { name, params } => {
-                            let params_clone = params.clone();
-                            self.exec_events.push(ClaudeEvent::Tool {
+                        AgentToken::ToolUse { name, params } => {
+                            let params_str = params.to_string();
+                            self.exec_events.push(AgentEvent::Tool {
                                 name: name.clone(),
                                 params,
                                 done: false,
                                 output: None,
                                 is_error: false,
                             });
-                            self.push_acp_tool_use("exec", name, params_clone);
+                            self.push_acp_tool_use("exec", name, params_str);
                             self.update_exec_streaming_line(elapsed);
                         }
-                        ClaudeToken::ToolDone {
+                        AgentToken::ToolDone {
                             name,
                             output,
                             is_error,
                         } => {
                             // Find the matching tool and get its params
                             let params = self.exec_events.iter().rev().find_map(|e| {
-                                if let ClaudeEvent::Tool {
+                                if let AgentEvent::Tool {
                                     name: n,
                                     params,
                                     done,
@@ -1314,7 +1390,7 @@ impl StartupState {
                             });
                             // Mark original as done
                             for event in self.exec_events.iter_mut().rev() {
-                                if let ClaudeEvent::Tool { name: n, done, .. } = event {
+                                if let AgentEvent::Tool { name: n, done, .. } = event {
                                     if n == &name && !*done {
                                         *done = true;
                                         break;
@@ -1323,41 +1399,41 @@ impl StartupState {
                             }
                             // Push completion event with output
                             if let Some(params) = params {
-                                let output_clone = output.clone();
-                                self.exec_events.push(ClaudeEvent::Tool {
+                                let output_clone = Some(output.clone());
+                                self.exec_events.push(AgentEvent::Tool {
                                     name: name.clone(),
                                     params,
                                     done: true,
-                                    output,
+                                    output: Some(output),
                                     is_error,
                                 });
                                 self.push_acp_tool_done("exec", name, output_clone, is_error);
                             } else {
-                                self.push_acp_tool_done("exec", name, output.clone(), is_error);
+                                self.push_acp_tool_done("exec", name, Some(output.clone()), is_error);
                             }
                             self.update_exec_streaming_line(elapsed);
                         }
-                        ClaudeToken::Progress {
-                            tool_name,
+                        AgentToken::Progress {
+                            name,
                             elapsed_secs,
                         } => {
-                            self.exec_events.push(ClaudeEvent::ToolProgress {
-                                tool_name: tool_name.clone(),
-                                elapsed_secs,
+                            self.exec_events.push(AgentEvent::ToolProgress {
+                                name: name.clone(),
+                                elapsed: elapsed_secs as f32,
                             });
-                            self.push_acp_tool_progress("exec", tool_name, elapsed_secs);
+                            self.push_acp_tool_progress("exec", name, elapsed_secs);
                         }
-                        ClaudeToken::SessionId(session_id) => {
+                        AgentToken::SessionId(session_id) => {
                             if self.exec_session_id.as_deref() != Some(session_id.as_str()) {
                                 self.add_line(
-                                    &format!("  Claude session id (exec): {}", session_id),
+                                    &format!("  Agent session id (exec): {}", session_id),
                                     LogStatus::Info,
                                     elapsed,
                                 );
                             }
                             self.exec_session_id = Some(session_id);
                         }
-                        ClaudeToken::Done(_result) => {
+                        AgentToken::Done(_result) => {
                             self.exec_receiver = None;
                             if let Some(line) = self
                                 .lines
@@ -1377,7 +1453,7 @@ impl StartupState {
                             self.phase_started = elapsed;
                             return;
                         }
-                        ClaudeToken::Error(e) => {
+                        AgentToken::Error(e) => {
                             self.add_line(
                                 &format!("  Execution error: {}", e),
                                 LogStatus::Error,
@@ -1390,7 +1466,7 @@ impl StartupState {
                             self.phase_started = elapsed;
                             return;
                         }
-                        ClaudeToken::Usage(usage) => {
+                        AgentToken::Usage(usage) => {
                             // Accumulate usage data for session stats
                             self.session_usage.input_tokens += usage.input_tokens;
                             self.session_usage.output_tokens += usage.output_tokens;
@@ -1429,7 +1505,7 @@ impl StartupState {
                         elapsed,
                     );
 
-                    let plan = self.claude_full_text.clone();
+                    let plan = self.plan_full_text.clone();
                     let exec_result = self.exec_full_text.clone();
                     let model = self.model;
                     let logger = self.session_logger.clone();
@@ -1439,7 +1515,7 @@ impl StartupState {
                     self.review_receiver = Some(rx);
 
                     std::thread::spawn(move || {
-                        run_claude_review(
+                        run_agent_review(
                             &plan,
                             model,
                             &exec_result,
@@ -1457,7 +1533,7 @@ impl StartupState {
             StartupPhase::StreamingReview => {
                 if self.review_receiver.is_none() {
                     if let Some(session_id) = self.review_session_id.clone() {
-                        let plan = self.claude_full_text.clone();
+                        let plan = self.plan_full_text.clone();
                         let exec_result = self.exec_full_text.clone();
                         let model = self.model;
                         let logger = self.session_logger.clone();
@@ -1466,7 +1542,7 @@ impl StartupState {
                         self.review_receiver = Some(rx);
 
                         std::thread::spawn(move || {
-                            run_claude_review(
+                            run_agent_review(
                                 &plan,
                                 model,
                                 &exec_result,
@@ -1487,36 +1563,36 @@ impl StartupState {
 
                 for token in tokens {
                     match token {
-                        ClaudeToken::Chunk(text) => {
+                        AgentToken::Text(text) | AgentToken::Chunk(text) => {
                             self.review_full_text.push_str(&text);
-                            if let Some(ClaudeEvent::Text(s)) = self.review_events.last_mut() {
+                            if let Some(AgentEvent::Text(s)) = self.review_events.last_mut() {
                                 s.push_str(&text);
                             } else {
-                                self.review_events.push(ClaudeEvent::Text(text.clone()));
+                                self.review_events.push(AgentEvent::Text(text.clone()));
                             }
                             self.push_acp_text("review", text);
                             self.update_review_streaming_line(elapsed);
                         }
-                        ClaudeToken::ToolUse { name, params } => {
-                            let params_clone = params.clone();
-                            self.review_events.push(ClaudeEvent::Tool {
+                        AgentToken::ToolUse { name, params } => {
+                            let params_str = params.to_string();
+                            self.review_events.push(AgentEvent::Tool {
                                 name: name.clone(),
                                 params,
                                 done: false,
                                 output: None,
                                 is_error: false,
                             });
-                            self.push_acp_tool_use("review", name, params_clone);
+                            self.push_acp_tool_use("review", name, params_str);
                             self.update_review_streaming_line(elapsed);
                         }
-                        ClaudeToken::ToolDone {
+                        AgentToken::ToolDone {
                             name,
                             output,
                             is_error,
                         } => {
                             // Find the matching tool and get its params
                             let params = self.review_events.iter().rev().find_map(|e| {
-                                if let ClaudeEvent::Tool {
+                                if let AgentEvent::Tool {
                                     name: n,
                                     params,
                                     done,
@@ -1534,7 +1610,7 @@ impl StartupState {
                             });
                             // Mark original as done
                             for event in self.review_events.iter_mut().rev() {
-                                if let ClaudeEvent::Tool { name: n, done, .. } = event {
+                                if let AgentEvent::Tool { name: n, done, .. } = event {
                                     if n == &name && !*done {
                                         *done = true;
                                         break;
@@ -1543,41 +1619,41 @@ impl StartupState {
                             }
                             // Push completion event with output
                             if let Some(params) = params {
-                                let output_clone = output.clone();
-                                self.review_events.push(ClaudeEvent::Tool {
+                                let output_clone = Some(output.clone());
+                                self.review_events.push(AgentEvent::Tool {
                                     name: name.clone(),
                                     params,
                                     done: true,
-                                    output,
+                                    output: Some(output),
                                     is_error,
                                 });
                                 self.push_acp_tool_done("review", name, output_clone, is_error);
                             } else {
-                                self.push_acp_tool_done("review", name, output.clone(), is_error);
+                                self.push_acp_tool_done("review", name, Some(output.clone()), is_error);
                             }
                             self.update_review_streaming_line(elapsed);
                         }
-                        ClaudeToken::Progress {
-                            tool_name,
+                        AgentToken::Progress {
+                            name,
                             elapsed_secs,
                         } => {
-                            self.review_events.push(ClaudeEvent::ToolProgress {
-                                tool_name: tool_name.clone(),
-                                elapsed_secs,
+                            self.review_events.push(AgentEvent::ToolProgress {
+                                name: name.clone(),
+                                elapsed: elapsed_secs as f32,
                             });
-                            self.push_acp_tool_progress("review", tool_name, elapsed_secs);
+                            self.push_acp_tool_progress("review", name, elapsed_secs);
                         }
-                        ClaudeToken::SessionId(session_id) => {
+                        AgentToken::SessionId(session_id) => {
                             if self.review_session_id.as_deref() != Some(session_id.as_str()) {
                                 self.add_line(
-                                    &format!("  Claude session id (review): {}", session_id),
+                                    &format!("  Agent session id (review): {}", session_id),
                                     LogStatus::Info,
                                     elapsed,
                                 );
                             }
                             self.review_session_id = Some(session_id);
                         }
-                        ClaudeToken::Done(review_result) => {
+                        AgentToken::Done(review_result) => {
                             self.review_receiver = None;
                             if let Some(line) = self
                                 .lines
@@ -1605,12 +1681,12 @@ impl StartupState {
                                 );
 
                                 self.iteration += 1;
-                                self.claude_session_id = None;
+                                self.plan_session_id = None;
                                 self.exec_session_id = None;
                                 self.review_session_id = None;
                                 self.fix_session_id = None;
-                                self.claude_full_text = review_result;
-                                self.claude_events.clear();
+                                self.plan_full_text = review_result;
+                                self.plan_events.clear();
                                 self.exec_events.clear();
                                 self.exec_full_text.clear();
                                 self.review_events.clear();
@@ -1621,7 +1697,7 @@ impl StartupState {
                             }
                             return;
                         }
-                        ClaudeToken::Error(e) => {
+                        AgentToken::Error(e) => {
                             self.add_line(
                                 &format!("  Review error: {}", e),
                                 LogStatus::Error,
@@ -1634,7 +1710,7 @@ impl StartupState {
                             self.phase_started = elapsed;
                             return;
                         }
-                        ClaudeToken::Usage(usage) => {
+                        AgentToken::Usage(usage) => {
                             // Accumulate usage data for session stats
                             self.session_usage.input_tokens += usage.input_tokens;
                             self.session_usage.output_tokens += usage.output_tokens;
@@ -1805,7 +1881,7 @@ impl StartupState {
                     self.fix_receiver = Some(rx);
 
                     std::thread::spawn(move || {
-                        run_claude_execution(&fix_prompt, model, resume_session_id, tx, logger);
+                        run_agent_execution(&fix_prompt, model, resume_session_id, tx, logger);
                     });
 
                     self.phase = StartupPhase::StreamingFix;
@@ -1845,7 +1921,7 @@ impl StartupState {
                         self.fix_receiver = Some(rx);
 
                         std::thread::spawn(move || {
-                            run_claude_execution(&fix_prompt, model, Some(session_id), tx, logger);
+                            run_agent_execution(&fix_prompt, model, Some(session_id), tx, logger);
                         });
                     }
                 }
@@ -1859,36 +1935,36 @@ impl StartupState {
 
                 for token in tokens {
                     match token {
-                        ClaudeToken::Chunk(text) => {
+                        AgentToken::Text(text) | AgentToken::Chunk(text) => {
                             self.fix_full_text.push_str(&text);
-                            if let Some(ClaudeEvent::Text(s)) = self.fix_events.last_mut() {
+                            if let Some(AgentEvent::Text(s)) = self.fix_events.last_mut() {
                                 s.push_str(&text);
                             } else {
-                                self.fix_events.push(ClaudeEvent::Text(text.clone()));
+                                self.fix_events.push(AgentEvent::Text(text.clone()));
                             }
                             self.push_acp_text("fix", text);
                             self.update_fix_streaming_line(elapsed);
                         }
-                        ClaudeToken::ToolUse { name, params } => {
-                            let params_clone = params.clone();
-                            self.fix_events.push(ClaudeEvent::Tool {
+                        AgentToken::ToolUse { name, params } => {
+                            let params_str = params.to_string();
+                            self.fix_events.push(AgentEvent::Tool {
                                 name: name.clone(),
                                 params,
                                 done: false,
                                 output: None,
                                 is_error: false,
                             });
-                            self.push_acp_tool_use("fix", name, params_clone);
+                            self.push_acp_tool_use("fix", name, params_str);
                             self.update_fix_streaming_line(elapsed);
                         }
-                        ClaudeToken::ToolDone {
+                        AgentToken::ToolDone {
                             name,
                             output,
                             is_error,
                         } => {
                             // Find the matching tool and get its params
                             let params = self.fix_events.iter().rev().find_map(|e| {
-                                if let ClaudeEvent::Tool {
+                                if let AgentEvent::Tool {
                                     name: n,
                                     params,
                                     done,
@@ -1906,7 +1982,7 @@ impl StartupState {
                             });
                             // Mark original as done
                             for event in self.fix_events.iter_mut().rev() {
-                                if let ClaudeEvent::Tool { name: n, done, .. } = event {
+                                if let AgentEvent::Tool { name: n, done, .. } = event {
                                     if n == &name && !*done {
                                         *done = true;
                                         break;
@@ -1915,41 +1991,41 @@ impl StartupState {
                             }
                             // Push completion event with output
                             if let Some(params) = params {
-                                let output_clone = output.clone();
-                                self.fix_events.push(ClaudeEvent::Tool {
+                                let output_clone = Some(output.clone());
+                                self.fix_events.push(AgentEvent::Tool {
                                     name: name.clone(),
                                     params,
                                     done: true,
-                                    output,
+                                    output: Some(output),
                                     is_error,
                                 });
                                 self.push_acp_tool_done("fix", name, output_clone, is_error);
                             } else {
-                                self.push_acp_tool_done("fix", name, output.clone(), is_error);
+                                self.push_acp_tool_done("fix", name, Some(output.clone()), is_error);
                             }
                             self.update_fix_streaming_line(elapsed);
                         }
-                        ClaudeToken::Progress {
-                            tool_name,
+                        AgentToken::Progress {
+                            name,
                             elapsed_secs,
                         } => {
-                            self.fix_events.push(ClaudeEvent::ToolProgress {
-                                tool_name: tool_name.clone(),
-                                elapsed_secs,
+                            self.fix_events.push(AgentEvent::ToolProgress {
+                                name: name.clone(),
+                                elapsed: elapsed_secs as f32,
                             });
-                            self.push_acp_tool_progress("fix", tool_name, elapsed_secs);
+                            self.push_acp_tool_progress("fix", name, elapsed_secs);
                         }
-                        ClaudeToken::SessionId(session_id) => {
+                        AgentToken::SessionId(session_id) => {
                             if self.fix_session_id.as_deref() != Some(session_id.as_str()) {
                                 self.add_line(
-                                    &format!("  Claude session id (fix): {}", session_id),
+                                    &format!("  Agent session id (fix): {}", session_id),
                                     LogStatus::Info,
                                     elapsed,
                                 );
                             }
                             self.fix_session_id = Some(session_id);
                         }
-                        ClaudeToken::Done(_result) => {
+                        AgentToken::Done(_result) => {
                             self.fix_receiver = None;
                             if let Some(line) = self
                                 .lines
@@ -1974,7 +2050,7 @@ impl StartupState {
                             self.phase_started = elapsed;
                             return;
                         }
-                        ClaudeToken::Error(e) => {
+                        AgentToken::Error(e) => {
                             self.add_line(
                                 &format!("  Fix error: {}", e),
                                 LogStatus::Error,
@@ -1987,7 +2063,7 @@ impl StartupState {
                             self.phase_started = elapsed;
                             return;
                         }
-                        ClaudeToken::Usage(usage) => {
+                        AgentToken::Usage(usage) => {
                             // Accumulate usage data for session stats
                             self.session_usage.input_tokens += usage.input_tokens;
                             self.session_usage.output_tokens += usage.output_tokens;
@@ -2298,28 +2374,28 @@ impl StartupState {
         ));
     }
 
-    pub fn update_claude_streaming_line(&mut self, elapsed: f32) {
+    pub fn update_agent_streaming_line(&mut self, elapsed: f32) {
         let start_idx = self
             .lines
             .iter()
-            .position(|l| l.text.contains("Creating plan with Claude"))
+            .position(|l| l.text.contains("Creating plan"))
             .map(|i| i + 1)
             .unwrap_or(self.lines.len());
 
         self.lines.truncate(start_idx);
 
         let tool_count = self
-            .claude_events
+            .plan_events
             .iter()
-            .filter(|e| matches!(e, ClaudeEvent::Tool { .. }))
+            .filter(|e| matches!(e, AgentEvent::Tool { .. }))
             .count();
         let done_count = self
-            .claude_events
+            .plan_events
             .iter()
-            .filter(|e| matches!(e, ClaudeEvent::Tool { done: true, .. }))
+            .filter(|e| matches!(e, AgentEvent::Tool { done: true, .. }))
             .count();
         let text_count = self
-            .claude_full_text
+            .plan_full_text
             .lines()
             .filter(|l| !l.trim().is_empty())
             .count();
@@ -2335,7 +2411,7 @@ impl StartupState {
             );
         }
 
-        let events = self.claude_events.clone();
+        let events = self.plan_events.clone();
         let start = if events.len() > 12 {
             events.len() - 12
         } else {
@@ -2344,7 +2420,7 @@ impl StartupState {
 
         for event in &events[start..] {
             match event {
-                ClaudeEvent::Text(text) => {
+                AgentEvent::Text(text) => {
                     let lines: Vec<&str> = text.lines().filter(|l| !l.trim().is_empty()).collect();
                     let line_start = if lines.len() > 10 {
                         lines.len() - 10
@@ -2356,10 +2432,10 @@ impl StartupState {
                         self.add_line(&format!("  {}", line), LogStatus::Thinking, elapsed);
                     }
                 }
-                ClaudeEvent::Tool { .. } => {
+                AgentEvent::Tool { .. } => {
                     // Tool cards handle tool display via SessionEvents, skip here
                 }
-                ClaudeEvent::ToolProgress { .. } => {
+                AgentEvent::ToolProgress { .. } => {
                     // Tool cards handle progress via SessionEvents
                 }
             }
@@ -2379,12 +2455,12 @@ impl StartupState {
         let tool_count = self
             .exec_events
             .iter()
-            .filter(|e| matches!(e, ClaudeEvent::Tool { .. }))
+            .filter(|e| matches!(e, AgentEvent::Tool { .. }))
             .count();
         let done_count = self
             .exec_events
             .iter()
-            .filter(|e| matches!(e, ClaudeEvent::Tool { done: true, .. }))
+            .filter(|e| matches!(e, AgentEvent::Tool { done: true, .. }))
             .count();
         let text_count = self
             .exec_full_text
@@ -2412,7 +2488,7 @@ impl StartupState {
 
         for event in &events[start..] {
             match event {
-                ClaudeEvent::Text(text) => {
+                AgentEvent::Text(text) => {
                     let lines: Vec<&str> = text.lines().filter(|l| !l.trim().is_empty()).collect();
                     let line_start = if lines.len() > 10 {
                         lines.len() - 10
@@ -2423,10 +2499,10 @@ impl StartupState {
                         self.add_line(&format!("  {}", line), LogStatus::Thinking, elapsed);
                     }
                 }
-                ClaudeEvent::Tool { .. } => {
+                AgentEvent::Tool { .. } => {
                     // Tool cards handle tool display via SessionEvents
                 }
-                ClaudeEvent::ToolProgress { .. } => {
+                AgentEvent::ToolProgress { .. } => {
                     // Tool cards handle progress via SessionEvents
                 }
             }
@@ -2446,12 +2522,12 @@ impl StartupState {
         let tool_count = self
             .review_events
             .iter()
-            .filter(|e| matches!(e, ClaudeEvent::Tool { .. }))
+            .filter(|e| matches!(e, AgentEvent::Tool { .. }))
             .count();
         let done_count = self
             .review_events
             .iter()
-            .filter(|e| matches!(e, ClaudeEvent::Tool { done: true, .. }))
+            .filter(|e| matches!(e, AgentEvent::Tool { done: true, .. }))
             .count();
         let text_count = self
             .review_full_text
@@ -2479,7 +2555,7 @@ impl StartupState {
 
         for event in &events[start..] {
             match event {
-                ClaudeEvent::Text(text) => {
+                AgentEvent::Text(text) => {
                     let lines: Vec<&str> = text.lines().filter(|l| !l.trim().is_empty()).collect();
                     let line_start = if lines.len() > 10 {
                         lines.len() - 10
@@ -2490,10 +2566,10 @@ impl StartupState {
                         self.add_line(&format!("  {}", line), LogStatus::Thinking, elapsed);
                     }
                 }
-                ClaudeEvent::Tool { .. } => {
+                AgentEvent::Tool { .. } => {
                     // Tool cards handle tool display via SessionEvents
                 }
-                ClaudeEvent::ToolProgress { .. } => {
+                AgentEvent::ToolProgress { .. } => {
                     // Tool cards handle progress via SessionEvents
                 }
             }
@@ -2513,12 +2589,12 @@ impl StartupState {
         let tool_count = self
             .fix_events
             .iter()
-            .filter(|e| matches!(e, ClaudeEvent::Tool { .. }))
+            .filter(|e| matches!(e, AgentEvent::Tool { .. }))
             .count();
         let done_count = self
             .fix_events
             .iter()
-            .filter(|e| matches!(e, ClaudeEvent::Tool { done: true, .. }))
+            .filter(|e| matches!(e, AgentEvent::Tool { done: true, .. }))
             .count();
         let text_count = self
             .fix_full_text
@@ -2546,7 +2622,7 @@ impl StartupState {
 
         for event in &events[start..] {
             match event {
-                ClaudeEvent::Text(text) => {
+                AgentEvent::Text(text) => {
                     let lines: Vec<&str> = text.lines().filter(|l| !l.trim().is_empty()).collect();
                     let line_start = if lines.len() > 10 {
                         lines.len() - 10
@@ -2557,10 +2633,10 @@ impl StartupState {
                         self.add_line(&format!("  {}", line), LogStatus::Thinking, elapsed);
                     }
                 }
-                ClaudeEvent::Tool { .. } => {
+                AgentEvent::Tool { .. } => {
                     // Tool cards handle tool display via SessionEvents
                 }
-                ClaudeEvent::ToolProgress { .. } => {
+                AgentEvent::ToolProgress { .. } => {
                     // Tool cards handle progress via SessionEvents
                 }
             }
@@ -2600,14 +2676,6 @@ impl StartupState {
         // Tools section (separate from Preflight for cleaner grouping)
         self.add_line_to_section("Tools:", LogStatus::Info, elapsed, StartupSection::Tools);
 
-        if let Some(ref claude) = config.tools.claude {
-            self.add_line_to_section(
-                &format!("  [OK] claude: {}", shorten_path(&claude.path)),
-                LogStatus::Success,
-                elapsed,
-                StartupSection::Tools,
-            );
-        }
         if let Some(ref codex) = config.tools.codex {
             self.add_line_to_section(
                 &format!("  [OK] codex: {}", shorten_path(&codex.path)),
@@ -2645,14 +2713,14 @@ impl StartupState {
             phase_started_offset: elapsed - self.phase_started,
             iteration: self.iteration,
             model: self.model,
-            // Claude SDK session IDs captured from SDK responses
-            claude_session_id: self.claude_session_id.clone(),
+            // Agent session IDs captured from SDK responses
+            plan_session_id: self.plan_session_id.clone(),
             exec_session_id: self.exec_session_id.clone(),
             review_session_id: self.review_session_id.clone(),
             fix_session_id: self.fix_session_id.clone(),
             // Events
-            claude_events: self.claude_events.clone(),
-            claude_full_text: self.claude_full_text.clone(),
+            plan_events: self.plan_events.clone(),
+            plan_full_text: self.plan_full_text.clone(),
             exec_events: self.exec_events.clone(),
             exec_full_text: self.exec_full_text.clone(),
             review_events: self.review_events.clone(),
@@ -2692,10 +2760,10 @@ impl StartupState {
             preflight_config: None, // Must be re-run or cached separately
             model: cp.model,
             issue_summary: None, // Could be saved in checkpoint if needed
-            claude_receiver: None, // Cannot persist channels
-            claude_session_id: cp.claude_session_id,
-            claude_events: cp.claude_events,
-            claude_full_text: cp.claude_full_text,
+            agent_receiver: None, // Cannot persist channels
+            plan_session_id: cp.plan_session_id,
+            plan_events: cp.plan_events,
+            plan_full_text: cp.plan_full_text,
             acp_events: cp.acp_events,
             plan_path: cp.plan_path,
             exec_receiver: None,
@@ -2724,7 +2792,7 @@ impl StartupState {
             report_path: None,
             compute_mix: None,
             pylon_started: false,
-            session_usage: ClaudeUsageData::default(), // Not persisted in checkpoint yet
+            session_usage: UsageData::default(), // Not persisted in checkpoint yet
             user_prompt: None, // Not persisted in checkpoint yet
             dspy_plan: None, // Not persisted in checkpoint yet
         }
@@ -2736,7 +2804,7 @@ impl StartupState {
     pub fn is_phase_resumable(&self) -> bool {
         matches!(
             self.phase,
-            StartupPhase::PlanningWithClaude
+            StartupPhase::Planning
                 | StartupPhase::ExecutingPlan
                 | StartupPhase::ReviewingWork
                 | StartupPhase::FixingVerificationFailures

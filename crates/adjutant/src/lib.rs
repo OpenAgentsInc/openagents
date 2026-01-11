@@ -3,7 +3,7 @@
 //! Named after StarCraft's command & control AI.
 //!
 //! Adjutant is not just a router - it directly uses tools to accomplish tasks.
-//! For complex work, it can delegate to Claude Code.
+//! For complex work, it can delegate to Codex CLI.
 //!
 //! ## Architecture
 //!
@@ -23,25 +23,23 @@
 //! ┌─────────────────────────────────────────────────────────────┐
 //! │                       ADJUTANT                               │
 //! │  The actual agent that DOES THE WORK                         │
-//! │  - Prioritizes Claude/Codex via agent SDKs                   │
+//! │  - Prioritizes Codex via agent SDK                           │
 //! │  - Falls back to local LLM or Cerebras TieredExecutor        │
 //! │  - Uses tools directly (Read, Edit, Bash, Glob, Grep)        │
-//! │  - Delegates to Claude Code for very complex work            │
+//! │  - Delegates to Codex CLI for very complex work              │
 //! │  - Uses RLM for large context analysis                       │
 //! └─────────────────────────────────────────────────────────────┘
 //! ```
 //!
 //! ## Execution Priority
 //!
-//! 1. **Claude Pro/Max** - If Claude CLI is installed, use `claude-agent-sdk`
-//! 2. **Codex CLI** - If Codex CLI is installed, use `codex-agent-sdk`
-//! 3. **Local LLM** - If llama.cpp/GPT-OSS is available
-//! 4. **Tiered/Analysis** - If Cerebras is configured or as a fallback
+//! 1. **Codex CLI** - If Codex CLI is installed, use `codex-agent-sdk`
+//! 2. **Local LLM** - If llama.cpp/GPT-OSS is available
+//! 3. **Tiered/Analysis** - If Cerebras is configured or as a fallback
 
 pub mod auth;
 pub mod autopilot_loop;
 pub mod cli;
-pub mod claude_executor;
 pub mod codex_executor;
 pub mod delegate;
 pub mod dspy;
@@ -59,8 +57,7 @@ use std::sync::Arc;
 use thiserror::Error;
 use tokio::sync::mpsc;
 
-pub use auth::{get_claude_path, get_codex_path, has_claude_cli, has_codex_cli};
-pub use claude_executor::ClaudeExecutor;
+pub use auth::{get_codex_path, has_codex_cli};
 pub use codex_executor::CodexExecutor;
 pub use executor::TaskResult;
 pub use planner::{Complexity, TaskPlan};
@@ -89,7 +86,7 @@ pub enum AdjutantError {
     #[error("Tool error: {0}")]
     ToolError(String),
 
-    #[error("Claude Code delegation failed: {0}")]
+    #[error("Codex delegation failed: {0}")]
     DelegationFailed(String),
 
     #[error("RLM error: {0}")]
@@ -137,7 +134,7 @@ impl Task {
         }
     }
 
-    /// Convert task to a prompt for Claude.
+    /// Convert task to a prompt for the LLM.
     pub fn to_prompt(&self) -> String {
         let mut prompt = format!("Task {}: {}\n\n{}", self.id, self.title, self.description);
 
@@ -156,7 +153,6 @@ impl Task {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ExecutionBackend {
     Auto,
-    Claude,
     Codex,
     LocalLlm,
     LocalTools,
@@ -166,9 +162,6 @@ impl ExecutionBackend {
     fn resolve(self) -> Option<Self> {
         match self {
             ExecutionBackend::Auto => {
-                if auth::has_claude_cli() {
-                    return Some(ExecutionBackend::Claude);
-                }
                 if auth::has_codex_cli() {
                     return Some(ExecutionBackend::Codex);
                 }
@@ -177,7 +170,6 @@ impl ExecutionBackend {
                 }
                 None
             }
-            ExecutionBackend::Claude => auth::has_claude_cli().then_some(self),
             ExecutionBackend::Codex => auth::has_codex_cli().then_some(self),
             ExecutionBackend::LocalLlm => {
                 dspy::lm_config::check_llamacpp_available().then_some(self)
@@ -202,7 +194,7 @@ pub struct Adjutant {
     manifest: OanixManifest,
     /// Workspace root
     workspace_root: PathBuf,
-    /// Session ID for conversation continuity (used with Claude SDK)
+    /// Session ID for conversation continuity
     session_id: Option<String>,
     /// Preferred execution backend (overrides auto-detection)
     execution_backend: ExecutionBackend,
@@ -341,21 +333,6 @@ impl Adjutant {
         }
 
         match resolved_backend {
-            Some(ExecutionBackend::Claude) => {
-                let context = self.build_context(&plan).await?;
-                let executor = ClaudeExecutor::new(&self.workspace_root);
-
-                if use_rlm {
-                    tracing::info!("Using Claude with RLM support for complex analysis");
-                    let enable_rlm_tools = std::env::var("ADJUTANT_ENABLE_RLM")
-                        .map(|v| v == "1" || v.to_lowercase() == "true")
-                        .unwrap_or(true);
-                    return executor.execute_with_rlm(task, &context, enable_rlm_tools).await;
-                }
-
-                tracing::info!("Using Claude standard execution");
-                return executor.execute(task, &context, &mut self.tools).await;
-            }
             Some(ExecutionBackend::Codex) => {
                 let executor = CodexExecutor::new(&self.workspace_root);
                 tracing::info!("Using Codex standard execution");
@@ -378,9 +355,9 @@ impl Adjutant {
 
         if delegation.should_delegate {
             match delegation.delegation_target.as_str() {
-                "claude_code" => {
-                    tracing::info!("DSPy: delegating to Claude Code (confidence: {:.2})", delegation.confidence);
-                    return self.delegate_to_claude_code(task).await;
+                "codex" | "claude_code" => {
+                    tracing::info!("DSPy: delegating to Codex (confidence: {:.2})", delegation.confidence);
+                    return self.delegate_to_codex(task).await;
                 }
                 "rlm" => {
                     tracing::info!("DSPy: using RLM delegation (confidence: {:.2})", delegation.confidence);
@@ -395,8 +372,8 @@ impl Adjutant {
         // 5. Legacy fallback: Check complexity for delegation or RLM
         // (in case DSPy pipeline didn't recommend delegation but legacy rules would)
         if plan.complexity >= Complexity::High || plan.files.len() > 20 {
-            tracing::info!("Legacy fallback: complexity high - delegating to Claude Code");
-            return self.delegate_to_claude_code(task).await;
+            tracing::info!("Legacy fallback: complexity high - delegating to Codex");
+            return self.delegate_to_codex(task).await;
         }
 
         if plan.estimated_tokens > 100_000 {
@@ -562,12 +539,6 @@ impl Adjutant {
                 tracing::info!("Streaming with local llama.cpp/GPT-OSS");
                 return self
                     .stream_with_local_lm(task, &plan, token_tx, acp_sender)
-                    .await;
-            }
-            Some(ExecutionBackend::Claude) => {
-                tracing::info!("Streaming with Claude SDK");
-                return self
-                    .stream_with_claude_sdk(task, token_tx, acp_sender)
                     .await;
             }
             Some(ExecutionBackend::Codex) => {
@@ -1070,22 +1041,6 @@ impl Adjutant {
         })
     }
 
-    /// Stream response from Claude SDK with real-time token output.
-    ///
-    /// This method streams tokens from the Claude SDK to the UI in real-time,
-    /// rather than waiting for the complete response before displaying anything.
-    async fn stream_with_claude_sdk(
-        &mut self,
-        task: &Task,
-        token_tx: mpsc::UnboundedSender<String>,
-        acp_sender: Option<crate::autopilot_loop::AcpEventSender>,
-    ) -> Result<TaskResult, AdjutantError> {
-        let executor = ClaudeExecutor::new(&self.workspace_root);
-        executor
-            .execute_streaming(task, token_tx, acp_sender)
-            .await
-    }
-
     /// Execute task using local LM (llama.cpp/GPT-OSS).
     async fn execute_with_local_lm(
         &mut self,
@@ -1201,12 +1156,12 @@ impl Adjutant {
         executor::execute_with_tools(&mut self.tools, &self.workspace_root, task, plan).await
     }
 
-    /// Delegate complex work to Claude Code.
-    async fn delegate_to_claude_code(&self, task: &Task) -> Result<TaskResult, AdjutantError> {
-        delegate::delegate_to_claude_code(&self.workspace_root, task).await
+    /// Delegate complex work to Codex CLI.
+    async fn delegate_to_codex(&self, task: &Task) -> Result<TaskResult, AdjutantError> {
+        delegate::delegate_to_codex(&self.workspace_root, task).await
     }
 
-    /// Execute task using RLM delegate for large context (fallback when Claude CLI not available).
+    /// Execute task using RLM delegate for large context.
     async fn execute_with_rlm_delegate(
         &self,
         task: &Task,

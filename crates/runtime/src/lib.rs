@@ -109,7 +109,6 @@ pub mod agent;
 #[cfg(all(feature = "browser", target_arch = "wasm32"))]
 pub mod browser;
 pub mod budget;
-pub mod claude;
 pub mod dspy_pipelines;
 pub mod dspy_tools;
 #[cfg(feature = "cloudflare")]
@@ -146,19 +145,6 @@ pub use agent::{Agent, AgentConfig, AgentContext, AgentState};
 #[cfg(all(feature = "browser", target_arch = "wasm32"))]
 pub use browser::{BrowserRuntime, BrowserRuntimeConfig};
 pub use budget::{BudgetError, BudgetPolicy, BudgetReservation, BudgetState, BudgetTracker};
-pub use claude::{
-    ChunkType, ClaudeCapabilities, ClaudeChunk, ClaudeError, ClaudeFs, ClaudeModelInfo,
-    ClaudePolicy, ClaudePricing, ClaudeProvider, ClaudeProviderInfo, ClaudeProviderStatus,
-    ClaudeRequest, ClaudeResponse, ClaudeRouter, ClaudeSessionAutonomy, ClaudeSessionStatus,
-    ClaudeUsage, ClaudeUsageState, IsolationMode, NetworkMode, RateLimit, RepoFilterMode,
-    SessionState as ClaudeSessionState, ToolDefinition, ToolLogEntry, TunnelAuth,
-    TunnelAuthChallenge, TunnelAuthResponse, TunnelAuthState, TunnelEndpoint,
-};
-#[cfg(not(target_arch = "wasm32"))]
-pub use claude::{
-    CloudProvider as ClaudeCloudProvider, LocalProvider as ClaudeLocalProvider,
-    TunnelProvider as ClaudeTunnelProvider,
-};
 #[cfg(feature = "cloudflare")]
 pub use cloudflare::{CloudflareAgent, set_cloudflare_agent_factory};
 #[cfg(feature = "cloudflare")]

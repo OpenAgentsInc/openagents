@@ -1,6 +1,6 @@
 //! Startup animation sequence
 
-use autopilot_core::{ClaudeModel, LogStatus, StartupPhase, StartupState, wrap_text};
+use autopilot_core::{AgentModel, LogStatus, StartupPhase, StartupState, wrap_text};
 use std::time::Instant;
 use wgpui::{
     Bounds, Component, EventContext, EventResult, Hsla, InputEvent, PaintContext, Point,
@@ -18,7 +18,7 @@ impl StartupSequence {
     pub fn new() -> Self {
         Self {
             start_time: Instant::now(),
-            startup_state: StartupState::with_model(ClaudeModel::Sonnet),
+            startup_state: StartupState::with_model(AgentModel::Sonnet),
             complete: false,
         }
     }

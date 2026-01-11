@@ -17,8 +17,6 @@ use frlm::error::{FrlmError, Result as FrlmResult};
 use frlm::policy::FrlmPolicy;
 use frlm::trace_db::TraceDbWriter;
 use frlm::types::{Fragment, FrlmProgram, SubQuery, SubQueryResult, Venue};
-#[cfg(feature = "claude")]
-use frlm::ClaudeLocalExecutor;
 use k256::schnorr::signature::Signer;
 use k256::schnorr::SigningKey;
 use nostr::nip90::KIND_JOB_RLM_SUBQUERY;
@@ -657,21 +655,7 @@ pub async fn run(args: RlmArgs) -> anyhow::Result<()> {
         None
     };
 
-    let local_executor: Option<Arc<dyn LocalExecutor>> = if args.backend == "claude" {
-        #[cfg(feature = "claude")]
-        {
-            let workspace = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-            println!("Using Claude backend");
-            Some(Arc::new(ClaudeLocalExecutor::new(workspace)))
-        }
-        #[cfg(not(feature = "claude"))]
-        {
-            anyhow::bail!(
-                "Claude backend requested but 'claude' feature not enabled.\n\
-                 Rebuild with: cargo build -p pylon --features claude"
-            );
-        }
-    } else if args.local_only || args.backend != "auto" {
+    let local_executor: Option<Arc<dyn LocalExecutor>> = if args.local_only || args.backend != "auto" {
         Some(Arc::new(LocalBackendExecutor::new().await?))
     } else {
         match LocalBackendExecutor::new().await {

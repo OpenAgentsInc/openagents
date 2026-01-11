@@ -1,27 +1,27 @@
-//! Delegation - when Adjutant needs help from Claude Code or RLM.
+//! Delegation - when Adjutant needs help from Codex CLI or RLM.
 //!
 //! Adjutant can:
-//! - Delegate complex multi-file refactors to Claude Code
+//! - Delegate complex multi-file refactors to Codex CLI
 //! - Use RLM for massive context analysis
 
 use crate::{AdjutantError, Task, TaskPlan, TaskResult};
 use std::path::Path;
 use std::process::Command;
 
-/// Delegate complex work to Claude Code.
+/// Delegate complex work to Codex CLI.
 ///
-/// This spawns Claude Code as a subprocess with the task prompt.
-/// Claude Code has access to all tools and can handle complex multi-file work.
-pub async fn delegate_to_claude_code(
+/// This spawns Codex CLI as a subprocess with the task prompt.
+/// Codex has access to all tools and can handle complex multi-file work.
+pub async fn delegate_to_codex(
     workspace_root: &Path,
     task: &Task,
 ) -> Result<TaskResult, AdjutantError> {
-    tracing::info!("Delegating to Claude Code: {}", task.title);
+    tracing::info!("Delegating to Codex: {}", task.title);
 
-    // Check if claude is available
-    let claude_path = which::which("claude").map_err(|_| {
+    // Check if codex is available
+    let codex_path = which::which("codex").map_err(|_| {
         AdjutantError::DelegationFailed(
-            "Claude Code CLI not found. Install with: npm install -g @anthropic-ai/claude-code"
+            "Codex CLI not found. Ensure `codex` is in your PATH."
                 .to_string(),
         )
     })?;
@@ -29,15 +29,15 @@ pub async fn delegate_to_claude_code(
     // Build the prompt
     let prompt = task.to_prompt();
 
-    // Run Claude Code with the prompt
-    let output = Command::new(claude_path)
+    // Run Codex with the prompt
+    let output = Command::new(codex_path)
         .arg("--print")
         .arg(&prompt)
         .arg("--allowedTools")
         .arg("Read,Edit,Bash,Glob,Grep")
         .current_dir(workspace_root)
         .output()
-        .map_err(|e| AdjutantError::DelegationFailed(format!("Failed to run Claude Code: {}", e)))?;
+        .map_err(|e| AdjutantError::DelegationFailed(format!("Failed to run Codex: {}", e)))?;
 
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
@@ -45,7 +45,7 @@ pub async fn delegate_to_claude_code(
     if output.status.success() {
         Ok(TaskResult {
             success: true,
-            summary: format!("Claude Code completed task: {}", task.title),
+            summary: format!("Codex completed task: {}", task.title),
             modified_files: extract_modified_files(&stdout),
             commit_hash: extract_commit_hash(&stdout),
             error: None,
@@ -57,7 +57,7 @@ pub async fn delegate_to_claude_code(
             summary: String::new(),
             modified_files: Vec::new(),
             commit_hash: None,
-            error: Some(format!("Claude Code failed: {}", stderr)),
+            error: Some(format!("Codex failed: {}", stderr)),
             session_id: None,
         })
     }
@@ -125,7 +125,7 @@ pub async fn execute_with_rlm(
     }
 }
 
-/// Extract modified file paths from Claude Code output.
+/// Extract modified file paths from Codex output.
 fn extract_modified_files(output: &str) -> Vec<String> {
     let mut files = Vec::new();
 
@@ -146,7 +146,7 @@ fn extract_modified_files(output: &str) -> Vec<String> {
     files
 }
 
-/// Extract commit hash from Claude Code output.
+/// Extract commit hash from Codex output.
 fn extract_commit_hash(output: &str) -> Option<String> {
     // Look for patterns like "commit abc123" or "[abc123]"
     for line in output.lines() {

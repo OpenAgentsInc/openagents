@@ -21,9 +21,6 @@ tower-http = { version = "0.6", features = ["cors", "trace"] }
 # WebSocket
 futures-util = "0.3"
 
-# Claude SDK for running agent queries
-claude-agent-sdk = { workspace = true }
-
 # Serialization
 serde = { workspace = true }
 serde_json = { workspace = true }

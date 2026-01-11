@@ -18,7 +18,6 @@ path = "src/bin/rlm_mcp_server.rs"
 [features]
 default = []
 dspy = ["dsrs", "anyhow"]
-claude = ["claude-agent-sdk", "futures"]
 
 [dependencies]
 # LM Router for multi-backend routing (required)
@@ -31,8 +30,6 @@ anyhow = { version = "1", optional = true }
 # FM Bridge for LLM inference (optional, for backwards compatibility)
 fm-bridge = { path = "../fm-bridge", optional = true }
 
-# Claude Agent SDK for using Claude as RLM backend (optional)
-claude-agent-sdk = { path = "../claude-agent-sdk", optional = true }
 futures = { version = "0.3", optional = true }
 
 # Async runtime

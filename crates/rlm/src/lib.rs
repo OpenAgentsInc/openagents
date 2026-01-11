@@ -36,8 +36,6 @@ pub mod experiment;
 mod client;
 #[cfg(feature = "fm-bridge")]
 pub mod cli;
-#[cfg(feature = "claude")]
-mod claude_client;
 mod command;
 mod context;
 mod engine;
@@ -83,11 +81,7 @@ pub use prompts::{
 };
 pub use python_executor::PythonExecutor;
 
-// Claude client (optional)
-#[cfg(feature = "claude")]
-pub use claude_client::ClaudeLlmClient;
-
-// MCP tools for Claude integration
+// MCP tools for integration
 pub use mcp_tools::{
     rlm_tool_definitions, RlmFanoutInput, RlmFanoutOutput, RlmQueryInput, RlmQueryOutput,
     WorkerResult,

@@ -84,7 +84,6 @@ compute = { path = "../compute" }
 spark = { package = "openagents-spark", path = "../spark" }
 bitcoin = { workspace = true }
 nostr = { workspace = true }
-claude-agent-sdk = { path = "../claude-agent-sdk" }
 tokio-tungstenite = "0.24"
 daytona = { path = "../daytona" }
 

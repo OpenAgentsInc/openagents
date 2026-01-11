@@ -56,12 +56,6 @@ pub fn run(cmd: PylonCommands) -> anyhow::Result<()> {
                 })
                 .await
             }
-            PylonCommands::Connect(args) => {
-                pylon::cli::execute(pylon::cli::PylonCli {
-                    command: pylon::cli::Commands::Connect(args),
-                })
-                .await
-            }
             PylonCommands::Wallet(args) => {
                 pylon::cli::execute(pylon::cli::PylonCli {
                     command: pylon::cli::Commands::Wallet(args),
@@ -83,6 +77,18 @@ pub fn run(cmd: PylonCommands) -> anyhow::Result<()> {
             PylonCommands::Infer(args) => {
                 pylon::cli::execute(pylon::cli::PylonCli {
                     command: pylon::cli::Commands::Infer(args),
+                })
+                .await
+            }
+            PylonCommands::Rlm(args) => {
+                pylon::cli::execute(pylon::cli::PylonCli {
+                    command: pylon::cli::Commands::Rlm(args),
+                })
+                .await
+            }
+            PylonCommands::Gateway(args) => {
+                pylon::cli::execute(pylon::cli::PylonCli {
+                    command: pylon::cli::Commands::Gateway(args),
                 })
                 .await
             }

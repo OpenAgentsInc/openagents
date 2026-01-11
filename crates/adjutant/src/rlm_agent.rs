@@ -1,31 +1,43 @@
-//! RLM Custom Agent for Claude.
+//! RLM Custom Agent definition.
 //!
-//! Defines a Claude subagent that uses RLM patterns for deep recursive analysis.
+//! Defines an agent configuration that uses RLM patterns for deep recursive analysis.
 //! This agent is designed to:
 //! - Decompose complex problems into verifiable sub-questions
-//! - Execute Python code to gather evidence
+//! - Execute code to gather evidence
 //! - Verify hypotheses against execution results
 //! - Iterate until a confident answer is reached
-//!
-//! # Usage
-//!
-//! The agent is registered with Claude via QueryOptions:
-//!
-//! ```rust,ignore
-//! use adjutant::rlm_agent::rlm_agent_definition;
-//! use claude_agent_sdk::QueryOptions;
-//!
-//! let options = QueryOptions::new()
-//!     .agent("rlm-analyzer", rlm_agent_definition());
-//! ```
 
-use claude_agent_sdk::{AgentDefinition, AgentModel};
+/// Agent model selection for execution.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AgentModel {
+    /// Fast, cost-efficient model
+    Sonnet,
+    /// Most capable model
+    Opus,
+    /// Fastest model
+    Haiku,
+}
 
-/// Create the RLM agent definition for Claude.
+/// Definition for an RLM agent.
+#[derive(Debug, Clone)]
+pub struct AgentDefinition {
+    /// Description of what the agent does
+    pub description: String,
+    /// System prompt for the agent
+    pub prompt: String,
+    /// List of allowed tools
+    pub tools: Option<Vec<String>>,
+    /// List of disallowed tools
+    pub disallowed_tools: Option<Vec<String>>,
+    /// Model to use for execution
+    pub model: Option<AgentModel>,
+}
+
+/// Create the RLM agent definition.
 ///
 /// This agent specializes in deep recursive analysis using the RLM pattern:
 /// 1. DECOMPOSE: Break the problem into verifiable sub-questions
-/// 2. EXECUTE: Write Python code to gather evidence
+/// 2. EXECUTE: Write code to gather evidence
 /// 3. VERIFY: Check hypotheses against execution results
 /// 4. ITERATE: Refine analysis based on findings
 /// 5. SYNTHESIZE: Combine findings into a final answer
@@ -50,7 +62,6 @@ pub fn rlm_agent_definition() -> AgentDefinition {
             "Write".to_string(),
         ]),
         model: Some(AgentModel::Sonnet), // Use Sonnet for cost efficiency
-        critical_system_reminder_experimental: None,
     }
 }
 
@@ -74,7 +85,6 @@ pub fn rlm_agent_with_write_access() -> AgentDefinition {
         ]),
         disallowed_tools: None,
         model: Some(AgentModel::Sonnet),
-        critical_system_reminder_experimental: None,
     }
 }
 
@@ -92,7 +102,7 @@ Break the problem into specific, verifiable sub-questions. Each sub-question sho
 - Testable through code execution or file inspection
 
 ### 2. EXECUTE
-For each sub-question, write Python code to gather evidence:
+For each sub-question, write code to gather evidence:
 - Use search_context(pattern) to find text in loaded context
 - Use file operations to examine code structure
 - Run tests or validation commands when appropriate
@@ -117,7 +127,7 @@ Once all sub-questions are answered:
 
 ## Execution Guidelines
 
-When writing Python code:
+When writing code:
 - Be explicit about what you're testing
 - Print intermediate results for verification
 - Handle errors gracefully
@@ -135,7 +145,7 @@ For intermediate steps:
 ```
 ## Hypothesis: [what you're testing]
 ## Code:
-[Python code to test]
+[code to test]
 ## Result:
 [Execution output]
 ## Conclusion:

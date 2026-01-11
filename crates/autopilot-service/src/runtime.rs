@@ -2,7 +2,7 @@ use std::path::PathBuf;
 use std::time::Instant;
 
 use autopilot_core::{
-    ClaudeModel, ClaudeUsageData, LogLine, LogStatus, SessionCheckpoint, StartupPhase,
+    AgentModel, UsageData, LogLine, LogStatus, SessionCheckpoint, StartupPhase,
     StartupSection, StartupState, ACP_PHASE_META_KEY, ACP_TOOL_NAME_META_KEY,
     ACP_TOOL_PROGRESS_META_KEY,
 };
@@ -58,13 +58,13 @@ pub struct LogSection {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RuntimeSnapshot {
     pub phase: StartupPhase,
-    pub model: ClaudeModel,
+    pub model: AgentModel,
     pub lines: Vec<LogLine>,
     /// Grouped sections for collapsible UI (startup phases only).
     pub sections: Vec<LogSection>,
     pub events: Vec<SessionEvent>,
     /// Accumulated session usage stats (tokens, cost, duration).
-    pub session_usage: ClaudeUsageData,
+    pub session_usage: UsageData,
     pub autopilot_session_id: String,
     pub sdk_session_ids: SdkSessionIds,
 }
@@ -76,7 +76,7 @@ pub struct AutopilotRuntime {
 }
 
 impl AutopilotRuntime {
-    pub fn new(model: ClaudeModel) -> Self {
+    pub fn new(model: AgentModel) -> Self {
         Self {
             started_at: Instant::now(),
             state: StartupState::with_model(model),
@@ -85,7 +85,7 @@ impl AutopilotRuntime {
     }
 
     /// Create a new runtime in idle state, waiting for user input.
-    pub fn new_idle(model: ClaudeModel) -> Self {
+    pub fn new_idle(model: AgentModel) -> Self {
         Self {
             started_at: Instant::now(),
             state: StartupState::new_idle(model),
@@ -114,7 +114,7 @@ impl AutopilotRuntime {
             session_usage: self.state.session_usage.clone(),
             autopilot_session_id: self.state.session_id.clone(),
             sdk_session_ids: SdkSessionIds {
-                plan: self.state.claude_session_id.clone(),
+                plan: self.state.plan_session_id.clone(),
                 exec: self.state.exec_session_id.clone(),
                 review: self.state.review_session_id.clone(),
                 fix: self.state.fix_session_id.clone(),
@@ -139,7 +139,7 @@ impl AutopilotRuntime {
         for line in lines {
             if let Some(section) = line.section {
                 // Only group startup sections, not Claude
-                if section != StartupSection::Claude {
+                if section != StartupSection::Agent {
                     section_lines.entry(section).or_default().push(line.clone());
                 }
             }
@@ -201,12 +201,12 @@ impl AutopilotRuntime {
     }
 
     /// Set the model for this runtime.
-    pub fn set_model(&mut self, model: ClaudeModel) {
+    pub fn set_model(&mut self, model: AgentModel) {
         self.state.model = model;
     }
 
     /// Get the current model.
-    pub fn model(&self) -> ClaudeModel {
+    pub fn model(&self) -> AgentModel {
         self.state.model
     }
 
@@ -221,14 +221,14 @@ impl AutopilotRuntime {
     }
 
     /// Reset runtime to fresh state with specified model.
-    pub fn reset(&mut self, model: ClaudeModel) {
+    pub fn reset(&mut self, model: AgentModel) {
         self.started_at = Instant::now();
         self.state = StartupState::with_model(model);
         self.acp_cursor = 0;
     }
 
     /// Reset runtime to idle state, waiting for user input.
-    pub fn reset_to_idle(&mut self, model: ClaudeModel) {
+    pub fn reset_to_idle(&mut self, model: AgentModel) {
         self.started_at = Instant::now();
         self.state = StartupState::new_idle(model);
         self.acp_cursor = 0;
@@ -418,6 +418,6 @@ impl AutopilotRuntime {
 
 impl Default for AutopilotRuntime {
     fn default() -> Self {
-        Self::new(ClaudeModel::default())
+        Self::new(AgentModel::default())
     }
 }

@@ -9,7 +9,6 @@ use rig::{
 use std::borrow::Cow;
 use std::sync::Arc;
 
-use super::claude_sdk::{self, ClaudeSdkModel};
 use super::codex_sdk::{self, CodexSdkModel};
 use super::lm_router::LmRouterLM;
 use super::pylon::{PylonCompletionModel, PylonConfig};
@@ -28,7 +27,6 @@ pub trait CompletionProvider {
 pub enum LMClient {
     OpenAI(openai::completion::CompletionModel),
     Gemini(gemini::completion::CompletionModel),
-    Anthropic(anthropic::completion::CompletionModel),
     Groq(groq::CompletionModel<reqwest::Client>),
     OpenRouter(openrouter::completion::CompletionModel),
     Ollama(ollama::CompletionModel<reqwest::Client>),
@@ -39,7 +37,6 @@ pub enum LMClient {
     Together(together::completion::CompletionModel),
     Deepseek(deepseek::CompletionModel<reqwest::Client>),
     Pylon(PylonCompletionModel),
-    ClaudeSdk(ClaudeSdkModel),
     CodexSdk(CodexSdkModel),
     LmRouter(LmRouterLM),
 }
@@ -52,20 +49,6 @@ impl CompletionProvider for openai::completion::CompletionModel {
     ) -> Result<CompletionResponse<()>, CompletionError> {
         let response = rig::completion::CompletionModel::completion(self, request).await?;
         // Convert the typed response to unit type
-        Ok(CompletionResponse {
-            choice: response.choice,
-            usage: response.usage,
-            raw_response: (),
-        })
-    }
-}
-
-impl CompletionProvider for anthropic::completion::CompletionModel {
-    async fn completion(
-        &self,
-        request: CompletionRequest,
-    ) -> Result<CompletionResponse<()>, CompletionError> {
-        let response = rig::completion::CompletionModel::completion(self, request).await?;
         Ok(CompletionResponse {
             choice: response.choice,
             usage: response.usage,
@@ -270,13 +253,6 @@ impl LMClient {
                     client, model_id,
                 )))
             }
-            "anthropic" => {
-                let key = Self::get_api_key(api_key, "ANTHROPIC_API_KEY")?;
-                let client = anthropic::Client::builder().api_key(key.as_ref()).build()?;
-                Ok(LMClient::Anthropic(
-                    anthropic::completion::CompletionModel::new(client, model_id),
-                ))
-            }
             "gemini" => {
                 let key = Self::get_api_key(api_key, "GEMINI_API_KEY")?;
                 let client = gemini::Client::<reqwest::Client>::builder()
@@ -356,17 +332,13 @@ impl LMClient {
                     }
                 })
             }
-            "claude-sdk" | "claude" => {
-                // Uses Claude Code headless mode via claude-agent-sdk
-                Self::claude_sdk()
-            }
             "codex-sdk" | "codex" => {
                 // Uses Codex CLI headless mode via codex-agent-sdk
                 Self::codex_sdk()
             }
             _ => {
                 anyhow::bail!(
-                    "Unsupported provider: {}. Supported providers are: openai, anthropic, gemini, groq, openrouter, ollama, pylon, claude-sdk, codex-sdk, lm-router",
+                    "Unsupported provider: {}. Supported providers are: openai, gemini, groq, openrouter, ollama, pylon, codex-sdk, lm-router",
                     provider
                 );
             }
@@ -425,22 +397,6 @@ impl LMClient {
             None => PylonCompletionModel::local(config).await?,
         };
         Ok(LMClient::Pylon(model))
-    }
-
-    // ============ Claude SDK factory methods ============
-
-    /// Create Claude SDK client using Claude Code headless mode.
-    ///
-    /// Uses the user's existing Claude subscription (Pro/Max).
-    /// Requires `claude` CLI to be installed and authenticated.
-    pub fn claude_sdk() -> Result<Self> {
-        if !claude_sdk::has_claude_cli() {
-            anyhow::bail!(
-                "Claude CLI not found. Install from https://claude.ai/download or \
-                 ensure ~/.claude/local/claude exists."
-            );
-        }
-        Ok(LMClient::ClaudeSdk(ClaudeSdkModel::new()))
     }
 
     // ============ Codex SDK factory methods ============

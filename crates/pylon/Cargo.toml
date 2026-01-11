@@ -26,7 +26,6 @@ nostr-client = { path = "../nostr/client" }
 openagents-runtime = { path = "../runtime", default-features = false }
 openagents-relay = { path = "../relay" }
 spark = { package = "openagents-spark", path = "../spark" }
-claude-agent-sdk = { path = "../claude-agent-sdk" }
 ml = { path = "../ml", default-features = false, optional = true, features = ["native"] }
 
 # Async runtime
@@ -85,7 +84,6 @@ gui = []
 ml-native = ["ml/native"]
 gpt-oss-metal = ["compute/gpt-oss-metal"]
 gpt-oss-gguf = ["ml-native"]
-claude = ["frlm/claude"]
 
 [dev-dependencies]
 tempfile = "3.10"
