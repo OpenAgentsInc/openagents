@@ -1,4 +1,6 @@
-use futures::StreamExt;
+use std::path::PathBuf;
+use std::sync::Arc;
+
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::error::TryRecvError;
 
@@ -9,6 +11,7 @@ use crate::app::gateway::GatewayEvent;
 use crate::app::lm_router::LmRouterEvent;
 use crate::app::nexus::NexusEvent;
 use crate::app::spark_wallet::SparkWalletEvent;
+use crate::app::codex_app_server as app_server;
 use crate::app::events::{CommandAction, ModalState, QueryControl, ResponseEvent};
 use crate::app::nip28::{Nip28ConnectionStatus, Nip28Event, Nip28Message};
 use crate::app::nip90::{Nip90ConnectionStatus, Nip90Event};
@@ -80,10 +83,23 @@ impl AutopilotApp {
         // TODO: Track Codex thread IDs separately if resume is needed
         let coder_mode = state.permissions.coder_mode;
 
+        if use_app_server_transport() {
+            tracing::info!("Using Codex app-server transport");
+            self.submit_codex_prompt_app_server(
+                expanded_prompt,
+                cwd,
+                coder_mode,
+                tx,
+                control_rx,
+                window,
+            );
+            return;
+        }
+
         // Spawn async Codex query task
         let handle = self.runtime_handle.clone();
         handle.spawn(async move {
-            use codex_agent_sdk::{Codex, ThreadOptions, TurnOptions, ThreadEvent, ThreadItemDetails, SandboxMode, ApprovalMode};
+            use codex_agent_sdk::{Codex, ThreadOptions, TurnOptions, ThreadEvent, ThreadItemDetails};
 
             let codex = Codex::new();
 
@@ -316,6 +332,206 @@ impl AutopilotApp {
                     window.request_redraw();
                 }
             }
+        });
+    }
+
+    fn submit_codex_prompt_app_server(
+        &self,
+        prompt: String,
+        cwd: PathBuf,
+        coder_mode: CoderMode,
+        tx: mpsc::UnboundedSender<ResponseEvent>,
+        mut control_rx: mpsc::UnboundedReceiver<QueryControl>,
+        window: Arc<winit::window::Window>,
+    ) {
+        let handle = self.runtime_handle.clone();
+        handle.spawn(async move {
+            let (client, channels) = match app_server::AppServerClient::spawn(
+                app_server::AppServerConfig { cwd: Some(cwd.clone()) },
+            )
+            .await
+            {
+                Ok(result) => result,
+                Err(err) => {
+                    let _ = tx.send(ResponseEvent::Error(format!(
+                        "Failed to start codex app-server: {}",
+                        err
+                    )));
+                    window.request_redraw();
+                    return;
+                }
+            };
+            let mut notification_rx = channels.notifications;
+            let mut request_rx = channels.requests;
+
+            let client_info = app_server::ClientInfo {
+                name: "autopilot".to_string(),
+                title: Some("Autopilot".to_string()),
+                version: env!("CARGO_PKG_VERSION").to_string(),
+            };
+
+            if let Err(err) = client.initialize(client_info).await {
+                let _ = tx.send(ResponseEvent::Error(format!(
+                    "Failed to initialize codex app-server: {}",
+                    err
+                )));
+                window.request_redraw();
+                let _ = client.shutdown().await;
+                return;
+            }
+
+            let thread_params = app_server::ThreadStartParams {
+                model: None,
+                model_provider: None,
+                cwd: Some(cwd.to_string_lossy().to_string()),
+                approval_policy: Some(approval_policy_for_mode(coder_mode)),
+                sandbox: Some(sandbox_mode_for_mode(coder_mode)),
+            };
+
+            let thread_response = match client.thread_start(thread_params).await {
+                Ok(response) => response,
+                Err(err) => {
+                    let _ = tx.send(ResponseEvent::Error(format!(
+                        "Failed to start codex thread: {}",
+                        err
+                    )));
+                    window.request_redraw();
+                    let _ = client.shutdown().await;
+                    return;
+                }
+            };
+
+            let thread_id = thread_response.thread.id.clone();
+            let model_name = if thread_response.model.is_empty() {
+                "codex".to_string()
+            } else {
+                thread_response.model.clone()
+            };
+
+            let _ = tx.send(ResponseEvent::SystemInit {
+                model: model_name,
+                permission_mode: coder_mode.mode_label().to_string(),
+                session_id: thread_id.clone(),
+                tool_count: 0,
+                tools: vec![],
+                output_style: String::new(),
+                slash_commands: vec![],
+                mcp_servers: vec![],
+            });
+            window.request_redraw();
+
+            let turn_params = app_server::TurnStartParams {
+                thread_id: thread_id.clone(),
+                input: vec![app_server::UserInput::Text { text: prompt }],
+            };
+
+            let mut turn_id = match client.turn_start(turn_params).await {
+                Ok(response) => Some(response.turn.id),
+                Err(err) => {
+                    let _ = tx.send(ResponseEvent::Error(format!(
+                        "Failed to start codex turn: {}",
+                        err
+                    )));
+                    window.request_redraw();
+                    let _ = client.shutdown().await;
+                    return;
+                }
+            };
+
+            let mut completed = false;
+            while !completed {
+                tokio::select! {
+                    Some(control) = control_rx.recv() => {
+                        match control {
+                            QueryControl::Interrupt | QueryControl::Abort => {
+                                if let Some(active_turn) = turn_id.clone() {
+                                    let _ = client.turn_interrupt(app_server::TurnInterruptParams {
+                                        thread_id: thread_id.clone(),
+                                        turn_id: active_turn,
+                                    }).await;
+                                } else {
+                                    let _ = tx.send(ResponseEvent::Error("Request interrupted.".to_string()));
+                                }
+                                window.request_redraw();
+                            }
+                            _ => {}
+                        }
+                    }
+                    Some(notification) = notification_rx.recv() => {
+                        match notification.method.as_str() {
+                            "thread/started" => {
+                                if let Some(params) = notification.params {
+                                    if let Ok(event) = serde_json::from_value::<app_server::ThreadStartedNotification>(params) {
+                                        tracing::debug!("App-server thread started: {}", event.thread.id);
+                                    }
+                                }
+                            }
+                            "turn/started" => {
+                                if let Some(params) = notification.params {
+                                    if let Ok(event) = serde_json::from_value::<app_server::TurnStartedNotification>(params) {
+                                        let id = event.turn.id;
+                                        turn_id = Some(id.clone());
+                                        tracing::debug!("App-server turn started: {}", id);
+                                    }
+                                }
+                            }
+                            "item/agentMessage/delta" => {
+                                if let Some(params) = notification.params {
+                                    match serde_json::from_value::<app_server::AgentMessageDeltaNotification>(params) {
+                                        Ok(event) => {
+                                            let _ = tx.send(ResponseEvent::Chunk(event.delta));
+                                            window.request_redraw();
+                                        }
+                                        Err(err) => {
+                                            tracing::warn!(error = %err, "Failed to parse agent message delta");
+                                        }
+                                    }
+                                }
+                            }
+                            "turn/completed" => {
+                                if let Some(params) = notification.params {
+                                    if let Ok(event) = serde_json::from_value::<app_server::TurnCompletedNotification>(params) {
+                                        tracing::debug!("App-server turn completed: {}", event.turn.id);
+                                    }
+                                }
+                                let _ = tx.send(ResponseEvent::Complete { metadata: None });
+                                window.request_redraw();
+                                completed = true;
+                            }
+                            "error" => {
+                                if let Some(params) = notification.params {
+                                    match serde_json::from_value::<app_server::ErrorNotification>(params) {
+                                        Ok(event) => {
+                                            if event.will_retry {
+                                                let _ = tx.send(ResponseEvent::SystemMessage(format!(
+                                                    "Codex error (retrying): {}",
+                                                    event.error.message
+                                                )));
+                                            } else {
+                                                let _ = tx.send(ResponseEvent::Error(event.error.message));
+                                                completed = true;
+                                            }
+                                            window.request_redraw();
+                                        }
+                                        Err(err) => {
+                                            tracing::warn!(error = %err, "Failed to parse app-server error event");
+                                        }
+                                    }
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                    Some(request) = request_rx.recv() => {
+                        handle_app_server_request(&client, &tx, coder_mode, request, &window).await;
+                    }
+                    else => {
+                        completed = true;
+                    }
+                }
+            }
+
+            let _ = client.shutdown().await;
         });
     }
 
@@ -1335,4 +1551,90 @@ impl AutopilotApp {
         };
         render_app(state);
     }
+}
+
+fn use_app_server_transport() -> bool {
+    match std::env::var("AUTOPILOT_CODEX_TRANSPORT") {
+        Ok(value) => matches!(
+            value.to_ascii_lowercase().as_str(),
+            "app-server" | "appserver" | "app_server"
+        ),
+        Err(_) => false,
+    }
+}
+
+fn approval_policy_for_mode(mode: CoderMode) -> app_server::AskForApproval {
+    match mode {
+        CoderMode::BypassPermissions => app_server::AskForApproval::Never,
+        CoderMode::Plan => app_server::AskForApproval::Never,
+        CoderMode::Autopilot => app_server::AskForApproval::OnRequest,
+    }
+}
+
+fn sandbox_mode_for_mode(mode: CoderMode) -> app_server::SandboxMode {
+    match mode {
+        CoderMode::BypassPermissions => app_server::SandboxMode::DangerFullAccess,
+        CoderMode::Plan => app_server::SandboxMode::ReadOnly,
+        CoderMode::Autopilot => app_server::SandboxMode::WorkspaceWrite,
+    }
+}
+
+async fn handle_app_server_request(
+    client: &app_server::AppServerClient,
+    tx: &mpsc::UnboundedSender<ResponseEvent>,
+    coder_mode: CoderMode,
+    request: app_server::AppServerRequest,
+    window: &Arc<winit::window::Window>,
+) {
+    let decision = if coder_mode.auto_approves_all() {
+        app_server::ApprovalDecision::Accept
+    } else {
+        app_server::ApprovalDecision::Decline
+    };
+
+    let app_server::AppServerRequest { id, method, params } = request;
+    let mut reason = None;
+    match method.as_str() {
+        "item/commandExecution/requestApproval" => {
+            if let Some(params) = params {
+                if let Ok(parsed) = serde_json::from_value::<
+                    app_server::CommandExecutionRequestApprovalParams,
+                >(params) {
+                    reason = parsed.reason;
+                }
+            }
+        }
+        "item/fileChange/requestApproval" => {
+            if let Some(params) = params {
+                if let Ok(parsed) =
+                    serde_json::from_value::<app_server::FileChangeRequestApprovalParams>(params)
+                {
+                    reason = parsed.reason;
+                }
+            }
+        }
+        _ => {
+            tracing::warn!("Unhandled app-server request: {}", method);
+        }
+    }
+
+    if matches!(decision, app_server::ApprovalDecision::Decline) {
+        let label = reason.unwrap_or_else(|| "No reason provided.".to_string());
+        let _ = tx.send(ResponseEvent::SystemMessage(format!(
+            "Approval declined: {}",
+            label
+        )));
+    }
+
+    if let Err(err) = client
+        .respond(id, &app_server::ApprovalResponse { decision })
+        .await
+    {
+        let _ = tx.send(ResponseEvent::Error(format!(
+            "Failed to respond to approval request: {}",
+            err
+        )));
+    }
+
+    window.request_redraw();
 }
