@@ -15,6 +15,7 @@ use rig::completion::{CompletionError, CompletionRequest, CompletionResponse, Us
 use rig::message::{AssistantContent, Text};
 use rig::providers::ollama;
 use rig::OneOrMany;
+use serde::Deserialize;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::RwLock;
@@ -165,6 +166,16 @@ impl Clone for PylonCompletionModel {
     }
 }
 
+#[derive(Debug, Deserialize)]
+struct OllamaTags {
+    models: Vec<OllamaTag>,
+}
+
+#[derive(Debug, Deserialize)]
+struct OllamaTag {
+    name: String,
+}
+
 impl PylonCompletionModel {
     /// Create with local-only mode using Ollama
     pub async fn local(config: PylonConfig) -> Result<Self> {
@@ -173,6 +184,8 @@ impl PylonCompletionModel {
             PylonVenue::Hybrid { base_url, model, .. } => (base_url.clone(), model.clone()),
             _ => (None, "llama3.2".to_string()),
         };
+
+        let model = resolve_ollama_model(&config, base_url.clone(), model).await;
 
         // Build Ollama client
         let mut builder = ollama::Client::builder().api_key(Nothing);
@@ -211,6 +224,8 @@ impl PylonCompletionModel {
             PylonVenue::Hybrid { base_url, model, .. } => (base_url.clone(), model.clone()),
             _ => (None, "llama3.2".to_string()),
         };
+
+        let model = resolve_ollama_model(&config, base_url.clone(), model).await;
 
         // Build Ollama client
         let mut builder = ollama::Client::builder().api_key(Nothing);
@@ -412,6 +427,95 @@ impl PylonCompletionModel {
 
         Ok(0)
     }
+}
+
+const DEFAULT_OLLAMA_URL: &str = "http://localhost:11434";
+
+fn model_env_override() -> Option<String> {
+    for key in ["PYLON_LOCAL_MODEL", "OLLAMA_MODEL"] {
+        if let Ok(value) = std::env::var(key) {
+            let trimmed = value.trim();
+            if !trimmed.is_empty() {
+                return Some(trimmed.to_string());
+            }
+        }
+    }
+    None
+}
+
+async fn resolve_ollama_model(
+    config: &PylonConfig,
+    base_url: Option<String>,
+    default_model: String,
+) -> String {
+    if let Some(model) = model_env_override() {
+        return model;
+    }
+
+    let base_url = base_url.unwrap_or_else(|| DEFAULT_OLLAMA_URL.to_string());
+    let models = match fetch_ollama_models(&base_url, config.timeout).await {
+        Ok(models) => models,
+        Err(_) => return default_model,
+    };
+
+    if models.is_empty() {
+        return default_model;
+    }
+
+    if models
+        .iter()
+        .any(|model| matches_model_name(&default_model, model))
+    {
+        return default_model;
+    }
+
+    if let Some(preferred) = select_preferred_model(&models) {
+        return preferred;
+    }
+
+    models[0].clone()
+}
+
+async fn fetch_ollama_models(base_url: &str, timeout: Duration) -> Result<Vec<String>> {
+    let client = reqwest::Client::builder().timeout(timeout).build()?;
+    let url = format!("{}/api/tags", base_url.trim_end_matches('/'));
+    let response = client.get(&url).send().await?.error_for_status()?;
+    let tags: OllamaTags = response.json().await?;
+    Ok(tags.models.into_iter().map(|model| model.name).collect())
+}
+
+fn matches_model_name(expected: &str, candidate: &str) -> bool {
+    if expected == candidate {
+        return true;
+    }
+    let expected_base = expected.split(':').next().unwrap_or(expected);
+    let candidate_base = candidate.split(':').next().unwrap_or(candidate);
+    expected_base == candidate_base
+}
+
+fn select_preferred_model(models: &[String]) -> Option<String> {
+    let preferences = [
+        "llama3.2",
+        "llama3.1",
+        "llama3",
+        "mistral",
+        "qwen",
+        "gpt-oss",
+        "codellama",
+        "gemma",
+        "phi",
+    ];
+
+    for preference in preferences {
+        if let Some(model) = models
+            .iter()
+            .find(|name| name.to_lowercase().contains(preference))
+        {
+            return Some(model.clone());
+        }
+    }
+
+    None
 }
 
 /// Derive private key from BIP-39 mnemonic

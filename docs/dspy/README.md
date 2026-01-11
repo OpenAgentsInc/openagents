@@ -326,9 +326,10 @@ Different signatures benefit from different models:
 ## LM Provider Priority
 
 1. **Claude SDK** — Uses Claude Code headless mode
-2. **Pylon Swarm** — Distributed inference via NIP-90
-3. **Cerebras** — Fast, cheap execution
-4. **Pylon Local** — Ollama fallback
+2. **Llama.cpp/GPT-OSS** — Local OpenAI-compatible server (default :8080)
+3. **Pylon Swarm** — Distributed inference via NIP-90
+4. **Cerebras** — Fast, cheap execution
+5. **Pylon Local** — Ollama fallback (set `PYLON_LOCAL_MODEL`/`OLLAMA_MODEL` to override)
 
 ## Key Files
 

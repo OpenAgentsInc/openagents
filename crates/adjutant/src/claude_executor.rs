@@ -691,8 +691,11 @@ fn filter_tool_xml(text: &str) -> String {
     static DSPY_MARKER_RE: OnceLock<Regex> = OnceLock::new();
 
     let xml_re = TOOL_XML_RE.get_or_init(|| {
-        // Match various XML-like tool patterns
-        Regex::new(r"(?s)<(function_calls|antml:function_calls|antml:invoke|antml:parameter)[^>]*>.*?</\1>|<(function_calls|antml:function_calls|antml:invoke|antml:parameter)[^>]*/?>|</(function_calls|antml:function_calls|antml:invoke|antml:parameter)>").unwrap()
+        // Match tool XML blocks without using backreferences (Rust regex doesn't support them).
+        Regex::new(
+            r"(?s)<(?:function_calls|antml:function_calls|antml:invoke|antml:parameter)[^>]*>.*?</(?:function_calls|antml:function_calls|antml:invoke|antml:parameter)>|</?(?:function_calls|antml:function_calls|antml:invoke|antml:parameter)[^>]*>",
+        )
+        .unwrap()
     });
 
     let dspy_re = DSPY_MARKER_RE.get_or_init(|| {
@@ -700,14 +703,13 @@ fn filter_tool_xml(text: &str) -> String {
         Regex::new(r"\[\[\s*##\s*[^#]+\s*##\s*\]\]").unwrap()
     });
 
-    let filtered = xml_re.replace_all(text, "");
+    let filtered = xml_re.replace_all(text, " ");
     let filtered = dspy_re.replace_all(&filtered, "");
 
     // Also trim any resulting whitespace-only strings
-    let result = filtered.trim();
-    if result.is_empty() {
+    if filtered.trim().is_empty() {
         String::new()
     } else {
-        result.to_string()
+        filtered.to_string()
     }
 }
