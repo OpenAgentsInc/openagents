@@ -87,12 +87,20 @@ fn render_chat(
 
     let mut y = viewport_top - state.chat.scroll_offset;
     let mut inline_tools_render_idx = 0;
+    let mut dspy_stages_render_idx = 0;
     for (i, msg) in state.chat.messages.iter().enumerate() {
         let layout = &chat_layout.message_layouts[i];
         let msg_height = layout.height;
 
         if y + msg_height < viewport_top || y > viewport_bottom {
             y += msg_height;
+            // Account for DSPy stages even when skipping off-screen messages
+            while dspy_stages_render_idx < chat_layout.dspy_stages.len()
+                && chat_layout.dspy_stages[dspy_stages_render_idx].message_index == i
+            {
+                y += chat_layout.dspy_stages[dspy_stages_render_idx].height + TOOL_PANEL_GAP;
+                dspy_stages_render_idx += 1;
+            }
             // Account for inline tools even when skipping off-screen messages
             if inline_tools_render_idx < chat_layout.inline_tools.len()
                 && chat_layout.inline_tools[inline_tools_render_idx].message_index == i
@@ -201,6 +209,14 @@ fn render_chat(
             }
         }
         y += msg_height;
+
+        // Account for DSPy stages after this message
+        while dspy_stages_render_idx < chat_layout.dspy_stages.len()
+            && chat_layout.dspy_stages[dspy_stages_render_idx].message_index == i
+        {
+            y += chat_layout.dspy_stages[dspy_stages_render_idx].height + TOOL_PANEL_GAP;
+            dspy_stages_render_idx += 1;
+        }
 
         // Account for inline tools after this message
         if inline_tools_render_idx < chat_layout.inline_tools.len()
