@@ -18,7 +18,7 @@ pub struct AgentSelection {
 impl Default for AgentSelection {
     fn default() -> Self {
         Self {
-            agent: AgentKindConfig::Claude,
+            agent: AgentKindConfig::Codex,
             model_id: None,
         }
     }
@@ -49,7 +49,6 @@ impl AgentSelection {
     /// Get display name for the current selection
     pub fn display_name(&self) -> String {
         let agent_name = match self.agent {
-            AgentKindConfig::Claude => "Claude",
             AgentKindConfig::Codex => "Codex",
         };
         if let Some(model) = &self.model_id {
@@ -64,20 +63,18 @@ impl AgentSelection {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum AgentKindConfig {
-    Claude,
     Codex,
 }
 
 impl Default for AgentKindConfig {
     fn default() -> Self {
-        AgentKindConfig::Claude
+        AgentKindConfig::Codex
     }
 }
 
 impl From<AgentKindConfig> for AgentKind {
     fn from(config: AgentKindConfig) -> Self {
         match config {
-            AgentKindConfig::Claude => AgentKind::Claude,
             AgentKindConfig::Codex => AgentKind::Codex,
         }
     }
@@ -86,7 +83,6 @@ impl From<AgentKindConfig> for AgentKind {
 impl From<AgentKind> for AgentKindConfig {
     fn from(kind: AgentKind) -> Self {
         match kind {
-            AgentKind::Claude => AgentKindConfig::Claude,
             AgentKind::Codex => AgentKindConfig::Codex,
         }
     }
@@ -110,23 +106,14 @@ pub struct AgentSettings {
 pub struct AllAgentSettings {
     /// Currently selected agent
     pub selected: AgentSelection,
-    /// Claude-specific settings
-    pub claude: AgentSettings,
     /// Codex-specific settings
     pub codex: AgentSettings,
 }
 
 /// Shorten a model ID for display
 fn shorten_model_id(model_id: &str) -> String {
-    // "claude-opus-4-5-20251101" -> "Opus 4.5"
     // "gpt-4o" -> "GPT-4o"
-    if model_id.contains("opus") {
-        "Opus".to_string()
-    } else if model_id.contains("sonnet") {
-        "Sonnet".to_string()
-    } else if model_id.contains("haiku") {
-        "Haiku".to_string()
-    } else if model_id.starts_with("gpt-4o") {
+    if model_id.starts_with("gpt-4o") {
         if model_id.contains("mini") {
             "4o-mini".to_string()
         } else {
@@ -146,23 +133,9 @@ fn shorten_model_id(model_id: &str) -> String {
 
 /// Migrate from legacy ModelOption to AgentSelection
 pub fn migrate_from_model_option(model_id: &str) -> AgentSelection {
-    // All legacy models are Claude models
     AgentSelection {
-        agent: AgentKindConfig::Claude,
-        model_id: Some(map_legacy_model_id(model_id)),
-    }
-}
-
-/// Map legacy model IDs to current format
-fn map_legacy_model_id(legacy: &str) -> String {
-    match legacy {
-        "opus" | "Opus" => "claude-opus-4-5-20251101".to_string(),
-        "sonnet" | "Sonnet" => "claude-sonnet-4-5-20250929".to_string(),
-        "haiku" | "Haiku" => "claude-haiku-4-5-20251001".to_string(),
-        // Already a full model ID
-        id if id.starts_with("claude-") => id.to_string(),
-        // Unknown, return as-is
-        other => other.to_string(),
+        agent: AgentKindConfig::Codex,
+        model_id: Some(model_id.to_string()),
     }
 }
 
@@ -173,14 +146,12 @@ mod tests {
     #[test]
     fn test_default_selection() {
         let selection = AgentSelection::default();
-        assert_eq!(selection.agent, AgentKindConfig::Claude);
+        assert_eq!(selection.agent, AgentKindConfig::Codex);
         assert!(selection.model_id.is_none());
     }
 
     #[test]
     fn test_shorten_model_id() {
-        assert_eq!(shorten_model_id("claude-opus-4-5-20251101"), "Opus");
-        assert_eq!(shorten_model_id("claude-sonnet-4-5-20250929"), "Sonnet");
         assert_eq!(shorten_model_id("gpt-4o"), "4o");
         assert_eq!(shorten_model_id("gpt-4o-mini"), "4o-mini");
     }
@@ -188,7 +159,7 @@ mod tests {
     #[test]
     fn test_migrate_from_model_option() {
         let selection = migrate_from_model_option("opus");
-        assert_eq!(selection.agent, AgentKindConfig::Claude);
-        assert_eq!(selection.model_id, Some("claude-opus-4-5-20251101".to_string()));
+        assert_eq!(selection.agent, AgentKindConfig::Codex);
+        assert_eq!(selection.model_id, Some("opus".to_string()));
     }
 }

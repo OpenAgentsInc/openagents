@@ -86,7 +86,7 @@ pub(crate) struct AppState {
     pub(crate) show_kitchen_sink: bool,
     pub(crate) kitchen_sink_scroll: f32,
     pub(crate) help_scroll_offset: f32,
-    /// Selected agent backend (Claude/Codex)
+    /// Selected agent backend (Codex)
     pub(crate) agent_selection: AgentSelection,
     /// Agent availability registry
     #[allow(dead_code)]

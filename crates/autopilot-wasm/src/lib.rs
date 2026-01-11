@@ -263,7 +263,7 @@ fn create_bundle(entries: Vec<LogEntry>) -> Result<ReplayBundle, JsValue> {
                 None
             }
         })
-        .unwrap_or_else(|| "claude-sonnet-4-5-20250929".to_string());
+        .unwrap_or_else(|| "codex-sonnet-4-5-20250929".to_string());
 
     let playback_speed = 2.0;
     let demo_duration_seconds = (duration_seconds as f32 / playback_speed) as u64;
@@ -376,9 +376,9 @@ fn redact_string(s: &str) -> String {
     let re_gh = regex::Regex::new(r"gh[ps]_[a-zA-Z0-9]{36}").unwrap();
     let s = re_gh.replace_all(&s, "gh_[REDACTED]");
 
-    // Anthropic keys
-    let re_anthropic = regex::Regex::new(r"sk-ant-[a-zA-Z0-9-]{95}").unwrap();
-    let s = re_anthropic.replace_all(&s, "sk-ant-[REDACTED]");
+    // OpenAI keys
+    let re_openai = regex::Regex::new(r"sk-ant-[a-zA-Z0-9-]{95}").unwrap();
+    let s = re_openai.replace_all(&s, "sk-ant-[REDACTED]");
 
     s.to_string()
 }

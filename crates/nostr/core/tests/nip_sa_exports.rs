@@ -63,7 +63,7 @@ fn test_trajectory_types_accessible() {
         session_id: "test".to_string(),
         started_at: 0,
         ended_at: None,
-        model: "claude".to_string(),
+        model: "codex".to_string(),
         total_events: 0,
         trajectory_hash: None,
     };

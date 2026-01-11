@@ -275,7 +275,7 @@ mod tests {
     fn get_primary_agent() {
         let registry = AgentRegistry::new();
         let primary = registry.primary().unwrap();
-        assert!(primary.model.contains("claude"));
+        assert!(primary.model.contains("codex"));
     }
 
     #[test]

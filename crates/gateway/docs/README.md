@@ -4,7 +4,7 @@ Unified abstraction layer for external AI service providers.
 
 ## Overview
 
-The `gateway` crate provides a consistent interface for accessing various AI inference providers (Cerebras, OpenAI, Anthropic, etc.) through a common API. It handles authentication, request/response formatting, and provider-specific quirks.
+The `gateway` crate provides a consistent interface for accessing various AI inference providers (Cerebras, OpenAI, OpenAI, etc.) through a common API. It handles authentication, request/response formatting, and provider-specific quirks.
 
 ## Quick Start
 
@@ -119,11 +119,11 @@ pub trait InferenceGateway: Gateway {
 - **Models**: gpt-4o, gpt-4-turbo, o1, o3
 - **Auth**: `OPENAI_API_KEY` environment variable
 
-### Anthropic (Planned)
+### OpenAI (Planned)
 
-- **API**: `https://api.anthropic.com/v1`
-- **Models**: claude-3-opus, claude-3-sonnet, claude-3-haiku
-- **Auth**: `ANTHROPIC_API_KEY` environment variable
+- **API**: `https://api.openai.com/v1`
+- **Models**: codex-3-opus, codex-3-sonnet, codex-3-haiku
+- **Auth**: `OPENAI_API_KEY` environment variable
 
 ### Pylon Swarm (Planned)
 

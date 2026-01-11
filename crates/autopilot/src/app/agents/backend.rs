@@ -1,6 +1,6 @@
 //! Agent backend trait definitions
 //!
-//! Defines the abstraction layer for AI coding agents (Claude, Codex, etc.)
+//! Defines the abstraction layer for AI coding agents (Codex, etc.)
 //! following Zed's AgentServer pattern.
 
 use std::collections::HashMap;
@@ -16,9 +16,9 @@ use crate::app::events::ResponseEvent;
 /// Information about a model available from an agent
 #[derive(Debug, Clone)]
 pub struct ModelInfo {
-    /// Model identifier (e.g., "claude-opus-4-5-20251101")
+    /// Model identifier (e.g., "gpt-4o")
     pub id: String,
-    /// Human-readable name (e.g., "Claude Opus 4.5")
+    /// Human-readable name (e.g., "GPT-4o")
     pub name: String,
     /// Optional description
     pub description: Option<String>,
@@ -68,8 +68,6 @@ pub struct AgentAvailability {
 /// Types of agents supported
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum AgentKind {
-    /// Claude Code CLI
-    Claude,
     /// OpenAI Codex CLI
     Codex,
 }
@@ -77,13 +75,12 @@ pub enum AgentKind {
 impl AgentKind {
     /// Get all agent kinds
     pub fn all() -> &'static [AgentKind] {
-        &[AgentKind::Claude, AgentKind::Codex]
+        &[AgentKind::Codex]
     }
 
     /// Get display name
     pub fn display_name(&self) -> &'static str {
         match self {
-            AgentKind::Claude => "Claude",
             AgentKind::Codex => "Codex",
         }
     }
@@ -91,7 +88,6 @@ impl AgentKind {
     /// Get icon name (for UI rendering)
     pub fn icon(&self) -> &'static str {
         match self {
-            AgentKind::Claude => "claude",
             AgentKind::Codex => "openai",
         }
     }
@@ -99,7 +95,6 @@ impl AgentKind {
     /// Get executable name to search for
     pub fn executable_name(&self) -> &'static str {
         match self {
-            AgentKind::Claude => "claude",
             AgentKind::Codex => "codex",
         }
     }

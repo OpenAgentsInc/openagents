@@ -11,7 +11,7 @@ The format is designed for:
 - **Real-time streaming** - Tail logs as they're written, each line self-contained
 - **Auditability** - Cryptographically verify session work for payments
 - **Training data** - Extract successful patterns for agent improvement
-- **Platform independence** - Unified format across Claude Code, OpenAI, and custom systems
+- **Platform independence** - Unified format across Codex Code, OpenAI, and custom systems
 
 ## File Structure
 
@@ -22,7 +22,7 @@ Every `.rlog` file has a YAML header followed by line-by-line events:
 format: rlog/1
 id: sess_20251219_001
 repo_sha: abc123
-model: claude-opus-4-5
+model: codex-opus-4-5
 branch: main
 ---
 
@@ -106,7 +106,7 @@ o: id=call_93 → [error] permission denied
 
 ### Thinking
 
-Agent reasoning blocks (Claude Code):
+Agent reasoning blocks (Codex Code):
 ```rlog
 th: Let me analyze the authentication flow...
   This requires checking the login handler and session validation.
@@ -179,7 +179,7 @@ Metadata and annotations:
 # t=00:15:30
 # file-snapshot: msg_id files=12
 # queue: enqueue "Build project"
-# claude: {"type": "tool_use", "id": "toolu_123"}
+# codex: {"type": "tool_use", "id": "toolu_123"}
 ```
 
 ### Modes
@@ -219,7 +219,7 @@ Lines can include optional metadata anywhere in the content:
 - `attempt=<N>` or `attempt=<N/M>` - Retry attempts
 - `level=<debug|info|warn|error>` - Log level
 
-### Claude Code Fields
+### Codex Code Fields
 
 - `parent=<uuid>` - Parent message UUID (threading)
 - `sig=<hash>` - Thinking block signature
@@ -251,20 +251,20 @@ repo_sha: abc123      # Git commit hash
 Optional fields:
 ```yaml
 mode: auto            # Operating mode
-model: claude-opus-4-5-20251101
+model: codex-opus-4-5-20251101
 agent: autopilot
 version: "1.0.0"
 repo: openagents
 branch: main
 dirty: false          # Working directory dirty flag
 sandbox_id: sb_42
-runner: claude-code
+runner: codex-code
 budget: "$10"
 duration: "1h"
 classification: public
 notes: "Fixing auth bug"
 
-# Claude Code specific
+# Codex Code specific
 client_version: "2.0.71"
 slug: mighty-wishing-music
 cwd: /path/to/project
@@ -352,7 +352,7 @@ Session Statistics
 Format: rlog/1
 ID: sess_001
 Repo SHA: abc123
-Model: claude-opus-4-5-20251101
+Model: codex-opus-4-5-20251101
 
 Lines
 -----
@@ -373,7 +373,7 @@ Has timestamps: yes
 Blob references: 2
 Redacted values: 1
 
-Tokens (Claude Code)
+Tokens (Codex Code)
 --------------------
 Input: 21,890
 Output: 1,250
@@ -503,21 +503,21 @@ for line in &session.lines {
 }
 ```
 
-## Claude Code Conversion
+## Codex Code Conversion
 
-The `convert` module converts Claude Code JSONL to rlog format:
+The `convert` module converts Codex Code JSONL to rlog format:
 
 ```rust
-use recorder::convert::convert_claude_code_to_rlog;
+use recorder::convert::convert_codex_code_to_rlog;
 
 let jsonl_content = std::fs::read_to_string("session.jsonl")?;
-let rlog = convert_claude_code_to_rlog(&jsonl_content)?;
+let rlog = convert_codex_code_to_rlog(&jsonl_content)?;
 std::fs::write("session.rlog", rlog)?;
 ```
 
 Command-line:
 ```bash
-# Convert Claude Code JSONL to rlog
+# Convert Codex Code JSONL to rlog
 recorder convert session.jsonl --output session.rlog
 ```
 
@@ -676,7 +676,7 @@ cargo test -p recorder test_parse_line_types
 crates/recorder/
 ├── src/
 │   ├── lib.rs         # Parser, validator, core types
-│   ├── convert.rs     # Claude Code JSONL → rlog
+│   ├── convert.rs     # Codex Code JSONL → rlog
 │   ├── export.rs      # Database export (feature: export)
 │   └── main.rs        # CLI binary
 ├── docs/
@@ -695,7 +695,7 @@ The parser is designed for streaming:
 Benchmarks:
 - Parse 10,000 lines: ~15ms
 - Validate 10,000 lines: ~25ms
-- Convert Claude Code (1,000 messages): ~50ms
+- Convert Codex Code (1,000 messages): ~50ms
 
 ## Future Work
 

@@ -335,8 +335,8 @@ mod tests {
     fn test_header_render() {
         let header = RlogHeaderInfo::new("test-session", "abc123")
             .mode("auto")
-            .model("claude-sonnet-4")
-            .agent("claude")
+            .model("codex-sonnet-4")
+            .agent("codex")
             .cwd("/test/path");
 
         let rendered = header.render();
@@ -345,8 +345,8 @@ mod tests {
         assert!(rendered.contains("id: test-session"));
         assert!(rendered.contains("repo_sha: abc123"));
         assert!(rendered.contains("mode: auto"));
-        assert!(rendered.contains("model: claude-sonnet-4"));
-        assert!(rendered.contains("agent: claude"));
+        assert!(rendered.contains("model: codex-sonnet-4"));
+        assert!(rendered.contains("agent: codex"));
         assert!(rendered.contains("cwd: /test/path"));
     }
 

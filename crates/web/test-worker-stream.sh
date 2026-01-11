@@ -8,7 +8,7 @@ echo ""
 curl -v -N -X POST "https://openagents-web.openagents.workers.dev/api/ai/chat/stream" \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "anthropic/claude-sonnet-4.5",
+    "model": "openai/codex-sonnet-4.5",
     "messages": [{"role": "user", "content": "List files in the src folder"}],
     "max_tokens": 500,
     "tool_choice": "required",

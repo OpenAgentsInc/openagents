@@ -84,10 +84,10 @@ pub struct TokenCounts {
 use protocol::provenance::{Provenance, SamplingParams};
 
 // Basic provenance
-let provenance = Provenance::new("claude-3-sonnet");
+let provenance = Provenance::new("codex-3-sonnet");
 
 // With full details
-let provenance = Provenance::new("claude-3-sonnet")
+let provenance = Provenance::new("codex-3-sonnet")
     .with_sampling(SamplingParams::deterministic(42))
     .with_input_hash("abc123...")
     .with_output_hash("def456...")
@@ -211,7 +211,7 @@ Provenance serializes cleanly, omitting optional fields:
 
 ```json
 {
-  "model_id": "claude-3-sonnet",
+  "model_id": "codex-3-sonnet",
   "sampling": {
     "temperature": 0.0,
     "seed": 42
@@ -232,7 +232,7 @@ Minimal provenance (only model_id):
 
 ```json
 {
-  "model_id": "claude-3-sonnet",
+  "model_id": "codex-3-sonnet",
   "sampling": {
     "temperature": 0.0
   }

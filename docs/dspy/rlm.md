@@ -13,7 +13,7 @@ The RLM crate integrates with dsrs (our in-workspace DSPy implementation) for op
 | ExtractorSignature | **Complete** | Evidence extraction (with CoT) |
 | ReducerSignature | **Complete** | Result aggregation |
 | VerifierSignature | **Complete** | Answer verification |
-| Multi-provider LM | **Complete** | Claude SDK → Pylon → Cerebras → Ollama |
+| Multi-provider LM | **Complete** | Codex SDK → Pylon → Cerebras → Ollama |
 | Prompt optimization | Planned | MIPROv2/GEPA against eval suites |
 
 See [crates/rlm/docs/DSPY.md](../../crates/rlm/docs/DSPY.md) for usage documentation.
@@ -38,7 +38,7 @@ dsrs is the **compiler layer for agent behavior**. It decides *what to do* (best
 │                            ▼                                 │
 │  ┌─────────────────────────────────────────────────────┐    │
 │  │                    LM Provider                       │    │
-│  │  Claude SDK │ Pylon Swarm │ Cerebras │ Pylon Local  │    │
+│  │  Codex SDK │ Pylon Swarm │ Cerebras │ Pylon Local  │    │
 │  └─────────────────────────────────────────────────────┘    │
 └─────────────────────────────────────────────────────────────┘
 ```

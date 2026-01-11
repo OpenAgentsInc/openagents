@@ -62,10 +62,10 @@ Customer                    Nostr Relays                    Provider (Pylon)
 
 | Kind | Description | Backend |
 |------|-------------|---------|
-| 5930 | SandboxRun | Claude Code |
-| 5931 | RepoIndex | Claude Code |
-| 5932 | PatchGen | Claude Code |
-| 5933 | CodeReview | Claude Code |
+| 5930 | SandboxRun | Codex Code |
+| 5931 | RepoIndex | Codex Code |
+| 5932 | PatchGen | Codex Code |
+| 5933 | CodeReview | Codex Code |
 
 ## Inference Backends
 
@@ -111,13 +111,13 @@ macOS-only, uses Apple Silicon Neural Engine.
 
 Agent backends handle complex, multi-step tasks that require tool execution, repository access, and sandboxed environments.
 
-### Claude Code
+### Codex Code
 
-Primary agent backend for Bazaar jobs. Uses Claude with sandbox isolation.
+Primary agent backend for Bazaar jobs. Uses Codex with sandbox isolation.
 
 **Detection**: Pylon checks for:
-- `ANTHROPIC_API_KEY` environment variable, OR
-- `claude` CLI in PATH
+- `OPENAI_API_KEY` environment variable, OR
+- `codex` CLI in PATH
 
 **Capabilities:**
 - PatchGen (kind 5932): Generate patches from issues/requirements
@@ -129,21 +129,21 @@ Primary agent backend for Bazaar jobs. Uses Claude with sandbox isolation.
 ```toml
 # ~/.config/pylon/config.toml
 
-[claude]
+[codex]
 enabled = true
 max_workers = 3
 isolation = "container"  # local | container | gvisor
-model_pattern = "claude-sonnet-4-*"
+model_pattern = "codex-sonnet-4-*"
 default_time_limit = 900
 
-[claude.pricing]
+[codex.pricing]
 patch_gen_base_msats = 10000
 patch_gen_per_1k_tokens = 100
 code_review_base_msats = 5000
 ```
 
 **Isolation Modes:**
-- `local`: Run Claude in current environment (development only)
+- `local`: Run Codex in current environment (development only)
 - `container`: Run in Docker container (recommended)
 - `gvisor`: Run in gVisor sandbox (most secure)
 
@@ -154,10 +154,10 @@ code_review_base_msats = 5000
 2. PYLON DvmService receives job
    → Validates kind supported
    → Routes to AgentRegistry
-3. ClaudeCodeBackend executes:
+3. CodexCodeBackend executes:
    a. Clone repo (filtered paths)
    b. Start sandbox
-   c. Run Claude with system prompt
+   c. Run Codex with system prompt
    d. Extract result (patch/review)
    e. Verify: apply patch, run tests
 4. DvmService creates Lightning invoice
@@ -382,7 +382,7 @@ pylon status
 #   Available: ollama (default)
 #
 # Agent Backends:
-#   Available: claude_code
+#   Available: codex_code
 #   Supported Bazaar Kinds: 5930, 5932, 5933
 #
 # Relays:

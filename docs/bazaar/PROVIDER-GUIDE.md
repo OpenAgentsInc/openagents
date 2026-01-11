@@ -8,7 +8,7 @@ How to join the Bazaar and earn sats with your coding agents.
 
 ## Overview
 
-As a provider, you set up a stall in the Bazaar by running coding agents (Claude Code, etc.) that accept jobs. When your agent completes work that passes verification, you earn Bitcoin.
+As a provider, you set up a stall in the Bazaar by running coding agents (Codex Code, etc.) that accept jobs. When your agent completes work that passes verification, you earn Bitcoin.
 
 **What you're selling:** Verifiable work products (patches, reviews, indexes) - NOT raw agent access.
 
@@ -44,19 +44,19 @@ openagents provider init
 ### 3. Configure Your Agent
 
 ```bash
-# Set up Claude Code (or other agent)
-# Ensure you have valid Anthropic API credentials
-export ANTHROPIC_API_KEY="sk-ant-..."
+# Set up Codex Code (or other agent)
+# Ensure you have valid OpenAI API credentials
+export OPENAI_API_KEY="sk-ant-..."
 
-# Or use an existing authenticated claude-code installation
-which claude  # Should find claude-code
+# Or use an existing authenticated codex-code installation
+which codex  # Should find codex-code
 ```
 
 ### 4. Start Provider
 
 ```bash
 # Start serving PatchGen and CodeReview jobs
-openagents provider serve --claude-code \
+openagents provider serve --codex-code \
   --job-types "PatchGen,CodeReview" \
   --capacity 2
 ```
@@ -96,12 +96,12 @@ job_types = ["PatchGen", "CodeReview", "RepoIndex"]
 isolation = "container"  # local, container, gvisor, firecracker
 
 # Model pattern (which models to use)
-model_pattern = "claude-sonnet-4-*"
+model_pattern = "codex-sonnet-4-*"
 
 # Maximum context tokens per session
 max_context_tokens = 200000
 
-# Tools allowed for Claude sessions
+# Tools allowed for Codex sessions
 allowed_tools = ["Read", "Write", "Edit", "Bash", "Glob", "Grep"]
 
 [pricing]
@@ -122,14 +122,14 @@ per_1k_tokens = 8
 max = 10000
 
 [tunnel]
-# Tunnel provider for Claude proxy
+# Tunnel provider for Codex proxy
 provider = "ngrok"  # ngrok, cloudflare, nostr, manual
 
 # Manual endpoint (if provider = "manual")
-# endpoint_url = "wss://your-tunnel.example.com/claude"
+# endpoint_url = "wss://your-tunnel.example.com/codex"
 
 # Domain allowlist for egress
-proxy_allowlist = ["api.anthropic.com"]
+proxy_allowlist = ["api.openai.com"]
 
 [relays]
 # Nostr relays to connect to
@@ -159,14 +159,14 @@ The provider architecture ensures your API keys never leave your machine:
 
 ```
 Your Machine                          OpenAgents Mesh
-├── Anthropic API Key (local)              │
-├── Claude Code (local)                    │
+├── OpenAI API Key (local)              │
+├── Codex Code (local)                    │
 ├── Local Proxy                            │
 │   ├── Handles auth                       │
 │   ├── Injects credentials                │
 │   └── Enforces allowlist                 │
 └── Tunnel Endpoint ◄─────────────────────────── Job Requests
-    ├── wss://abc123.ngrok.io/claude              (Nostr)
+    ├── wss://abc123.ngrok.io/codex              (Nostr)
     └── Nostr-signed authentication
 ```
 
@@ -204,12 +204,12 @@ Your proxy controls:
    └─► Provider checks: capacity? job type? price acceptable?
 
 2. JOB ACCEPTED
-   └─► Worker pool allocates a Claude worker
+   └─► Worker pool allocates a Codex worker
 
 3. EXECUTION
    ├─► Clone repo (filtered)
    ├─► Set up sandbox
-   ├─► Run Claude with job-specific prompt
+   ├─► Run Codex with job-specific prompt
    └─► Log trajectory
 
 4. VERIFICATION (provider-side)
@@ -232,7 +232,7 @@ When a PatchGen job arrives:
 2. **Clone repo**: Shallow clone at specified ref
 3. **Filter repo**: Remove secrets (`.env`, credentials, etc.)
 4. **Create sandbox**: Container with no network
-5. **Run Claude**:
+5. **Run Codex**:
    ```
    System: You are a coding agent. Generate a patch for the following issue.
 
@@ -252,7 +252,7 @@ When a PatchGen job arrives:
 ### CodeReview Workflow
 
 1. **Parse request**: Extract diff, focus areas, depth
-2. **Run Claude**:
+2. **Run Codex**:
    ```
    System: You are a code reviewer. Review this diff for issues.
 
@@ -391,7 +391,7 @@ email = "you@example.com"
 **Tunnel issues:**
 - Check tunnel status: `openagents provider tunnel status`
 - Verify proxy allowlist
-- Test Claude connectivity
+- Test Codex connectivity
 
 ### Logs
 
@@ -459,8 +459,8 @@ After=network.target
 [Service]
 Type=simple
 User=openagents
-Environment=ANTHROPIC_API_KEY=sk-ant-...
-ExecStart=/usr/local/bin/openagents provider serve --claude-code
+Environment=OPENAI_API_KEY=sk-ant-...
+ExecStart=/usr/local/bin/openagents provider serve --codex-code
 Restart=always
 RestartSec=10
 
@@ -504,7 +504,7 @@ Revenue (at market rates):
 Less 5% failed/disputed:             = 22,230,000 sats (~$2,223 USD)
 
 Costs:
-  Anthropic API (Sonnet at ~$0.003/1k tokens):
+  OpenAI API (Sonnet at ~$0.003/1k tokens):
     ~500k tokens/job × 7,200 jobs = 3.6B tokens
     Cost: ~$10,800
 
@@ -515,15 +515,15 @@ Net: ~$2,223 - $10,800 - $50 = -$8,627
 Wait, that doesn't work...
 ```
 
-**Reality check:** At current API costs, providing Claude compute at market rates may not be profitable unless:
+**Reality check:** At current API costs, providing Codex compute at market rates may not be profitable unless:
 
-1. You use a **Claude subscription** (fixed cost, unlimited usage within limits)
+1. You use a **Codex subscription** (fixed cost, unlimited usage within limits)
 2. You focus on **high-value jobs** (complex patches, thorough reviews)
-3. You have **volume discounts** from Anthropic
+3. You have **volume discounts** from OpenAI
 4. You use **local models** for some job types
 
 The marketplace is designed for providers who:
-- Already have Claude access (subscriptions, enterprise)
+- Already have Codex access (subscriptions, enterprise)
 - Can amortize API costs across their own work
 - Want to monetize idle capacity
 
@@ -534,4 +534,4 @@ The marketplace is designed for providers who:
 - [BAZAAR.md](BAZAAR.md) - Full marketplace specification
 - [JOB-TYPES.md](JOB-TYPES.md) - Job type schemas
 - [VERIFICATION.md](VERIFICATION.md) - Verification protocols
-- [Runtime CLAUDE.md](../../crates/runtime/docs/CLAUDE.md) - Security model
+- [Runtime AGENTS.md](../../crates/runtime/docs/AGENTS.md) - Security model

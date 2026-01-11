@@ -508,7 +508,7 @@ mod tests {
     fn create_test_session() -> TrajectorySession {
         TrajectorySession {
             session_id: "test-session".to_string(),
-            source: "claude".to_string(),
+            source: "codex".to_string(),
             path: "/tmp/test.rlog".into(),
             initial_commit: Some("abc".to_string()),
             final_commit: Some("def".to_string()),

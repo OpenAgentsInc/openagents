@@ -6,7 +6,7 @@ See [`format.md`](format.md) for the complete format specification.
 
 ## Why This Format?
 
-Existing agent session formats (Claude Code JSONL, OpenAI conversation exports, etc.) are optimized for their respective platforms but fall short for multi-agent coordination:
+Existing agent session formats (Codex Code JSONL, OpenAI conversation exports, etc.) are optimized for their respective platforms but fall short for multi-agent coordination:
 
 1. **Attribution & Accounting** — When multiple agents collaborate on a task, you need deterministic attribution: which agent made which tool calls, how many tokens did each consume, what was the reasoning chain? The rlog format captures timestamped tool traces with call IDs, thinking blocks, subagent spawns, and token accounting—everything needed to reconstruct who did what.
 
@@ -16,7 +16,7 @@ Existing agent session formats (Claude Code JSONL, OpenAI conversation exports, 
 
 4. **Training Data** — Successful sessions become training data for future agents. The structured format makes it easy to extract patterns: which tool sequences work, how do effective agents reason through problems, what collaboration patterns succeed?
 
-5. **Platform Independence** — By defining our own format, we're not locked into any vendor's schema changes. We can convert from Claude Code, OpenAI, or any other source into a unified format for analysis and replay.
+5. **Platform Independence** — By defining our own format, we're not locked into any vendor's schema changes. We can convert from Codex Code, OpenAI, or any other source into a unified format for analysis and replay.
 
 ### Multi-Layer Format Strategy
 

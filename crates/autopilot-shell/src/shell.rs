@@ -107,7 +107,7 @@ pub struct AutopilotShell {
     // Working directory for checkpoint saves
     working_dir: PathBuf,
 
-    // Session resume state (for Claude Code session continuation)
+    // Session resume state (for Codex Code session continuation)
     resumed_session_id: Option<String>,
     resumed_session_at: Option<String>,
     resumed_fork_session: bool,
@@ -116,7 +116,7 @@ pub struct AutopilotShell {
     sdk_message_rx: Option<Receiver<SdkMessageEvent>>,
 }
 
-/// Events from the Claude SDK session
+/// Events from the Codex SDK session
 #[derive(Debug)]
 enum SdkMessageEvent {
     /// Text from assistant
@@ -208,9 +208,9 @@ impl AutopilotShell {
         if rate_limit_fetcher.has_credentials() {
             let tier = rate_limit_fetcher.rate_limit_tier().unwrap_or("unknown");
             let sub = rate_limit_fetcher.subscription_type().unwrap_or("free");
-            info!("Claude subscription: {} (tier: {})", sub, tier);
+            info!("Codex subscription: {} (tier: {})", sub, tier);
 
-            // Extract multiplier from tier (e.g., "default_claude_max_20x" -> "20x")
+            // Extract multiplier from tier (e.g., "default_codex_max_20x" -> "20x")
             let multiplier = tier
                 .rsplit('_')
                 .next()
@@ -225,7 +225,7 @@ impl AutopilotShell {
             let sub_display = match sub {
                 "max" => {
                     if !multiplier.is_empty() {
-                        format!("Claude Max ({})", multiplier)
+                        format!("Codex Max ({})", multiplier)
                     } else {
                         "Agent Pro".to_string()
                     }
@@ -432,7 +432,7 @@ impl AutopilotShell {
             StatusItemContent::Text(format!("{:?}", snapshot.phase)),
         );
 
-        // Update ClaudeUsage with model info from runtime
+        // Update CodexUsage with model info from runtime
         let model_str = snapshot.model.as_str();
         // Note: context_window from SDK is the model's capacity, NOT used context
         // Use input_tokens as a rough proxy for context used in this session
@@ -468,8 +468,8 @@ impl AutopilotShell {
             self.last_section_count = snapshot.sections.len();
             self.last_line_count = snapshot.lines.len();
         } else {
-            // Add new Claude (non-section) lines incrementally
-            self.add_claude_lines(&snapshot.lines);
+            // Add new Codex (non-section) lines incrementally
+            self.add_codex_lines(&snapshot.lines);
         }
 
         // Process events
@@ -516,7 +516,7 @@ impl AutopilotShell {
             );
         }
 
-        // Add Claude (non-section) lines
+        // Add Codex (non-section) lines
         for line in lines {
             if line.section == Some(StartupSection::Agent) && !line.text.trim().is_empty() {
                 self.thread_view.push_entry(
@@ -527,11 +527,11 @@ impl AutopilotShell {
         }
     }
 
-    /// Add new Claude lines incrementally (for streaming updates).
-    fn add_claude_lines(&mut self, lines: &[LogLine]) {
+    /// Add new Codex lines incrementally (for streaming updates).
+    fn add_codex_lines(&mut self, lines: &[LogLine]) {
         if lines.len() > self.last_line_count {
             for line in lines.iter().skip(self.last_line_count) {
-                // Only add Claude section lines (startup sections are in collapsible)
+                // Only add Codex section lines (startup sections are in collapsible)
                 if line.section == Some(StartupSection::Agent) && !line.text.trim().is_empty() {
                     self.thread_view.push_entry(
                         ThreadEntry::new(ThreadEntryType::System, Text::new(line.text.clone()))
@@ -1048,8 +1048,8 @@ impl AutopilotShell {
                 // Convert wgpui Model to AgentModel
                 use wgpui::components::atoms::Model;
                 let agent_model = match model {
-                    Model::ClaudeSonnet => AgentModel::Sonnet,
-                    Model::ClaudeOpus => AgentModel::Opus,
+                    Model::CodexSonnet => AgentModel::Sonnet,
+                    Model::CodexOpus => AgentModel::Opus,
                     _ => AgentModel::Sonnet, // Fallback for other models
                 };
 

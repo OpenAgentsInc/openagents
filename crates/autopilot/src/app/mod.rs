@@ -37,7 +37,6 @@ pub(crate) use catalog::{
 pub(crate) use config::{settings_rows, ModelOption, SettingsInputMode, SettingsSnapshot};
 pub(crate) use permissions::sanitize_tokens;
 pub(crate) use session::SessionCardEvent;
-pub(crate) use crate::app_entry::{CoderHookCallback, HookCallbackKind};
 pub(crate) use utils::{
     agent_capabilities, build_checkpoint_entries, build_input, build_markdown_config,
     build_markdown_document, build_markdown_renderer, default_auto_scroll, default_font_size,

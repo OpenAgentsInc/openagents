@@ -29,7 +29,7 @@ fn main() {
 }
 
 // ============================================================================
-// Simulated ACP Events (mimicking Claude SDK streaming)
+// Simulated ACP Events (mimicking Codex SDK streaming)
 // ============================================================================
 
 #[derive(Clone, Debug)]
@@ -65,7 +65,7 @@ fn generate_acp_scenario() -> VecDeque<AcpEvent> {
     // Assistant starts streaming response
     events.push_back(AcpEvent::ContentBlockStart);
 
-    // Token-by-token streaming (simulating Claude's response)
+    // Token-by-token streaming (simulating Codex's response)
     let response_tokens = [
         "I'll ", "read ", "the ", "main.rs ", "file ", "for ", "you.\n\n",
     ];

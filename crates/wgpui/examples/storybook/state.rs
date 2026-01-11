@@ -120,7 +120,7 @@ impl Storybook {
             light_frame_anim,
             glow_pulse_anim,
             mode_selector: ModeSelector::new(Mode::Normal),
-            model_selector: ModelSelector::new(Model::ClaudeSonnet),
+            model_selector: ModelSelector::new(Model::CodexSonnet),
             permission_bar: PermissionBar::new("Permission: read repository?"),
             thinking_block: ThinkingBlock::new(
                 "Chain of thought preview\nLine 2 of reasoning\nLine 3 of reasoning\nLine 4 of reasoning",
@@ -129,7 +129,7 @@ impl Storybook {
             thread_controls: ThreadControls::new().running(true),
             streaming_indicator: StreamingIndicator::new(),
             assistant_message: AssistantMessage::new("Streaming response from ACP components")
-                .model(Model::ClaudeSonnet)
+                .model(Model::CodexSonnet)
                 .streaming(true),
             permission_dialog: PermissionDialog::default(),
             focus_demo: FocusDemo::new(),

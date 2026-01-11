@@ -428,7 +428,7 @@ fn test_trajectory_session_lifecycle() {
     let session_content = TrajectorySessionContent::new(
         "session-abc123",
         1704067200, // 2024-01-01 00:00:00 UTC
-        "claude-sonnet-4.5",
+        "codex-sonnet-4.5",
     );
 
     let tick_id = hex::encode([0xCCu8; 32]);
@@ -482,7 +482,7 @@ fn test_trajectory_session_lifecycle() {
         event
             .tags
             .iter()
-            .any(|t| t[0] == "model" && t[1] == "claude-sonnet-4.5")
+            .any(|t| t[0] == "model" && t[1] == "codex-sonnet-4.5")
     );
 
     // 5. Parse back the session
@@ -491,7 +491,7 @@ fn test_trajectory_session_lifecycle() {
 
     assert_eq!(parsed.session_id, "session-abc123");
     assert_eq!(parsed.started_at, 1704067200);
-    assert_eq!(parsed.model, "claude-sonnet-4.5");
+    assert_eq!(parsed.model, "codex-sonnet-4.5");
     assert_eq!(parsed.total_events, 0);
     assert!(parsed.ended_at.is_none());
 }

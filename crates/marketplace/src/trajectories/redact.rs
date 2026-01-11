@@ -200,9 +200,9 @@ fn standard_patterns() -> Vec<RedactionPattern> {
         },
         // Specific API keys (must come before generic sk- pattern)
         RedactionPattern {
-            name: "anthropic_key".to_string(),
+            name: "openai_key".to_string(),
             regex: Regex::new(r"sk-ant-[a-zA-Z0-9_-]{20,}").unwrap(),
-            replacement: "[REDACTED-ANTHROPIC-KEY]",
+            replacement: "[REDACTED-OPENAI-KEY]",
         },
         RedactionPattern {
             name: "stripe_key".to_string(),
@@ -398,15 +398,15 @@ mod tests {
     }
 
     #[test]
-    fn test_anthropic_key_redaction() {
+    fn test_openai_key_redaction() {
         let engine = RedactionEngine::new(RedactionLevel::Standard, vec![]).unwrap();
-        let content = "ANTHROPIC_API_KEY=sk-ant-api03-1234567890abcdefghijklmnopqrstuvwxyz1234567890abcdefghijklmnopqrstuvwxyz1234567890abcd";
+        let content = "OPENAI_API_KEY=sk-ant-api03-1234567890abcdefghijklmnopqrstuvwxyz1234567890abcdefghijklmnopqrstuvwxyz1234567890abcd";
         let result = engine.redact(content).unwrap();
 
-        eprintln!("Anthropic - Secrets redacted: {}", result.secrets_redacted);
-        eprintln!("Anthropic - Content: {}", result.content);
+        eprintln!("OpenAI - Secrets redacted: {}", result.secrets_redacted);
+        eprintln!("OpenAI - Content: {}", result.content);
 
-        assert!(result.content.contains("[REDACTED-ANTHROPIC-KEY]"));
+        assert!(result.content.contains("[REDACTED-OPENAI-KEY]"));
         assert!(!result.content.contains("sk-ant-"));
     }
 
@@ -484,14 +484,14 @@ mod tests {
     fn test_multiple_secrets() {
         let engine = RedactionEngine::new(RedactionLevel::Standard, vec![]).unwrap();
         let content = r#"
-            ANTHROPIC_API_KEY=sk-ant-api03-abc123xyz789def456ghi012jkl345mno678pqr901stu234vwx567yza890bcd123efg456hij789klm012nop345qrs678tuv901wxy234
+            OPENAI_API_KEY=sk-ant-api03-abc123xyz789def456ghi012jkl345mno678pqr901stu234vwx567yza890bcd123efg456hij789klm012nop345qrs678tuv901wxy234
             GITHUB_TOKEN=ghp_1234567890abcdefghijklmnopqrstuv
             AWS_KEY=AKIAIOSFODNN7EXAMPLE
         "#;
         let result = engine.redact(content).unwrap();
 
         assert!(result.secrets_redacted >= 3);
-        assert!(result.content.contains("[REDACTED-ANTHROPIC-KEY]"));
+        assert!(result.content.contains("[REDACTED-OPENAI-KEY]"));
         assert!(result.content.contains("[REDACTED-GITHUB-TOKEN]"));
         assert!(result.content.contains("[REDACTED-AWS-KEY]"));
         assert!(!result.content.contains("sk-ant-"));

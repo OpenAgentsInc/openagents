@@ -1,7 +1,7 @@
 //! CodeReview job types for NIP-90 compute marketplace (Bazaar)
 //!
 //! CodeReview jobs analyze code changes and provide structured feedback.
-//! The provider runs Claude Code (or similar) to review patches, PRs, or diffs.
+//! The provider runs Codex Code (or similar) to review patches, PRs, or diffs.
 
 use serde::{Deserialize, Serialize};
 
@@ -745,7 +745,7 @@ mod tests {
     fn test_code_review_request_from_pr() {
         let request = CodeReviewRequest::from_pr("https://github.com/owner/repo/pull/42")
             .with_time_limit(600)
-            .with_model("claude-sonnet-4");
+            .with_model("codex-sonnet-4");
 
         assert!(matches!(request.input, ReviewInput::PullRequest { .. }));
         assert_eq!(request.time_limit_secs, 600);
@@ -785,7 +785,7 @@ mod tests {
     #[test]
     fn test_code_review_result_approve() {
         let result = CodeReviewResult::approve("LGTM! Clean implementation.")
-            .with_model("claude-sonnet-4")
+            .with_model("codex-sonnet-4")
             .with_duration(30000);
 
         assert_eq!(result.status, ApprovalStatus::Approve);
@@ -827,13 +827,13 @@ mod tests {
                 "Consider renaming",
                 "Variable name could be clearer",
             ))
-            .with_model("claude-sonnet-4");
+            .with_model("codex-sonnet-4");
 
         let json = serde_json::to_string(&result).unwrap();
         let parsed: CodeReviewResult = serde_json::from_str(&json).unwrap();
 
         assert_eq!(parsed.status, result.status);
         assert_eq!(parsed.issues.len(), 1);
-        assert_eq!(parsed.model_used, "claude-sonnet-4");
+        assert_eq!(parsed.model_used, "codex-sonnet-4");
     }
 }

@@ -27,7 +27,7 @@ fn setup_db_with_issues(n: usize) -> (TempDir, Connection) {
             1 => IssueType::Bug,
             _ => IssueType::Feature,
         };
-        let agent = if i % 2 == 0 { "claude" } else { "codex" };
+        let agent = if i % 2 == 0 { "codex" } else { "codex" };
 
         issue::create_issue(
             &conn,
@@ -60,7 +60,7 @@ fn bench_create_issue(c: &mut Criterion) {
                 black_box(Some("Test description")),
                 black_box(Priority::Medium),
                 black_box(IssueType::Task),
-                black_box(Some("claude")),
+                black_box(Some("codex")),
                 black_box(None),
                 black_box(None),
             )

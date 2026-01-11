@@ -173,12 +173,12 @@ mod tests {
         #[test]
         fn model_ref_serializes_correctly() {
             let model = ModelRef {
-                provider_id: "anthropic".to_string(),
-                model_id: "claude-sonnet-4".to_string(),
+                provider_id: "openai".to_string(),
+                model_id: "codex-sonnet-4".to_string(),
             };
             let json = serde_json::to_string(&model).unwrap();
-            assert!(json.contains(r#""providerId":"anthropic""#));
-            assert!(json.contains(r#""modelId":"claude-sonnet-4""#));
+            assert!(json.contains(r#""providerId":"openai""#));
+            assert!(json.contains(r#""modelId":"codex-sonnet-4""#));
         }
 
         #[test]

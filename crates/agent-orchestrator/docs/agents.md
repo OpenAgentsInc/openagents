@@ -6,9 +6,9 @@ The agent-orchestrator provides 7 specialized agents, each optimized for specifi
 
 | Agent | Model | Role | Mode |
 |-------|-------|------|------|
-| **Sisyphus** | claude-sonnet-4-5 | Primary orchestrator | Primary |
+| **Sisyphus** | codex-sonnet-4-5 | Primary orchestrator | Primary |
 | **Oracle** | gpt-5.2 | Architecture, debugging | Subagent |
-| **Librarian** | claude-sonnet-4-5 | External docs, OSS | Subagent |
+| **Librarian** | codex-sonnet-4-5 | External docs, OSS | Subagent |
 | **Explore** | grok-code | Codebase navigation | Subagent |
 | **Frontend** | gemini-3-pro | UI/UX development | Subagent |
 | **DocWriter** | gemini-3-pro | Documentation | Subagent |
@@ -34,7 +34,7 @@ The primary orchestrator agent. Named after the myth — humans roll their bould
 ```rust
 AgentConfig {
     name: "sisyphus".to_string(),
-    model: "claude-sonnet-4-5".to_string(),
+    model: "codex-sonnet-4-5".to_string(),
     temperature: 0.1,
     mode: AgentMode::Primary,
     permission: AgentPermission {
@@ -100,7 +100,7 @@ External reference specialist — searches docs, GitHub, and OSS implementations
 ```rust
 AgentConfig {
     name: "librarian".to_string(),
-    model: "claude-sonnet-4-5".to_string(),
+    model: "codex-sonnet-4-5".to_string(),
     temperature: 0.2,
     mode: AgentMode::Subagent,
     permission: AgentPermission {

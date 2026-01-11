@@ -129,24 +129,24 @@ Minimum price per job in millisatoshis.
 min_price_msats = 5000  # 5 sats
 ```
 
-### claude
+### codex
 
 **Type**: Table
 **Required**: No
 
-Claude tunnel settings for local Claude Agent SDK sessions.
+Codex tunnel settings for local Codex Agent SDK sessions.
 
 ```toml
-[claude]
+[codex]
 enabled = true
-model = "claude-sonnet-4-20250514"
+model = "codex-sonnet-4-20250514"
 autonomy = "supervised"           # full | supervised | restricted | read_only
 approval_required_tools = ["Write", "Edit", "Bash"]
 allowed_tools = []                # empty = allow requested tools
 blocked_tools = []
 max_cost_usd = 250000             # micro-USD ($0.25) or omit
 cwd = "/path/to/repo"
-executable_path = "/usr/local/bin/claude"
+executable_path = "/usr/local/bin/codex"
 ```
 
 ## Complete Example
@@ -179,10 +179,10 @@ default_model = "llama3.2"
 # Backend preference order
 backend_preference = ["ollama", "llamacpp", "apple_fm"]
 
-# Claude tunnel defaults
-[claude]
+# Codex tunnel defaults
+[codex]
 enabled = true
-model = "claude-sonnet-4-20250514"
+model = "codex-sonnet-4-20250514"
 autonomy = "supervised"
 approval_required_tools = ["Write", "Edit", "Bash"]
 

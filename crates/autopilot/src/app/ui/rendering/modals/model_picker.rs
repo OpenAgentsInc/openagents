@@ -43,7 +43,7 @@ fn render_model_picker_modal(
 
             // Description
             let desc_run = state.text_system.layout_styled_mono(
-                "Switch between Claude models. Applies to this session and future Claude Code sessions.",
+                "Switch between Codex models. Applies to this session and future Codex sessions.",
                 Point::new(modal_x + 16.0, y),
                 12.0,
                 Hsla::new(0.0, 0.0, 0.5, 1.0), // Gray

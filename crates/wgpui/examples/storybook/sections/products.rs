@@ -57,7 +57,7 @@ impl Storybook {
                  3. An executor (like tokio) runs these Futures to completion\n\n\
                  Would you like me to show you a practical example?",
             )
-            .model(Model::ClaudeSonnet)
+            .model(Model::CodexSonnet)
             .timestamp("10:30 AM");
             asst_msg.paint(Bounds::new(inner.origin.x, entry_y, entry_w, asst_h), cx);
             entry_y += asst_h + entry_gap;
@@ -89,7 +89,7 @@ impl Storybook {
             // Assistant thinking + tool call
             let asst_h = 60.0;
             let mut asst_msg = AssistantMessage::new("I'll search the codebase for TODO comments.")
-                .model(Model::ClaudeSonnet)
+                .model(Model::CodexSonnet)
                 .timestamp("2:15 PM");
             asst_msg.paint(Bounds::new(inner.origin.x, entry_y, entry_w, asst_h), cx);
             entry_y += asst_h + entry_gap;
@@ -138,7 +138,7 @@ impl Storybook {
                 "Found 4 TODO comments across 3 source files totaling 135 lines. \
                  The main areas needing attention are error handling, caching, and test coverage.",
             )
-            .model(Model::ClaudeSonnet)
+            .model(Model::CodexSonnet)
             .timestamp("2:16 PM");
             summary.paint(Bounds::new(inner.origin.x, entry_y, entry_w, summary_h), cx);
         });
@@ -249,7 +249,7 @@ impl Storybook {
                 "I've added proper error handling with a match statement. The function now logs \
                  parse errors to stderr and returns an empty string instead of panicking.",
             )
-            .model(Model::ClaudeSonnet)
+            .model(Model::CodexSonnet)
             .timestamp("3:43 PM");
             complete.paint(
                 Bounds::new(inner.origin.x, entry_y, entry_w, complete_h),
@@ -313,7 +313,7 @@ impl Storybook {
             let mut answer = AssistantMessage::new(
                 "Authentication is handled in `src/auth/mod.rs:12` with JWT validation in `src/auth/jwt.rs`."
             )
-            .model(Model::ClaudeSonnet)
+            .model(Model::CodexSonnet)
             .timestamp("11:05 AM");
             answer.paint(Bounds::new(inner.origin.x, entry_y, entry_w, answer_h), cx);
         });
@@ -343,7 +343,7 @@ impl Storybook {
                  - **Element**: objects being visited\n\
                  - **Visitor**: defines operations..."
             )
-            .model(Model::ClaudeOpus)
+            .model(Model::CodexOpus)
             .streaming(true)
             .timestamp("4:20 PM");
             stream_msg.paint(Bounds::new(inner.origin.x, entry_y, entry_w, stream_h), cx);
@@ -376,7 +376,7 @@ impl Storybook {
                  3. Write integration tests\n\
                  4. Update API documentation",
             )
-            .model(Model::ClaudeSonnet)
+            .model(Model::CodexSonnet)
             .timestamp("9:00 AM");
             plan.paint(Bounds::new(inner.origin.x, entry_y, entry_w, plan_h), cx);
             entry_y += plan_h + entry_gap;
@@ -430,7 +430,7 @@ impl Storybook {
                  - `POST /api/preferences` updates them with validation\n\
                  - All 5 tests pass and documentation is updated",
             )
-            .model(Model::ClaudeSonnet)
+            .model(Model::CodexSonnet)
             .timestamp("9:03 AM");
             summary.paint(Bounds::new(inner.origin.x, entry_y, entry_w, summary_h), cx);
         });
@@ -465,7 +465,7 @@ impl Storybook {
                 "The migration failed because the database server isn't running. \
                  Please start PostgreSQL with `sudo systemctl start postgresql` and try again.",
             )
-            .model(Model::ClaudeSonnet)
+            .model(Model::CodexSonnet)
             .timestamp("5:30 PM");
             error_msg.paint(Bounds::new(inner.origin.x, entry_y, entry_w, error_h), cx);
         });
@@ -2216,7 +2216,7 @@ impl Storybook {
         draw_panel("Trajectory Source Badges", traj_bounds, cx, |inner, cx| {
             let sources = [
                 (
-                    TrajectorySource::Claude,
+                    TrajectorySource::Codex,
                     Some(ContributionStatus::Accepted),
                     Some(42),
                 ),
@@ -2427,7 +2427,7 @@ impl Storybook {
                 let source_y = traj_y + 28.0;
                 let mut x = inner.origin.x + 8.0;
                 let sources = [
-                    (TrajectorySource::Claude, ContributionStatus::Accepted, 42),
+                    (TrajectorySource::Codex, ContributionStatus::Accepted, 42),
                     (TrajectorySource::Cursor, ContributionStatus::Pending, 15),
                 ];
                 for (source, status, count) in &sources {

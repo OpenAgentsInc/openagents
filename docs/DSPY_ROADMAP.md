@@ -31,11 +31,11 @@ dsrs (Rust DSPy) is now integrated into the OpenAgents workspace at `crates/dsrs
 - **5,771 LOC** full implementation
 - **Optimizers**: COPRO, MIPROv2, GEPA, Pareto
 - **DAG-based tracing** with Graph/Node types
-- **14+ LM providers** via rig-core (OpenAI, Anthropic, Gemini, Groq, Ollama, Pylon, Claude SDK, etc.)
+- **14+ LM providers** via rig-core (OpenAI, OpenAI, Gemini, Groq, Ollama, Pylon, Codex SDK, etc.)
 - **Trait-based architecture**: Module, Predictor, MetaSignature, Adapter, Optimizable, Evaluator
 - **Macros**: `#[Signature]`, `#[Optimizable]` for code generation
 - **Hybrid caching** via foyer (memory + disk)
-- **Multi-provider LM support**: Claude SDK (headless) → Pylon swarm → Cerebras → Pylon local
+- **Multi-provider LM support**: Codex SDK (headless) → Pylon swarm → Cerebras → Pylon local
 
 ### Wave 1: RLM Document Analysis (Complete)
 - [x] `crates/rlm/src/dspy_orchestrator.rs` - 4-phase document pipeline
@@ -49,7 +49,7 @@ dsrs (Rust DSPy) is now integrated into the OpenAgents workspace at `crates/dsrs
 - [x] `crates/autopilot-core/src/dspy_optimization.rs` - Metrics + training data infrastructure
 
 ### Wave 2.5: LaneMux (Multi-Provider LM) (Complete)
-- [x] `crates/dsrs/src/core/lm/claude_sdk.rs` - Claude Code headless via claude-agent-sdk
+- [x] `crates/dsrs/src/core/lm/codex_sdk.rs` - Codex Code headless via codex-agent-sdk
 - [x] `crates/dsrs/src/core/lm/pylon.rs` - Pylon LM provider (local/swarm/hybrid)
 - [x] `crates/adjutant/src/dspy/lm_config.rs` - Multi-provider with auto-detection
 
@@ -126,7 +126,7 @@ dsrs (Rust DSPy) is now integrated into the OpenAgents workspace at `crates/dsrs
   - 9 pipeline tests passing
 - [x] **Adjutant Decision Pipelines** (`crates/adjutant/src/dspy/decision_pipelines.rs`)
   - ComplexityPipeline - Classify task complexity (Low/Medium/High/VeryHigh)
-  - DelegationPipeline - Decide whether/where to delegate (claude_code/rlm/local_tools)
+  - DelegationPipeline - Decide whether/where to delegate (codex_code/rlm/local_tools)
   - RlmTriggerPipeline - Decide whether to use RLM for deep analysis
   - Wired into Adjutant.execute() with DSPy-first + legacy fallback
   - 31 tests passing
@@ -204,7 +204,7 @@ The following waves complete DSPy integration across the entire codebase, replac
 
 **Files:**
 - `crates/rlm/src/prompts.rs` — 4 hardcoded prompts to replace
-- `crates/rlm/src/claude_client.rs` — Direct SDK calls
+- `crates/rlm/src/codex_client.rs` — Direct SDK calls
 - `crates/rlm/src/dspy.rs` — DSPy signatures (created)
 
 **Hardcoded Prompts to Replace:**
@@ -219,7 +219,7 @@ The following waves complete DSPy integration across the entire codebase, replac
 - [x] Create `RlmGuidedQuerySignature` — Guided tier for Apple FM
 - [x] Create `RlmCodeGenerationSignature` — Generate REPL code
 - [x] Create `RlmContinuationSignature` — Handle continuation after execution
-- [ ] Update `claude_client.rs` to use signatures via dsrs Predict
+- [ ] Update `codex_client.rs` to use signatures via dsrs Predict
 - [ ] Keep PromptTier enum but route to appropriate signature
 - [ ] Add training collection for RLM queries
 
@@ -1124,7 +1124,7 @@ Then:
 ```rust
 pub struct SwarmCompiler {
     swarm_lm: LM,       // Pylon provider (cheap)
-    validation_lm: LM,  // Claude/GPT-4 (premium)
+    validation_lm: LM,  // Codex/GPT-4 (premium)
     budget: BudgetPolicy,
 }
 
@@ -1142,7 +1142,7 @@ impl SwarmCompiler {
 ```
 
 **Cost reduction example:**
-- Claude alone: ~$15 for 1,800 calls
+- Codex alone: ~$15 for 1,800 calls
 - With swarm optimization: ~$0.10 (96.7% reduction)
 
 ### 6.2 TraceExtractor
@@ -1227,9 +1227,9 @@ Convert the 7 specialized agent prompts into DSPy Signatures for learned, optimi
 
 | Agent | Model | Role | Mode |
 |-------|-------|------|------|
-| **Sisyphus** | claude-opus-4-5 | Primary orchestrator | Primary |
+| **Sisyphus** | codex-opus-4-5 | Primary orchestrator | Primary |
 | **Oracle** | gpt-5.2 | Architecture, debugging | Subagent |
-| **Librarian** | claude-sonnet-4 | External docs, OSS | Subagent |
+| **Librarian** | codex-sonnet-4 | External docs, OSS | Subagent |
 | **Explore** | grok-3 | Codebase navigation | Subagent |
 | **Frontend** | gemini-2.5-pro | UI/UX design | Subagent |
 | **DocWriter** | gemini-2.5-pro | Documentation | Subagent |
@@ -1538,19 +1538,19 @@ Different signatures benefit from different models:
 
 | Signature Type | Recommended Model | Reasoning |
 |----------------|-------------------|-----------|
-| Planning (Deep) | Claude Opus | Complex reasoning needed |
-| Planning (Simple) | Claude Sonnet | Balance of speed/quality |
-| Execution | Claude Sonnet | Balance of speed/quality |
-| Review/Verify | Claude Haiku | Fast validation |
+| Planning (Deep) | Codex Opus | Complex reasoning needed |
+| Planning (Simple) | Codex Sonnet | Balance of speed/quality |
+| Execution | Codex Sonnet | Balance of speed/quality |
+| Review/Verify | Codex Haiku | Fast validation |
 | Optimization (iterations) | Pylon Swarm | Cheap, high volume |
-| Optimization (validation) | Claude/GPT-4 | Final quality check |
+| Optimization (validation) | Codex/GPT-4 | Final quality check |
 | OANIX Situation | Local (Ollama) | Privacy, always-on |
 | Tool Selection | Any fast model | Simple classification |
-| Oracle Query | Claude Sonnet | Good at synthesis |
-| Architecture | Claude Opus | Needs deep reasoning |
+| Oracle Query | Codex Sonnet | Good at synthesis |
+| Architecture | Codex Opus | Needs deep reasoning |
 | Retrieval Router | Pylon Local | Fast, cheap policy |
 | Evidence Ranker | Pylon Swarm | Parallelizable |
-| Failure Triage | Claude Sonnet | Needs reasoning |
+| Failure Triage | Codex Sonnet | Needs reasoning |
 | State/Memory | Pylon Local | Fast, always-on |
 
 ---

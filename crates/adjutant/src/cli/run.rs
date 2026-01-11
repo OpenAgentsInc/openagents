@@ -33,7 +33,7 @@ pub struct RunArgs {
     #[arg(long)]
     pub full_boot: bool,
 
-    /// Execution backend (auto, claude, codex, local-llm, local-tools)
+    /// Execution backend (auto, codex, codex, local-llm, local-tools)
     #[arg(long, value_enum, default_value_t = BackendChoice::Auto)]
     pub backend: BackendChoice,
 

@@ -307,8 +307,8 @@ async fn get_openai_compatible_models(base_url: &str) -> Option<Vec<String>> {
 fn detect_cloud_providers() -> Vec<String> {
     let mut providers = Vec::new();
 
-    if std::env::var("ANTHROPIC_API_KEY").is_ok() {
-        providers.push("anthropic".to_string());
+    if std::env::var("OPENAI_API_KEY").is_ok() {
+        providers.push("openai".to_string());
     }
     if std::env::var("OPENAI_API_KEY").is_ok() {
         providers.push("openai".to_string());
@@ -342,7 +342,7 @@ mod tests {
         assert!(providers.len() <= 4);
         // All returned providers should be valid names
         for provider in &providers {
-            assert!(["anthropic", "openai", "openrouter", "google"].contains(&provider.as_str()));
+            assert!(["openai", "openai", "openrouter", "google"].contains(&provider.as_str()));
         }
     }
 

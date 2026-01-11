@@ -33,7 +33,7 @@ Integrate the completed neobank exchange into Pylon, then wire Pylon's financial
 - `preflight.rs` - discovers environment capabilities
 - `pylon_integration.rs` - queries Pylon daemon
 - `startup.rs` - state machine with Pylon phases
-- `claude.rs` - tool invocation via Claude Agent SDK
+- `codex.rs` - tool invocation via Codex Agent SDK
 - Tools exposed via `McpToolDefinition` pattern
 
 ---
@@ -146,7 +146,7 @@ pub struct PreflightConfig {
 pub async fn detect_neobank() -> Option<NeobankInfo>;
 ```
 
-#### 2.3 Add neobank tools for Claude
+#### 2.3 Add neobank tools for Codex
 **File:** `crates/autopilot/src/tools/neobank_tools.rs` (NEW ~200 LOC)
 
 ```rust
@@ -178,8 +178,8 @@ pub fn neobank_tool_definitions() -> Vec<McpToolDefinition> {
 pub async fn execute_neobank_tool(name: &str, params: Value) -> Result<Value>;
 ```
 
-#### 2.4 Register tools in claude.rs
-**File:** `crates/autopilot/src/claude.rs` (MODIFY)
+#### 2.4 Register tools in codex.rs
+**File:** `crates/autopilot/src/codex.rs` (MODIFY)
 
 Add neobank tools to the tool registry when in execution phase (BypassPermissions mode).
 
@@ -227,7 +227,7 @@ CREATE TABLE neobank_transactions (
 **File:** `crates/autopilot/tests/neobank_integration.rs` (NEW)
 
 - test_preflight_detects_neobank
-- test_claude_tools_available
+- test_codex_tools_available
 - test_tool_execution
 
 ---
@@ -250,7 +250,7 @@ CREATE TABLE neobank_transactions (
 | `src/pylon_integration.rs` | MODIFY | +50 |
 | `src/preflight.rs` | MODIFY | +30 |
 | `src/tools/neobank_tools.rs` | NEW | ~200 |
-| `src/claude.rs` | MODIFY | +20 |
+| `src/codex.rs` | MODIFY | +20 |
 
 ### Tests (2 files)
 | File | Action | LOC |
@@ -266,7 +266,7 @@ CREATE TABLE neobank_transactions (
 
 1. **Commit neobank** - Push current implementation
 2. **Pylon integration** - Add NeobankService, daemon commands, CLI
-3. **Autopilot integration** - Preflight, tools, Claude registration
+3. **Autopilot integration** - Preflight, tools, Codex registration
 4. **Tests** - Both Pylon and Autopilot
 5. **Documentation** - Update Pylon docs
 
@@ -277,5 +277,5 @@ CREATE TABLE neobank_transactions (
 1. `pylon neobank balance` returns wallet balance
 2. `pylon neobank status` shows treasury state
 3. Autopilot preflight shows neobank capabilities
-4. Claude can call neobank_* tools in execution phase
+4. Codex can call neobank_* tools in execution phase
 5. All tests passing

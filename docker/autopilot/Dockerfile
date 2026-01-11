@@ -50,23 +50,19 @@ RUN chmod +x /usr/local/bin/autopilot /usr/local/bin/issues-mcp
 USER agent
 WORKDIR /home/agent
 
-# Install Claude Code CLI
-# Note: The actual installation URL should be verified
-RUN curl -fsSL https://claude.ai/install.sh | bash || true
-
 # Optional Rust toolchain (for in-container builds)
 RUN if [ "${INSTALL_RUST_TOOLCHAIN}" = "true" ]; then \
     curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain stable; \
     fi
 
-# Add Claude + Cargo to PATH
-ENV PATH="/home/agent/.claude/bin:/home/agent/.cargo/bin:${PATH}"
+# Add Cargo to PATH
+ENV PATH="/home/agent/.cargo/bin:${PATH}"
 
 # Set working directory to mounted workspace
 WORKDIR /workspace
 
 # Environment variables
-ENV AUTOPILOT_MODEL=sonnet
+ENV AUTOPILOT_MODEL=gpt-4o
 ENV AUTOPILOT_FULL_AUTO=true
 ENV RUST_LOG=info
 

@@ -37,7 +37,7 @@ pub enum RelayMessage {
         task_id: String,
         repo: String,
         task: String,
-        /// Use user's Claude API key (true) or pay via credits (false)
+        /// Use user's Codex API key (true) or pay via credits (false)
         use_own_key: bool,
     },
 
@@ -53,7 +53,7 @@ pub enum RelayMessage {
     },
 
     // === Tunnel → Browser (Autopilot Streaming) ===
-    /// Text chunk from Claude
+    /// Text chunk from Codex
     AutopilotChunk {
         task_id: String,
         chunk: String,
@@ -106,50 +106,50 @@ pub enum RelayMessage {
         recoverable: bool,
     },
 
-    // === Browser ↔ Tunnel (Claude Sessions) ===
-    /// Create a new Claude session over the tunnel.
-    ClaudeCreateSession {
+    // === Browser ↔ Tunnel (Codex Sessions) ===
+    /// Create a new Codex session over the tunnel.
+    CodexCreateSession {
         session_id: String,
-        request: ClaudeRequest,
+        request: CodexRequest,
     },
-    /// Claude session created and ready.
-    ClaudeSessionCreated {
+    /// Codex session created and ready.
+    CodexSessionCreated {
         session_id: String,
     },
-    /// Send a prompt to an existing Claude session.
-    ClaudePrompt {
+    /// Send a prompt to an existing Codex session.
+    CodexPrompt {
         session_id: String,
         content: String,
     },
-    /// Streaming chunk from Claude.
-    ClaudeChunk {
-        chunk: ClaudeChunk,
+    /// Streaming chunk from Codex.
+    CodexChunk {
+        chunk: CodexChunk,
     },
-    /// Claude requests tool approval.
-    ClaudeToolApproval {
+    /// Codex requests tool approval.
+    CodexToolApproval {
         session_id: String,
         tool: String,
         params: serde_json::Value,
     },
     /// Tool approval decision from browser.
-    ClaudeToolApprovalResponse {
+    CodexToolApprovalResponse {
         session_id: String,
         approved: bool,
     },
-    /// Stop a Claude session.
-    ClaudeStop {
+    /// Stop a Codex session.
+    CodexStop {
         session_id: String,
     },
-    /// Pause a Claude session (best-effort).
-    ClaudePause {
+    /// Pause a Codex session (best-effort).
+    CodexPause {
         session_id: String,
     },
-    /// Resume a Claude session (best-effort).
-    ClaudeResume {
+    /// Resume a Codex session (best-effort).
+    CodexResume {
         session_id: String,
     },
-    /// Claude session error.
-    ClaudeError {
+    /// Codex session error.
+    CodexError {
         session_id: String,
         error: String,
     },
@@ -201,25 +201,25 @@ pub struct SessionStatus {
     pub active_task: Option<String>,
 }
 
-// === Claude Tunnel Types ===
+// === Codex Tunnel Types ===
 
-/// Claude session autonomy level.
+/// Codex session autonomy level.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
-pub enum ClaudeSessionAutonomy {
+pub enum CodexSessionAutonomy {
     Full,
     Supervised,
     Restricted,
     ReadOnly,
 }
 
-impl Default for ClaudeSessionAutonomy {
+impl Default for CodexSessionAutonomy {
     fn default() -> Self {
         Self::Supervised
     }
 }
 
-/// Tool definition for Claude sessions.
+/// Tool definition for Codex sessions.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolDefinition {
     pub name: String,
@@ -227,9 +227,9 @@ pub struct ToolDefinition {
     pub config: Option<serde_json::Value>,
 }
 
-/// Request to create a Claude session.
+/// Request to create a Codex session.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ClaudeRequest {
+pub struct CodexRequest {
     pub model: String,
     pub system_prompt: Option<String>,
     pub initial_prompt: Option<String>,
@@ -237,14 +237,14 @@ pub struct ClaudeRequest {
     pub tools: Vec<ToolDefinition>,
     pub max_cost_usd: Option<u64>,
     #[serde(default)]
-    pub autonomy: Option<ClaudeSessionAutonomy>,
+    pub autonomy: Option<CodexSessionAutonomy>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub approval_required_tools: Option<Vec<String>>,
 }
 
 /// Token usage statistics.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ClaudeUsage {
+pub struct CodexUsage {
     pub input_tokens: u64,
     pub output_tokens: u64,
     pub cache_read_tokens: u64,
@@ -273,14 +273,14 @@ pub enum ChunkType {
     Error,
 }
 
-/// Streaming chunk from Claude.
+/// Streaming chunk from Codex.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ClaudeChunk {
+pub struct CodexChunk {
     pub session_id: String,
     pub chunk_type: ChunkType,
     pub delta: Option<String>,
     pub tool: Option<ToolChunk>,
-    pub usage: Option<ClaudeUsage>,
+    pub usage: Option<CodexUsage>,
 }
 
 #[cfg(test)]
@@ -336,21 +336,21 @@ mod tests {
     }
 
     #[test]
-    fn test_claude_chunk_roundtrip() {
-        let chunk = ClaudeChunk {
+    fn test_codex_chunk_roundtrip() {
+        let chunk = CodexChunk {
             session_id: "session-1".to_string(),
             chunk_type: ChunkType::Text,
             delta: Some("hello".to_string()),
             tool: None,
             usage: None,
         };
-        let msg = RelayMessage::ClaudeChunk { chunk };
+        let msg = RelayMessage::CodexChunk { chunk };
 
         let json = msg.to_json();
         let parsed = RelayMessage::from_json(&json).unwrap();
 
         match parsed {
-            RelayMessage::ClaudeChunk { chunk } => {
+            RelayMessage::CodexChunk { chunk } => {
                 assert_eq!(chunk.session_id, "session-1");
                 assert!(matches!(chunk.chunk_type, ChunkType::Text));
                 assert_eq!(chunk.delta.as_deref(), Some("hello"));

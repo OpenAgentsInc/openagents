@@ -576,7 +576,7 @@ SATS     SOURCE     TIME AGO
 
 ### pylon connect
 
-Connect the local Claude tunnel client to a relay session.
+Connect the local Codex tunnel client to a relay session.
 
 ```bash
 pylon connect [OPTIONS] --tunnel-url <URL>
@@ -587,11 +587,11 @@ pylon connect [OPTIONS] --tunnel-url <URL>
 | Option | Description |
 |--------|-------------|
 | `--tunnel-url` | Tunnel WebSocket URL from `/api/tunnel/register` |
-| `--model` | Override Claude model |
+| `--model` | Override Codex model |
 | `--autonomy` | Autonomy policy: full, supervised, restricted, read-only |
 | `--max-cost-usd` | Max cost per session (micro-USD) |
-| `--cwd` | Working directory for Claude sessions |
-| `--executable-path` | Path to Claude executable |
+| `--cwd` | Working directory for Codex sessions |
+| `--executable-path` | Path to Codex executable |
 | `--config` | Custom config path |
 
 #### Examples
@@ -601,7 +601,7 @@ pylon connect [OPTIONS] --tunnel-url <URL>
 pylon connect --tunnel-url wss://openagents-web.openagents.workers.dev/api/tunnel/ws/tunnel?session_id=...&token=...
 
 # Override model and autonomy
-pylon connect --tunnel-url wss://... --model claude-sonnet-4-20250514 --autonomy supervised
+pylon connect --tunnel-url wss://... --model codex-sonnet-4-20250514 --autonomy supervised
 ```
 
 ---
@@ -628,7 +628,7 @@ pylon rlm [OPTIONS] <QUERY>
 | `--fanout` | Maximum concurrent sub-queries | 10 |
 | `--budget` | Maximum sats to spend | 1000 |
 | `--local-only` | Use local model only (no swarm) | false |
-| `--backend` | Local backend: auto, ollama, llama-cpp, fm, claude | auto |
+| `--backend` | Local backend: auto, ollama, llama-cpp, fm, codex | auto |
 | `--relay` | Relay URLs (comma-separated) | wss://nexus.openagents.com,wss://relay.damus.io,wss://nos.lol |
 | `--chunk-size` | Chunk size in characters (for file processing) | 2000 |
 | `--timeout` | Timeout per sub-query in seconds | 60 |
@@ -643,16 +643,16 @@ The `--backend` option selects the local inference backend:
 | `ollama` | Use Ollama at localhost:11434 |
 | `llama-cpp` | Use llama.cpp at localhost:8080 |
 | `fm` | Use Apple Foundation Models (macOS only) |
-| `claude` | Use Claude via claude-agent-sdk (requires `--features claude`) |
+| `codex` | Use Codex via codex-agent-sdk (requires `--features codex`) |
 
-To use Claude as the backend:
+To use Codex as the backend:
 
 ```bash
-# Build with Claude support
-cargo build -p pylon --features claude
+# Build with Codex support
+cargo build -p pylon --features codex
 
-# Run with Claude backend
-pylon rlm "What is 2+2?" --backend claude
+# Run with Codex backend
+pylon rlm "What is 2+2?" --backend codex
 ```
 
 #### Description
@@ -686,8 +686,8 @@ pylon rlm "Write a detailed analysis" --timeout 120
 # Local-only mode (no swarm, uses local inference)
 pylon rlm "Quick question" --local-only
 
-# Use Claude as the backend (requires --features claude)
-pylon rlm "Analyze this code" --backend claude
+# Use Codex as the backend (requires --features codex)
+pylon rlm "Analyze this code" --backend codex
 
 # Use specific local backend
 pylon rlm "Quick question" --backend ollama

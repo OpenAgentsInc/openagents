@@ -3,7 +3,23 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;
 
-use claude_agent_sdk::{AgentDefinition, AgentModel};
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(crate) enum AgentModel {
+    Default,
+    Mini,
+    Reasoning,
+    Inherit,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct AgentDefinition {
+    pub(crate) description: String,
+    pub(crate) prompt: String,
+    pub(crate) tools: Option<Vec<String>>,
+    pub(crate) disallowed_tools: Option<Vec<String>>,
+    pub(crate) model: Option<AgentModel>,
+    pub(crate) critical_system_reminder_experimental: Option<String>,
+}
 
 use super::super::parsing::{frontmatter_list, frontmatter_scalar, parse_frontmatter};
 use super::super::sanitize_tokens;
@@ -31,20 +47,20 @@ pub(crate) struct AgentCatalog {
 
 fn parse_agent_model(value: &str) -> Option<AgentModel> {
     match value.trim().to_ascii_lowercase().as_str() {
-        "sonnet" => Some(AgentModel::Sonnet),
-        "opus" => Some(AgentModel::Opus),
-        "haiku" => Some(AgentModel::Haiku),
+        "default" => Some(AgentModel::Default),
+        "mini" => Some(AgentModel::Mini),
+        "reasoning" => Some(AgentModel::Reasoning),
         "inherit" => Some(AgentModel::Inherit),
         _ => None,
     }
 }
 
 fn agent_project_dir(cwd: &Path) -> PathBuf {
-    cwd.join(".claude").join("agents")
+    cwd.join(".openagents").join("agents")
 }
 
 fn agent_user_dir() -> Option<PathBuf> {
-    dirs::home_dir().map(|home| home.join(".claude").join("agents"))
+    dirs::home_dir().map(|home| home.join(".openagents").join("agents"))
 }
 
 fn file_timestamp(path: &Path) -> Option<u64> {

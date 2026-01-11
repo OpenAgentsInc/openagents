@@ -344,8 +344,8 @@ fn migrate_v5(conn: &Connection) -> Result<()> {
     // Add agent column to issues table for Codex integration
     conn.execute_batch(
         r#"
-        -- Add agent column (default: 'claude')
-        ALTER TABLE issues ADD COLUMN agent TEXT NOT NULL DEFAULT 'claude';
+        -- Add agent column (default: 'codex')
+        ALTER TABLE issues ADD COLUMN agent TEXT NOT NULL DEFAULT 'codex';
         "#,
     )?;
 

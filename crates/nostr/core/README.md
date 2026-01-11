@@ -977,7 +977,7 @@ let content = AgentProfileContent {
     threshold_config: threshold,
     autonomy_level: AutonomyLevel::SemiAutonomous,
     runner_pubkey: "runner_pubkey".to_string(),
-    model: "claude-sonnet-4.5".to_string(),
+    model: "codex-sonnet-4.5".to_string(),
     created_at: 1703000000,
 };
 
@@ -1150,7 +1150,7 @@ use nostr::{
 let session_content = TrajectorySessionContent::new(
     "session-123",
     1703000000,
-    "claude-sonnet-4.5",
+    "codex-sonnet-4.5",
 )
 .with_end_time(1703001000)
 .with_total_events(42)

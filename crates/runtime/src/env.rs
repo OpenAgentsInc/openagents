@@ -246,10 +246,10 @@ fn is_restricted_write(mount_path: &str, relative: &str) -> bool {
         (mount_path, relative),
         ("/compute", "policy")
             | ("/containers", "policy")
-            | ("/claude", "policy")
-            | ("/claude", "auth/tunnels")
-            | ("/claude", "pool/config")
-            | ("/claude", "proxy/allowlist")
+            | ("/codex", "policy")
+            | ("/codex", "auth/tunnels")
+            | ("/codex", "pool/config")
+            | ("/codex", "proxy/allowlist")
             | ("/hud", "settings")
     )
 }
@@ -269,7 +269,7 @@ impl AgentEnv {
             return Ok(());
         }
         // Compute and containers manage budget reservations internally.
-        if matches!(mount_path, "/compute" | "/containers" | "/claude") {
+        if matches!(mount_path, "/compute" | "/containers" | "/codex") {
             return Ok(());
         }
         let policy = match access {

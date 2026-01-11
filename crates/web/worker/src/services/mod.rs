@@ -1,5 +1,5 @@
 //! External service integrations
 
-pub mod claude;
+pub mod codex;
 pub mod github;
 pub mod stripe;

@@ -15,7 +15,6 @@ mod settings;
 #[path = "app_entry/state_actions.rs"]
 mod state_actions;
 
-pub(crate) use hooks::{CoderHookCallback, HookCallbackKind};
 
 mod command_palette_ids {
     pub const HELP: &str = "help.open";

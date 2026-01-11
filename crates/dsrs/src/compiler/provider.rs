@@ -99,7 +99,7 @@ pub struct LMCompletion {
 /// Trait for LM providers that can be used in SwarmCompiler.
 ///
 /// This abstraction allows mixing cheap providers (Pylon swarm) with
-/// premium providers (Claude/GPT-4) during optimization.
+/// premium providers (Codex/GPT-4) during optimization.
 #[async_trait]
 pub trait LMProvider: Send + Sync {
     /// Name of this provider (for logging/debugging).
@@ -147,9 +147,9 @@ impl MockLM {
         Self::new("mock-pylon", 10)
     }
 
-    /// Create an expensive mock (simulating Claude).
+    /// Create an expensive mock (simulating Codex).
     pub fn expensive() -> Self {
-        Self::new("mock-claude", 1000)
+        Self::new("mock-codex", 1000)
     }
 
     /// Set custom responses (cycles through them).

@@ -1,5 +1,41 @@
-use claude_agent_sdk::HookEvent;
 use serde_json::Value;
+use serde::{Deserialize, Serialize};
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum HookEvent {
+    PreToolUse,
+    PostToolUse,
+    PostToolUseFailure,
+    Notification,
+    UserPromptSubmit,
+    SessionStart,
+    SessionEnd,
+    Stop,
+    SubagentStart,
+    SubagentStop,
+    PreCompact,
+    PermissionRequest,
+}
+
+impl HookEvent {
+    pub(crate) fn as_str(&self) -> &'static str {
+        match self {
+            HookEvent::PreToolUse => "pre_tool_use",
+            HookEvent::PostToolUse => "post_tool_use",
+            HookEvent::PostToolUseFailure => "post_tool_use_failure",
+            HookEvent::Notification => "notification",
+            HookEvent::UserPromptSubmit => "user_prompt_submit",
+            HookEvent::SessionStart => "session_start",
+            HookEvent::SessionEnd => "session_end",
+            HookEvent::Stop => "stop",
+            HookEvent::SubagentStart => "subagent_start",
+            HookEvent::SubagentStop => "subagent_stop",
+            HookEvent::PreCompact => "pre_compact",
+            HookEvent::PermissionRequest => "permission_request",
+        }
+    }
+}
 
 #[derive(Clone, Debug)]
 pub(crate) struct AgentCardEvent {

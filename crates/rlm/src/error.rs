@@ -42,7 +42,7 @@ pub enum RlmError {
     #[error("Model stuck: {0}")]
     Stuck(String),
 
-    /// Client error (e.g., Claude SDK error).
+    /// Client error (e.g., Codex SDK error).
     #[error("Client error: {0}")]
     ClientError(String),
 }

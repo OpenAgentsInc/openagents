@@ -141,7 +141,7 @@ impl Issue {
             issue_type: IssueType::from_str(&row.get::<_, String>("issue_type")?),
             agent: row
                 .get::<_, Option<String>>("agent")?
-                .unwrap_or_else(|| "claude".to_string()),
+                .unwrap_or_else(|| "codex".to_string()),
             directive_id: row.get("directive_id")?,
             project_id: row.get("project_id")?,
             is_blocked: row.get::<_, i32>("is_blocked")? != 0,
@@ -215,7 +215,7 @@ pub fn create_issue_with_auto(
     let id = Uuid::new_v4().to_string();
     let number = next_issue_number(conn)?;
     let now = Utc::now().to_rfc3339();
-    let agent = agent.unwrap_or("claude");
+    let agent = agent.unwrap_or("codex");
 
     conn.execute(
         r#"
@@ -309,7 +309,7 @@ pub fn list_auto_created_issues(conn: &Connection, status: Option<Status>) -> Re
 }
 
 /// Get the next ready issue (open, not blocked, not claimed or claim expired)
-/// Optionally filter by agent (e.g., "claude" or "codex")
+/// Optionally filter by agent (e.g., "codex" or "codex")
 pub fn get_next_ready_issue(conn: &Connection, agent: Option<&str>) -> Result<Option<Issue>> {
     match agent {
         Some(agent_filter) => conn
@@ -574,7 +574,7 @@ mod tests {
         assert_eq!(issue.priority, Priority::High);
         assert_eq!(issue.issue_type, IssueType::Bug);
         assert_eq!(issue.status, Status::Open);
-        assert_eq!(issue.agent, "claude");
+        assert_eq!(issue.agent, "codex");
 
         let fetched = get_issue_by_number(&conn, 1).unwrap().unwrap();
         assert_eq!(fetched.id, issue.id);
@@ -673,14 +673,14 @@ mod tests {
     fn test_agent_filtering() {
         let conn = init_memory_db().unwrap();
 
-        // Create claude and codex issues
+        // Create codex and codex issues
         create_issue(
             &conn,
-            "Claude task",
+            "Codex task",
             None,
             Priority::High,
             IssueType::Task,
-            Some("claude"),
+            Some("codex"),
             None,
             None,
         )
@@ -701,11 +701,11 @@ mod tests {
         let next = get_next_ready_issue(&conn, None).unwrap().unwrap();
         assert_eq!(next.title, "Codex task");
 
-        // With claude filter, should return claude task
-        let claude_next = get_next_ready_issue(&conn, Some("claude"))
+        // With codex filter, should return codex task
+        let codex_next = get_next_ready_issue(&conn, Some("codex"))
             .unwrap()
             .unwrap();
-        assert_eq!(claude_next.title, "Claude task");
+        assert_eq!(codex_next.title, "Codex task");
 
         // With codex filter, should return codex task
         let codex_next = get_next_ready_issue(&conn, Some("codex")).unwrap().unwrap();

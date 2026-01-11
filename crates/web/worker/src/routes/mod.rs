@@ -8,7 +8,7 @@ pub mod auth;
 pub mod billing;
 pub mod blog_template;
 pub mod brb;
-pub mod claude_auth;
+pub mod codex_auth;
 pub mod container;
 pub mod early;
 pub mod episode_template;

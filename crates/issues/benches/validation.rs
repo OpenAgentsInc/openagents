@@ -81,7 +81,7 @@ fn bench_validate_agent(c: &mut Criterion) {
     let mut group = c.benchmark_group("validate_agent");
 
     // Benchmark valid agents
-    group.bench_function("claude", |b| b.iter(|| validate_agent(black_box("claude"))));
+    group.bench_function("codex", |b| b.iter(|| validate_agent(black_box("codex"))));
 
     group.bench_function("codex", |b| b.iter(|| validate_agent(black_box("codex"))));
 
@@ -95,7 +95,7 @@ fn bench_validate_agent(c: &mut Criterion) {
     });
 
     group.bench_function("invalid_case", |b| {
-        b.iter(|| validate_agent(black_box("Claude")))
+        b.iter(|| validate_agent(black_box("Codex")))
     });
 
     group.finish();
@@ -111,7 +111,7 @@ fn bench_combined_validation(c: &mut Criterion) {
             let description = validate_description(black_box(Some(
                 "This issue tracks the work to fix authentication problems in the login flow.",
             )));
-            let agent = validate_agent(black_box("claude"));
+            let agent = validate_agent(black_box("codex"));
             (title, description, agent)
         })
     });
@@ -123,7 +123,7 @@ fn bench_combined_validation(c: &mut Criterion) {
         b.iter(|| {
             let title = validate_title(black_box(&long_title));
             let description = validate_description(black_box(Some(&long_description)));
-            let agent = validate_agent(black_box("claude"));
+            let agent = validate_agent(black_box("codex"));
             (title, description, agent)
         })
     });

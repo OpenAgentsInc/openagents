@@ -6,7 +6,6 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use super::backend::{AgentAvailability, AgentKind, BoxedAgentBackend, ModelInfo};
-use super::claude_backend::ClaudeBackend;
 use super::codex_backend::CodexBackend;
 
 /// Agent registry that manages available backends
@@ -26,7 +25,6 @@ impl AgentRegistry {
         };
 
         // Register default backends
-        registry.register(Arc::new(ClaudeBackend::new()));
         registry.register(Arc::new(CodexBackend::new()));
 
         // Check availability at startup
@@ -81,12 +79,9 @@ impl AgentRegistry {
         self.backends.keys().copied().collect()
     }
 
-    /// Get the default agent kind (first available, preferring Claude)
+    /// Get the default agent kind (first available)
     pub fn default_kind(&self) -> Option<AgentKind> {
-        // Prefer Claude, fall back to Codex
-        if self.is_available(AgentKind::Claude) {
-            Some(AgentKind::Claude)
-        } else if self.is_available(AgentKind::Codex) {
+        if self.is_available(AgentKind::Codex) {
             Some(AgentKind::Codex)
         } else {
             None
@@ -148,7 +143,6 @@ mod tests {
     #[test]
     fn test_registry_creation() {
         let registry = AgentRegistry::new();
-        assert!(registry.get(AgentKind::Claude).is_some());
         assert!(registry.get(AgentKind::Codex).is_some());
     }
 
@@ -156,7 +150,6 @@ mod tests {
     fn test_all_kinds() {
         let registry = AgentRegistry::new();
         let kinds = registry.all_kinds();
-        assert!(kinds.contains(&AgentKind::Claude));
         assert!(kinds.contains(&AgentKind::Codex));
     }
 }

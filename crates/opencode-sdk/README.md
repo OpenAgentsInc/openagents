@@ -6,7 +6,7 @@ Rust SDK for OpenCode - provider-agnostic AI agent execution via REST API + SSE.
 
 This SDK provides a native Rust interface to OpenCode servers, enabling:
 
-- **Provider-agnostic**: Works with Claude, OpenAI, Google, or local models
+- **Provider-agnostic**: Works with Codex, OpenAI, Google, or local models
 - **REST + SSE architecture**: Clean HTTP API with real-time event streaming
 - **Session management**: Built-in conversation persistence
 - **Type-safe**: Generated types from OpenAPI specification
@@ -213,7 +213,7 @@ let options = ServerOptions::new()
 ## Requirements
 
 - OpenCode server (`npm i -g opencode-ai@latest`)
-- Provider API keys (e.g., `ANTHROPIC_API_KEY`)
+- Provider API keys (e.g., `OPENAI_API_KEY`)
 
 ## Related
 

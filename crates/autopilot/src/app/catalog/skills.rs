@@ -95,11 +95,11 @@ fn parse_skill_category(frontmatter: &Frontmatter) -> SkillCategory {
 }
 
 fn skill_project_dir(cwd: &Path) -> PathBuf {
-    cwd.join(".claude").join("skills")
+    cwd.join(".openagents").join("skills")
 }
 
 fn skill_user_dir() -> Option<PathBuf> {
-    dirs::home_dir().map(|home| home.join(".claude").join("skills"))
+    dirs::home_dir().map(|home| home.join(".openagents").join("skills"))
 }
 
 pub(crate) fn load_skill_entries(cwd: &Path) -> SkillCatalog {

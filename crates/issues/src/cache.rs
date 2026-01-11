@@ -217,7 +217,7 @@ mod tests {
             created_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),
             completed_at: None,
-            agent: "claude".to_string(),
+            agent: "codex".to_string(),
             directive_id: None,
             project_id: None,
             auto_created: false,

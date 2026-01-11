@@ -51,7 +51,7 @@ JSON object:
   "autonomy": "bounded",
   "capabilities": ["research", "summarization"],
   "version": "1.0.0",
-  "model_preferences": ["gpt-4", "claude-3"],
+  "model_preferences": ["gpt-4", "codex-3"],
   "payment_methods": ["lightning"]
 }
 ```

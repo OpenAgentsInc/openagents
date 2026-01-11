@@ -188,16 +188,16 @@ The RLM paper compares 5 methods:
 
 The primary LLM backend is **FM Bridge** (Apple Foundation Models). A swarm simulator is also available for testing distributed NIP-90 scenarios.
 
-## Claude Integration
+## Codex Integration
 
-RLM integrates with Claude in two ways:
+RLM integrates with Codex in two ways:
 
-### Mode A: Claude Calls RLM (MCP Tools)
+### Mode A: Codex Calls RLM (MCP Tools)
 
-RLM exposes tools via an MCP server that Claude can invoke:
+RLM exposes tools via an MCP server that Codex can invoke:
 
 ```bash
-# Configure in Claude Code settings
+# Configure in Codex Code settings
 {
   "mcpServers": {
     "rlm": {
@@ -208,7 +208,7 @@ RLM exposes tools via an MCP server that Claude can invoke:
 }
 
 # Or via CLI
-claude --mcp-server "rlm:stdio:rlm-mcp-server"
+codex --mcp-server "rlm:stdio:rlm-mcp-server"
 ```
 
 **MCP Server Backend Selection:**
@@ -219,9 +219,9 @@ The MCP server can use different backends for RLM execution:
 # Use Ollama (default) - requires Ollama at localhost:11434
 RLM_BACKEND=ollama rlm-mcp-server
 
-# Use Claude CLI - requires claude CLI installed
-# Build with: cargo build -p rlm --features claude --bin rlm-mcp-server
-RLM_BACKEND=claude rlm-mcp-server
+# Use Codex CLI - requires codex CLI installed
+# Build with: cargo build -p rlm --features codex --bin rlm-mcp-server
+RLM_BACKEND=codex rlm-mcp-server
 ```
 
 Available tools:
@@ -231,21 +231,21 @@ Available tools:
 | `rlm_query` | Deep recursive analysis using prompt-execute loop |
 | `rlm_fanout` | Distribute query across workers (local/swarm/datacenter) |
 
-### Mode B: Claude AS the RLM Backend
+### Mode B: Codex AS the RLM Backend
 
-Use Claude (Pro/Max) as the LlmClient for RLM execution. This mode uses Claude's
-**structured outputs** to enforce the RLM response format, ensuring Claude always
+Use Codex (Pro/Max) as the LlmClient for RLM execution. This mode uses Codex's
+**structured outputs** to enforce the RLM response format, ensuring Codex always
 responds with either code to execute or a final answer:
 
 ```rust
-use rlm::ClaudeLlmClient;  // Requires `claude` feature
+use rlm::CodexLlmClient;  // Requires `codex` feature
 
-let client = ClaudeLlmClient::new("/path/to/workspace");
+let client = CodexLlmClient::new("/path/to/workspace");
 let engine = RlmEngine::new(client, PythonExecutor::new());
 let result = engine.run("Analyze this code").await?;
 ```
 
-The ClaudeLlmClient uses a JSON schema to constrain Claude's output:
+The CodexLlmClient uses a JSON schema to constrain Codex's output:
 - `action: "execute"` - with `code` field containing Python to run
 - `action: "final"` - with `answer` field containing the final response
 
@@ -260,14 +260,14 @@ rlm = { path = "crates/rlm" }  # Core only
 # With DSPy integration
 rlm = { path = "crates/rlm", features = ["dspy"] }
 
-# With Claude as LlmClient backend
-rlm = { path = "crates/rlm", features = ["claude"] }
+# With Codex as LlmClient backend
+rlm = { path = "crates/rlm", features = ["codex"] }
 ```
 
 | Feature | Description |
 |---------|-------------|
 | `dspy` | DSPy integration: signatures, orchestrator, LmRouter bridge, tools |
-| `claude` | Claude as RLM backend via claude-agent-sdk |
+| `codex` | Codex as RLM backend via codex-agent-sdk |
 
 ## Module Summary
 
@@ -284,11 +284,11 @@ rlm = { path = "crates/rlm", features = ["claude"] }
 | `orchestrator` | High-level analysis orchestration |
 | `mcp_tools` | MCP tool definitions (rlm_query, rlm_fanout) |
 
-### With `claude` Feature
+### With `codex` Feature
 
 | Module | Description |
 |--------|-------------|
-| `claude_client` | ClaudeLlmClient implementing LlmClient |
+| `codex_client` | CodexLlmClient implementing LlmClient |
 
 ### With `dspy` Feature
 

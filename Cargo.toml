@@ -6,7 +6,6 @@ members = [
     "crates/agent-orchestrator",
     "crates/autopilot",
     "crates/autopilot-core",
-    "crates/autopilot-container",
     "crates/autopilot-service",
     "crates/autopilot-shell",
     "crates/autopilot-wasm",

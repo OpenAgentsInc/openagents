@@ -235,11 +235,11 @@ pub struct Node {
 
 ```rust
 // Configure LM
-dsrs::configure(LM::new("claude-3-sonnet"));
+dsrs::configure(LM::new("codex-3-sonnet"));
 
 // Configure with callback
 dsrs::configure_with_callback(
-    LM::new("claude-3-sonnet"),
+    LM::new("codex-3-sonnet"),
     ChatAdapter,
     LoggingCallback::new(),
 );
@@ -253,7 +253,7 @@ let callback = dsrs::get_callback();
 Hybrid memory + disk caching via foyer.
 
 ```rust
-let lm = LM::new("claude-3-sonnet")
+let lm = LM::new("codex-3-sonnet")
     .with_cache(true);
 
 // Cache is automatically used for repeated prompts

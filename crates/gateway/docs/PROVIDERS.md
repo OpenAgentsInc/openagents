@@ -109,21 +109,21 @@ export OPENAI_API_KEY="sk-your-key-here"
 
 ---
 
-## Anthropic (Planned)
+## OpenAI (Planned)
 
-Anthropic Claude API integration.
+OpenAI Codex API integration.
 
 ### Configuration
 
 ```bash
-export ANTHROPIC_API_KEY="sk-ant-your-key-here"
+export OPENAI_API_KEY="sk-ant-your-key-here"
 ```
 
 ### Models (Planned)
 
-- `claude-3-opus` - Most capable
-- `claude-3-sonnet` - Balanced
-- `claude-3-haiku` - Fastest
+- `codex-3-opus` - Most capable
+- `codex-3-sonnet` - Balanced
+- `codex-3-haiku` - Fastest
 
 ---
 

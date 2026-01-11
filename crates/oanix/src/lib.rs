@@ -19,7 +19,7 @@
 //! │  "How do agents run?"                       │
 //! │  ├── Tick model                             │
 //! │  ├── Filesystem abstraction                 │
-//! │  └── /compute, /containers, /claude         │
+//! │  └── /compute, /containers, /codex         │
 //! └─────────────────────────────────────────────┘
 //! ```
 //!

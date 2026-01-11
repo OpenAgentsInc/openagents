@@ -6,7 +6,7 @@ This document describes how Autopilot manages session state and checkpoints.
 
 Autopilot sessions are resumable multi-phase workflows that execute code changes. Each session progresses through phases:
 
-1. **Plan** - Generate implementation plan with Claude
+1. **Plan** - Generate implementation plan with Codex
 2. **Execute** - Apply changes to codebase
 3. **Review** - Verify changes work correctly
 4. **Fix** - Iterate on failures (up to N attempts)
@@ -41,15 +41,15 @@ Each session has a unique ID directory containing its checkpoint file.
   "phase": "execute",
   "phase_started_offset": 1800.0,
   "iteration": 0,
-  "model": "claude-sonnet-4-20250514",
+  "model": "codex-sonnet-4-20250514",
 
-  "claude_session_id": "sess_abc...",
+  "codex_session_id": "sess_abc...",
   "exec_session_id": "sess_def...",
   "review_session_id": null,
   "fix_session_id": null,
 
-  "claude_events": [...],
-  "claude_full_text": "Plan text...",
+  "codex_events": [...],
+  "codex_full_text": "Plan text...",
   "exec_events": [...],
   "exec_full_text": "Execution text...",
   "review_events": [],
@@ -79,7 +79,7 @@ Each session has a unique ID directory containing its checkpoint file.
 | `session_id` | String | Unique session identifier |
 | `phase` | StartupPhase | Current phase (plan/execute/review/fix) |
 | `iteration` | u32 | Fix loop iteration count |
-| `model` | ClaudeModel | Claude model being used |
+| `model` | CodexModel | Codex model being used |
 | `working_dir` | PathBuf | Repository working directory |
 
 ### Session IDs
@@ -88,7 +88,7 @@ Session IDs are stored for API resume:
 
 | Field | Purpose |
 |-------|---------|
-| `claude_session_id` | Plan phase API session |
+| `codex_session_id` | Plan phase API session |
 | `exec_session_id` | Execute phase API session |
 | `review_session_id` | Review phase API session |
 | `fix_session_id` | Fix phase API session |
@@ -99,7 +99,7 @@ Each phase accumulates events:
 
 | Field | Contents |
 |-------|----------|
-| `claude_events` | Plan phase Claude events |
+| `codex_events` | Plan phase Codex events |
 | `exec_events` | Execution phase events |
 | `review_events` | Review phase events |
 | `fix_events` | Fix phase events |
@@ -181,7 +181,7 @@ autopilot run "implement feature X"
             ▼
 ┌─────────────────────────┐
 │  Plan Phase             │
-│  - Start Claude session │
+│  - Start Codex session │
 │  - Save checkpoint      │
 │  - Generate plan        │
 └───────────┬─────────────┘
@@ -334,7 +334,7 @@ rm -rf ~/.openagents/sessions/abc123/
 ### Sensitive Data
 
 Checkpoints may contain:
-- Claude API responses (potentially sensitive)
+- Codex API responses (potentially sensitive)
 - Code snippets from the repository
 - File paths and project structure
 

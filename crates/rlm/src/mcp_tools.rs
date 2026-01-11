@@ -1,14 +1,14 @@
-//! RLM MCP tools for Claude integration.
+//! RLM MCP tools for Codex integration.
 //!
-//! Exposes RLM capabilities as MCP tools that Claude can invoke:
+//! Exposes RLM capabilities as MCP tools that Codex can invoke:
 //! - `rlm_query`: Run recursive analysis on a query
 //! - `rlm_fanout`: Distribute query across swarm (if available)
 //!
-//! This implements Mode A of the RLM + Claude integration: Claude CALLS RLM.
+//! This implements Mode A of the RLM + Codex integration: Codex CALLS RLM.
 //!
 //! # Usage
 //!
-//! These tools are designed to be exposed via an MCP server. Claude can then
+//! These tools are designed to be exposed via an MCP server. Codex can then
 //! decide when to invoke them for deep analysis tasks.
 //!
 //! ```rust,ignore

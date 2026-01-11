@@ -110,13 +110,13 @@ impl Default for DemoState {
             status_bar: StatusBar::new().items(vec![
                 StatusItem::mode("mode", Mode::Normal).left(),
                 StatusItem::text("file", "component_showcase.rs").center(),
-                StatusItem::model("model", Model::Claude).right(),
+                StatusItem::model("model", Model::Codex).right(),
                 StatusItem::status("status", Status::Online).right(),
             ]),
             notifications: Notifications::new(),
             text_input: TextInput::new().placeholder("Type something..."),
             selected_mode: Mode::Normal,
-            selected_model: Model::Claude,
+            selected_model: Model::Codex,
             hover_button: None,
             message_count: 10000,
         }
@@ -469,7 +469,7 @@ fn draw_atoms_section(
     let badge_y = atom_y + 40.0;
     atom_x = x + 16.0;
 
-    ModelBadge::new(Model::Claude).paint(Bounds::new(atom_x, badge_y, 80.0, 24.0), &mut cx);
+    ModelBadge::new(Model::Codex).paint(Bounds::new(atom_x, badge_y, 80.0, 24.0), &mut cx);
     atom_x += 90.0;
 
     ModelBadge::new(Model::Gpt4).paint(Bounds::new(atom_x, badge_y, 80.0, 24.0), &mut cx);
@@ -621,7 +621,7 @@ fn draw_selectors_section(
     {
         let mut cx = PaintContext::new(scene, text_system, 1.0);
         MessageHeader::new(EntryType::Assistant)
-            .model(Model::Claude)
+            .model(Model::Codex)
             .paint(Bounds::new(x, *y, width, 40.0), &mut cx);
     }
 

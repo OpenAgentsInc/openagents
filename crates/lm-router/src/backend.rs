@@ -50,7 +50,7 @@ impl LmResponse {
 ///
 /// Implementations provide access to different LLM inference sources:
 /// - Local models (Apple FM, Ollama)
-/// - API providers (OpenAI, Anthropic)
+/// - API providers (OpenAI, OpenAI)
 /// - Distributed networks (NIP-90 swarm)
 #[async_trait]
 pub trait LmBackend: Send + Sync {

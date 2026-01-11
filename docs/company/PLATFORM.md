@@ -265,13 +265,13 @@ When you use someone's skill, they get paid immediately. Not in 30 days. Not aft
 
 ## The Skills Marketplace
 
-> "Don't build agents, build skills." — Anthropic
+> "Don't build agents, build skills." — OpenAI
 
 Skills are reusable expertise that make agents better. The marketplace lets you:
 
 ### As a User
 - **Install skills one-click** and have them immediately available to agents
-- **Day 30 > Day 1**: Your Claude improves over time, learning from patterns
+- **Day 30 > Day 1**: Your Codex improves over time, learning from patterns
 - Skills compose with MCP servers (MCP = connectivity, Skills = expertise)
 - Share skills with your team instantly
 

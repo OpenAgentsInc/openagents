@@ -56,8 +56,8 @@ pub struct RlmArgs {
     #[arg(long)]
     pub local_only: bool,
 
-    /// Local backend: auto, ollama, llama-cpp, fm, claude
-    /// (claude requires --features claude)
+    /// Local backend: auto, ollama, llama-cpp, fm, codex
+    /// (codex requires --features codex)
     #[arg(long, default_value = "auto")]
     pub backend: String,
 
@@ -667,7 +667,7 @@ pub async fn run(args: RlmArgs) -> anyhow::Result<()> {
         }
     };
 
-    let run_result = if args.local_only || args.backend == "claude" {
+    let run_result = if args.local_only || args.backend == "codex" {
         let executor = local_executor
             .as_ref()
             .ok_or_else(|| anyhow::anyhow!("Local execution requested but no backend available"))?;

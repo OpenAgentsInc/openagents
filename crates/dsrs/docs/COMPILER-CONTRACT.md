@@ -361,7 +361,7 @@ use dsrs::prelude::*;
 
 // Configure with callback
 configure_with_callback(
-    LM::new("claude-3-sonnet"),
+    LM::new("codex-3-sonnet"),
     ChatAdapter,
     LoggingCallback::new(),
 );

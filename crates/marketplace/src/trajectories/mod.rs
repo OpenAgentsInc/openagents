@@ -5,7 +5,7 @@
 //!
 //! # Overview
 //!
-//! Developer trajectories captured from Claude Code, Cursor, Codex, and other
+//! Developer trajectories captured from Codex Code, Cursor, Codex, and other
 //! AI coding assistants contain valuable training signal:
 //!
 //! - Initial state: Git commit hash (real environment, no simulation)
@@ -62,7 +62,7 @@ pub struct TrajectorySession {
     /// Unique session identifier
     pub session_id: String,
 
-    /// Source of the trajectory (claude, cursor, codex, etc.)
+    /// Source of the trajectory (codex, cursor, codex, etc.)
     pub source: String,
 
     /// Local file path to original trajectory log
@@ -96,7 +96,7 @@ pub struct TrajectorySession {
 /// Configuration for trajectory contribution
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TrajectoryConfig {
-    /// Sources to scan (claude, cursor, codex)
+    /// Sources to scan (codex, cursor, codex)
     pub sources: Vec<String>,
 
     /// Auto-contribute without manual review
@@ -130,7 +130,7 @@ pub struct TrajectoryConfig {
 impl Default for TrajectoryConfig {
     fn default() -> Self {
         Self {
-            sources: vec!["claude".to_string()],
+            sources: vec!["codex".to_string()],
             auto_contribute: false,
             min_quality_score: 0.1, // Low threshold for scanning
             require_ci_signal: false,

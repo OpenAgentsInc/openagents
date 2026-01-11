@@ -75,10 +75,10 @@ impl Module for QARater {
 
 #[tokio::main]
 async fn main() {
-    // Anthropic
+    // OpenAI
     configure(
         LM::builder()
-            .model("anthropic:claude-sonnet-4-5-20250929".to_string())
+            .model("openai:codex-sonnet-4-5-20250929".to_string())
             .build()
             .await
             .unwrap(),
@@ -99,7 +99,7 @@ async fn main() {
 
     let qa_rater = QARater::builder().build();
     let prediction = qa_rater.batch(example.clone(), 2, true).await.unwrap();
-    println!("Anthropic: {prediction:?}");
+    println!("OpenAI: {prediction:?}");
 
     // Gemini
     configure(

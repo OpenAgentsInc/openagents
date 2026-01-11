@@ -141,9 +141,9 @@ mod tests {
 
     #[test]
     fn test_message_header_assistant() {
-        let header = MessageHeader::assistant(Model::ClaudeSonnet);
+        let header = MessageHeader::assistant(Model::CodexSonnet);
         assert_eq!(header.entry_type(), EntryType::Assistant);
-        assert_eq!(header.model, Some(Model::ClaudeSonnet));
+        assert_eq!(header.model, Some(Model::CodexSonnet));
     }
 
     #[test]

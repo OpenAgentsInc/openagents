@@ -285,7 +285,7 @@ test("VirtualList - Renders Visible Only")
 | `ModeBadge - Normal Mode` | Correct color/text for Normal |
 | `ModeBadge - Plan Mode` | Correct color/text for Plan |
 | `ModeBadge - Act Mode` | Correct color/text for Act |
-| `ModelBadge - Claude` | Shows Claude model info |
+| `ModelBadge - Codex` | Shows Codex model info |
 | `ModelBadge - GPT4` | Shows GPT-4 model info |
 | `AgentStatusBadge - Active` | Green active indicator |
 | `AgentStatusBadge - Blocked` | Red blocked indicator |

@@ -123,7 +123,7 @@ pub struct Header {
     #[serde(default)]
     pub notes: Option<String>,
 
-    // Claude Code specific fields
+    // Codex Code specific fields
     #[serde(default)]
     pub client_version: Option<String>,
 
@@ -215,7 +215,7 @@ pub struct ParsedLine {
     pub level: Option<String>,
     pub result: Option<String>,
 
-    // Claude Code specific metadata
+    // Codex Code specific metadata
     pub parent_uuid: Option<String>,
     pub signature: Option<String>,
     pub tokens_in: Option<u64>,
@@ -293,7 +293,7 @@ pub struct SessionStats {
     pub has_timestamps: bool,
     pub blob_references: usize,
     pub redacted_values: usize,
-    // Claude Code specific stats
+    // Codex Code specific stats
     pub thinking_blocks: usize,
     pub todos_updates: usize,
     pub total_tokens_in: u64,
@@ -388,7 +388,7 @@ lazy_static! {
     static ref RE_LEVEL: Regex = Regex::new(r"\blevel=(\w+)").unwrap();
     static ref RE_RESULT: Regex = Regex::new(r"→\s*(.+)$").unwrap();
 
-    // Claude Code specific field extraction
+    // Codex Code specific field extraction
     static ref RE_PARENT: Regex = Regex::new(r"\bparent=([a-f0-9-]+)").unwrap();
     static ref RE_SIG: Regex = Regex::new(r"\bsig=(\S+)").unwrap();
     static ref RE_TOKENS_IN: Regex = Regex::new(r"\btokens_in=(\d+)").unwrap();
@@ -563,7 +563,7 @@ fn parse_line(line_number: usize, raw: &str) -> ParsedLine {
     let level = RE_LEVEL.captures(&content).map(|c| c[1].to_string());
     let result = RE_RESULT.captures(&content).map(|c| c[1].to_string());
 
-    // Claude Code specific metadata
+    // Codex Code specific metadata
     let parent_uuid = RE_PARENT.captures(&content).map(|c| c[1].to_string());
     let signature = RE_SIG.captures(&content).map(|c| c[1].to_string());
     let tokens_in = RE_TOKENS_IN
@@ -995,10 +995,10 @@ a: Response
     }
 
     #[test]
-    fn test_claude_code_metadata() {
+    fn test_codex_code_metadata() {
         let line = parse_line(
             1,
-            "th: Let me analyze... sig=Ep4E... parent=abc-123-def tokens_in=100 tokens_out=50 tokens_cached=25 model=claude-opus-4-5",
+            "th: Let me analyze... sig=Ep4E... parent=abc-123-def tokens_in=100 tokens_out=50 tokens_cached=25 model=codex-opus-4-5",
         );
 
         assert_eq!(line.line_type, LineType::Thinking);
@@ -1007,12 +1007,12 @@ a: Response
         assert_eq!(line.tokens_in, Some(100));
         assert_eq!(line.tokens_out, Some(50));
         assert_eq!(line.tokens_cached, Some(25));
-        assert_eq!(line.model, Some("claude-opus-4-5".to_string()));
+        assert_eq!(line.model, Some("codex-opus-4-5".to_string()));
         assert!(!line.interrupted);
     }
 
     #[test]
-    fn test_claude_code_interrupted() {
+    fn test_codex_code_interrupted() {
         let line = parse_line(1, "t:Bash id=call_1 interrupted → [error]");
 
         assert_eq!(line.line_type, LineType::Tool);
@@ -1020,7 +1020,7 @@ a: Response
     }
 
     #[test]
-    fn test_claude_code_header() {
+    fn test_codex_code_header() {
         let content = r#"---
 format: rlog/1
 id: sess_test

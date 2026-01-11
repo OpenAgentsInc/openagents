@@ -2,7 +2,7 @@
 
 Suggested build order for the OpenAgents Runtime. Each milestone has clear exit criteria.
 
-**Critical path for fastest usable system:** Milestones 1→7→14 (local runtime + compute + containers + HUD + /claude) validates the full abstraction before tackling Cloudflare/browser/DVM complexity.
+**Critical path for fastest usable system:** Milestones 1→7→14 (local runtime + compute + containers + HUD + /codex) validates the full abstraction before tackling Cloudflare/browser/DVM complexity.
 
 ---
 
@@ -453,41 +453,41 @@ Reloading the tab preserves agent state and storage entries via IndexedDB.
 
 ---
 
-## Milestone 14 — /claude (Claude Agent SDK Integration)
+## Milestone 14 — /codex (Codex Agent SDK Integration)
 
-**Goal:** Agents can spawn and control Claude Agent SDK instances via filesystem.
+**Goal:** Agents can spawn and control Codex Agent SDK instances via filesystem.
 
-**Implementation:** `crates/runtime/src/claude/`
+**Implementation:** `crates/runtime/src/codex/`
 
 ### Overview
 
-The `/claude` mount enables agents to command one or more Claude instances. Key innovation: Claude workers run in sandboxed containers but connect to Claude through authenticated tunnels pointing to the user's machine. Credentials never enter the sandbox.
+The `/codex` mount enables agents to command one or more Codex instances. Key innovation: Codex workers run in sandboxed containers but connect to Codex through authenticated tunnels pointing to the user's machine. Credentials never enter the sandbox.
 
 ### Tasks
 
 #### Phase 1: Core Types + FileService
 
-- Implement core types in `crates/runtime/src/claude/`:
-  - `ClaudeRequest`, `ClaudeResponse`, `ClaudeChunk`
-  - `ClaudeSessionAutonomy` (Full/Supervised/Restricted/ReadOnly)
-  - `ClaudePolicy`, `ClaudeUsageState`
-  - `ClaudeSessionStatus` state machine
-- Implement `ClaudeFs` with FileService trait:
-  - `/claude/new` → session_id (non-blocking)
-  - `/claude/policy` (read-only to agents)
-  - `/claude/usage` (reserved/spent micro-USD)
-  - `/claude/sessions/<id>/{status,prompt,response,output,tools/*,usage,fork,ctl}`
+- Implement core types in `crates/runtime/src/codex/`:
+  - `CodexRequest`, `CodexResponse`, `CodexChunk`
+  - `CodexSessionAutonomy` (Full/Supervised/Restricted/ReadOnly)
+  - `CodexPolicy`, `CodexUsageState`
+  - `CodexSessionStatus` state machine
+- Implement `CodexFs` with FileService trait:
+  - `/codex/new` → session_id (non-blocking)
+  - `/codex/policy` (read-only to agents)
+  - `/codex/usage` (reserved/spent micro-USD)
+  - `/codex/sessions/<id>/{status,prompt,response,output,tools/*,usage,fork,ctl}`
 - Implement session state machine: Creating → Ready → Working → Idle → Complete/Failed/PendingApproval
 
 #### Phase 2: Provider Trait + Local Provider
 
-- Implement `ClaudeProvider` trait (sync for FileService):
+- Implement `CodexProvider` trait (sync for FileService):
   - `create_session()` → session_id (always async)
   - `send_prompt()`, `poll_output()` → streaming chunks
   - `approve_tool()`, `fork_session()`, `stop()`, `pause()`, `resume()`
 - Implement `LocalProvider`:
-  - Same-machine Claude proxy (localhost, no tunnel)
-  - Wraps Claude Agent SDK process
+  - Same-machine Codex proxy (localhost, no tunnel)
+  - Wraps Codex Agent SDK process
   - Streams output to `/sessions/<id>/output`
 
 #### Phase 3: Tunnel Provider + Proxy Architecture
@@ -496,8 +496,8 @@ The `/claude` mount enables agents to command one or more Claude instances. Key 
   - WebSocket connection to user's local proxy via tunnel URL
   - Supports ngrok, Cloudflare Tunnel, Nostr relay endpoints
 - Implement tunnel authentication:
-  - `/claude/auth/tunnels` (admin-only config)
-  - `/claude/auth/challenge` (agent writes signed response)
+  - `/codex/auth/tunnels` (admin-only config)
+  - `/codex/auth/challenge` (agent writes signed response)
   - Nostr signature verification
 - Implement `TunnelMessage` protocol:
   - CreateSession, Prompt, Chunk, ToolApproval, Stop, Error
@@ -508,14 +508,14 @@ The `/claude` mount enables agents to command one or more Claude instances. Key 
 #### Phase 4: Worker Pool + Security
 
 - Implement worker pool management:
-  - `/claude/workers/<id>/{status,isolation,sessions,metrics}`
-  - `/claude/pool/{config,status,metrics}` (admin-only)
+  - `/codex/workers/<id>/{status,isolation,sessions,metrics}`
+  - `/codex/pool/{config,status,metrics}` (admin-only)
 - Implement isolation modes:
   - `IsolationMode`: Local, Container, Gvisor, Firecracker
   - `NetworkMode`: Host, ProxyOnly, None
 - Implement network isolation pattern:
   - `--network none` for containers
-  - Unix socket mount for proxy (`/var/run/anthropic-proxy.sock`)
+  - Unix socket mount for proxy (`/var/run/openai-proxy.sock`)
   - `NODE_USE_ENV_PROXY=1` for Node.js fetch()
 - Implement repo filtering:
   - `RepoFilterMode`: None, Standard, Strict, Custom
@@ -524,13 +524,13 @@ The `/claude` mount enables agents to command one or more Claude instances. Key 
 #### Phase 5: Cloud Provider + Budget Integration
 
 - Implement `CloudProvider`:
-  - Direct Anthropic API (requires API key in secret store)
+  - Direct OpenAI API (requires API key in secret store)
   - Model pricing (Sonnet, Opus, Haiku)
 - Implement budget integration:
   - Reserve/reconcile model (same as /compute, /containers)
   - `max_cost_usd` reservation on session create
   - Reconcile actual vs reserved on completion
-  - `/claude/usage` shows reserved + spent
+  - `/codex/usage` shows reserved + spent
 - Implement tool permissions:
   - `allowed_tools`, `blocked_tools`, `approval_required_tools`
   - Tool execution logging to `/sessions/<id>/tools/log`
@@ -543,7 +543,7 @@ The `/claude` mount enables agents to command one or more Claude instances. Key 
 ### Filesystem Layout
 
 ```
-/claude/
+/codex/
 ├── providers/           # tunnel, cloud, local
 ├── new                  # Call (write+read) → session_id
 ├── policy               # read-only to agents
@@ -566,17 +566,17 @@ The `/claude` mount enables agents to command one or more Claude instances. Key 
 
 ### Implementation Notes (completed)
 
-- Added `crates/runtime/src/claude/` with core types, policy/state machine, budget tracking, and idempotency-aware `/claude` FileService endpoints (sessions, tools, usage, auth, providers, workers/pool/proxy).
-- Implemented provider routing + `ClaudeProvider` trait plus concrete providers: Local/Cloud (claude-agent-sdk process runner) and Tunnel (WebSocket tunnel with Nostr auth, streaming, and tool approval).
+- Added `crates/runtime/src/codex/` with core types, policy/state machine, budget tracking, and idempotency-aware `/codex` FileService endpoints (sessions, tools, usage, auth, providers, workers/pool/proxy).
+- Implemented provider routing + `CodexProvider` trait plus concrete providers: Local/Cloud (codex-agent-sdk process runner) and Tunnel (WebSocket tunnel with Nostr auth, streaming, and tool approval).
 - Wired tool-approval workflow and append-only tool logs for both SDK-backed and tunnel sessions; output watch reconciles budget on completion/failure.
-- Added tunnel auth surfaces (`/claude/auth/{tunnels,challenge,status}`), provider health/endpoints surfaces, and admin-only policy/pool/proxy writes via `AgentEnv`.
-- Added runtime tests for `/claude/new` usage/idempotency and output watch; exported `/claude` APIs in `crates/runtime/src/lib.rs` and added required deps.
-- Added default Claude Code container image definition + docs (`docker/claude/`, `docs/claude/container-image.md`) and a local smoke-test helper (`scripts/claude-container-smoke-test.sh`) with Apple Container directory-mount guidance.
+- Added tunnel auth surfaces (`/codex/auth/{tunnels,challenge,status}`), provider health/endpoints surfaces, and admin-only policy/pool/proxy writes via `AgentEnv`.
+- Added runtime tests for `/codex/new` usage/idempotency and output watch; exported `/codex` APIs in `crates/runtime/src/lib.rs` and added required deps.
+- Added default Codex Code container image definition + docs (`docker/codex/`, `docs/codex/container-image.md`) and a local smoke-test helper (`scripts/codex-container-smoke-test.sh`) with Apple Container directory-mount guidance.
 
 ### Exit Criteria
 
-- Agent can create Claude session via tunnel to user's local proxy
-- Streaming output works via `watch(/claude/sessions/<id>/output)`
+- Agent can create Codex session via tunnel to user's local proxy
+- Streaming output works via `watch(/codex/sessions/<id>/output)`
 - Tool approval workflow works (PendingApproval state → approve → continue)
 - Session fork creates new session from checkpoint
 - Budget reserve/reconcile matches /compute and /containers patterns
@@ -592,7 +592,7 @@ The `/claude` mount enables agents to command one or more Claude instances. Key 
 
 ### References
 
-- [CLAUDE.md](CLAUDE.md) — Full spec (types, providers, security model)
+- [AGENTS.md](AGENTS.md) — Full spec (types, providers, security model)
 - [COMPUTE.md](COMPUTE.md) — Provider pattern, budget integration
 - [CONTAINERS.md](CONTAINERS.md) — Session management pattern
 - [FILESYSTEM.md](FILESYSTEM.md) — FileService trait
@@ -617,7 +617,7 @@ The `/claude` mount enables agents to command one or more Claude instances. Key 
 | M11 | DVM | Decentralized compute/containers |
 | M12 | Browser | WASM runtime |
 | M13 | Browser persistence | IndexedDB-backed storage |
-| M14 | **/claude** | **Claude Agent SDK via tunnel/proxy** |
+| M14 | **/codex** | **Codex Agent SDK via tunnel/proxy** |
 
 ---
 
@@ -637,10 +637,10 @@ This gives you:
 - AI compute (`/compute`)
 - Code execution (`/containers`)
 - **HUD** — The product's signature moment
-- **Claude Agent SDK** — Multi-step autonomous work sessions
+- **Codex Agent SDK** — Multi-step autonomous work sessions
 
 **M7 (HUD) is GTM-critical.** The live fishbowl, shareable URLs, and "demo is the product" strategy all depend on it. Without the HUD, there's no viral loop.
 
-**M14 (/claude) unlocks autonomous multi-step work.** While `/compute` handles simple inference and `/containers` handles code execution, `/claude` enables agents to spawn full Claude Agent SDK sessions for complex, tool-using, multi-turn work. The tunnel architecture ensures credentials stay on the user's machine.
+**M14 (/codex) unlocks autonomous multi-step work.** While `/compute` handles simple inference and `/containers` handles code execution, `/codex` enables agents to spawn full Codex Agent SDK sessions for complex, tool-using, multi-turn work. The tunnel architecture ensures credentials stay on the user's machine.
 
 The full abstraction is validated before adding Cloudflare/browser/DVM complexity.

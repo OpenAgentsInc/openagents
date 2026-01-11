@@ -299,7 +299,7 @@ impl Adjutant {
     ///
     /// This method determines the best execution strategy based on:
     /// - Task complexity (from planner)
-    /// - Available backends (Claude CLI, Cerebras, etc.)
+    /// - Available backends (Codex CLI, Cerebras, etc.)
     /// - Context size (for RLM routing)
     /// - Task description keywords (analyze, recursive, etc.)
     ///
@@ -355,7 +355,7 @@ impl Adjutant {
 
         if delegation.should_delegate {
             match delegation.delegation_target.as_str() {
-                "codex" | "claude_code" => {
+                "codex" | "codex_code" => {
                     tracing::info!("DSPy: delegating to Codex (confidence: {:.2})", delegation.confidence);
                     return self.delegate_to_codex(task).await;
                 }

@@ -106,7 +106,7 @@ fn extract_crate_name(reason: &str) -> Option<String> {
     }
 
     // Look for crate names in common patterns
-    for pattern in &["claude-mcp", "openagents-mcp", "pylon-ui", "wgpui"] {
+    for pattern in &["codex-mcp", "openagents-mcp", "pylon-ui", "wgpui"] {
         if reason.contains(pattern) {
             return Some(pattern.to_string());
         }

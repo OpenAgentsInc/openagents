@@ -79,7 +79,7 @@ allocate resources across available execution lanes.
 Available lanes and characteristics:
 - Local: Free, uses user's machine. Good for: small tasks, privacy-sensitive data.
 - Swarm: ~1-10 msats/call. Distributed inference via OpenAgents network.
-- Datacenter: ~100-1000 msats/call. Premium providers (Claude, GPT-4).
+- Datacenter: ~100-1000 msats/call. Premium providers (Codex, GPT-4).
 - Cache: Free, instant. Use when results are precomputed.
 
 Consider:

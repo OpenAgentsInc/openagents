@@ -150,7 +150,7 @@ impl AutopilotAgent {
             repo_url,
             issue_description,
             config: AutopilotConfig {
-                model: "claude-sonnet-4-20250514".to_string(),
+                model: "codex-sonnet-4-20250514".to_string(),
                 max_cost_per_tick_usd: 5_000_000,  // $5
                 max_cost_per_day_usd: 100_000_000, // $100
             },
@@ -748,7 +748,7 @@ impl AutopilotAgent {
     /// Submit a PatchGen job.
     fn submit_patch_gen_job(&self, plan: &str) -> std::result::Result<String, String> {
         let request = serde_json::json!({
-            "model": "claude-code",
+            "model": "codex-code",
             "kind": "patch_gen",
             "input": {
                 "repo": self.repo_url,
@@ -776,7 +776,7 @@ impl AutopilotAgent {
     /// Submit a CodeReview job.
     fn submit_code_review_job(&self, diff: &str) -> std::result::Result<String, String> {
         let request = serde_json::json!({
-            "model": "claude-code",
+            "model": "codex-code",
             "kind": "code_review",
             "input": {
                 "diff": diff,

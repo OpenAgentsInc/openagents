@@ -1,6 +1,6 @@
 //! Autopilot - Terminal-style AI coding interface
 //!
-//! A GPU-accelerated terminal UI for Claude Code and Codex.
+//! A GPU-accelerated terminal UI for Codex.
 
 use clap::Parser;
 use tracing_subscriber::EnvFilter;

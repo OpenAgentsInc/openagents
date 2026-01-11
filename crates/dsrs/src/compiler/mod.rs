@@ -31,7 +31,7 @@
 //!
 //! // Create LM providers
 //! let bootstrap_lm = Arc::new(PylonLM::new(PylonConfig::swarm(...)));
-//! let validation_lm = Arc::new(MockLM::new("claude"));
+//! let validation_lm = Arc::new(MockLM::new("codex"));
 //!
 //! // Create compiler
 //! let mut compiler = SwarmCompiler::new(bootstrap_lm, validation_lm, scorer);

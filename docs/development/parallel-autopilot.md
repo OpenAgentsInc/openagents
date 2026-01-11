@@ -255,8 +255,8 @@ FROM rust:1.85-bookworm
 RUN apt-get update && apt-get install -y \
     sqlite3 git curl build-essential
 
-# Install Claude Code CLI
-RUN curl -fsSL https://install.claude.com | sh
+# Install Codex Code CLI
+RUN curl -fsSL https://install.codex.com | sh
 
 # Build autopilot binary
 COPY . /build
@@ -280,7 +280,7 @@ CMD ["/usr/local/bin/autopilot", "--full-auto"]
 Key points:
 
 - Uses Rust 1.85 base image for consistent toolchain
-- Installs Claude Code CLI for agent execution
+- Installs Codex Code CLI for agent execution
 - Pre-builds autopilot binary for faster startup
 - Creates non-root user matching host UID for file permissions
 - Mounts `/workspace` from worktree
@@ -320,7 +320,7 @@ services:
       - ../../.worktrees/agent-001:/workspace:rw
       - ../../autopilot.db:/shared/autopilot.db:rw
       - ../../docs/logs:/workspace/docs/logs:rw
-      - ~/.claude:/home/agent/.claude:rw
+      - ~/.codex:/home/agent/.codex:rw
       - ~/.gitconfig:/home/agent/.gitconfig:ro
       - ~/.ssh:/home/agent/.ssh:ro
     environment:
@@ -344,7 +344,7 @@ docker logs autopilot-001
 
 Common issues:
 
-- **Missing credentials**: Ensure `~/.claude/` exists
+- **Missing credentials**: Ensure `~/.codex/` exists
 - **Out of memory**: Reduce agent count or increase Docker memory limit
 - **Missing database**: Run `cargo run -p autopilot -- issue list` to initialize
 
@@ -457,17 +457,17 @@ Start with fewer agents and scale up:
 
 The containers mount several sensitive directories:
 
-- `~/.claude/` - Claude API credentials (read-write for debug logs)
+- `~/.codex/` - Codex API credentials (read-write for debug logs)
 - `~/.ssh/` - SSH keys for git push (read-only)
 - `~/.gitconfig` - Git configuration (read-only)
 
-These are necessary for agents to authenticate with Claude API and push commits.
+These are necessary for agents to authenticate with Codex API and push commits.
 
 ### Network Isolation
 
 The `autopilot-net` bridge network isolates containers from the host network. Agents only have outbound internet access for:
 
-- Claude API
+- Codex API
 - GitHub (for git push)
 - Package registries (if needed)
 

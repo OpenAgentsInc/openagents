@@ -17,7 +17,7 @@ curl -N -X POST https://llm.stripe.com/chat/completions \
   -H "Content-Type: application/json" \
   -H "X-Stripe-Customer-ID: $CUSTOMER_ID" \
   -d '{
-    "model": "anthropic/claude-sonnet-4.5",
+    "model": "openai/codex-sonnet-4.5",
     "messages": [{"role": "user", "content": "List files in the src folder"}],
     "max_tokens": 500,
     "stream": true,

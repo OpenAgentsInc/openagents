@@ -1,4 +1,4 @@
-use claude_agent_sdk::protocol::PermissionMode;
+use codex_agent_sdk::{ApprovalMode, SandboxMode};
 use serde::{Deserialize, Serialize};
 
 use super::super::config::SettingsTab;
@@ -63,12 +63,30 @@ pub enum CoderMode {
 }
 
 impl CoderMode {
-    /// Convert to SDK PermissionMode (returns BypassPermissions for Autopilot since it auto-approves).
-    pub(crate) fn to_sdk_permission_mode(&self) -> PermissionMode {
+    /// Convert to Codex sandbox mode.
+    pub(crate) fn sandbox_mode(&self) -> SandboxMode {
         match self {
-            CoderMode::BypassPermissions => PermissionMode::BypassPermissions,
-            CoderMode::Plan => PermissionMode::Plan,
-            CoderMode::Autopilot => PermissionMode::BypassPermissions, // Auto-approve when SDK is used
+            CoderMode::BypassPermissions => SandboxMode::DangerFullAccess,
+            CoderMode::Plan => SandboxMode::ReadOnly,
+            CoderMode::Autopilot => SandboxMode::WorkspaceWrite,
+        }
+    }
+
+    /// Convert to Codex approval mode.
+    pub(crate) fn approval_mode(&self) -> ApprovalMode {
+        match self {
+            CoderMode::BypassPermissions => ApprovalMode::Never,
+            CoderMode::Plan => ApprovalMode::Never,
+            CoderMode::Autopilot => ApprovalMode::OnRequest,
+        }
+    }
+
+    /// Label for UI/logging.
+    pub(crate) fn mode_label(&self) -> &'static str {
+        match self {
+            CoderMode::BypassPermissions => "bypassPermissions",
+            CoderMode::Plan => "plan",
+            CoderMode::Autopilot => "autopilot",
         }
     }
 

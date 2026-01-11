@@ -153,10 +153,10 @@ fn validate_config(config: &ProjectConfig) -> ConfigResult<()> {
         ));
     }
 
-    // Claude Code max turns must be positive
-    if config.claude_code.max_turns_per_subtask == 0 {
+    // Codex Code max turns must be positive
+    if config.codex_code.max_turns_per_subtask == 0 {
         return Err(ConfigError::ValidationError(
-            "Claude Code max turns per subtask must be positive".into(),
+            "Codex Code max turns per subtask must be positive".into(),
         ));
     }
 
@@ -320,21 +320,21 @@ mod tests {
         assert!(!config.allow_push);
         // Defaults should still be applied
         assert_eq!(config.version, 1);
-        assert!(config.claude_code.enabled);
+        assert!(config.codex_code.enabled);
     }
 
     #[test]
     fn test_merge_nested_config() {
-        let partial = r#"{"claudeCode": {"permissionMode": "plan", "maxTurnsPerSubtask": 100}}"#;
+        let partial = r#"{"codexCode": {"permissionMode": "plan", "maxTurnsPerSubtask": 100}}"#;
         let config = merge_with_defaults(partial, "test").unwrap();
 
         assert_eq!(
-            config.claude_code.permission_mode,
+            config.codex_code.permission_mode,
             crate::PermissionMode::Plan
         );
-        assert_eq!(config.claude_code.max_turns_per_subtask, 100);
+        assert_eq!(config.codex_code.max_turns_per_subtask, 100);
         // Default should still apply
-        assert!(config.claude_code.enabled);
+        assert!(config.codex_code.enabled);
     }
 
     #[test]

@@ -145,10 +145,10 @@ pub(crate) fn build_repo_view(
         state.autopilot_chat.paint(&mut cx);
     }
 
-    // Draw Claude chat overlay (highest priority)
-    if state.claude_chat.visible {
-        state.claude_chat.calculate_bounds(width, height);
+    // Draw Codex chat overlay (highest priority)
+    if state.codex_chat.visible {
+        state.codex_chat.calculate_bounds(width, height);
         let mut cx = PaintContext::new(scene, text_system, scale_factor);
-        state.claude_chat.paint(&mut cx);
+        state.codex_chat.paint(&mut cx);
     }
 }

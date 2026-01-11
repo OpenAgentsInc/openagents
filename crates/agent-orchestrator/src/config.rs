@@ -29,7 +29,7 @@ fn default_color() -> String {
 impl Default for AgentConfig {
     fn default() -> Self {
         Self {
-            model: "anthropic/claude-sonnet-4".to_string(),
+            model: "openai/codex-sonnet-4".to_string(),
             prompt: String::new(),
             temperature: default_temperature(),
             description: String::new(),
@@ -189,13 +189,13 @@ mod tests {
     #[test]
     fn agent_config_serialize() {
         let config = AgentConfig {
-            model: "anthropic/claude-opus-4".to_string(),
+            model: "openai/codex-opus-4".to_string(),
             prompt: "You are a helpful assistant".to_string(),
             description: "Test agent".to_string(),
             ..Default::default()
         };
         let json = serde_json::to_string(&config).unwrap();
-        assert!(json.contains("claude-opus-4"));
+        assert!(json.contains("codex-opus-4"));
     }
 
     #[test]

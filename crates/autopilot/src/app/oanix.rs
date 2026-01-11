@@ -89,13 +89,13 @@ mod tests {
     #[test]
     fn formats_backend_gpu_and_relay_summaries() {
         let backend = InferenceBackend {
-            id: "claude".to_string(),
-            name: "Claude CLI".to_string(),
+            id: "codex".to_string(),
+            name: "Codex CLI".to_string(),
             endpoint: None,
-            models: vec!["sonnet".to_string()],
+            models: vec!["gpt-4o".to_string()],
             ready: true,
         };
-        assert!(format_backend_summary(&backend).contains("Claude"));
+        assert!(format_backend_summary(&backend).contains("Codex"));
 
         let gpu = GpuDevice {
             name: "M2".to_string(),

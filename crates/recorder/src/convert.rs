@@ -1,6 +1,6 @@
-//! Claude Code JSONL to Recorder format converter
+//! Codex Code JSONL to Recorder format converter
 //!
-//! Converts Claude Code session files (`.jsonl`) to Recorder format (`.rlog`).
+//! Converts Codex Code session files (`.jsonl`) to Recorder format (`.rlog`).
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -34,7 +34,7 @@ pub struct ConvertOptions {
     pub include_snapshots: bool,
     /// Include queue-operation events as comments
     pub include_queue_ops: bool,
-    /// Include raw Claude Code JSONL events as comments
+    /// Include raw Codex Code JSONL events as comments
     pub include_raw_events: bool,
 }
 
@@ -209,7 +209,7 @@ struct SessionMeta {
     first_timestamp: Option<String>,
 }
 
-/// Convert a Claude Code JSONL file to Recorder format
+/// Convert a Codex Code JSONL file to Recorder format
 ///
 /// **Memory usage**: Loads the entire file into memory. For very large JSONL files (>100MB),
 /// consider processing in batches. The conversion accumulates output lines before writing the
@@ -223,7 +223,7 @@ pub fn convert_file(
     convert_content(&content, repo_sha, options)
 }
 
-/// Convert Claude Code JSONL content to Recorder format
+/// Convert Codex Code JSONL content to Recorder format
 pub fn convert_content(
     content: &str,
     repo_sha: &str,
@@ -248,7 +248,7 @@ pub fn convert_content(
         let event_type = event.get("type").and_then(|v| v.as_str()).unwrap_or("");
 
         if options.include_raw_events {
-            lines_output.push(format!("# claude: {}", line));
+            lines_output.push(format!("# codex: {}", line));
         }
 
         match event_type {
@@ -759,7 +759,7 @@ mod tests {
     #[test]
     fn test_convert_minimal_session() {
         let jsonl = r#"{"type":"user","uuid":"abc123","sessionId":"sess_1","version":"2.0.71","gitBranch":"main","slug":"test-session","cwd":"/test","timestamp":"2025-12-19T20:00:00Z","message":{"role":"user","content":"Hello world"},"todos":[]}
-{"type":"assistant","uuid":"def456","parentUuid":"abc123","timestamp":"2025-12-19T20:00:01Z","message":{"model":"claude-opus","content":[{"type":"text","text":"Hi there!"}],"usage":{"input_tokens":10,"output_tokens":5}}}"#;
+{"type":"assistant","uuid":"def456","parentUuid":"abc123","timestamp":"2025-12-19T20:00:01Z","message":{"model":"codex-opus","content":[{"type":"text","text":"Hi there!"}],"usage":{"input_tokens":10,"output_tokens":5}}}"#;
 
         let result = convert_content(jsonl, "abc123", &ConvertOptions::default()).unwrap();
 

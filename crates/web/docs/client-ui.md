@@ -192,17 +192,17 @@ The main Autopilot interface, shown after selecting a repository.
 - Left: Keyboard shortcut hints
 - Right: Current repo path
 
-#### Claude Tunnel Overlay
+#### Codex Tunnel Overlay
 
-After the intro agent finishes, a **Start Claude** CTA appears in the Autopilot overlay.
+After the intro agent finishes, a **Start Codex** CTA appears in the Autopilot overlay.
 Launching it opens a second overlay with:
 
 - Tunnel status header (relay + tunnel connection)
 - Local connect command (`openagents pylon connect --tunnel-url ...`)
 - Chat thread + prompt input
-- Tool approval bar when Claude requests permissions
+- Tool approval bar when Codex requests permissions
 
-This flow keeps Claude running locally while the browser remains the UI.
+This flow keeps Codex running locally while the browser remains the UI.
 
 ## State Management
 

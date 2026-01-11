@@ -10,8 +10,8 @@ use std::str::FromStr;
 /// Supported trajectory sources
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum TrajectorySource {
-    /// Claude Code trajectories
-    ClaudeCode,
+    /// Codex Code trajectories
+    CodexCode,
     /// Cursor trajectories
     Cursor,
     /// Codex trajectories
@@ -22,17 +22,17 @@ impl TrajectorySource {
     /// Get standard log directory for this source
     pub fn default_log_dir(&self) -> Option<PathBuf> {
         match self {
-            Self::ClaudeCode => {
-                // Try multiple locations for Claude Code logs
+            Self::CodexCode => {
+                // Try multiple locations for Codex Code logs
                 // 1. Check docs/logs/ in current directory (OpenAgents project structure)
                 let docs_logs = PathBuf::from("docs/logs");
                 if docs_logs.exists() && docs_logs.is_dir() {
                     return Some(docs_logs);
                 }
 
-                // 2. Fall back to ~/.claude/logs
+                // 2. Fall back to ~/.codex/logs
                 let home = std::env::var("HOME").ok()?;
-                Some(PathBuf::from(home).join(".claude/logs"))
+                Some(PathBuf::from(home).join(".codex/logs"))
             }
             Self::Cursor => {
                 let home = std::env::var("HOME").ok()?;
@@ -48,7 +48,7 @@ impl TrajectorySource {
     /// Get the identifier string for this source
     pub fn as_str(&self) -> &'static str {
         match self {
-            Self::ClaudeCode => "claude",
+            Self::CodexCode => "codex",
             Self::Cursor => "cursor",
             Self::Codex => "codex",
         }
@@ -60,7 +60,7 @@ impl FromStr for TrajectorySource {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
-            "claude" => Ok(Self::ClaudeCode),
+            "codex" => Ok(Self::CodexCode),
             "cursor" => Ok(Self::Cursor),
             "codex" => Ok(Self::Codex),
             _ => Err(format!("Unknown trajectory source: {}", s)),
@@ -140,7 +140,7 @@ impl TrajectoryCollector {
             });
         }
 
-        // Recursively scan for .rlog files (Claude Code format)
+        // Recursively scan for .rlog files (Codex Code format)
         self.scan_directory_recursive(dir, source, &mut sessions, &mut errors);
 
         let session_count = sessions.len();
@@ -504,8 +504,8 @@ mod tests {
     #[test]
     fn test_trajectory_source_parsing() {
         assert_eq!(
-            TrajectorySource::from_str("claude"),
-            Ok(TrajectorySource::ClaudeCode)
+            TrajectorySource::from_str("codex"),
+            Ok(TrajectorySource::CodexCode)
         );
         assert_eq!(
             TrajectorySource::from_str("cursor"),
@@ -538,7 +538,7 @@ format: rlog/1
 id: 303cc83b-1f79-40e2-91ac-95138e826d77
 repo_sha: eb6bb683c
 branch: main
-model: claude-sonnet-4-5-20250929
+model: codex-sonnet-4-5-20250929
 tokens_total_in: 598
 tokens_total_out: 6406
 ---
@@ -556,7 +556,7 @@ Some log content here
         assert_eq!(metadata.get("tokens_total_in"), Some(&"598".to_string()));
         assert_eq!(
             metadata.get("model"),
-            Some(&"claude-sonnet-4-5-20250929".to_string())
+            Some(&"codex-sonnet-4-5-20250929".to_string())
         );
         assert!(log_content.contains("@start"));
         assert!(log_content.contains("Some log content"));
@@ -675,7 +675,7 @@ o: id=def → [ok] File updated
 
         let content = r#"
 @start id=303cc83b ts=2025-12-20T01:13:33Z
-@init model=claude-sonnet-4-5-20250929
+@init model=codex-sonnet-4-5-20250929
 Some content here
 @end tokens_in=598 tokens_out=6406 cost_usd=0.4758
 "#;

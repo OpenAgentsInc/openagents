@@ -197,11 +197,11 @@ cargo run --example simple
 cargo run --example streaming
 ```
 
-## Comparison with Claude Agent SDK
+## Comparison with Codex Agent SDK
 
-| Feature | Claude Agent SDK | Codex Agent SDK |
+| Feature | Codex Agent SDK | Codex Agent SDK |
 |---------|------------------|-----------------|
-| CLI Command | `claude --output-format stream-json` | `codex exec --experimental-json` |
+| CLI Command | `codex --output-format stream-json` | `codex exec --experimental-json` |
 | Event Type | `SdkMessage` | `ThreadEvent` |
 | Streaming | `impl Stream<Item = SdkMessage>` | `StreamedTurn` with `next()` |
 | Thread Resumption | Via thread ID | Via thread ID |
@@ -212,9 +212,9 @@ cargo run --example streaming
 Both SDKs follow similar patterns:
 
 ```rust
-// Claude
-let claude = ClaudeAgent::new(ClaudeOptions::default());
-let stream = claude.run_stream("prompt").await?;
+// Codex
+let codex = CodexAgent::new(CodexOptions::default());
+let stream = codex.run_stream("prompt").await?;
 
 // Codex
 let codex = Codex::new();
@@ -224,24 +224,24 @@ let streamed = thread.run_streamed("prompt", TurnOptions::default()).await?;
 
 ## Bi-directional Delegation
 
-Claude and Codex can delegate to each other:
+Codex and Codex can delegate to each other:
 
-### Claude → Codex
+### Codex → Codex
 
-Claude can invoke Codex via the `/codex` skill:
+Codex can invoke Codex via the `/codex` skill:
 
 ```bash
-# From within a Claude session
+# From within a Codex session
 codex exec --sandbox workspace-write "Refactor the authentication module"
 ```
 
-### Codex → Claude
+### Codex → Codex
 
-Codex can invoke Claude via MCP tools (if configured):
+Codex can invoke Codex via MCP tools (if configured):
 
 ```json
 {
-  "tool": "claude_query",
+  "tool": "codex_query",
   "arguments": {
     "prompt": "Review this code for security issues"
   }
@@ -249,8 +249,8 @@ Codex can invoke Claude via MCP tools (if configured):
 ```
 
 This enables:
-- Claude delegating complex refactoring to Codex
-- Codex delegating analysis/review to Claude
+- Codex delegating complex refactoring to Codex
+- Codex delegating analysis/review to Codex
 - Multi-agent workflows with different strengths
 
 ## Error Handling
@@ -283,7 +283,7 @@ The Autopilot desktop application (GPU-accelerated AI coding terminal) uses this
 **Switch backends in Autopilot:**
 ```bash
 /backend codex      # Switch to Codex
-/backend claude     # Switch back to Claude
+/backend codex     # Switch back to Codex
 /backend            # Toggle between backends
 ```
 

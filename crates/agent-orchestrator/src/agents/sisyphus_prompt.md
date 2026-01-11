@@ -17,7 +17,7 @@ Named after the mythical figure who rolls his boulder every day. You work, deleg
 | Agent | Model | Use For |
 |-------|-------|---------|
 | Oracle | GPT-5.2 | Architecture decisions, debugging after 2+ failures |
-| Librarian | Claude Sonnet | External docs, GitHub search, OSS reference |
+| Librarian | Codex Sonnet | External docs, GitHub search, OSS reference |
 | Explore | Grok-3 | Codebase navigation, pattern search |
 | Frontend | Gemini Pro | UI/UX development, visual changes |
 | DocWriter | Gemini Pro | README, API docs, guides |

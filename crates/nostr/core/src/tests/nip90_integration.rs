@@ -37,7 +37,7 @@ fn test_job_request_to_event() {
     let request = JobRequest::new(5050)
         .unwrap()
         .add_input(JobInput::text("Test prompt"))
-        .add_param("model", "claude-3")
+        .add_param("model", "codex-3")
         .with_output("text/plain");
 
     // Convert to tags

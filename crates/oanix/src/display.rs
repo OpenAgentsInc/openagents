@@ -39,17 +39,17 @@ fn print_hardware(manifest: &OanixManifest) {
     }
 }
 
-/// Check if Claude CLI is available at known locations.
-fn has_claude_cli() -> bool {
+/// Check if Codex CLI is available at known locations.
+fn has_codex_cli() -> bool {
     // First try PATH lookup
-    if which::which("claude").is_ok() {
+    if which::which("codex").is_ok() {
         return true;
     }
 
     // Check known installation locations
     if let Some(home) = dirs::home_dir() {
-        let claude_path = home.join(".claude/local/claude");
-        if claude_path.exists() && claude_path.is_file() {
+        let codex_path = home.join(".codex/local/codex");
+        if codex_path.exists() && codex_path.is_file() {
             return true;
         }
     }
@@ -60,10 +60,10 @@ fn has_claude_cli() -> bool {
 fn print_compute(manifest: &OanixManifest) {
     println!("Compute Backends");
 
-    // Check for Claude CLI (PRIORITY - uses Pro/Max subscription)
-    let has_claude = has_claude_cli();
-    if has_claude {
-        println!("  [OK] Claude CLI (Pro/Max) - PRIORITY");
+    // Check for Codex CLI (PRIORITY - uses Pro/Max subscription)
+    let has_codex = has_codex_cli();
+    if has_codex {
+        println!("  [OK] Codex CLI (Pro/Max) - PRIORITY");
     }
 
     // Check for Cerebras API key
@@ -73,7 +73,7 @@ fn print_compute(manifest: &OanixManifest) {
     }
 
     if manifest.compute.backends.is_empty() {
-        if !has_claude && !has_cerebras {
+        if !has_codex && !has_cerebras {
             println!("  [--] No local backends running");
             // Give context-aware suggestions based on hardware
             let has_gpu = !manifest.hardware.gpus.is_empty();
@@ -88,7 +88,7 @@ fn print_compute(manifest: &OanixManifest) {
             } else {
                 println!("       Install Ollama: https://ollama.com");
             }
-            println!("       Or install Claude CLI: https://claude.ai/claude-code");
+            println!("       Or install Codex CLI: https://codex.ai/codex-code");
         }
     } else {
         for backend in &manifest.compute.backends {
@@ -119,10 +119,10 @@ fn print_compute(manifest: &OanixManifest) {
     }
 
     // Summary of execution priority
-    if has_claude || has_cerebras || !manifest.compute.backends.is_empty() {
+    if has_codex || has_cerebras || !manifest.compute.backends.is_empty() {
         println!();
-        if has_claude {
-            println!("  Execution: Claude Pro/Max (priority)");
+        if has_codex {
+            println!("  Execution: Codex Pro/Max (priority)");
         } else if has_cerebras {
             println!("  Execution: Cerebras tiered inference");
         } else {

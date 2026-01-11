@@ -1,6 +1,6 @@
-use claude_agent_sdk::protocol::McpServerStatus;
 use serde_json::Value;
 
+use crate::app::catalog::mcp::McpServerStatus;
 use crate::autopilot_loop::DspyStage;
 
 use super::super::chat::MessageMetadata;

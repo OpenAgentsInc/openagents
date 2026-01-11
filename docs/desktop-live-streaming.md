@@ -110,7 +110,7 @@ let _ui_port: Option<u16> = if ui {
 
 ### 2. UI Renderer (ui_renderer.rs)
 
-Maps claude-agent-sdk `SdkMessage` types to recorder UI components:
+Maps codex-agent-sdk `SdkMessage` types to recorder UI components:
 
 ```rust
 pub fn render_sdk_message(msg: &SdkMessage) -> Option<Markup> {

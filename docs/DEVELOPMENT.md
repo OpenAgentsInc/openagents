@@ -28,7 +28,7 @@ Instructions for coding agents and contributors working on the OpenAgents codeba
 
 **Commits:** When committing, stage only your own files explicitly. Do not assume all changes in the worktree should be committed.
 
-**Autopilot commits:** Add `Co-Authored-By: Autopilot <autopilot@openagents.com>` after Claude's co-author line.
+**Autopilot commits:** Add `Co-Authored-By: Autopilot <autopilot@openagents.com>` after Codex's co-author line.
 
 ## Database
 

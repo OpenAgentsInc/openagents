@@ -24,14 +24,14 @@ For the full vision, see [SYNTHESIS.md](./SYNTHESIS.md). For the agent OS concep
 │  EXECUTION                        │                                          │
 │  ┌────────────────────────────────┴───────────────────────────────────────┐ │
 │  │  Adjutant (task execution) + Autopilot (autonomous loop)               │ │
-│  │  DSPy decisions │ Claude SDK │ RLM/FRLM │ Local inference              │ │
+│  │  DSPy decisions │ Codex SDK │ RLM/FRLM │ Local inference              │ │
 │  └────────────────────────────────────────────────────────────────────────┘ │
 │                                   │                                          │
 │  INFRASTRUCTURE                   │                                          │
 │  ┌─────────────┐ ┌────────────────┴──────────────┐ ┌────────────────────────┐│
 │  │   Pylon     │ │         Runtime               │ │        WGPUI           ││
 │  │(local node) │ │ Tick model │ FS abstraction   │ │   (GPU-rendered UI)    ││
-│  │Provider/Host│ │ /compute │ /claude │ /wallet  │ │                        ││
+│  │Provider/Host│ │ /compute │ /codex │ /wallet  │ │                        ││
 │  └──────┬──────┘ └───────────────────────────────┘ └────────────────────────┘│
 │         │                                                                    │
 │  NETWORK│                                                                    │
@@ -52,7 +52,7 @@ The single binary for running sovereign AI agents. Supports two modes simultaneo
 
 Pylon is the node software that connects your machine to the OpenAgents network. Think of it as the bridge between your local compute resources and the decentralized marketplace. When you run Pylon, you're either offering your GPU/CPU to others who need inference (provider mode), or you're managing your own AI agents that can tap into the network when they need more compute (host mode). Both modes can run simultaneously—you can earn sats while your agents work.
 
-The architecture is designed around sovereignty: your keys, your compute, your earnings. Pylon manages a local identity (Nostr keypair), a Lightning wallet (via Spark/Breez SDK), and auto-detects available inference backends. When a job arrives via NIP-90, Pylon routes it to whatever backend is available—Ollama, llama.cpp, Apple Foundation Models, or Claude—runs the inference, and collects payment. All without touching centralized infrastructure.
+The architecture is designed around sovereignty: your keys, your compute, your earnings. Pylon manages a local identity (Nostr keypair), a Lightning wallet (via Spark/Breez SDK), and auto-detects available inference backends. When a job arrives via NIP-90, Pylon routes it to whatever backend is available—Ollama, llama.cpp, Apple Foundation Models, or Codex—runs the inference, and collects payment. All without touching centralized infrastructure.
 
 | Mode | Purpose | How it works |
 |------|---------|--------------|
@@ -69,7 +69,7 @@ cargo build --release -p pylon
 - Apple Foundation Models (macOS + Apple Silicon)
 - Ollama (any platform, port 11434)
 - llama.cpp (any platform, port 8080)
-- Claude (via claude-agent-sdk)
+- Codex (via codex-agent-sdk)
 
 **Data directory:** `~/.openagents/pylon/`
 
@@ -77,24 +77,24 @@ cargo build --release -p pylon
 
 ### Autopilot UI — AI Coding Terminal
 
-GPU-accelerated terminal interface for Claude Code and Codex. Built on wgpui for high-performance rendering.
+GPU-accelerated terminal interface for Codex Code and Codex. Built on wgpui for high-performance rendering.
 
 Autopilot UI reimagines the AI coding experience as a native desktop application rather than a web interface or CLI tool. The entire UI is GPU-rendered via wgpui, giving you buttery-smooth scrolling through long conversations, instant Markdown rendering, and the responsiveness you'd expect from a proper terminal emulator. It's designed for developers who live in their terminal and want AI coding assistants to feel like a natural extension of that workflow.
 
 Under the hood, Autopilot UI integrates multiple AI backends:
-- **Claude** (via claude-agent-sdk) — Anthropic's Claude Code CLI
+- **Codex** (via codex-agent-sdk) — OpenAI's Codex Code CLI
 - **Codex** (via codex-agent-sdk) — OpenAI's Codex CLI
 
-Switch between backends with `/backend claude` or `/backend codex`. The status bar shows the current backend. Both backends share the same UI rendering, streaming, and tool visualization infrastructure.
+Switch between backends with `/backend codex` or `/backend codex`. The status bar shows the current backend. Both backends share the same UI rendering, streaming, and tool visualization infrastructure.
 
-Autopilot UI also integrates the Adjutant execution engine for autonomous "autopilot" mode. When you give it a task, Adjutant uses DSPy-optimized decision making to classify complexity, choose the right execution path (Claude SDK or RLM), and iterate until the task is complete. The UI provides real-time visibility into what the agent is doing, with the ability to interrupt, guide, or take over at any point.
+Autopilot UI also integrates the Adjutant execution engine for autonomous "autopilot" mode. When you give it a task, Adjutant uses DSPy-optimized decision making to classify complexity, choose the right execution path (Codex SDK or RLM), and iterate until the task is complete. The UI provides real-time visibility into what the agent is doing, with the ability to interrupt, guide, or take over at any point.
 
 ```bash
 cargo run -p autopilot
 ```
 
 **Features:**
-- Terminal-style interaction with Claude or Codex
+- Terminal-style interaction with Codex or Codex
 - Multi-backend support (`/backend` command to switch)
 - Autonomous autopilot loop (adjutant integration)
 - MCP server management
@@ -104,8 +104,8 @@ cargo run -p autopilot
 
 **Backend toggle:**
 ```bash
-/backend             # Toggle between Claude and Codex
-/backend claude      # Switch to Claude
+/backend             # Toggle between Codex and Codex
+/backend codex      # Switch to Codex
 /backend codex       # Switch to Codex (requires `codex` CLI installed)
 ```
 
@@ -252,7 +252,7 @@ WAKE → LOAD → PERCEIVE → THINK → ACT → REMEMBER → SCHEDULE → SLEEP
 ├── wallet/         # Balance, payments
 ├── compute/        # LLM inference
 ├── containers/     # Sandboxed execution
-└── claude/         # Claude SDK sessions
+└── codex/         # Codex SDK sessions
 ```
 
 Works across: Browser (WASM), Cloudflare (DO), Local (SQLite), Server (Docker/K8s).
@@ -263,9 +263,9 @@ Works across: Browser (WASM), Cloudflare (DO), Local (SQLite), Server (Docker/K8
 
 Unified abstraction for AI service providers.
 
-The Gateway crate provides a single interface for talking to any AI backend. Instead of writing different code for Ollama, llama.cpp, Claude, and Cerebras, you implement one trait and the Gateway handles routing, health checks, and failover. This abstraction is critical for Pylon's provider mode, where the same job might be served by different backends depending on what's available.
+The Gateway crate provides a single interface for talking to any AI backend. Instead of writing different code for Ollama, llama.cpp, Codex, and Cerebras, you implement one trait and the Gateway handles routing, health checks, and failover. This abstraction is critical for Pylon's provider mode, where the same job might be served by different backends depending on what's available.
 
-Gateway auto-detects backends at startup by probing known ports (11434 for Ollama, 8080 for llama.cpp, 11435 for Apple FM Bridge). It tracks model availability per backend and can route requests to the most appropriate provider based on model requirements, latency, and cost. For cloud providers like Cerebras and Claude, it manages API keys and rate limits. The result is that higher-level code can just call `gateway.chat()` and trust that the request will reach a working backend.
+Gateway auto-detects backends at startup by probing known ports (11434 for Ollama, 8080 for llama.cpp, 11435 for Apple FM Bridge). It tracks model availability per backend and can route requests to the most appropriate provider based on model requirements, latency, and cost. For cloud providers like Cerebras and Codex, it manages API keys and rate limits. The result is that higher-level code can just call `gateway.chat()` and trust that the request will reach a working backend.
 
 **Supported backends:**
 
@@ -275,7 +275,7 @@ Gateway auto-detects backends at startup by probing known ports (11434 for Ollam
 | llama.cpp | localhost:8080 | Auto |
 | Apple FM | localhost:11435 | Auto (macOS) |
 | Cerebras | API | Key required |
-| Claude | API/CLI | SDK required |
+| Codex | API/CLI | SDK required |
 
 ```rust
 pub trait InferenceGateway {
@@ -379,11 +379,11 @@ The execution engine with DSPy-powered decision making.
 
 **Decision pipelines:**
 1. **ComplexityPipeline** — Classify task (Low/Medium/High/VeryHigh)
-2. **DelegationPipeline** — Route to claude_code, rlm, or local_tools
+2. **DelegationPipeline** — Route to codex_code, rlm, or local_tools
 3. **RlmTriggerPipeline** — Decide if RLM is needed
 
 **Execution priority:**
-1. Claude Pro/Max (via claude-agent-sdk)
+1. Codex Pro/Max (via codex-agent-sdk)
 2. Cerebras (TieredExecutor)
 3. Local LM (llama.cpp, FM Bridge)
 
@@ -409,7 +409,7 @@ See [crates/adjutant/docs/](./crates/adjutant/docs/) for full documentation.
 
 RLM (Recursive Language Model) extends traditional LLM inference with a command loop. Instead of getting a single response, the model can emit commands like `RUN cargo test` that are executed locally, with results fed back into the conversation. The loop continues until the model emits `FINAL <result>`, indicating it's done reasoning. This enables complex multi-step analysis where the model can explore, test hypotheses, and refine its understanding iteratively.
 
-FRLM (Federated RLM) takes this further by distributing sub-queries across multiple backends. When a query is too expensive or specialized for local inference, FRLM can fan out to the swarm (NIP-90 jobs via Nostr), to cloud APIs (Claude, Cerebras), or keep it local depending on cost and privacy constraints. The federation is transparent to the caller—you get back a unified result regardless of how many backends contributed. This enables agents to punch above their local compute weight by tapping into the network when needed.
+FRLM (Federated RLM) takes this further by distributing sub-queries across multiple backends. When a query is too expensive or specialized for local inference, FRLM can fan out to the swarm (NIP-90 jobs via Nostr), to cloud APIs (Codex, Cerebras), or keep it local depending on cost and privacy constraints. The federation is transparent to the caller—you get back a unified result regardless of how many backends contributed. This enables agents to punch above their local compute weight by tapping into the network when needed.
 
 ```
 Query → LlmClient → Parse Commands → Executor → [Loop until FINAL]
@@ -424,7 +424,7 @@ Commands: `RUN <program>`, `FINAL <result>`, code blocks
 
 ```bash
 pylon rlm "Explain this codebase" --local-only
-pylon rlm "Deep analysis" --backend claude
+pylon rlm "Deep analysis" --backend codex
 ```
 
 ---
@@ -433,7 +433,7 @@ pylon rlm "Deep analysis" --backend claude
 
 Multi-backend routing via `lm-router`.
 
-The LM Router sits above individual backends and provides intelligent request routing. When you call `router.complete("llama3", prompt)`, the router figures out which backend can serve that model, checks health, and dispatches the request. If the primary backend is down, it fails over to alternatives. If you request a model that only exists on one backend (like Claude), it routes directly there.
+The LM Router sits above individual backends and provides intelligent request routing. When you call `router.complete("llama3", prompt)`, the router figures out which backend can serve that model, checks health, and dispatches the request. If the primary backend is down, it fails over to alternatives. If you request a model that only exists on one backend (like Codex), it routes directly there.
 
 Beyond simple routing, the LM Router tracks usage per model for billing and context optimization. It knows how many tokens you've consumed on each backend this billing period, can enforce rate limits, and can optimize prompts for specific model context windows. This is the layer that enables cost-aware inference: Adjutant's DSPy pipelines can query the router to understand the true cost of each option before deciding where to route a task.
 
@@ -457,7 +457,7 @@ Tracks usage per model for billing and context optimization.
 1. cargo autopilot run "Fix tests"
 2. Preflight checks (config, auth, repo)
 3. Adjutant makes DSPy decisions (complexity, delegation)
-4. Execute via chosen path (Claude SDK, local, RLM)
+4. Execute via chosen path (Codex SDK, local, RLM)
 5. Verify: cargo check + cargo test
 6. Loop until success or max iterations
 ```
@@ -488,7 +488,7 @@ Tracks usage per model for billing and context optimization.
 | Crate | Purpose |
 |-------|---------|
 | `pylon` | Node software (provider + host) |
-| `coder` | GPU terminal for Claude Code |
+| `coder` | GPU terminal for Codex Code |
 | `onyx` | Local-first Markdown editor |
 | `gitafter` | Nostr-native git collaboration |
 | `autopilot` | Autonomous coding agent |
@@ -504,7 +504,7 @@ Tracks usage per model for billing and context optimization.
 | `rlm` | Recursive language model |
 | `frlm` | Federated RLM |
 | `spark` | Lightning wallet (Breez SDK) |
-| `claude-agent-sdk` | Rust SDK for Claude Code |
+| `codex-agent-sdk` | Rust SDK for Codex Code |
 | `codex-agent-sdk` | Rust SDK for OpenAI Codex |
 | `voice` | Voice transcription (whisper.cpp) |
 | `voice-daemon` | macOS menu bar daemon |
@@ -530,9 +530,9 @@ Stage only your own files. Other agents may have uncommitted work.
 git commit -m "$(cat <<'EOF'
 Short description of change
 
-🤖 Generated with [Claude Code](https://claude.com/claude-code)
+🤖 Generated with [Codex Code](https://codex.com/codex-code)
 
-Co-Authored-By: Claude <noreply@anthropic.com>
+Co-Authored-By: Codex <noreply@openai.com>
 EOF
 )"
 ```
@@ -575,7 +575,7 @@ Issues are NOT done unless:
 | Component | Status | Notes |
 |-----------|--------|-------|
 | Pylon | v0.1 | Provider mode working, host mode partial |
-| Autopilot UI | Active | Multi-backend (Claude/Codex), autonomous loop with adjutant |
+| Autopilot UI | Active | Multi-backend (Codex/Codex), autonomous loop with adjutant |
 | Onyx | Alpha | Core editing works |
 | GitAfter | v0.1 | NIP-34 integration |
 | Nexus | v0.1 | NIP-90, NIP-42, NIP-89 |
@@ -583,7 +583,7 @@ Issues are NOT done unless:
 | Adjutant | **Wave 14** | Self-improving autopilot |
 | dsrs | **Wave 14** | Full DSPy implementation |
 | WGPUI | Phase 16 | 377 tests, full component library |
-| RLM | Working | Claude + Ollama backends |
+| RLM | Working | Codex + Ollama backends |
 | FRLM | Working | Distributed execution |
 | Protocol | Complete | Job schemas, verification |
 | Gateway | Complete | Multi-provider routing |

@@ -4,5 +4,5 @@
   "directive_id": "d-019",
   "priority": "high",
   "issue_type": "task",
-  "agent": "claude"
+  "agent": "codex"
 }

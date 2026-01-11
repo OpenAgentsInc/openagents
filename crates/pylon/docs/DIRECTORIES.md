@@ -92,17 +92,17 @@ backend_preference = ["ollama", "llamacpp", "apple_fm"]
 # Data directory override (optional)
 # data_dir = "/custom/path"
 
-# Claude tunnel configuration
-[claude]
+# Codex tunnel configuration
+[codex]
 enabled = true
-model = "claude-sonnet-4-20250514"
+model = "codex-sonnet-4-20250514"
 autonomy = "supervised"       # full | supervised | restricted | read_only
 approval_required_tools = ["Write", "Edit", "Bash"]
 allowed_tools = []            # Empty = allow requested tools
 blocked_tools = []
 max_cost_usd = 250000         # Micro-USD ($0.25)
 cwd = "/path/to/repo"         # Optional working directory
-executable_path = "/usr/local/bin/claude"  # Optional explicit path
+executable_path = "/usr/local/bin/codex"  # Optional explicit path
 ```
 
 **Loading**: Loaded by `PylonConfig::load()` at startup.

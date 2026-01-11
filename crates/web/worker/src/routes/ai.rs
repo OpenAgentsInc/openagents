@@ -20,7 +20,7 @@ pub struct ChatCompletionRequest {
 }
 
 fn default_model() -> String {
-    "anthropic/claude-sonnet-4.5".to_string()
+    "openai/codex-sonnet-4.5".to_string()
 }
 
 #[derive(Deserialize)]

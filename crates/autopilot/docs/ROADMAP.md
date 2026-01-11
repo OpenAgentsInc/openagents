@@ -1,10 +1,10 @@
-# Autopilot UI: Claude Agent SDK 100% Implementation Roadmap
+# Autopilot UI: Codex Agent SDK 100% Implementation Roadmap
 
-> A comprehensive roadmap to achieve full parity with Claude Code CLI
+> A comprehensive roadmap to achieve full parity with Codex Code CLI
 
 ## Executive Summary
 
-This document outlines the path to 100% implementation of the Claude Agent SDK in the Autopilot desktop application. The goal is complete feature parity with Claude Code CLI, leveraging the existing wgpui component library.
+This document outlines the path to 100% implementation of the Codex Agent SDK in the Autopilot desktop application. The goal is complete feature parity with Codex Code CLI, leveraging the existing wgpui component library.
 
 **Current State**: ~15% complete (basic chat, model selection, streaming)
 **Target State**: 100% SDK coverage + full CLI parity
@@ -44,7 +44,7 @@ This document outlines the path to 100% implementation of the Claude Agent SDK i
 | Status bar | Done | Permission mode, model, tools, session, backend |
 | Auto-scroll | Done | Scroll to bottom on new content |
 | Config persistence | Done | Model saved to ~/.openagents/autopilot/ |
-| Multi-backend support | Done | Claude + Codex via `/backend` command |
+| Multi-backend support | Done | Codex + Codex via `/backend` command |
 | Wallet status pane | Done | OANIX identity + Pylon wallet config |
 | DVM providers pane | Done | NIP-89 discovery for compute providers |
 | Gateway health pane | Done | Cerebras gateway status + model list |
@@ -200,7 +200,7 @@ pub enum Action {
 
 ## Phase 2: Slash Commands
 
-**Goal**: Implement all Claude Code CLI slash commands
+**Goal**: Implement all Codex Code CLI slash commands
 
 ### 2.1 Built-in Commands
 
@@ -247,15 +247,15 @@ pub enum Action {
 | Command | Description | Implementation |
 |---------|-------------|----------------|
 | `/config` | Open settings | Settings panel |
-| `/output-style <s>` | Set output style | Load from .claude/output-styles/ |
+| `/output-style <s>` | Set output style | Load from .codex/output-styles/ |
 | `/theme` | Toggle theme | Dark/light mode |
 
 ### 2.6 Custom Commands
 
 | Feature | Description | Implementation |
 |---------|-------------|----------------|
-| Project commands | `.claude/commands/*.md` | Load and execute |
-| User commands | `~/.claude/commands/*.md` | Load and execute |
+| Project commands | `.codex/commands/*.md` | Load and execute |
+| User commands | `~/.codex/commands/*.md` | Load and execute |
 | File references | `@filename` syntax | Inject file contents |
 | Bash execution | `!command` syntax | Run and inject output |
 
@@ -276,7 +276,7 @@ pub enum Action {
 - [x] Implement `/tools` listing
 - [x] Implement `/config` panel
 - [x] Implement `/output-style`
-- [x] Load custom commands from `.claude/commands/`
+- [x] Load custom commands from `.codex/commands/`
 - [x] Support `@filename` file references
 - [x] Support `!command` bash execution
 
@@ -577,8 +577,8 @@ pub struct AgentDefinition {
 | Source | Location | Priority |
 |--------|----------|----------|
 | Programmatic | QueryOptions::agent() | Highest |
-| Project | `.claude/agents/*.md` | Medium |
-| User | `~/.claude/agents/*.md` | Lowest |
+| Project | `.codex/agents/*.md` | Medium |
+| User | `~/.codex/agents/*.md` | Lowest |
 
 ### 7.3 Skill Definition UI
 
@@ -597,15 +597,15 @@ pub struct SkillDefinition {
 
 | Source | Location |
 |--------|----------|
-| Project | `.claude/skills/*/SKILL.md` |
-| User | `~/.claude/skills/*/SKILL.md` |
+| Project | `.codex/skills/*/SKILL.md` |
+| User | `~/.codex/skills/*/SKILL.md` |
 
 ### Tasks
 - [x] Create agent management modal
-- [x] Load agents from `.claude/agents/`
+- [x] Load agents from `.codex/agents/`
 - [x] Integrate `AgentProfileCard` component
 - [x] Create skill management modal
-- [x] Load skills from `.claude/skills/`
+- [x] Load skills from `.codex/skills/`
 - [x] Integrate `SkillCard` component
 - [x] Show active agent in status bar
 - [x] Support agent switching mid-session
@@ -652,7 +652,7 @@ pub struct HookConfig {
 | ToolBlocker | Block dangerous commands | Enabled |
 | ToolLogger | Log tool executions | Disabled |
 | OutputTruncator | Prevent context overflow | Enabled |
-| ContextInjection | Inject CLAUDE.md | Enabled |
+| ContextInjection | Inject AGENTS.md | Enabled |
 | TodoEnforcer | Enforce task completion | Disabled |
 
 ### Tasks
@@ -884,12 +884,12 @@ pub enum SettingsTab {
 ### 100% CLI Parity
 - [ ] All slash commands implemented
 - [ ] Session management (list, resume, fork, export)
-- [ ] Custom command support (`.claude/commands/`)
-- [ ] Agent support (`.claude/agents/`)
-- [ ] Skill support (`.claude/skills/`)
+- [ ] Custom command support (`.codex/commands/`)
+- [ ] Agent support (`.codex/agents/`)
+- [ ] Skill support (`.codex/skills/`)
 - [ ] MCP configuration (`.mcp.json`)
-- [ ] Output styles (`.claude/output-styles/`)
-- [ ] CLAUDE.md integration
+- [ ] Output styles (`.codex/output-styles/`)
+- [ ] AGENTS.md integration
 
 ### UI Completeness
 - [ ] All tool types have rich visualization
@@ -946,17 +946,17 @@ pub enum SettingsTab {
 - 2026-01-10 21:48 UTC - Added RLM trace pane with run metadata, trace event list, keybinding, and commands.
 - 2026-01-10 22:12 UTC - Added Pylon earnings pane with totals, source breakdown, keybinding, and commands.
 - 2026-01-10 22:34 UTC - Added Pylon jobs pane with status counts, pricing totals, keybinding, and commands.
-- 2026-01-10 - Implemented multi-backend support (Claude/Codex): agent abstraction layer with AgentBackend/AgentSession traits, `/backend` toggle command, and full Codex integration via codex-agent-sdk with event mapping to ResponseEvent.
+- 2026-01-10 - Implemented multi-backend support (Codex/Codex): agent abstraction layer with AgentBackend/AgentSession traits, `/backend` toggle command, and full Codex integration via codex-agent-sdk with event mapping to ResponseEvent.
 - 2026-01-10 23:02 UTC - Added agent backends pane with CLI availability, model selection, keybinding, and commands.
 - 2026-01-11 06:01 UTC - Wired Autopilot CLI to use ACP streaming + DSPy loop for tasks/issues, added Codex executor support, and backend selection flags/env wiring.
-- 2026-01-11 06:10 UTC - Added ACP tool-result updates for Claude streaming, aligned CLI command name with autopilot alias, and captured CLI renderer tool completion output.
+- 2026-01-11 06:10 UTC - Added ACP tool-result updates for Codex streaming, aligned CLI command name with autopilot alias, and captured CLI renderer tool completion output.
 - 2026-01-11 06:25 UTC - Fixed dsrs sync LM init to avoid nested tokio runtime panics and validated `autopilot-cli run` with ACP/DSPy loop.
-- 2026-01-11 06:44 UTC - Auto-selected Ollama model for DSPy/Pylon local runs, fixed Claude ACP XML filtering, and validated CLI runs across local-tools/Codex/Claude backends.
+- 2026-01-11 06:44 UTC - Auto-selected Ollama model for DSPy/Pylon local runs, fixed Codex ACP XML filtering, and validated CLI runs across local-tools/Codex/Codex backends.
 - 2026-01-11 06:52 UTC - Filtered tool XML tags from DSPy streaming tokens and validated `cargo autopilot run` with Codex backend.
-- 2026-01-11 07:01 UTC - Validated CLI edit flow (Codex create + Claude write with tool read-before-write), plus env override coverage for `AUTOPILOT_BACKEND`.
-- 2026-01-11 07:19 UTC - Added no-verify test policy note in Autopilot tasks and validated CLI runs (DSPy status, Codex OK, Codex create, Claude delete).
+- 2026-01-11 07:01 UTC - Validated CLI edit flow (Codex create + Codex write with tool read-before-write), plus env override coverage for `AUTOPILOT_BACKEND`.
+- 2026-01-11 07:19 UTC - Added no-verify test policy note in Autopilot tasks and validated CLI runs (DSPy status, Codex OK, Codex create, Codex delete).
 - 2026-01-11 07:28 UTC - Added no-verify test-strategy override for DSPy planning output, documented CLI vs GUI invocation, and queued fresh CLI validations.
 - 2026-01-11 07:41 UTC - Filtered non-actionable DSPy todo steps, deduped redundant summary tasks, and added orchestration tests.
 - 2026-01-11 07:47 UTC - Ensured DSPy todo steps carry original task context to reduce drift during multi-step CLI runs.
 - 2026-01-11 07:50 UTC - Normalized numbered DSPy steps for filtering/dedupe and revalidated CLI runs (autopilot-cli OK; autopilot README summary).
-- 2026-01-11 07:54 UTC - Validated `cargo autopilot` CLI path with Claude OK response plus Codex create + Claude delete roundtrip.
+- 2026-01-11 07:54 UTC - Validated `cargo autopilot` CLI path with Codex OK response plus Codex create + Codex delete roundtrip.

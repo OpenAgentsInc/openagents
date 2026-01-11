@@ -101,7 +101,7 @@ impl SamplingParams {
 /// ```
 /// use protocol::provenance::{Provenance, SamplingParams};
 ///
-/// let provenance = Provenance::new("claude-3-sonnet")
+/// let provenance = Provenance::new("codex-3-sonnet")
 ///     .with_sampling(SamplingParams::deterministic(42))
 ///     .with_input_hash("abc123...")
 ///     .with_output_hash("def456...");
@@ -268,7 +268,7 @@ mod tests {
 
     #[test]
     fn test_serde_roundtrip() {
-        let p = Provenance::new("claude-3")
+        let p = Provenance::new("codex-3")
             .with_sampling(SamplingParams::creative(0.7))
             .with_input_hash("hash1")
             .with_tokens(200, 100);

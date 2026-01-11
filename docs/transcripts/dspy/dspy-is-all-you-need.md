@@ -227,10 +227,10 @@ So I'll just... I'm just going to run through the notebook which is a collection
 So load in the `.env` file. Usually I'll have some type of config object like this where I can very easily use these later on. So if I'm... call like "model mixing". So if I have like a super hairy problem or like some workload I know will need the power of a reasoning model like GPT-5 or something else like that, I'll define multiple LLMs. So like one will be 4o, one will be 5, maybe I'll do a 4o-mini, um, you know Gemini 2.5 Flash, stuff like that. And then I can kind of intermingle or intersperse them depending on what I think or what I'm reasonably sure the workload will be. And you'll see how that comes into play in terms of classification and others.
 
 **33:15**
-Um, I'll pull in a few others here. I'm using OpenRouter for this. So if you have an OpenRouter API key, would recommend plugging that in. So now I have three different LLMs I can work with. I have Claude, I have Gemini, I have 4o-mini.
+Um, I'll pull in a few others here. I'm using OpenRouter for this. So if you have an OpenRouter API key, would recommend plugging that in. So now I have three different LLMs I can work with. I have Codex, I have Gemini, I have 4o-mini.
 
 **33:30**
-And then I'll ask basically for each of them: "Who's best between Google, Anthropic, Open AI?" All of them are hedging a little bit. They say "Subjective, Subjective, Undefined". Alright, great. It's not very helpful.
+And then I'll ask basically for each of them: "Who's best between Google, OpenAI, Open AI?" All of them are hedging a little bit. They say "Subjective, Subjective, Undefined". Alright, great. It's not very helpful.
 
 But because DSPy works on Pydantic, I can define the answer as a **Literal**. So I'm basically forcing it to only give me those three options. And then I can go through each of those and you can see each of them of course chooses their own organization.
 
@@ -278,10 +278,10 @@ To show you what the BAML adapter looks like, we can basically do two different 
 And then we're going to say, we're going to create a super simple DSPy Signature to say: taking the clinical note which is a string, the patient info is the output type. And then note, so I'm going to run this two different ways. The first time with the "smart" LLM that I mentioned before. And just use the built-in adapter, so I don't specify anything there. And then the second one will be using the BAML adapter which is defined there.
 
 **41:20**
-Um, so a few things going on here. One is the ability to use Python's context, which is the lines starting with `with`. Which allow you to basically break out of what the global LLM um, has been defined as and use a specific one just for that call. So you can see in this case I'm using the same LLM, but if I wanted to change this to like `lm_anthropic` or something... I think that should work. Um, but basically what that's doing is just offloading that call to the other... whatever LLM that you're defining for that particular call. And something happened. And I'm on a VPN, so let's kill that. Sorry Alex's partners.
+Um, so a few things going on here. One is the ability to use Python's context, which is the lines starting with `with`. Which allow you to basically break out of what the global LLM um, has been defined as and use a specific one just for that call. So you can see in this case I'm using the same LLM, but if I wanted to change this to like `lm_openai` or something... I think that should work. Um, but basically what that's doing is just offloading that call to the other... whatever LLM that you're defining for that particular call. And something happened. And I'm on a VPN, so let's kill that. Sorry Alex's partners.
 
 **42:07**
-Okay. So we had two separate calls. One was to the smart LLM which is I think 4o. The other one was to Anthropic. Everything else is the exact same, the note's the exact same, etc. We got the same exact output. That's great.
+Okay. So we had two separate calls. One was to the smart LLM which is I think 4o. The other one was to OpenAI. Everything else is the exact same, the note's the exact same, etc. We got the same exact output. That's great.
 
 But what I wanted to show here is the Adapters themselves. So in this case I'm doing `inspect_history(n=2)`, so I'm going to get both of the last two calls. And we're going to see how the prompts are going to be different.
 

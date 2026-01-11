@@ -31,7 +31,7 @@
 //! // Validate all fields before creating an issue
 //! let title = validate_title("Fix authentication bug")?;
 //! let description = validate_description(Some("Details about the bug"))?;
-//! let agent = validate_agent("claude")?;
+//! let agent = validate_agent("codex")?;
 //!
 //! // Now safe to insert into database
 //! # Ok::<(), issues::validation::ValidationError>(())
@@ -66,7 +66,7 @@ pub enum ValidationError {
     #[error("Description cannot exceed {MAX_DESCRIPTION_LENGTH} characters (got {0})")]
     DescriptionTooLong(usize),
 
-    #[error("Agent name must be 'claude' or 'codex' (got '{0}')")]
+    #[error("Agent name must be 'codex' or 'codex' (got '{0}')")]
     InvalidAgent(String),
 
     #[error("Directive ID '{0}' does not exist")]
@@ -171,7 +171,7 @@ pub fn validate_description(description: Option<&str>) -> Result<Option<String>,
 /// Validate agent name
 ///
 /// Requirements:
-/// - Must be "claude" or "codex"
+/// - Must be "codex" or "codex"
 ///
 /// # Examples
 ///
@@ -179,7 +179,7 @@ pub fn validate_description(description: Option<&str>) -> Result<Option<String>,
 /// use issues::validation::{validate_agent, ValidationError};
 ///
 /// // Valid agents
-/// assert_eq!(validate_agent("claude"), Ok("claude".to_string()));
+/// assert_eq!(validate_agent("codex"), Ok("codex".to_string()));
 /// assert_eq!(validate_agent("codex"), Ok("codex".to_string()));
 ///
 /// // Invalid agent names (error)
@@ -196,13 +196,13 @@ pub fn validate_description(description: Option<&str>) -> Result<Option<String>,
 ///
 /// // Case-sensitive (error)
 /// assert_eq!(
-///     validate_agent("Claude"),
-///     Err(ValidationError::InvalidAgent("Claude".to_string()))
+///     validate_agent("Codex"),
+///     Err(ValidationError::InvalidAgent("Codex".to_string()))
 /// );
 /// ```
 pub fn validate_agent(agent: &str) -> Result<String, ValidationError> {
     match agent {
-        "claude" | "codex" => Ok(agent.to_string()),
+        "codex" | "codex" => Ok(agent.to_string()),
         other => Err(ValidationError::InvalidAgent(other.to_string())),
     }
 }
@@ -307,10 +307,10 @@ mod tests {
 
     // Agent validation tests
     #[test]
-    fn test_valid_agent_claude() {
-        let result = validate_agent("claude");
+    fn test_valid_agent_codex() {
+        let result = validate_agent("codex");
         assert!(result.is_ok());
-        assert_eq!(result.unwrap(), "claude");
+        assert_eq!(result.unwrap(), "codex");
     }
 
     #[test]
@@ -338,10 +338,10 @@ mod tests {
     #[test]
     fn test_invalid_agent_case_sensitive() {
         // Agent names are case-sensitive
-        let result = validate_agent("Claude");
+        let result = validate_agent("Codex");
         assert_eq!(
             result,
-            Err(ValidationError::InvalidAgent("Claude".to_string()))
+            Err(ValidationError::InvalidAgent("Codex".to_string()))
         );
     }
 
@@ -406,7 +406,7 @@ mod tests {
         #[test]
         fn prop_agent_accepts_only_valid_names(s in "[a-z]{1,20}") {
             let result = validate_agent(&s);
-            if s == "claude" || s == "codex" {
+            if s == "codex" || s == "codex" {
                 prop_assert!(result.is_ok());
                 prop_assert_eq!(result.unwrap(), s);
             } else {

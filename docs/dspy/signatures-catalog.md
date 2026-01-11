@@ -136,12 +136,12 @@ struct ComplexityClassifier {
 #[Signature]
 struct DelegationDecider {
     /// Decide the best execution path for a task.
-    /// Options: claude_code (complex coding), rlm (recursive analysis), local_tools (simple operations).
+    /// Options: codex_code (complex coding), rlm (recursive analysis), local_tools (simple operations).
 
     #[input] pub task_description: String,
     #[input] pub complexity: String,
     #[input] pub available_tools: String,
-    #[output] pub delegation: String,     // claude_code/rlm/local_tools
+    #[output] pub delegation: String,     // codex_code/rlm/local_tools
     #[output] pub reasoning: String,
     #[output] pub confidence: f32,
 }

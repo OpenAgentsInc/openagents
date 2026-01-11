@@ -1,6 +1,6 @@
 # DSPy + Agent SDK Integration Strategy
 
-This document analyzes how to integrate DSPy (via dsrs) with AI coding agent SDKs (Claude Agent SDK, Codex Agent SDK, and any future ACP-compatible agents) for constrained, optimizable agent execution.
+This document analyzes how to integrate DSPy (via dsrs) with AI coding agent SDKs (Codex Agent SDK, Codex Agent SDK, and any future ACP-compatible agents) for constrained, optimizable agent execution.
 
 ## Executive Summary
 
@@ -10,7 +10,7 @@ DSPy should control the *decision-making flow* (planning, routing, verification)
 
 1. DSPy signatures make structured decisions about what to do
 2. DSPy orchestrates the overall task flow
-3. Agent SDKs (Claude, Codex, or ACP) execute tool-heavy subtasks via constrained queries
+3. Agent SDKs (Codex, Codex, or ACP) execute tool-heavy subtasks via constrained queries
 4. Output is constrained to DSPy signature schemas using structured outputs
 
 ```
@@ -25,7 +25,7 @@ DSPy should control the *decision-making flow* (planning, routing, verification)
 │      Local LM               Route Decision            Validate Output        │
 │     (fast/cheap)         ┌────┬────┬────┐            (JSON Schema)           │
 │                          │    │    │    │                                    │
-│                   local  │ claude  │ codex                                   │
+│                   local  │ codex  │ codex                                   │
 │                   tools  │ agent   │ agent                                   │
 │                     │    │    │    │    │                                    │
 │                     ▼    │    ▼    │    ▼                                    │
@@ -33,7 +33,7 @@ DSPy should control the *decision-making flow* (planning, routing, verification)
 │              │dsrs tools│││         UNIFIED ACP ADAPTER LAYER             │ │
 │              │(grep/    │││                                               │ │
 │              │ edit)    │││  ┌─────────────────┐  ┌─────────────────────┐ │ │
-│              └──────────┘││  │ Claude Agent SDK│  │  Codex Agent SDK    │ │ │
+│              └──────────┘││  │ Codex Agent SDK│  │  Codex Agent SDK    │ │ │
 │                          ││  │                 │  │                     │ │ │
 │                          ││  │ QueryOptions {  │  │ ThreadOptions {     │ │ │
 │                          ││  │  output_format, │  │  output_schema,     │ │ │
@@ -58,14 +58,14 @@ DSPy should control the *decision-making flow* (planning, routing, verification)
 
 | SDK | Provider | Structured Output | Sandbox Control | Hooks |
 |-----|----------|-------------------|-----------------|-------|
-| **Claude Agent SDK** | Anthropic | `output_format` (JSON Schema) | Permission modes | Yes |
+| **Codex Agent SDK** | OpenAI | `output_format` (JSON Schema) | Permission modes | Yes |
 | **Codex Agent SDK** | OpenAI | `output_schema` (JSON Schema) | `SandboxMode` enum | No |
 | **ACP Adapter** | OpenAgents | Via underlying SDK | Via underlying SDK | Via client |
 
-### Claude Agent SDK
+### Codex Agent SDK
 
 ```rust
-use claude_agent_sdk::{query, QueryOptions, OutputFormat, PermissionMode};
+use codex_agent_sdk::{query, QueryOptions, OutputFormat, PermissionMode};
 
 let options = QueryOptions::new()
     .output_format(OutputFormat {
@@ -101,10 +101,10 @@ The ACP adapter provides a unified interface for both SDKs via the Agent Client 
 ```rust
 use acp_adapter::{AcpAgentConnection, AgentCommand};
 
-// Works with any ACP-compatible agent (Claude, Codex, custom)
+// Works with any ACP-compatible agent (Codex, Codex, custom)
 let connection = AcpAgentConnection::stdio(
-    "claude",  // or "codex"
-    AgentCommand::new("claude").args(["--output-format", "stream-json"]),
+    "codex",  // or "codex"
+    AgentCommand::new("codex").args(["--output-format", "stream-json"]),
     &cwd,
 ).await?;
 
@@ -121,14 +121,14 @@ DSPy drives the decision-making pipeline. When a decision routes to an agent, we
 - **Structured outputs** matching the DSPy signature's output schema
 - **Turn/budget limits** for predictable execution
 - **Tool/sandbox constraints** to limit agent capabilities
-- **Hooks** (Claude) or policies (Codex) for validation
+- **Hooks** (Codex) or policies (Codex) for validation
 
 ```rust
 // DSPy orchestrator decides to delegate
 let delegation = delegation_pipeline.decide(&input).await?;
 
 match delegation.delegation_target.as_str() {
-    "claude_agent" => {
+    "codex_agent" => {
         let schema = build_schema_from_signature::<ExecutionOutputSignature>();
 
         let options = QueryOptions::new()
@@ -139,7 +139,7 @@ match delegation.delegation_target.as_str() {
             .max_turns(5)
             .permission_mode(PermissionMode::AcceptEdits);
 
-        let result = claude_executor.execute(&prompt, options).await?;
+        let result = codex_executor.execute(&prompt, options).await?;
     }
     "codex_agent" => {
         let schema = build_schema_from_signature::<ExecutionOutputSignature>();
@@ -176,7 +176,7 @@ pub struct UnifiedAgentExecutor {
 impl UnifiedAgentExecutor {
     pub async fn execute(
         &self,
-        agent: &str,  // "claude" or "codex"
+        agent: &str,  // "codex" or "codex"
         prompt: &str,
     ) -> Result<ExecutionResult> {
         let connection = self.connections.get(agent)
@@ -186,7 +186,7 @@ impl UnifiedAgentExecutor {
         connection.prompt(&session.session_id, prompt).await?;
 
         // Collect notifications and convert to unified result
-        // ACP normalizes events from both Claude and Codex
+        // ACP normalizes events from both Codex and Codex
         self.collect_result(&session).await
     }
 }
@@ -204,24 +204,24 @@ impl UnifiedAgentExecutor {
 
 ### Option 3: Bidirectional Delegation
 
-Claude and Codex can delegate to each other based on task requirements:
+Codex and Codex can delegate to each other based on task requirements:
 
 ```rust
-// DSPy decides Claude should handle this, but Claude can delegate to Codex
+// DSPy decides Codex should handle this, but Codex can delegate to Codex
 let decision = delegation_pipeline.decide(&input).await?;
 
-if decision.delegation_target == "claude_agent" {
-    // Claude gets the task
-    let claude_result = claude_executor.execute(&prompt, options).await?;
+if decision.delegation_target == "codex_agent" {
+    // Codex gets the task
+    let codex_result = codex_executor.execute(&prompt, options).await?;
 
-    // If Claude decides Codex is better for a subtask, it invokes Codex
+    // If Codex decides Codex is better for a subtask, it invokes Codex
     // via the /codex skill or MCP tool
 }
 ```
 
 This enables:
-- Claude delegating compute-heavy refactoring to Codex
-- Codex delegating analysis/review to Claude
+- Codex delegating compute-heavy refactoring to Codex
+- Codex delegating analysis/review to Codex
 - Multi-agent workflows leveraging different strengths
 
 ## Recommended Architecture: Hybrid DSPy-Controlled Execution
@@ -232,7 +232,7 @@ This enables:
 
 DSPy signatures should drive:
 - Task complexity classification
-- Agent selection (Claude vs Codex vs local)
+- Agent selection (Codex vs Codex vs local)
 - Execution routing decisions
 - Verification and validation
 - Training data collection
@@ -286,11 +286,11 @@ struct AgentExecutionSignature {
 
 #### 2. Multi-Agent Executor
 
-Support both Claude and Codex:
+Support both Codex and Codex:
 
 ```rust
 pub struct MultiAgentExecutor {
-    claude: Option<ClaudeSdkExecutor>,
+    codex: Option<CodexSdkExecutor>,
     codex: Option<CodexSdkExecutor>,
 }
 
@@ -317,9 +317,9 @@ impl MultiAgentExecutor {
         });
 
         match agent {
-            AgentType::Claude => {
-                let executor = self.claude.as_ref()
-                    .ok_or_else(|| anyhow::anyhow!("Claude not configured"))?;
+            AgentType::Codex => {
+                let executor = self.codex.as_ref()
+                    .ok_or_else(|| anyhow::anyhow!("Codex not configured"))?;
 
                 let options = QueryOptions::new()
                     .model(&constraints.model)
@@ -359,7 +359,7 @@ DSPy signature for choosing the best agent:
 struct AgentSelectionSignature {
     /// Agent Selector: Choose the best AI agent for this task.
     /// Consider: task type, complexity, required capabilities.
-    /// - claude: Better for analysis, architecture, multi-step reasoning
+    /// - codex: Better for analysis, architecture, multi-step reasoning
     /// - codex: Better for large refactoring, file operations, sandbox control
     /// - local: Simple edits, fast operations, no LLM needed
 
@@ -375,7 +375,7 @@ struct AgentSelectionSignature {
     #[input]
     pub file_count: String,
 
-    /// Best agent for this task: claude, codex, or local
+    /// Best agent for this task: codex, codex, or local
     #[output]
     pub agent: String,
 
@@ -418,13 +418,13 @@ impl AutopilotOrchestrator {
 
         // 3. Execute based on selection
         let execution_result = match selection.agent.as_str() {
-            "claude" => {
+            "codex" => {
                 let constraints = ExecutionConstraints {
-                    model: "claude-sonnet-4-5".to_string(),
+                    model: "codex-sonnet-4-5".to_string(),
                     max_turns: self.max_turns_for_complexity(&complexity),
                 };
                 self.multi_agent_executor.execute(
-                    AgentType::Claude, task, &constraints
+                    AgentType::Codex, task, &constraints
                 ).await?
             }
             "codex" => {
@@ -506,7 +506,7 @@ pub fn signature_to_json_schema<S: MetaSignature>() -> serde_json::Value {
 
 Different parts of the pipeline benefit from different models:
 
-| Pipeline Stage | Claude Model | Codex Model | Reason |
+| Pipeline Stage | Codex Model | Codex Model | Reason |
 |----------------|--------------|-------------|--------|
 | ComplexityPipeline | Haiku | gpt-4o-mini | Fast classification, low cost |
 | AgentSelectionPipeline | Haiku | gpt-4o-mini | Simple routing decision |
@@ -517,13 +517,13 @@ Different parts of the pipeline benefit from different models:
 ```rust
 fn select_model(agent: AgentType, stage: PipelineStage, complexity: &str) -> String {
     match (agent, stage, complexity) {
-        (AgentType::Claude, PipelineStage::Classification, _) => "claude-haiku".to_string(),
-        (AgentType::Claude, PipelineStage::Execution, "VeryHigh") => "claude-opus-4-5".to_string(),
-        (AgentType::Claude, PipelineStage::Execution, _) => "claude-sonnet-4-5".to_string(),
+        (AgentType::Codex, PipelineStage::Classification, _) => "codex-haiku".to_string(),
+        (AgentType::Codex, PipelineStage::Execution, "VeryHigh") => "codex-opus-4-5".to_string(),
+        (AgentType::Codex, PipelineStage::Execution, _) => "codex-sonnet-4-5".to_string(),
         (AgentType::Codex, PipelineStage::Classification, _) => "gpt-4o-mini".to_string(),
         (AgentType::Codex, PipelineStage::Execution, "VeryHigh") => "gpt-4o-with-reasoning".to_string(),
         (AgentType::Codex, PipelineStage::Execution, _) => "gpt-4o".to_string(),
-        _ => "claude-haiku".to_string(),
+        _ => "codex-haiku".to_string(),
     }
 }
 ```
@@ -584,7 +584,7 @@ let custom_agent = AcpAgentConnection::stdio(
     &cwd,
 ).await?;
 
-// Works the same as Claude or Codex
+// Works the same as Codex or Codex
 let session = custom_agent.new_session(cwd.clone()).await?;
 custom_agent.prompt(&session.session_id, &prompt).await?;
 ```
@@ -600,20 +600,20 @@ To add a new ACP-compatible agent:
 
 | File | Purpose |
 |------|---------|
-| `crates/adjutant/src/dspy/multi_agent_executor.rs` | Unified executor for Claude/Codex |
+| `crates/adjutant/src/dspy/multi_agent_executor.rs` | Unified executor for Codex/Codex |
 | `crates/adjutant/src/dspy/agent_selection.rs` | DSPy pipeline for agent selection |
 | `crates/adjutant/src/dspy/orchestrator.rs` | Main pipeline orchestrator |
 | `crates/adjutant/src/dspy/schema_gen.rs` | Signature → JSON Schema conversion |
-| `crates/claude-agent-sdk/src/query.rs` | Claude SDK query interface |
+| `crates/codex-agent-sdk/src/query.rs` | Codex SDK query interface |
 | `crates/codex-agent-sdk/src/thread.rs` | Codex SDK thread interface |
-| `crates/acp-adapter/src/agents/` | ACP wrappers for Claude and Codex |
+| `crates/acp-adapter/src/agents/` | ACP wrappers for Codex and Codex |
 
 ## Summary
 
 **Best Practice: DSPy drives decisions, Agent SDKs execute.**
 
 1. Use DSPy signatures for all **decisions** (complexity, agent selection, routing, verification)
-2. Use Claude/Codex SDKs for **execution** of complex, multi-tool tasks
+2. Use Codex/Codex SDKs for **execution** of complex, multi-tool tasks
 3. Constrain agents with **structured outputs** matching signature schemas
 4. Use **ACP** for a unified interface and future extensibility
 5. Collect **training data** at the DSPy layer for self-improvement

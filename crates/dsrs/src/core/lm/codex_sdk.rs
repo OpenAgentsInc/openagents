@@ -1,7 +1,7 @@
 //! Codex provider via codex-agent-sdk.
 //!
 //! Uses the Codex CLI headless mode for inference.
-//! This is the primary provider (Claude is deprecated).
+//! This is the primary provider (Codex is deprecated).
 //!
 //! IMPORTANT: This implementation reuses a single CLI process across
 //! all completions to avoid memory leaks.

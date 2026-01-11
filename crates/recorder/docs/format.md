@@ -24,7 +24,7 @@ Autopilot uses a **dual-format logging system** to balance human readability wit
 | File | Purpose | Content |
 |------|---------|---------|
 | `.rlog` | Human-readable summary | Truncated content (200 chars messages, 150 thinking, 100 tool output) |
-| `.jsonl` | Full data capture | Untruncated, Claude Code SDK compatible |
+| `.jsonl` | Full data capture | Untruncated, Codex Code SDK compatible |
 
 **File naming convention:**
 ```
@@ -42,7 +42,7 @@ docs/logs/20251222/
 
 ### JSONL Companion Format
 
-The JSONL companion file uses Claude Code SDK format (same as `~/.claude/projects/*.jsonl`):
+The JSONL companion file uses Codex Code SDK format (same as `~/.codex/projects/*.jsonl`):
 
 ```jsonl
 {"type":"user","message":{"content":"Fix the login bug"},"timestamp":"2025-12-22T10:00:00Z"}
@@ -55,7 +55,7 @@ The JSONL companion file uses Claude Code SDK format (same as `~/.claude/project
 - No truncation - full content preserved
 - Machine-parseable JSON
 - Includes token metrics per message
-- Compatible with Claude Code tooling
+- Compatible with Codex Code tooling
 
 ### Subagent Sessions
 
@@ -87,7 +87,7 @@ x:explore id=abc123 → [done] summary="found 3 files matching pattern"
 For APM (Actions Per Minute) calculations, always use JSONL files:
 
 1. **Autopilot sessions**: `docs/logs/**/*.jsonl` (includes subagent files)
-2. **Interactive sessions**: `~/.claude/projects/*.jsonl`
+2. **Interactive sessions**: `~/.codex/projects/*.jsonl`
 
 **Never use rlog for APM** - truncation loses action counts.
 
@@ -101,11 +101,11 @@ For APM (Actions Per Minute) calculations, always use JSONL files:
 
 `mode`, `model`, `agent`, `version`, `repo`, `branch`, `dirty`, `sandbox_id`, `runner`, `toolset`, `skills`, `mcp`, `budget`, `duration`, `classification`, `notes`, and any `extra.*` fields.
 
-### Claude Code Header Fields (optional)
+### Codex Code Header Fields (optional)
 
-When converting from Claude Code JSONL, these additional fields are captured:
+When converting from Codex Code JSONL, these additional fields are captured:
 
-- `client_version` - Claude Code client version (e.g., "2.0.71")
+- `client_version` - Codex Code client version (e.g., "2.0.71")
 - `slug` - Human-readable session name (e.g., "mighty-wishing-music")
 - `cwd` - Working directory path
 - `tokens_total_in` - Session total input tokens
@@ -155,9 +155,9 @@ These fields are extracted when present anywhere in a line:
 
 The parser also extracts the result after `→` as `result`.
 
-### Claude Code Metadata Fields
+### Codex Code Metadata Fields
 
-When converting from Claude Code, these additional fields may appear:
+When converting from Codex Code, these additional fields may appear:
 
 - `parent=` - Parent message UUID (for threading)
 - `sig=` - Thinking block signature (optional, for verification)
@@ -167,7 +167,7 @@ When converting from Claude Code, these additional fields may appear:
 - `interrupted` - Flag indicating tool was interrupted
 - `model=` - Model ID for this specific message
 
-### Claude Code Comment Types
+### Codex Code Comment Types
 
 File snapshots, queue operations, and raw events are converted to comments:
 
@@ -175,7 +175,7 @@ File snapshots, queue operations, and raw events are converted to comments:
 # file-snapshot: <message_id> files=<count>
 # queue: enqueue "<message>"
 # queue: remove
-# claude: {<raw jsonl>}
+# codex: {<raw jsonl>}
 ```
 
 ## Validation Rules (Current)
@@ -212,7 +212,7 @@ o: id=call_1 → [ok]
 @end summary="checked auth"
 ```
 
-## Example (Claude Code Conversion)
+## Example (Codex Code Conversion)
 
 ```
 ---
@@ -222,7 +222,7 @@ repo_sha: 50446e6d5
 client_version: "2.0.71"
 slug: mighty-wishing-music
 branch: main
-model: claude-opus-4-5-20251101
+model: codex-opus-4-5-20251101
 tokens_total_in: 21890
 tokens_total_out: 1250
 tokens_cached: 12973

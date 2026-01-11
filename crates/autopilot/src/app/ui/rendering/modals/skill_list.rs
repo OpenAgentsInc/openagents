@@ -37,7 +37,7 @@ fn render_skill_list_modal(
             y += 20.0;
 
             let desc_run = state.text_system.layout_styled_mono(
-                "Filesystem skills available to Claude.",
+                "Filesystem skills available to Codex.",
                 Point::new(modal_x + 16.0, y),
                 12.0,
                 Hsla::new(0.0, 0.0, 0.5, 1.0),

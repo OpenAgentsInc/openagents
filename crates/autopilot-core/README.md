@@ -4,7 +4,7 @@ Core logic for Autopilot - the autonomous engine that powers AI coding tasks.
 
 ## Overview
 
-Autopilot Core runs Claude/Codex SDK queries (plus local LLM/tool fallbacks) against your codebase to analyze code, fix bugs, implement features, and more. It supports two execution modes:
+Autopilot Core runs Codex/Codex SDK queries (plus local LLM/tool fallbacks) against your codebase to analyze code, fix bugs, implement features, and more. It supports two execution modes:
 
 | Mode | Command | Cost | Execution |
 |------|---------|------|-----------|
@@ -40,10 +40,10 @@ Use cloud compute via the web interface:
 Before running, Autopilot verifies:
 
 - **Config**: Reads `~/.openagents/` for settings
-- **Auth**: Checks Claude/Codex/OpenCode authentication status
+- **Auth**: Checks Codex/Codex/OpenCode authentication status
 - **Repository**: Validates git repo access in current folder
 - **Projects**: Detects issue tracking (GitHub Issues, Linear, etc.)
-- **Inference**: Claude/Codex availability and selected model
+- **Inference**: Codex/Codex availability and selected model
 - **Usage**: Current credit balance and limits
 
 Configuration is stored in `~/.openagents/folders/<path-hash>/` (not committed to git).
@@ -56,7 +56,7 @@ Configuration is stored in `~/.openagents/folders/<path-hash>/` (not committed t
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                  │
 │  ┌─────────────┐    ┌─────────────┐    ┌─────────────────────┐  │
-│  │  Preflight  │───▶│   Runner    │───▶│   Claude SDK        │  │
+│  │  Preflight  │───▶│   Runner    │───▶│   Codex SDK        │  │
 │  │   Checks    │    │   Loop      │    │   Query             │  │
 │  └─────────────┘    └─────────────┘    └─────────────────────┘  │
 │         │                  │                      │              │
@@ -76,7 +76,7 @@ Configuration is stored in `~/.openagents/folders/<path-hash>/` (not committed t
 cargo autopilot run "Implement user authentication"
 # (or `autopilot run ...` if the binary is on your PATH)
 
-# Force a backend (auto/claude/codex/local-llm/local-tools)
+# Force a backend (auto/codex/codex/local-llm/local-tools)
 cargo autopilot run "Implement user authentication" --backend codex
 
 # Check status
@@ -93,7 +93,7 @@ cargo autopilot issue claim <id>
 
 | Variable | Description |
 |----------|-------------|
-| `ANTHROPIC_API_KEY` | Claude API key (required for cloud mode) |
+| `OPENAI_API_KEY` | Codex API key (required for cloud mode) |
 | `OPENAGENTS_CONFIG` | Custom config directory path |
 | `AUTOPILOT_BACKEND` | Override backend selection for CLI runs |
 
@@ -103,8 +103,8 @@ Located at `~/.openagents/config.toml`:
 
 ```toml
 [inference]
-provider = "claude"  # or "codex"
-model = "claude-sonnet-4-5-20250929"
+provider = "codex"  # or "codex"
+model = "codex-sonnet-4-5-20250929"
 
 [limits]
 max_turns = 50
@@ -119,7 +119,7 @@ CLI runs can override the backend using `--backend` or `AUTOPILOT_BACKEND`.
 - [autopilot](../autopilot/) - GPU-accelerated desktop UI
 - [autopilot-service](../autopilot-service/) - Background service and daemon
 - [autopilot-shell](../autopilot-shell/) - Interactive shell interface
-- [claude-agent-sdk](../claude-agent-sdk/) - Rust SDK for Claude Code CLI
+- [codex-agent-sdk](../codex-agent-sdk/) - Rust SDK for Codex Code CLI
 
 ## Documentation
 

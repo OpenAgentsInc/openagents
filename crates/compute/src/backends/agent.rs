@@ -7,7 +7,7 @@
 //! - Multi-turn reasoning
 //! - Sandboxed execution environments
 //!
-//! Examples: Claude Code, SWE-agent, Aider, Devin
+//! Examples: Codex Code, SWE-agent, Aider, Devin
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -144,7 +144,7 @@ pub struct AgentCapabilities {
     pub repo_index: bool,
     /// Maximum concurrent jobs
     pub max_concurrent_jobs: u32,
-    /// Supported models (e.g., ["claude-sonnet-4", "claude-opus-4"])
+    /// Supported models (e.g., ["codex-sonnet-4", "codex-opus-4"])
     pub supported_models: Vec<String>,
     /// Isolation mode (e.g., "container", "local", "gvisor")
     pub isolation_mode: String,
@@ -153,8 +153,8 @@ pub struct AgentCapabilities {
 }
 
 impl AgentCapabilities {
-    /// Create capabilities for a Claude Code backend
-    pub fn claude_code() -> Self {
+    /// Create capabilities for a Codex Code backend
+    pub fn codex_code() -> Self {
         Self {
             patch_gen: true,
             code_review: true,
@@ -162,8 +162,8 @@ impl AgentCapabilities {
             repo_index: false, // Typically done by different backend
             max_concurrent_jobs: 3,
             supported_models: vec![
-                "claude-sonnet-4".to_string(),
-                "claude-opus-4".to_string(),
+                "codex-sonnet-4".to_string(),
+                "codex-opus-4".to_string(),
             ],
             isolation_mode: "container".to_string(),
             max_time_limit_secs: 1800, // 30 minutes
@@ -207,7 +207,7 @@ impl AgentCapabilities {
 /// Core trait for agent backends that handle complex, multi-step tasks
 #[async_trait]
 pub trait AgentBackend: Send + Sync {
-    /// Backend identifier (e.g., "claude_code", "swe_agent")
+    /// Backend identifier (e.g., "codex_code", "swe_agent")
     fn id(&self) -> &str;
 
     /// Check if the backend is ready to accept jobs
@@ -398,18 +398,18 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_agent_capabilities_claude_code() {
-        let caps = AgentCapabilities::claude_code();
+    fn test_agent_capabilities_codex_code() {
+        let caps = AgentCapabilities::codex_code();
         assert!(caps.patch_gen);
         assert!(caps.code_review);
         assert!(caps.sandbox_run);
         assert!(!caps.repo_index);
-        assert!(caps.supported_models.contains(&"claude-sonnet-4".to_string()));
+        assert!(caps.supported_models.contains(&"codex-sonnet-4".to_string()));
     }
 
     #[test]
     fn test_agent_capabilities_supports_kind() {
-        let caps = AgentCapabilities::claude_code();
+        let caps = AgentCapabilities::codex_code();
         assert!(caps.supports_kind(5932)); // PatchGen
         assert!(caps.supports_kind(5933)); // CodeReview
         assert!(caps.supports_kind(5930)); // SandboxRun
@@ -419,7 +419,7 @@ mod tests {
 
     #[test]
     fn test_agent_capabilities_supported_kinds() {
-        let caps = AgentCapabilities::claude_code();
+        let caps = AgentCapabilities::codex_code();
         let kinds = caps.supported_kinds();
         assert!(kinds.contains(&5930));
         assert!(kinds.contains(&5932));

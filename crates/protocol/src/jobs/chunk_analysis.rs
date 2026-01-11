@@ -283,7 +283,7 @@ mod tests {
                 priority: "high".into(),
             }],
             confidence: 0.85,
-            provenance: Provenance::new("claude-3-sonnet"),
+            provenance: Provenance::new("codex-3-sonnet"),
         };
 
         let json = serde_json::to_string(&response).unwrap();

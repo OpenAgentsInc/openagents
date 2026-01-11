@@ -7,9 +7,9 @@ The agent that DOES THE WORK. Named after StarCraft's command & control AI.
 Adjutant is the core execution engine for autonomous coding tasks. It:
 - Analyzes tasks to determine complexity and relevant files
 - Uses tools directly (Read, Edit, Bash, Glob, Grep)
-- Supports Claude + Codex CLI backends for agentic execution
+- Supports Codex + Codex CLI backends for agentic execution
 - Employs tiered inference for cost-effective fallback
-- Delegates to Claude Code for highly complex tasks
+- Delegates to Codex Code for highly complex tasks
 
 ## Architecture
 
@@ -29,11 +29,11 @@ Adjutant is the core execution engine for autonomous coding tasks. It:
 ┌─────────────────────────────────────────────────────────────┐
 │                       ADJUTANT                              │
 │  The actual agent that DOES THE WORK                        │
-│  - Prioritizes Claude/Codex via agent SDKs                  │
+│  - Prioritizes Codex/Codex via agent SDKs                  │
 │  - Falls back to local LLM or Cerebras TieredExecutor       │
 │  - Uses tools directly (Read, Edit, Bash, Glob, Grep)       │
 │  - Uses RLM for large context analysis                      │
-│  - Delegates to Claude Code for very complex work           │
+│  - Delegates to Codex Code for very complex work           │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -85,7 +85,7 @@ RUST_LOG=adjutant=info cargo autopilot run "Summarize README.md"
    - `determine_delegation()` - Should task be delegated? Where? (DSPy-first with fallback)
 4. **Todo Cleanup**: Filters non-actionable DSPy steps (summary/no-tests lines) and dedupes redundant summary steps
 5. **Execution**: Runs each step with original task context using the chosen backend (priority order, or `--backend` override):
-   - **Claude Pro/Max** (if `claude` CLI is installed) - Best quality, uses subscription
+   - **Codex Pro/Max** (if `codex` CLI is installed) - Best quality, uses subscription
    - **Codex CLI** (if `codex` CLI is installed) - OpenAI agent execution
    - **Local LLM** (llama.cpp/GPT-OSS) - Tool-calling loop on your machine
    - **TieredExecutor / analysis-only** - Cost-effective or fallback execution
@@ -106,13 +106,13 @@ RUST_LOG=adjutant=info cargo autopilot run "Summarize README.md"
 │     └── RLM for large context analysis?                     │
 │                                                              │
 │  4. Execution Backend Selection                              │
-│     ├── Claude → ClaudeExecutor (with optional RLM)         │
+│     ├── Codex → CodexExecutor (with optional RLM)         │
 │     ├── Codex → CodexExecutor                                │
 │     ├── LocalLlm → GPT-OSS tool loop                         │
 │     └── fallback → delegation / tool executor                │
 │                                                              │
 │  5. determine_delegation() [DSPy-first]                     │
-│     ├── claude_code → delegate_to_claude_code()             │
+│     ├── codex_code → delegate_to_codex_code()             │
 │     ├── rlm → execute_with_rlm_delegate()                   │
 │     └── local_tools → execute_with_tools()                  │
 │                                                              │
@@ -128,7 +128,7 @@ RUST_LOG=adjutant=info cargo autopilot run "Summarize README.md"
 ┌─────────────────────────────────────────────────────────────┐
 │                    Execution Priority                        │
 ├─────────────────────────────────────────────────────────────┤
-│  1. Claude CLI detected?  ──YES──►  ClaudeExecutor          │
+│  1. Codex CLI detected?  ──YES──►  CodexExecutor          │
 │           │                         (Pro/Max subscription)   │
 │           NO                                                 │
 │           ▼                                                  │
@@ -165,7 +165,7 @@ pub struct Task {
 | `Low` | Single file, simple edit | TieredExecutor |
 | `Medium` | Multi-file, moderate scope | TieredExecutor |
 | `High` | Complex refactoring, many files | TieredExecutor or delegate |
-| `VeryHigh` | Architectural changes, 30+ files | Claude Code delegation |
+| `VeryHigh` | Architectural changes, 30+ files | Codex Code delegation |
 
 ### Tools
 
@@ -254,7 +254,7 @@ let result = executor.execute_dsrs(&task, &context, &mut tools).await?;
 | Signature | Purpose | Fallback |
 |-----------|---------|----------|
 | `ComplexityClassificationSignature` | Classify task complexity (Low/Medium/High/VeryHigh) | Rule-based heuristics |
-| `DelegationDecisionSignature` | Decide if/where to delegate (claude_code/rlm/local_tools) | Complexity thresholds |
+| `DelegationDecisionSignature` | Decide if/where to delegate (codex_code/rlm/local_tools) | Complexity thresholds |
 | `RlmTriggerSignature` | Decide if RLM should be used | Token count + keywords |
 
 Decision pipelines use a 0.7 confidence threshold - below that, they fall back to legacy rule-based logic.
@@ -265,13 +265,13 @@ See [DSPY-INTEGRATION.md](./DSPY-INTEGRATION.md) for detailed documentation.
 
 ### Execution Backends
 
-**Priority 1: Claude Pro/Max** (Recommended)
+**Priority 1: Codex Pro/Max** (Recommended)
 
-Install the Claude CLI to use your existing Claude subscription:
+Install the Codex CLI to use your existing Codex subscription:
 ```bash
-# Install Claude CLI (see https://claude.ai/claude-code)
+# Install Codex CLI (see https://codex.ai/codex-code)
 # Then authenticate:
-claude auth login
+codex auth login
 ```
 
 **Priority 2: Codex CLI**
@@ -303,9 +303,9 @@ export CEREBRAS_API_KEY="csk-your-key-here"
 | `PYLON_MNEMONIC` | No | BIP-39 mnemonic for Pylon Swarm inference |
 | `PYLON_LOCAL_MODEL` | No | Override Ollama model for Pylon Local (DSPy planning) |
 | `OLLAMA_MODEL` | No | Alias for `PYLON_LOCAL_MODEL` |
-| `ADJUTANT_ENABLE_RLM` | No | Enable RLM tools in Claude sessions (1/true) |
-| `RLM_BACKEND` | No | RLM backend selection (claude) |
-| `AUTOPILOT_BACKEND` | No | Override backend selection (auto/claude/codex/local-llm/local-tools) |
+| `ADJUTANT_ENABLE_RLM` | No | Enable RLM tools in Codex sessions (1/true) |
+| `RLM_BACKEND` | No | RLM backend selection (codex) |
+| `AUTOPILOT_BACKEND` | No | Override backend selection (auto/codex/codex/local-llm/local-tools) |
 
 ### LM Provider Priority
 
@@ -314,7 +314,7 @@ Adjutant auto-detects available DSPy LM providers in this priority order:
 | Priority | Provider | Requirements | Use Case |
 |----------|----------|--------------|----------|
 | 1 | **LlamaCpp** | `llama-server` on :8080 | Local execution with GPT-OSS |
-| 2 | **Claude SDK** | `claude` CLI installed | Pro/Max subscription |
+| 2 | **Codex SDK** | `codex` CLI installed | Pro/Max subscription |
 | 3 | **Pylon Swarm** | `PYLON_MNEMONIC` env var | Distributed NIP-90 inference |
 | 4 | **Cerebras** | `CEREBRAS_API_KEY` env var | Fast cloud inference |
 | 5 | **Pylon Local** | Ollama on :11434 | Local Ollama fallback (auto-selects available model) |
@@ -339,12 +339,12 @@ If Cerebras is not configured:
 
 ## Delegation
 
-For very complex tasks, Adjutant delegates to Claude Code:
+For very complex tasks, Adjutant delegates to Codex Code:
 
 ```rust
 // When complexity >= VeryHigh or files > 20
 if plan.complexity >= Complexity::High || plan.files.len() > 20 {
-    return self.delegate_to_claude_code(task).await;
+    return self.delegate_to_codex_code(task).await;
 }
 
 // When context is too large
@@ -361,13 +361,13 @@ crates/adjutant/
 │   ├── lib.rs           # Main Adjutant struct, LM caching, decision routing
 │   ├── planner.rs       # Task analysis and planning
 │   ├── executor.rs      # Task execution coordination
-│   ├── claude_executor.rs # Claude Pro/Max execution via SDK
+│   ├── codex_executor.rs # Codex Pro/Max execution via SDK
 │   ├── codex_executor.rs # Codex execution via SDK
 │   ├── rlm_agent.rs     # RLM custom agent definition
 │   ├── tiered.rs        # TieredExecutor (Gateway + DSPy modes)
-│   ├── delegate.rs      # Claude Code and RLM delegation
+│   ├── delegate.rs      # Codex Code and RLM delegation
 │   ├── tools.rs         # Tool registry (Read, Edit, Bash, etc.)
-│   ├── auth.rs          # Claude/Codex CLI detection
+│   ├── auth.rs          # Codex/Codex CLI detection
 │   ├── autopilot_loop.rs # Autonomous loop with session tracking
 │   ├── cli/             # CLI commands
 │   │   ├── mod.rs            # Command routing
@@ -406,7 +406,7 @@ RLM mode is automatically enabled when:
 
 ### RLM Custom Agent
 
-Adjutant defines an `rlm-analyzer` custom agent for Claude:
+Adjutant defines an `rlm-analyzer` custom agent for Codex:
 
 ```rust
 // Read-only analysis agent
@@ -424,7 +424,7 @@ The RLM agent follows the DECOMPOSE → EXECUTE → VERIFY → ITERATE → SYNTH
 
 ### RLM MCP Tools
 
-When executing with RLM support, Claude has access to:
+When executing with RLM support, Codex has access to:
 
 | Tool | Description |
 |------|-------------|
@@ -439,11 +439,11 @@ export ADJUTANT_ENABLE_RLM=1
 ### Configuration
 
 ```bash
-# Enable RLM tools in Claude sessions
+# Enable RLM tools in Codex sessions
 export ADJUTANT_ENABLE_RLM=1
 
 # Control RLM backend (optional)
-export RLM_BACKEND=claude  # Use Claude as RLM LlmClient
+export RLM_BACKEND=codex  # Use Codex as RLM LlmClient
 ```
 
 ## Coder Integration

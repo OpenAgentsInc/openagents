@@ -7,8 +7,8 @@ use std::path::Path;
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let conn = init_db(Path::new(".openagents/autopilot.db"))?;
 
-    // Get next ready issue for claude agent
-    if let Some(issue) = get_next_ready_issue(&conn, Some("claude"))? {
+    // Get next ready issue for codex agent
+    if let Some(issue) = get_next_ready_issue(&conn, Some("codex"))? {
         // Claim the issue
         let run_id = format!("autopilot-{}", chrono::Utc::now().timestamp());
         if claim_issue(&conn, &issue.id, &run_id)? {
@@ -25,7 +25,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!("Failed to claim issue - it may have been claimed by another process");
         }
     } else {
-        println!("No ready issues available for claude agent");
+        println!("No ready issues available for codex agent");
     }
 
     Ok(())

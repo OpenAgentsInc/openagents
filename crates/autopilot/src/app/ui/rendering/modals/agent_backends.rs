@@ -151,7 +151,7 @@ fn render_agent_backends_modal(
             let selected_kind = kinds
                 .get(selected_idx)
                 .copied()
-                .unwrap_or(AgentKind::Claude);
+                .unwrap_or(AgentKind::Codex);
 
             if let Some(status) = state.agent_backends.status_for_kind(selected_kind) {
                 if let Some(error) = status.error.as_ref() {

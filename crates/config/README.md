@@ -8,7 +8,7 @@ The config crate implements user stories **CONF-001 through CONF-033**, covering
 
 - Basic configuration loading and saving (CONF-001..005)
 - Safety and healer configuration (CONF-010..013)
-- Claude Code integration settings (CONF-020..024)
+- Codex Code integration settings (CONF-020..024)
 - Sandbox execution configuration (CONF-030..033)
 
 Configuration is stored at `.openagents/project.json` relative to your project root. Missing fields are automatically filled with sensible defaults.
@@ -50,7 +50,7 @@ assert!(config.allow_push);
 assert!(!config.allow_force_push);
 
 // Nested configurations
-assert!(config.claude_code.enabled);
+assert!(config.codex_code.enabled);
 assert!(config.sandbox.enabled);
 assert!(config.healer.enabled);
 ```
@@ -73,14 +73,14 @@ assert!(config.healer.enabled);
 | `sessionDir` | `String` | `".openagents/sessions"` | Session storage |
 | `runLogDir` | `String` | `".openagents/run-logs"` | Run log storage |
 
-## Claude Code Configuration
+## Codex Code Configuration
 
-Settings for Claude Code integration.
+Settings for Codex Code integration.
 
 ```rust
-use config::{ClaudeCodeConfig, PermissionMode};
+use config::{CodexCodeConfig, PermissionMode};
 
-let mut config = ClaudeCodeConfig::default();
+let mut config = CodexCodeConfig::default();
 
 config.enabled = true;
 config.prefer_for_complex_tasks = true;
@@ -108,7 +108,7 @@ let modes = vec![
 
 ```json
 {
-  "claudeCode": {
+  "codexCode": {
     "enabled": true,
     "preferForComplexTasks": true,
     "maxTurnsPerSubtask": 300,
@@ -422,7 +422,7 @@ use config::merge_with_defaults;
 let partial = r#"{
   "defaultBranch": "develop",
   "allowPush": false,
-  "claudeCode": {
+  "codexCode": {
     "maxTurnsPerSubtask": 100
   }
 }"#;
@@ -431,9 +431,9 @@ let config = merge_with_defaults(partial, "my-project")?;
 
 assert_eq!(config.default_branch, "develop");
 assert!(!config.allow_push);
-assert_eq!(config.claude_code.max_turns_per_subtask, 100);
+assert_eq!(config.codex_code.max_turns_per_subtask, 100);
 // Defaults still applied
-assert!(config.claude_code.enabled);
+assert!(config.codex_code.enabled);
 ```
 
 ## Validation
@@ -468,7 +468,7 @@ assert!(matches!(
 - `idPrefix`: Must not be empty
 - `maxTasksPerRun`: Must be positive
 - `maxRuntimeMinutes`: Must be positive
-- `claudeCode.maxTurnsPerSubtask`: Must be positive
+- `codexCode.maxTurnsPerSubtask`: Must be positive
 - `sandbox.timeoutMs`: Must be positive
 - `parallelExecution.maxAgents`: Must be positive if enabled
 
@@ -563,7 +563,7 @@ Complete example showing all major sections:
   "sandboxTestCommands": [],
   "e2eCommands": [],
 
-  "claudeCode": {
+  "codexCode": {
     "enabled": true,
     "preferForComplexTasks": true,
     "maxTurnsPerSubtask": 300,

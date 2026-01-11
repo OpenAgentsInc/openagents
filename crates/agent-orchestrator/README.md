@@ -74,7 +74,7 @@ The agent-orchestrator crate provides the control plane for **sovereign AI agent
 ### Advanced Features (Phase 6)
 - **FROSTR** — Threshold-protected agent identity
 - **NIP-SA** — Sovereign agent protocol with autonomy levels
-- **Multi-backend** — Route to Claude, OpenAI, Codex, GPT-OSS, local
+- **Multi-backend** — Route to Codex, OpenAI, Codex, GPT-OSS, local
 - **Cost tracking** — Budget enforcement with daily/session limits
 
 ### DSPy Signatures (Wave 9)
@@ -138,7 +138,7 @@ Each agent is configured with:
 ```rust
 pub struct AgentConfig {
     pub name: String,           // Agent identifier
-    pub model: String,          // e.g., "claude-sonnet-4-5"
+    pub model: String,          // e.g., "codex-sonnet-4-5"
     pub prompt: String,         // System prompt
     pub temperature: f32,       // 0.0 - 2.0
     pub description: String,    // Short description
@@ -192,8 +192,8 @@ use agent_orchestrator::{
 };
 
 // Configure backends
-let router = MultiBackendRouter::new(BackendProvider::Claude)
-    .add_backend(BackendConfig::claude("sonnet-4"))
+let router = MultiBackendRouter::new(BackendProvider::Codex)
+    .add_backend(BackendConfig::codex("sonnet-4"))
     .add_backend(BackendConfig::openai("gpt-4"))
     .add_backend(BackendConfig::local("llama3", "http://localhost:11434"))
     .route_agent("oracle", BackendProvider::OpenAI);
@@ -226,7 +226,7 @@ Agents operate at different autonomy levels:
 ```rust
 use agent_orchestrator::{AgentIdentity, AutonomyLevel, SolverAgentCoordinator};
 
-let identity = AgentIdentity::new("pubkey", "MyAgent", "claude-sonnet-4")
+let identity = AgentIdentity::new("pubkey", "MyAgent", "codex-sonnet-4")
     .with_autonomy(AutonomyLevel::SemiAutonomous)
     .with_operator("operator-pubkey");
 
@@ -269,7 +269,7 @@ cargo test -p agent-orchestrator test_cost_tracker
 | Crate | Purpose |
 |-------|---------|
 | `opencode-sdk` | Primary backend communication |
-| `claude-agent-sdk` | Direct Claude access |
+| `codex-agent-sdk` | Direct Codex access |
 | `codex-agent-sdk` | Codex backend |
 | `gpt-oss` | Local inference backend |
 | `frostr` | Threshold signatures |

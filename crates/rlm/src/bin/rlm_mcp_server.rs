@@ -4,7 +4,7 @@
 //!
 //! # Usage
 //!
-//! Configure in Claude Code settings:
+//! Configure in Codex Code settings:
 //! ```json
 //! {
 //!   "mcpServers": {
@@ -18,18 +18,18 @@
 //!
 //! Or via command line:
 //! ```bash
-//! claude --mcp-server "rlm:stdio:rlm-mcp-server"
+//! codex --mcp-server "rlm:stdio:rlm-mcp-server"
 //! ```
 //!
 //! # Backend Selection
 //!
 //! Set `RLM_BACKEND` environment variable:
-//! - `claude` - Use Claude via claude-agent-sdk (recommended, requires `claude` feature)
+//! - `codex` - Use Codex via codex-agent-sdk (recommended, requires `codex` feature)
 //! - `ollama` - Use Ollama at localhost:11434 (default)
 //!
 //! Example:
 //! ```bash
-//! RLM_BACKEND=claude rlm-mcp-server
+//! RLM_BACKEND=codex rlm-mcp-server
 //! ```
 
 use lm_router::backends::OllamaBackend;
@@ -45,14 +45,14 @@ use std::sync::Arc;
 enum RlmBackend {
     /// Use Ollama at localhost:11434
     Ollama,
-    /// Use Claude via claude-agent-sdk (requires `claude` feature)
-    Claude,
+    /// Use Codex via codex-agent-sdk (requires `codex` feature)
+    Codex,
 }
 
 impl RlmBackend {
     fn from_env() -> Self {
         match std::env::var("RLM_BACKEND").as_deref() {
-            Ok("claude") => RlmBackend::Claude,
+            Ok("codex") => RlmBackend::Codex,
             _ => RlmBackend::Ollama,
         }
     }
@@ -185,18 +185,18 @@ async fn execute_rlm_query_ollama(
     }
 }
 
-/// Execute RLM query using Claude backend (requires `claude` feature).
-#[cfg(feature = "claude")]
-async fn execute_rlm_query_claude(
+/// Execute RLM query using Codex backend (requires `codex` feature).
+#[cfg(feature = "codex")]
+async fn execute_rlm_query_codex(
     input: &RlmQueryInput,
     config: RlmConfig,
 ) -> Result<rlm::RlmResult, rlm::RlmError> {
-    use rlm::ClaudeLlmClient;
+    use rlm::CodexLlmClient;
 
     // Get workspace root from current directory
     let workspace_root = std::env::current_dir().unwrap_or_else(|_| "/tmp".into());
 
-    let client = ClaudeLlmClient::new(workspace_root);
+    let client = CodexLlmClient::new(workspace_root);
     let executor = PythonExecutor::new();
 
     let mut engine = RlmEngine::with_config(client, executor, config);
@@ -246,17 +246,17 @@ async fn execute_rlm_query(args: &Value) -> Value {
 
     // Execute with appropriate backend
     let result = match backend {
-        #[cfg(feature = "claude")]
-        RlmBackend::Claude => {
-            execute_rlm_query_claude(&input, config).await
+        #[cfg(feature = "codex")]
+        RlmBackend::Codex => {
+            execute_rlm_query_codex(&input, config).await
         }
-        #[cfg(not(feature = "claude"))]
-        RlmBackend::Claude => {
+        #[cfg(not(feature = "codex"))]
+        RlmBackend::Codex => {
             return json!({
                 "content": [{
                     "type": "text",
-                    "text": "Claude backend requested but 'claude' feature not enabled. \
-                            Rebuild with: cargo build -p rlm --features claude"
+                    "text": "Codex backend requested but 'codex' feature not enabled. \
+                            Rebuild with: cargo build -p rlm --features codex"
                 }],
                 "isError": true
             });

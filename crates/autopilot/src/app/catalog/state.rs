@@ -1,8 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 
-use claude_agent_sdk::protocol::McpServerStatus;
-use claude_agent_sdk::McpServerConfig;
+use super::mcp::{McpServerConfig, McpServerStatus};
 use tokio::sync::mpsc;
 use wgpui::components::atoms::{AgentStatus, AgentType};
 use wgpui::components::molecules::{AgentProfileCard, AgentProfileInfo, SkillCard};

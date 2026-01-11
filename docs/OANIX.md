@@ -283,7 +283,7 @@ OANIX exposes everything as a Plan 9-style filesystem:
 │       ├── memory/
 │       └── fs/            # Agent's namespace view
 │
-├── claude/                # Claude Agent SDK
+├── codex/                # Codex Agent SDK
 │   ├── providers/
 │   ├── new                # Create session → session_id
 │   ├── sessions/
@@ -463,7 +463,7 @@ OANIX can operate in two relationships with Pylon:
 ```
 Pylon (node software)
   └── OANIX (agent runtime)
-       └── Claude sessions, compute jobs, etc.
+       └── Codex sessions, compute jobs, etc.
 ```
 
 ### 2. OANIX uses Pylon as a service

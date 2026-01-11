@@ -74,13 +74,13 @@ pub(crate) struct RepoInfo {
 }
 
 #[derive(Clone, Debug)]
-pub(crate) struct ClaudeToolRequest {
+pub(crate) struct CodexToolRequest {
     pub(crate) session_id: String,
     pub(crate) tool: String,
     pub(crate) params: serde_json::Value,
 }
 
-pub(crate) struct ClaudeAgentState {
+pub(crate) struct CodexAgentState {
     pub(crate) status: String,
     pub(crate) repo: Option<String>,
     pub(crate) tunnel_session_id: Option<String>,
@@ -89,12 +89,12 @@ pub(crate) struct ClaudeAgentState {
     pub(crate) connect_command: Option<String>,
     pub(crate) tunnel_connected: bool,
     pub(crate) ws: Option<WebSocket>,
-    pub(crate) claude_session_id: Option<String>,
-    pub(crate) pending_tool: Option<ClaudeToolRequest>,
+    pub(crate) codex_session_id: Option<String>,
+    pub(crate) pending_tool: Option<CodexToolRequest>,
     pub(crate) streaming_text: String,
 }
 
-impl ClaudeAgentState {
+impl CodexAgentState {
     pub(crate) fn reset(&mut self) {
         self.status = "idle".to_string();
         self.repo = None;
@@ -104,13 +104,13 @@ impl ClaudeAgentState {
         self.connect_command = None;
         self.tunnel_connected = false;
         self.ws = None;
-        self.claude_session_id = None;
+        self.codex_session_id = None;
         self.pending_tool = None;
         self.streaming_text.clear();
     }
 }
 
-impl Default for ClaudeAgentState {
+impl Default for CodexAgentState {
     fn default() -> Self {
         Self {
             status: "idle".to_string(),
@@ -121,7 +121,7 @@ impl Default for ClaudeAgentState {
             connect_command: None,
             tunnel_connected: false,
             ws: None,
-            claude_session_id: None,
+            codex_session_id: None,
             pending_tool: None,
             streaming_text: String::new(),
         }
@@ -2192,9 +2192,9 @@ pub(crate) struct AppState {
     pub(crate) editor_workspace: EditorWorkspace,
     // Autopilot chat overlay
     pub(crate) autopilot_chat: crate::autopilot_chat::AutopilotChatPane,
-    // Claude chat overlay + tunnel state
-    pub(crate) claude_chat: crate::claude_chat::ClaudeChatPane,
-    pub(crate) claude_state: ClaudeAgentState,
+    // Codex chat overlay + tunnel state
+    pub(crate) codex_chat: crate::codex_chat::CodexChatPane,
+    pub(crate) codex_state: CodexAgentState,
     pub(crate) intro_agent_state: crate::intro_agent::IntroAgentState,
     // GFN (Group Forming Networks) page state
     pub(crate) gfn: GfnState,
@@ -2292,8 +2292,8 @@ impl Default for AppState {
             markdown_demo: MarkdownDemo::new(),
             editor_workspace: EditorWorkspace::new(),
             autopilot_chat: crate::autopilot_chat::AutopilotChatPane::new(),
-            claude_chat: crate::claude_chat::ClaudeChatPane::new(),
-            claude_state: ClaudeAgentState::default(),
+            codex_chat: crate::codex_chat::CodexChatPane::new(),
+            codex_state: CodexAgentState::default(),
             intro_agent_state: crate::intro_agent::IntroAgentState::default(),
             gfn: GfnState::default(),
             y2026: Y2026State::default(),

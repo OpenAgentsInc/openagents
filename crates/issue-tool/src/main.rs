@@ -33,8 +33,8 @@ enum Commands {
         #[arg(short = 't', long, default_value = "task")]
         issue_type: String,
 
-        /// Agent to assign (claude or codex)
-        #[arg(short, long, default_value = "claude")]
+        /// Agent to assign (codex or codex)
+        #[arg(short, long, default_value = "codex")]
         agent: String,
 
         /// Directive to link to (e.g., d-001)

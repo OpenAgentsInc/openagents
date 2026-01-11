@@ -137,7 +137,7 @@ pub fn find_unblocking_work(workspace: &WorkspaceManifest) -> Option<String> {
             needs_code += 1;
 
             // Extract crate names
-            for pattern in &["claude-mcp", "openagents-mcp", "pylon-ui", "wgpui"] {
+            for pattern in &["codex-mcp", "openagents-mcp", "pylon-ui", "wgpui"] {
                 if reason.contains(pattern) {
                     *crate_mentions.entry(pattern.to_string()).or_insert(0) += 1;
                 }

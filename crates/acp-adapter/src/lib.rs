@@ -1,7 +1,7 @@
 //! Agent Client Protocol adapter for OpenAgents
 //!
 //! This crate provides an ACP adapter layer that wraps the existing
-//! `claude-agent-sdk` and `codex-agent-sdk` to enable standardized
+//! `codex-agent-sdk` and `codex-agent-sdk` to enable standardized
 //! communication between OpenAgents apps and AI coding agents.
 //!
 //! ## Architecture
@@ -16,9 +16,9 @@
 //! ## Usage
 //!
 //! ```rust,ignore
-//! use acp_adapter::agents::claude::connect_claude;
+//! use acp_adapter::agents::codex::connect_codex;
 //!
-//! let connection = connect_claude(ClaudeAgentConfig::default(), &cwd).await?;
+//! let connection = connect_codex(CodexAgentConfig::default(), &cwd).await?;
 //! let session = connection.new_session(cwd.clone()).await?;
 //! connection.prompt(&session.session_id, "Fix the bug").await?;
 //! ```

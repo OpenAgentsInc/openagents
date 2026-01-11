@@ -139,7 +139,7 @@ Use a separate model to evaluate and select the best result. Best for complex ou
 
 ```rust
 let v = Verification::subjective_with_judge(2)
-    .with_judge_model("claude-3-opus");
+    .with_judge_model("codex-3-opus");
 ```
 
 ### Merge
@@ -230,7 +230,7 @@ Verification configs serialize with snake_case:
   "mode": "subjective",
   "redundancy": 2,
   "adjudication": "judge_model",
-  "judge_model": "claude-3-opus"
+  "judge_model": "codex-3-opus"
 }
 ```
 
@@ -252,7 +252,7 @@ let request = ChunkAnalysisRequest {
 // Higher quality, higher cost
 let request = ChunkAnalysisRequest {
     verification: Verification::subjective_with_judge(3)
-        .with_judge_model("claude-3-opus"),
+        .with_judge_model("codex-3-opus"),
     ..Default::default()
 };
 

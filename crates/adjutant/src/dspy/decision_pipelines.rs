@@ -61,8 +61,8 @@ struct DelegationDecisionSignature {
     /// Delegation Decider: Determine if this task should be delegated to another executor.
     /// Consider task complexity, context size, and available capabilities.
     /// Output should_delegate as true if the task requires external help.
-    /// For delegation_target, choose one of: claude_code, rlm, local_tools.
-    /// - claude_code: Complex multi-file tasks, architectural work
+    /// For delegation_target, choose one of: codex_code, rlm, local_tools.
+    /// - codex_code: Complex multi-file tasks, architectural work
     /// - rlm: Large context analysis, recursive investigation
     /// - local_tools: Simple edits, small scope tasks
 
@@ -86,7 +86,7 @@ struct DelegationDecisionSignature {
     #[output]
     pub should_delegate: bool,
 
-    /// Target executor if delegating: claude_code, rlm, or local_tools
+    /// Target executor if delegating: codex_code, rlm, or local_tools
     #[output]
     pub delegation_target: String,
 
@@ -268,7 +268,7 @@ pub struct DelegationInput {
 pub struct DelegationResult {
     /// Whether to delegate this task
     pub should_delegate: bool,
-    /// Target executor: claude_code, rlm, or local_tools
+    /// Target executor: codex_code, rlm, or local_tools
     pub delegation_target: String,
     /// Explanation of decision
     pub reasoning: String,

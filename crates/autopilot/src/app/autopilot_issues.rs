@@ -257,7 +257,7 @@ mod tests {
             status,
             priority,
             issue_type: IssueType::Task,
-            agent: "claude".to_string(),
+            agent: "codex".to_string(),
             directive_id: None,
             project_id: None,
             is_blocked: blocked,

@@ -587,7 +587,7 @@ async fn test_agent_schedule_creation() {
 async fn test_trajectory_hash_verification() {
     // Create trajectory session and events
     let session_id = "session-abc123";
-    let model = "claude-sonnet-4.5";
+    let model = "codex-sonnet-4.5";
 
     // Create events
     let events = vec![

@@ -58,7 +58,7 @@ fn sha256_hash(content: &str) -> String {
 fn create_test_session() -> TrajectorySession {
     TrajectorySession {
         session_id: "sess-test-001".to_string(),
-        source: "claude".to_string(),
+        source: "codex".to_string(),
         path: PathBuf::from("/tmp/test_session.rlog"),
         initial_commit: Some("abc123".to_string()),
         final_commit: Some("def456".to_string()),
@@ -96,7 +96,7 @@ async fn test_trajectory_session_publish_to_relay() {
         .as_secs();
 
     let session_content =
-        TrajectorySessionContent::new("session-test-123", now - 3600, "claude-sonnet-4.5")
+        TrajectorySessionContent::new("session-test-123", now - 3600, "codex-sonnet-4.5")
             .with_end_time(now)
             .with_total_events(42);
 
@@ -151,7 +151,7 @@ async fn test_trajectory_session_publish_to_relay() {
     let parsed: TrajectorySessionContent =
         TrajectorySessionContent::from_json(&received.content).expect("parse");
     assert_eq!(parsed.session_id, "session-test-123");
-    assert_eq!(parsed.model, "claude-sonnet-4.5");
+    assert_eq!(parsed.model, "codex-sonnet-4.5");
 
     relay.disconnect().await.ok();
 }
@@ -291,7 +291,7 @@ async fn test_trajectory_with_hash_verification() {
 
     // Create session with hash
     let session_content =
-        TrajectorySessionContent::new("session-hash-test", now - 1800, "claude-sonnet-4.5")
+        TrajectorySessionContent::new("session-hash-test", now - 1800, "codex-sonnet-4.5")
             .with_end_time(now)
             .with_total_events(2)
             .with_hash(trajectory_hash.clone());

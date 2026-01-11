@@ -103,7 +103,7 @@ Credentials are mounted read-only from the host:
 
 | Host Path | Container Path | Mode |
 |-----------|----------------|------|
-| `~/.claude/` | `/home/agent/.claude/` | read-only |
+| `~/.codex/` | `/home/agent/.codex/` | read-only |
 | `~/.gitconfig` | `/home/agent/.gitconfig` | read-only |
 | `~/.ssh/` | `/home/agent/.ssh/` | read-only |
 

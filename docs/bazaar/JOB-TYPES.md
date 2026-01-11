@@ -68,8 +68,8 @@ Generate a working patch from an issue description.
 | `repo_ref` | Yes | Git SHA or branch to work from |
 | `target_branch` | No | Branch to target (default: main) |
 | `subdir` | No | Subdirectory to focus on |
-| `allowed_paths` | No | Glob patterns Claude can modify |
-| `disallowed_paths` | No | Glob patterns Claude must not touch |
+| `allowed_paths` | No | Glob patterns Codex can modify |
+| `disallowed_paths` | No | Glob patterns Codex must not touch |
 | `test_command` | Yes | Command to verify patch |
 | `verification_commands` | No | Additional verification commands |
 | `time_limit_secs` | No | Max execution time (default: 900) |
@@ -518,7 +518,7 @@ Standard NIP-90 text generation (LLM inference).
   "tags": [
     ["i", "Explain how Nostr's NIP-90 Data Vending Machine protocol works in 3 paragraphs.", "text"],
 
-    ["param", "model", "claude-sonnet-4-20250514"],
+    ["param", "model", "codex-sonnet-4-20250514"],
     ["param", "temperature", "0.7"],
     ["param", "max_tokens", "1000"],
 

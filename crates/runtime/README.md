@@ -64,11 +64,11 @@ Inspired by Plan 9, every agent exposes a virtual filesystem:
 │   ├── policy          # container policy (agents: read-only)
 │   ├── usage           # reserved/spent (micro-USD)
 │   └── auth/           # challenge: agent writes; token/config: admin
-├── claude/
+├── codex/
 │   ├── providers/      # tunnel, cloud, local
 │   ├── new             # Call (write+read) → session_id
 │   ├── sessions/       # status, prompt, output, tools, fork, ctl
-│   ├── policy          # claude policy (agents: read-only)
+│   ├── policy          # codex policy (agents: read-only)
 │   ├── usage           # reserved/spent (micro-USD)
 │   ├── auth/           # challenge: agent writes; tunnels config: admin
 │   ├── workers/        # worker pool status (admin-only)
@@ -92,22 +92,22 @@ Inspired by Plan 9, every agent exposes a virtual filesystem:
 
 The same interface works locally (FUSE), in the cloud (HTTP), or in a UI.
 
-**Policies are admin-only:** Agents can read `/compute/policy`, `/containers/policy`, `/claude/policy` but cannot modify them; changes are applied through the control plane.
+**Policies are admin-only:** Agents can read `/compute/policy`, `/containers/policy`, `/codex/policy` but cannot modify them; changes are applied through the control plane.
 
-### /compute vs /containers vs /claude
+### /compute vs /containers vs /codex
 
 | Mount | Purpose | Stateful | Tool Use |
 |-------|---------|----------|----------|
 | `/compute` | Stateless inference jobs (LLM calls, embeddings) | No | No |
 | `/containers` | Sandboxed code execution (build, test, run) | Session | No |
-| `/claude` | Autonomous Claude Agent SDK sessions | Yes | Yes |
+| `/codex` | Autonomous Codex Agent SDK sessions | Yes | Yes |
 
 **When to use each:**
 - `/compute`: Quick LLM queries, embeddings, simple inference
 - `/containers`: Run untrusted code, CI builds, shell commands
-- `/claude`: Multi-turn conversations, complex multi-step tasks with tool use
+- `/codex`: Multi-turn conversations, complex multi-step tasks with tool use
 
-**Security posture:** `/claude` workers should prefer running in sandboxed containers with proxy-only networking when processing untrusted content. Credentials stay outside the sandbox via the tunnel/proxy pattern.
+**Security posture:** `/codex` workers should prefer running in sandboxed containers with proxy-only networking when processing untrusted content. Credentials stay outside the sandbox via the tunnel/proxy pattern.
 
 ## Backends
 
@@ -150,7 +150,7 @@ This is not a generic actor framework. It's purpose-built for AI agents:
 | [FILESYSTEM.md](docs/FILESYSTEM.md) | FileService trait and implementations |
 | [COMPUTE.md](docs/COMPUTE.md) | AI compute abstraction (providers, budgets, streaming) |
 | [CONTAINERS.md](docs/CONTAINERS.md) | Container spawning (Local, Cloudflare, Daytona, DVMs) |
-| [CLAUDE.md](docs/CLAUDE.md) | Claude Agent SDK integration (tunnels, workers, security) |
+| [AGENTS.md](docs/AGENTS.md) | Codex Agent SDK integration (tunnels, workers, security) |
 | [HUD.md](docs/HUD.md) | HUD integration (events, redaction, public access) |
 | [ROADMAP.md](docs/ROADMAP.md) | Implementation roadmap (build order, milestones) |
 | [PRIOR-ART.md](docs/PRIOR-ART.md) | Related work (Plan 9, WANIX, OANIX) |
@@ -217,7 +217,7 @@ See [PRIOR-ART.md](docs/PRIOR-ART.md) for details.
 
 ## Status
 
-**Implementation in progress.** Milestones 0-14 complete (core tick engine, filesystem, control plane, budgets, /compute, /containers, HUD, `/claude`). See [ROADMAP.md](docs/ROADMAP.md) for details.
+**Implementation in progress.** Milestones 0-14 complete (core tick engine, filesystem, control plane, budgets, /compute, /containers, HUD, `/codex`). See [ROADMAP.md](docs/ROADMAP.md) for details.
 
 ## License
 

@@ -70,7 +70,7 @@ pub enum TraceEvent {
         query_id: String,
         provider_id: String,
         venue: Venue,
-        /// Model ID used for this execution (e.g., "claude-opus-4-5-20251101").
+        /// Model ID used for this execution (e.g., "codex-opus-4-5-20251101").
         model_id: Option<String>,
         timestamp_ms: u64,
     },
