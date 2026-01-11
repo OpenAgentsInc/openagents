@@ -128,17 +128,14 @@ impl DspyOrchestrator {
             (action.to_string(), "NORMAL".to_string(), reasoning)
         };
 
-        // Emit stage to UI
-        output.emit_stage(DspyStage::EnvironmentAssessment {
+        // Skip emitting EnvironmentAssessment card for now - it obscures other content
+        let _ = (
             system_info,
             workspace,
             active_directive,
             open_issues,
             compute_backends,
-            priority_action: priority_action.clone(),
-            urgency: urgency.clone(),
-            reasoning: reasoning.clone(),
-        });
+        );
 
         Ok(AssessmentResult {
             priority_action,
