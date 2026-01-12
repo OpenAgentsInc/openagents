@@ -11,6 +11,7 @@ pub(crate) struct PermissionRequest {
     pub(crate) decision_reason: Option<String>,
 }
 
+#[allow(dead_code)]
 #[derive(Clone, Debug)]
 pub(crate) enum PermissionResult {
     Allow {

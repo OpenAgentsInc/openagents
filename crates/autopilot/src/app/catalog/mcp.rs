@@ -7,6 +7,7 @@ use serde_json::Value;
 
 use super::super::config::mcp_project_file;
 
+#[allow(dead_code)]
 #[derive(Clone, Debug)]
 pub(crate) enum McpServerConfig {
     Stdio {

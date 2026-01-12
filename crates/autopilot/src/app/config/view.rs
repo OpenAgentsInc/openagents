@@ -18,6 +18,7 @@ pub(crate) enum SettingsInputMode {
 #[derive(Clone)]
 pub(crate) struct SettingsSnapshot {
     pub(crate) settings: CoderSettings,
+    #[allow(dead_code)]
     pub(crate) selected_model: ModelOption,
     pub(crate) selected_model_label: String,
     pub(crate) coder_mode: CoderMode,

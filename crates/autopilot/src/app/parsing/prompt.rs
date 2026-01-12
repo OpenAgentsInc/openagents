@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use std::fs;
 use std::future::Future;
 use std::io::{self, Read};

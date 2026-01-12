@@ -412,6 +412,7 @@ impl AppServerClient {
         ))
     }
 
+    #[allow(dead_code)]
     pub(crate) fn connect_with_io(
         stdin: AppServerWriter,
         stdout: AppServerReader,
@@ -492,6 +493,7 @@ impl AppServerClient {
             .await
     }
 
+    #[allow(dead_code)]
     pub(crate) async fn config_batch_write(
         &self,
         params: ConfigBatchWriteParams,

@@ -356,6 +356,7 @@ impl SessionState {
         self.refresh_session_cards(chat.is_thinking);
     }
 
+    #[allow(dead_code)]
     pub(crate) fn start_new_session(&mut self, chat: &mut ChatState, tools: &mut ToolsState) {
         if chat.is_thinking {
             chat.push_system_message("Cannot start new session while processing.".to_string());

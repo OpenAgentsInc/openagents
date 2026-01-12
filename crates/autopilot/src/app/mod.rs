@@ -50,5 +50,4 @@ pub(crate) use utils::{
     truncate_preview,
 };
 
-pub(crate) const HOOK_SCRIPT_TIMEOUT_SECS: u64 = 12;
 pub(crate) const TOOL_HISTORY_LIMIT: usize = 100;
