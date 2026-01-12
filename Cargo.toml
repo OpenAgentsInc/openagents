@@ -16,7 +16,6 @@ members = [
     "crates/issues",
     "crates/lm-router",
     "crates/local-inference",
-    "crates/neobank",
     "crates/nostr/core",
     "crates/nostr/client",
     "crates/oanix",

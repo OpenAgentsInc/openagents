@@ -62,10 +62,6 @@ The lm-router crate routes LLM calls across multiple backends with usage trackin
 The local-inference crate defines shared request/response types and traits for local inference
 engines.
 
-## neobank
-The neobank crate defines treasury and payment routing primitives for agent budgets across multiple
-rails, including exchange and settlement flows.
-
 ## nostr (core/client/relay/tests)
 The nostr workspace provides core Nostr protocol types, relay client APIs, a relay server, and
 integration tests.

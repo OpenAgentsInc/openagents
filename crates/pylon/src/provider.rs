@@ -2,11 +2,9 @@
 
 use crate::bridge_manager::BridgeManager;
 use crate::config::PylonConfig;
-use crate::neobank_service::{NeobankConfig, NeobankService, TreasuryStatus};
 use compute::backends::{AgentRegistry, BackendRegistry};
 use compute::domain::DomainEvent;
 use compute::services::{DvmConfig, DvmService, RelayService};
-use neobank::Currency;
 use openagents_runtime::UnifiedIdentity;
 use spark::{Network as SparkNetwork, SparkWallet, WalletConfig};
 use std::sync::Arc;
@@ -36,9 +34,6 @@ pub enum ProviderError {
 
     #[error("config error: {0}")]
     ConfigError(String),
-
-    #[error("neobank error: {0}")]
-    NeobankError(String),
 }
 
 /// Provider status
@@ -108,8 +103,6 @@ pub struct PylonProvider {
     dvm_service: Option<DvmService>,
     /// Spark wallet for payments
     wallet: Option<Arc<SparkWallet>>,
-    /// Neobank service for multi-currency treasury
-    neobank: Option<NeobankService>,
     /// FM Bridge manager (for Apple Foundation Models)
     #[allow(dead_code)]
     bridge_manager: Option<BridgeManager>,
@@ -160,7 +153,6 @@ impl PylonProvider {
             relay_service,
             dvm_service: None,
             wallet: None,
-            neobank: None,
             bridge_manager,
             event_tx,
             running: false,
@@ -470,102 +462,6 @@ impl PylonProvider {
     /// Check if running
     pub fn is_running(&self) -> bool {
         self.running
-    }
-
-    /// Initialize the neobank service
-    ///
-    /// Creates Cashu wallets for BTC and optionally USD,
-    /// enabling multi-currency treasury for agents.
-    pub async fn init_neobank(
-        &mut self,
-        neobank_config: NeobankConfig,
-    ) -> Result<(), ProviderError> {
-        let identity = self.identity.clone().ok_or(ProviderError::NotInitialized)?;
-
-        let mut service = NeobankService::new(neobank_config);
-        service
-            .init(&identity)
-            .await
-            .map_err(|e| ProviderError::NeobankError(e.to_string()))?;
-
-        self.neobank = Some(service);
-        tracing::info!("Neobank service initialized");
-
-        Ok(())
-    }
-
-    /// Get a reference to the neobank service
-    pub fn neobank(&self) -> Option<&NeobankService> {
-        self.neobank.as_ref()
-    }
-
-    /// Get a mutable reference to the neobank service
-    pub fn neobank_mut(&mut self) -> Option<&mut NeobankService> {
-        self.neobank.as_mut()
-    }
-
-    /// Check neobank balance for a currency
-    pub async fn neobank_balance(&self, currency: Currency) -> Result<u64, ProviderError> {
-        let neobank = self.neobank.as_ref().ok_or(ProviderError::NeobankError(
-            "Neobank not initialized".to_string(),
-        ))?;
-
-        neobank
-            .get_balance(currency)
-            .await
-            .map_err(|e| ProviderError::NeobankError(e.to_string()))
-    }
-
-    /// Get neobank treasury status
-    pub async fn neobank_status(&self) -> Result<TreasuryStatus, ProviderError> {
-        let neobank = self.neobank.as_ref().ok_or(ProviderError::NeobankError(
-            "Neobank not initialized".to_string(),
-        ))?;
-
-        neobank
-            .get_treasury_status()
-            .await
-            .map_err(|e| ProviderError::NeobankError(e.to_string()))
-    }
-
-    /// Pay a Lightning invoice via neobank
-    pub async fn neobank_pay(&self, bolt11: &str) -> Result<String, ProviderError> {
-        let neobank = self.neobank.as_ref().ok_or(ProviderError::NeobankError(
-            "Neobank not initialized".to_string(),
-        ))?;
-
-        neobank
-            .pay_invoice(bolt11)
-            .await
-            .map_err(|e| ProviderError::NeobankError(e.to_string()))
-    }
-
-    /// Send Cashu tokens via neobank
-    pub async fn neobank_send(
-        &self,
-        amount_sats: u64,
-        currency: Currency,
-    ) -> Result<String, ProviderError> {
-        let neobank = self.neobank.as_ref().ok_or(ProviderError::NeobankError(
-            "Neobank not initialized".to_string(),
-        ))?;
-
-        neobank
-            .send_tokens(amount_sats, currency)
-            .await
-            .map_err(|e| ProviderError::NeobankError(e.to_string()))
-    }
-
-    /// Receive Cashu tokens via neobank
-    pub async fn neobank_receive(&self, token: &str) -> Result<u64, ProviderError> {
-        let neobank = self.neobank.as_ref().ok_or(ProviderError::NeobankError(
-            "Neobank not initialized".to_string(),
-        ))?;
-
-        neobank
-            .receive_tokens(token)
-            .await
-            .map_err(|e| ProviderError::NeobankError(e.to_string()))
     }
 }
 
