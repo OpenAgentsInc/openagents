@@ -17,10 +17,35 @@ pub(super) fn clamp_font_size(size: f32) -> f32 {
 
 pub(super) fn normalize_settings(settings: &mut CoderSettings) {
     settings.font_size = clamp_font_size(settings.font_size);
+    if settings.local_oss_base_url.trim().is_empty() {
+        settings.local_oss_base_url = crate::app::default_local_oss_base_url();
+    }
+}
+
+pub(super) fn apply_codex_oss_env(settings: &CoderSettings) {
+    if settings.is_local_mode() {
+        let base_url = settings.local_oss_base_url_value();
+        // Safety: process-level env updates are required for codex app-server spawn.
+        unsafe {
+            std::env::set_var("CODEX_OSS_BASE_URL", base_url);
+            std::env::remove_var("CODEX_OSS_PORT");
+        }
+    } else {
+        // Safety: clear any local overrides when returning to Pro mode.
+        unsafe {
+            std::env::remove_var("CODEX_OSS_BASE_URL");
+            std::env::remove_var("CODEX_OSS_PORT");
+        }
+    }
 }
 
 /// Fetch rate limits for the active provider.
 pub(super) async fn fetch_rate_limits() -> Option<RateLimits> {
+    if matches!(std::env::var("CODEX_OSS_BASE_URL").ok(), Some(value) if !value.trim().is_empty())
+        || matches!(std::env::var("CODEX_OSS_PORT").ok(), Some(value) if !value.trim().is_empty())
+    {
+        return None;
+    }
     let cwd = std::env::current_dir().ok()?;
     let runtime = CodexRuntime::spawn(CodexRuntimeConfig {
         cwd: Some(cwd),

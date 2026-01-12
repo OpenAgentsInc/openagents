@@ -17,7 +17,8 @@ use crate::app::catalog::{
 use crate::app::codex_app_server as app_server;
 use crate::app::codex_runtime::{CodexRuntime, CodexRuntimeConfig};
 use crate::app::config::{
-    AgentKindConfig, ModelPickerEntry, SettingsItem, SettingsTab, app_server_model_entries,
+    AgentKindConfig, ModelMode, ModelPickerEntry, SettingsItem, SettingsTab,
+    app_server_model_entries,
 };
 use crate::app::events::{
     CoderMode, CommandAction, ModalState, ResponseEvent, convert_key_for_binding, convert_modifiers,
@@ -30,7 +31,9 @@ use crate::app::{
 use crate::commands::Command;
 use crate::keybindings::{Keybinding, default_keybindings};
 
-use super::settings::{clamp_font_size, rate_limits_from_snapshot, save_keybindings};
+use super::settings::{
+    apply_codex_oss_env, clamp_font_size, rate_limits_from_snapshot, save_keybindings,
+};
 
 const BUG_REPORT_URL: &str = "https://github.com/OpenAgentsInc/openagents/issues/new";
 
@@ -1815,40 +1818,74 @@ pub(super) fn handle_modal_input(state: &mut AppState, key: &WinitKey) -> bool {
                                         !state.settings.coder_settings.auto_scroll;
                                     state.persist_settings();
                                 }
+                                SettingsItem::ModelMode => {
+                                    let next = match (state.settings.coder_settings.model_mode, forward) {
+                                        (ModelMode::Pro, true) => ModelMode::Local,
+                                        (ModelMode::Local, true) => ModelMode::Pro,
+                                        (ModelMode::Pro, false) => ModelMode::Local,
+                                        (ModelMode::Local, false) => ModelMode::Pro,
+                                    };
+                                    if state.settings.coder_settings.model_mode != next {
+                                        state.settings.coder_settings.model_mode = next;
+                                        state.persist_settings();
+                                        apply_codex_oss_env(&state.settings.coder_settings);
+                                        let message = match next {
+                                            ModelMode::Local => {
+                                                "Local GPT-OSS mode enabled. Reconnect workspaces to apply.".to_string()
+                                            }
+                                            ModelMode::Pro => {
+                                                "Pro mode enabled. Reconnect workspaces to apply.".to_string()
+                                            }
+                                        };
+                                        state.push_system_message(message);
+                                    }
+                                }
                                 SettingsItem::DefaultModel => {
-                                    let models = model_picker_entries(state);
-                                    let ids: Vec<String> =
-                                        models.iter().map(|model| model.id.clone()).collect();
-                                    let current =
-                                        state.settings.coder_settings.model.clone().unwrap_or_else(
-                                            || state.settings.selected_model.model_id().to_string(),
+                                    if state.settings.coder_settings.is_local_mode() {
+                                        state.push_system_message(
+                                            "Local mode forces gpt-oss:20b. Switch to Pro to change models.".to_string(),
                                         );
-                                    let next_id = cycle_string_option(&ids, &current, forward);
-                                    state.update_selected_model_id(next_id);
+                                    } else {
+                                        let models = model_picker_entries(state);
+                                        let ids: Vec<String> =
+                                            models.iter().map(|model| model.id.clone()).collect();
+                                        let current = state.settings.coder_settings.model.clone()
+                                            .unwrap_or_else(|| {
+                                                state.settings.selected_model.model_id().to_string()
+                                            });
+                                        let next_id = cycle_string_option(&ids, &current, forward);
+                                        state.update_selected_model_id(next_id);
+                                    }
                                 }
                                 SettingsItem::ReasoningEffort => {
-                                    let options = available_reasoning_efforts(state);
-                                    let current = state
-                                        .settings
-                                        .coder_settings
-                                        .reasoning_effort
-                                        .clone()
-                                        .unwrap_or_else(|| "auto".to_string());
-                                    let next = cycle_string_option(&options, &current, forward);
-                                    state.settings.coder_settings.reasoning_effort =
-                                        if next == "auto" { None } else { Some(next) };
-                                    state.persist_settings();
-                                    let value = state
-                                        .settings
-                                        .coder_settings
-                                        .reasoning_effort
-                                        .clone()
-                                        .map(Value::String)
-                                        .unwrap_or(Value::Null);
-                                    state.persist_codex_config_value(
-                                        "model_reasoning_effort".to_string(),
-                                        value,
-                                    );
+                                    if state.settings.coder_settings.is_local_mode() {
+                                        state.push_system_message(
+                                            "Local mode uses chat completions. Reasoning effort is unavailable.".to_string(),
+                                        );
+                                    } else {
+                                        let options = available_reasoning_efforts(state);
+                                        let current = state
+                                            .settings
+                                            .coder_settings
+                                            .reasoning_effort
+                                            .clone()
+                                            .unwrap_or_else(|| "auto".to_string());
+                                        let next = cycle_string_option(&options, &current, forward);
+                                        state.settings.coder_settings.reasoning_effort =
+                                            if next == "auto" { None } else { Some(next) };
+                                        state.persist_settings();
+                                        let value = state
+                                            .settings
+                                            .coder_settings
+                                            .reasoning_effort
+                                            .clone()
+                                            .map(Value::String)
+                                            .unwrap_or(Value::Null);
+                                        state.persist_codex_config_value(
+                                            "model_reasoning_effort".to_string(),
+                                            value,
+                                        );
+                                    }
                                 }
                                 SettingsItem::PermissionMode => {
                                     let next = cycle_coder_mode_standalone(

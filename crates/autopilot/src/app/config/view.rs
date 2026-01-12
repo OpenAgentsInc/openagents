@@ -6,6 +6,7 @@ use crate::app::ui::theme_label;
 use crate::keybindings::{Action as KeyAction, Keybinding};
 
 use super::models::ModelOption;
+use super::settings::{LOCAL_OSS_MODEL, model_mode_label};
 use super::{CoderSettings, SettingsItem, SettingsRow, SettingsTab};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -128,11 +129,28 @@ pub(crate) fn settings_rows(
             });
         }
         SettingsTab::Model => {
+            let is_local = snapshot.settings.is_local_mode();
+            rows.push(SettingsRow {
+                item: SettingsItem::ModelMode,
+                label: "Mode".to_string(),
+                value: model_mode_label(snapshot.settings.model_mode).to_string(),
+                hint: Some("Left/Right to cycle (Pro/Local)".to_string()),
+            });
             rows.push(SettingsRow {
                 item: SettingsItem::DefaultModel,
                 label: "Default model".to_string(),
-                value: snapshot.selected_model_label.clone(),
-                hint: Some("Left/Right to cycle".to_string()),
+                value: if is_local {
+                    LOCAL_OSS_MODEL.to_string()
+                } else {
+                    snapshot.selected_model_label.clone()
+                },
+                hint: Some(
+                    if is_local {
+                        "Local mode forces GPT-OSS".to_string()
+                    } else {
+                        "Left/Right to cycle".to_string()
+                    },
+                ),
             });
             let effort_value = snapshot
                 .settings
@@ -142,8 +160,18 @@ pub(crate) fn settings_rows(
             rows.push(SettingsRow {
                 item: SettingsItem::ReasoningEffort,
                 label: "Reasoning effort".to_string(),
-                value: effort_value,
-                hint: Some("Left/Right to cycle".to_string()),
+                value: if is_local {
+                    "n/a".to_string()
+                } else {
+                    effort_value
+                },
+                hint: Some(
+                    if is_local {
+                        "Local mode uses chat completions".to_string()
+                    } else {
+                        "Left/Right to cycle".to_string()
+                    },
+                ),
             });
         }
         SettingsTab::Permissions => {

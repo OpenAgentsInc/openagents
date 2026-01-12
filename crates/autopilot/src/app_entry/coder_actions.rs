@@ -138,8 +138,19 @@ impl AutopilotApp {
         }
 
         let composer = state.workspaces.composer_state(&workspace_id);
-        let model = composer.and_then(|composer| composer.selected_model_id.clone());
-        let effort = composer.and_then(|composer| composer.selected_effort);
+        let (model, model_provider, effort) = if state.settings.coder_settings.is_local_mode() {
+            (
+                state.settings.coder_settings.local_model_override(),
+                state.settings.coder_settings.local_model_provider(),
+                None,
+            )
+        } else {
+            (
+                composer.and_then(|composer| composer.selected_model_id.clone()),
+                None,
+                composer.and_then(|composer| composer.selected_effort),
+            )
+        };
         let access_mode = composer
             .map(|composer| composer.access_mode)
             .unwrap_or(WorkspaceAccessMode::FullAccess);
@@ -150,6 +161,7 @@ impl AutopilotApp {
             thread_id,
             prompt,
             model,
+            model_provider,
             effort,
             access_mode,
         );
@@ -206,11 +218,22 @@ impl AutopilotApp {
         state.permissions.permission_action_tx = Some(permission_action_tx);
         state.permissions.permission_action_rx = Some(permission_action_rx);
 
+        let (model_override, model_provider) = if state.settings.coder_settings.is_local_mode() {
+            (
+                state.settings.coder_settings.local_model_override(),
+                state.settings.coder_settings.local_model_provider(),
+            )
+        } else {
+            (None, None)
+        };
+
         self.submit_codex_review_app_server(
             review,
             thread_id,
             cwd,
             coder_mode,
+            model_override,
+            model_provider,
             tx,
             permission_tx,
             control_rx,
@@ -258,6 +281,14 @@ impl AutopilotApp {
             .composer_state(&workspace_id)
             .map(|composer| composer.access_mode)
             .unwrap_or(WorkspaceAccessMode::FullAccess);
+        let (model, model_provider) = if state.settings.coder_settings.is_local_mode() {
+            (
+                state.settings.coder_settings.local_model_override(),
+                state.settings.coder_settings.local_model_provider(),
+            )
+        } else {
+            (None, None)
+        };
         let thread_id = state.workspaces.active_thread_id();
 
         state.workspaces.runtime.start_review(
@@ -267,6 +298,8 @@ impl AutopilotApp {
             delivery,
             label,
             access_mode,
+            model,
+            model_provider,
         );
     }
 
@@ -294,13 +327,25 @@ impl AutopilotApp {
         let pending_resume = state.session.pending_resume_session.take();
         let pending_fork = state.session.pending_fork_session;
         state.session.pending_fork_session = false;
-        let model_override = state.settings.coder_settings.model.clone();
-        let reasoning_effort = state
-            .settings
-            .coder_settings
-            .reasoning_effort
-            .as_deref()
-            .and_then(parse_reasoning_effort);
+        let (model_override, model_provider_override, reasoning_effort) =
+            if state.settings.coder_settings.is_local_mode() {
+                (
+                    state.settings.coder_settings.local_model_override(),
+                    state.settings.coder_settings.local_model_provider(),
+                    None,
+                )
+            } else {
+                (
+                    state.settings.coder_settings.model.clone(),
+                    None,
+                    state
+                        .settings
+                        .coder_settings
+                        .reasoning_effort
+                        .as_deref()
+                        .and_then(parse_reasoning_effort),
+                )
+            };
 
         tracing::info!("Using Codex app-server transport");
         let (permission_tx, permission_rx) = mpsc::unbounded_channel();
@@ -318,6 +363,7 @@ impl AutopilotApp {
             resume_thread_id,
             pending_fork,
             model_override,
+            model_provider_override,
             reasoning_effort,
             tx,
             permission_tx,
@@ -334,6 +380,7 @@ impl AutopilotApp {
         resume_thread_id: Option<String>,
         fork_session: bool,
         model_override: Option<String>,
+        model_provider: Option<String>,
         reasoning_effort: Option<app_server::ReasoningEffort>,
         tx: mpsc::UnboundedSender<ResponseEvent>,
         permission_tx: mpsc::UnboundedSender<PermissionPending>,
@@ -383,7 +430,7 @@ impl AutopilotApp {
                     let resume_params = app_server::ThreadResumeParams {
                         thread_id: resume_id,
                         model: model_override.clone(),
-                        model_provider: None,
+                        model_provider: model_provider.clone(),
                         cwd: Some(cwd.to_string_lossy().to_string()),
                         approval_policy: Some(approval_policy_for_mode(coder_mode)),
                         sandbox: Some(sandbox_mode_for_mode(coder_mode)),
@@ -410,7 +457,7 @@ impl AutopilotApp {
                 } else {
                     let thread_params = app_server::ThreadStartParams {
                         model: model_override.clone(),
-                        model_provider: None,
+                        model_provider: model_provider.clone(),
                         cwd: Some(cwd.to_string_lossy().to_string()),
                         approval_policy: Some(approval_policy_for_mode(coder_mode)),
                         sandbox: Some(sandbox_mode_for_mode(coder_mode)),
@@ -522,6 +569,8 @@ impl AutopilotApp {
         thread_id: String,
         cwd: PathBuf,
         coder_mode: CoderMode,
+        model_override: Option<String>,
+        model_provider: Option<String>,
         tx: mpsc::UnboundedSender<ResponseEvent>,
         permission_tx: mpsc::UnboundedSender<PermissionPending>,
         control_rx: mpsc::UnboundedReceiver<QueryControl>,
@@ -557,8 +606,8 @@ impl AutopilotApp {
 
             let resume_params = app_server::ThreadResumeParams {
                 thread_id: thread_id.clone(),
-                model: None,
-                model_provider: None,
+                model: model_override.clone(),
+                model_provider: model_provider.clone(),
                 cwd: Some(cwd.to_string_lossy().to_string()),
                 approval_policy: Some(approval_policy_for_mode(coder_mode)),
                 sandbox: Some(sandbox_mode_for_mode(coder_mode)),

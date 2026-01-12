@@ -66,7 +66,10 @@ use crate::panels::PanelLayout;
 
 use super::AutopilotApp;
 use super::commands::handle_modal_input;
-use super::settings::{fetch_rate_limits, load_keybindings, load_settings, settings_model_option};
+use super::settings::{
+    apply_codex_oss_env, fetch_rate_limits, load_keybindings, load_settings,
+    settings_model_option,
+};
 
 impl ApplicationHandler for AutopilotApp {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
@@ -152,6 +155,7 @@ impl ApplicationHandler for AutopilotApp {
                     let _ = command_palette_tx.send(command.id.clone());
                 });
             let settings = load_settings();
+            apply_codex_oss_env(&settings);
             let system_theme = window
                 .theme()
                 .map(|theme| match theme {
