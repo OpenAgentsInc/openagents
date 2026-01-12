@@ -26,6 +26,8 @@ use crate::ui;
 use crate::wallet_runtime::{WalletEvent, WalletRuntime, SATS_PER_JOB};
 use viz::QueryStatus;
 
+const COMMAND_PALETTE_ENABLED: bool = false;
+
 #[derive(Default)]
 pub struct PylonApp {
     state: Option<RenderState>,
@@ -260,7 +262,7 @@ impl ApplicationHandler for PylonApp {
                     if cmd {
                         if let Key::Character(c) = &event.logical_key {
                             if c.to_lowercase() == "k" {
-                                if !state.command_palette.is_open() {
+                                if COMMAND_PALETTE_ENABLED && !state.command_palette.is_open() {
                                     state.command_palette.open();
                                     return;
                                 }
@@ -275,7 +277,7 @@ impl ApplicationHandler for PylonApp {
 
                     // Priority 2: Route events to palette when open
                     // TextInput handles clipboard (Cmd+C/V/X) and selection (Cmd+A) automatically
-                    if state.command_palette.is_open() {
+                    if COMMAND_PALETTE_ENABLED && state.command_palette.is_open() {
                         if let Some(wgpui_event) = input_convert::create_key_down(&event.logical_key, &state.modifiers) {
                             let scale_factor = state.window.scale_factor() as f32;
                             let logical_width = width / scale_factor;
@@ -334,7 +336,10 @@ impl ApplicationHandler for PylonApp {
                 );
 
                 // Paint command palette overlay (last = on top)
-                if state.command_palette.is_open() {
+                if !COMMAND_PALETTE_ENABLED && state.command_palette.is_open() {
+                    state.command_palette.close();
+                }
+                if COMMAND_PALETTE_ENABLED && state.command_palette.is_open() {
                     let bounds = Bounds::new(0.0, 0.0, logical_width, logical_height);
                     let mut paint_cx = PaintContext::new(
                         &mut scene,
@@ -618,8 +623,10 @@ impl ApplicationHandler for PylonApp {
             }
 
             // Poll command palette selections (non-blocking)
-            while let Ok(command_id) = state.command_rx.try_recv() {
-                execute_command(&command_id, state);
+            if COMMAND_PALETTE_ENABLED {
+                while let Ok(command_id) = state.command_rx.try_recv() {
+                    execute_command(&command_id, state);
+                }
             }
 
             state.window.request_redraw();

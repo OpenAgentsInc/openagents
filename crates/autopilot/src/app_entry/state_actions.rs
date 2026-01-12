@@ -28,6 +28,7 @@ use crate::keybindings::Action as KeyAction;
 use super::command_palette_ids;
 use super::hooks::hook_log_event_data;
 use super::settings::{normalize_settings, save_settings, update_settings_model};
+use super::COMMAND_PALETTE_ENABLED;
 
 const HOOK_LOG_LIMIT: usize = 200;
 
@@ -358,6 +359,12 @@ impl AppState {
     }
 
     pub(super) fn open_command_palette(&mut self) {
+        if !COMMAND_PALETTE_ENABLED {
+            if self.command_palette.is_open() {
+                self.command_palette.close();
+            }
+            return;
+        }
         self.modal_state = ModalState::None;
         if self.chat.chat_context_menu.is_open() {
             self.chat.chat_context_menu.close();
