@@ -33,6 +33,7 @@ pub(crate) fn render_app(state: &mut AppState) {
     scene.draw_quad(Quad::new(bounds).with_background(palette.background));
 
     render_sidebars(state, &mut scene, &palette, &sidebar_layout);
+    render_topbar(state, &mut scene, &palette, &sidebar_layout);
     render_chat(
         state,
         &mut scene,

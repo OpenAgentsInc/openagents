@@ -7,12 +7,9 @@ fn render_input(
     logical_height: f32,
     scale_factor: f32,
 ) {
-    // Input box (max width 768px, centered)
-    let max_input_width = 768.0_f32;
-    let available_input_width = sidebar_layout.main.size.width - INPUT_PADDING * 2.0;
-    let input_width = available_input_width.min(max_input_width);
-    let input_x =
-        sidebar_layout.main.origin.x + (sidebar_layout.main.size.width - input_width) / 2.0;
+    let available_input_width = sidebar_layout.main.size.width - CONTENT_PADDING_X * 2.0;
+    let input_width = available_input_width.max(0.0);
+    let input_x = sidebar_layout.main.origin.x + CONTENT_PADDING_X;
     // Set max width for wrapping, then calculate dynamic height
     state.input.set_max_width(input_width);
     let input_height = state.input.current_height().max(40.0);
@@ -25,7 +22,16 @@ fn render_input(
         sidebar_layout.main.size.width,
         logical_height - input_area_y,
     );
-    scene.draw_quad(Quad::new(input_area_bounds).with_background(palette.background));
+    scene.draw_quad(Quad::new(input_area_bounds).with_background(palette.panel));
+    scene.draw_quad(
+        Quad::new(Bounds::new(
+            sidebar_layout.main.origin.x,
+            input_area_y,
+            sidebar_layout.main.size.width,
+            1.0,
+        ))
+        .with_background(palette.panel_border),
+    );
 
     let input_bounds = Bounds::new(
         input_x,

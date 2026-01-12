@@ -3,6 +3,8 @@ pub(crate) const INPUT_PADDING: f32 = 12.0;
 pub(crate) const OUTPUT_PADDING: f32 = 12.0;
 pub(crate) const STATUS_BAR_HEIGHT: f32 = 20.0;
 pub(crate) const STATUS_BAR_FONT_SIZE: f32 = 13.0;
+pub(crate) const TOPBAR_HEIGHT: f32 = 44.0;
+pub(crate) const CONTENT_PADDING_X: f32 = 32.0;
 /// Height of input area (input + padding + status bar) for modal positioning
 pub(crate) const INPUT_AREA_HEIGHT: f32 = INPUT_HEIGHT + INPUT_PADDING + STATUS_BAR_HEIGHT;
 
@@ -57,8 +59,15 @@ pub(crate) const HOOK_MODAL_HEIGHT: f32 = 520.0;
 pub(crate) const HOOK_EVENT_ROW_HEIGHT: f32 = 20.0;
 pub(crate) const TOOL_PANEL_GAP: f32 = 8.0;
 
-const SIDEBAR_WIDTH: f32 = 220.0;
+const SIDEBAR_WIDTH: f32 = 280.0;
+const RIGHT_PANEL_WIDTH: f32 = 230.0;
 const SIDEBAR_MIN_MAIN: f32 = 320.0;
+const WORKSPACE_LIST_TOP: f32 = 56.0;
+const WORKSPACE_ROW_HEIGHT: f32 = 30.0;
+const WORKSPACE_ROW_GAP: f32 = 8.0;
+const WORKSPACE_ROW_PADDING_X: f32 = 12.0;
+const WORKSPACE_CONNECT_PILL_WIDTH: f32 = 58.0;
+const WORKSPACE_CONNECT_PILL_HEIGHT: f32 = 16.0;
 
 #[derive(Clone, Debug)]
 struct LinePrefix {
@@ -72,6 +81,12 @@ pub(crate) struct SidebarLayout {
     pub(crate) left: Option<Bounds>,
     pub(crate) right: Option<Bounds>,
     pub(crate) main: Bounds,
+}
+
+pub(crate) struct WorkspaceListLayout {
+    pub(crate) rows: Vec<Bounds>,
+    pub(crate) connect_pills: Vec<Bounds>,
+    pub(crate) empty_bounds: Option<Bounds>,
 }
 
 pub(crate) struct SessionListLayout {
@@ -95,8 +110,8 @@ pub(crate) struct HookEventLayout {
 }
 
 pub(crate) fn modal_y_in_content(logical_height: f32, modal_height: f32) -> f32 {
-    let content_height = logical_height - INPUT_AREA_HEIGHT;
-    (content_height - modal_height) / 2.0
+    let content_height = logical_height - INPUT_AREA_HEIGHT - TOPBAR_HEIGHT;
+    TOPBAR_HEIGHT + (content_height - modal_height) / 2.0
 }
 
 pub(crate) fn sidebar_layout(
@@ -106,7 +121,7 @@ pub(crate) fn sidebar_layout(
     right_open: bool,
 ) -> SidebarLayout {
     let mut left_width = if left_open { SIDEBAR_WIDTH } else { 0.0 };
-    let mut right_width = if right_open { SIDEBAR_WIDTH } else { 0.0 };
+    let mut right_width = if right_open { RIGHT_PANEL_WIDTH } else { 0.0 };
     let available_main = logical_width - left_width - right_width;
     if available_main < SIDEBAR_MIN_MAIN {
         let overflow = SIDEBAR_MIN_MAIN - available_main;
@@ -142,14 +157,63 @@ pub(crate) fn sidebar_layout(
 }
 
 pub(crate) fn new_session_button_bounds(sidebar_bounds: Bounds) -> Bounds {
+    let size = 22.0;
     Bounds::new(
-        sidebar_bounds.origin.x + 12.0,
+        sidebar_bounds.origin.x + sidebar_bounds.size.width - size - 16.0,
         sidebar_bounds.origin.y + 12.0,
-        sidebar_bounds.size.width - 24.0,
-        32.0,
+        size,
+        size,
     )
 }
 
+pub(crate) fn workspace_list_layout(
+    sidebar_bounds: Bounds,
+    workspace_count: usize,
+) -> WorkspaceListLayout {
+    let row_width = (sidebar_bounds.size.width - WORKSPACE_ROW_PADDING_X * 2.0).max(0.0);
+    let mut rows = Vec::with_capacity(workspace_count);
+    let mut connect_pills = Vec::with_capacity(workspace_count);
+    let mut y = sidebar_bounds.origin.y + WORKSPACE_LIST_TOP;
+
+    for _ in 0..workspace_count {
+        let row_bounds = Bounds::new(
+            sidebar_bounds.origin.x + WORKSPACE_ROW_PADDING_X,
+            y,
+            row_width,
+            WORKSPACE_ROW_HEIGHT,
+        );
+        let pill_x = row_bounds.origin.x + row_bounds.size.width - WORKSPACE_CONNECT_PILL_WIDTH - 6.0;
+        let pill_y =
+            row_bounds.origin.y + (WORKSPACE_ROW_HEIGHT - WORKSPACE_CONNECT_PILL_HEIGHT) / 2.0;
+        rows.push(row_bounds);
+        connect_pills.push(Bounds::new(
+            pill_x,
+            pill_y,
+            WORKSPACE_CONNECT_PILL_WIDTH,
+            WORKSPACE_CONNECT_PILL_HEIGHT,
+        ));
+        y += WORKSPACE_ROW_HEIGHT + WORKSPACE_ROW_GAP;
+    }
+
+    let empty_bounds = if workspace_count == 0 {
+        Some(Bounds::new(
+            sidebar_bounds.origin.x + WORKSPACE_ROW_PADDING_X,
+            y,
+            row_width,
+            20.0,
+        ))
+    } else {
+        None
+    };
+
+    WorkspaceListLayout {
+        rows,
+        connect_pills,
+        empty_bounds,
+    }
+}
+
+#[allow(dead_code)]
 fn format_tokens(n: u64) -> String {
     if n >= 1_000_000 {
         format!("{:.1}M", n as f64 / 1_000_000.0)
@@ -160,6 +224,7 @@ fn format_tokens(n: u64) -> String {
     }
 }
 
+#[allow(dead_code)]
 fn format_duration_ms(ms: u64) -> String {
     if ms < 1_000 {
         format!("{}ms", ms)
