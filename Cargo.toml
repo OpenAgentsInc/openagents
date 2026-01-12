@@ -6,7 +6,6 @@ members = [
     "crates/autopilot",
     "crates/autopilot-core",
     "crates/compute",
-    "crates/daytona",
     # DSPy integration (dsrs)
     "crates/dsrs",
     "crates/dsrs-macros",

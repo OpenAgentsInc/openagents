@@ -2578,21 +2578,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "be1e0bca6c3637f992fc1cc7cbc52a78c1ef6db076dbf1059c4323d6a2048376"
 
 [[package]]
-name = "daytona"
-version = "0.1.0"
-dependencies = [
- "reqwest",
- "serde",
- "serde_json",
- "thiserror 1.0.69",
- "tokio",
- "tracing",
- "url",
- "urlencoding",
- "wiremock",
-]
-
-[[package]]
 name = "deadpool"
 version = "0.12.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6623,7 +6608,6 @@ dependencies = [
  "bitcoin",
  "clap",
  "compute",
- "daytona",
  "dsrs",
  "futures",
  "getrandom 0.2.16",

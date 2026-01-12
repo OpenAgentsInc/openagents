@@ -26,10 +26,6 @@ checkpointing, preflight checks, session logging, and streaming event normalizat
 The compute crate implements a NIP-90 DVM provider that sells compute on Nostr. It bids on jobs,
 executes inference or agent backends, and publishes results back to relays.
 
-## daytona
-The daytona crate is a Rust SDK for the Daytona sandbox API, covering sandbox lifecycle, file
-operations, git actions, and command execution.
-
 ## dsrs
 The dsrs crate is the Rust implementation of DSPy (Declarative Self-improving Programming). It
 provides signatures, predictors, optimizers, retrieval, tracing, and evaluation for declarative

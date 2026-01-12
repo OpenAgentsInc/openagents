@@ -85,7 +85,6 @@ spark = { package = "openagents-spark", path = "../spark" }
 bitcoin = { workspace = true }
 nostr = { workspace = true }
 tokio-tungstenite = "0.24"
-daytona = { path = "../daytona" }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 getrandom = { version = "0.2", features = ["js"] }
