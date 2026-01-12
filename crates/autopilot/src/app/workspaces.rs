@@ -12,6 +12,10 @@ use crate::app::config::workspaces_file;
 
 const THREAD_NAME_MAX_LEN: usize = 38;
 const FOCUS_REFRESH_COOLDOWN_SECS: u64 = 2;
+const MAX_ITEMS_PER_THREAD: usize = 400;
+const MAX_ITEM_TEXT: usize = 20000;
+const MAX_TOOL_TITLE_TEXT: usize = 200;
+const MAX_TOOL_DETAIL_TEXT: usize = 2000;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct WorkspaceEntry {
@@ -293,15 +297,20 @@ pub(crate) struct ThreadTimeline {
 
 impl ThreadTimeline {
     pub(crate) fn upsert(&mut self, item: ConversationItem) {
+        let mut item = item;
+        truncate_item(&mut item);
         let id = item.id().to_string();
         if let Some(index) = self.index_by_id.get(&id).copied() {
             if let Some(existing) = self.items.get_mut(index) {
                 existing.merge(item);
+                truncate_item(existing);
             }
+            self.trim_to_limit();
             return;
         }
         self.index_by_id.insert(id, self.items.len());
         self.items.push(item);
+        self.trim_to_limit();
     }
 
     pub(crate) fn append_agent_delta(&mut self, item_id: &str, delta: &str) {
@@ -311,7 +320,9 @@ impl ThreadTimeline {
         if let Some(index) = self.index_by_id.get(item_id).copied() {
             if let Some(ConversationItem::Message { text, .. }) = self.items.get_mut(index) {
                 text.push_str(delta);
+                *text = truncate_text(text, MAX_ITEM_TEXT);
             }
+            self.trim_to_limit();
             return;
         }
         let item = ConversationItem::Message {
@@ -322,6 +333,7 @@ impl ThreadTimeline {
         self.index_by_id
             .insert(item_id.to_string(), self.items.len());
         self.items.push(item);
+        self.trim_to_limit();
     }
 
     pub(crate) fn append_reasoning_summary(&mut self, item_id: &str, delta: &str) {
@@ -331,7 +343,9 @@ impl ThreadTimeline {
         if let Some(index) = self.index_by_id.get(item_id).copied() {
             if let Some(ConversationItem::Reasoning { summary, .. }) = self.items.get_mut(index) {
                 summary.push_str(delta);
+                *summary = truncate_text(summary, MAX_ITEM_TEXT);
             }
+            self.trim_to_limit();
             return;
         }
         let item = ConversationItem::Reasoning {
@@ -342,6 +356,7 @@ impl ThreadTimeline {
         self.index_by_id
             .insert(item_id.to_string(), self.items.len());
         self.items.push(item);
+        self.trim_to_limit();
     }
 
     pub(crate) fn append_reasoning_content(&mut self, item_id: &str, delta: &str) {
@@ -351,7 +366,9 @@ impl ThreadTimeline {
         if let Some(index) = self.index_by_id.get(item_id).copied() {
             if let Some(ConversationItem::Reasoning { content, .. }) = self.items.get_mut(index) {
                 content.push_str(delta);
+                *content = truncate_text(content, MAX_ITEM_TEXT);
             }
+            self.trim_to_limit();
             return;
         }
         let item = ConversationItem::Reasoning {
@@ -362,6 +379,7 @@ impl ThreadTimeline {
         self.index_by_id
             .insert(item_id.to_string(), self.items.len());
         self.items.push(item);
+        self.trim_to_limit();
     }
 
     pub(crate) fn append_tool_output(&mut self, item_id: &str, delta: &str) {
@@ -371,7 +389,21 @@ impl ThreadTimeline {
         if let Some(index) = self.index_by_id.get(item_id).copied() {
             if let Some(ConversationItem::Tool { data, .. }) = self.items.get_mut(index) {
                 data.output.push_str(delta);
+                data.output = truncate_text(&data.output, MAX_ITEM_TEXT);
             }
+        }
+        self.trim_to_limit();
+    }
+
+    fn trim_to_limit(&mut self) {
+        if self.items.len() <= MAX_ITEMS_PER_THREAD {
+            return;
+        }
+        let trim_count = self.items.len().saturating_sub(MAX_ITEMS_PER_THREAD);
+        self.items.drain(0..trim_count);
+        self.index_by_id.clear();
+        for (index, item) in self.items.iter().enumerate() {
+            self.index_by_id.insert(item.id().to_string(), index);
         }
     }
 }
@@ -474,6 +506,40 @@ impl ToolItemData {
         }
         if !incoming.changes.is_empty() {
             self.changes = incoming.changes;
+        }
+    }
+}
+
+fn truncate_text(text: &str, max_len: usize) -> String {
+    if text.chars().count() <= max_len {
+        return text.to_string();
+    }
+    let slice_len = max_len.saturating_sub(3);
+    let truncated: String = text.chars().take(slice_len).collect();
+    format!("{}...", truncated)
+}
+
+fn truncate_item(item: &mut ConversationItem) {
+    match item {
+        ConversationItem::Message { text, .. } => {
+            *text = truncate_text(text, MAX_ITEM_TEXT);
+        }
+        ConversationItem::Reasoning { summary, content, .. } => {
+            *summary = truncate_text(summary, MAX_ITEM_TEXT);
+            *content = truncate_text(content, MAX_ITEM_TEXT);
+        }
+        ConversationItem::Tool { data, .. } => {
+            data.title = truncate_text(&data.title, MAX_TOOL_TITLE_TEXT);
+            data.detail = truncate_text(&data.detail, MAX_TOOL_DETAIL_TEXT);
+            data.output = truncate_text(&data.output, MAX_ITEM_TEXT);
+            for change in &mut data.changes {
+                if let Some(diff) = change.diff.as_mut() {
+                    *diff = truncate_text(diff, MAX_ITEM_TEXT);
+                }
+            }
+        }
+        ConversationItem::Review { text, .. } => {
+            *text = truncate_text(text, MAX_ITEM_TEXT);
         }
     }
 }
