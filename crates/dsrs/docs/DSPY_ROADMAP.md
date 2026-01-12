@@ -17,21 +17,34 @@ re-architecting the agent.
 
 ## Coverage Map
 
-- dsrs (crates/dsrs): core signatures, predictors, optimizers, tracing, caching,
-  and LM routing.
-- OANIX (crates/oanix): DSPy signatures for situation assessment and lifecycle
-  decisions.
-- Autopilot core (crates/autopilot-core): planning, execution, verification, and
-  optimization signatures.
-- Adjutant (crates/adjutant): decision pipelines and planning orchestration for
-  the Autopilot UI and CLI.
-- Runtime (crates/runtime): tool selection and tool result interpretation
-  signatures.
-- RLM/FRLM (crates/rlm, crates/frlm): DSPy signatures for recursive or
-  long-context workflows.
+The dsrs crate is the compiler layer itself. It hosts the core signature system,
+predictors, optimizers, tracing, caching, and LM routing so that every other
+component can define intent without worrying about model wiring.
+
+OANIX provides DSPy signatures for situation assessment and lifecycle decisions.
+It turns the discovered system manifest into a typed priority signal so the
+agent can reason about whether to wait, work issues, or acquire resources.
+
+Autopilot core owns the planning, execution, verification, and optimization
+signatures that turn a user prompt into a plan, a sequence of actions, and a
+verification verdict. This is the core decision surface for the autonomous
+coding workflow.
+
+Adjutant wires those signatures into planning orchestration for both the UI and
+CLI. It owns the self-improvement loop, so it is responsible for turning
+decisions and outcomes into training signals and optimization runs.
+
+Runtime holds the tool selection and tool result interpretation signatures. It
+bridges the typed DSPy decisions into concrete tool calls and helps normalize
+tool results so they can become learning data.
+
+RLM and FRLM provide DSPy signatures for recursive or long-context workflows.
+These modules are used when a single model call is insufficient and the agent
+must orchestrate deeper analysis or multi-step inference.
 
 Each component owns signatures for its decision surface, while dsrs provides the
-optimizer and runtime machinery.
+optimizer and runtime machinery that keep those signatures portable and
+optimizable.
 
 ## Autopilot DSPy Flow
 
@@ -75,6 +88,11 @@ them.
 | 13 | Complete | Pipeline wiring (adjutant, runtime, oanix, autopilot-core) |
 | 14 | Complete | Self-improving Autopilot loop |
 
+The wave table captures the current implementation status, but it is also a
+dependency map. Earlier waves establish the data structures and runtime
+contracts, while later waves focus on wiring, self-improvement, and full
+automation of the decision loop.
+
 ## Archived DSPy Work
 
 Older DSPy experiments for agent orchestration, marketplace security, and relay
@@ -90,3 +108,8 @@ learning signal. The long-term direction is to merge tool selection into a
 single ToolCall signature and add a ToolResult signature to label step utility.
 The Plan IR is also duplicated across Adjutant and Autopilot, and should be
 unified for better training data.
+
+These gaps are not just architectural debt; they directly affect the quality of
+learning signals and the cost of execution. Consolidating per-step decisions and
+adding structured tool result interpretation will reduce inference overhead and
+produce cleaner training examples for optimization.

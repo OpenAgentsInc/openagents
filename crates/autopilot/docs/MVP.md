@@ -1,76 +1,114 @@
 # Autopilot v0.1
 
-A local-first autonomous coding agent.
+Autopilot is a local-first autonomous coding agent. It ships as a desktop app
+with a CLI that shares the same app-server runtime, so the UI and command line
+experience stay aligned while still supporting a fully autonomous mode through
+Adjutant and DSPy.
 
 ## User experience
 
 ### 1. Install
 
-User installs Autopilot via either:
-
-1. Shell script from openagents.com
-2. Building from source via our GitHub repo (requires Rust toolchain)
+Users can install Autopilot either by running the OpenAgents install script from
+openagents.com or by building from source in this repository with a Rust
+toolchain. The source build path is the default for contributors and keeps the
+workspace aligned with the latest Autopilot UI and Adjutant behavior.
 
 ### 2. Run
 
-In your working directory, run:
+From the working directory, run `autopilot` to launch the desktop app. The UI
+opens in the current repository and uses the Codex app-server as its interactive
+backend, preserving local sessions and tooling.
 
-```bash
-autopilot
-```
-
-This opens the Autopilot desktop app.
-
-Alternately Autopilot can be steered via CLI commands.
+The CLI is available for ad-hoc prompts and automation. It runs the same
+app-server flow as the GUI, with prompt expansion for `@file` and `!command` and
+support for review commands.
 
 ```bash
 autopilot run --help
-```
-
-For ad-hoc prompts, the CLI runs the same Codex app-server flow as the GUI:
-
-```bash
 autopilot run "Summarize @README.md and run !git status"
 autopilot run "/review commit <sha> [title]"
 autopilot run --access read-only --model gpt-4.1 --effort high "Explain the diff"
 ```
 
-Use `--autopilot-loop` to route ad-hoc prompts through the DSPy loop instead of the app-server.
+Use `--autopilot-loop` to route ad-hoc prompts through the DSPy loop instead of
+the app-server. That mode boots OANIX, runs structured planning and execution
+signatures, and emits the same UI events for visibility.
 
 ### 3. Connect Codex
 
-This version of Autopilot requires a Codex subscription.
-
-Future versions will support other agents and API keys.
+Autopilot currently requires a Codex subscription because the app-server runtime
+is the primary interactive backend. This is expected to expand over time as
+additional backends and API keys are added to the runtime adapter layer.
 
 ### 4. Prompt
 
-Enter your prompt and hit enter. This begins an Autopilot session.
-
+Enter a prompt and press enter to start an Autopilot session. The UI will
+stream model output, tool calls, approvals, and diffs as they arrive, and the
+session will be stored locally for replay and continuation.
 
 ## Concepts
 
-### One Conversation Per Project
+### One conversation per project
 
-Conversation threads are separated only by project, based on its working directory. Each working directory has its own long-running conversation.
+Autopilot keeps one long-running thread per working directory. This keeps context
+stable for each repository while still allowing users to run multiple projects
+side-by-side without mixing histories.
 
-### Instant Message Processing 
+### Instant message processing
 
-You can add new prompts anytime. They are known to Autopilot immediately, not queued.
+Prompts are available to Autopilot immediately, not queued behind a global task
+list. This means you can add new prompts while a session is active and the agent
+can incorporate them as soon as the current turn completes.
 
-### Continuous Learning
+### Continuous learning
 
-Autopilot responses use DSPy signatures and optimizations. Read more about our DSPy integration [here](../../dsrs/docs/README.md).
+Autopilot uses DSPy signatures and optimizations to structure decisions and to
+collect learning signals. The DSPy pipeline is designed so that plan quality,
+execution choices, and verification outcomes feed back into future runs without
+requiring manual prompt edits.
 
+## Current state (implementation snapshot)
 
-## Current State (Implementation Snapshot)
+The desktop UI is a Winit/WGPU app with streaming Markdown, tool call cards,
+command palette actions, keybindings, and left/right panels. The layout is
+optimized for reading long outputs and inspecting diffs while maintaining a
+continuous chat timeline.
 
-- **UI**: Winit/WGPU desktop app with GPU-rendered chat, Markdown streaming, tool call cards, command palette, keybindings, and left/right sidebar panels.
-- **Backends**: Interactive mode uses the Codex app-server directly; `/backend` exists but only Codex is wired. The agent backend registry and model picker are implemented for Codex only.
-- **Autopilot mode**: When permission mode is set to autopilot, prompts run through Adjutant's autopilot loop with OANIX boot and DSPy stages; max iterations is 10 and verification is enabled. Requires an OANIX workspace (`oanix init`) for full context.
-- **Prompt expansion**: `@file` inlines local files and `!command` runs a shell command for context. Autopilot adds OANIX context (directives, issues, recent git log) before executing.
-- **Sessions**: Local history is stored in `~/.openagents/autopilot/sessions`, with list/fork/export and checkpoint restore UI. Resume loads cached history only; Codex thread resume is not wired, and delete is not implemented.
-- **Tools and permissions**: Tool calls/results render for Codex and Adjutant. Permission modes map to Codex sandbox/approval policies and approvals are surfaced in the GUI/CLI; the Codex tool list still only enumerates MCP tools (not built-ins).
-- **CLI parity**: `autopilot run` uses the app-server for ad-hoc prompts with `@file`/`!command` expansion, review support, and interactive approvals in `workspace` mode. Default access mode is full (no approvals); `read-only` auto-declines write/exec requests, and `--autopilot-loop` restores the DSPy loop for ad-hoc tasks.
-- **Catalogs and config**: Agents, skills, hooks, and MCP configs are discovered from `.openagents` and `~/.openagents` (plus `.mcp.json`) with UI management, but they are not yet applied to Codex/Adjutant runs.
-- **Panels and telemetry**: OANIX, directives/issues, autopilot issues (`.openagents/autopilot.db`), Pylon earnings/jobs, RLM runs/trace, Spark wallet, DVM providers, NIP-90 jobs, NIP-28 chat, Nexus stats, LM router, and Gateway health all have panels with refreshable data sources.
+Interactive runs use the Codex app-server directly, while the `/backend` service
+exists as a placeholder for future non-Codex backends. The backend registry and
+model picker are implemented with Codex as the only active backend today.
+
+Autopilot mode routes prompts through Adjutant's autopilot loop with OANIX boot
+and DSPy stages. It currently caps iterations at 10, enables verification by
+default, and expects an OANIX workspace (`oanix init`) for full directive and
+issue context.
+
+Prompt expansion supports `@file` inclusion and `!command` execution, and
+Autopilot injects OANIX context (directives, issues, recent git log) before it
+runs the task. This keeps the initial prompt grounded in repository state.
+
+Sessions are stored in `~/.openagents/autopilot/sessions`, with list, fork, export,
+and checkpoint restore support in the UI. Session resume currently loads cached
+history only; Codex thread resume is not yet wired, and deletion is not
+implemented.
+
+Tool calls and approvals render for both Codex and Adjutant flows. Permission
+modes map to Codex sandbox and approval policies, and approvals are exposed in
+both GUI and CLI. The Codex tool list still enumerates MCP tools only and does
+not yet include built-in tools.
+
+The CLI path (`autopilot run`) supports ad-hoc prompts, review flows, interactive
+approvals, and `@file`/`!command` expansion. The default access mode is full with
+no approvals; read-only mode auto-declines write and exec requests. The
+`--autopilot-loop` flag re-enables the DSPy loop for ad-hoc runs.
+
+Catalogs and configuration for agents, skills, hooks, and MCP are discovered
+from `.openagents`, `~/.openagents`, and `.mcp.json`. The UI can manage these
+catalogs, but they are not yet applied to Codex or Adjutant runs.
+
+The telemetry panels surface OANIX discovery data, directives and issues,
+Autopilot issues, Pylon earnings and jobs, RLM traces, Spark wallet data, DVM
+providers, NIP-90 jobs, NIP-28 chat, Nexus stats, LM router health, and Gateway
+status. Each panel has a refreshable data source, but cross-panel correlations
+are still manual.
