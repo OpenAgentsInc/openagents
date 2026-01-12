@@ -5,7 +5,8 @@
 use crate::core::signature::MetaSignature;
 use crate::data::example::Example;
 use anyhow::Result;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
+use std::collections::HashMap;
 
 /// Signature for understanding user tasks and extracting requirements.
 ///
@@ -27,15 +28,13 @@ pub struct TaskUnderstandingSignature {
 
 impl Default for TaskUnderstandingSignature {
     fn default() -> Self {
-        Self {
-            instruction: r#"You are an expert at understanding software development tasks.
+        let instruction = r#"You are an expert at understanding software development tasks.
 Given a user's request and repository context, analyze and extract:
 
 1. Task Type: Classify as FEATURE (new functionality), BUGFIX (fixing broken behavior),
    REFACTOR (restructuring code), DOCS (documentation), or TEST (adding tests)
 
 2. Requirements: Break down the request into specific, actionable requirements.
-   Output as a JSON array of strings.
 
 3. Scope: Estimate as SMALL (< 50 lines, 1-2 files), MEDIUM (50-200 lines, 2-5 files),
    or LARGE (> 200 lines, 5+ files)
@@ -43,9 +42,55 @@ Given a user's request and repository context, analyze and extract:
 4. Questions: If the request is ambiguous, list clarifying questions.
    Leave empty if the request is clear.
 
-Be precise and thorough in your analysis."#
-                .to_string(),
-            demos: vec![],
+OUTPUT FORMAT (use these exact structures):
+- task_type: "FEATURE" (or BUGFIX, REFACTOR, DOCS, TEST)
+- requirements: ["Add X functionality", "Modify Y to support Z"]
+- scope_estimate: "SMALL" (or MEDIUM, LARGE)
+- clarifying_questions: ["What should happen when...?"] or []
+- confidence: 0.85 (decimal between 0 and 1)
+
+Be precise. Use actual values, not placeholders."#
+            .to_string();
+
+        // Create demo example
+        let mut demo_data = HashMap::new();
+        demo_data.insert(
+            "user_request".to_string(),
+            json!("Add a --version flag that prints the version from Cargo.toml"),
+        );
+        demo_data.insert(
+            "repo_context".to_string(),
+            json!("Rust CLI tool using clap for argument parsing"),
+        );
+        demo_data.insert("task_type".to_string(), json!("FEATURE"));
+        demo_data.insert(
+            "requirements".to_string(),
+            json!([
+                "Add --version flag to clap Args struct",
+                "Use env!(\"CARGO_PKG_VERSION\") to get version",
+                "Print version and exit when flag is passed"
+            ]),
+        );
+        demo_data.insert("scope_estimate".to_string(), json!("SMALL"));
+        demo_data.insert("clarifying_questions".to_string(), json!([]));
+        demo_data.insert("confidence".to_string(), json!(0.95));
+
+        let demo = Example {
+            data: demo_data,
+            input_keys: vec!["user_request".to_string(), "repo_context".to_string()],
+            output_keys: vec![
+                "task_type".to_string(),
+                "requirements".to_string(),
+                "scope_estimate".to_string(),
+                "clarifying_questions".to_string(),
+                "confidence".to_string(),
+            ],
+            node_id: None,
+        };
+
+        Self {
+            instruction,
+            demos: vec![demo],
         }
     }
 }
