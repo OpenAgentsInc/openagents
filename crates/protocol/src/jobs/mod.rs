@@ -18,7 +18,7 @@ pub use embeddings::{EmbeddingsRequest, EmbeddingsResponse};
 pub use rerank::{RerankRequest, RerankResponse};
 pub use sandbox::{SandboxRunRequest, SandboxRunResponse};
 
-use crate::hash::{canonical_hash, HashError};
+use crate::hash::{HashError, canonical_hash};
 use crate::provenance::Provenance;
 use crate::verification::Verification;
 use crate::version::SchemaVersion;

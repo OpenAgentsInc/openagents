@@ -4,7 +4,7 @@
 
 use std::path::Path;
 
-use rusqlite::{params, Connection};
+use rusqlite::{Connection, params};
 
 use crate::error::{FrlmError, Result};
 use crate::trace::TraceEvent;
@@ -97,8 +97,9 @@ impl TraceDbWriter {
                 .map_err(|e| FrlmError::Internal(format!("trace db prepare failed: {}", e)))?;
 
             for event in self.buffer.drain(..) {
-                let event_json = serde_json::to_string(&event)
-                    .map_err(|e| FrlmError::Internal(format!("trace event encode failed: {}", e)))?;
+                let event_json = serde_json::to_string(&event).map_err(|e| {
+                    FrlmError::Internal(format!("trace event encode failed: {}", e))
+                })?;
                 let event_type = event_type(&event);
                 let timestamp_ms = event.timestamp_ms();
                 let run_id = event.run_id().to_string();

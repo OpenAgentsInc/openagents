@@ -3,12 +3,12 @@
 use std::sync::Arc;
 
 use lm_router::{DspyBackend, DspyRoutingPolicy, DspySignatureInfo, LmRouter};
+use rig::OneOrMany;
 use rig::completion::{CompletionError, CompletionRequest, CompletionResponse, Usage};
 use rig::message::{AssistantContent, Text};
-use rig::OneOrMany;
 
-use crate::core::signature::MetaSignature;
 use crate::core::lm::usage::LmUsage;
+use crate::core::signature::MetaSignature;
 
 use super::CompletionProvider;
 

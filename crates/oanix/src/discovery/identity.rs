@@ -19,7 +19,7 @@ pub async fn discover_identity() -> anyhow::Result<IdentityManifest> {
                 npub: None,
                 wallet_balance_sats: None,
                 network: None,
-            })
+            });
         }
     };
 

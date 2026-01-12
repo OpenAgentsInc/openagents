@@ -7,7 +7,7 @@
 
 use super::get_planning_lm;
 use anyhow::Result;
-use dsrs::{example, Predict, Prediction, Predictor, Signature, LM, GLOBAL_SETTINGS};
+use dsrs::{GLOBAL_SETTINGS, LM, Predict, Prediction, Predictor, Signature, example};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
@@ -449,7 +449,10 @@ impl RlmTriggerPipeline {
         })
     }
 
-    async fn should_trigger_with_global(&self, input: &RlmTriggerInput) -> Result<RlmTriggerResult> {
+    async fn should_trigger_with_global(
+        &self,
+        input: &RlmTriggerInput,
+    ) -> Result<RlmTriggerResult> {
         let signature = RlmTriggerSignature::new();
         let predictor = Predict::new(signature);
 

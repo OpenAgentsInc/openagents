@@ -1,11 +1,11 @@
 //! Run command - start the autopilot loop
 
-use crate::autopilot_loop::{
-    generate_session_id, AcpChannelOutput, AutopilotConfig, AutopilotLoop, AutopilotResult,
-};
 use crate::app_server_executor::{
     AppServerExecutor, AppServerPromptOptions, ApprovalMode, AskForApproval, ReasoningEffort,
     ReviewDelivery, ReviewTarget, SandboxMode, SandboxPolicy,
+};
+use crate::autopilot_loop::{
+    AcpChannelOutput, AutopilotConfig, AutopilotLoop, AutopilotResult, generate_session_id,
 };
 use crate::cli::blocker::{analyze_blockers, print_blocker_summary};
 use crate::cli::boot::{boot_fast, boot_full, print_quick_checks};
@@ -15,8 +15,8 @@ use crate::{Adjutant, ExecutionBackend, Task};
 use agent_client_protocol_schema as acp;
 use clap::{Args, ValueEnum};
 use oanix::{OanixManifest, WorkspaceManifest};
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use tokio::sync::mpsc;
 
 /// Run command arguments
@@ -267,12 +267,7 @@ pub async fn run(args: RunArgs) -> anyhow::Result<()> {
                     .await
             } else {
                 executor
-                    .execute_prompt_streaming(
-                        task_desc,
-                        options,
-                        Some(acp_sender),
-                        interrupt,
-                    )
+                    .execute_prompt_streaming(task_desc, options, Some(acp_sender), interrupt)
                     .await
             }
         };
@@ -534,7 +529,10 @@ fn print_autopilot_result(result: &AutopilotResult) {
                 println!("Error: {}", error);
             }
         }
-        AutopilotResult::MaxIterationsReached { iterations, last_result } => {
+        AutopilotResult::MaxIterationsReached {
+            iterations,
+            last_result,
+        } => {
             println!("Max iterations ({}) reached without success", iterations);
             if let Some(result) = last_result {
                 println!();
@@ -640,11 +638,7 @@ async fn find_work_when_blocked(
     println!();
 
     // Collect blocked issues
-    let blocked: Vec<_> = workspace
-        .issues
-        .iter()
-        .filter(|i| i.is_blocked)
-        .collect();
+    let blocked: Vec<_> = workspace.issues.iter().filter(|i| i.is_blocked).collect();
 
     if blocked.is_empty() {
         println!("No blocked issues found. All issues may be completed or in progress.");
@@ -669,7 +663,10 @@ async fn find_work_when_blocked(
         println!("  {} are token budget issues", analysis.token_budget);
     }
     if analysis.needs_env > 0 {
-        println!("  {} need special environment (GUI, etc.)", analysis.needs_env);
+        println!(
+            "  {} need special environment (GUI, etc.)",
+            analysis.needs_env
+        );
     }
     if analysis.architectural > 0 {
         println!("  {} have architectural concerns", analysis.architectural);
@@ -700,7 +697,8 @@ async fn find_work_when_blocked(
         println!();
 
         let adjutant = build_adjutant(manifest, backend)?;
-        let result = run_autopilot_task(adjutant, task, config.clone(), interrupt_flag.clone()).await;
+        let result =
+            run_autopilot_task(adjutant, task, config.clone(), interrupt_flag.clone()).await;
         print_autopilot_result(&result);
         return Ok(());
     }
@@ -733,8 +731,17 @@ mod tests {
 
     #[test]
     fn maps_backend_choices() {
-        assert_eq!(ExecutionBackend::from(BackendChoice::Codex), ExecutionBackend::Codex);
-        assert_eq!(ExecutionBackend::from(BackendChoice::LocalLlm), ExecutionBackend::LocalLlm);
-        assert_eq!(ExecutionBackend::from(BackendChoice::LocalTools), ExecutionBackend::LocalTools);
+        assert_eq!(
+            ExecutionBackend::from(BackendChoice::Codex),
+            ExecutionBackend::Codex
+        );
+        assert_eq!(
+            ExecutionBackend::from(BackendChoice::LocalLlm),
+            ExecutionBackend::LocalLlm
+        );
+        assert_eq!(
+            ExecutionBackend::from(BackendChoice::LocalTools),
+            ExecutionBackend::LocalTools
+        );
     }
 }

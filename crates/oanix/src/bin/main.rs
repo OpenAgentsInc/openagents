@@ -4,7 +4,7 @@
 
 use clap::{Parser, Subcommand};
 use oanix::{
-    boot_with_config, display::print_manifest, run_tick_loop, BootConfig, OanixState, TickConfig,
+    BootConfig, OanixState, TickConfig, boot_with_config, display::print_manifest, run_tick_loop,
 };
 use std::time::Duration;
 use tokio::signal;

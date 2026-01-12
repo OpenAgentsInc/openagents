@@ -14,7 +14,8 @@ pub(crate) struct ChatSelection {
 
 impl ChatSelection {
     pub(crate) fn is_empty(&self) -> bool {
-        self.anchor.message_index == self.focus.message_index && self.anchor.offset == self.focus.offset
+        self.anchor.message_index == self.focus.message_index
+            && self.anchor.offset == self.focus.offset
     }
 
     pub(crate) fn normalized(&self) -> (ChatSelectionPoint, ChatSelectionPoint) {

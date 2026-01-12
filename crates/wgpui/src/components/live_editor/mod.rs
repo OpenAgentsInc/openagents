@@ -15,9 +15,12 @@ const DEFAULT_FONT_SIZE: f32 = 14.0;
 /// Base max content width at default font size
 const BASE_MAX_CONTENT_WIDTH: f32 = 768.0;
 
+use block::{
+    BlockParser, BlockType, header_font_scale, inline_code_background, parse_inline,
+    strip_blockquote_prefix, strip_header_prefix, strip_list_prefix,
+};
 pub use cursor::{Cursor, Selection};
 pub use vim::Mode as VimMode;
-use block::{BlockParser, BlockType, parse_inline, header_font_scale, strip_header_prefix, strip_list_prefix, strip_blockquote_prefix, inline_code_background};
 
 /// Pending operator waiting for a motion
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -181,8 +184,8 @@ impl Default for LiveEditorStyle {
             font_size: theme::font_size::SM,
             line_height: 1.5,
             gutter_width: 0.0, // No gutter - line numbers in status bar
-            padding: 48.0, // Comfortable vertical padding
-            wrap_text: true, // Enable word wrapping by default
+            padding: 48.0,     // Comfortable vertical padding
+            wrap_text: true,   // Enable word wrapping by default
         }
     }
 }
@@ -373,7 +376,9 @@ impl LiveEditor {
         match self.vim.mode {
             VimMode::Normal => self.handle_vim_normal(key, modifiers, bounds, cx),
             VimMode::Insert | VimMode::Replace => self.handle_vim_insert(key, modifiers, bounds),
-            VimMode::Visual | VimMode::VisualLine | VimMode::VisualBlock => self.handle_vim_visual(key, modifiers, bounds, cx),
+            VimMode::Visual | VimMode::VisualLine | VimMode::VisualBlock => {
+                self.handle_vim_visual(key, modifiers, bounds, cx)
+            }
         }
     }
 
@@ -649,8 +654,10 @@ impl LiveEditor {
                 // Let Cmd/Ctrl+Arrow keys pass through to standard handler
                 if modifiers.meta || modifiers.ctrl {
                     match named {
-                        NamedKey::ArrowUp | NamedKey::ArrowDown |
-                        NamedKey::ArrowLeft | NamedKey::ArrowRight => {
+                        NamedKey::ArrowUp
+                        | NamedKey::ArrowDown
+                        | NamedKey::ArrowLeft
+                        | NamedKey::ArrowRight => {
                             return EventResult::Ignored;
                         }
                         _ => {}
@@ -708,8 +715,10 @@ impl LiveEditor {
         if modifiers.meta || modifiers.ctrl {
             if let Key::Named(named) = key {
                 match named {
-                    NamedKey::ArrowUp | NamedKey::ArrowDown |
-                    NamedKey::ArrowLeft | NamedKey::ArrowRight => {
+                    NamedKey::ArrowUp
+                    | NamedKey::ArrowDown
+                    | NamedKey::ArrowLeft
+                    | NamedKey::ArrowRight => {
                         return EventResult::Ignored;
                     }
                     _ => {}
@@ -942,9 +951,7 @@ impl LiveEditor {
 
     fn vim_first_non_blank(&mut self) {
         if let Some(line) = self.lines.get(self.cursor.line) {
-            self.cursor.column = line.chars()
-                .position(|c| !c.is_whitespace())
-                .unwrap_or(0);
+            self.cursor.column = line.chars().position(|c| !c.is_whitespace()).unwrap_or(0);
         }
         self.cursor.clear_preferred_column();
     }
@@ -957,7 +964,8 @@ impl LiveEditor {
 
     fn vim_document_end(&mut self, line: Option<usize>) {
         if let Some(target_line) = line {
-            self.cursor.line = (target_line.saturating_sub(1)).min(self.lines.len().saturating_sub(1));
+            self.cursor.line =
+                (target_line.saturating_sub(1)).min(self.lines.len().saturating_sub(1));
         } else {
             self.cursor.line = self.lines.len().saturating_sub(1);
         }
@@ -988,7 +996,9 @@ impl LiveEditor {
             let mut found_non_blank = false;
             while self.cursor.line < self.lines.len().saturating_sub(1) {
                 self.cursor.line += 1;
-                let is_blank = self.lines.get(self.cursor.line)
+                let is_blank = self
+                    .lines
+                    .get(self.cursor.line)
                     .map(|l| l.trim().is_empty())
                     .unwrap_or(true);
                 if !is_blank {
@@ -1006,7 +1016,9 @@ impl LiveEditor {
             let mut found_non_blank = false;
             while self.cursor.line > 0 {
                 self.cursor.line -= 1;
-                let is_blank = self.lines.get(self.cursor.line)
+                let is_blank = self
+                    .lines
+                    .get(self.cursor.line)
                     .map(|l| l.trim().is_empty())
                     .unwrap_or(true);
                 if !is_blank {
@@ -1020,7 +1032,9 @@ impl LiveEditor {
     }
 
     fn move_to_next_word_start(&mut self) {
-        let Some(line) = self.lines.get(self.cursor.line) else { return };
+        let Some(line) = self.lines.get(self.cursor.line) else {
+            return;
+        };
         let chars: Vec<char> = line.chars().collect();
         let mut col = self.cursor.column;
 
@@ -1029,7 +1043,10 @@ impl LiveEditor {
             col += 1;
         }
         // Skip non-word
-        while col < chars.len() && !Self::is_vim_word_char(chars[col]) && !chars[col].is_whitespace() {
+        while col < chars.len()
+            && !Self::is_vim_word_char(chars[col])
+            && !chars[col].is_whitespace()
+        {
             col += 1;
         }
         // Skip whitespace
@@ -1042,7 +1059,8 @@ impl LiveEditor {
             self.cursor.column = 0;
             // Skip leading whitespace on new line
             if let Some(next_line) = self.lines.get(self.cursor.line) {
-                self.cursor.column = next_line.chars()
+                self.cursor.column = next_line
+                    .chars()
                     .position(|c| !c.is_whitespace())
                     .unwrap_or(0);
             }
@@ -1058,7 +1076,9 @@ impl LiveEditor {
             return;
         }
 
-        let Some(line) = self.lines.get(self.cursor.line) else { return };
+        let Some(line) = self.lines.get(self.cursor.line) else {
+            return;
+        };
         let chars: Vec<char> = line.chars().collect();
         let mut col = self.cursor.column;
 
@@ -1072,7 +1092,11 @@ impl LiveEditor {
             col -= 1;
         }
         // Skip to start of word
-        while col > 0 && chars.get(col.saturating_sub(1)).map_or(false, |&c| Self::is_vim_word_char(c)) {
+        while col > 0
+            && chars
+                .get(col.saturating_sub(1))
+                .map_or(false, |&c| Self::is_vim_word_char(c))
+        {
             col -= 1;
         }
 
@@ -1080,7 +1104,9 @@ impl LiveEditor {
     }
 
     fn move_to_word_end_internal(&mut self) {
-        let Some(line) = self.lines.get(self.cursor.line) else { return };
+        let Some(line) = self.lines.get(self.cursor.line) else {
+            return;
+        };
         let chars: Vec<char> = line.chars().collect();
         let mut col = self.cursor.column;
 
@@ -1183,15 +1209,15 @@ impl LiveEditor {
     }
 
     fn vim_paste_after(&mut self, cx: &mut EventContext) {
-        let text = self.vim.register.clone()
-            .or_else(|| cx.read_clipboard());
+        let text = self.vim.register.clone().or_else(|| cx.read_clipboard());
 
         if let Some(text) = text {
             self.save_undo_state();
             if text.ends_with('\n') {
                 // Line paste - insert below current line
                 let line = self.cursor.line;
-                self.lines.insert(line + 1, text.trim_end_matches('\n').to_string());
+                self.lines
+                    .insert(line + 1, text.trim_end_matches('\n').to_string());
                 self.cursor.line = line + 1;
                 self.cursor.column = 0;
             } else {
@@ -1206,15 +1232,15 @@ impl LiveEditor {
     }
 
     fn vim_paste_before(&mut self, cx: &mut EventContext) {
-        let text = self.vim.register.clone()
-            .or_else(|| cx.read_clipboard());
+        let text = self.vim.register.clone().or_else(|| cx.read_clipboard());
 
         if let Some(text) = text {
             self.save_undo_state();
             if text.ends_with('\n') {
                 // Line paste - insert above current line
                 let line = self.cursor.line;
-                self.lines.insert(line, text.trim_end_matches('\n').to_string());
+                self.lines
+                    .insert(line, text.trim_end_matches('\n').to_string());
                 self.cursor.column = 0;
             } else {
                 // Character paste - insert at cursor
@@ -1249,15 +1275,22 @@ impl LiveEditor {
                 let chars: Vec<char> = line.chars().collect();
                 let start_col = start.column.min(chars.len());
                 let end_col = end.column.min(chars.len());
-                let new_line: String = chars[..start_col].iter().chain(chars[end_col..].iter()).collect();
+                let new_line: String = chars[..start_col]
+                    .iter()
+                    .chain(chars[end_col..].iter())
+                    .collect();
                 *line = new_line;
             }
         } else {
             // Multi-line deletion
-            let start_line_text: String = self.lines.get(start.line)
+            let start_line_text: String = self
+                .lines
+                .get(start.line)
                 .map(|l| l.chars().take(start.column).collect())
                 .unwrap_or_default();
-            let end_line_text: String = self.lines.get(end.line)
+            let end_line_text: String = self
+                .lines
+                .get(end.line)
                 .map(|l| l.chars().skip(end.column).collect())
                 .unwrap_or_default();
 
@@ -1287,7 +1320,8 @@ impl LiveEditor {
     /// Extract text between two cursor positions
     fn extract_text_range(&self, start: Cursor, end: Cursor) -> String {
         if start.line == end.line {
-            self.lines.get(start.line)
+            self.lines
+                .get(start.line)
                 .map(|l| {
                     let chars: Vec<char> = l.chars().collect();
                     let start_col = start.column.min(chars.len());
@@ -1343,7 +1377,12 @@ impl LiveEditor {
 
     /// Execute pending operator with a motion
     /// Returns true if an operator was executed, false if just a motion
-    fn vim_execute_motion_with_operator(&mut self, motion: &str, count: usize, cx: &mut EventContext) -> bool {
+    fn vim_execute_motion_with_operator(
+        &mut self,
+        motion: &str,
+        count: usize,
+        cx: &mut EventContext,
+    ) -> bool {
         let pending_op = self.vim.pending_operator;
 
         if pending_op.is_none() {
@@ -1390,7 +1429,9 @@ impl LiveEditor {
 
     /// Get length of current line
     fn current_line_len(&self) -> usize {
-        self.lines.get(self.cursor.line).map_or(0, |l| l.chars().count())
+        self.lines
+            .get(self.cursor.line)
+            .map_or(0, |l| l.chars().count())
     }
 
     /// Get length of a specific line
@@ -1785,10 +1826,7 @@ impl LiveEditor {
         if start.line == end.line {
             // Single line selection
             if let Some(line) = self.lines.get_mut(start.line) {
-                let start_byte = line
-                    .char_indices()
-                    .nth(start.column)
-                    .map_or(0, |(i, _)| i);
+                let start_byte = line.char_indices().nth(start.column).map_or(0, |(i, _)| i);
                 let end_byte = line
                     .char_indices()
                     .nth(end.column)
@@ -1898,11 +1936,7 @@ impl LiveEditor {
                     break_pos -= 1;
                 }
                 // If no space found, just break at max_chars
-                if break_pos == start {
-                    end
-                } else {
-                    break_pos
-                }
+                if break_pos == start { end } else { break_pos }
             } else {
                 end
             };
@@ -1974,9 +2008,7 @@ impl LiveEditor {
                         parser.detect_block_type_at(l, i);
                     }
                     let char_width = match parser.detect_block_type_at(line, line_idx) {
-                        BlockType::Header(level) => {
-                            self.mono_char_width * header_font_scale(level)
-                        }
+                        BlockType::Header(level) => self.mono_char_width * header_font_scale(level),
                         _ => self.mono_char_width,
                     };
 
@@ -2167,8 +2199,13 @@ impl LiveEditor {
 
                 // Draw vertical bar
                 cx.scene.draw_quad(
-                    Quad::new(Bounds::new(x, y, 3.0, self.style.font_size * self.style.line_height))
-                        .with_background(bar_color),
+                    Quad::new(Bounds::new(
+                        x,
+                        y,
+                        3.0,
+                        self.style.font_size * self.style.line_height,
+                    ))
+                    .with_background(bar_color),
                 );
 
                 // Render content with italic style
@@ -2264,15 +2301,16 @@ impl LiveEditor {
 impl Component for LiveEditor {
     fn paint(&mut self, bounds: Bounds, cx: &mut PaintContext) {
         // Update cached mono char width
-        self.mono_char_width = cx.text.measure_styled_mono("M", self.style.font_size, FontStyle::default());
+        self.mono_char_width =
+            cx.text
+                .measure_styled_mono("M", self.style.font_size, FontStyle::default());
 
         // Background with configurable opacity
         if self.background_opacity > 0.0 {
             let bg = self.style.background;
             let bg_with_opacity = Hsla::new(bg.h, bg.s, bg.l, bg.a * self.background_opacity);
-            cx.scene.draw_quad(
-                Quad::new(bounds).with_background(bg_with_opacity),
-            );
+            cx.scene
+                .draw_quad(Quad::new(bounds).with_background(bg_with_opacity));
         }
 
         let line_height = self.style.font_size * self.style.line_height;
@@ -2295,7 +2333,9 @@ impl Component for LiveEditor {
 
         // Parse block types for all lines
         let mut block_parser = BlockParser::new();
-        let block_types: Vec<BlockType> = self.lines.iter()
+        let block_types: Vec<BlockType> = self
+            .lines
+            .iter()
             .enumerate()
             .map(|(i, line)| block_parser.detect_block_type_at(line, i))
             .collect();
@@ -2348,14 +2388,18 @@ impl Component for LiveEditor {
                 continue;
             }
 
-            let y = bounds.origin.y + self.style.padding + (*vis_row as f32 * line_height) - self.scroll_offset;
+            let y = bounds.origin.y + self.style.padding + (*vis_row as f32 * line_height)
+                - self.scroll_offset;
 
             // Skip if outside visible area
             if y + line_height < bounds.origin.y || y > bounds.origin.y + bounds.size.height {
                 continue;
             }
 
-            let block_type = block_types.get(*line_idx).copied().unwrap_or(BlockType::Paragraph);
+            let block_type = block_types
+                .get(*line_idx)
+                .copied()
+                .unwrap_or(BlockType::Paragraph);
             let is_cursor_line = *line_idx == self.cursor.line;
 
             if segment.is_empty() {
@@ -2378,7 +2422,15 @@ impl Component for LiveEditor {
                 // Non-cursor line: render formatted markdown
                 // is_continuation is true when start_col > 0 (wrapped segment, not start of line)
                 let is_continuation = *start_col > 0;
-                self.render_formatted_line(segment, block_type, text_x, y, line_height, is_continuation, cx);
+                self.render_formatted_line(
+                    segment,
+                    block_type,
+                    text_x,
+                    y,
+                    line_height,
+                    is_continuation,
+                    cx,
+                );
             }
 
             // Selection highlight for this segment
@@ -2391,18 +2443,32 @@ impl Component for LiveEditor {
                         let segment_end_col = start_col + segment.chars().count();
 
                         // Calculate selection range within this segment
-                        let line_sel_start = if *line_idx == sel_start.line { sel_start.column } else { 0 };
-                        let line_sel_end = if *line_idx == sel_end.line { sel_end.column } else { self.line_len(*line_idx) };
+                        let line_sel_start = if *line_idx == sel_start.line {
+                            sel_start.column
+                        } else {
+                            0
+                        };
+                        let line_sel_end = if *line_idx == sel_end.line {
+                            sel_end.column
+                        } else {
+                            self.line_len(*line_idx)
+                        };
 
                         // Intersect with segment range
-                        let seg_sel_start = line_sel_start.max(*start_col).saturating_sub(*start_col);
-                        let seg_sel_end = line_sel_end.min(segment_end_col).saturating_sub(*start_col);
+                        let seg_sel_start =
+                            line_sel_start.max(*start_col).saturating_sub(*start_col);
+                        let seg_sel_end =
+                            line_sel_end.min(segment_end_col).saturating_sub(*start_col);
 
                         if seg_sel_start < seg_sel_end {
                             let char_width = match block_type {
                                 BlockType::Header(level) => {
                                     let scale = header_font_scale(level);
-                                    cx.text.measure_styled_mono("M", self.style.font_size * scale, FontStyle::default())
+                                    cx.text.measure_styled_mono(
+                                        "M",
+                                        self.style.font_size * scale,
+                                        FontStyle::default(),
+                                    )
                                 }
                                 _ => self.mono_char_width,
                             };
@@ -2425,14 +2491,23 @@ impl Component for LiveEditor {
             let cursor_visible = (elapsed / 500) % 2 == 0;
 
             if cursor_visible {
-                let cursor_y = bounds.origin.y + self.style.padding + (cursor_visual_row as f32 * line_height) - self.scroll_offset;
+                let cursor_y =
+                    bounds.origin.y + self.style.padding + (cursor_visual_row as f32 * line_height)
+                        - self.scroll_offset;
 
                 // Get cursor char width - scale for headers
-                let cursor_block_type = block_types.get(self.cursor.line).copied().unwrap_or(BlockType::Paragraph);
+                let cursor_block_type = block_types
+                    .get(self.cursor.line)
+                    .copied()
+                    .unwrap_or(BlockType::Paragraph);
                 let cursor_char_width = match cursor_block_type {
                     BlockType::Header(level) => {
                         let scale = header_font_scale(level);
-                        cx.text.measure_styled_mono("M", self.style.font_size * scale, FontStyle::default())
+                        cx.text.measure_styled_mono(
+                            "M",
+                            self.style.font_size * scale,
+                            FontStyle::default(),
+                        )
                     }
                     _ => self.mono_char_width,
                 };
@@ -2444,7 +2519,10 @@ impl Component for LiveEditor {
                 // Block cursor in vim normal/visual mode, line cursor otherwise
                 let (cursor_width, cursor_color) = if self.vim_enabled {
                     match self.vim.mode {
-                        VimMode::Normal | VimMode::Visual | VimMode::VisualLine | VimMode::VisualBlock => {
+                        VimMode::Normal
+                        | VimMode::Visual
+                        | VimMode::VisualLine
+                        | VimMode::VisualBlock => {
                             // Block cursor with semi-transparent background
                             (cursor_char_width, self.style.cursor_color.with_alpha(0.7))
                         }
@@ -2459,8 +2537,13 @@ impl Component for LiveEditor {
                 };
 
                 cx.scene.draw_quad(
-                    Quad::new(Bounds::new(cursor_x, cursor_y + cursor_offset_y, cursor_width, line_height))
-                        .with_background(cursor_color),
+                    Quad::new(Bounds::new(
+                        cursor_x,
+                        cursor_y + cursor_offset_y,
+                        cursor_width,
+                        line_height,
+                    ))
+                    .with_background(cursor_color),
                 );
             }
         }
@@ -2486,12 +2569,19 @@ impl Component for LiveEditor {
             let thumb_ratio = visible_height / total_content_height;
             let thumb_height = (visible_height * thumb_ratio).max(20.0);
             let scroll_ratio = self.scroll_offset / (total_content_height - visible_height);
-            let thumb_y = bounds.origin.y + self.style.padding + scroll_ratio * (visible_height - thumb_height);
+            let thumb_y = bounds.origin.y
+                + self.style.padding
+                + scroll_ratio * (visible_height - thumb_height);
 
             cx.scene.draw_quad(
-                Quad::new(Bounds::new(scrollbar_x, thumb_y, scrollbar_width, thumb_height))
-                    .with_background(Hsla::new(0.0, 0.0, 0.5, 0.5))
-                    .with_corner_radius(4.0),
+                Quad::new(Bounds::new(
+                    scrollbar_x,
+                    thumb_y,
+                    scrollbar_width,
+                    thumb_height,
+                ))
+                .with_background(Hsla::new(0.0, 0.0, 0.5, 0.5))
+                .with_corner_radius(4.0),
             );
         }
 
@@ -2503,10 +2593,12 @@ impl Component for LiveEditor {
         if let Some(vim_mode) = self.vim_mode() {
             let mode_text = vim_mode.label();
             let mode_color = match vim_mode {
-                VimMode::Normal => Hsla::new(210.0, 0.7, 0.6, 1.0),  // Blue
-                VimMode::Insert => Hsla::new(120.0, 0.6, 0.5, 1.0),  // Green
-                VimMode::Replace => Hsla::new(30.0, 0.7, 0.6, 1.0),  // Orange
-                VimMode::Visual | VimMode::VisualLine | VimMode::VisualBlock => Hsla::new(280.0, 0.6, 0.6, 1.0), // Purple
+                VimMode::Normal => Hsla::new(210.0, 0.7, 0.6, 1.0), // Blue
+                VimMode::Insert => Hsla::new(120.0, 0.6, 0.5, 1.0), // Green
+                VimMode::Replace => Hsla::new(30.0, 0.7, 0.6, 1.0), // Orange
+                VimMode::Visual | VimMode::VisualLine | VimMode::VisualBlock => {
+                    Hsla::new(280.0, 0.6, 0.6, 1.0)
+                } // Purple
             };
 
             let mode_x = bounds.origin.x + 12.0;
@@ -2534,7 +2626,11 @@ impl Component for LiveEditor {
         }
 
         // Line:Col indicator (right side)
-        let status_text = format!("Ln {}, Col {}", self.cursor.line + 1, self.cursor.column + 1);
+        let status_text = format!(
+            "Ln {}, Col {}",
+            self.cursor.line + 1,
+            self.cursor.column + 1
+        );
         let status_x = bounds.origin.x + bounds.size.width - 120.0;
         let status_run = cx.text.layout_styled_mono(
             &status_text,
@@ -2548,7 +2644,12 @@ impl Component for LiveEditor {
 
     fn event(&mut self, event: &InputEvent, bounds: Bounds, cx: &mut EventContext) -> EventResult {
         match event {
-            InputEvent::MouseDown { button, x, y, modifiers } => {
+            InputEvent::MouseDown {
+                button,
+                x,
+                y,
+                modifiers,
+            } => {
                 if *button == MouseButton::Left && bounds.contains(Point::new(*x, *y)) {
                     self.focused = true;
                     self.cursor_blink_start = Instant::now();
@@ -2557,7 +2658,9 @@ impl Component for LiveEditor {
 
                     // Shift+click extends selection from current cursor to click position
                     if modifiers.shift {
-                        let anchor = self.selection.as_ref()
+                        let anchor = self
+                            .selection
+                            .as_ref()
                             .map(|s| s.anchor)
                             .unwrap_or(self.cursor);
                         self.selection = Some(Selection::new(anchor, new_cursor));
@@ -2573,7 +2676,9 @@ impl Component for LiveEditor {
                     // Detect double/triple click
                     let now = Instant::now();
                     let time_since_last = now.duration_since(self.last_click_time).as_millis();
-                    let distance = ((x - self.last_click_pos.0).powi(2) + (y - self.last_click_pos.1).powi(2)).sqrt();
+                    let distance = ((x - self.last_click_pos.0).powi(2)
+                        + (y - self.last_click_pos.1).powi(2))
+                    .sqrt();
 
                     if time_since_last < 400 && distance < 5.0 {
                         self.click_count += 1;
@@ -2640,7 +2745,8 @@ impl Component for LiveEditor {
                 if self.focused {
                     let line_height = self.style.font_size * self.style.line_height;
                     let status_bar_height = 24.0;
-                    let visible_height = bounds.size.height - self.style.padding * 2.0 - status_bar_height;
+                    let visible_height =
+                        bounds.size.height - self.style.padding * 2.0 - status_bar_height;
 
                     // Calculate total visual rows accounting for wrapped lines
                     let max_content_width = self.scaled_max_content_width();
@@ -2667,7 +2773,8 @@ impl Component for LiveEditor {
 
                     let total_content_height = total_visual_rows as f32 * line_height;
                     let max_scroll = (total_content_height - visible_height).max(0.0);
-                    self.scroll_offset = (self.scroll_offset - dy * line_height * 3.0).clamp(0.0, max_scroll);
+                    self.scroll_offset =
+                        (self.scroll_offset - dy * line_height * 3.0).clamp(0.0, max_scroll);
                     return EventResult::Handled;
                 }
             }

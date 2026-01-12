@@ -188,7 +188,10 @@ async fn run_rlm(args: RunArgs) -> Result<()> {
         };
 
         // Run orchestrated analysis
-        match engine.run_orchestrated_with_config(&args.query, orch_config).await {
+        match engine
+            .run_orchestrated_with_config(&args.query, orch_config)
+            .await
+        {
             Ok(result) => {
                 println!();
                 println!("{}", "=".repeat(60));
@@ -240,7 +243,14 @@ async fn run_rlm(args: RunArgs) -> Result<()> {
         };
 
         println!("Prompt tier: {:?}", config.prompt_tier);
-        println!("Stuck detection: {}", if config.enable_stuck_detection { "enabled" } else { "disabled" });
+        println!(
+            "Stuck detection: {}",
+            if config.enable_stuck_detection {
+                "enabled"
+            } else {
+                "disabled"
+            }
+        );
 
         let mut engine = RlmEngine::with_config(client, executor, config);
 
@@ -264,7 +274,8 @@ async fn run_rlm(args: RunArgs) -> Result<()> {
                 if !result.execution_log.is_empty() {
                     println!("\n=== Execution Summary ===\n");
                     for entry in &result.execution_log {
-                        println!("Iteration {}: {} -> {}",
+                        println!(
+                            "Iteration {}: {} -> {}",
                             entry.iteration,
                             entry.command_type,
                             if entry.result.len() > 50 {

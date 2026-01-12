@@ -21,7 +21,7 @@
 //! println!("Next action: {:?}", result.next_action);
 //! ```
 
-use dsrs::{example, LM, Predict, Predictor, Signature};
+use dsrs::{LM, Predict, Predictor, Signature, example};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
@@ -347,7 +347,10 @@ impl ExecutionPipeline {
     }
 
     /// Select appropriate tool for a task.
-    pub async fn select_tool(&self, input: &ToolSelectionInput) -> anyhow::Result<ToolSelectionResult> {
+    pub async fn select_tool(
+        &self,
+        input: &ToolSelectionInput,
+    ) -> anyhow::Result<ToolSelectionResult> {
         let selector = Predict::new(ToolSelectionSignature::new());
 
         let example = example! {
@@ -414,11 +417,20 @@ mod tests {
 
     #[test]
     fn test_execution_action_parsing() {
-        assert_eq!(ExecutionAction::from("EDIT_FILE"), ExecutionAction::EditFile);
+        assert_eq!(
+            ExecutionAction::from("EDIT_FILE"),
+            ExecutionAction::EditFile
+        );
         assert_eq!(ExecutionAction::from("edit"), ExecutionAction::EditFile);
-        assert_eq!(ExecutionAction::from("RUN_COMMAND"), ExecutionAction::RunCommand);
+        assert_eq!(
+            ExecutionAction::from("RUN_COMMAND"),
+            ExecutionAction::RunCommand
+        );
         assert_eq!(ExecutionAction::from("bash"), ExecutionAction::RunCommand);
-        assert_eq!(ExecutionAction::from("READ_FILE"), ExecutionAction::ReadFile);
+        assert_eq!(
+            ExecutionAction::from("READ_FILE"),
+            ExecutionAction::ReadFile
+        );
         assert_eq!(ExecutionAction::from("COMPLETE"), ExecutionAction::Complete);
         assert_eq!(ExecutionAction::from("done"), ExecutionAction::Complete);
         assert_eq!(ExecutionAction::from("invalid"), ExecutionAction::Unknown);
@@ -427,7 +439,10 @@ mod tests {
     #[test]
     fn test_recovery_strategy_parsing() {
         assert_eq!(RecoveryStrategy::from("RETRY"), RecoveryStrategy::Retry);
-        assert_eq!(RecoveryStrategy::from("ALTERNATIVE"), RecoveryStrategy::Alternative);
+        assert_eq!(
+            RecoveryStrategy::from("ALTERNATIVE"),
+            RecoveryStrategy::Alternative
+        );
         assert_eq!(RecoveryStrategy::from("SKIP"), RecoveryStrategy::Skip);
         assert_eq!(RecoveryStrategy::from("ABORT"), RecoveryStrategy::Abort);
         assert_eq!(RecoveryStrategy::from("unknown"), RecoveryStrategy::Retry);

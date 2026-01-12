@@ -1,5 +1,7 @@
-use wgpui::components::hud::{DotShape, DotsOrigin, DrawDirection, FrameAnimation, FrameStyle, LineDirection};
 use wgpui::Hsla;
+use wgpui::components::hud::{
+    DotShape, DotsOrigin, DrawDirection, FrameAnimation, FrameStyle, LineDirection,
+};
 
 pub(crate) const MARGIN: f32 = 24.0;
 pub(crate) const HEADER_HEIGHT: f32 = 48.0;
@@ -54,6 +56,7 @@ pub(crate) const SECTION_GITAFTER_FLOWS: usize = 25;
 pub(crate) const SECTION_MARKETPLACE_FLOWS: usize = 26;
 pub(crate) const SECTION_NOSTR_FLOWS: usize = 27;
 pub(crate) const SECTION_SOVEREIGN_AGENT_FLOWS: usize = 28;
+pub(crate) const SECTION_CODEX_EVENTS: usize = 29;
 pub(crate) const HOT_RELOAD_POLL_MS: u64 = 500;
 
 #[derive(Clone, Copy)]

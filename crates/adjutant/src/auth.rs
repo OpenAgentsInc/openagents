@@ -77,7 +77,8 @@ mod tests {
     #[test]
     fn test_get_codex_path_exists() {
         if has_codex_cli() {
-            let path = get_codex_path().expect("get_codex_path should return Some when has_codex_cli is true");
+            let path = get_codex_path()
+                .expect("get_codex_path should return Some when has_codex_cli is true");
             assert!(path.exists(), "Codex CLI path {:?} should exist", path);
         }
     }

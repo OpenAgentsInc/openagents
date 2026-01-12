@@ -11,7 +11,7 @@
 use anyhow::Result;
 use dsrs::core::signature::MetaSignature;
 use dsrs::data::example::Example;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 // ============================================================================
 // StoppingRule Enum
@@ -406,7 +406,10 @@ mod tests {
             StoppingRule::SufficientEvidence.to_string(),
             "SUFFICIENT_EVIDENCE"
         );
-        assert_eq!(StoppingRule::BudgetExhausted.to_string(), "BUDGET_EXHAUSTED");
+        assert_eq!(
+            StoppingRule::BudgetExhausted.to_string(),
+            "BUDGET_EXHAUSTED"
+        );
         assert_eq!(
             StoppingRule::ConfidenceThreshold.to_string(),
             "CONFIDENCE_THRESHOLD"
@@ -444,7 +447,10 @@ mod tests {
     fn test_span_selector_display() {
         assert_eq!(SpanSelector::All.to_string(), "ALL");
         assert_eq!(SpanSelector::ByRelevance.to_string(), "RELEVANCE");
-        assert_eq!(SpanSelector::ByType("code".to_string()).to_string(), "TYPE:code");
+        assert_eq!(
+            SpanSelector::ByType("code".to_string()).to_string(),
+            "TYPE:code"
+        );
         assert_eq!(
             SpanSelector::ByPosition { start: 0, end: 10 }.to_string(),
             "POSITION:0:10"

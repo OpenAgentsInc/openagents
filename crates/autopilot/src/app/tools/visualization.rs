@@ -1,7 +1,7 @@
 use serde_json::Value;
-use wgpui::components::{Component, EventContext, EventResult, PaintContext};
 use wgpui::components::atoms::{ToolStatus, ToolType};
 use wgpui::components::organisms::{DiffToolCall, SearchToolCall, TerminalToolCall, ToolCallCard};
+use wgpui::components::{Component, EventContext, EventResult, PaintContext};
 use wgpui::{Bounds, InputEvent};
 
 use super::parsing::{build_simple_diff, parse_diff_lines, parse_search_matches};
@@ -183,7 +183,10 @@ fn build_tool_detail(tool: &ToolVisualization) -> ToolDetail {
         return ToolDetail::Terminal(detail);
     }
 
-    if matches!(tool.tool_type, ToolType::Glob | ToolType::Grep | ToolType::Search) {
+    if matches!(
+        tool.tool_type,
+        ToolType::Glob | ToolType::Grep | ToolType::Search
+    ) {
         let query = tool
             .input_value
             .as_ref()

@@ -1,4 +1,7 @@
-use wgpui::{Bounds, Component, InputEvent, Key, MouseButton, NamedKey, PaintContext, Point, Quad, Text, theme};
+use wgpui::{
+    Bounds, Component, InputEvent, Key, MouseButton, NamedKey, PaintContext, Point, Quad, Text,
+    theme,
+};
 
 pub(crate) struct FocusDemo {
     items: Vec<&'static str>,

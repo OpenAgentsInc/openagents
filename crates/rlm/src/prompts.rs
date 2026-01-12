@@ -140,7 +140,6 @@ IMPORTANT: When you are done with the iterative process, you MUST provide a fina
 
 Think step by step carefully, plan, and execute this plan immediately in your response -- do not just say "I will do this" or "I will do that". Output to the REPL environment and recursive LLMs as much as possible. Remember to explicitly answer the original query in your final answer."#;
 
-
 /// Guided system prompt for Apple FM and similar models.
 ///
 /// Key differences from the full prompt:
@@ -279,10 +278,7 @@ pub fn error_prompt_with_reminder(
 /// Build a continuation prompt with task reminder for weaker models.
 ///
 /// For models that lose track of the task after seeing output.
-pub fn continuation_prompt_with_reminder(
-    execution_output: &str,
-    original_query: &str,
-) -> String {
+pub fn continuation_prompt_with_reminder(execution_output: &str, original_query: &str) -> String {
     format!(
         "The code executed with the following output:\n\n```\n{}\n```\n\n\
          REMINDER: Your task is to answer: \"{}\"\n\n\

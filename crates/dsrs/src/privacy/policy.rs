@@ -173,7 +173,8 @@ impl PrivacyPolicy {
         if self.trusted_providers.is_empty() {
             return true;
         }
-        self.trusted_providers.contains(&provider_pubkey.to_string())
+        self.trusted_providers
+            .contains(&provider_pubkey.to_string())
     }
 
     /// Validate content against policy.
@@ -222,11 +223,7 @@ impl std::fmt::Display for PolicyViolation {
                 write!(f, "Provider '{}' not in trusted list", p)
             }
             PolicyViolation::ContentTooLarge { size, max } => {
-                write!(
-                    f,
-                    "Content size {} exceeds maximum allowed {}",
-                    size, max
-                )
+                write!(f, "Content size {} exceeds maximum allowed {}", size, max)
             }
             PolicyViolation::FilePathsNotAllowed => {
                 write!(f, "File paths found in content but not allowed by policy")
@@ -349,10 +346,7 @@ mod tests {
             .with_max_content_size(5000)
             .require_verification();
 
-        assert!(matches!(
-            policy.redaction.mode,
-            RedactionMode::Identifiers
-        ));
+        assert!(matches!(policy.redaction.mode, RedactionMode::Identifiers));
         assert!(matches!(
             policy.chunking,
             ChunkingPolicy::MinimalSpans { .. }

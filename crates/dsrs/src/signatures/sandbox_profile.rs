@@ -6,7 +6,7 @@ use crate::core::signature::MetaSignature;
 use crate::data::example::Example;
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 /// Sandbox resource profiles.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

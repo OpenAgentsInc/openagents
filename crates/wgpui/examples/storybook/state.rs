@@ -1,29 +1,35 @@
 use web_time::Instant;
 
 use wgpui::components::atoms::{Mode, Model, StreamingIndicator};
-use wgpui::components::molecules::{CheckpointRestore, ModeSelector, ModelSelector, PermissionBar, ThinkingBlock};
+use wgpui::components::molecules::{
+    CheckpointRestore, ModeSelector, ModelSelector, PermissionBar, ThinkingBlock,
+};
 use wgpui::components::organisms::{AssistantMessage, PermissionDialog, ThreadControls};
-use wgpui::{Animation, Bounds, Component, EventContext, Easing, Hsla, InputEvent, MouseButton, PaintContext, Point, Quad, Text, theme};
+use wgpui::{
+    Animation, Bounds, Component, Easing, EventContext, Hsla, InputEvent, MouseButton,
+    PaintContext, Point, Quad, Text, theme,
+};
 
 use crate::constants::{
     GAP, HEADER_HEIGHT, MARGIN, NAV_ITEM_HEIGHT, NAV_WIDTH, PANEL_PADDING, SECTION_APM_METRICS,
     SECTION_ARWES_BACKGROUNDS, SECTION_ARWES_FRAMES, SECTION_ARWES_ILLUMINATOR, SECTION_ARWES_TEXT,
-    SECTION_ATOMS, SECTION_AUTOPILOT, SECTION_BITCOIN_WALLET, SECTION_CHAT_THREADS, SECTION_GITAFTER,
-    SECTION_GITAFTER_FLOWS, SECTION_HUD_WIDGETS, SECTION_INTERACTIONS, SECTION_LIGHT_DEMO,
-    SECTION_MARKETPLACE, SECTION_MARKETPLACE_FLOWS, SECTION_MOLECULES, SECTION_NOSTR_FLOWS,
-    SECTION_NOSTR_PROTOCOL, SECTION_ORGANISMS, SECTION_OVERVIEW, SECTION_PERMISSIONS,
-    SECTION_SESSIONS, SECTION_SOVEREIGN_AGENT_FLOWS, SECTION_SOVEREIGN_AGENTS, SECTION_SYSTEM_UI,
-    SECTION_THREAD_COMPONENTS, SECTION_TOOLCALL_DEMO, SECTION_WALLET_FLOWS,
+    SECTION_ATOMS, SECTION_AUTOPILOT, SECTION_BITCOIN_WALLET, SECTION_CHAT_THREADS,
+    SECTION_CODEX_EVENTS, SECTION_GITAFTER, SECTION_GITAFTER_FLOWS, SECTION_HUD_WIDGETS,
+    SECTION_INTERACTIONS, SECTION_LIGHT_DEMO, SECTION_MARKETPLACE, SECTION_MARKETPLACE_FLOWS,
+    SECTION_MOLECULES, SECTION_NOSTR_FLOWS, SECTION_NOSTR_PROTOCOL, SECTION_ORGANISMS,
+    SECTION_OVERVIEW, SECTION_PERMISSIONS, SECTION_SESSIONS, SECTION_SOVEREIGN_AGENT_FLOWS,
+    SECTION_SOVEREIGN_AGENTS, SECTION_SYSTEM_UI, SECTION_THREAD_COMPONENTS, SECTION_TOOLCALL_DEMO,
+    SECTION_WALLET_FLOWS,
 };
 use crate::demos::{FocusDemo, ToolcallDemo};
 use crate::sections::heights::{
     apm_metrics_height, arwes_backgrounds_height, arwes_frames_height, arwes_illuminator_height,
     arwes_text_effects_height, atoms_height, autopilot_height, bitcoin_wallet_height,
-    chat_threads_height, gitafter_flows_height, gitafter_height, hud_widgets_height,
-    light_demo_height, marketplace_flows_height, marketplace_height, nostr_flows_height,
-    nostr_protocol_height, permissions_height, sessions_height, sovereign_agent_flows_height,
-    sovereign_agents_height, system_ui_height, thread_components_height, toolcall_demo_height,
-    wallet_flows_height,
+    chat_threads_height, codex_events_height, gitafter_flows_height, gitafter_height,
+    hud_widgets_height, light_demo_height, marketplace_flows_height, marketplace_height,
+    nostr_flows_height, nostr_protocol_height, permissions_height, sessions_height,
+    sovereign_agent_flows_height, sovereign_agents_height, system_ui_height,
+    thread_components_height, toolcall_demo_height, wallet_flows_height,
 };
 
 pub(crate) struct StoryLayout {
@@ -93,19 +99,22 @@ impl Storybook {
             "Marketplace Flows",
             "Nostr Flows",
             "Agent Flows",
+            "Codex Events",
         ];
         let nav_len = nav_items.len();
 
-        let mut light_frame_anim = Animation::new(0.0_f32, 1.0, std::time::Duration::from_millis(2400))
-            .easing(Easing::EaseInOutCubic)
-            .iterations(0)
-            .alternate();
+        let mut light_frame_anim =
+            Animation::new(0.0_f32, 1.0, std::time::Duration::from_millis(2400))
+                .easing(Easing::EaseInOutCubic)
+                .iterations(0)
+                .alternate();
         light_frame_anim.start();
 
-        let mut glow_pulse_anim = Animation::new(0.4_f32, 1.0, std::time::Duration::from_millis(1800))
-            .easing(Easing::EaseInOutSine)
-            .iterations(0)
-            .alternate();
+        let mut glow_pulse_anim =
+            Animation::new(0.4_f32, 1.0, std::time::Duration::from_millis(1800))
+                .easing(Easing::EaseInOutSine)
+                .iterations(0)
+                .alternate();
         glow_pulse_anim.start();
 
         Self {
@@ -208,6 +217,7 @@ impl Storybook {
             SECTION_MARKETPLACE_FLOWS => marketplace_flows_height(bounds),
             SECTION_NOSTR_FLOWS => nostr_flows_height(bounds),
             SECTION_SOVEREIGN_AGENT_FLOWS => sovereign_agent_flows_height(bounds),
+            SECTION_CODEX_EVENTS => codex_events_height(bounds),
             _ => bounds.size.height,
         }
     }
@@ -267,6 +277,7 @@ impl Storybook {
             SECTION_MARKETPLACE_FLOWS => self.paint_marketplace_flows(content_bounds, cx),
             SECTION_NOSTR_FLOWS => self.paint_nostr_flows(content_bounds, cx),
             SECTION_SOVEREIGN_AGENT_FLOWS => self.paint_sovereign_agent_flows(content_bounds, cx),
+            SECTION_CODEX_EVENTS => self.paint_codex_events(content_bounds, cx),
             _ => {}
         }
         cx.scene.pop_clip();

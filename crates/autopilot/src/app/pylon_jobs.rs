@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use rusqlite::{params, Connection, OpenFlags};
+use rusqlite::{Connection, OpenFlags, params};
 
 use crate::app::pylon_paths::pylon_data_dir;
 
@@ -221,10 +221,7 @@ fn load_totals(conn: &Connection) -> Result<PylonJobsTotals, rusqlite::Error> {
     Ok(totals)
 }
 
-fn load_recent_jobs(
-    conn: &Connection,
-    limit: u32,
-) -> Result<Vec<PylonJobRecord>, rusqlite::Error> {
+fn load_recent_jobs(conn: &Connection, limit: u32) -> Result<Vec<PylonJobRecord>, rusqlite::Error> {
     let mut stmt = conn.prepare(
         "SELECT id, kind, status, price_msats, customer_pubkey, error_message, created_at, completed_at
          FROM jobs

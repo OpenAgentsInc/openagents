@@ -170,7 +170,13 @@ impl TextSystem {
     }
 
     /// Layout text using monospace font with default style
-    pub fn layout_mono(&mut self, text: &str, origin: Point, font_size: f32, color: Hsla) -> TextRun {
+    pub fn layout_mono(
+        &mut self,
+        text: &str,
+        origin: Point,
+        font_size: f32,
+        color: Hsla,
+    ) -> TextRun {
         self.layout_styled_mono(text, origin, font_size, color, FontStyle::default())
     }
 

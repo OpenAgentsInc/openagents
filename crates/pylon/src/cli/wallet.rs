@@ -121,18 +121,12 @@ pub async fn run(args: WalletArgs) -> anyhow::Result<()> {
 
             println!("\nWallet Balance");
             println!("==============");
-            println!(
-                "Spark:     {:>12} sats",
-                format_sats(balance.spark_sats)
-            );
+            println!("Spark:     {:>12} sats", format_sats(balance.spark_sats));
             println!(
                 "Lightning: {:>12} sats",
                 format_sats(balance.lightning_sats)
             );
-            println!(
-                "On-chain:  {:>12} sats",
-                format_sats(balance.onchain_sats)
-            );
+            println!("On-chain:  {:>12} sats", format_sats(balance.onchain_sats));
             println!("─────────────────────────");
             println!(
                 "Total:     {:>12} sats ({:.8} BTC)",
@@ -191,7 +185,10 @@ pub async fn run(args: WalletArgs) -> anyhow::Result<()> {
             println!("Bitcoin: {}", bitcoin_address);
         }
 
-        WalletCommand::Invoice { amount, description } => {
+        WalletCommand::Invoice {
+            amount,
+            description,
+        } => {
             let wallet = create_wallet().await?;
             let response = wallet
                 .create_invoice(amount, description, None)
@@ -223,7 +220,10 @@ pub async fn run(args: WalletArgs) -> anyhow::Result<()> {
             println!("\nPayment Sent!");
             println!("=============");
             println!("ID:     {}", response.payment.id);
-            println!("Amount: {} sats", format_sats(response.payment.amount as u64));
+            println!(
+                "Amount: {} sats",
+                format_sats(response.payment.amount as u64)
+            );
             println!("Status: {:?}", response.payment.status);
         }
 
@@ -280,10 +280,17 @@ pub async fn run(args: WalletArgs) -> anyhow::Result<()> {
             let pending_count = wallet
                 .list_payments(Some(50), None)
                 .await
-                .map(|p| p.iter().filter(|p| p.status == spark::PaymentStatus::Pending).count())
+                .map(|p| {
+                    p.iter()
+                        .filter(|p| p.status == spark::PaymentStatus::Pending)
+                        .count()
+                })
                 .unwrap_or(0);
             if pending_count > 0 && !completed {
-                println!("\n{} pending payments. Use --completed to hide.", pending_count);
+                println!(
+                    "\n{} pending payments. Use --completed to hide.",
+                    pending_count
+                );
             }
         }
 
@@ -295,7 +302,10 @@ pub async fn run(args: WalletArgs) -> anyhow::Result<()> {
                 .await
                 .map_err(|e| anyhow::anyhow!("Failed to get address: {}", e))?;
 
-            println!("\nRequesting {} sats from regtest faucet...", format_sats(amount));
+            println!(
+                "\nRequesting {} sats from regtest faucet...",
+                format_sats(amount)
+            );
             println!("Bitcoin address: {}", address);
 
             // Check for faucet credentials
@@ -335,7 +345,10 @@ pub async fn run(args: WalletArgs) -> anyhow::Result<()> {
 
             if let Some(errors) = result.get("errors") {
                 if let Some(err) = errors.as_array().and_then(|a| a.first()) {
-                    let msg = err.get("message").and_then(|m| m.as_str()).unwrap_or("Unknown error");
+                    let msg = err
+                        .get("message")
+                        .and_then(|m| m.as_str())
+                        .unwrap_or("Unknown error");
                     if msg.contains("Not logged in") || msg.contains("auth") {
                         anyhow::bail!(
                             "Faucet error: {}\n\n\
@@ -352,14 +365,23 @@ pub async fn run(args: WalletArgs) -> anyhow::Result<()> {
                 }
             }
 
-            if let Some(data) = result.get("data").and_then(|d| d.get("request_regtest_funds")) {
-                let txid = data.get("transaction_hash").and_then(|t| t.as_str()).unwrap_or("unknown");
+            if let Some(data) = result
+                .get("data")
+                .and_then(|d| d.get("request_regtest_funds"))
+            {
+                let txid = data
+                    .get("transaction_hash")
+                    .and_then(|t| t.as_str())
+                    .unwrap_or("unknown");
                 println!("\nFunding successful!");
                 println!("Transaction: {}", txid);
                 println!("\nWait a moment for the transaction to confirm, then check balance:");
                 println!("  pylon wallet balance");
             } else {
-                println!("\nFaucet response: {}", serde_json::to_string_pretty(&result)?);
+                println!(
+                    "\nFaucet response: {}",
+                    serde_json::to_string_pretty(&result)?
+                );
             }
         }
 
@@ -369,7 +391,8 @@ pub async fn run(args: WalletArgs) -> anyhow::Result<()> {
                 .map_err(|e| anyhow::anyhow!("Failed to create identity: {}", e))?;
 
             let nostr_hex = identity.public_key_hex();
-            let nostr_npub = identity.npub()
+            let nostr_npub = identity
+                .npub()
                 .map_err(|e| anyhow::anyhow!("Failed to get npub: {}", e))?;
 
             println!("\nWallet Identity");

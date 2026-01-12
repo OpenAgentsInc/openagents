@@ -6,8 +6,8 @@ use arboard::Clipboard;
 use rfd::FileDialog;
 use tokio::sync::mpsc;
 use web_time::Instant;
-use wgpui::components::{Component, EventContext, EventResult};
 use wgpui::components::hud::CommandPalette;
+use wgpui::components::{Component, EventContext, EventResult};
 use wgpui::renderer::Renderer;
 use wgpui::{Bounds, InputEvent, Point, TextSystem};
 use winit::application::ApplicationHandler;
@@ -16,51 +16,51 @@ use winit::event_loop::ActiveEventLoop;
 use winit::keyboard::{Key as WinitKey, ModifiersState, NamedKey as WinitNamedKey};
 use winit::window::{CursorIcon, Window, WindowId};
 
+use crate::app::agents::AgentBackendsState;
+use crate::app::agents::AgentRegistry;
 use crate::app::autopilot::AutopilotState;
 use crate::app::autopilot_issues::AutopilotIssuesState;
-use crate::app::git::GitState;
-use crate::app::rlm::{RlmState, RlmTraceState};
-use crate::app::pylon_earnings::PylonEarningsState;
-use crate::app::pylon_jobs::PylonJobsState;
 use crate::app::catalog::{
-    load_agent_entries, load_hook_config, load_hook_scripts, load_mcp_project_servers,
-    load_skill_entries, CatalogState,
+    CatalogState, load_agent_entries, load_hook_config, load_hook_scripts,
+    load_mcp_project_servers, load_skill_entries,
 };
-use crate::app::agents::AgentBackendsState;
 use crate::app::chat::{ChatSelection, ChatState};
-use crate::app::agents::AgentRegistry;
 use crate::app::codex_app_server as app_server;
-use crate::app::config::{mcp_project_file, AgentSelection, SettingsState};
-use crate::app::events::{
-    convert_key_for_binding, convert_key_for_input, convert_modifiers, convert_mouse_button,
-    CoderMode, ModalState,
-};
-use crate::app::permissions::{
-    coder_mode_default_allow, coder_mode_label, load_permission_config, PermissionState,
-};
-use crate::app::session::{
-    apply_session_history_limit, load_session_index, save_session_index, SessionState,
-};
-use crate::app::tools::ToolsState;
-use crate::app::ui::{
-    agent_list_layout, agent_modal_content_top, approvals_panel_layout, composer_bar_layout,
-    composer_menu_layout, diff_back_button_bounds, git_diff_panel_layout, hook_event_layout,
-    modal_y_in_content, new_session_button_bounds, session_list_layout, sidebar_layout,
-    skill_list_layout, skill_modal_content_top, workspace_list_layout, CONTENT_PADDING_X,
-    SESSION_MODAL_HEIGHT, STATUS_BAR_HEIGHT,
-};
-use crate::app::wallet::WalletState;
+use crate::app::config::{AgentSelection, SettingsState, mcp_project_file};
 use crate::app::dspy::DspyState;
-use crate::app::nip28::Nip28State;
 use crate::app::dvm::DvmState;
-use crate::app::nip90::Nip90State;
+use crate::app::events::{
+    CoderMode, ModalState, convert_key_for_binding, convert_key_for_input, convert_modifiers,
+    convert_mouse_button,
+};
 use crate::app::gateway::GatewayState;
+use crate::app::git::GitState;
 use crate::app::lm_router::LmRouterState;
 use crate::app::nexus::NexusState;
+use crate::app::nip28::Nip28State;
+use crate::app::nip90::Nip90State;
+use crate::app::permissions::{
+    PermissionState, coder_mode_default_allow, coder_mode_label, load_permission_config,
+};
+use crate::app::pylon_earnings::PylonEarningsState;
+use crate::app::pylon_jobs::PylonJobsState;
+use crate::app::rlm::{RlmState, RlmTraceState};
+use crate::app::session::{
+    SessionState, apply_session_history_limit, load_session_index, save_session_index,
+};
 use crate::app::spark_wallet::SparkWalletState;
+use crate::app::tools::ToolsState;
+use crate::app::ui::{
+    CONTENT_PADDING_X, SESSION_MODAL_HEIGHT, STATUS_BAR_HEIGHT, agent_list_layout,
+    agent_modal_content_top, approvals_panel_layout, composer_bar_layout, composer_menu_layout,
+    diff_back_button_bounds, git_diff_panel_layout, hook_event_layout, modal_y_in_content,
+    new_session_button_bounds, session_list_layout, sidebar_layout, skill_list_layout,
+    skill_modal_content_top, workspace_list_layout,
+};
+use crate::app::wallet::WalletState;
 use crate::app::workspaces::{ComposerMenuKind, WorkspaceAccessMode, WorkspaceState};
-use crate::app::{build_input, AppState, HookModalView};
-use crate::keybindings::{match_action, Action as KeyAction};
+use crate::app::{AppState, HookModalView, build_input};
+use crate::keybindings::{Action as KeyAction, match_action};
 use crate::panels::PanelLayout;
 
 use super::AutopilotApp;
@@ -180,8 +180,10 @@ impl ApplicationHandler for AutopilotApp {
             tokio::spawn(async move {
                 match oanix::boot().await {
                     Ok(manifest) => {
-                        tracing::info!("OANIX booted on startup, workspace: {:?}",
-                            manifest.workspace.as_ref().map(|w| &w.root));
+                        tracing::info!(
+                            "OANIX booted on startup, workspace: {:?}",
+                            manifest.workspace.as_ref().map(|w| &w.root)
+                        );
                         let _ = oanix_tx.send(manifest);
                     }
                     Err(e) => {
@@ -326,7 +328,9 @@ impl ApplicationHandler for AutopilotApp {
         let input_layout = state.build_input_layout(&sidebar_layout, logical_height);
         let input_bounds = input_layout.input_bounds;
         let input_disabled = state.workspaces.active_thread_is_reviewing();
-        let permission_open = state.permissions.permission_dialog
+        let permission_open = state
+            .permissions
+            .permission_dialog
             .as_ref()
             .map(|dialog| dialog.is_open())
             .unwrap_or(false);
@@ -361,7 +365,8 @@ impl ApplicationHandler for AutopilotApp {
                 if permission_open {
                     if let Some(dialog) = state.permissions.permission_dialog.as_mut() {
                         let input_event = InputEvent::MouseMove { x, y };
-                        let _ = dialog.event(&input_event, permission_bounds, &mut state.event_context);
+                        let _ =
+                            dialog.event(&input_event, permission_bounds, &mut state.event_context);
                     }
                     state.window.request_redraw();
                     return;
@@ -380,7 +385,12 @@ impl ApplicationHandler for AutopilotApp {
                     let checkpoint_height = if state.session.checkpoint_entries.is_empty() {
                         0.0
                     } else {
-                        state.session.checkpoint_restore.size_hint().1.unwrap_or(0.0)
+                        state
+                            .session
+                            .checkpoint_restore
+                            .size_hint()
+                            .1
+                            .unwrap_or(0.0)
                     };
                     let layout = session_list_layout(
                         logical_width,
@@ -403,8 +413,11 @@ impl ApplicationHandler for AutopilotApp {
                     }
                     if let Some(bounds) = layout.checkpoint_bounds {
                         if matches!(
-                            state.session.checkpoint_restore
-                                .event(&input_event, bounds, &mut state.event_context),
+                            state.session.checkpoint_restore.event(
+                                &input_event,
+                                bounds,
+                                &mut state.event_context
+                            ),
                             EventResult::Handled
                         ) {
                             handled = true;
@@ -586,8 +599,11 @@ impl ApplicationHandler for AutopilotApp {
                     for block in &inline_layout.blocks {
                         if let Some(tool) = state.tools.tool_history.get_mut(block.index) {
                             if matches!(
-                                tool.card
-                                    .event(&input_event, block.card_bounds, &mut state.event_context),
+                                tool.card.event(
+                                    &input_event,
+                                    block.card_bounds,
+                                    &mut state.event_context
+                                ),
                                 EventResult::Handled
                             ) {
                                 tools_handled = true;
@@ -597,8 +613,11 @@ impl ApplicationHandler for AutopilotApp {
                             }
                             if let Some(detail_bounds) = block.detail_bounds {
                                 if matches!(
-                                    tool.detail
-                                        .event(&input_event, detail_bounds, &mut state.event_context),
+                                    tool.detail.event(
+                                        &input_event,
+                                        detail_bounds,
+                                        &mut state.event_context
+                                    ),
                                     EventResult::Handled
                                 ) {
                                     tools_handled = true;
@@ -647,9 +666,11 @@ impl ApplicationHandler for AutopilotApp {
                 }
                 if state.command_palette.is_open() {
                     let palette_bounds = Bounds::new(0.0, 0.0, logical_width, logical_height);
-                    let _ = state
-                        .command_palette
-                        .event(&input_event, palette_bounds, &mut state.event_context);
+                    let _ = state.command_palette.event(
+                        &input_event,
+                        palette_bounds,
+                        &mut state.event_context,
+                    );
                     state.window.request_redraw();
                     return;
                 }
@@ -664,7 +685,12 @@ impl ApplicationHandler for AutopilotApp {
                     let checkpoint_height = if state.session.checkpoint_entries.is_empty() {
                         0.0
                     } else {
-                        state.session.checkpoint_restore.size_hint().1.unwrap_or(0.0)
+                        state
+                            .session
+                            .checkpoint_restore
+                            .size_hint()
+                            .1
+                            .unwrap_or(0.0)
                     };
                     let layout = session_list_layout(
                         logical_width,
@@ -686,8 +712,11 @@ impl ApplicationHandler for AutopilotApp {
                     }
                     if let Some(bounds) = layout.checkpoint_bounds {
                         if matches!(
-                            state.session.checkpoint_restore
-                                .event(&input_event, bounds, &mut state.event_context),
+                            state.session.checkpoint_restore.event(
+                                &input_event,
+                                bounds,
+                                &mut state.event_context
+                            ),
                             EventResult::Handled
                         ) {
                             handled = true;
@@ -846,10 +875,8 @@ impl ApplicationHandler for AutopilotApp {
                     && state.left_sidebar_open
                 {
                     if let Some(left_bounds) = sidebar_layout.left {
-                        let list_layout = workspace_list_layout(
-                            left_bounds,
-                            state.workspaces.workspaces.len(),
-                        );
+                        let list_layout =
+                            workspace_list_layout(left_bounds, state.workspaces.workspaces.len());
                         for (index, workspace) in state.workspaces.workspaces.iter().enumerate() {
                             if index < list_layout.connect_pills.len()
                                 && !workspace.connected
@@ -868,10 +895,7 @@ impl ApplicationHandler for AutopilotApp {
                                 state.workspaces.set_active_workspace(workspace_id.clone());
                                 state.git.set_active_workspace(Some(&workspace_id));
                                 if is_connected {
-                                    state
-                                        .workspaces
-                                        .runtime
-                                        .list_threads(workspace_id.clone());
+                                    state.workspaces.runtime.list_threads(workspace_id.clone());
                                 }
                                 state.workspaces.request_composer_data(&workspace_id);
                                 state.sync_workspace_timeline_view();
@@ -898,25 +922,19 @@ impl ApplicationHandler for AutopilotApp {
                         if let Some(right_bounds) = sidebar_layout.right {
                             if let Some(active_id) = state.workspaces.active_workspace_id.clone() {
                                 if let Some(status) = state.git.status_for_workspace(&active_id) {
-                                    let file_paths: Vec<String> = status
-                                        .files
-                                        .iter()
-                                        .map(|file| file.path.clone())
-                                        .collect();
-                                    let panel_layout = git_diff_panel_layout(
-                                        right_bounds,
-                                        file_paths.len(),
-                                    );
-                                    if panel_layout
-                                        .list_bounds
-                                        .contains(Point::new(x, y))
-                                    {
+                                    let file_paths: Vec<String> =
+                                        status.files.iter().map(|file| file.path.clone()).collect();
+                                    let panel_layout =
+                                        git_diff_panel_layout(right_bounds, file_paths.len());
+                                    if panel_layout.list_bounds.contains(Point::new(x, y)) {
                                         for (index, bounds) in &panel_layout.row_bounds {
                                             if bounds.contains(Point::new(x, y)) {
                                                 if let Some(path) = file_paths.get(*index) {
                                                     state.git.select_diff_path(path.clone());
-                                                    if let Some(active_id) =
-                                                        state.workspaces.active_workspace_id.as_ref()
+                                                    if let Some(active_id) = state
+                                                        .workspaces
+                                                        .active_workspace_id
+                                                        .as_ref()
                                                     {
                                                         state.git.force_refresh(active_id);
                                                     }
@@ -1013,14 +1031,16 @@ impl ApplicationHandler for AutopilotApp {
                     if let Some(menu) = state.workspaces.composer_menu {
                         let composer = state.workspaces.active_composer();
                         let item_count = match menu {
-                            ComposerMenuKind::Model => composer.map(|c| c.models.len()).unwrap_or(0),
+                            ComposerMenuKind::Model => {
+                                composer.map(|c| c.models.len()).unwrap_or(0)
+                            }
                             ComposerMenuKind::Effort => composer
                                 .map(|c| c.reasoning_options().len().max(1))
                                 .unwrap_or(0),
                             ComposerMenuKind::Access => WorkspaceAccessMode::all().len(),
-                            ComposerMenuKind::Skill => composer
-                                .map(|c| c.skills.len().max(1))
-                                .unwrap_or(0),
+                            ComposerMenuKind::Skill => {
+                                composer.map(|c| c.skills.len().max(1)).unwrap_or(0)
+                            }
                         };
                         if item_count > 0 {
                             let anchor = match menu {
@@ -1038,8 +1058,7 @@ impl ApplicationHandler for AutopilotApp {
                                         {
                                             match menu {
                                                 ComposerMenuKind::Model => {
-                                                    if let Some(model) =
-                                                        composer.models.get(index)
+                                                    if let Some(model) = composer.models.get(index)
                                                     {
                                                         composer.selected_model_id =
                                                             Some(model.id.clone());
@@ -1061,15 +1080,12 @@ impl ApplicationHandler for AutopilotApp {
                                                     }
                                                 }
                                                 ComposerMenuKind::Skill => {
-                                                    if let Some(skill) =
-                                                        composer.skills.get(index)
+                                                    if let Some(skill) = composer.skills.get(index)
                                                     {
-                                                        let snippet =
-                                                            format!("${}", skill.name);
+                                                        let snippet = format!("${}", skill.name);
                                                         let current =
                                                             state.input.get_value().to_string();
-                                                        let next = if current.trim().is_empty()
-                                                        {
+                                                        let next = if current.trim().is_empty() {
                                                             format!("{} ", snippet)
                                                         } else if current.contains(&snippet) {
                                                             current
@@ -1136,10 +1152,7 @@ impl ApplicationHandler for AutopilotApp {
                     }
                 }
 
-                let chat_layout = state.build_chat_layout(
-                    &sidebar_layout,
-                    logical_height,
-                );
+                let chat_layout = state.build_chat_layout(&sidebar_layout, logical_height);
                 if state.chat.chat_context_menu.is_open() {
                     if matches!(
                         state.chat.chat_context_menu.event(
@@ -1198,10 +1211,15 @@ impl ApplicationHandler for AutopilotApp {
                             });
                         }
                         state.chat.chat_selection_dragging = false;
-                        let copy_enabled = state.chat.chat_selection
+                        let copy_enabled = state
+                            .chat
+                            .chat_selection
                             .as_ref()
                             .is_some_and(|sel| !sel.is_empty())
-                            || chat_layout.message_layouts.get(point.message_index).is_some();
+                            || chat_layout
+                                .message_layouts
+                                .get(point.message_index)
+                                .is_some();
                         state.open_chat_context_menu(
                             Point::new(x, y),
                             Some(point.message_index),
@@ -1217,8 +1235,11 @@ impl ApplicationHandler for AutopilotApp {
                     for block in &inline_layout.blocks {
                         if let Some(tool) = state.tools.tool_history.get_mut(block.index) {
                             if matches!(
-                                tool.card
-                                    .event(&input_event, block.card_bounds, &mut state.event_context),
+                                tool.card.event(
+                                    &input_event,
+                                    block.card_bounds,
+                                    &mut state.event_context
+                                ),
                                 EventResult::Handled
                             ) {
                                 tools_handled = true;
@@ -1228,8 +1249,11 @@ impl ApplicationHandler for AutopilotApp {
                             }
                             if let Some(detail_bounds) = block.detail_bounds {
                                 if matches!(
-                                    tool.detail
-                                        .event(&input_event, detail_bounds, &mut state.event_context),
+                                    tool.detail.event(
+                                        &input_event,
+                                        detail_bounds,
+                                        &mut state.event_context
+                                    ),
                                     EventResult::Handled
                                 ) {
                                     tools_handled = true;
@@ -1310,7 +1334,10 @@ impl ApplicationHandler for AutopilotApp {
                     );
                     let mouse_point = Point::new(state.mouse_pos.0, state.mouse_pos.1);
                     if layout.inspector_bounds.contains(mouse_point) {
-                        let input_event = InputEvent::Scroll { dx: 0.0, dy: dy * 40.0 };
+                        let input_event = InputEvent::Scroll {
+                            dx: 0.0,
+                            dy: dy * 40.0,
+                        };
                         if let Some(inspector) = state.catalogs.hook_inspector.as_mut() {
                             if matches!(
                                 inspector.event(
@@ -1332,7 +1359,8 @@ impl ApplicationHandler for AutopilotApp {
                             next_selected = next_selected.saturating_sub(1);
                         }
                         if !state.catalogs.hook_event_log.is_empty() {
-                            next_selected = next_selected.min(state.catalogs.hook_event_log.len() - 1);
+                            next_selected =
+                                next_selected.min(state.catalogs.hook_event_log.len() - 1);
                         } else {
                             next_selected = 0;
                         }
@@ -1350,23 +1378,32 @@ impl ApplicationHandler for AutopilotApp {
                 let chat_layout = state.build_chat_layout(&sidebar_layout, logical_height);
                 // Handle scroll events for inline tools
                 let mouse_point = Point::new(state.mouse_pos.0, state.mouse_pos.1);
-                let scroll_input_event = InputEvent::Scroll { dx: 0.0, dy: dy * 40.0 };
+                let scroll_input_event = InputEvent::Scroll {
+                    dx: 0.0,
+                    dy: dy * 40.0,
+                };
                 let mut scroll_handled = false;
                 for inline_layout in &chat_layout.inline_tools {
                     for block in &inline_layout.blocks {
                         if block.card_bounds.contains(mouse_point) {
                             if let Some(tool) = state.tools.tool_history.get_mut(block.index) {
                                 if matches!(
-                                    tool.card
-                                        .event(&scroll_input_event, block.card_bounds, &mut state.event_context),
+                                    tool.card.event(
+                                        &scroll_input_event,
+                                        block.card_bounds,
+                                        &mut state.event_context
+                                    ),
                                     EventResult::Handled
                                 ) {
                                     scroll_handled = true;
                                 }
                                 if let Some(detail_bounds) = block.detail_bounds {
                                     if matches!(
-                                        tool.detail
-                                            .event(&scroll_input_event, detail_bounds, &mut state.event_context),
+                                        tool.detail.event(
+                                            &scroll_input_event,
+                                            detail_bounds,
+                                            &mut state.event_context
+                                        ),
                                         EventResult::Handled
                                     ) {
                                         scroll_handled = true;
@@ -1430,7 +1467,10 @@ impl ApplicationHandler for AutopilotApp {
                         if let WinitKey::Named(WinitNamedKey::Escape) = &key_event.logical_key {
                             if state.chat.is_thinking {
                                 // Signal interrupt to the autopilot loop
-                                state.autopilot.autopilot_interrupt_flag.store(true, std::sync::atomic::Ordering::Relaxed);
+                                state
+                                    .autopilot
+                                    .autopilot_interrupt_flag
+                                    .store(true, std::sync::atomic::Ordering::Relaxed);
                                 tracing::info!("Autopilot: interrupt requested by user");
                                 state.window.request_redraw();
                                 return;
@@ -1473,10 +1513,8 @@ impl ApplicationHandler for AutopilotApp {
                                 EventResult::Handled
                             ) {
                                 if let Some(action) = state.chat.chat_context_menu.take_selected() {
-                                    let chat_layout = state.build_chat_layout(
-                                        &sidebar_layout,
-                                        logical_height,
-                                    );
+                                    let chat_layout =
+                                        state.build_chat_layout(&sidebar_layout, logical_height);
                                     state.handle_chat_menu_action(&action, &chat_layout);
                                     state.chat.chat_context_menu_target = None;
                                 }
@@ -1499,7 +1537,9 @@ impl ApplicationHandler for AutopilotApp {
                     }
 
                     if let Some(key) = convert_key_for_binding(&key_event.logical_key) {
-                        if let Some(action) = match_action(&key, modifiers, &state.settings.keybindings) {
+                        if let Some(action) =
+                            match_action(&key, modifiers, &state.settings.keybindings)
+                        {
                             match action {
                                 KeyAction::Interrupt => state.interrupt_query(),
                                 KeyAction::OpenCommandPalette => {
@@ -1551,9 +1591,11 @@ impl ApplicationHandler for AutopilotApp {
                         if let Some(key) = convert_key_for_input(&key_event.logical_key) {
                             let input_event = InputEvent::KeyDown { key, modifiers };
                             if !input_disabled {
-                                state
-                                    .input
-                                    .event(&input_event, input_bounds, &mut state.event_context);
+                                state.input.event(
+                                    &input_event,
+                                    input_bounds,
+                                    &mut state.event_context,
+                                );
                                 state.window.request_redraw();
                             }
                         }

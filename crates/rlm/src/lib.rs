@@ -30,17 +30,17 @@
 //! ```
 
 pub mod chunking;
-#[cfg(feature = "dspy")]
-pub mod dspy;
-pub mod experiment;
-mod client;
 #[cfg(feature = "fm-bridge")]
 pub mod cli;
+mod client;
 mod command;
 mod context;
+#[cfg(feature = "dspy")]
+pub mod dspy;
 mod engine;
 mod error;
 mod executor;
+pub mod experiment;
 mod lm_router_adapter;
 pub mod mcp_tools;
 mod mock_executor;
@@ -62,7 +62,9 @@ pub mod signatures;
 #[cfg(feature = "dspy")]
 pub mod tools;
 
-pub use chunking::{chunk_by_structure, detect_structure, Chunk, DocumentStructure, DocumentType, Section};
+pub use chunking::{
+    Chunk, DocumentStructure, DocumentType, Section, chunk_by_structure, detect_structure,
+};
 pub use client::{LlmChoice, LlmClient, LlmMessage, LlmResponse, LlmUsage};
 pub use command::{Command, RunArgs};
 pub use context::{Context, ContextType, FileEntry, SearchResult};
@@ -74,17 +76,16 @@ pub use lm_router_adapter::LmRouterClient;
 pub use mock_executor::MockExecutor;
 pub use orchestrator::{AnalysisResult, ChunkSummary, EngineOrchestrator, OrchestratorConfig};
 pub use prompts::{
-    continuation_prompt_with_reminder, error_prompt_with_reminder, system_prompt_for_tier,
-    system_prompt_for_tier_no_context, system_prompt_with_context, PromptTier,
     BASIC_SYSTEM_PROMPT, CONTEXT_SYSTEM_PROMPT, GUIDED_SYSTEM_PROMPT, MINIMAL_SYSTEM_PROMPT,
-    SYSTEM_PROMPT,
+    PromptTier, SYSTEM_PROMPT, continuation_prompt_with_reminder, error_prompt_with_reminder,
+    system_prompt_for_tier, system_prompt_for_tier_no_context, system_prompt_with_context,
 };
 pub use python_executor::PythonExecutor;
 
 // MCP tools for integration
 pub use mcp_tools::{
-    rlm_tool_definitions, RlmFanoutInput, RlmFanoutOutput, RlmQueryInput, RlmQueryOutput,
-    WorkerResult,
+    RlmFanoutInput, RlmFanoutOutput, RlmQueryInput, RlmQueryOutput, WorkerResult,
+    rlm_tool_definitions,
 };
 
 // Provenance exports (always available)
@@ -93,13 +94,39 @@ pub use span::{SpanRef, SpanRefBuilder};
 // DSPy re-exports (optional)
 #[cfg(feature = "dspy")]
 pub use dspy_bridge::{
-    configure_dspy_lm, configure_dspy_with_lm, create_lm_for_local, create_lm_for_openrouter,
-    get_dspy_lm, example, prediction, sign, field, hashmap,
-    Example, LM, Module, Optimizable, Optimizer, Predict, Prediction, Predictor,
-    COPRO, MIPROv2, Evaluator, Signature,
-    ChatAdapter, configure, get_lm, LMResponse, LmUsage, Chat, Message, MetaSignature,
+    COPRO,
+    Chat,
+    ChatAdapter,
+    Evaluator,
+    Example,
+    LM,
+    LMResponse,
     // LmRouter bridge
-    LmRouterDspyBridge, LmRouterDspyConfig,
+    LmRouterDspyBridge,
+    LmRouterDspyConfig,
+    LmUsage,
+    MIPROv2,
+    Message,
+    MetaSignature,
+    Module,
+    Optimizable,
+    Optimizer,
+    Predict,
+    Prediction,
+    Predictor,
+    Signature,
+    configure,
+    configure_dspy_lm,
+    configure_dspy_with_lm,
+    create_lm_for_local,
+    create_lm_for_openrouter,
+    example,
+    field,
+    get_dspy_lm,
+    get_lm,
+    hashmap,
+    prediction,
+    sign,
 };
 #[cfg(feature = "dspy")]
 pub use dspy_orchestrator::{
@@ -112,7 +139,6 @@ pub use dspy_orchestrator::{
 pub use signatures::{CandidateSpan, MissingSpanRequest};
 #[cfg(feature = "dspy")]
 pub use tools::{
-    RlmTool, ToolConfig, ToolError, ToolResult,
-    GrepTool, GrepHit, ReadLinesTool, ReadResult,
-    ListFilesTool, FileInfo, SymbolsTool, SymbolInfo, SymbolKind,
+    FileInfo, GrepHit, GrepTool, ListFilesTool, ReadLinesTool, ReadResult, RlmTool, SymbolInfo,
+    SymbolKind, SymbolsTool, ToolConfig, ToolError, ToolResult,
 };

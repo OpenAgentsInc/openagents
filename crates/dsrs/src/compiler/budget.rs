@@ -2,11 +2,11 @@
 //!
 //! Tracks and allocates costs across optimization phases to prevent runaway spending.
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 /// A budget allocation for a specific phase.
 #[derive(Debug, Clone)]
@@ -143,7 +143,8 @@ impl BudgetManager {
             spent: Arc::new(AtomicU64::new(0)),
         };
 
-        self.allocations.insert(phase.to_string(), allocation.clone());
+        self.allocations
+            .insert(phase.to_string(), allocation.clone());
         self.total_allocated += msats;
 
         Ok(allocation)

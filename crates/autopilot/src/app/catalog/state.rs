@@ -10,8 +10,8 @@ use wgpui::components::organisms::{EventInspector, InspectorView};
 use super::agents::AgentCatalog;
 use super::hooks::HookScriptCatalog;
 use super::skills::SkillCatalog;
-use super::{AgentEntry, HookConfig, HookScriptEntry, HookSetting, SkillEntry};
 use super::{AgentCardAction, AgentCardEvent, HookLogEntry, SkillCardAction, SkillCardEvent};
+use super::{AgentEntry, HookConfig, HookScriptEntry, HookSetting, SkillEntry};
 use crate::app::chat::ChatState;
 use crate::app::events::QueryControl;
 
@@ -55,7 +55,10 @@ pub(crate) struct CatalogState {
 }
 
 pub(crate) enum SkillUpdate {
-    CodexSkillsLoaded { entries: Vec<SkillEntry>, error: Option<String> },
+    CodexSkillsLoaded {
+        entries: Vec<SkillEntry>,
+        error: Option<String>,
+    },
     Error(String),
 }
 
@@ -258,7 +261,11 @@ impl CatalogState {
         self.mcp_disabled_servers.insert(name.to_string());
     }
 
-    pub(crate) fn update_mcp_status(&mut self, servers: Vec<McpServerStatus>, error: Option<String>) {
+    pub(crate) fn update_mcp_status(
+        &mut self,
+        servers: Vec<McpServerStatus>,
+        error: Option<String>,
+    ) {
         self.mcp_status = servers;
         self.mcp_status_error = error;
     }
@@ -322,10 +329,7 @@ impl CatalogState {
         if let Some(active) = self.active_agent.clone() {
             if !self.agent_entries.iter().any(|entry| entry.name == active) {
                 self.active_agent = None;
-                chat.push_system_message(format!(
-                    "Active agent {} no longer available.",
-                    active
-                ));
+                chat.push_system_message(format!("Active agent {} no longer available.", active));
             }
         }
         self.refresh_agent_cards(chat.is_thinking);
@@ -341,11 +345,7 @@ impl CatalogState {
         self.refresh_skill_cards();
     }
 
-    pub(crate) fn update_codex_skills(
-        &mut self,
-        entries: Vec<SkillEntry>,
-        error: Option<String>,
-    ) {
+    pub(crate) fn update_codex_skills(&mut self, entries: Vec<SkillEntry>, error: Option<String>) {
         self.codex_skill_entries = entries;
         self.codex_skill_error = error;
         let local_entries: Vec<SkillEntry> = self

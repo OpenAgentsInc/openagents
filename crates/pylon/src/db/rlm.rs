@@ -1,6 +1,6 @@
 //! SQLite storage for RLM runs and trace events.
 
-use rusqlite::{params, Connection};
+use rusqlite::{Connection, params};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
@@ -54,12 +54,7 @@ impl RlmStore {
         self.conn.execute(
             "INSERT INTO runs (id, query, status, fragment_count, budget_sats)
              VALUES (?1, ?2, 'running', ?3, ?4)",
-            params![
-                run_id,
-                query,
-                fragment_count as i64,
-                budget_sats as i64
-            ],
+            params![run_id, query, fragment_count as i64, budget_sats as i64],
         )?;
         Ok(())
     }

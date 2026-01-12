@@ -102,12 +102,16 @@ impl AgentRegistry {
         self.backends
             .iter()
             .map(|(kind, backend)| {
-                let availability = self.availability.get(kind).cloned().unwrap_or(AgentAvailability {
-                    available: false,
-                    executable_path: None,
-                    version: None,
-                    error: Some("Not checked".to_string()),
-                });
+                let availability =
+                    self.availability
+                        .get(kind)
+                        .cloned()
+                        .unwrap_or(AgentAvailability {
+                            available: false,
+                            executable_path: None,
+                            version: None,
+                            error: Some("Not checked".to_string()),
+                        });
                 AgentStatus {
                     kind: *kind,
                     name: backend.display_name().to_string(),

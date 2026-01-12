@@ -181,12 +181,15 @@ impl SignatureRouter {
         // Initialize shadow stats if entering shadow mode
         if let RoutingStrategy::Shadow { candidate_id } = &strategy {
             if !self.shadow_stats.contains_key(signature_name) {
-                self.shadow_stats
-                    .insert(signature_name.to_string(), ShadowStats::new(candidate_id.clone()));
+                self.shadow_stats.insert(
+                    signature_name.to_string(),
+                    ShadowStats::new(candidate_id.clone()),
+                );
             }
         }
 
-        self.active_routes.insert(signature_name.to_string(), strategy);
+        self.active_routes
+            .insert(signature_name.to_string(), strategy);
     }
 
     /// Get the current routing strategy for a signature.
@@ -285,7 +288,9 @@ impl SignatureRouter {
 
     /// Get shadow result for a signature (compatible with PromotionManager).
     pub fn get_shadow_result(&self, signature_name: &str) -> Option<ShadowResult> {
-        self.shadow_stats.get(signature_name).map(|s| s.to_shadow_result())
+        self.shadow_stats
+            .get(signature_name)
+            .map(|s| s.to_shadow_result())
     }
 
     /// Check if candidate should be promoted based on shadow results.
@@ -339,8 +344,8 @@ pub struct RoutingSummary {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use dsrs::manifest::Scorecard;
     use dsrs::evaluate::promotion::PromotionState;
+    use dsrs::manifest::Scorecard;
     use tempfile::TempDir;
 
     fn test_router() -> (SignatureRouter, TempDir) {
@@ -371,7 +376,10 @@ mod tests {
 
         let strategy = router.get_routing("TestSig");
         match strategy {
-            RoutingStrategy::ABTest { candidate_pct, candidate_id } => {
+            RoutingStrategy::ABTest {
+                candidate_pct,
+                candidate_id,
+            } => {
                 assert_eq!(candidate_pct, 0.2);
                 assert_eq!(candidate_id, "abc123");
             }

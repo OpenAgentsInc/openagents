@@ -268,16 +268,12 @@ fn test_agent_filtering_in_ready_queue() {
     assert_eq!(next.id, codex_urgent.id);
 
     // With codex filter, should return codex urgent
-    let next = get_next_ready_issue(&conn, Some("codex"))
-        .unwrap()
-        .unwrap();
+    let next = get_next_ready_issue(&conn, Some("codex")).unwrap().unwrap();
     assert_eq!(next.id, codex_urgent.id);
 
     // Claim codex urgent, then next codex issue should be high
     claim_issue(&conn, &codex_urgent.id, "run-1").unwrap();
-    let next = get_next_ready_issue(&conn, Some("codex"))
-        .unwrap()
-        .unwrap();
+    let next = get_next_ready_issue(&conn, Some("codex")).unwrap().unwrap();
     assert_eq!(next.id, codex_high.id);
 }
 

@@ -1,5 +1,8 @@
 use wgpui::components::hud::{CornerConfig, Frame, FrameStyle};
-use wgpui::{Bounds, Component, EventContext, EventResult, Hsla, InputEvent, PaintContext, Point, Quad, Scene, Text, TextSystem, theme};
+use wgpui::{
+    Bounds, Component, EventContext, EventResult, Hsla, InputEvent, PaintContext, Point, Quad,
+    Scene, Text, TextSystem, theme,
+};
 
 use crate::constants::PANEL_PADDING;
 
@@ -115,9 +118,19 @@ pub(crate) struct GridMetrics {
     pub(crate) height: f32,
 }
 
-pub(crate) fn grid_metrics(width: f32, items: usize, tile_w: f32, tile_h: f32, gap: f32) -> GridMetrics {
+pub(crate) fn grid_metrics(
+    width: f32,
+    items: usize,
+    tile_w: f32,
+    tile_h: f32,
+    gap: f32,
+) -> GridMetrics {
     let cols = (((width + gap) / (tile_w + gap)).floor() as usize).max(1);
-    let rows = if items == 0 { 0 } else { (items + cols - 1) / cols };
+    let rows = if items == 0 {
+        0
+    } else {
+        (items + cols - 1) / cols
+    };
     let height = if rows == 0 {
         0.0
     } else {

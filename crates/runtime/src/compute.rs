@@ -15,7 +15,7 @@ use crate::idempotency::{IdempotencyJournal, JournalError};
 use crate::identity::SigningService;
 use crate::types::{AgentId, Timestamp};
 #[cfg(not(target_arch = "wasm32"))]
-use crate::wallet::{block_on_wallet, WalletFxProvider, WalletService};
+use crate::wallet::{WalletFxProvider, WalletService, block_on_wallet};
 #[cfg(all(feature = "browser", target_arch = "wasm32"))]
 use crate::wasm_http;
 #[cfg(not(target_arch = "wasm32"))]

@@ -4,7 +4,9 @@
 
 use anyhow::Result;
 use bon::Builder;
-use dsrs::{example, Example, Evaluator, Module, Optimizable, Predict, Prediction, Predictor, Signature};
+use dsrs::{
+    Evaluator, Example, Module, Optimizable, Predict, Prediction, Predictor, Signature, example,
+};
 use indexmap::IndexMap;
 
 use super::{combined_metric, get_execution_lm, get_planning_lm};
@@ -196,11 +198,7 @@ impl AdjutantModule {
     /// Execute the synthesis phase.
     ///
     /// Takes task title and subtask results, returns final verdict.
-    pub async fn synthesize(
-        &self,
-        task_title: &str,
-        subtask_results: &str,
-    ) -> Result<Prediction> {
+    pub async fn synthesize(&self, task_title: &str, subtask_results: &str) -> Result<Prediction> {
         let input = example! {
             "task_title": "input" => task_title.to_string(),
             "subtask_results": "input" => subtask_results.to_string(),
@@ -231,13 +229,19 @@ impl Module for AdjutantModule {
     /// - modified_files: JSON array of modified files
     async fn forward(&self, inputs: Example) -> Result<Prediction> {
         // Phase 1: Planning
-        let task_title = inputs.data.get("task_title")
+        let task_title = inputs
+            .data
+            .get("task_title")
             .and_then(|v| v.as_str())
             .unwrap_or_default();
-        let task_description = inputs.data.get("task_description")
+        let task_description = inputs
+            .data
+            .get("task_description")
             .and_then(|v| v.as_str())
             .unwrap_or_default();
-        let context = inputs.data.get("context")
+        let context = inputs
+            .data
+            .get("context")
             .and_then(|v| v.as_str())
             .unwrap_or_default();
 
@@ -286,9 +290,18 @@ impl Evaluator for AdjutantModule {
 impl Optimizable for AdjutantModule {
     fn parameters(&mut self) -> IndexMap<String, &mut dyn Optimizable> {
         let mut params = IndexMap::new();
-        params.insert("planner".to_string(), &mut self.planner as &mut dyn Optimizable);
-        params.insert("executor".to_string(), &mut self.executor as &mut dyn Optimizable);
-        params.insert("synthesizer".to_string(), &mut self.synthesizer as &mut dyn Optimizable);
+        params.insert(
+            "planner".to_string(),
+            &mut self.planner as &mut dyn Optimizable,
+        );
+        params.insert(
+            "executor".to_string(),
+            &mut self.executor as &mut dyn Optimizable,
+        );
+        params.insert(
+            "synthesizer".to_string(),
+            &mut self.synthesizer as &mut dyn Optimizable,
+        );
         params
     }
 }

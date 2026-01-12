@@ -2,7 +2,10 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use wgpui::renderer::Renderer;
-use wgpui::{Bounds, Component, InputEvent, Key, Modifiers, MouseButton, NamedKey, PaintContext, Point, Scene, Size, TextSystem};
+use wgpui::{
+    Bounds, Component, InputEvent, Key, Modifiers, MouseButton, NamedKey, PaintContext, Point,
+    Scene, Size, TextSystem,
+};
 use winit::application::ApplicationHandler;
 use winit::event::{ElementState, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, EventLoop};

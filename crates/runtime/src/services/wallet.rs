@@ -5,7 +5,7 @@ use crate::fs::{
 };
 use crate::fx::FxRateSnapshot;
 use crate::types::Timestamp;
-use crate::wallet::{block_on_wallet, WalletService};
+use crate::wallet::{WalletService, block_on_wallet};
 use serde_json::Value;
 use std::str;
 use std::sync::Arc;

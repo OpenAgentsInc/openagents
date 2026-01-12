@@ -6,7 +6,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use nostr::nip90::{JobInput, JobRequest, JobResult, Nip90Error, KIND_JOB_PATCH_GEN};
+use nostr::nip90::{JobInput, JobRequest, JobResult, KIND_JOB_PATCH_GEN, Nip90Error};
 
 /// Path filter for restricting which files the agent can see/modify
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -409,7 +409,8 @@ impl PatchGenResult {
         bolt11: Option<String>,
     ) -> Result<JobResult, Nip90Error> {
         // Content is the patch itself for easy access
-        let mut result = JobResult::new(KIND_JOB_PATCH_GEN, request_id, customer_pubkey, &self.patch)?;
+        let mut result =
+            JobResult::new(KIND_JOB_PATCH_GEN, request_id, customer_pubkey, &self.patch)?;
 
         if let Some(amt) = amount {
             result = result.with_amount(amt, bolt11);
@@ -556,20 +557,23 @@ mod tests {
         .with_tests(true)
         .with_test_command("cargo test");
 
-        assert_eq!(request.issue_url, Some("https://github.com/owner/repo/issues/42".to_string()));
+        assert_eq!(
+            request.issue_url,
+            Some("https://github.com/owner/repo/issues/42".to_string())
+        );
         assert_eq!(request.time_limit_secs, 1800);
         assert_eq!(request.model, Some("codex-sonnet-4".to_string()));
-        assert_eq!(request.context, Some("Use the existing theme system".to_string()));
+        assert_eq!(
+            request.context,
+            Some("Use the existing theme system".to_string())
+        );
         assert_eq!(request.test_command, Some("cargo test".to_string()));
     }
 
     #[test]
     fn test_patch_gen_request_to_job_request() {
-        let request = PatchGenRequest::new(
-            "https://github.com/owner/repo.git",
-            "main",
-            "Fix the bug",
-        );
+        let request =
+            PatchGenRequest::new("https://github.com/owner/repo.git", "main", "Fix the bug");
 
         let job = request.to_job_request().unwrap();
         assert_eq!(job.kind, KIND_JOB_PATCH_GEN);
@@ -578,8 +582,8 @@ mod tests {
 
     #[test]
     fn test_patch_verification() {
-        let verification = PatchVerification::success(3, 50, 10)
-            .with_test_results(0, "All tests passed");
+        let verification =
+            PatchVerification::success(3, 50, 10).with_test_results(0, "All tests passed");
 
         assert!(verification.applies_cleanly);
         assert!(verification.tests_passed());

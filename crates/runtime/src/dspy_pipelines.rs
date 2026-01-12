@@ -8,7 +8,7 @@ use crate::dspy_tools::{
     ToolSuccess,
 };
 use anyhow::Result;
-use dsrs::{example, Predict, Predictor, LM, GLOBAL_SETTINGS};
+use dsrs::{GLOBAL_SETTINGS, LM, Predict, Predictor, example};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
@@ -217,7 +217,10 @@ impl ToolInterpretationPipeline {
     }
 
     /// Interpret a tool result.
-    pub async fn interpret(&self, input: &ToolInterpretationInput) -> Result<ToolInterpretationResult> {
+    pub async fn interpret(
+        &self,
+        input: &ToolInterpretationInput,
+    ) -> Result<ToolInterpretationResult> {
         // Check if we have an LM available (either local or global)
         if self.lm.is_none() && GLOBAL_SETTINGS.read().unwrap().is_none() {
             return Err(anyhow::anyhow!("No LM available for tool interpretation"));

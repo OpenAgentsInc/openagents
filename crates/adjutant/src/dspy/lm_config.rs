@@ -7,7 +7,7 @@
 //! 4. Pylon local (Ollama) - Fallback when nothing else available
 
 use anyhow::Result;
-use dsrs::{configure, ChatAdapter, LM};
+use dsrs::{ChatAdapter, LM, configure};
 use std::sync::Arc;
 
 /// Provider priority for LM selection.
@@ -205,12 +205,14 @@ pub async fn create_lm(provider: &LmProvider) -> Result<LM> {
                 .build()
                 .await
         }
-        LmProvider::PylonLocal => LM::builder()
-            .model("pylon:local".to_string())
-            .temperature(0.7)
-            .max_tokens(4000)
-            .build()
-            .await,
+        LmProvider::PylonLocal => {
+            LM::builder()
+                .model("pylon:local".to_string())
+                .temperature(0.7)
+                .max_tokens(4000)
+                .build()
+                .await
+        }
     }
 }
 

@@ -1,13 +1,13 @@
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use nostr::nip90::{
-    get_request_kind, is_job_feedback_kind, is_job_request_kind, is_job_result_kind, JobRequest,
-    JobResult, KIND_JOB_CODE_REVIEW, KIND_JOB_FEEDBACK, KIND_JOB_IMAGE_GENERATION,
+    JobRequest, JobResult, KIND_JOB_CODE_REVIEW, KIND_JOB_FEEDBACK, KIND_JOB_IMAGE_GENERATION,
     KIND_JOB_PATCH_GEN, KIND_JOB_REPO_INDEX, KIND_JOB_RLM_SUBQUERY, KIND_JOB_SANDBOX_RUN,
     KIND_JOB_SPEECH_TO_TEXT, KIND_JOB_SUMMARIZATION, KIND_JOB_TEXT_EXTRACTION,
-    KIND_JOB_TEXT_GENERATION, KIND_JOB_TRANSLATION,
+    KIND_JOB_TEXT_GENERATION, KIND_JOB_TRANSLATION, get_request_kind, is_job_feedback_kind,
+    is_job_request_kind, is_job_result_kind,
 };
-use nostr::{finalize_event, generate_secret_key, get_public_key_hex, Event, EventTemplate};
+use nostr::{Event, EventTemplate, finalize_event, generate_secret_key, get_public_key_hex};
 use nostr_client::{RelayConnection, RelayMessage};
 use tokio::sync::mpsc;
 
@@ -252,11 +252,7 @@ fn short_id(value: &str) -> String {
 }
 
 fn summarize_request(event_id: &str, request: &JobRequest) -> String {
-    let mut summary = format!(
-        "{} {}",
-        job_kind_label(request.kind),
-        short_id(event_id)
-    );
+    let mut summary = format!("{} {}", job_kind_label(request.kind), short_id(event_id));
     if !request.inputs.is_empty() {
         summary.push_str(&format!(" inputs {}", request.inputs.len()));
     }
@@ -270,16 +266,15 @@ fn summarize_result(result: &JobResult) -> String {
     let kind_label = get_request_kind(result.kind)
         .map(job_kind_label)
         .unwrap_or("Result");
-    let mut summary = format!(
-        "{} req {}",
-        kind_label,
-        short_id(&result.request_id)
-    );
+    let mut summary = format!("{} req {}", kind_label, short_id(&result.request_id));
     if let Some(amount) = result.amount {
         summary.push_str(&format!(" amount {} msat", amount));
     }
     if !result.content.trim().is_empty() {
-        summary.push_str(&format!(" {}", crate::app::truncate_preview(&result.content, 40)));
+        summary.push_str(&format!(
+            " {}",
+            crate::app::truncate_preview(&result.content, 40)
+        ));
     }
     summary
 }
@@ -312,7 +307,11 @@ fn summarize_feedback(event: &Event) -> Option<(String, Option<String>)> {
     }
 
     let request_id = request_id?;
-    let mut summary = format!("{} req {}", status.clone().unwrap_or_else(|| "update".to_string()), short_id(&request_id));
+    let mut summary = format!(
+        "{} req {}",
+        status.clone().unwrap_or_else(|| "update".to_string()),
+        short_id(&request_id)
+    );
     if let Some(amount) = amount {
         summary.push_str(&format!(" amount {} msat", amount));
     }
@@ -449,7 +448,10 @@ async fn handle_authenticate(
         }
         Err(err) => {
             let _ = event_tx
-                .send(Nip90Event::ConnectionFailed(format!("Auth failed: {}", err)))
+                .send(Nip90Event::ConnectionFailed(format!(
+                    "Auth failed: {}",
+                    err
+                )))
                 .await;
         }
     }

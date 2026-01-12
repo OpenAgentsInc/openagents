@@ -129,19 +129,17 @@ fn parse_string_map(value: &Value) -> Result<HashMap<String, String>, String> {
             Value::Number(number) => number.to_string(),
             Value::Bool(flag) => flag.to_string(),
             Value::Null => String::new(),
-            _ => {
-                return Err(format!(
-                    "Expected string value for key {}",
-                    key
-                ))
-            }
+            _ => return Err(format!("Expected string value for key {}", key)),
         };
         map.insert(key.clone(), entry);
     }
     Ok(map)
 }
 
-pub(crate) fn parse_mcp_server_config(name: &str, value: &Value) -> Result<McpServerConfig, String> {
+pub(crate) fn parse_mcp_server_config(
+    name: &str,
+    value: &Value,
+) -> Result<McpServerConfig, String> {
     let object = value
         .as_object()
         .ok_or_else(|| format!("MCP server {} must be an object", name))?;

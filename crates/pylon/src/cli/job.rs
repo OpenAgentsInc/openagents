@@ -35,7 +35,10 @@ pub enum JobCommand {
         #[arg(long, default_value = "1000")]
         bid: u64,
         /// Relay URLs (comma-separated, or specify multiple times)
-        #[arg(long, default_value = "wss://nexus.openagents.com,wss://relay.damus.io,wss://nos.lol")]
+        #[arg(
+            long,
+            default_value = "wss://nexus.openagents.com,wss://relay.damus.io,wss://nos.lol"
+        )]
         relay: String,
         /// Target provider pubkey (optional)
         #[arg(long)]
@@ -151,7 +154,14 @@ pub async fn run(args: JobArgs) -> anyhow::Result<()> {
                 println!("  - {}", r);
             }
             println!("Kind: {}", kind);
-            println!("Prompt: {}", if prompt.len() > 50 { format!("{}...", &prompt[..50]) } else { prompt.clone() });
+            println!(
+                "Prompt: {}",
+                if prompt.len() > 50 {
+                    format!("{}...", &prompt[..50])
+                } else {
+                    prompt.clone()
+                }
+            );
             if auto_pay {
                 println!("Auto-pay: enabled");
             }
@@ -186,7 +196,12 @@ pub async fn run(args: JobArgs) -> anyhow::Result<()> {
             println!("Pubkey: {}", client.pubkey());
 
             // Store in local DB (use first relay for record)
-            let mut record = JobRecord::new(job_id.clone(), kind, prompt, relays.first().copied().unwrap_or("unknown").to_string());
+            let mut record = JobRecord::new(
+                job_id.clone(),
+                kind,
+                prompt,
+                relays.first().copied().unwrap_or("unknown").to_string(),
+            );
             if let Some(p) = provider {
                 record = record.with_provider(p);
             }
@@ -210,7 +225,9 @@ pub async fn run(args: JobArgs) -> anyhow::Result<()> {
                     let feedback_start = Instant::now();
 
                     while feedback_start.elapsed() < feedback_timeout {
-                        match tokio::time::timeout(Duration::from_millis(500), feedback_rx.recv()).await {
+                        match tokio::time::timeout(Duration::from_millis(500), feedback_rx.recv())
+                            .await
+                        {
                             Ok(Some(feedback_event)) => {
                                 println!("Received feedback: {:?}", feedback_event.feedback.status);
 
@@ -229,13 +246,15 @@ pub async fn run(args: JobArgs) -> anyhow::Result<()> {
                                         let prepare = wallet
                                             .prepare_send_payment(bolt11, None)
                                             .await
-                                            .map_err(|e| anyhow::anyhow!("Failed to prepare payment: {}", e))?;
+                                            .map_err(|e| {
+                                                anyhow::anyhow!("Failed to prepare payment: {}", e)
+                                            })?;
 
                                         println!("Sending payment...");
-                                        let response = wallet
-                                            .send_payment(prepare, None)
-                                            .await
-                                            .map_err(|e| anyhow::anyhow!("Payment failed: {}", e))?;
+                                        let response =
+                                            wallet.send_payment(prepare, None).await.map_err(
+                                                |e| anyhow::anyhow!("Payment failed: {}", e),
+                                            )?;
 
                                         println!("Payment sent! ID: {}", response.payment.id);
                                         payment_made = true;
@@ -244,7 +263,9 @@ pub async fn run(args: JobArgs) -> anyhow::Result<()> {
                                         println!("Warning: payment-required but no bolt11 invoice");
                                     }
                                 } else if feedback_event.feedback.status == JobStatus::Error {
-                                    let error_msg = feedback_event.feedback.status_extra
+                                    let error_msg = feedback_event
+                                        .feedback
+                                        .status_extra
                                         .unwrap_or_else(|| "Unknown error".to_string());
                                     anyhow::bail!("Job failed: {}", error_msg);
                                 }
@@ -262,7 +283,9 @@ pub async fn run(args: JobArgs) -> anyhow::Result<()> {
 
                     if !payment_made && auto_pay {
                         println!("\nNo payment request received within 30s.");
-                        println!("The provider may not have seen the job or may offer free service.");
+                        println!(
+                            "The provider may not have seen the job or may offer free service."
+                        );
                     }
                 }
 
@@ -272,12 +295,12 @@ pub async fn run(args: JobArgs) -> anyhow::Result<()> {
                     anyhow::bail!("Timeout waiting for result");
                 }
 
-                println!("\nWaiting for result ({:.0}s remaining)...", remaining_timeout.as_secs_f64());
+                println!(
+                    "\nWaiting for result ({:.0}s remaining)...",
+                    remaining_timeout.as_secs_f64()
+                );
 
-                match client
-                    .await_result(&job_id, remaining_timeout)
-                    .await
-                {
+                match client.await_result(&job_id, remaining_timeout).await {
                     Ok(result) => {
                         println!("\nResult Received");
                         println!("===============");

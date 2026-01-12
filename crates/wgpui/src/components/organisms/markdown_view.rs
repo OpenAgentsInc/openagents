@@ -138,9 +138,11 @@ impl MarkdownView {
             let button_width = text_width + padding_x * 2.0;
             let button_height = font_size + padding_y * 2.0;
 
-            let x = block.header_bounds.origin.x + block.header_bounds.size.width - padding_x - button_width;
-            let y =
-                block.header_bounds.origin.y + (block.header_bounds.size.height - button_height) * 0.5;
+            let x = block.header_bounds.origin.x + block.header_bounds.size.width
+                - padding_x
+                - button_width;
+            let y = block.header_bounds.origin.y
+                + (block.header_bounds.size.height - button_height) * 0.5;
 
             block.copy_bounds = Some(Bounds::new(x, y, button_width, button_height));
         }
@@ -186,8 +188,11 @@ impl MarkdownView {
                 theme::border::DEFAULT
             };
 
-            cx.scene
-                .draw_quad(Quad::new(bounds).with_background(bg_color).with_border(border_color, 1.0));
+            cx.scene.draw_quad(
+                Quad::new(bounds)
+                    .with_background(bg_color)
+                    .with_border(border_color, 1.0),
+            );
 
             let text_color = if is_copied {
                 theme::status::SUCCESS
@@ -200,9 +205,9 @@ impl MarkdownView {
             let label = self.copy_label(index);
             let text_x = bounds.origin.x + padding_x;
             let text_y = bounds.origin.y + bounds.size.height * 0.5 - text_y_offset;
-            let label_run = cx
-                .text
-                .layout(label, Point::new(text_x, text_y), font_size, text_color);
+            let label_run =
+                cx.text
+                    .layout(label, Point::new(text_x, text_y), font_size, text_color);
             cx.scene.draw_text(label_run);
         }
     }
@@ -256,7 +261,12 @@ impl Component for MarkdownView {
         self.draw_copy_buttons(cx);
     }
 
-    fn event(&mut self, event: &InputEvent, _bounds: Bounds, _cx: &mut EventContext) -> EventResult {
+    fn event(
+        &mut self,
+        event: &InputEvent,
+        _bounds: Bounds,
+        _cx: &mut EventContext,
+    ) -> EventResult {
         match event {
             InputEvent::MouseMove { x, y } => {
                 let point = Point::new(*x, *y);
@@ -273,7 +283,9 @@ impl Component for MarkdownView {
                 if *button == MouseButton::Left && self.show_copy_button {
                     let point = Point::new(*x, *y);
                     if let Some(index) = self.hit_copy_button(point) {
-                        if let Some(code) = self.layout.code_blocks.get(index).map(|b| b.code.clone()) {
+                        if let Some(code) =
+                            self.layout.code_blocks.get(index).map(|b| b.code.clone())
+                        {
                             self.copy_code(code);
                             self.copied_block = Some(index);
                             self.copied_at = Some(Instant::now());

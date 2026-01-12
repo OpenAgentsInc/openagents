@@ -61,8 +61,8 @@ impl CerebrasGateway {
         let api_key = std::env::var("CEREBRAS_API_KEY")
             .map_err(|_| GatewayError::NotConfigured("CEREBRAS_API_KEY not set".into()))?;
 
-        let endpoint = std::env::var("CEREBRAS_ENDPOINT")
-            .unwrap_or_else(|_| DEFAULT_ENDPOINT.to_string());
+        let endpoint =
+            std::env::var("CEREBRAS_ENDPOINT").unwrap_or_else(|_| DEFAULT_ENDPOINT.to_string());
 
         Self::new(api_key, endpoint)
     }
@@ -91,10 +91,7 @@ impl CerebrasGateway {
                 name: "Llama 3.3 70B".into(),
                 provider: "cerebras".into(),
                 context_length: 128_000,
-                capabilities: vec![
-                    Capability::ChatCompletion,
-                    Capability::Streaming,
-                ],
+                capabilities: vec![Capability::ChatCompletion, Capability::Streaming],
                 pricing: Some(ModelPricing {
                     input_per_million: 0.85,
                     output_per_million: 1.20,
@@ -105,10 +102,7 @@ impl CerebrasGateway {
                 name: "Llama 3.1 8B".into(),
                 provider: "cerebras".into(),
                 context_length: 128_000,
-                capabilities: vec![
-                    Capability::ChatCompletion,
-                    Capability::Streaming,
-                ],
+                capabilities: vec![Capability::ChatCompletion, Capability::Streaming],
                 pricing: Some(ModelPricing {
                     input_per_million: 0.10,
                     output_per_million: 0.10,

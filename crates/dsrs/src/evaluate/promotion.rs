@@ -78,11 +78,7 @@ pub struct PromotionGate {
 
 impl PromotionGate {
     /// Create a new gate.
-    pub fn new(
-        name: impl Into<String>,
-        from: PromotionState,
-        to: PromotionState,
-    ) -> Self {
+    pub fn new(name: impl Into<String>, from: PromotionState, to: PromotionState) -> Self {
         Self {
             name: name.into(),
             from_state: from,
@@ -108,16 +104,10 @@ impl PromotionGate {
 #[derive(Debug, Clone)]
 pub enum GateRequirement {
     /// Minimum score on a specific metric.
-    MinScore {
-        metric: String,
-        threshold: f64,
-    },
+    MinScore { metric: String, threshold: f64 },
 
     /// Must beat baseline by a margin.
-    BeatBaseline {
-        metric: String,
-        margin: f64,
-    },
+    BeatBaseline { metric: String, margin: f64 },
 
     /// Shadow mode minimum duration.
     ShadowDuration(Duration),
@@ -132,10 +122,7 @@ pub enum GateRequirement {
     ManualApproval,
 
     /// Custom requirement with validator function name.
-    Custom {
-        name: String,
-        description: String,
-    },
+    Custom { name: String, description: String },
 }
 
 impl GateRequirement {
@@ -377,7 +364,7 @@ impl PromotionManager {
                 return Ok(PromotionResult::failure(
                     "none",
                     format!("No gate defined for state {:?}", current_state),
-                ))
+                ));
             }
         };
 
@@ -397,7 +384,8 @@ impl PromotionManager {
         }
 
         if all_passed {
-            Ok(PromotionResult::success(&gate.name, gate.to_state).with_results(requirement_results))
+            Ok(PromotionResult::success(&gate.name, gate.to_state)
+                .with_results(requirement_results))
         } else {
             let failed: Vec<_> = requirement_results
                 .iter()
@@ -487,7 +475,11 @@ impl PromotionManager {
                     passed,
                     actual_value: Some(actual),
                     required_value: Some(*required),
-                    reason: format!("Win rate: {:.1}% / {:.1}%", actual * 100.0, required * 100.0),
+                    reason: format!(
+                        "Win rate: {:.1}% / {:.1}%",
+                        actual * 100.0,
+                        required * 100.0
+                    ),
                 })
             }
 
@@ -518,7 +510,10 @@ impl PromotionManager {
                 passed: false,
                 actual_value: None,
                 required_value: None,
-                reason: format!("Custom requirement '{}' not implemented: {}", name, description),
+                reason: format!(
+                    "Custom requirement '{}' not implemented: {}",
+                    name, description
+                ),
             }),
         }
     }
@@ -579,11 +574,15 @@ impl PromotionManager {
     pub fn default_gates() -> Vec<PromotionGate> {
         vec![
             // Candidate → Staged: Pass proxy metrics
-            PromotionGate::new("proxy_gate", PromotionState::Candidate, PromotionState::Staged)
-                .with_requirements(vec![
-                    GateRequirement::min_score("format", 0.95),
-                    GateRequirement::min_score("syntax", 0.90),
-                ]),
+            PromotionGate::new(
+                "proxy_gate",
+                PromotionState::Candidate,
+                PromotionState::Staged,
+            )
+            .with_requirements(vec![
+                GateRequirement::min_score("format", 0.95),
+                GateRequirement::min_score("syntax", 0.90),
+            ]),
             // Staged → Shadow: Pass truth metrics
             PromotionGate::new("truth_gate", PromotionState::Staged, PromotionState::Shadow)
                 .with_requirements(vec![
@@ -591,11 +590,15 @@ impl PromotionManager {
                     GateRequirement::beat_baseline("overall", 0.02),
                 ]),
             // Shadow → Promoted: Win A/B comparison
-            PromotionGate::new("shadow_gate", PromotionState::Shadow, PromotionState::Promoted)
-                .with_requirements(vec![
-                    GateRequirement::shadow_samples(100),
-                    GateRequirement::shadow_win_rate(0.52),
-                ]),
+            PromotionGate::new(
+                "shadow_gate",
+                PromotionState::Shadow,
+                PromotionState::Promoted,
+            )
+            .with_requirements(vec![
+                GateRequirement::shadow_samples(100),
+                GateRequirement::shadow_win_rate(0.52),
+            ]),
         ]
     }
 }
@@ -653,9 +656,15 @@ mod tests {
 
     #[test]
     fn test_promotion_state_transitions() {
-        assert_eq!(PromotionState::Candidate.next(), Some(PromotionState::Staged));
+        assert_eq!(
+            PromotionState::Candidate.next(),
+            Some(PromotionState::Staged)
+        );
         assert_eq!(PromotionState::Staged.next(), Some(PromotionState::Shadow));
-        assert_eq!(PromotionState::Shadow.next(), Some(PromotionState::Promoted));
+        assert_eq!(
+            PromotionState::Shadow.next(),
+            Some(PromotionState::Promoted)
+        );
         assert_eq!(PromotionState::Promoted.next(), None);
         assert_eq!(PromotionState::RolledBack.next(), None);
     }

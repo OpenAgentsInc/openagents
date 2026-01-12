@@ -13,7 +13,7 @@ use anyhow::Result;
 use dsrs::core::signature::MetaSignature;
 use dsrs::data::example::Example;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 // ============================================================================
 // ToolSuccess Enum
@@ -81,7 +81,8 @@ pub struct ToolSelectionSignature {
 impl Default for ToolSelectionSignature {
     fn default() -> Self {
         Self {
-            instruction: r#"You are a tool selection expert. Choose the best tool to accomplish the task.
+            instruction:
+                r#"You are a tool selection expert. Choose the best tool to accomplish the task.
 
 Available tools are provided as JSON with name, description, and parameters.
 
@@ -99,7 +100,7 @@ Think about:
 - What if the primary tool fails?
 
 Provide clear reasoning for your selection."#
-                .to_string(),
+                    .to_string(),
             demos: vec![],
         }
     }
@@ -361,7 +362,8 @@ pub struct ToolChainPlanningSignature {
 impl Default for ToolChainPlanningSignature {
     fn default() -> Self {
         Self {
-            instruction: r#"You are a tool chain planner. Design multi-tool workflows for complex tasks.
+            instruction:
+                r#"You are a tool chain planner. Design multi-tool workflows for complex tasks.
 
 Your job:
 1. Break down the goal into tool-sized steps
@@ -383,7 +385,7 @@ Planning rules:
 
 Example sequence item:
 {"step_id": "s1", "tool_name": "read_file", "params": {"path": "..."}, "depends_on": []}"#
-                .to_string(),
+                    .to_string(),
             demos: vec![],
         }
     }
@@ -485,8 +487,14 @@ mod tests {
         assert_eq!("YES".parse::<ToolSuccess>().unwrap(), ToolSuccess::Yes);
         assert_eq!("yes".parse::<ToolSuccess>().unwrap(), ToolSuccess::Yes);
         assert_eq!("SUCCESS".parse::<ToolSuccess>().unwrap(), ToolSuccess::Yes);
-        assert_eq!("PARTIAL".parse::<ToolSuccess>().unwrap(), ToolSuccess::Partial);
-        assert_eq!("incomplete".parse::<ToolSuccess>().unwrap(), ToolSuccess::Partial);
+        assert_eq!(
+            "PARTIAL".parse::<ToolSuccess>().unwrap(),
+            ToolSuccess::Partial
+        );
+        assert_eq!(
+            "incomplete".parse::<ToolSuccess>().unwrap(),
+            ToolSuccess::Partial
+        );
         assert_eq!("NO".parse::<ToolSuccess>().unwrap(), ToolSuccess::No);
         assert_eq!("fail".parse::<ToolSuccess>().unwrap(), ToolSuccess::No);
         assert_eq!("ERROR".parse::<ToolSuccess>().unwrap(), ToolSuccess::No);
@@ -575,8 +583,7 @@ mod tests {
 
     #[test]
     fn test_signature_with_custom_instruction() {
-        let sig = ToolSelectionSignature::new()
-            .with_instruction("Custom instruction");
+        let sig = ToolSelectionSignature::new().with_instruction("Custom instruction");
         assert_eq!(sig.instruction(), "Custom instruction");
     }
 

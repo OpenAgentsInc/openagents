@@ -473,13 +473,17 @@ impl Frame {
         if let Some(border) = self.border_color {
             let b = border.with_alpha(border.a * self.compute_alpha());
             // Top edge
-            cx.scene.draw_quad(Quad::new(Bounds::new(x, y, w, t)).with_background(b));
+            cx.scene
+                .draw_quad(Quad::new(Bounds::new(x, y, w, t)).with_background(b));
             // Bottom edge
-            cx.scene.draw_quad(Quad::new(Bounds::new(x, y + h - t, w, t)).with_background(b));
+            cx.scene
+                .draw_quad(Quad::new(Bounds::new(x, y + h - t, w, t)).with_background(b));
             // Left edge
-            cx.scene.draw_quad(Quad::new(Bounds::new(x, y, t, h)).with_background(b));
+            cx.scene
+                .draw_quad(Quad::new(Bounds::new(x, y, t, h)).with_background(b));
             // Right edge
-            cx.scene.draw_quad(Quad::new(Bounds::new(x + w - t, y, t, h)).with_background(b));
+            cx.scene
+                .draw_quad(Quad::new(Bounds::new(x + w - t, y, t, h)).with_background(b));
         }
 
         if let Some(glow) = self.glow_color {

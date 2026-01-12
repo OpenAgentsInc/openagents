@@ -134,9 +134,9 @@ impl RipgrepIndex {
         let context = config.context_lines;
 
         for (line_num, content) in matches {
-            let can_merge = groups.last().map_or(false, |(_, end, _)| {
-                *line_num <= *end + context + 1
-            });
+            let can_merge = groups
+                .last()
+                .map_or(false, |(_, end, _)| *line_num <= *end + context + 1);
 
             if can_merge {
                 let last = groups.last_mut().unwrap();
@@ -209,9 +209,7 @@ impl RepoIndex for RipgrepIndex {
         cmd.arg(query);
         cmd.arg(&self.repo_path);
 
-        let output = cmd
-            .output()
-            .context("Failed to execute ripgrep")?;
+        let output = cmd.output().context("Failed to execute ripgrep")?;
 
         let stdout = String::from_utf8_lossy(&output.stdout);
         Ok(self.parse_rg_output(&stdout, config))

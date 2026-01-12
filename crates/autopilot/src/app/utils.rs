@@ -2,8 +2,10 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use super::catalog::agents::AgentModel;
 use super::catalog::types::HookEvent;
-use wgpui::markdown::{MarkdownConfig, MarkdownDocument, MarkdownRenderer as MdRenderer, StreamingMarkdown};
 use wgpui::TextInput;
+use wgpui::markdown::{
+    MarkdownConfig, MarkdownDocument, MarkdownRenderer as MdRenderer, StreamingMarkdown,
+};
 
 use super::catalog::AgentEntry;
 use super::chat::{ChatMessage, ChatSelectionPoint, MessageRole};
@@ -26,7 +28,10 @@ pub(crate) fn truncate_preview(text: &str, max_chars: usize) -> String {
     if trimmed.len() <= max_chars {
         return trimmed;
     }
-    let mut result = trimmed.chars().take(max_chars.saturating_sub(3)).collect::<String>();
+    let mut result = trimmed
+        .chars()
+        .take(max_chars.saturating_sub(3))
+        .collect::<String>();
     result.push_str("...");
     result
 }

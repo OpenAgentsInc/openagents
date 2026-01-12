@@ -42,8 +42,7 @@ impl ChatAdapter {
         if !key.input_keys.contains(&SIGNATURE_CACHE_KEY.to_string()) {
             key.input_keys.push(SIGNATURE_CACHE_KEY.to_string());
         }
-        key.output_keys
-            .retain(|field| field != SIGNATURE_CACHE_KEY);
+        key.output_keys.retain(|field| field != SIGNATURE_CACHE_KEY);
         key
     }
 
@@ -301,7 +300,8 @@ impl Adapter for ChatAdapter {
         inputs: Example,
         tools: Vec<Arc<dyn ToolDyn>>,
     ) -> Result<Prediction> {
-        self.call_streaming(lm, signature, inputs, tools, None).await
+        self.call_streaming(lm, signature, inputs, tools, None)
+            .await
     }
 
     async fn call_streaming(

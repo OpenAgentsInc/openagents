@@ -19,9 +19,9 @@
 //! ```
 
 use anyhow::{Context, Result};
-use dsrs::manifest::CompiledModuleManifest;
 use dsrs::Example;
 use dsrs::evaluate::promotion::PromotionState;
+use dsrs::manifest::CompiledModuleManifest;
 use serde::{Deserialize, Serialize};
 use std::fs::{self, create_dir_all};
 use std::path::PathBuf;
@@ -107,14 +107,19 @@ impl DspyHub {
     /// Save a compiled module with its demos.
     ///
     /// Returns the compiled_id.
-    pub fn save_module(&self, manifest: &CompiledModuleManifest, demos: &[Example]) -> Result<String> {
+    pub fn save_module(
+        &self,
+        manifest: &CompiledModuleManifest,
+        demos: &[Example],
+    ) -> Result<String> {
         self.ensure_dirs(&manifest.signature_name)?;
 
         // Compute or use existing compiled_id
-        let compiled_id = manifest
-            .compiled_id
-            .clone()
-            .unwrap_or_else(|| manifest.compute_compiled_id().unwrap_or_else(|_| "unknown".to_string()));
+        let compiled_id = manifest.compiled_id.clone().unwrap_or_else(|| {
+            manifest
+                .compute_compiled_id()
+                .unwrap_or_else(|_| "unknown".to_string())
+        });
 
         let stored = StoredModule {
             manifest: manifest.clone(),
@@ -176,7 +181,10 @@ impl DspyHub {
     }
 
     /// List all modules for a signature (or all signatures if None).
-    pub fn list_modules(&self, signature_name: Option<&str>) -> Result<Vec<CompiledModuleManifest>> {
+    pub fn list_modules(
+        &self,
+        signature_name: Option<&str>,
+    ) -> Result<Vec<CompiledModuleManifest>> {
         let mut manifests = Vec::new();
         let optimized = self.optimized_path();
 
@@ -235,10 +243,9 @@ impl DspyHub {
         routing: &RoutingStrategy,
     ) -> Result<CompiledModuleManifest> {
         match routing {
-            RoutingStrategy::Promoted => {
-                self.get_promoted(signature_name)?
-                    .ok_or_else(|| anyhow::anyhow!("No promoted module for {}", signature_name))
-            }
+            RoutingStrategy::Promoted => self
+                .get_promoted(signature_name)?
+                .ok_or_else(|| anyhow::anyhow!("No promoted module for {}", signature_name)),
 
             RoutingStrategy::Shadow { candidate_id } => {
                 // In shadow mode, return the candidate for evaluation
@@ -246,7 +253,10 @@ impl DspyHub {
                 Ok(manifest)
             }
 
-            RoutingStrategy::ABTest { candidate_pct, candidate_id } => {
+            RoutingStrategy::ABTest {
+                candidate_pct,
+                candidate_id,
+            } => {
                 // Simple random routing based on percentage
                 let random: f32 = std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
@@ -254,7 +264,8 @@ impl DspyHub {
                     .unwrap_or(0.5);
 
                 if random < *candidate_pct {
-                    let (manifest, _) = self.load_module_by_signature(signature_name, candidate_id)?;
+                    let (manifest, _) =
+                        self.load_module_by_signature(signature_name, candidate_id)?;
                     Ok(manifest)
                 } else {
                     self.get_promoted(signature_name)?
@@ -426,7 +437,9 @@ mod tests {
         let promoted_id = hub.save_module(&promoted, &[]).unwrap();
 
         // Test promoted routing
-        let result = hub.get_module_for_routing("RouterTest", &RoutingStrategy::Promoted).unwrap();
+        let result = hub
+            .get_module_for_routing("RouterTest", &RoutingStrategy::Promoted)
+            .unwrap();
         assert_eq!(result.compiled_id, Some(promoted_id.clone()));
 
         // Save a candidate
@@ -441,7 +454,9 @@ mod tests {
         let shadow_strategy = RoutingStrategy::Shadow {
             candidate_id: candidate_id.clone(),
         };
-        let result = hub.get_module_for_routing("RouterTest", &shadow_strategy).unwrap();
+        let result = hub
+            .get_module_for_routing("RouterTest", &shadow_strategy)
+            .unwrap();
         assert_eq!(result.compiled_id, Some(candidate_id));
     }
 
@@ -477,7 +492,8 @@ mod tests {
         assert_eq!(loaded.promotion_state, PromotionState::Candidate);
 
         // Update to promoted
-        hub.update_promotion_state("PromoteTest", &compiled_id, PromotionState::Promoted).unwrap();
+        hub.update_promotion_state("PromoteTest", &compiled_id, PromotionState::Promoted)
+            .unwrap();
 
         let (loaded, _) = hub.load_module(&compiled_id).unwrap();
         assert_eq!(loaded.promotion_state, PromotionState::Promoted);

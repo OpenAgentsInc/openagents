@@ -11,8 +11,8 @@ use crate::error::{Result, RlmError};
 use crate::executor::{ExecutionEnvironment, ExecutionResult};
 use crate::orchestrator::{EngineOrchestrator, OrchestratorConfig};
 use crate::prompts::{
-    continuation_prompt, continuation_prompt_with_reminder, error_prompt,
-    error_prompt_with_reminder, initial_prompt, system_prompt_for_tier, PromptTier,
+    PromptTier, continuation_prompt, continuation_prompt_with_reminder, error_prompt,
+    error_prompt_with_reminder, initial_prompt, system_prompt_for_tier,
 };
 use crate::subquery::{execute_sub_query, generate_result_injection, process_code_for_queries};
 
@@ -135,9 +135,7 @@ impl StuckDetector {
             StuckType::ImportErrors => {
                 "Model stuck trying to import unavailable modules".to_string()
             }
-            StuckType::InvalidCommands => {
-                "Model producing too many invalid commands".to_string()
-            }
+            StuckType::InvalidCommands => "Model producing too many invalid commands".to_string(),
             StuckType::NotStuck => "Not stuck".to_string(),
         }
     }
@@ -275,7 +273,8 @@ impl<C: LlmClient + Clone, E: ExecutionEnvironment> RlmEngine<C, E> {
     fn inject_context(&self, code: &str) -> String {
         if let Some(ref ctx) = self.loaded_context {
             // Escape the context content for Python string literal
-            let escaped_content = ctx.content
+            let escaped_content = ctx
+                .content
                 .replace('\\', "\\\\")
                 .replace('"', "\\\"")
                 .replace('\n', "\\n")
@@ -501,7 +500,9 @@ def search_context(pattern, max_results=10, window=200):
 
                     // If FINAL_VAR used incorrectly (without code), warn and use raw value
                     let final_output = if result.starts_with("VAR:") {
-                        warn!("FINAL_VAR used without code block - cannot extract variable. Using raw output.");
+                        warn!(
+                            "FINAL_VAR used without code block - cannot extract variable. Using raw output."
+                        );
                         result.clone()
                     } else {
                         result.clone()
@@ -576,13 +577,15 @@ def search_context(pattern, max_results=10, window=200):
                         let actual_output = if final_result.starts_with("VAR:") {
                             // We injected print("__FINAL_VAR__:", varname) into the code
                             // Extract the value from that line
-                            exec_result.stdout
+                            exec_result
+                                .stdout
                                 .lines()
                                 .find(|l| l.starts_with("__FINAL_VAR__:"))
                                 .map(|l| l.trim_start_matches("__FINAL_VAR__:").trim().to_string())
                                 .unwrap_or_else(|| {
                                     // Fallback: use last non-empty line of stdout
-                                    exec_result.stdout
+                                    exec_result
+                                        .stdout
                                         .lines()
                                         .filter(|l| !l.trim().is_empty())
                                         .last()
@@ -814,10 +817,9 @@ def search_context(pattern, max_results=10, window=200):
         query: &str,
         config: OrchestratorConfig,
     ) -> Result<RlmResult> {
-        let context = self
-            .loaded_context
-            .as_ref()
-            .ok_or_else(|| RlmError::ContextError("No context loaded for orchestrated analysis".into()))?;
+        let context = self.loaded_context.as_ref().ok_or_else(|| {
+            RlmError::ContextError("No context loaded for orchestrated analysis".into())
+        })?;
 
         info!(
             "Starting orchestrated analysis: {} chars, query: {}",

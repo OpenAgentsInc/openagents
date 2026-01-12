@@ -22,7 +22,9 @@ use wgpui::components::organisms::{
     ScheduleType, SendFlow, SendStep, SigningRequest, TagData, ThresholdKeyManager, ThresholdPeer,
     ZapFlow,
 };
-use wgpui::components::sections::{MessageEditor, ThreadFeedback, ThreadHeader, TrajectoryEntry, TrajectoryView};
+use wgpui::components::sections::{
+    MessageEditor, ThreadFeedback, ThreadHeader, TrajectoryEntry, TrajectoryView,
+};
 use wgpui::{Bounds, Component, Hsla, PaintContext, Point, Quad, theme};
 
 use crate::constants::SECTION_GAP;

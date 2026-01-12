@@ -23,7 +23,7 @@
 //! println!("Verdict: {:?}", result.verdict);
 //! ```
 
-use dsrs::{example, LM, Predict, Predictor, Signature};
+use dsrs::{LM, Predict, Predictor, Signature, example};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
@@ -575,7 +575,9 @@ impl VerificationPipeline {
             };
 
             let prediction = if let Some(lm) = &self.lm {
-                requirement_checker.forward_with_config(example, lm.clone()).await?
+                requirement_checker
+                    .forward_with_config(example, lm.clone())
+                    .await?
             } else {
                 requirement_checker.forward(example).await?
             };
@@ -590,13 +592,11 @@ impl VerificationPipeline {
         }
 
         // 2. Classify build status
-        let (build_label, build_error_type, build_actionable) =
-            self.classify_build_status(&input.build_output, "auto").await;
+        let (build_label, build_error_type, build_actionable) = self
+            .classify_build_status(&input.build_output, "auto")
+            .await;
 
-        let build_status = if matches!(
-            build_label.to_lowercase().as_str(),
-            "error" | "fatal"
-        ) {
+        let build_status = if matches!(build_label.to_lowercase().as_str(), "error" | "fatal") {
             "FAILED"
         } else {
             "SUCCESS"
@@ -608,7 +608,9 @@ impl VerificationPipeline {
             };
 
             let prediction = if let Some(lm) = &self.lm {
-                build_analyzer.forward_with_config(example, lm.clone()).await?
+                build_analyzer
+                    .forward_with_config(example, lm.clone())
+                    .await?
             } else {
                 build_analyzer.forward(example).await?
             };
@@ -648,7 +650,9 @@ impl VerificationPipeline {
             };
 
             let prediction = if let Some(lm) = &self.lm {
-                test_analyzer.forward_with_config(example, lm.clone()).await?
+                test_analyzer
+                    .forward_with_config(example, lm.clone())
+                    .await?
             } else {
                 test_analyzer.forward(example).await?
             };
@@ -698,7 +702,9 @@ impl VerificationPipeline {
         };
 
         let prediction = if let Some(lm) = &self.lm {
-            solution_verifier.forward_with_config(example, lm.clone()).await?
+            solution_verifier
+                .forward_with_config(example, lm.clone())
+                .await?
         } else {
             solution_verifier.forward(example).await?
         };

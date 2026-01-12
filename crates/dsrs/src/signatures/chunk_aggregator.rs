@@ -6,7 +6,7 @@ use crate::core::signature::MetaSignature;
 use crate::data::example::Example;
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 /// A finding from chunk analysis.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -71,7 +71,8 @@ pub struct ChunkAnalysisToActionSignature {
 impl Default for ChunkAnalysisToActionSignature {
     fn default() -> Self {
         Self {
-            instruction: r#"You are an expert at synthesizing code analysis results. Given findings from
+            instruction:
+                r#"You are an expert at synthesizing code analysis results. Given findings from
 multiple chunk analyses, aggregate them into actionable next steps.
 
 Your job is to:
@@ -87,7 +88,7 @@ Consider:
 - What uncertainties remain that need more exploration?
 
 Output a cohesive summary and prioritized action list."#
-                .to_string(),
+                    .to_string(),
             demos: vec![],
         }
     }

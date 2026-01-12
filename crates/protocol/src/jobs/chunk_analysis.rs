@@ -33,7 +33,12 @@ pub struct CodeChunk {
 
 impl CodeChunk {
     /// Create a new code chunk.
-    pub fn new(path: impl Into<String>, start_line: u32, end_line: u32, content: impl Into<String>) -> Self {
+    pub fn new(
+        path: impl Into<String>,
+        start_line: u32,
+        end_line: u32,
+        content: impl Into<String>,
+    ) -> Self {
         Self {
             path: path.into(),
             start_line,
@@ -239,7 +244,10 @@ mod tests {
     #[test]
     fn test_job_type_constant() {
         assert_eq!(ChunkAnalysisRequest::JOB_TYPE, "oa.code_chunk_analysis.v1");
-        assert_eq!(ChunkAnalysisRequest::SCHEMA_VERSION, SchemaVersion::new(1, 0, 0));
+        assert_eq!(
+            ChunkAnalysisRequest::SCHEMA_VERSION,
+            SchemaVersion::new(1, 0, 0)
+        );
     }
 
     #[test]

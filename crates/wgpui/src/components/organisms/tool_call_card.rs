@@ -341,7 +341,9 @@ impl Component for ToolCallCard {
                     let child_display = if !child.params.is_empty() && params_available > 50.0 {
                         let params_truncated = Self::truncate_text(
                             &child.params,
-                            params_available - child.name.len() as f32 * Self::DETAIL_FONT_SIZE * 0.6 - 10.0,
+                            params_available
+                                - child.name.len() as f32 * Self::DETAIL_FONT_SIZE * 0.6
+                                - 10.0,
                             Self::DETAIL_FONT_SIZE,
                         );
                         format!("{}({})", child.name, params_truncated)
@@ -360,7 +362,8 @@ impl Component for ToolCallCard {
                     // Elapsed time for running tools
                     if child.status == ToolStatus::Running {
                         if let Some(elapsed) = child.elapsed_secs {
-                            let status_x = container_bounds.origin.x + container_bounds.size.width - 50.0;
+                            let status_x =
+                                container_bounds.origin.x + container_bounds.size.width - 50.0;
                             let status_text = format!("{:.1}s", elapsed);
                             let status_run = cx.text.layout_styled_mono(
                                 &status_text,

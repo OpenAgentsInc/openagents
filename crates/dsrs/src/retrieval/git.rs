@@ -47,7 +47,11 @@ impl GitIndex {
     }
 
     /// Search commit messages and changed files.
-    fn search_commits(&self, query: &str, config: &RetrievalConfig) -> Result<Vec<RetrievalResult>> {
+    fn search_commits(
+        &self,
+        query: &str,
+        config: &RetrievalConfig,
+    ) -> Result<Vec<RetrievalResult>> {
         let mut cmd = Command::new("git");
         cmd.current_dir(&self.repo_path);
         cmd.args([
@@ -262,7 +266,11 @@ impl RepoIndex for GitIndex {
         results.retain(|r| seen.insert(format!("{}:{}", r.path, r.start_line)));
 
         // Sort by score descending
-        results.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+        results.sort_by(|a, b| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
 
         results.truncate(config.k);
         Ok(results)
@@ -300,9 +308,7 @@ mod tests {
 
     #[test]
     fn test_git_index_builder() {
-        let index = GitIndex::new(".")
-            .with_commit_limit(50)
-            .with_branch("main");
+        let index = GitIndex::new(".").with_commit_limit(50).with_branch("main");
 
         assert_eq!(index.commit_limit, 50);
         assert_eq!(index.branch, Some("main".to_string()));

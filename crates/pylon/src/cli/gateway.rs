@@ -127,9 +127,10 @@ async fn run_chat(args: ChatArgs) -> anyhow::Result<()> {
     }
 
     // Send request
-    let response = gateway.chat(request).await.map_err(|e| {
-        anyhow::anyhow!("Chat request failed: {}", e)
-    })?;
+    let response = gateway
+        .chat(request)
+        .await
+        .map_err(|e| anyhow::anyhow!("Chat request failed: {}", e))?;
 
     // Print response
     if let Some(content) = response.content() {
@@ -139,9 +140,7 @@ async fn run_chat(args: ChatArgs) -> anyhow::Result<()> {
     // Print usage info
     eprintln!(
         "\n[gateway] tokens: prompt={} completion={} total={}",
-        response.usage.prompt_tokens,
-        response.usage.completion_tokens,
-        response.usage.total_tokens
+        response.usage.prompt_tokens, response.usage.completion_tokens, response.usage.total_tokens
     );
 
     Ok(())
@@ -151,9 +150,10 @@ async fn run_chat(args: ChatArgs) -> anyhow::Result<()> {
 async fn run_models(args: ModelsArgs) -> anyhow::Result<()> {
     let gateway = create_gateway(&args.provider)?;
 
-    let models = gateway.models().await.map_err(|e| {
-        anyhow::anyhow!("Failed to list models: {}", e)
-    })?;
+    let models = gateway
+        .models()
+        .await
+        .map_err(|e| anyhow::anyhow!("Failed to list models: {}", e))?;
 
     println!("Available models for {}:", args.provider);
     println!();
@@ -167,10 +167,7 @@ async fn run_models(args: ModelsArgs) -> anyhow::Result<()> {
                 pricing.input_per_million, pricing.output_per_million
             );
         }
-        println!(
-            "    Capabilities: {:?}",
-            model.capabilities
-        );
+        println!("    Capabilities: {:?}", model.capabilities);
         println!();
     }
 

@@ -1,18 +1,18 @@
 use std::process::Command as ProcessCommand;
 use std::sync::atomic::Ordering;
 
-use agent_client_protocol_schema as acp;
 use adjutant::{
-    generate_session_id, AcpChannelOutput, Adjutant, AdjutantError, Task as AdjutantTask,
-    DSPY_META_KEY,
+    AcpChannelOutput, Adjutant, AdjutantError, DSPY_META_KEY, Task as AdjutantTask,
+    generate_session_id,
 };
+use agent_client_protocol_schema as acp;
 use tokio::sync::mpsc;
 
-use crate::autopilot_loop::{AutopilotConfig, AutopilotLoop, AutopilotResult, DspyStage};
+use crate::app::AppState;
 use crate::app::chat::MessageMetadata;
 use crate::app::config::AgentKindConfig;
 use crate::app::events::ResponseEvent;
-use crate::app::AppState;
+use crate::autopilot_loop::{AutopilotConfig, AutopilotLoop, AutopilotResult, DspyStage};
 
 pub(crate) fn submit_autopilot_prompt(
     runtime_handle: &tokio::runtime::Handle,
@@ -509,9 +509,9 @@ mod tests {
     fn acp_message_chunk_maps_to_response() {
         let notification = acp::SessionNotification::new(
             acp::SessionId::new("test"),
-            acp::SessionUpdate::AgentMessageChunk(acp::ContentChunk::new(
-                acp::ContentBlock::Text(acp::TextContent::new("hello")),
-            )),
+            acp::SessionUpdate::AgentMessageChunk(acp::ContentChunk::new(acp::ContentBlock::Text(
+                acp::TextContent::new("hello"),
+            ))),
         );
         let events = acp_notification_to_response(notification);
         assert_eq!(events.len(), 1);
@@ -528,8 +528,10 @@ mod tests {
             acp::PlanEntryPriority::Medium,
             acp::PlanEntryStatus::Pending,
         )]);
-        let notification =
-            acp::SessionNotification::new(acp::SessionId::new("test"), acp::SessionUpdate::Plan(plan));
+        let notification = acp::SessionNotification::new(
+            acp::SessionId::new("test"),
+            acp::SessionUpdate::Plan(plan),
+        );
         let events = acp_notification_to_response(notification);
         assert_eq!(events.len(), 1);
         match &events[0] {
@@ -578,9 +580,9 @@ mod tests {
     fn acp_thought_chunk_maps_to_thought_event() {
         let notification = acp::SessionNotification::new(
             acp::SessionId::new("test"),
-            acp::SessionUpdate::AgentThoughtChunk(acp::ContentChunk::new(
-                acp::ContentBlock::Text(acp::TextContent::new("thinking")),
-            )),
+            acp::SessionUpdate::AgentThoughtChunk(acp::ContentChunk::new(acp::ContentBlock::Text(
+                acp::TextContent::new("thinking"),
+            ))),
         );
         let events = acp_notification_to_response(notification);
         assert_eq!(events.len(), 1);
@@ -593,11 +595,10 @@ mod tests {
     #[test]
     fn acp_tool_call_update_maps_to_tool_result() {
         let tool_call_id = acp::ToolCallId::new("tool-1");
-        let tool_call = acp::ToolCall::new(tool_call_id.clone(), "Read").raw_input(
-            serde_json::json!({
+        let tool_call =
+            acp::ToolCall::new(tool_call_id.clone(), "Read").raw_input(serde_json::json!({
                 "path": "README.md"
-            }),
-        );
+            }));
         let start = acp::SessionNotification::new(
             acp::SessionId::new("test"),
             acp::SessionUpdate::ToolCall(tool_call),
@@ -614,16 +615,22 @@ mod tests {
         );
 
         let start_events = acp_notification_to_response(start);
-        assert!(start_events
-            .iter()
-            .any(|event| matches!(event, ResponseEvent::ToolCallStart { .. })));
-        assert!(start_events
-            .iter()
-            .any(|event| matches!(event, ResponseEvent::ToolCallInput { .. })));
+        assert!(
+            start_events
+                .iter()
+                .any(|event| matches!(event, ResponseEvent::ToolCallStart { .. }))
+        );
+        assert!(
+            start_events
+                .iter()
+                .any(|event| matches!(event, ResponseEvent::ToolCallInput { .. }))
+        );
 
         let done_events = acp_notification_to_response(done);
-        assert!(done_events
-            .iter()
-            .any(|event| matches!(event, ResponseEvent::ToolResult { .. })));
+        assert!(
+            done_events
+                .iter()
+                .any(|event| matches!(event, ResponseEvent::ToolResult { .. }))
+        );
     }
 }

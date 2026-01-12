@@ -7,8 +7,8 @@
 //! structured outputs. On WASM, it falls back to legacy prompt-based planning.
 
 use openagents_runtime::{
-    Agent, AgentConfig, AgentContext, AgentEnv, AgentState, Trigger, TickResult,
-    error::Result, types::Timestamp,
+    Agent, AgentConfig, AgentContext, AgentEnv, AgentState, TickResult, Trigger, error::Result,
+    types::Timestamp,
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -19,11 +19,13 @@ use crate::dspy_planning::{PlanningInput, PlanningPipeline};
 
 // DSPy execution integration (native-only)
 #[cfg(not(target_arch = "wasm32"))]
-use crate::dspy_execution::{ExecutionPipeline, ExecutionInput, ExecutionDecision, ExecutionAction};
+use crate::dspy_execution::{
+    ExecutionAction, ExecutionDecision, ExecutionInput, ExecutionPipeline,
+};
 
 // DSPy verification integration (native-only)
 #[cfg(not(target_arch = "wasm32"))]
-use crate::dspy_verify::{VerificationPipeline, VerificationInput, VerificationVerdict};
+use crate::dspy_verify::{VerificationInput, VerificationPipeline, VerificationVerdict};
 
 /// Helper to create a TickResult that hibernates.
 fn tick_hibernate() -> TickResult {
@@ -140,11 +142,7 @@ pub struct AutopilotAgent {
 
 impl AutopilotAgent {
     /// Create a new AutopilotAgent.
-    pub fn new(
-        env: Arc<AgentEnv>,
-        repo_url: String,
-        issue_description: String,
-    ) -> Self {
+    pub fn new(env: Arc<AgentEnv>, repo_url: String, issue_description: String) -> Self {
         Self {
             env,
             repo_url,
@@ -234,7 +232,10 @@ impl AutopilotAgent {
     ///
     /// Uses the PlanningPipeline to generate structured, optimizable plans.
     #[cfg(not(target_arch = "wasm32"))]
-    fn try_dspy_planning(&self, ctx: &mut AgentContext<AutopilotState>) -> std::result::Result<TickResult, anyhow::Error> {
+    fn try_dspy_planning(
+        &self,
+        ctx: &mut AgentContext<AutopilotState>,
+    ) -> std::result::Result<TickResult, anyhow::Error> {
         use anyhow::Context;
 
         // Build structured input
@@ -251,11 +252,12 @@ impl AutopilotAgent {
         // Note: In a real async runtime, this would be properly awaited
         let result = tokio::task::block_in_place(|| {
             tokio::runtime::Handle::current().block_on(self.planning_pipeline.plan(&input))
-        }).context("DSPy planning pipeline failed")?;
+        })
+        .context("DSPy planning pipeline failed")?;
 
         // Store structured result as JSON
-        let plan_json = serde_json::to_string_pretty(&result)
-            .context("Failed to serialize planning result")?;
+        let plan_json =
+            serde_json::to_string_pretty(&result).context("Failed to serialize planning result")?;
 
         ctx.state.plan = Some(plan_json.clone());
         ctx.state.phase = AutopilotPhase::Executing;
@@ -264,8 +266,7 @@ impl AutopilotAgent {
             "Executing",
             &format!(
                 "DSPy plan created (complexity: {:?}, confidence: {:.2})",
-                result.complexity,
-                result.confidence
+                result.complexity, result.confidence
             ),
         );
 
@@ -278,7 +279,11 @@ impl AutopilotAgent {
         // Try to read from /repo mount or return placeholder
         if let Ok(readme_bytes) = self.env.read("/repo/README.md") {
             let readme = String::from_utf8_lossy(&readme_bytes);
-            format!("Repository: {}\n\nREADME excerpt:\n{}", self.repo_url, &readme[..readme.len().min(1000)])
+            format!(
+                "Repository: {}\n\nREADME excerpt:\n{}",
+                self.repo_url,
+                &readme[..readme.len().min(1000)]
+            )
         } else {
             format!("Repository: {}", self.repo_url)
         }
@@ -301,11 +306,17 @@ impl AutopilotAgent {
     ///
     /// Uses the ExecutionPipeline to decide next actions step-by-step.
     #[cfg(not(target_arch = "wasm32"))]
-    fn try_dspy_execution(&self, ctx: &mut AgentContext<AutopilotState>) -> std::result::Result<TickResult, anyhow::Error> {
+    fn try_dspy_execution(
+        &self,
+        ctx: &mut AgentContext<AutopilotState>,
+    ) -> std::result::Result<TickResult, anyhow::Error> {
         use anyhow::Context;
 
         // Get current step
-        let step = ctx.state.plan_steps.get(ctx.state.current_step_index)
+        let step = ctx
+            .state
+            .plan_steps
+            .get(ctx.state.current_step_index)
             .context("No more steps to execute")?
             .clone();
 
@@ -318,13 +329,18 @@ impl AutopilotAgent {
 
         self.write_hud_status(
             "Executing",
-            &format!("DSPy execution: step {}/{}", ctx.state.current_step_index + 1, ctx.state.plan_steps.len())
+            &format!(
+                "DSPy execution: step {}/{}",
+                ctx.state.current_step_index + 1,
+                ctx.state.plan_steps.len()
+            ),
         );
 
         // Get decision from DSPy
         let decision = tokio::task::block_in_place(|| {
             tokio::runtime::Handle::current().block_on(self.execution_pipeline.decide(&input))
-        }).context("DSPy execution decision failed")?;
+        })
+        .context("DSPy execution decision failed")?;
 
         // Update execution history
         let history_entry = serde_json::json!({
@@ -333,8 +349,8 @@ impl AutopilotAgent {
             "reasoning": decision.reasoning,
             "progress": decision.progress_estimate
         });
-        let mut history: Vec<serde_json::Value> = serde_json::from_str(&ctx.state.execution_history)
-            .unwrap_or_default();
+        let mut history: Vec<serde_json::Value> =
+            serde_json::from_str(&ctx.state.execution_history).unwrap_or_default();
         history.push(history_entry);
         ctx.state.execution_history = serde_json::to_string(&history).unwrap_or_default();
 
@@ -348,7 +364,10 @@ impl AutopilotAgent {
                 } else {
                     self.write_hud_status(
                         "Executing",
-                        &format!("Step {} complete, moving to next", ctx.state.current_step_index)
+                        &format!(
+                            "Step {} complete, moving to next",
+                            ctx.state.current_step_index
+                        ),
                     );
                 }
                 Ok(tick_reschedule_millis(100))
@@ -360,7 +379,7 @@ impl AutopilotAgent {
                         ctx.state.pending_job_id = Some(job_id.clone());
                         self.write_hud_status(
                             "Executing",
-                            &format!("Submitted {:?} job: {}", decision.next_action, job_id)
+                            &format!("Submitted {:?} job: {}", decision.next_action, job_id),
                         );
                         Ok(tick_reschedule_millis(1000))
                     }
@@ -407,14 +426,16 @@ impl AutopilotAgent {
             "max_cost_usd": self.config.max_cost_per_tick_usd
         });
 
-        let request_bytes = serde_json::to_vec(&request)
-            .map_err(|e| format!("serialize error: {}", e))?;
+        let request_bytes =
+            serde_json::to_vec(&request).map_err(|e| format!("serialize error: {}", e))?;
 
-        let response = self.env.call("/compute/new", &request_bytes)
+        let response = self
+            .env
+            .call("/compute/new", &request_bytes)
             .map_err(|e| format!("submit error: {}", e))?;
 
-        let job: serde_json::Value = serde_json::from_slice(&response)
-            .map_err(|e| format!("parse error: {}", e))?;
+        let job: serde_json::Value =
+            serde_json::from_slice(&response).map_err(|e| format!("parse error: {}", e))?;
 
         job.get("job_id")
             .and_then(|v| v.as_str())
@@ -429,12 +450,14 @@ impl AutopilotAgent {
             if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(plan_json) {
                 // Look for steps array in the parsed JSON
                 if let Some(steps) = parsed.get("steps").and_then(|s| s.as_array()) {
-                    ctx.state.plan_steps = steps.iter()
+                    ctx.state.plan_steps = steps
+                        .iter()
                         .filter_map(|s| {
                             // Steps might be strings or objects with description
                             if let Some(str_val) = s.as_str() {
                                 Some(str_val.to_string())
-                            } else if let Some(desc) = s.get("description").and_then(|d| d.as_str()) {
+                            } else if let Some(desc) = s.get("description").and_then(|d| d.as_str())
+                            {
                                 Some(desc.to_string())
                             } else {
                                 None
@@ -480,7 +503,10 @@ impl AutopilotAgent {
                     Ok(result) => return Ok(result),
                     Err(e) => {
                         tracing::warn!("DSPy execution failed, falling back to legacy: {}", e);
-                        self.write_hud_status("Executing", "Using legacy execution (DSPy unavailable)");
+                        self.write_hud_status(
+                            "Executing",
+                            "Using legacy execution (DSPy unavailable)",
+                        );
                     }
                 }
             }
@@ -557,7 +583,10 @@ impl AutopilotAgent {
     ///
     /// Uses the VerificationPipeline to check requirements and validate the solution.
     #[cfg(not(target_arch = "wasm32"))]
-    fn try_dspy_review(&self, ctx: &mut AgentContext<AutopilotState>) -> std::result::Result<TickResult, anyhow::Error> {
+    fn try_dspy_review(
+        &self,
+        ctx: &mut AgentContext<AutopilotState>,
+    ) -> std::result::Result<TickResult, anyhow::Error> {
         use anyhow::Context;
 
         // Build verification input
@@ -574,7 +603,8 @@ impl AutopilotAgent {
         // Run verification
         let result = tokio::task::block_in_place(|| {
             tokio::runtime::Handle::current().block_on(self.verification_pipeline.verify(&input))
-        }).context("DSPy verification failed")?;
+        })
+        .context("DSPy verification failed")?;
 
         // Store result as JSON
         let result_json = serde_json::to_string_pretty(&result)
@@ -587,7 +617,7 @@ impl AutopilotAgent {
                 ctx.state.phase = AutopilotPhase::Complete;
                 self.write_hud_status(
                     "Complete",
-                    &format!("Verification passed (confidence: {:.2})", result.confidence)
+                    &format!("Verification passed (confidence: {:.2})", result.confidence),
                 );
             }
             VerificationVerdict::Retry => {
@@ -622,7 +652,10 @@ impl AutopilotAgent {
     /// Get solution summary from state.
     #[cfg(not(target_arch = "wasm32"))]
     fn get_solution_summary(&self, ctx: &AgentContext<AutopilotState>) -> String {
-        ctx.state.plan.clone().unwrap_or_else(|| "No plan available".to_string())
+        ctx.state
+            .plan
+            .clone()
+            .unwrap_or_else(|| "No plan available".to_string())
     }
 
     /// Get build output (placeholder - would come from execution phase).
@@ -652,7 +685,8 @@ impl AutopilotAgent {
                 let status: serde_json::Value = serde_json::from_slice(&status_bytes)
                     .unwrap_or_else(|_| serde_json::json!({"status": "unknown"}));
 
-                let status_str = status.get("status")
+                let status_str = status
+                    .get("status")
                     .and_then(|v| v.as_str())
                     .unwrap_or("unknown");
 
@@ -660,7 +694,9 @@ impl AutopilotAgent {
                     "complete" => {
                         // Read result
                         let result_path = format!("/compute/jobs/{}/result", job_id);
-                        let result = self.env.read(&result_path)
+                        let result = self
+                            .env
+                            .read(&result_path)
                             .map(|bytes| String::from_utf8_lossy(&bytes).to_string())
                             .unwrap_or_default();
 
@@ -681,7 +717,10 @@ impl AutopilotAgent {
                     }
                     _ => {
                         // Still processing, reschedule
-                        self.write_hud_status(&format!("{:?}", ctx.state.phase), &format!("Job {} status: {}", job_id, status_str));
+                        self.write_hud_status(
+                            &format!("{:?}", ctx.state.phase),
+                            &format!("Job {} status: {}", job_id, status_str),
+                        );
                         Ok(tick_reschedule_millis(1000))
                     }
                 }
@@ -730,14 +769,16 @@ impl AutopilotAgent {
             "max_cost_usd": self.config.max_cost_per_tick_usd
         });
 
-        let request_bytes = serde_json::to_vec(&request)
-            .map_err(|e| format!("serialize error: {}", e))?;
+        let request_bytes =
+            serde_json::to_vec(&request).map_err(|e| format!("serialize error: {}", e))?;
 
-        let response = self.env.call("/compute/new", &request_bytes)
+        let response = self
+            .env
+            .call("/compute/new", &request_bytes)
             .map_err(|e| format!("submit error: {}", e))?;
 
-        let job: serde_json::Value = serde_json::from_slice(&response)
-            .map_err(|e| format!("parse error: {}", e))?;
+        let job: serde_json::Value =
+            serde_json::from_slice(&response).map_err(|e| format!("parse error: {}", e))?;
 
         job.get("job_id")
             .and_then(|v| v.as_str())
@@ -758,14 +799,16 @@ impl AutopilotAgent {
             "max_cost_usd": self.config.max_cost_per_tick_usd * 2
         });
 
-        let request_bytes = serde_json::to_vec(&request)
-            .map_err(|e| format!("serialize error: {}", e))?;
+        let request_bytes =
+            serde_json::to_vec(&request).map_err(|e| format!("serialize error: {}", e))?;
 
-        let response = self.env.call("/compute/new", &request_bytes)
+        let response = self
+            .env
+            .call("/compute/new", &request_bytes)
             .map_err(|e| format!("submit error: {}", e))?;
 
-        let job: serde_json::Value = serde_json::from_slice(&response)
-            .map_err(|e| format!("parse error: {}", e))?;
+        let job: serde_json::Value =
+            serde_json::from_slice(&response).map_err(|e| format!("parse error: {}", e))?;
 
         job.get("job_id")
             .and_then(|v| v.as_str())
@@ -785,14 +828,16 @@ impl AutopilotAgent {
             "max_cost_usd": self.config.max_cost_per_tick_usd
         });
 
-        let request_bytes = serde_json::to_vec(&request)
-            .map_err(|e| format!("serialize error: {}", e))?;
+        let request_bytes =
+            serde_json::to_vec(&request).map_err(|e| format!("serialize error: {}", e))?;
 
-        let response = self.env.call("/compute/new", &request_bytes)
+        let response = self
+            .env
+            .call("/compute/new", &request_bytes)
             .map_err(|e| format!("submit error: {}", e))?;
 
-        let job: serde_json::Value = serde_json::from_slice(&response)
-            .map_err(|e| format!("parse error: {}", e))?;
+        let job: serde_json::Value =
+            serde_json::from_slice(&response).map_err(|e| format!("parse error: {}", e))?;
 
         job.get("job_id")
             .and_then(|v| v.as_str())
@@ -804,8 +849,7 @@ impl AutopilotAgent {
     fn build_planning_prompt(&self) -> String {
         format!(
             "Repository: {}\n\nIssue to solve:\n{}\n\nPlease analyze this issue and create a detailed implementation plan.",
-            self.repo_url,
-            self.issue_description
+            self.repo_url, self.issue_description
         )
     }
 

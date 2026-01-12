@@ -42,10 +42,10 @@ pub mod error;
 pub mod policy;
 pub mod scheduler;
 pub mod trace;
-pub mod types;
-pub mod verification;
 #[cfg(feature = "trace-db")]
 pub mod trace_db;
+pub mod types;
+pub mod verification;
 
 #[cfg(test)]
 mod bench_stats;
@@ -56,9 +56,9 @@ pub use error::{FrlmError, Result};
 pub use policy::{FrlmPolicy, Quorum, QuorumPolicy};
 pub use scheduler::SubQueryScheduler;
 pub use trace::{TraceEmitter, TraceEvent};
-pub use types::*;
 #[cfg(feature = "trace-db")]
 pub use trace_db::TraceDbWriter;
+pub use types::*;
 
 // DSPy signatures for FRLM
 pub use dspy_signatures::{

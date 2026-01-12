@@ -17,8 +17,8 @@ use frlm::error::{FrlmError, Result as FrlmResult};
 use frlm::policy::FrlmPolicy;
 use frlm::trace_db::TraceDbWriter;
 use frlm::types::{Fragment, FrlmProgram, SubQuery, SubQueryResult, Venue};
-use k256::schnorr::signature::Signer;
 use k256::schnorr::SigningKey;
+use k256::schnorr::signature::Signer;
 use nostr::nip90::KIND_JOB_RLM_SUBQUERY;
 use nostr::{JobInput, JobRequest, JobStatus};
 use nostr_client::dvm::DvmClient;
@@ -62,7 +62,10 @@ pub struct RlmArgs {
     pub backend: String,
 
     /// Relay URLs (comma-separated)
-    #[arg(long, default_value = "wss://nexus.openagents.com,wss://relay.damus.io,wss://nos.lol")]
+    #[arg(
+        long,
+        default_value = "wss://nexus.openagents.com,wss://relay.damus.io,wss://nos.lol"
+    )]
     pub relay: String,
 
     /// Chunk size in characters (for file processing)
@@ -253,8 +256,14 @@ struct LocalSubmitter {
 }
 
 impl LocalSubmitter {
-    fn new(executor: Arc<dyn LocalExecutor>, result_tx: tokio_mpsc::Sender<SubQueryResult>) -> Self {
-        Self { executor, result_tx }
+    fn new(
+        executor: Arc<dyn LocalExecutor>,
+        result_tx: tokio_mpsc::Sender<SubQueryResult>,
+    ) -> Self {
+        Self {
+            executor,
+            result_tx,
+        }
     }
 }
 
@@ -383,17 +392,20 @@ impl SubQuerySubmitter for SwarmSubmitter {
                     let feedback_start = Instant::now();
 
                     while feedback_start.elapsed() < feedback_timeout {
-                        match tokio::time::timeout(Duration::from_millis(500), feedback_rx.recv()).await {
+                        match tokio::time::timeout(Duration::from_millis(500), feedback_rx.recv())
+                            .await
+                        {
                             Ok(Some(feedback_event)) => {
                                 if feedback_event.feedback.status == JobStatus::PaymentRequired {
                                     if let Some(bolt11) = &feedback_event.feedback.bolt11 {
-                                        let prepare = match wallet.prepare_send_payment(bolt11, None).await {
-                                            Ok(prepare) => prepare,
-                                            Err(err) => {
-                                                eprintln!("Payment prepare failed: {}", err);
-                                                break;
-                                            }
-                                        };
+                                        let prepare =
+                                            match wallet.prepare_send_payment(bolt11, None).await {
+                                                Ok(prepare) => prepare,
+                                                Err(err) => {
+                                                    eprintln!("Payment prepare failed: {}", err);
+                                                    break;
+                                                }
+                                            };
 
                                         if let Err(err) = wallet.send_payment(prepare, None).await {
                                             eprintln!("Payment failed: {}", err);
@@ -463,7 +475,10 @@ async fn run_history(limit: u32) -> anyhow::Result<()> {
 
     println!("Recent RLM Runs");
     println!("================");
-    println!("{:<12} {:<10} {:>8} {:>10} {}", "RUN ID", "STATUS", "COST", "DURATION", "QUERY");
+    println!(
+        "{:<12} {:<10} {:>8} {:>10} {}",
+        "RUN ID", "STATUS", "COST", "DURATION", "QUERY"
+    );
     println!("{}", "-".repeat(72));
 
     for run in runs {
@@ -539,10 +554,7 @@ async fn run_sync(run_id: String, api: String) -> anyhow::Result<()> {
             created_at: run.created_at,
             completed_at: run.completed_at,
         },
-        trace_events: trace_events
-            .into_iter()
-            .map(to_sync_trace_event)
-            .collect(),
+        trace_events: trace_events.into_iter().map(to_sync_trace_event).collect(),
     };
     let event_count = payload.trace_events.len();
     let payload_run_id = payload.run.id.clone();
@@ -655,24 +667,27 @@ pub async fn run(args: RlmArgs) -> anyhow::Result<()> {
         None
     };
 
-    let local_executor: Option<Arc<dyn LocalExecutor>> = if args.local_only || args.backend != "auto" {
-        Some(Arc::new(LocalBackendExecutor::new().await?))
-    } else {
-        match LocalBackendExecutor::new().await {
-            Ok(executor) => Some(Arc::new(executor)),
-            Err(err) => {
-                eprintln!("Local fallback unavailable: {}", err);
-                None
+    let local_executor: Option<Arc<dyn LocalExecutor>> =
+        if args.local_only || args.backend != "auto" {
+            Some(Arc::new(LocalBackendExecutor::new().await?))
+        } else {
+            match LocalBackendExecutor::new().await {
+                Ok(executor) => Some(Arc::new(executor)),
+                Err(err) => {
+                    eprintln!("Local fallback unavailable: {}", err);
+                    None
+                }
             }
-        }
-    };
+        };
 
     let run_result = if args.local_only || args.backend == "codex" {
         let executor = local_executor
             .as_ref()
             .ok_or_else(|| anyhow::anyhow!("Local execution requested but no backend available"))?;
         let submitter = LocalSubmitter::new(Arc::clone(executor), conductor.result_sender());
-        conductor.run(program, &submitter, Some(executor.as_ref())).await
+        conductor
+            .run(program, &submitter, Some(executor.as_ref()))
+            .await
     } else {
         let client = Arc::new(create_dvm_client()?);
         let wallet = Arc::new(create_wallet().await?);

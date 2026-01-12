@@ -559,9 +559,10 @@ pub use nip40::{
 // NIP-42: Authentication of Clients to Relays
 pub use nip42::{
     AUTH_KIND, AUTH_REQUIRED_PREFIX, CHALLENGE_TAG, MAX_TIME_DIFF, Nip42Error, RELAY_TAG,
-    RESTRICTED_PREFIX, create_auth_event_tags, create_auth_event_template, create_auth_required_message,
-    create_restricted_message, get_challenge, get_relay_url, is_auth_event, is_auth_required_error,
-    is_restricted_error, normalize_relay_url, validate_auth_event,
+    RESTRICTED_PREFIX, create_auth_event_tags, create_auth_event_template,
+    create_auth_required_message, create_restricted_message, get_challenge, get_relay_url,
+    is_auth_event, is_auth_required_error, is_restricted_error, normalize_relay_url,
+    validate_auth_event,
 };
 
 // NIP-43: Relay Access Metadata and Requests
@@ -772,9 +773,8 @@ pub use nip72::{
 // NIP-73: External Content IDs
 pub use nip73::{
     EXTERNAL_ID_TAG, EXTERNAL_KIND_TAG, ExternalContent, ExternalContentType, Nip73Error,
-    add_external_content, bitcoin_address, bitcoin_tx, doi, geohash,
-    get_external_content_refs, hashtag, isan, isbn, podcast_episode, podcast_feed,
-    podcast_publisher, web,
+    add_external_content, bitcoin_address, bitcoin_tx, doi, geohash, get_external_content_refs,
+    hashtag, isan, isbn, podcast_episode, podcast_feed, podcast_publisher, web,
 };
 
 // NIP-75: Zap Goals

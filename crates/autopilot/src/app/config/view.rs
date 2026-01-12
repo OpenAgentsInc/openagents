@@ -1,8 +1,8 @@
+use crate::app::AppState;
 use crate::app::catalog::HookConfig;
-use crate::app::events::{format_keybinding, CoderMode};
+use crate::app::events::{CoderMode, format_keybinding};
 use crate::app::permissions;
 use crate::app::ui::theme_label;
-use crate::app::AppState;
 use crate::keybindings::{Action as KeyAction, Keybinding};
 
 use super::models::ModelOption;
@@ -226,9 +226,7 @@ pub(crate) fn settings_rows(
         SettingsTab::Mcp => {
             let summary = format!(
                 "project {}, runtime {}, disabled {}",
-                snapshot.mcp_project_count,
-                snapshot.mcp_runtime_count,
-                snapshot.mcp_disabled_count
+                snapshot.mcp_project_count, snapshot.mcp_runtime_count, snapshot.mcp_disabled_count
             );
             rows.push(SettingsRow {
                 item: SettingsItem::McpSummary,

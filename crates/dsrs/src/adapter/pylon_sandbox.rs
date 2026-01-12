@@ -10,13 +10,15 @@
 //! resource profiles and verification characteristics.
 
 use anyhow::{Context, Result};
-use nostr::{JobInput, JobRequest as NostrJobRequest, Keypair, generate_secret_key, get_public_key};
+use nostr::{
+    JobInput, JobRequest as NostrJobRequest, Keypair, generate_secret_key, get_public_key,
+};
 use nostr_client::dvm::DvmClient;
-use protocol::jobs::{JobRequest, SandboxRunRequest, SandboxRunResponse};
 use protocol::jobs::sandbox::{
     CommandResult, EnvInfo, NetworkPolicy, RepoMount, ResourceLimits, SandboxCommand,
     SandboxConfig, SandboxStatus,
 };
+use protocol::jobs::{JobRequest, SandboxRunRequest, SandboxRunResponse};
 use protocol::provenance::Provenance;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -85,7 +87,9 @@ impl Default for PylonSandboxConfig {
         Self {
             relay_url: "wss://nexus.openagents.com".to_string(),
             profile: SandboxProfile::Medium,
-            default_image: "sha256:0000000000000000000000000000000000000000000000000000000000000000".to_string(),
+            default_image:
+                "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+                    .to_string(),
             network_policy: NetworkPolicy::None,
             result_timeout_ms: 300_000, // 5 minutes
         }
@@ -266,7 +270,9 @@ impl PylonSandboxProvider {
         };
 
         // Compute job hash for tracking
-        let job_hash = request.compute_hash().context("Failed to compute job hash")?;
+        let job_hash = request
+            .compute_hash()
+            .context("Failed to compute job hash")?;
 
         // NIP-90 kind for sandbox jobs
         const KIND_JOB_SANDBOX: u16 = 5102;
@@ -304,20 +310,15 @@ impl PylonSandboxProvider {
             .await_result(&submission.event_id, timeout)
             .await
             .map_err(|e| {
-                anyhow::anyhow!(
-                    "Sandbox job timed out or failed after {:?}: {}",
-                    timeout,
-                    e
-                )
+                anyhow::anyhow!("Sandbox job timed out or failed after {:?}: {}", timeout, e)
             })?;
 
         // Parse the result content back into the response type
-        let response: SandboxRunResponse = serde_json::from_str(&result.content).context(
-            format!(
+        let response: SandboxRunResponse =
+            serde_json::from_str(&result.content).context(format!(
                 "Failed to parse sandbox result: {}",
                 &result.content[..100.min(result.content.len())]
-            ),
-        )?;
+            ))?;
 
         Ok(response)
     }
@@ -372,15 +373,17 @@ impl PylonSandboxProvider {
     }
 
     /// Run multiple commands.
-    pub async fn run_commands(&self, commands: Vec<impl Into<String>>) -> Result<SandboxRunResponse> {
+    pub async fn run_commands(
+        &self,
+        commands: Vec<impl Into<String>>,
+    ) -> Result<SandboxRunResponse> {
         let request = self.create_request(commands.into_iter().map(|c| c.into()).collect());
         self.run(request).await
     }
 
     /// Check if all commands succeeded.
     pub fn all_succeeded(response: &SandboxRunResponse) -> bool {
-        response.status == SandboxStatus::Success
-            && response.runs.iter().all(|r| r.exit_code == 0)
+        response.status == SandboxStatus::Success && response.runs.iter().all(|r| r.exit_code == 0)
     }
 
     /// Get the public key of this provider as hex string.
@@ -453,10 +456,8 @@ mod tests {
             .with_profile(SandboxProfile::Small)
             .with_image("sha256:test123");
 
-        let request = provider.create_request(vec![
-            "cargo build".to_string(),
-            "cargo test".to_string(),
-        ]);
+        let request =
+            provider.create_request(vec!["cargo build".to_string(), "cargo test".to_string()]);
 
         assert_eq!(request.commands.len(), 2);
         assert_eq!(request.sandbox.image_digest, "sha256:test123");

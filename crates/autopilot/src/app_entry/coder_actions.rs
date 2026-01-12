@@ -9,38 +9,40 @@ use tokio::sync::mpsc;
 use tokio::sync::mpsc::error::TryRecvError;
 use tokio::sync::oneshot;
 
+use crate::app::AppState;
+use crate::app::CoderMode;
 use crate::app::agents::AgentBackendsEvent;
+use crate::app::catalog::SkillUpdate;
 use crate::app::chat::{ChatMessage, MessageRole};
+use crate::app::codex_app_server as app_server;
+use crate::app::codex_runtime::{CodexRuntime, CodexRuntimeConfig};
+use crate::app::config::{ModelOption, SettingsUpdate};
 use crate::app::dvm::{DvmEvent, DvmStatus};
+use crate::app::events::{CommandAction, ModalState, QueryControl, ResponseEvent};
 use crate::app::gateway::GatewayEvent;
 use crate::app::lm_router::LmRouterEvent;
 use crate::app::nexus::NexusEvent;
-use crate::app::spark_wallet::SparkWalletEvent;
-use crate::app::codex_app_server as app_server;
-use crate::app::codex_runtime::{CodexRuntime, CodexRuntimeConfig};
-use crate::app::events::{CommandAction, ModalState, QueryControl, ResponseEvent};
 use crate::app::nip28::{Nip28ConnectionStatus, Nip28Event, Nip28Message};
 use crate::app::nip90::{Nip90ConnectionStatus, Nip90Event};
-use crate::app::workspaces::{
-    conversation_item_from_value, turn_diff_item, ConversationItem, ConversationRole, ReviewState,
-    WorkspaceAccessMode, WorkspaceApprovalRequest, WorkspaceEvent,
+use crate::app::parsing::prompt::{
+    MAX_COMMAND_BYTES, expand_prompt_text_async, format_command_output,
 };
-use crate::app::parsing::prompt::{expand_prompt_text_async, format_command_output, MAX_COMMAND_BYTES};
-use crate::app::utils::truncate_bytes;
-use crate::app::permissions::{coder_mode_default_allow, parse_coder_mode, PermissionPending};
 use crate::app::permissions::request::{PermissionRequest, PermissionResult};
+use crate::app::permissions::{PermissionPending, coder_mode_default_allow, parse_coder_mode};
 use crate::app::session::{SessionInfo, SessionUpdate};
-use crate::app::config::{ModelOption, SettingsUpdate};
-use crate::app::catalog::SkillUpdate;
+use crate::app::spark_wallet::SparkWalletEvent;
 use crate::app::ui::render_app;
-use crate::app::CoderMode;
-use crate::app::AppState;
+use crate::app::utils::truncate_bytes;
+use crate::app::workspaces::{
+    ConversationItem, ConversationRole, ReviewState, WorkspaceAccessMode, WorkspaceApprovalRequest,
+    WorkspaceEvent, conversation_item_from_value, turn_diff_item,
+};
 use crate::autopilot_loop::{DspyStage, TodoStatus, TodoTask};
-use crate::commands::{parse_command, Command, ReviewCommand, ReviewDelivery, ReviewTarget};
+use crate::commands::{Command, ReviewCommand, ReviewDelivery, ReviewTarget, parse_command};
 
 use super::AutopilotApp;
-use super::command_palette_ids;
 use super::COMMAND_PALETTE_ENABLED;
+use super::command_palette_ids;
 use super::commands::handle_command;
 use super::settings::rate_limits_from_snapshot;
 
@@ -242,9 +244,7 @@ impl AutopilotApp {
         let target = match target {
             ReviewTarget::UncommittedChanges => app_server::ReviewTarget::UncommittedChanges,
             ReviewTarget::BaseBranch { branch } => app_server::ReviewTarget::BaseBranch { branch },
-            ReviewTarget::Commit { sha, title } => {
-                app_server::ReviewTarget::Commit { sha, title }
-            }
+            ReviewTarget::Commit { sha, title } => app_server::ReviewTarget::Commit { sha, title },
             ReviewTarget::Custom { instructions } => {
                 app_server::ReviewTarget::Custom { instructions }
             }
@@ -360,106 +360,100 @@ impl AutopilotApp {
                     return;
                 }
             };
-            let CodexRuntime { client, channels, .. } = runtime;
+            let CodexRuntime {
+                client, channels, ..
+            } = runtime;
             let notification_rx = channels.notifications;
             let request_rx = channels.requests;
             let emitter = ResponseEmitter::new(tx.clone(), Some(trace_log.clone()));
 
-            let expanded_prompt = match expand_prompt_with_app_server(
-                &client,
-                &prompt,
-                &cwd,
-                coder_mode,
-            )
-            .await
-            {
-                Ok(result) => result,
-                Err(err) => {
-                    let _ = tx.send(ResponseEvent::Error(err));
-                    window.request_redraw();
-                    let _ = client.shutdown().await;
-                    return;
-                }
-            };
-
-            let (thread_id, model_name) = if let Some(resume_id) = resume_thread_id.clone()
-                .filter(|_| !fork_session)
-            {
-                let resume_params = app_server::ThreadResumeParams {
-                    thread_id: resume_id,
-                    model: model_override.clone(),
-                    model_provider: None,
-                    cwd: Some(cwd.to_string_lossy().to_string()),
-                    approval_policy: Some(approval_policy_for_mode(coder_mode)),
-                    sandbox: Some(sandbox_mode_for_mode(coder_mode)),
-                };
-                let response = match client.thread_resume(resume_params).await {
-                    Ok(response) => response,
+            let expanded_prompt =
+                match expand_prompt_with_app_server(&client, &prompt, &cwd, coder_mode).await {
+                    Ok(result) => result,
                     Err(err) => {
-                        let _ = emitter.send(ResponseEvent::Error(format!(
-                            "Failed to resume codex thread: {}",
-                            err
-                        )));
+                        let _ = tx.send(ResponseEvent::Error(err));
                         window.request_redraw();
                         let _ = client.shutdown().await;
                         return;
                     }
                 };
-                let thread_id = response.thread.id.clone();
-                let model_name = if response.model.is_empty() {
-                    "codex".to_string()
-                } else {
-                    response.model.clone()
-                };
-                (thread_id, model_name)
-            } else {
-                let thread_params = app_server::ThreadStartParams {
-                    model: model_override.clone(),
-                    model_provider: None,
-                    cwd: Some(cwd.to_string_lossy().to_string()),
-                    approval_policy: Some(approval_policy_for_mode(coder_mode)),
-                    sandbox: Some(sandbox_mode_for_mode(coder_mode)),
-                };
 
-                let response = match client.thread_start(thread_params).await {
-                    Ok(response) => response,
-                    Err(err) => {
-                        let _ = emitter.send(ResponseEvent::Error(format!(
-                            "Failed to start codex thread: {}",
-                            err
-                        )));
-                        window.request_redraw();
-                        let _ = client.shutdown().await;
-                        return;
-                    }
-                };
-                let thread_id = response.thread.id.clone();
-                let model_name = if response.model.is_empty() {
-                    "codex".to_string()
+            let (thread_id, model_name) =
+                if let Some(resume_id) = resume_thread_id.clone().filter(|_| !fork_session) {
+                    let resume_params = app_server::ThreadResumeParams {
+                        thread_id: resume_id,
+                        model: model_override.clone(),
+                        model_provider: None,
+                        cwd: Some(cwd.to_string_lossy().to_string()),
+                        approval_policy: Some(approval_policy_for_mode(coder_mode)),
+                        sandbox: Some(sandbox_mode_for_mode(coder_mode)),
+                    };
+                    let response = match client.thread_resume(resume_params).await {
+                        Ok(response) => response,
+                        Err(err) => {
+                            let _ = emitter.send(ResponseEvent::Error(format!(
+                                "Failed to resume codex thread: {}",
+                                err
+                            )));
+                            window.request_redraw();
+                            let _ = client.shutdown().await;
+                            return;
+                        }
+                    };
+                    let thread_id = response.thread.id.clone();
+                    let model_name = if response.model.is_empty() {
+                        "codex".to_string()
+                    } else {
+                        response.model.clone()
+                    };
+                    (thread_id, model_name)
                 } else {
-                    response.model.clone()
+                    let thread_params = app_server::ThreadStartParams {
+                        model: model_override.clone(),
+                        model_provider: None,
+                        cwd: Some(cwd.to_string_lossy().to_string()),
+                        approval_policy: Some(approval_policy_for_mode(coder_mode)),
+                        sandbox: Some(sandbox_mode_for_mode(coder_mode)),
+                    };
+
+                    let response = match client.thread_start(thread_params).await {
+                        Ok(response) => response,
+                        Err(err) => {
+                            let _ = emitter.send(ResponseEvent::Error(format!(
+                                "Failed to start codex thread: {}",
+                                err
+                            )));
+                            window.request_redraw();
+                            let _ = client.shutdown().await;
+                            return;
+                        }
+                    };
+                    let thread_id = response.thread.id.clone();
+                    let model_name = if response.model.is_empty() {
+                        "codex".to_string()
+                    } else {
+                        response.model.clone()
+                    };
+                    (thread_id, model_name)
                 };
-                (thread_id, model_name)
-            };
 
             let run_id = current_timestamp_ms();
             let session_dir = crate::app::config::session_messages_dir(&thread_id);
             wire_log.set_path(session_dir.join(format!("wire-{}.jsonl", run_id)));
             trace_log.set_path(session_dir.join(format!("trace-{}.jsonl", run_id)));
 
-            let (mcp_servers, tools, mcp_error) =
-                match fetch_app_server_mcp_status(&client).await {
-                    Ok(statuses) => {
-                        let tools = mcp_tool_names(&statuses);
-                        let servers = map_mcp_statuses(&statuses);
-                        (servers, tools, None)
-                    }
-                    Err(err) => (
-                        Vec::new(),
-                        Vec::new(),
-                        Some(format!("Failed to fetch MCP status: {}", err)),
-                    ),
-                };
+            let (mcp_servers, tools, mcp_error) = match fetch_app_server_mcp_status(&client).await {
+                Ok(statuses) => {
+                    let tools = mcp_tool_names(&statuses);
+                    let servers = map_mcp_statuses(&statuses);
+                    (servers, tools, None)
+                }
+                Err(err) => (
+                    Vec::new(),
+                    Vec::new(),
+                    Some(format!("Failed to fetch MCP status: {}", err)),
+                ),
+            };
 
             emitter.send(ResponseEvent::SystemInit {
                 model: model_name.clone(),
@@ -555,7 +549,9 @@ impl AutopilotApp {
             };
 
             let emitter = ResponseEmitter::new(tx.clone(), Some(trace_log.clone()));
-            let CodexRuntime { client, channels, .. } = runtime;
+            let CodexRuntime {
+                client, channels, ..
+            } = runtime;
             let notification_rx = channels.notifications;
             let request_rx = channels.requests;
 
@@ -744,7 +740,11 @@ impl AutopilotApp {
                     } else {
                         state.chat.messages.len().saturating_sub(1)
                     };
-                    tracing::debug!("Tool call start: {} (message_index={})", name, message_index);
+                    tracing::debug!(
+                        "Tool call start: {} (message_index={})",
+                        name,
+                        message_index
+                    );
                     state
                         .tools
                         .start_tool_call(name, tool_use_id, message_index);
@@ -832,7 +832,7 @@ impl AutopilotApp {
                             }
                             // Cost estimation: placeholder for model pricing
                             let cost = (meta.input_tokens.unwrap_or(0) as f64 * 3.0 / 1_000_000.0)
-                                     + (meta.output_tokens.unwrap_or(0) as f64 * 15.0 / 1_000_000.0);
+                                + (meta.output_tokens.unwrap_or(0) as f64 * 15.0 / 1_000_000.0);
                             state.session.session_usage.total_cost_usd += cost;
                         }
                         state.session.session_usage.num_turns += 1;
@@ -922,11 +922,14 @@ impl AutopilotApp {
                         slash_commands,
                     };
                     state.catalogs.update_mcp_status(mcp_servers, None);
-                    if let Some(parsed_mode) = parse_coder_mode(&state.session.session_info.permission_mode)
+                    if let Some(parsed_mode) =
+                        parse_coder_mode(&state.session.session_info.permission_mode)
                     {
                         state.permissions.coder_mode = parsed_mode;
-                        state.permissions.permission_default_allow =
-                            coder_mode_default_allow(parsed_mode, state.permissions.permission_default_allow);
+                        state.permissions.permission_default_allow = coder_mode_default_allow(
+                            parsed_mode,
+                            state.permissions.permission_default_allow,
+                        );
                     }
                     state.session.refresh_session_cards(state.chat.is_thinking);
                     needs_redraw = true;
@@ -1055,7 +1058,10 @@ impl AutopilotApp {
         let mut needs_redraw = false;
 
         for event in session_events {
-            if matches!(event.action, wgpui::components::molecules::SessionAction::Delete) {
+            if matches!(
+                event.action,
+                wgpui::components::molecules::SessionAction::Delete
+            ) {
                 self.archive_session(event.session_id);
             } else if let Some(state) = &mut self.state {
                 state.handle_session_card_action(event.action, event.session_id);
@@ -1075,7 +1081,9 @@ impl AutopilotApp {
                         needs_redraw = true;
                     }
                     SessionUpdate::Remove { session_id } => {
-                        state.session.remove_session_entry(&session_id, state.chat.is_thinking);
+                        state
+                            .session
+                            .remove_session_entry(&session_id, state.chat.is_thinking);
                         needs_redraw = true;
                     }
                     SessionUpdate::Error(message) => {
@@ -1106,7 +1114,9 @@ impl AutopilotApp {
         };
 
         if state.chat.is_thinking {
-            state.push_system_message("Cannot delete sessions during an active request.".to_string());
+            state.push_system_message(
+                "Cannot delete sessions during an active request.".to_string(),
+            );
             return;
         }
 
@@ -1162,7 +1172,9 @@ impl AutopilotApp {
                 let _ = client.shutdown().await;
             });
         } else {
-            state.session.remove_session_entry(&session_id, state.chat.is_thinking);
+            state
+                .session
+                .remove_session_entry(&session_id, state.chat.is_thinking);
         }
     }
 
@@ -1250,7 +1262,10 @@ impl AutopilotApp {
                     state.settings.app_server_model_error = None;
                     needs_redraw = true;
                 }
-                SettingsUpdate::ConfigLoaded { model, reasoning_effort } => {
+                SettingsUpdate::ConfigLoaded {
+                    model,
+                    reasoning_effort,
+                } => {
                     if let Some(model_id) = model {
                         state.settings.coder_settings.model = Some(model_id.clone());
                         state.settings.selected_model = ModelOption::from_id(&model_id);
@@ -1310,7 +1325,9 @@ impl AutopilotApp {
                 Ok(manifest) => {
                     tracing::info!("Autopilot: cached OANIX manifest");
                     state.autopilot.oanix_manifest = Some(manifest);
-                    state.wallet.refresh(state.autopilot.oanix_manifest.as_ref());
+                    state
+                        .wallet
+                        .refresh(state.autopilot.oanix_manifest.as_ref());
                     if matches!(state.modal_state, ModalState::AutopilotIssues) {
                         state.refresh_issue_tracker();
                     }
@@ -1342,9 +1359,8 @@ impl AutopilotApp {
                 Ok(event) => event,
                 Err(TryRecvError::Empty) => break,
                 Err(TryRecvError::Disconnected) => {
-                    state.nip28.status = Nip28ConnectionStatus::Error(
-                        "NIP-28 runtime disconnected".to_string(),
-                    );
+                    state.nip28.status =
+                        Nip28ConnectionStatus::Error("NIP-28 runtime disconnected".to_string());
                     should_redraw = true;
                     break;
                 }
@@ -1420,9 +1436,8 @@ impl AutopilotApp {
                 Ok(event) => event,
                 Err(TryRecvError::Empty) => break,
                 Err(TryRecvError::Disconnected) => {
-                    state.nip90.status = Nip90ConnectionStatus::Error(
-                        "NIP-90 runtime disconnected".to_string(),
-                    );
+                    state.nip90.status =
+                        Nip90ConnectionStatus::Error("NIP-90 runtime disconnected".to_string());
                     should_redraw = true;
                     break;
                 }
@@ -1729,7 +1744,10 @@ impl AutopilotApp {
                         .set_active_workspace(state.workspaces.active_workspace_id.as_deref());
                     should_redraw = true;
                 }
-                WorkspaceEvent::WorkspaceAddFailed { workspace_id, error } => {
+                WorkspaceEvent::WorkspaceAddFailed {
+                    workspace_id,
+                    error,
+                } => {
                     state.push_system_message(format!(
                         "Workspace add failed ({}): {}",
                         workspace_id, error
@@ -1741,7 +1759,10 @@ impl AutopilotApp {
                     state.workspaces.request_composer_data(&workspace_id);
                     should_redraw = true;
                 }
-                WorkspaceEvent::WorkspaceConnectFailed { workspace_id, error } => {
+                WorkspaceEvent::WorkspaceConnectFailed {
+                    workspace_id,
+                    error,
+                } => {
                     state.push_system_message(format!(
                         "Workspace connect failed ({}): {}",
                         workspace_id, error
@@ -1755,7 +1776,10 @@ impl AutopilotApp {
                     state.workspaces.apply_threads(workspace_id, threads);
                     should_redraw = true;
                 }
-                WorkspaceEvent::ThreadsListFailed { workspace_id, error } => {
+                WorkspaceEvent::ThreadsListFailed {
+                    workspace_id,
+                    error,
+                } => {
                     state.push_system_message(format!(
                         "Thread list failed ({}): {}",
                         workspace_id, error
@@ -1768,7 +1792,9 @@ impl AutopilotApp {
                     text,
                 } => {
                     state.workspaces.ensure_thread(&workspace_id, &thread_id);
-                    state.workspaces.set_active_thread(&workspace_id, &thread_id);
+                    state
+                        .workspaces
+                        .set_active_thread(&workspace_id, &thread_id);
                     state
                         .workspaces
                         .update_thread_preview(&workspace_id, &thread_id, &text);
@@ -1785,7 +1811,10 @@ impl AutopilotApp {
                         .mark_processing(&workspace_id, &thread_id, true);
                     should_redraw = true;
                 }
-                WorkspaceEvent::UserMessageFailed { workspace_id, error } => {
+                WorkspaceEvent::UserMessageFailed {
+                    workspace_id,
+                    error,
+                } => {
                     state.push_system_message(format!(
                         "Workspace message failed ({}): {}",
                         workspace_id, error
@@ -1803,7 +1832,9 @@ impl AutopilotApp {
                     label,
                 } => {
                     state.workspaces.ensure_thread(&workspace_id, &thread_id);
-                    state.workspaces.set_active_thread(&workspace_id, &thread_id);
+                    state
+                        .workspaces
+                        .set_active_thread(&workspace_id, &thread_id);
                     let item = ConversationItem::Review {
                         id: format!("review-start-{}-{}", thread_id, current_timestamp_ms()),
                         state: ReviewState::Started,
@@ -1820,7 +1851,10 @@ impl AutopilotApp {
                         .mark_reviewing(&workspace_id, &thread_id, true);
                     should_redraw = true;
                 }
-                WorkspaceEvent::ReviewFailed { workspace_id, error } => {
+                WorkspaceEvent::ReviewFailed {
+                    workspace_id,
+                    error,
+                } => {
                     state.push_system_message(format!(
                         "Review failed ({}): {}",
                         workspace_id, error
@@ -1844,7 +1878,10 @@ impl AutopilotApp {
                         .set_models_for_workspace(&workspace_id, models);
                     should_redraw = true;
                 }
-                WorkspaceEvent::ModelListFailed { workspace_id, error } => {
+                WorkspaceEvent::ModelListFailed {
+                    workspace_id,
+                    error,
+                } => {
                     state.workspaces.set_models_error(&workspace_id, error);
                     should_redraw = true;
                 }
@@ -1861,7 +1898,10 @@ impl AutopilotApp {
                     }
                     should_redraw = true;
                 }
-                WorkspaceEvent::SkillsListFailed { workspace_id, error } => {
+                WorkspaceEvent::SkillsListFailed {
+                    workspace_id,
+                    error,
+                } => {
                     state.workspaces.set_skills_error(&workspace_id, error);
                     should_redraw = true;
                 }
@@ -1873,7 +1913,10 @@ impl AutopilotApp {
                         should_redraw = true;
                     }
                 }
-                WorkspaceEvent::AppServerRequest { workspace_id, request } => {
+                WorkspaceEvent::AppServerRequest {
+                    workspace_id,
+                    request,
+                } => {
                     let is_approval = request.method.contains("requestApproval");
                     if is_approval {
                         let access_mode = state
@@ -2008,9 +2051,8 @@ impl AutopilotApp {
             }
             "item/agentMessage/delta" => {
                 if let Some(params) = notification.params {
-                    if let Ok(event) = serde_json::from_value::<
-                        app_server::AgentMessageDeltaNotification,
-                    >(params)
+                    if let Ok(event) =
+                        serde_json::from_value::<app_server::AgentMessageDeltaNotification>(params)
                     {
                         state.workspaces.append_agent_delta(
                             workspace_id,
@@ -2106,9 +2148,11 @@ impl AutopilotApp {
                             }
                         }
                         if let Some(item) = conversation_item_from_value(&event.item) {
-                            state
-                                .workspaces
-                                .apply_item_update(workspace_id, &event.thread_id, item);
+                            state.workspaces.apply_item_update(
+                                workspace_id,
+                                &event.thread_id,
+                                item,
+                            );
                             updated = true;
                         }
                     }
@@ -2142,9 +2186,11 @@ impl AutopilotApp {
                             }
                         }
                         if let Some(item) = conversation_item_from_value(&event.item) {
-                            state
-                                .workspaces
-                                .apply_item_update(workspace_id, &event.thread_id, item);
+                            state.workspaces.apply_item_update(
+                                workspace_id,
+                                &event.thread_id,
+                                item,
+                            );
                             updated = true;
                         }
                     }
@@ -2175,11 +2221,9 @@ impl AutopilotApp {
                             role: ConversationRole::Assistant,
                             text: "Context compacted.".to_string(),
                         };
-                        state.workspaces.apply_item_update(
-                            workspace_id,
-                            &event.thread_id,
-                            item,
-                        );
+                        state
+                            .workspaces
+                            .apply_item_update(workspace_id, &event.thread_id, item);
                         updated = true;
                     }
                 }
@@ -2194,11 +2238,9 @@ impl AutopilotApp {
                             role: ConversationRole::Assistant,
                             text: format!("Error: {}", event.error.message),
                         };
-                        state.workspaces.apply_item_update(
-                            workspace_id,
-                            &event.thread_id,
-                            item,
-                        );
+                        state
+                            .workspaces
+                            .apply_item_update(workspace_id, &event.thread_id, item);
                         updated = true;
                     }
                 }
@@ -2216,7 +2258,10 @@ impl AutopilotApp {
         // Check if we received updated conversation history from Adjutant
         if let Some(rx) = &mut state.autopilot.autopilot_history_rx {
             if let Ok(updated_history) = rx.try_recv() {
-                tracing::info!("Autopilot: updated conversation history ({} turns)", updated_history.len());
+                tracing::info!(
+                    "Autopilot: updated conversation history ({} turns)",
+                    updated_history.len()
+                );
                 state.autopilot.autopilot_history = updated_history;
                 state.autopilot.autopilot_history_rx = None; // Done receiving
             }
@@ -2252,7 +2297,9 @@ impl AutopilotApp {
             command_palette_ids::MODEL_PICKER => Some(handle_command(state, Command::Model)),
             command_palette_ids::SESSION_LIST => Some(handle_command(state, Command::SessionList)),
             command_palette_ids::SESSION_FORK => Some(handle_command(state, Command::SessionFork)),
-            command_palette_ids::SESSION_EXPORT => Some(handle_command(state, Command::SessionExport)),
+            command_palette_ids::SESSION_EXPORT => {
+                Some(handle_command(state, Command::SessionExport))
+            }
             command_palette_ids::CLEAR_CONVERSATION => Some(handle_command(state, Command::Clear)),
             command_palette_ids::UNDO_LAST => Some(handle_command(state, Command::Undo)),
             command_palette_ids::COMPACT_CONTEXT => Some(handle_command(state, Command::Compact)),
@@ -2260,7 +2307,9 @@ impl AutopilotApp {
                 state.interrupt_query();
                 None
             }
-            command_palette_ids::PERMISSION_RULES => Some(handle_command(state, Command::PermissionRules)),
+            command_palette_ids::PERMISSION_RULES => {
+                Some(handle_command(state, Command::PermissionRules))
+            }
             command_palette_ids::MODE_CYCLE => {
                 state
                     .permissions
@@ -2281,10 +2330,9 @@ impl AutopilotApp {
                 None
             }
             command_palette_ids::MODE_AUTOPILOT => {
-                state.permissions.set_coder_mode(
-                    CoderMode::Autopilot,
-                    &mut state.session.session_info,
-                );
+                state
+                    .permissions
+                    .set_coder_mode(CoderMode::Autopilot, &mut state.session.session_info);
                 None
             }
             command_palette_ids::TOOLS_LIST => Some(handle_command(state, Command::ToolsList)),
@@ -2366,7 +2414,9 @@ impl AutopilotApp {
                 None
             }
             command_palette_ids::SKILLS_LIST => Some(handle_command(state, Command::Skills)),
-            command_palette_ids::SKILLS_RELOAD => Some(handle_command(state, Command::SkillsReload)),
+            command_palette_ids::SKILLS_RELOAD => {
+                Some(handle_command(state, Command::SkillsReload))
+            }
             command_palette_ids::HOOKS_OPEN => Some(handle_command(state, Command::Hooks)),
             command_palette_ids::HOOKS_RELOAD => Some(handle_command(state, Command::HooksReload)),
             command_palette_ids::SIDEBAR_LEFT => {
@@ -2871,11 +2921,7 @@ async fn expand_prompt_with_app_server(
             let command_label = command.clone();
             let response = client
                 .command_exec(app_server::CommandExecParams {
-                    command: vec![
-                        "bash".to_string(),
-                        "-lc".to_string(),
-                        command,
-                    ],
+                    command: vec!["bash".to_string(), "-lc".to_string(), command],
                     cwd: Some(cwd.to_string_lossy().to_string()),
                     sandbox_policy: Some(sandbox_policy),
                     timeout_ms: None,
@@ -2912,13 +2958,18 @@ async fn handle_app_server_request(
     let params_value = params.clone();
 
     let parsed = match method.as_str() {
-        "item/commandExecution/requestApproval" => {
-            params.and_then(|value| {
+        "item/commandExecution/requestApproval" => params
+            .and_then(|value| {
                 serde_json::from_value::<app_server::CommandExecutionRequestApprovalParams>(value)
                     .ok()
             })
-            .map(|parsed| (ApprovalKind::CommandExecution, parsed.item_id, parsed.reason))
-        }
+            .map(|parsed| {
+                (
+                    ApprovalKind::CommandExecution,
+                    parsed.item_id,
+                    parsed.reason,
+                )
+            }),
         "item/fileChange/requestApproval" => params
             .and_then(|value| {
                 serde_json::from_value::<app_server::FileChangeRequestApprovalParams>(value).ok()
@@ -2976,13 +3027,11 @@ async fn handle_app_server_request(
 
     let (decision, accept_settings, decline_reason) = match decision_result {
         Some(PermissionResult::Allow {
-            accept_for_session,
-            ..
+            accept_for_session, ..
         }) => {
             let accept_settings = if matches!(kind, ApprovalKind::CommandExecution) {
-                accept_for_session.map(|for_session| app_server::ApprovalAcceptSettings {
-                    for_session,
-                })
+                accept_for_session
+                    .map(|for_session| app_server::ApprovalAcceptSettings { for_session })
             } else {
                 None
             };
@@ -3059,9 +3108,8 @@ fn build_permission_request(
             })
         }
         ApprovalKind::FileChange => {
-            let (paths, first_path, _) = approval_item
-                .map(extract_file_changes)
-                .unwrap_or_default();
+            let (paths, first_path, _) =
+                approval_item.map(extract_file_changes).unwrap_or_default();
             let mut input = serde_json::json!({ "files": paths });
             if let Some(path) = first_path.clone() {
                 input["file_path"] = Value::String(path);
@@ -3204,10 +3252,7 @@ fn handle_app_server_item_started(
             let server = item_string(item, "server").unwrap_or_else(|| "server".to_string());
             let tool = item_string(item, "tool").unwrap_or_else(|| "tool".to_string());
             let name = format!("mcp__{}__{}", server, tool);
-            let args = item
-                .get("arguments")
-                .cloned()
-                .unwrap_or(Value::Null);
+            let args = item.get("arguments").cloned().unwrap_or(Value::Null);
             let _ = emitter.send(ResponseEvent::ToolCallStart {
                 name,
                 tool_use_id: id.clone(),
@@ -3342,15 +3387,13 @@ fn handle_app_server_item_completed(
                 .to_ascii_lowercase();
             let (paths, _first_path, diff) = extract_file_changes(item);
             let buffered = file_change_outputs.remove(&id).unwrap_or_default();
-            let diff_text = diff
-                .filter(|value| !value.trim().is_empty())
-                .or_else(|| {
-                    if buffered.trim().is_empty() {
-                        None
-                    } else {
-                        Some(buffered)
-                    }
-                });
+            let diff_text = diff.filter(|value| !value.trim().is_empty()).or_else(|| {
+                if buffered.trim().is_empty() {
+                    None
+                } else {
+                    Some(buffered)
+                }
+            });
             let output_value = diff_text.map(|text| serde_json::json!({ "diff": text }));
             let content = if paths.is_empty() {
                 "File change completed.".to_string()
@@ -3422,7 +3465,9 @@ fn handle_app_server_item_completed(
 }
 
 fn item_id(item: &Value) -> Option<String> {
-    item.get("id").and_then(Value::as_str).map(|s| s.to_string())
+    item.get("id")
+        .and_then(Value::as_str)
+        .map(|s| s.to_string())
 }
 
 fn item_string(item: &Value, key: &str) -> Option<String> {

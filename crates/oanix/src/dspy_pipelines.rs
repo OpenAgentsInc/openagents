@@ -6,7 +6,7 @@
 use crate::dspy_lifecycle::{Complexity, IssueSelectionSignature};
 use crate::dspy_situation::{PriorityAction, SituationAssessmentSignature, Urgency};
 use anyhow::Result;
-use dsrs::{example, LM, Predict, Predictor};
+use dsrs::{LM, Predict, Predictor, example};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 

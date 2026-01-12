@@ -1,8 +1,8 @@
 //! Vim key handler - dispatches keys to appropriate mode handlers
 
 use crate::{
-    editor::{CharClass, Key, KeyResult, Modifiers, Position, TextRange, VimEditor},
     Mode, Motion, Object, Operator, VimState,
+    editor::{CharClass, Key, KeyResult, Modifiers, Position, TextRange, VimEditor},
 };
 
 /// Vim handler that processes keys and updates editor state
@@ -41,7 +41,12 @@ impl VimHandler {
     }
 
     /// Handle a key press
-    pub fn handle_key<E: VimEditor>(&mut self, key: Key, mods: Modifiers, editor: &mut E) -> KeyResult {
+    pub fn handle_key<E: VimEditor>(
+        &mut self,
+        key: Key,
+        mods: Modifiers,
+        editor: &mut E,
+    ) -> KeyResult {
         match self.state.mode {
             Mode::Normal => self.handle_normal(key, mods, editor),
             Mode::Insert => self.handle_insert(key, mods, editor),
@@ -53,7 +58,12 @@ impl VimHandler {
     }
 
     /// Handle key in normal mode
-    fn handle_normal<E: VimEditor>(&mut self, key: Key, mods: Modifiers, editor: &mut E) -> KeyResult {
+    fn handle_normal<E: VimEditor>(
+        &mut self,
+        key: Key,
+        mods: Modifiers,
+        editor: &mut E,
+    ) -> KeyResult {
         // Handle Ctrl combinations first
         if mods.ctrl {
             return self.handle_ctrl_key(key, editor);
@@ -232,7 +242,8 @@ impl VimHandler {
             }
             'V' => {
                 let cursor = editor.cursor();
-                self.state.enter_visual_line((cursor.line(), cursor.column()));
+                self.state
+                    .enter_visual_line((cursor.line(), cursor.column()));
                 KeyResult::ModeChanged(Mode::VisualLine)
             }
 
@@ -348,11 +359,13 @@ impl VimHandler {
 
             // Find motions
             'f' => {
-                self.state.push_operator(Operator::FindForward { before: false });
+                self.state
+                    .push_operator(Operator::FindForward { before: false });
                 KeyResult::Handled
             }
             't' => {
-                self.state.push_operator(Operator::FindForward { before: true });
+                self.state
+                    .push_operator(Operator::FindForward { before: true });
                 KeyResult::Handled
             }
             'F' => {
@@ -361,7 +374,8 @@ impl VimHandler {
                 KeyResult::Handled
             }
             'T' => {
-                self.state.push_operator(Operator::FindBackward { after: true });
+                self.state
+                    .push_operator(Operator::FindBackward { after: true });
                 KeyResult::Handled
             }
             ';' => {
@@ -373,12 +387,14 @@ impl VimHandler {
             ',' => {
                 if let Some(motion) = self.state.last_find.clone() {
                     let reversed = match motion {
-                        Motion::FindChar { char, before } => {
-                            Motion::FindCharBackward { char, after: before }
-                        }
-                        Motion::FindCharBackward { char, after } => {
-                            Motion::FindChar { char, before: after }
-                        }
+                        Motion::FindChar { char, before } => Motion::FindCharBackward {
+                            char,
+                            after: before,
+                        },
+                        Motion::FindCharBackward { char, after } => Motion::FindChar {
+                            char,
+                            before: after,
+                        },
                         _ => motion,
                     };
                     self.execute_motion(reversed, editor);
@@ -639,7 +655,12 @@ impl VimHandler {
     }
 
     /// Handle key in insert mode
-    fn handle_insert<E: VimEditor>(&mut self, key: Key, mods: Modifiers, editor: &mut E) -> KeyResult {
+    fn handle_insert<E: VimEditor>(
+        &mut self,
+        key: Key,
+        mods: Modifiers,
+        editor: &mut E,
+    ) -> KeyResult {
         match key {
             Key::Escape => {
                 // Move cursor back one position on leaving insert mode
@@ -740,7 +761,12 @@ impl VimHandler {
     }
 
     /// Handle key in replace mode
-    fn handle_replace<E: VimEditor>(&mut self, key: Key, mods: Modifiers, editor: &mut E) -> KeyResult {
+    fn handle_replace<E: VimEditor>(
+        &mut self,
+        key: Key,
+        mods: Modifiers,
+        editor: &mut E,
+    ) -> KeyResult {
         match key {
             Key::Escape => {
                 self.state.enter_normal();
@@ -776,7 +802,12 @@ impl VimHandler {
     }
 
     /// Handle key in visual modes
-    fn handle_visual<E: VimEditor>(&mut self, key: Key, mods: Modifiers, editor: &mut E) -> KeyResult {
+    fn handle_visual<E: VimEditor>(
+        &mut self,
+        key: Key,
+        mods: Modifiers,
+        editor: &mut E,
+    ) -> KeyResult {
         if mods.ctrl {
             return self.handle_ctrl_key(key, editor);
         }
@@ -807,7 +838,8 @@ impl VimHandler {
                     KeyResult::ModeChanged(Mode::Normal)
                 } else {
                     let cursor = editor.cursor();
-                    self.state.enter_visual_line((cursor.line(), cursor.column()));
+                    self.state
+                        .enter_visual_line((cursor.line(), cursor.column()));
                     KeyResult::ModeChanged(Mode::VisualLine)
                 }
             }
@@ -1226,7 +1258,8 @@ impl VimHandler {
                 line -= 1;
                 col = editor.line_len(line).saturating_sub(1);
             }
-            let prev_start = self.find_prev_word_start(E::Pos::new(line, col), ignore_punctuation, editor);
+            let prev_start =
+                self.find_prev_word_start(E::Pos::new(line, col), ignore_punctuation, editor);
             line = prev_start.line();
             col = prev_start.column();
         }
@@ -1973,7 +2006,11 @@ impl VimHandler {
     // === Paste operations ===
 
     fn paste_after<E: VimEditor>(&mut self, editor: &mut E) {
-        if let Some(text) = self.state.get_register(self.state.selected_register).map(|s| s.to_string()) {
+        if let Some(text) = self
+            .state
+            .get_register(self.state.selected_register)
+            .map(|s| s.to_string())
+        {
             let cursor = editor.cursor();
 
             if text.ends_with('\n') {
@@ -1993,7 +2030,11 @@ impl VimHandler {
     }
 
     fn paste_before<E: VimEditor>(&mut self, editor: &mut E) {
-        if let Some(text) = self.state.get_register(self.state.selected_register).map(|s| s.to_string()) {
+        if let Some(text) = self
+            .state
+            .get_register(self.state.selected_register)
+            .map(|s| s.to_string())
+        {
             let cursor = editor.cursor();
 
             if text.ends_with('\n') {

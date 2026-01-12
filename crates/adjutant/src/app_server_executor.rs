@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
-use std::path::{Path, PathBuf};
 use std::io::{self, Write};
+use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
@@ -17,7 +17,9 @@ use tokio::task::spawn_blocking;
 use agent_client_protocol_schema as acp;
 
 use crate::autopilot_loop::AcpEventSender;
-use crate::cli::prompt::{expand_prompt_text_async, format_command_output, truncate_bytes, MAX_COMMAND_BYTES};
+use crate::cli::prompt::{
+    MAX_COMMAND_BYTES, expand_prompt_text_async, format_command_output, truncate_bytes,
+};
 use crate::{AdjutantError, Task, TaskResult};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -53,8 +55,9 @@ struct AppServerTransport {
 impl AppServerTransport {
     fn new(stdin: ChildStdin, stdout: ChildStdout) -> (Self, AppServerChannels) {
         let stdin = Arc::new(Mutex::new(stdin));
-        let pending_requests: Arc<Mutex<HashMap<AppServerRequestId, oneshot::Sender<Result<Value>>>>> =
-            Arc::new(Mutex::new(HashMap::new()));
+        let pending_requests: Arc<
+            Mutex<HashMap<AppServerRequestId, oneshot::Sender<Result<Value>>>>,
+        > = Arc::new(Mutex::new(HashMap::new()));
         let (notification_tx, notification_rx) = mpsc::channel(256);
         let (request_tx, request_rx) = mpsc::channel(64);
 
@@ -154,9 +157,7 @@ impl AppServerTransport {
 
             let mut pending = pending_requests_clone.lock().await;
             for (_, sender) in pending.drain() {
-                let _ = sender.send(Err(anyhow::anyhow!(
-                    "App-server connection closed"
-                )));
+                let _ = sender.send(Err(anyhow::anyhow!("App-server connection closed")));
             }
         });
 
@@ -192,9 +193,7 @@ impl AppServerTransport {
 
         self.send_json(request).await?;
 
-        let result = rx
-            .await
-            .context("App-server request canceled")??;
+        let result = rx.await.context("App-server request canceled")??;
         serde_json::from_value(result).context("App-server response parse failed")
     }
 
@@ -258,8 +257,8 @@ struct AppServerClient {
 
 impl AppServerClient {
     async fn spawn(cwd: &Path) -> Result<(Self, AppServerChannels)> {
-        let command = resolve_app_server_command()
-            .context("Unable to find codex app-server executable")?;
+        let command =
+            resolve_app_server_command().context("Unable to find codex app-server executable")?;
 
         let mut cmd = Command::new(command.program);
         cmd.args(command.args)
@@ -269,12 +268,24 @@ impl AppServerClient {
             .current_dir(cwd);
 
         let mut child = cmd.spawn().context("Failed to spawn codex app-server")?;
-        let stdin = child.stdin.take().context("codex app-server stdin missing")?;
-        let stdout = child.stdout.take().context("codex app-server stdout missing")?;
+        let stdin = child
+            .stdin
+            .take()
+            .context("codex app-server stdin missing")?;
+        let stdout = child
+            .stdout
+            .take()
+            .context("codex app-server stdout missing")?;
 
         let (transport, channels) = AppServerTransport::new(stdin, stdout);
 
-        Ok((Self { transport, process: child }, channels))
+        Ok((
+            Self {
+                transport,
+                process: child,
+            },
+            channels,
+        ))
     }
 
     async fn initialize(&self) -> Result<()> {
@@ -285,7 +296,10 @@ impl AppServerClient {
                 version: env!("CARGO_PKG_VERSION").to_string(),
             },
         };
-        let response = self.transport.request::<_, InitializeResponse>("initialize", Some(&params)).await;
+        let response = self
+            .transport
+            .request::<_, InitializeResponse>("initialize", Some(&params))
+            .await;
         match response {
             Ok(_) => {
                 self.transport.notify::<Value>("initialized", None).await?;
@@ -549,7 +563,9 @@ pub(crate) enum ReviewDelivery {
 pub(crate) enum ReviewTarget {
     UncommittedChanges,
     #[serde(rename_all = "camelCase")]
-    BaseBranch { branch: String },
+    BaseBranch {
+        branch: String,
+    },
     #[serde(rename_all = "camelCase")]
     Commit {
         sha: String,
@@ -557,7 +573,9 @@ pub(crate) enum ReviewTarget {
         title: Option<String>,
     },
     #[serde(rename_all = "camelCase")]
-    Custom { instructions: String },
+    Custom {
+        instructions: String,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -769,10 +787,12 @@ impl AppServerExecutor {
         let (client, channels) =
             AppServerClient::spawn(&self.workspace_root)
                 .await
-                .map_err(|err| AdjutantError::ExecutionFailed(format!(
-                    "Failed to spawn codex app-server: {}",
-                    err
-                )))?;
+                .map_err(|err| {
+                    AdjutantError::ExecutionFailed(format!(
+                        "Failed to spawn codex app-server: {}",
+                        err
+                    ))
+                })?;
 
         let AppServerPromptOptions {
             model,
@@ -793,30 +813,33 @@ impl AppServerExecutor {
 
         let sandbox_policy_for_commands = sandbox_policy.clone();
         let client_ref = &client;
-        let expanded_prompt = expand_prompt_text_async(prompt, &self.workspace_root, |command, cwd| {
-            let sandbox_policy = sandbox_policy_for_commands.clone();
-            let client = client_ref;
-            async move {
-                let command_label = command.clone();
-                let response = client
-                    .command_exec(CommandExecParams {
-                        command: vec!["bash".to_string(), "-lc".to_string(), command],
-                        cwd: Some(cwd.to_string_lossy().to_string()),
-                        sandbox_policy: Some(sandbox_policy),
-                        timeout_ms: None,
-                    })
-                    .await
-                    .map_err(|err| format!("Failed to run command '{}': {}", command_label, err))?;
-                let output = format_command_output(
-                    response.exit_code,
-                    response.stdout.as_bytes(),
-                    response.stderr.as_bytes(),
-                );
-                Ok(truncate_bytes(output, MAX_COMMAND_BYTES))
-            }
-        })
-        .await
-        .map_err(|err| AdjutantError::ExecutionFailed(err))?;
+        let expanded_prompt =
+            expand_prompt_text_async(prompt, &self.workspace_root, |command, cwd| {
+                let sandbox_policy = sandbox_policy_for_commands.clone();
+                let client = client_ref;
+                async move {
+                    let command_label = command.clone();
+                    let response = client
+                        .command_exec(CommandExecParams {
+                            command: vec!["bash".to_string(), "-lc".to_string(), command],
+                            cwd: Some(cwd.to_string_lossy().to_string()),
+                            sandbox_policy: Some(sandbox_policy),
+                            timeout_ms: None,
+                        })
+                        .await
+                        .map_err(|err| {
+                            format!("Failed to run command '{}': {}", command_label, err)
+                        })?;
+                    let output = format_command_output(
+                        response.exit_code,
+                        response.stdout.as_bytes(),
+                        response.stderr.as_bytes(),
+                    );
+                    Ok(truncate_bytes(output, MAX_COMMAND_BYTES))
+                }
+            })
+            .await
+            .map_err(|err| AdjutantError::ExecutionFailed(err))?;
 
         let thread_response = client
             .thread_start(ThreadStartParams {
@@ -827,16 +850,17 @@ impl AppServerExecutor {
                 sandbox: Some(sandbox_mode),
             })
             .await
-            .map_err(|err| AdjutantError::ExecutionFailed(format!(
-                "Failed to start codex thread: {}",
-                err
-            )))?;
+            .map_err(|err| {
+                AdjutantError::ExecutionFailed(format!("Failed to start codex thread: {}", err))
+            })?;
 
         let thread_id = thread_response.thread.id.clone();
         let turn_response = client
             .turn_start(TurnStartParams {
                 thread_id: thread_id.clone(),
-                input: vec![UserInput::Text { text: expanded_prompt }],
+                input: vec![UserInput::Text {
+                    text: expanded_prompt,
+                }],
                 model: model.clone(),
                 effort,
                 summary: None,
@@ -845,10 +869,9 @@ impl AppServerExecutor {
                 cwd: Some(self.workspace_root.to_string_lossy().to_string()),
             })
             .await
-            .map_err(|err| AdjutantError::ExecutionFailed(format!(
-                "Failed to start codex turn: {}",
-                err
-            )))?;
+            .map_err(|err| {
+                AdjutantError::ExecutionFailed(format!("Failed to start codex turn: {}", err))
+            })?;
 
         let turn_id = turn_response.turn.id;
         let result = run_app_server_turn_loop(
@@ -876,10 +899,12 @@ impl AppServerExecutor {
         let (client, channels) =
             AppServerClient::spawn(&self.workspace_root)
                 .await
-                .map_err(|err| AdjutantError::ExecutionFailed(format!(
-                    "Failed to spawn codex app-server: {}",
-                    err
-                )))?;
+                .map_err(|err| {
+                    AdjutantError::ExecutionFailed(format!(
+                        "Failed to spawn codex app-server: {}",
+                        err
+                    ))
+                })?;
 
         let AppServerPromptOptions {
             model,
@@ -907,10 +932,9 @@ impl AppServerExecutor {
                 sandbox: Some(sandbox_mode),
             })
             .await
-            .map_err(|err| AdjutantError::ExecutionFailed(format!(
-                "Failed to start codex thread: {}",
-                err
-            )))?;
+            .map_err(|err| {
+                AdjutantError::ExecutionFailed(format!("Failed to start codex thread: {}", err))
+            })?;
 
         let thread_id = thread_response.thread.id.clone();
         let review_response = client
@@ -920,10 +944,9 @@ impl AppServerExecutor {
                 delivery,
             })
             .await
-            .map_err(|err| AdjutantError::ExecutionFailed(format!(
-                "Failed to start codex review: {}",
-                err
-            )))?;
+            .map_err(|err| {
+                AdjutantError::ExecutionFailed(format!("Failed to start codex review: {}", err))
+            })?;
 
         let turn_id = review_response.turn.id;
         let review_thread_id = review_response.review_thread_id;
@@ -951,10 +974,12 @@ impl AppServerExecutor {
         let (client, mut channels) =
             AppServerClient::spawn(&self.workspace_root)
                 .await
-                .map_err(|err| AdjutantError::ExecutionFailed(format!(
-                    "Failed to spawn codex app-server: {}",
-                    err
-                )))?;
+                .map_err(|err| {
+                    AdjutantError::ExecutionFailed(format!(
+                        "Failed to spawn codex app-server: {}",
+                        err
+                    ))
+                })?;
 
         if let Err(err) = client.initialize().await {
             let _ = client.shutdown().await;
@@ -973,10 +998,9 @@ impl AppServerExecutor {
                 sandbox: Some(SandboxMode::WorkspaceWrite),
             })
             .await
-            .map_err(|err| AdjutantError::ExecutionFailed(format!(
-                "Failed to start codex thread: {}",
-                err
-            )))?;
+            .map_err(|err| {
+                AdjutantError::ExecutionFailed(format!("Failed to start codex thread: {}", err))
+            })?;
 
         let thread_id = thread_response.thread.id.clone();
         let turn_response = client
@@ -991,10 +1015,9 @@ impl AppServerExecutor {
                 cwd: None,
             })
             .await
-            .map_err(|err| AdjutantError::ExecutionFailed(format!(
-                "Failed to start codex turn: {}",
-                err
-            )))?;
+            .map_err(|err| {
+                AdjutantError::ExecutionFailed(format!("Failed to start codex turn: {}", err))
+            })?;
 
         let _turn_id = turn_response.turn.id;
         let mut current_message = String::new();
@@ -1179,15 +1202,23 @@ fn handle_prompt_notification(
         }
         "item/commandExecution/outputDelta" => {
             if let Some(params) = notification.params {
-                if let Ok(event) = serde_json::from_value::<CommandExecutionOutputDeltaNotification>(params) {
+                if let Ok(event) =
+                    serde_json::from_value::<CommandExecutionOutputDeltaNotification>(params)
+                {
                     append_tool_output(&mut state.command_outputs, &event.item_id, &event.delta);
                 }
             }
         }
         "item/fileChange/outputDelta" => {
             if let Some(params) = notification.params {
-                if let Ok(event) = serde_json::from_value::<FileChangeOutputDeltaNotification>(params) {
-                    append_tool_output(&mut state.file_change_outputs, &event.item_id, &event.delta);
+                if let Ok(event) =
+                    serde_json::from_value::<FileChangeOutputDeltaNotification>(params)
+                {
+                    append_tool_output(
+                        &mut state.file_change_outputs,
+                        &event.item_id,
+                        &event.delta,
+                    );
                 }
             }
         }
@@ -1197,7 +1228,9 @@ fn handle_prompt_notification(
                     if let Some(item_type) = item_type(&event.item) {
                         if matches!(item_type, "commandExecution" | "fileChange") {
                             if let Some(id) = item_id(&event.item) {
-                                state.approval_items.insert(id.to_string(), event.item.clone());
+                                state
+                                    .approval_items
+                                    .insert(id.to_string(), event.item.clone());
                             }
                         }
                     }
@@ -1317,15 +1350,10 @@ fn handle_prompt_item_completed(
         "commandExecution" => {
             if let Some(id) = item_id(&item) {
                 state.approval_items.remove(id);
-                let buffered = state
-                    .command_outputs
-                    .remove(id)
-                    .unwrap_or_default();
-                if let Some(update) = tool_call_update_from_item_with_buffers(
-                    &item,
-                    Some(&buffered),
-                    None,
-                ) {
+                let buffered = state.command_outputs.remove(id).unwrap_or_default();
+                if let Some(update) =
+                    tool_call_update_from_item_with_buffers(&item, Some(&buffered), None)
+                {
                     send_tool_update(acp_sender, update);
                 }
                 if let Some(status) = item_status(&item) {
@@ -1338,15 +1366,10 @@ fn handle_prompt_item_completed(
         "fileChange" => {
             if let Some(id) = item_id(&item) {
                 state.approval_items.remove(id);
-                let buffered = state
-                    .file_change_outputs
-                    .remove(id)
-                    .unwrap_or_default();
-                if let Some(update) = tool_call_update_from_item_with_buffers(
-                    &item,
-                    None,
-                    Some(&buffered),
-                ) {
+                let buffered = state.file_change_outputs.remove(id).unwrap_or_default();
+                if let Some(update) =
+                    tool_call_update_from_item_with_buffers(&item, None, Some(&buffered))
+                {
                     send_tool_update(acp_sender, update);
                 }
                 if let Some(status) = item_status(&item) {
@@ -1394,16 +1417,20 @@ async fn handle_prompt_request(
     let params_value = params.clone();
 
     let parsed = match method.as_str() {
-        "item/commandExecution/requestApproval" => {
-            params
-                .and_then(|value| serde_json::from_value::<CommandExecutionRequestApprovalParams>(value).ok())
-                .map(|parsed| (ApprovalKind::CommandExecution, parsed.item_id, parsed.reason))
-        }
-        "item/fileChange/requestApproval" => {
-            params
-                .and_then(|value| serde_json::from_value::<FileChangeRequestApprovalParams>(value).ok())
-                .map(|parsed| (ApprovalKind::FileChange, parsed.item_id, parsed.reason))
-        }
+        "item/commandExecution/requestApproval" => params
+            .and_then(|value| {
+                serde_json::from_value::<CommandExecutionRequestApprovalParams>(value).ok()
+            })
+            .map(|parsed| {
+                (
+                    ApprovalKind::CommandExecution,
+                    parsed.item_id,
+                    parsed.reason,
+                )
+            }),
+        "item/fileChange/requestApproval" => params
+            .and_then(|value| serde_json::from_value::<FileChangeRequestApprovalParams>(value).ok())
+            .map(|parsed| (ApprovalKind::FileChange, parsed.item_id, parsed.reason)),
         _ => None,
     };
 
@@ -1430,20 +1457,27 @@ async fn handle_prompt_request(
             decision: ApprovalDecision::Decline,
             accept_settings: None,
         },
-        ApprovalMode::Prompt => prompt_for_approval(
-            kind,
-            &item_id,
-            reason.as_deref(),
-            approval_item.as_ref(),
-            params_value.as_ref(),
-        )
-        .await,
+        ApprovalMode::Prompt => {
+            prompt_for_approval(
+                kind,
+                &item_id,
+                reason.as_deref(),
+                approval_item.as_ref(),
+                params_value.as_ref(),
+            )
+            .await
+        }
     };
 
-    let _ = client.respond(id, &ApprovalResponse {
-        decision: decision.decision,
-        accept_settings: decision.accept_settings,
-    }).await;
+    let _ = client
+        .respond(
+            id,
+            &ApprovalResponse {
+                decision: decision.decision,
+                accept_settings: decision.accept_settings,
+            },
+        )
+        .await;
 }
 
 #[derive(Clone, Copy)]
@@ -1545,9 +1579,7 @@ fn send_text_chunk(acp_sender: &Option<AcpEventSender>, text: String, is_thought
     let Some(sender) = acp_sender else {
         return;
     };
-    let chunk = acp::ContentChunk::new(acp::ContentBlock::Text(
-        acp::TextContent::new(text),
-    ));
+    let chunk = acp::ContentChunk::new(acp::ContentBlock::Text(acp::TextContent::new(text)));
     let update = if is_thought {
         acp::SessionUpdate::AgentThoughtChunk(chunk)
     } else {
@@ -1566,7 +1598,10 @@ fn append_tool_output(buffers: &mut HashMap<String, String>, item_id: &str, delt
     if delta.is_empty() {
         return;
     }
-    buffers.entry(item_id.to_string()).or_default().push_str(delta);
+    buffers
+        .entry(item_id.to_string())
+        .or_default()
+        .push_str(delta);
 }
 
 fn send_diff_tool_update(
@@ -1807,21 +1842,30 @@ fn tool_call_from_item(item: &Value) -> Option<acp::ToolCall> {
         "commandExecution" => {
             let command = command_string_from_item(item).unwrap_or_default();
             Some(
-                acp::ToolCall::new(acp::ToolCallId::new(item_id.to_string()), "Bash".to_string())
-                    .raw_input(serde_json::json!({ "command": command }))
-                    .status(acp::ToolCallStatus::InProgress),
+                acp::ToolCall::new(
+                    acp::ToolCallId::new(item_id.to_string()),
+                    "Bash".to_string(),
+                )
+                .raw_input(serde_json::json!({ "command": command }))
+                .status(acp::ToolCallStatus::InProgress),
             )
         }
         "fileChange" => {
             let paths = extract_file_paths(item);
             Some(
-                acp::ToolCall::new(acp::ToolCallId::new(item_id.to_string()), "Edit".to_string())
-                    .raw_input(serde_json::json!({ "files": paths }))
-                    .status(acp::ToolCallStatus::InProgress),
+                acp::ToolCall::new(
+                    acp::ToolCallId::new(item_id.to_string()),
+                    "Edit".to_string(),
+                )
+                .raw_input(serde_json::json!({ "files": paths }))
+                .status(acp::ToolCallStatus::InProgress),
             )
         }
         "mcpToolCall" => {
-            let server = item.get("server").and_then(Value::as_str).unwrap_or("server");
+            let server = item
+                .get("server")
+                .and_then(Value::as_str)
+                .unwrap_or("server");
             let tool = item.get("tool").and_then(Value::as_str).unwrap_or("tool");
             let name = format!("mcp__{}__{}", server, tool);
             let args = item.get("arguments").cloned().unwrap_or(Value::Null);
@@ -1834,9 +1878,12 @@ fn tool_call_from_item(item: &Value) -> Option<acp::ToolCall> {
         "webSearch" => {
             let query = item.get("query").and_then(Value::as_str).unwrap_or("");
             Some(
-                acp::ToolCall::new(acp::ToolCallId::new(item_id.to_string()), "WebSearch".to_string())
-                    .raw_input(serde_json::json!({ "query": query }))
-                    .status(acp::ToolCallStatus::InProgress),
+                acp::ToolCall::new(
+                    acp::ToolCallId::new(item_id.to_string()),
+                    "WebSearch".to_string(),
+                )
+                .raw_input(serde_json::json!({ "query": query }))
+                .status(acp::ToolCallStatus::InProgress),
             )
         }
         _ => None,
@@ -1900,7 +1947,8 @@ fn tool_call_update_from_item_with_buffers(
             }
         }
         "fileChange" => {
-            if let Some(output) = file_change_output_from_item_with_buffer(item, file_change_buffer) {
+            if let Some(output) = file_change_output_from_item_with_buffer(item, file_change_buffer)
+            {
                 fields.raw_output = Some(output);
             }
         }
@@ -2047,10 +2095,7 @@ fn command_output_from_item_with_buffer(item: &Value, buffer: Option<&str>) -> O
     Some(output)
 }
 
-fn file_change_output_from_item_with_buffer(
-    item: &Value,
-    buffer: Option<&str>,
-) -> Option<Value> {
+fn file_change_output_from_item_with_buffer(item: &Value, buffer: Option<&str>) -> Option<Value> {
     let (paths, _, diff) = extract_file_changes(item);
     let diff_text = diff.or_else(|| buffer.map(|value| value.to_string()));
     if let Some(diff_text) = diff_text {
@@ -2059,7 +2104,9 @@ fn file_change_output_from_item_with_buffer(
         }
     }
     if !paths.is_empty() {
-        return Some(serde_json::json!({ "content": format!("Modified files: {}", paths.join(", ")) }));
+        return Some(
+            serde_json::json!({ "content": format!("Modified files: {}", paths.join(", ")) }),
+        );
     }
     None
 }

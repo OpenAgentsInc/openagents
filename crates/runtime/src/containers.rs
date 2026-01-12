@@ -19,7 +19,7 @@ use crate::identity::{PublicKey, Signature, SigningService};
 use crate::storage::AgentStorage;
 use crate::types::{AgentId, Timestamp};
 #[cfg(not(target_arch = "wasm32"))]
-use crate::wallet::{block_on_wallet, WalletFxProvider, WalletService};
+use crate::wallet::{WalletFxProvider, WalletService, block_on_wallet};
 #[cfg(all(feature = "browser", target_arch = "wasm32"))]
 use crate::wasm_http;
 use bech32::{Bech32, Hrp};

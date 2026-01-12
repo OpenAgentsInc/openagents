@@ -19,7 +19,10 @@ pub fn build_directive_task(
         .ok_or_else(|| anyhow::anyhow!("Directive {} not found", directive_id))?;
 
     println!();
-    println!("Working on directive: {} - {}", directive.id, directive.title);
+    println!(
+        "Working on directive: {} - {}",
+        directive.id, directive.title
+    );
 
     if let Some(progress) = directive.progress_pct {
         println!("Current progress: {}%", progress);
@@ -109,11 +112,7 @@ fn read_directive_file(path: &Path) -> anyhow::Result<String> {
 ///
 /// Returns a description of work that would unblock other issues.
 pub fn find_unblocking_work(workspace: &WorkspaceManifest) -> Option<String> {
-    let blocked: Vec<_> = workspace
-        .issues
-        .iter()
-        .filter(|i| i.is_blocked)
-        .collect();
+    let blocked: Vec<_> = workspace.issues.iter().filter(|i| i.is_blocked).collect();
 
     if blocked.is_empty() {
         return None;
@@ -121,14 +120,11 @@ pub fn find_unblocking_work(workspace: &WorkspaceManifest) -> Option<String> {
 
     // Count patterns in blocked reasons
     let mut needs_code = 0;
-    let mut crate_mentions: std::collections::HashMap<String, u32> = std::collections::HashMap::new();
+    let mut crate_mentions: std::collections::HashMap<String, u32> =
+        std::collections::HashMap::new();
 
     for issue in &blocked {
-        let reason = issue
-            .blocked_reason
-            .as_deref()
-            .unwrap_or("")
-            .to_lowercase();
+        let reason = issue.blocked_reason.as_deref().unwrap_or("").to_lowercase();
 
         if reason.contains("empty")
             || reason.contains("no source")

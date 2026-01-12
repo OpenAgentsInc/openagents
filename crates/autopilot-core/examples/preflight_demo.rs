@@ -1,5 +1,5 @@
-use std::env;
 use autopilot_core::preflight::PreflightConfig;
+use std::env;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {

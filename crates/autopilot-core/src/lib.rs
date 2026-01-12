@@ -56,8 +56,7 @@ pub mod dspy_verify;
 #[cfg(not(target_arch = "wasm32"))]
 pub use auth::{
     AuthEntry, AuthStatus, AuthStore, check_openagents_auth, check_opencode_auth,
-    copy_opencode_auth, get_provider_auth, openagents_auth_path,
-    opencode_auth_path,
+    copy_opencode_auth, get_provider_auth, openagents_auth_path, opencode_auth_path,
 };
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -86,8 +85,8 @@ pub use pylon_integration::{
 
 #[cfg(not(target_arch = "wasm32"))]
 pub use startup::{
-    AgentEvent, AgentModel, AgentToken, UsageData, LogLine, LogStatus, StartupPhase,
-    StartupSection, StartupState, run_agent_execution, run_agent_planning, run_agent_review,
+    AgentEvent, AgentModel, AgentToken, LogLine, LogStatus, StartupPhase, StartupSection,
+    StartupState, UsageData, run_agent_execution, run_agent_planning, run_agent_review,
 };
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -145,14 +144,18 @@ pub use dspy_hub::{DspyHub, RoutingStrategy, StoredModule};
 pub use dspy_router::{RoutingDecision, RoutingSummary, ShadowStats, SignatureRouter};
 
 #[cfg(not(target_arch = "wasm32"))]
-pub use dspy_training::{ExtractedExamples, SavedTrainingPaths, SuccessCriteria, TrainingExtractor};
+pub use dspy_training::{
+    ExtractedExamples, SavedTrainingPaths, SuccessCriteria, TrainingExtractor,
+};
 
 // Agent exports - available on all platforms
 pub use agent::{AutopilotAgent, AutopilotConfig, AutopilotPhase, AutopilotState};
 
 // Browser exports - WASM only
 #[cfg(feature = "wasm")]
-pub use browser::{init_runtime, list_agents, spawn_autopilot, spawn_autopilot_with_config, tick_agent};
+pub use browser::{
+    init_runtime, list_agents, spawn_autopilot, spawn_autopilot_with_config, tick_agent,
+};
 
 pub const ACP_PHASE_META_KEY: &str = "openagents_phase";
 pub const ACP_SESSION_META_KEY: &str = "openagents_session_id";

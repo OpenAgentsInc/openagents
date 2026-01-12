@@ -10,9 +10,7 @@ pub mod task;
 pub use evaluator::*;
 pub use feedback::*;
 pub use feedback_helpers::*;
-pub use metrics::{
-    BoxedMetric, Metric, MetricResults, MetricScore, MetricSet, MetricTier,
-};
+pub use metrics::{BoxedMetric, Metric, MetricResults, MetricScore, MetricSet, MetricTier};
 pub use priority::{CompilePriority, CompileQueue, CompileQueueBuilder, PriorityFactors};
 pub use promotion::{
     EvalRecord, GateRequirement, PromotionGate, PromotionManager, PromotionResult, PromotionState,

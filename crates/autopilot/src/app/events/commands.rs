@@ -15,13 +15,29 @@ pub(crate) enum CommandAction {
 #[derive(Clone)]
 pub(crate) enum ModalState {
     None,
-    ModelPicker { selected: usize },
-    SessionList { selected: usize },
-    AgentList { selected: usize },
-    AgentBackends { selected: usize, model_selected: usize },
-    SkillList { selected: usize },
-    Hooks { view: HookModalView, selected: usize },
-    ToolList { selected: usize },
+    ModelPicker {
+        selected: usize,
+    },
+    SessionList {
+        selected: usize,
+    },
+    AgentList {
+        selected: usize,
+    },
+    AgentBackends {
+        selected: usize,
+        model_selected: usize,
+    },
+    SkillList {
+        selected: usize,
+    },
+    Hooks {
+        view: HookModalView,
+        selected: usize,
+    },
+    ToolList {
+        selected: usize,
+    },
     PermissionRules,
     Wallet,
     DvmProviders,
@@ -47,7 +63,9 @@ pub(crate) enum ModalState {
         input_mode: SettingsInputMode,
     },
     Help,
-    McpConfig { selected: usize },
+    McpConfig {
+        selected: usize,
+    },
 }
 
 /// Internal mode representation for Coder UI.

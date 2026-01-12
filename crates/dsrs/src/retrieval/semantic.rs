@@ -37,21 +37,13 @@ pub struct SemanticIndex {
 #[derive(Debug, Clone)]
 pub enum EmbeddingProvider {
     /// Local Ollama embeddings.
-    Ollama {
-        model: String,
-        base_url: String,
-    },
+    Ollama { model: String, base_url: String },
 
     /// OpenAI embeddings.
-    OpenAI {
-        model: String,
-        api_key: String,
-    },
+    OpenAI { model: String, api_key: String },
 
     /// Pylon swarm embeddings.
-    Swarm {
-        relay_url: String,
-    },
+    Swarm { relay_url: String },
 
     /// No embeddings (disabled).
     None,
@@ -137,9 +129,7 @@ impl SemanticIndex {
             EmbeddingProvider::OpenAI { model, api_key } => {
                 self.embed_openai(text, model, api_key).await
             }
-            EmbeddingProvider::Swarm { relay_url } => {
-                self.embed_swarm(text, relay_url).await
-            }
+            EmbeddingProvider::Swarm { relay_url } => self.embed_swarm(text, relay_url).await,
             EmbeddingProvider::None => {
                 anyhow::bail!("No embedding provider configured")
             }
@@ -335,11 +325,8 @@ impl RepoIndex for SemanticIndex {
         results.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
 
         // Take top k
-        let top_results: Vec<RetrievalResult> = results
-            .into_iter()
-            .take(config.k)
-            .map(|(_, r)| r)
-            .collect();
+        let top_results: Vec<RetrievalResult> =
+            results.into_iter().take(config.k).map(|(_, r)| r).collect();
 
         Ok(top_results)
     }

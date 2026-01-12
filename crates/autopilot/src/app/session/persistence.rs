@@ -39,10 +39,7 @@ pub(crate) fn apply_session_history_limit(
     if entries.len() <= limit {
         return Vec::new();
     }
-    entries
-        .drain(limit..)
-        .map(|entry| entry.id)
-        .collect()
+    entries.drain(limit..).map(|entry| entry.id).collect()
 }
 
 pub(crate) fn write_session_messages(session_id: &str, messages: &[ChatMessage]) -> io::Result<()> {
@@ -69,8 +66,8 @@ pub(crate) fn write_session_messages(session_id: &str, messages: &[ChatMessage])
 pub(crate) fn write_session_metadata(session_id: &str, entry: &SessionEntry) -> io::Result<()> {
     let dir = session_messages_dir(session_id);
     fs::create_dir_all(&dir)?;
-    let data = serde_json::to_string_pretty(entry)
-        .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+    let data =
+        serde_json::to_string_pretty(entry).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
     fs::write(session_metadata_file(session_id), data)?;
     Ok(())
 }

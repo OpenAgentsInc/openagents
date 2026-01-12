@@ -38,12 +38,7 @@ pub(crate) fn directive_status_rank(directive: &DirectiveSummary) -> u8 {
 }
 
 pub(crate) fn directive_priority_rank(priority: Option<&str>) -> u8 {
-    match priority
-        .unwrap_or("")
-        .trim()
-        .to_ascii_lowercase()
-        .as_str()
-    {
+    match priority.unwrap_or("").trim().to_ascii_lowercase().as_str() {
         "urgent" => 0,
         "high" => 1,
         "medium" => 2,
@@ -61,9 +56,7 @@ pub(crate) fn directive_priority_label(priority: Option<&str>) -> String {
 
 pub(crate) fn directive_id_number(id: &str) -> u32 {
     let trimmed = id.trim();
-    let numeric = trimmed
-        .trim_start_matches("d-")
-        .trim_start_matches('d');
+    let numeric = trimmed.trim_start_matches("d-").trim_start_matches('d');
     numeric.parse::<u32>().unwrap_or(0)
 }
 

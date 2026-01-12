@@ -187,8 +187,7 @@ impl HarmonyRenderer {
     }
 
     pub fn extract_assistant_text(&self, completion: &str) -> Result<String> {
-        if let Ok(text) = self.extract_assistant_text_with_role(completion, Some(Role::Assistant))
-        {
+        if let Ok(text) = self.extract_assistant_text_with_role(completion, Some(Role::Assistant)) {
             return Ok(text);
         }
 

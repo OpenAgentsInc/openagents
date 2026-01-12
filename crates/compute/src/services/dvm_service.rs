@@ -9,13 +9,13 @@ use crate::domain::{
 };
 use crate::services::RelayService;
 use chrono::Utc;
-use nostr::{
-    EventTemplate, HandlerInfo, HandlerMetadata, HandlerType, JobInput, JobResult,
-    KIND_HANDLER_INFO, KIND_JOB_TEXT_GENERATION, PricingInfo, finalize_event,
-};
 use nostr::nip90::{
     JobFeedback, JobStatus, KIND_JOB_CODE_REVIEW, KIND_JOB_PATCH_GEN, KIND_JOB_REPO_INDEX,
     KIND_JOB_RLM_SUBQUERY, KIND_JOB_SANDBOX_RUN, create_job_feedback_event,
+};
+use nostr::{
+    EventTemplate, HandlerInfo, HandlerMetadata, HandlerType, JobInput, JobResult,
+    KIND_HANDLER_INFO, KIND_JOB_TEXT_GENERATION, PricingInfo, finalize_event,
 };
 use spark::{Payment, PaymentDetails, PaymentStatus, PaymentType, SparkWallet};
 use std::collections::HashMap;
@@ -31,10 +31,10 @@ pub const INFERENCE_KINDS: &[u16] = &[
 
 /// Supported NIP-90 job kinds - agent (Bazaar)
 pub const AGENT_KINDS: &[u16] = &[
-    KIND_JOB_SANDBOX_RUN,  // 5930
-    KIND_JOB_REPO_INDEX,   // 5931
-    KIND_JOB_PATCH_GEN,    // 5932
-    KIND_JOB_CODE_REVIEW,  // 5933
+    KIND_JOB_SANDBOX_RUN, // 5930
+    KIND_JOB_REPO_INDEX,  // 5931
+    KIND_JOB_PATCH_GEN,   // 5932
+    KIND_JOB_CODE_REVIEW, // 5933
 ];
 
 /// All supported NIP-90 job kinds
@@ -65,11 +65,15 @@ fn job_targets_pubkey(event: &nostr::Event, pubkey: &str) -> bool {
 fn payment_matches_invoice(payment: &Payment, invoice: &str) -> bool {
     match &payment.details {
         Some(PaymentDetails::Lightning { invoice: inv, .. }) => inv == invoice,
-        Some(PaymentDetails::Spark { invoice_details, .. }) => invoice_details
+        Some(PaymentDetails::Spark {
+            invoice_details, ..
+        }) => invoice_details
             .as_ref()
             .map(|details| details.invoice == invoice)
             .unwrap_or(false),
-        Some(PaymentDetails::Token { invoice_details, .. }) => invoice_details
+        Some(PaymentDetails::Token {
+            invoice_details, ..
+        }) => invoice_details
             .as_ref()
             .map(|details| details.invoice == invoice)
             .unwrap_or(false),
@@ -219,7 +223,12 @@ impl DvmService {
 
     /// Check if an agent backend is available for the given kind
     pub async fn has_agent_for_kind(&self, kind: u16) -> bool {
-        self.agent_registry.read().await.find_for_kind(kind).await.is_some()
+        self.agent_registry
+            .read()
+            .await
+            .find_for_kind(kind)
+            .await
+            .is_some()
     }
 
     /// Set the DVM configuration
@@ -329,10 +338,7 @@ impl DvmService {
                 );
 
                 if !job_targets_pubkey(&event, &provider_pubkey) {
-                    log::debug!(
-                        "Skipping job {} not targeted to this provider",
-                        event.id
-                    );
+                    log::debug!("Skipping job {} not targeted to this provider", event.id);
                     continue;
                 }
 
@@ -414,16 +420,30 @@ impl DvmService {
                                             .with_amount(amount_msats, Some(bolt11));
 
                                             let template = create_job_feedback_event(&feedback);
-                                            match finalize_event(&template, identity.private_key_bytes()) {
+                                            match finalize_event(
+                                                &template,
+                                                identity.private_key_bytes(),
+                                            ) {
                                                 Ok(feedback_event) => {
-                                                    if let Err(e) = relay_service.publish(feedback_event).await {
-                                                        log::error!("Failed to publish payment-required feedback: {}", e);
+                                                    if let Err(e) =
+                                                        relay_service.publish(feedback_event).await
+                                                    {
+                                                        log::error!(
+                                                            "Failed to publish payment-required feedback: {}",
+                                                            e
+                                                        );
                                                     } else {
-                                                        log::info!("Published payment-required feedback for job {}", job_id);
+                                                        log::info!(
+                                                            "Published payment-required feedback for job {}",
+                                                            job_id
+                                                        );
                                                     }
                                                 }
                                                 Err(e) => {
-                                                    log::error!("Failed to sign feedback event: {}", e);
+                                                    log::error!(
+                                                        "Failed to sign feedback event: {}",
+                                                        e
+                                                    );
                                                 }
                                             }
                                         }
@@ -1132,8 +1152,7 @@ impl DvmService {
                     .sandbox_run(req, None)
                     .await
                     .map_err(|e| DvmError::AgentFailed(e.to_string()))?;
-                serde_json::to_string(&result)
-                    .map_err(|e| DvmError::AgentFailed(e.to_string()))
+                serde_json::to_string(&result).map_err(|e| DvmError::AgentFailed(e.to_string()))
             }
             KIND_JOB_REPO_INDEX => {
                 // RepoIndex not implemented yet
@@ -1414,7 +1433,12 @@ impl DvmService {
         .add_custom_tag("network", &self.config.network);
 
         // Add capabilities for agent backends (Bazaar kinds)
-        let agent_caps = self.agent_registry.read().await.aggregated_capabilities().await;
+        let agent_caps = self
+            .agent_registry
+            .read()
+            .await
+            .aggregated_capabilities()
+            .await;
         for kind in agent_caps.supported_kinds() {
             handler_info = handler_info.add_capability(&format!("nip90-kind-{}", kind));
         }

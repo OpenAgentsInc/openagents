@@ -155,7 +155,9 @@ impl LmBackend for OllamaBackend {
         if self.models.is_empty() {
             true // Let Ollama decide
         } else {
-            self.models.iter().any(|m| m == model || m.starts_with(&format!("{}:", model)))
+            self.models
+                .iter()
+                .any(|m| m == model || m.starts_with(&format!("{}:", model)))
         }
     }
 

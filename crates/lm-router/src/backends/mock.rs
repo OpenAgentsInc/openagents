@@ -1,7 +1,7 @@
 //! Mock backend for testing.
 
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::RwLock;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use async_trait::async_trait;
 
@@ -139,8 +139,11 @@ mod tests {
 
     #[tokio::test]
     async fn test_mock_cycling_responses() {
-        let backend = MockBackend::new()
-            .with_responses(vec!["First".into(), "Second".into(), "Third".into()]);
+        let backend = MockBackend::new().with_responses(vec![
+            "First".into(),
+            "Second".into(),
+            "Third".into(),
+        ]);
 
         let r1 = backend.complete("mock-model", "a", 100).await.unwrap();
         let r2 = backend.complete("mock-model", "b", 100).await.unwrap();

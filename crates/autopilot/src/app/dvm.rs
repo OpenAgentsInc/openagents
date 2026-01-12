@@ -2,9 +2,8 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use nostr::nip90::{
     KIND_JOB_CODE_REVIEW, KIND_JOB_IMAGE_GENERATION, KIND_JOB_PATCH_GEN, KIND_JOB_REPO_INDEX,
-    KIND_JOB_RLM_SUBQUERY, KIND_JOB_SANDBOX_RUN, KIND_JOB_SPEECH_TO_TEXT,
-    KIND_JOB_SUMMARIZATION, KIND_JOB_TEXT_EXTRACTION, KIND_JOB_TEXT_GENERATION,
-    KIND_JOB_TRANSLATION,
+    KIND_JOB_RLM_SUBQUERY, KIND_JOB_SANDBOX_RUN, KIND_JOB_SPEECH_TO_TEXT, KIND_JOB_SUMMARIZATION,
+    KIND_JOB_TEXT_EXTRACTION, KIND_JOB_TEXT_GENERATION, KIND_JOB_TRANSLATION,
 };
 use nostr::{generate_secret_key, get_public_key_hex};
 use nostr_client::dvm::{DvmClient, DvmProvider};
@@ -199,7 +198,10 @@ async fn run_dvm_loop(
             break;
         };
         match cmd {
-            DvmCommand::Refresh { relay_url, job_kind } => {
+            DvmCommand::Refresh {
+                relay_url,
+                job_kind,
+            } => {
                 let relays = vec![relay_url.as_str()];
                 match client.discover_providers(job_kind, &relays).await {
                     Ok(providers) => {

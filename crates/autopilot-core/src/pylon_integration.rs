@@ -316,5 +316,4 @@ mod tests {
         let providers = discover_swarm_providers();
         assert!(providers.is_empty());
     }
-
 }

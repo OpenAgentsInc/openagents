@@ -10,11 +10,11 @@
 use anyhow::Result;
 use nostr::{JobInput, JobRequest, JobStatus, KIND_JOB_TEXT_GENERATION};
 use nostr_client::dvm::DvmClient;
+use rig::OneOrMany;
 use rig::client::Nothing;
 use rig::completion::{CompletionError, CompletionRequest, CompletionResponse, Usage};
 use rig::message::{AssistantContent, Text};
 use rig::providers::ollama;
-use rig::OneOrMany;
 use serde::Deserialize;
 use std::sync::Arc;
 use std::time::Duration;
@@ -181,7 +181,9 @@ impl PylonCompletionModel {
     pub async fn local(config: PylonConfig) -> Result<Self> {
         let (base_url, model) = match &config.venue {
             PylonVenue::Local { base_url, model } => (base_url.clone(), model.clone()),
-            PylonVenue::Hybrid { base_url, model, .. } => (base_url.clone(), model.clone()),
+            PylonVenue::Hybrid {
+                base_url, model, ..
+            } => (base_url.clone(), model.clone()),
             _ => (None, "llama3.2".to_string()),
         };
 
@@ -221,7 +223,9 @@ impl PylonCompletionModel {
             .map_err(|e| anyhow::anyhow!("Failed to create DVM client: {}", e))?;
 
         let (base_url, model) = match &config.venue {
-            PylonVenue::Hybrid { base_url, model, .. } => (base_url.clone(), model.clone()),
+            PylonVenue::Hybrid {
+                base_url, model, ..
+            } => (base_url.clone(), model.clone()),
             _ => (None, "llama3.2".to_string()),
         };
 
@@ -522,8 +526,8 @@ fn select_preferred_model(models: &[String]) -> Option<String> {
 fn derive_private_key_from_mnemonic(mnemonic: &str) -> Result<[u8; 32]> {
     use bip39::Mnemonic;
 
-    let mnemonic = Mnemonic::parse(mnemonic)
-        .map_err(|e| anyhow::anyhow!("Invalid mnemonic: {}", e))?;
+    let mnemonic =
+        Mnemonic::parse(mnemonic).map_err(|e| anyhow::anyhow!("Invalid mnemonic: {}", e))?;
 
     let seed = mnemonic.to_seed("");
     // Use first 32 bytes of seed as private key (simplified derivation)

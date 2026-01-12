@@ -3,15 +3,15 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use tokio::sync::mpsc;
 
-use crate::app::config::{AgentKindConfig, AgentSelection, AllAgentSettings};
-use crate::app::config::agents::migrate_from_model_option;
 use crate::app::ModelOption;
+use crate::app::config::agents::migrate_from_model_option;
+use crate::app::config::{AgentKindConfig, AgentSelection, AllAgentSettings};
 
-use super::backend::AgentAvailability;
-use super::registry::AgentRegistry;
-use super::backend::ModelInfo;
-use super::registry::AgentStatus;
 use super::AgentKind;
+use super::backend::AgentAvailability;
+use super::backend::ModelInfo;
+use super::registry::AgentRegistry;
+use super::registry::AgentStatus;
 
 #[derive(Clone, Debug)]
 pub(crate) enum AgentBackendsStatus {
@@ -178,7 +178,9 @@ impl AgentBackendsState {
     }
 
     pub(crate) fn default_kind(&self) -> Option<AgentKind> {
-        self.snapshot.as_ref().and_then(|snapshot| snapshot.default_kind)
+        self.snapshot
+            .as_ref()
+            .and_then(|snapshot| snapshot.default_kind)
     }
 
     pub(crate) fn selection_indices(&self) -> (usize, usize) {
@@ -302,6 +304,9 @@ mod tests {
     fn agent_backend_status_labels() {
         assert_eq!(AgentBackendsStatus::Idle.label(), "Idle");
         assert_eq!(AgentBackendsStatus::Refreshing.label(), "Refreshing");
-        assert_eq!(AgentBackendsStatus::Error("oops".to_string()).label(), "Error");
+        assert_eq!(
+            AgentBackendsStatus::Error("oops".to_string()).label(),
+            "Error"
+        );
     }
 }

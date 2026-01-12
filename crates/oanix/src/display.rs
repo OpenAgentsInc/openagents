@@ -77,7 +77,10 @@ fn print_compute(manifest: &OanixManifest) {
             println!("  [--] No local backends running");
             // Give context-aware suggestions based on hardware
             let has_gpu = !manifest.hardware.gpus.is_empty();
-            let is_apple_silicon = manifest.hardware.gpus.iter()
+            let is_apple_silicon = manifest
+                .hardware
+                .gpus
+                .iter()
                 .any(|g| g.backend.contains("Metal"));
 
             if is_apple_silicon {
@@ -143,7 +146,12 @@ fn print_network(manifest: &OanixManifest) {
     if manifest.network.relays.is_empty() {
         println!("  [--] Nostr relays: none configured");
     } else {
-        let connected_count = manifest.network.relays.iter().filter(|r| r.connected).count();
+        let connected_count = manifest
+            .network
+            .relays
+            .iter()
+            .filter(|r| r.connected)
+            .count();
         if connected_count > 0 {
             println!("  [OK] Nostr relays: {} connected", connected_count);
             for relay in &manifest.network.relays {
@@ -191,11 +199,7 @@ fn print_identity(manifest: &OanixManifest) {
         }
 
         if let Some(balance) = manifest.identity.wallet_balance_sats {
-            let network = manifest
-                .identity
-                .network
-                .as_deref()
-                .unwrap_or("unknown");
+            let network = manifest.identity.network.as_deref().unwrap_or("unknown");
             println!("  Wallet: {} sats ({})", balance, network);
         }
     } else {
@@ -234,7 +238,8 @@ fn print_workspace(manifest: &OanixManifest) {
 
             // Issue counts
             let blocked_count = ws.issues.iter().filter(|i| i.is_blocked).count();
-            let unblocked_open = ws.open_issues as usize - blocked_count.min(ws.open_issues as usize);
+            let unblocked_open =
+                ws.open_issues as usize - blocked_count.min(ws.open_issues as usize);
 
             if ws.open_issues > 0 || ws.pending_issues > 0 {
                 let mut parts = Vec::new();
@@ -253,7 +258,11 @@ fn print_workspace(manifest: &OanixManifest) {
             }
 
             // Directive summary
-            let active_count = ws.directives.iter().filter(|d| d.status == "active").count();
+            let active_count = ws
+                .directives
+                .iter()
+                .filter(|d| d.status == "active")
+                .count();
             let completed_count = ws
                 .directives
                 .iter()
@@ -332,7 +341,9 @@ fn print_situation(manifest: &OanixManifest) {
     // Recommended action
     let action_str = match situation.recommended_action {
         crate::situation::RecommendedAction::AwaitUser => "Awaiting user direction",
-        crate::situation::RecommendedAction::InitializeIdentity => "Initialize identity first (run 'pylon init')",
+        crate::situation::RecommendedAction::InitializeIdentity => {
+            "Initialize identity first (run 'pylon init')"
+        }
         crate::situation::RecommendedAction::ConnectNetwork => "Connect to network",
         crate::situation::RecommendedAction::StartProvider => "Could start provider mode",
     };

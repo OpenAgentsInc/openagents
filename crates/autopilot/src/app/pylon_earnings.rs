@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use rusqlite::{params, Connection, OpenFlags};
+use rusqlite::{Connection, OpenFlags, params};
 
 use crate::app::pylon_paths::pylon_data_dir;
 
@@ -175,20 +175,21 @@ fn load_snapshot(limit: u32) -> (PylonEarningsStatus, PylonEarningsSnapshot) {
 }
 
 fn load_totals(conn: &Connection) -> Result<PylonEarningsTotals, rusqlite::Error> {
-    let total_msats: i64 =
-        conn.query_row("SELECT COALESCE(SUM(amount_msats), 0) FROM earnings", [], |row| {
-            row.get(0)
-        })?;
-    let total_entries: i64 = conn.query_row("SELECT COUNT(*) FROM earnings", [], |row| {
-        row.get(0)
-    })?;
+    let total_msats: i64 = conn.query_row(
+        "SELECT COALESCE(SUM(amount_msats), 0) FROM earnings",
+        [],
+        |row| row.get(0),
+    )?;
+    let total_entries: i64 =
+        conn.query_row("SELECT COUNT(*) FROM earnings", [], |row| row.get(0))?;
     let job_count: i64 = conn.query_row(
         "SELECT COUNT(DISTINCT job_id) FROM earnings WHERE job_id IS NOT NULL",
         [],
         |row| row.get(0),
     )?;
 
-    let mut stmt = conn.prepare("SELECT source, SUM(amount_msats) FROM earnings GROUP BY source")?;
+    let mut stmt =
+        conn.prepare("SELECT source, SUM(amount_msats) FROM earnings GROUP BY source")?;
     let rows = stmt.query_map([], |row| {
         let source: String = row.get(0)?;
         let amount: i64 = row.get(1)?;
@@ -254,6 +255,9 @@ mod tests {
     #[test]
     fn status_labels() {
         assert_eq!(PylonEarningsStatus::Idle.label(), "Idle");
-        assert_eq!(PylonEarningsStatus::MissingDatabase.label(), "Database missing");
+        assert_eq!(
+            PylonEarningsStatus::MissingDatabase.label(),
+            "Database missing"
+        );
     }
 }

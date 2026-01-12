@@ -58,13 +58,11 @@ impl Verifier {
         match tier {
             VerificationTier::None => {
                 // No verification - accept first successful result
-                let result = results
-                    .iter()
-                    .find(|r| r.success)
-                    .cloned()
-                    .ok_or_else(|| FrlmError::VerificationFailed {
+                let result = results.iter().find(|r| r.success).cloned().ok_or_else(|| {
+                    FrlmError::VerificationFailed {
                         reason: "no successful results".to_string(),
-                    })?;
+                    }
+                })?;
                 Ok(VerifyResult::passed(result))
             }
 
@@ -209,7 +207,7 @@ impl Verifier {
         // Check content hash
         if let Some(hash_str) = schema.get("hash").and_then(|h| h.as_str()) {
             if let Some(expected) = hash_str.strip_prefix("sha256:") {
-                use sha2::{Sha256, Digest};
+                use sha2::{Digest, Sha256};
                 let mut hasher = Sha256::new();
                 hasher.update(content.as_bytes());
                 let actual = hex::encode(hasher.finalize());
@@ -254,7 +252,10 @@ impl Verifier {
     }
 
     /// Check if a result has a valid attestation from the given validator.
-    fn check_attestation(result: &SubQueryResult, validator_pubkey: &str) -> Option<SubQueryResult> {
+    fn check_attestation(
+        result: &SubQueryResult,
+        validator_pubkey: &str,
+    ) -> Option<SubQueryResult> {
         // Get attestation metadata
         let attested_pubkey = result.metadata.get("attestation_pubkey")?;
         let attestation_sig = result.metadata.get("attestation_sig")?;

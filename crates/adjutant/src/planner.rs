@@ -128,7 +128,8 @@ fn extract_keywords(title: &str, description: &str) -> Vec<String> {
     // Extract file paths
     for word in text.split_whitespace() {
         if word.contains('/') || word.ends_with(".rs") || word.ends_with(".ts") {
-            let clean = word.trim_matches(|c: char| !c.is_alphanumeric() && c != '/' && c != '.' && c != '_');
+            let clean = word
+                .trim_matches(|c: char| !c.is_alphanumeric() && c != '/' && c != '.' && c != '_');
             if !keywords.contains(&clean.to_string()) {
                 keywords.push(clean.to_string());
             }

@@ -259,12 +259,7 @@ impl NostrBridge {
     /// Create a generic event with specified kind, content, and tags.
     ///
     /// This is useful for creating custom events outside of the standard trace flow.
-    pub fn create_event(
-        &self,
-        kind: u16,
-        content: &str,
-        tags: Vec<Vec<String>>,
-    ) -> Result<Event> {
+    pub fn create_event(&self, kind: u16, content: &str, tags: Vec<Vec<String>>) -> Result<Event> {
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
@@ -470,9 +465,10 @@ mod tests {
         assert_eq!(events.len(), 1);
 
         // Check that default tag was added
-        let has_app_tag = events[0].tags.iter().any(|t| {
-            t.first().map(|s| s == "app").unwrap_or(false)
-        });
+        let has_app_tag = events[0]
+            .tags
+            .iter()
+            .any(|t| t.first().map(|s| s == "app").unwrap_or(false));
         assert!(has_app_tag);
     }
 }

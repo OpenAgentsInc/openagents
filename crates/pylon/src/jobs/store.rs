@@ -1,7 +1,7 @@
 //! SQLite storage for submitted jobs
 
 use anyhow::Result;
-use rusqlite::{params, Connection};
+use rusqlite::{Connection, params};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
@@ -233,7 +233,8 @@ mod tests {
             5050,
             "What is 2+2?".to_string(),
             "wss://nexus.openagents.com".to_string(),
-        ).with_bid(1000);
+        )
+        .with_bid(1000);
 
         store.insert(&job).unwrap();
 
@@ -244,7 +245,9 @@ mod tests {
         assert_eq!(retrieved.status, "pending");
 
         // Update with result
-        store.update_result("test123", "4", Some("lnbc..."), Some(1000)).unwrap();
+        store
+            .update_result("test123", "4", Some("lnbc..."), Some(1000))
+            .unwrap();
 
         let updated = store.get("test123").unwrap().unwrap();
         assert_eq!(updated.status, "completed");

@@ -12,8 +12,8 @@ use futures::{SinkExt, StreamExt};
 use nostr::{Event, create_auth_event_template, finalize_event};
 use serde_json::{Value, json};
 use std::collections::HashMap;
-use std::sync::Arc;
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::net::TcpStream;
 use tokio::sync::{Mutex, RwLock, mpsc, oneshot};
@@ -365,102 +365,121 @@ impl RelayConnection {
 
                 // Process received message outside of lock
                 if let Some(text) = msg {
-                    debug!("Raw message from {}: {}...", url, &text[..text.len().min(100)]);
-                    if let Ok(Some(relay_msg)) = Self::parse_relay_message(&text)
-                    {
+                    debug!(
+                        "Raw message from {}: {}...",
+                        url,
+                        &text[..text.len().min(100)]
+                    );
+                    if let Ok(Some(relay_msg)) = Self::parse_relay_message(&text) {
                         let _ = msg_tx.send(relay_msg.clone());
 
-                    // Handle OK messages for pending confirmations
-                    if let RelayMessage::Ok(event_id, accepted, message) = &relay_msg {
-                        let mut confirmations = pending_confirmations.lock().await;
-                        if let Some(tx) = confirmations.remove(event_id) {
-                            let confirmation = PublishConfirmation {
-                                event_id: event_id.clone(),
-                                accepted: *accepted,
-                                message: message.clone(),
-                            };
-                            let _ = tx.send(confirmation);
-                        }
-                    }
-
-                    // Route EVENT messages to subscriptions
-                    if let RelayMessage::Event(sub_id, event) = &relay_msg {
-                        debug!(
-                            "Parsed EVENT from {} for sub {}: kind={}, id={}...",
-                            url,
-                            sub_id,
-                            event.kind,
-                            &event.id[..16]
-                        );
-                        let mut should_remove = false;
-                        {
-                            let subs = subscriptions.lock().await;
-                            debug!("Active subscriptions: {:?}", subs.keys().collect::<Vec<_>>());
-                            if let Some(subscription) = subs.get(sub_id) {
-                                debug!("Found matching subscription {}, routing event kind={}", sub_id, event.kind);
-                                if let Err(e) = subscription.handle_event(event.clone()) {
-                                    let err_str = e.to_string();
-                                    // Only warn once if channel closed, then remove subscription
-                                    if err_str.contains("channel closed") {
-                                        debug!("Subscription {} channel closed, removing", sub_id);
-                                        should_remove = true;
-                                    } else {
-                                        warn!(
-                                            "Error handling event for subscription {}: {}",
-                                            sub_id, e
-                                        );
-                                    }
-                                }
+                        // Handle OK messages for pending confirmations
+                        if let RelayMessage::Ok(event_id, accepted, message) = &relay_msg {
+                            let mut confirmations = pending_confirmations.lock().await;
+                            if let Some(tx) = confirmations.remove(event_id) {
+                                let confirmation = PublishConfirmation {
+                                    event_id: event_id.clone(),
+                                    accepted: *accepted,
+                                    message: message.clone(),
+                                };
+                                let _ = tx.send(confirmation);
                             }
                         }
-                        if should_remove {
-                            subscriptions.lock().await.remove(sub_id);
-                        }
-                    }
 
-                    // Handle EOSE messages for subscriptions
-                    if let RelayMessage::Eose(sub_id) = &relay_msg {
-                        let subs = subscriptions.lock().await;
-                        if let Some(subscription) = subs.get(sub_id) {
-                            subscription.mark_eose();
-                        }
-                    }
-
-                    // Handle AUTH challenges (NIP-42)
-                    if let RelayMessage::Auth(challenge) = &relay_msg {
-                        info!("Received AUTH challenge from {}", url);
-
-                        // Check if we have an auth key configured
-                        let key_opt = auth_key.read().await.clone();
-                        if let Some(key) = key_opt {
-                            // Create and sign auth event
-                            let template = create_auth_event_template(&relay_url_for_auth, challenge);
-                            match finalize_event(&template, &key) {
-                                Ok(auth_event) => {
-                                    // Send AUTH response: ["AUTH", <signed-event>]
-                                    let auth_msg = json!(["AUTH", auth_event]);
-                                    let auth_text = serde_json::to_string(&auth_msg).unwrap();
-
-                                    let mut ws_guard = ws.lock().await;
-                                    if let Some(stream) = ws_guard.as_mut() {
-                                        match stream.send(Message::Text(auth_text)).await {
-                                            Ok(()) => {
-                                                info!("Sent AUTH response to {}", url);
-                                            }
-                                            Err(e) => {
-                                                warn!("Failed to send AUTH response to {}: {}", url, e);
-                                            }
+                        // Route EVENT messages to subscriptions
+                        if let RelayMessage::Event(sub_id, event) = &relay_msg {
+                            debug!(
+                                "Parsed EVENT from {} for sub {}: kind={}, id={}...",
+                                url,
+                                sub_id,
+                                event.kind,
+                                &event.id[..16]
+                            );
+                            let mut should_remove = false;
+                            {
+                                let subs = subscriptions.lock().await;
+                                debug!(
+                                    "Active subscriptions: {:?}",
+                                    subs.keys().collect::<Vec<_>>()
+                                );
+                                if let Some(subscription) = subs.get(sub_id) {
+                                    debug!(
+                                        "Found matching subscription {}, routing event kind={}",
+                                        sub_id, event.kind
+                                    );
+                                    if let Err(e) = subscription.handle_event(event.clone()) {
+                                        let err_str = e.to_string();
+                                        // Only warn once if channel closed, then remove subscription
+                                        if err_str.contains("channel closed") {
+                                            debug!(
+                                                "Subscription {} channel closed, removing",
+                                                sub_id
+                                            );
+                                            should_remove = true;
+                                        } else {
+                                            warn!(
+                                                "Error handling event for subscription {}: {}",
+                                                sub_id, e
+                                            );
                                         }
                                     }
                                 }
-                                Err(e) => {
-                                    warn!("Failed to sign AUTH event for {}: {}", url, e);
-                                }
                             }
-                        } else {
-                            warn!("Received AUTH challenge from {} but no auth key configured", url);
+                            if should_remove {
+                                subscriptions.lock().await.remove(sub_id);
+                            }
                         }
-                    }
+
+                        // Handle EOSE messages for subscriptions
+                        if let RelayMessage::Eose(sub_id) = &relay_msg {
+                            let subs = subscriptions.lock().await;
+                            if let Some(subscription) = subs.get(sub_id) {
+                                subscription.mark_eose();
+                            }
+                        }
+
+                        // Handle AUTH challenges (NIP-42)
+                        if let RelayMessage::Auth(challenge) = &relay_msg {
+                            info!("Received AUTH challenge from {}", url);
+
+                            // Check if we have an auth key configured
+                            let key_opt = auth_key.read().await.clone();
+                            if let Some(key) = key_opt {
+                                // Create and sign auth event
+                                let template =
+                                    create_auth_event_template(&relay_url_for_auth, challenge);
+                                match finalize_event(&template, &key) {
+                                    Ok(auth_event) => {
+                                        // Send AUTH response: ["AUTH", <signed-event>]
+                                        let auth_msg = json!(["AUTH", auth_event]);
+                                        let auth_text = serde_json::to_string(&auth_msg).unwrap();
+
+                                        let mut ws_guard = ws.lock().await;
+                                        if let Some(stream) = ws_guard.as_mut() {
+                                            match stream.send(Message::Text(auth_text)).await {
+                                                Ok(()) => {
+                                                    info!("Sent AUTH response to {}", url);
+                                                }
+                                                Err(e) => {
+                                                    warn!(
+                                                        "Failed to send AUTH response to {}: {}",
+                                                        url, e
+                                                    );
+                                                }
+                                            }
+                                        }
+                                    }
+                                    Err(e) => {
+                                        warn!("Failed to sign AUTH event for {}: {}", url, e);
+                                    }
+                                }
+                            } else {
+                                warn!(
+                                    "Received AUTH challenge from {} but no auth key configured",
+                                    url
+                                );
+                            }
+                        }
                     } // End of parse_relay_message if block
                 } // End of Some(text) if block
             }

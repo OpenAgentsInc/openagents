@@ -97,7 +97,11 @@ pub(crate) fn load_hook_scripts(cwd: &Path) -> HookScriptCatalog {
     let mut entries = Vec::new();
 
     if let Some(user_dir) = user_dir.as_ref() {
-        entries.extend(load_hook_script_dir(user_dir, HookScriptSource::User, &mut errors));
+        entries.extend(load_hook_script_dir(
+            user_dir,
+            HookScriptSource::User,
+            &mut errors,
+        ));
     }
     entries.extend(load_hook_script_dir(
         &project_dir,
@@ -158,7 +162,10 @@ fn load_hook_script_dir(
     scripts
 }
 
-fn parse_hook_script_entry(path: &Path, source: HookScriptSource) -> Result<Option<HookScriptEntry>, String> {
+fn parse_hook_script_entry(
+    path: &Path,
+    source: HookScriptSource,
+) -> Result<Option<HookScriptEntry>, String> {
     let Some(stem) = path.file_stem().and_then(|stem| stem.to_str()) else {
         return Ok(None);
     };

@@ -6,7 +6,7 @@ use crate::core::signature::MetaSignature;
 use crate::data::example::Example;
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::collections::HashMap;
 
 /// Execution lane types.
@@ -73,7 +73,8 @@ pub struct LaneBudgeterSignature {
 impl Default for LaneBudgeterSignature {
     fn default() -> Self {
         Self {
-            instruction: r#"You are an expert at optimizing AI compute costs. Given a task and budget,
+            instruction:
+                r#"You are an expert at optimizing AI compute costs. Given a task and budget,
 allocate resources across available execution lanes.
 
 Available lanes and characteristics:
@@ -90,7 +91,7 @@ Consider:
 5. Fallback strategies if primary lane fails
 
 Output budget allocations with rationale and fallback order."#
-                .to_string(),
+                    .to_string(),
             demos: vec![],
         }
     }

@@ -67,10 +67,10 @@ pub fn detect_structure(content: &str) -> DocumentStructure {
 
     // Check for code patterns
     let code_patterns = [
-        r"(?m)^(pub\s+)?(async\s+)?fn\s+\w+", // Rust
-        r"(?m)^def\s+\w+",                     // Python
+        r"(?m)^(pub\s+)?(async\s+)?fn\s+\w+",          // Rust
+        r"(?m)^def\s+\w+",                             // Python
         r"(?m)^(export\s+)?(async\s+)?function\s+\w+", // JavaScript
-        r"(?m)^class\s+\w+",                   // Python/JS/Rust
+        r"(?m)^class\s+\w+",                           // Python/JS/Rust
     ];
     let code_matches: usize = code_patterns
         .iter()
@@ -105,10 +105,7 @@ pub fn detect_structure(content: &str) -> DocumentStructure {
 }
 
 /// Extract sections from markdown headers.
-fn extract_markdown_sections(
-    content: &str,
-    headers: &[regex::Captures],
-) -> Vec<Section> {
+fn extract_markdown_sections(content: &str, headers: &[regex::Captures]) -> Vec<Section> {
     let mut sections = Vec::new();
 
     for (i, cap) in headers.iter().enumerate() {
@@ -259,10 +256,7 @@ fn extract_prose_sections(content: &str) -> Vec<Section> {
 }
 
 /// Extract sections from mixed content.
-fn extract_mixed_sections(
-    content: &str,
-    headers: &[regex::Captures],
-) -> Vec<Section> {
+fn extract_mixed_sections(content: &str, headers: &[regex::Captures]) -> Vec<Section> {
     // Use markdown sections if any, otherwise fall back to prose
     if !headers.is_empty() {
         extract_markdown_sections(content, headers)
@@ -392,7 +386,8 @@ mod tests {
 
     #[test]
     fn test_detect_markdown_structure() {
-        let content = "# Title\n\nIntro text.\n\n## Section 1\n\nContent 1.\n\n## Section 2\n\nContent 2.";
+        let content =
+            "# Title\n\nIntro text.\n\n## Section 1\n\nContent 1.\n\n## Section 2\n\nContent 2.";
         let structure = detect_structure(content);
 
         assert_eq!(structure.doc_type, DocumentType::Markdown);

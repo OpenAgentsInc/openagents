@@ -21,51 +21,50 @@
 
 // Re-export DSRs core types
 pub use dsrs::{
-    // Core traits
-    Module,
-    Optimizable,
-    MetaSignature,
-
-    // Predictors
-    Predict,
-    Predictor,
-
-    // Data types
-    Example,
-    Prediction,
-
-    // LM types
-    LM,
-    LMResponse,
-    LmUsage,
+    // Optimizers
+    COPRO,
     Chat,
-    Message,
-
     // Adapter
     ChatAdapter,
-
-    // Configuration
-    configure,
-    get_lm,
 
     // Evaluation
     Evaluator,
 
-    // Optimizers
-    COPRO,
+    // Data types
+    Example,
+    // LM types
+    LM,
+    LMResponse,
+    LmUsage,
     MIPROv2,
+    Message,
+
+    MetaSignature,
+
+    // Core traits
+    Module,
+    Optimizable,
     Optimizer,
+    // Predictors
+    Predict,
+    Prediction,
+
+    Predictor,
+
+    // Configuration
+    configure,
+    get_lm,
 };
 
 // Re-export the Signature derive macro
 pub use dsrs::Signature;
 
 // Re-export macros (these use dsrs internally so we just re-export)
-pub use dsrs::{example, prediction, sign, field, hashmap};
+pub use dsrs::{example, field, hashmap, prediction, sign};
 
-use std::sync::Arc;
 use anyhow::Result;
-use lm_router::{LmRouter, LmResponse};
+use lm_router::{LmResponse, LmRouter};
+use std::sync::Arc;
 
 /// Configure DSPy to use a specific LM configuration.
 ///

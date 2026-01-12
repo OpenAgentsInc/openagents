@@ -5,7 +5,7 @@
 use crate::core::signature::MetaSignature;
 use crate::data::example::Example;
 use anyhow::Result;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 /// Signature for routing retrieval queries to appropriate lanes.
 ///
@@ -27,7 +27,8 @@ pub struct RetrievalRouterSignature {
 impl Default for RetrievalRouterSignature {
     fn default() -> Self {
         Self {
-            instruction: r#"You are a retrieval routing expert. Given a query and available retrieval lanes,
+            instruction:
+                r#"You are a retrieval routing expert. Given a query and available retrieval lanes,
 decide which lane to use and how many results to fetch.
 
 Available lanes and their characteristics:
@@ -42,7 +43,7 @@ Consider:
 3. Specificity: How many results are likely useful?
 
 Output the best lane, optimal k value, and your reasoning."#
-                .to_string(),
+                    .to_string(),
             demos: vec![],
         }
     }

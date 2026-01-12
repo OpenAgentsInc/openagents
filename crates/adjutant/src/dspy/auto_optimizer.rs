@@ -56,8 +56,7 @@ impl AutoOptimizerConfig {
 
     /// Save config to disk.
     pub fn save(&self) -> anyhow::Result<()> {
-        let path = Self::config_path()
-            .ok_or_else(|| anyhow::anyhow!("No home directory"))?;
+        let path = Self::config_path().ok_or_else(|| anyhow::anyhow!("No home directory"))?;
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent)?;
         }
@@ -130,7 +129,9 @@ impl AutoOptimizer {
         // Check for new examples since last optimization
         let new_examples = labeled_store.examples_since(performance.last_optimization());
         if new_examples >= self.config.min_labeled_examples {
-            return Some(OptimizationTrigger::ExampleThreshold { count: new_examples });
+            return Some(OptimizationTrigger::ExampleThreshold {
+                count: new_examples,
+            });
         }
 
         // Check for accuracy drop
@@ -140,7 +141,9 @@ impl AutoOptimizer {
             self.config.accuracy_threshold,
         );
 
-        triggers.into_iter().find(|t| matches!(t, OptimizationTrigger::AccuracyDrop { .. }))
+        triggers
+            .into_iter()
+            .find(|t| matches!(t, OptimizationTrigger::AccuracyDrop { .. }))
     }
 
     /// Get the signature that most needs optimization.
@@ -255,14 +258,15 @@ impl SelfImprover {
         // 2. Update performance metrics
         for decision in &session.decisions {
             let was_correct = decision.was_correct.unwrap_or(true);
-            self.performance_tracker.record_outcome(&decision.decision_type, was_correct);
+            self.performance_tracker
+                .record_outcome(&decision.decision_type, was_correct);
         }
 
         // 3. Check for optimization triggers
-        if let Some((signature, trigger)) = self.auto_optimizer.check_and_get_signature(
-            feedback.store(),
-            &self.performance_tracker,
-        ) {
+        if let Some((signature, trigger)) = self
+            .auto_optimizer
+            .check_and_get_signature(feedback.store(), &self.performance_tracker)
+        {
             result.optimization_needed = Some(signature);
             result.optimization_trigger = Some(trigger);
         }
@@ -332,6 +336,10 @@ mod tests {
             metrics: super::super::performance::PerformanceMetrics::default(),
         };
 
-        assert!(optimizer.should_optimize(&labeled_store, &performance).is_none());
+        assert!(
+            optimizer
+                .should_optimize(&labeled_store, &performance)
+                .is_none()
+        );
     }
 }

@@ -155,16 +155,20 @@ impl LspIndex {
     }
 
     /// Grep for symbol-like patterns (function/struct/class definitions).
-    fn query_symbol_grep(&self, query: &str, config: &RetrievalConfig) -> Result<Vec<RetrievalResult>> {
+    fn query_symbol_grep(
+        &self,
+        query: &str,
+        config: &RetrievalConfig,
+    ) -> Result<Vec<RetrievalResult>> {
         // Build regex patterns for common symbol definitions
         let patterns = vec![
-            format!(r"fn\s+{}\s*[<(]", regex::escape(query)),  // Rust function
-            format!(r"struct\s+{}\s*[<{{]", regex::escape(query)),  // Rust struct
-            format!(r"trait\s+{}\s*[<{{]", regex::escape(query)),  // Rust trait
-            format!(r"impl\s+.*{}", regex::escape(query)),  // Rust impl
-            format!(r"function\s+{}\s*\(", regex::escape(query)),  // JS function
-            format!(r"class\s+{}\s*[<{{]", regex::escape(query)),  // Class
-            format!(r"interface\s+{}\s*[<{{]", regex::escape(query)),  // Interface
+            format!(r"fn\s+{}\s*[<(]", regex::escape(query)), // Rust function
+            format!(r"struct\s+{}\s*[<{{]", regex::escape(query)), // Rust struct
+            format!(r"trait\s+{}\s*[<{{]", regex::escape(query)), // Rust trait
+            format!(r"impl\s+.*{}", regex::escape(query)),    // Rust impl
+            format!(r"function\s+{}\s*\(", regex::escape(query)), // JS function
+            format!(r"class\s+{}\s*[<{{]", regex::escape(query)), // Class
+            format!(r"interface\s+{}\s*[<{{]", regex::escape(query)), // Interface
             format!(r"def\s+{}\s*\(", regex::escape(query)),  // Python function
             format!(r"type\s+{}\s*=", regex::escape(query)),  // Type alias
         ];
@@ -204,7 +208,10 @@ impl LspIndex {
     /// Infer symbol kind from definition line.
     fn infer_symbol_kind(&self, line: &str) -> SymbolKind {
         let trimmed = line.trim();
-        if trimmed.starts_with("fn ") || trimmed.starts_with("function ") || trimmed.starts_with("def ") {
+        if trimmed.starts_with("fn ")
+            || trimmed.starts_with("function ")
+            || trimmed.starts_with("def ")
+        {
             SymbolKind::Function
         } else if trimmed.starts_with("struct ") {
             SymbolKind::Struct
@@ -294,6 +301,9 @@ mod tests {
         assert_eq!(index.infer_symbol_kind("struct Foo {"), SymbolKind::Struct);
         assert_eq!(index.infer_symbol_kind("trait Bar {"), SymbolKind::Trait);
         assert_eq!(index.infer_symbol_kind("enum State {"), SymbolKind::Enum);
-        assert_eq!(index.infer_symbol_kind("class MyClass {"), SymbolKind::Class);
+        assert_eq!(
+            index.infer_symbol_kind("class MyClass {"),
+            SymbolKind::Class
+        );
     }
 }

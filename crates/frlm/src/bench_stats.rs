@@ -65,9 +65,15 @@ mod tests {
     #[test]
     fn collect_paper_statistics() {
         println!("\n");
-        println!("================================================================================");
-        println!("                    FRLM BENCHMARK STATISTICS FOR PAPER                         ");
-        println!("================================================================================");
+        println!(
+            "================================================================================"
+        );
+        println!(
+            "                    FRLM BENCHMARK STATISTICS FOR PAPER                         "
+        );
+        println!(
+            "================================================================================"
+        );
 
         // =========================================================================
         // Table 1: End-to-end Latency
@@ -100,9 +106,18 @@ mod tests {
 
         // Objective tier
         let json_results: Vec<_> = (0..10)
-            .map(|i| make_result(&format!("q-{}", i), r#"{"name": "Alice", "age": 30}"#, 100, 10))
+            .map(|i| {
+                make_result(
+                    &format!("q-{}", i),
+                    r#"{"name": "Alice", "age": 30}"#,
+                    100,
+                    10,
+                )
+            })
             .collect();
-        let tier = VerificationTier::objective(Some(r#"{"type": "object", "required": ["name"]}"#.to_string()));
+        let tier = VerificationTier::objective(Some(
+            r#"{"type": "object", "required": ["name"]}"#.to_string(),
+        ));
         let (p50, p95) = measure_latency(1000, || {
             let _ = Verifier::verify(&json_results, &tier);
         });
@@ -139,7 +154,13 @@ mod tests {
         println!("| Workers | Success% | Quorum Policy | Met? |");
         println!("|---------|----------|---------------|------|");
 
-        for (received, total, pct) in [(8, 10, 80), (9, 10, 90), (10, 10, 100), (40, 50, 80), (48, 50, 96)] {
+        for (received, total, pct) in [
+            (8, 10, 80),
+            (9, 10, 90),
+            (10, 10, 100),
+            (40, 50, 80),
+            (48, 50, 96),
+        ] {
             let q_all = Quorum::All;
             let q_frac = Quorum::Fraction(0.8);
             let min_needed = (total as f32 * 0.8).ceil() as usize;
@@ -147,18 +168,37 @@ mod tests {
 
             println!(
                 "| {:>2}/{:<2} | {:>7}% | All           | {:>4} |",
-                received, total, pct,
-                if q_all.is_met(received, total) { "Yes" } else { "No" }
+                received,
+                total,
+                pct,
+                if q_all.is_met(received, total) {
+                    "Yes"
+                } else {
+                    "No"
+                }
             );
             println!(
                 "| {:>2}/{:<2} | {:>7}% | Fraction(0.8) | {:>4} |",
-                received, total, pct,
-                if q_frac.is_met(received, total) { "Yes" } else { "No" }
+                received,
+                total,
+                pct,
+                if q_frac.is_met(received, total) {
+                    "Yes"
+                } else {
+                    "No"
+                }
             );
             println!(
                 "| {:>2}/{:<2} | {:>7}% | MinCount({})  | {:>4} |",
-                received, total, pct, min_needed,
-                if q_min.is_met(received, total) { "Yes" } else { "No" }
+                received,
+                total,
+                pct,
+                min_needed,
+                if q_min.is_met(received, total) {
+                    "Yes"
+                } else {
+                    "No"
+                }
             );
         }
 
@@ -176,7 +216,11 @@ mod tests {
             let tier = VerificationTier::redundancy(10, 6);
 
             let verify_result = Verifier::verify(&results, &tier).unwrap();
-            let detection = if verify_result.passed { "Accepted" } else { "Rejected" };
+            let detection = if verify_result.passed {
+                "Accepted"
+            } else {
+                "Rejected"
+            };
             let agreement = verify_result
                 .agreement
                 .map(|a| format!("{:.0}%", a * 100.0))
@@ -188,8 +232,14 @@ mod tests {
             );
         }
 
-        println!("\n================================================================================");
-        println!("                              END STATISTICS                                    ");
-        println!("================================================================================\n");
+        println!(
+            "\n================================================================================"
+        );
+        println!(
+            "                              END STATISTICS                                    "
+        );
+        println!(
+            "================================================================================\n"
+        );
     }
 }

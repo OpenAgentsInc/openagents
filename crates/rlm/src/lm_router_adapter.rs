@@ -67,11 +67,7 @@ impl LmRouterClient {
 
 #[async_trait]
 impl LlmClient for LmRouterClient {
-    async fn complete(
-        &self,
-        prompt: &str,
-        max_tokens: Option<usize>,
-    ) -> Result<LlmResponse> {
+    async fn complete(&self, prompt: &str, max_tokens: Option<usize>) -> Result<LlmResponse> {
         let max = max_tokens.unwrap_or(self.default_max_tokens);
 
         let response = self

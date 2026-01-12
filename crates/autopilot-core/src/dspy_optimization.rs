@@ -10,7 +10,7 @@
 //! 3. Graduate to GEPA for complex signatures
 //! 4. Store optimized modules in ~/.openagents/dspy/optimized/
 
-use dsrs::{example, Example, Predict, Prediction, Predictor, Signature, GLOBAL_SETTINGS};
+use dsrs::{Example, GLOBAL_SETTINGS, Predict, Prediction, Predictor, Signature, example};
 use serde::{Deserialize, Serialize};
 use std::future::Future;
 use std::panic::{AssertUnwindSafe, catch_unwind};
@@ -276,11 +276,9 @@ fn dspy_paths_valid(paths: &[String]) -> Option<bool> {
 }
 
 fn paths_look_valid_heuristic(paths: &[String]) -> bool {
-    paths.iter().all(|p| {
-        (p.contains('/') || p.contains('.'))
-            && !p.contains(' ')
-            && !p.starts_with("http")
-    })
+    paths
+        .iter()
+        .all(|p| (p.contains('/') || p.contains('.')) && !p.contains(' ') && !p.starts_with("http"))
 }
 
 /// Check if implementation steps are actionable.
@@ -326,9 +324,33 @@ fn dspy_steps_actionable(steps: &[String]) -> Option<bool> {
 
 fn steps_are_actionable_heuristic(steps: &[String]) -> bool {
     let action_verbs = [
-        "add", "create", "update", "modify", "remove", "delete", "implement", "write", "read",
-        "run", "test", "fix", "change", "refactor", "move", "rename", "install", "configure",
-        "set", "define", "import", "export", "build", "deploy", "check", "verify", "ensure",
+        "add",
+        "create",
+        "update",
+        "modify",
+        "remove",
+        "delete",
+        "implement",
+        "write",
+        "read",
+        "run",
+        "test",
+        "fix",
+        "change",
+        "refactor",
+        "move",
+        "rename",
+        "install",
+        "configure",
+        "set",
+        "define",
+        "import",
+        "export",
+        "build",
+        "deploy",
+        "check",
+        "verify",
+        "ensure",
     ];
 
     steps.iter().all(|step| {
@@ -807,6 +829,10 @@ mod tests {
         let dspy_example = example.to_example();
         // Verify it has the expected input keys
         assert_eq!(dspy_example.input_keys.len(), 3);
-        assert!(dspy_example.input_keys.contains(&"repository_summary".to_string()));
+        assert!(
+            dspy_example
+                .input_keys
+                .contains(&"repository_summary".to_string())
+        );
     }
 }

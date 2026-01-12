@@ -184,7 +184,10 @@ impl Metric for KeywordMetric {
         // Check for forbidden keywords first
         for kw in &self.forbidden {
             if text.contains(&kw.to_lowercase()) {
-                return Ok(MetricScore::fail(format!("Contains forbidden keyword: {}", kw)));
+                return Ok(MetricScore::fail(format!(
+                    "Contains forbidden keyword: {}",
+                    kw
+                )));
             }
         }
 
@@ -415,10 +418,7 @@ impl SyntaxMetric {
         }
 
         if !stack.is_empty() {
-            return Ok(MetricScore::fail(format!(
-                "Unclosed brackets: {:?}",
-                stack
-            )));
+            return Ok(MetricScore::fail(format!("Unclosed brackets: {:?}", stack)));
         }
 
         Ok(MetricScore::perfect())
@@ -486,7 +486,8 @@ mod tests {
     fn make_example(fields: &[(&str, &str)]) -> Example {
         let mut ex = Example::default();
         for (k, v) in fields {
-            ex.data.insert(k.to_string(), serde_json::Value::String(v.to_string()));
+            ex.data
+                .insert(k.to_string(), serde_json::Value::String(v.to_string()));
         }
         ex
     }

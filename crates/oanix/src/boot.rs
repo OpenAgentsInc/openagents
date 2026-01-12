@@ -4,8 +4,7 @@ use crate::discovery::{
     discover_compute, discover_hardware, discover_identity, discover_network, discover_workspace,
 };
 use crate::manifest::{
-    BootConfig, ComputeManifest, HardwareManifest, IdentityManifest, NetworkManifest,
-    OanixManifest,
+    BootConfig, ComputeManifest, HardwareManifest, IdentityManifest, NetworkManifest, OanixManifest,
 };
 use std::time::Instant;
 use tracing::{debug, warn};
@@ -30,49 +29,48 @@ pub async fn boot_with_config(config: BootConfig) -> anyhow::Result<OanixManifes
     let start = Instant::now();
 
     // Run all discovery phases in parallel
-    let (hardware_result, compute_result, network_result, identity_result, workspace_result) =
-        tokio::join!(
-            async {
-                if config.skip_hardware {
-                    debug!("Skipping hardware discovery");
-                    Ok(HardwareManifest::unknown())
-                } else {
-                    retry_discovery("hardware", config.retries, || discover_hardware()).await
-                }
-            },
-            async {
-                if config.skip_compute {
-                    debug!("Skipping compute discovery");
-                    Ok(ComputeManifest::empty())
-                } else {
-                    retry_discovery("compute", config.retries, || discover_compute()).await
-                }
-            },
-            async {
-                if config.skip_network {
-                    debug!("Skipping network discovery");
-                    Ok(NetworkManifest::offline())
-                } else {
-                    retry_discovery("network", config.retries, || discover_network()).await
-                }
-            },
-            async {
-                if config.skip_identity {
-                    debug!("Skipping identity discovery");
-                    Ok(IdentityManifest::unknown())
-                } else {
-                    retry_discovery("identity", config.retries, || discover_identity()).await
-                }
-            },
-            async {
-                if config.skip_workspace {
-                    debug!("Skipping workspace discovery");
-                    Ok(None)
-                } else {
-                    retry_discovery("workspace", config.retries, || discover_workspace()).await
-                }
-            },
-        );
+    let (hardware_result, compute_result, network_result, identity_result, workspace_result) = tokio::join!(
+        async {
+            if config.skip_hardware {
+                debug!("Skipping hardware discovery");
+                Ok(HardwareManifest::unknown())
+            } else {
+                retry_discovery("hardware", config.retries, || discover_hardware()).await
+            }
+        },
+        async {
+            if config.skip_compute {
+                debug!("Skipping compute discovery");
+                Ok(ComputeManifest::empty())
+            } else {
+                retry_discovery("compute", config.retries, || discover_compute()).await
+            }
+        },
+        async {
+            if config.skip_network {
+                debug!("Skipping network discovery");
+                Ok(NetworkManifest::offline())
+            } else {
+                retry_discovery("network", config.retries, || discover_network()).await
+            }
+        },
+        async {
+            if config.skip_identity {
+                debug!("Skipping identity discovery");
+                Ok(IdentityManifest::unknown())
+            } else {
+                retry_discovery("identity", config.retries, || discover_identity()).await
+            }
+        },
+        async {
+            if config.skip_workspace {
+                debug!("Skipping workspace discovery");
+                Ok(None)
+            } else {
+                retry_discovery("workspace", config.retries, || discover_workspace()).await
+            }
+        },
+    );
 
     Ok(OanixManifest {
         hardware: hardware_result?,

@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use rusqlite::{params, Connection, OpenFlags, OptionalExtension};
+use rusqlite::{Connection, OpenFlags, OptionalExtension, params};
 
 const DEFAULT_RUN_LIMIT: u32 = 50;
 const DEFAULT_TRACE_LIMIT: u32 = 200;
@@ -171,8 +171,7 @@ impl RlmTraceState {
 
     pub(crate) fn refresh(&mut self, run_id: Option<String>) {
         self.status = RlmTraceStatus::Refreshing;
-        let (status, snapshot, selected_run_id) =
-            load_trace_snapshot(DEFAULT_TRACE_LIMIT, run_id);
+        let (status, snapshot, selected_run_id) = load_trace_snapshot(DEFAULT_TRACE_LIMIT, run_id);
         self.status = status;
         self.snapshot = snapshot;
         self.selected_run_id = selected_run_id;

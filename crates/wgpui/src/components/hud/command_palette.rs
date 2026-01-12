@@ -349,7 +349,9 @@ impl Component for CommandPalette {
                             .measure_styled(keys, theme::font_size::XS, FontStyle::default())
                     };
                     let key_origin = Point::new(
-                        item_bounds.origin.x + item_bounds.size.width - key_width - theme::spacing::SM,
+                        item_bounds.origin.x + item_bounds.size.width
+                            - key_width
+                            - theme::spacing::SM,
                         item_bounds.origin.y
                             + (item_bounds.size.height - theme::font_size::XS) / 2.0,
                     );

@@ -4,15 +4,20 @@ use crate::app::catalog::mcp::McpServerStatus;
 use crate::app::session::RateLimits;
 use crate::autopilot_loop::DspyStage;
 
-use super::super::chat::MessageMetadata;
 use super::super::HookLogEntry;
+use super::super::chat::MessageMetadata;
 
 /// Events from the async query task.
 pub(crate) enum ResponseEvent {
     Chunk(String),
     ThoughtChunk(String),
-    ToolCallStart { name: String, tool_use_id: String },
-    ToolCallInput { json: String },
+    ToolCallStart {
+        name: String,
+        tool_use_id: String,
+    },
+    ToolCallInput {
+        json: String,
+    },
     ToolCallEnd,
     ToolResult {
         content: String,
@@ -26,9 +31,13 @@ pub(crate) enum ResponseEvent {
         tool_name: String,
         elapsed_secs: f64,
     },
-    UserMessageId { uuid: String },
+    UserMessageId {
+        uuid: String,
+    },
     SystemMessage(String),
-    Complete { metadata: Option<MessageMetadata> },
+    Complete {
+        metadata: Option<MessageMetadata>,
+    },
     Error(String),
     SystemInit {
         model: String,
@@ -54,7 +63,9 @@ pub(crate) enum ResponseEvent {
 
 pub(crate) enum QueryControl {
     Interrupt,
-    RewindFiles { user_message_id: String },
+    RewindFiles {
+        user_message_id: String,
+    },
     #[allow(dead_code)]
     Abort,
     FetchMcpStatus,

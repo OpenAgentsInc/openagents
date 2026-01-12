@@ -2,7 +2,7 @@ use serde_json::Value;
 use wgpui::components::organisms::{EventData, TagData};
 
 use crate::app::catalog::types::HookEvent;
-use crate::app::{hook_event_label, truncate_preview, HookLogEntry};
+use crate::app::{HookLogEntry, hook_event_label, truncate_preview};
 
 fn hook_event_kind(event: HookEvent) -> u32 {
     match event {
@@ -49,10 +49,7 @@ pub(super) fn hook_log_event_data(entry: &HookLogEntry) -> EventData {
         vec![value_preview(&entry.input, 180)],
     ));
     if let Some(output) = &entry.output {
-        tags.push(TagData::new(
-            "output",
-            vec![value_preview(output, 180)],
-        ));
+        tags.push(TagData::new("output", vec![value_preview(output, 180)]));
     }
 
     let mut content = entry.summary.clone();

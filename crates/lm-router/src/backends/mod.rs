@@ -46,9 +46,7 @@ pub async fn auto_detect_router() -> Result<AutoRouter> {
     // Ollama (localhost:11434)
     let mut ollama = OllamaBackend::new();
     if ollama.is_available().await {
-        if ollama.detect_models().await.is_ok()
-            && default_model.is_none()
-        {
+        if ollama.detect_models().await.is_ok() && default_model.is_none() {
             default_model = ollama.supported_models().first().cloned();
         }
         builder = builder.add_backend(ollama);

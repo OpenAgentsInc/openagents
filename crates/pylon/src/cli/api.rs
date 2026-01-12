@@ -1,11 +1,11 @@
 //! pylon api - Local HTTP API for completions
 
+use axum::Json;
 use axum::extract::State;
 use axum::http::{HeaderValue, Method, StatusCode};
 use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
-use axum::Json;
 use clap::Args;
 use compute::backends::{BackendRegistry, CompletionRequest, StreamChunk};
 use serde::{Deserialize, Serialize};
@@ -14,8 +14,8 @@ use std::collections::HashMap;
 use std::convert::Infallible;
 use std::sync::Arc;
 use std::time::Duration;
-use tokio_stream::wrappers::ReceiverStream;
 use tokio_stream::StreamExt;
+use tokio_stream::wrappers::ReceiverStream;
 use tower_http::cors::{Any, CorsLayer};
 
 #[derive(Args)]
@@ -160,8 +160,7 @@ async fn completions(
             };
             Ok::<Event, Infallible>(event)
         });
-        let sse = Sse::new(stream)
-            .keep_alive(KeepAlive::new().interval(Duration::from_secs(15)));
+        let sse = Sse::new(stream).keep_alive(KeepAlive::new().interval(Duration::from_secs(15)));
         Ok(sse.into_response())
     } else {
         let response = backend

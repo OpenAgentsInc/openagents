@@ -12,8 +12,7 @@ use tracing::{debug, warn};
 // DSPy pipeline integration (native-only)
 #[cfg(not(target_arch = "wasm32"))]
 use crate::dspy_pipelines::{
-    IssueSelectionInput, IssueSelectionPipeline, SituationInput, SituationPipeline,
-    SituationResult,
+    IssueSelectionInput, IssueSelectionPipeline, SituationInput, SituationPipeline, SituationResult,
 };
 #[cfg(not(target_arch = "wasm32"))]
 use crate::dspy_situation::PriorityAction;
@@ -423,9 +422,7 @@ impl OanixState {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::manifest::{
-        ComputeManifest, HardwareManifest, IdentityManifest, NetworkManifest,
-    };
+    use crate::manifest::{ComputeManifest, HardwareManifest, IdentityManifest, NetworkManifest};
 
     fn mock_manifest() -> OanixManifest {
         OanixManifest {

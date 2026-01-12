@@ -266,7 +266,9 @@ pub trait VimEditor {
 
     /// Get character class at position
     fn char_class_at(&self, pos: Self::Pos) -> CharClass {
-        self.char_at(pos).map(CharClass::of).unwrap_or(CharClass::Newline)
+        self.char_at(pos)
+            .map(CharClass::of)
+            .unwrap_or(CharClass::Newline)
     }
 
     /// Check if line is empty or only whitespace

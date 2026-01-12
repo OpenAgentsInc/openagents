@@ -177,7 +177,8 @@ fn parse_agent_file(path: &Path, source: AgentSource) -> Result<Option<AgentEntr
     let disallowed_tools = frontmatter_list(&frontmatter, "disallowed_tools")
         .map(sanitize_tokens)
         .filter(|list| !list.is_empty());
-    let model = frontmatter_scalar(&frontmatter, "model").and_then(|value| parse_agent_model(&value));
+    let model =
+        frontmatter_scalar(&frontmatter, "model").and_then(|value| parse_agent_model(&value));
 
     let definition = AgentDefinition {
         description: description.clone(),

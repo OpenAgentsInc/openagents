@@ -6,7 +6,7 @@ use anyhow::Result;
 use dsrs::core::signature::MetaSignature;
 use dsrs::data::example::Example;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 /// Urgency level for recommended actions.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -121,7 +121,8 @@ pub struct SituationAssessmentSignature {
 impl Default for SituationAssessmentSignature {
     fn default() -> Self {
         Self {
-            instruction: r#"Analyze current system state and determine what the agent should prioritize.
+            instruction:
+                r#"Analyze current system state and determine what the agent should prioritize.
 Consider: available compute, network state, pending work, user intent.
 
 Priority actions (choose one):
@@ -140,7 +141,7 @@ Urgency levels:
 - DEFERRED: Can wait, do during idle time
 
 Assess the situation and recommend the most appropriate action with reasoning."#
-                .to_string(),
+                    .to_string(),
             demos: vec![],
         }
     }

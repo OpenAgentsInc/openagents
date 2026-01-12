@@ -14,11 +14,11 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 use thiserror::Error;
-use tokio::sync::{mpsc, RwLock};
+use tokio::sync::{RwLock, mpsc};
 
 use crate::domain::{
-    CodeReviewRequest, CodeReviewResult, PatchGenRequest, PatchGenResult,
-    RepoIndexRequest, RepoIndexResult, SandboxRunRequest, SandboxRunResult,
+    CodeReviewRequest, CodeReviewResult, PatchGenRequest, PatchGenResult, RepoIndexRequest,
+    RepoIndexResult, SandboxRunRequest, SandboxRunResult,
 };
 
 // ============================================================================
@@ -82,19 +82,11 @@ pub enum JobProgress {
         estimated_duration_secs: Option<u32>,
     },
     /// Repository cloning
-    CloningRepo {
-        repo: String,
-        progress_pct: u8,
-    },
+    CloningRepo { repo: String, progress_pct: u8 },
     /// Agent is thinking/reasoning
-    Thinking {
-        message: String,
-    },
+    Thinking { message: String },
     /// Agent is using a tool
-    ToolUse {
-        tool: String,
-        input_preview: String,
-    },
+    ToolUse { tool: String, input_preview: String },
     /// Tool completed with result
     ToolResult {
         tool: String,
@@ -107,23 +99,20 @@ pub enum JobProgress {
         progress_pct: u8,
     },
     /// Running verification (tests, lint, etc.)
-    Verifying {
-        check: String,
-    },
+    Verifying { check: String },
     /// Job completed successfully
-    Completed {
-        duration_ms: u64,
-    },
+    Completed { duration_ms: u64 },
     /// Job failed
-    Failed {
-        error: String,
-    },
+    Failed { error: String },
 }
 
 impl JobProgress {
     /// Check if this is a terminal state
     pub fn is_terminal(&self) -> bool {
-        matches!(self, JobProgress::Completed { .. } | JobProgress::Failed { .. })
+        matches!(
+            self,
+            JobProgress::Completed { .. } | JobProgress::Failed { .. }
+        )
     }
 }
 
@@ -161,10 +150,7 @@ impl AgentCapabilities {
             sandbox_run: true,
             repo_index: false, // Typically done by different backend
             max_concurrent_jobs: 3,
-            supported_models: vec![
-                "codex-sonnet-4".to_string(),
-                "codex-opus-4".to_string(),
-            ],
+            supported_models: vec!["codex-sonnet-4".to_string(), "codex-opus-4".to_string()],
             isolation_mode: "container".to_string(),
             max_time_limit_secs: 1800, // 30 minutes
         }
@@ -404,7 +390,10 @@ mod tests {
         assert!(caps.code_review);
         assert!(caps.sandbox_run);
         assert!(!caps.repo_index);
-        assert!(caps.supported_models.contains(&"codex-sonnet-4".to_string()));
+        assert!(
+            caps.supported_models
+                .contains(&"codex-sonnet-4".to_string())
+        );
     }
 
     #[test]
@@ -429,23 +418,29 @@ mod tests {
 
     #[test]
     fn test_job_progress_is_terminal() {
-        assert!(!JobProgress::Started {
-            job_id: "1".to_string(),
-            estimated_duration_secs: None,
-        }
-        .is_terminal());
+        assert!(
+            !JobProgress::Started {
+                job_id: "1".to_string(),
+                estimated_duration_secs: None,
+            }
+            .is_terminal()
+        );
 
-        assert!(!JobProgress::Thinking {
-            message: "test".to_string(),
-        }
-        .is_terminal());
+        assert!(
+            !JobProgress::Thinking {
+                message: "test".to_string(),
+            }
+            .is_terminal()
+        );
 
         assert!(JobProgress::Completed { duration_ms: 1000 }.is_terminal());
 
-        assert!(JobProgress::Failed {
-            error: "test".to_string(),
-        }
-        .is_terminal());
+        assert!(
+            JobProgress::Failed {
+                error: "test".to_string(),
+            }
+            .is_terminal()
+        );
     }
 
     #[test]

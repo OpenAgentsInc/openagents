@@ -131,8 +131,8 @@ pub struct TimeoutPolicy {
 impl Default for TimeoutPolicy {
     fn default() -> Self {
         Self {
-            total: Duration::from_secs(300),       // 5 minutes total
-            per_query: Duration::from_secs(30),    // 30 seconds per query
+            total: Duration::from_secs(300),              // 5 minutes total
+            per_query: Duration::from_secs(30),           // 30 seconds per query
             straggler_threshold: Duration::from_secs(10), // 10 second grace
         }
     }

@@ -45,7 +45,12 @@ pub struct RetrievalResult {
 
 impl RetrievalResult {
     /// Create a new retrieval result.
-    pub fn new(path: impl Into<String>, start_line: usize, end_line: usize, content: impl Into<String>) -> Self {
+    pub fn new(
+        path: impl Into<String>,
+        start_line: usize,
+        end_line: usize,
+        content: impl Into<String>,
+    ) -> Self {
         Self {
             path: path.into(),
             start_line,

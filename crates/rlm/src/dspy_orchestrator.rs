@@ -44,7 +44,7 @@ use crate::chunking::{chunk_by_structure, detect_structure};
 use crate::error::Result;
 use crate::span::SpanRef;
 
-use dsrs::{example, Example, LM, Predict, Predictor, Signature};
+use dsrs::{Example, LM, Predict, Predictor, Signature, example};
 use std::sync::Arc;
 
 // ============================================================================
@@ -396,10 +396,7 @@ impl DspyOrchestrator {
             self.config.overlap,
         );
 
-        let chunks: Vec<_> = chunks
-            .into_iter()
-            .take(self.config.max_chunks)
-            .collect();
+        let chunks: Vec<_> = chunks.into_iter().take(self.config.max_chunks).collect();
 
         if self.config.verbose {
             println!("  Generated {} chunks", chunks.len());
@@ -528,7 +525,10 @@ impl DspyOrchestrator {
 
         // Phase 3: Reduce findings
         if self.config.verbose {
-            println!("Phase 3: Synthesizing {} findings...", relevant_extractions.len());
+            println!(
+                "Phase 3: Synthesizing {} findings...",
+                relevant_extractions.len()
+            );
         }
 
         let all_findings = relevant_extractions
@@ -582,7 +582,9 @@ impl DspyOrchestrator {
                     "evidence": "input" => all_findings
                 })
                 .await
-                .map_err(|e: anyhow::Error| crate::error::RlmError::ExecutionError(e.to_string()))?;
+                .map_err(|e: anyhow::Error| {
+                    crate::error::RlmError::ExecutionError(e.to_string())
+                })?;
 
             let verdict = verification_result
                 .get("verdict", None)
@@ -683,16 +685,7 @@ mod tests {
 
     #[test]
     fn test_chunk_extraction_with_span_ref() {
-        let span = SpanRef::from_chunk(
-            0,
-            "test.md",
-            Some("abc123"),
-            1,
-            10,
-            0,
-            100,
-            "test content",
-        );
+        let span = SpanRef::from_chunk(0, "test.md", Some("abc123"), 1, 10, 0, 100, "test content");
 
         let extraction = ChunkExtraction {
             chunk_id: 0,

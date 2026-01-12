@@ -30,11 +30,7 @@ pub fn analyze_blockers(issues: &[&IssueSummary]) -> BlockerAnalysis {
     let mut crate_counts: HashMap<String, u32> = HashMap::new();
 
     for issue in issues {
-        let reason = issue
-            .blocked_reason
-            .as_deref()
-            .unwrap_or("")
-            .to_lowercase();
+        let reason = issue.blocked_reason.as_deref().unwrap_or("").to_lowercase();
 
         // Categorize by reason
         if reason.contains("empty")
@@ -98,7 +94,8 @@ fn extract_crate_name(reason: &str) -> Option<String> {
 
     for (i, word) in words.iter().enumerate() {
         if *word == "crate" && i > 0 {
-            let name = words[i - 1].trim_matches(|c: char| !c.is_alphanumeric() && c != '-' && c != '_');
+            let name =
+                words[i - 1].trim_matches(|c: char| !c.is_alphanumeric() && c != '-' && c != '_');
             if !name.is_empty() && name != "the" && name != "this" {
                 return Some(name.to_string());
             }
@@ -143,10 +140,7 @@ fn suggest_unblocking_work(analysis: &BlockerAnalysis, issues: &[&IssueSummary])
         });
 
         if let Some(issue) = budget_issue {
-            return Some(format!(
-                "Split issue #{} into smaller tasks",
-                issue.number
-            ));
+            return Some(format!("Split issue #{} into smaller tasks", issue.number));
         }
 
         return Some("Split large tasks into smaller, focused chunks".to_string());

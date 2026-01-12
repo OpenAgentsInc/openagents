@@ -7,7 +7,11 @@ pub(crate) enum ModelOption {
 
 impl ModelOption {
     pub(crate) fn all() -> [ModelOption; 3] {
-        [ModelOption::Default, ModelOption::Mini, ModelOption::Reasoning]
+        [
+            ModelOption::Default,
+            ModelOption::Mini,
+            ModelOption::Reasoning,
+        ]
     }
 
     pub(crate) fn name(&self) -> &'static str {

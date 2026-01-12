@@ -78,7 +78,11 @@ impl TextInput {
             } else {
                 let mut remaining = line;
                 while !remaining.is_empty() {
-                    let take = remaining.chars().take(chars_per_line).collect::<String>().len();
+                    let take = remaining
+                        .chars()
+                        .take(chars_per_line)
+                        .collect::<String>()
+                        .len();
                     let (chunk, rest) = remaining.split_at(take.min(remaining.len()));
                     visual_lines.push(chunk);
                     remaining = rest;
@@ -288,13 +292,15 @@ impl TextInput {
 
     /// Get the selection range as (start, end) where start < end
     fn get_selection(&self) -> Option<(usize, usize)> {
-        self.selection_start.map(|start| {
-            if start < self.cursor_pos {
-                (start, self.cursor_pos)
-            } else {
-                (self.cursor_pos, start)
-            }
-        }).filter(|(start, end)| start != end)
+        self.selection_start
+            .map(|start| {
+                if start < self.cursor_pos {
+                    (start, self.cursor_pos)
+                } else {
+                    (self.cursor_pos, start)
+                }
+            })
+            .filter(|(start, end)| start != end)
     }
 
     /// Select all text
@@ -408,7 +414,10 @@ impl Component for TextInput {
         if !display_text.is_empty() {
             let visual_lines = self.wrap_text(display_text);
             for (i, line) in visual_lines.iter().enumerate() {
-                let line_y = bounds.origin.y + self.padding.1 + line_height * i as f32 + self.font_size * 0.15;
+                let line_y = bounds.origin.y
+                    + self.padding.1
+                    + line_height * i as f32
+                    + self.font_size * 0.15;
                 if !line.is_empty() {
                     let text_run = if self.mono {
                         cx.text.layout_styled_mono(

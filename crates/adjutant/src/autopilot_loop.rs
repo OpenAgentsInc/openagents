@@ -860,8 +860,8 @@ impl<O: AutopilotOutput> AutopilotLoop<O> {
         // Run DSPy planning pipeline to get implementation steps
         tracing::info!("Autopilot: starting DSPy planning pipeline...");
         let callback = self.output.dspy_callback();
-        let test_strategy_override = (!self.config.verify_completion)
-            .then(|| self.test_strategy_hint());
+        let test_strategy_override =
+            (!self.config.verify_completion).then(|| self.test_strategy_hint());
         let dspy_plan = match orchestrator
             .create_plan_with_callback(
                 &self.original_task,

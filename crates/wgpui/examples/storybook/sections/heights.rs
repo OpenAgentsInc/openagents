@@ -1,9 +1,9 @@
 use wgpui::Bounds;
 
 use crate::constants::{
-    BG_TILE_GAP, BG_TILE_H, BG_TILE_W, DOT_ORIGINS, DOT_SHAPES, FRAME_ANIMATIONS,
-    FRAME_DIRECTIONS, FRAME_STYLES, FRAME_TILE_GAP, FRAME_TILE_H, FRAME_TILE_W, FRAME_VARIANT_H,
-    FRAME_VARIANT_W, GLOW_PRESETS, ILLUMINATOR_TILE_GAP, ILLUMINATOR_TILE_H, ILLUMINATOR_TILE_W,
+    BG_TILE_GAP, BG_TILE_H, BG_TILE_W, DOT_ORIGINS, DOT_SHAPES, FRAME_ANIMATIONS, FRAME_DIRECTIONS,
+    FRAME_STYLES, FRAME_TILE_GAP, FRAME_TILE_H, FRAME_TILE_W, FRAME_VARIANT_H, FRAME_VARIANT_W,
+    GLOW_PRESETS, ILLUMINATOR_TILE_GAP, ILLUMINATOR_TILE_H, ILLUMINATOR_TILE_W,
     LIGHT_DEMO_FRAMES_INNER_H, LIGHT_DEMO_HERO_INNER_H, LINE_DIRECTIONS, PANEL_PADDING,
     TEXT_TILE_GAP, TEXT_TILE_H, TEXT_TILE_W, TOOLCALL_DEMO_INNER_H,
 };
@@ -375,6 +375,20 @@ pub(crate) fn sovereign_agent_flows_height(_bounds: Bounds) -> f32 {
         panel_height(450.0), // Threshold Key Manager Organism
         panel_height(400.0), // Schedule Configuration Organism
         panel_height(180.0), // Type & Status Reference
+    ];
+    stacked_height(&panels)
+}
+
+pub(crate) fn codex_events_height(_bounds: Bounds) -> f32 {
+    let panels = [
+        panel_height(240.0), // Thread + Turn Events
+        panel_height(300.0), // Item + Error Events
+        panel_height(420.0), // Streaming Deltas
+        panel_height(260.0), // Tool Interactions
+        panel_height(360.0), // Plan + Diff
+        panel_height(300.0), // Usage
+        panel_height(300.0), // Account + MCP
+        panel_height(220.0), // Notices + Raw Response
     ];
     stacked_height(&panels)
 }

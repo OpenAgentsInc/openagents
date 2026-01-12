@@ -2,11 +2,11 @@
 //!
 //! Wraps neobank functionality for agent treasury management.
 
-use openagents_runtime::UnifiedIdentity;
 use neobank::{
     CashuWallet, Currency, EscrowService, ExchangeClient, MintConfig, MintTrustService,
     ReputationService, SettlementEngine, TradingPair, TreasuryAgent, TreasuryAgentConfig,
 };
+use openagents_runtime::UnifiedIdentity;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;

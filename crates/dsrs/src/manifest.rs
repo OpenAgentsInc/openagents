@@ -83,7 +83,11 @@ impl Compatibility {
     }
 
     /// Check if the given environment satisfies these requirements.
-    pub fn check(&self, available_tools: &[String], available_lanes: &[String]) -> CompatibilityResult {
+    pub fn check(
+        &self,
+        available_tools: &[String],
+        available_lanes: &[String],
+    ) -> CompatibilityResult {
         let mut missing_tools = Vec::new();
         let mut missing_lanes = Vec::new();
 
@@ -388,11 +392,11 @@ mod tests {
 
     #[test]
     fn test_compiled_id_differs_with_changes() {
-        let manifest1 = CompiledModuleManifest::new("Sig", "GEPA")
-            .with_instruction("Instruction A");
+        let manifest1 =
+            CompiledModuleManifest::new("Sig", "GEPA").with_instruction("Instruction A");
 
-        let manifest2 = CompiledModuleManifest::new("Sig", "GEPA")
-            .with_instruction("Instruction B");
+        let manifest2 =
+            CompiledModuleManifest::new("Sig", "GEPA").with_instruction("Instruction B");
 
         let id1 = manifest1.compute_compiled_id().unwrap();
         let id2 = manifest2.compute_compiled_id().unwrap();
@@ -431,7 +435,10 @@ mod tests {
             .with_p_fail(0.1);
 
         assert_eq!(scorecard.median_score, 0.85);
-        assert_eq!(scorecard.proxy_metrics.get("retrieval_recall@10"), Some(&0.9));
+        assert_eq!(
+            scorecard.proxy_metrics.get("retrieval_recall@10"),
+            Some(&0.9)
+        );
         assert_eq!(scorecard.truth_metrics.get("tests_pass"), Some(&1.0));
         assert_eq!(scorecard.rollouts, 10);
         assert_eq!(scorecard.p_fail, 0.1);

@@ -1,15 +1,15 @@
 use std::collections::VecDeque;
 
+use super::request::{PermissionRequest, PermissionResult};
 use tokio::sync::mpsc;
 use wgpui::components::organisms::PermissionDialog;
-use super::request::{PermissionRequest, PermissionResult};
 
-use super::{PermissionHistoryEntry, PermissionPending};
 use super::rules::{
-    add_unique, coder_mode_default_allow, extract_bash_command, permission_detail_for_request,
-    pattern_matches, permission_type_for_request, remove_items, sanitize_tokens, save_permission_config,
-    split_permission_tokens, PermissionConfig,
+    PermissionConfig, add_unique, coder_mode_default_allow, extract_bash_command, pattern_matches,
+    permission_detail_for_request, permission_type_for_request, remove_items, sanitize_tokens,
+    save_permission_config, split_permission_tokens,
 };
+use super::{PermissionHistoryEntry, PermissionPending};
 use crate::app::events::CoderMode;
 use crate::app::session::SessionInfo;
 use wgpui::components::atoms::PermissionAction;
@@ -143,7 +143,9 @@ impl PermissionState {
     }
 
     fn matches_tool_rules(&self, tool_name: &str, rules: &[String]) -> bool {
-        rules.iter().any(|rule| rule.eq_ignore_ascii_case(tool_name))
+        rules
+            .iter()
+            .any(|rule| rule.eq_ignore_ascii_case(tool_name))
     }
 
     fn matches_bash_patterns(&self, request: &PermissionRequest, patterns: &[String]) -> bool {
@@ -236,8 +238,14 @@ impl PermissionState {
             }
             return;
         }
-        add_unique(&mut self.permission_allow_tools, &[request.tool_name.clone()]);
-        remove_items(&mut self.permission_deny_tools, &[request.tool_name.clone()]);
+        add_unique(
+            &mut self.permission_allow_tools,
+            &[request.tool_name.clone()],
+        );
+        remove_items(
+            &mut self.permission_deny_tools,
+            &[request.tool_name.clone()],
+        );
         self.persist_permission_config();
     }
 
@@ -283,7 +291,8 @@ impl PermissionState {
 
     pub(crate) fn set_coder_mode(&mut self, mode: CoderMode, session_info: &mut SessionInfo) {
         self.coder_mode = mode;
-        self.permission_default_allow = coder_mode_default_allow(mode, self.permission_default_allow);
+        self.permission_default_allow =
+            coder_mode_default_allow(mode, self.permission_default_allow);
         session_info.permission_mode = super::rules::coder_mode_label(mode).to_string();
         self.persist_permission_config();
     }

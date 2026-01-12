@@ -289,7 +289,10 @@ impl DvmClient {
             })?
         };
 
-        debug!("await_result: waiting for job {} with timeout {:?}", job_id, timeout);
+        debug!(
+            "await_result: waiting for job {} with timeout {:?}",
+            job_id, timeout
+        );
         let result = tokio::time::timeout(timeout, rx.recv()).await;
 
         // Clean up pending result sender
@@ -478,7 +481,10 @@ impl DvmClient {
             debug!("DvmClient event handler started for job {}", job_id_owned);
             while let Some(event) = rx.recv().await {
                 let job_id = job_id_owned.clone();
-                debug!("DvmClient received event kind={} for job {}", event.kind, job_id);
+                debug!(
+                    "DvmClient received event kind={} for job {}",
+                    event.kind, job_id
+                );
 
                 if is_job_result_kind(event.kind) {
                     match JobResult::from_event(&event) {

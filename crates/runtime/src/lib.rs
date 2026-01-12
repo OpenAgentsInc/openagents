@@ -109,8 +109,6 @@ pub mod agent;
 #[cfg(all(feature = "browser", target_arch = "wasm32"))]
 pub mod browser;
 pub mod budget;
-pub mod dspy_pipelines;
-pub mod dspy_tools;
 #[cfg(feature = "cloudflare")]
 pub mod cloudflare;
 pub mod compute;
@@ -119,6 +117,8 @@ pub mod containers;
 pub mod control_plane;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod drivers;
+pub mod dspy_pipelines;
+pub mod dspy_tools;
 #[cfg(not(target_arch = "wasm32"))]
 pub(crate) mod dvm;
 pub mod engine;
@@ -141,6 +141,8 @@ pub mod wallet_spark;
 #[cfg(all(feature = "browser", target_arch = "wasm32"))]
 pub(crate) mod wasm_http;
 
+#[cfg(not(target_arch = "wasm32"))]
+pub use ::compute::domain::UnifiedIdentity;
 pub use agent::{Agent, AgentConfig, AgentContext, AgentState};
 #[cfg(all(feature = "browser", target_arch = "wasm32"))]
 pub use browser::{BrowserRuntime, BrowserRuntimeConfig};
@@ -158,8 +160,6 @@ pub use compute::{
 };
 #[cfg(not(target_arch = "wasm32"))]
 pub use compute::{DvmProvider, LocalProvider};
-#[cfg(not(target_arch = "wasm32"))]
-pub use ::compute::domain::UnifiedIdentity;
 pub use containers::ProviderStatus as ContainerProviderStatus;
 #[cfg(all(feature = "browser", target_arch = "wasm32"))]
 pub use containers::WasmOpenAgentsContainerProvider;
@@ -176,6 +176,11 @@ pub use containers::{
 pub use containers::{DaytonaContainerProvider, DvmContainerProvider, LocalContainerProvider};
 #[cfg(not(target_arch = "wasm32"))]
 pub use control_plane::{ControlPlane, LocalRuntime};
+#[cfg(not(target_arch = "wasm32"))]
+pub use drivers::{
+    Driver, DriverHandle, EnvelopeSink, NostrDriver, NostrDriverConfig, NostrPublishRequest,
+    RoutedEnvelope,
+};
 pub use dspy_pipelines::{
     ToolChainInput, ToolChainPipeline, ToolChainResult, ToolInterpretationInput,
     ToolInterpretationPipeline, ToolInterpretationResult, ToolSelectionInput,
@@ -184,11 +189,6 @@ pub use dspy_pipelines::{
 pub use dspy_tools::{
     ToolChainPlanningSignature, ToolResultInterpretationSignature, ToolSelectionSignature,
     ToolSuccess,
-};
-#[cfg(not(target_arch = "wasm32"))]
-pub use drivers::{
-    Driver, DriverHandle, EnvelopeSink, NostrDriver, NostrDriverConfig, NostrPublishRequest,
-    RoutedEnvelope,
 };
 pub use engine::{TickEngine, manual_trigger};
 pub use env::AgentEnv;

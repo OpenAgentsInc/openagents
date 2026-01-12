@@ -158,12 +158,16 @@ impl PerformanceTracker {
             PerformanceMetrics::default()
         };
 
-        Ok(Self { metrics_path, metrics })
+        Ok(Self {
+            metrics_path,
+            metrics,
+        })
     }
 
     /// Record a decision outcome.
     pub fn record_outcome(&mut self, signature: &str, was_correct: bool) {
-        let accuracy = self.metrics
+        let accuracy = self
+            .metrics
             .signature_accuracy
             .entry(signature.to_string())
             .or_insert_with(RollingAccuracy::default);
@@ -268,13 +272,15 @@ impl PerformanceTracker {
 
     /// Get summary statistics.
     pub fn summary(&self) -> PerformanceSummary {
-        let total_decisions: usize = self.metrics
+        let total_decisions: usize = self
+            .metrics
             .signature_accuracy
             .values()
             .map(|a| a.total_decisions)
             .sum();
 
-        let total_correct: usize = self.metrics
+        let total_correct: usize = self
+            .metrics
             .signature_accuracy
             .values()
             .map(|a| a.total_correct)
@@ -343,7 +349,11 @@ mod tests {
 
         // Example threshold
         let triggers = tracker.check_optimization_triggers(25, 20, 0.7);
-        assert!(triggers.iter().any(|t| matches!(t, OptimizationTrigger::ExampleThreshold { .. })));
+        assert!(
+            triggers
+                .iter()
+                .any(|t| matches!(t, OptimizationTrigger::ExampleThreshold { .. }))
+        );
 
         // No triggers
         let triggers = tracker.check_optimization_triggers(5, 20, 0.7);
@@ -357,7 +367,9 @@ mod tests {
         complexity.record(true);
         complexity.record(true);
         complexity.record(false);
-        metrics.signature_accuracy.insert("complexity".to_string(), complexity);
+        metrics
+            .signature_accuracy
+            .insert("complexity".to_string(), complexity);
 
         let tracker = PerformanceTracker {
             metrics_path: PathBuf::new(),
@@ -367,6 +379,6 @@ mod tests {
         let summary = tracker.summary();
         assert_eq!(summary.total_decisions, 3);
         assert_eq!(summary.total_correct, 2);
-        assert!((summary.complexity_accuracy - 2.0/3.0).abs() < 0.01);
+        assert!((summary.complexity_accuracy - 2.0 / 3.0).abs() < 0.01);
     }
 }

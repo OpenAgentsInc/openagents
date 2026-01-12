@@ -339,8 +339,8 @@ mod tests {
 
     #[test]
     fn test_json_serialization() {
-        let span = SpanRef::with_range("chunk-0", "src/lib.rs", 1, 10, 0, 100)
-            .with_commit("abc123def456");
+        let span =
+            SpanRef::with_range("chunk-0", "src/lib.rs", 1, 10, 0, 100).with_commit("abc123def456");
 
         let json = span.to_json();
         let parsed = SpanRef::from_json(&json).unwrap();
@@ -350,10 +350,7 @@ mod tests {
 
     #[test]
     fn test_json_array() {
-        let spans = vec![
-            SpanRef::new("s1", "a.rs"),
-            SpanRef::new("s2", "b.rs"),
-        ];
+        let spans = vec![SpanRef::new("s1", "a.rs"), SpanRef::new("s2", "b.rs")];
 
         let json = SpanRef::to_json_array(&spans);
         let parsed = SpanRef::parse_array(&json).unwrap();

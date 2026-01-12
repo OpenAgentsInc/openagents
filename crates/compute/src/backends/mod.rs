@@ -19,7 +19,7 @@ mod llamacpp;
 mod ollama;
 
 pub use agent::{
-    AgentBackend, AgentCapabilities, AgentError, AgentRegistry, AgentBackendStatus, JobProgress,
+    AgentBackend, AgentBackendStatus, AgentCapabilities, AgentError, AgentRegistry, JobProgress,
 };
 pub use apple_fm::{AppleFmBackend, FmSession, FmToolDefinition, FmTranscriptMessage};
 pub use llamacpp::LlamaCppBackend;

@@ -113,7 +113,8 @@ impl AppServerWireLog {
                             },
                             "raw": raw,
                         });
-                        let line = serde_json::to_string(&entry).unwrap_or_else(|_| "{}".to_string());
+                        let line =
+                            serde_json::to_string(&entry).unwrap_or_else(|_| "{}".to_string());
                         if let Some(file) = file.as_mut() {
                             let _ = file.write_all(line.as_bytes()).await;
                             let _ = file.write_all(b"\n").await;
@@ -272,9 +273,7 @@ impl AppServerTransport {
 
             let mut pending = pending_requests_clone.lock().await;
             for (_, sender) in pending.drain() {
-                let _ = sender.send(Err(anyhow::anyhow!(
-                    "App-server connection closed"
-                )));
+                let _ = sender.send(Err(anyhow::anyhow!("App-server connection closed")));
             }
         });
 
@@ -311,9 +310,7 @@ impl AppServerTransport {
 
         self.send_json(request).await?;
 
-        let result = rx
-            .await
-            .context("App-server request canceled")??;
+        let result = rx.await.context("App-server request canceled")??;
         serde_json::from_value(result).context("App-server response parse failed")
     }
 
@@ -380,8 +377,8 @@ pub(crate) struct AppServerClient {
 
 impl AppServerClient {
     pub(crate) async fn spawn(config: AppServerConfig) -> Result<(Self, AppServerChannels)> {
-        let command = resolve_app_server_command()
-            .context("Unable to find codex app-server executable")?;
+        let command =
+            resolve_app_server_command().context("Unable to find codex app-server executable")?;
 
         let mut cmd = Command::new(command.program);
         cmd.args(command.args)
@@ -394,8 +391,14 @@ impl AppServerClient {
         }
 
         let mut child = cmd.spawn().context("Failed to spawn codex app-server")?;
-        let stdin = child.stdin.take().context("codex app-server stdin missing")?;
-        let stdout = child.stdout.take().context("codex app-server stdout missing")?;
+        let stdin = child
+            .stdin
+            .take()
+            .context("codex app-server stdin missing")?;
+        let stdout = child
+            .stdout
+            .take()
+            .context("codex app-server stdout missing")?;
 
         let (transport, channels) =
             AppServerTransport::new(Box::new(stdin), Box::new(stdout), config.wire_log);
@@ -445,16 +448,27 @@ impl AppServerClient {
         }
     }
 
-    pub(crate) async fn thread_start(&self, params: ThreadStartParams) -> Result<ThreadStartResponse> {
+    pub(crate) async fn thread_start(
+        &self,
+        params: ThreadStartParams,
+    ) -> Result<ThreadStartResponse> {
         self.transport.request("thread/start", Some(&params)).await
     }
 
-    pub(crate) async fn thread_resume(&self, params: ThreadResumeParams) -> Result<ThreadResumeResponse> {
+    pub(crate) async fn thread_resume(
+        &self,
+        params: ThreadResumeParams,
+    ) -> Result<ThreadResumeResponse> {
         self.transport.request("thread/resume", Some(&params)).await
     }
 
-    pub(crate) async fn thread_archive(&self, params: ThreadArchiveParams) -> Result<ThreadArchiveResponse> {
-        self.transport.request("thread/archive", Some(&params)).await
+    pub(crate) async fn thread_archive(
+        &self,
+        params: ThreadArchiveParams,
+    ) -> Result<ThreadArchiveResponse> {
+        self.transport
+            .request("thread/archive", Some(&params))
+            .await
     }
 
     pub(crate) async fn thread_list(&self, params: ThreadListParams) -> Result<ThreadListResponse> {
@@ -487,7 +501,10 @@ impl AppServerClient {
             .await
     }
 
-    pub(crate) async fn account_read(&self, params: GetAccountParams) -> Result<GetAccountResponse> {
+    pub(crate) async fn account_read(
+        &self,
+        params: GetAccountParams,
+    ) -> Result<GetAccountResponse> {
         self.transport.request("account/read", Some(&params)).await
     }
 
@@ -510,12 +527,12 @@ impl AppServerClient {
     }
 
     pub(crate) async fn account_logout(&self) -> Result<LogoutAccountResponse> {
-        self.transport.request::<Value, _>("account/logout", None).await
+        self.transport
+            .request::<Value, _>("account/logout", None)
+            .await
     }
 
-    pub(crate) async fn account_rate_limits_read(
-        &self,
-    ) -> Result<GetAccountRateLimitsResponse> {
+    pub(crate) async fn account_rate_limits_read(&self) -> Result<GetAccountRateLimitsResponse> {
         self.transport
             .request::<Value, _>("account/rateLimits/read", None)
             .await
@@ -547,11 +564,19 @@ impl AppServerClient {
         self.transport.request("turn/start", Some(&params)).await
     }
 
-    pub(crate) async fn turn_interrupt(&self, params: TurnInterruptParams) -> Result<TurnInterruptResponse> {
-        self.transport.request("turn/interrupt", Some(&params)).await
+    pub(crate) async fn turn_interrupt(
+        &self,
+        params: TurnInterruptParams,
+    ) -> Result<TurnInterruptResponse> {
+        self.transport
+            .request("turn/interrupt", Some(&params))
+            .await
     }
 
-    pub(crate) async fn review_start(&self, params: ReviewStartParams) -> Result<ReviewStartResponse> {
+    pub(crate) async fn review_start(
+        &self,
+        params: ReviewStartParams,
+    ) -> Result<ReviewStartResponse> {
         self.transport.request("review/start", Some(&params)).await
     }
 
@@ -647,11 +672,8 @@ mod tests {
         let (client_read, client_write) = tokio::io::split(client_stream);
         let (server_read, mut server_write) = tokio::io::split(server_stream);
 
-        let (client, _channels) = AppServerClient::connect_with_io(
-            Box::new(client_write),
-            Box::new(client_read),
-            None,
-        );
+        let (client, _channels) =
+            AppServerClient::connect_with_io(Box::new(client_write), Box::new(client_read), None);
 
         let server_task = tokio::spawn(async move {
             let mut reader = BufReader::new(server_read).lines();
@@ -665,10 +687,7 @@ mod tests {
                 init_value.get("method").and_then(Value::as_str),
                 Some("initialize")
             );
-            let id = init_value
-                .get("id")
-                .cloned()
-                .expect("init id");
+            let id = init_value.get("id").cloned().expect("init id");
             let response = serde_json::json!({
                 "id": id,
                 "result": { "userAgent": "codex-test" }
@@ -707,11 +726,8 @@ mod tests {
         let (client_read, client_write) = tokio::io::split(client_stream);
         let (_server_read, mut server_write) = tokio::io::split(server_stream);
 
-        let (_client, mut channels) = AppServerClient::connect_with_io(
-            Box::new(client_write),
-            Box::new(client_read),
-            None,
-        );
+        let (_client, mut channels) =
+            AppServerClient::connect_with_io(Box::new(client_write), Box::new(client_read), None);
 
         let server_task = tokio::spawn(async move {
             let messages = vec![
@@ -736,7 +752,6 @@ mod tests {
                     .expect("write notification");
                 server_write.write_all(b"\n").await.expect("newline");
             }
-
         });
 
         let first = channels.notifications.recv().await.expect("notification");
@@ -755,11 +770,8 @@ mod tests {
         let (client_read, client_write) = tokio::io::split(client_stream);
         let (server_read, mut server_write) = tokio::io::split(server_stream);
 
-        let (client, mut channels) = AppServerClient::connect_with_io(
-            Box::new(client_write),
-            Box::new(client_read),
-            None,
-        );
+        let (client, mut channels) =
+            AppServerClient::connect_with_io(Box::new(client_write), Box::new(client_read), None);
 
         let server_task = tokio::spawn(async move {
             let request = serde_json::json!({

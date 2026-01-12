@@ -17,11 +17,11 @@ use anyhow::{Context, Result};
 use nostr::{JobInput, JobRequest as NostrJobRequest, Keypair};
 use nostr_client::dvm::DvmClient;
 use protocol::jobs::{
+    JobRequest,
     chunk_analysis::{ChunkAnalysisRequest, ChunkAnalysisResponse, CodeChunk, OutputConstraints},
     embeddings::{EmbeddingsRequest, EmbeddingsResponse},
     rerank::{RerankCandidate, RerankRequest, RerankResponse},
     sandbox::{SandboxConfig, SandboxRunRequest, SandboxRunResponse},
-    JobRequest,
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -255,10 +255,7 @@ impl SwarmDispatcher {
         let request = SandboxRunRequest {
             sandbox: config,
             repo: RepoMount::default(),
-            commands: commands
-                .into_iter()
-                .map(SandboxCommand::new)
-                .collect(),
+            commands: commands.into_iter().map(SandboxCommand::new).collect(),
             env: std::collections::HashMap::new(),
             verification: protocol::verification::Verification::objective(),
         };
@@ -317,7 +314,9 @@ impl SwarmDispatcher {
         }
 
         // Compute job hash for tracking
-        let job_hash = request.compute_hash().context("Failed to compute job hash")?;
+        let job_hash = request
+            .compute_hash()
+            .context("Failed to compute job hash")?;
 
         // Get NIP-90 kind for this job type
         let kind = self.get_job_kind::<Req>();
@@ -564,9 +563,11 @@ mod tests {
         let config = SwarmDispatchConfig::default();
         assert_eq!(config.default_budget_msats, 1000);
         assert_eq!(config.timeout, Duration::from_secs(60));
-        assert!(config
-            .relays
-            .contains(&"wss://nexus.openagents.com".to_string()));
+        assert!(
+            config
+                .relays
+                .contains(&"wss://nexus.openagents.com".to_string())
+        );
     }
 
     #[test]

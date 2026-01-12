@@ -1,5 +1,5 @@
-use chrono::Local;
 use agent_client_protocol_schema as acp;
+use chrono::Local;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::sync::mpsc;
@@ -82,7 +82,10 @@ pub fn run_agent_planning(
     tx: mpsc::Sender<AgentToken>,
     _logger: Option<SessionLogger>,
 ) {
-    let _ = tx.send(AgentToken::Done("Agent backend not configured - use Codex CLI or configure an inference backend".to_string()));
+    let _ = tx.send(AgentToken::Done(
+        "Agent backend not configured - use Codex CLI or configure an inference backend"
+            .to_string(),
+    ));
 }
 
 /// Stub for run_agent_execution (agent-specific implementation removed)
@@ -93,7 +96,10 @@ pub fn run_agent_execution(
     tx: mpsc::Sender<AgentToken>,
     _logger: Option<SessionLogger>,
 ) {
-    let _ = tx.send(AgentToken::Done("Agent backend not configured - use Codex CLI or configure an inference backend".to_string()));
+    let _ = tx.send(AgentToken::Done(
+        "Agent backend not configured - use Codex CLI or configure an inference backend"
+            .to_string(),
+    ));
 }
 
 /// Stub for run_agent_review (agent-specific implementation removed)
@@ -105,7 +111,10 @@ pub fn run_agent_review(
     tx: mpsc::Sender<AgentToken>,
     _logger: Option<SessionLogger>,
 ) {
-    let _ = tx.send(AgentToken::Done("Agent backend not configured - use Codex CLI or configure an inference backend".to_string()));
+    let _ = tx.send(AgentToken::Done(
+        "Agent backend not configured - use Codex CLI or configure an inference backend"
+            .to_string(),
+    ));
 }
 use crate::preflight::PreflightConfig;
 use crate::report::{
@@ -651,11 +660,7 @@ impl StartupState {
             }
 
             StartupPhase::AuthComplete => {
-                if phase_time > 0.3
-                    && !self.lines.iter().any(|l| {
-                        l.text.contains("Auth ready")
-                    })
-                {
+                if phase_time > 0.3 && !self.lines.iter().any(|l| l.text.contains("Auth ready")) {
                     info!("Auth check complete");
                     self.add_line("", LogStatus::Info, elapsed);
                     self.add_line("Auth ready.", LogStatus::Success, elapsed);
@@ -970,11 +975,7 @@ impl StartupState {
             }
 
             StartupPhase::Planning => {
-                if !self
-                    .lines
-                    .iter()
-                    .any(|l| l.text.contains("Creating plan"))
-                {
+                if !self.lines.iter().any(|l| l.text.contains("Creating plan")) {
                     self.add_line("", LogStatus::Info, elapsed);
                     let iteration = self.iteration;
                     if iteration == 1 {
@@ -1129,14 +1130,16 @@ impl StartupState {
                                 });
                                 self.push_acp_tool_done("plan", name, output_clone, is_error);
                             } else {
-                                self.push_acp_tool_done("plan", name, Some(output.clone()), is_error);
+                                self.push_acp_tool_done(
+                                    "plan",
+                                    name,
+                                    Some(output.clone()),
+                                    is_error,
+                                );
                             }
                             self.update_agent_streaming_line(elapsed);
                         }
-                        AgentToken::Progress {
-                            name,
-                            elapsed_secs,
-                        } => {
+                        AgentToken::Progress { name, elapsed_secs } => {
                             self.plan_events.push(AgentEvent::ToolProgress {
                                 name: name.clone(),
                                 elapsed: elapsed_secs as f32,
@@ -1237,7 +1240,8 @@ impl StartupState {
                             }
                             if let Some(duration_api_ms) = usage.duration_api_ms {
                                 self.session_usage.duration_api_ms = Some(
-                                    self.session_usage.duration_api_ms.unwrap_or(0) + duration_api_ms,
+                                    self.session_usage.duration_api_ms.unwrap_or(0)
+                                        + duration_api_ms,
                                 );
                             }
                             if let Some(num_turns) = usage.num_turns {
@@ -1409,14 +1413,16 @@ impl StartupState {
                                 });
                                 self.push_acp_tool_done("exec", name, output_clone, is_error);
                             } else {
-                                self.push_acp_tool_done("exec", name, Some(output.clone()), is_error);
+                                self.push_acp_tool_done(
+                                    "exec",
+                                    name,
+                                    Some(output.clone()),
+                                    is_error,
+                                );
                             }
                             self.update_exec_streaming_line(elapsed);
                         }
-                        AgentToken::Progress {
-                            name,
-                            elapsed_secs,
-                        } => {
+                        AgentToken::Progress { name, elapsed_secs } => {
                             self.exec_events.push(AgentEvent::ToolProgress {
                                 name: name.clone(),
                                 elapsed: elapsed_secs as f32,
@@ -1479,7 +1485,8 @@ impl StartupState {
                             }
                             if let Some(duration_api_ms) = usage.duration_api_ms {
                                 self.session_usage.duration_api_ms = Some(
-                                    self.session_usage.duration_api_ms.unwrap_or(0) + duration_api_ms,
+                                    self.session_usage.duration_api_ms.unwrap_or(0)
+                                        + duration_api_ms,
                                 );
                             }
                             if let Some(num_turns) = usage.num_turns {
@@ -1515,14 +1522,7 @@ impl StartupState {
                     self.review_receiver = Some(rx);
 
                     std::thread::spawn(move || {
-                        run_agent_review(
-                            &plan,
-                            model,
-                            &exec_result,
-                            resume_session_id,
-                            tx,
-                            logger,
-                        );
+                        run_agent_review(&plan, model, &exec_result, resume_session_id, tx, logger);
                     });
 
                     self.phase = StartupPhase::StreamingReview;
@@ -1629,14 +1629,16 @@ impl StartupState {
                                 });
                                 self.push_acp_tool_done("review", name, output_clone, is_error);
                             } else {
-                                self.push_acp_tool_done("review", name, Some(output.clone()), is_error);
+                                self.push_acp_tool_done(
+                                    "review",
+                                    name,
+                                    Some(output.clone()),
+                                    is_error,
+                                );
                             }
                             self.update_review_streaming_line(elapsed);
                         }
-                        AgentToken::Progress {
-                            name,
-                            elapsed_secs,
-                        } => {
+                        AgentToken::Progress { name, elapsed_secs } => {
                             self.review_events.push(AgentEvent::ToolProgress {
                                 name: name.clone(),
                                 elapsed: elapsed_secs as f32,
@@ -1723,7 +1725,8 @@ impl StartupState {
                             }
                             if let Some(duration_api_ms) = usage.duration_api_ms {
                                 self.session_usage.duration_api_ms = Some(
-                                    self.session_usage.duration_api_ms.unwrap_or(0) + duration_api_ms,
+                                    self.session_usage.duration_api_ms.unwrap_or(0)
+                                        + duration_api_ms,
                                 );
                             }
                             if let Some(num_turns) = usage.num_turns {
@@ -2001,14 +2004,16 @@ impl StartupState {
                                 });
                                 self.push_acp_tool_done("fix", name, output_clone, is_error);
                             } else {
-                                self.push_acp_tool_done("fix", name, Some(output.clone()), is_error);
+                                self.push_acp_tool_done(
+                                    "fix",
+                                    name,
+                                    Some(output.clone()),
+                                    is_error,
+                                );
                             }
                             self.update_fix_streaming_line(elapsed);
                         }
-                        AgentToken::Progress {
-                            name,
-                            elapsed_secs,
-                        } => {
+                        AgentToken::Progress { name, elapsed_secs } => {
                             self.fix_events.push(AgentEvent::ToolProgress {
                                 name: name.clone(),
                                 elapsed: elapsed_secs as f32,
@@ -2076,7 +2081,8 @@ impl StartupState {
                             }
                             if let Some(duration_api_ms) = usage.duration_api_ms {
                                 self.session_usage.duration_api_ms = Some(
-                                    self.session_usage.duration_api_ms.unwrap_or(0) + duration_api_ms,
+                                    self.session_usage.duration_api_ms.unwrap_or(0)
+                                        + duration_api_ms,
                                 );
                             }
                             if let Some(num_turns) = usage.num_turns {
@@ -2697,11 +2703,7 @@ impl StartupState {
     /// Create a checkpoint from the current state.
     ///
     /// The cursors are provided by the runtime, since they track event delivery.
-    pub fn create_checkpoint(
-        &self,
-        acp_cursor: usize,
-        working_dir: PathBuf,
-    ) -> SessionCheckpoint {
+    pub fn create_checkpoint(&self, acp_cursor: usize, working_dir: PathBuf) -> SessionCheckpoint {
         let elapsed = self.start_instant.elapsed().as_secs_f32();
 
         SessionCheckpoint {
@@ -2759,7 +2761,7 @@ impl StartupState {
             phase_started: start_instant.elapsed().as_secs_f32() - cp.phase_started_offset,
             preflight_config: None, // Must be re-run or cached separately
             model: cp.model,
-            issue_summary: None, // Could be saved in checkpoint if needed
+            issue_summary: None,  // Could be saved in checkpoint if needed
             agent_receiver: None, // Cannot persist channels
             plan_session_id: cp.plan_session_id,
             plan_events: cp.plan_events,
@@ -2793,8 +2795,8 @@ impl StartupState {
             compute_mix: None,
             pylon_started: false,
             session_usage: UsageData::default(), // Not persisted in checkpoint yet
-            user_prompt: None, // Not persisted in checkpoint yet
-            dspy_plan: None, // Not persisted in checkpoint yet
+            user_prompt: None,                   // Not persisted in checkpoint yet
+            dspy_plan: None,                     // Not persisted in checkpoint yet
         }
     }
 

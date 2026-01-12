@@ -8,7 +8,7 @@
 
 use std::time::Instant;
 
-use crate::chunking::{chunk_by_structure, detect_structure, Chunk};
+use crate::chunking::{Chunk, chunk_by_structure, detect_structure};
 use crate::client::LlmClient;
 use crate::error::Result;
 
@@ -30,9 +30,9 @@ pub struct OrchestratorConfig {
 impl Default for OrchestratorConfig {
     fn default() -> Self {
         Self {
-            chunk_size: 6000,     // Apple FM sweet spot
-            overlap: 200,         // Context continuity
-            max_chunks: 50,       // Cost control
+            chunk_size: 6000, // Apple FM sweet spot
+            overlap: 200,     // Context continuity
+            max_chunks: 50,   // Cost control
             semantic_chunking: true,
             verbose: true,
         }
@@ -131,10 +131,7 @@ impl<C: LlmClient> EngineOrchestrator<C> {
         );
 
         // Limit chunks if needed
-        let chunks: Vec<_> = chunks
-            .into_iter()
-            .take(self.config.max_chunks)
-            .collect();
+        let chunks: Vec<_> = chunks.into_iter().take(self.config.max_chunks).collect();
 
         if self.config.verbose {
             println!("  Generated {} chunks", chunks.len());
@@ -282,17 +279,12 @@ Keep your response concise (2-4 sentences max)."#,
     /// 1. Group findings into batches
     /// 2. Synthesize each batch into intermediate summaries
     /// 3. Synthesize intermediate summaries into final answer
-    async fn synthesize(
-        &self,
-        summaries: &[ChunkSummary],
-        query: &str,
-    ) -> Result<String> {
+    async fn synthesize(&self, summaries: &[ChunkSummary], query: &str) -> Result<String> {
         // Filter to only chunks with actual findings
         let relevant_findings: Vec<_> = summaries
             .iter()
             .filter(|s| {
-                !s.findings.contains("No relevant content")
-                    && !s.findings.starts_with("[Error")
+                !s.findings.contains("No relevant content") && !s.findings.starts_with("[Error")
             })
             .collect();
 
@@ -314,11 +306,7 @@ Keep your response concise (2-4 sentences max)."#,
     }
 
     /// Direct synthesis for small number of findings.
-    async fn synthesize_direct(
-        &self,
-        findings: &[&ChunkSummary],
-        query: &str,
-    ) -> Result<String> {
+    async fn synthesize_direct(&self, findings: &[&ChunkSummary], query: &str) -> Result<String> {
         let findings_text = self.format_findings(findings);
 
         let prompt = format!(
@@ -338,10 +326,7 @@ Start your response directly with the answer (no preamble like "Based on...")."#
             query, findings_text
         );
 
-        let response = self
-            .client
-            .complete(&prompt, None)
-            .await?;
+        let response = self.client.complete(&prompt, None).await?;
 
         let answer = response.content().to_string();
         let answer = if answer.is_empty() {
@@ -443,10 +428,7 @@ Start your response directly with the answer."#,
             query, combined
         );
 
-        let response = self
-            .client
-            .complete(&final_prompt, None)
-            .await?;
+        let response = self.client.complete(&final_prompt, None).await?;
 
         let answer = response.content().to_string();
         let answer = if answer.is_empty() {
