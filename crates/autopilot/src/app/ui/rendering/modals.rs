@@ -21,6 +21,7 @@ include!("modals/pylon_earnings.rs");
 include!("modals/pylon_jobs.rs");
 include!("modals/spark_wallet.rs");
 include!("modals/dspy.rs");
+include!("modals/manatap.rs");
 include!("modals/nip28.rs");
 include!("modals/nip90.rs");
 include!("modals/config.rs");
@@ -313,6 +314,17 @@ fn render_modals(
         }
         ModalState::Dspy => {
             render_dspy_modal(
+                state,
+                scene,
+                palette,
+                bounds,
+                logical_width,
+                logical_height,
+                scale_factor,
+            );
+        }
+        ModalState::Manatap => {
+            render_manatap_modal(
                 state,
                 scene,
                 palette,

@@ -903,6 +903,21 @@ pub(super) fn handle_command(state: &mut AppState, command: Command) -> CommandA
             state.set_dspy_background_optimization(enabled);
             CommandAction::None
         }
+        Command::Manatap(prompt) => {
+            if prompt.trim().is_empty() {
+                state.push_system_message(
+                    "Mana Tap prompt is required. Usage: /manatap <prompt>".to_string(),
+                );
+                CommandAction::None
+            } else if state.chat.is_thinking {
+                state.push_system_message(
+                    "Cannot start Mana Tap while a request is active.".to_string(),
+                );
+                CommandAction::None
+            } else {
+                CommandAction::StartManatap(prompt)
+            }
+        }
         Command::Nip28 => {
             state.open_nip28();
             CommandAction::None
@@ -1248,6 +1263,13 @@ pub(super) fn handle_modal_input(state: &mut AppState, key: &WinitKey) -> bool {
                     state.reload_skills();
                 }
                 _ => {}
+            }
+            state.window.request_redraw();
+            true
+        }
+        ModalState::Manatap => {
+            if matches!(key, WinitKey::Named(WinitNamedKey::Escape)) {
+                state.modal_state = ModalState::None;
             }
             state.window.request_redraw();
             true

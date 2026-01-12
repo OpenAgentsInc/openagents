@@ -86,6 +86,7 @@ pub enum Command {
     DspyRefresh,
     DspyAuto(bool),
     DspyBackground(bool),
+    Manatap(String),
     Nip28,
     Nip28Connect(String),
     Nip28Channel(String),
@@ -568,6 +569,11 @@ const COMMAND_SPECS: &[CommandSpec] = &[
         requires_args: true,
     },
     CommandSpec {
+        usage: "/manatap <prompt>",
+        description: "Run the DSPy chain visualizer on a prompt",
+        requires_args: true,
+    },
+    CommandSpec {
         usage: "/nip28",
         description: "Open NIP-28 chat",
         requires_args: false,
@@ -650,11 +656,17 @@ pub fn parse_command(input: &str) -> Option<Command> {
         "pylon" => parse_pylon_command(args),
         "issues" => parse_issues_command(args),
         "dspy" => parse_dspy_command(args),
+        "manatap" => parse_manatap_command(args),
         "nip28" => parse_nip28_command(args),
         _ => Command::Custom(command, args),
     };
 
     Some(parsed)
+}
+
+fn parse_manatap_command(args: Vec<String>) -> Command {
+    let prompt = args.join(" ");
+    Command::Manatap(prompt)
 }
 
 fn parse_backend_command(args: Vec<String>) -> Command {
@@ -1156,5 +1168,14 @@ mod tests {
 
         let parsed = parse_command("/dspy background off").unwrap();
         assert_eq!(parsed, Command::DspyBackground(false));
+    }
+
+    #[test]
+    fn parse_manatap_prompt() {
+        let parsed = parse_command("/manatap summarize readme").unwrap();
+        assert_eq!(
+            parsed,
+            Command::Manatap("summarize readme".to_string())
+        );
     }
 }

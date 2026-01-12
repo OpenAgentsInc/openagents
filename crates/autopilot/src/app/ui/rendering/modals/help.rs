@@ -143,6 +143,7 @@ fn render_help_modal(
                         "/clear - reset chat; /compact - compact context; /undo - undo last exchange"
                             .to_string(),
                         "/cancel - cancel active run; /bug - report issue".to_string(),
+                        "/manatap <prompt> - run DSPy chain visualizer".to_string(),
                     ],
                 ),
                 (

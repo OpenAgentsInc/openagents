@@ -77,6 +77,7 @@ impl AutopilotApp {
         match action {
             CommandAction::SubmitPrompt(prompt) => self.submit_prompt(prompt),
             CommandAction::StartReview(review) => self.start_review(review),
+            CommandAction::StartManatap(prompt) => self.start_manatap(prompt),
             CommandAction::None => {
                 if let Some(prompt) = submit_prompt {
                     self.submit_prompt(prompt);
@@ -113,6 +114,16 @@ impl AutopilotApp {
 
         tracing::info!("Using Codex backend");
         self.submit_codex_prompt(prompt);
+    }
+
+    pub(super) fn start_manatap(&mut self, prompt: String) {
+        let Some(state) = &mut self.state else {
+            return;
+        };
+
+        state.manatap.start(&self.runtime_handle, state.window.clone(), prompt);
+        state.modal_state = ModalState::Manatap;
+        state.window.request_redraw();
     }
 
     fn submit_workspace_prompt(&mut self, prompt: String) {
@@ -2630,6 +2641,10 @@ impl AutopilotApp {
             Some(CommandAction::SubmitPrompt(prompt)) => Some(prompt),
             Some(CommandAction::StartReview(review)) => {
                 self.start_review(review);
+                None
+            }
+            Some(CommandAction::StartManatap(prompt)) => {
+                self.start_manatap(prompt);
                 None
             }
             _ => None,
