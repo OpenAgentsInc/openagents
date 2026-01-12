@@ -168,6 +168,79 @@ Acceptance: Autopilot can select a runtime via the adapter, spin up isolated Cod
 instances, persist raw and normalized traces, and apply a policy-driven approval
 decision without requiring a UI prompt.
 
+## CodexMonitor Parity Track (Autopilot UI)
+
+This track adds a CodexMonitor-equivalent UI and workflow to Autopilot while preserving
+the WGPUI shell and the app-server-first architecture described above. The goal is not
+to fork a separate product, but to make Autopilot capable of running the same day-to-day
+workspace orchestration pattern: add a repository, start or resume threads, inspect git
+changes, approve tool actions, and track agent output with the same visual hierarchy and
+interaction flow CodexMonitor established. This work runs alongside M7 because the
+multi-runtime adapter and app-server event stream are the spine that will drive the
+CodexMonitor layout.
+
+### CM1: Workspace orchestration and session lifecycle
+
+CodexMonitor centers on multi-workspace management, so parity requires a first-class
+workspace list, persistent storage, and per-workspace app-server sessions. Autopilot
+should implement the same behavior: add a workspace via folder picker, spawn and connect
+one app-server per workspace, and restore the thread list on launch or window focus. This
+is where we align the app-server transport with UI intent by treating workspace identity
+as the top-level routing key for all thread and event data, rather than tying everything
+to a single session. The result is a durable workspace index and a consistent resume flow
+that mirrors CodexMonitor's "threads by repo" mental model.
+
+### CM2: Layout parity in WGPUI
+
+This section focuses on the visual contract: a left workspace sidebar, central chat or
+diff view, right-hand git/approvals panel, top bar with branch and repo info, and bottom
+composer. The rendering must translate CodexMonitor's glassy, compact layout into WGPUI
+components without losing hierarchy or spacing, which means explicit layout geometry and
+panel background treatment rather than repurposing the existing terminal-style layout.
+By building a dedicated layout path, we can match CodexMonitor's spatial affordances while
+still using our palette and rendering primitives, ensuring parity without abandoning the
+Autopilot shell.
+
+### CM3: Event-to-item mapping and timeline behavior
+
+CodexMonitor renders the app-server's v2 event stream as a timeline of messages, reasoning
+cards, tools, reviews, and file-change diffs. Parity requires a normalized item model in
+Autopilot that mirrors this taxonomy and reacts to streaming deltas by updating items in
+place, not just appending new messages. The key outcome is that app-server items drive the
+timeline directly, with file-change output rendered as diff blocks and review events shown
+as start/complete markers, so the UI faithfully reflects what the agent is doing at each
+step. This mapping also becomes the basis for consistent telemetry and replay behavior.
+
+### CM4: Git diff panel and diff viewer
+
+The CodexMonitor right panel doubles as a change inspector. Autopilot should replicate
+this by polling git status for the active workspace, summarizing additions/deletions, and
+listing changed files with per-file counts. Selecting a file should switch the main view
+to a diff viewer that renders unified patches with line numbers and syntax highlighting,
+and auto-scrolls to the selected file. This is an explicit UX affordance for verification
+and review, so it should remain visible and responsive during ongoing agent output.
+
+### CM5: Composer controls, approvals, and review flow
+
+The CodexMonitor composer provides inline selectors for model, reasoning effort, access
+mode, and skills, while the approvals list is always visible in the right panel. Parity
+means wiring the access mode selector directly into sandbox and approval policies on each
+turn, and funneling approval requests into a visible queue with explicit accept/decline
+actions. The `/review` command must behave the same way, including base-branch and commit
+targets, with the composer disabled while a review is in progress and a timeline marker
+reflecting the review state. Together these controls deliver the same autonomy and review
+experience users already rely on in CodexMonitor.
+
+### CM6: Debug panel and operational feedback
+
+CodexMonitor includes a lightweight debug panel that surfaces stderr, warnings, and error
+events without requiring a deep dive into logs. Autopilot should add the same collapsible
+panel at the bottom of the layout, with copy and clear actions and a top-bar alert toggle
+when new errors arrive. This is not a replacement for Autopilot's richer telemetry panels,
+but a focused tool for troubleshooting protocol and runtime issues during multi-workspace
+operation. Keeping the log capped and actionable preserves the CodexMonitor feel while
+reducing friction during development and support.
+
 ## Dependencies and risks
 
 The app-server protocol may evolve and require schema regeneration, so the client
