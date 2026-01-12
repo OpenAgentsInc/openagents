@@ -1,11 +1,13 @@
 pub mod chat;
 pub mod client_registry;
+pub mod gptoss;
 pub mod lm_router;
 pub mod pylon;
 pub mod usage;
 
 pub use chat::*;
 pub use client_registry::*;
+pub use gptoss::*;
 pub use lm_router::*;
 pub use pylon::*;
 pub use usage::*;
