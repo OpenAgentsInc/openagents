@@ -1,13 +1,27 @@
 use std::fs;
+use std::future::Future;
 use std::io::{self, Read};
 use std::path::{Path, PathBuf};
 use std::process::Command as ProcessCommand;
 
 const MAX_FILE_BYTES: usize = 200_000;
-const MAX_COMMAND_BYTES: usize = 120_000;
+pub(crate) const MAX_COMMAND_BYTES: usize = 120_000;
 
 pub(crate) fn expand_prompt_text(prompt: &str, cwd: &PathBuf) -> Result<String, String> {
     let with_commands = expand_command_lines(prompt, cwd)?;
+    expand_file_references(&with_commands, cwd)
+}
+
+pub(crate) async fn expand_prompt_text_async<F, Fut>(
+    prompt: &str,
+    cwd: &PathBuf,
+    run_command: F,
+) -> Result<String, String>
+where
+    F: Fn(String, PathBuf) -> Fut,
+    Fut: Future<Output = Result<String, String>>,
+{
+    let with_commands = expand_command_lines_async(prompt, cwd, run_command).await?;
     expand_file_references(&with_commands, cwd)
 }
 
@@ -39,6 +53,42 @@ fn expand_command_lines(prompt: &str, cwd: &PathBuf) -> Result<String, String> {
     Ok(output.trim_end_matches('\n').to_string())
 }
 
+async fn expand_command_lines_async<F, Fut>(
+    prompt: &str,
+    cwd: &PathBuf,
+    run_command: F,
+) -> Result<String, String>
+where
+    F: Fn(String, PathBuf) -> Fut,
+    Fut: Future<Output = Result<String, String>>,
+{
+    let mut output = String::new();
+    for line in prompt.lines() {
+        let trimmed = line.trim_start();
+        if let Some(command) = trimmed.strip_prefix('!') {
+            let command = command.trim();
+            if command.is_empty() {
+                output.push_str(line);
+                output.push('\n');
+                continue;
+            }
+            let command_output = run_command(command.to_string(), cwd.clone()).await?;
+            output.push_str("--- BEGIN COMMAND: ");
+            output.push_str(command);
+            output.push_str(" ---\n");
+            output.push_str(&command_output);
+            if !command_output.ends_with('\n') {
+                output.push('\n');
+            }
+            output.push_str("--- END COMMAND ---\n");
+        } else {
+            output.push_str(line);
+            output.push('\n');
+        }
+    }
+    Ok(output.trim_end_matches('\n').to_string())
+}
+
 fn run_shell_command(command: &str, cwd: &PathBuf) -> Result<String, String> {
     let output = ProcessCommand::new("bash")
         .arg("-lc")
@@ -47,27 +97,36 @@ fn run_shell_command(command: &str, cwd: &PathBuf) -> Result<String, String> {
         .output()
         .map_err(|err| format!("Failed to run command '{}': {}", command, err))?;
 
+    let combined = format_command_output(
+        output.status.code().unwrap_or(-1),
+        &output.stdout,
+        &output.stderr,
+    );
+
+    Ok(truncate_bytes(combined, MAX_COMMAND_BYTES))
+}
+
+pub(crate) fn format_command_output(exit_code: i32, stdout: &[u8], stderr: &[u8]) -> String {
     let mut combined = String::new();
-    if !output.stdout.is_empty() {
-        combined.push_str(&String::from_utf8_lossy(&output.stdout));
+    if !stdout.is_empty() {
+        combined.push_str(&String::from_utf8_lossy(stdout));
     }
-    if !output.stderr.is_empty() {
+    if !stderr.is_empty() {
         if !combined.is_empty() {
             combined.push('\n');
         }
-        combined.push_str(&String::from_utf8_lossy(&output.stderr));
+        combined.push_str(&String::from_utf8_lossy(stderr));
     }
 
     if combined.is_empty() {
         combined.push_str("(command produced no output)");
     }
 
-    if !output.status.success() {
-        let code = output.status.code().unwrap_or(-1);
-        combined = format!("(exit code {})\n{}", code, combined);
+    if exit_code != 0 {
+        combined = format!("(exit code {})\n{}", exit_code, combined);
     }
 
-    Ok(truncate_bytes(combined, MAX_COMMAND_BYTES))
+    combined
 }
 
 fn expand_file_references(prompt: &str, cwd: &PathBuf) -> Result<String, String> {

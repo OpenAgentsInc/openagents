@@ -38,6 +38,7 @@
 //! 3. **Tiered/Analysis** - If Cerebras is configured or as a fallback
 
 pub mod auth;
+mod app_server_executor;
 pub mod autopilot_loop;
 pub mod cli;
 pub mod codex_executor;

@@ -8,8 +8,8 @@ use anyhow::{Context, Result};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
-use tokio::process::{Child, ChildStdin, ChildStdout, Command};
+use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncWrite, AsyncWriteExt, BufReader};
+use tokio::process::{Child, Command};
 use tokio::sync::{Mutex, mpsc, oneshot};
 
 pub(crate) mod types;
@@ -146,7 +146,7 @@ impl AppServerWireLog {
 }
 
 struct AppServerTransport {
-    stdin: Arc<Mutex<ChildStdin>>,
+    stdin: Arc<Mutex<AppServerWriter>>,
     pending_requests: Arc<Mutex<PendingRequests>>,
     request_counter: AtomicI64,
     reader_task: Option<tokio::task::JoinHandle<()>>,
@@ -155,11 +155,13 @@ struct AppServerTransport {
 
 type PendingRequest = oneshot::Sender<Result<Value>>;
 type PendingRequests = HashMap<AppServerRequestId, PendingRequest>;
+type AppServerWriter = Box<dyn AsyncWrite + Send + Unpin>;
+type AppServerReader = Box<dyn AsyncRead + Send + Unpin>;
 
 impl AppServerTransport {
     fn new(
-        stdin: ChildStdin,
-        stdout: ChildStdout,
+        stdin: AppServerWriter,
+        stdout: AppServerReader,
         wire_log: Option<AppServerWireLog>,
     ) -> (Self, AppServerChannels) {
         let stdin = Arc::new(Mutex::new(stdin));
@@ -371,7 +373,7 @@ impl Drop for AppServerTransport {
 
 pub(crate) struct AppServerClient {
     transport: AppServerTransport,
-    process: Child,
+    process: Option<Child>,
 }
 
 impl AppServerClient {
@@ -393,9 +395,31 @@ impl AppServerClient {
         let stdin = child.stdin.take().context("codex app-server stdin missing")?;
         let stdout = child.stdout.take().context("codex app-server stdout missing")?;
 
-        let (transport, channels) = AppServerTransport::new(stdin, stdout, config.wire_log);
+        let (transport, channels) =
+            AppServerTransport::new(Box::new(stdin), Box::new(stdout), config.wire_log);
 
-        Ok((Self { transport, process: child }, channels))
+        Ok((
+            Self {
+                transport,
+                process: Some(child),
+            },
+            channels,
+        ))
+    }
+
+    pub(crate) fn connect_with_io(
+        stdin: AppServerWriter,
+        stdout: AppServerReader,
+        wire_log: Option<AppServerWireLog>,
+    ) -> (Self, AppServerChannels) {
+        let (transport, channels) = AppServerTransport::new(stdin, stdout, wire_log);
+        (
+            Self {
+                transport,
+                process: None,
+            },
+            channels,
+        )
     }
 
     pub(crate) async fn initialize(&self, info: ClientInfo) -> Result<InitializeResponse> {
@@ -529,6 +553,13 @@ impl AppServerClient {
         self.transport.request("review/start", Some(&params)).await
     }
 
+    pub(crate) async fn command_exec(
+        &self,
+        params: CommandExecParams,
+    ) -> Result<CommandExecResponse> {
+        self.transport.request("command/exec", Some(&params)).await
+    }
+
     pub(crate) async fn respond<T>(&self, id: AppServerRequestId, result: &T) -> Result<()>
     where
         T: Serialize,
@@ -537,8 +568,10 @@ impl AppServerClient {
     }
 
     pub(crate) async fn shutdown(mut self) -> Result<()> {
-        let _ = self.process.kill().await;
-        let _ = self.process.wait().await;
+        if let Some(mut process) = self.process.take() {
+            let _ = process.kill().await;
+            let _ = process.wait().await;
+        }
         self.transport.shutdown().await
     }
 }
@@ -571,4 +604,179 @@ fn resolve_app_server_command() -> Result<AppServerCommand> {
         program,
         args: vec!["app-server".to_string()],
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+
+    #[tokio::test]
+    async fn initialize_sends_initialized() {
+        let (client_stream, server_stream) = tokio::io::duplex(4096);
+        let (client_read, client_write) = tokio::io::split(client_stream);
+        let (server_read, mut server_write) = tokio::io::split(server_stream);
+
+        let (client, _channels) = AppServerClient::connect_with_io(
+            Box::new(client_write),
+            Box::new(client_read),
+            None,
+        );
+
+        let server_task = tokio::spawn(async move {
+            let mut reader = BufReader::new(server_read).lines();
+            let init_line = reader
+                .next_line()
+                .await
+                .expect("init line read")
+                .expect("init line present");
+            let init_value: Value = serde_json::from_str(&init_line).expect("init json");
+            assert_eq!(
+                init_value.get("method").and_then(Value::as_str),
+                Some("initialize")
+            );
+            let id = init_value
+                .get("id")
+                .cloned()
+                .expect("init id");
+            let response = serde_json::json!({
+                "id": id,
+                "result": { "userAgent": "codex-test" }
+            });
+            server_write
+                .write_all(response.to_string().as_bytes())
+                .await
+                .expect("write response");
+            server_write.write_all(b"\n").await.expect("newline");
+
+            let initialized_line = reader
+                .next_line()
+                .await
+                .expect("initialized line read")
+                .expect("initialized line present");
+            let initialized_value: Value =
+                serde_json::from_str(&initialized_line).expect("initialized json");
+            assert_eq!(
+                initialized_value.get("method").and_then(Value::as_str),
+                Some("initialized")
+            );
+        });
+
+        let info = ClientInfo {
+            name: "test-client".to_string(),
+            title: Some("Test".to_string()),
+            version: "0.0.0".to_string(),
+        };
+        client.initialize(info).await.expect("initialize ok");
+        server_task.await.expect("server task");
+    }
+
+    #[tokio::test]
+    async fn streams_notifications_over_channel() {
+        let (client_stream, server_stream) = tokio::io::duplex(4096);
+        let (client_read, client_write) = tokio::io::split(client_stream);
+        let (_server_read, mut server_write) = tokio::io::split(server_stream);
+
+        let (_client, mut channels) = AppServerClient::connect_with_io(
+            Box::new(client_write),
+            Box::new(client_read),
+            None,
+        );
+
+        let server_task = tokio::spawn(async move {
+            let messages = vec![
+                serde_json::json!({
+                    "method": "turn/started",
+                    "params": { "threadId": "thr_1", "turn": { "id": "turn_1" } }
+                }),
+                serde_json::json!({
+                    "method": "item/agentMessage/delta",
+                    "params": { "itemId": "item_1", "delta": "Hello" }
+                }),
+                serde_json::json!({
+                    "method": "turn/completed",
+                    "params": { "turn": { "id": "turn_1", "status": "completed" } }
+                }),
+            ];
+
+            for message in messages {
+                server_write
+                    .write_all(message.to_string().as_bytes())
+                    .await
+                    .expect("write notification");
+                server_write.write_all(b"\n").await.expect("newline");
+            }
+
+        });
+
+        let first = channels.notifications.recv().await.expect("notification");
+        assert_eq!(first.method, "turn/started");
+        let second = channels.notifications.recv().await.expect("notification");
+        assert_eq!(second.method, "item/agentMessage/delta");
+        let third = channels.notifications.recv().await.expect("notification");
+        assert_eq!(third.method, "turn/completed");
+
+        server_task.await.expect("server task");
+    }
+
+    #[tokio::test]
+    async fn responds_to_approval_requests() {
+        let (client_stream, server_stream) = tokio::io::duplex(4096);
+        let (client_read, client_write) = tokio::io::split(client_stream);
+        let (server_read, mut server_write) = tokio::io::split(server_stream);
+
+        let (client, mut channels) = AppServerClient::connect_with_io(
+            Box::new(client_write),
+            Box::new(client_read),
+            None,
+        );
+
+        let server_task = tokio::spawn(async move {
+            let request = serde_json::json!({
+                "id": 42,
+                "method": "item/commandExecution/requestApproval",
+                "params": {
+                    "threadId": "thr_1",
+                    "turnId": "turn_1",
+                    "itemId": "item_1",
+                    "reason": "dangerous"
+                }
+            });
+            server_write
+                .write_all(request.to_string().as_bytes())
+                .await
+                .expect("write request");
+            server_write.write_all(b"\n").await.expect("newline");
+
+            let mut reader = BufReader::new(server_read).lines();
+            let response_line = reader
+                .next_line()
+                .await
+                .expect("response line read")
+                .expect("response line present");
+            let response: Value = serde_json::from_str(&response_line).expect("response json");
+            assert_eq!(response.get("id").and_then(Value::as_i64), Some(42));
+            assert_eq!(
+                response
+                    .get("result")
+                    .and_then(|result| result.get("decision"))
+                    .and_then(Value::as_str),
+                Some("accept")
+            );
+        });
+
+        let request = channels.requests.recv().await.expect("approval request");
+        client
+            .respond(
+                request.id,
+                &ApprovalResponse {
+                    decision: ApprovalDecision::Accept,
+                    accept_settings: None,
+                },
+            )
+            .await
+            .expect("approval response");
+
+        server_task.await.expect("server task");
+    }
 }
