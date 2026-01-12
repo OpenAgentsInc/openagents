@@ -5,6 +5,8 @@ with a CLI that shares the same app-server runtime, so the UI and command line
 experience stay aligned while still supporting a fully autonomous mode through
 Adjutant and DSPy.
 
+For the full MVP reference, see `MVP_COMPREHENSIVE.md` in this folder.
+
 ## User experience
 
 ### 1. Install
