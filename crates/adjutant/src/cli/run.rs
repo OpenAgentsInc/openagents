@@ -3,6 +3,10 @@
 use crate::autopilot_loop::{
     generate_session_id, AcpChannelOutput, AutopilotConfig, AutopilotLoop, AutopilotResult,
 };
+use crate::app_server_executor::{
+    AppServerExecutor, AppServerPromptOptions, ApprovalMode, AskForApproval, ReasoningEffort,
+    ReviewDelivery, ReviewTarget, SandboxMode, SandboxPolicy,
+};
 use crate::cli::blocker::{analyze_blockers, print_blocker_summary};
 use crate::cli::boot::{boot_fast, boot_full, print_quick_checks};
 use crate::cli::directive::build_directive_task;
@@ -29,6 +33,10 @@ pub struct RunArgs {
     /// Ad-hoc task description (instead of issue)
     pub task: Option<String>,
 
+    /// Use the Adjutant autopilot loop for ad-hoc prompts
+    #[arg(long)]
+    pub autopilot_loop: bool,
+
     /// Run full environment discovery (slower)
     #[arg(long)]
     pub full_boot: bool,
@@ -44,6 +52,18 @@ pub struct RunArgs {
     /// Skip verification after completion
     #[arg(long)]
     pub no_verify: bool,
+
+    /// Access mode for Codex app-server runs (full, workspace, read-only)
+    #[arg(long, value_enum, default_value_t = AccessMode::Full)]
+    pub access: AccessMode,
+
+    /// Optional model override for Codex app-server runs
+    #[arg(long)]
+    pub model: Option<String>,
+
+    /// Optional reasoning effort for Codex app-server runs
+    #[arg(long, value_enum)]
+    pub effort: Option<ReasoningEffortChoice>,
 }
 
 /// Supported execution backends for the CLI.
@@ -55,6 +75,78 @@ pub enum BackendChoice {
     LocalLlm,
     #[value(name = "local-tools", alias = "tools")]
     LocalTools,
+}
+
+/// Access modes for CLI runs that use the app-server.
+#[derive(Clone, Copy, Debug, ValueEnum)]
+pub enum AccessMode {
+    Full,
+    Workspace,
+    #[value(name = "read-only", alias = "readonly")]
+    ReadOnly,
+}
+
+impl AccessMode {
+    fn approval_policy(self) -> AskForApproval {
+        match self {
+            AccessMode::Full => AskForApproval::Never,
+            AccessMode::Workspace => AskForApproval::OnRequest,
+            AccessMode::ReadOnly => AskForApproval::Never,
+        }
+    }
+
+    fn sandbox_mode(self) -> SandboxMode {
+        match self {
+            AccessMode::Full => SandboxMode::DangerFullAccess,
+            AccessMode::Workspace => SandboxMode::WorkspaceWrite,
+            AccessMode::ReadOnly => SandboxMode::ReadOnly,
+        }
+    }
+
+    fn sandbox_policy(self) -> SandboxPolicy {
+        match self {
+            AccessMode::Full => SandboxPolicy::DangerFullAccess,
+            AccessMode::Workspace => SandboxPolicy::WorkspaceWrite {
+                writable_roots: Vec::new(),
+                network_access: false,
+                exclude_tmpdir_env_var: false,
+                exclude_slash_tmp: false,
+            },
+            AccessMode::ReadOnly => SandboxPolicy::ReadOnly,
+        }
+    }
+
+    fn approval_mode(self) -> ApprovalMode {
+        match self {
+            AccessMode::Full => ApprovalMode::AutoAccept,
+            AccessMode::Workspace => ApprovalMode::Prompt,
+            AccessMode::ReadOnly => ApprovalMode::AutoDecline,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, ValueEnum)]
+pub enum ReasoningEffortChoice {
+    None,
+    Minimal,
+    Low,
+    Medium,
+    High,
+    #[value(name = "xhigh", alias = "x-high")]
+    XHigh,
+}
+
+impl From<ReasoningEffortChoice> for ReasoningEffort {
+    fn from(value: ReasoningEffortChoice) -> Self {
+        match value {
+            ReasoningEffortChoice::None => ReasoningEffort::None,
+            ReasoningEffortChoice::Minimal => ReasoningEffort::Minimal,
+            ReasoningEffortChoice::Low => ReasoningEffort::Low,
+            ReasoningEffortChoice::Medium => ReasoningEffort::Medium,
+            ReasoningEffortChoice::High => ReasoningEffort::High,
+            ReasoningEffortChoice::XHigh => ReasoningEffort::XHigh,
+        }
+    }
 }
 
 impl BackendChoice {
@@ -122,17 +214,102 @@ pub async fn run(args: RunArgs) -> anyhow::Result<()> {
 
     // Determine what to work on
     if let Some(task_desc) = args.task.as_deref() {
-        // Ad-hoc task with full autopilot loop
-        let task = Task::new("adhoc", "Ad-hoc Task", task_desc);
         println!();
-        println!("Working on ad-hoc task: {}", task.title);
+        println!("Working on ad-hoc task");
         println!("Press Ctrl+C to interrupt");
         println!();
 
-        let adjutant = build_adjutant(&manifest, backend)?;
-        let config = build_autopilot_config(&manifest, &args);
-        let result = run_autopilot_task(adjutant, task, config, interrupt_flag.clone()).await;
-        print_autopilot_result(&result);
+        if args.autopilot_loop {
+            let task = Task::new("adhoc", "Ad-hoc Task", task_desc);
+            let adjutant = build_adjutant(&manifest, backend)?;
+            let config = build_autopilot_config(&manifest, &args);
+            let result = run_autopilot_task(adjutant, task, config, interrupt_flag.clone()).await;
+            print_autopilot_result(&result);
+            return Ok(());
+        }
+
+        let workspace_root = manifest
+            .workspace
+            .as_ref()
+            .map(|w| w.root.clone())
+            .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
+
+        let executor = AppServerExecutor::new(&workspace_root);
+        let options = AppServerPromptOptions {
+            model: args.model.clone(),
+            effort: args.effort.map(ReasoningEffort::from),
+            approval_policy: args.access.approval_policy(),
+            sandbox_mode: args.access.sandbox_mode(),
+            sandbox_policy: args.access.sandbox_policy(),
+            approval_mode: args.access.approval_mode(),
+        };
+
+        let (acp_tx, mut acp_rx) = mpsc::unbounded_channel::<acp::SessionNotification>();
+        let session_id = generate_session_id();
+        let acp_sender = crate::autopilot_loop::AcpEventSender {
+            session_id: session_id.into(),
+            tx: acp_tx,
+        };
+        let mut renderer = CliAcpRenderer::new(std::io::stdout());
+
+        let review = parse_review_prompt(task_desc);
+        let interrupt = Some(interrupt_flag.clone());
+        let run_fut = async move {
+            if let Some(review) = review {
+                executor
+                    .execute_review_streaming(
+                        review.target,
+                        review.delivery,
+                        options,
+                        Some(acp_sender),
+                        interrupt,
+                    )
+                    .await
+            } else {
+                executor
+                    .execute_prompt_streaming(
+                        task_desc,
+                        options,
+                        Some(acp_sender),
+                        interrupt,
+                    )
+                    .await
+            }
+        };
+
+        let mut run_fut = Box::pin(run_fut);
+        let result = loop {
+            tokio::select! {
+                res = &mut run_fut => {
+                    break res;
+                }
+                maybe = acp_rx.recv() => {
+                    if let Some(notification) = maybe {
+                        renderer.handle_notification(notification);
+                    }
+                }
+            }
+        };
+
+        while let Ok(notification) = acp_rx.try_recv() {
+            renderer.handle_notification(notification);
+        }
+        renderer.finish();
+
+        match result {
+            Ok(task_result) => {
+                if !task_result.success {
+                    if let Some(error) = task_result.error {
+                        eprintln!("Error: {}", error);
+                    }
+                }
+            }
+            Err(err) => {
+                eprintln!("Error: {}", err);
+                return Err(err.into());
+            }
+        }
+
         return Ok(());
     }
 
@@ -371,6 +548,79 @@ fn print_autopilot_result(result: &AutopilotResult) {
             println!("Error during execution: {}", msg);
         }
     }
+}
+
+struct ReviewCommand {
+    target: ReviewTarget,
+    delivery: Option<ReviewDelivery>,
+}
+
+fn parse_review_prompt(prompt: &str) -> Option<ReviewCommand> {
+    let trimmed = prompt.trim_start();
+    if !trimmed.starts_with("/review") {
+        return None;
+    }
+    let rest = trimmed.trim_start_matches("/review").trim();
+    let mut parts = rest
+        .split_whitespace()
+        .map(|part| part.to_string())
+        .collect::<Vec<String>>()
+        .into_iter();
+
+    let mut delivery = ReviewDelivery::Inline;
+    let mut token = parts.next();
+    if let Some(value) = token.as_deref() {
+        match value {
+            "inline" => {
+                delivery = ReviewDelivery::Inline;
+                token = parts.next();
+            }
+            "detached" => {
+                delivery = ReviewDelivery::Detached;
+                token = parts.next();
+            }
+            _ => {}
+        }
+    }
+
+    let target = match token.as_deref() {
+        None => ReviewTarget::UncommittedChanges,
+        Some("uncommitted") | Some("uncommittedchanges") | Some("changes") => {
+            ReviewTarget::UncommittedChanges
+        }
+        Some("branch") | Some("base") => {
+            let branch = parts.next().unwrap_or_default();
+            ReviewTarget::BaseBranch { branch }
+        }
+        Some("commit") => {
+            let sha = parts.next().unwrap_or_default();
+            let rest = parts.collect::<Vec<String>>();
+            let title = if rest.is_empty() {
+                None
+            } else {
+                Some(rest.join(" "))
+            };
+            ReviewTarget::Commit { sha, title }
+        }
+        Some("custom") => {
+            let instructions = parts.collect::<Vec<String>>().join(" ");
+            ReviewTarget::Custom { instructions }
+        }
+        Some(other) => {
+            let mut instructions = vec![other.to_string()];
+            instructions.extend(parts);
+            ReviewTarget::Custom {
+                instructions: instructions.join(" "),
+            }
+        }
+    };
+
+    let delivery = match delivery {
+        ReviewDelivery::Inline => None,
+        ReviewDelivery::Detached => Some(ReviewDelivery::Detached),
+    };
+
+    Some(ReviewCommand { target, delivery })
 }
 
 /// Find work when all issues are blocked.

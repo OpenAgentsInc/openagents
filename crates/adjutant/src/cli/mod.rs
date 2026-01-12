@@ -6,6 +6,7 @@ pub mod blocker;
 pub mod boot;
 pub mod directive;
 pub mod dspy;
+pub mod prompt;
 pub mod issue;
 pub mod run;
 pub mod stream;
