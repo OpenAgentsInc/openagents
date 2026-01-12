@@ -47,7 +47,7 @@ pub struct ChainState {
     /// The nodes in the chain.
     pub nodes: Vec<ChainNode>,
     /// Map from call_id to node index.
-    call_id_to_node: HashMap<Uuid, usize>,
+    pub call_id_to_node: HashMap<Uuid, usize>,
     /// The user prompt.
     pub prompt: String,
 }
@@ -184,15 +184,44 @@ impl ChainState {
             node.progress_message = None;
         }
     }
+
+    /// Add nodes for a curiosity loop iteration.
+    /// Returns (curiosity_id, search_id, answer_id) for tracking.
+    pub fn add_curiosity_iteration(&mut self, iteration: usize) -> (Uuid, Uuid, Uuid) {
+        let curiosity_id = Uuid::new_v4();
+        let search_id = Uuid::new_v4();
+        let answer_id = Uuid::new_v4();
+
+        // Create the three nodes for this iteration
+        let curiosity_node = ChainNode::new(&format!("Curiosity #{}", iteration + 1))
+            .with_description("Generate a question about the code");
+        let search_node = ChainNode::new(&format!("CodeSearch #{}", iteration + 1))
+            .with_description("Search codebase for relevant code");
+        let answer_node = ChainNode::new(&format!("Answer #{}", iteration + 1))
+            .with_description("Answer the question from code");
+
+        // Add curiosity node
+        let curiosity_idx = self.nodes.len();
+        self.nodes.push(curiosity_node);
+        self.call_id_to_node.insert(curiosity_id, curiosity_idx);
+
+        // Add search node
+        let search_idx = self.nodes.len();
+        self.nodes.push(search_node);
+        self.call_id_to_node.insert(search_id, search_idx);
+
+        // Add answer node
+        let answer_idx = self.nodes.len();
+        self.nodes.push(answer_node);
+        self.call_id_to_node.insert(answer_id, answer_idx);
+
+        (curiosity_id, search_id, answer_id)
+    }
 }
 
-/// Truncate long values for display.
+/// Keep full values for display (no truncation).
 fn truncate_value(s: &str) -> String {
-    if s.len() > 100 {
-        format!("{}...", &s[..97])
-    } else {
-        s.to_string()
-    }
+    s.to_string()
 }
 
 /// Callback that sends events to the UI.

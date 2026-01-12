@@ -59,6 +59,8 @@ fn main() {
         chain_state,
         event_rx,
         _runtime: runtime,
+        scroll_offset: 0.0,
+        content_height: 0.0,
     };
 
     event_loop.run_app(&mut app).expect("Event loop failed");
@@ -123,7 +125,18 @@ async fn run_chain(
     match chain.execute(DEMO_PROMPT, &repo_root).await {
         Ok(result) => {
             eprintln!("[manatap] Chain completed successfully!");
-            eprintln!("[manatap] Final summary: {}", result.final_summary);
+            eprintln!("[manatap] Final summary: {}", result.aggregated.final_summary);
+            eprintln!(
+                "[manatap] Explored {} curiosity questions",
+                result.curiosity_insights.len()
+            );
+            for insight in &result.curiosity_insights {
+                eprintln!(
+                    "[manatap] Q{}: {}",
+                    insight.iteration + 1,
+                    insight.question
+                );
+            }
         }
         Err(e) => {
             eprintln!("[manatap] Chain execution failed: {}", e);
@@ -139,6 +152,8 @@ struct App {
     chain_state: Arc<Mutex<ChainState>>,
     event_rx: tokio::sync::mpsc::UnboundedReceiver<ChainEvent>,
     _runtime: tokio::runtime::Runtime,
+    scroll_offset: f32,
+    content_height: f32,
 }
 
 struct RenderState {
@@ -243,6 +258,20 @@ impl ApplicationHandler for App {
                 state.surface.configure(&state.device, &state.config);
                 state.window.request_redraw();
             }
+            WindowEvent::MouseWheel { delta, .. } => {
+                let dy = match delta {
+                    winit::event::MouseScrollDelta::LineDelta(_, y) => y,
+                    winit::event::MouseScrollDelta::PixelDelta(pos) => pos.y as f32 / 20.0,
+                };
+
+                let scale_factor = state.window.scale_factor() as f32;
+                let viewport_height = state.config.height as f32 / scale_factor;
+                let max_scroll = (self.content_height - viewport_height + PADDING * 2.0).max(0.0);
+
+                // Scroll speed multiplier
+                self.scroll_offset = (self.scroll_offset - dy * 40.0).clamp(0.0, max_scroll);
+                state.window.request_redraw();
+            }
             WindowEvent::RedrawRequested => {
                 // Process any pending chain events
                 let mut needs_redraw = false;
@@ -263,44 +292,69 @@ impl ApplicationHandler for App {
                     Quad::new(Bounds::new(0.0, 0.0, width, height)).with_background(BG_COLOR),
                 );
 
-                let mut y = PADDING;
                 let content_width = width - PADDING * 2.0;
 
                 // Get the prompt and nodes from chain state
                 let chain_state = self.chain_state.lock().unwrap();
 
-                // Prompt card
+                // First pass: calculate total content height
                 let prompt_card = PromptCard::new(&chain_state.prompt);
                 let prompt_height =
                     prompt_card.height(content_width, &mut state.text_system, scale_factor);
-                prompt_card.paint(
-                    Bounds::new(PADDING, y, content_width, prompt_height),
-                    &mut scene,
-                    &mut state.text_system,
-                    scale_factor,
-                );
-                y += prompt_height + NODE_GAP;
 
-                // Chain nodes
+                let mut total_height = PADDING + prompt_height + NODE_GAP;
                 let nodes = chain_state.nodes();
-                for (i, node) in nodes.iter().enumerate() {
-                    // Draw connector from previous element
-                    if i == 0 {
-                        // Connector from prompt card
-                        Connector::paint(y - NODE_GAP + 4.0, y - 4.0, width / 2.0, &mut scene);
-                    } else {
-                        Connector::paint(y - NODE_GAP + 4.0, y - 4.0, width / 2.0, &mut scene);
-                    }
-
+                for node in nodes.iter() {
                     let node_height =
                         node.height(content_width, &mut state.text_system, scale_factor);
-                    node.paint(
-                        Bounds::new(PADDING, y, content_width, node_height),
+                    total_height += node_height + NODE_GAP;
+                }
+                total_height += PADDING; // Bottom padding
+
+                // Store content height for scroll calculations
+                self.content_height = total_height;
+
+                // Second pass: render with scroll offset
+                let mut y = PADDING - self.scroll_offset;
+
+                // Prompt card
+                if y + prompt_height > 0.0 && y < height {
+                    prompt_card.paint(
+                        Bounds::new(PADDING, y, content_width, prompt_height),
                         &mut scene,
                         &mut state.text_system,
                         scale_factor,
                     );
+                }
+                y += prompt_height + NODE_GAP;
+
+                // Chain nodes
+                for (i, node) in nodes.iter().enumerate() {
+                    let node_height =
+                        node.height(content_width, &mut state.text_system, scale_factor);
+
+                    // Only render if visible
+                    if y + node_height > 0.0 && y < height {
+                        // Draw connector from previous element
+                        let connector_top = y - NODE_GAP + 4.0;
+                        let connector_bottom = y - 4.0;
+                        if connector_bottom > 0.0 && connector_top < height {
+                            Connector::paint(connector_top, connector_bottom, width / 2.0, &mut scene);
+                        }
+
+                        node.paint(
+                            Bounds::new(PADDING, y, content_width, node_height),
+                            &mut scene,
+                            &mut state.text_system,
+                            scale_factor,
+                        );
+                    } else if y > height {
+                        // Stop rendering nodes below viewport
+                        break;
+                    }
+
                     y += node_height + NODE_GAP;
+                    let _ = i; // Suppress unused warning
                 }
 
                 drop(chain_state);
