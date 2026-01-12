@@ -23,6 +23,7 @@ use crate::app::events::ModalState;
 use crate::app::gateway::GatewayState;
 use crate::app::git::GitState;
 use crate::app::lm_router::LmRouterState;
+use crate::app::manatap::ManatapState;
 use crate::app::nexus::NexusState;
 use crate::app::nip28::Nip28State;
 use crate::app::nip90::Nip90State;
@@ -84,6 +85,7 @@ pub(crate) struct AppState {
     pub(crate) dvm: DvmState,
     pub(crate) gateway: GatewayState,
     pub(crate) lm_router: LmRouterState,
+    pub(crate) manatap: ManatapState,
     pub(crate) nexus: NexusState,
     pub(crate) spark_wallet: SparkWalletState,
     pub(crate) nip28: Nip28State,

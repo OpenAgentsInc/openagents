@@ -36,6 +36,7 @@ use crate::app::events::{
 use crate::app::gateway::GatewayState;
 use crate::app::git::GitState;
 use crate::app::lm_router::LmRouterState;
+use crate::app::manatap::ManatapState;
 use crate::app::nexus::NexusState;
 use crate::app::nip28::Nip28State;
 use crate::app::nip90::Nip90State;
@@ -270,6 +271,7 @@ impl ApplicationHandler for AutopilotApp {
                 dvm: DvmState::new(),
                 gateway: GatewayState::new(),
                 lm_router: LmRouterState::new(),
+                manatap: ManatapState::new(),
                 nexus: NexusState::new(),
                 spark_wallet: SparkWalletState::new(),
                 nip28: Nip28State::new(),
@@ -1332,6 +1334,14 @@ impl ApplicationHandler for AutopilotApp {
                 // Help modal scroll handling
                 if matches!(state.modal_state, ModalState::Help) {
                     state.help_scroll_offset = (state.help_scroll_offset - dy * 40.0).max(0.0);
+                    state.window.request_redraw();
+                    return;
+                }
+                if matches!(state.modal_state, ModalState::Manatap) {
+                    let max_scroll = (state.manatap.content_height - state.manatap.viewport_height)
+                        .max(0.0);
+                    state.manatap.scroll_offset =
+                        (state.manatap.scroll_offset - dy * 40.0).clamp(0.0, max_scroll);
                     state.window.request_redraw();
                     return;
                 }

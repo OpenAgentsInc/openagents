@@ -14,6 +14,7 @@ pub(crate) mod gateway;
 pub(crate) mod git;
 pub(crate) mod issues;
 pub(crate) mod lm_router;
+pub(crate) mod manatap;
 pub(crate) mod nexus;
 pub(crate) mod nip28;
 pub(crate) mod nip90;
