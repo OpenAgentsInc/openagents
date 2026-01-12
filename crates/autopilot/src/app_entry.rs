@@ -15,6 +15,8 @@ mod settings;
 #[path = "app_entry/state_actions.rs"]
 mod state_actions;
 
+const COMMAND_PALETTE_ENABLED: bool = false;
+
 
 mod command_palette_ids {
     pub const HELP: &str = "help.open";

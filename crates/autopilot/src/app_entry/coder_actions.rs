@@ -30,6 +30,7 @@ use crate::commands::{Command, ReviewCommand, ReviewDelivery, ReviewTarget};
 
 use super::AutopilotApp;
 use super::command_palette_ids;
+use super::COMMAND_PALETTE_ENABLED;
 use super::commands::handle_command;
 
 impl AutopilotApp {
@@ -1047,6 +1048,9 @@ impl AutopilotApp {
     }
 
     pub(super) fn poll_command_palette_actions(&mut self) {
+        if !COMMAND_PALETTE_ENABLED {
+            return;
+        }
         let actions = {
             let Some(state) = &mut self.state else {
                 return;
