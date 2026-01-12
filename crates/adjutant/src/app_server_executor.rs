@@ -334,8 +334,7 @@ fn resolve_app_server_command() -> Result<AppServerCommand> {
         });
     }
 
-    let program = codex_agent_sdk::transport::find_codex_executable()
-        .context("codex executable not found")?;
+    let program = crate::auth::get_codex_path().context("codex executable not found")?;
 
     Ok(AppServerCommand {
         program,

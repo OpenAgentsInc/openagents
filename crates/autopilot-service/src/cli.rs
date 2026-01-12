@@ -74,7 +74,7 @@ fn init_tracing(verbose: bool) {
             .with_env_filter(
                 tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
                     tracing_subscriber::EnvFilter::new(
-                        "autopilot=debug,openagents=debug,codex_agent_sdk=info,info",
+                        "autopilot=debug,openagents=debug,info",
                     )
                 }),
             )

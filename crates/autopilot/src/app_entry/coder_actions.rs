@@ -17,11 +17,11 @@ use crate::app::lm_router::LmRouterEvent;
 use crate::app::nexus::NexusEvent;
 use crate::app::spark_wallet::SparkWalletEvent;
 use crate::app::codex_app_server as app_server;
+use crate::app::codex_runtime::{CodexRuntime, CodexRuntimeConfig};
 use crate::app::events::{CommandAction, ModalState, QueryControl, ResponseEvent};
 use crate::app::nip28::{Nip28ConnectionStatus, Nip28Event, Nip28Message};
 use crate::app::nip90::{Nip90ConnectionStatus, Nip90Event};
 use crate::app::workspaces::WorkspaceEvent;
-use crate::app::parsing::expand_prompt_text;
 use crate::app::parsing::prompt::{expand_prompt_text_async, format_command_output, MAX_COMMAND_BYTES};
 use crate::app::utils::truncate_bytes;
 use crate::app::permissions::{coder_mode_default_allow, parse_coder_mode, PermissionPending};
@@ -73,11 +73,6 @@ impl AutopilotApp {
 
         if state.chat.is_thinking {
             state.push_system_message("Cannot start review during an active request.".to_string());
-            return;
-        }
-
-        if !use_app_server_transport() {
-            state.push_system_message("Review requires Codex app-server transport.".to_string());
             return;
         }
 
@@ -136,23 +131,10 @@ impl AutopilotApp {
         };
 
         let cwd = std::env::current_dir().unwrap_or_default();
-        let use_app_server = use_app_server_transport();
-        let expanded_prompt = if use_app_server {
-            None
-        } else {
-            match expand_prompt_text(&prompt, &cwd) {
-                Ok(result) => Some(result),
-                Err(err) => {
-                    state.push_system_message(err);
-                    state.window.request_redraw();
-                    return;
-                }
-            }
-        };
 
         // Create channel for receiving responses
         let (tx, rx) = mpsc::unbounded_channel();
-        let (control_tx, mut control_rx) = mpsc::unbounded_channel();
+        let (control_tx, control_rx) = mpsc::unbounded_channel();
         state.chat.response_rx = Some(rx);
         state.chat.query_control_tx = Some(control_tx);
         state.chat.is_thinking = true;
@@ -174,272 +156,28 @@ impl AutopilotApp {
             .as_deref()
             .and_then(parse_reasoning_effort);
 
-        if use_app_server {
-            tracing::info!("Using Codex app-server transport");
-            let (permission_tx, permission_rx) = mpsc::unbounded_channel();
-            let (permission_action_tx, permission_action_rx) = mpsc::unbounded_channel();
-            state.permissions.permission_requests_rx = Some(permission_rx);
-            state.permissions.permission_action_tx = Some(permission_action_tx);
-            state.permissions.permission_action_rx = Some(permission_action_rx);
-            let resume_thread_id = pending_resume
-                .as_ref()
-                .and_then(|session_id| resolve_codex_thread_id(&state.session, session_id));
-            self.submit_codex_prompt_app_server(
-                prompt,
-                cwd,
-                coder_mode,
-                resume_thread_id,
-                pending_fork,
-                model_override,
-                reasoning_effort,
-                tx,
-                permission_tx,
-                control_rx,
-                window,
-            );
-            return;
-        }
-
-        // Spawn async Codex query task
-        let handle = self.runtime_handle.clone();
-        handle.spawn(async move {
-            use codex_agent_sdk::{Codex, ThreadOptions, TurnOptions, ThreadEvent, ThreadItemDetails};
-
-            let codex = Codex::new();
-
-            // Build thread options - let Codex use its default model
-            let mut thread_options = ThreadOptions::new()
-                .working_directory(&cwd)
-                .skip_git_repo_check(true);
-
-            // Map permission mode to sandbox mode
-            thread_options = thread_options
-                .sandbox_mode(coder_mode.sandbox_mode())
-                .approval_policy(coder_mode.approval_mode());
-
-            // Create new thread (resume not supported yet for Codex)
-            let mut thread = codex.start_thread(thread_options);
-
-            // Start streaming turn
-            tracing::info!("Starting Codex query");
-            let turn_options = TurnOptions::default();
-            let expanded_prompt = expanded_prompt.unwrap_or_else(|| prompt);
-            match thread.run_streamed(expanded_prompt.as_str(), turn_options).await {
-                Ok(mut streamed) => {
-                    tracing::info!("Codex query stream started");
-
-                    // Track text accumulation for agent messages
-                    let mut current_message_text = String::new();
-
-                    loop {
-                        tokio::select! {
-                            Some(control) = control_rx.recv() => {
-                                match control {
-                                    QueryControl::Interrupt | QueryControl::Abort => {
-                                        let _ = tx.send(ResponseEvent::Error("Request interrupted.".to_string()));
-                                        window.request_redraw();
-                                        break;
-                                    }
-                                    _ => {}
-                                }
-                            }
-                            event = streamed.next() => {
-                                match event {
-                                    Some(Ok(ev)) => {
-                                        match ev {
-                                            ThreadEvent::ThreadStarted(started) => {
-                                                let mode_str = coder_mode.mode_label().to_string();
-                                                let thread_id = started.thread_id;
-                                                let _ = tx.send(ResponseEvent::SystemInit {
-                                                    model: "codex".to_string(),
-                                                    permission_mode: mode_str,
-                                                    session_id: thread_id.clone(),
-                                                    codex_thread_id: Some(thread_id),
-                                                    tool_count: 0,
-                                                    tools: vec![],
-                                                    output_style: String::new(),
-                                                    slash_commands: vec![],
-                                                    mcp_servers: vec![],
-                                                });
-                                                window.request_redraw();
-                                            }
-                                            ThreadEvent::TurnStarted(_) => {
-                                                tracing::debug!("Codex turn started");
-                                            }
-                                            ThreadEvent::ItemStarted(item) => {
-                                                match &item.item.details {
-                                                    ThreadItemDetails::AgentMessage(_) => {
-                                                        current_message_text.clear();
-                                                    }
-                                                    ThreadItemDetails::CommandExecution(cmd) => {
-                                                        let _ = tx.send(ResponseEvent::ToolCallStart {
-                                                            name: "Bash".to_string(),
-                                                            tool_use_id: item.item.id.clone(),
-                                                        });
-                                                        let _ = tx.send(ResponseEvent::ToolCallInput {
-                                                            json: serde_json::json!({"command": cmd.command}).to_string(),
-                                                        });
-                                                        let _ = tx.send(ResponseEvent::ToolCallEnd);
-                                                        window.request_redraw();
-                                                    }
-                                                    ThreadItemDetails::FileChange(fc) => {
-                                                        let _ = tx.send(ResponseEvent::ToolCallStart {
-                                                            name: "Edit".to_string(),
-                                                            tool_use_id: item.item.id.clone(),
-                                                        });
-                                                        let paths: Vec<&str> = fc.changes.iter()
-                                                            .map(|c| c.path.as_str())
-                                                            .collect();
-                                                        let _ = tx.send(ResponseEvent::ToolCallInput {
-                                                            json: serde_json::json!({"files": paths}).to_string(),
-                                                        });
-                                                        let _ = tx.send(ResponseEvent::ToolCallEnd);
-                                                        window.request_redraw();
-                                                    }
-                                                    ThreadItemDetails::McpToolCall(tool) => {
-                                                        let _ = tx.send(ResponseEvent::ToolCallStart {
-                                                            name: format!("mcp__{}__{}", tool.server, tool.tool),
-                                                            tool_use_id: item.item.id.clone(),
-                                                        });
-                                                        let _ = tx.send(ResponseEvent::ToolCallInput {
-                                                            json: tool.arguments.to_string(),
-                                                        });
-                                                        let _ = tx.send(ResponseEvent::ToolCallEnd);
-                                                        window.request_redraw();
-                                                    }
-                                                    ThreadItemDetails::Reasoning(r) => {
-                                                        let _ = tx.send(ResponseEvent::Chunk(
-                                                            format!("*Thinking:* {}\n\n", r.text)
-                                                        ));
-                                                        window.request_redraw();
-                                                    }
-                                                    _ => {}
-                                                }
-                                            }
-                                            ThreadEvent::ItemUpdated(item) => {
-                                                if let ThreadItemDetails::AgentMessage(msg) = &item.item.details {
-                                                    // Send delta (new text since last update)
-                                                    if msg.text.len() > current_message_text.len() {
-                                                        let delta = &msg.text[current_message_text.len()..];
-                                                        if tx.send(ResponseEvent::Chunk(delta.to_string())).is_err() {
-                                                            break;
-                                                        }
-                                                        current_message_text = msg.text.clone();
-                                                        window.request_redraw();
-                                                    }
-                                                }
-                                            }
-                                            ThreadEvent::ItemCompleted(item) => {
-                                                match &item.item.details {
-                                                    ThreadItemDetails::AgentMessage(msg) => {
-                                                        // Send any remaining text
-                                                        if msg.text.len() > current_message_text.len() {
-                                                            let delta = &msg.text[current_message_text.len()..];
-                                                            let _ = tx.send(ResponseEvent::Chunk(delta.to_string()));
-                                                            window.request_redraw();
-                                                        }
-                                                        current_message_text.clear();
-                                                    }
-                                                    ThreadItemDetails::CommandExecution(cmd) => {
-                                                        let _ = tx.send(ResponseEvent::ToolResult {
-                                                            content: cmd.aggregated_output.clone(),
-                                                            is_error: matches!(cmd.status, codex_agent_sdk::CommandExecutionStatus::Failed),
-                                                            tool_use_id: Some(item.item.id.clone()),
-                                                            exit_code: cmd.exit_code,
-                                                            output_value: None,
-                                                        });
-                                                        window.request_redraw();
-                                                    }
-                                                    ThreadItemDetails::FileChange(fc) => {
-                                                        let paths: Vec<&str> = fc.changes.iter()
-                                                            .map(|c| c.path.as_str())
-                                                            .collect();
-                                                        let content = format!("Modified files: {}", paths.join(", "));
-                                                        let _ = tx.send(ResponseEvent::ToolResult {
-                                                            content,
-                                                            is_error: matches!(fc.status, codex_agent_sdk::PatchApplyStatus::Failed),
-                                                            tool_use_id: Some(item.item.id.clone()),
-                                                            exit_code: None,
-                                                            output_value: None,
-                                                        });
-                                                        window.request_redraw();
-                                                    }
-                                                    ThreadItemDetails::McpToolCall(tool) => {
-                                                        let content = if let Some(result) = &tool.result {
-                                                            serde_json::to_string_pretty(&result.content)
-                                                                .unwrap_or_default()
-                                                        } else if let Some(err) = &tool.error {
-                                                            err.message.clone()
-                                                        } else {
-                                                            String::new()
-                                                        };
-                                                        let _ = tx.send(ResponseEvent::ToolResult {
-                                                            content,
-                                                            is_error: tool.error.is_some(),
-                                                            tool_use_id: Some(item.item.id.clone()),
-                                                            exit_code: None,
-                                                            output_value: None,
-                                                        });
-                                                        window.request_redraw();
-                                                    }
-                                                    ThreadItemDetails::Error(err) => {
-                                                        let _ = tx.send(ResponseEvent::SystemMessage(
-                                                            format!("Codex error: {}", err.message)
-                                                        ));
-                                                        window.request_redraw();
-                                                    }
-                                                    _ => {}
-                                                }
-                                            }
-                                            ThreadEvent::TurnCompleted(tc) => {
-                                                let _ = tx.send(ResponseEvent::Complete {
-                                                    metadata: Some(crate::app::chat::MessageMetadata {
-                                                        model: Some("codex".to_string()),
-                                                        input_tokens: Some(tc.usage.input_tokens as u64),
-                                                        output_tokens: Some(tc.usage.output_tokens as u64),
-                                                        duration_ms: None,
-                                                        cost_msats: None,
-                                                    }),
-                                                });
-                                                window.request_redraw();
-                                                break;
-                                            }
-                                            ThreadEvent::TurnFailed(failed) => {
-                                                let _ = tx.send(ResponseEvent::Error(failed.error.message));
-                                                window.request_redraw();
-                                                break;
-                                            }
-                                            ThreadEvent::Error(err) => {
-                                                let _ = tx.send(ResponseEvent::Error(err.message));
-                                                window.request_redraw();
-                                                break;
-                                            }
-                                        }
-                                    }
-                                    Some(Err(e)) => {
-                                        tracing::error!("Codex stream error: {}", e);
-                                        let _ = tx.send(ResponseEvent::Error(e.to_string()));
-                                        window.request_redraw();
-                                        break;
-                                    }
-                                    None => {
-                                        let _ = tx.send(ResponseEvent::Complete { metadata: None });
-                                        window.request_redraw();
-                                        break;
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    tracing::info!("Codex query stream ended");
-                }
-                Err(e) => {
-                    tracing::error!("Codex query failed to start: {}", e);
-                    let _ = tx.send(ResponseEvent::Error(e.to_string()));
-                    window.request_redraw();
-                }
-            }
-        });
+        tracing::info!("Using Codex app-server transport");
+        let (permission_tx, permission_rx) = mpsc::unbounded_channel();
+        let (permission_action_tx, permission_action_rx) = mpsc::unbounded_channel();
+        state.permissions.permission_requests_rx = Some(permission_rx);
+        state.permissions.permission_action_tx = Some(permission_action_tx);
+        state.permissions.permission_action_rx = Some(permission_action_rx);
+        let resume_thread_id = pending_resume
+            .as_ref()
+            .and_then(|session_id| resolve_codex_thread_id(&state.session, session_id));
+        self.submit_codex_prompt_app_server(
+            prompt,
+            cwd,
+            coder_mode,
+            resume_thread_id,
+            pending_fork,
+            model_override,
+            reasoning_effort,
+            tx,
+            permission_tx,
+            control_rx,
+            window,
+        );
     }
 
     fn submit_codex_prompt_app_server(
@@ -460,15 +198,13 @@ impl AutopilotApp {
         handle.spawn(async move {
             let wire_log = app_server::AppServerWireLog::new();
             let trace_log = TraceLogger::new();
-            let (client, channels) = match app_server::AppServerClient::spawn(
-                app_server::AppServerConfig {
-                    cwd: Some(cwd.clone()),
-                    wire_log: Some(wire_log.clone()),
-                },
-            )
+            let runtime = match CodexRuntime::spawn(CodexRuntimeConfig {
+                cwd: Some(cwd.clone()),
+                wire_log: Some(wire_log.clone()),
+            })
             .await
             {
-                Ok(result) => result,
+                Ok(runtime) => runtime,
                 Err(err) => {
                     let _ = tx.send(ResponseEvent::Error(format!(
                         "Failed to start codex app-server: {}",
@@ -478,25 +214,10 @@ impl AutopilotApp {
                     return;
                 }
             };
+            let CodexRuntime { client, channels, .. } = runtime;
             let notification_rx = channels.notifications;
             let request_rx = channels.requests;
             let emitter = ResponseEmitter::new(tx.clone(), Some(trace_log.clone()));
-
-            let client_info = app_server::ClientInfo {
-                name: "autopilot".to_string(),
-                title: Some("Autopilot".to_string()),
-                version: env!("CARGO_PKG_VERSION").to_string(),
-            };
-
-            if let Err(err) = client.initialize(client_info).await {
-                let _ = tx.send(ResponseEvent::Error(format!(
-                    "Failed to initialize codex app-server: {}",
-                    err
-                )));
-                window.request_redraw();
-                let _ = client.shutdown().await;
-                return;
-            }
 
             let expanded_prompt = match expand_prompt_with_app_server(
                 &client,
@@ -667,15 +388,13 @@ impl AutopilotApp {
         handle.spawn(async move {
             let wire_log = app_server::AppServerWireLog::new();
             let trace_log = TraceLogger::new();
-            let (client, channels) = match app_server::AppServerClient::spawn(
-                app_server::AppServerConfig {
-                    cwd: Some(cwd.clone()),
-                    wire_log: Some(wire_log.clone()),
-                },
-            )
+            let runtime = match CodexRuntime::spawn(CodexRuntimeConfig {
+                cwd: Some(cwd.clone()),
+                wire_log: Some(wire_log.clone()),
+            })
             .await
             {
-                Ok(result) => result,
+                Ok(runtime) => runtime,
                 Err(err) => {
                     let _ = tx.send(ResponseEvent::Error(format!(
                         "Failed to start codex app-server: {}",
@@ -687,24 +406,9 @@ impl AutopilotApp {
             };
 
             let emitter = ResponseEmitter::new(tx.clone(), Some(trace_log.clone()));
+            let CodexRuntime { client, channels, .. } = runtime;
             let notification_rx = channels.notifications;
             let request_rx = channels.requests;
-
-            let client_info = app_server::ClientInfo {
-                name: "autopilot".to_string(),
-                title: Some("Autopilot".to_string()),
-                version: env!("CARGO_PKG_VERSION").to_string(),
-            };
-
-            if let Err(err) = client.initialize(client_info).await {
-                let _ = emitter.send(ResponseEvent::Error(format!(
-                    "Failed to initialize codex app-server: {}",
-                    err
-                )));
-                window.request_redraw();
-                let _ = client.shutdown().await;
-                return;
-            }
 
             let resume_params = app_server::ThreadResumeParams {
                 thread_id: thread_id.clone(),
@@ -1269,15 +973,13 @@ impl AutopilotApp {
             let cwd = std::env::current_dir().unwrap_or_default();
             let session_id_for_update = session_id.clone();
             handle.spawn(async move {
-                let (client, _channels) = match app_server::AppServerClient::spawn(
-                    app_server::AppServerConfig {
-                        cwd: Some(cwd),
-                        wire_log: None,
-                    },
-                )
+                let runtime = match CodexRuntime::spawn(CodexRuntimeConfig {
+                    cwd: Some(cwd),
+                    wire_log: None,
+                })
                 .await
                 {
-                    Ok(result) => result,
+                    Ok(runtime) => runtime,
                     Err(err) => {
                         if let Some(tx) = update_tx {
                             let _ = tx.send(SessionUpdate::Error(format!(
@@ -1288,22 +990,7 @@ impl AutopilotApp {
                         return;
                     }
                 };
-
-                let client_info = app_server::ClientInfo {
-                    name: "autopilot".to_string(),
-                    title: Some("Autopilot".to_string()),
-                    version: env!("CARGO_PKG_VERSION").to_string(),
-                };
-                if let Err(err) = client.initialize(client_info).await {
-                    if let Some(tx) = update_tx {
-                        let _ = tx.send(SessionUpdate::Error(format!(
-                            "Failed to initialize codex app-server: {}",
-                            err
-                        )));
-                    }
-                    let _ = client.shutdown().await;
-                    return;
-                }
+                let CodexRuntime { client, .. } = runtime;
 
                 let archive_result = client
                     .thread_archive(app_server::ThreadArchiveParams { thread_id })
@@ -2122,16 +1809,6 @@ impl AutopilotApp {
             return;
         };
         render_app(state);
-    }
-}
-
-fn use_app_server_transport() -> bool {
-    match std::env::var("AUTOPILOT_CODEX_TRANSPORT") {
-        Ok(value) => matches!(
-            value.to_ascii_lowercase().as_str(),
-            "app-server" | "appserver" | "app_server"
-        ),
-        Err(_) => false,
     }
 }
 

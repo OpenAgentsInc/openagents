@@ -1,8 +1,7 @@
 //! Agent Client Protocol adapter for OpenAgents
 //!
-//! This crate provides an ACP adapter layer that wraps the existing
-//! `codex-agent-sdk` and `codex-agent-sdk` to enable standardized
-//! communication between OpenAgents apps and AI coding agents.
+//! This crate provides an ACP adapter layer that standardizes communication
+//! between OpenAgents apps and AI coding agents.
 //!
 //! ## Architecture
 //!

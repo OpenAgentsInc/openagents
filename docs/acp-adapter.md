@@ -863,19 +863,7 @@ tail -f docs/logs/20251223/*.rlog | jq .
 
 ## Converters
 
-The adapter includes bidirectional converters for various formats.
-
-### SDK to ACP
-
-Convert Codex SDK messages to ACP notifications:
-
-```rust
-use acp_adapter::converters::sdk_to_acp::message_to_notification;
-use codex_agent_sdk::Message;
-
-let sdk_message = Message::AgentMessage { content: "Hello" };
-let notification = message_to_notification(&sdk_message, &session_id)?;
-```
+The adapter includes bidirectional converters for ACP and rlog formats.
 
 ### ACP to rlog
 
@@ -898,18 +886,6 @@ use acp_adapter::converters::rlog::rlog_line_to_notification;
 
 let line = r#"{"type":"ToolCall","toolCall":{"id":"t1","name":"read"}}"#;
 let notification = rlog_line_to_notification(line, &session_id)?;
-```
-
-### Codex to ACP
-
-Convert Codex ThreadEvent to ACP:
-
-```rust
-use acp_adapter::converters::codex::thread_event_to_notification;
-use codex_agent_sdk::ThreadEvent;
-
-let thread_event = ThreadEvent::CommandExecution { command: "ls -la" };
-let notification = thread_event_to_notification(&thread_event, &session_id)?;
 ```
 
 ## Permission System

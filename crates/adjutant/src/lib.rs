@@ -33,7 +33,7 @@
 //!
 //! ## Execution Priority
 //!
-//! 1. **Codex CLI** - If Codex CLI is installed, use `codex-agent-sdk`
+//! 1. **Codex CLI** - If Codex CLI is installed, use the app-server
 //! 2. **Local LLM** - If llama.cpp/GPT-OSS is available
 //! 3. **Tiered/Analysis** - If Cerebras is configured or as a fallback
 

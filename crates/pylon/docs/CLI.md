@@ -643,7 +643,7 @@ The `--backend` option selects the local inference backend:
 | `ollama` | Use Ollama at localhost:11434 |
 | `llama-cpp` | Use llama.cpp at localhost:8080 |
 | `fm` | Use Apple Foundation Models (macOS only) |
-| `codex` | Use Codex via codex-agent-sdk (requires `--features codex`) |
+| `codex` | Use Codex via app-server (requires `--features codex`) |
 
 To use Codex as the backend:
 

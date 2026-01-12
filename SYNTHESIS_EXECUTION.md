@@ -69,7 +69,7 @@ cargo build --release -p pylon
 - Apple Foundation Models (macOS + Apple Silicon)
 - Ollama (any platform, port 11434)
 - llama.cpp (any platform, port 8080)
-- Codex (via codex-agent-sdk)
+- Codex (via app-server)
 
 **Data directory:** `~/.openagents/pylon/`
 
@@ -81,13 +81,9 @@ GPU-accelerated terminal interface for Codex CLI and Codex. Built on wgpui for h
 
 Autopilot UI reimagines the AI coding experience as a native desktop application rather than a web interface or CLI tool. The entire UI is GPU-rendered via wgpui, giving you buttery-smooth scrolling through long conversations, instant Markdown rendering, and the responsiveness you'd expect from a proper terminal emulator. It's designed for developers who live in their terminal and want AI coding assistants to feel like a natural extension of that workflow.
 
-Under the hood, Autopilot UI integrates multiple AI backends:
-- **Codex CLI** (via codex-agent-sdk) — OpenAI's Codex CLI
-- **Codex** (via codex-agent-sdk) — OpenAI's Codex API
+Under the hood, Autopilot UI integrates the Codex app-server as its single backend, using the JSONL protocol over stdio to drive threads, turns, approvals, and tool output.
 
-Switch between backends with `/backend` (toggle) or `/backend codex` (select Codex). The status bar shows the current backend. Both backends share the same UI rendering, streaming, and tool visualization infrastructure.
-
-Autopilot UI also integrates the Adjutant execution engine for autonomous "autopilot" mode. When you give it a task, Adjutant uses DSPy-optimized decision making to classify complexity, choose the right execution path (Codex SDK or RLM), and iterate until the task is complete. The UI provides real-time visibility into what the agent is doing, with the ability to interrupt, guide, or take over at any point.
+Autopilot UI also integrates the Adjutant execution engine for autonomous "autopilot" mode. When you give it a task, Adjutant uses DSPy-optimized decision making to classify complexity, choose the right execution path (Codex app-server or RLM), and iterate until the task is complete. The UI provides real-time visibility into what the agent is doing, with the ability to interrupt, guide, or take over at any point.
 
 ```bash
 cargo run -p autopilot
@@ -95,7 +91,7 @@ cargo run -p autopilot
 
 **Features:**
 - Terminal-style interaction with Codex
-- Multi-backend support (`/backend` command to switch)
+- Codex app-server streaming backend
 - Autonomous autopilot loop (adjutant integration)
 - MCP server management
 - Command palette (`/help`, `/model`, `/session`, `/tools`, `/backend`)
@@ -382,7 +378,7 @@ The execution engine with DSPy-powered decision making.
 3. **RlmTriggerPipeline** — Decide if RLM is needed
 
 **Execution priority:**
-1. Codex Pro/Max (via codex-agent-sdk)
+1. Codex Pro/Max (via app-server)
 2. Cerebras (TieredExecutor)
 3. Local LM (llama.cpp, FM Bridge)
 
@@ -503,8 +499,6 @@ Tracks usage per model for billing and context optimization.
 | `rlm` | Recursive language model |
 | `frlm` | Federated RLM |
 | `spark` | Lightning wallet (Breez SDK) |
-| `codex-agent-sdk` | Rust SDK for Codex |
-| `codex-agent-sdk` | Rust SDK for OpenAI Codex |
 | `voice` | Voice transcription (whisper.cpp) |
 | `voice-daemon` | macOS menu bar daemon |
 

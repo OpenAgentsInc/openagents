@@ -1,6 +1,6 @@
 //! Task execution - do the actual work using tools.
 //!
-//! Prioritizes Codex (via codex-agent-sdk) if the CLI is available,
+//! Prioritizes Codex (via app-server) if the CLI is available,
 //! falls back to Cerebras TieredExecutor, then to analysis-only mode.
 
 use crate::auth::has_codex_cli;

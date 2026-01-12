@@ -197,7 +197,7 @@ pub enum Venue {
     Swarm,
     /// Datacenter API (e.g., Crusoe).
     Datacenter,
-    /// Codex via codex-agent-sdk.
+    /// Codex via app-server.
     Codex,
     /// Unknown venue.
     #[default]

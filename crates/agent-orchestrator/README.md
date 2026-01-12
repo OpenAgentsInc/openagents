@@ -269,8 +269,8 @@ cargo test -p agent-orchestrator test_cost_tracker
 | Crate | Purpose |
 |-------|---------|
 | `opencode-sdk` | Primary backend communication |
-| `codex-agent-sdk` | Direct Codex access |
-| `codex-agent-sdk` | Codex backend |
+| `codex` | Codex app-server access |
+| `codex` | Codex backend |
 | `gpt-oss` | Local inference backend |
 | `frostr` | Threshold signatures |
 | `marketplace` | Skill licensing |

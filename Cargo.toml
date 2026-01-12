@@ -25,7 +25,6 @@ members = [
     "crates/testing",
     "crates/fm-bridge",
     "crates/fm-bridge-agent",
-    "crates/codex-agent-sdk",
     "crates/daytona",
     "crates/opencode-sdk",
     "crates/nostr/core",
@@ -207,7 +206,6 @@ publish = false
 [workspace.dependencies]
 # OpenAgents workspace crates
 issues = { path = "crates/issues" }
-codex-agent-sdk = { path = "crates/codex-agent-sdk" }
 nostr = { path = "crates/nostr/core" }
 
 # External crates

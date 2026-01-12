@@ -119,7 +119,7 @@ CLI runs can override the backend using `--backend` or `AUTOPILOT_BACKEND`.
 - [autopilot](../autopilot/) - GPU-accelerated desktop UI
 - [autopilot-service](../autopilot-service/) - Background service and daemon
 - [autopilot-shell](../autopilot-shell/) - Interactive shell interface
-- [codex-agent-sdk](../codex-agent-sdk/) - Rust SDK for Codex CLI
+- [docs/codex/APP_SERVER.md](../../docs/codex/APP_SERVER.md) - Codex app-server protocol
 
 ## Documentation
 

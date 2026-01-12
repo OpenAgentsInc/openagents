@@ -249,9 +249,7 @@ openagents/
 │   ├── neobank/            Agent treasury (FROST, multi-rail payments)
 │   ├── compute/            NIP-90 compute provider
 │   │
-│   ├── # AGENT SDKS
-│   ├── codex-agent-sdk/   Rust SDK for Codex CLI
-│   ├── codex-agent-sdk/    OpenAI Codex integration
+│   ├── # AGENT ORCHESTRATION
 │   ├── agent-orchestrator/ Multi-agent coordination framework
 │   │
 │   ├── # LOCAL INFERENCE
@@ -483,48 +481,12 @@ Supports:
 
 [Full documentation →](crates/config/README.md)
 
-### Agent SDKs
+### Codex App-Server
 
-#### `codex-agent-sdk`
-Rust SDK for Codex CLI:
+Autopilot and Adjutant use the Codex app-server JSONL protocol to run Codex as a
+sidecar runtime with approvals, tools, and session persistence.
 
-```rust
-use codex_agent_sdk::{query, QueryOptions};
-use futures::StreamExt;
-
-let mut stream = query(
-    "What files are here?",
-    QueryOptions::new()
-).await?;
-
-while let Some(msg) = stream.next().await {
-    // Process messages
-}
-```
-
-Features:
-- ~100% parity with TypeScript SDK
-- Permission handlers
-- Session management
-- Streaming support
-- Rust-only extensions (abort())
-
-[Full documentation →](crates/codex-agent-sdk/README.md)
-
-#### `codex-agent-sdk`
-Rust SDK for OpenAI Codex CLI:
-
-```rust
-use codex_agent_sdk::{Codex, ThreadOptions};
-
-let codex = Codex::new();
-let mut thread = codex.start_thread(ThreadOptions::default());
-
-let turn = thread.run("Analyze code", TurnOptions::default()).await?;
-println!("{}", turn.final_response);
-```
-
-[Full documentation →](crates/codex-agent-sdk/README.md)
+See [docs/codex/APP_SERVER.md](docs/codex/APP_SERVER.md).
 
 ### Platform Integration
 
@@ -981,58 +943,6 @@ nostr event --kind 5050 \
 
 # DVM processes and returns result as NIP-90 job result event
 ```
-
-### Multi-Agent Workflow
-
-Delegate between Codex CLI and Codex for complex tasks:
-
-```rust
-use codex_agent_sdk::{query, QueryOptions};
-use codex_agent_sdk::{Codex, ThreadOptions, TurnOptions};
-use futures::StreamExt;
-
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Start with Codex for code review
-    let mut codex_stream = query(
-        "Review crates/auth/src/lib.rs for security issues",
-        QueryOptions::new()
-    ).await?;
-
-    let mut review = String::new();
-    while let Some(msg) = codex_stream.next().await {
-        if let Some(text) = msg?.text_delta {
-            review.push_str(&text);
-        }
-    }
-
-    println!("Codex's review:\n{}", review);
-
-    // Delegate fixes to Codex
-    let codex = Codex::new();
-    let mut thread = codex.start_thread(ThreadOptions::default());
-
-    let fix_prompt = format!(
-        "Fix the security issues identified:\n\n{}",
-        review
-    );
-
-    let turn = thread.run(&fix_prompt, TurnOptions::default()).await?;
-    println!("Codex implemented fixes:\n{}", turn.final_response);
-
-    // Return to Codex for verification
-    let verify_stream = query(
-        "Verify the security fixes are correct",
-        QueryOptions::new()
-    ).await?;
-
-    // Process verification...
-
-    Ok(())
-}
-```
-
-This workflow leverages each agent's strengths: Codex for analysis/review, Codex for implementation.
 
 ## Documentation
 
