@@ -1,12 +1,11 @@
 //! GPT-OSS LM client with structured output support.
 //!
-//! Uses the Responses API with tool definitions to constrain output
-//! to a JSON schema, ensuring clean structured responses from local LLMs.
+//! Uses chat completions API with response_format to constrain output
+//! to a JSON schema via llama-server's GBNF grammar support.
 
 use anyhow::Result;
 use gpt_oss::{
-    GptOssClient, GptOssResponsesRequest, GptOssToolChoice, GptOssToolChoiceFunction,
-    GptOssToolDefinition, GptOssToolFunction,
+    ChatCompletionsRequest, ChatMessage, GptOssClient, JsonSchemaSpec, ResponseFormat,
 };
 use rig::completion::{CompletionError, CompletionRequest, CompletionResponse};
 use rig::message::{AssistantContent, Text};
@@ -15,11 +14,10 @@ use serde_json::{json, Value};
 
 use super::CompletionProvider;
 
-/// GPT-OSS completion model using the Responses API.
+/// GPT-OSS completion model using chat completions with structured output.
 ///
-/// This client uses tool definitions with JSON schemas to constrain
-/// the model's output, avoiding the parsing issues with local LLMs
-/// that mix reasoning with structured output.
+/// This client uses the /v1/chat/completions endpoint with response_format
+/// to constrain output via JSON schema (converted to GBNF grammar by llama-server).
 #[derive(Clone)]
 pub struct GptOssCompletionModel {
     client: GptOssClient,
@@ -52,33 +50,50 @@ impl GptOssCompletionModel {
         self
     }
 
-    /// Extract output schema from the prompt if present.
+    /// Extract output schema from the DSPy-formatted prompt.
     ///
-    /// The ChatAdapter formats prompts with output field descriptions.
+    /// The ChatAdapter formats prompts with output field descriptions like:
+    /// "[[ ## field_name ## ]]" followed by type/schema hints.
     /// We parse these to build a JSON schema for structured output.
     fn extract_output_schema(prompt: &str) -> Option<Value> {
-        // Look for the output fields section in the prompt
-        // Format: "[[ ## field_name ## ]] (type: Type)"
+        // Look for "Your output fields are:" section
+        let output_section = prompt.split("Your output fields are:").nth(1)?;
+        let output_section = output_section.split("All interactions").next()?;
+
         let mut properties = serde_json::Map::new();
         let mut required = Vec::new();
 
-        for line in prompt.lines() {
-            if line.starts_with("[[ ## ") && line.ends_with(" ## ]]") {
-                // Extract field name
-                let field_name = line
-                    .trim_start_matches("[[ ## ")
-                    .trim_end_matches(" ## ]]")
-                    .to_string();
+        // Parse numbered field list: "1. `field_name` (Type): description"
+        for line in output_section.lines() {
+            let line = line.trim();
+            if line.is_empty() {
+                continue;
+            }
 
-                if field_name != "completed" {
-                    // Default to string type
-                    properties.insert(
-                        field_name.clone(),
-                        json!({
-                            "type": "string"
-                        }),
-                    );
-                    required.push(Value::String(field_name));
+            // Match pattern like "1. `field_name` (Type): description"
+            if let Some(backtick_start) = line.find('`') {
+                if let Some(backtick_end) = line[backtick_start + 1..].find('`') {
+                    let field_name = &line[backtick_start + 1..backtick_start + 1 + backtick_end];
+
+                    if field_name == "completed" {
+                        continue;
+                    }
+
+                    // Extract type from (Type) pattern
+                    let after_name = &line[backtick_start + 2 + backtick_end..];
+                    let json_type = if let Some(paren_start) = after_name.find('(') {
+                        if let Some(paren_end) = after_name[paren_start..].find(')') {
+                            let type_str = &after_name[paren_start + 1..paren_start + paren_end];
+                            rust_type_to_json_schema(type_str)
+                        } else {
+                            json!({"type": "string"})
+                        }
+                    } else {
+                        json!({"type": "string"})
+                    };
+
+                    properties.insert(field_name.to_string(), json_type);
+                    required.push(Value::String(field_name.to_string()));
                 }
             }
         }
@@ -90,55 +105,92 @@ impl GptOssCompletionModel {
         Some(json!({
             "type": "object",
             "properties": properties,
-            "required": required
+            "required": required,
+            "additionalProperties": false
         }))
-    }
-
-    /// Create a tool definition for structured output.
-    fn create_output_tool(schema: Value) -> GptOssToolDefinition {
-        GptOssToolDefinition {
-            tool_type: "function".to_string(),
-            function: GptOssToolFunction {
-                name: "complete_signature".to_string(),
-                description: Some(
-                    "Complete the signature by providing all required output fields".to_string(),
-                ),
-                parameters: schema,
-            },
-        }
     }
 }
 
-/// Build prompt string from rig CompletionRequest
-fn build_prompt_from_request(request: &CompletionRequest) -> String {
-    let mut parts = Vec::new();
+/// Convert Rust type annotation to JSON schema type
+fn rust_type_to_json_schema(rust_type: &str) -> Value {
+    match rust_type.trim() {
+        "String" | "str" | "&str" => json!({"type": "string"}),
+        "i32" | "i64" | "u32" | "u64" | "isize" | "usize" => json!({"type": "integer"}),
+        "f32" | "f64" => json!({"type": "number"}),
+        "bool" => json!({"type": "boolean"}),
+        t if t.starts_with("Vec<") => {
+            // Extract inner type from Vec<T>
+            let inner = t.strip_prefix("Vec<").and_then(|s| s.strip_suffix('>'));
+            if let Some(inner_type) = inner {
+                json!({
+                    "type": "array",
+                    "items": rust_type_to_json_schema(inner_type)
+                })
+            } else {
+                json!({"type": "array", "items": {"type": "string"}})
+            }
+        }
+        t if t.starts_with("Option<") => {
+            // For Option<T>, just use the inner type (null handled separately)
+            let inner = t.strip_prefix("Option<").and_then(|s| s.strip_suffix('>'));
+            if let Some(inner_type) = inner {
+                rust_type_to_json_schema(inner_type)
+            } else {
+                json!({"type": "string"})
+            }
+        }
+        // Unknown types default to string
+        _ => json!({"type": "string"}),
+    }
+}
+
+/// Build chat messages from rig CompletionRequest
+fn build_messages_from_request(request: &CompletionRequest) -> Vec<ChatMessage> {
+    let mut messages = Vec::new();
 
     // Add preamble/system prompt
     if let Some(preamble) = &request.preamble {
-        parts.push(format!("System: {}", preamble));
+        messages.push(ChatMessage {
+            role: "system".to_string(),
+            content: preamble.clone(),
+        });
     }
 
     // Add chat history
     for msg in request.chat_history.iter() {
         match msg {
             rig::message::Message::User { content } => {
+                let mut text_parts = Vec::new();
                 for c in content.iter() {
                     if let rig::message::UserContent::Text(text) = c {
-                        parts.push(format!("User: {}", text.text));
+                        text_parts.push(text.text.clone());
                     }
+                }
+                if !text_parts.is_empty() {
+                    messages.push(ChatMessage {
+                        role: "user".to_string(),
+                        content: text_parts.join("\n"),
+                    });
                 }
             }
             rig::message::Message::Assistant { content, .. } => {
+                let mut text_parts = Vec::new();
                 for c in content.iter() {
                     if let rig::message::AssistantContent::Text(text) = c {
-                        parts.push(format!("Assistant: {}", text.text));
+                        text_parts.push(text.text.clone());
                     }
+                }
+                if !text_parts.is_empty() {
+                    messages.push(ChatMessage {
+                        role: "assistant".to_string(),
+                        content: text_parts.join("\n"),
+                    });
                 }
             }
         }
     }
 
-    parts.join("\n\n")
+    messages
 }
 
 impl CompletionProvider for GptOssCompletionModel {
@@ -146,77 +198,71 @@ impl CompletionProvider for GptOssCompletionModel {
         &self,
         request: CompletionRequest,
     ) -> Result<CompletionResponse<()>, CompletionError> {
-        // Build prompt from request
-        let prompt = build_prompt_from_request(&request);
+        let messages = build_messages_from_request(&request);
 
-        // Try to extract schema from prompt and use structured output
-        let response = if let Some(schema) = Self::extract_output_schema(&prompt) {
-            let tool = Self::create_output_tool(schema);
+        // Get combined prompt text to check for schema
+        let full_prompt: String = messages.iter().map(|m| m.content.as_str()).collect();
 
-            let req = GptOssResponsesRequest::new(&self.model, &prompt)
-                .with_tools(vec![tool])
-                .with_tool_choice(GptOssToolChoice::Named {
-                    tool_type: "function".to_string(),
-                    function: GptOssToolChoiceFunction {
-                        name: "complete_signature".to_string(),
-                    },
-                });
+        // Try to extract schema and use structured output
+        let response_format = Self::extract_output_schema(&full_prompt).map(|schema| {
+            ResponseFormat::JsonSchema {
+                json_schema: JsonSchemaSpec {
+                    name: Some("dspy_output".to_string()),
+                    schema,
+                    strict: Some(true),
+                },
+            }
+        });
 
-            let resp = self
-                .client
-                .responses(req)
-                .await
-                .map_err(|e| CompletionError::ProviderError(e.to_string()))?;
+        let req = ChatCompletionsRequest {
+            model: self.model.clone(),
+            messages,
+            max_tokens: self.max_tokens,
+            temperature: self.temperature,
+            top_p: None,
+            stop: None,
+            response_format,
+            stream: false,
+        };
 
-            // Extract tool call arguments as the structured output
-            let tool_calls = resp.tool_calls();
-            if let Some(tc) = tool_calls.first() {
-                // Format the response in the expected format
+        let resp = self
+            .client
+            .chat_completions(req)
+            .await
+            .map_err(|e| CompletionError::ProviderError(e.to_string()))?;
+
+        let content = resp.content().to_string();
+
+        // If we used structured output, wrap the JSON in DSPy format
+        let response = if Self::extract_output_schema(&full_prompt).is_some() {
+            // Parse JSON and format as DSPy expected format
+            if let Ok(json_obj) = serde_json::from_str::<serde_json::Map<String, Value>>(&content) {
                 let mut output = String::new();
-                if let Some(obj) = tc.arguments.as_object() {
-                    for (key, value) in obj {
-                        output.push_str(&format!("[[ ## {} ## ]]\n", key));
-                        if let Some(s) = value.as_str() {
-                            output.push_str(s);
-                        } else {
-                            output.push_str(&value.to_string());
-                        }
-                        output.push_str("\n\n");
+                for (key, value) in json_obj {
+                    output.push_str(&format!("[[ ## {} ## ]]\n", key));
+                    if let Some(s) = value.as_str() {
+                        output.push_str(s);
+                    } else {
+                        output.push_str(&value.to_string());
                     }
+                    output.push_str("\n\n");
                 }
                 output.push_str("[[ ## completed ## ]]");
                 output
             } else {
-                // Fallback to text output
-                resp.output_text()
+                content
             }
         } else {
-            // No schema detected, use basic completion
-            let req = gpt_oss::GptOssRequest {
-                model: self.model.clone(),
-                prompt,
-                max_tokens: self.max_tokens,
-                temperature: self.temperature,
-                top_p: None,
-                stop: None,
-                stream: false,
-            };
-
-            let resp = self
-                .client
-                .complete(req)
-                .await
-                .map_err(|e| CompletionError::ProviderError(e.to_string()))?;
-
-            resp.text
+            content
         };
 
+        let usage = resp.usage.as_ref();
         Ok(CompletionResponse {
             choice: OneOrMany::one(AssistantContent::Text(Text { text: response })),
             usage: rig::completion::Usage {
-                input_tokens: 0,
-                output_tokens: 0,
-                total_tokens: 0,
+                input_tokens: usage.map(|u| u.prompt_tokens as u64).unwrap_or(0),
+                output_tokens: usage.map(|u| u.completion_tokens as u64).unwrap_or(0),
+                total_tokens: usage.map(|u| u.total_tokens as u64).unwrap_or(0),
             },
             raw_response: (),
         })
@@ -230,13 +276,15 @@ mod tests {
     #[test]
     fn test_extract_output_schema() {
         let prompt = r#"
-System: You are a helpful assistant.
+Your input fields are:
+1. `user_task` (String): The task description
 
-Respond with the following fields:
-[[ ## task_type ## ]]
-[[ ## requirements ## ]]
-[[ ## scope_estimate ## ]]
-[[ ## completed ## ]]
+Your output fields are:
+1. `task_type` (String): Type of task
+2. `requirements` (Vec<String>): List of requirements
+3. `confidence` (f64): Confidence score
+
+All interactions will be structured...
 "#;
 
         let schema = GptOssCompletionModel::extract_output_schema(prompt);
@@ -246,7 +294,24 @@ Respond with the following fields:
         let props = schema.get("properties").unwrap().as_object().unwrap();
         assert!(props.contains_key("task_type"));
         assert!(props.contains_key("requirements"));
-        assert!(props.contains_key("scope_estimate"));
+        assert!(props.contains_key("confidence"));
         assert!(!props.contains_key("completed"));
+
+        // Check types
+        assert_eq!(props["task_type"]["type"], "string");
+        assert_eq!(props["requirements"]["type"], "array");
+        assert_eq!(props["confidence"]["type"], "number");
+    }
+
+    #[test]
+    fn test_rust_type_to_json_schema() {
+        assert_eq!(rust_type_to_json_schema("String"), json!({"type": "string"}));
+        assert_eq!(rust_type_to_json_schema("i32"), json!({"type": "integer"}));
+        assert_eq!(rust_type_to_json_schema("f64"), json!({"type": "number"}));
+        assert_eq!(rust_type_to_json_schema("bool"), json!({"type": "boolean"}));
+        assert_eq!(
+            rust_type_to_json_schema("Vec<String>"),
+            json!({"type": "array", "items": {"type": "string"}})
+        );
     }
 }

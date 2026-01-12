@@ -74,16 +74,7 @@ impl GptOssClient {
 
     /// Complete with simple prompt using default model
     pub async fn complete_simple(&self, model: &str, prompt: &str) -> Result<String> {
-        let request = GptOssRequest {
-            model: model.to_string(),
-            prompt: prompt.to_string(),
-            max_tokens: None,
-            temperature: None,
-            top_p: None,
-            stop: None,
-            stream: false,
-        };
-
+        let request = GptOssRequest::new(model, prompt);
         let response = self.complete(request).await?;
         Ok(response.text)
     }
@@ -195,6 +186,28 @@ impl GptOssClient {
         let value = response.json::<serde_json::Value>().await?;
         let models = parse_models_response(value)?;
         Ok(models)
+    }
+
+    /// Chat completions with structured output support
+    pub async fn chat_completions(
+        &self,
+        request: ChatCompletionsRequest,
+    ) -> Result<ChatCompletionsResponse> {
+        let url = format!("{}/v1/chat/completions", self.base_url);
+
+        let response = self.http_client.post(&url).json(&request).send().await?;
+
+        if !response.status().is_success() {
+            let status = response.status().as_u16();
+            let text = response.text().await.unwrap_or_default();
+            return Err(GptOssError::ApiError {
+                status,
+                message: text,
+            });
+        }
+
+        let output = response.json::<ChatCompletionsResponse>().await?;
+        Ok(output)
     }
 
     /// Health check

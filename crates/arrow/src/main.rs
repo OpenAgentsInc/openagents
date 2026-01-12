@@ -89,6 +89,7 @@ async fn test_inference(client: &GptOssClient) -> anyhow::Result<()> {
         top_p: None,
         stop: None, // Harmony handles stop tokens
         stream: true,
+        json_schema: None,
     };
 
     let mut full_response = String::new();
@@ -130,7 +131,7 @@ async fn test_inference(client: &GptOssClient) -> anyhow::Result<()> {
 async fn test_dspy_code_change_chain(server_url: &str) -> anyhow::Result<()> {
     info!("\n=== DSPy Code Change Chain Test ===\n");
 
-    // Configure dsrs with GPT-OSS backend
+    // Configure dsrs with GPT-OSS backend via local OpenAI-compatible endpoint
     info!("Configuring dsrs with GPT-OSS backend...");
     let lm = LM::builder()
         .base_url(server_url.to_string())

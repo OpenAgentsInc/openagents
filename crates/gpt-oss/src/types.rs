@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-/// Request to GPT-OSS Responses API
+/// Request to GPT-OSS completions API
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GptOssRequest {
     pub model: String,
@@ -16,6 +16,31 @@ pub struct GptOssRequest {
     pub stop: Option<Vec<String>>,
     #[serde(default)]
     pub stream: bool,
+    /// JSON schema to constrain output (converted to GBNF grammar by llama-server)
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub json_schema: Option<serde_json::Value>,
+}
+
+impl GptOssRequest {
+    /// Create a new request with just model and prompt
+    pub fn new(model: impl Into<String>, prompt: impl Into<String>) -> Self {
+        Self {
+            model: model.into(),
+            prompt: prompt.into(),
+            max_tokens: None,
+            temperature: None,
+            top_p: None,
+            stop: None,
+            stream: false,
+            json_schema: None,
+        }
+    }
+
+    /// Set JSON schema constraint for structured output
+    pub fn with_json_schema(mut self, schema: serde_json::Value) -> Self {
+        self.json_schema = Some(schema);
+        self
+    }
 }
 
 /// Response from GPT-OSS Responses API
@@ -326,4 +351,89 @@ fn default_context_length() -> usize {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HealthResponse {
     pub status: String,
+}
+
+// ============ Chat Completions API types ============
+
+/// Chat message for chat completions API
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChatMessage {
+    pub role: String,
+    pub content: String,
+}
+
+/// Request to chat completions API with structured output support
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChatCompletionsRequest {
+    pub model: String,
+    pub messages: Vec<ChatMessage>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_tokens: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub temperature: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub top_p: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub stop: Option<Vec<String>>,
+    /// Response format for structured output
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub response_format: Option<ResponseFormat>,
+    #[serde(default)]
+    pub stream: bool,
+}
+
+/// Response format specification for structured output
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type")]
+pub enum ResponseFormat {
+    /// Plain text output
+    #[serde(rename = "text")]
+    Text,
+    /// JSON object output (model chooses structure)
+    #[serde(rename = "json_object")]
+    JsonObject,
+    /// JSON schema constrained output
+    #[serde(rename = "json_schema")]
+    JsonSchema { json_schema: JsonSchemaSpec },
+}
+
+/// JSON schema specification for structured output
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct JsonSchemaSpec {
+    /// Optional name for the schema
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    /// The JSON schema itself
+    pub schema: serde_json::Value,
+    /// Whether to enforce strict schema adherence
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub strict: Option<bool>,
+}
+
+/// Response from chat completions API
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChatCompletionsResponse {
+    pub id: String,
+    pub model: String,
+    pub choices: Vec<ChatChoice>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub usage: Option<UsageStats>,
+}
+
+/// Choice in chat completions response
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChatChoice {
+    pub index: usize,
+    pub message: ChatMessage,
+    pub finish_reason: Option<String>,
+}
+
+impl ChatCompletionsResponse {
+    /// Get the content of the first choice
+    pub fn content(&self) -> &str {
+        self.choices
+            .first()
+            .map(|c| c.message.content.as_str())
+            .unwrap_or("")
+    }
 }
