@@ -1078,3 +1078,86 @@ fn parse_hooks_command(args: Vec<String>) -> Command {
         Some(other) => Command::Custom(format!("hooks {}", other), parts.collect()),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_command_requires_leading_slash() {
+        assert!(parse_command("help").is_none());
+        assert_eq!(parse_command("/").unwrap(), Command::Help);
+    }
+
+    #[test]
+    fn parse_backend_variants() {
+        assert_eq!(parse_command("/backend").unwrap(), Command::Backend);
+        assert_eq!(
+            parse_command("/backend codex").unwrap(),
+            Command::BackendSet("codex".to_string())
+        );
+    }
+
+    #[test]
+    fn parse_review_commit_with_title() {
+        let parsed = parse_command("/review detached commit deadbeef Add tests").unwrap();
+        match parsed {
+            Command::Review(review) => {
+                assert_eq!(review.delivery, ReviewDelivery::Detached);
+                match review.target {
+                    ReviewTarget::Commit { sha, title } => {
+                        assert_eq!(sha, "deadbeef");
+                        assert_eq!(title, Some("Add tests".to_string()));
+                    }
+                    _ => panic!("expected commit target"),
+                }
+            }
+            _ => panic!("expected review command"),
+        }
+    }
+
+    #[test]
+    fn parse_permission_allow_list() {
+        let parsed = parse_command("/permission allow read write").unwrap();
+        assert_eq!(
+            parsed,
+            Command::PermissionAllow(vec!["read".to_string(), "write".to_string()])
+        );
+    }
+
+    #[test]
+    fn parse_tools_enable_list() {
+        let parsed = parse_command("/tools enable ripgrep lsp").unwrap();
+        assert_eq!(
+            parsed,
+            Command::ToolsEnable(vec!["ripgrep".to_string(), "lsp".to_string()])
+        );
+    }
+
+    #[test]
+    fn parse_account_login_apikey() {
+        let parsed = parse_command("/account login apikey sk-test").unwrap();
+        assert_eq!(
+            parsed,
+            Command::AccountLoginApiKey("sk-test".to_string())
+        );
+    }
+
+    #[test]
+    fn parse_dvm_kind_fallbacks() {
+        let parsed = parse_command("/dvm kind 42").unwrap();
+        assert_eq!(parsed, Command::DvmKind(42));
+
+        let parsed = parse_command("/dvm kind nope").unwrap();
+        assert_eq!(parsed, Command::Dvm);
+    }
+
+    #[test]
+    fn parse_dspy_flags() {
+        let parsed = parse_command("/dspy auto on").unwrap();
+        assert_eq!(parsed, Command::DspyAuto(true));
+
+        let parsed = parse_command("/dspy background off").unwrap();
+        assert_eq!(parsed, Command::DspyBackground(false));
+    }
+}

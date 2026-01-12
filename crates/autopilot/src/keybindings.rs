@@ -561,6 +561,60 @@ pub fn default_keybindings() -> Vec<Keybinding> {
     ]
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn action_id_roundtrip() {
+        for action in Action::all() {
+            let id = action.id();
+            assert_eq!(Action::from_id(id), Some(*action));
+        }
+    }
+
+    #[test]
+    fn action_labels_are_non_empty() {
+        for action in Action::all() {
+            assert!(!action.label().is_empty());
+        }
+    }
+
+    #[test]
+    fn keybinding_matches_exact_key_and_modifiers() {
+        let binding = Keybinding {
+            key: Key::Character("k".to_string()),
+            modifiers: Modifiers {
+                ctrl: true,
+                ..Default::default()
+            },
+            action: Action::OpenCommandPalette,
+        };
+
+        assert!(binding.matches(
+            &Key::Character("k".to_string()),
+            Modifiers {
+                ctrl: true,
+                ..Default::default()
+            }
+        ));
+        assert!(!binding.matches(
+            &Key::Character("k".to_string()),
+            Modifiers {
+                ctrl: false,
+                ..Default::default()
+            }
+        ));
+        assert!(!binding.matches(
+            &Key::Character("x".to_string()),
+            Modifiers {
+                ctrl: true,
+                ..Default::default()
+            }
+        ));
+    }
+}
+
 pub fn match_action(key: &Key, modifiers: Modifiers, bindings: &[Keybinding]) -> Option<Action> {
     bindings
         .iter()

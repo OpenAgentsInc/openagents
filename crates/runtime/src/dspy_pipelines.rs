@@ -297,6 +297,50 @@ pub struct ToolChainPipeline {
     lm: Option<Arc<LM>>,
 }
 
+// ============================================================================
+// Tests
+// ============================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn tool_selection_result_default_values() {
+        let result = ToolSelectionResult::default();
+        assert!(result.selected_tool.is_empty());
+        assert_eq!(result.tool_params, "{}");
+        assert!(result.expected_outcome.is_empty());
+        assert!(result.fallback_tool.is_empty());
+        assert_eq!(result.confidence, 0.0);
+    }
+
+    #[test]
+    fn tool_interpretation_result_default_values() {
+        let result = ToolInterpretationResult::default();
+        assert_eq!(result.success, ToolSuccess::No);
+        assert!(result.extracted_info.is_empty());
+        assert!(result.next_steps.is_empty());
+        assert!(result.error_analysis.is_empty());
+        assert_eq!(result.confidence, 0.0);
+    }
+
+    #[test]
+    fn tool_input_serialization_roundtrip() {
+        let input = ToolSelectionInput {
+            task_description: "Find references".to_string(),
+            available_tools: "[{\"name\":\"rg\"}]".to_string(),
+            context: "[]".to_string(),
+        };
+
+        let json = serde_json::to_string(&input).unwrap();
+        let parsed: ToolSelectionInput = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.task_description, input.task_description);
+        assert_eq!(parsed.available_tools, input.available_tools);
+        assert_eq!(parsed.context, input.context);
+    }
+}
+
 impl Default for ToolChainPipeline {
     fn default() -> Self {
         Self::new()
