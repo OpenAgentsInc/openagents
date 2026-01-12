@@ -594,4 +594,24 @@ mod tests {
             "Synthesize the key information into one sentence"
         );
     }
+
+    #[test]
+    fn helper_functions_normalize_and_filter_steps() {
+        assert_eq!(normalize_step("1. Update README"), "update readme");
+        assert!(has_action_verb("read file"));
+        assert!(!has_action_verb("nothing to do"));
+        assert!(is_summary_step("summary of changes"));
+        assert!(is_summary_step("please summarize results"));
+        assert!(is_non_actionable_step("No tests required"));
+        assert!(is_non_actionable_step("None"));
+        assert!(!is_non_actionable_step("Run tests"));
+    }
+
+    #[test]
+    fn formats_bytes_for_display() {
+        assert_eq!(format_bytes(0), "0 bytes");
+        assert_eq!(format_bytes(1024), "1.0 KB");
+        assert_eq!(format_bytes(1024 * 1024), "1.0 MB");
+        assert_eq!(format_bytes(1024 * 1024 * 1024), "1.0 GB");
+    }
 }

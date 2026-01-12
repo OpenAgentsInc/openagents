@@ -1583,4 +1583,15 @@ mod tests {
             );
         }
     }
+
+    #[test]
+    fn test_generate_session_id_format() {
+        let session_id = generate_session_id();
+        let parts: Vec<&str> = session_id.split('-').collect();
+        assert_eq!(parts.len(), 2);
+        assert_eq!(parts[0].len(), 6);
+        assert_eq!(parts[1].len(), 8);
+        assert!(parts[0].chars().all(|c| c.is_ascii_digit()));
+        assert!(parts[1].chars().all(|c| c.is_ascii_hexdigit()));
+    }
 }

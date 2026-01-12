@@ -284,3 +284,45 @@ impl IdentityManifest {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn hardware_manifest_unknown_defaults() {
+        let manifest = HardwareManifest::unknown();
+        assert_eq!(manifest.cpu_cores, 0);
+        assert_eq!(manifest.cpu_model, "unknown");
+        assert_eq!(manifest.ram_bytes, 0);
+        assert_eq!(manifest.ram_available, 0);
+        assert!(manifest.gpus.is_empty());
+    }
+
+    #[test]
+    fn compute_manifest_empty_defaults() {
+        let manifest = ComputeManifest::empty();
+        assert!(manifest.backends.is_empty());
+        assert_eq!(manifest.total_models, 0);
+    }
+
+    #[test]
+    fn network_manifest_offline_defaults() {
+        let manifest = NetworkManifest::offline();
+        assert!(!manifest.has_internet);
+        assert!(manifest.relays.is_empty());
+        assert_eq!(manifest.total_providers, 0);
+        assert_eq!(manifest.pylon_count, 0);
+        assert_eq!(manifest.pylons_online, 0);
+        assert!(manifest.pylon_pubkeys.is_empty());
+    }
+
+    #[test]
+    fn identity_manifest_unknown_defaults() {
+        let manifest = IdentityManifest::unknown();
+        assert!(!manifest.initialized);
+        assert!(manifest.npub.is_none());
+        assert!(manifest.wallet_balance_sats.is_none());
+        assert!(manifest.network.is_none());
+    }
+}
