@@ -1,5 +1,8 @@
 # Running Experiments
 
+**Archived:** The benchmarking pipeline described here lives in archived crates (`bench-harness`,
+`bench-datasets`, `rlm-methods`) and is not part of the current workspace.
+
 This guide covers how to run benchmark experiments using the RLM replication infrastructure.
 
 ## Basic Workflow

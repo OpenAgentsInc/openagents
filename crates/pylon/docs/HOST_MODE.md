@@ -53,54 +53,54 @@ In host mode, Pylon:
 
 ## Agent Registry
 
-Agents are stored in the file-based registry at `~/.config/openagents/agents/`.
+Agents are stored in the file-based registry at `~/.openagents/agents/`.
 
 ### Directory Structure
 
 ```
-~/.config/openagents/agents/
-├── agent1/
-│   └── config.json
-├── agent2/
-│   └── config.json
+~/.openagents/agents/
+├── npub1abc123.toml
+├── npub1def456.toml
 └── ...
 ```
 
 ### Config Format
 
-```json
-{
-  "name": "ResearchBot",
-  "pubkey": "abc123...",
-  "npub": "npub1...",
-  "mnemonic_encrypted": "word1 word2 ... word12",
-  "spark_address": "sp1...",
-  "network": "regtest",
-  "relays": ["wss://nexus.openagents.com", "wss://relay.damus.io", "wss://nos.lol"],
-  "created_at": 1703980800,
-  "state": "active",
-  "last_active_at": 1703984400,
-  "tick_count": 42,
-  "profile": {
-    "name": "ResearchBot",
-    "about": "I research topics and provide summaries",
-    "autonomy": "bounded",
-    "capabilities": ["research", "summarization"],
-    "version": "0.1.0"
-  },
-  "schedule": {
-    "heartbeat_seconds": 900,
-    "triggers": ["mention", "dm", "zap"],
-    "active": true
-  },
-  "runway": {
-    "low_balance_days": 7,
-    "daily_burn_sats": 100,
-    "hibernate_threshold_sats": 50,
-    "daily_limit_sats": 500,
-    "per_tick_limit_sats": 50
-  }
-}
+```toml
+name = "ResearchBot"
+pubkey = "abc123..."
+npub = "npub1..."
+mnemonic_encrypted = "word1 word2 ... word12"
+spark_address = "sp1..."
+state = "active"
+created_at = 1703980800
+last_active_at = 1703984400
+tick_count = 42
+
+[network]
+bitcoin = "regtest"
+
+[relays]
+urls = ["wss://nexus.openagents.com", "wss://relay.damus.io", "wss://nos.lol"]
+
+[profile]
+name = "ResearchBot"
+about = "I research topics and provide summaries"
+autonomy = "bounded"
+capabilities = ["research", "summarization"]
+version = "0.1.0"
+
+[schedule]
+heartbeat_seconds = 900
+triggers = ["mention", "dm", "zap"]
+active = true
+
+[runway]
+low_balance_days = 7
+daily_burn_sats = 100
+hibernate_threshold_sats = 50
+daily_limit_sats = 500
+per_tick_limit_sats = 50
 ```
 
 ## Spawning Agents
@@ -366,13 +366,13 @@ agent-runner --agent myagent --single-tick
 ### Mnemonic Storage
 
 Agent mnemonics are stored in plaintext in the registry:
-- File: `~/.config/openagents/agents/<name>/config.json`
+- File: `~/.openagents/agents/<npub>.toml`
 - Field: `mnemonic_encrypted` (not actually encrypted yet)
 - Recommendation: Set restrictive permissions
 
 ```bash
-chmod 700 ~/.config/openagents/agents
-chmod 600 ~/.config/openagents/agents/*/config.json
+chmod 700 ~/.openagents/agents
+chmod 600 ~/.openagents/agents/*.toml
 ```
 
 ### Process Isolation

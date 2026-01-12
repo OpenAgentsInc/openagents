@@ -299,4 +299,4 @@ The `FailureTriageSignature` classifies failures into categories:
 
 - [dsrs/docs/SIGNATURES.md](../../dsrs/docs/SIGNATURES.md) - FailureTriageSignature definition
 - [DSPY-INTEGRATION.md](./DSPY-INTEGRATION.md) - Self-improvement and training
-- [autopilot/docs/EXECUTION_FLOW.md](../../autopilot/docs/EXECUTION_FLOW.md) - Where triage fits in the loop
+- [autopilot-core/docs/EXECUTION_FLOW.md](../../autopilot-core/docs/EXECUTION_FLOW.md) - Where triage fits in the loop

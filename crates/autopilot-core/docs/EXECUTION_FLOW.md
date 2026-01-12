@@ -279,7 +279,7 @@ This replaces implicit heuristics with explicit classification.
 
 ## See Also
 
-- [dsrs/docs/SIGNATURES.md](../../dsrs/docs/SIGNATURES.md) - Full signature definitions
+- [dsrs/docs/README.md](../../dsrs/docs/README.md) - DSPy overview and architecture
 - [adjutant/docs/DSPY-INTEGRATION.md](../../adjutant/docs/DSPY-INTEGRATION.md) - Self-improvement loop
 - [adjutant/docs/FAILURE_TRIAGE.md](../../adjutant/docs/FAILURE_TRIAGE.md) - Failure handling details
-- [docs/dspy/signatures-catalog.md](../../../docs/dspy/signatures-catalog.md) - Complete signature inventory
+- [dsrs/docs/SIGNATURES.md](../../dsrs/docs/SIGNATURES.md) - Signature inventory

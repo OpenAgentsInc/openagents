@@ -4,7 +4,7 @@ How learned agent patterns become a tradeable asset.
 
 ## The Core Insight
 
-When you use Coder and optimize your DSPy signatures, you're not just improving prompts. You're encoding **decision intelligence**:
+When you use Autopilot and optimize your DSPy signatures, you're not just improving prompts. You're encoding **decision intelligence**:
 
 - Task complexity classification patterns for your specific domain
 - Delegation decisions (when heavy models are needed vs lightweight)
@@ -60,7 +60,7 @@ Raw examples that can be used to train new manifests:
 
 ### Scenario 1: Cold Start Problem
 
-New developer installs Coder. Zero training data. Every decision uses generic fallback rules.
+New developer installs Autopilot. Zero training data. Every decision uses generic fallback rules.
 
 ```
 Without purchased manifests:
@@ -355,7 +355,7 @@ Self-policing quality market
 
 ### As a Seller
 
-1. Collect training data (automatic during Coder usage)
+1. Collect training data (automatic during Autopilot usage)
 2. Run optimization: `autopilot dspy optimize`
 3. Export manifest: check `~/.openagents/adjutant/manifests/`
 4. List on Nostr marketplace (coming soon)
@@ -372,7 +372,7 @@ Self-policing quality market
 The infrastructure needed:
 - [ ] NIP for manifest advertisement (extend NIP-89)
 - [ ] Manifest validation/scoring service
-- [ ] Lightning payment integration in Coder
+- [ ] Lightning payment integration in Autopilot
 - [ ] Reputation system for providers
 - [ ] Privacy-preserving aggregation protocol
 

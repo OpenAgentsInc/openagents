@@ -1,6 +1,7 @@
 # DSPy Integration
 
-The RLM crate integrates [DSRs (dspy-rs)](https://github.com/krypticmouse/DSRs) to provide declarative LLM programming with typed signatures, composable modules, and automatic prompt optimization.
+The RLM crate integrates [dsrs](../../dsrs/docs/README.md) to provide declarative LLM programming
+with typed signatures, composable modules, and automatic prompt optimization.
 
 ## Overview
 
@@ -58,7 +59,7 @@ cargo test -p rlm --features dspy --lib
 │   │  (global or per-req) │    │   (unified cost tracking)       │       │
 │   └──────────────────────┘    └─────────────────────────────────┘       │
 ├─────────────────────────────────────────────────────────────────────────┤
-│                            dspy-rs                                       │
+│                             dsrs                                        │
 │        (Signatures, Predict, Module, COPRO, MIPROv2)                    │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
@@ -136,7 +137,7 @@ async fn main() -> anyhow::Result<()> {
 
 ### 1. DSPy Bridge (`dspy_bridge`)
 
-Re-exports key DSRs types and provides LM configuration helpers.
+Re-exports key dsrs types and provides LM configuration helpers.
 
 #### LM Configuration
 
@@ -477,7 +478,7 @@ for extraction in &result.extractions {
 
 ## Optimization (Offline)
 
-DSRs supports automatic prompt optimization. This should be run offline during development, not at runtime.
+dsrs supports automatic prompt optimization. This should be run offline during development, not at runtime.
 
 See `examples/optimize_signatures.rs` for scaffolding:
 
@@ -543,8 +544,8 @@ let result = grep.execute(serde_json::json!({
 
 - [Provenance Tracking](./PROVENANCE.md) - SpanRef and evidence tracking
 - [Environment Tools](./TOOLS.md) - Grep, read, list, symbols tools
-- [DSRs Documentation](https://dsrs.herumbshandilya.com/)
-- [DSRs API Reference](https://docs.rs/dspy-rs)
+- [dsrs Documentation](../../dsrs/docs/README.md)
+- [dsrs Signatures](../../dsrs/docs/SIGNATURES.md)
 - [RLM Architecture](./ARCHITECTURE.md)
 
 ## Examples

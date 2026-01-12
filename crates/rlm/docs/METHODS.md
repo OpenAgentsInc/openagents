@@ -1,5 +1,8 @@
 # Methods
 
+**Archived:** The `rlm-methods` crate is not part of the current workspace. This document is
+retained for historical reference.
+
 The `rlm-methods` crate implements solution methods from the RLM paper.
 
 ## Method Trait

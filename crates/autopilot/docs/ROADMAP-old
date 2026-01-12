@@ -2,6 +2,9 @@
 
 > A comprehensive roadmap to achieve full parity with Codex CLI
 
+**Deprecated:** This roadmap is superseded by `ROADMAP.md` and kept for historical context.
+Some references point to archived components or older naming.
+
 ## Executive Summary
 
 This document outlines the path to 100% implementation of the Codex Agent SDK in the Autopilot desktop application. The goal is complete feature parity with Codex CLI, leveraging the existing wgpui component library.

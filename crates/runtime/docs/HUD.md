@@ -362,4 +362,4 @@ This makes "live fishbowl," "personal HUD," "timelapse," "APM gauge," and "proof
 - [CONTROL-PLANE.md](CONTROL-PLANE.md) — HTTP API, SSE streaming
 - [DESIGN.md](DESIGN.md) — Tick model, trajectory logging
 - [DRIVERS.md](DRIVERS.md) — Event sources (HTTP, WebSocket, Nostr)
-- [GTM.md](/docs/autopilot/GTM.md) — Go-to-market strategy (external)
+- [../../SYNTHESIS.md](../../SYNTHESIS.md) — Product context (GTM notes archived)

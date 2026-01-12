@@ -456,7 +456,7 @@ oanix
 
 ## See Also
 
-- [../../docs/OANIX.md](../../docs/OANIX.md) - Full OANIX vision document
-- [../dsrs/docs/README.md](../dsrs/docs/README.md) - DSPy Rust (signatures, predictors)
-- [../adjutant/docs/README.md](../adjutant/docs/README.md) - Adjutant (uses OANIX)
-- [../pylon/docs/QUICKSTART.md](../pylon/docs/QUICKSTART.md) - Pylon setup
+- [../../SYNTHESIS.md](../../SYNTHESIS.md) - Current vision and product context
+- [../../dsrs/docs/README.md](../../dsrs/docs/README.md) - DSPy Rust (signatures, predictors)
+- [../../adjutant/docs/README.md](../../adjutant/docs/README.md) - Adjutant (uses OANIX)
+- [../../pylon/docs/QUICKSTART.md](../../pylon/docs/QUICKSTART.md) - Pylon setup

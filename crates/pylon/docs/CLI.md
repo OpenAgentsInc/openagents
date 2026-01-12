@@ -33,8 +33,8 @@ pylon init [OPTIONS]
 #### Description
 
 Creates:
-- `~/.config/pylon/config.toml` - Configuration file
-- `~/.config/pylon/identity.mnemonic` - 12-word seed phrase
+- `~/.openagents/pylon/config.toml` - Configuration file
+- `~/.openagents/pylon/identity.mnemonic` - 12-word seed phrase
 
 If identity already exists, prompts for confirmation unless `--force` is used.
 
@@ -59,7 +59,7 @@ Generated new identity:
 IMPORTANT: Back up your seed phrase:
   word1 word2 word3 word4 word5 word6 word7 word8 word9 word10 word11 word12
 
-Configuration written to ~/.config/pylon/config.toml
+Configuration written to ~/.openagents/pylon/config.toml
 ```
 
 ---
@@ -78,7 +78,7 @@ pylon start [OPTIONS]
 |--------|-------|-------------|---------|
 | `--foreground` | `-f` | Run in foreground (don't daemonize) | false |
 | `--mode` | `-m` | Operating mode: provider, host, both | both |
-| `--config` | `-c` | Path to config file | ~/.config/pylon/config.toml |
+| `--config` | `-c` | Path to config file | ~/.openagents/pylon/config.toml |
 
 #### Description
 

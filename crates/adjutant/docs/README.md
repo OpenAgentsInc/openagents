@@ -361,7 +361,6 @@ crates/adjutant/
 │   ├── lib.rs           # Main Adjutant struct, LM caching, decision routing
 │   ├── planner.rs       # Task analysis and planning
 │   ├── executor.rs      # Task execution coordination
-│   ├── codex_executor.rs # Codex Pro/Max execution via SDK
 │   ├── codex_executor.rs # Codex execution via SDK
 │   ├── rlm_agent.rs     # RLM custom agent definition
 │   ├── tiered.rs        # TieredExecutor (Gateway + DSPy modes)
@@ -446,13 +445,15 @@ export ADJUTANT_ENABLE_RLM=1
 export RLM_BACKEND=codex  # Use Codex as RLM LlmClient
 ```
 
-## Coder Integration
+## Autopilot Integration
 
-Adjutant is the execution engine behind Coder's **Autopilot mode**. When you switch to Autopilot in Coder, it runs Adjutant in an **autonomous loop** until the task is complete:
+Adjutant is the execution engine behind Autopilot's **autonomous loop**. When you switch to
+Autopilot mode in the UI (or run `autopilot run --autopilot-loop`), it runs Adjutant until the
+task is complete:
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                    Coder Autopilot Loop                      │
+│                        Autopilot Loop                         │
 ├─────────────────────────────────────────────────────────────┤
 │  User: "Fix the auth bug"                                    │
 │        ↓                                                     │
@@ -557,7 +558,7 @@ See [DSPY-INTEGRATION.md](./DSPY-INTEGRATION.md) for detailed documentation.
 
 - [TIERED-EXECUTOR.md](./TIERED-EXECUTOR.md) - Detailed tiered inference documentation
 - [DSPY-INTEGRATION.md](./DSPY-INTEGRATION.md) - DSPy integration and optimization guide
-- [../../dsrs/README.md](../../dsrs/README.md) - dsrs (Rust DSPy) documentation
+- [../../dsrs/docs/README.md](../../dsrs/docs/README.md) - dsrs (Rust DSPy) documentation
 - [../../gateway/docs/README.md](../../gateway/docs/README.md) - Gateway crate (Cerebras integration)
-- [../../oanix/README.md](../../oanix/README.md) - OANIX environment discovery
-- [../../coder/docs/ROADMAP.md](../../coder/docs/ROADMAP.md) - Coder implementation roadmap
+- [../../oanix/docs/README.md](../../oanix/docs/README.md) - OANIX environment discovery
+- [../../autopilot/docs/ROADMAP.md](../../autopilot/docs/ROADMAP.md) - Autopilot roadmap

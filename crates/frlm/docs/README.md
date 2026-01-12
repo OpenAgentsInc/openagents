@@ -333,5 +333,5 @@ Final Summary
 ## See Also
 
 - [RLM Crate](../../rlm/docs/README.md) - Base RLM execution engine
-- [Viz FRLM](../../viz/docs/FRLM.md) - FRLM visualization components
+- FRLM visualization components are currently archived out of the workspace.
 - [NIP-90 Spec](https://github.com/nostr-protocol/nips/blob/master/90.md) - Data Vending Machine

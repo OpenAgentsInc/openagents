@@ -134,7 +134,7 @@ cargo test -p nostr-client --test agent_chat_e2e -- --ignored --nocapture
 
 ## Pylon Configuration
 
-In `~/.config/pylon/config.toml`:
+In `~/.openagents/pylon/config.toml`:
 
 ```toml
 [wallet]

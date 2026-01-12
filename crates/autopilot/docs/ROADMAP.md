@@ -93,7 +93,7 @@ should behave consistently with Codex CLI/app-server semantics.
 Scope: connect server-initiated approval requests
 (`item/commandExecution/requestApproval` and `item/fileChange/requestApproval`) to
 the existing permission dialogs and rule persistence, and apply allow/deny rules to
-auto-decide when possible. Coder modes should map to `approvalPolicy` and
+auto-decide when possible. Autopilot access modes should map to `approvalPolicy` and
 `sandboxPolicy`, and the client must respond with accept or decline (including
 `acceptSettings` when relevant). This milestone should frame approvals as autonomy
 levels (read-only / propose / auto) so policy-driven decisions can be layered in
