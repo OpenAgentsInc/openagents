@@ -58,11 +58,7 @@ struct RawSpan {
     kind: HighlightKind,
 }
 
-fn push_span_by_line(
-    spans_by_line: &mut [Vec<HighlightSpan>],
-    buffer: &TextBuffer,
-    span: RawSpan,
-) {
+fn push_span_by_line(spans_by_line: &mut [Vec<HighlightSpan>], buffer: &TextBuffer, span: RawSpan) {
     if span.start >= span.end {
         return;
     }
@@ -115,11 +111,9 @@ fn push_span_by_line(
 }
 
 fn normalize_spans(spans: &mut Vec<HighlightSpan>) {
-    spans.sort_by(|a, b| {
-        match a.start_col.cmp(&b.start_col) {
-            std::cmp::Ordering::Equal => b.end_col.cmp(&a.end_col),
-            other => other,
-        }
+    spans.sort_by(|a, b| match a.start_col.cmp(&b.start_col) {
+        std::cmp::Ordering::Equal => b.end_col.cmp(&a.end_col),
+        other => other,
     });
 
     let mut normalized: Vec<HighlightSpan> = Vec::with_capacity(spans.len());
@@ -383,7 +377,10 @@ fn is_followed_by_call(bytes: &[u8], mut i: usize) -> bool {
 
 #[cfg(not(target_arch = "wasm32"))]
 mod imp {
-    use super::{HighlightKind, HighlightSpan, RawSpan, SyntaxLanguage, normalize_spans, push_span_by_line, scan_rust_simple};
+    use super::{
+        HighlightKind, HighlightSpan, RawSpan, SyntaxLanguage, normalize_spans, push_span_by_line,
+        scan_rust_simple,
+    };
     use crate::buffer::TextBuffer;
     use tree_sitter::{Node, Parser, Tree};
 
@@ -415,7 +412,8 @@ mod imp {
             let source = buffer.text();
             self.tree = self.parser.parse(&source, self.tree.as_ref());
             self.spans_by_line.clear();
-            self.spans_by_line.resize_with(buffer.line_count(), Vec::new);
+            self.spans_by_line
+                .resize_with(buffer.line_count(), Vec::new);
 
             let mut spans = scan_rust_simple(&source);
             if let Some(tree) = &self.tree {
@@ -512,7 +510,9 @@ mod imp {
 
 #[cfg(target_arch = "wasm32")]
 mod imp {
-    use super::{HighlightSpan, SyntaxLanguage, normalize_spans, push_span_by_line, scan_rust_simple};
+    use super::{
+        HighlightSpan, SyntaxLanguage, normalize_spans, push_span_by_line, scan_rust_simple,
+    };
     use crate::buffer::TextBuffer;
 
     pub struct SyntaxHighlighter {
@@ -542,7 +542,8 @@ mod imp {
             };
 
             self.spans_by_line.clear();
-            self.spans_by_line.resize_with(buffer.line_count(), Vec::new);
+            self.spans_by_line
+                .resize_with(buffer.line_count(), Vec::new);
             for span in spans {
                 push_span_by_line(&mut self.spans_by_line, buffer, span);
             }

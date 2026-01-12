@@ -480,7 +480,9 @@ impl Editor {
     }
 
     fn clamp_position(&self, position: Position) -> Position {
-        let line = position.line.min(self.buffer.line_count().saturating_sub(1));
+        let line = position
+            .line
+            .min(self.buffer.line_count().saturating_sub(1));
         let line_len = self.buffer.line_len(line);
         let column = position.column.min(line_len);
         Position { line, column }
@@ -531,7 +533,11 @@ impl Editor {
         for (index, cursor) in self.cursors.iter().enumerate() {
             let start = self.buffer.position_to_char(cursor.anchor);
             let end = self.buffer.position_to_char(cursor.position);
-            let (start, end) = if start <= end { (start, end) } else { (end, start) };
+            let (start, end) = if start <= end {
+                (start, end)
+            } else {
+                (end, start)
+            };
             ranges.push(CursorRange { index, start, end });
         }
         ranges

@@ -400,7 +400,10 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "clap",
+ "dsrs",
  "gpt-oss",
+ "serde",
+ "serde_json",
  "tokio",
  "tokio-stream",
  "tracing",

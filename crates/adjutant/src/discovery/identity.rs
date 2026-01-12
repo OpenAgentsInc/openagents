@@ -14,10 +14,7 @@ pub async fn discover_identity() -> anyhow::Result<IdentityManifest> {
                 // Parse keys to get npub
                 if let Ok(content) = std::fs::read_to_string(&keys_file) {
                     if let Ok(keys) = serde_json::from_str::<serde_json::Value>(&content) {
-                        let npub = keys
-                            .get("npub")
-                            .and_then(|v| v.as_str())
-                            .map(String::from);
+                        let npub = keys.get("npub").and_then(|v| v.as_str()).map(String::from);
 
                         return Ok(IdentityManifest {
                             initialized: true,

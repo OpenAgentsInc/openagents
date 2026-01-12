@@ -50,10 +50,7 @@ impl FileWatcher {
                             }
 
                             // Skip files in .archive folder
-                            if path
-                                .components()
-                                .any(|c| c.as_os_str() == ".archive")
-                            {
+                            if path.components().any(|c| c.as_os_str() == ".archive") {
                                 continue;
                             }
 

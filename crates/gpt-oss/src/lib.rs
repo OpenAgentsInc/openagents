@@ -29,10 +29,10 @@ pub mod types;
 // Re-export main types
 pub use client::{GptOssClient, GptOssClientBuilder};
 pub use error::{GptOssError, Result, ServerError};
-pub use server::{LlamaServerManager, ServerStatus};
 pub use harmony::{
     HarmonyPromptConfig, HarmonyRenderer, HarmonyRole, HarmonyToolSpec, HarmonyTurn,
 };
+pub use server::{LlamaServerManager, ServerStatus};
 pub use types::{
     GptOssReasoningEffort, GptOssRequest, GptOssResponse, GptOssResponsesRequest,
     GptOssResponsesResponse, GptOssStreamChunk, GptOssToolCall, GptOssToolChoice,

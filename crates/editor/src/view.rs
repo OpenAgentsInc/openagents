@@ -4,8 +4,8 @@ use wgpui::{
     Point, Quad, copy_to_clipboard, theme,
 };
 
-use crate::editor::Editor;
 use crate::caret::Position;
+use crate::editor::Editor;
 use crate::syntax::{HighlightSpan, SyntaxHighlighter, SyntaxLanguage};
 
 struct CompositionState {
@@ -205,7 +205,10 @@ impl EditorView {
             0
         };
 
-        let line = line.clamp(0, self.editor.buffer().line_count().saturating_sub(1) as isize) as usize;
+        let line = line.clamp(
+            0,
+            self.editor.buffer().line_count().saturating_sub(1) as isize,
+        ) as usize;
         let line_len = self.editor.buffer().line_len(line);
         let col = col.max(0) as usize;
         let col = col.min(line_len);
@@ -286,14 +289,7 @@ impl EditorView {
 
         let line_len = line_text.chars().count();
         if cursor_col < line_len {
-            self.draw_text_segment(
-                line_text,
-                cursor_col,
-                line_len,
-                text_y,
-                self.text_color,
-                cx,
-            );
+            self.draw_text_segment(line_text, cursor_col, line_len, text_y, self.text_color, cx);
         }
     }
 
@@ -318,7 +314,9 @@ impl EditorView {
             return;
         }
         let x = self.text_origin.x + start_col as f32 * self.char_width;
-        let run = cx.text.layout(&segment, Point::new(x, text_y), self.font_size, color);
+        let run = cx
+            .text
+            .layout(&segment, Point::new(x, text_y), self.font_size, color);
         cx.scene.draw_text(run);
     }
 }
@@ -332,8 +330,11 @@ impl Component for EditorView {
         let max_scroll = (content_height - self.viewport_height).max(0.0);
         self.scroll_offset = self.scroll_offset.clamp(0.0, max_scroll);
 
-        cx.scene
-            .draw_quad(Quad::new(bounds).with_background(self.background).with_border(self.border_color, 1.0));
+        cx.scene.draw_quad(
+            Quad::new(bounds)
+                .with_background(self.background)
+                .with_border(self.border_color, 1.0),
+        );
 
         let gutter_bounds = Bounds::new(
             bounds.origin.x + self.padding,
@@ -410,7 +411,9 @@ impl Component for EditorView {
                 let width = (end_col - start_col) as f32 * self.char_width;
                 let selection_bounds = Bounds::new(x, y, width, self.line_height);
 
-                if y + self.line_height < bounds.origin.y || y > bounds.origin.y + bounds.size.height {
+                if y + self.line_height < bounds.origin.y
+                    || y > bounds.origin.y + bounds.size.height
+                {
                     continue;
                 }
 
@@ -463,9 +466,13 @@ impl Component for EditorView {
             if let Some(composition) = &self.composition {
                 let line = composition.base.line;
                 if line >= visible_start && line < visible_end {
-                    let y = self.text_origin.y + line as f32 * self.line_height - self.scroll_offset;
-                    if y + self.line_height >= bounds.origin.y && y <= bounds.origin.y + bounds.size.height {
-                        let x = self.text_origin.x + composition.base.column as f32 * self.char_width;
+                    let y =
+                        self.text_origin.y + line as f32 * self.line_height - self.scroll_offset;
+                    if y + self.line_height >= bounds.origin.y
+                        && y <= bounds.origin.y + bounds.size.height
+                    {
+                        let x =
+                            self.text_origin.x + composition.base.column as f32 * self.char_width;
                         let text_len = composition.text.chars().count().max(1) as f32;
                         let width = text_len * self.char_width;
                         let text_y = y + self.line_height * 0.5 - self.font_size * 0.55;
@@ -481,12 +488,15 @@ impl Component for EditorView {
                             self.text_color,
                         );
                         cx.scene.draw_text(run);
-                        let underline_bounds = Bounds::new(x, y + self.line_height - 2.0, width, 2.0);
+                        let underline_bounds =
+                            Bounds::new(x, y + self.line_height - 2.0, width, 2.0);
                         cx.scene.draw_quad(
                             Quad::new(underline_bounds).with_background(theme::accent::PRIMARY),
                         );
-                        let caret_x = x + (composition.text.chars().count() as f32 * self.char_width);
-                        let caret_bounds = Bounds::new(caret_x, y + 2.0, 2.0, self.line_height - 4.0);
+                        let caret_x =
+                            x + (composition.text.chars().count() as f32 * self.char_width);
+                        let caret_bounds =
+                            Bounds::new(caret_x, y + 2.0, 2.0, self.line_height - 4.0);
                         cx.scene
                             .draw_quad(Quad::new(caret_bounds).with_background(self.caret_color));
                     }
@@ -499,7 +509,8 @@ impl Component for EditorView {
                     }
                     let col = cursor.position.column;
                     let x = self.text_origin.x + col as f32 * self.char_width;
-                    let y = self.text_origin.y + line as f32 * self.line_height - self.scroll_offset;
+                    let y =
+                        self.text_origin.y + line as f32 * self.line_height - self.scroll_offset;
                     let caret_bounds = Bounds::new(x, y + 2.0, 2.0, self.line_height - 4.0);
                     cx.scene
                         .draw_quad(Quad::new(caret_bounds).with_background(self.caret_color));

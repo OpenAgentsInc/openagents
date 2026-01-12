@@ -9,8 +9,7 @@ use serde::Deserialize;
 pub const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// GitHub API URL for releases
-const GITHUB_RELEASES_URL: &str =
-    "https://api.github.com/repos/OpenAgentsInc/openagents/releases";
+const GITHUB_RELEASES_URL: &str = "https://api.github.com/repos/OpenAgentsInc/openagents/releases";
 
 /// Tag prefix for Onyx releases
 const TAG_PREFIX: &str = "onyx-v";
@@ -44,10 +43,7 @@ pub enum UpdateCheckResult {
 /// Fetches all releases and finds the latest one with the `onyx-v` prefix.
 /// Compares against the current version using semver.
 pub async fn check_for_updates() -> UpdateCheckResult {
-    let client = match reqwest::Client::builder()
-        .user_agent("Onyx")
-        .build()
-    {
+    let client = match reqwest::Client::builder().user_agent("Onyx").build() {
         Ok(c) => c,
         Err(e) => return UpdateCheckResult::Error(format!("Failed to create HTTP client: {}", e)),
     };
@@ -80,10 +76,7 @@ pub async fn check_for_updates() -> UpdateCheckResult {
     };
 
     // Extract version from tag
-    let latest_version_str = release
-        .tag_name
-        .strip_prefix(TAG_PREFIX)
-        .unwrap_or("0.0.0");
+    let latest_version_str = release.tag_name.strip_prefix(TAG_PREFIX).unwrap_or("0.0.0");
 
     // Parse versions
     let current = match Version::parse(CURRENT_VERSION) {

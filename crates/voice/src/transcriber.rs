@@ -1,6 +1,8 @@
 use std::path::Path;
 use std::sync::Mutex;
-use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters, WhisperState};
+use whisper_rs::{
+    FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters, WhisperState,
+};
 
 /// Whisper transcriber using whisper-rs (whisper.cpp bindings)
 pub struct Transcriber {
@@ -48,15 +50,24 @@ impl Transcriber {
     ///
     /// # Returns
     /// Transcribed text
-    pub fn transcribe_with_language(&self, audio: &[f32], language: Option<&str>) -> Result<String, String> {
+    pub fn transcribe_with_language(
+        &self,
+        audio: &[f32],
+        language: Option<&str>,
+    ) -> Result<String, String> {
         // Get or create state (first call will be slow due to GPU init)
-        let mut state_guard = self.state.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let mut state_guard = self
+            .state
+            .lock()
+            .map_err(|e| format!("Lock error: {}", e))?;
 
         let state = if let Some(ref mut existing_state) = *state_guard {
             existing_state
         } else {
             tracing::info!("Creating whisper state (first transcription, may take a moment)...");
-            let new_state = self.ctx.create_state()
+            let new_state = self
+                .ctx
+                .create_state()
                 .map_err(|e| format!("Failed to create state: {}", e))?;
             *state_guard = Some(new_state);
             tracing::info!("Whisper state ready");
