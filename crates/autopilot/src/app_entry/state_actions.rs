@@ -3,6 +3,7 @@ use std::io::{self, Write};
 use std::path::PathBuf;
 
 use anyhow::Result;
+use serde_json::Value;
 use tokio::sync::mpsc;
 use wgpui::components::hud::Command as PaletteCommand;
 use wgpui::components::molecules::SessionAction;
@@ -22,12 +23,14 @@ use crate::app::{
     SkillCardAction,
 };
 use crate::app::session::{SessionEntry, SessionUpdate};
+use crate::app::config::SettingsUpdate;
+use crate::app::catalog::{SkillEntry, SkillUpdate};
 use crate::app::AppState;
 use crate::keybindings::Action as KeyAction;
 
 use super::command_palette_ids;
 use super::hooks::hook_log_event_data;
-use super::settings::{normalize_settings, save_settings, update_settings_model};
+use super::settings::{normalize_settings, save_settings};
 use super::COMMAND_PALETTE_ENABLED;
 
 const HOOK_LOG_LIMIT: usize = 200;
@@ -375,11 +378,59 @@ impl AppState {
     }
 
     pub(super) fn open_model_picker(&mut self) {
-        let current_idx = ModelOption::all()
+        let current_model_id = self
+            .settings
+            .coder_settings
+            .model
+            .as_deref()
+            .unwrap_or_else(|| self.settings.selected_model.model_id());
+        let models = crate::app::config::app_server_model_entries(&self.settings.app_server_models);
+        let current_idx = models
             .iter()
-            .position(|m| *m == self.settings.selected_model)
+            .position(|model| model.id == current_model_id)
             .unwrap_or(0);
         self.modal_state = ModalState::ModelPicker { selected: current_idx };
+
+        let (update_tx, update_rx) = mpsc::unbounded_channel();
+        self.settings.settings_update_tx = Some(update_tx.clone());
+        self.settings.settings_update_rx = Some(update_rx);
+
+        if should_fetch_codex_sessions() {
+            let cwd = std::env::current_dir().unwrap_or_default();
+            let models_tx = update_tx.clone();
+            let models_cwd = cwd.clone();
+            tokio::spawn(async move {
+                match fetch_codex_models(models_cwd).await {
+                    Ok(models) => {
+                        let _ = models_tx.send(SettingsUpdate::ModelsLoaded(models));
+                    }
+                    Err(err) => {
+                        let _ = models_tx.send(SettingsUpdate::Error(format!(
+                            "Failed to load Codex models: {}",
+                            err
+                        )));
+                    }
+                }
+            });
+            let config_tx = update_tx;
+            let config_cwd = cwd;
+            tokio::spawn(async move {
+                match fetch_codex_config_snapshot(config_cwd).await {
+                    Ok((model, reasoning_effort)) => {
+                        let _ = config_tx.send(SettingsUpdate::ConfigLoaded {
+                            model,
+                            reasoning_effort,
+                        });
+                    }
+                    Err(err) => {
+                        let _ = config_tx.send(SettingsUpdate::Error(format!(
+                            "Failed to read Codex config: {}",
+                            err
+                        )));
+                    }
+                }
+            });
+        }
     }
 
     pub(super) fn open_session_list(&mut self) {
@@ -451,8 +502,28 @@ impl AppState {
         let (action_tx, action_rx) = mpsc::unbounded_channel();
         self.catalogs.skill_action_tx = Some(action_tx);
         self.catalogs.skill_action_rx = Some(action_rx);
+        let (update_tx, update_rx) = mpsc::unbounded_channel();
+        self.catalogs.skill_update_tx = Some(update_tx.clone());
+        self.catalogs.skill_update_rx = Some(update_rx);
         self.catalogs.refresh_skill_cards();
         self.modal_state = ModalState::SkillList { selected: 0 };
+
+        if should_fetch_codex_sessions() {
+            let cwd = std::env::current_dir().unwrap_or_default();
+            tokio::spawn(async move {
+                match fetch_codex_skills(cwd, false).await {
+                    Ok((entries, error)) => {
+                        let _ = update_tx.send(SkillUpdate::CodexSkillsLoaded { entries, error });
+                    }
+                    Err(err) => {
+                        let _ = update_tx.send(SkillUpdate::Error(format!(
+                            "Failed to load Codex skills: {}",
+                            err
+                        )));
+                    }
+                }
+            });
+        }
     }
 
     pub(super) fn open_tool_list(&mut self) {
@@ -470,6 +541,47 @@ impl AppState {
             search: String::new(),
             input_mode: SettingsInputMode::Normal,
         };
+
+        let (update_tx, update_rx) = mpsc::unbounded_channel();
+        self.settings.settings_update_tx = Some(update_tx.clone());
+        self.settings.settings_update_rx = Some(update_rx);
+
+        if should_fetch_codex_sessions() {
+            let cwd = std::env::current_dir().unwrap_or_default();
+            let models_tx = update_tx.clone();
+            let models_cwd = cwd.clone();
+            tokio::spawn(async move {
+                match fetch_codex_models(models_cwd).await {
+                    Ok(models) => {
+                        let _ = models_tx.send(SettingsUpdate::ModelsLoaded(models));
+                    }
+                    Err(err) => {
+                        let _ = models_tx.send(SettingsUpdate::Error(format!(
+                            "Failed to load Codex models: {}",
+                            err
+                        )));
+                    }
+                }
+            });
+            let config_tx = update_tx;
+            let config_cwd = cwd;
+            tokio::spawn(async move {
+                match fetch_codex_config_snapshot(config_cwd).await {
+                    Ok((model, reasoning_effort)) => {
+                        let _ = config_tx.send(SettingsUpdate::ConfigLoaded {
+                            model,
+                            reasoning_effort,
+                        });
+                    }
+                    Err(err) => {
+                        let _ = config_tx.send(SettingsUpdate::Error(format!(
+                            "Failed to read Codex config: {}",
+                            err
+                        )));
+                    }
+                }
+            });
+        }
     }
 
     pub(super) fn open_wallet(&mut self) {
@@ -791,9 +903,42 @@ impl AppState {
 
     pub(super) fn update_selected_model(&mut self, model: ModelOption) {
         self.settings.selected_model = model;
-        self.session.session_info.model = self.settings.selected_model.model_id().to_string();
-        update_settings_model(&mut self.settings.coder_settings, self.settings.selected_model);
+        let model_id = self.settings.selected_model.model_id().to_string();
+        self.session.session_info.model = model_id.clone();
+        self.settings.coder_settings.model = Some(model_id);
         self.persist_settings();
+        self.persist_codex_config_value("model".to_string(), Value::String(self.session.session_info.model.clone()));
+    }
+
+    pub(super) fn update_selected_model_id(&mut self, model_id: String) {
+        self.settings.selected_model = ModelOption::from_id(&model_id);
+        self.settings.coder_settings.model = Some(model_id.clone());
+        self.session.session_info.model = model_id;
+        self.persist_settings();
+        self.persist_codex_config_value(
+            "model".to_string(),
+            Value::String(self.session.session_info.model.clone()),
+        );
+    }
+
+    pub(super) fn persist_codex_config_value(&mut self, key_path: String, value: Value) {
+        if !should_fetch_codex_sessions() {
+            return;
+        }
+        let cwd = std::env::current_dir().unwrap_or_default();
+        let update_tx = self.settings.settings_update_tx.clone();
+        tokio::spawn(async move {
+            if let Err(err) = write_codex_config_value(cwd, key_path, value).await {
+                if let Some(tx) = update_tx {
+                    let _ = tx.send(SettingsUpdate::Error(format!(
+                        "Failed to persist Codex config: {}",
+                        err
+                    )));
+                } else {
+                    tracing::warn!(error = %err, "Failed to persist Codex config");
+                }
+            }
+        });
     }
 
     pub(super) fn toggle_left_sidebar(&mut self) {
@@ -860,6 +1005,26 @@ impl AppState {
 
     pub(super) fn reload_skills(&mut self) {
         self.catalogs.reload_skills();
+
+        if should_fetch_codex_sessions() {
+            let Some(update_tx) = self.catalogs.skill_update_tx.clone() else {
+                return;
+            };
+            let cwd = std::env::current_dir().unwrap_or_default();
+            tokio::spawn(async move {
+                match fetch_codex_skills(cwd, true).await {
+                    Ok((entries, error)) => {
+                        let _ = update_tx.send(SkillUpdate::CodexSkillsLoaded { entries, error });
+                    }
+                    Err(err) => {
+                        let _ = update_tx.send(SkillUpdate::Error(format!(
+                            "Failed to reload Codex skills: {}",
+                            err
+                        )));
+                    }
+                }
+            });
+        }
     }
 
     pub(super) fn reload_mcp_project_servers(&mut self) {
@@ -1177,4 +1342,170 @@ fn thread_summary_to_entry(thread: app_server::ThreadSummary) -> SessionEntry {
         message_count: 0,
         model,
     }
+}
+
+fn codex_skill_entry(skill: app_server::SkillMetadata) -> SkillEntry {
+    let description = skill
+        .short_description
+        .clone()
+        .unwrap_or_else(|| skill.description.clone());
+    let id = format!("codex:{}:{}", skill.scope, skill.name);
+    let info = wgpui::components::molecules::SkillInfo::new(id, skill.name.clone(), description)
+        .status(wgpui::components::molecules::SkillInstallStatus::Installed)
+        .category(wgpui::components::molecules::SkillCategory::Other)
+        .author(skill.scope.clone())
+        .version("codex".to_string());
+    SkillEntry {
+        info,
+        source: crate::app::catalog::SkillSource::Codex,
+        path: PathBuf::from(skill.path),
+    }
+}
+
+async fn fetch_codex_models(cwd: PathBuf) -> Result<Vec<app_server::ModelInfo>> {
+    let (client, _channels) = app_server::AppServerClient::spawn(app_server::AppServerConfig {
+        cwd: Some(cwd),
+        wire_log: None,
+    })
+    .await?;
+    let client_info = app_server::ClientInfo {
+        name: "autopilot".to_string(),
+        title: Some("Autopilot".to_string()),
+        version: env!("CARGO_PKG_VERSION").to_string(),
+    };
+    if let Err(err) = client.initialize(client_info).await {
+        let _ = client.shutdown().await;
+        return Err(err);
+    }
+
+    let mut cursor: Option<String> = None;
+    let mut models = Vec::new();
+    loop {
+        let response = client
+            .model_list(app_server::ModelListParams {
+                cursor: cursor.clone(),
+                limit: Some(50),
+            })
+            .await?;
+        models.extend(response.data);
+        if response.next_cursor.is_none() {
+            break;
+        }
+        cursor = response.next_cursor;
+    }
+
+    let _ = client.shutdown().await;
+    Ok(models)
+}
+
+async fn fetch_codex_config_snapshot(
+    cwd: PathBuf,
+) -> Result<(Option<String>, Option<app_server::ReasoningEffort>)> {
+    let (client, _channels) = app_server::AppServerClient::spawn(app_server::AppServerConfig {
+        cwd: Some(cwd),
+        wire_log: None,
+    })
+    .await?;
+    let client_info = app_server::ClientInfo {
+        name: "autopilot".to_string(),
+        title: Some("Autopilot".to_string()),
+        version: env!("CARGO_PKG_VERSION").to_string(),
+    };
+    if let Err(err) = client.initialize(client_info).await {
+        let _ = client.shutdown().await;
+        return Err(err);
+    }
+
+    let response = client
+        .config_read(app_server::ConfigReadParams {
+            include_layers: false,
+        })
+        .await?;
+
+    let model = response
+        .config
+        .get("model")
+        .and_then(Value::as_str)
+        .map(|value| value.to_string());
+    let effort = response
+        .config
+        .get("model_reasoning_effort")
+        .and_then(|value| serde_json::from_value(value.clone()).ok());
+
+    let _ = client.shutdown().await;
+    Ok((model, effort))
+}
+
+async fn fetch_codex_skills(
+    cwd: PathBuf,
+    force_reload: bool,
+) -> Result<(Vec<SkillEntry>, Option<String>)> {
+    let (client, _channels) = app_server::AppServerClient::spawn(app_server::AppServerConfig {
+        cwd: Some(cwd.clone()),
+        wire_log: None,
+    })
+    .await?;
+    let client_info = app_server::ClientInfo {
+        name: "autopilot".to_string(),
+        title: Some("Autopilot".to_string()),
+        version: env!("CARGO_PKG_VERSION").to_string(),
+    };
+    if let Err(err) = client.initialize(client_info).await {
+        let _ = client.shutdown().await;
+        return Err(err);
+    }
+
+    let response = client
+        .skills_list(app_server::SkillsListParams {
+            cwds: vec![cwd.to_string_lossy().to_string()],
+            force_reload,
+        })
+        .await?;
+
+    let mut entries = Vec::new();
+    let mut errors = Vec::new();
+    for list in response.data {
+        for skill in list.skills {
+            entries.push(codex_skill_entry(skill));
+        }
+        for err in list.errors {
+            errors.push(format!("{}: {}", err.path, err.message));
+        }
+    }
+
+    let _ = client.shutdown().await;
+    let error = if errors.is_empty() {
+        None
+    } else {
+        Some(errors.join(" | "))
+    };
+    Ok((entries, error))
+}
+
+async fn write_codex_config_value(cwd: PathBuf, key_path: String, value: Value) -> Result<()> {
+    let (client, _channels) = app_server::AppServerClient::spawn(app_server::AppServerConfig {
+        cwd: Some(cwd),
+        wire_log: None,
+    })
+    .await?;
+    let client_info = app_server::ClientInfo {
+        name: "autopilot".to_string(),
+        title: Some("Autopilot".to_string()),
+        version: env!("CARGO_PKG_VERSION").to_string(),
+    };
+    if let Err(err) = client.initialize(client_info).await {
+        let _ = client.shutdown().await;
+        return Err(err);
+    }
+
+    let params = app_server::ConfigValueWriteParams {
+        key_path,
+        value,
+        merge_strategy: app_server::MergeStrategy::Replace,
+        file_path: None,
+        expected_version: None,
+    };
+    let result = client.config_value_write(params).await;
+    let _ = client.shutdown().await;
+    result.map(|_| ())
 }

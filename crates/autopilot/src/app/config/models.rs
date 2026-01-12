@@ -43,3 +43,40 @@ impl ModelOption {
         }
     }
 }
+
+#[derive(Clone, Debug)]
+pub(crate) struct ModelPickerEntry {
+    pub(crate) id: String,
+    pub(crate) name: String,
+    pub(crate) description: String,
+    pub(crate) is_default: bool,
+}
+
+pub(crate) fn legacy_model_entries() -> Vec<ModelPickerEntry> {
+    ModelOption::all()
+        .iter()
+        .map(|model| ModelPickerEntry {
+            id: model.model_id().to_string(),
+            name: model.name().to_string(),
+            description: model.description().to_string(),
+            is_default: matches!(model, ModelOption::Default),
+        })
+        .collect()
+}
+
+pub(crate) fn app_server_model_entries(
+    models: &[crate::app::codex_app_server::ModelInfo],
+) -> Vec<ModelPickerEntry> {
+    if models.is_empty() {
+        return legacy_model_entries();
+    }
+    models
+        .iter()
+        .map(|model| ModelPickerEntry {
+            id: model.id.clone(),
+            name: model.display_name.clone(),
+            description: model.description.clone(),
+            is_default: model.is_default,
+        })
+        .collect()
+}

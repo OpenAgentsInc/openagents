@@ -2,6 +2,7 @@ use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use anyhow::Result;
 use serde_json::Value;
 use tokio::io::AsyncWriteExt;
 use tokio::sync::mpsc;
@@ -23,6 +24,8 @@ use crate::app::parsing::expand_prompt_text;
 use crate::app::permissions::{coder_mode_default_allow, parse_coder_mode, PermissionPending};
 use crate::app::permissions::request::{PermissionRequest, PermissionResult};
 use crate::app::session::{SessionInfo, SessionUpdate};
+use crate::app::config::{ModelOption, SettingsUpdate};
+use crate::app::catalog::SkillUpdate;
 use crate::app::ui::render_app;
 use crate::app::CoderMode;
 use crate::autopilot_loop::{DspyStage, TodoStatus, TodoTask};
@@ -32,6 +35,7 @@ use super::AutopilotApp;
 use super::command_palette_ids;
 use super::COMMAND_PALETTE_ENABLED;
 use super::commands::handle_command;
+use super::settings::rate_limits_from_snapshot;
 
 impl AutopilotApp {
     pub(super) fn submit_prompt(&mut self, prompt: String) {
@@ -154,6 +158,13 @@ impl AutopilotApp {
         let pending_resume = state.session.pending_resume_session.take();
         let pending_fork = state.session.pending_fork_session;
         state.session.pending_fork_session = false;
+        let model_override = state.settings.coder_settings.model.clone();
+        let reasoning_effort = state
+            .settings
+            .coder_settings
+            .reasoning_effort
+            .as_deref()
+            .and_then(parse_reasoning_effort);
 
         if use_app_server_transport() {
             tracing::info!("Using Codex app-server transport");
@@ -171,6 +182,8 @@ impl AutopilotApp {
                 coder_mode,
                 resume_thread_id,
                 pending_fork,
+                model_override,
+                reasoning_effort,
                 tx,
                 permission_tx,
                 control_rx,
@@ -427,6 +440,8 @@ impl AutopilotApp {
         coder_mode: CoderMode,
         resume_thread_id: Option<String>,
         fork_session: bool,
+        model_override: Option<String>,
+        reasoning_effort: Option<app_server::ReasoningEffort>,
         tx: mpsc::UnboundedSender<ResponseEvent>,
         permission_tx: mpsc::UnboundedSender<PermissionPending>,
         control_rx: mpsc::UnboundedReceiver<QueryControl>,
@@ -479,7 +494,7 @@ impl AutopilotApp {
             {
                 let resume_params = app_server::ThreadResumeParams {
                     thread_id: resume_id,
-                    model: None,
+                    model: model_override.clone(),
                     model_provider: None,
                     cwd: Some(cwd.to_string_lossy().to_string()),
                     approval_policy: Some(approval_policy_for_mode(coder_mode)),
@@ -506,7 +521,7 @@ impl AutopilotApp {
                 (thread_id, model_name)
             } else {
                 let thread_params = app_server::ThreadStartParams {
-                    model: None,
+                    model: model_override.clone(),
                     model_provider: None,
                     cwd: Some(cwd.to_string_lossy().to_string()),
                     approval_policy: Some(approval_policy_for_mode(coder_mode)),
@@ -539,22 +554,45 @@ impl AutopilotApp {
             wire_log.set_path(session_dir.join(format!("wire-{}.jsonl", run_id)));
             trace_log.set_path(session_dir.join(format!("trace-{}.jsonl", run_id)));
 
+            let (mcp_servers, tools, mcp_error) =
+                match fetch_app_server_mcp_status(&client).await {
+                    Ok(statuses) => {
+                        let tools = mcp_tool_names(&statuses);
+                        let servers = map_mcp_statuses(&statuses);
+                        (servers, tools, None)
+                    }
+                    Err(err) => (
+                        Vec::new(),
+                        Vec::new(),
+                        Some(format!("Failed to fetch MCP status: {}", err)),
+                    ),
+                };
+
             emitter.send(ResponseEvent::SystemInit {
                 model: model_name.clone(),
                 permission_mode: coder_mode.mode_label().to_string(),
                 session_id: thread_id.clone(),
                 codex_thread_id: Some(thread_id.clone()),
-                tool_count: 0,
-                tools: vec![],
+                tool_count: tools.len(),
+                tools: tools.clone(),
                 output_style: String::new(),
                 slash_commands: vec![],
-                mcp_servers: vec![],
+                mcp_servers,
             });
             window.request_redraw();
+            if let Some(error) = mcp_error {
+                let _ = emitter.send(ResponseEvent::McpStatus {
+                    servers: Vec::new(),
+                    error: Some(error),
+                });
+            }
 
             let turn_params = app_server::TurnStartParams {
                 thread_id: thread_id.clone(),
                 input: vec![app_server::UserInput::Text { text: prompt }],
+                model: model_override.clone(),
+                effort: reasoning_effort,
+                summary: None,
             };
 
             let turn_id = match client.turn_start(turn_params).await {
@@ -712,17 +750,37 @@ impl AutopilotApp {
             trace_log.set_path(session_dir.join(format!("trace-{}.jsonl", run_id)));
 
             if active_thread_id != thread_id {
+                let (mcp_servers, tools, mcp_error) =
+                    match fetch_app_server_mcp_status(&client).await {
+                        Ok(statuses) => {
+                            let tools = mcp_tool_names(&statuses);
+                            let servers = map_mcp_statuses(&statuses);
+                            (servers, tools, None)
+                        }
+                        Err(err) => (
+                            Vec::new(),
+                            Vec::new(),
+                            Some(format!("Failed to fetch MCP status: {}", err)),
+                        ),
+                    };
+
                 emitter.send(ResponseEvent::SystemInit {
                     model: model_name.clone(),
                     permission_mode: coder_mode.mode_label().to_string(),
                     session_id: active_thread_id.clone(),
                     codex_thread_id: Some(active_thread_id.clone()),
-                    tool_count: 0,
-                    tools: vec![],
+                    tool_count: tools.len(),
+                    tools: tools.clone(),
                     output_style: String::new(),
                     slash_commands: vec![],
-                    mcp_servers: vec![],
+                    mcp_servers,
                 });
+                if let Some(error) = mcp_error {
+                    let _ = emitter.send(ResponseEvent::McpStatus {
+                        servers: Vec::new(),
+                        error: Some(error),
+                    });
+                }
                 let _ = emitter.send(ResponseEvent::SystemMessage(format!(
                     "Review started in detached thread {}.",
                     active_thread_id
@@ -994,6 +1052,10 @@ impl AutopilotApp {
                 }
                 ResponseEvent::McpStatus { servers, error } => {
                     state.catalogs.update_mcp_status(servers, error);
+                    needs_redraw = true;
+                }
+                ResponseEvent::RateLimitsUpdated { limits } => {
+                    state.session.rate_limits = limits;
                     needs_redraw = true;
                 }
                 ResponseEvent::HookLog(entry) => {
@@ -1277,6 +1339,71 @@ impl AutopilotApp {
         for event in skill_events {
             state.handle_skill_card_action(event.action, event.skill_id);
             needs_redraw = true;
+        }
+
+        let mut skill_updates = Vec::new();
+        if let Some(rx) = &mut state.catalogs.skill_update_rx {
+            while let Ok(update) = rx.try_recv() {
+                skill_updates.push(update);
+            }
+        }
+        for update in skill_updates {
+            match update {
+                SkillUpdate::CodexSkillsLoaded { entries, error } => {
+                    state.catalogs.update_codex_skills(entries, error);
+                    needs_redraw = true;
+                }
+                SkillUpdate::Error(message) => {
+                    state.catalogs.codex_skill_error = Some(message.clone());
+                    state.push_system_message(message);
+                    needs_redraw = true;
+                }
+            }
+        }
+
+        if needs_redraw {
+            state.window.request_redraw();
+        }
+    }
+
+    pub(super) fn poll_settings_actions(&mut self) {
+        let Some(state) = &mut self.state else {
+            return;
+        };
+
+        let mut needs_redraw = false;
+        let mut updates = Vec::new();
+        if let Some(rx) = &mut state.settings.settings_update_rx {
+            while let Ok(update) = rx.try_recv() {
+                updates.push(update);
+            }
+        }
+
+        for update in updates {
+            match update {
+                SettingsUpdate::ModelsLoaded(models) => {
+                    state.settings.app_server_models = models;
+                    state.settings.app_server_model_error = None;
+                    needs_redraw = true;
+                }
+                SettingsUpdate::ConfigLoaded { model, reasoning_effort } => {
+                    if let Some(model_id) = model {
+                        state.settings.coder_settings.model = Some(model_id.clone());
+                        state.settings.selected_model = ModelOption::from_id(&model_id);
+                        state.session.session_info.model = model_id;
+                    }
+                    if let Some(effort) = reasoning_effort {
+                        state.settings.coder_settings.reasoning_effort =
+                            Some(reasoning_effort_to_string(effort));
+                    }
+                    needs_redraw = true;
+                }
+                SettingsUpdate::Error(message) => {
+                    state.settings.app_server_model_error = Some(message.clone());
+                    state.push_system_message(message);
+                    needs_redraw = true;
+                }
+            }
         }
 
         if needs_redraw {
@@ -1963,6 +2090,24 @@ async fn run_app_server_turn_loop(
                         }
                         window.request_redraw();
                     }
+                    QueryControl::FetchMcpStatus => {
+                        match fetch_app_server_mcp_status(&client).await {
+                            Ok(statuses) => {
+                                let servers = map_mcp_statuses(&statuses);
+                                let _ = emitter.send(ResponseEvent::McpStatus {
+                                    servers,
+                                    error: None,
+                                });
+                            }
+                            Err(err) => {
+                                let _ = emitter.send(ResponseEvent::McpStatus {
+                                    servers: Vec::new(),
+                                    error: Some(format!("Failed to fetch MCP status: {}", err)),
+                                });
+                            }
+                        }
+                        window.request_redraw();
+                    }
                     _ => {}
                 }
             }
@@ -2131,6 +2276,99 @@ async fn run_app_server_turn_loop(
                             }
                         }
                     }
+                    "account/login/completed" => {
+                        if let Some(params) = notification.params {
+                            match serde_json::from_value::<app_server::AccountLoginCompletedNotification>(params) {
+                                Ok(event) => {
+                                    let suffix = event
+                                        .login_id
+                                        .as_ref()
+                                        .map(|id| format!(" (id {})", id))
+                                        .unwrap_or_default();
+                                    if event.success {
+                                        let _ = emitter.send(ResponseEvent::SystemMessage(format!(
+                                            "Account login completed{}.",
+                                            suffix
+                                        )));
+                                    } else {
+                                        let error = event
+                                            .error
+                                            .unwrap_or_else(|| "unknown error".to_string());
+                                        let _ = emitter.send(ResponseEvent::SystemMessage(format!(
+                                            "Account login failed{}: {}",
+                                            suffix, error
+                                        )));
+                                    }
+                                    window.request_redraw();
+                                }
+                                Err(err) => {
+                                    tracing::warn!(error = %err, "Failed to parse account login completed notification");
+                                }
+                            }
+                        }
+                    }
+                    "account/updated" => {
+                        if let Some(params) = notification.params {
+                            match serde_json::from_value::<app_server::AccountUpdatedNotification>(params) {
+                                Ok(event) => {
+                                    let message = match event.auth_mode {
+                                        Some(app_server::AuthMode::ApiKey) => {
+                                            "Account updated: API key auth.".to_string()
+                                        }
+                                        Some(app_server::AuthMode::Chatgpt) => {
+                                            "Account updated: ChatGPT auth.".to_string()
+                                        }
+                                        None => "Account signed out.".to_string(),
+                                    };
+                                    let _ = emitter.send(ResponseEvent::SystemMessage(message));
+                                    window.request_redraw();
+                                }
+                                Err(err) => {
+                                    tracing::warn!(error = %err, "Failed to parse account updated notification");
+                                }
+                            }
+                        }
+                    }
+                    "account/rateLimits/updated" => {
+                        if let Some(params) = notification.params {
+                            match serde_json::from_value::<app_server::AccountRateLimitsUpdatedNotification>(params) {
+                                Ok(event) => {
+                                    let limits = rate_limits_from_snapshot(event.rate_limits);
+                                    let _ = emitter.send(ResponseEvent::RateLimitsUpdated { limits });
+                                    window.request_redraw();
+                                }
+                                Err(err) => {
+                                    tracing::warn!(error = %err, "Failed to parse account rate limits notification");
+                                }
+                            }
+                        }
+                    }
+                    "mcpServer/oauthLogin/completed" => {
+                        if let Some(params) = notification.params {
+                            match serde_json::from_value::<app_server::McpServerOauthLoginCompletedNotification>(params) {
+                                Ok(event) => {
+                                    if event.success {
+                                        let _ = emitter.send(ResponseEvent::SystemMessage(format!(
+                                            "MCP server {} login completed.",
+                                            event.name
+                                        )));
+                                    } else {
+                                        let error = event
+                                            .error
+                                            .unwrap_or_else(|| "unknown error".to_string());
+                                        let _ = emitter.send(ResponseEvent::SystemMessage(format!(
+                                            "MCP server {} login failed: {}",
+                                            event.name, error
+                                        )));
+                                    }
+                                    window.request_redraw();
+                                }
+                                Err(err) => {
+                                    tracing::warn!(error = %err, "Failed to parse MCP login completed notification");
+                                }
+                            }
+                        }
+                    }
                     "turn/completed" => {
                         if let Some(params) = notification.params {
                             if let Ok(event) = serde_json::from_value::<app_server::TurnCompletedNotification>(params) {
@@ -2197,6 +2435,44 @@ async fn run_app_server_turn_loop(
     }
 
     let _ = client.shutdown().await;
+}
+
+async fn fetch_app_server_mcp_status(
+    client: &app_server::AppServerClient,
+) -> Result<Vec<app_server::McpServerStatus>> {
+    let mut cursor: Option<String> = None;
+    let mut statuses = Vec::new();
+    loop {
+        let response = client
+            .mcp_server_status_list(app_server::ListMcpServerStatusParams {
+                cursor: cursor.clone(),
+                limit: Some(50),
+            })
+            .await?;
+        statuses.extend(response.data);
+        if response.next_cursor.is_none() {
+            break;
+        }
+        cursor = response.next_cursor;
+    }
+    Ok(statuses)
+}
+
+async fn fetch_app_server_skills(
+    client: &app_server::AppServerClient,
+    cwd: &PathBuf,
+) -> Result<Vec<app_server::SkillMetadata>> {
+    let response = client
+        .skills_list(app_server::SkillsListParams {
+            cwds: vec![cwd.to_string_lossy().to_string()],
+            force_reload: false,
+        })
+        .await?;
+    let mut skills = Vec::new();
+    for entry in response.data {
+        skills.extend(entry.skills);
+    }
+    Ok(skills)
 }
 
 #[derive(Clone, Copy)]
@@ -2765,6 +3041,38 @@ fn extract_file_changes(item: &Value) -> (Vec<String>, Option<String>, Option<St
     (paths, first_path, first_diff)
 }
 
+fn map_mcp_statuses(
+    statuses: &[app_server::McpServerStatus],
+) -> Vec<crate::app::catalog::mcp::McpServerStatus> {
+    statuses
+        .iter()
+        .map(|status| {
+            let label = match status.auth_status {
+                app_server::McpAuthStatus::BearerToken
+                | app_server::McpAuthStatus::OAuth
+                | app_server::McpAuthStatus::Unsupported => "connected",
+                app_server::McpAuthStatus::NotLoggedIn => "auth required",
+            };
+            crate::app::catalog::mcp::McpServerStatus {
+                name: status.name.clone(),
+                status: label.to_string(),
+            }
+        })
+        .collect()
+}
+
+fn mcp_tool_names(statuses: &[app_server::McpServerStatus]) -> Vec<String> {
+    let mut tools = Vec::new();
+    for status in statuses {
+        for tool_name in status.tools.keys() {
+            tools.push(format!("mcp__{}__{}", status.name, tool_name));
+        }
+    }
+    tools.sort();
+    tools.dedup();
+    tools
+}
+
 fn plan_steps_to_dspy_stage(steps: &[app_server::TurnPlanStep]) -> Option<DspyStage> {
     if steps.is_empty() {
         return None;
@@ -3008,6 +3316,27 @@ impl TraceLogger {
                     serde_json::json!({ "servers": server_values, "error": error }),
                 );
             }
+            ResponseEvent::RateLimitsUpdated { limits } => {
+                self.log_event(
+                    "rate_limits",
+                    serde_json::json!({
+                        "primary": limits.primary.as_ref().map(|limit| {
+                            serde_json::json!({
+                                "name": limit.name,
+                                "percent_used": limit.percent_used,
+                                "resets_at": limit.resets_at,
+                            })
+                        }),
+                        "secondary": limits.secondary.as_ref().map(|limit| {
+                            serde_json::json!({
+                                "name": limit.name,
+                                "percent_used": limit.percent_used,
+                                "resets_at": limit.resets_at,
+                            })
+                        }),
+                    }),
+                );
+            }
             ResponseEvent::HookLog(entry) => {
                 self.log_event(
                     "hook_log",
@@ -3036,6 +3365,31 @@ fn current_timestamp_ms() -> u64 {
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_millis() as u64
+}
+
+fn reasoning_effort_to_string(effort: app_server::ReasoningEffort) -> String {
+    match effort {
+        app_server::ReasoningEffort::None => "none",
+        app_server::ReasoningEffort::Minimal => "minimal",
+        app_server::ReasoningEffort::Low => "low",
+        app_server::ReasoningEffort::Medium => "medium",
+        app_server::ReasoningEffort::High => "high",
+        app_server::ReasoningEffort::XHigh => "xhigh",
+    }
+    .to_string()
+}
+
+fn parse_reasoning_effort(value: &str) -> Option<app_server::ReasoningEffort> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "auto" => None,
+        "none" => Some(app_server::ReasoningEffort::None),
+        "minimal" => Some(app_server::ReasoningEffort::Minimal),
+        "low" => Some(app_server::ReasoningEffort::Low),
+        "medium" => Some(app_server::ReasoningEffort::Medium),
+        "high" => Some(app_server::ReasoningEffort::High),
+        "xhigh" | "x-high" => Some(app_server::ReasoningEffort::XHigh),
+        _ => None,
+    }
 }
 
 fn resolve_codex_thread_id(

@@ -13,7 +13,7 @@ pub(crate) use paths::{
     sessions_dir,
 };
 pub(crate) use keybindings::{StoredKeybinding, StoredModifiers};
-pub(crate) use models::ModelOption;
+pub(crate) use models::{ModelOption, ModelPickerEntry, app_server_model_entries};
 pub(crate) use settings::{CoderSettings, SettingsItem, SettingsRow, SettingsTab};
-pub(crate) use state::SettingsState;
+pub(crate) use state::{SettingsState, SettingsUpdate};
 pub(crate) use view::{settings_rows, SettingsInputMode, SettingsSnapshot};

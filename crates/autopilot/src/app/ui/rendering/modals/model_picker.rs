@@ -53,10 +53,18 @@ fn render_model_picker_modal(
             y += 30.0;
 
             // Model options
-            let models = ModelOption::all();
+            let models = crate::app::config::app_server_model_entries(
+                &state.settings.app_server_models,
+            );
+            let current_model_id = state
+                .settings
+                .coder_settings
+                .model
+                .as_deref()
+                .unwrap_or_else(|| state.settings.selected_model.model_id());
             for (i, model) in models.iter().enumerate() {
                 let is_selected = i == *selected;
-                let is_current = *model == state.settings.selected_model;
+                let is_current = model.id == current_model_id;
 
                 // Selection indicator
                 let indicator = if is_selected { ">" } else { " " };
@@ -87,7 +95,7 @@ fn render_model_picker_modal(
                     Hsla::new(0.0, 0.0, 0.7, 1.0) // White-ish
                 };
                 let name_run = state.text_system.layout_styled_mono(
-                    model.name(),
+                    &model.name,
                     Point::new(modal_x + 56.0, y),
                     14.0,
                     name_color,
@@ -109,7 +117,7 @@ fn render_model_picker_modal(
 
                 // Description
                 let desc_run = state.text_system.layout_styled_mono(
-                    model.description(),
+                    &model.description,
                     Point::new(modal_x + 240.0, y),
                     14.0,
                     Hsla::new(0.0, 0.0, 0.5, 1.0), // Gray

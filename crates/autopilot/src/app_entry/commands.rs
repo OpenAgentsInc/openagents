@@ -4,15 +4,20 @@ use std::path::PathBuf;
 use std::process::{Command as ProcessCommand, Stdio};
 
 use serde_json::Value;
+use tokio::sync::mpsc;
+use tokio::time::{self, Duration};
 use winit::keyboard::{Key as WinitKey, NamedKey as WinitNamedKey};
 
 use crate::app::catalog::{
     expand_env_vars_in_value, parse_mcp_server_config, save_hook_config, McpServerEntry,
 };
 use crate::app::agents::AgentKind;
-use crate::app::config::{AgentKindConfig, SettingsItem, SettingsTab};
+use crate::app::codex_app_server as app_server;
+use crate::app::config::{
+    app_server_model_entries, AgentKindConfig, ModelPickerEntry, SettingsItem, SettingsTab,
+};
 use crate::app::events::{
-    convert_key_for_binding, convert_modifiers, CommandAction, CoderMode, ModalState,
+    convert_key_for_binding, convert_modifiers, CommandAction, CoderMode, ModalState, ResponseEvent,
 };
 use crate::app::permissions::{coder_mode_default_allow, coder_mode_label, parse_coder_mode};
 use crate::app::ui::ThemeSetting;
@@ -24,7 +29,7 @@ use crate::app::AppState;
 use crate::commands::Command;
 use crate::keybindings::{default_keybindings, Keybinding};
 
-use super::settings::{clamp_font_size, save_keybindings};
+use super::settings::{clamp_font_size, rate_limits_from_snapshot, save_keybindings};
 
 const BUG_REPORT_URL: &str = "https://github.com/OpenAgentsInc/openagents/issues/new";
 
@@ -197,6 +202,279 @@ pub(super) fn handle_command(state: &mut AppState, command: Command) -> CommandA
             }
             CommandAction::None
         }
+        Command::AccountStatus => {
+            if let Some(tx) = start_app_server_task(state, "Account status") {
+                tokio::spawn(async move {
+                    let Some((client, _channels)) = init_app_server_client(&tx).await else {
+                        return;
+                    };
+                    match client
+                        .account_read(app_server::GetAccountParams {
+                            refresh_token: false,
+                        })
+                        .await
+                    {
+                        Ok(response) => {
+                            let message = format_account_status(&response);
+                            let _ = tx.send(ResponseEvent::SystemMessage(message));
+                        }
+                        Err(err) => {
+                            let _ = tx.send(ResponseEvent::Error(format!(
+                                "Failed to read account status: {}",
+                                err
+                            )));
+                            let _ = client.shutdown().await;
+                            return;
+                        }
+                    }
+                    let _ = client.shutdown().await;
+                    let _ = tx.send(ResponseEvent::Complete { metadata: None });
+                });
+            }
+            CommandAction::None
+        }
+        Command::AccountLoginApiKey(api_key) => {
+            let trimmed = api_key.trim();
+            if trimmed.is_empty() {
+                state.push_system_message("API key is required.".to_string());
+                return CommandAction::None;
+            }
+            if let Some(tx) = start_app_server_task(state, "Account login") {
+                let api_key = trimmed.to_string();
+                tokio::spawn(async move {
+                    let Some((client, _channels)) = init_app_server_client(&tx).await else {
+                        return;
+                    };
+                    let response = client
+                        .account_login_start(app_server::LoginAccountParams::ApiKey { api_key })
+                        .await;
+                    match response {
+                        Ok(_) => {
+                            let _ =
+                                tx.send(ResponseEvent::SystemMessage("API key saved.".to_string()));
+                        }
+                        Err(err) => {
+                            let _ = tx.send(ResponseEvent::Error(format!(
+                                "Failed to login with API key: {}",
+                                err
+                            )));
+                            let _ = client.shutdown().await;
+                            return;
+                        }
+                    }
+                    let _ = client.shutdown().await;
+                    let _ = tx.send(ResponseEvent::Complete { metadata: None });
+                });
+            }
+            CommandAction::None
+        }
+        Command::AccountLoginChatgpt => {
+            if let Some(tx) = start_app_server_task(state, "Account login") {
+                tokio::spawn(async move {
+                    let Some((client, mut channels)) = init_app_server_client(&tx).await else {
+                        return;
+                    };
+                    let response = client
+                        .account_login_start(app_server::LoginAccountParams::Chatgpt)
+                        .await;
+                    let (login_id, auth_url) = match response {
+                        Ok(app_server::LoginAccountResponse::Chatgpt { login_id, auth_url }) => {
+                            (login_id, auth_url)
+                        }
+                        Ok(_) => {
+                            let _ = tx.send(ResponseEvent::Error(
+                                "Unexpected login response.".to_string(),
+                            ));
+                            let _ = client.shutdown().await;
+                            return;
+                        }
+                        Err(err) => {
+                            let _ = tx.send(ResponseEvent::Error(format!(
+                                "Failed to start ChatGPT login: {}",
+                                err
+                            )));
+                            let _ = client.shutdown().await;
+                            return;
+                        }
+                    };
+                    let _ = tx.send(ResponseEvent::SystemMessage(format!(
+                        "ChatGPT login started (id {}).",
+                        login_id
+                    )));
+                    if let Err(err) = open_url(&auth_url) {
+                        let _ = tx.send(ResponseEvent::SystemMessage(format!(
+                            "Open this URL to login: {} (error: {}).",
+                            auth_url, err
+                        )));
+                    } else {
+                        let _ = tx.send(ResponseEvent::SystemMessage(format!(
+                            "Opened login URL: {}",
+                            auth_url
+                        )));
+                    }
+
+                    let timeout = time::sleep(Duration::from_secs(300));
+                    tokio::pin!(timeout);
+                    loop {
+                        tokio::select! {
+                            _ = &mut timeout => {
+                                let _ = tx.send(ResponseEvent::SystemMessage(
+                                    "Login still pending. Check /account status or cancel.".to_string(),
+                                ));
+                                break;
+                            }
+                            Some(notification) = channels.notifications.recv() => {
+                                match notification.method.as_str() {
+                                    "account/login/completed" => {
+                                        if let Some(params) = notification.params {
+                                            if let Ok(event) = serde_json::from_value::<app_server::AccountLoginCompletedNotification>(params) {
+                                                if event.login_id.as_deref() == Some(login_id.as_str()) || event.login_id.is_none() {
+                                                    if event.success {
+                                                        let _ = tx.send(ResponseEvent::SystemMessage(
+                                                            "Account login completed.".to_string(),
+                                                        ));
+                                                    } else {
+                                                        let error = event.error.unwrap_or_else(|| "unknown error".to_string());
+                                                        let _ = tx.send(ResponseEvent::SystemMessage(format!(
+                                                            "Account login failed: {}",
+                                                            error
+                                                        )));
+                                                    }
+                                                    break;
+                                                }
+                                            }
+                                        }
+                                    }
+                                    "account/updated" => {
+                                        if let Some(params) = notification.params {
+                                            if let Ok(event) = serde_json::from_value::<app_server::AccountUpdatedNotification>(params) {
+                                                let message = match event.auth_mode {
+                                                    Some(app_server::AuthMode::ApiKey) => {
+                                                        "Account updated: API key auth.".to_string()
+                                                    }
+                                                    Some(app_server::AuthMode::Chatgpt) => {
+                                                        "Account updated: ChatGPT auth.".to_string()
+                                                    }
+                                                    None => "Account signed out.".to_string(),
+                                                };
+                                                let _ = tx.send(ResponseEvent::SystemMessage(message));
+                                            }
+                                        }
+                                    }
+                                    "account/rateLimits/updated" => {
+                                        if let Some(params) = notification.params {
+                                            if let Ok(event) = serde_json::from_value::<app_server::AccountRateLimitsUpdatedNotification>(params) {
+                                                let limits = rate_limits_from_snapshot(event.rate_limits);
+                                                let _ = tx.send(ResponseEvent::RateLimitsUpdated { limits });
+                                            }
+                                        }
+                                    }
+                                    _ => {}
+                                }
+                            }
+                            else => break,
+                        }
+                    }
+
+                    let _ = client.shutdown().await;
+                    let _ = tx.send(ResponseEvent::Complete { metadata: None });
+                });
+            }
+            CommandAction::None
+        }
+        Command::AccountLoginCancel(login_id) => {
+            let trimmed = login_id.trim();
+            if trimmed.is_empty() {
+                state.push_system_message("Login id is required.".to_string());
+                return CommandAction::None;
+            }
+            if let Some(tx) = start_app_server_task(state, "Account login cancel") {
+                let login_id = trimmed.to_string();
+                tokio::spawn(async move {
+                    let Some((client, _channels)) = init_app_server_client(&tx).await else {
+                        return;
+                    };
+                    match client
+                        .account_login_cancel(app_server::CancelLoginAccountParams { login_id })
+                        .await
+                    {
+                        Ok(response) => {
+                            let _ = tx.send(ResponseEvent::SystemMessage(format!(
+                                "Login canceled: {}",
+                                response.status
+                            )));
+                        }
+                        Err(err) => {
+                            let _ = tx.send(ResponseEvent::Error(format!(
+                                "Failed to cancel login: {}",
+                                err
+                            )));
+                            let _ = client.shutdown().await;
+                            return;
+                        }
+                    }
+                    let _ = client.shutdown().await;
+                    let _ = tx.send(ResponseEvent::Complete { metadata: None });
+                });
+            }
+            CommandAction::None
+        }
+        Command::AccountLogout => {
+            if let Some(tx) = start_app_server_task(state, "Account logout") {
+                tokio::spawn(async move {
+                    let Some((client, _channels)) = init_app_server_client(&tx).await else {
+                        return;
+                    };
+                    match client.account_logout().await {
+                        Ok(_) => {
+                            let _ = tx.send(ResponseEvent::SystemMessage(
+                                "Account logged out.".to_string(),
+                            ));
+                        }
+                        Err(err) => {
+                            let _ = tx.send(ResponseEvent::Error(format!(
+                                "Failed to logout: {}",
+                                err
+                            )));
+                            let _ = client.shutdown().await;
+                            return;
+                        }
+                    }
+                    let _ = client.shutdown().await;
+                    let _ = tx.send(ResponseEvent::Complete { metadata: None });
+                });
+            }
+            CommandAction::None
+        }
+        Command::AccountRateLimits => {
+            if let Some(tx) = start_app_server_task(state, "Rate limits") {
+                tokio::spawn(async move {
+                    let Some((client, _channels)) = init_app_server_client(&tx).await else {
+                        return;
+                    };
+                    match client.account_rate_limits_read().await {
+                        Ok(response) => {
+                            let limits = rate_limits_from_snapshot(response.rate_limits);
+                            let _ = tx.send(ResponseEvent::RateLimitsUpdated { limits });
+                            let _ = tx.send(ResponseEvent::SystemMessage(
+                                "Rate limits refreshed.".to_string(),
+                            ));
+                        }
+                        Err(err) => {
+                            let _ = tx.send(ResponseEvent::Error(format!(
+                                "Failed to read rate limits: {}",
+                                err
+                            )));
+                            let _ = client.shutdown().await;
+                            return;
+                        }
+                    }
+                    let _ = client.shutdown().await;
+                    let _ = tx.send(ResponseEvent::Complete { metadata: None });
+                });
+            }
+            CommandAction::None
+        }
         Command::Mcp => {
             state.open_mcp_config();
             CommandAction::None
@@ -212,6 +490,95 @@ pub(super) fn handle_command(state: &mut AppState, command: Command) -> CommandA
         }
         Command::McpStatus => {
             state.request_mcp_status();
+            CommandAction::None
+        }
+        Command::McpLogin(name) => {
+            let trimmed = name.trim();
+            if trimmed.is_empty() {
+                state.push_system_message("MCP login requires a server name.".to_string());
+                return CommandAction::None;
+            }
+            if let Some(tx) = start_app_server_task(state, "MCP login") {
+                let name = trimmed.to_string();
+                tokio::spawn(async move {
+                    let Some((client, mut channels)) = init_app_server_client(&tx).await else {
+                        return;
+                    };
+                    let response = client
+                        .mcp_server_oauth_login(app_server::McpServerOauthLoginParams {
+                            name: name.clone(),
+                            scopes: None,
+                            timeout_secs: None,
+                        })
+                        .await;
+                    let auth_url = match response {
+                        Ok(response) => response.authorization_url,
+                        Err(err) => {
+                            let _ = tx.send(ResponseEvent::Error(format!(
+                                "Failed to start MCP login: {}",
+                                err
+                            )));
+                            let _ = client.shutdown().await;
+                            return;
+                        }
+                    };
+                    let _ = tx.send(ResponseEvent::SystemMessage(format!(
+                        "MCP login started for {}.",
+                        name
+                    )));
+                    if let Err(err) = open_url(&auth_url) {
+                        let _ = tx.send(ResponseEvent::SystemMessage(format!(
+                            "Open this URL to login: {} (error: {}).",
+                            auth_url, err
+                        )));
+                    } else {
+                        let _ = tx.send(ResponseEvent::SystemMessage(format!(
+                            "Opened login URL: {}",
+                            auth_url
+                        )));
+                    }
+
+                    let timeout = time::sleep(Duration::from_secs(300));
+                    tokio::pin!(timeout);
+                    loop {
+                        tokio::select! {
+                            _ = &mut timeout => {
+                                let _ = tx.send(ResponseEvent::SystemMessage(
+                                    "MCP login still pending. Run /mcp status to refresh.".to_string(),
+                                ));
+                                break;
+                            }
+                            Some(notification) = channels.notifications.recv() => {
+                                if notification.method.as_str() == "mcpServer/oauthLogin/completed" {
+                                    if let Some(params) = notification.params {
+                                        if let Ok(event) = serde_json::from_value::<app_server::McpServerOauthLoginCompletedNotification>(params) {
+                                            if event.name == name {
+                                                if event.success {
+                                                    let _ = tx.send(ResponseEvent::SystemMessage(format!(
+                                                        "MCP login completed for {}.",
+                                                        name
+                                                    )));
+                                                } else {
+                                                    let error = event.error.unwrap_or_else(|| "unknown error".to_string());
+                                                    let _ = tx.send(ResponseEvent::SystemMessage(format!(
+                                                        "MCP login failed for {}: {}",
+                                                        name, error
+                                                    )));
+                                                }
+                                                break;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            else => break,
+                        }
+                    }
+
+                    let _ = client.shutdown().await;
+                    let _ = tx.send(ResponseEvent::Complete { metadata: None });
+                });
+            }
             CommandAction::None
         }
         Command::McpAdd { name, config } => {
@@ -578,13 +945,15 @@ pub(super) fn handle_modal_input(state: &mut AppState, key: &WinitKey) -> bool {
     match &mut state.modal_state {
         ModalState::ModelPicker { selected } => {
             let selected = *selected;
+            let models = model_picker_entries(state);
             match key {
                 WinitKey::Named(WinitNamedKey::Escape) => {
                     state.modal_state = ModalState::None;
                 }
                 WinitKey::Named(WinitNamedKey::Enter) => {
-                    let models = ModelOption::all();
-                    state.update_selected_model(models[selected]);
+                    if let Some(entry) = models.get(selected) {
+                        state.update_selected_model_id(entry.id.clone());
+                    }
                     state.modal_state = ModalState::None;
                 }
                 WinitKey::Named(WinitNamedKey::ArrowUp) => {
@@ -593,26 +962,18 @@ pub(super) fn handle_modal_input(state: &mut AppState, key: &WinitKey) -> bool {
                     }
                 }
                 WinitKey::Named(WinitNamedKey::ArrowDown) => {
-                    if selected + 1 < ModelOption::all().len() {
+                    if selected + 1 < models.len() {
                         state.modal_state = ModalState::ModelPicker { selected: selected + 1 };
                     }
                 }
                 WinitKey::Character(c) => {
-                    match c.as_str() {
-                        "1" => {
-                            state.settings.selected_model = ModelOption::Default;
+                    if let Ok(index) = c.parse::<usize>() {
+                        if index > 0 && index <= models.len() {
+                            if let Some(entry) = models.get(index - 1) {
+                                state.update_selected_model_id(entry.id.clone());
+                                state.modal_state = ModalState::None;
+                            }
                         }
-                        "2" => {
-                            state.settings.selected_model = ModelOption::Mini;
-                        }
-                        "3" => {
-                            state.settings.selected_model = ModelOption::Reasoning;
-                        }
-                        _ => {}
-                    }
-                    if matches!(c.as_str(), "1" | "2" | "3") {
-                        state.update_selected_model(state.settings.selected_model);
-                        state.modal_state = ModalState::None;
                     }
                 }
                 _ => {}
@@ -759,11 +1120,11 @@ pub(super) fn handle_modal_input(state: &mut AppState, key: &WinitKey) -> bool {
                     };
                     state.agent_backends.set_selection(selected_kind, model_id.clone());
                     state.agent_selection = state.agent_backends.settings.selected.clone();
-                    let model = model_id
-                        .as_deref()
-                        .map(ModelOption::from_id)
-                        .unwrap_or(ModelOption::Default);
-                    state.update_selected_model(model);
+                    if let Some(model_id) = model_id {
+                        state.update_selected_model_id(model_id);
+                    } else {
+                        state.update_selected_model(ModelOption::Default);
+                    }
                     state.push_system_message(format!(
                         "Agent backend set to {}.",
                         state.agent_backends.settings.selected.display_name()
@@ -1403,23 +1764,40 @@ pub(super) fn handle_modal_input(state: &mut AppState, key: &WinitKey) -> bool {
                                     state.persist_settings();
                                 }
                                 SettingsItem::DefaultModel => {
-                                    let next = cycle_model(state.settings.selected_model, forward);
-                                    state.update_selected_model(next);
+                                    let models = model_picker_entries(state);
+                                    let ids: Vec<String> = models.iter().map(|model| model.id.clone()).collect();
+                                    let current = state
+                                        .settings
+                                        .coder_settings
+                                        .model
+                                        .clone()
+                                        .unwrap_or_else(|| state.settings.selected_model.model_id().to_string());
+                                    let next_id = cycle_string_option(&ids, &current, forward);
+                                    state.update_selected_model_id(next_id);
                                 }
-                                SettingsItem::MaxThinkingTokens => {
-                                    const THINKING_STEP: u32 = 256;
-                                    const THINKING_MAX: u32 = 8192;
-                                    let current = state.settings.coder_settings.max_thinking_tokens.unwrap_or(0);
-                                    let next = if forward {
-                                        let value = current.saturating_add(THINKING_STEP).min(THINKING_MAX);
-                                        Some(value)
-                                    } else if current <= THINKING_STEP {
-                                        None
-                                    } else {
-                                        Some(current - THINKING_STEP)
-                                    };
-                                    state.settings.coder_settings.max_thinking_tokens = next;
+                                SettingsItem::ReasoningEffort => {
+                                    let options = available_reasoning_efforts(state);
+                                    let current = state
+                                        .settings
+                                        .coder_settings
+                                        .reasoning_effort
+                                        .clone()
+                                        .unwrap_or_else(|| "auto".to_string());
+                                    let next = cycle_string_option(&options, &current, forward);
+                                    state.settings.coder_settings.reasoning_effort =
+                                        if next == "auto" { None } else { Some(next) };
                                     state.persist_settings();
+                                    let value = state
+                                        .settings
+                                        .coder_settings
+                                        .reasoning_effort
+                                        .clone()
+                                        .map(Value::String)
+                                        .unwrap_or(Value::Null);
+                                    state.persist_codex_config_value(
+                                        "model_reasoning_effort".to_string(),
+                                        value,
+                                    );
                                 }
                                 SettingsItem::PermissionMode => {
                                     let next = cycle_coder_mode_standalone(state.permissions.coder_mode, forward);
@@ -1530,18 +1908,73 @@ pub(super) fn handle_modal_input(state: &mut AppState, key: &WinitKey) -> bool {
     }
 }
 
-fn cycle_model(current: ModelOption, forward: bool) -> ModelOption {
-    let models = ModelOption::all();
-    let idx = models
+fn model_picker_entries(state: &AppState) -> Vec<ModelPickerEntry> {
+    app_server_model_entries(&state.settings.app_server_models)
+}
+
+fn cycle_string_option(options: &[String], current: &str, forward: bool) -> String {
+    if options.is_empty() {
+        return current.to_string();
+    }
+    let idx = options
         .iter()
-        .position(|model| *model == current)
+        .position(|value| value == current)
         .unwrap_or(0);
     let next = if forward {
-        (idx + 1) % models.len()
+        (idx + 1) % options.len()
     } else {
-        (idx + models.len() - 1) % models.len()
+        (idx + options.len() - 1) % options.len()
     };
-    models[next]
+    options[next].clone()
+}
+
+fn available_reasoning_efforts(state: &AppState) -> Vec<String> {
+    let mut options = Vec::new();
+    options.push("auto".to_string());
+
+    let selected_model = state
+        .settings
+        .coder_settings
+        .model
+        .as_deref()
+        .unwrap_or_else(|| state.settings.selected_model.model_id());
+
+    if !state.settings.app_server_models.is_empty() {
+        if let Some(model) = state
+            .settings
+            .app_server_models
+            .iter()
+            .find(|model| model.id == selected_model || model.model == selected_model)
+        {
+            for effort in &model.supported_reasoning_efforts {
+                options.push(reasoning_effort_id(effort.reasoning_effort));
+            }
+        }
+    }
+
+    if options.len() == 1 {
+        options.extend(
+            [
+                "none", "minimal", "low", "medium", "high", "xhigh",
+            ]
+            .iter()
+            .map(|value| value.to_string()),
+        );
+    }
+
+    options
+}
+
+fn reasoning_effort_id(effort: crate::app::codex_app_server::ReasoningEffort) -> String {
+    match effort {
+        crate::app::codex_app_server::ReasoningEffort::None => "none",
+        crate::app::codex_app_server::ReasoningEffort::Minimal => "minimal",
+        crate::app::codex_app_server::ReasoningEffort::Low => "low",
+        crate::app::codex_app_server::ReasoningEffort::Medium => "medium",
+        crate::app::codex_app_server::ReasoningEffort::High => "high",
+        crate::app::codex_app_server::ReasoningEffort::XHigh => "xhigh",
+    }
+    .to_string()
 }
 
 fn cycle_coder_mode_standalone(current: CoderMode, forward: bool) -> CoderMode {
@@ -1638,6 +2071,110 @@ fn apply_custom_command_args(template: &str, args: &[String]) -> String {
         template.replace("{{args}}", &joined)
     } else {
         format!("{}\n\n{}", template.trim_end(), joined)
+    }
+}
+
+fn start_app_server_task(
+    state: &mut AppState,
+    label: &str,
+) -> Option<mpsc::UnboundedSender<ResponseEvent>> {
+    if !use_app_server_transport() {
+        state.push_system_message(format!(
+            "{} requires Codex app-server transport (set AUTOPILOT_CODEX_TRANSPORT=app-server).",
+            label
+        ));
+        return None;
+    }
+    if state.chat.is_thinking || state.chat.response_rx.is_some() {
+        state.push_system_message(format!(
+            "Cannot start {} while another request is active.",
+            label
+        ));
+        return None;
+    }
+    let (tx, rx) = mpsc::unbounded_channel();
+    state.chat.response_rx = Some(rx);
+    state.chat.query_control_tx = None;
+    state.chat.is_thinking = true;
+    state.chat.streaming_markdown.reset();
+    state.catalogs.refresh_agent_cards(state.chat.is_thinking);
+    state.window.request_redraw();
+    Some(tx)
+}
+
+async fn init_app_server_client(
+    tx: &mpsc::UnboundedSender<ResponseEvent>,
+) -> Option<(app_server::AppServerClient, app_server::AppServerChannels)> {
+    let cwd = std::env::current_dir().unwrap_or_default();
+    let (client, channels) = match app_server::AppServerClient::spawn(app_server::AppServerConfig {
+        cwd: Some(cwd),
+        wire_log: None,
+    })
+    .await
+    {
+        Ok(result) => result,
+        Err(err) => {
+            let _ = tx.send(ResponseEvent::Error(format!(
+                "Failed to start codex app-server: {}",
+                err
+            )));
+            return None;
+        }
+    };
+    let client_info = app_server::ClientInfo {
+        name: "autopilot".to_string(),
+        title: Some("Autopilot".to_string()),
+        version: env!("CARGO_PKG_VERSION").to_string(),
+    };
+    if let Err(err) = client.initialize(client_info).await {
+        let _ = tx.send(ResponseEvent::Error(format!(
+            "Failed to initialize codex app-server: {}",
+            err
+        )));
+        let _ = client.shutdown().await;
+        return None;
+    }
+    Some((client, channels))
+}
+
+fn format_account_status(response: &app_server::GetAccountResponse) -> String {
+    let auth_requirement = if response.requires_openai_auth {
+        "OpenAI auth required."
+    } else {
+        "OpenAI auth not required."
+    };
+    match &response.account {
+        None => format!("No account configured. {}", auth_requirement),
+        Some(app_server::AccountInfo::ApiKey) => {
+            format!("Signed in with API key. {}", auth_requirement)
+        }
+        Some(app_server::AccountInfo::Chatgpt { email, plan_type }) => {
+            let plan = format_plan_type(*plan_type);
+            format!("Signed in as {} (plan {}). {}", email, plan, auth_requirement)
+        }
+    }
+}
+
+fn format_plan_type(plan: app_server::PlanType) -> &'static str {
+    match plan {
+        app_server::PlanType::Free => "free",
+        app_server::PlanType::Plus => "plus",
+        app_server::PlanType::Pro => "pro",
+        app_server::PlanType::Team => "team",
+        app_server::PlanType::Business => "business",
+        app_server::PlanType::Enterprise => "enterprise",
+        app_server::PlanType::Edu => "edu",
+        app_server::PlanType::Unknown => "unknown",
+    }
+}
+
+fn use_app_server_transport() -> bool {
+    match std::env::var("AUTOPILOT_CODEX_TRANSPORT") {
+        Ok(value) => matches!(
+            value.to_ascii_lowercase().as_str(),
+            "app-server" | "appserver" | "app_server"
+        ),
+        Err(_) => false,
     }
 }
 

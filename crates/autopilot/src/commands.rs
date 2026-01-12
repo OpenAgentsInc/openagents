@@ -28,6 +28,13 @@ pub enum Command {
     McpRemove(String),
     McpReload,
     McpStatus,
+    McpLogin(String),
+    AccountStatus,
+    AccountLoginApiKey(String),
+    AccountLoginChatgpt,
+    AccountLoginCancel(String),
+    AccountLogout,
+    AccountRateLimits,
     Agents,
     AgentSelect(String),
     AgentClear,
@@ -232,6 +239,36 @@ const COMMAND_SPECS: &[CommandSpec] = &[
         requires_args: true,
     },
     CommandSpec {
+        usage: "/account",
+        description: "Show auth status",
+        requires_args: false,
+    },
+    CommandSpec {
+        usage: "/account login apikey <key>",
+        description: "Login with an API key",
+        requires_args: true,
+    },
+    CommandSpec {
+        usage: "/account login chatgpt",
+        description: "Login with ChatGPT",
+        requires_args: false,
+    },
+    CommandSpec {
+        usage: "/account login cancel <login_id>",
+        description: "Cancel a pending ChatGPT login",
+        requires_args: true,
+    },
+    CommandSpec {
+        usage: "/account logout",
+        description: "Logout of the current account",
+        requires_args: false,
+    },
+    CommandSpec {
+        usage: "/account rate-limits",
+        description: "Refresh ChatGPT rate limits",
+        requires_args: false,
+    },
+    CommandSpec {
         usage: "/mcp",
         description: "Open MCP configuration",
         requires_args: false,
@@ -255,6 +292,11 @@ const COMMAND_SPECS: &[CommandSpec] = &[
         usage: "/mcp status",
         description: "Refresh MCP server status from the SDK",
         requires_args: false,
+    },
+    CommandSpec {
+        usage: "/mcp login <name>",
+        description: "Login to an MCP server via OAuth",
+        requires_args: true,
     },
     CommandSpec {
         usage: "/agents",
@@ -562,6 +604,7 @@ pub fn parse_command(input: &str) -> Option<Command> {
         "tools" => parse_tools_command(args),
         "config" => Command::Config,
         "output-style" => parse_output_style_command(args),
+        "account" => parse_account_command(args),
         "mcp" => parse_mcp_command(args),
         "agents" => Command::Agents,
         "agent" => parse_agent_command(args),
@@ -909,6 +952,27 @@ fn parse_output_style_command(args: Vec<String>) -> Command {
     }
 }
 
+fn parse_account_command(args: Vec<String>) -> Command {
+    let mut parts = args.into_iter();
+    match parts.next().as_deref() {
+        None => Command::AccountStatus,
+        Some("status") => Command::AccountStatus,
+        Some("logout") => Command::AccountLogout,
+        Some("rate-limits") | Some("ratelimits") => Command::AccountRateLimits,
+        Some("login") => match parts.next().as_deref() {
+            Some("apikey") | Some("api-key") | Some("api_key") => {
+                let key = parts.collect::<Vec<String>>().join(" ");
+                Command::AccountLoginApiKey(key)
+            }
+            Some("chatgpt") => Command::AccountLoginChatgpt,
+            Some("cancel") => Command::AccountLoginCancel(parts.next().unwrap_or_default()),
+            Some(other) => Command::Custom(format!("account login {}", other), parts.collect()),
+            None => Command::Custom("account login".to_string(), Vec::new()),
+        },
+        Some(other) => Command::Custom(format!("account {}", other), parts.collect()),
+    }
+}
+
 fn parse_mcp_command(args: Vec<String>) -> Command {
     let mut parts = args.into_iter();
     match parts.next().as_deref() {
@@ -916,6 +980,7 @@ fn parse_mcp_command(args: Vec<String>) -> Command {
         Some("list") => Command::Mcp,
         Some("reload") => Command::McpReload,
         Some("status") => Command::McpStatus,
+        Some("login") => Command::McpLogin(parts.next().unwrap_or_default()),
         Some("remove") => Command::McpRemove(parts.next().unwrap_or_default()),
         Some("add") => {
             let name = parts.next().unwrap_or_default();

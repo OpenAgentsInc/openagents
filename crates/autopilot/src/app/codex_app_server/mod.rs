@@ -435,6 +435,88 @@ impl AppServerClient {
         self.transport.request("thread/list", Some(&params)).await
     }
 
+    pub(crate) async fn model_list(&self, params: ModelListParams) -> Result<ModelListResponse> {
+        self.transport.request("model/list", Some(&params)).await
+    }
+
+    pub(crate) async fn config_read(&self, params: ConfigReadParams) -> Result<ConfigReadResponse> {
+        self.transport.request("config/read", Some(&params)).await
+    }
+
+    pub(crate) async fn config_value_write(
+        &self,
+        params: ConfigValueWriteParams,
+    ) -> Result<ConfigWriteResponse> {
+        self.transport
+            .request("config/value/write", Some(&params))
+            .await
+    }
+
+    pub(crate) async fn config_batch_write(
+        &self,
+        params: ConfigBatchWriteParams,
+    ) -> Result<ConfigWriteResponse> {
+        self.transport
+            .request("config/batchWrite", Some(&params))
+            .await
+    }
+
+    pub(crate) async fn account_read(&self, params: GetAccountParams) -> Result<GetAccountResponse> {
+        self.transport.request("account/read", Some(&params)).await
+    }
+
+    pub(crate) async fn account_login_start(
+        &self,
+        params: LoginAccountParams,
+    ) -> Result<LoginAccountResponse> {
+        self.transport
+            .request("account/login/start", Some(&params))
+            .await
+    }
+
+    pub(crate) async fn account_login_cancel(
+        &self,
+        params: CancelLoginAccountParams,
+    ) -> Result<CancelLoginAccountResponse> {
+        self.transport
+            .request("account/login/cancel", Some(&params))
+            .await
+    }
+
+    pub(crate) async fn account_logout(&self) -> Result<LogoutAccountResponse> {
+        self.transport.request::<Value, _>("account/logout", None).await
+    }
+
+    pub(crate) async fn account_rate_limits_read(
+        &self,
+    ) -> Result<GetAccountRateLimitsResponse> {
+        self.transport
+            .request::<Value, _>("account/rateLimits/read", None)
+            .await
+    }
+
+    pub(crate) async fn mcp_server_status_list(
+        &self,
+        params: ListMcpServerStatusParams,
+    ) -> Result<ListMcpServerStatusResponse> {
+        self.transport
+            .request("mcpServerStatus/list", Some(&params))
+            .await
+    }
+
+    pub(crate) async fn mcp_server_oauth_login(
+        &self,
+        params: McpServerOauthLoginParams,
+    ) -> Result<McpServerOauthLoginResponse> {
+        self.transport
+            .request("mcpServer/oauth/login", Some(&params))
+            .await
+    }
+
+    pub(crate) async fn skills_list(&self, params: SkillsListParams) -> Result<SkillsListResponse> {
+        self.transport.request("skills/list", Some(&params)).await
+    }
+
     pub(crate) async fn turn_start(&self, params: TurnStartParams) -> Result<TurnStartResponse> {
         self.transport.request("turn/start", Some(&params)).await
     }
