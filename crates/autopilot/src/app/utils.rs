@@ -107,7 +107,10 @@ pub(crate) fn build_markdown_document(source: &str) -> MarkdownDocument {
     parser.document().clone()
 }
 
-pub(crate) fn build_markdown_config(settings: &CoderSettings, theme: ThemeSetting) -> MarkdownConfig {
+pub(crate) fn build_markdown_config(
+    settings: &CoderSettings,
+    theme: ThemeSetting,
+) -> MarkdownConfig {
     let palette = palette_for(theme);
     let mut config = MarkdownConfig::default();
     config.base_font_size = settings.font_size;

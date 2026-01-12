@@ -1,4 +1,5 @@
 [alias]
+arrow = "run -p arrow --"
 autopilot = "run -p autopilot --"
 storybook = "run -p wgpui --example storybook --features desktop"
 pylon = "run -p pylon --release --"

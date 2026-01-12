@@ -1137,10 +1137,7 @@ mod tests {
     #[test]
     fn parse_account_login_apikey() {
         let parsed = parse_command("/account login apikey sk-test").unwrap();
-        assert_eq!(
-            parsed,
-            Command::AccountLoginApiKey("sk-test".to_string())
-        );
+        assert_eq!(parsed, Command::AccountLoginApiKey("sk-test".to_string()));
     }
 
     #[test]

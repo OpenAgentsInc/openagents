@@ -36,7 +36,7 @@ impl LocalModelBackend for GptOssClient {
         Ok(models
             .into_iter()
             .map(|m| {
-                ModelInfo::new(m.id.clone(), m.name, m.context_length)
+                ModelInfo::new(m.id.clone(), m.display_name(), m.context_length)
                     .with_description(m.description.unwrap_or_default())
             })
             .collect())
@@ -113,13 +113,20 @@ impl LocalModelBackend for GptOssClient {
 
             while let Some(result) = stream.next().await {
                 let chunk = match result {
-                    Ok(gpt_chunk) => Ok(StreamChunk {
-                        id: gpt_chunk.id,
-                        model: gpt_chunk.model,
-                        delta: gpt_chunk.delta,
-                        finish_reason: gpt_chunk.finish_reason,
-                        extra: std::collections::HashMap::new(),
-                    }),
+                    Ok(gpt_chunk) => {
+                        let delta = gpt_chunk.delta().to_string();
+                        let finish_reason = gpt_chunk
+                            .choices
+                            .first()
+                            .and_then(|c| c.finish_reason.clone());
+                        Ok(StreamChunk {
+                            id: gpt_chunk.id,
+                            model: gpt_chunk.model,
+                            delta,
+                            finish_reason,
+                            extra: std::collections::HashMap::new(),
+                        })
+                    }
                     Err(e) => Err(LocalModelError::StreamError(e.to_string())),
                 };
 

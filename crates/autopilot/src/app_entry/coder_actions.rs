@@ -1841,9 +1841,8 @@ impl AutopilotApp {
                     workspace_id,
                     threads,
                 } => {
-                    let is_active =
-                        state.workspaces.active_workspace_id.as_deref()
-                            == Some(workspace_id.as_str());
+                    let is_active = state.workspaces.active_workspace_id.as_deref()
+                        == Some(workspace_id.as_str());
                     let workspace_id_clone = workspace_id.clone();
                     state.workspaces.apply_threads(workspace_id, threads);
                     if is_active {
@@ -1874,7 +1873,9 @@ impl AutopilotApp {
                     workspace_id,
                     thread_id,
                 } => {
-                    state.workspaces.apply_thread_started(&workspace_id, &thread_id);
+                    state
+                        .workspaces
+                        .apply_thread_started(&workspace_id, &thread_id);
                     should_redraw = true;
                 }
                 WorkspaceEvent::ThreadStartFailed {
@@ -2150,7 +2151,10 @@ impl AutopilotApp {
                     state.git.apply_log_update(workspace_id, log);
                     should_redraw = true;
                 }
-                crate::app::git::GitEvent::RemoteUpdated { workspace_id, remote } => {
+                crate::app::git::GitEvent::RemoteUpdated {
+                    workspace_id,
+                    remote,
+                } => {
                     state.git.apply_remote_update(workspace_id, remote);
                     should_redraw = true;
                 }
@@ -2351,9 +2355,7 @@ impl AutopilotApp {
                                 })
                                 .collect(),
                         };
-                        state
-                            .workspaces
-                            .set_plan_for_thread(&event.thread_id, plan);
+                        state.workspaces.set_plan_for_thread(&event.thread_id, plan);
                         updated = true;
                     }
                 }
