@@ -1,10 +1,28 @@
 use std::sync::Arc;
 use wgpui::renderer::Renderer;
-use wgpui::{Bounds, Hsla, Point, Quad, Scene, Size, TextSystem};
+use wgpui::{Bounds, Hsla, Quad, Scene, Size, TextSystem};
 use winit::application::ApplicationHandler;
 use winit::event::WindowEvent;
 use winit::event_loop::{ActiveEventLoop, EventLoop};
 use winit::window::{Window, WindowId};
+
+mod chain_data;
+mod components;
+
+use chain_data::{demo_chain, demo_prompt};
+use components::{Connector, PromptCard};
+
+// Layout constants
+const PADDING: f32 = 16.0;
+const NODE_GAP: f32 = 24.0;
+
+// Colors
+const BG_COLOR: Hsla = Hsla {
+    h: 0.0,
+    s: 0.0,
+    l: 0.08,
+    a: 1.0,
+};
 
 fn main() {
     let event_loop = EventLoop::new().expect("Failed to create event loop");
@@ -34,8 +52,8 @@ impl ApplicationHandler for App {
         }
 
         let window_attrs = Window::default_attributes()
-            .with_title("Mana Tap")
-            .with_inner_size(winit::dpi::LogicalSize::new(800, 600));
+            .with_title("Mana Tap - DSPy Chain Visualizer")
+            .with_inner_size(winit::dpi::LogicalSize::new(900, 800));
 
         let window = Arc::new(
             event_loop
@@ -126,21 +144,49 @@ impl ApplicationHandler for App {
 
                 let mut scene = Scene::new();
 
-                // Black background
-                let black = Hsla::new(0.0, 0.0, 0.0, 1.0);
-                scene.draw_quad(Quad::new(Bounds::new(0.0, 0.0, width, height)).with_background(black));
+                // Background
+                scene.draw_quad(
+                    Quad::new(Bounds::new(0.0, 0.0, width, height)).with_background(BG_COLOR),
+                );
 
-                // White "Mana Tap" text centered
-                let white = Hsla::new(0.0, 0.0, 1.0, 1.0);
-                let font_size = 48.0;
-                let text = "Mana Tap";
-                let text_width = state.text_system.measure(text, font_size);
-                let text_x = (width - text_width) / 2.0;
-                let text_y = (height - font_size) / 2.0;
-                let text_run = state.text_system.layout(text, Point::new(text_x, text_y), font_size, white);
-                scene.draw_text(text_run);
+                let mut y = PADDING;
+                let content_width = width - PADDING * 2.0;
 
-                // Render
+                // Prompt card
+                let prompt_card = PromptCard::new(demo_prompt());
+                let prompt_height =
+                    prompt_card.height(content_width, &mut state.text_system, scale_factor);
+                prompt_card.paint(
+                    Bounds::new(PADDING, y, content_width, prompt_height),
+                    &mut scene,
+                    &mut state.text_system,
+                    scale_factor,
+                );
+                y += prompt_height + NODE_GAP;
+
+                // Chain nodes
+                let chain = demo_chain();
+                for (i, node) in chain.iter().enumerate() {
+                    // Draw connector from previous element
+                    if i == 0 {
+                        // Connector from prompt card
+                        Connector::paint(y - NODE_GAP + 4.0, y - 4.0, width / 2.0, &mut scene);
+                    } else {
+                        Connector::paint(y - NODE_GAP + 4.0, y - 4.0, width / 2.0, &mut scene);
+                    }
+
+                    let node_height =
+                        node.height(content_width, &mut state.text_system, scale_factor);
+                    node.paint(
+                        Bounds::new(PADDING, y, content_width, node_height),
+                        &mut scene,
+                        &mut state.text_system,
+                        scale_factor,
+                    );
+                    y += node_height + NODE_GAP;
+                }
+
+                // Render to GPU
                 let output = state
                     .surface
                     .get_current_texture()
