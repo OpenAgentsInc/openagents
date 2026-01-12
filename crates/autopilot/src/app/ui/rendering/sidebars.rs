@@ -336,27 +336,18 @@ fn render_sidebars(
             scene.draw_text(empty_run);
         }
 
-        let approvals_height = (right_bounds.origin.y + right_bounds.size.height
-            - panel_layout.list_bounds.origin.y
-            - panel_layout.list_bounds.size.height
-            - 12.0)
-            .max(0.0);
-        let approvals_y = panel_layout.list_bounds.origin.y + panel_layout.list_bounds.size.height;
-        if approvals_height > 32.0 {
-            let approvals_bounds = Bounds::new(
-                panel_layout.list_bounds.origin.x,
-                approvals_y,
-                panel_layout.list_bounds.size.width,
-                approvals_height,
-            );
+        let approvals = state.workspaces.approvals_for_active();
+        if let Some(approvals_layout) =
+            approvals_panel_layout(right_bounds, &panel_layout, approvals.len())
+        {
             scene.draw_quad(
-                Quad::new(approvals_bounds)
+                Quad::new(approvals_layout.panel_bounds)
                     .with_background(palette.panel_highlight)
                     .with_border(palette.panel_border, 1.0)
                     .with_corner_radius(8.0),
             );
-            let heading_x = approvals_bounds.origin.x + 10.0;
-            let heading_y = approvals_bounds.origin.y + 10.0;
+            let heading_x = approvals_layout.panel_bounds.origin.x + 10.0;
+            let heading_y = approvals_layout.panel_bounds.origin.y + 10.0;
             let approvals_heading_run = state.text_system.layout_styled_mono(
                 "APPROVALS",
                 Point::new(heading_x, heading_y),
@@ -365,14 +356,85 @@ fn render_sidebars(
                 wgpui::text::FontStyle::default(),
             );
             scene.draw_text(approvals_heading_run);
-            let approvals_body_run = state.text_system.layout_styled_mono(
-                "No approvals pending.",
-                Point::new(heading_x, heading_y + 18.0),
-                11.0,
-                palette.text_dim,
-                wgpui::text::FontStyle::default(),
-            );
-            scene.draw_text(approvals_body_run);
+
+            if approvals.is_empty() {
+                let approvals_body_run = state.text_system.layout_styled_mono(
+                    "No approvals pending.",
+                    Point::new(heading_x, heading_y + 18.0),
+                    11.0,
+                    palette.text_dim,
+                    wgpui::text::FontStyle::default(),
+                );
+                scene.draw_text(approvals_body_run);
+            } else {
+                for (index, card_bounds) in &approvals_layout.card_bounds {
+                    if let Some(request) = approvals.get(*index) {
+                        scene.draw_quad(
+                            Quad::new(*card_bounds)
+                                .with_background(palette.panel)
+                                .with_border(palette.panel_border, 1.0)
+                                .with_corner_radius(8.0),
+                        );
+                        let method_text = truncate_preview(&request.method, 40);
+                        let method_run = state.text_system.layout_styled_mono(
+                            &method_text,
+                            Point::new(card_bounds.origin.x + 8.0, card_bounds.origin.y + 6.0),
+                            11.0,
+                            palette.text_primary,
+                            wgpui::text::FontStyle::default(),
+                        );
+                        scene.draw_text(method_run);
+
+                        let params_text = serde_json::to_string_pretty(&request.params)
+                            .unwrap_or_default();
+                        let params_text = truncate_preview(&params_text, 120);
+                        let params_run = state.text_system.layout_styled_mono(
+                            &params_text,
+                            Point::new(card_bounds.origin.x + 8.0, card_bounds.origin.y + 22.0),
+                            10.0,
+                            palette.text_dim,
+                            wgpui::text::FontStyle::default(),
+                        );
+                        scene.draw_text(params_run);
+                    }
+                }
+                for (index, bounds) in &approvals_layout.decline_bounds {
+                    if approvals.get(*index).is_some() {
+                        scene.draw_quad(
+                            Quad::new(*bounds)
+                                .with_background(palette.panel)
+                                .with_border(palette.panel_border, 1.0)
+                                .with_corner_radius(6.0),
+                        );
+                        let run = state.text_system.layout_styled_mono(
+                            "Decline",
+                            Point::new(bounds.origin.x + 6.0, bounds.origin.y + 3.0),
+                            10.0,
+                            palette.text_secondary,
+                            wgpui::text::FontStyle::default(),
+                        );
+                        scene.draw_text(run);
+                    }
+                }
+                for (index, bounds) in &approvals_layout.approve_bounds {
+                    if approvals.get(*index).is_some() {
+                        scene.draw_quad(
+                            Quad::new(*bounds)
+                                .with_background(palette.link)
+                                .with_border(palette.panel_border, 1.0)
+                                .with_corner_radius(6.0),
+                        );
+                        let run = state.text_system.layout_styled_mono(
+                            "Approve",
+                            Point::new(bounds.origin.x + 6.0, bounds.origin.y + 3.0),
+                            10.0,
+                            palette.text_primary,
+                            wgpui::text::FontStyle::default(),
+                        );
+                        scene.draw_text(run);
+                    }
+                }
+            }
         }
     }
 }

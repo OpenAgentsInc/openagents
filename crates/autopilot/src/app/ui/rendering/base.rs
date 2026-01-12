@@ -3,10 +3,25 @@ pub(crate) const INPUT_PADDING: f32 = 12.0;
 pub(crate) const OUTPUT_PADDING: f32 = 12.0;
 pub(crate) const STATUS_BAR_HEIGHT: f32 = 20.0;
 pub(crate) const STATUS_BAR_FONT_SIZE: f32 = 13.0;
+pub(crate) const COMPOSER_BAR_HEIGHT: f32 = 28.0;
+pub(crate) const COMPOSER_BAR_GAP: f32 = 8.0;
+pub(crate) const COMPOSER_PILL_HEIGHT: f32 = 20.0;
+pub(crate) const COMPOSER_PILL_GAP: f32 = 8.0;
+pub(crate) const COMPOSER_PILL_PADDING_X: f32 = 10.0;
+pub(crate) const COMPOSER_SEND_WIDTH: f32 = 58.0;
+pub(crate) const COMPOSER_SEND_GAP: f32 = 10.0;
+pub(crate) const COMPOSER_MENU_ITEM_HEIGHT: f32 = 22.0;
+pub(crate) const COMPOSER_MENU_PADDING: f32 = 6.0;
+pub(crate) const COMPOSER_MENU_MIN_WIDTH: f32 = 140.0;
+pub(crate) const COMPOSER_MENU_MAX_ITEMS: usize = 8;
 pub(crate) const TOPBAR_HEIGHT: f32 = 44.0;
 pub(crate) const CONTENT_PADDING_X: f32 = 32.0;
 /// Height of input area (input + padding + status bar) for modal positioning
-pub(crate) const INPUT_AREA_HEIGHT: f32 = INPUT_HEIGHT + INPUT_PADDING + STATUS_BAR_HEIGHT;
+pub(crate) const INPUT_AREA_HEIGHT: f32 = INPUT_HEIGHT
+    + INPUT_PADDING * 2.0
+    + STATUS_BAR_HEIGHT
+    + COMPOSER_BAR_HEIGHT
+    + COMPOSER_BAR_GAP;
 
 pub(crate) const SESSION_MODAL_WIDTH: f32 = 760.0;
 pub(crate) const SESSION_MODAL_HEIGHT: f32 = 520.0;
@@ -121,6 +136,32 @@ pub(crate) struct HookEventLayout {
     pub(crate) list_bounds: Bounds,
     pub(crate) inspector_bounds: Bounds,
     pub(crate) row_bounds: Vec<(usize, Bounds)>,
+}
+
+pub(crate) struct InputLayout {
+    pub(crate) area_bounds: Bounds,
+    pub(crate) input_bounds: Bounds,
+    pub(crate) send_bounds: Bounds,
+    pub(crate) bar_bounds: Bounds,
+}
+
+pub(crate) struct ComposerBarLayout {
+    pub(crate) model_bounds: Bounds,
+    pub(crate) effort_bounds: Bounds,
+    pub(crate) access_bounds: Bounds,
+    pub(crate) skill_bounds: Bounds,
+}
+
+pub(crate) struct ComposerMenuLayout {
+    pub(crate) bounds: Bounds,
+    pub(crate) item_bounds: Vec<(usize, Bounds)>,
+}
+
+pub(crate) struct ApprovalsLayout {
+    pub(crate) panel_bounds: Bounds,
+    pub(crate) card_bounds: Vec<(usize, Bounds)>,
+    pub(crate) approve_bounds: Vec<(usize, Bounds)>,
+    pub(crate) decline_bounds: Vec<(usize, Bounds)>,
 }
 
 pub(crate) fn modal_y_in_content(logical_height: f32, modal_height: f32) -> f32 {

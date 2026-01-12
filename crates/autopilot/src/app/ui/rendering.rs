@@ -24,10 +24,11 @@ use crate::app::tools::{DspyStageLayout, ToolPanelBlock};
 use crate::app::wallet::WalletIdentityState;
 use crate::app::nip28::Nip28ConnectionStatus;
 use crate::app::nip90::{Nip90ConnectionStatus, Nip90MessageKind};
+use crate::app::workspaces::{ComposerLabels, ComposerMenuKind, WorkspaceAccessMode, reasoning_effort_label};
 use crate::app::ui::{palette_for, split_into_words_for_layout, wrap_text, UiPalette};
 use crate::app::{
     format_relative_time, hook_event_label, settings_rows, strip_markdown_markers, truncate_preview,
-    HookModalView, HookSetting, ModelOption, SettingsInputMode, SettingsSnapshot,
+    HookModalView, HookSetting, SettingsInputMode, SettingsSnapshot,
 };
 use crate::keybindings::Action as KeyAction;
 use crate::autopilot_loop::DspyStage;

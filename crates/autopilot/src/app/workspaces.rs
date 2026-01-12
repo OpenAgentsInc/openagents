@@ -51,6 +51,189 @@ pub(crate) enum ReviewState {
     Completed,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum WorkspaceAccessMode {
+    ReadOnly,
+    Current,
+    FullAccess,
+}
+
+impl WorkspaceAccessMode {
+    pub(crate) fn all() -> [WorkspaceAccessMode; 3] {
+        [
+            WorkspaceAccessMode::ReadOnly,
+            WorkspaceAccessMode::Current,
+            WorkspaceAccessMode::FullAccess,
+        ]
+    }
+
+    pub(crate) fn label(self) -> &'static str {
+        match self {
+            WorkspaceAccessMode::ReadOnly => "Read only",
+            WorkspaceAccessMode::Current => "Current",
+            WorkspaceAccessMode::FullAccess => "Full access",
+        }
+    }
+
+    pub(crate) fn approval_policy(self) -> app_server::AskForApproval {
+        match self {
+            WorkspaceAccessMode::FullAccess => app_server::AskForApproval::Never,
+            WorkspaceAccessMode::ReadOnly | WorkspaceAccessMode::Current => {
+                app_server::AskForApproval::OnRequest
+            }
+        }
+    }
+
+    pub(crate) fn sandbox_mode(self) -> app_server::SandboxMode {
+        match self {
+            WorkspaceAccessMode::FullAccess => app_server::SandboxMode::DangerFullAccess,
+            WorkspaceAccessMode::ReadOnly => app_server::SandboxMode::ReadOnly,
+            WorkspaceAccessMode::Current => app_server::SandboxMode::WorkspaceWrite,
+        }
+    }
+
+    pub(crate) fn sandbox_policy(self, workspace_path: &str) -> app_server::SandboxPolicy {
+        match self {
+            WorkspaceAccessMode::FullAccess => app_server::SandboxPolicy::DangerFullAccess,
+            WorkspaceAccessMode::ReadOnly => app_server::SandboxPolicy::ReadOnly,
+            WorkspaceAccessMode::Current => app_server::SandboxPolicy::WorkspaceWrite {
+                writable_roots: vec![workspace_path.to_string()],
+                network_access: true,
+                exclude_tmpdir_env_var: false,
+                exclude_slash_tmp: false,
+            },
+        }
+    }
+
+    pub(crate) fn auto_approves(self) -> bool {
+        matches!(self, WorkspaceAccessMode::FullAccess)
+    }
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct WorkspaceApprovalRequest {
+    pub(crate) id: app_server::AppServerRequestId,
+    pub(crate) method: String,
+    pub(crate) params: Value,
+}
+
+impl WorkspaceApprovalRequest {
+    pub(crate) fn id_label(&self) -> String {
+        match &self.id {
+            app_server::AppServerRequestId::String(value) => value.clone(),
+            app_server::AppServerRequestId::Integer(value) => value.to_string(),
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct WorkspaceComposerState {
+    pub(crate) models: Vec<app_server::ModelInfo>,
+    pub(crate) selected_model_id: Option<String>,
+    pub(crate) selected_effort: Option<app_server::ReasoningEffort>,
+    pub(crate) access_mode: WorkspaceAccessMode,
+    pub(crate) skills: Vec<app_server::SkillMetadata>,
+    pub(crate) models_loaded: bool,
+    pub(crate) skills_loaded: bool,
+    pub(crate) models_pending: bool,
+    pub(crate) skills_pending: bool,
+    pub(crate) models_error: Option<String>,
+    pub(crate) skills_error: Option<String>,
+}
+
+impl Default for WorkspaceComposerState {
+    fn default() -> Self {
+        Self {
+            models: Vec::new(),
+            selected_model_id: None,
+            selected_effort: None,
+            access_mode: WorkspaceAccessMode::FullAccess,
+            skills: Vec::new(),
+            models_loaded: false,
+            skills_loaded: false,
+            models_pending: false,
+            skills_pending: false,
+            models_error: None,
+            skills_error: None,
+        }
+    }
+}
+
+impl WorkspaceComposerState {
+    pub(crate) fn selected_model(&self) -> Option<&app_server::ModelInfo> {
+        let selected_id = self.selected_model_id.as_deref()?;
+        self.models.iter().find(|model| model.id == selected_id)
+    }
+
+    pub(crate) fn reasoning_options(&self) -> Vec<app_server::ReasoningEffort> {
+        self.selected_model()
+            .map(|model| {
+                model
+                    .supported_reasoning_efforts
+                    .iter()
+                    .map(|option| option.reasoning_effort)
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    pub(crate) fn set_models(&mut self, models: Vec<app_server::ModelInfo>) {
+        self.models = models;
+        self.models_loaded = true;
+        self.models_pending = false;
+        self.models_error = None;
+
+        if self.models.is_empty() {
+            self.selected_model_id = None;
+            self.selected_effort = None;
+            return;
+        }
+
+        let selected = self
+            .selected_model_id
+            .as_ref()
+            .and_then(|id| self.models.iter().find(|model| &model.id == id))
+            .cloned();
+
+        let chosen = selected.or_else(|| {
+            self.models
+                .iter()
+                .find(|model| model.model == "gpt-5.2-codex")
+                .cloned()
+        })
+        .or_else(|| self.models.iter().find(|model| model.is_default).cloned())
+        .or_else(|| self.models.first().cloned());
+
+        if let Some(model) = chosen {
+            self.selected_model_id = Some(model.id.clone());
+            self.selected_effort = Some(model.default_reasoning_effort);
+        }
+    }
+
+    pub(crate) fn set_skills(&mut self, skills: Vec<app_server::SkillMetadata>) {
+        self.skills = skills;
+        self.skills_loaded = true;
+        self.skills_pending = false;
+        self.skills_error = None;
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum ComposerMenuKind {
+    Model,
+    Effort,
+    Access,
+    Skill,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct ComposerLabels {
+    pub(crate) model: String,
+    pub(crate) effort: String,
+    pub(crate) access: String,
+    pub(crate) skill: String,
+}
+
 #[derive(Clone, Debug, Default)]
 pub(crate) struct ConversationChange {
     pub(crate) path: String,
@@ -316,6 +499,41 @@ pub(crate) enum WorkspaceEvent {
         workspace_id: String,
         error: String,
     },
+    UserMessageQueued {
+        workspace_id: String,
+        thread_id: String,
+        text: String,
+    },
+    UserMessageFailed {
+        workspace_id: String,
+        error: String,
+    },
+    ReviewQueued {
+        workspace_id: String,
+        thread_id: String,
+        label: String,
+    },
+    ReviewFailed {
+        workspace_id: String,
+        error: String,
+    },
+    ModelsListed {
+        workspace_id: String,
+        models: Vec<app_server::ModelInfo>,
+    },
+    ModelListFailed {
+        workspace_id: String,
+        error: String,
+    },
+    SkillsListed {
+        workspace_id: String,
+        skills: Vec<app_server::SkillMetadata>,
+        error: Option<String>,
+    },
+    SkillsListFailed {
+        workspace_id: String,
+        error: String,
+    },
     AppServerNotification {
         workspace_id: String,
         notification: app_server::AppServerNotification,
@@ -338,6 +556,34 @@ pub(crate) enum WorkspaceCommand {
     },
     ListThreads {
         workspace_id: String,
+    },
+    SendUserMessage {
+        workspace_id: String,
+        thread_id: Option<String>,
+        text: String,
+        model: Option<String>,
+        effort: Option<app_server::ReasoningEffort>,
+        access_mode: WorkspaceAccessMode,
+    },
+    StartReview {
+        workspace_id: String,
+        thread_id: Option<String>,
+        target: app_server::ReviewTarget,
+        delivery: Option<app_server::ReviewDelivery>,
+        label: String,
+        access_mode: WorkspaceAccessMode,
+    },
+    ListModels {
+        workspace_id: String,
+    },
+    ListSkills {
+        workspace_id: String,
+        force_reload: bool,
+    },
+    RespondToRequest {
+        workspace_id: String,
+        request_id: app_server::AppServerRequestId,
+        response: app_server::ApprovalResponse,
     },
 }
 
@@ -378,6 +624,70 @@ impl WorkspaceRuntime {
             .cmd_tx
             .try_send(WorkspaceCommand::ListThreads { workspace_id });
     }
+
+    pub(crate) fn send_user_message(
+        &self,
+        workspace_id: String,
+        thread_id: Option<String>,
+        text: String,
+        model: Option<String>,
+        effort: Option<app_server::ReasoningEffort>,
+        access_mode: WorkspaceAccessMode,
+    ) {
+        let _ = self.cmd_tx.try_send(WorkspaceCommand::SendUserMessage {
+            workspace_id,
+            thread_id,
+            text,
+            model,
+            effort,
+            access_mode,
+        });
+    }
+
+    pub(crate) fn start_review(
+        &self,
+        workspace_id: String,
+        thread_id: Option<String>,
+        target: app_server::ReviewTarget,
+        delivery: Option<app_server::ReviewDelivery>,
+        label: String,
+        access_mode: WorkspaceAccessMode,
+    ) {
+        let _ = self.cmd_tx.try_send(WorkspaceCommand::StartReview {
+            workspace_id,
+            thread_id,
+            target,
+            delivery,
+            label,
+            access_mode,
+        });
+    }
+
+    pub(crate) fn list_models(&self, workspace_id: String) {
+        let _ = self
+            .cmd_tx
+            .try_send(WorkspaceCommand::ListModels { workspace_id });
+    }
+
+    pub(crate) fn list_skills(&self, workspace_id: String, force_reload: bool) {
+        let _ = self.cmd_tx.try_send(WorkspaceCommand::ListSkills {
+            workspace_id,
+            force_reload,
+        });
+    }
+
+    pub(crate) fn respond_to_request(
+        &self,
+        workspace_id: String,
+        request_id: app_server::AppServerRequestId,
+        response: app_server::ApprovalResponse,
+    ) {
+        let _ = self.cmd_tx.try_send(WorkspaceCommand::RespondToRequest {
+            workspace_id,
+            request_id,
+            response,
+        });
+    }
 }
 
 impl Default for WorkspaceRuntime {
@@ -393,6 +703,9 @@ pub(crate) struct WorkspaceState {
     pub(crate) active_workspace_id: Option<String>,
     pub(crate) active_thread_by_workspace: HashMap<String, String>,
     pub(crate) thread_status_by_id: HashMap<String, ThreadStatus>,
+    pub(crate) composer_by_workspace: HashMap<String, WorkspaceComposerState>,
+    pub(crate) approvals_by_workspace: HashMap<String, Vec<WorkspaceApprovalRequest>>,
+    pub(crate) composer_menu: Option<ComposerMenuKind>,
     pub(crate) timelines_by_thread: HashMap<String, ThreadTimeline>,
     pub(crate) timeline_dirty: bool,
     pub(crate) status_message: Option<String>,
@@ -409,6 +722,9 @@ impl WorkspaceState {
             active_workspace_id: None,
             active_thread_by_workspace: HashMap::new(),
             thread_status_by_id: HashMap::new(),
+            composer_by_workspace: HashMap::new(),
+            approvals_by_workspace: HashMap::new(),
+            composer_menu: None,
             timelines_by_thread: HashMap::new(),
             timeline_dirty: false,
             status_message: None,
@@ -420,6 +736,15 @@ impl WorkspaceState {
     pub(crate) fn apply_loaded(&mut self, workspaces: Vec<WorkspaceInfo>) {
         let active_id = self.active_workspace_id.clone();
         self.workspaces = workspaces;
+        self.composer_by_workspace
+            .retain(|id, _| self.workspaces.iter().any(|ws| ws.id == *id));
+        self.approvals_by_workspace
+            .retain(|id, _| self.workspaces.iter().any(|ws| ws.id == *id));
+        for workspace in &self.workspaces {
+            self.composer_by_workspace
+                .entry(workspace.id.clone())
+                .or_default();
+        }
         if let Some(active_id) = active_id {
             if self.workspaces.iter().any(|ws| ws.id == active_id) {
                 self.active_workspace_id = Some(active_id);
@@ -437,6 +762,9 @@ impl WorkspaceState {
             return;
         }
         self.active_workspace_id = Some(workspace.id.clone());
+        self.composer_by_workspace
+            .entry(workspace.id.clone())
+            .or_default();
         self.workspaces.push(workspace);
         self.timeline_dirty = true;
     }
@@ -449,6 +777,9 @@ impl WorkspaceState {
         {
             workspace.connected = true;
         }
+        self.composer_by_workspace
+            .entry(workspace_id.to_string())
+            .or_default();
     }
 
     pub(crate) fn apply_threads(
@@ -487,7 +818,219 @@ impl WorkspaceState {
             return;
         }
         self.active_workspace_id = Some(workspace_id);
+        self.composer_menu = None;
         self.timeline_dirty = true;
+    }
+
+    pub(crate) fn composer_state(&self, workspace_id: &str) -> Option<&WorkspaceComposerState> {
+        self.composer_by_workspace.get(workspace_id)
+    }
+
+    pub(crate) fn composer_state_mut(
+        &mut self,
+        workspace_id: &str,
+    ) -> &mut WorkspaceComposerState {
+        self.composer_by_workspace
+            .entry(workspace_id.to_string())
+            .or_default()
+    }
+
+    pub(crate) fn active_composer(&self) -> Option<&WorkspaceComposerState> {
+        let workspace_id = self.active_workspace_id.as_ref()?;
+        self.composer_by_workspace.get(workspace_id)
+    }
+
+    pub(crate) fn active_composer_mut(&mut self) -> Option<&mut WorkspaceComposerState> {
+        let workspace_id = self.active_workspace_id.clone()?;
+        Some(
+            self.composer_by_workspace
+                .entry(workspace_id)
+                .or_default(),
+        )
+    }
+
+    pub(crate) fn composer_labels(&self) -> ComposerLabels {
+        let Some(workspace_id) = self.active_workspace_id.as_ref() else {
+            return ComposerLabels {
+                model: "No workspace".to_string(),
+                effort: "Effort".to_string(),
+                access: "Access".to_string(),
+                skill: "Skill".to_string(),
+            };
+        };
+        let composer = self.composer_by_workspace.get(workspace_id);
+        let (model_label, effort_label) = if let Some(composer) = composer {
+            if composer.models.is_empty() {
+                let label = if composer.models_pending {
+                    "Models...".to_string()
+                } else {
+                    "No models".to_string()
+                };
+                (label, "Effort".to_string())
+            } else {
+                let model_name = composer
+                    .selected_model()
+                    .map(|model| {
+                        if !model.display_name.trim().is_empty() {
+                            model.display_name.clone()
+                        } else if !model.model.trim().is_empty() {
+                            model.model.clone()
+                        } else {
+                            model.id.clone()
+                        }
+                    })
+                    .unwrap_or_else(|| "Model".to_string());
+                let effort_name = composer
+                    .selected_effort
+                    .map(reasoning_effort_label)
+                    .unwrap_or("default");
+                (
+                    format!("Model: {}", model_name),
+                    format!("Effort: {}", effort_name),
+                )
+            }
+        } else {
+            ("Model".to_string(), "Effort".to_string())
+        };
+
+        let access_label = composer
+            .map(|composer| format!("Access: {}", composer.access_mode.label()))
+            .unwrap_or_else(|| "Access".to_string());
+        let skill_label = "Skill".to_string();
+
+        ComposerLabels {
+            model: model_label,
+            effort: effort_label,
+            access: access_label,
+            skill: skill_label,
+        }
+    }
+
+    pub(crate) fn set_models_for_workspace(
+        &mut self,
+        workspace_id: &str,
+        models: Vec<app_server::ModelInfo>,
+    ) {
+        let composer = self.composer_state_mut(workspace_id);
+        composer.set_models(models);
+    }
+
+    pub(crate) fn set_skills_for_workspace(
+        &mut self,
+        workspace_id: &str,
+        skills: Vec<app_server::SkillMetadata>,
+    ) {
+        let composer = self.composer_state_mut(workspace_id);
+        composer.set_skills(skills);
+    }
+
+    pub(crate) fn set_models_error(&mut self, workspace_id: &str, error: String) {
+        let composer = self.composer_state_mut(workspace_id);
+        composer.models_error = Some(error);
+        composer.models_pending = false;
+    }
+
+    pub(crate) fn set_skills_error(&mut self, workspace_id: &str, error: String) {
+        let composer = self.composer_state_mut(workspace_id);
+        composer.skills_error = Some(error);
+        composer.skills_pending = false;
+    }
+
+    pub(crate) fn request_composer_data(&mut self, workspace_id: &str) {
+        let connected = self
+            .workspaces
+            .iter()
+            .find(|workspace| workspace.id == workspace_id)
+            .map(|workspace| workspace.connected)
+            .unwrap_or(false);
+        if !connected {
+            return;
+        }
+        let (fetch_models, fetch_skills) = {
+            let composer = self.composer_state_mut(workspace_id);
+            let mut fetch_models = false;
+            let mut fetch_skills = false;
+            if !composer.models_loaded && !composer.models_pending {
+                composer.models_pending = true;
+                fetch_models = true;
+            }
+            if !composer.skills_loaded && !composer.skills_pending {
+                composer.skills_pending = true;
+                fetch_skills = true;
+            }
+            (fetch_models, fetch_skills)
+        };
+        if fetch_models {
+            self.runtime.list_models(workspace_id.to_string());
+        }
+        if fetch_skills {
+            self.runtime.list_skills(workspace_id.to_string(), false);
+        }
+    }
+
+    pub(crate) fn approvals_for_workspace(
+        &self,
+        workspace_id: &str,
+    ) -> &[WorkspaceApprovalRequest] {
+        self.approvals_by_workspace
+            .get(workspace_id)
+            .map(|items| items.as_slice())
+            .unwrap_or_default()
+    }
+
+    pub(crate) fn approvals_for_active(&self) -> &[WorkspaceApprovalRequest] {
+        let Some(workspace_id) = self.active_workspace_id.as_ref() else {
+            return &[];
+        };
+        self.approvals_for_workspace(workspace_id)
+    }
+
+    pub(crate) fn add_approval(&mut self, workspace_id: &str, request: WorkspaceApprovalRequest) {
+        self.approvals_by_workspace
+            .entry(workspace_id.to_string())
+            .or_default()
+            .push(request);
+        self.timeline_dirty = true;
+    }
+
+    pub(crate) fn remove_approval(&mut self, workspace_id: &str, request_id: &str) {
+        if let Some(list) = self.approvals_by_workspace.get_mut(workspace_id) {
+            list.retain(|item| item.id_label() != request_id);
+        }
+        self.timeline_dirty = true;
+    }
+
+    pub(crate) fn active_thread_status(&self) -> Option<&ThreadStatus> {
+        let thread_id = self.active_thread_id()?;
+        self.thread_status_by_id.get(&thread_id)
+    }
+
+    pub(crate) fn active_thread_is_reviewing(&self) -> bool {
+        self.active_thread_status()
+            .map(|status| status.is_reviewing)
+            .unwrap_or(false)
+    }
+
+    pub(crate) fn set_composer_menu(&mut self, menu: Option<ComposerMenuKind>) {
+        self.composer_menu = menu;
+    }
+
+    pub(crate) fn update_thread_preview(
+        &mut self,
+        workspace_id: &str,
+        thread_id: &str,
+        preview: &str,
+    ) {
+        if let Some(threads) = self.threads_by_workspace.get_mut(workspace_id) {
+            for thread in threads.iter_mut() {
+                if thread.id == thread_id {
+                    let fallback = format!("Agent {}", thread.id.chars().take(4).collect::<String>());
+                    thread.preview = preview.to_string();
+                    thread.name = format_thread_name(preview, &fallback);
+                    break;
+                }
+            }
+        }
     }
 
     pub(crate) fn active_thread_id(&self) -> Option<String> {
@@ -837,9 +1380,250 @@ async fn run_workspace_loop(
                             .send(WorkspaceEvent::ThreadsListFailed {
                                 workspace_id: session.entry.id.clone(),
                                 error: err,
+                        })
+                        .await;
+                    }
+                }
+            }
+            WorkspaceCommand::SendUserMessage {
+                workspace_id,
+                thread_id,
+                text,
+                model,
+                effort,
+                access_mode,
+            } => {
+                let Some(session) = sessions.get(&workspace_id) else {
+                    let _ = event_tx
+                        .send(WorkspaceEvent::UserMessageFailed {
+                            workspace_id,
+                            error: "Workspace not connected".to_string(),
+                        })
+                        .await;
+                    continue;
+                };
+                let mut thread_id = thread_id;
+                if thread_id.is_none() {
+                    let start_params = app_server::ThreadStartParams {
+                        model: model.clone(),
+                        model_provider: None,
+                        cwd: Some(session.entry.path.clone()),
+                        approval_policy: Some(access_mode.approval_policy()),
+                        sandbox: Some(access_mode.sandbox_mode()),
+                    };
+                    match session.client.thread_start(start_params).await {
+                        Ok(response) => {
+                            thread_id = Some(response.thread.id);
+                        }
+                        Err(err) => {
+                            let _ = event_tx
+                                .send(WorkspaceEvent::UserMessageFailed {
+                                    workspace_id: session.entry.id.clone(),
+                                    error: format!("thread/start failed: {}", err),
+                                })
+                                .await;
+                            continue;
+                        }
+                    }
+                }
+                let Some(thread_id) = thread_id else {
+                    continue;
+                };
+                let _ = event_tx
+                    .send(WorkspaceEvent::UserMessageQueued {
+                        workspace_id: session.entry.id.clone(),
+                        thread_id: thread_id.clone(),
+                        text: text.clone(),
+                    })
+                    .await;
+
+                let turn_params = app_server::TurnStartParams {
+                    thread_id: thread_id.clone(),
+                    input: vec![app_server::UserInput::Text { text }],
+                    model,
+                    effort,
+                    summary: None,
+                    approval_policy: Some(access_mode.approval_policy()),
+                    sandbox_policy: Some(access_mode.sandbox_policy(&session.entry.path)),
+                    cwd: Some(session.entry.path.clone()),
+                };
+                if let Err(err) = session.client.turn_start(turn_params).await {
+                    let _ = event_tx
+                        .send(WorkspaceEvent::UserMessageFailed {
+                            workspace_id: session.entry.id.clone(),
+                            error: format!("turn/start failed: {}", err),
+                        })
+                        .await;
+                }
+            }
+            WorkspaceCommand::StartReview {
+                workspace_id,
+                thread_id,
+                target,
+                delivery,
+                label,
+                access_mode,
+            } => {
+                let Some(session) = sessions.get(&workspace_id) else {
+                    let _ = event_tx
+                        .send(WorkspaceEvent::ReviewFailed {
+                            workspace_id,
+                            error: "Workspace not connected".to_string(),
+                        })
+                        .await;
+                    continue;
+                };
+                let mut thread_id = thread_id;
+                if thread_id.is_none() {
+                    let start_params = app_server::ThreadStartParams {
+                        model: None,
+                        model_provider: None,
+                        cwd: Some(session.entry.path.clone()),
+                        approval_policy: Some(access_mode.approval_policy()),
+                        sandbox: Some(access_mode.sandbox_mode()),
+                    };
+                    match session.client.thread_start(start_params).await {
+                        Ok(response) => {
+                            thread_id = Some(response.thread.id);
+                        }
+                        Err(err) => {
+                            let _ = event_tx
+                                .send(WorkspaceEvent::ReviewFailed {
+                                    workspace_id: session.entry.id.clone(),
+                                    error: format!("thread/start failed: {}", err),
+                                })
+                                .await;
+                            continue;
+                        }
+                    }
+                }
+                let Some(thread_id) = thread_id else {
+                    continue;
+                };
+                let _ = event_tx
+                    .send(WorkspaceEvent::ReviewQueued {
+                        workspace_id: session.entry.id.clone(),
+                        thread_id: thread_id.clone(),
+                        label,
+                    })
+                    .await;
+                let review_params = app_server::ReviewStartParams {
+                    thread_id: thread_id.clone(),
+                    target,
+                    delivery,
+                };
+                if let Err(err) = session.client.review_start(review_params).await {
+                    let _ = event_tx
+                        .send(WorkspaceEvent::ReviewFailed {
+                            workspace_id: session.entry.id.clone(),
+                            error: format!("review/start failed: {}", err),
+                        })
+                        .await;
+                }
+            }
+            WorkspaceCommand::ListModels { workspace_id } => {
+                let Some(session) = sessions.get(&workspace_id) else {
+                    let _ = event_tx
+                        .send(WorkspaceEvent::ModelListFailed {
+                            workspace_id,
+                            error: "Workspace not connected".to_string(),
+                        })
+                        .await;
+                    continue;
+                };
+                match session
+                    .client
+                    .model_list(app_server::ModelListParams {
+                        cursor: None,
+                        limit: None,
+                    })
+                    .await
+                {
+                    Ok(response) => {
+                        let _ = event_tx
+                            .send(WorkspaceEvent::ModelsListed {
+                                workspace_id: session.entry.id.clone(),
+                                models: response.data,
                             })
                             .await;
                     }
+                    Err(err) => {
+                        let _ = event_tx
+                            .send(WorkspaceEvent::ModelListFailed {
+                                workspace_id: session.entry.id.clone(),
+                                error: format!("model/list failed: {}", err),
+                            })
+                            .await;
+                    }
+                }
+            }
+            WorkspaceCommand::ListSkills {
+                workspace_id,
+                force_reload,
+            } => {
+                let Some(session) = sessions.get(&workspace_id) else {
+                    let _ = event_tx
+                        .send(WorkspaceEvent::SkillsListFailed {
+                            workspace_id,
+                            error: "Workspace not connected".to_string(),
+                        })
+                        .await;
+                    continue;
+                };
+                match session
+                    .client
+                    .skills_list(app_server::SkillsListParams {
+                        cwds: vec![session.entry.path.clone()],
+                        force_reload,
+                    })
+                    .await
+                {
+                    Ok(response) => {
+                        let mut skills = Vec::new();
+                        let mut errors = Vec::new();
+                        for entry in response.data {
+                            skills.extend(entry.skills);
+                            errors.extend(entry.errors);
+                        }
+                        let error = if errors.is_empty() {
+                            None
+                        } else {
+                            Some(
+                                errors
+                                    .into_iter()
+                                    .map(|err| format!("{}: {}", err.path, err.message))
+                                    .collect::<Vec<_>>()
+                                    .join(" | "),
+                            )
+                        };
+                        let _ = event_tx
+                            .send(WorkspaceEvent::SkillsListed {
+                                workspace_id: session.entry.id.clone(),
+                                skills,
+                                error,
+                            })
+                            .await;
+                    }
+                    Err(err) => {
+                        let _ = event_tx
+                            .send(WorkspaceEvent::SkillsListFailed {
+                                workspace_id: session.entry.id.clone(),
+                                error: format!("skills/list failed: {}", err),
+                            })
+                            .await;
+                    }
+                }
+            }
+            WorkspaceCommand::RespondToRequest {
+                workspace_id,
+                request_id,
+                response,
+            } => {
+                let Some(session) = sessions.get(&workspace_id) else {
+                    continue;
+                };
+                if let Err(err) = session.client.respond(request_id, &response).await {
+                    tracing::warn!(error = %err, "Failed to respond to app-server request");
                 }
             }
         }
@@ -1001,6 +1785,17 @@ fn format_thread_name(preview: &str, fallback: &str) -> String {
     }
 }
 
+pub(crate) fn reasoning_effort_label(effort: app_server::ReasoningEffort) -> &'static str {
+    match effort {
+        app_server::ReasoningEffort::None => "none",
+        app_server::ReasoningEffort::Minimal => "minimal",
+        app_server::ReasoningEffort::Low => "low",
+        app_server::ReasoningEffort::Medium => "medium",
+        app_server::ReasoningEffort::High => "high",
+        app_server::ReasoningEffort::XHigh => "x-high",
+    }
+}
+
 fn create_workspace_entry(path: &Path, codex_bin: Option<String>) -> WorkspaceEntry {
     let name = path
         .file_name()
@@ -1056,15 +1851,7 @@ pub(crate) fn conversation_item_from_value(item: &Value) -> Option<ConversationI
     let item_type = item.get("type").and_then(Value::as_str)?;
     let id = item.get("id").and_then(Value::as_str)?.to_string();
     match item_type {
-        "userMessage" => {
-            let content = item.get("content").and_then(Value::as_array).cloned().unwrap_or_default();
-            let text = user_inputs_to_text(&content);
-            Some(ConversationItem::Message {
-                id,
-                role: ConversationRole::User,
-                text: if text.is_empty() { "[message]".to_string() } else { text },
-            })
-        }
+        "userMessage" => None,
         "agentMessage" => {
             let text = item.get("text").and_then(Value::as_str).unwrap_or("").to_string();
             Some(ConversationItem::Message {
@@ -1341,24 +2128,4 @@ fn parse_file_changes(
         }
     }
     (changes, paths, first_path, first_diff)
-}
-
-fn user_inputs_to_text(content: &[Value]) -> String {
-    content
-        .iter()
-        .filter_map(|input| {
-            let input_type = input.get("type").and_then(Value::as_str)?;
-            match input_type {
-                "text" => input.get("text").and_then(Value::as_str).map(|s| s.to_string()),
-                "skill" => input
-                    .get("name")
-                    .and_then(Value::as_str)
-                    .map(|s| format!("${}", s)),
-                "image" | "localImage" => Some("[image]".to_string()),
-                _ => None,
-            }
-        })
-        .filter(|value| !value.is_empty())
-        .collect::<Vec<_>>()
-        .join(" ")
 }
