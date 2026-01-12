@@ -89,6 +89,10 @@ pub(crate) fn default_session_history_limit() -> usize {
     50
 }
 
+pub(crate) fn default_local_oss_base_url() -> String {
+    "http://localhost:8000/v1".to_string()
+}
+
 pub(crate) fn now_timestamp() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)

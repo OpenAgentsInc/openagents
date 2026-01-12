@@ -37,7 +37,7 @@ use crate::keybindings::Action as KeyAction;
 use super::COMMAND_PALETTE_ENABLED;
 use super::command_palette_ids;
 use super::hooks::hook_log_event_data;
-use super::settings::{normalize_settings, save_settings};
+use super::settings::{apply_codex_oss_env, normalize_settings, save_settings};
 
 const HOOK_LOG_LIMIT: usize = 200;
 
@@ -941,6 +941,7 @@ impl AppState {
 
     pub(super) fn apply_settings(&mut self) {
         normalize_settings(&mut self.settings.coder_settings);
+        apply_codex_oss_env(&self.settings.coder_settings);
         let resolved_theme =
             resolve_theme(self.settings.coder_settings.theme, self.system_theme);
         let current_value = self.input.get_value().to_string();

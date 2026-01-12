@@ -714,6 +714,7 @@ pub(crate) enum WorkspaceCommand {
     StartThread {
         workspace_id: String,
         model: Option<String>,
+        model_provider: Option<String>,
         access_mode: WorkspaceAccessMode,
     },
     ResumeThread {
@@ -730,6 +731,7 @@ pub(crate) enum WorkspaceCommand {
         thread_id: Option<String>,
         text: String,
         model: Option<String>,
+        model_provider: Option<String>,
         effort: Option<app_server::ReasoningEffort>,
         access_mode: WorkspaceAccessMode,
     },
@@ -740,6 +742,8 @@ pub(crate) enum WorkspaceCommand {
         delivery: Option<app_server::ReviewDelivery>,
         label: String,
         access_mode: WorkspaceAccessMode,
+        model: Option<String>,
+        model_provider: Option<String>,
     },
     ListModels {
         workspace_id: String,
@@ -812,11 +816,13 @@ impl WorkspaceRuntime {
         &self,
         workspace_id: String,
         model: Option<String>,
+        model_provider: Option<String>,
         access_mode: WorkspaceAccessMode,
     ) {
         let _ = self.cmd_tx.try_send(WorkspaceCommand::StartThread {
             workspace_id,
             model,
+            model_provider,
             access_mode,
         });
     }
@@ -842,6 +848,7 @@ impl WorkspaceRuntime {
         thread_id: Option<String>,
         text: String,
         model: Option<String>,
+        model_provider: Option<String>,
         effort: Option<app_server::ReasoningEffort>,
         access_mode: WorkspaceAccessMode,
     ) {
@@ -850,6 +857,7 @@ impl WorkspaceRuntime {
             thread_id,
             text,
             model,
+            model_provider,
             effort,
             access_mode,
         });
@@ -863,6 +871,8 @@ impl WorkspaceRuntime {
         delivery: Option<app_server::ReviewDelivery>,
         label: String,
         access_mode: WorkspaceAccessMode,
+        model: Option<String>,
+        model_provider: Option<String>,
     ) {
         let _ = self.cmd_tx.try_send(WorkspaceCommand::StartReview {
             workspace_id,
@@ -871,6 +881,8 @@ impl WorkspaceRuntime {
             delivery,
             label,
             access_mode,
+            model,
+            model_provider,
         });
     }
 
@@ -1756,6 +1768,7 @@ async fn run_workspace_loop(
             WorkspaceCommand::StartThread {
                 workspace_id,
                 model,
+                model_provider,
                 access_mode,
             } => {
                 let Some(session) = sessions.get(&workspace_id) else {
@@ -1769,7 +1782,7 @@ async fn run_workspace_loop(
                 };
                 let start_params = app_server::ThreadStartParams {
                     model,
-                    model_provider: None,
+                    model_provider,
                     cwd: Some(session.entry.path.clone()),
                     approval_policy: Some(access_mode.approval_policy()),
                     sandbox: Some(access_mode.sandbox_mode()),
@@ -1881,6 +1894,7 @@ async fn run_workspace_loop(
                 thread_id,
                 text,
                 model,
+                model_provider,
                 effort,
                 access_mode,
             } => {
@@ -1897,7 +1911,7 @@ async fn run_workspace_loop(
                 if thread_id.is_none() {
                     let start_params = app_server::ThreadStartParams {
                         model: model.clone(),
-                        model_provider: None,
+                        model_provider: model_provider.clone(),
                         cwd: Some(session.entry.path.clone()),
                         approval_policy: Some(access_mode.approval_policy()),
                         sandbox: Some(access_mode.sandbox_mode()),
@@ -1954,6 +1968,8 @@ async fn run_workspace_loop(
                 delivery,
                 label,
                 access_mode,
+                model,
+                model_provider,
             } => {
                 let Some(session) = sessions.get(&workspace_id) else {
                     let _ = event_tx
@@ -1967,8 +1983,8 @@ async fn run_workspace_loop(
                 let mut thread_id = thread_id;
                 if thread_id.is_none() {
                     let start_params = app_server::ThreadStartParams {
-                        model: None,
-                        model_provider: None,
+                        model,
+                        model_provider,
                         cwd: Some(session.entry.path.clone()),
                         approval_policy: Some(access_mode.approval_policy()),
                         sandbox: Some(access_mode.sandbox_mode()),
