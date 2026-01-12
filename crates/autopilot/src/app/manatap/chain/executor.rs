@@ -5,13 +5,16 @@ use super::signatures::{
     SummaryAggregatorSignature, TaskAnalysisSignature,
 };
 use super::{ChainEvent, ChainEventSender, ChainState};
+use adjutant::dspy::tool_step_utility_predict;
 use anyhow::{Context, Result};
 use dsrs::predictors::Predict;
 use dsrs::Predictor;
 use glob::glob;
+use hex::encode as hex_encode;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -50,6 +53,33 @@ pub struct FileContent {
     pub path: PathBuf,
     pub content: String,
     pub size: usize,
+}
+
+/// Receipt emitted for a tool-based step.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToolReceipt {
+    pub tool_name: String,
+    pub inputs_hash: String,
+    pub outputs_hash: String,
+    pub latency_ms: u64,
+    pub cost_tokens: u64,
+    pub side_effects: Vec<String>,
+}
+
+/// Utility evaluation for a tool step.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToolStepUtilityResult {
+    pub step_utility: f32,
+    pub should_continue: bool,
+    pub next_action_hint: String,
+    pub confidence: f32,
+}
+
+#[derive(Debug, Clone)]
+struct ToolStepUtilityEvaluation {
+    result: ToolStepUtilityResult,
+    tokens: u64,
+    cost_msats: u64,
 }
 
 /// Result from content summarization.
@@ -94,6 +124,10 @@ pub struct CodeSearchResult {
     pub matches: Vec<CodeMatch>,
     pub patterns_used: Vec<String>,
     pub files_searched: usize,
+    pub receipt: ToolReceipt,
+    pub utility: ToolStepUtilityResult,
+    pub utility_tokens: u64,
+    pub utility_cost_msats: u64,
 }
 
 /// Result from answering a question.
@@ -327,6 +361,58 @@ impl MarkdownSummarizationChain {
         let count = paths.len();
         let duration = start.elapsed().as_millis() as u64;
 
+        let inputs_value = json!({
+            "pattern": pattern,
+            "scope": scope,
+            "glob_pattern": glob_pattern.to_string_lossy(),
+        });
+        let mut path_strings: Vec<String> =
+            paths.iter().map(|p| p.display().to_string()).collect();
+        path_strings.sort();
+        let outputs_value = json!({
+            "paths": path_strings,
+            "count": count,
+        });
+
+        let receipt = build_tool_receipt(
+            "FileDiscovery",
+            &inputs_value,
+            &outputs_value,
+            duration,
+            0,
+            vec!["read_fs".to_string(), "scan_fs".to_string()],
+        );
+        tracing::info!(
+            tool_name = receipt.tool_name,
+            inputs_hash = receipt.inputs_hash,
+            outputs_hash = receipt.outputs_hash,
+            latency_ms = receipt.latency_ms,
+            cost_tokens = receipt.cost_tokens,
+            side_effects = ?receipt.side_effects,
+            "tool receipt"
+        );
+
+        let utility = match self
+            .evaluate_tool_step(
+                "FileDiscovery",
+                "Discover repository files matching the requested pattern",
+                &summarize_json(&inputs_value, 600),
+                &summarize_json(&outputs_value, 600),
+                &receipt,
+            )
+            .await
+        {
+            Ok(result) => result,
+            Err(error) => {
+                tracing::warn!(
+                    tool_name = "FileDiscovery",
+                    error = %error,
+                    "tool step utility fallback"
+                );
+                fallback_tool_step_utility()
+            }
+        };
+
         // Complete the node
         {
             let mut state = self.chain_state.lock().unwrap();
@@ -348,6 +434,28 @@ impl MarkdownSummarizationChain {
                     ) + if paths.len() > 3 { "..." } else { "" },
                 ),
                 ("count".to_string(), count.to_string()),
+                ("receipt".to_string(), format_receipt_summary(&receipt)),
+                (
+                    "step_utility".to_string(),
+                    format!("{:.2}", utility.result.step_utility),
+                ),
+                (
+                    "should_continue".to_string(),
+                    utility.result.should_continue.to_string(),
+                ),
+                (
+                    "next_action_hint".to_string(),
+                    utility.result.next_action_hint.clone(),
+                ),
+                (
+                    "utility_confidence".to_string(),
+                    format!("{:.2}", utility.result.confidence),
+                ),
+                ("utility_tokens".to_string(), utility.tokens.to_string()),
+                (
+                    "utility_cost_msats".to_string(),
+                    utility.cost_msats.to_string(),
+                ),
             ]);
             state.complete_tool_node(call_id, inputs, outputs, duration);
         }
@@ -370,6 +478,7 @@ impl MarkdownSummarizationChain {
 
         let mut files = Vec::new();
         let mut failed_paths = Vec::new();
+        let mut file_entries: Vec<(String, usize, String)> = Vec::new();
         let mut total_size = 0;
 
         for path in paths {
@@ -377,6 +486,9 @@ impl MarkdownSummarizationChain {
                 Ok(content) => {
                     let size = content.len();
                     total_size += size;
+                    let path_string = path.display().to_string();
+                    let content_hash = sha256_hex(content.as_bytes());
+                    file_entries.push((path_string, size, content_hash));
                     files.push(FileContent {
                         path: path.clone(),
                         content,
@@ -391,6 +503,68 @@ impl MarkdownSummarizationChain {
 
         let duration = start.elapsed().as_millis() as u64;
 
+        let mut input_paths: Vec<String> = paths.iter().map(|p| p.display().to_string()).collect();
+        input_paths.sort();
+        let inputs_value = json!({
+            "paths": input_paths,
+        });
+
+        file_entries.sort_by(|a, b| a.0.cmp(&b.0));
+        let mut failed_path_strings: Vec<String> =
+            failed_paths.iter().map(|p| p.display().to_string()).collect();
+        failed_path_strings.sort();
+        let outputs_value = json!({
+            "files": file_entries
+                .iter()
+                .map(|(path, size, content_hash)| json!({
+                    "path": path,
+                    "size": size,
+                    "content_hash": content_hash,
+                }))
+                .collect::<Vec<_>>(),
+            "total_size": total_size,
+            "failed_paths": failed_path_strings,
+        });
+
+        let receipt = build_tool_receipt(
+            "ContentReader",
+            &inputs_value,
+            &outputs_value,
+            duration,
+            0,
+            vec!["read_fs".to_string()],
+        );
+        tracing::info!(
+            tool_name = receipt.tool_name,
+            inputs_hash = receipt.inputs_hash,
+            outputs_hash = receipt.outputs_hash,
+            latency_ms = receipt.latency_ms,
+            cost_tokens = receipt.cost_tokens,
+            side_effects = ?receipt.side_effects,
+            "tool receipt"
+        );
+
+        let utility = match self
+            .evaluate_tool_step(
+                "ContentReader",
+                "Read file contents for downstream analysis",
+                &summarize_json(&inputs_value, 600),
+                &summarize_json(&outputs_value, 600),
+                &receipt,
+            )
+            .await
+        {
+            Ok(result) => result,
+            Err(error) => {
+                tracing::warn!(
+                    tool_name = "ContentReader",
+                    error = %error,
+                    "tool step utility fallback"
+                );
+                fallback_tool_step_utility()
+            }
+        };
+
         // Complete the node
         {
             let mut state = self.chain_state.lock().unwrap();
@@ -403,6 +577,28 @@ impl MarkdownSummarizationChain {
                 (
                     "failed_paths".to_string(),
                     format!("[{} failed]", failed_paths.len()),
+                ),
+                ("receipt".to_string(), format_receipt_summary(&receipt)),
+                (
+                    "step_utility".to_string(),
+                    format!("{:.2}", utility.result.step_utility),
+                ),
+                (
+                    "should_continue".to_string(),
+                    utility.result.should_continue.to_string(),
+                ),
+                (
+                    "next_action_hint".to_string(),
+                    utility.result.next_action_hint.clone(),
+                ),
+                (
+                    "utility_confidence".to_string(),
+                    format!("{:.2}", utility.result.confidence),
+                ),
+                ("utility_tokens".to_string(), utility.tokens.to_string()),
+                (
+                    "utility_cost_msats".to_string(),
+                    utility.cost_msats.to_string(),
                 ),
             ]);
             state.complete_tool_node(call_id, inputs, outputs, duration);
@@ -655,6 +851,80 @@ impl MarkdownSummarizationChain {
         });
     }
 
+    /// Evaluate utility for a tool-based step.
+    async fn evaluate_tool_step(
+        &self,
+        tool_name: &str,
+        step_goal: &str,
+        inputs_summary: &str,
+        outputs_summary: &str,
+        receipt: &ToolReceipt,
+    ) -> Result<ToolStepUtilityEvaluation> {
+        self.send_progress(&format!("Scoring {} utility...", tool_name));
+        let start = Instant::now();
+
+        let predictor = tool_step_utility_predict();
+
+        let receipt_json = serde_json::to_string(receipt)?;
+        let inputs = dsrs::Example::new(
+            HashMap::from([
+                ("tool_name".to_string(), json!(tool_name)),
+                ("step_goal".to_string(), json!(step_goal)),
+                ("inputs_summary".to_string(), json!(inputs_summary)),
+                ("outputs_summary".to_string(), json!(outputs_summary)),
+                ("receipt".to_string(), json!(receipt_json)),
+            ]),
+            vec![
+                "tool_name".to_string(),
+                "step_goal".to_string(),
+                "inputs_summary".to_string(),
+                "outputs_summary".to_string(),
+                "receipt".to_string(),
+            ],
+            vec![
+                "step_utility".to_string(),
+                "should_continue".to_string(),
+                "next_action_hint".to_string(),
+                "confidence".to_string(),
+            ],
+        );
+
+        let prediction = predictor.forward(inputs).await?;
+        let duration = start.elapsed().as_millis() as u64;
+
+        let step_utility = parse_f32_value(prediction.data.get("step_utility"), 0.5)
+            .clamp(0.0, 1.0);
+        let should_continue =
+            parse_bool_value(prediction.data.get("should_continue")).unwrap_or(true);
+        let next_action_hint = parse_string_value(
+            prediction.data.get("next_action_hint"),
+            "Continue",
+        );
+        let confidence = parse_f32_value(prediction.data.get("confidence"), 0.5).clamp(0.0, 1.0);
+
+        tracing::info!(
+            tool_name,
+            step_utility,
+            should_continue,
+            confidence,
+            utility_latency_ms = duration,
+            utility_tokens = prediction.lm_usage.total_tokens,
+            utility_cost_msats = prediction.lm_usage.cost_msats,
+            "tool step utility"
+        );
+
+        Ok(ToolStepUtilityEvaluation {
+            result: ToolStepUtilityResult {
+                step_utility,
+                should_continue,
+                next_action_hint,
+                confidence,
+            },
+            tokens: prediction.lm_usage.total_tokens,
+            cost_msats: prediction.lm_usage.cost_msats,
+        })
+    }
+
     /// Run the curiosity loop.
     async fn run_curiosity_loop(
         &self,
@@ -698,7 +968,12 @@ impl MarkdownSummarizationChain {
 
             // Search the codebase
             let search = self
-                .run_code_searcher(&curiosity.search_patterns, repo_root, search_id)
+                .run_code_searcher(
+                    &curiosity.question,
+                    &curiosity.search_patterns,
+                    repo_root,
+                    search_id,
+                )
                 .await?;
 
             eprintln!("[manatap] Found {} matches in {} files", search.matches.len(), search.files_searched);
@@ -726,6 +1001,26 @@ impl MarkdownSummarizationChain {
                 answer: answer.answer,
                 insights: answer.insights,
             });
+
+            let counterfactual_continue = iteration + 1 < max_iterations;
+            let should_continue = if search.utility.confidence >= 0.5 {
+                search.utility.should_continue
+            } else {
+                counterfactual_continue
+            };
+            tracing::info!(
+                iteration = iteration + 1,
+                step_utility = search.utility.step_utility,
+                utility_confidence = search.utility.confidence,
+                utility_should_continue = search.utility.should_continue,
+                counterfactual_continue,
+                next_action_hint = search.utility.next_action_hint,
+                "curiosity loop continuation decision"
+            );
+
+            if !should_continue {
+                break;
+            }
         }
 
         Ok(insights)
@@ -832,6 +1127,7 @@ impl MarkdownSummarizationChain {
     /// Search the codebase for patterns (tool-based).
     async fn run_code_searcher(
         &self,
+        question: &str,
         patterns: &[String],
         repo_root: &Path,
         call_id: Uuid,
@@ -886,6 +1182,74 @@ impl MarkdownSummarizationChain {
 
         let duration = start.elapsed().as_millis() as u64;
 
+        let receipt_inputs = json!({
+            "patterns": patterns,
+            "repo_root": repo_root.display().to_string(),
+        });
+        let receipt_outputs = json!({
+            "matches": all_matches
+                .iter()
+                .map(|m| {
+                    json!({
+                        "path": m.file_path.display().to_string(),
+                        "line_number": m.line_number,
+                        "matched_line": m.matched_line,
+                        "context_before": m.context_before,
+                        "context_after": m.context_after,
+                    })
+                })
+                .collect::<Vec<_>>(),
+            "files_searched": files_searched,
+        });
+
+        let receipt = build_tool_receipt(
+            "CodeSearch",
+            &receipt_inputs,
+            &receipt_outputs,
+            duration,
+            0,
+            vec![
+                "read_fs".to_string(),
+                "scan_fs".to_string(),
+                "regex_search".to_string(),
+            ],
+        );
+        tracing::info!(
+            tool_name = receipt.tool_name,
+            inputs_hash = receipt.inputs_hash,
+            outputs_hash = receipt.outputs_hash,
+            latency_ms = receipt.latency_ms,
+            cost_tokens = receipt.cost_tokens,
+            side_effects = ?receipt.side_effects,
+            "tool receipt"
+        );
+
+        let utility_inputs = json!({
+            "question": question,
+            "patterns": patterns,
+            "repo_root": repo_root.display().to_string(),
+        });
+        let utility = match self
+            .evaluate_tool_step(
+                "CodeSearch",
+                "Search the codebase for evidence to answer the question",
+                &summarize_json(&utility_inputs, 600),
+                &summarize_json(&receipt_outputs, 600),
+                &receipt,
+            )
+            .await
+        {
+            Ok(result) => result,
+            Err(error) => {
+                tracing::warn!(
+                    tool_name = "CodeSearch",
+                    error = %error,
+                    "tool step utility fallback"
+                );
+                fallback_tool_step_utility()
+            }
+        };
+
         // Complete the node
         {
             let mut state = self.chain_state.lock().unwrap();
@@ -896,6 +1260,28 @@ impl MarkdownSummarizationChain {
             let outputs = HashMap::from([
                 ("matches".to_string(), format!("{} found", all_matches.len())),
                 ("files".to_string(), format!("{} searched", files_searched)),
+                ("receipt".to_string(), format_receipt_summary(&receipt)),
+                (
+                    "step_utility".to_string(),
+                    format!("{:.2}", utility.result.step_utility),
+                ),
+                (
+                    "should_continue".to_string(),
+                    utility.result.should_continue.to_string(),
+                ),
+                (
+                    "next_action_hint".to_string(),
+                    utility.result.next_action_hint.clone(),
+                ),
+                (
+                    "utility_confidence".to_string(),
+                    format!("{:.2}", utility.result.confidence),
+                ),
+                ("utility_tokens".to_string(), utility.tokens.to_string()),
+                (
+                    "utility_cost_msats".to_string(),
+                    utility.cost_msats.to_string(),
+                ),
             ]);
             state.complete_tool_node(call_id, inputs, outputs, duration);
         }
@@ -904,6 +1290,10 @@ impl MarkdownSummarizationChain {
             matches: all_matches,
             patterns_used: patterns.to_vec(),
             files_searched,
+            receipt,
+            utility: utility.result,
+            utility_tokens: utility.tokens,
+            utility_cost_msats: utility.cost_msats,
         })
     }
 
@@ -1148,4 +1538,102 @@ fn format_code_snippets(matches: &[CodeMatch]) -> String {
     }
 
     output
+}
+
+fn fallback_tool_step_utility() -> ToolStepUtilityEvaluation {
+    ToolStepUtilityEvaluation {
+        result: ToolStepUtilityResult {
+            step_utility: 0.5,
+            should_continue: true,
+            next_action_hint: "Continue".to_string(),
+            confidence: 0.2,
+        },
+        tokens: 0,
+        cost_msats: 0,
+    }
+}
+
+fn build_tool_receipt(
+    tool_name: &str,
+    inputs: &serde_json::Value,
+    outputs: &serde_json::Value,
+    latency_ms: u64,
+    cost_tokens: u64,
+    side_effects: Vec<String>,
+) -> ToolReceipt {
+    ToolReceipt {
+        tool_name: tool_name.to_string(),
+        inputs_hash: hash_json(inputs),
+        outputs_hash: hash_json(outputs),
+        latency_ms,
+        cost_tokens,
+        side_effects,
+    }
+}
+
+fn format_receipt_summary(receipt: &ToolReceipt) -> String {
+    format!(
+        "inputs={}, outputs={}, latency={}ms, cost_tokens={}, effects=[{}]",
+        receipt.inputs_hash,
+        receipt.outputs_hash,
+        receipt.latency_ms,
+        receipt.cost_tokens,
+        receipt.side_effects.join(", ")
+    )
+}
+
+fn hash_json(value: &serde_json::Value) -> String {
+    let encoded = value.to_string();
+    sha256_hex(encoded.as_bytes())
+}
+
+fn sha256_hex(data: impl AsRef<[u8]>) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(data.as_ref());
+    hex_encode(hasher.finalize())
+}
+
+fn summarize_json(value: &serde_json::Value, max_len: usize) -> String {
+    let text = value.to_string();
+    if text.len() <= max_len {
+        return text;
+    }
+    let truncated: String = text.chars().take(max_len).collect();
+    format!("{}...", truncated)
+}
+
+fn parse_f32_value(value: Option<&serde_json::Value>, default: f32) -> f32 {
+    value
+        .and_then(|val| {
+            if let Some(n) = val.as_f64() {
+                Some(n as f32)
+            } else if let Some(s) = val.as_str() {
+                s.parse::<f32>().ok()
+            } else {
+                None
+            }
+        })
+        .unwrap_or(default)
+}
+
+fn parse_bool_value(value: Option<&serde_json::Value>) -> Option<bool> {
+    match value {
+        Some(serde_json::Value::Bool(val)) => Some(*val),
+        Some(serde_json::Value::String(val)) => match val.trim().to_lowercase().as_str() {
+            "true" | "yes" | "y" => Some(true),
+            "false" | "no" | "n" => Some(false),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+fn parse_string_value(value: Option<&serde_json::Value>, default: &str) -> String {
+    match value {
+        Some(val) => val
+            .as_str()
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| val.to_string()),
+        None => default.to_string(),
+    }
 }

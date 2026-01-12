@@ -120,6 +120,43 @@ pub fn synthesis_metric(_example: &Example, prediction: &Prediction) -> f32 {
 }
 
 // ============================================================================
+// Tool Step Utility Metric
+// ============================================================================
+
+/// Evaluate tool step utility quality.
+///
+/// Scoring breakdown:
+/// - 25%: step_utility is in range (0.0 to 1.0)
+/// - 25%: should_continue is a valid boolean
+/// - 25%: next_action_hint is substantive
+/// - 25%: confidence is calibrated (0.0 to 1.0)
+pub fn tool_step_utility_metric(_example: &Example, prediction: &Prediction) -> f32 {
+    let mut score = 0.0;
+
+    let step_utility = prediction.get("step_utility", None);
+    if confidence_is_calibrated(&step_utility) {
+        score += 0.25;
+    }
+
+    let should_continue = prediction.get("should_continue", None);
+    if should_continue.is_boolean() || is_bool_string(&should_continue) {
+        score += 0.25;
+    }
+
+    let next_action_hint = prediction.get("next_action_hint", None);
+    if is_substantive_text(&next_action_hint, 6) {
+        score += 0.25;
+    }
+
+    let confidence = prediction.get("confidence", None);
+    if confidence_is_calibrated(&confidence) {
+        score += 0.25;
+    }
+
+    score
+}
+
+// ============================================================================
 // Combined Metric
 // ============================================================================
 
