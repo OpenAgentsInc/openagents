@@ -513,7 +513,7 @@ PerformanceTracker maintains rolling accuracy windows (default: 50 decisions) pe
 
 Decision pipelines drive this: ComplexityPipeline classifies task complexity (Low/Medium/High/VeryHigh), DelegationPipeline chooses execution path (codex_code/rlm/local_tools), RlmTriggerPipeline decides when recursive analysis is needed. Each pipeline is a DSPy module that can be optimized independently, promoting modularity and targeted improvement.
 
-See [docs/DSPY_ROADMAP.md](./docs/DSPY_ROADMAP.md) for the full implementation roadmap.
+See [crates/dsrs/docs/DSPY_ROADMAP.md](./crates/dsrs/docs/DSPY_ROADMAP.md) for the full implementation roadmap.
 
 The skills layer treats agent capabilities as products with versioning, licensing, and revenue splits. Developers who create useful skills publish to the marketplace, set terms and pricing, and earn revenue when others use them. The marketplace signer enforces license compliance before participating in threshold signatures authorizing purchases, ensuring creators are compensated and terms respected.
 

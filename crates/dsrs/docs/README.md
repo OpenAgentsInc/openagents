@@ -44,7 +44,7 @@ println!("Answer: {}", result.get("answer", None));
 | **Predictors** | `Predict`, `ChainOfThought`, `Refine` for different reasoning patterns |
 | **Optimizers** | COPRO, MIPROv2, GEPA, Pareto for automatic prompt optimization |
 | **DAG Tracing** | Graph/Node types for execution visualization |
-| **14+ LM Providers** | OpenAI, OpenAI, Gemini, Groq, Ollama, Pylon, Codex SDK, etc. |
+| **Multi-Provider LM** | OpenAI, Gemini, Groq, OpenRouter, Ollama, Pylon, LM-Router, etc. |
 | **Callbacks** | Observability hooks for HUD integration |
 | **Caching** | Hybrid memory + disk caching via foyer |
 
@@ -75,7 +75,7 @@ println!("Answer: {}", result.get("answer", None));
 │                                                              │
 │  LM PROVIDERS (via rig-core)                                 │
 │  ┌─────────────────────────────────────────────────────────┐│
-│  │ Codex SDK │ Pylon │ Ollama │ OpenAI │ OpenAI │ ... ││
+│  │ OpenAI │ Gemini │ Groq │ OpenRouter │ Ollama │ Pylon │ LM-Router │ ... ││
 │  └─────────────────────────────────────────────────────────┘│
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -85,6 +85,7 @@ println!("Answer: {}", result.get("answer", None));
 - [Architecture](./ARCHITECTURE.md) - Core traits and design
 - [Callbacks](./CALLBACKS.md) - Observability and HUD integration
 - [Compiler Contract](./COMPILER-CONTRACT.md) - Wave 3 features (manifest, trace, Nostr bridge)
+- [DSPy Roadmap](./DSPY_ROADMAP.md) - OpenAgents DSPy implementation status
 - [Evaluation](./EVALUATION.md) - Eval harness & promotion gates (Wave 5)
 - [LM Providers](./LM-PROVIDERS.md) - Multi-provider LM configuration
 - [Marketplace](./MARKETPLACE.md) - Trading learned patterns via Lightning + Nostr
@@ -105,11 +106,12 @@ println!("Answer: {}", result.get("answer", None));
 | 6 | Complete | SwarmCompiler |
 | 7 | Complete | Privacy Module (redaction, chunking, policy) |
 | 8 | Complete | OANIX DSPy Signatures (in `crates/oanix/`) |
-| 9 | Complete | Agent Orchestrator Signatures (in `crates/agent-orchestrator/`) |
+| 9 | Archived | Agent Orchestrator Signatures (moved to backroom) |
 | 10 | Complete | Tool Invocation Signatures (in `crates/runtime/`) |
 | 11 | Complete | Optimization Infrastructure (in `crates/autopilot-core/`) |
 | 12 | Complete | FRLM Integration (in `crates/frlm/`) |
-| 13 | Complete | Pipeline Wiring (decision pipelines in adjutant, runtime, orchestrator) |
+| 13 | Complete | Pipeline Wiring (decision pipelines in adjutant, runtime, oanix, autopilot-core) |
+| 14 | Complete | Self-Improving Autopilot loop (sessions + auto-optimization in `crates/adjutant/`) |
 
 ## Key Paths
 
@@ -215,8 +217,10 @@ impl MyPipeline {
 
 This pattern is used across:
 - `crates/dsrs/src/pipelines/` - Retrieval pipelines
+- `crates/oanix/src/dspy_pipelines.rs` - Situation + issue selection
 - `crates/adjutant/src/dspy/decision_pipelines.rs` - Decision routing
-- `crates/agent-orchestrator/src/dspy_pipelines.rs` - Agent delegation
+- `crates/adjutant/src/dspy_orchestrator.rs` - Autopilot planning stages
+- `crates/autopilot-core/src/dspy_*` - Planning/execution/verification pipelines
 - `crates/runtime/src/dspy_pipelines.rs` - Tool selection
 
 ## Usage with OpenAgents

@@ -22,16 +22,17 @@ The execution is driven by DSPy signatures that make decisions at each stage.
 │                                                                              │
 │  ① EnvironmentAssessment                                                     │
 │     └─ adjutant/src/dspy_orchestrator.rs                                     │
+│     └─ Uses OANIX SituationAssessmentSignature via SituationPipeline         │
 │     └─ Outputs: system info, workspace root, compute backends                │
 │                                                                              │
 │  ② TaskComplexityClassifier                                                  │
-│     └─ autopilot/src/dspy_planning.rs:132                                    │
+│     └─ autopilot-core/src/dspy_planning.rs:132                               │
 │     └─ Inputs: task_description, file_count, codebase_context               │
 │     └─ Outputs: complexity (Simple/Moderate/Complex/VeryComplex), confidence│
 │     └─ Decision: use_deep_planning = complexity >= Complex && conf >= 0.4   │
 │                                                                              │
 │  ③ PlanningSignature OR DeepPlanningSignature                                │
-│     └─ autopilot/src/dspy_planning.rs:33 or :80                              │
+│     └─ autopilot-core/src/dspy_planning.rs:33 or :80                         │
 │     └─ Inputs: repository_summary, issue_description, relevant_files        │
 │     └─ Outputs: analysis, files_to_modify, implementation_steps,            │
 │                 test_strategy, risk_factors, complexity, confidence          │
@@ -47,12 +48,12 @@ The execution is driven by DSPy signatures that make decisions at each stage.
 │  For each todo item:                                                         │
 │                                                                              │
 │  ⑤ ExecutionStrategySignature                                                │
-│     └─ autopilot/src/dspy_execution.rs:33                                    │
+│     └─ autopilot-core/src/dspy_execution.rs:33                               │
 │     └─ Inputs: plan_step, current_file_state, execution_history             │
 │     └─ Outputs: next_action, action_params, reasoning, progress_estimate    │
 │                                                                              │
 │  ⑥ ToolSelectionSignature                       ← REDUNDANT                  │
-│     └─ autopilot/src/dspy_execution.rs:69                                    │
+│     └─ autopilot-core/src/dspy_execution.rs:69                               │
 │     └─ Inputs: task_description, available_tools, recent_context            │
 │     └─ Outputs: selected_tool, tool_params, expected_outcome, fallback_tool │
 │                                                                              │
@@ -69,22 +70,22 @@ The execution is driven by DSPy signatures that make decisions at each stage.
 ├──────────────────────────────────────────────────────────────────────────────┤
 │                                                                              │
 │  ⑨ BuildStatusClassifier                                                     │
-│     └─ autopilot/src/dspy_verify.rs                                          │
+│     └─ autopilot-core/src/dspy_verify.rs                                     │
 │     └─ Outputs: status, error_type, actionable                               │
 │                                                                              │
 │  ⑩ TestStatusClassifier                                                      │
-│     └─ autopilot/src/dspy_verify.rs                                          │
+│     └─ autopilot-core/src/dspy_verify.rs                                     │
 │     └─ Outputs: status, failure_category, failing_tests                      │
 │                                                                              │
 │  ⑪ RequirementCheckerSignature (per requirement)                             │
-│     └─ autopilot/src/dspy_verify.rs                                          │
+│     └─ autopilot-core/src/dspy_verify.rs                                     │
 │     └─ Outputs: status (SATISFIED/PARTIAL/NOT_ADDRESSED), confidence         │
 │                                                                              │
 │  ⑫ SolutionVerifierSignature                                                 │
-│     └─ autopilot/src/dspy_verify.rs:178                                      │
+│     └─ autopilot-core/src/dspy_verify.rs:178                                 │
 │     └─ Outputs: verdict (PASS/FAIL/RETRY), next_action, confidence           │
 │                                                                              │
-│  ⚠ Gap: next_action is extracted but NOT wired to actual retry logic        │
+│  ⚠ Gap: next_action is appended on RETRY, but no structured triage yet       │
 │                                                                              │
 ├──────────────────────────────────────────────────────────────────────────────┤
 │  SESSION END                                                                 │
@@ -121,12 +122,12 @@ After tool execution, we have no signature to interpret:
 
 The only learning happens at session end (success/fail), which is too coarse.
 
-### Issue 3: Failure Triage Not Wired
+### Issue 3: Failure Triage Is Minimal
 
 `SolutionVerifierSignature` outputs `next_action` when verdict is RETRY, but this field is:
-- Extracted but not used in the autopilot loop
-- Not connected to any plan mutation logic
-- Results in "blind retry" behavior
+- Appended to `plan_steps` for a basic retry
+- Not connected to structured triage or plan mutation logic
+- Results in shallow "blind retry" behavior without failure analysis
 
 ### Issue 4: Two Separate Plan IRs
 
