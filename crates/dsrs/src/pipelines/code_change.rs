@@ -11,7 +11,7 @@ use crate::data::example::Example;
 use crate::signatures::{
     CodeEditSignature, QueryComposerSignature, TaskUnderstandingSignature, VerificationSignature,
 };
-use crate::{LM, Predict, Predictor, GLOBAL_SETTINGS};
+use crate::{GLOBAL_SETTINGS, LM, Predict, Predictor};
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -498,7 +498,10 @@ mod tests {
     #[test]
     fn test_verification_status_parsing() {
         assert_eq!(VerificationStatus::from("PASS"), VerificationStatus::Pass);
-        assert_eq!(VerificationStatus::from("partial"), VerificationStatus::Partial);
+        assert_eq!(
+            VerificationStatus::from("partial"),
+            VerificationStatus::Partial
+        );
         assert_eq!(VerificationStatus::from("FAIL"), VerificationStatus::Fail);
     }
 }
