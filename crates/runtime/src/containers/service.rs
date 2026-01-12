@@ -46,22 +46,15 @@ impl ContainerFs {
         #[cfg(all(target_os = "macos", feature = "apple-container"))]
         router.register(Arc::new(AppleContainerProvider::new()));
         router.register(Arc::new(LocalContainerProvider::new()));
-        let mut has_daytona = false;
-        if let Ok(Some(provider)) = DaytonaContainerProvider::from_env() {
-            router.register(Arc::new(provider));
-            has_daytona = true;
-        }
         if let Some(api) = api {
             router.register(Arc::new(OpenAgentsContainerProvider::cloudflare(
                 api.clone(),
                 auth.clone(),
             )));
-            if !has_daytona {
-                router.register(Arc::new(OpenAgentsContainerProvider::daytona(
-                    api,
-                    auth.clone(),
-                )));
-            }
+            router.register(Arc::new(OpenAgentsContainerProvider::daytona(
+                api,
+                auth.clone(),
+            )));
         }
         Self::with_auth(agent_id, router, policy, budget_policy, journal, auth)
     }

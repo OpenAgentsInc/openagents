@@ -173,7 +173,7 @@ pub use containers::{
     SessionState,
 };
 #[cfg(not(target_arch = "wasm32"))]
-pub use containers::{DaytonaContainerProvider, DvmContainerProvider, LocalContainerProvider};
+pub use containers::{DvmContainerProvider, LocalContainerProvider};
 #[cfg(not(target_arch = "wasm32"))]
 pub use control_plane::{ControlPlane, LocalRuntime};
 #[cfg(not(target_arch = "wasm32"))]
