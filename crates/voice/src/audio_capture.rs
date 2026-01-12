@@ -59,7 +59,10 @@ impl AudioCapture {
     /// Start recording audio
     pub fn start(&mut self) -> Result<(), String> {
         let already_recording = self.is_recording.load(Ordering::SeqCst);
-        tracing::info!("AudioCapture::start() called, already_recording={}", already_recording);
+        tracing::info!(
+            "AudioCapture::start() called, already_recording={}",
+            already_recording
+        );
 
         if already_recording {
             tracing::debug!("Already recording, returning early");
@@ -86,7 +89,8 @@ impl AudioCapture {
         // Try mono first, fall back to stereo if needed
         let stream = self
             .device
-            .build_input_stream(&self.config,
+            .build_input_stream(
+                &self.config,
                 move |data: &[f32], _: &cpal::InputCallbackInfo| {
                     if is_recording.load(Ordering::SeqCst) {
                         if let Ok(mut buffer) = buffer.lock() {
@@ -95,7 +99,7 @@ impl AudioCapture {
                     }
                 },
                 err_fn,
-                None
+                None,
             )
             .or_else(|_| {
                 // Try stereo config
@@ -109,7 +113,8 @@ impl AudioCapture {
                 let buffer = Arc::clone(&self.buffer);
                 let is_recording = Arc::clone(&self.is_recording);
 
-                self.device.build_input_stream(&stereo_config,
+                self.device.build_input_stream(
+                    &stereo_config,
                     move |data: &[f32], _: &cpal::InputCallbackInfo| {
                         if is_recording.load(Ordering::SeqCst) {
                             if let Ok(mut buffer) = buffer.lock() {
@@ -123,7 +128,7 @@ impl AudioCapture {
                         }
                     },
                     err_fn,
-                    None
+                    None,
                 )
             })
             .map_err(|e| format!("Failed to build input stream: {}", e))?;
@@ -137,16 +142,21 @@ impl AudioCapture {
         self.is_recording.store(true, Ordering::SeqCst);
         self.stream = Some(stream);
 
-        tracing::info!("Voice recording started at {}Hz, is_recording={}",
+        tracing::info!(
+            "Voice recording started at {}Hz, is_recording={}",
             self.device_sample_rate,
-            self.is_recording.load(Ordering::SeqCst));
+            self.is_recording.load(Ordering::SeqCst)
+        );
         Ok(())
     }
 
     /// Stop recording and return the audio data (resampled to 16kHz for Whisper)
     pub fn stop(&mut self) -> Option<Vec<f32>> {
         let was_recording = self.is_recording.load(Ordering::SeqCst);
-        tracing::info!("AudioCapture::stop() called, was_recording={}", was_recording);
+        tracing::info!(
+            "AudioCapture::stop() called, was_recording={}",
+            was_recording
+        );
 
         if !was_recording {
             tracing::warn!("AudioCapture::stop() called but not recording");
@@ -200,8 +210,12 @@ impl AudioCapture {
         const MIN_SAMPLES: usize = 24000;
         if output.len() < MIN_SAMPLES {
             let padding_needed = MIN_SAMPLES - output.len();
-            tracing::info!("Padding audio with {} samples of silence (was {} -> {})",
-                padding_needed, output.len(), MIN_SAMPLES);
+            tracing::info!(
+                "Padding audio with {} samples of silence (was {} -> {})",
+                padding_needed,
+                output.len(),
+                MIN_SAMPLES
+            );
             output.extend(std::iter::repeat(0.0).take(padding_needed));
         }
 

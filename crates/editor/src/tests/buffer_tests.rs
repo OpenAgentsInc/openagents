@@ -22,7 +22,10 @@ fn test_position_char_roundtrip() {
 #[test]
 fn test_position_clamps_to_line() {
     let buffer = TextBuffer::new("hi\nthere");
-    let pos = Position { line: 0, column: 99 };
+    let pos = Position {
+        line: 0,
+        column: 99,
+    };
     let idx = buffer.position_to_char(pos);
     assert_eq!(idx, 2);
     let round = buffer.char_to_position(idx);

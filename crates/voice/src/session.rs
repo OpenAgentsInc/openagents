@@ -77,8 +77,7 @@ impl VoiceSession {
 
     /// Create with custom configuration
     pub fn with_config(config: VoiceConfig) -> Result<Self, VoiceError> {
-        let audio_capture = AudioCapture::new()
-            .map_err(|e| VoiceError::AudioInit(e))?;
+        let audio_capture = AudioCapture::new().map_err(|e| VoiceError::AudioInit(e))?;
 
         let state = Arc::new(Mutex::new(SessionState {
             transcriber: None,
@@ -181,18 +180,12 @@ impl VoiceSession {
 
     /// Check if model is still loading
     pub fn is_loading(&self) -> bool {
-        self.state
-            .lock()
-            .map(|s| s.loading)
-            .unwrap_or(false)
+        self.state.lock().map(|s| s.loading).unwrap_or(false)
     }
 
     /// Check if transcription is in progress
     pub fn is_transcribing(&self) -> bool {
-        self.state
-            .lock()
-            .map(|s| s.transcribing)
-            .unwrap_or(false)
+        self.state.lock().map(|s| s.transcribing).unwrap_or(false)
     }
 
     /// Check if currently recording
@@ -243,7 +236,8 @@ impl VoiceSession {
         tracing::info!("Starting audio capture...");
 
         // Start audio capture
-        self.audio_capture.start()
+        self.audio_capture
+            .start()
             .map_err(|e| VoiceError::RecordingStart(e))?;
 
         self.recording = true;
@@ -273,12 +267,17 @@ impl VoiceSession {
         tracing::info!("Recording held for {}ms", held_ms);
 
         let audio = self.audio_capture.stop();
-        tracing::info!("Audio capture stopped, got {} samples",
-            audio.as_ref().map(|a| a.len()).unwrap_or(0));
+        tracing::info!(
+            "Audio capture stopped, got {} samples",
+            audio.as_ref().map(|a| a.len()).unwrap_or(0)
+        );
 
         // Quick tap - discard
         if held_ms < self.config.min_hold_ms {
-            let reason = format!("Quick tap ({}ms < {}ms minimum)", held_ms, self.config.min_hold_ms);
+            let reason = format!(
+                "Quick tap ({}ms < {}ms minimum)",
+                held_ms, self.config.min_hold_ms
+            );
             tracing::info!("{}", reason);
             self.emit(VoiceEvent::RecordingDiscarded { reason });
             return Ok(());
@@ -307,7 +306,9 @@ impl VoiceSession {
 
         // Get transcriber reference
         let transcriber = {
-            let s = self.state.lock()
+            let s = self
+                .state
+                .lock()
                 .map_err(|e| VoiceError::Internal(e.to_string()))?;
             match s.transcriber.clone() {
                 Some(t) => t,
@@ -317,7 +318,9 @@ impl VoiceSession {
 
         // Mark as transcribing
         {
-            let mut s = self.state.lock()
+            let mut s = self
+                .state
+                .lock()
                 .map_err(|e| VoiceError::Internal(e.to_string()))?;
             s.transcribing = true;
         }
@@ -330,7 +333,10 @@ impl VoiceSession {
         let language = self.config.language.clone();
 
         thread::spawn(move || {
-            tracing::info!("Background: Starting transcription with {} samples...", audio.len());
+            tracing::info!(
+                "Background: Starting transcription with {} samples...",
+                audio.len()
+            );
 
             let result = match &language {
                 Some(lang) => transcriber.transcribe_with_language(&audio, Some(lang)),
@@ -360,7 +366,7 @@ impl VoiceSession {
             self.recording = false;
             let _ = self.audio_capture.stop();
             self.emit(VoiceEvent::RecordingDiscarded {
-                reason: "Cancelled".to_string()
+                reason: "Cancelled".to_string(),
             });
         }
     }
@@ -369,8 +375,11 @@ impl VoiceSession {
     fn validate_audio(&self, audio: &[f32]) -> Result<(), String> {
         // Minimum duration
         if audio.len() < self.config.min_audio_samples {
-            return Err(format!("Audio too short: {} samples (minimum {})",
-                audio.len(), self.config.min_audio_samples));
+            return Err(format!(
+                "Audio too short: {} samples (minimum {})",
+                audio.len(),
+                self.config.min_audio_samples
+            ));
         }
 
         // Check for silence (RMS level)

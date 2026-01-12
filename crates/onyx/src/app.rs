@@ -13,13 +13,13 @@ use wgpui::text::FontStyle;
 use wgpui::{Bounds, Hsla, Point, Quad, Scene, Size, TextSystem, theme};
 
 // Voice status colors
-const VOICE_RECORDING_COLOR: Hsla = Hsla::new(0.0, 0.8, 0.5, 1.0);      // Red
-const VOICE_TRANSCRIBING_COLOR: Hsla = Hsla::new(45.0, 0.9, 0.5, 1.0);  // Orange
-const VOICE_SUCCESS_COLOR: Hsla = Hsla::new(120.0, 0.6, 0.5, 1.0);      // Green
+const VOICE_RECORDING_COLOR: Hsla = Hsla::new(0.0, 0.8, 0.5, 1.0); // Red
+const VOICE_TRANSCRIBING_COLOR: Hsla = Hsla::new(45.0, 0.9, 0.5, 1.0); // Orange
+const VOICE_SUCCESS_COLOR: Hsla = Hsla::new(120.0, 0.6, 0.5, 1.0); // Green
 
 // Update status colors
-const UPDATE_CHECKING_COLOR: Hsla = Hsla::new(200.0, 0.6, 0.5, 1.0);    // Blue
-const UPDATE_AVAILABLE_COLOR: Hsla = Hsla::new(280.0, 0.6, 0.6, 1.0);   // Purple
+const UPDATE_CHECKING_COLOR: Hsla = Hsla::new(200.0, 0.6, 0.5, 1.0); // Blue
+const UPDATE_AVAILABLE_COLOR: Hsla = Hsla::new(280.0, 0.6, 0.6, 1.0); // Purple
 use winit::application::ApplicationHandler;
 use winit::event::{ElementState, WindowEvent};
 use winit::event_loop::ActiveEventLoop;
@@ -30,11 +30,11 @@ use crate::file_watcher::{FileChange, FileWatcher};
 use crate::update_checker::{self, UpdateCheckResult};
 
 // Platform-specific imports for macOS transparency
-#[cfg(target_os = "macos")]
-use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+use crate::vault::{FileEntry, Vault};
 #[cfg(target_os = "macos")]
 use objc2_app_kit::NSColor;
-use crate::vault::{FileEntry, Vault};
+#[cfg(target_os = "macos")]
+use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use std::sync::mpsc;
 use voice::{VoiceEvent, VoiceSession};
 
@@ -46,8 +46,8 @@ const SIDEBAR_PADDING: f32 = 8.0;
 /// Check if voice-daemon is running by checking PID file
 /// If daemon is active, Onyx should not handle voice to avoid duplicates
 fn is_voice_daemon_running() -> bool {
-    let pid_path = dirs::home_dir()
-        .map(|h| h.join(".openagents").join("voice").join("voice-daemon.pid"));
+    let pid_path =
+        dirs::home_dir().map(|h| h.join(".openagents").join("voice").join("voice-daemon.pid"));
 
     let Some(path) = pid_path else {
         return false;
@@ -70,9 +70,7 @@ fn is_voice_daemon_running() -> bool {
     #[cfg(unix)]
     {
         // Signal 0 checks if process exists without sending actual signal
-        unsafe {
-            libc::kill(pid, 0) == 0
-        }
+        unsafe { libc::kill(pid, 0) == 0 }
     }
 
     #[cfg(not(unix))]
@@ -118,9 +116,8 @@ impl FileSidebar {
     fn paint(&mut self, bounds: Bounds, cx: &mut PaintContext, opacity: f32) {
         // Background with configurable opacity
         if opacity > 0.0 {
-            cx.scene.draw_quad(
-                Quad::new(bounds).with_background(Hsla::new(0.0, 0.0, 0.0, opacity)),
-            );
+            cx.scene
+                .draw_quad(Quad::new(bounds).with_background(Hsla::new(0.0, 0.0, 0.0, opacity)));
         }
 
         // File items
@@ -135,12 +132,7 @@ impl FileSidebar {
                 break;
             }
 
-            let item_bounds = Bounds::new(
-                bounds.origin.x,
-                y,
-                bounds.size.width,
-                FILE_ITEM_HEIGHT,
-            );
+            let item_bounds = Bounds::new(bounds.origin.x, y, bounds.size.width, FILE_ITEM_HEIGHT);
 
             // Highlight selected or hovered
             let is_selected = self.selected_path.as_ref() == Some(&file.path);
@@ -404,9 +396,11 @@ impl RenderState {
         }
 
         // Find current index
-        let current_index = self.current_file.as_ref().and_then(|current| {
-            self.sidebar.files.iter().position(|f| &f.path == current)
-        }).unwrap_or(0);
+        let current_index = self
+            .current_file
+            .as_ref()
+            .and_then(|current| self.sidebar.files.iter().position(|f| &f.path == current))
+            .unwrap_or(0);
 
         // Calculate new index
         let new_index = if direction < 0 {
@@ -432,13 +426,17 @@ impl RenderState {
     }
 
     fn check_for_updates(&mut self) {
-        self.editor.set_status("Checking for updates...", UPDATE_CHECKING_COLOR);
+        self.editor
+            .set_status("Checking for updates...", UPDATE_CHECKING_COLOR);
 
         // Create a tokio runtime to run the async check
         let rt = match tokio::runtime::Runtime::new() {
             Ok(rt) => rt,
             Err(e) => {
-                self.editor.set_status(&format!("Update check failed: {}", e), VOICE_RECORDING_COLOR);
+                self.editor.set_status(
+                    &format!("Update check failed: {}", e),
+                    VOICE_RECORDING_COLOR,
+                );
                 return;
             }
         };
@@ -452,10 +450,17 @@ impl RenderState {
                     VOICE_SUCCESS_COLOR,
                 );
             }
-            UpdateCheckResult::UpdateAvailable { version, url, release_name } => {
+            UpdateCheckResult::UpdateAvailable {
+                version,
+                url,
+                release_name,
+            } => {
                 let name = release_name.as_deref().unwrap_or(version.as_str());
                 self.editor.set_status(
-                    &format!("Update available: {} - visit github.com/OpenAgentsInc/openagents/releases", name),
+                    &format!(
+                        "Update available: {} - visit github.com/OpenAgentsInc/openagents/releases",
+                        name
+                    ),
                     UPDATE_AVAILABLE_COLOR,
                 );
                 // Try to open the release URL in the browser
@@ -469,11 +474,16 @@ impl RenderState {
                 }
                 #[cfg(target_os = "windows")]
                 {
-                    let _ = std::process::Command::new("cmd").args(["/c", "start", &url]).spawn();
+                    let _ = std::process::Command::new("cmd")
+                        .args(["/c", "start", &url])
+                        .spawn();
                 }
             }
             UpdateCheckResult::Error(e) => {
-                self.editor.set_status(&format!("Update check failed: {}", e), VOICE_RECORDING_COLOR);
+                self.editor.set_status(
+                    &format!("Update check failed: {}", e),
+                    VOICE_RECORDING_COLOR,
+                );
             }
         }
     }
@@ -570,9 +580,15 @@ impl ApplicationHandler for OnyxApp {
                 .unwrap_or(surface_caps.formats[0]);
 
             // Prefer PreMultiplied alpha for transparency support
-            let alpha_mode = if surface_caps.alpha_modes.contains(&wgpu::CompositeAlphaMode::PreMultiplied) {
+            let alpha_mode = if surface_caps
+                .alpha_modes
+                .contains(&wgpu::CompositeAlphaMode::PreMultiplied)
+            {
                 wgpu::CompositeAlphaMode::PreMultiplied
-            } else if surface_caps.alpha_modes.contains(&wgpu::CompositeAlphaMode::PostMultiplied) {
+            } else if surface_caps
+                .alpha_modes
+                .contains(&wgpu::CompositeAlphaMode::PostMultiplied)
+            {
                 wgpu::CompositeAlphaMode::PostMultiplied
             } else {
                 surface_caps.alpha_modes[0]
@@ -629,7 +645,10 @@ impl ApplicationHandler for OnyxApp {
             } else {
                 // Create a welcome note
                 let name = vault.generate_unique_name();
-                let welcome_content = format!("{}\n\nStart writing your notes here.\n\nPress **Cmd+N** to create a new note.\n\nUse **Cmd+Shift+Up/Down** to switch between notes.", name);
+                let welcome_content = format!(
+                    "{}\n\nStart writing your notes here.\n\nPress **Cmd+N** to create a new note.\n\nUse **Cmd+Shift+Up/Down** to switch between notes.",
+                    name
+                );
                 if let Ok(path) = vault.create_file(&name) {
                     let _ = vault.write_file(&path, &welcome_content);
                     // Refresh file list
@@ -733,9 +752,18 @@ impl ApplicationHandler for OnyxApp {
         let logical_width = state.config.width as f32 / scale_factor;
         let logical_height = state.config.height as f32 / scale_factor;
 
-        let sidebar_width = if state.sidebar_visible { SIDEBAR_WIDTH } else { 0.0 };
+        let sidebar_width = if state.sidebar_visible {
+            SIDEBAR_WIDTH
+        } else {
+            0.0
+        };
         let sidebar_bounds = Bounds::new(0.0, 0.0, sidebar_width, logical_height);
-        let editor_bounds = Bounds::new(sidebar_width, 0.0, logical_width - sidebar_width, logical_height);
+        let editor_bounds = Bounds::new(
+            sidebar_width,
+            0.0,
+            logical_width - sidebar_width,
+            logical_height,
+        );
 
         match event {
             WindowEvent::CloseRequested => {
@@ -756,14 +784,17 @@ impl ApplicationHandler for OnyxApp {
 
             WindowEvent::KeyboardInput { event, .. } => {
                 // Debug: log all key events to diagnose voice key issues
-                tracing::debug!("KeyboardInput: physical={:?} logical={:?} state={:?} repeat={}",
-                    event.physical_key, event.logical_key, event.state, event.repeat);
+                tracing::debug!(
+                    "KeyboardInput: physical={:?} logical={:?} state={:?} repeat={}",
+                    event.physical_key,
+                    event.logical_key,
+                    event.state,
+                    event.repeat
+                );
 
                 // Handle Right Command key for voice transcription (hold to record, release to transcribe)
-                let is_voice_key = matches!(
-                    event.physical_key,
-                    PhysicalKey::Code(KeyCode::SuperRight)
-                );
+                let is_voice_key =
+                    matches!(event.physical_key, PhysicalKey::Code(KeyCode::SuperRight));
 
                 // Block ALL voice key events from reaching the editor (including repeats)
                 if is_voice_key {
@@ -789,11 +820,17 @@ impl ApplicationHandler for OnyxApp {
                                         match voice.start_recording() {
                                             Ok(()) => {
                                                 tracing::info!("Recording started successfully");
-                                                state.editor.set_status("● Recording...", VOICE_RECORDING_COLOR);
+                                                state.editor.set_status(
+                                                    "● Recording...",
+                                                    VOICE_RECORDING_COLOR,
+                                                );
                                             }
                                             Err(e) => {
                                                 tracing::error!("Failed to start recording: {}", e);
-                                                state.editor.set_status(&format!("Mic error: {}", e), VOICE_RECORDING_COLOR);
+                                                state.editor.set_status(
+                                                    &format!("Mic error: {}", e),
+                                                    VOICE_RECORDING_COLOR,
+                                                );
                                             }
                                         }
                                     } else {
@@ -805,14 +842,19 @@ impl ApplicationHandler for OnyxApp {
                                     // Stop recording - results come through event channel
                                     if let Err(e) = voice.stop_recording() {
                                         tracing::error!("Recording stop failed: {}", e);
-                                        state.editor.set_status(&format!("Voice error: {}", e), VOICE_RECORDING_COLOR);
+                                        state.editor.set_status(
+                                            &format!("Voice error: {}", e),
+                                            VOICE_RECORDING_COLOR,
+                                        );
                                     }
                                     // Note: status updates now come via voice events
                                 }
                             }
                         } else {
                             tracing::warn!("Voice not available");
-                            state.editor.set_status("Voice not available", VOICE_RECORDING_COLOR);
+                            state
+                                .editor
+                                .set_status("Voice not available", VOICE_RECORDING_COLOR);
                         }
 
                         state.window.request_redraw();
@@ -890,7 +932,9 @@ impl ApplicationHandler for OnyxApp {
                             state.background_opacity = 1.0;
                             tracing::info!("Background opacity reset to 100%");
                             state.set_macos_transparency(state.background_opacity);
-                            state.editor.set_background_opacity(state.background_opacity);
+                            state
+                                .editor
+                                .set_background_opacity(state.background_opacity);
                             state.window.request_redraw();
                             return;
                         }
@@ -899,9 +943,14 @@ impl ApplicationHandler for OnyxApp {
                             && c == ","
                         {
                             state.background_opacity = (state.background_opacity - 0.1).max(0.0);
-                            tracing::info!("Background opacity: {:.0}%", state.background_opacity * 100.0);
+                            tracing::info!(
+                                "Background opacity: {:.0}%",
+                                state.background_opacity * 100.0
+                            );
                             state.set_macos_transparency(state.background_opacity);
-                            state.editor.set_background_opacity(state.background_opacity);
+                            state
+                                .editor
+                                .set_background_opacity(state.background_opacity);
                             state.window.request_redraw();
                             return;
                         }
@@ -910,9 +959,14 @@ impl ApplicationHandler for OnyxApp {
                             && c == "."
                         {
                             state.background_opacity = (state.background_opacity + 0.1).min(1.0);
-                            tracing::info!("Background opacity: {:.0}%", state.background_opacity * 100.0);
+                            tracing::info!(
+                                "Background opacity: {:.0}%",
+                                state.background_opacity * 100.0
+                            );
                             state.set_macos_transparency(state.background_opacity);
-                            state.editor.set_background_opacity(state.background_opacity);
+                            state
+                                .editor
+                                .set_background_opacity(state.background_opacity);
                             state.window.request_redraw();
                             return;
                         }
@@ -945,16 +999,26 @@ impl ApplicationHandler for OnyxApp {
                     }
 
                     // Convert winit key to wgpui InputEvent
-                    if let Some(wgpui_event) = convert_key_event(&event.logical_key, &state.modifiers) {
-                        state.editor.event(&wgpui_event, editor_bounds, &mut state.event_context);
+                    if let Some(wgpui_event) =
+                        convert_key_event(&event.logical_key, &state.modifiers)
+                    {
+                        state
+                            .editor
+                            .event(&wgpui_event, editor_bounds, &mut state.event_context);
                     }
                 }
             }
 
-            WindowEvent::MouseInput { state: button_state, button, .. } => {
+            WindowEvent::MouseInput {
+                state: button_state,
+                button,
+                ..
+            } => {
                 let (x, y) = state.last_mouse_pos;
 
-                if button == winit::event::MouseButton::Left && button_state == ElementState::Pressed {
+                if button == winit::event::MouseButton::Left
+                    && button_state == ElementState::Pressed
+                {
                     // Check sidebar click first
                     if let Some(path) = state.sidebar.handle_click(x, y, &sidebar_bounds) {
                         state.open_file(path);
@@ -978,11 +1042,22 @@ impl ApplicationHandler for OnyxApp {
                         alt: state.modifiers.alt_key(),
                         meta: state.modifiers.super_key(),
                     };
-                    wgpui::InputEvent::MouseDown { button: wgpui_button, x, y, modifiers: mods }
+                    wgpui::InputEvent::MouseDown {
+                        button: wgpui_button,
+                        x,
+                        y,
+                        modifiers: mods,
+                    }
                 } else {
-                    wgpui::InputEvent::MouseUp { button: wgpui_button, x, y }
+                    wgpui::InputEvent::MouseUp {
+                        button: wgpui_button,
+                        x,
+                        y,
+                    }
                 };
-                state.editor.event(&event, editor_bounds, &mut state.event_context);
+                state
+                    .editor
+                    .event(&event, editor_bounds, &mut state.event_context);
                 state.window.request_redraw();
             }
 
@@ -992,11 +1067,18 @@ impl ApplicationHandler for OnyxApp {
                 state.last_mouse_pos = (logical_x, logical_y);
 
                 // Update sidebar hover
-                state.sidebar.update_hover(logical_x, logical_y, &sidebar_bounds);
+                state
+                    .sidebar
+                    .update_hover(logical_x, logical_y, &sidebar_bounds);
 
                 // Pass to editor
-                let event = wgpui::InputEvent::MouseMove { x: logical_x, y: logical_y };
-                state.editor.event(&event, editor_bounds, &mut state.event_context);
+                let event = wgpui::InputEvent::MouseMove {
+                    x: logical_x,
+                    y: logical_y,
+                };
+                state
+                    .editor
+                    .event(&event, editor_bounds, &mut state.event_context);
             }
 
             WindowEvent::MouseWheel { delta, .. } => {
@@ -1012,7 +1094,9 @@ impl ApplicationHandler for OnyxApp {
                     state.sidebar.handle_scroll(dy, &sidebar_bounds);
                 } else {
                     let scroll_event = wgpui::InputEvent::Scroll { dx: 0.0, dy };
-                    state.editor.event(&scroll_event, editor_bounds, &mut state.event_context);
+                    state
+                        .editor
+                        .event(&scroll_event, editor_bounds, &mut state.event_context);
                 }
             }
 
@@ -1029,7 +1113,10 @@ impl ApplicationHandler for OnyxApp {
                             // Model finished loading
                             state.voice_loading_shown = false;
                             if voice.is_ready() {
-                                state.editor.set_status("Voice ready (Right ⌘ to record)", VOICE_SUCCESS_COLOR);
+                                state.editor.set_status(
+                                    "Voice ready (Right ⌘ to record)",
+                                    VOICE_SUCCESS_COLOR,
+                                );
                             } else if let Some(msg) = voice.status_message() {
                                 state.editor.set_status(&msg, VOICE_RECORDING_COLOR);
                             }
@@ -1042,25 +1129,38 @@ impl ApplicationHandler for OnyxApp {
                     while let Ok(event) = rx.try_recv() {
                         match event {
                             VoiceEvent::ModelLoading => {
-                                state.editor.set_status("Loading voice model...", VOICE_TRANSCRIBING_COLOR);
+                                state
+                                    .editor
+                                    .set_status("Loading voice model...", VOICE_TRANSCRIBING_COLOR);
                             }
                             VoiceEvent::ModelReady => {
                                 state.voice_loading_shown = false;
-                                state.editor.set_status("Voice ready (Right ⌘ to record)", VOICE_SUCCESS_COLOR);
+                                state.editor.set_status(
+                                    "Voice ready (Right ⌘ to record)",
+                                    VOICE_SUCCESS_COLOR,
+                                );
                             }
                             VoiceEvent::ModelError(e) => {
                                 state.voice_loading_shown = false;
-                                state.editor.set_status(&format!("Voice error: {}", e), VOICE_RECORDING_COLOR);
+                                state.editor.set_status(
+                                    &format!("Voice error: {}", e),
+                                    VOICE_RECORDING_COLOR,
+                                );
                             }
                             VoiceEvent::RecordingStarted => {
                                 // Already handled in key handler
                             }
                             VoiceEvent::TranscriptionStarted => {
-                                state.editor.set_status("⟳ Transcribing...", VOICE_TRANSCRIBING_COLOR);
+                                state
+                                    .editor
+                                    .set_status("⟳ Transcribing...", VOICE_TRANSCRIBING_COLOR);
                             }
                             VoiceEvent::RecordingDiscarded { reason } => {
                                 tracing::info!("Recording discarded: {}", reason);
-                                state.editor.set_status(&format!("Discarded: {}", reason), VOICE_TRANSCRIBING_COLOR);
+                                state.editor.set_status(
+                                    &format!("Discarded: {}", reason),
+                                    VOICE_TRANSCRIBING_COLOR,
+                                );
                             }
                             VoiceEvent::TranscriptionComplete { text } => {
                                 if !text.is_empty() {
@@ -1074,12 +1174,16 @@ impl ApplicationHandler for OnyxApp {
                                     state.editor.insert_str(&text);
                                 } else {
                                     tracing::info!("Transcription returned empty");
-                                    state.editor.set_status("No speech detected", VOICE_TRANSCRIBING_COLOR);
+                                    state
+                                        .editor
+                                        .set_status("No speech detected", VOICE_TRANSCRIBING_COLOR);
                                 }
                             }
                             VoiceEvent::TranscriptionError(e) => {
                                 tracing::error!("Transcription failed: {}", e);
-                                state.editor.set_status(&format!("Error: {}", e), VOICE_RECORDING_COLOR);
+                                state
+                                    .editor
+                                    .set_status(&format!("Error: {}", e), VOICE_RECORDING_COLOR);
                             }
                         }
                     }
@@ -1087,11 +1191,14 @@ impl ApplicationHandler for OnyxApp {
 
                 // Build scene
                 let mut scene = Scene::new();
-                let mut paint_cx = PaintContext::new(&mut scene, &mut state.text_system, scale_factor);
+                let mut paint_cx =
+                    PaintContext::new(&mut scene, &mut state.text_system, scale_factor);
 
                 // Paint sidebar (if visible)
                 if state.sidebar_visible {
-                    state.sidebar.paint(sidebar_bounds, &mut paint_cx, state.background_opacity);
+                    state
+                        .sidebar
+                        .paint(sidebar_bounds, &mut paint_cx, state.background_opacity);
                 }
 
                 // Paint editor
@@ -1106,11 +1213,12 @@ impl ApplicationHandler for OnyxApp {
                     .texture
                     .create_view(&wgpu::TextureViewDescriptor::default());
 
-                let mut encoder = state
-                    .device
-                    .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                        label: Some("Render Encoder"),
-                    });
+                let mut encoder =
+                    state
+                        .device
+                        .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                            label: Some("Render Encoder"),
+                        });
 
                 state.renderer.resize(
                     &state.queue,
@@ -1127,12 +1235,21 @@ impl ApplicationHandler for OnyxApp {
                     state.text_system.mark_clean();
                 }
 
-                state.renderer.prepare(&state.device, &state.queue, &scene, scale_factor);
+                state
+                    .renderer
+                    .prepare(&state.device, &state.queue, &scene, scale_factor);
 
                 // Use transparent clear color when opacity < 1.0
                 if state.background_opacity < 1.0 {
-                    let transparent = wgpu::Color { r: 0.0, g: 0.0, b: 0.0, a: 0.0 };
-                    state.renderer.render_with_clear(&mut encoder, &view, transparent);
+                    let transparent = wgpu::Color {
+                        r: 0.0,
+                        g: 0.0,
+                        b: 0.0,
+                        a: 0.0,
+                    };
+                    state
+                        .renderer
+                        .render_with_clear(&mut encoder, &view, transparent);
                 } else {
                     state.renderer.render(&mut encoder, &view);
                 }

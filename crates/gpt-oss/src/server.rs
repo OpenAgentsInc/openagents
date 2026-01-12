@@ -2,8 +2,8 @@
 //!
 //! Handles discovery, startup, health checking, and shutdown of llama-server.
 
-use crate::error::ServerError;
 use crate::GptOssClient;
+use crate::error::ServerError;
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
@@ -248,7 +248,10 @@ impl LlamaServerManager {
         let start = Instant::now();
         let poll_interval = Duration::from_millis(500);
 
-        info!("Waiting for server to become ready (timeout: {:?})...", timeout);
+        info!(
+            "Waiting for server to become ready (timeout: {:?})...",
+            timeout
+        );
 
         let client = GptOssClient::with_base_url(&self.url())
             .map_err(|e| ServerError::HealthCheckFailed(e.to_string()))?;

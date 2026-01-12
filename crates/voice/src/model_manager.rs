@@ -36,7 +36,10 @@ pub fn ensure_model(model: &str) -> Result<PathBuf, String> {
         return Ok(model_path);
     }
 
-    tracing::info!("Downloading model {} from HuggingFace (this may take a minute)...", model);
+    tracing::info!(
+        "Downloading model {} from HuggingFace (this may take a minute)...",
+        model
+    );
 
     // Download from HuggingFace using sync API
     let api = Api::new().map_err(|e| format!("Failed to create HF API: {}", e))?;

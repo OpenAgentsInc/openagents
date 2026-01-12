@@ -145,10 +145,7 @@ impl Vault {
     /// Returns the new path if renamed, or None if no rename was needed
     pub fn rename_file(&self, path: &PathBuf, new_title: &str) -> io::Result<Option<PathBuf>> {
         // Get current filename without extension
-        let current_stem = path
-            .file_stem()
-            .and_then(|s| s.to_str())
-            .unwrap_or("");
+        let current_stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
 
         // Sanitize the new title
         let new_stem = match sanitize_filename(new_title) {
@@ -238,24 +235,42 @@ mod tests {
 
     #[test]
     fn test_sanitize_filename_basic() {
-        assert_eq!(sanitize_filename("Hello World"), Some("Hello World".to_string()));
+        assert_eq!(
+            sanitize_filename("Hello World"),
+            Some("Hello World".to_string())
+        );
         assert_eq!(sanitize_filename("My Note"), Some("My Note".to_string()));
     }
 
     #[test]
     fn test_sanitize_filename_removes_invalid_chars() {
-        assert_eq!(sanitize_filename("Hello/World"), Some("Hello World".to_string()));
-        assert_eq!(sanitize_filename("File:Name"), Some("File Name".to_string()));
+        assert_eq!(
+            sanitize_filename("Hello/World"),
+            Some("Hello World".to_string())
+        );
+        assert_eq!(
+            sanitize_filename("File:Name"),
+            Some("File Name".to_string())
+        );
         assert_eq!(sanitize_filename("A*B?C"), Some("A B C".to_string()));
-        assert_eq!(sanitize_filename("path\\to\\file"), Some("path to file".to_string()));
+        assert_eq!(
+            sanitize_filename("path\\to\\file"),
+            Some("path to file".to_string())
+        );
         assert_eq!(sanitize_filename("<test>"), Some("test".to_string()));
         assert_eq!(sanitize_filename("\"quoted\""), Some("quoted".to_string()));
     }
 
     #[test]
     fn test_sanitize_filename_collapses_whitespace() {
-        assert_eq!(sanitize_filename("Hello   World"), Some("Hello World".to_string()));
-        assert_eq!(sanitize_filename("  Trimmed  "), Some("Trimmed".to_string()));
+        assert_eq!(
+            sanitize_filename("Hello   World"),
+            Some("Hello World".to_string())
+        );
+        assert_eq!(
+            sanitize_filename("  Trimmed  "),
+            Some("Trimmed".to_string())
+        );
         assert_eq!(sanitize_filename("A / B / C"), Some("A B C".to_string()));
     }
 
@@ -277,8 +292,14 @@ mod tests {
 
     #[test]
     fn test_sanitize_filename_preserves_unicode() {
-        assert_eq!(sanitize_filename("日本語タイトル"), Some("日本語タイトル".to_string()));
-        assert_eq!(sanitize_filename("Émoji 🎉 Test"), Some("Émoji 🎉 Test".to_string()));
+        assert_eq!(
+            sanitize_filename("日本語タイトル"),
+            Some("日本語タイトル".to_string())
+        );
+        assert_eq!(
+            sanitize_filename("Émoji 🎉 Test"),
+            Some("Émoji 🎉 Test".to_string())
+        );
     }
 
     // ============ rename_file tests ============
@@ -347,7 +368,10 @@ mod tests {
         assert!(result.is_some());
 
         let new_path = result.unwrap();
-        assert_eq!(new_path.file_stem().unwrap().to_str().unwrap(), "My Invalid Title");
+        assert_eq!(
+            new_path.file_stem().unwrap().to_str().unwrap(),
+            "My Invalid Title"
+        );
     }
 
     #[test]
@@ -414,7 +438,10 @@ mod tests {
         fs::write(&path, "My Project Notes\n\nContent").unwrap();
 
         // Rename based on title
-        let new_path = vault.rename_file(&path, "My Project Notes").unwrap().unwrap();
+        let new_path = vault
+            .rename_file(&path, "My Project Notes")
+            .unwrap()
+            .unwrap();
 
         // List should show the title and the path should match
         let files = vault.list_files().unwrap();
