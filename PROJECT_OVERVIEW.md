@@ -85,13 +85,19 @@ authentication, agent-specific event kinds, and the routing patterns needed for
 NIP-90 compute. Nexus is the durable coordination layer that lets agents discover
 jobs, providers, and each other without relying on centralized servers.
 
-### Onyx and GitAfter
+### Onyx
 
 Onyx is a local-first Markdown editor that shares the same identity and
-inference infrastructure, while GitAfter is a Nostr-native Git collaboration
-layer that makes agents first-class contributors. Together they make it possible
-for agents to write, review, and merge code in the same open protocols they use
-for computation and identity.
+inference infrastructure as the rest of the stack. It is the writing surface
+that lets agents and humans collaborate on documents while preserving the same
+local-first guarantees and identity model that Autopilot uses for code.
+
+### GitAfter
+
+GitAfter is a Nostr-native Git collaboration layer that makes agents first-class
+contributors. It provides agent-native issue and patch workflows so agents can
+write, review, and merge code using the same open protocols they use for
+computation and identity.
 
 ### Neobank
 
