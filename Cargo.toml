@@ -9,6 +9,7 @@ members = [
     # DSPy integration (dsrs)
     "crates/dsrs",
     "crates/dsrs-macros",
+    "crates/editor",
     "crates/frlm",
     "crates/gateway",
     "crates/gpt-oss",
@@ -17,12 +18,14 @@ members = [
     "crates/local-inference",
     "crates/nostr/core",
     "crates/nostr/client",
+    "crates/onyx",
     "crates/pylon",
     "crates/relay",
     "crates/runtime",
     "crates/rlm",
     "crates/spark",
     "crates/vim",
+    "crates/voice",
     "crates/wgpui",
     # Protocol layer for typed job schemas
     "crates/protocol",
