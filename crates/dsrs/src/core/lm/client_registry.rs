@@ -9,6 +9,7 @@ use rig::{
 use std::borrow::Cow;
 use std::sync::Arc;
 
+use super::gptoss::GptOssCompletionModel;
 use super::lm_router::LmRouterLM;
 use super::pylon::{PylonCompletionModel, PylonConfig};
 
@@ -37,6 +38,7 @@ pub enum LMClient {
     Deepseek(deepseek::CompletionModel<reqwest::Client>),
     Pylon(PylonCompletionModel),
     LmRouter(LmRouterLM),
+    GptOss(GptOssCompletionModel),
 }
 
 // Implement the trait for each concrete provider type using the CompletionModel trait from rig
@@ -330,9 +332,17 @@ impl LMClient {
                     }
                 })
             }
+            "gptoss" | "gpt-oss" => {
+                // Uses Responses API with structured output
+                // Format: gptoss:model_name or gptoss:url@model_name
+                let base_url = std::env::var("GPTOSS_BASE_URL")
+                    .unwrap_or_else(|_| "http://localhost:8000".to_string());
+                let model = GptOssCompletionModel::new(&base_url, model_id)?;
+                Ok(LMClient::GptOss(model))
+            }
             _ => {
                 anyhow::bail!(
-                    "Unsupported provider: {}. Supported providers are: openai, gemini, groq, openrouter, ollama, pylon, lm-router",
+                    "Unsupported provider: {}. Supported providers are: openai, gemini, groq, openrouter, ollama, pylon, lm-router, gptoss",
                     provider
                 );
             }

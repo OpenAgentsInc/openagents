@@ -14,6 +14,64 @@ pub struct ChatAdapter;
 
 const SIGNATURE_CACHE_KEY: &str = "__signature";
 
+/// Extract clean JSON value from potentially noisy LLM output.
+///
+/// Local LLMs often include reasoning text mixed with structured output.
+/// This function attempts to extract the actual JSON value from such text.
+fn extract_json_from_text(text: &str, data_type: &str) -> Value {
+    let trimmed = text.trim();
+
+    // Try direct parsing first
+    if let Ok(val) = serde_json::from_str(trimmed) {
+        return val;
+    }
+
+    // For arrays: find [...] pattern
+    if data_type.contains("Vec") || data_type.contains("array") || data_type.starts_with('[') {
+        if let Some(start) = trimmed.find('[') {
+            if let Some(end) = trimmed.rfind(']') {
+                let json_slice = &trimmed[start..=end];
+                if let Ok(val) = serde_json::from_str(json_slice) {
+                    return val;
+                }
+            }
+        }
+    }
+
+    // For objects: find {...} pattern
+    if data_type.contains("object")
+        || data_type.contains("Object")
+        || data_type.starts_with('{')
+    {
+        if let Some(start) = trimmed.find('{') {
+            if let Some(end) = trimmed.rfind('}') {
+                let json_slice = &trimmed[start..=end];
+                if let Ok(val) = serde_json::from_str(json_slice) {
+                    return val;
+                }
+            }
+        }
+    }
+
+    // For numbers
+    if data_type == "f32" || data_type == "f64" || data_type == "i32" || data_type == "i64" {
+        // Try to find a number in the text
+        for word in trimmed.split_whitespace() {
+            if let Ok(n) = word.trim_matches(|c: char| !c.is_numeric() && c != '.' && c != '-').parse::<f64>() {
+                return json!(n);
+            }
+        }
+    }
+
+    // Fallback: return as string (better than panicking)
+    tracing::warn!(
+        "Failed to parse field as {}, returning raw string: {}",
+        data_type,
+        &trimmed[..trimmed.len().min(100)]
+    );
+    json!(trimmed)
+}
+
 fn get_type_hint(field: &Value) -> String {
     let schema = &field["schema"];
     let type_str = field["type"].as_str().unwrap_or("String");
@@ -283,10 +341,9 @@ impl Adapter for ChatAdapter {
             if !has_schema && data_type == "String" {
                 output.insert(field_name.clone(), json!(extracted_field));
             } else {
-                output.insert(
-                    field_name.clone(),
-                    serde_json::from_str(extracted_field).unwrap(),
-                );
+                // Try to extract clean JSON from potentially noisy LLM output
+                let parsed = extract_json_from_text(extracted_field, data_type);
+                output.insert(field_name.clone(), parsed);
             }
         }
 
