@@ -4,10 +4,10 @@ use wgpui::markdown::{MarkdownRenderer as MdRenderer, StreamingMarkdown};
 
 use super::{ChatMessage, ChatSelection, MessageRole};
 use crate::app::config::CoderSettings;
-use crate::app::ui::ThemeSetting;
 use crate::app::events::{QueryControl, ResponseEvent};
 use crate::app::session::SessionState;
 use crate::app::truncate_preview;
+use crate::app::ui::ThemeSetting;
 
 pub(crate) struct ChatState {
     pub(crate) messages: Vec<ChatMessage>,
@@ -26,7 +26,8 @@ pub(crate) struct ChatState {
 impl ChatState {
     pub(crate) fn new(settings: &CoderSettings, theme: ThemeSetting) -> Self {
         let mut streaming_markdown = StreamingMarkdown::new();
-        streaming_markdown.set_markdown_config(super::super::build_markdown_config(settings, theme));
+        streaming_markdown
+            .set_markdown_config(super::super::build_markdown_config(settings, theme));
         let markdown_renderer = super::super::build_markdown_renderer(settings, theme);
         Self {
             messages: Vec::new(),

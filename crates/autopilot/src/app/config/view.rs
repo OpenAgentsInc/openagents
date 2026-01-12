@@ -144,13 +144,11 @@ pub(crate) fn settings_rows(
                 } else {
                     snapshot.selected_model_label.clone()
                 },
-                hint: Some(
-                    if is_local {
-                        "Local mode forces GPT-OSS".to_string()
-                    } else {
-                        "Left/Right to cycle".to_string()
-                    },
-                ),
+                hint: Some(if is_local {
+                    "Local mode forces GPT-OSS".to_string()
+                } else {
+                    "Left/Right to cycle".to_string()
+                }),
             });
             let effort_value = snapshot
                 .settings
@@ -165,13 +163,11 @@ pub(crate) fn settings_rows(
                 } else {
                     effort_value
                 },
-                hint: Some(
-                    if is_local {
-                        "Local mode uses chat completions".to_string()
-                    } else {
-                        "Left/Right to cycle".to_string()
-                    },
-                ),
+                hint: Some(if is_local {
+                    "Local mode uses chat completions".to_string()
+                } else {
+                    "Left/Right to cycle".to_string()
+                }),
             });
         }
         SettingsTab::Permissions => {

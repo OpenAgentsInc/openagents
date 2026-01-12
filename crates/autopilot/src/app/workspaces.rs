@@ -563,7 +563,9 @@ fn truncate_item(item: &mut ConversationItem) {
         ConversationItem::Message { text, .. } => {
             *text = truncate_text(text, MAX_ITEM_TEXT);
         }
-        ConversationItem::Reasoning { summary, content, .. } => {
+        ConversationItem::Reasoning {
+            summary, content, ..
+        } => {
             *summary = truncate_text(summary, MAX_ITEM_TEXT);
             *content = truncate_text(content, MAX_ITEM_TEXT);
         }
@@ -1014,7 +1016,11 @@ impl WorkspaceState {
             .or_default();
     }
 
-    pub(crate) fn apply_workspace_settings(&mut self, workspace_id: &str, settings: WorkspaceSettings) {
+    pub(crate) fn apply_workspace_settings(
+        &mut self,
+        workspace_id: &str,
+        settings: WorkspaceSettings,
+    ) {
         if let Some(workspace) = self
             .workspaces
             .iter_mut()
@@ -1332,13 +1338,8 @@ impl WorkspaceState {
         self.loaded_threads.contains(thread_id)
     }
 
-    pub(crate) fn set_plan_for_thread(
-        &mut self,
-        thread_id: &str,
-        plan: WorkspacePlanSnapshot,
-    ) {
-        self.plans_by_thread
-            .insert(thread_id.to_string(), plan);
+    pub(crate) fn set_plan_for_thread(&mut self, thread_id: &str, plan: WorkspacePlanSnapshot) {
+        self.plans_by_thread.insert(thread_id.to_string(), plan);
         self.timeline_dirty = true;
     }
 
@@ -1698,7 +1699,7 @@ async fn run_workspace_loop(
                             workspace_id: entry.id.clone(),
                             error: err,
                         })
-                    .await;
+                        .await;
                 }
             }
             WorkspaceCommand::UpdateSettings {
@@ -1830,7 +1831,8 @@ async fn run_workspace_loop(
                 };
                 match session.client.thread_resume(resume_params).await {
                     Ok(response) => {
-                        let (items, reviewing, preview) = items_from_thread_snapshot(&response.thread);
+                        let (items, reviewing, preview) =
+                            items_from_thread_snapshot(&response.thread);
                         let _ = event_tx
                             .send(WorkspaceEvent::ThreadResumed {
                                 workspace_id: session.entry.id.clone(),
@@ -2365,7 +2367,11 @@ pub(crate) fn conversation_item_from_value(item: &Value) -> Option<ConversationI
                 .get("content")
                 .and_then(Value::as_array)
                 .map(|parts| join_user_inputs(parts))
-                .or_else(|| item.get("text").and_then(Value::as_str).map(|s| s.to_string()))
+                .or_else(|| {
+                    item.get("text")
+                        .and_then(Value::as_str)
+                        .map(|s| s.to_string())
+                })
                 .unwrap_or_default();
             Some(ConversationItem::Message {
                 id,

@@ -14,8 +14,6 @@ pub(crate) use paths::{
     permission_config_file, session_index_file, session_messages_dir, session_messages_file,
     sessions_dir, workspaces_file,
 };
-pub(crate) use settings::{
-    CoderSettings, ModelMode, SettingsItem, SettingsRow, SettingsTab,
-};
+pub(crate) use settings::{CoderSettings, ModelMode, SettingsItem, SettingsRow, SettingsTab};
 pub(crate) use state::{SettingsState, SettingsUpdate};
 pub(crate) use view::{SettingsInputMode, SettingsSnapshot, settings_rows};

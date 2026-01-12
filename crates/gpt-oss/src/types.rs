@@ -38,14 +38,40 @@ pub struct UsageStats {
     pub total_tokens: usize,
 }
 
-/// Streaming chunk from GPT-OSS Responses API
+/// OpenAI-compatible streaming chunk (completions API)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GptOssStreamChunk {
+    #[serde(default)]
     pub id: String,
+    #[serde(default)]
     pub model: String,
-    pub delta: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
+    pub choices: Vec<CompletionChoice>,
+}
+
+/// Choice in a completion response
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CompletionChoice {
+    #[serde(default)]
+    pub index: usize,
+    #[serde(default)]
+    pub text: String,
     pub finish_reason: Option<String>,
+}
+
+impl GptOssStreamChunk {
+    /// Get the text delta from this chunk
+    pub fn delta(&self) -> &str {
+        self.choices.first().map(|c| c.text.as_str()).unwrap_or("")
+    }
+
+    /// Check if this is the final chunk
+    pub fn is_done(&self) -> bool {
+        self.choices
+            .first()
+            .and_then(|c| c.finish_reason.as_ref())
+            .is_some()
+    }
 }
 
 /// Request to GPT-OSS Responses API
@@ -277,11 +303,19 @@ pub struct GptOssToolCall {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GptOssModelInfo {
     pub id: String,
-    pub name: String,
+    #[serde(default)]
+    pub name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
     #[serde(default = "default_context_length")]
     pub context_length: usize,
+}
+
+impl GptOssModelInfo {
+    /// Get display name (falls back to id if name not set)
+    pub fn display_name(&self) -> &str {
+        self.name.as_deref().unwrap_or(&self.id)
+    }
 }
 
 fn default_context_length() -> usize {

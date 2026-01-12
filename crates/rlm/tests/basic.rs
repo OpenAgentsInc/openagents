@@ -89,4 +89,3 @@ fn test_prompts() {
     // PromptTier should default to Full
     assert_eq!(PromptTier::default(), PromptTier::Full);
 }
-

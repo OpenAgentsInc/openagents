@@ -1,4 +1,6 @@
 pub mod backend;
+pub mod server;
+
 /// GPT-OSS Responses API Client
 ///
 /// Rust client for OpenAI's open-weight models via Responses API.
@@ -26,7 +28,8 @@ pub mod types;
 
 // Re-export main types
 pub use client::{GptOssClient, GptOssClientBuilder};
-pub use error::{GptOssError, Result};
+pub use error::{GptOssError, Result, ServerError};
+pub use server::{LlamaServerManager, ServerStatus};
 pub use harmony::{
     HarmonyPromptConfig, HarmonyRenderer, HarmonyRole, HarmonyToolSpec, HarmonyTurn,
 };

@@ -33,6 +33,7 @@ openai-harmony = "0.0.8"
 
 # Tracing
 tracing = "0.1"
+dirs = "6.0.0"
 
 [dev-dependencies]
 tokio-test = "0.4"

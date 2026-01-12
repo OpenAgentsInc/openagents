@@ -157,8 +157,11 @@ impl GptOssClient {
                     return Ok(GptOssStreamChunk {
                         id: String::new(),
                         model: String::new(),
-                        delta: String::new(),
-                        finish_reason: Some("stop".to_string()),
+                        choices: vec![crate::types::CompletionChoice {
+                            index: 0,
+                            text: String::new(),
+                            finish_reason: Some("stop".to_string()),
+                        }],
                     });
                 }
 

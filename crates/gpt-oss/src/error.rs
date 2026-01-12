@@ -1,4 +1,30 @@
+use std::path::PathBuf;
+use std::time::Duration;
 use thiserror::Error;
+
+#[derive(Error, Debug)]
+pub enum ServerError {
+    #[error("llama-server binary not found in PATH")]
+    BinaryNotFound,
+
+    #[error("Model file not found: {0}")]
+    ModelNotFound(PathBuf),
+
+    #[error("No model files discovered in common locations")]
+    NoModelsDiscovered,
+
+    #[error("Failed to spawn llama-server: {0}")]
+    SpawnFailed(#[source] std::io::Error),
+
+    #[error("Health check timed out after {0:?}")]
+    HealthCheckTimeout(Duration),
+
+    #[error("Server exited unexpectedly: {0}")]
+    ServerExited(String),
+
+    #[error("Health check failed: {0}")]
+    HealthCheckFailed(String),
+}
 
 #[derive(Error, Debug)]
 pub enum GptOssError {

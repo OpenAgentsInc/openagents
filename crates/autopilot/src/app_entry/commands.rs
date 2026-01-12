@@ -1793,15 +1793,12 @@ pub(super) fn handle_modal_input(state: &mut AppState, key: &WinitKey) -> bool {
                         if let Some(item) = current_item {
                             match item {
                                 SettingsItem::Theme => {
-                                    state.settings.coder_settings.theme = match state
-                                        .settings
-                                        .coder_settings
-                                        .theme
-                                    {
-                                        ThemeSetting::System => ThemeSetting::Dark,
-                                        ThemeSetting::Dark => ThemeSetting::Light,
-                                        ThemeSetting::Light => ThemeSetting::System,
-                                    };
+                                    state.settings.coder_settings.theme =
+                                        match state.settings.coder_settings.theme {
+                                            ThemeSetting::System => ThemeSetting::Dark,
+                                            ThemeSetting::Dark => ThemeSetting::Light,
+                                            ThemeSetting::Light => ThemeSetting::System,
+                                        };
                                     state.apply_settings();
                                     state.persist_settings();
                                 }
@@ -1819,12 +1816,13 @@ pub(super) fn handle_modal_input(state: &mut AppState, key: &WinitKey) -> bool {
                                     state.persist_settings();
                                 }
                                 SettingsItem::ModelMode => {
-                                    let next = match (state.settings.coder_settings.model_mode, forward) {
-                                        (ModelMode::Pro, true) => ModelMode::Local,
-                                        (ModelMode::Local, true) => ModelMode::Pro,
-                                        (ModelMode::Pro, false) => ModelMode::Local,
-                                        (ModelMode::Local, false) => ModelMode::Pro,
-                                    };
+                                    let next =
+                                        match (state.settings.coder_settings.model_mode, forward) {
+                                            (ModelMode::Pro, true) => ModelMode::Local,
+                                            (ModelMode::Local, true) => ModelMode::Pro,
+                                            (ModelMode::Pro, false) => ModelMode::Local,
+                                            (ModelMode::Local, false) => ModelMode::Pro,
+                                        };
                                     if state.settings.coder_settings.model_mode != next {
                                         state.settings.coder_settings.model_mode = next;
                                         state.persist_settings();
@@ -1849,7 +1847,11 @@ pub(super) fn handle_modal_input(state: &mut AppState, key: &WinitKey) -> bool {
                                         let models = model_picker_entries(state);
                                         let ids: Vec<String> =
                                             models.iter().map(|model| model.id.clone()).collect();
-                                        let current = state.settings.coder_settings.model.clone()
+                                        let current = state
+                                            .settings
+                                            .coder_settings
+                                            .model
+                                            .clone()
                                             .unwrap_or_else(|| {
                                                 state.settings.selected_model.model_id().to_string()
                                             });

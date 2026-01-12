@@ -25,13 +25,13 @@ use crate::app::nip90::Nip90ConnectionStatus;
 use crate::app::session::{SessionEntry, SessionUpdate};
 use crate::app::tools::ToolVisualization;
 use crate::app::tools::parsing::{format_tool_input, tool_type_for_name};
+use crate::app::ui::resolve_theme;
 use crate::app::workspaces::{ConversationItem, ConversationRole, ReviewState, ToolItemData};
 use crate::app::{
     AgentCardAction, HookLogEntry, HookModalView, HookSetting, ModelOption, SettingsInputMode,
     SkillCardAction, build_input, build_markdown_config, build_markdown_document,
     build_markdown_renderer, now_timestamp,
 };
-use crate::app::ui::resolve_theme;
 use crate::keybindings::Action as KeyAction;
 
 use super::COMMAND_PALETTE_ENABLED;
@@ -942,8 +942,7 @@ impl AppState {
     pub(super) fn apply_settings(&mut self) {
         normalize_settings(&mut self.settings.coder_settings);
         apply_codex_oss_env(&self.settings.coder_settings);
-        let resolved_theme =
-            resolve_theme(self.settings.coder_settings.theme, self.system_theme);
+        let resolved_theme = resolve_theme(self.settings.coder_settings.theme, self.system_theme);
         let current_value = self.input.get_value().to_string();
         let focused = self.input.is_focused();
         self.input = build_input(&self.settings.coder_settings, resolved_theme);

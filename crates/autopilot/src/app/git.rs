@@ -260,10 +260,7 @@ impl GitState {
     }
 
     #[allow(dead_code)]
-    pub(crate) fn log_snapshot_for_workspace(
-        &self,
-        workspace_id: &str,
-    ) -> Option<&GitLogSnapshot> {
+    pub(crate) fn log_snapshot_for_workspace(&self, workspace_id: &str) -> Option<&GitLogSnapshot> {
         self.log_by_workspace.get(workspace_id)
     }
 
@@ -465,7 +462,10 @@ async fn run_git_loop(mut cmd_rx: mpsc::Receiver<GitCommand>, event_tx: mpsc::Se
                     Err(_) => None,
                 };
                 let _ = event_tx
-                    .send(GitEvent::RemoteUpdated { workspace_id, remote })
+                    .send(GitEvent::RemoteUpdated {
+                        workspace_id,
+                        remote,
+                    })
                     .await;
             }
         }
@@ -678,9 +678,7 @@ fn read_git_diffs(path: &Path) -> Result<Vec<GitFileDiff>, String> {
 fn read_git_log(path: &Path) -> Result<GitLogSnapshot, String> {
     let repo = Repository::open(path).map_err(|e| e.to_string())?;
     let mut revwalk = repo.revwalk().map_err(|e| e.to_string())?;
-    revwalk
-        .set_sorting(Sort::TIME)
-        .map_err(|e| e.to_string())?;
+    revwalk.set_sorting(Sort::TIME).map_err(|e| e.to_string())?;
     revwalk.push_head().map_err(|e| e.to_string())?;
 
     let mut entries = Vec::new();
@@ -693,11 +691,7 @@ fn read_git_log(path: &Path) -> Result<GitLogSnapshot, String> {
         }
         let commit = repo.find_commit(oid).map_err(|e| e.to_string())?;
         let summary = commit.summary().unwrap_or("No message").to_string();
-        let author = commit
-            .author()
-            .name()
-            .unwrap_or("Unknown")
-            .to_string();
+        let author = commit.author().name().unwrap_or("Unknown").to_string();
         let timestamp = commit.time().seconds();
         entries.push(GitLogEntry {
             sha: oid.to_string(),

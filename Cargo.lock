@@ -396,6 +396,19 @@ checksum = "7c02d123df017efcdfbd739ef81735b36c5ba83ec3c59c80a9d7ecc718f92e50"
 
 [[package]]
 name = "arrow"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "gpt-oss",
+ "tokio",
+ "tokio-stream",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
+name = "arrow"
 version = "56.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6e833808ff2d94ed40d9379848a950d995043c7fb3e81a30b383f4c6033821cc"
@@ -2699,7 +2712,7 @@ name = "dsrs"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "arrow",
+ "arrow 56.2.0",
  "async-trait",
  "bip39",
  "bon",
@@ -3881,6 +3894,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-trait",
+ "dirs 6.0.0",
  "eventsource-stream",
  "local-inference",
  "openai-harmony",
