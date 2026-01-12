@@ -27,7 +27,7 @@ pub(crate) struct CoderSettings {
 impl Default for CoderSettings {
     fn default() -> Self {
         Self {
-            theme: ThemeSetting::Dark,
+            theme: ThemeSetting::default(),
             font_size: super::super::default_font_size(),
             auto_scroll: super::super::default_auto_scroll(),
             model: None,

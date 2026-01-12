@@ -3,6 +3,7 @@ use wgpui::Hsla;
 
 pub(crate) fn theme_label(theme: ThemeSetting) -> &'static str {
     match theme {
+        ThemeSetting::System => "System",
         ThemeSetting::Dark => "Dark",
         ThemeSetting::Light => "Light",
     }
@@ -47,8 +48,12 @@ pub(crate) struct UiPalette {
 
 pub(crate) fn palette_for(theme: ThemeSetting) -> UiPalette {
     let chrome = chrome_background();
-    match theme {
-        ThemeSetting::Dark => UiPalette {
+    let resolved = match theme {
+        ThemeSetting::System => ThemeSetting::Dark,
+        _ => theme,
+    };
+    match resolved {
+        ThemeSetting::Dark | ThemeSetting::System => UiPalette {
             background: Hsla::new(0.0, 0.0, 0.0, 1.0),
             panel: Hsla::new(220.0, 0.15, 0.12, 1.0),
             chrome,
@@ -121,12 +126,23 @@ fn chrome_background() -> Hsla {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub(crate) enum ThemeSetting {
+    System,
     Dark,
     Light,
 }
 
 impl Default for ThemeSetting {
     fn default() -> Self {
-        ThemeSetting::Dark
+        ThemeSetting::System
+    }
+}
+
+pub(crate) fn resolve_theme(
+    theme: ThemeSetting,
+    system_theme: Option<ThemeSetting>,
+) -> ThemeSetting {
+    match theme {
+        ThemeSetting::System => system_theme.unwrap_or(ThemeSetting::Dark),
+        _ => theme,
     }
 }

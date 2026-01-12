@@ -395,7 +395,10 @@ impl AppState {
         max_chars: usize,
     ) -> MessageLayout {
         if let Some(doc) = document {
-            let config = crate::app::build_markdown_config(&self.settings.coder_settings);
+            let config = crate::app::build_markdown_config(
+                &self.settings.coder_settings,
+                self.resolved_theme(),
+            );
             let mut builder = MessageLayoutBuilder::new(message_index);
             let height = layout_markdown_document(
                 doc,

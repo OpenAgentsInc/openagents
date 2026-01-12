@@ -3,11 +3,12 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use crate::app::workspaces::WorkspaceInfo;
-use git2::{DiffOptions, Repository, Status, StatusOptions, Tree};
+use git2::{DiffOptions, Repository, Sort, Status, StatusOptions, Tree};
 use tokio::sync::mpsc;
 use web_time::Instant;
 
 const GIT_REFRESH_INTERVAL_SECS: u64 = 3;
+const GIT_LOG_LIMIT: usize = 50;
 
 #[derive(Clone, Debug, Default)]
 pub(crate) struct GitFileStatus {
@@ -50,6 +51,21 @@ pub(crate) struct GitDiffItem {
 }
 
 #[derive(Clone, Debug, Default)]
+pub(crate) struct GitLogEntry {
+    pub(crate) sha: String,
+    pub(crate) summary: String,
+    pub(crate) author: String,
+    pub(crate) timestamp: i64,
+}
+
+#[derive(Clone, Debug, Default)]
+pub(crate) struct GitLogSnapshot {
+    pub(crate) entries: Vec<GitLogEntry>,
+    pub(crate) total: usize,
+    pub(crate) error: Option<String>,
+}
+
+#[derive(Clone, Debug, Default)]
 pub(crate) struct GitDiffSnapshot {
     pub(crate) diffs: HashMap<String, GitDiffItem>,
     pub(crate) error: Option<String>,
@@ -67,6 +83,12 @@ pub(crate) enum CenterMode {
     Diff,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum GitPanelMode {
+    Diff,
+    Log,
+}
+
 #[derive(Debug)]
 pub(crate) enum GitEvent {
     StatusUpdated {
@@ -78,12 +100,22 @@ pub(crate) enum GitEvent {
         diffs: Vec<GitFileDiff>,
         error: Option<String>,
     },
+    LogUpdated {
+        workspace_id: String,
+        log: GitLogSnapshot,
+    },
+    RemoteUpdated {
+        workspace_id: String,
+        remote: Option<String>,
+    },
 }
 
 #[derive(Debug)]
 pub(crate) enum GitCommand {
     RefreshStatus { workspace_id: String, path: PathBuf },
     RefreshDiffs { workspace_id: String, path: PathBuf },
+    RefreshLog { workspace_id: String, path: PathBuf },
+    RefreshRemote { workspace_id: String, path: PathBuf },
 }
 
 pub(crate) struct GitRuntime {
@@ -115,6 +147,18 @@ impl GitRuntime {
             .cmd_tx
             .try_send(GitCommand::RefreshDiffs { workspace_id, path });
     }
+
+    pub(crate) fn refresh_log(&self, workspace_id: String, path: PathBuf) {
+        let _ = self
+            .cmd_tx
+            .try_send(GitCommand::RefreshLog { workspace_id, path });
+    }
+
+    pub(crate) fn refresh_remote(&self, workspace_id: String, path: PathBuf) {
+        let _ = self
+            .cmd_tx
+            .try_send(GitCommand::RefreshRemote { workspace_id, path });
+    }
 }
 
 impl Default for GitRuntime {
@@ -126,18 +170,24 @@ impl Default for GitRuntime {
 pub(crate) struct GitState {
     pub(crate) runtime: GitRuntime,
     pub(crate) center_mode: CenterMode,
+    pub(crate) panel_mode: GitPanelMode,
     pub(crate) selected_diff_path: Option<String>,
     pub(crate) diff_scroll_offset: f32,
     pub(crate) pending_scroll_to: Option<String>,
     pub(crate) back_button_hovered: bool,
     status_by_workspace: HashMap<String, GitStatusSnapshot>,
     diff_by_workspace: HashMap<String, GitDiffSnapshot>,
+    log_by_workspace: HashMap<String, GitLogSnapshot>,
+    remote_by_workspace: HashMap<String, Option<String>>,
     status_in_flight: HashSet<String>,
     diff_in_flight: HashSet<String>,
+    log_in_flight: HashSet<String>,
+    remote_in_flight: HashSet<String>,
     status_signature: HashMap<String, String>,
     diff_stale: HashSet<String>,
     status_refresh_at: HashMap<String, Instant>,
     diff_refresh_at: HashMap<String, Instant>,
+    log_refresh_at: HashMap<String, Instant>,
 }
 
 impl GitState {
@@ -145,18 +195,24 @@ impl GitState {
         Self {
             runtime: GitRuntime::new(),
             center_mode: CenterMode::Chat,
+            panel_mode: GitPanelMode::Diff,
             selected_diff_path: None,
             diff_scroll_offset: 0.0,
             pending_scroll_to: None,
             back_button_hovered: false,
             status_by_workspace: HashMap::new(),
             diff_by_workspace: HashMap::new(),
+            log_by_workspace: HashMap::new(),
+            remote_by_workspace: HashMap::new(),
             status_in_flight: HashSet::new(),
             diff_in_flight: HashSet::new(),
+            log_in_flight: HashSet::new(),
+            remote_in_flight: HashSet::new(),
             status_signature: HashMap::new(),
             diff_stale: HashSet::new(),
             status_refresh_at: HashMap::new(),
             diff_refresh_at: HashMap::new(),
+            log_refresh_at: HashMap::new(),
         }
     }
 
@@ -169,6 +225,7 @@ impl GitState {
         if let Some(id) = workspace_id {
             self.status_refresh_at.remove(id);
             self.diff_refresh_at.remove(id);
+            self.log_refresh_at.remove(id);
             self.diff_stale.insert(id.to_string());
         }
     }
@@ -192,11 +249,20 @@ impl GitState {
     pub(crate) fn force_refresh(&mut self, workspace_id: &str) {
         self.status_refresh_at.remove(workspace_id);
         self.diff_refresh_at.remove(workspace_id);
+        self.log_refresh_at.remove(workspace_id);
         self.diff_stale.insert(workspace_id.to_string());
     }
 
     pub(crate) fn status_for_workspace(&self, workspace_id: &str) -> Option<&GitStatusSnapshot> {
         self.status_by_workspace.get(workspace_id)
+    }
+
+    pub(crate) fn log_snapshot_for_workspace(&self, workspace_id: &str) -> Option<&GitLogSnapshot> {
+        self.log_by_workspace.get(workspace_id)
+    }
+
+    pub(crate) fn remote_for_workspace(&self, workspace_id: &str) -> Option<&Option<String>> {
+        self.remote_by_workspace.get(workspace_id)
     }
 
     pub(crate) fn diff_snapshot_for_workspace(
@@ -208,6 +274,10 @@ impl GitState {
 
     pub(crate) fn is_diff_loading(&self, workspace_id: &str) -> bool {
         self.diff_in_flight.contains(workspace_id)
+    }
+
+    pub(crate) fn is_log_loading(&self, workspace_id: &str) -> bool {
+        self.log_in_flight.contains(workspace_id)
     }
 
     pub(crate) fn apply_status_update(&mut self, workspace_id: String, status: GitStatusSnapshot) {
@@ -227,6 +297,16 @@ impl GitState {
             self.diff_by_workspace.remove(&workspace_id);
         }
         self.status_by_workspace.insert(workspace_id, status);
+    }
+
+    pub(crate) fn apply_log_update(&mut self, workspace_id: String, log: GitLogSnapshot) {
+        self.log_in_flight.remove(&workspace_id);
+        self.log_by_workspace.insert(workspace_id, log);
+    }
+
+    pub(crate) fn apply_remote_update(&mut self, workspace_id: String, remote: Option<String>) {
+        self.remote_in_flight.remove(&workspace_id);
+        self.remote_by_workspace.insert(workspace_id, remote);
     }
 
     pub(crate) fn apply_diff_update(
@@ -293,6 +373,27 @@ impl GitState {
                     .refresh_diffs(workspace.id.clone(), PathBuf::from(&workspace.path));
             }
         }
+
+        if self.panel_mode == GitPanelMode::Log {
+            let log_due = self
+                .log_refresh_at
+                .get(&workspace.id)
+                .map(|last| now.duration_since(*last).as_secs() >= GIT_REFRESH_INTERVAL_SECS)
+                .unwrap_or(true);
+            if log_due && !self.log_in_flight.contains(&workspace.id) {
+                self.log_in_flight.insert(workspace.id.clone());
+                self.log_refresh_at.insert(workspace.id.clone(), now);
+                self.runtime
+                    .refresh_log(workspace.id.clone(), PathBuf::from(&workspace.path));
+            }
+            if !self.remote_by_workspace.contains_key(&workspace.id)
+                && !self.remote_in_flight.contains(&workspace.id)
+            {
+                self.remote_in_flight.insert(workspace.id.clone());
+                self.runtime
+                    .refresh_remote(workspace.id.clone(), PathBuf::from(&workspace.path));
+            }
+        }
     }
 }
 
@@ -337,6 +438,28 @@ async fn run_git_loop(mut cmd_rx: mpsc::Receiver<GitCommand>, event_tx: mpsc::Se
                         .await;
                 }
             },
+            GitCommand::RefreshLog { workspace_id, path } => {
+                let log = match read_git_log(&path) {
+                    Ok(log) => log,
+                    Err(err) => GitLogSnapshot {
+                        entries: Vec::new(),
+                        total: 0,
+                        error: Some(err),
+                    },
+                };
+                let _ = event_tx
+                    .send(GitEvent::LogUpdated { workspace_id, log })
+                    .await;
+            }
+            GitCommand::RefreshRemote { workspace_id, path } => {
+                let remote = match read_git_remote(&path) {
+                    Ok(remote) => remote,
+                    Err(_) => None,
+                };
+                let _ = event_tx
+                    .send(GitEvent::RemoteUpdated { workspace_id, remote })
+                    .await;
+            }
         }
 
         tokio::time::sleep(Duration::from_millis(20)).await;
@@ -542,4 +665,67 @@ fn read_git_diffs(path: &Path) -> Result<Vec<GitFileDiff>, String> {
     }
 
     Ok(results)
+}
+
+fn read_git_log(path: &Path) -> Result<GitLogSnapshot, String> {
+    let repo = Repository::open(path).map_err(|e| e.to_string())?;
+    let mut revwalk = repo.revwalk().map_err(|e| e.to_string())?;
+    revwalk
+        .set_sorting(Sort::TIME)
+        .map_err(|e| e.to_string())?;
+    revwalk.push_head().map_err(|e| e.to_string())?;
+
+    let mut entries = Vec::new();
+    let mut total = 0usize;
+    for oid_result in revwalk {
+        let oid = oid_result.map_err(|e| e.to_string())?;
+        total += 1;
+        if entries.len() >= GIT_LOG_LIMIT {
+            continue;
+        }
+        let commit = repo.find_commit(oid).map_err(|e| e.to_string())?;
+        let summary = commit.summary().unwrap_or("No message").to_string();
+        let author = commit
+            .author()
+            .name()
+            .unwrap_or("Unknown")
+            .to_string();
+        let timestamp = commit.time().seconds();
+        entries.push(GitLogEntry {
+            sha: oid.to_string(),
+            summary,
+            author,
+            timestamp,
+        });
+    }
+
+    Ok(GitLogSnapshot {
+        entries,
+        total,
+        error: None,
+    })
+}
+
+fn read_git_remote(path: &Path) -> Result<Option<String>, String> {
+    let repo = Repository::open(path).map_err(|e| e.to_string())?;
+    let remotes = repo.remotes().map_err(|e| e.to_string())?;
+    let mut first_remote = None;
+    let mut origin_remote = None;
+
+    for name in remotes.iter().flatten() {
+        if first_remote.is_none() {
+            first_remote = Some(name.to_string());
+        }
+        if name == "origin" {
+            origin_remote = Some(name.to_string());
+            break;
+        }
+    }
+
+    let target = origin_remote.or(first_remote);
+    let Some(target) = target else {
+        return Ok(None);
+    };
+    let remote = repo.find_remote(&target).map_err(|e| e.to_string())?;
+    Ok(remote.url().map(|value| value.to_string()))
 }

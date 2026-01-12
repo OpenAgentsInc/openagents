@@ -136,10 +136,28 @@ pub struct ThreadResumeParams {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ThreadResumeResponse {
-    pub thread: ThreadRef,
+    pub thread: ThreadSnapshot,
     pub model: String,
     #[serde(default)]
     pub model_provider: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ThreadSnapshot {
+    pub id: String,
+    #[serde(default)]
+    pub preview: String,
+    #[serde(default)]
+    pub turns: Vec<ThreadTurn>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ThreadTurn {
+    pub id: String,
+    #[serde(default)]
+    pub items: Vec<Value>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

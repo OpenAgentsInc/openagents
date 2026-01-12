@@ -33,6 +33,7 @@ use crate::app::rlm::{RlmState, RlmTraceState};
 use crate::app::session::SessionState;
 use crate::app::spark_wallet::SparkWalletState;
 use crate::app::tools::ToolsState;
+use crate::app::ui::{ThemeSetting, resolve_theme};
 use crate::app::wallet::WalletState;
 use crate::app::workspaces::WorkspaceState;
 use crate::panels::PanelLayout;
@@ -87,6 +88,7 @@ pub(crate) struct AppState {
     pub(crate) spark_wallet: SparkWalletState,
     pub(crate) nip28: Nip28State,
     pub(crate) nip90: Nip90State,
+    pub(crate) system_theme: Option<ThemeSetting>,
     pub(crate) show_kitchen_sink: bool,
     pub(crate) kitchen_sink_scroll: f32,
     pub(crate) help_scroll_offset: f32,
@@ -95,4 +97,10 @@ pub(crate) struct AppState {
     /// Agent availability registry
     #[allow(dead_code)]
     pub(crate) agent_registry: AgentRegistry,
+}
+
+impl AppState {
+    pub(crate) fn resolved_theme(&self) -> ThemeSetting {
+        resolve_theme(self.settings.coder_settings.theme, self.system_theme)
+    }
 }

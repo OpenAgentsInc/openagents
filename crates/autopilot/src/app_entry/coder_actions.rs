@@ -1759,6 +1759,25 @@ impl AutopilotApp {
                     state.workspaces.request_composer_data(&workspace_id);
                     should_redraw = true;
                 }
+                WorkspaceEvent::WorkspaceSettingsUpdated {
+                    workspace_id,
+                    settings,
+                } => {
+                    state
+                        .workspaces
+                        .apply_workspace_settings(&workspace_id, settings);
+                    should_redraw = true;
+                }
+                WorkspaceEvent::WorkspaceSettingsUpdateFailed {
+                    workspace_id,
+                    error,
+                } => {
+                    state.push_system_message(format!(
+                        "Workspace settings update failed ({}): {}",
+                        workspace_id, error
+                    ));
+                    should_redraw = true;
+                }
                 WorkspaceEvent::WorkspaceConnectFailed {
                     workspace_id,
                     error,
@@ -1773,7 +1792,23 @@ impl AutopilotApp {
                     workspace_id,
                     threads,
                 } => {
+                    let is_active =
+                        state.workspaces.active_workspace_id.as_deref()
+                            == Some(workspace_id.as_str());
+                    let workspace_id_clone = workspace_id.clone();
                     state.workspaces.apply_threads(workspace_id, threads);
+                    if is_active {
+                        if let Some(thread_id) =
+                            state.workspaces.active_thread_id_for(&workspace_id_clone)
+                        {
+                            if !state.workspaces.is_thread_loaded(&thread_id) {
+                                state
+                                    .workspaces
+                                    .runtime
+                                    .resume_thread(workspace_id_clone.clone(), thread_id);
+                            }
+                        }
+                    }
                     should_redraw = true;
                 }
                 WorkspaceEvent::ThreadsListFailed {
@@ -1783,6 +1818,70 @@ impl AutopilotApp {
                     state.push_system_message(format!(
                         "Thread list failed ({}): {}",
                         workspace_id, error
+                    ));
+                    should_redraw = true;
+                }
+                WorkspaceEvent::ThreadStarted {
+                    workspace_id,
+                    thread_id,
+                } => {
+                    state.workspaces.apply_thread_started(&workspace_id, &thread_id);
+                    should_redraw = true;
+                }
+                WorkspaceEvent::ThreadStartFailed {
+                    workspace_id,
+                    error,
+                } => {
+                    state.push_system_message(format!(
+                        "Thread start failed ({}): {}",
+                        workspace_id, error
+                    ));
+                    should_redraw = true;
+                }
+                WorkspaceEvent::ThreadResumed {
+                    workspace_id,
+                    thread_id,
+                    items,
+                    reviewing,
+                    preview,
+                } => {
+                    state.workspaces.apply_thread_resumed(
+                        &workspace_id,
+                        &thread_id,
+                        items,
+                        reviewing,
+                        preview,
+                    );
+                    should_redraw = true;
+                }
+                WorkspaceEvent::ThreadResumeFailed {
+                    workspace_id,
+                    thread_id,
+                    error,
+                } => {
+                    state.push_system_message(format!(
+                        "Thread resume failed ({}:{}): {}",
+                        workspace_id, thread_id, error
+                    ));
+                    should_redraw = true;
+                }
+                WorkspaceEvent::ThreadArchived {
+                    workspace_id,
+                    thread_id,
+                } => {
+                    state
+                        .workspaces
+                        .apply_thread_archived(&workspace_id, &thread_id);
+                    should_redraw = true;
+                }
+                WorkspaceEvent::ThreadArchiveFailed {
+                    workspace_id,
+                    thread_id,
+                    error,
+                } => {
+                    state.push_system_message(format!(
+                        "Thread archive failed ({}:{}): {}",
+                        workspace_id, thread_id, error
                     ));
                     should_redraw = true;
                 }
@@ -1998,6 +2097,14 @@ impl AutopilotApp {
                     state.git.apply_diff_update(workspace_id, diffs, error);
                     should_redraw = true;
                 }
+                crate::app::git::GitEvent::LogUpdated { workspace_id, log } => {
+                    state.git.apply_log_update(workspace_id, log);
+                    should_redraw = true;
+                }
+                crate::app::git::GitEvent::RemoteUpdated { workspace_id, remote } => {
+                    state.git.apply_remote_update(workspace_id, remote);
+                    should_redraw = true;
+                }
             }
         }
 
@@ -2165,6 +2272,43 @@ impl AutopilotApp {
                     }
                 }
             }
+            "turn/diff/updated" => {
+                if let Some(params) = notification.params {
+                    if let Ok(event) =
+                        serde_json::from_value::<app_server::TurnDiffUpdatedNotification>(params)
+                    {
+                        let item = turn_diff_item(&event.turn_id, &event.diff);
+                        state
+                            .workspaces
+                            .apply_item_update(workspace_id, &event.thread_id, item);
+                        updated = true;
+                    }
+                }
+            }
+            "turn/plan/updated" => {
+                if let Some(params) = notification.params {
+                    if let Ok(event) =
+                        serde_json::from_value::<app_server::TurnPlanUpdatedNotification>(params)
+                    {
+                        let plan = crate::app::workspaces::WorkspacePlanSnapshot {
+                            turn_id: event.turn_id,
+                            explanation: event.explanation.clone(),
+                            steps: event
+                                .plan
+                                .into_iter()
+                                .map(|step| crate::app::workspaces::WorkspacePlanStep {
+                                    step: step.step,
+                                    status: step.status,
+                                })
+                                .collect(),
+                        };
+                        state
+                            .workspaces
+                            .set_plan_for_thread(&event.thread_id, plan);
+                        updated = true;
+                    }
+                }
+            }
             "item/completed" => {
                 if let Some(params) = notification.params {
                     if let Ok(event) =
@@ -2200,21 +2344,6 @@ impl AutopilotApp {
                             );
                             updated = true;
                         }
-                    }
-                }
-            }
-            "turn/diff/updated" => {
-                if let Some(params) = notification.params {
-                    if let Ok(event) =
-                        serde_json::from_value::<app_server::TurnDiffUpdatedNotification>(params)
-                    {
-                        let diff_item = turn_diff_item(&event.turn_id, &event.diff);
-                        state.workspaces.apply_item_update(
-                            workspace_id,
-                            &event.thread_id,
-                            diff_item,
-                        );
-                        updated = true;
                     }
                 }
             }

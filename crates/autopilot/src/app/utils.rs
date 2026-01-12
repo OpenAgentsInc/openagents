@@ -11,7 +11,7 @@ use super::catalog::AgentEntry;
 use super::chat::{ChatMessage, ChatSelectionPoint, MessageRole};
 use super::config::CoderSettings;
 use super::session::CheckpointEntry;
-use super::ui::palette_for;
+use super::ui::{ThemeSetting, palette_for};
 
 pub(crate) fn selection_point_cmp(
     a: &ChatSelectionPoint,
@@ -103,8 +103,8 @@ pub(crate) fn build_markdown_document(source: &str) -> MarkdownDocument {
     parser.document().clone()
 }
 
-pub(crate) fn build_markdown_config(settings: &CoderSettings) -> MarkdownConfig {
-    let palette = palette_for(settings.theme);
+pub(crate) fn build_markdown_config(settings: &CoderSettings, theme: ThemeSetting) -> MarkdownConfig {
+    let palette = palette_for(theme);
     let mut config = MarkdownConfig::default();
     config.base_font_size = settings.font_size;
     config.text_color = palette.text_primary;
@@ -116,12 +116,12 @@ pub(crate) fn build_markdown_config(settings: &CoderSettings) -> MarkdownConfig 
     config
 }
 
-pub(crate) fn build_markdown_renderer(settings: &CoderSettings) -> MdRenderer {
-    MdRenderer::with_config(build_markdown_config(settings))
+pub(crate) fn build_markdown_renderer(settings: &CoderSettings, theme: ThemeSetting) -> MdRenderer {
+    MdRenderer::with_config(build_markdown_config(settings, theme))
 }
 
-pub(crate) fn build_input(settings: &CoderSettings) -> TextInput {
-    let palette = palette_for(settings.theme);
+pub(crate) fn build_input(settings: &CoderSettings, theme: ThemeSetting) -> TextInput {
+    let palette = palette_for(theme);
     let mut input = TextInput::new()
         .with_id(1)
         .font_size(settings.font_size)
