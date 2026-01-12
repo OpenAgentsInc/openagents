@@ -4,7 +4,7 @@ fn render_sidebars(
     palette: &UiPalette,
     sidebar_layout: &SidebarLayout,
 ) {
-    let sidebar_bg = palette.panel;
+    let sidebar_bg = palette.chrome;
 
     if let Some(left_bounds) = sidebar_layout.left {
         scene.draw_quad(
@@ -462,7 +462,7 @@ fn render_topbar(
         sidebar_layout.main.size.width,
         TOPBAR_HEIGHT,
     );
-    scene.draw_quad(Quad::new(topbar_bounds).with_background(palette.panel));
+    scene.draw_quad(Quad::new(topbar_bounds).with_background(palette.chrome));
     scene.draw_quad(
         Quad::new(Bounds::new(
             topbar_bounds.origin.x,

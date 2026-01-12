@@ -1277,6 +1277,11 @@ impl AppState {
     }
 
     pub(super) fn push_system_message(&mut self, message: String) {
+        if self.workspaces.active_workspace_id.is_some() {
+            self.workspaces.status_message = Some(message);
+            self.workspaces.timeline_dirty = true;
+            return;
+        }
         self.chat.push_system_message(message);
     }
 }
@@ -1505,12 +1510,35 @@ impl AppState {
         if self.workspaces.active_workspace_id.is_none() {
             return;
         }
+        let status_message = self.workspaces.status_message.clone();
         let Some(thread_id) = self.workspaces.active_thread_id() else {
             self.clear_workspace_view();
+            if let Some(message) = status_message {
+                if !message.trim().is_empty() {
+                    self.chat.messages.push(ChatMessage {
+                        role: MessageRole::Assistant,
+                        content: message,
+                        document: None,
+                        uuid: None,
+                        metadata: None,
+                    });
+                }
+            }
             return;
         };
         let Some(timeline) = self.workspaces.timelines_by_thread.get(&thread_id) else {
             self.clear_workspace_view();
+            if let Some(message) = status_message {
+                if !message.trim().is_empty() {
+                    self.chat.messages.push(ChatMessage {
+                        role: MessageRole::Assistant,
+                        content: message,
+                        document: None,
+                        uuid: None,
+                        metadata: None,
+                    });
+                }
+            }
             return;
         };
 
@@ -1617,6 +1645,17 @@ impl AppState {
         }
 
         self.chat.messages = messages;
+        if let Some(message) = status_message {
+            if !message.trim().is_empty() {
+                self.chat.messages.push(ChatMessage {
+                    role: MessageRole::Assistant,
+                    content: message,
+                    document: None,
+                    uuid: None,
+                    metadata: None,
+                });
+            }
+        }
         self.chat.streaming_markdown.reset();
         self.chat.chat_selection = None;
         self.chat.is_thinking = self

@@ -449,7 +449,7 @@ Tracks usage per model for billing and context optimization.
 
 **User runs Autopilot locally:**
 ```
-1. cargo autopilot run "Fix tests"
+1. cargo run -p autopilot -- run "Fix tests"
 2. Preflight checks (config, auth, repo)
 3. Adjutant makes DSPy decisions (complexity, delegation)
 4. Execute via chosen path (Codex SDK, local, RLM)

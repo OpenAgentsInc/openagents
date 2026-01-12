@@ -1882,7 +1882,9 @@ impl AutopilotApp {
                     workspace_id,
                     error,
                 } => {
+                    let message = format!("Model list failed ({}): {}", workspace_id, error);
                     state.workspaces.set_models_error(&workspace_id, error);
+                    state.push_system_message(message);
                     should_redraw = true;
                 }
                 WorkspaceEvent::SkillsListed {
@@ -1894,7 +1896,10 @@ impl AutopilotApp {
                         .workspaces
                         .set_skills_for_workspace(&workspace_id, skills);
                     if let Some(error) = error {
+                        let message =
+                            format!("Skills list reported errors ({}): {}", workspace_id, error);
                         state.workspaces.set_skills_error(&workspace_id, error);
+                        state.push_system_message(message);
                     }
                     should_redraw = true;
                 }
@@ -1902,7 +1907,9 @@ impl AutopilotApp {
                     workspace_id,
                     error,
                 } => {
+                    let message = format!("Skills list failed ({}): {}", workspace_id, error);
                     state.workspaces.set_skills_error(&workspace_id, error);
+                    state.push_system_message(message);
                     should_redraw = true;
                 }
                 WorkspaceEvent::AppServerNotification {

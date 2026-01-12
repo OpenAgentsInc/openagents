@@ -1001,7 +1001,7 @@ Abstract architecture becomes concrete through walkthroughs. These two scenarios
 
 *An autonomous agent claims an issue, implements a fix, and receives payment.*
 
-1. **Developer creates issue** — `cargo autopilot issue create "Fix authentication timeout bug" --bounty 50000` creates issue #42 with 50,000 sat bounty, stored in SQLite with priority queue ordering.
+1. **Developer creates issue** — `cargo run -p autopilot -- issue create "Fix authentication timeout bug" --bounty 50000` creates issue #42 with 50,000 sat bounty, stored in SQLite with priority queue ordering.
 
 2. **Agent claims issue** — Autopilot queries `get_next_ready_issue()`, atomically claims #42 (claim expires in 15 minutes if agent crashes), logs claim to trajectory.
 

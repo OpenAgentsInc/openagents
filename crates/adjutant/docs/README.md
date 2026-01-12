@@ -44,19 +44,20 @@ Adjutant is the core execution engine for autonomous coding tasks. It:
 export CEREBRAS_API_KEY="csk-your-key-here"
 
 # Run a task (fast boot skips network/compute discovery)
-cargo autopilot run "Add error handling to auth.rs"
+cargo run -p autopilot -- run "Add error handling to auth.rs"
 
 # Full environment scan (slower)
-cargo autopilot run "Add error handling to auth.rs" --full-boot
+cargo run -p autopilot -- run "Add error handling to auth.rs" --full-boot
 
 # Force a specific backend
-cargo autopilot run "Add error handling to auth.rs" --backend codex
+cargo run -p autopilot -- run "Add error handling to auth.rs" --backend codex
 
 # Claim and work on a GitHub issue
-cargo autopilot issue claim 123
+cargo run -p autopilot -- issue claim 123
 ```
 
-Note: `cargo autopilot` with no args launches the GPU desktop UI. Use a subcommand (like `run` or `status`) for CLI mode.
+Tip: This repo defines `cargo autopilot ...` in `.cargo/config.toml`.
+`cargo run -p autopilot` with no args launches the GPU desktop UI. Use a subcommand (like `run` or `status`) for CLI mode.
 
 ### CLI Streaming Output
 
@@ -73,7 +74,7 @@ Note: `cargo autopilot` with no args launches the GPU desktop UI. Use a subcomma
 Verbose logs (stderr) are opt-in via `RUST_LOG`:
 
 ```bash
-RUST_LOG=adjutant=info cargo autopilot run "Summarize README.md"
+RUST_LOG=adjutant=info cargo run -p autopilot -- run "Summarize README.md"
 ```
 
 ## Execution Flow

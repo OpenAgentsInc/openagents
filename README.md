@@ -18,7 +18,7 @@ Build and run the Autopilot app from source in this workspace:
 git clone https://github.com/OpenAgentsInc/openagents.git
 cd openagents
 cargo build -p autopilot
-cargo autopilot
+cargo run -p autopilot
 ```
 
 Run Autopilot in CLI mode for a one-off task:
@@ -26,6 +26,9 @@ Run Autopilot in CLI mode for a one-off task:
 ```bash
 cargo run -p autopilot -- run "Summarize @README.md and run !git status"
 ```
+
+Tip: This repo defines a Cargo alias in `.cargo/config.toml`, so `cargo autopilot ...`
+is shorthand for `cargo run -p autopilot -- ...`.
 
 ## What Autopilot Delivers
 

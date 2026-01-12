@@ -70,7 +70,7 @@ fn render_input(
         skill: format!("{} ▾", composer_labels.skill),
     };
 
-    scene.draw_quad(Quad::new(input_layout.area_bounds).with_background(palette.panel));
+    scene.draw_quad(Quad::new(input_layout.area_bounds).with_background(palette.chrome));
     scene.draw_quad(
         Quad::new(Bounds::new(
             sidebar_layout.main.origin.x,

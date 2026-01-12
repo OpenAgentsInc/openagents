@@ -864,6 +864,8 @@ impl WorkspaceState {
             if composer.models.is_empty() {
                 let label = if composer.models_pending {
                     "Models...".to_string()
+                } else if composer.models_error.is_some() {
+                    "Models failed".to_string()
                 } else {
                     "No models".to_string()
                 };
@@ -1037,6 +1039,10 @@ impl WorkspaceState {
 
     pub(crate) fn active_thread_id(&self) -> Option<String> {
         let workspace_id = self.active_workspace_id.as_ref()?;
+        self.active_thread_id_for(workspace_id)
+    }
+
+    pub(crate) fn active_thread_id_for(&self, workspace_id: &str) -> Option<String> {
         self.active_thread_by_workspace
             .get(workspace_id)
             .cloned()

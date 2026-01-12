@@ -12,6 +12,7 @@ pub(crate) fn theme_label(theme: ThemeSetting) -> &'static str {
 pub(crate) struct UiPalette {
     pub(crate) background: Hsla,
     pub(crate) panel: Hsla,
+    pub(crate) chrome: Hsla,
     pub(crate) panel_border: Hsla,
     pub(crate) panel_highlight: Hsla,
     pub(crate) overlay: Hsla,
@@ -45,10 +46,12 @@ pub(crate) struct UiPalette {
 }
 
 pub(crate) fn palette_for(theme: ThemeSetting) -> UiPalette {
+    let chrome = chrome_background();
     match theme {
         ThemeSetting::Dark => UiPalette {
             background: Hsla::new(0.0, 0.0, 0.0, 1.0),
             panel: Hsla::new(220.0, 0.15, 0.12, 1.0),
+            chrome,
             panel_border: Hsla::new(220.0, 0.15, 0.25, 1.0),
             panel_highlight: Hsla::new(220.0, 0.2, 0.18, 1.0),
             overlay: Hsla::new(0.0, 0.0, 0.0, 0.7),
@@ -79,6 +82,7 @@ pub(crate) fn palette_for(theme: ThemeSetting) -> UiPalette {
         ThemeSetting::Light => UiPalette {
             background: Hsla::new(210.0, 0.2, 0.96, 1.0),
             panel: Hsla::new(0.0, 0.0, 1.0, 1.0),
+            chrome,
             panel_border: Hsla::new(210.0, 0.1, 0.78, 1.0),
             panel_highlight: Hsla::new(210.0, 0.4, 0.9, 1.0),
             overlay: Hsla::new(0.0, 0.0, 0.0, 0.3),
@@ -107,6 +111,11 @@ pub(crate) fn palette_for(theme: ThemeSetting) -> UiPalette {
             blockquote: Hsla::new(210.0, 0.5, 0.4, 1.0),
         },
     }
+}
+
+fn chrome_background() -> Hsla {
+    const CHROME_LIGHTNESS: f32 = 10.0 / 255.0;
+    Hsla::new(0.0, 0.0, CHROME_LIGHTNESS, 1.0)
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
