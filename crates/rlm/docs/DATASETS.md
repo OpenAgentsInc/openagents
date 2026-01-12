@@ -1,5 +1,8 @@
 # Datasets
 
+**Archived:** The `bench-datasets` crate is not part of the current workspace. This document is
+retained for historical reference.
+
 The `bench-datasets` crate provides loaders for various benchmark datasets.
 
 ## Dataset Trait

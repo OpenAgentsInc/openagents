@@ -19,20 +19,28 @@ u: Another line
 
 ## Dual-Format System (rlog + JSONL)
 
-Autopilot uses a **dual-format logging system** to balance human readability with complete data capture:
+Recorder supports a **dual-format logging system** to balance human readability with complete data
+capture. Autopilot emits JSONL by default, and `.rlog` files can be generated with `recorder
+convert` for human-readable summaries:
 
 | File | Purpose | Content |
 |------|---------|---------|
 | `.rlog` | Human-readable summary | Truncated content (200 chars messages, 150 thinking, 100 tool output) |
 | `.jsonl` | Full data capture | Untruncated, Codex SDK compatible |
 
-**File naming convention:**
+**Example output layout:**
 ```
-docs/logs/20251222/
+~/.openagents/recordings/         # Output directory you choose
   123456-task-name.rlog           # Human review
   123456-task-name.jsonl          # Full data (APM, replay, NIP-SA)
   123456-task-name.sub-abc123.jsonl  # Subagent session
 ```
+
+**Autopilot JSONL sources:**
+
+- Autopilot UI sessions: `~/.openagents/autopilot/sessions/<session_id>/messages.jsonl`
+- Autopilot app-server traces: `~/.openagents/autopilot/sessions/<session_id>/trace-<run_id>.jsonl`
+- Autopilot-core sessions: `~/.openagents/sessions/<date>/<session_id>.jsonl`
 
 ### Why Dual Format?
 
@@ -86,8 +94,9 @@ x:explore id=abc123 → [done] summary="found 3 files matching pattern"
 
 For APM (Actions Per Minute) calculations, always use JSONL files:
 
-1. **Autopilot sessions**: `docs/logs/**/*.jsonl` (includes subagent files)
-2. **Interactive sessions**: `~/.codex/projects/*.jsonl`
+1. **Autopilot sessions**: `~/.openagents/autopilot/sessions/**/messages.jsonl` (includes subagent files)
+2. **Autopilot-core sessions**: `~/.openagents/sessions/**/*.jsonl`
+3. **Interactive sessions**: `~/.codex/projects/*.jsonl`
 
 **Never use rlog for APM** - truncation loses action counts.
 

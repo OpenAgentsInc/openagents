@@ -1,10 +1,13 @@
 # FRLM Tools Integration
 
-This document describes the FRLM (Federated Recursive Language Models) tool integration in the compute crate, enabling Apple Foundation Models to make recursive LLM sub-calls via the FRLM conductor.
+This document describes the FRLM (Federated Recursive Language Models) tool integration in the
+compute crate, enabling Apple Foundation Models to make recursive LLM sub-calls via the FRLM
+conductor.
 
 ## Overview
 
-The FRLM tools integration provides a bridge between the Swift FM Bridge and the Rust FRLM conductor, enabling:
+The FRLM tools integration provides a bridge between the Foundation Models bridge (external) and
+the Rust FRLM conductor, enabling:
 
 - **Recursive LLM sub-calls**: FM can spawn sub-queries that are executed via FRLM
 - **Fragment-based processing**: Load and select document fragments for context
@@ -17,7 +20,7 @@ The FRLM tools integration provides a bridge between the Swift FM Bridge and the
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                    Swift FM Bridge (localhost:11435)            │
+│              Foundation Models Bridge (localhost:11435)         │
 │  ┌───────────────┐    ┌────────────────┐    ┌───────────────┐  │
 │  │ @Generable    │───>│ Tool Selection │───>│ HTTP Request  │  │
 │  │ FrlmToolCall  │    │ (heuristic/FM) │    │ to Rust       │  │

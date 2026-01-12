@@ -2,61 +2,35 @@
 
 ## Design Philosophy
 
-The RLM replication infrastructure is designed with modularity and reusability as primary goals. Each crate serves a distinct purpose and can be used independently for other paper replications.
+The RLM replication infrastructure is designed with modularity and reusability as primary goals.
+Benchmarking crates referenced in older diagrams (`bench-harness`, `bench-datasets`, `rlm-methods`)
+are archived out of the current workspace; the active focus is the core `rlm` engine plus optional
+DSPy integration.
 
 ## Crate Dependency Graph
 
 ```
-                    ┌─────────────────┐
-                    │   rlm-methods   │
-                    │  (paper-specific)│
-                    └────────┬────────┘
-                             │
-              ┌──────────────┼──────────────┐
-              │              │              │
-              ▼              ▼              ▼
-    ┌─────────────┐  ┌─────────────┐  ┌─────────────────────────────────┐
-    │bench-datasets│  │bench-harness│  │              rlm                │
-    │  (reusable) │  │  (reusable) │  │         (core engine)           │
-    └──────┬──────┘  └──────┬──────┘  │                                 │
-           │                │          │  ┌───────────────────────────┐ │
-           └────────┬───────┘          │  │    dspy_orchestrator      │ │
-                    │                  │  │    (feature: dspy)        │ │
-                    │                  │  └─────────────┬─────────────┘ │
-                    │                  │                │               │
-                    │                  │  ┌─────────────▼─────────────┐ │
-                    │                  │  │       dspy_bridge         │ │
-                    │                  │  │  (LM config + LmRouter)   │ │
-                    │                  │  └─────────────┬─────────────┘ │
-                    │                  │                │               │
-                    │                  │  ┌─────────────▼─────────────┐ │
-                    │                  │  │         tools/            │ │
-                    │                  │  │  grep, read, list, symbols│ │
-                    │                  │  └─────────────┬─────────────┘ │
-                    │                  │                │               │
-                    │                  │  ┌─────────────▼─────────────┐ │
-                    │                  │  │          span             │ │
-                    │                  │  │   (SpanRef provenance)    │ │
-                    │                  │  └───────────────────────────┘ │
-                    │                  │                                 │
-                    │                  │  ┌───────────────────────────┐ │
-                    │                  │  │       signatures          │ │
-                    │                  │  │  (provenance-first DSPy)  │ │
-                    │                  │  └───────────────────────────┘ │
-                    │                  └─────────────────┬───────────────┘
-                    │                                    │
-                    ▼                                    ▼
-              ┌───────────┐                       ┌───────────┐
-              │ lm-router │                       │  dspy-rs  │
-              │ (reusable)│                       │ (external)│
-              └─────┬─────┘                       └───────────┘
-                    │
-         ┌──────────┼──────────┐
-         │          │          │
-         ▼          ▼          ▼
-    ┌─────────┐ ┌────────┐ ┌──────┐
-    │fm-bridge│ │swarm-sim│ │ mock │
-    └─────────┘ └────────┘ └──────┘
+                    ┌───────────┐
+                    │   dsrs    │
+                    │ (feature) │
+                    └────┬──────┘
+                         │
+                         ▼
+                    ┌───────────┐
+                    │    rlm    │
+                    │  (core)   │
+                    └────┬──────┘
+                         │
+                         ▼
+                    ┌───────────┐
+                    │ lm-router │
+                    └────┬──────┘
+                         │
+         ┌───────────────┼───────────────┐
+         ▼               ▼               ▼
+    ┌─────────┐     ┌────────┐     ┌──────┐
+    │fm-bridge│     │swarm-sim│     │ mock │
+    └─────────┘     └────────┘     └──────┘
 ```
 
 ## RLM Module Structure
@@ -79,7 +53,7 @@ The RLM crate is organized into these major modules:
 
 | Module | Purpose |
 |--------|---------|
-| `dspy_bridge` | Re-exports dspy-rs + LmRouter bridge |
+| `dspy_bridge` | Re-exports dsrs + LmRouter bridge |
 | `dspy_orchestrator` | Multi-phase document analysis |
 | `signatures` | Provenance-first DSPy signatures |
 | `tools/` | Environment tools (grep, read, list, symbols) |
@@ -148,9 +122,9 @@ Multi-backend LM routing with unified interface.
 
 **Location:** `crates/lm-router/`
 
-### `bench-harness` (Reusable)
+### `bench-harness` (Archived)
 
-Generic benchmarking infrastructure.
+Generic benchmarking infrastructure (archived out of the workspace).
 
 **Key Types:**
 - `TaskInstance` - Trait for benchmark tasks
@@ -159,28 +133,28 @@ Generic benchmarking infrastructure.
 - `Metric` - Trait for evaluation metrics
 - `ExperimentRunner` - Orchestrates experiments
 
-**Location:** `crates/bench-harness/`
+**Location:** archived (previously `crates/bench-harness/`)
 
-### `bench-datasets` (Reusable)
+### `bench-datasets` (Archived)
 
-Dataset loaders for various benchmarks.
+Dataset loaders for various benchmarks (archived out of the workspace).
 
 **Key Types:**
 - `Dataset` - Trait for loading tasks
 - `DatasetConfig` - Configuration for loading
 - Specific loaders: `SnihDataset`, `BrowseCompDataset`, `OolongDataset`, `CodeQADataset`
 
-**Location:** `crates/bench-datasets/`
+**Location:** archived (previously `crates/bench-datasets/`)
 
-### `rlm-methods` (Paper-Specific)
+### `rlm-methods` (Archived)
 
-Method implementations for the RLM paper.
+Method implementations for the RLM paper (archived out of the workspace).
 
 **Key Types:**
 - `BaseMethod` - Direct LLM baseline
 - `SummaryAgentMethod` - Iterative summarization
 
-**Location:** `crates/rlm-methods/`
+**Location:** archived (previously `crates/rlm-methods/`)
 
 ## Key Traits
 
@@ -208,6 +182,9 @@ pub trait RlmTool: Send + Sync {
     async fn execute(&self, args: Value) -> ToolResult<Value>;
 }
 ```
+
+The traits below were defined in the archived benchmarking crates and are retained here for
+historical reference.
 
 ### `TaskInstance`
 
@@ -347,36 +324,10 @@ crates/
 │           ├── list_files.rs
 │           └── symbols.rs
 │
-├── bench-harness/
-│   ├── Cargo.toml
-│   └── src/
-│       ├── lib.rs
-│       ├── task.rs             # TaskInstance, GroundTruth
-│       ├── method.rs           # Method trait
-│       ├── trajectory.rs       # Trajectory logging
-│       ├── metrics.rs          # Metric implementations
-│       ├── experiment.rs       # ExperimentRunner
-│       └── error.rs
-│
-├── bench-datasets/
-│   ├── Cargo.toml
-│   └── src/
-│       ├── lib.rs
-│       ├── dataset.rs          # Dataset trait
-│       ├── error.rs
-│       ├── sniah/
-│       ├── browsecomp/
-│       ├── oolong/
-│       └── codeqa/
-│
-└── rlm-methods/
-    ├── Cargo.toml
-    └── src/
-        ├── lib.rs
-        ├── base.rs             # BaseMethod
-        ├── summary_agent.rs    # SummaryAgentMethod
-        ├── prompts/
-        └── error.rs
+# Archived benchmarking crates (not in workspace):
+# - bench-harness/
+# - bench-datasets/
+# - rlm-methods/
 ```
 
 ## Extending the Framework
@@ -387,18 +338,27 @@ crates/
 2. Add to `lm-router/src/backends/`
 3. Register with `LmRouter::builder().add_backend()`
 
-### Adding a New Dataset
+### Adding a New Dataset (Archived)
+
+The dataset pipeline lived in `bench-datasets`, which is archived out of the workspace. The
+original steps were:
 
 1. Define task structure matching `TaskInstance`
 2. Implement `Dataset` trait
 3. Add to `bench-datasets/src/`
 
-### Adding a New Method
+### Adding a New Method (Archived)
+
+Method implementations lived in `rlm-methods`, which is archived out of the workspace. The
+original steps were:
 
 1. Implement `Method` trait
 2. Add to `rlm-methods/src/` (or new crate for different papers)
 
-### Adding a New Metric
+### Adding a New Metric (Archived)
+
+Metrics were defined in `bench-harness`, which is archived out of the workspace. The original
+steps were:
 
 1. Implement `Metric` trait
 2. Add to `bench-harness/src/metrics.rs`

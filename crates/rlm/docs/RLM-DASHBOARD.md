@@ -1,5 +1,8 @@
 # RLM Dashboard: OpenAgents Research Workflow Tool
 
+**Status:** The web dashboard and sync services described here are archived out of the current
+workspace. This document is retained as a design reference.
+
 A W&B-style experiment tracking and visualization dashboard for Recursive Language Models, built into openagents.com.
 
 ## Why This Matters for OpenAgents
@@ -307,9 +310,9 @@ We need:
 2. Web API for sync
 3. Dashboard UI components
 
-### bench-harness Integration
+### bench-harness Integration (Archived)
 
-`bench-harness` already defines:
+`bench-harness` is archived out of the current workspace. Historically it defined:
 - `TaskInstance` — Benchmark tasks
 - `Method` — Solution methods
 - `Trajectory` — Execution traces
@@ -380,15 +383,15 @@ WebSocket from Pylon → Dashboard:
 
 | Task | Files |
 |------|-------|
-| Sync endpoint | `crates/web/worker/src/routes/rlm.rs` |
-| D1 schema | `crates/web/worker/migrations/` |
-| Auth (link to Pylon identity) | `crates/web/worker/src/auth/` |
+| Sync endpoint | Archived (former `crates/web/worker/src/routes/rlm.rs`) |
+| D1 schema | Archived (former `crates/web/worker/migrations/`) |
+| Auth (link to Pylon identity) | Archived (former `crates/web/worker/src/auth/`) |
 
 ### Phase 3: Dashboard UI (Week 3)
 
 | Task | Files |
 |------|-------|
-| Run list view | `crates/web/client/src/views/rlm/` |
+| Run list view | Archived (former `crates/web/client/src/views/rlm/`) |
 | Run detail view | Same |
 | FanoutTimeline component | `crates/wgpui/src/components/rlm/` |
 
@@ -398,7 +401,7 @@ WebSocket from Pylon → Dashboard:
 |------|-------|
 | Experiment grouping | `crates/rlm/src/experiment.rs` |
 | Comparison table | `crates/wgpui/src/components/rlm/comparison.rs` |
-| Export (CSV, JSON) | `crates/web/worker/src/routes/export.rs` |
+| Export (CSV, JSON) | Archived (former `crates/web/worker/src/routes/export.rs`) |
 
 ---
 
@@ -454,7 +457,7 @@ The RLM Dashboard is a W&B-style research workflow tool that:
 2. **Compares** experiments with side-by-side tables
 3. **Visualizes** swarm fanout and recursive depth
 4. **Persists** locally first, syncs optionally
-5. **Integrates** with Pylon, FRLM, bench-harness
+5. **Integrates** with Pylon, FRLM, and archived bench-harness flows
 
 It's the "research taste test" that demonstrates we think like researchers—building the tool that makes experiments reproducible, comparable, and shareable.
 

@@ -19,7 +19,7 @@ This follows the OpenAgents convention of storing all product data under `~/.ope
 ├── pylon.db-wal             # SQLite WAL file (write-ahead log)
 ├── pylon.db-shm             # SQLite shared memory file
 ├── bin/                     # Optional: installed binaries
-│   └── foundation-bridge    # Apple FM Bridge binary
+│   └── foundation-bridge    # Optional Foundation Models bridge binary
 └── neobank/                 # Neobank wallet storage
     ├── btc_wallet.redb      # BTC Cashu wallet database
     └── usd_wallet.redb      # USD Cashu wallet database
@@ -217,7 +217,7 @@ See [DATABASE.md](./DATABASE.md) for full schema documentation.
 
 ### bin/foundation-bridge
 
-Apple Foundation Models bridge binary.
+Apple Foundation Models bridge binary (external).
 
 **Location**: `~/.openagents/pylon/bin/foundation-bridge`
 
@@ -226,18 +226,11 @@ Apple Foundation Models bridge binary.
 **Binary Search Order** (in `BridgeManager::find_binary()`):
 1. `~/.openagents/pylon/bin/foundation-bridge` (user-installed)
 2. Next to pylon executable (bundled app)
-3. Development paths (`swift/foundation-bridge/.build/...`)
+3. Development paths (external bridge repo)
 
 **Installation**:
-```bash
-# Build from source
-cd swift/foundation-bridge
-swift build -c release
-
-# Install to pylon directory
-mkdir -p ~/.openagents/pylon/bin
-cp .build/arm64-apple-macosx/release/foundation-bridge ~/.openagents/pylon/bin/
-```
+Place the `foundation-bridge` binary in `~/.openagents/pylon/bin/` or alongside the
+Pylon executable. The bridge is maintained outside this workspace.
 
 ### neobank/
 

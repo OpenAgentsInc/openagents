@@ -228,8 +228,8 @@ See [Configuration](./CONFIGURATION.md) for config file format.
 ### Startup Sequence
 
 ```
-1. Load configuration (~/.config/pylon/config.toml)
-2. Load identity (~/.config/pylon/identity.mnemonic)
+1. Load configuration (~/.openagents/pylon/config.toml)
+2. Load identity (~/.openagents/pylon/identity.mnemonic)
 3. Check for existing daemon (PID file)
 4. Fork to background (if not -f)
 5. Write PID file
@@ -300,7 +300,7 @@ Pylon uses Tokio for async I/O with a multi-threaded runtime:
 
 ### Identity Protection
 
-- Mnemonic stored in plaintext at `~/.config/pylon/identity.mnemonic`
+- Mnemonic stored in plaintext at `~/.openagents/pylon/identity.mnemonic`
 - Future: Password-protected encryption
 - Recommendation: Set restrictive file permissions (`chmod 600`)
 

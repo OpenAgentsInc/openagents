@@ -6,7 +6,7 @@ FRLM (Federated Recursive Language Models) provides distributed execution of LLM
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────┐
-│                              PYLON DESKTOP                                │
+│                              PYLON RUNTIME                               │
 │  ┌────────────────┐  ┌────────────────┐  ┌────────────────────────────┐  │
 │  │  NostrRuntime  │  │   FmRuntime    │  │     WalletRuntime          │  │
 │  │  (NIP-90 jobs) │  │ (local FM)     │  │   (Spark sats)             │  │
@@ -23,13 +23,8 @@ FRLM (Federated Recursive Language Models) provides distributed execution of LLM
 │  └───────────────────────────────────────────────────────────────────┘   │
 │                              │                                            │
 │  ┌───────────────────────────▼───────────────────────────────────────┐   │
-│  │                         FmVizState                                 │   │
-│  │  frlm_active_run, frlm_subquery_status, frlm_runs_completed       │   │
-│  └───────────────────────────┬───────────────────────────────────────┘   │
-│                              │                                            │
-│  ┌───────────────────────────▼───────────────────────────────────────┐   │
-│  │                        FRLM UI Panel                               │   │
-│  │  Budget meter, Timeline view, Query lanes                         │   │
+│  │               Trace Events / Optional UI Sinks                     │   │
+│  │  rlm trace DB, HUD panels, or external dashboards                  │   │
 │  └───────────────────────────────────────────────────────────────────┘   │
 └──────────────────────────────────────────────────────────────────────────┘
 ```

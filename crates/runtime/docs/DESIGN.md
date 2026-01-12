@@ -1074,7 +1074,7 @@ cargo test --features local conformance::
 cargo test --features server conformance::
 
 # Run all backends (CI)
-./scripts/conformance-all-backends.sh
+# The helper script is archived; run the commands above in sequence.
 ```
 
 ### Backend-Specific Exemptions

@@ -14,7 +14,7 @@ The Agent Registry persists agent configurations to disk, enabling:
 ## Directory Structure
 
 ```
-~/.config/openagents/agents/          # Linux
+~/.openagents/agents/          # Linux
 ~/Library/Preferences/openagents/agents/  # macOS
 ├── npub1abc123....toml              # Agent config files
 ├── npub1def456....toml
@@ -25,7 +25,7 @@ The Agent Registry persists agent configurations to disk, enabling:
 
 | Platform | Path |
 |----------|------|
-| Linux | `~/.config/openagents/agents/` |
+| Linux | `~/.openagents/agents/` |
 | macOS | `~/Library/Preferences/openagents/agents/` |
 | Windows | `C:\Users\<user>\AppData\Roaming\openagents\agents\` |
 
@@ -34,7 +34,7 @@ The Agent Registry persists agent configurations to disk, enabling:
 Each agent is stored as a TOML file named `{npub}.toml`:
 
 ```toml
-# ~/.config/openagents/agents/npub1abc123....toml
+# ~/.openagents/agents/npub1abc123....toml
 
 name = "MyAgent"
 npub = "npub1abc123..."
@@ -100,7 +100,7 @@ let config = AgentConfig {
 };
 
 registry.save(&config)?;
-// Creates ~/.config/openagents/agents/npub1....toml
+// Creates ~/.openagents/agents/npub1....toml
 ```
 
 ### Loading Agents
@@ -249,8 +249,8 @@ per_tick_limit_sats = 50       # Max spend per tick
 
 **Recommended**: Set restrictive permissions:
 ```bash
-chmod 600 ~/.config/openagents/agents/*.toml
-chmod 700 ~/.config/openagents/agents/
+chmod 600 ~/.openagents/agents/*.toml
+chmod 700 ~/.openagents/agents/
 ```
 
 **Future**: Encrypt with user password or system keychain
@@ -261,10 +261,10 @@ The registry does not set permissions explicitly. Users should:
 
 ```bash
 # Restrict directory access
-chmod 700 ~/.config/openagents/agents/
+chmod 700 ~/.openagents/agents/
 
 # Restrict individual files
-chmod 600 ~/.config/openagents/agents/*.toml
+chmod 600 ~/.openagents/agents/*.toml
 ```
 
 ## Error Handling
@@ -300,23 +300,23 @@ match registry.load("MyAgent") {
 
 ```bash
 # Backup entire agents directory
-cp -r ~/.config/openagents/agents/ ~/agents-backup-$(date +%Y%m%d)/
+cp -r ~/.openagents/agents/ ~/agents-backup-$(date +%Y%m%d)/
 ```
 
 ### Backup Single Agent
 
 ```bash
-cp ~/.config/openagents/agents/npub1abc123....toml ~/myagent-backup.toml
+cp ~/.openagents/agents/npub1abc123....toml ~/myagent-backup.toml
 ```
 
 ### Restore
 
 ```bash
 # Restore entire directory
-cp -r ~/agents-backup-20240115/* ~/.config/openagents/agents/
+cp -r ~/agents-backup-20240115/* ~/.openagents/agents/
 
 # Restore single agent
-cp ~/myagent-backup.toml ~/.config/openagents/agents/npub1abc123....toml
+cp ~/myagent-backup.toml ~/.openagents/agents/npub1abc123....toml
 ```
 
 ## Integration with Pylon
@@ -332,7 +332,7 @@ When running in Pylon's host mode:
 Pylon Daemon
      │
      ├── Scan Registry
-     │   └── ~/.config/openagents/agents/*.toml
+     │   └── ~/.openagents/agents/*.toml
      │
      ├── For each active agent:
      │   └── Spawn agent-runner subprocess

@@ -6,7 +6,7 @@ Render Autopilot as a single long-running conversation that streams tokens end-t
 ## Current State (2026-01)
 - **Adjutant Autopilot loop** supports both legacy DSPy stage markers (ChannelOutput) and ACP notifications (AcpChannelOutput).
 - **Autopilot UI** consumes ACP notifications for Autopilot and can render DSPy stage cards via `_meta.openagents_dspy_stage`.
-- **Autopilot CLI/service** has distinct phase streams (plan/exec/review/fix) and stores per-phase events.
+- **Autopilot CLI** has distinct phase streams (plan/exec/review/fix) and stores per-phase events.
 
 ## Options Considered
 1) **Keep DSPy markers + custom parsing**  
@@ -48,7 +48,7 @@ Render Autopilot as a single long-running conversation that streams tokens end-t
 
 ## Follow-up Work
 - Emit structured ACP `ToolCall`/`ToolCallUpdate` from Adjutant tool execution (local LM path).
-- Update autopilot-service and autopilot-shell to consume ACP stream directly.
+- Update Autopilot UI and CLI to consume the ACP stream directly.
 - Optionally render ACP plan updates with custom components instead of plain text.
 - Introduce a single session buffer for plan/exec/review/fix in Autopilot checkpoints.
 

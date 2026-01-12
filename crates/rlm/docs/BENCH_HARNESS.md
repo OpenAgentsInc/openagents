@@ -1,5 +1,8 @@
 # Bench Harness
 
+**Archived:** The `bench-harness` crate is not part of the current workspace. This document is
+retained for historical reference.
+
 The `bench-harness` crate provides generic infrastructure for running ML benchmark experiments.
 
 ## Overview

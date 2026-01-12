@@ -60,7 +60,7 @@ You can add new prompts anytime. They are known to Autopilot immediately, not qu
 
 ### Continuous Learning
 
-Autopilot responses use DSPy signatures and optimizations. Read more about our DSPy integration [here](https://github.com/OpenAgentsInc/openagents/blob/main/docs/dspy/README.md).
+Autopilot responses use DSPy signatures and optimizations. Read more about our DSPy integration [here](../../dsrs/docs/README.md).
 
 
 ## Current State (Implementation Snapshot)

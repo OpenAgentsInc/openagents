@@ -224,7 +224,7 @@ word1 word2 word3 word4 word5 word6 word7 word8 word9 word10 word11 word12
 Agent configurations are stored separately in the agent registry:
 
 ```
-~/.config/openagents/agents/<name>/config.json
+~/.openagents/agents/<npub>.toml
 ```
 
 See [Host Mode](./HOST_MODE.md) for agent configuration details.

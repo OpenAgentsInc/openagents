@@ -227,7 +227,7 @@ Demo agent can:
 
 **Goal:** Pure viewer over agent filesystem. "Watch files → render panes."
 
-**Implementation:** `crates/web/` using WGPUI components from `crates/wgpui`.
+**Implementation:** WGPUI HUD components (the former `crates/web/` client is archived).
 
 ### Tasks
 
@@ -266,7 +266,7 @@ Demo agent can:
 
 - Added `/hud` and `/metrics` filesystem services (redacted stream, settings persistence, metric snapshots) plus `/logs/trajectory` replay output in `crates/runtime/src/services/`.
 - Mounted `/hud` and `/metrics` in `AgentEnv`, added runtime tests for settings redaction, metrics read/write, and trajectory output.
-- Implemented HUD panes (`CodePane`, `TerminalPane`, `MetricsPane`) in `crates/wgpui/src/components/sections/` and wired the HUD layout/rendering flow in `crates/web/client/src/lib.rs`.
+- Implemented HUD panes (`CodePane`, `TerminalPane`, `MetricsPane`) in `crates/wgpui/src/components/sections/`; the former web client wiring is archived out of the workspace.
 - Added HUD SSE client, replay mode, and settings toggles in the web client; updated the worker HUD context to pass `agent_id` and `stream_url`.
 
 ### GTM Requirements
@@ -282,7 +282,7 @@ The HUD is the product's signature moment. Must deliver:
 - [HUD.md](HUD.md) — Full spec (event contract, redaction, ACL)
 - [CONTROL-PLANE.md](CONTROL-PLANE.md) — SSE/WebSocket streaming
 - `crates/wgpui/` — GPU-rendered UI components
-- `crates/web/` — Web application
+- `crates/web/` — Web application (archived out of workspace)
 
 ---
 
@@ -571,7 +571,7 @@ The `/codex` mount enables agents to command one or more Codex instances. Key in
 - Wired tool-approval workflow and append-only tool logs for both SDK-backed and tunnel sessions; output watch reconciles budget on completion/failure.
 - Added tunnel auth surfaces (`/codex/auth/{tunnels,challenge,status}`), provider health/endpoints surfaces, and admin-only policy/pool/proxy writes via `AgentEnv`.
 - Added runtime tests for `/codex/new` usage/idempotency and output watch; exported `/codex` APIs in `crates/runtime/src/lib.rs` and added required deps.
-- Added default Codex container image definition + docs (`docker/codex/`, `docs/codex/container-image.md`) and a local smoke-test helper (`scripts/codex-container-smoke-test.sh`) with Apple Container directory-mount guidance.
+- Container image definitions and smoke-test helpers are archived out of the workspace (see backroom if needed).
 
 ### Exit Criteria
 
@@ -610,7 +610,7 @@ The `/codex` mount enables agents to command one or more Codex instances. Key in
 | M4 | Budgets | Budget + idempotency foundation |
 | M5 | /compute | AI models via filesystem |
 | M6 | /containers | Code execution via filesystem |
-| M7 | **HUD** | **Web UI via WGPUI (`crates/web/`)** |
+| M7 | **HUD** | **WGPUI HUD surfaces (web client archived)** |
 | M8 | Nostr | Real identity + messaging |
 | M9 | Cloudflare | DO backend + Workers AI |
 | M10 | Cloud containers | Remote sandboxes |

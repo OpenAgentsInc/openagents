@@ -4,21 +4,20 @@ Infrastructure for replicating the Recursive Language Models paper (arXiv 2512.2
 
 ## Overview
 
-This project implements a benchmarking framework for evaluating language model methods on long-context tasks. The architecture is split into reusable components:
+This crate provides the RLM execution engine for long-context tasks, with optional DSPy
+integration for declarative orchestration. The benchmarking crates that previously accompanied it
+(`bench-harness`, `bench-datasets`, `rlm-methods`) are archived out of the current workspace.
 
 | Crate | Purpose |
 |-------|---------|
 | `lm-router` | Multi-backend LM routing with usage tracking |
-| `bench-harness` | Generic experiment infrastructure |
-| `bench-datasets` | Dataset loaders for benchmarks |
-| `rlm-methods` | Paper-specific method implementations |
 | `rlm` | Core engine with DSPy integration, provenance tracking, and tools |
 
 ## Key Features
 
 ### DSPy Integration (Feature: `dspy`)
 
-The RLM crate integrates with [dspy-rs](https://github.com/dspy-rs/dspy-rs) for declarative LLM programming:
+The RLM crate integrates with [dsrs](../../dsrs/docs/README.md) for declarative LLM programming:
 
 - **Provenance-first signatures** - All signatures track evidence origins via SpanRef
 - **LmRouter bridge** - Per-request LM routing with unified cost tracking
@@ -62,39 +61,22 @@ Tools for repository exploration that return provenance-tracked results:
 
 ```rust
 use std::sync::Arc;
-use bench_harness::{ExperimentConfig, ExperimentRunner, ExactMatchMetric};
-use bench_datasets::{Dataset, SnihDataset, DatasetConfig};
-use rlm_methods::BaseMethod;
-use lm_router::{LmRouter, backends::FmBridgeBackend};
+use lm_router::LmRouter;
+use rlm::{LmRouterClient, MockExecutor, RlmEngine};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // 1. Set up the LM router with FM Bridge
-    let fm_backend = FmBridgeBackend::new();
-    let router = Arc::new(
-        LmRouter::builder()
-            .add_backend(fm_backend)
-            .default_backend("fm-bridge")
-            .build()
-    );
+    // 1. Set up the LM router (configure backends as needed).
+    let router = Arc::new(LmRouter::builder().build());
+    let client = LmRouterClient::new(router, "model-name");
 
-    // 2. Load a dataset
-    let dataset = SnihDataset::new(DatasetConfig::new("./data/sniah"));
-    let tasks = dataset.load().await?;
+    // 2. Choose an execution environment (mock or real).
+    let executor = MockExecutor::new();
+    let engine = RlmEngine::new(client, executor);
 
-    // 3. Create a method
-    let method = Arc::new(BaseMethod::new(router, "apple-fm-model"));
-
-    // 4. Run the experiment
-    let config = ExperimentConfig::new("sniah-base")
-        .output_dir("./results");
-
-    let mut runner = ExperimentRunner::new(config, tasks);
-    runner.add_method(method);
-    runner.add_metric(Box::new(ExactMatchMetric));
-
-    let results = runner.run().await?;
-    println!("Score: {:.2}%", results.per_method["base"].primary_score * 100.0);
+    // 3. Run a query.
+    let result = engine.run("What is 2 + 2?").await?;
+    println!("Answer: {}", result.output);
 
     Ok(())
 }
@@ -154,13 +136,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 - [Provenance Tracking](./PROVENANCE.md) - SpanRef type for Git-aware evidence tracking
 - [Environment Tools](./TOOLS.md) - Repository traversal tools (grep, read, list, symbols)
 
-### Benchmarking Infrastructure
+### Benchmarking Infrastructure (Archived)
+
+The benchmarking crates are archived out of the current workspace. These docs are kept for
+historical reference:
 
 - [LM Router](./LM_ROUTER.md) - Multi-backend LM routing
-- [Bench Harness](./BENCH_HARNESS.md) - Experiment infrastructure
-- [Datasets](./DATASETS.md) - Dataset formats and loaders
-- [Methods](./METHODS.md) - Method implementations
-- [Running Experiments](./RUNNING_EXPERIMENTS.md) - How to run benchmarks
+- [Bench Harness](./BENCH_HARNESS.md) - Experiment infrastructure (archived)
+- [Datasets](./DATASETS.md) - Dataset formats and loaders (archived)
+- [Methods](./METHODS.md) - Method implementations (archived)
+- [Running Experiments](./RUNNING_EXPERIMENTS.md) - How to run benchmarks (archived)
 
 ## Paper Methods
 
@@ -168,13 +153,15 @@ The RLM paper compares 5 methods:
 
 | Method | Description | Implementation |
 |--------|-------------|----------------|
-| Base | Direct LLM call with full context | `rlm_methods::BaseMethod` |
-| Summary Agent | Iterative context summarization | `rlm_methods::SummaryAgentMethod` |
+| Base | Direct LLM call with full context | Archived (`rlm-methods`) |
+| Summary Agent | Iterative context summarization | Archived (`rlm-methods`) |
 | CodeAct+BM25 | ReAct with BM25 retrieval | Planned |
 | RLM | Recursive LM with `llm_query` | Planned |
 | RLM (no sub-calls) | Ablation without recursion | Planned |
 
 ## Benchmarks
+
+The datasets below were used in the archived benchmarking pipeline and are listed for reference.
 
 | Dataset | Tasks | Metric | Description |
 |---------|-------|--------|-------------|
@@ -186,7 +173,9 @@ The RLM paper compares 5 methods:
 
 ## Primary Backend
 
-The primary LLM backend is **FM Bridge** (Apple Foundation Models). A swarm simulator is also available for testing distributed NIP-90 scenarios.
+The primary backend in earlier experiments was **FM Bridge** (Apple Foundation Models), but any
+`lm-router` backend can be used. A swarm simulator is also available for testing distributed
+NIP-90 scenarios.
 
 ## Codex Integration
 

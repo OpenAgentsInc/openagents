@@ -105,7 +105,8 @@ Direct llama.cpp server or compatible API.
 
 macOS-only, uses Apple Silicon Neural Engine.
 
-**Detection**: Pylon checks `http://localhost:11435/health` (requires separate server)
+**Detection**: Pylon checks `http://localhost:11435/health` (requires the external
+Foundation Models bridge; see `DIRECTORIES.md` for installation paths)
 
 ## Agent Backends (Bazaar Jobs)
 
@@ -127,7 +128,7 @@ Primary agent backend for Bazaar jobs. Uses Codex with sandbox isolation.
 **Configuration:**
 
 ```toml
-# ~/.config/pylon/config.toml
+# ~/.openagents/pylon/config.toml
 
 [codex]
 enabled = true
@@ -177,7 +178,7 @@ code_review_base_msats = 5000
 pylon init
 
 # Identity stored at:
-# ~/.config/pylon/identity.mnemonic
+# ~/.openagents/pylon/identity.mnemonic
 ```
 
 The provider identity is used for:
@@ -188,7 +189,7 @@ The provider identity is used for:
 ### Relay Configuration
 
 ```toml
-# ~/.config/pylon/config.toml
+# ~/.openagents/pylon/config.toml
 
 relays = [
     "wss://nexus.openagents.com",

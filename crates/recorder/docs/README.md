@@ -53,7 +53,6 @@ This pattern works across transports—WebSocket streams, HTTP SSE, file tailing
 - Parser and validator for the `.rlog` format.
 - CLI for validation, stats, parsing, and step renumbering.
 - Optional database export (feature-flagged).
-- UI components live in `ui::recorder` and are surfaced in Storybook at `/stories/recorder/*`.
 
 ## CLI
 
@@ -101,5 +100,3 @@ cargo run -p recorder --features export -- export --help
 ## References
 
 - Format spec: `crates/recorder/docs/format.md`
-- UI components: `crates/ui/src/recorder/`
-- Storybook: `cargo storybook` then visit `/stories/recorder`

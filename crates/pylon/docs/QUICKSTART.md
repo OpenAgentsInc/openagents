@@ -45,8 +45,8 @@ ollama pull llama3.2
 pylon init
 
 # This creates:
-# - ~/.config/pylon/config.toml
-# - ~/.config/pylon/identity.mnemonic (BACK THIS UP!)
+# - ~/.openagents/pylon/config.toml
+# - ~/.openagents/pylon/identity.mnemonic (BACK THIS UP!)
 ```
 
 ## Step 4: Start the Daemon
