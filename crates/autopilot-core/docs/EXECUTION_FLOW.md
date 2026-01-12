@@ -11,7 +11,11 @@ Autopilot is an autonomous coding agent that:
 4. Verifies completion
 5. Reports results
 
-The execution is driven by DSPy signatures that make decisions at each stage.
+The execution is driven by DSPy signatures that make decisions at each stage, so
+each decision point can be optimized, audited, and replayed rather than hidden
+inside a monolithic prompt. The flow below documents the current v1 chain and
+the intended v2 improvements so it is clear where decisions are made, where
+learning signals are generated, and where the remaining gaps still sit.
 
 ## Current Signature Chain (v1)
 
@@ -106,28 +110,38 @@ For each todo step, we call:
 1. `ExecutionStrategySignature` → outputs `next_action`, `action_params`
 2. `ToolSelectionSignature` → outputs `selected_tool`, `tool_params`
 
-These overlap significantly:
-- Both decide which tool to use
-- Both produce tool parameters
-- No clear separation of concerns
+These overlap significantly because both signatures decide which tool to use,
+both emit tool parameters, and there is no clear separation of concerns between
+the two calls.
 
-**Cost:** 2× the LLM calls needed per step.
+This redundancy makes the execution loop heavier than it needs to be and makes
+training data ambiguous because two signatures are effectively making the same
+decision. The cost is not just doubled inference, but also a diluted training
+signal because it is unclear which signature should be credited or blamed for a
+step that succeeds or fails.
 
 ### Issue 2: No Step-Level Learning Signal
 
-After tool execution, we have no signature to interpret:
-- Did the tool call help?
-- What facts did we learn?
-- Should we continue or try something else?
+After tool execution, we have no signature to interpret whether the tool call
+helped, what facts were learned, or whether the agent should continue or try a
+different approach.
 
-The only learning happens at session end (success/fail), which is too coarse.
+The only learning happens at session end (success or fail), which is too coarse
+to guide improvements in tool usage or step sequencing. Without a per-step
+interpretation, the system cannot build a feedback loop that teaches the agent
+which actions are useful, which are redundant, and which are actively harmful.
 
 ### Issue 3: Failure Triage Is Minimal
 
-`SolutionVerifierSignature` outputs `next_action` when verdict is RETRY, but this field is:
-- Appended to `plan_steps` for a basic retry
-- Not connected to structured triage or plan mutation logic
-- Results in shallow "blind retry" behavior without failure analysis
+`SolutionVerifierSignature` outputs `next_action` when verdict is RETRY, but the
+field is only appended to `plan_steps` for a basic retry and is not connected to
+structured triage or plan mutation logic, which is why retries still behave like
+blind repetition.
+
+This means verification can request a retry, but it cannot yet shape the retry
+into a targeted remediation plan. The loop re-enters execution with a new step,
+but it does not inspect root causes or propose a structured fix, which is why
+failure handling is still blunt.
 
 ### Issue 4: Two Separate Plan IRs
 
@@ -135,10 +149,13 @@ Adjutant and Autopilot have different plan outputs:
 - Adjutant: `SubtaskPlanningSignature.subtasks` → JSON string
 - Autopilot: `PlanningSignature.implementation_steps` → Vec<String>
 
-This causes:
-- Fragmented training data
-- Conflicting schemas
-- Duplicated optimization effort
+This causes fragmented training data, conflicting schemas, and duplicated
+optimization effort across the two pipelines.
+
+As long as the plan formats are split, it is difficult to aggregate training
+data and to compare performance across the two execution paths. A unified Plan
+IR would allow a single evaluation framework to reason about plan quality and
+would reduce the amount of signature-specific glue code in the pipelines.
 
 ## Proposed Signature Chain (v2)
 

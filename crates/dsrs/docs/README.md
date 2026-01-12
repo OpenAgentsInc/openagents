@@ -8,6 +8,12 @@ dsrs is the **compiler layer for agent behavior**. It decides *what to do* (best
 
 **Key insight:** DSPy is declarative AI programming, not just prompt optimization. Signatures decouple AI specification from ML techniques, enabling model portability without rewriting prompts.
 
+In practice, dsrs gives Autopilot and Adjutant a way to turn intent into code-like
+structures that can be optimized, traced, and audited. Instead of wiring the
+agent through hand-tuned prompts, dsrs provides typed signatures and reusable
+pipelines so the same decision surfaces can be improved over time without
+rewriting the orchestration logic.
+
 ## Quick Start
 
 ```rust
@@ -48,6 +54,13 @@ println!("Answer: {}", result.get("answer", None));
 | **Callbacks** | Observability hooks for HUD integration |
 | **Caching** | Hybrid memory + disk caching via foyer |
 
+The features above are intentionally biased toward production-grade behavior. We
+use signatures so outputs are typed and debuggable, predictors so we can compose
+decision logic, and optimizers so prompts improve without manual retuning.
+Tracing and callbacks keep every call visible to the HUD and to offline
+evaluation systems, while caching and LM routing keep costs predictable when we
+scale to many runs.
+
 ## Architecture
 
 ```
@@ -80,18 +93,24 @@ println!("Answer: {}", result.get("answer", None));
 └─────────────────────────────────────────────────────────────┘
 ```
 
+This layout separates the developer-facing API from the runtime mechanics. The
+interface layer defines how signatures and callbacks are registered, the core
+layer handles prediction and optimization, and the adapter and provider layers
+translate those abstractions into concrete model calls. This separation lets us
+swap providers or change routing without touching the signature definitions.
+
 ## Documentation
 
-- [Architecture](./ARCHITECTURE.md) - Core traits and design
-- [Callbacks](./CALLBACKS.md) - Observability and HUD integration
-- [Compiler Contract](./COMPILER-CONTRACT.md) - Wave 3 features (manifest, trace, Nostr bridge)
-- [DSPy Roadmap](./DSPY_ROADMAP.md) - OpenAgents DSPy implementation status
-- [Evaluation](./EVALUATION.md) - Eval harness & promotion gates (Wave 5)
-- [LM Providers](./LM-PROVIDERS.md) - Multi-provider LM configuration
-- [Marketplace](./MARKETPLACE.md) - Trading learned patterns via Lightning + Nostr
-- [Privacy](./PRIVACY.md) - Privacy module: redaction, chunking, policy (Wave 7)
-- [Retrieval](./RETRIEVAL.md) - Multi-lane retrieval system (Wave 4)
-- [Signatures](./SIGNATURES.md) - Optimizable agent signatures (Wave 4)
+- [Architecture](./ARCHITECTURE.md) - A narrative explanation of the core traits, runtime layers, and how signatures and predictors fit together in the compiled pipeline.
+- [Callbacks](./CALLBACKS.md) - Details on the observability hooks that wire dsrs execution into the HUD and telemetry surfaces used by Autopilot and Adjutant.
+- [Compiler Contract](./COMPILER-CONTRACT.md) - The Wave 3 contract that defines manifests, trace structure, and the Nostr bridge so compiled modules stay portable across runtimes.
+- [DSPy Roadmap](./DSPY_ROADMAP.md) - The current OpenAgents DSPy implementation status, including wave sequencing and the Autopilot integration map.
+- [Evaluation](./EVALUATION.md) - How eval tasks, metrics, and promotion gates measure signature quality and determine when an optimized module is promoted.
+- [LM Providers](./LM-PROVIDERS.md) - A practical guide to configuring multi-provider inference and routing behavior in dsrs.
+- [Marketplace](./MARKETPLACE.md) - How learned patterns can be traded and attributed over Lightning and Nostr within the DSPy ecosystem.
+- [Privacy](./PRIVACY.md) - The redaction and policy layer that protects sensitive data while preserving training value for optimization.
+- [Retrieval](./RETRIEVAL.md) - The multi-lane retrieval system that composes search strategies before they reach higher-level signatures.
+- [Signatures](./SIGNATURES.md) - Guidance for designing optimizable signatures and aligning input/output fields with learning objectives.
 
 ## Wave Status
 
@@ -113,9 +132,19 @@ println!("Answer: {}", result.get("answer", None));
 | 13 | Complete | Pipeline Wiring (decision pipelines in adjutant, runtime, oanix, autopilot-core) |
 | 14 | Complete | Self-Improving Autopilot loop (sessions + auto-optimization in `crates/adjutant/`) |
 
+Waves are sequenced so that foundational capabilities (signatures, routing, and
+evaluation) are in place before the higher-level features (self-improvement and
+full pipeline wiring). The current status reflects the live workspace; archived
+work is called out explicitly so it does not confuse implementation planning.
+
 ## Key Paths
 
 ```
+
+The paths above map to the core parts of the DSPy runtime: signature definition,
+prediction logic, evaluation and optimization, and runtime adapters. When you
+need to trace a decision, start with the signature and predictor code paths,
+then follow LM routing through the core `lm` module.
 crates/dsrs/
 ├── src/
 │   ├── core/
@@ -215,13 +244,15 @@ impl MyPipeline {
 }
 ```
 
-This pattern is used across:
-- `crates/dsrs/src/pipelines/` - Retrieval pipelines
-- `crates/oanix/src/dspy_pipelines.rs` - Situation + issue selection
-- `crates/adjutant/src/dspy/decision_pipelines.rs` - Decision routing
-- `crates/adjutant/src/dspy_orchestrator.rs` - Autopilot planning stages
-- `crates/autopilot-core/src/dspy_*` - Planning/execution/verification pipelines
-- `crates/runtime/src/dspy_pipelines.rs` - Tool selection
+This pattern is used across the workspace as the standard way to wrap signatures
+with LM selection and fallback behavior. The retrieval pipelines live in
+`crates/dsrs/src/pipelines/`, OANIX uses it for situation and issue selection in
+`crates/oanix/src/dspy_pipelines.rs`, Adjutant uses it for decision routing in
+`crates/adjutant/src/dspy/decision_pipelines.rs` and for Autopilot planning
+stages in `crates/adjutant/src/dspy_orchestrator.rs`, Autopilot core uses it in
+`crates/autopilot-core/src/dspy_*` for planning, execution, and verification,
+and Runtime uses it in `crates/runtime/src/dspy_pipelines.rs` for tool selection
+and result interpretation.
 
 ## Usage with OpenAgents
 
