@@ -4,15 +4,9 @@ members = [
     "crates/adjutant",
     "crates/agent",
     "crates/arrow",
-    "crates/nucleus",
     "crates/autopilot",
     "crates/autopilot-core",
     "crates/compute",
-    "crates/nucleus",
-    "crates/dsrs",
-    # DSPy integration (dsrs)
-    "crates/compute",
-    # DSPy integration (dsrs)
     "crates/dsrs",
     "crates/dsrs-macros",
     "crates/editor",
@@ -22,6 +16,7 @@ members = [
     "crates/issues",
     "crates/lm-router",
     "crates/local-inference",
+    "crates/manatap",
     "crates/nostr/core",
     "crates/nostr/client",
     "crates/onyx",
@@ -33,7 +28,6 @@ members = [
     "crates/vim",
     "crates/voice",
     "crates/wgpui",
-    # Protocol layer for typed job schemas
     "crates/protocol",
 ]
 
