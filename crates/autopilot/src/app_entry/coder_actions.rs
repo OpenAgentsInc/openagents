@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use serde_json::Value;
+use tokio::io::AsyncWriteExt;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::error::TryRecvError;
 use tokio::sync::oneshot;
@@ -21,11 +22,11 @@ use crate::app::nip90::{Nip90ConnectionStatus, Nip90Event};
 use crate::app::parsing::expand_prompt_text;
 use crate::app::permissions::{coder_mode_default_allow, parse_coder_mode, PermissionPending};
 use crate::app::permissions::request::{PermissionRequest, PermissionResult};
-use crate::app::session::SessionInfo;
+use crate::app::session::{SessionInfo, SessionUpdate};
 use crate::app::ui::render_app;
 use crate::app::CoderMode;
 use crate::autopilot_loop::{DspyStage, TodoStatus, TodoTask};
-use crate::commands::Command;
+use crate::commands::{Command, ReviewCommand, ReviewDelivery, ReviewTarget};
 
 use super::AutopilotApp;
 use super::command_palette_ids;
@@ -57,6 +58,69 @@ impl AutopilotApp {
         self.submit_codex_prompt(prompt);
     }
 
+    pub(super) fn start_review(&mut self, review: ReviewCommand) {
+        let Some(state) = &mut self.state else {
+            return;
+        };
+
+        if state.chat.is_thinking {
+            state.push_system_message("Cannot start review during an active request.".to_string());
+            return;
+        }
+
+        if !use_app_server_transport() {
+            state.push_system_message("Review requires Codex app-server transport.".to_string());
+            return;
+        }
+
+        let thread_id = state
+            .session
+            .session_info
+            .codex_thread_id
+            .clone()
+            .or_else(|| {
+                let session_id = state.session.session_info.session_id.trim();
+                if session_id.starts_with("thr_") {
+                    Some(session_id.to_string())
+                } else {
+                    None
+                }
+            });
+        let Some(thread_id) = thread_id else {
+            state.push_system_message("No active Codex session to review.".to_string());
+            return;
+        };
+
+        let cwd = std::env::current_dir().unwrap_or_default();
+
+        let (tx, rx) = mpsc::unbounded_channel();
+        let (control_tx, control_rx) = mpsc::unbounded_channel();
+        state.chat.response_rx = Some(rx);
+        state.chat.query_control_tx = Some(control_tx);
+        state.chat.is_thinking = true;
+        state.chat.streaming_markdown.reset();
+        state.catalogs.refresh_agent_cards(state.chat.is_thinking);
+
+        let window = state.window.clone();
+        let coder_mode = state.permissions.coder_mode;
+        let (permission_tx, permission_rx) = mpsc::unbounded_channel();
+        let (permission_action_tx, permission_action_rx) = mpsc::unbounded_channel();
+        state.permissions.permission_requests_rx = Some(permission_rx);
+        state.permissions.permission_action_tx = Some(permission_action_tx);
+        state.permissions.permission_action_rx = Some(permission_action_rx);
+
+        self.submit_codex_review_app_server(
+            review,
+            thread_id,
+            cwd,
+            coder_mode,
+            tx,
+            permission_tx,
+            control_rx,
+            window,
+        );
+    }
+
     /// Submit a prompt to the Codex backend.
     fn submit_codex_prompt(&mut self, prompt: String) {
         let Some(state) = &mut self.state else {
@@ -84,9 +148,11 @@ impl AutopilotApp {
 
         // Get window handle for triggering redraws from async task
         let window = state.window.clone();
-        // Don't try to resume Codex with legacy session IDs - they're incompatible
-        // TODO: Track Codex thread IDs separately if resume is needed
+        // Resolve the pending session to a Codex thread id when possible; otherwise start fresh.
         let coder_mode = state.permissions.coder_mode;
+        let pending_resume = state.session.pending_resume_session.take();
+        let pending_fork = state.session.pending_fork_session;
+        state.session.pending_fork_session = false;
 
         if use_app_server_transport() {
             tracing::info!("Using Codex app-server transport");
@@ -95,10 +161,15 @@ impl AutopilotApp {
             state.permissions.permission_requests_rx = Some(permission_rx);
             state.permissions.permission_action_tx = Some(permission_action_tx);
             state.permissions.permission_action_rx = Some(permission_action_rx);
+            let resume_thread_id = pending_resume
+                .as_ref()
+                .and_then(|session_id| resolve_codex_thread_id(&state.session, session_id));
             self.submit_codex_prompt_app_server(
                 expanded_prompt,
                 cwd,
                 coder_mode,
+                resume_thread_id,
+                pending_fork,
                 tx,
                 permission_tx,
                 control_rx,
@@ -155,10 +226,12 @@ impl AutopilotApp {
                                         match ev {
                                             ThreadEvent::ThreadStarted(started) => {
                                                 let mode_str = coder_mode.mode_label().to_string();
+                                                let thread_id = started.thread_id;
                                                 let _ = tx.send(ResponseEvent::SystemInit {
                                                     model: "codex".to_string(),
                                                     permission_mode: mode_str,
-                                                    session_id: started.thread_id,
+                                                    session_id: thread_id.clone(),
+                                                    codex_thread_id: Some(thread_id),
                                                     tool_count: 0,
                                                     tools: vec![],
                                                     output_style: String::new(),
@@ -351,15 +424,22 @@ impl AutopilotApp {
         prompt: String,
         cwd: PathBuf,
         coder_mode: CoderMode,
+        resume_thread_id: Option<String>,
+        fork_session: bool,
         tx: mpsc::UnboundedSender<ResponseEvent>,
         permission_tx: mpsc::UnboundedSender<PermissionPending>,
-        mut control_rx: mpsc::UnboundedReceiver<QueryControl>,
+        control_rx: mpsc::UnboundedReceiver<QueryControl>,
         window: Arc<winit::window::Window>,
     ) {
         let handle = self.runtime_handle.clone();
         handle.spawn(async move {
+            let wire_log = app_server::AppServerWireLog::new();
+            let trace_log = TraceLogger::new();
             let (client, channels) = match app_server::AppServerClient::spawn(
-                app_server::AppServerConfig { cwd: Some(cwd.clone()) },
+                app_server::AppServerConfig {
+                    cwd: Some(cwd.clone()),
+                    wire_log: Some(wire_log.clone()),
+                },
             )
             .await
             {
@@ -373,8 +453,9 @@ impl AutopilotApp {
                     return;
                 }
             };
-            let mut notification_rx = channels.notifications;
-            let mut request_rx = channels.requests;
+            let notification_rx = channels.notifications;
+            let request_rx = channels.requests;
+            let emitter = ResponseEmitter::new(tx.clone(), Some(trace_log.clone()));
 
             let client_info = app_server::ClientInfo {
                 name: "autopilot".to_string(),
@@ -392,38 +473,76 @@ impl AutopilotApp {
                 return;
             }
 
-            let thread_params = app_server::ThreadStartParams {
-                model: None,
-                model_provider: None,
-                cwd: Some(cwd.to_string_lossy().to_string()),
-                approval_policy: Some(approval_policy_for_mode(coder_mode)),
-                sandbox: Some(sandbox_mode_for_mode(coder_mode)),
-            };
-
-            let thread_response = match client.thread_start(thread_params).await {
-                Ok(response) => response,
-                Err(err) => {
-                    let _ = tx.send(ResponseEvent::Error(format!(
-                        "Failed to start codex thread: {}",
-                        err
-                    )));
-                    window.request_redraw();
-                    let _ = client.shutdown().await;
-                    return;
-                }
-            };
-
-            let thread_id = thread_response.thread.id.clone();
-            let model_name = if thread_response.model.is_empty() {
-                "codex".to_string()
+            let (thread_id, model_name) = if let Some(resume_id) = resume_thread_id.clone()
+                .filter(|_| !fork_session)
+            {
+                let resume_params = app_server::ThreadResumeParams {
+                    thread_id: resume_id,
+                    model: None,
+                    model_provider: None,
+                    cwd: Some(cwd.to_string_lossy().to_string()),
+                    approval_policy: Some(approval_policy_for_mode(coder_mode)),
+                    sandbox: Some(sandbox_mode_for_mode(coder_mode)),
+                };
+                let response = match client.thread_resume(resume_params).await {
+                    Ok(response) => response,
+                    Err(err) => {
+                        let _ = emitter.send(ResponseEvent::Error(format!(
+                            "Failed to resume codex thread: {}",
+                            err
+                        )));
+                        window.request_redraw();
+                        let _ = client.shutdown().await;
+                        return;
+                    }
+                };
+                let thread_id = response.thread.id.clone();
+                let model_name = if response.model.is_empty() {
+                    "codex".to_string()
+                } else {
+                    response.model.clone()
+                };
+                (thread_id, model_name)
             } else {
-                thread_response.model.clone()
+                let thread_params = app_server::ThreadStartParams {
+                    model: None,
+                    model_provider: None,
+                    cwd: Some(cwd.to_string_lossy().to_string()),
+                    approval_policy: Some(approval_policy_for_mode(coder_mode)),
+                    sandbox: Some(sandbox_mode_for_mode(coder_mode)),
+                };
+
+                let response = match client.thread_start(thread_params).await {
+                    Ok(response) => response,
+                    Err(err) => {
+                        let _ = emitter.send(ResponseEvent::Error(format!(
+                            "Failed to start codex thread: {}",
+                            err
+                        )));
+                        window.request_redraw();
+                        let _ = client.shutdown().await;
+                        return;
+                    }
+                };
+                let thread_id = response.thread.id.clone();
+                let model_name = if response.model.is_empty() {
+                    "codex".to_string()
+                } else {
+                    response.model.clone()
+                };
+                (thread_id, model_name)
             };
 
-            let _ = tx.send(ResponseEvent::SystemInit {
+            let run_id = current_timestamp_ms();
+            let session_dir = crate::app::config::session_messages_dir(&thread_id);
+            wire_log.set_path(session_dir.join(format!("wire-{}.jsonl", run_id)));
+            trace_log.set_path(session_dir.join(format!("trace-{}.jsonl", run_id)));
+
+            emitter.send(ResponseEvent::SystemInit {
                 model: model_name.clone(),
                 permission_mode: coder_mode.mode_label().to_string(),
                 session_id: thread_id.clone(),
+                codex_thread_id: Some(thread_id.clone()),
                 tool_count: 0,
                 tools: vec![],
                 output_style: String::new(),
@@ -437,10 +556,10 @@ impl AutopilotApp {
                 input: vec![app_server::UserInput::Text { text: prompt }],
             };
 
-            let mut turn_id = match client.turn_start(turn_params).await {
+            let turn_id = match client.turn_start(turn_params).await {
                 Ok(response) => Some(response.turn.id),
                 Err(err) => {
-                    let _ = tx.send(ResponseEvent::Error(format!(
+                    let _ = emitter.send(ResponseEvent::Error(format!(
                         "Failed to start codex turn: {}",
                         err
                     )));
@@ -449,265 +568,180 @@ impl AutopilotApp {
                     return;
                 }
             };
+            run_app_server_turn_loop(
+                client,
+                notification_rx,
+                request_rx,
+                emitter,
+                coder_mode,
+                permission_tx,
+                control_rx,
+                window,
+                thread_id,
+                model_name,
+                turn_id,
+            )
+            .await;
+        });
+    }
 
-            let mut command_outputs: HashMap<String, String> = HashMap::new();
-            let mut file_change_outputs: HashMap<String, String> = HashMap::new();
-            let mut agent_message_with_delta: HashSet<String> = HashSet::new();
-            let mut reasoning_with_delta: HashSet<String> = HashSet::new();
-            let mut diff_tool_ids: HashSet<String> = HashSet::new();
-            let mut latest_token_usage: Option<app_server::ThreadTokenUsage> = None;
-            let mut approval_items: HashMap<String, Value> = HashMap::new();
-
-            let mut completed = false;
-            while !completed {
-                tokio::select! {
-                    Some(control) = control_rx.recv() => {
-                        match control {
-                            QueryControl::Interrupt | QueryControl::Abort => {
-                                if let Some(active_turn) = turn_id.clone() {
-                                    let _ = client.turn_interrupt(app_server::TurnInterruptParams {
-                                        thread_id: thread_id.clone(),
-                                        turn_id: active_turn,
-                                    }).await;
-                                } else {
-                                    let _ = tx.send(ResponseEvent::Error("Request interrupted.".to_string()));
-                                }
-                                window.request_redraw();
-                            }
-                            _ => {}
-                        }
-                    }
-                    Some(notification) = notification_rx.recv() => {
-                        match notification.method.as_str() {
-                            "thread/started" => {
-                                if let Some(params) = notification.params {
-                                    if let Ok(event) = serde_json::from_value::<app_server::ThreadStartedNotification>(params) {
-                                        tracing::debug!("App-server thread started: {}", event.thread.id);
-                                    }
-                                }
-                            }
-                            "turn/started" => {
-                                if let Some(params) = notification.params {
-                                    if let Ok(event) = serde_json::from_value::<app_server::TurnStartedNotification>(params) {
-                                        let id = event.turn.id;
-                                        turn_id = Some(id.clone());
-                                        tracing::debug!("App-server turn started: {}", id);
-                                    }
-                                }
-                            }
-                            "item/agentMessage/delta" => {
-                                if let Some(params) = notification.params {
-                                    match serde_json::from_value::<app_server::AgentMessageDeltaNotification>(params) {
-                                        Ok(event) => {
-                                            agent_message_with_delta.insert(event.item_id);
-                                            let _ = tx.send(ResponseEvent::Chunk(event.delta));
-                                            window.request_redraw();
-                                        }
-                                        Err(err) => {
-                                            tracing::warn!(error = %err, "Failed to parse agent message delta");
-                                        }
-                                    }
-                                }
-                            }
-                            "item/reasoning/summaryTextDelta" => {
-                                if let Some(params) = notification.params {
-                                    match serde_json::from_value::<app_server::ReasoningSummaryTextDeltaNotification>(params) {
-                                        Ok(event) => {
-                                            reasoning_with_delta.insert(event.item_id);
-                                            let _ = tx.send(ResponseEvent::ThoughtChunk(event.delta));
-                                            window.request_redraw();
-                                        }
-                                        Err(err) => {
-                                            tracing::warn!(error = %err, "Failed to parse reasoning summary delta");
-                                        }
-                                    }
-                                }
-                            }
-                            "item/reasoning/textDelta" => {
-                                if let Some(params) = notification.params {
-                                    match serde_json::from_value::<app_server::ReasoningTextDeltaNotification>(params) {
-                                        Ok(event) => {
-                                            reasoning_with_delta.insert(event.item_id);
-                                            let _ = tx.send(ResponseEvent::ThoughtChunk(event.delta));
-                                            window.request_redraw();
-                                        }
-                                        Err(err) => {
-                                            tracing::warn!(error = %err, "Failed to parse reasoning text delta");
-                                        }
-                                    }
-                                }
-                            }
-                            "item/commandExecution/outputDelta" => {
-                                if let Some(params) = notification.params {
-                                    if let Ok(event) = serde_json::from_value::<app_server::CommandExecutionOutputDeltaNotification>(params) {
-                                        append_tool_output(&mut command_outputs, &event.item_id, &event.delta);
-                                    }
-                                }
-                            }
-                            "item/fileChange/outputDelta" => {
-                                if let Some(params) = notification.params {
-                                    if let Ok(event) = serde_json::from_value::<app_server::FileChangeOutputDeltaNotification>(params) {
-                                        append_tool_output(&mut file_change_outputs, &event.item_id, &event.delta);
-                                    }
-                                }
-                            }
-                            "item/started" => {
-                                if let Some(params) = notification.params {
-                                    match serde_json::from_value::<app_server::ItemStartedNotification>(params) {
-                                        Ok(event) => {
-                                            handle_app_server_item_started(
-                                                &event.item,
-                                                &tx,
-                                                &mut command_outputs,
-                                                &mut file_change_outputs,
-                                                &mut approval_items,
-                                                &window,
-                                            );
-                                        }
-                                        Err(err) => {
-                                            tracing::warn!(error = %err, "Failed to parse item started notification");
-                                        }
-                                    }
-                                }
-                            }
-                            "item/completed" => {
-                                if let Some(params) = notification.params {
-                                    match serde_json::from_value::<app_server::ItemCompletedNotification>(params) {
-                                        Ok(event) => {
-                                            handle_app_server_item_completed(
-                                                &event.item,
-                                                &tx,
-                                                &mut command_outputs,
-                                                &mut file_change_outputs,
-                                                &mut agent_message_with_delta,
-                                                &mut reasoning_with_delta,
-                                                &mut approval_items,
-                                                &window,
-                                            );
-                                        }
-                                        Err(err) => {
-                                            tracing::warn!(error = %err, "Failed to parse item completed notification");
-                                        }
-                                    }
-                                }
-                            }
-                            "turn/diff/updated" => {
-                                if let Some(params) = notification.params {
-                                    if let Ok(event) = serde_json::from_value::<app_server::TurnDiffUpdatedNotification>(params) {
-                                        handle_app_server_turn_diff(
-                                            &event,
-                                            &mut diff_tool_ids,
-                                            &tx,
-                                            &window,
-                                        );
-                                    }
-                                }
-                            }
-                            "turn/plan/updated" => {
-                                if let Some(params) = notification.params {
-                                    if let Ok(event) = serde_json::from_value::<app_server::TurnPlanUpdatedNotification>(params) {
-                                        if let Some(stage) = plan_steps_to_dspy_stage(&event.plan) {
-                                            let _ = tx.send(ResponseEvent::DspyStage(stage));
-                                        }
-                                        if let Some(explanation) = event.explanation.as_ref() {
-                                            let explanation = explanation.trim();
-                                            if !explanation.is_empty() {
-                                                let _ = tx.send(ResponseEvent::SystemMessage(format!(
-                                                    "Plan update: {}",
-                                                    explanation
-                                                )));
-                                            }
-                                        }
-                                        window.request_redraw();
-                                    }
-                                }
-                            }
-                            "thread/tokenUsage/updated" => {
-                                if let Some(params) = notification.params {
-                                    if let Ok(event) = serde_json::from_value::<app_server::ThreadTokenUsageUpdatedNotification>(params) {
-                                        latest_token_usage = Some(event.token_usage.clone());
-                                    }
-                                }
-                            }
-                            "thread/compacted" => {
-                                if let Some(params) = notification.params {
-                                    if let Ok(event) = serde_json::from_value::<app_server::ContextCompactedNotification>(params) {
-                                        let message = format!(
-                                            "Context compacted for thread {} (turn {}).",
-                                            event.thread_id,
-                                            event.turn_id
-                                        );
-                                        let _ = tx.send(ResponseEvent::SystemMessage(message));
-                                        window.request_redraw();
-                                    }
-                                }
-                            }
-                            "turn/completed" => {
-                                if let Some(params) = notification.params {
-                                    if let Ok(event) = serde_json::from_value::<app_server::TurnCompletedNotification>(params) {
-                                        tracing::debug!("App-server turn completed: {}", event.turn.id);
-                                    }
-                                }
-                                let metadata = latest_token_usage.as_ref().map(|usage| {
-                                    let input_total =
-                                        usage.input_tokens.saturating_add(usage.cached_input_tokens);
-                                    let input_tokens = u64::try_from(input_total).unwrap_or(0);
-                                    let output_tokens = u64::try_from(usage.output_tokens).unwrap_or(0);
-                                    crate::app::chat::MessageMetadata {
-                                        model: Some(model_name.clone()),
-                                        input_tokens: Some(input_tokens),
-                                        output_tokens: Some(output_tokens),
-                                        duration_ms: None,
-                                        cost_msats: None,
-                                    }
-                                });
-                                let _ = tx.send(ResponseEvent::Complete { metadata });
-                                window.request_redraw();
-                                completed = true;
-                            }
-                            "error" => {
-                                if let Some(params) = notification.params {
-                                    match serde_json::from_value::<app_server::ErrorNotification>(params) {
-                                        Ok(event) => {
-                                            if event.will_retry {
-                                                let _ = tx.send(ResponseEvent::SystemMessage(format!(
-                                                    "Codex error (retrying): {}",
-                                                    event.error.message
-                                                )));
-                                            } else {
-                                                let _ = tx.send(ResponseEvent::Error(event.error.message));
-                                                completed = true;
-                                            }
-                                            window.request_redraw();
-                                        }
-                                        Err(err) => {
-                                            tracing::warn!(error = %err, "Failed to parse app-server error event");
-                                        }
-                                    }
-                                }
-                            }
-                            _ => {}
-                        }
-                    }
-                    Some(request) = request_rx.recv() => {
-                        handle_app_server_request(
-                            &client,
-                            &tx,
-                            coder_mode,
-                            &permission_tx,
-                            &approval_items,
-                            request,
-                            &window,
-                        )
-                        .await;
-                    }
-                    else => {
-                        completed = true;
-                    }
+    fn submit_codex_review_app_server(
+        &self,
+        review: ReviewCommand,
+        thread_id: String,
+        cwd: PathBuf,
+        coder_mode: CoderMode,
+        tx: mpsc::UnboundedSender<ResponseEvent>,
+        permission_tx: mpsc::UnboundedSender<PermissionPending>,
+        control_rx: mpsc::UnboundedReceiver<QueryControl>,
+        window: Arc<winit::window::Window>,
+    ) {
+        let handle = self.runtime_handle.clone();
+        handle.spawn(async move {
+            let wire_log = app_server::AppServerWireLog::new();
+            let trace_log = TraceLogger::new();
+            let (client, channels) = match app_server::AppServerClient::spawn(
+                app_server::AppServerConfig {
+                    cwd: Some(cwd.clone()),
+                    wire_log: Some(wire_log.clone()),
+                },
+            )
+            .await
+            {
+                Ok(result) => result,
+                Err(err) => {
+                    let _ = tx.send(ResponseEvent::Error(format!(
+                        "Failed to start codex app-server: {}",
+                        err
+                    )));
+                    window.request_redraw();
+                    return;
                 }
+            };
+
+            let emitter = ResponseEmitter::new(tx.clone(), Some(trace_log.clone()));
+            let notification_rx = channels.notifications;
+            let request_rx = channels.requests;
+
+            let client_info = app_server::ClientInfo {
+                name: "autopilot".to_string(),
+                title: Some("Autopilot".to_string()),
+                version: env!("CARGO_PKG_VERSION").to_string(),
+            };
+
+            if let Err(err) = client.initialize(client_info).await {
+                let _ = emitter.send(ResponseEvent::Error(format!(
+                    "Failed to initialize codex app-server: {}",
+                    err
+                )));
+                window.request_redraw();
+                let _ = client.shutdown().await;
+                return;
             }
 
-            let _ = client.shutdown().await;
+            let resume_params = app_server::ThreadResumeParams {
+                thread_id: thread_id.clone(),
+                model: None,
+                model_provider: None,
+                cwd: Some(cwd.to_string_lossy().to_string()),
+                approval_policy: Some(approval_policy_for_mode(coder_mode)),
+                sandbox: Some(sandbox_mode_for_mode(coder_mode)),
+            };
+
+            let resume_response = match client.thread_resume(resume_params).await {
+                Ok(response) => response,
+                Err(err) => {
+                    let _ = emitter.send(ResponseEvent::Error(format!(
+                        "Failed to resume codex thread: {}",
+                        err
+                    )));
+                    window.request_redraw();
+                    let _ = client.shutdown().await;
+                    return;
+                }
+            };
+
+            let model_name = if resume_response.model.is_empty() {
+                "codex".to_string()
+            } else {
+                resume_response.model.clone()
+            };
+
+            let ReviewCommand { delivery, target } = review;
+            let target = match target {
+                ReviewTarget::UncommittedChanges => app_server::ReviewTarget::UncommittedChanges,
+                ReviewTarget::BaseBranch { branch } => {
+                    app_server::ReviewTarget::BaseBranch { branch }
+                }
+                ReviewTarget::Commit { sha, title } => {
+                    app_server::ReviewTarget::Commit { sha, title }
+                }
+                ReviewTarget::Custom { instructions } => {
+                    app_server::ReviewTarget::Custom { instructions }
+                }
+            };
+            let delivery = match delivery {
+                ReviewDelivery::Inline => None,
+                ReviewDelivery::Detached => Some(app_server::ReviewDelivery::Detached),
+            };
+
+            let review_params = app_server::ReviewStartParams {
+                thread_id: thread_id.clone(),
+                target,
+                delivery,
+            };
+
+            let review_response = match client.review_start(review_params).await {
+                Ok(response) => response,
+                Err(err) => {
+                    let _ = emitter.send(ResponseEvent::Error(format!(
+                        "Failed to start codex review: {}",
+                        err
+                    )));
+                    window.request_redraw();
+                    let _ = client.shutdown().await;
+                    return;
+                }
+            };
+
+            let active_thread_id = review_response.review_thread_id.clone();
+            let run_id = current_timestamp_ms();
+            let session_dir = crate::app::config::session_messages_dir(&active_thread_id);
+            wire_log.set_path(session_dir.join(format!("wire-{}.jsonl", run_id)));
+            trace_log.set_path(session_dir.join(format!("trace-{}.jsonl", run_id)));
+
+            if active_thread_id != thread_id {
+                emitter.send(ResponseEvent::SystemInit {
+                    model: model_name.clone(),
+                    permission_mode: coder_mode.mode_label().to_string(),
+                    session_id: active_thread_id.clone(),
+                    codex_thread_id: Some(active_thread_id.clone()),
+                    tool_count: 0,
+                    tools: vec![],
+                    output_style: String::new(),
+                    slash_commands: vec![],
+                    mcp_servers: vec![],
+                });
+                let _ = emitter.send(ResponseEvent::SystemMessage(format!(
+                    "Review started in detached thread {}.",
+                    active_thread_id
+                )));
+            }
+
+            run_app_server_turn_loop(
+                client,
+                notification_rx,
+                request_rx,
+                emitter,
+                coder_mode,
+                permission_tx,
+                control_rx,
+                window,
+                active_thread_id,
+                model_name,
+                Some(review_response.turn.id),
+            )
+            .await;
         });
     }
 
@@ -930,6 +964,7 @@ impl AutopilotApp {
                     model,
                     permission_mode,
                     session_id,
+                    codex_thread_id,
                     tool_count,
                     tools,
                     output_style,
@@ -940,6 +975,7 @@ impl AutopilotApp {
                         model,
                         permission_mode,
                         session_id,
+                        codex_thread_id,
                         tool_count,
                         tools,
                         output_style,
@@ -1040,36 +1076,163 @@ impl AutopilotApp {
     }
 
     pub(super) fn poll_session_actions(&mut self) {
-        let Some(state) = &mut self.state else {
-            return;
+        let (session_events, session_updates, checkpoint_events) = {
+            let Some(state) = &mut self.state else {
+                return;
+            };
+
+            let mut session_events = Vec::new();
+            if let Some(rx) = &mut state.session.session_action_rx {
+                while let Ok(event) = rx.try_recv() {
+                    session_events.push(event);
+                }
+            }
+
+            let mut session_updates = Vec::new();
+            if let Some(rx) = &mut state.session.session_update_rx {
+                while let Ok(update) = rx.try_recv() {
+                    session_updates.push(update);
+                }
+            }
+
+            let mut checkpoint_events = Vec::new();
+            if let Some(rx) = &mut state.session.checkpoint_action_rx {
+                while let Ok(index) = rx.try_recv() {
+                    checkpoint_events.push(index);
+                }
+            }
+
+            (session_events, session_updates, checkpoint_events)
         };
 
         let mut needs_redraw = false;
 
-        let mut session_events = Vec::new();
-        if let Some(rx) = &mut state.session.session_action_rx {
-            while let Ok(event) = rx.try_recv() {
-                session_events.push(event);
-            }
-        }
         for event in session_events {
-            state.handle_session_card_action(event.action, event.session_id);
+            if matches!(event.action, wgpui::components::molecules::SessionAction::Delete) {
+                self.archive_session(event.session_id);
+            } else if let Some(state) = &mut self.state {
+                state.handle_session_card_action(event.action, event.session_id);
+            }
             needs_redraw = true;
         }
 
-        let mut checkpoint_events = Vec::new();
-        if let Some(rx) = &mut state.session.checkpoint_action_rx {
-            while let Ok(index) = rx.try_recv() {
-                checkpoint_events.push(index);
+        for update in session_updates {
+            if let Some(state) = &mut self.state {
+                match update {
+                    SessionUpdate::MergeEntries(entries) => {
+                        state.session.merge_session_entries(
+                            entries,
+                            &state.settings.coder_settings,
+                            state.chat.is_thinking,
+                        );
+                        needs_redraw = true;
+                    }
+                    SessionUpdate::Remove { session_id } => {
+                        state.session.remove_session_entry(&session_id, state.chat.is_thinking);
+                        needs_redraw = true;
+                    }
+                    SessionUpdate::Error(message) => {
+                        state.push_system_message(message);
+                        needs_redraw = true;
+                    }
+                }
             }
         }
+
         for index in checkpoint_events {
-            state.handle_checkpoint_restore(index);
-            needs_redraw = true;
+            if let Some(state) = &mut self.state {
+                state.handle_checkpoint_restore(index);
+                needs_redraw = true;
+            }
         }
 
         if needs_redraw {
-            state.window.request_redraw();
+            if let Some(state) = &mut self.state {
+                state.window.request_redraw();
+            }
+        }
+    }
+
+    fn archive_session(&mut self, session_id: String) {
+        let Some(state) = &mut self.state else {
+            return;
+        };
+
+        if state.chat.is_thinking {
+            state.push_system_message("Cannot delete sessions during an active request.".to_string());
+            return;
+        }
+
+        if session_id == state.session.session_info.session_id {
+            state.push_system_message("Cannot delete the active session.".to_string());
+            return;
+        }
+
+        let codex_thread_id = lookup_codex_thread_id(&state.session, &session_id);
+        if let Some(thread_id) = codex_thread_id {
+            let update_tx = state.session.session_update_tx.clone();
+            let handle = self.runtime_handle.clone();
+            let cwd = std::env::current_dir().unwrap_or_default();
+            let session_id_for_update = session_id.clone();
+            handle.spawn(async move {
+                let (client, _channels) = match app_server::AppServerClient::spawn(
+                    app_server::AppServerConfig {
+                        cwd: Some(cwd),
+                        wire_log: None,
+                    },
+                )
+                .await
+                {
+                    Ok(result) => result,
+                    Err(err) => {
+                        if let Some(tx) = update_tx {
+                            let _ = tx.send(SessionUpdate::Error(format!(
+                                "Failed to start codex app-server: {}",
+                                err
+                            )));
+                        }
+                        return;
+                    }
+                };
+
+                let client_info = app_server::ClientInfo {
+                    name: "autopilot".to_string(),
+                    title: Some("Autopilot".to_string()),
+                    version: env!("CARGO_PKG_VERSION").to_string(),
+                };
+                if let Err(err) = client.initialize(client_info).await {
+                    if let Some(tx) = update_tx {
+                        let _ = tx.send(SessionUpdate::Error(format!(
+                            "Failed to initialize codex app-server: {}",
+                            err
+                        )));
+                    }
+                    let _ = client.shutdown().await;
+                    return;
+                }
+
+                let archive_result = client
+                    .thread_archive(app_server::ThreadArchiveParams { thread_id })
+                    .await;
+                if let Some(tx) = update_tx {
+                    match archive_result {
+                        Ok(_) => {
+                            let _ = tx.send(SessionUpdate::Remove {
+                                session_id: session_id_for_update,
+                            });
+                        }
+                        Err(err) => {
+                            let _ = tx.send(SessionUpdate::Error(format!(
+                                "Failed to archive session: {}",
+                                err
+                            )));
+                        }
+                    }
+                }
+                let _ = client.shutdown().await;
+            });
+        } else {
+            state.session.remove_session_entry(&session_id, state.chat.is_thinking);
         }
     }
 
@@ -1717,6 +1880,10 @@ impl AutopilotApp {
 
         match command_action {
             Some(CommandAction::SubmitPrompt(prompt)) => Some(prompt),
+            Some(CommandAction::StartReview(review)) => {
+                self.start_review(review);
+                None
+            }
             _ => None,
         }
     }
@@ -1755,6 +1922,279 @@ fn sandbox_mode_for_mode(mode: CoderMode) -> app_server::SandboxMode {
     }
 }
 
+async fn run_app_server_turn_loop(
+    client: app_server::AppServerClient,
+    mut notification_rx: mpsc::Receiver<app_server::AppServerNotification>,
+    mut request_rx: mpsc::Receiver<app_server::AppServerRequest>,
+    emitter: ResponseEmitter,
+    coder_mode: CoderMode,
+    permission_tx: mpsc::UnboundedSender<PermissionPending>,
+    mut control_rx: mpsc::UnboundedReceiver<QueryControl>,
+    window: Arc<winit::window::Window>,
+    thread_id: String,
+    model_name: String,
+    mut turn_id: Option<String>,
+) {
+    let mut command_outputs: HashMap<String, String> = HashMap::new();
+    let mut file_change_outputs: HashMap<String, String> = HashMap::new();
+    let mut agent_message_with_delta: HashSet<String> = HashSet::new();
+    let mut reasoning_with_delta: HashSet<String> = HashSet::new();
+    let mut diff_tool_ids: HashSet<String> = HashSet::new();
+    let mut latest_token_usage: Option<app_server::ThreadTokenUsage> = None;
+    let mut approval_items: HashMap<String, Value> = HashMap::new();
+
+    let mut completed = false;
+    while !completed {
+        tokio::select! {
+            Some(control) = control_rx.recv() => {
+                match control {
+                    QueryControl::Interrupt | QueryControl::Abort => {
+                        if let Some(active_turn) = turn_id.clone() {
+                            let _ = client.turn_interrupt(app_server::TurnInterruptParams {
+                                thread_id: thread_id.clone(),
+                                turn_id: active_turn,
+                            }).await;
+                        } else {
+                            let _ = emitter.send(ResponseEvent::Error("Request interrupted.".to_string()));
+                        }
+                        window.request_redraw();
+                    }
+                    _ => {}
+                }
+            }
+            Some(notification) = notification_rx.recv() => {
+                match notification.method.as_str() {
+                    "thread/started" => {
+                        if let Some(params) = notification.params {
+                            if let Ok(event) = serde_json::from_value::<app_server::ThreadStartedNotification>(params) {
+                                tracing::debug!("App-server thread started: {}", event.thread.id);
+                            }
+                        }
+                    }
+                    "turn/started" => {
+                        if let Some(params) = notification.params {
+                            if let Ok(event) = serde_json::from_value::<app_server::TurnStartedNotification>(params) {
+                                let id = event.turn.id;
+                                turn_id = Some(id.clone());
+                                tracing::debug!("App-server turn started: {}", id);
+                            }
+                        }
+                    }
+                    "item/agentMessage/delta" => {
+                        if let Some(params) = notification.params {
+                            match serde_json::from_value::<app_server::AgentMessageDeltaNotification>(params) {
+                                Ok(event) => {
+                                    agent_message_with_delta.insert(event.item_id);
+                                    let _ = emitter.send(ResponseEvent::Chunk(event.delta));
+                                    window.request_redraw();
+                                }
+                                Err(err) => {
+                                    tracing::warn!(error = %err, "Failed to parse agent message delta");
+                                }
+                            }
+                        }
+                    }
+                    "item/reasoning/summaryTextDelta" => {
+                        if let Some(params) = notification.params {
+                            match serde_json::from_value::<app_server::ReasoningSummaryTextDeltaNotification>(params) {
+                                Ok(event) => {
+                                    reasoning_with_delta.insert(event.item_id);
+                                    let _ = emitter.send(ResponseEvent::ThoughtChunk(event.delta));
+                                    window.request_redraw();
+                                }
+                                Err(err) => {
+                                    tracing::warn!(error = %err, "Failed to parse reasoning summary delta");
+                                }
+                            }
+                        }
+                    }
+                    "item/reasoning/textDelta" => {
+                        if let Some(params) = notification.params {
+                            match serde_json::from_value::<app_server::ReasoningTextDeltaNotification>(params) {
+                                Ok(event) => {
+                                    reasoning_with_delta.insert(event.item_id);
+                                    let _ = emitter.send(ResponseEvent::ThoughtChunk(event.delta));
+                                    window.request_redraw();
+                                }
+                                Err(err) => {
+                                    tracing::warn!(error = %err, "Failed to parse reasoning text delta");
+                                }
+                            }
+                        }
+                    }
+                    "item/commandExecution/outputDelta" => {
+                        if let Some(params) = notification.params {
+                            if let Ok(event) = serde_json::from_value::<app_server::CommandExecutionOutputDeltaNotification>(params) {
+                                append_tool_output(&mut command_outputs, &event.item_id, &event.delta);
+                            }
+                        }
+                    }
+                    "item/fileChange/outputDelta" => {
+                        if let Some(params) = notification.params {
+                            if let Ok(event) = serde_json::from_value::<app_server::FileChangeOutputDeltaNotification>(params) {
+                                append_tool_output(&mut file_change_outputs, &event.item_id, &event.delta);
+                            }
+                        }
+                    }
+                    "item/started" => {
+                        if let Some(params) = notification.params {
+                            match serde_json::from_value::<app_server::ItemStartedNotification>(params) {
+                                Ok(event) => {
+                                    handle_app_server_item_started(
+                                        &event.item,
+                                        &emitter,
+                                        &mut command_outputs,
+                                        &mut file_change_outputs,
+                                        &mut approval_items,
+                                        &window,
+                                    );
+                                }
+                                Err(err) => {
+                                    tracing::warn!(error = %err, "Failed to parse item started notification");
+                                }
+                            }
+                        }
+                    }
+                    "item/completed" => {
+                        if let Some(params) = notification.params {
+                            match serde_json::from_value::<app_server::ItemCompletedNotification>(params) {
+                                Ok(event) => {
+                                    handle_app_server_item_completed(
+                                        &event.item,
+                                        &emitter,
+                                        &mut command_outputs,
+                                        &mut file_change_outputs,
+                                        &mut agent_message_with_delta,
+                                        &mut reasoning_with_delta,
+                                        &mut approval_items,
+                                        &window,
+                                    );
+                                }
+                                Err(err) => {
+                                    tracing::warn!(error = %err, "Failed to parse item completed notification");
+                                }
+                            }
+                        }
+                    }
+                    "turn/diff/updated" => {
+                        if let Some(params) = notification.params {
+                            if let Ok(event) = serde_json::from_value::<app_server::TurnDiffUpdatedNotification>(params) {
+                                handle_app_server_turn_diff(
+                                    &event,
+                                    &mut diff_tool_ids,
+                                    &emitter,
+                                    &window,
+                                );
+                            }
+                        }
+                    }
+                    "turn/plan/updated" => {
+                        if let Some(params) = notification.params {
+                            if let Ok(event) = serde_json::from_value::<app_server::TurnPlanUpdatedNotification>(params) {
+                                if let Some(stage) = plan_steps_to_dspy_stage(&event.plan) {
+                                    let _ = emitter.send(ResponseEvent::DspyStage(stage));
+                                }
+                                if let Some(explanation) = event.explanation.as_ref() {
+                                    let explanation = explanation.trim();
+                                    if !explanation.is_empty() {
+                                        let _ = emitter.send(ResponseEvent::SystemMessage(format!(
+                                            "Plan update: {}",
+                                            explanation
+                                        )));
+                                    }
+                                }
+                                window.request_redraw();
+                            }
+                        }
+                    }
+                    "thread/tokenUsage/updated" => {
+                        if let Some(params) = notification.params {
+                            if let Ok(event) = serde_json::from_value::<app_server::ThreadTokenUsageUpdatedNotification>(params) {
+                                latest_token_usage = Some(event.token_usage.clone());
+                            }
+                        }
+                    }
+                    "thread/compacted" => {
+                        if let Some(params) = notification.params {
+                            if let Ok(event) = serde_json::from_value::<app_server::ContextCompactedNotification>(params) {
+                                let message = format!(
+                                    "Context compacted for thread {} (turn {}).",
+                                    event.thread_id,
+                                    event.turn_id
+                                );
+                                let _ = emitter.send(ResponseEvent::SystemMessage(message));
+                                window.request_redraw();
+                            }
+                        }
+                    }
+                    "turn/completed" => {
+                        if let Some(params) = notification.params {
+                            if let Ok(event) = serde_json::from_value::<app_server::TurnCompletedNotification>(params) {
+                                tracing::debug!("App-server turn completed: {}", event.turn.id);
+                            }
+                        }
+                        let metadata = latest_token_usage.as_ref().map(|usage| {
+                            let input_total =
+                                usage.input_tokens.saturating_add(usage.cached_input_tokens);
+                            let input_tokens = u64::try_from(input_total).unwrap_or(0);
+                            let output_tokens = u64::try_from(usage.output_tokens).unwrap_or(0);
+                            crate::app::chat::MessageMetadata {
+                                model: Some(model_name.clone()),
+                                input_tokens: Some(input_tokens),
+                                output_tokens: Some(output_tokens),
+                                duration_ms: None,
+                                cost_msats: None,
+                            }
+                        });
+                        let _ = emitter.send(ResponseEvent::Complete { metadata });
+                        window.request_redraw();
+                        completed = true;
+                    }
+                    "error" => {
+                        if let Some(params) = notification.params {
+                            match serde_json::from_value::<app_server::ErrorNotification>(params) {
+                                Ok(event) => {
+                                    if event.will_retry {
+                                        let _ = emitter.send(ResponseEvent::SystemMessage(format!(
+                                            "Codex error (retrying): {}",
+                                            event.error.message
+                                        )));
+                                    } else {
+                                        let _ = emitter.send(ResponseEvent::Error(event.error.message));
+                                        completed = true;
+                                    }
+                                    window.request_redraw();
+                                }
+                                Err(err) => {
+                                    tracing::warn!(error = %err, "Failed to parse app-server error event");
+                                }
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            Some(request) = request_rx.recv() => {
+                handle_app_server_request(
+                    &client,
+                    &emitter,
+                    coder_mode,
+                    &permission_tx,
+                    &approval_items,
+                    request,
+                    &window,
+                )
+                .await;
+            }
+            else => {
+                completed = true;
+            }
+        }
+    }
+
+    let _ = client.shutdown().await;
+}
+
 #[derive(Clone, Copy)]
 enum ApprovalKind {
     CommandExecution,
@@ -1763,7 +2203,7 @@ enum ApprovalKind {
 
 async fn handle_app_server_request(
     client: &app_server::AppServerClient,
-    tx: &mpsc::UnboundedSender<ResponseEvent>,
+    emitter: &ResponseEmitter,
     coder_mode: CoderMode,
     permission_tx: &mpsc::UnboundedSender<PermissionPending>,
     approval_items: &HashMap<String, Value>,
@@ -1793,7 +2233,7 @@ async fn handle_app_server_request(
     };
 
     let Some((kind, item_id, reason)) = parsed else {
-        let _ = tx.send(ResponseEvent::SystemMessage(
+        let _ = emitter.send(ResponseEvent::SystemMessage(
             "Approval request unsupported.".to_string(),
         ));
         let _ = client
@@ -1870,7 +2310,7 @@ async fn handle_app_server_request(
 
     if matches!(decision, app_server::ApprovalDecision::Decline) {
         let label = decline_reason.unwrap_or_else(|| "No reason provided.".to_string());
-        let _ = tx.send(ResponseEvent::SystemMessage(format!(
+        let _ = emitter.send(ResponseEvent::SystemMessage(format!(
             "Approval declined: {}",
             label
         )));
@@ -1886,7 +2326,7 @@ async fn handle_app_server_request(
         )
         .await
     {
-        let _ = tx.send(ResponseEvent::Error(format!(
+        let _ = emitter.send(ResponseEvent::Error(format!(
             "Failed to respond to approval request: {}",
             err
         )));
@@ -1985,21 +2425,21 @@ fn append_tool_output(buffers: &mut HashMap<String, String>, item_id: &str, delt
 fn handle_app_server_turn_diff(
     event: &app_server::TurnDiffUpdatedNotification,
     diff_tool_ids: &mut HashSet<String>,
-    tx: &mpsc::UnboundedSender<ResponseEvent>,
+    emitter: &ResponseEmitter,
     window: &Arc<winit::window::Window>,
 ) {
     let tool_use_id = format!("turn-diff-{}", event.turn_id);
     if diff_tool_ids.insert(tool_use_id.clone()) {
-        let _ = tx.send(ResponseEvent::ToolCallStart {
+        let _ = emitter.send(ResponseEvent::ToolCallStart {
             name: "Diff".to_string(),
             tool_use_id: tool_use_id.clone(),
         });
-        let _ = tx.send(ResponseEvent::ToolCallInput {
+        let _ = emitter.send(ResponseEvent::ToolCallInput {
             json: serde_json::json!({ "file_path": "turn diff" }).to_string(),
         });
-        let _ = tx.send(ResponseEvent::ToolCallEnd);
+        let _ = emitter.send(ResponseEvent::ToolCallEnd);
     }
-    let _ = tx.send(ResponseEvent::ToolResult {
+    let _ = emitter.send(ResponseEvent::ToolResult {
         content: String::new(),
         is_error: false,
         tool_use_id: Some(tool_use_id),
@@ -2011,7 +2451,7 @@ fn handle_app_server_turn_diff(
 
 fn handle_app_server_item_started(
     item: &Value,
-    tx: &mpsc::UnboundedSender<ResponseEvent>,
+    emitter: &ResponseEmitter,
     command_outputs: &mut HashMap<String, String>,
     file_change_outputs: &mut HashMap<String, String>,
     approval_items: &mut HashMap<String, Value>,
@@ -2028,14 +2468,14 @@ fn handle_app_server_item_started(
             approval_items.insert(id.clone(), item.clone());
             let command = command_string_from_item(item).unwrap_or_default();
             command_outputs.entry(id.clone()).or_default();
-            let _ = tx.send(ResponseEvent::ToolCallStart {
+            let _ = emitter.send(ResponseEvent::ToolCallStart {
                 name: "Bash".to_string(),
                 tool_use_id: id.clone(),
             });
-            let _ = tx.send(ResponseEvent::ToolCallInput {
+            let _ = emitter.send(ResponseEvent::ToolCallInput {
                 json: serde_json::json!({ "command": command }).to_string(),
             });
-            let _ = tx.send(ResponseEvent::ToolCallEnd);
+            let _ = emitter.send(ResponseEvent::ToolCallEnd);
             window.request_redraw();
         }
         "fileChange" => {
@@ -2049,14 +2489,14 @@ fn handle_app_server_item_started(
                 input["file_path"] = Value::String(path);
             }
             file_change_outputs.entry(id.clone()).or_default();
-            let _ = tx.send(ResponseEvent::ToolCallStart {
+            let _ = emitter.send(ResponseEvent::ToolCallStart {
                 name: "Edit".to_string(),
                 tool_use_id: id.clone(),
             });
-            let _ = tx.send(ResponseEvent::ToolCallInput {
+            let _ = emitter.send(ResponseEvent::ToolCallInput {
                 json: input.to_string(),
             });
-            let _ = tx.send(ResponseEvent::ToolCallEnd);
+            let _ = emitter.send(ResponseEvent::ToolCallEnd);
             window.request_redraw();
         }
         "mcpToolCall" => {
@@ -2070,19 +2510,19 @@ fn handle_app_server_item_started(
                 .get("arguments")
                 .cloned()
                 .unwrap_or(Value::Null);
-            let _ = tx.send(ResponseEvent::ToolCallStart {
+            let _ = emitter.send(ResponseEvent::ToolCallStart {
                 name,
                 tool_use_id: id.clone(),
             });
-            let _ = tx.send(ResponseEvent::ToolCallInput {
+            let _ = emitter.send(ResponseEvent::ToolCallInput {
                 json: serde_json::to_string(&args).unwrap_or_default(),
             });
-            let _ = tx.send(ResponseEvent::ToolCallEnd);
+            let _ = emitter.send(ResponseEvent::ToolCallEnd);
             window.request_redraw();
         }
         "webSearch" => {
             let query = item_string(item, "query").unwrap_or_else(|| "unknown".to_string());
-            let _ = tx.send(ResponseEvent::SystemMessage(format!(
+            let _ = emitter.send(ResponseEvent::SystemMessage(format!(
                 "Web search requested: {}",
                 query
             )));
@@ -2090,7 +2530,7 @@ fn handle_app_server_item_started(
         }
         "enteredReviewMode" => {
             let review = item_string(item, "review").unwrap_or_else(|| "review".to_string());
-            let _ = tx.send(ResponseEvent::SystemMessage(format!(
+            let _ = emitter.send(ResponseEvent::SystemMessage(format!(
                 "Review started: {}",
                 review
             )));
@@ -2098,7 +2538,7 @@ fn handle_app_server_item_started(
         }
         "imageView" => {
             let path = item_string(item, "path").unwrap_or_else(|| "unknown".to_string());
-            let _ = tx.send(ResponseEvent::SystemMessage(format!(
+            let _ = emitter.send(ResponseEvent::SystemMessage(format!(
                 "Image view requested: {}",
                 path
             )));
@@ -2110,7 +2550,7 @@ fn handle_app_server_item_started(
 
 fn handle_app_server_item_completed(
     item: &Value,
-    tx: &mpsc::UnboundedSender<ResponseEvent>,
+    emitter: &ResponseEmitter,
     command_outputs: &mut HashMap<String, String>,
     file_change_outputs: &mut HashMap<String, String>,
     agent_message_with_delta: &mut HashSet<String>,
@@ -2130,7 +2570,7 @@ fn handle_app_server_item_completed(
                 return;
             }
             if let Some(text) = item.get("text").and_then(Value::as_str) {
-                let _ = tx.send(ResponseEvent::Chunk(text.to_string()));
+                let _ = emitter.send(ResponseEvent::Chunk(text.to_string()));
                 window.request_redraw();
             }
         }
@@ -2153,7 +2593,7 @@ fn handle_app_server_item_completed(
                 .filter(|value| !value.trim().is_empty())
                 .or_else(|| content.filter(|value| !value.trim().is_empty()));
             if let Some(text) = text {
-                let _ = tx.send(ResponseEvent::ThoughtChunk(text));
+                let _ = emitter.send(ResponseEvent::ThoughtChunk(text));
                 window.request_redraw();
             }
         }
@@ -2183,7 +2623,7 @@ fn handle_app_server_item_completed(
                 .and_then(Value::as_i64)
                 .map(|code| code as i32);
             let is_error = matches!(status.as_str(), "failed" | "declined");
-            let _ = tx.send(ResponseEvent::ToolResult {
+            let _ = emitter.send(ResponseEvent::ToolResult {
                 content: output,
                 is_error,
                 tool_use_id: Some(id),
@@ -2220,7 +2660,7 @@ fn handle_app_server_item_completed(
                 format!("Modified files: {}", paths.join(", "))
             };
             let is_error = matches!(status.as_str(), "failed" | "declined");
-            let _ = tx.send(ResponseEvent::ToolResult {
+            let _ = emitter.send(ResponseEvent::ToolResult {
                 content,
                 is_error,
                 tool_use_id: Some(id),
@@ -2248,7 +2688,7 @@ fn handle_app_server_item_completed(
             } else {
                 String::new()
             };
-            let _ = tx.send(ResponseEvent::ToolResult {
+            let _ = emitter.send(ResponseEvent::ToolResult {
                 content,
                 is_error,
                 tool_use_id: Some(id),
@@ -2259,7 +2699,7 @@ fn handle_app_server_item_completed(
         }
         "webSearch" => {
             let query = item_string(item, "query").unwrap_or_else(|| "unknown".to_string());
-            let _ = tx.send(ResponseEvent::SystemMessage(format!(
+            let _ = emitter.send(ResponseEvent::SystemMessage(format!(
                 "Web search completed: {}",
                 query
             )));
@@ -2267,13 +2707,13 @@ fn handle_app_server_item_completed(
         }
         "exitedReviewMode" => {
             if let Some(review) = item.get("review").and_then(Value::as_str) {
-                let _ = tx.send(ResponseEvent::Chunk(review.to_string()));
+                let _ = emitter.send(ResponseEvent::Chunk(review.to_string()));
                 window.request_redraw();
             }
         }
         "imageView" => {
             let path = item_string(item, "path").unwrap_or_else(|| "unknown".to_string());
-            let _ = tx.send(ResponseEvent::SystemMessage(format!(
+            let _ = emitter.send(ResponseEvent::SystemMessage(format!(
                 "Image view completed: {}",
                 path
             )));
@@ -2344,5 +2784,308 @@ fn plan_status_to_todo_status(status: &str) -> TodoStatus {
         "completed" | "complete" => TodoStatus::Complete,
         "failed" | "error" => TodoStatus::Failed,
         _ => TodoStatus::Pending,
+    }
+}
+
+#[derive(Clone)]
+struct ResponseEmitter {
+    tx: mpsc::UnboundedSender<ResponseEvent>,
+    trace: Option<TraceLogger>,
+}
+
+impl ResponseEmitter {
+    fn new(tx: mpsc::UnboundedSender<ResponseEvent>, trace: Option<TraceLogger>) -> Self {
+        Self { tx, trace }
+    }
+
+    fn send(&self, event: ResponseEvent) {
+        if let Some(trace) = &self.trace {
+            trace.log_response_event(&event);
+        }
+        let _ = self.tx.send(event);
+    }
+}
+
+#[derive(Clone)]
+struct TraceLogger {
+    tx: mpsc::UnboundedSender<TraceLogCommand>,
+}
+
+enum TraceLogCommand {
+    SetPath(PathBuf),
+    Entry(Value),
+}
+
+impl TraceLogger {
+    fn new() -> Self {
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        tokio::spawn(async move {
+            let mut file: Option<tokio::fs::File> = None;
+            let mut buffer: Vec<String> = Vec::new();
+
+            while let Some(cmd) = rx.recv().await {
+                match cmd {
+                    TraceLogCommand::SetPath(path) => {
+                        if let Some(parent) = path.parent() {
+                            let _ = tokio::fs::create_dir_all(parent).await;
+                        }
+                        match tokio::fs::OpenOptions::new()
+                            .create(true)
+                            .append(true)
+                            .open(&path)
+                            .await
+                        {
+                            Ok(mut opened) => {
+                                for line in buffer.drain(..) {
+                                    let _ = opened.write_all(line.as_bytes()).await;
+                                    let _ = opened.write_all(b"\n").await;
+                                }
+                                file = Some(opened);
+                            }
+                            Err(err) => {
+                                tracing::warn!(
+                                    error = %err,
+                                    path = %path.display(),
+                                    "Failed to open app-server trace log"
+                                );
+                            }
+                        }
+                    }
+                    TraceLogCommand::Entry(value) => {
+                        let line =
+                            serde_json::to_string(&value).unwrap_or_else(|_| "{}".to_string());
+                        if let Some(file) = file.as_mut() {
+                            let _ = file.write_all(line.as_bytes()).await;
+                            let _ = file.write_all(b"\n").await;
+                        } else {
+                            buffer.push(line);
+                        }
+                    }
+                }
+            }
+        });
+
+        Self { tx }
+    }
+
+    fn set_path(&self, path: PathBuf) {
+        let _ = self.tx.send(TraceLogCommand::SetPath(path));
+    }
+
+    fn log_event(&self, kind: &str, data: Value) {
+        let entry = serde_json::json!({
+            "timestamp_ms": current_timestamp_ms(),
+            "kind": kind,
+            "data": data,
+        });
+        let _ = self.tx.send(TraceLogCommand::Entry(entry));
+    }
+
+    fn log_response_event(&self, event: &ResponseEvent) {
+        match event {
+            ResponseEvent::Chunk(text) => {
+                self.log_event("chunk", serde_json::json!({ "text": text }));
+            }
+            ResponseEvent::ThoughtChunk(text) => {
+                self.log_event("thought_chunk", serde_json::json!({ "text": text }));
+            }
+            ResponseEvent::ToolCallStart { name, tool_use_id } => {
+                self.log_event(
+                    "tool_call_start",
+                    serde_json::json!({ "name": name, "tool_use_id": tool_use_id }),
+                );
+            }
+            ResponseEvent::ToolCallInput { json } => {
+                self.log_event("tool_call_input", serde_json::json!({ "json": json }));
+            }
+            ResponseEvent::ToolCallEnd => {
+                self.log_event("tool_call_end", serde_json::json!({}));
+            }
+            ResponseEvent::ToolResult {
+                content,
+                is_error,
+                tool_use_id,
+                exit_code,
+                output_value,
+            } => {
+                self.log_event(
+                    "tool_result",
+                    serde_json::json!({
+                        "content": content,
+                        "is_error": is_error,
+                        "tool_use_id": tool_use_id,
+                        "exit_code": exit_code,
+                        "output_value": output_value,
+                    }),
+                );
+            }
+            ResponseEvent::ToolProgress {
+                tool_use_id,
+                tool_name,
+                elapsed_secs,
+            } => {
+                self.log_event(
+                    "tool_progress",
+                    serde_json::json!({
+                        "tool_use_id": tool_use_id,
+                        "tool_name": tool_name,
+                        "elapsed_secs": elapsed_secs,
+                    }),
+                );
+            }
+            ResponseEvent::UserMessageId { uuid } => {
+                self.log_event("user_message_id", serde_json::json!({ "uuid": uuid }));
+            }
+            ResponseEvent::SystemMessage(message) => {
+                self.log_event("system_message", serde_json::json!({ "message": message }));
+            }
+            ResponseEvent::Complete { metadata } => {
+                let meta = metadata.as_ref().map(|meta| {
+                    serde_json::json!({
+                        "model": meta.model.clone(),
+                        "input_tokens": meta.input_tokens,
+                        "output_tokens": meta.output_tokens,
+                        "duration_ms": meta.duration_ms,
+                        "cost_msats": meta.cost_msats,
+                    })
+                });
+                self.log_event("complete", serde_json::json!({ "metadata": meta }));
+            }
+            ResponseEvent::Error(message) => {
+                self.log_event("error", serde_json::json!({ "message": message }));
+            }
+            ResponseEvent::SystemInit {
+                model,
+                permission_mode,
+                session_id,
+                codex_thread_id,
+                tool_count,
+                tools,
+                output_style,
+                slash_commands,
+                mcp_servers,
+            } => {
+                let server_values = mcp_servers
+                    .iter()
+                    .map(|server| {
+                        serde_json::json!({
+                            "name": &server.name,
+                            "status": &server.status,
+                        })
+                    })
+                    .collect::<Vec<_>>();
+                self.log_event(
+                    "system_init",
+                    serde_json::json!({
+                        "model": model,
+                        "permission_mode": permission_mode,
+                        "session_id": session_id,
+                        "codex_thread_id": codex_thread_id,
+                        "tool_count": tool_count,
+                        "tools": tools,
+                        "output_style": output_style,
+                        "slash_commands": slash_commands,
+                        "mcp_servers": server_values,
+                    }),
+                );
+            }
+            ResponseEvent::McpStatus { servers, error } => {
+                let server_values = servers
+                    .iter()
+                    .map(|server| {
+                        serde_json::json!({
+                            "name": &server.name,
+                            "status": &server.status,
+                        })
+                    })
+                    .collect::<Vec<_>>();
+                self.log_event(
+                    "mcp_status",
+                    serde_json::json!({ "servers": server_values, "error": error }),
+                );
+            }
+            ResponseEvent::HookLog(entry) => {
+                self.log_event(
+                    "hook_log",
+                    serde_json::json!({
+                        "id": &entry.id,
+                        "event": entry.event,
+                        "summary": &entry.summary,
+                        "tool_name": entry.tool_name.clone(),
+                        "error": entry.error.clone(),
+                    }),
+                );
+            }
+            ResponseEvent::DspyStage(stage) => {
+                self.log_event(
+                    "dspy_stage",
+                    serde_json::json!({ "stage": format!("{:?}", stage) }),
+                );
+            }
+        }
+    }
+}
+
+fn current_timestamp_ms() -> u64 {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64
+}
+
+fn resolve_codex_thread_id(
+    session: &crate::app::session::SessionState,
+    session_id: &str,
+) -> Option<String> {
+    let trimmed = session_id.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    if let Some(entry) = session
+        .session_index
+        .iter()
+        .find(|entry| entry.id == trimmed)
+    {
+        if let Some(thread_id) = entry.codex_thread_id.clone() {
+            return Some(thread_id);
+        }
+        if entry.id.starts_with("thr_") {
+            return Some(entry.id.clone());
+        }
+        return None;
+    }
+    if trimmed.starts_with("thr_") {
+        Some(trimmed.to_string())
+    } else {
+        None
+    }
+}
+
+fn lookup_codex_thread_id(
+    session: &crate::app::session::SessionState,
+    session_id: &str,
+) -> Option<String> {
+    let trimmed = session_id.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    if let Some(entry) = session
+        .session_index
+        .iter()
+        .find(|entry| entry.id == trimmed)
+    {
+        if let Some(thread_id) = entry.codex_thread_id.clone() {
+            return Some(thread_id);
+        }
+        if entry.id.starts_with("thr_") {
+            return Some(entry.id.clone());
+        }
+        return None;
+    }
+    if trimmed.starts_with("thr_") {
+        Some(trimmed.to_string())
+    } else {
+        None
     }
 }

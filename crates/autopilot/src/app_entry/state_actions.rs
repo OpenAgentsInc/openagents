@@ -2,14 +2,15 @@ use std::fs;
 use std::io::{self, Write};
 use std::path::PathBuf;
 
+use anyhow::Result;
 use tokio::sync::mpsc;
 use wgpui::components::hud::Command as PaletteCommand;
 use wgpui::components::molecules::SessionAction;
 use wgpui::components::organisms::EventInspector;
 
 use crate::app::agents::AgentBackendsStatus;
-use crate::app::catalog::SkillSource;
 use crate::app::chat::MessageRole;
+use crate::app::codex_app_server as app_server;
 use crate::app::config::{config_dir, SettingsTab};
 use crate::app::events::{keybinding_labels, ModalState};
 use crate::app::nip28::Nip28ConnectionStatus;
@@ -20,6 +21,7 @@ use crate::app::{
     AgentCardAction, HookLogEntry, HookModalView, HookSetting, ModelOption, SettingsInputMode,
     SkillCardAction,
 };
+use crate::app::session::{SessionEntry, SessionUpdate};
 use crate::app::AppState;
 use crate::keybindings::Action as KeyAction;
 
@@ -376,8 +378,11 @@ impl AppState {
     pub(super) fn open_session_list(&mut self) {
         let (action_tx, action_rx) = mpsc::unbounded_channel();
         let (checkpoint_tx, checkpoint_rx) = mpsc::unbounded_channel();
+        let (update_tx, update_rx) = mpsc::unbounded_channel();
         self.session.session_action_tx = Some(action_tx);
         self.session.session_action_rx = Some(action_rx);
+        self.session.session_update_tx = Some(update_tx.clone());
+        self.session.session_update_rx = Some(update_rx);
         self.session.checkpoint_action_tx = Some(checkpoint_tx);
         self.session.checkpoint_action_rx = Some(checkpoint_rx);
         self.session.refresh_session_cards(self.chat.is_thinking);
@@ -387,6 +392,23 @@ impl AppState {
             .position(|entry| entry.id == self.session.session_info.session_id)
             .unwrap_or(0);
         self.modal_state = ModalState::SessionList { selected };
+
+        if should_fetch_codex_sessions() {
+            let cwd = std::env::current_dir().unwrap_or_default();
+            tokio::spawn(async move {
+                match fetch_codex_session_entries(cwd).await {
+                    Ok(entries) => {
+                        let _ = update_tx.send(SessionUpdate::MergeEntries(entries));
+                    }
+                    Err(err) => {
+                        let _ = update_tx.send(SessionUpdate::Error(format!(
+                            "Failed to load Codex sessions: {}",
+                            err
+                        )));
+                    }
+                }
+            });
+        }
     }
 
     pub(super) fn open_agent_list(&mut self) {
@@ -1069,4 +1091,83 @@ fn export_session_markdown(state: &AppState) -> io::Result<PathBuf> {
     }
 
     Ok(path)
+}
+
+fn should_fetch_codex_sessions() -> bool {
+    match std::env::var("AUTOPILOT_CODEX_TRANSPORT") {
+        Ok(value) => matches!(
+            value.to_ascii_lowercase().as_str(),
+            "app-server" | "appserver" | "app_server"
+        ),
+        Err(_) => false,
+    }
+}
+
+async fn fetch_codex_session_entries(cwd: PathBuf) -> Result<Vec<SessionEntry>> {
+    let (client, _channels) = app_server::AppServerClient::spawn(app_server::AppServerConfig {
+        cwd: Some(cwd),
+        wire_log: None,
+    })
+    .await?;
+
+    let client_info = app_server::ClientInfo {
+        name: "autopilot".to_string(),
+        title: Some("Autopilot".to_string()),
+        version: env!("CARGO_PKG_VERSION").to_string(),
+    };
+    if let Err(err) = client.initialize(client_info).await {
+        let _ = client.shutdown().await;
+        return Err(err);
+    }
+
+    let mut entries = Vec::new();
+    let mut cursor: Option<String> = None;
+    loop {
+        let response = match client
+            .thread_list(app_server::ThreadListParams {
+                cursor: cursor.clone(),
+                limit: Some(50),
+                model_providers: None,
+            })
+            .await
+        {
+            Ok(response) => response,
+            Err(err) => {
+                let _ = client.shutdown().await;
+                return Err(err);
+            }
+        };
+        for thread in response.data {
+            entries.push(thread_summary_to_entry(thread));
+        }
+        if response.next_cursor.is_none() {
+            break;
+        }
+        cursor = response.next_cursor;
+    }
+
+    let _ = client.shutdown().await;
+    Ok(entries)
+}
+
+fn thread_summary_to_entry(thread: app_server::ThreadSummary) -> SessionEntry {
+    let created_at = if thread.created_at < 0 {
+        0
+    } else {
+        thread.created_at as u64
+    };
+    let model = if thread.model_provider.trim().is_empty() {
+        "codex".to_string()
+    } else {
+        thread.model_provider.clone()
+    };
+    SessionEntry {
+        id: thread.id.clone(),
+        codex_thread_id: Some(thread.id),
+        created_at,
+        updated_at: created_at,
+        last_message: thread.preview,
+        message_count: 0,
+        model,
+    }
 }

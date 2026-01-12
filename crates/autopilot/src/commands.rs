@@ -13,6 +13,7 @@ pub enum Command {
     SessionResume(String),
     SessionFork,
     SessionExport,
+    Review(ReviewCommand),
     PermissionMode(String),
     PermissionRules,
     PermissionAllow(Vec<String>),
@@ -80,6 +81,26 @@ pub enum Command {
     Nip28Send(String),
     Nip28Refresh,
     Custom(String, Vec<String>),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReviewCommand {
+    pub delivery: ReviewDelivery,
+    pub target: ReviewTarget,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ReviewDelivery {
+    Inline,
+    Detached,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ReviewTarget {
+    UncommittedChanges,
+    BaseBranch { branch: String },
+    Commit { sha: String, title: Option<String> },
+    Custom { instructions: String },
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -154,6 +175,16 @@ const COMMAND_SPECS: &[CommandSpec] = &[
         usage: "/session export",
         description: "Export the current session to markdown",
         requires_args: false,
+    },
+    CommandSpec {
+        usage: "/review",
+        description: "Review uncommitted changes",
+        requires_args: false,
+    },
+    CommandSpec {
+        usage: "/review commit <sha> [title]",
+        description: "Review a specific commit",
+        requires_args: true,
     },
     CommandSpec {
         usage: "/permission mode <mode>",
@@ -526,6 +557,7 @@ pub fn parse_command(input: &str) -> Option<Command> {
         "cancel" => Command::Cancel,
         "bug" => Command::Bug,
         "session" => parse_session_command(args),
+        "review" => parse_review_command(args),
         "permission" => parse_permission_command(args),
         "tools" => parse_tools_command(args),
         "config" => Command::Config,
@@ -786,6 +818,62 @@ fn parse_session_command(args: Vec<String>) -> Command {
         Some(other) => Command::Custom(format!("session {}", other), parts.collect()),
         None => Command::Custom("session".to_string(), Vec::new()),
     }
+}
+
+fn parse_review_command(args: Vec<String>) -> Command {
+    let mut parts = args.into_iter();
+    let mut delivery = ReviewDelivery::Inline;
+    let mut token = parts.next();
+
+    if let Some(value) = token.as_deref() {
+        match value {
+            "inline" => {
+                delivery = ReviewDelivery::Inline;
+                token = parts.next();
+            }
+            "detached" => {
+                delivery = ReviewDelivery::Detached;
+                token = parts.next();
+            }
+            _ => {}
+        }
+    }
+
+    let target = match token.as_deref() {
+        None => ReviewTarget::UncommittedChanges,
+        Some("uncommitted") | Some("uncommittedchanges") | Some("changes") => {
+            ReviewTarget::UncommittedChanges
+        }
+        Some("branch") | Some("base") => {
+            let branch = parts.next().unwrap_or_default();
+            ReviewTarget::BaseBranch { branch }
+        }
+        Some("commit") => {
+            let sha = parts.next().unwrap_or_default();
+            let title = {
+                let rest = parts.collect::<Vec<String>>();
+                if rest.is_empty() {
+                    None
+                } else {
+                    Some(rest.join(" "))
+                }
+            };
+            ReviewTarget::Commit { sha, title }
+        }
+        Some("custom") => {
+            let instructions = parts.collect::<Vec<String>>().join(" ");
+            ReviewTarget::Custom { instructions }
+        }
+        Some(other) => {
+            let mut instructions = vec![other.to_string()];
+            instructions.extend(parts);
+            ReviewTarget::Custom {
+                instructions: instructions.join(" "),
+            }
+        }
+    };
+
+    Command::Review(ReviewCommand { delivery, target })
 }
 
 fn parse_permission_command(args: Vec<String>) -> Command {

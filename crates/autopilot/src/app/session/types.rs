@@ -7,6 +7,7 @@ pub(crate) struct SessionInfo {
     pub(crate) model: String,
     pub(crate) permission_mode: String,
     pub(crate) session_id: String,
+    pub(crate) codex_thread_id: Option<String>,
     pub(crate) tool_count: usize,
     pub(crate) tools: Vec<String>,
     #[allow(dead_code)]
@@ -18,6 +19,8 @@ pub(crate) struct SessionInfo {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub(crate) struct SessionEntry {
     pub(crate) id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) codex_thread_id: Option<String>,
     pub(crate) created_at: u64,
     pub(crate) updated_at: u64,
     pub(crate) last_message: String,
@@ -43,4 +46,10 @@ pub(crate) struct StoredMessage {
 pub(crate) struct SessionCardEvent {
     pub(crate) action: SessionAction,
     pub(crate) session_id: String,
+}
+
+pub(crate) enum SessionUpdate {
+    MergeEntries(Vec<SessionEntry>),
+    Remove { session_id: String },
+    Error(String),
 }

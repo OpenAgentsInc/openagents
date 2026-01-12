@@ -106,6 +106,27 @@ pub(super) fn handle_command(state: &mut AppState, command: Command) -> CommandA
             state.export_session();
             CommandAction::None
         }
+        Command::Review(review) => {
+            let invalid = match &review.target {
+                crate::commands::ReviewTarget::BaseBranch { branch } => branch.trim().is_empty(),
+                crate::commands::ReviewTarget::Commit { sha, .. } => sha.trim().is_empty(),
+                crate::commands::ReviewTarget::Custom { instructions } => {
+                    instructions.trim().is_empty()
+                }
+                crate::commands::ReviewTarget::UncommittedChanges => false,
+            };
+            if invalid {
+                state.push_system_message("Review target is missing required arguments.".to_string());
+                CommandAction::None
+            } else if state.chat.is_thinking {
+                state.push_system_message(
+                    "Cannot start review during an active request.".to_string(),
+                );
+                CommandAction::None
+            } else {
+                CommandAction::StartReview(review)
+            }
+        }
         Command::PermissionMode(mode) => {
             match parse_coder_mode(&mode) {
                 Some(parsed) => state
