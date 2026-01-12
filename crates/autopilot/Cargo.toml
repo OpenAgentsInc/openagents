@@ -18,6 +18,7 @@ wgpu = { workspace = true }
 winit = { workspace = true }
 pollster = { workspace = true }
 arboard = "3.4"
+rfd = "0.14"
 
 # Time
 web-time = "1.1.0"

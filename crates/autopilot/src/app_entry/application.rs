@@ -54,6 +54,7 @@ use crate::app::gateway::GatewayState;
 use crate::app::lm_router::LmRouterState;
 use crate::app::nexus::NexusState;
 use crate::app::spark_wallet::SparkWalletState;
+use crate::app::workspaces::WorkspaceState;
 use crate::app::{build_input, AppState, HookModalView};
 use crate::commands::parse_command;
 use crate::keybindings::{match_action, Action as KeyAction};
@@ -233,6 +234,7 @@ impl ApplicationHandler for AutopilotApp {
                     mcp_project_path,
                 ),
                 agent_backends: AgentBackendsState::new(selected_model),
+                workspaces: WorkspaceState::new(),
                 settings: SettingsState::new(settings, load_keybindings(), selected_model),
                 permissions: PermissionState::new(
                     coder_mode,
@@ -297,6 +299,7 @@ impl ApplicationHandler for AutopilotApp {
         self.poll_nexus_events();
         self.poll_spark_wallet_events();
         self.poll_agent_backends_events();
+        self.poll_workspace_events();
         self.poll_autopilot_history();
         self.poll_rate_limits();
 
@@ -338,6 +341,9 @@ impl ApplicationHandler for AutopilotApp {
         match event {
             WindowEvent::CloseRequested => {
                 event_loop.exit();
+            }
+            WindowEvent::Focused(true) => {
+                state.workspaces.refresh_on_focus();
             }
             WindowEvent::Resized(size) => {
                 state.config.width = size.width.max(1);

@@ -13,6 +13,10 @@ pub enum Command {
     SessionResume(String),
     SessionFork,
     SessionExport,
+    WorkspaceList,
+    WorkspaceAdd,
+    WorkspaceConnect(String),
+    WorkspaceRefresh,
     Review(ReviewCommand),
     PermissionMode(String),
     PermissionRules,
@@ -181,6 +185,26 @@ const COMMAND_SPECS: &[CommandSpec] = &[
     CommandSpec {
         usage: "/session export",
         description: "Export the current session to markdown",
+        requires_args: false,
+    },
+    CommandSpec {
+        usage: "/workspace list",
+        description: "List saved workspaces",
+        requires_args: false,
+    },
+    CommandSpec {
+        usage: "/workspace add",
+        description: "Add a workspace using the folder picker",
+        requires_args: false,
+    },
+    CommandSpec {
+        usage: "/workspace connect <id|name>",
+        description: "Connect to a workspace by id or name",
+        requires_args: true,
+    },
+    CommandSpec {
+        usage: "/workspace refresh",
+        description: "Reload workspace list and refresh threads",
         requires_args: false,
     },
     CommandSpec {
@@ -599,6 +623,7 @@ pub fn parse_command(input: &str) -> Option<Command> {
         "cancel" => Command::Cancel,
         "bug" => Command::Bug,
         "session" => parse_session_command(args),
+        "workspace" | "workspaces" => parse_workspace_command(args),
         "review" => parse_review_command(args),
         "permission" => parse_permission_command(args),
         "tools" => parse_tools_command(args),
@@ -860,6 +885,20 @@ fn parse_session_command(args: Vec<String>) -> Command {
         Some("export") => Command::SessionExport,
         Some(other) => Command::Custom(format!("session {}", other), parts.collect()),
         None => Command::Custom("session".to_string(), Vec::new()),
+    }
+}
+
+fn parse_workspace_command(args: Vec<String>) -> Command {
+    let mut parts = args.into_iter();
+    match parts.next().as_deref() {
+        None | Some("list") => Command::WorkspaceList,
+        Some("add") => Command::WorkspaceAdd,
+        Some("connect") => {
+            let hint = parts.collect::<Vec<String>>().join(" ");
+            Command::WorkspaceConnect(hint)
+        }
+        Some("refresh") => Command::WorkspaceRefresh,
+        Some(other) => Command::Custom(format!("workspace {}", other), parts.collect()),
     }
 }
 

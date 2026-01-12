@@ -20,6 +20,7 @@ use crate::app::codex_app_server as app_server;
 use crate::app::events::{CommandAction, ModalState, QueryControl, ResponseEvent};
 use crate::app::nip28::{Nip28ConnectionStatus, Nip28Event, Nip28Message};
 use crate::app::nip90::{Nip90ConnectionStatus, Nip90Event};
+use crate::app::workspaces::WorkspaceEvent;
 use crate::app::parsing::expand_prompt_text;
 use crate::app::parsing::prompt::{expand_prompt_text_async, format_command_output, MAX_COMMAND_BYTES};
 use crate::app::utils::truncate_bytes;
@@ -1847,6 +1848,76 @@ impl AutopilotApp {
                     state.agent_backends.set_snapshot(snapshot);
                     should_redraw = true;
                 }
+            }
+        }
+
+        if should_redraw {
+            state.window.request_redraw();
+        }
+    }
+
+    pub(super) fn poll_workspace_events(&mut self) {
+        let Some(state) = &mut self.state else {
+            return;
+        };
+
+        let mut should_redraw = false;
+        loop {
+            let event = match state.workspaces.runtime.event_rx.try_recv() {
+                Ok(event) => event,
+                Err(TryRecvError::Empty) => break,
+                Err(TryRecvError::Disconnected) => {
+                    state.workspaces.status_message =
+                        Some("Workspace runtime disconnected".to_string());
+                    should_redraw = true;
+                    break;
+                }
+            };
+
+            match event {
+                WorkspaceEvent::WorkspacesLoaded { workspaces } => {
+                    state.workspaces.apply_loaded(workspaces);
+                    state.workspaces.connect_all_if_needed();
+                    should_redraw = true;
+                }
+                WorkspaceEvent::WorkspaceAdded { workspace } => {
+                    state.workspaces.apply_workspace_added(workspace);
+                    should_redraw = true;
+                }
+                WorkspaceEvent::WorkspaceAddFailed { workspace_id, error } => {
+                    state.push_system_message(format!(
+                        "Workspace add failed ({}): {}",
+                        workspace_id, error
+                    ));
+                    should_redraw = true;
+                }
+                WorkspaceEvent::WorkspaceConnected { workspace_id } => {
+                    state.workspaces.apply_workspace_connected(&workspace_id);
+                    should_redraw = true;
+                }
+                WorkspaceEvent::WorkspaceConnectFailed { workspace_id, error } => {
+                    state.push_system_message(format!(
+                        "Workspace connect failed ({}): {}",
+                        workspace_id, error
+                    ));
+                    should_redraw = true;
+                }
+                WorkspaceEvent::ThreadsListed {
+                    workspace_id,
+                    threads,
+                } => {
+                    state.workspaces.apply_threads(workspace_id, threads);
+                    should_redraw = true;
+                }
+                WorkspaceEvent::ThreadsListFailed { workspace_id, error } => {
+                    state.push_system_message(format!(
+                        "Thread list failed ({}): {}",
+                        workspace_id, error
+                    ));
+                    should_redraw = true;
+                }
+                WorkspaceEvent::AppServerNotification { .. } => {}
+                WorkspaceEvent::AppServerRequest { .. } => {}
             }
         }
 
