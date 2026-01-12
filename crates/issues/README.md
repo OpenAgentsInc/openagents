@@ -775,7 +775,7 @@ The `issues` crate supports syncing issues between machines via JSON export/impo
 
 ```bash
 # On machine A: Export issues to JSON
-cargo autopilot issue export
+cargo run -p autopilot -- issue export
 # Creates .openagents/issues.json (tracked in git)
 
 # Commit and push
@@ -785,20 +785,20 @@ git push
 
 # On machine B: Pull and import
 git pull
-cargo autopilot issue import
+cargo run -p autopilot -- issue import
 ```
 
 ### Export Command
 
 ```bash
 # Export open issues (default)
-cargo autopilot issue export
+cargo run -p autopilot -- issue export
 
 # Include completed issues
-cargo autopilot issue export --include-completed
+cargo run -p autopilot -- issue export --include-completed
 
 # Custom output path
-cargo autopilot issue export -o /tmp/my-issues.json
+cargo run -p autopilot -- issue export -o /tmp/my-issues.json
 ```
 
 Exports all issues to JSON, preserving:
@@ -811,13 +811,13 @@ Exports all issues to JSON, preserving:
 
 ```bash
 # Import from default path (.openagents/issues.json)
-cargo autopilot issue import
+cargo run -p autopilot -- issue import
 
 # Import from custom path
-cargo autopilot issue import -i /tmp/my-issues.json
+cargo run -p autopilot -- issue import -i /tmp/my-issues.json
 
 # Force update existing issues
-cargo autopilot issue import --force
+cargo run -p autopilot -- issue import --force
 ```
 
 Import behavior:
@@ -831,33 +831,33 @@ Import behavior:
 **Scenario 1: Work on issue on laptop, continue on desktop**
 ```bash
 # Laptop: Export after working on issues
-cargo autopilot issue export
+cargo run -p autopilot -- issue export
 git add .openagents/issues.json && git commit -m "Sync" && git push
 
 # Desktop: Import to get latest state
 git pull
-cargo autopilot issue import
+cargo run -p autopilot -- issue import
 ```
 
 **Scenario 2: Share issue backlog with team**
 ```bash
 # Team member creates issues
-cargo autopilot issue create "Implement feature X"
-cargo autopilot issue export
+cargo run -p autopilot -- issue create "Implement feature X"
+cargo run -p autopilot -- issue export
 git push
 
 # You import their issues
 git pull
-cargo autopilot issue import
+cargo run -p autopilot -- issue import
 ```
 
 **Scenario 3: Backup and restore**
 ```bash
 # Backup
-cargo autopilot issue export --include-completed -o backup.json
+cargo run -p autopilot -- issue export --include-completed -o backup.json
 
 # Restore (on new machine or after db corruption)
-cargo autopilot issue import -i backup.json --force
+cargo run -p autopilot -- issue import -i backup.json --force
 ```
 
 See the [main README](../../README.md#issue-management) for more details.
@@ -1093,7 +1093,7 @@ For high-concurrency scenarios (e.g., 10+ agents), consider PostgreSQL migration
 sqlite3 autopilot.db "INSERT INTO issues ..."
 
 # RIGHT - use the API
-cargo autopilot issue create --title "..."
+cargo run -p autopilot -- issue create --title "..."
 ```
 
 Direct SQL bypasses:

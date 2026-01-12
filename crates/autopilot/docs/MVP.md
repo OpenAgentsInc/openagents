@@ -110,9 +110,3 @@ no approvals; read-only mode auto-declines write and exec requests. The
 Catalogs and configuration for agents, skills, hooks, and MCP are discovered
 from `.openagents`, `~/.openagents`, and `.mcp.json`. The UI can manage these
 catalogs, but they are not yet applied to Codex or Adjutant runs.
-
-The telemetry panels surface OANIX discovery data, directives and issues,
-Autopilot issues, Pylon earnings and jobs, RLM traces, Spark wallet data, DVM
-providers, NIP-90 jobs, NIP-28 chat, Nexus stats, LM router health, and Gateway
-status. Each panel has a refreshable data source, but cross-panel correlations
-are still manual.

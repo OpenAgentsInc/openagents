@@ -22,9 +22,10 @@ Run Autopilot locally with your own compute:
 openagents connect
 
 # Or run directly in terminal
-cargo autopilot run "Fix the failing tests in src/auth"
+cargo run -p autopilot -- run "Fix the failing tests in src/auth"
 # (or `autopilot run ...` if the binary is on your PATH)
-# Note: `cargo autopilot` with no args launches the GPU desktop UI.
+# Tip: this repo defines `cargo autopilot ...` in `.cargo/config.toml`.
+# `cargo run -p autopilot` with no args launches the GPU desktop UI.
 ```
 
 ### Cloud Mode (Container)
@@ -73,18 +74,18 @@ Configuration is stored in `~/.openagents/folders/<path-hash>/` (not committed t
 
 ```bash
 # Run Autopilot with a prompt
-cargo autopilot run "Implement user authentication"
+cargo run -p autopilot -- run "Implement user authentication"
 # (or `autopilot run ...` if the binary is on your PATH)
 
 # Force a backend (auto/codex/codex/local-llm/local-tools)
-cargo autopilot run "Implement user authentication" --backend codex
+cargo run -p autopilot -- run "Implement user authentication" --backend codex
 
 # Check status
-cargo autopilot status
+cargo run -p autopilot -- status
 
 # Issue workflows
-cargo autopilot issue list
-cargo autopilot issue claim <id>
+cargo run -p autopilot -- issue list
+cargo run -p autopilot -- issue claim <id>
 ```
 
 ## Configuration

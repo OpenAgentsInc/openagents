@@ -194,7 +194,7 @@ println!("Summary: {}", result.summary);
 export CEREBRAS_API_KEY="csk-your-key-here"
 
 # Run task
-cargo autopilot run "Add error handling to auth.rs"
+cargo run -p autopilot -- run "Add error handling to auth.rs"
 ```
 
 ## Error Handling
