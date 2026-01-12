@@ -1,4 +1,6 @@
 //! OANIX manifest types - the discovered environment.
+//!
+//! These types represent the system state discovered during boot.
 
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;

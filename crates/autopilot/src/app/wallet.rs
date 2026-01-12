@@ -1,7 +1,5 @@
+use adjutant::{IdentityManifest, OanixManifest};
 use std::path::PathBuf;
-
-use oanix::OanixManifest;
-use oanix::manifest::IdentityManifest;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum WalletIdentityState {

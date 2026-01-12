@@ -3,10 +3,10 @@
 //! Provides a DSPy signature and helpers to evaluate whether an issue
 //! is still relevant given recent codebase changes.
 
+use crate::manifest::IssueSummary;
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use dsrs::{GLOBAL_SETTINGS, Predict, Prediction, Predictor, Signature, example};
-use oanix::IssueSummary;
 use std::path::Path;
 use std::process::Command;
 

@@ -18,12 +18,15 @@ path = "src/bin/main.rs"
 # CLI
 clap = { workspace = true }
 # OpenAgents internal crates
-oanix = { path = "../oanix" }
 rlm = { path = "../rlm" }
 issues = { path = "../issues" }
 gateway = { path = "../gateway" }
 dsrs = { path = "../dsrs" }
 dsrs-macros = { path = "../dsrs-macros" }
+
+# Discovery dependencies (formerly in oanix)
+sysinfo = "0.33"
+serde_yaml = "0.9"
 
 # Builder pattern
 bon = "3"

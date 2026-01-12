@@ -39,12 +39,13 @@ dependencies = [
  "gpt-oss",
  "indexmap 2.13.0",
  "issues",
- "oanix",
  "regex",
  "reqwest",
  "rlm",
  "serde",
  "serde_json",
+ "serde_yaml",
+ "sysinfo",
  "tempfile",
  "thiserror 2.0.17",
  "tokio",
@@ -932,7 +933,6 @@ dependencies = [
  "lm-router",
  "nostr 0.1.0",
  "nostr-client",
- "oanix",
  "openagents-spark",
  "pollster 0.4.0",
  "reqwest",
@@ -5915,33 +5915,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "830b246a0e5f20af87141b25c173cd1b609bd7779a4617d6ec582abaf90870f3"
 
 [[package]]
-name = "oanix"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "clap",
- "compute",
- "dirs 5.0.1",
- "dsrs",
- "nostr 0.1.0",
- "nostr-client",
- "openagents-runtime",
- "openagents-spark",
- "reqwest",
- "serde",
- "serde_json",
- "serde_yaml",
- "sysinfo",
- "tempfile",
- "thiserror 2.0.17",
- "tokio",
- "tracing",
- "tracing-subscriber",
- "uuid",
- "which 8.0.0",
-]
-
-[[package]]
 name = "objc"
 version = "0.2.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -9098,9 +9071,9 @@ dependencies = [
 
 [[package]]
 name = "sysinfo"
-version = "0.32.1"
+version = "0.33.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4c33cd241af0f2e9e3b5c32163b873b29956890b5342e6745b917ce9d490f4af"
+checksum = "4fc858248ea01b66f19d8e8a6d55f41deaf91e9d495246fd01368d99935c6c01"
 dependencies = [
  "core-foundation-sys",
  "libc",

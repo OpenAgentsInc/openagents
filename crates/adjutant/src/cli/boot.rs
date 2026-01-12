@@ -1,11 +1,10 @@
 //! Fast boot helpers for CLI commands.
 
+use crate::auth::get_codex_path;
+use crate::boot::{boot, boot_with_config};
+use crate::manifest::{BootConfig, OanixManifest};
 use std::path::PathBuf;
 use std::time::Duration;
-
-use oanix::{BootConfig, OanixManifest, boot, boot_with_config};
-
-use crate::auth::get_codex_path;
 
 #[derive(Debug, Clone)]
 pub struct ToolCheck {

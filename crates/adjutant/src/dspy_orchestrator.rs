@@ -10,12 +10,13 @@
 //! user can see progress in real-time.
 
 use crate::autopilot_loop::{AutopilotOutput, DspyStage, TodoStatus, TodoTask};
+use crate::dspy::situation::{SituationInput, SituationPipeline};
+use crate::manifest::OanixManifest;
 use crate::{Task, TaskPlan, ToolRegistry};
 use anyhow::Result;
 use autopilot_core::{PlanningInput, PlanningPipeline, PlanningResult};
 use dsrs::LM;
 use dsrs::callbacks::DspyCallback;
-use oanix::{OanixManifest, SituationInput, SituationPipeline};
 use serde_json::json;
 use std::sync::Arc;
 

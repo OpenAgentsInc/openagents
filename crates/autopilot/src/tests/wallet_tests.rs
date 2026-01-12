@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use oanix::manifest::IdentityManifest;
+use adjutant::IdentityManifest;
 
 use crate::app::wallet::{
     identity_snapshot_from_identity, parse_wallet_config, WalletIdentityState,

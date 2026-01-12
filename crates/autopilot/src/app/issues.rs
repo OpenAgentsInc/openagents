@@ -1,4 +1,4 @@
-use oanix::manifest::IssueSummary;
+use adjutant::IssueSummary;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum WorkspaceIssueStatus {

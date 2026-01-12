@@ -4,8 +4,8 @@ use std::sync::atomic::AtomicBool;
 use tokio::sync::mpsc;
 
 pub(crate) struct AutopilotState {
-    pub(crate) oanix_manifest: Option<oanix::OanixManifest>,
-    pub(crate) oanix_manifest_rx: Option<mpsc::UnboundedReceiver<oanix::OanixManifest>>,
+    pub(crate) oanix_manifest: Option<adjutant::OanixManifest>,
+    pub(crate) oanix_manifest_rx: Option<mpsc::UnboundedReceiver<adjutant::OanixManifest>>,
     pub(crate) autopilot_history: Vec<adjutant::ConversationTurn>,
     pub(crate) autopilot_history_rx:
         Option<mpsc::UnboundedReceiver<Vec<adjutant::ConversationTurn>>>,
@@ -16,7 +16,7 @@ pub(crate) struct AutopilotState {
 
 impl AutopilotState {
     pub(crate) fn new(
-        oanix_manifest_rx: Option<mpsc::UnboundedReceiver<oanix::OanixManifest>>,
+        oanix_manifest_rx: Option<mpsc::UnboundedReceiver<adjutant::OanixManifest>>,
     ) -> Self {
         Self {
             oanix_manifest: None,

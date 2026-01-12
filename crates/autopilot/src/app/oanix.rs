@@ -1,4 +1,4 @@
-use oanix::manifest::{GpuDevice, InferenceBackend, RelayStatus};
+use adjutant::{GpuDevice, InferenceBackend, RelayStatus};
 
 pub(crate) fn format_bytes(bytes: u64) -> String {
     const KB: f64 = 1024.0;
@@ -66,7 +66,7 @@ pub(crate) fn format_relay_summary(relay: &RelayStatus) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use oanix::manifest::{GpuDevice, InferenceBackend, RelayStatus};
+    use adjutant::{GpuDevice, InferenceBackend, RelayStatus};
 
     #[test]
     fn formats_bytes_across_units() {

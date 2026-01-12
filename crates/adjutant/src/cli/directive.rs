@@ -2,8 +2,8 @@
 //!
 //! When no issues are actionable, fall back to working on the active directive.
 
+use crate::manifest::WorkspaceManifest;
 use crate::{Adjutant, Task};
-use oanix::WorkspaceManifest;
 use std::path::Path;
 
 /// Build a task from a directive file and print directive context.
