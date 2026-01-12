@@ -365,7 +365,10 @@ mod tests {
     #[test]
     fn test_job_type_constant() {
         assert_eq!(SandboxRunRequest::JOB_TYPE, "oa.sandbox_run.v1");
-        assert_eq!(SandboxRunRequest::SCHEMA_VERSION, SchemaVersion::new(1, 0, 0));
+        assert_eq!(
+            SandboxRunRequest::SCHEMA_VERSION,
+            SchemaVersion::new(1, 0, 0)
+        );
     }
 
     #[test]

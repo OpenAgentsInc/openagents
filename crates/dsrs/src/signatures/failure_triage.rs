@@ -6,7 +6,7 @@ use crate::core::signature::MetaSignature;
 use crate::data::example::Example;
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 /// Diagnosis of a sandbox failure.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -137,7 +137,8 @@ pub struct FailureTriageSignature {
 impl Default for FailureTriageSignature {
     fn default() -> Self {
         Self {
-            instruction: r#"You are an expert at diagnosing build and test failures. Given a failed command
+            instruction:
+                r#"You are an expert at diagnosing build and test failures. Given a failed command
 and its output, determine the root cause and recommend the best next action.
 
 Common failure patterns:
@@ -156,7 +157,7 @@ Consider:
 4. Should the user be notified?
 
 Output diagnosis, recommended action, and any fix suggestions."#
-                .to_string(),
+                    .to_string(),
             demos: vec![],
         }
     }

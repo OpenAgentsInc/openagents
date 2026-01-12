@@ -195,14 +195,15 @@ impl WorkspaceComposerState {
             .and_then(|id| self.models.iter().find(|model| &model.id == id))
             .cloned();
 
-        let chosen = selected.or_else(|| {
-            self.models
-                .iter()
-                .find(|model| model.model == "gpt-5.2-codex")
-                .cloned()
-        })
-        .or_else(|| self.models.iter().find(|model| model.is_default).cloned())
-        .or_else(|| self.models.first().cloned());
+        let chosen = selected
+            .or_else(|| {
+                self.models
+                    .iter()
+                    .find(|model| model.model == "gpt-5.2-codex")
+                    .cloned()
+            })
+            .or_else(|| self.models.iter().find(|model| model.is_default).cloned())
+            .or_else(|| self.models.first().cloned());
 
         if let Some(model) = chosen {
             self.selected_model_id = Some(model.id.clone());
@@ -318,7 +319,8 @@ impl ThreadTimeline {
             role: ConversationRole::Assistant,
             text: delta.to_string(),
         };
-        self.index_by_id.insert(item_id.to_string(), self.items.len());
+        self.index_by_id
+            .insert(item_id.to_string(), self.items.len());
         self.items.push(item);
     }
 
@@ -337,7 +339,8 @@ impl ThreadTimeline {
             summary: delta.to_string(),
             content: String::new(),
         };
-        self.index_by_id.insert(item_id.to_string(), self.items.len());
+        self.index_by_id
+            .insert(item_id.to_string(), self.items.len());
         self.items.push(item);
     }
 
@@ -356,7 +359,8 @@ impl ThreadTimeline {
             summary: String::new(),
             content: delta.to_string(),
         };
-        self.index_by_id.insert(item_id.to_string(), self.items.len());
+        self.index_by_id
+            .insert(item_id.to_string(), self.items.len());
         self.items.push(item);
     }
 
@@ -398,7 +402,9 @@ impl ConversationItem {
                 }
             }
             (
-                ConversationItem::Reasoning { summary, content, .. },
+                ConversationItem::Reasoning {
+                    summary, content, ..
+                },
                 ConversationItem::Reasoning {
                     summary: new_summary,
                     content: new_content,
@@ -610,7 +616,9 @@ impl WorkspaceRuntime {
     }
 
     pub(crate) fn add_workspace(&self, path: PathBuf, codex_bin: Option<String>) {
-        let _ = self.cmd_tx.try_send(WorkspaceCommand::Add { path, codex_bin });
+        let _ = self
+            .cmd_tx
+            .try_send(WorkspaceCommand::Add { path, codex_bin });
     }
 
     pub(crate) fn connect_workspace(&self, workspace_id: String) {
@@ -826,10 +834,7 @@ impl WorkspaceState {
         self.composer_by_workspace.get(workspace_id)
     }
 
-    pub(crate) fn composer_state_mut(
-        &mut self,
-        workspace_id: &str,
-    ) -> &mut WorkspaceComposerState {
+    pub(crate) fn composer_state_mut(&mut self, workspace_id: &str) -> &mut WorkspaceComposerState {
         self.composer_by_workspace
             .entry(workspace_id.to_string())
             .or_default()
@@ -842,11 +847,7 @@ impl WorkspaceState {
 
     pub(crate) fn active_composer_mut(&mut self) -> Option<&mut WorkspaceComposerState> {
         let workspace_id = self.active_workspace_id.clone()?;
-        Some(
-            self.composer_by_workspace
-                .entry(workspace_id)
-                .or_default(),
-        )
+        Some(self.composer_by_workspace.entry(workspace_id).or_default())
     }
 
     pub(crate) fn composer_labels(&self) -> ComposerLabels {
@@ -1024,7 +1025,8 @@ impl WorkspaceState {
         if let Some(threads) = self.threads_by_workspace.get_mut(workspace_id) {
             for thread in threads.iter_mut() {
                 if thread.id == thread_id {
-                    let fallback = format!("Agent {}", thread.id.chars().take(4).collect::<String>());
+                    let fallback =
+                        format!("Agent {}", thread.id.chars().take(4).collect::<String>());
                     thread.preview = preview.to_string();
                     thread.name = format_thread_name(preview, &fallback);
                     break;
@@ -1055,7 +1057,10 @@ impl WorkspaceState {
     }
 
     pub(crate) fn ensure_thread(&mut self, workspace_id: &str, thread_id: &str) {
-        let threads = self.threads_by_workspace.entry(workspace_id.to_string()).or_default();
+        let threads = self
+            .threads_by_workspace
+            .entry(workspace_id.to_string())
+            .or_default();
         if !threads.iter().any(|thread| thread.id == thread_id) {
             let name = format!("Agent {}", threads.len() + 1);
             threads.push(WorkspaceThreadSummary {
@@ -1211,7 +1216,11 @@ impl WorkspaceState {
         }
         let mut lines = Vec::new();
         for workspace in &self.workspaces {
-            let status = if workspace.connected { "connected" } else { "offline" };
+            let status = if workspace.connected {
+                "connected"
+            } else {
+                "offline"
+            };
             lines.push(format!(
                 "- {} ({})\n  id: {}\n  path: {}",
                 workspace.name, status, workspace.id, workspace.path
@@ -1228,11 +1237,7 @@ impl WorkspaceState {
         if let Some(workspace) = self.workspaces.iter().find(|ws| ws.id == trimmed) {
             return Some(workspace.id.clone());
         }
-        if let Some(workspace) = self
-            .workspaces
-            .iter()
-            .find(|ws| ws.id.starts_with(trimmed))
-        {
+        if let Some(workspace) = self.workspaces.iter().find(|ws| ws.id.starts_with(trimmed)) {
             return Some(workspace.id.clone());
         }
         if let Some(workspace) = self
@@ -1380,8 +1385,8 @@ async fn run_workspace_loop(
                             .send(WorkspaceEvent::ThreadsListFailed {
                                 workspace_id: session.entry.id.clone(),
                                 error: err,
-                        })
-                        .await;
+                            })
+                            .await;
                     }
                 }
             }
@@ -1853,7 +1858,11 @@ pub(crate) fn conversation_item_from_value(item: &Value) -> Option<ConversationI
     match item_type {
         "userMessage" => None,
         "agentMessage" => {
-            let text = item.get("text").and_then(Value::as_str).unwrap_or("").to_string();
+            let text = item
+                .get("text")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .to_string();
             Some(ConversationItem::Message {
                 id,
                 role: ConversationRole::Assistant,
@@ -1865,19 +1874,35 @@ pub(crate) fn conversation_item_from_value(item: &Value) -> Option<ConversationI
                 .get("summary")
                 .and_then(Value::as_array)
                 .map(|parts| join_string_array(parts))
-                .or_else(|| item.get("summary").and_then(Value::as_str).map(|s| s.to_string()))
+                .or_else(|| {
+                    item.get("summary")
+                        .and_then(Value::as_str)
+                        .map(|s| s.to_string())
+                })
                 .unwrap_or_default();
             let content = item
                 .get("content")
                 .and_then(Value::as_array)
                 .map(|parts| join_string_array(parts))
-                .or_else(|| item.get("content").and_then(Value::as_str).map(|s| s.to_string()))
+                .or_else(|| {
+                    item.get("content")
+                        .and_then(Value::as_str)
+                        .map(|s| s.to_string())
+                })
                 .unwrap_or_default();
-            Some(ConversationItem::Reasoning { id, summary, content })
+            Some(ConversationItem::Reasoning {
+                id,
+                summary,
+                content,
+            })
         }
         "commandExecution" => {
             let command = command_string_from_item(item);
-            let cwd = item.get("cwd").and_then(Value::as_str).unwrap_or("").to_string();
+            let cwd = item
+                .get("cwd")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .to_string();
             let title = if command.is_empty() {
                 "Command".to_string()
             } else {
@@ -1893,7 +1918,10 @@ pub(crate) fn conversation_item_from_value(item: &Value) -> Option<ConversationI
                 tool_type: item_type.to_string(),
                 title,
                 detail: cwd,
-                status: item.get("status").and_then(Value::as_str).map(|s| s.to_string()),
+                status: item
+                    .get("status")
+                    .and_then(Value::as_str)
+                    .map(|s| s.to_string()),
                 output,
                 ..ToolItemData::default()
             };
@@ -1920,7 +1948,10 @@ pub(crate) fn conversation_item_from_value(item: &Value) -> Option<ConversationI
                 tool_type: item_type.to_string(),
                 title: "File changes".to_string(),
                 detail,
-                status: item.get("status").and_then(Value::as_str).map(|s| s.to_string()),
+                status: item
+                    .get("status")
+                    .and_then(Value::as_str)
+                    .map(|s| s.to_string()),
                 output,
                 changes,
                 ..ToolItemData::default()
@@ -1949,7 +1980,10 @@ pub(crate) fn conversation_item_from_value(item: &Value) -> Option<ConversationI
                 .as_ref()
                 .map(|value| serde_json::to_string_pretty(value).unwrap_or_default())
                 .unwrap_or_default();
-            let output_value = item.get("result").cloned().or_else(|| item.get("error").cloned());
+            let output_value = item
+                .get("result")
+                .cloned()
+                .or_else(|| item.get("error").cloned());
             let output = output_value
                 .as_ref()
                 .map(|value| serde_json::to_string_pretty(value).unwrap_or_default())
@@ -1964,7 +1998,10 @@ pub(crate) fn conversation_item_from_value(item: &Value) -> Option<ConversationI
                 tool_type: item_type.to_string(),
                 title,
                 detail,
-                status: item.get("status").and_then(Value::as_str).map(|s| s.to_string()),
+                status: item
+                    .get("status")
+                    .and_then(Value::as_str)
+                    .map(|s| s.to_string()),
                 output,
                 input_value: args,
                 output_value,
@@ -1979,7 +2016,10 @@ pub(crate) fn conversation_item_from_value(item: &Value) -> Option<ConversationI
                 tool_type: item_type.to_string(),
                 title: "Web search".to_string(),
                 detail: query.clone(),
-                status: item.get("status").and_then(Value::as_str).map(|s| s.to_string()),
+                status: item
+                    .get("status")
+                    .and_then(Value::as_str)
+                    .map(|s| s.to_string()),
                 input_value: if query.is_empty() {
                     None
                 } else {
@@ -1996,7 +2036,10 @@ pub(crate) fn conversation_item_from_value(item: &Value) -> Option<ConversationI
                 tool_type: item_type.to_string(),
                 title: "Image view".to_string(),
                 detail: path.clone(),
-                status: item.get("status").and_then(Value::as_str).map(|s| s.to_string()),
+                status: item
+                    .get("status")
+                    .and_then(Value::as_str)
+                    .map(|s| s.to_string()),
                 input_value: if path.is_empty() {
                     None
                 } else {
@@ -2084,14 +2127,23 @@ fn value_to_command_string(value: &Value) -> Option<String> {
 
 fn parse_file_changes(
     item: &Value,
-) -> (Vec<ConversationChange>, Vec<String>, Option<String>, Option<String>) {
+) -> (
+    Vec<ConversationChange>,
+    Vec<String>,
+    Option<String>,
+    Option<String>,
+) {
     let mut changes = Vec::new();
     let mut paths = Vec::new();
     let mut first_path = None;
     let mut first_diff = None;
     if let Some(change_list) = item.get("changes").and_then(Value::as_array) {
         for change in change_list {
-            let path = change.get("path").and_then(Value::as_str).unwrap_or("").to_string();
+            let path = change
+                .get("path")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .to_string();
             if path.is_empty() {
                 continue;
             }
@@ -2104,11 +2156,17 @@ fn parse_file_changes(
                     if value.is_string() {
                         value.as_str().map(|s| s.to_string())
                     } else {
-                        value.get("type").and_then(Value::as_str).map(|s| s.to_string())
+                        value
+                            .get("type")
+                            .and_then(Value::as_str)
+                            .map(|s| s.to_string())
                     }
                 })
                 .map(|value| value.to_ascii_lowercase());
-            let diff = change.get("diff").and_then(Value::as_str).map(|s| s.to_string());
+            let diff = change
+                .get("diff")
+                .and_then(Value::as_str)
+                .map(|s| s.to_string());
             if first_diff.is_none() {
                 first_diff = diff.clone();
             }

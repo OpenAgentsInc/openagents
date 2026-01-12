@@ -55,10 +55,7 @@ impl AggregationMethod {
                 }
             }
             Self::Mean => scores.iter().sum::<f64>() / scores.len() as f64,
-            Self::Min => scores
-                .iter()
-                .cloned()
-                .fold(f64::INFINITY, |a, b| a.min(b)),
+            Self::Min => scores.iter().cloned().fold(f64::INFINITY, |a, b| a.min(b)),
             Self::Max => scores
                 .iter()
                 .cloned()
@@ -392,14 +389,20 @@ impl Scorer {
     /// Convert an eval task to an Example for the predictor.
     fn task_to_example(&self, task: &EvalTask) -> Example {
         let mut ex = Example::default();
-        ex.data.insert("goal".to_string(), serde_json::Value::String(task.goal.clone()));
+        ex.data.insert(
+            "goal".to_string(),
+            serde_json::Value::String(task.goal.clone()),
+        );
         ex.data.insert(
             "repo_source".to_string(),
             serde_json::Value::String(task.repo.source.clone()),
         );
 
         if let Some(ref ref_spec) = task.repo.ref_spec {
-            ex.data.insert("repo_ref".to_string(), serde_json::Value::String(ref_spec.clone()));
+            ex.data.insert(
+                "repo_ref".to_string(),
+                serde_json::Value::String(ref_spec.clone()),
+            );
         }
 
         if !task.repo.focus_files.is_empty() {

@@ -497,21 +497,25 @@ impl Renderer {
             let text_quads = scene.gpu_text_quads_for_layer(layer, scale_factor);
 
             let quad_buffer = if !quads.is_empty() {
-                Some(device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                    label: Some(&format!("Quad Instance Buffer Layer {}", layer)),
-                    contents: bytemuck::cast_slice(&quads),
-                    usage: wgpu::BufferUsages::VERTEX,
-                }))
+                Some(
+                    device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                        label: Some(&format!("Quad Instance Buffer Layer {}", layer)),
+                        contents: bytemuck::cast_slice(&quads),
+                        usage: wgpu::BufferUsages::VERTEX,
+                    }),
+                )
             } else {
                 None
             };
 
             let text_buffer = if !text_quads.is_empty() {
-                Some(device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                    label: Some(&format!("Text Instance Buffer Layer {}", layer)),
-                    contents: bytemuck::cast_slice(&text_quads),
-                    usage: wgpu::BufferUsages::VERTEX,
-                }))
+                Some(
+                    device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                        label: Some(&format!("Text Instance Buffer Layer {}", layer)),
+                        contents: bytemuck::cast_slice(&text_quads),
+                        usage: wgpu::BufferUsages::VERTEX,
+                    }),
+                )
             } else {
                 None
             };
@@ -666,7 +670,12 @@ impl Renderer {
         self.render_with_clear(encoder, view, wgpu::Color::BLACK);
     }
 
-    pub fn render_with_clear(&self, encoder: &mut wgpu::CommandEncoder, view: &wgpu::TextureView, clear_color: wgpu::Color) {
+    pub fn render_with_clear(
+        &self,
+        encoder: &mut wgpu::CommandEncoder,
+        view: &wgpu::TextureView,
+        clear_color: wgpu::Color,
+    ) {
         let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("Render Pass"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {

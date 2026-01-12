@@ -2,7 +2,7 @@
 //!
 //! These benchmarks generate data for Tables 1-4 in the FRLM paper.
 
-use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
+use criterion::{BenchmarkId, Criterion, black_box, criterion_group, criterion_main};
 use frlm::policy::{BudgetPolicy, Quorum, VerificationTier};
 use frlm::types::{Fragment, SubQueryResult, Venue};
 use frlm::verification::Verifier;
@@ -129,11 +129,19 @@ fn bench_latency_by_verification(c: &mut Criterion) {
 
     // Objective (schema validation)
     let json_results: Vec<_> = (0..10)
-        .map(|i| make_result(&format!("q-{}", i), r#"{"name": "Alice", "age": 30}"#, 100, 10))
+        .map(|i| {
+            make_result(
+                &format!("q-{}", i),
+                r#"{"name": "Alice", "age": 30}"#,
+                100,
+                10,
+            )
+        })
         .collect();
     group.bench_function("objective_schema", |b| {
-        let tier =
-            VerificationTier::objective(Some(r#"{"type": "object", "required": ["name"]}"#.to_string()));
+        let tier = VerificationTier::objective(Some(
+            r#"{"type": "object", "required": ["name"]}"#.to_string(),
+        ));
         b.iter(|| Verifier::verify(black_box(&json_results), black_box(&tier)))
     });
 
@@ -193,10 +201,14 @@ fn bench_quorum_check(c: &mut Criterion) {
         let label = format!("{}_of_{}", received, total);
 
         // All quorum
-        group.bench_with_input(BenchmarkId::new("all", &label), &(received, total), |b, &(r, t)| {
-            let q = Quorum::All;
-            b.iter(|| q.is_met(black_box(r), black_box(t)))
-        });
+        group.bench_with_input(
+            BenchmarkId::new("all", &label),
+            &(received, total),
+            |b, &(r, t)| {
+                let q = Quorum::All;
+                b.iter(|| q.is_met(black_box(r), black_box(t)))
+            },
+        );
 
         // Fraction quorum (80%)
         group.bench_with_input(
@@ -405,7 +417,11 @@ fn collect_statistics() {
         let tier = VerificationTier::redundancy(10, 6);
 
         let verify_result = Verifier::verify(&results, &tier).unwrap();
-        let detection = if verify_result.passed { "Passed" } else { "Blocked" };
+        let detection = if verify_result.passed {
+            "Passed"
+        } else {
+            "Blocked"
+        };
         let agreement = verify_result
             .agreement
             .map(|a| format!("{:.0}%", a * 100.0))

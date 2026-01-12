@@ -18,8 +18,8 @@ use std::future::Future;
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::Mutex;
 
-use crate::{Cache, CallResult, Example, MetaSignature, Prediction, ResponseCache};
 use crate::callbacks::DspyCallback;
+use crate::{Cache, CallResult, Example, MetaSignature, Prediction, ResponseCache};
 
 #[derive(Clone, Debug)]
 pub struct LMResponse {
@@ -340,7 +340,8 @@ impl LM {
         messages: Chat,
         tools: Vec<Arc<dyn ToolDyn>>,
     ) -> Result<LMResponse> {
-        self.call_with_signature_streaming(signature, messages, tools, None).await
+        self.call_with_signature_streaming(signature, messages, tools, None)
+            .await
     }
 
     pub async fn call_with_signature_streaming(
@@ -397,9 +398,7 @@ impl LM {
 
         let (response, usage_override) = match client.as_ref() {
             LMClient::LmRouter(router) => {
-                let completion = router
-                    .completion_with_signature(signature, request)
-                    .await?;
+                let completion = router.completion_with_signature(signature, request).await?;
                 (completion.response, Some(completion.usage))
             }
             _ => (client.completion(request).await?, None),

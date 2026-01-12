@@ -5,12 +5,12 @@
 use crate::core::lm::pylon::{PylonCompletionModel, PylonConfig, PylonVenue};
 use anyhow::Result;
 use async_trait::async_trait;
+use rig::OneOrMany;
 use rig::completion::CompletionRequest;
 use rig::message::{AssistantContent, Message, Text, UserContent};
-use rig::OneOrMany;
 use serde::{Deserialize, Serialize};
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use tokio::sync::RwLock;
 
 /// Message role in a conversation.
@@ -109,11 +109,7 @@ pub trait LMProvider: Send + Sync {
     fn cost_per_1k_tokens(&self) -> u64;
 
     /// Execute a completion request.
-    async fn complete(
-        &self,
-        messages: Vec<LMMessage>,
-        config: &LMConfig,
-    ) -> Result<LMCompletion>;
+    async fn complete(&self, messages: Vec<LMMessage>, config: &LMConfig) -> Result<LMCompletion>;
 
     /// Total spent so far (for budget tracking).
     fn total_spent_msats(&self) -> u64;
@@ -169,16 +165,15 @@ impl LMProvider for MockLM {
         self.cost_per_1k
     }
 
-    async fn complete(
-        &self,
-        _messages: Vec<LMMessage>,
-        config: &LMConfig,
-    ) -> Result<LMCompletion> {
+    async fn complete(&self, _messages: Vec<LMMessage>, config: &LMConfig) -> Result<LMCompletion> {
         let idx = self.response_idx.fetch_add(1, Ordering::SeqCst) as usize;
         let response = &self.responses[idx % self.responses.len()];
 
         // Estimate tokens from response length
-        let tokens = config.max_tokens.unwrap_or(100).min(response.len() as u64 / 4 + 10);
+        let tokens = config
+            .max_tokens
+            .unwrap_or(100)
+            .min(response.len() as u64 / 4 + 10);
         let cost = (tokens * self.cost_per_1k) / 1000;
 
         self.spent.fetch_add(cost, Ordering::SeqCst);
@@ -233,7 +228,11 @@ impl PylonLM {
     }
 
     /// Create with an actual PylonCompletionModel (online mode).
-    pub fn with_model(name: impl Into<String>, model: PylonCompletionModel, is_swarm: bool) -> Self {
+    pub fn with_model(
+        name: impl Into<String>,
+        model: PylonCompletionModel,
+        is_swarm: bool,
+    ) -> Self {
         Self {
             name: name.into(),
             venue_cost: if is_swarm { 10 } else { 0 },
@@ -344,11 +343,7 @@ impl LMProvider for PylonLM {
         self.venue_cost
     }
 
-    async fn complete(
-        &self,
-        messages: Vec<LMMessage>,
-        config: &LMConfig,
-    ) -> Result<LMCompletion> {
+    async fn complete(&self, messages: Vec<LMMessage>, config: &LMConfig) -> Result<LMCompletion> {
         // If we have a connected model, use it
         if let Some(model) = &self.model {
             let model_guard = model.read().await;
@@ -454,14 +449,13 @@ impl LMProvider for FallbackLM {
 
     fn cost_per_1k_tokens(&self) -> u64 {
         // Return the cost of the first provider (primary)
-        self.providers.first().map(|p| p.cost_per_1k_tokens()).unwrap_or(0)
+        self.providers
+            .first()
+            .map(|p| p.cost_per_1k_tokens())
+            .unwrap_or(0)
     }
 
-    async fn complete(
-        &self,
-        messages: Vec<LMMessage>,
-        config: &LMConfig,
-    ) -> Result<LMCompletion> {
+    async fn complete(&self, messages: Vec<LMMessage>, config: &LMConfig) -> Result<LMCompletion> {
         let mut last_error = None;
 
         for provider in &self.providers {

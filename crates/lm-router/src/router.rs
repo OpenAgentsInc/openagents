@@ -45,7 +45,12 @@ impl LmRouter {
     /// Complete a prompt with the specified model.
     ///
     /// Routes the request to the appropriate backend based on the model name.
-    pub async fn complete(&self, model: &str, prompt: &str, max_tokens: usize) -> Result<LmResponse> {
+    pub async fn complete(
+        &self,
+        model: &str,
+        prompt: &str,
+        max_tokens: usize,
+    ) -> Result<LmResponse> {
         let backend = self.get_backend_for_model(model)?;
 
         debug!(
@@ -222,7 +227,10 @@ mod tests {
             .default_backend("mock")
             .build();
 
-        let response = router.complete("test-model", "Say hello", 100).await.unwrap();
+        let response = router
+            .complete("test-model", "Say hello", 100)
+            .await
+            .unwrap();
         assert_eq!(response.text, "Hello, world!");
     }
 
@@ -261,8 +269,14 @@ mod tests {
             .default_backend("mock")
             .build();
 
-        router.complete("test-model", "prompt 1", 100).await.unwrap();
-        router.complete("test-model", "prompt 2", 100).await.unwrap();
+        router
+            .complete("test-model", "prompt 1", 100)
+            .await
+            .unwrap();
+        router
+            .complete("test-model", "prompt 2", 100)
+            .await
+            .unwrap();
 
         let report = router.usage_report();
         assert_eq!(report.total_calls, 2);

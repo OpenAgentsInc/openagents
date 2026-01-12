@@ -44,7 +44,8 @@ pub fn init_runtime(api_base_url: &str) -> Result<(), JsValue> {
     let config = BrowserRuntimeConfig::new(api_base_url);
     let runtime = BrowserRuntime::new(config);
 
-    RUNTIME.set(runtime)
+    RUNTIME
+        .set(runtime)
         .map_err(|_| JsValue::from_str("Runtime already initialized"))?;
 
     Ok(())
@@ -65,7 +66,8 @@ pub fn init_runtime(api_base_url: &str) -> Result<(), JsValue> {
 #[cfg(target_arch = "wasm32")]
 #[wasm_bindgen]
 pub fn spawn_autopilot(repo_url: &str, issue_description: &str) -> Result<String, JsValue> {
-    let runtime = RUNTIME.get()
+    let runtime = RUNTIME
+        .get()
         .ok_or_else(|| JsValue::from_str("Runtime not initialized. Call init_runtime first."))?;
 
     let repo = repo_url.to_string();
@@ -74,9 +76,7 @@ pub fn spawn_autopilot(repo_url: &str, issue_description: &str) -> Result<String
     let agent_id_str = agent_id.to_string();
 
     runtime
-        .register_agent_with(agent_id, |env| {
-            AutopilotAgent::new(env, repo, issue)
-        })
+        .register_agent_with(agent_id, |env| AutopilotAgent::new(env, repo, issue))
         .map_err(|e| JsValue::from_str(&format!("Failed to register agent: {}", e)))?;
 
     Ok(agent_id_str)
@@ -92,7 +92,8 @@ pub fn spawn_autopilot_with_config(
     max_cost_per_tick_usd: u64,
     max_cost_per_day_usd: u64,
 ) -> Result<String, JsValue> {
-    let runtime = RUNTIME.get()
+    let runtime = RUNTIME
+        .get()
         .ok_or_else(|| JsValue::from_str("Runtime not initialized. Call init_runtime first."))?;
 
     let repo = repo_url.to_string();
@@ -135,11 +136,15 @@ pub fn tick_agent(agent_id: String) {
 #[cfg(target_arch = "wasm32")]
 #[wasm_bindgen]
 pub fn list_agents() -> Result<Vec<JsValue>, JsValue> {
-    let runtime = RUNTIME.get()
+    let runtime = RUNTIME
+        .get()
         .ok_or_else(|| JsValue::from_str("Runtime not initialized"))?;
 
     let ids = runtime.list_agents();
-    Ok(ids.into_iter().map(|id| JsValue::from_str(id.as_str())).collect())
+    Ok(ids
+        .into_iter()
+        .map(|id| JsValue::from_str(id.as_str()))
+        .collect())
 }
 
 // Non-WASM stubs for native builds (allows compiling with native feature)

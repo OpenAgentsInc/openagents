@@ -92,8 +92,9 @@ pub(crate) struct DspySessionSummary {
 impl DspySessionSummary {
     pub(crate) fn from_index(index: &SessionIndex) -> Self {
         let updated_ts = timestamp_to_u64(index.updated_at.timestamp());
-        let last_optimization_ts =
-            index.last_optimization.map(|stamp| timestamp_to_u64(stamp.timestamp()));
+        let last_optimization_ts = index
+            .last_optimization
+            .map(|stamp| timestamp_to_u64(stamp.timestamp()));
         Self {
             total_sessions: index.total_sessions,
             success_count: index.success_count,
@@ -219,9 +220,5 @@ fn auto_optimizer_config_path() -> Option<PathBuf> {
 }
 
 fn timestamp_to_u64(timestamp: i64) -> u64 {
-    if timestamp <= 0 {
-        0
-    } else {
-        timestamp as u64
-    }
+    if timestamp <= 0 { 0 } else { timestamp as u64 }
 }

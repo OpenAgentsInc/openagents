@@ -3,11 +3,11 @@
 //! Uses Cerebras GLM 4.7 for planning/orchestration, Qwen-3-32B for subtask execution.
 //! This provides a cost-effective approach: smart model for planning, cheaper model for work.
 
-use crate::{AdjutantError, Task, TaskResult, ToolRegistry};
 use crate::dspy::{
     AdjutantModule, ExecutionTrainingExample, PlanningTrainingExample, SubtaskData,
     SynthesisTrainingExample, TrainingCollector,
 };
+use crate::{AdjutantError, Task, TaskResult, ToolRegistry};
 use gateway::{CerebrasGateway, ChatRequest, InferenceGateway, Message};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -79,13 +79,18 @@ impl TieredExecutor {
 
     /// Create a tiered executor with a specific execution mode.
     pub fn with_mode(mode: ExecutionMode) -> Result<Self, AdjutantError> {
-        let gateway = CerebrasGateway::from_env()
-            .map_err(|e| AdjutantError::ExecutionFailed(format!("Failed to create gateway: {}", e)))?;
+        let gateway = CerebrasGateway::from_env().map_err(|e| {
+            AdjutantError::ExecutionFailed(format!("Failed to create gateway: {}", e))
+        })?;
 
         let (dsrs_module, training_collector) = match mode {
             ExecutionMode::Dsrs => {
-                let collector = TrainingCollector::new(true)
-                    .map_err(|e| AdjutantError::ExecutionFailed(format!("Failed to create training collector: {}", e)))?;
+                let collector = TrainingCollector::new(true).map_err(|e| {
+                    AdjutantError::ExecutionFailed(format!(
+                        "Failed to create training collector: {}",
+                        e
+                    ))
+                })?;
                 (Some(AdjutantModule::new()), Some(collector))
             }
             ExecutionMode::Gateway => (None, None),
@@ -127,9 +132,7 @@ impl TieredExecutor {
                     }
                 }
             }
-            ExecutionMode::Gateway => {
-                self.execute_gateway(task, context, tools).await
-            }
+            ExecutionMode::Gateway => self.execute_gateway(task, context, tools).await,
         }
     }
 
@@ -150,7 +153,9 @@ impl TieredExecutor {
         if plan.subtasks.is_empty() {
             return Ok(TaskResult {
                 success: true,
-                summary: "No subtasks generated - task may already be complete or no changes needed.".to_string(),
+                summary:
+                    "No subtasks generated - task may already be complete or no changes needed."
+                        .to_string(),
                 modified_files: Vec::new(),
                 commit_hash: None,
                 error: None,
@@ -183,9 +188,11 @@ impl TieredExecutor {
         )
         .with_max_tokens(2000);
 
-        let response = self.gateway.chat(request).await.map_err(|e| {
-            AdjutantError::ExecutionFailed(format!("Planning failed: {}", e))
-        })?;
+        let response = self
+            .gateway
+            .chat(request)
+            .await
+            .map_err(|e| AdjutantError::ExecutionFailed(format!("Planning failed: {}", e)))?;
 
         let content = response.content().unwrap_or("{}");
         parse_task_plan(content)
@@ -200,7 +207,12 @@ impl TieredExecutor {
         let mut results = Vec::new();
 
         for subtask in subtasks {
-            tracing::info!("Executing subtask {}: {} on {}", subtask.id, subtask.action, subtask.target);
+            tracing::info!(
+                "Executing subtask {}: {} on {}",
+                subtask.id,
+                subtask.action,
+                subtask.target
+            );
             let result = self.execute_single_subtask(subtask, tools).await?;
             results.push(result);
         }
@@ -294,7 +306,9 @@ impl TieredExecutor {
                         id: subtask.id.clone(),
                         success: false,
                         output: String::new(),
-                        error: Some("Could not parse edit instructions from LLM output".to_string()),
+                        error: Some(
+                            "Could not parse edit instructions from LLM output".to_string(),
+                        ),
                     }),
                 }
             }
@@ -330,7 +344,11 @@ impl TieredExecutor {
                 if r.success {
                     format!("- [OK] {}: {}", r.id, r.output)
                 } else {
-                    format!("- [FAIL] {}: {}", r.id, r.error.as_deref().unwrap_or("unknown error"))
+                    format!(
+                        "- [FAIL] {}: {}",
+                        r.id,
+                        r.error.as_deref().unwrap_or("unknown error")
+                    )
                 }
             })
             .collect::<Vec<_>>()
@@ -348,9 +366,11 @@ impl TieredExecutor {
         )
         .with_max_tokens(1000);
 
-        let response = self.gateway.chat(request).await.map_err(|e| {
-            AdjutantError::ExecutionFailed(format!("Synthesis failed: {}", e))
-        })?;
+        let response = self
+            .gateway
+            .chat(request)
+            .await
+            .map_err(|e| AdjutantError::ExecutionFailed(format!("Synthesis failed: {}", e)))?;
 
         let content = response.content().unwrap_or("");
         parse_synthesis_result(content, results)
@@ -374,7 +394,9 @@ impl TieredExecutor {
         tracing::info!("TieredExecutor (DSPy): Starting task '{}'", task.title);
 
         let module = self.dsrs_module.as_ref().ok_or_else(|| {
-            AdjutantError::ExecutionFailed("DSPy module not initialized. Use ExecutionMode::Dsrs".to_string())
+            AdjutantError::ExecutionFailed(
+                "DSPy module not initialized. Use ExecutionMode::Dsrs".to_string(),
+            )
         })?;
 
         // PHASE 1: Plan with DSPy signature
@@ -385,9 +407,8 @@ impl TieredExecutor {
             .map_err(|e| AdjutantError::PlanningFailed(format!("DSPy planning failed: {}", e)))?;
 
         let subtasks_json = plan_prediction.get("subtasks", None);
-        let subtasks: Vec<Subtask> = serde_json::from_str(
-            subtasks_json.as_str().unwrap_or("[]")
-        ).unwrap_or_default();
+        let subtasks: Vec<Subtask> =
+            serde_json::from_str(subtasks_json.as_str().unwrap_or("[]")).unwrap_or_default();
 
         tracing::info!("Generated {} subtasks via DSPy", subtasks.len());
 
@@ -397,12 +418,15 @@ impl TieredExecutor {
                 task_title: task.title.clone(),
                 task_description: task.description.clone(),
                 context: context.to_string(),
-                expected_subtasks: subtasks.iter().map(|s| SubtaskData {
-                    id: s.id.clone(),
-                    action: s.action.clone(),
-                    target: s.target.clone(),
-                    instruction: s.instruction.clone(),
-                }).collect(),
+                expected_subtasks: subtasks
+                    .iter()
+                    .map(|s| SubtaskData {
+                        id: s.id.clone(),
+                        action: s.action.clone(),
+                        target: s.target.clone(),
+                        instruction: s.instruction.clone(),
+                    })
+                    .collect(),
                 success: !subtasks.is_empty(),
             };
             let _ = collector.record_planning(example);
@@ -420,12 +444,20 @@ impl TieredExecutor {
         }
 
         // PHASE 2: Execute subtasks with DSPy signature
-        tracing::info!("Phase 2: Executing {} subtasks with DSPy SubtaskExecutionSignature", subtasks.len());
+        tracing::info!(
+            "Phase 2: Executing {} subtasks with DSPy SubtaskExecutionSignature",
+            subtasks.len()
+        );
         let mut results = Vec::new();
         let mut modified_files = Vec::new();
 
         for subtask in &subtasks {
-            tracing::info!("Executing subtask {}: {} on {}", subtask.id, subtask.action, subtask.target);
+            tracing::info!(
+                "Executing subtask {}: {} on {}",
+                subtask.id,
+                subtask.action,
+                subtask.target
+            );
 
             // Get file context for edit/read operations
             let target_path = std::path::Path::new(&subtask.target);
@@ -440,12 +472,20 @@ impl TieredExecutor {
 
             // Execute with DSPy signature
             let exec_prediction = module
-                .execute_subtask(&subtask.action, &subtask.target, &subtask.instruction, &file_context)
+                .execute_subtask(
+                    &subtask.action,
+                    &subtask.target,
+                    &subtask.instruction,
+                    &file_context,
+                )
                 .await
-                .map_err(|e| AdjutantError::ExecutionFailed(format!("DSPy execution failed: {}", e)))?;
+                .map_err(|e| {
+                    AdjutantError::ExecutionFailed(format!("DSPy execution failed: {}", e))
+                })?;
 
             let result_json = exec_prediction.get("result", None);
-            let _exec_success = exec_prediction.get("success", None)
+            let _exec_success = exec_prediction
+                .get("success", None)
                 .as_bool()
                 .unwrap_or(false);
 
@@ -482,7 +522,11 @@ impl TieredExecutor {
                 if r.success {
                     format!("- [OK] {}: {}", r.id, r.output)
                 } else {
-                    format!("- [FAIL] {}: {}", r.id, r.error.as_deref().unwrap_or("unknown"))
+                    format!(
+                        "- [FAIL] {}: {}",
+                        r.id,
+                        r.error.as_deref().unwrap_or("unknown")
+                    )
                 }
             })
             .collect::<Vec<_>>()
@@ -493,10 +537,12 @@ impl TieredExecutor {
             .await
             .map_err(|e| AdjutantError::ExecutionFailed(format!("DSPy synthesis failed: {}", e)))?;
 
-        let success = synth_prediction.get("success", None)
+        let success = synth_prediction
+            .get("success", None)
             .as_bool()
             .unwrap_or_else(|| results.iter().all(|r| r.success));
-        let summary = synth_prediction.get("summary", None)
+        let summary = synth_prediction
+            .get("summary", None)
             .as_str()
             .unwrap_or("Task completed.")
             .to_string();
@@ -531,14 +577,12 @@ impl TieredExecutor {
         tools: &mut ToolRegistry,
     ) -> Result<SubtaskResult, AdjutantError> {
         match subtask.action.as_str() {
-            "read" => {
-                Ok(SubtaskResult {
-                    id: subtask.id.clone(),
-                    success: true,
-                    output: format!("Read and analyzed: {}", subtask.target),
-                    error: None,
-                })
-            }
+            "read" => Ok(SubtaskResult {
+                id: subtask.id.clone(),
+                success: true,
+                output: format!("Read and analyzed: {}", subtask.target),
+                error: None,
+            }),
             "edit" => {
                 // Parse result JSON for old_string/new_string
                 let obj = if let Some(s) = result_json.as_str() {
@@ -585,9 +629,7 @@ impl TieredExecutor {
                     result_json.clone()
                 };
 
-                let command = obj.get("command")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("");
+                let command = obj.get("command").and_then(|v| v.as_str()).unwrap_or("");
 
                 let result = tools.bash(command).await?;
                 Ok(SubtaskResult {
@@ -658,7 +700,10 @@ fn parse_edit_response(content: &str) -> Option<(String, String)> {
     ) {
         let old_content = &content[old_start + old_marker.len()..new_start];
         let new_content = &content[new_start + new_marker.len()..end_pos];
-        return Some((old_content.trim().to_string(), new_content.trim().to_string()));
+        return Some((
+            old_content.trim().to_string(),
+            new_content.trim().to_string(),
+        ));
     }
 
     None
@@ -680,7 +725,10 @@ fn extract_bash_command(content: &str) -> String {
 
     // Fallback: look for code block
     if let Some(start) = content.find("```bash") {
-        if let Some(end) = content[start..].find("```\n").or_else(|| content[start..].rfind("```")) {
+        if let Some(end) = content[start..]
+            .find("```\n")
+            .or_else(|| content[start..].rfind("```"))
+        {
             let cmd_start = start + "```bash".len();
             return content[cmd_start..start + end].trim().to_string();
         }
@@ -691,7 +739,10 @@ fn extract_bash_command(content: &str) -> String {
 }
 
 /// Parse synthesis result into TaskResult.
-fn parse_synthesis_result(content: &str, results: &[SubtaskResult]) -> Result<TaskResult, AdjutantError> {
+fn parse_synthesis_result(
+    content: &str,
+    results: &[SubtaskResult],
+) -> Result<TaskResult, AdjutantError> {
     #[derive(Deserialize)]
     struct SynthesisResponse {
         success: Option<bool>,
@@ -705,7 +756,8 @@ fn parse_synthesis_result(content: &str, results: &[SubtaskResult]) -> Result<Ta
         if let Ok(resp) = serde_json::from_str::<SynthesisResponse>(&json_str) {
             (
                 resp.success.unwrap_or(false),
-                resp.summary.unwrap_or_else(|| "Task completed.".to_string()),
+                resp.summary
+                    .unwrap_or_else(|| "Task completed.".to_string()),
                 resp.modified_files.unwrap_or_default(),
             )
         } else {

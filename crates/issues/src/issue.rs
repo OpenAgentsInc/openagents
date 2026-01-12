@@ -702,9 +702,7 @@ mod tests {
         assert_eq!(next.title, "Codex task");
 
         // With codex filter, should return codex task
-        let codex_next = get_next_ready_issue(&conn, Some("codex"))
-            .unwrap()
-            .unwrap();
+        let codex_next = get_next_ready_issue(&conn, Some("codex")).unwrap().unwrap();
         assert_eq!(codex_next.title, "Codex task");
 
         // With codex filter, should return codex task

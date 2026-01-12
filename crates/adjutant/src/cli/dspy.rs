@@ -4,10 +4,12 @@
 
 use anyhow::Result;
 use clap::{Args, Subcommand};
-use dsrs::{manifest::CompiledModuleManifest, manifest::Scorecard, MIPROv2, Optimizable, Optimizer};
+use dsrs::{
+    MIPROv2, Optimizable, Optimizer, manifest::CompiledModuleManifest, manifest::Scorecard,
+};
 use std::path::PathBuf;
 
-use crate::dspy::{get_planning_lm, AdjutantModule, AdjutantTrainingDataset};
+use crate::dspy::{AdjutantModule, AdjutantTrainingDataset, get_planning_lm};
 
 /// DSPy subcommands
 #[derive(Subcommand)]
@@ -153,10 +155,7 @@ pub async fn status(_args: StatusArgs) -> Result<()> {
         dataset.rlm_trigger_examples.len()
     );
 
-    println!(
-        "\nTotal examples: {}\n",
-        dataset.len()
-    );
+    println!("\nTotal examples: {}\n", dataset.len());
 
     // Show which are ready for optimization (>= 10 examples)
     println!("Ready for Optimization (≥10 examples):");
@@ -180,7 +179,10 @@ pub async fn status(_args: StatusArgs) -> Result<()> {
     }
 
     if !any_ready {
-        println!("  (none ready yet - need at least {} examples)", min_examples);
+        println!(
+            "  (none ready yet - need at least {} examples)",
+            min_examples
+        );
         println!("\n  Tip: Use the Autopilot UI normally to collect training data.");
         println!("  High-confidence decisions (>70%) are automatically recorded.");
     } else {
@@ -198,18 +200,9 @@ pub async fn optimize(args: OptimizeArgs) -> Result<()> {
     // 2. Select signature and get examples
     let signature_name = args.signature.as_deref().unwrap_or("planning");
     let (full_signature_name, examples) = match signature_name {
-        "planning" => (
-            "SubtaskPlanningSignature",
-            dataset.planning_as_examples(),
-        ),
-        "execution" => (
-            "SubtaskExecutionSignature",
-            dataset.execution_as_examples(),
-        ),
-        "synthesis" => (
-            "ResultSynthesisSignature",
-            dataset.synthesis_as_examples(),
-        ),
+        "planning" => ("SubtaskPlanningSignature", dataset.planning_as_examples()),
+        "execution" => ("SubtaskExecutionSignature", dataset.execution_as_examples()),
+        "synthesis" => ("ResultSynthesisSignature", dataset.synthesis_as_examples()),
         "complexity" => (
             "ComplexityClassificationSignature",
             dataset.complexity_as_examples(),
@@ -246,7 +239,11 @@ pub async fn optimize(args: OptimizeArgs) -> Result<()> {
     }
 
     if args.dry_run {
-        println!("Dry run - would optimize {} with {} examples", full_signature_name, examples.len());
+        println!(
+            "Dry run - would optimize {} with {} examples",
+            full_signature_name,
+            examples.len()
+        );
         println!("\nRemove --dry-run to run actual optimization.");
         return Ok(());
     }
@@ -281,10 +278,7 @@ pub async fn optimize(args: OptimizeArgs) -> Result<()> {
             .num_trials(args.num_trials)
             .minibatch_size(std::cmp::min(25, examples.len()))
             .build(),
-        other => anyhow::bail!(
-            "Unknown optimizer: {}. Currently supported: mipro",
-            other
-        ),
+        other => anyhow::bail!("Unknown optimizer: {}. Currently supported: mipro", other),
     };
 
     // 6. Run optimization
@@ -311,10 +305,8 @@ pub async fn optimize(args: OptimizeArgs) -> Result<()> {
         .join(".openagents/adjutant/manifests");
     std::fs::create_dir_all(&manifest_dir)?;
 
-    let manifest_path = manifest_dir.join(format!(
-        "{}.json",
-        manifest.compiled_id.as_ref().unwrap()
-    ));
+    let manifest_path =
+        manifest_dir.join(format!("{}.json", manifest.compiled_id.as_ref().unwrap()));
     std::fs::write(&manifest_path, serde_json::to_string_pretty(&manifest)?)?;
 
     println!("\n");
@@ -372,15 +364,18 @@ pub async fn sessions(args: SessionsArgs) -> Result<()> {
 
     // Filter if needed
     let sessions: Vec<_> = if args.failed_only {
-        sessions.into_iter().filter(|s| {
-            s.outcome.as_ref().map(|o| o.is_failure()).unwrap_or(false)
-        }).collect()
+        sessions
+            .into_iter()
+            .filter(|s| s.outcome.as_ref().map(|o| o.is_failure()).unwrap_or(false))
+            .collect()
     } else {
         sessions
     };
 
-    println!("{:<12} {:<30} {:<12} {:<10} {:<10}",
-        "ID", "Task", "Outcome", "Decisions", "Iterations");
+    println!(
+        "{:<12} {:<30} {:<12} {:<10} {:<10}",
+        "ID", "Task", "Outcome", "Decisions", "Iterations"
+    );
     println!("{}", "-".repeat(80));
 
     for session in &sessions {
@@ -395,7 +390,8 @@ pub async fn sessions(args: SessionsArgs) -> Result<()> {
             None => "PENDING",
         };
 
-        println!("{:<12} {:<30} {:<12} {:<10} {:<10}",
+        println!(
+            "{:<12} {:<30} {:<12} {:<10} {:<10}",
             id_short,
             title_short,
             outcome,
@@ -410,7 +406,8 @@ pub async fn sessions(args: SessionsArgs) -> Result<()> {
                     Some(false) => "✗",
                     None => "?",
                 };
-                println!("    {} {} (conf: {:.0}%)",
+                println!(
+                    "    {} {} (conf: {:.0}%)",
                     correct,
                     decision.decision_type,
                     decision.predicted_confidence * 100.0
@@ -439,8 +436,14 @@ pub async fn performance(args: PerformanceArgs) -> Result<()> {
     println!("===================\n");
 
     println!("Decision Accuracy (Rolling Window):");
-    println!("  Complexity:   {:>5.1}%", summary.complexity_accuracy * 100.0);
-    println!("  Delegation:   {:>5.1}%", summary.delegation_accuracy * 100.0);
+    println!(
+        "  Complexity:   {:>5.1}%",
+        summary.complexity_accuracy * 100.0
+    );
+    println!(
+        "  Delegation:   {:>5.1}%",
+        summary.delegation_accuracy * 100.0
+    );
     println!("  RLM Trigger:  {:>5.1}%", summary.rlm_accuracy * 100.0);
     println!();
     println!("  Overall:      {:>5.1}%", summary.overall_accuracy * 100.0);
@@ -451,7 +454,10 @@ pub async fn performance(args: PerformanceArgs) -> Result<()> {
         println!("\nLabeled Training Examples:");
         println!("  Complexity:   {:>4}", labeled.count_by_type("complexity"));
         println!("  Delegation:   {:>4}", labeled.count_by_type("delegation"));
-        println!("  RLM Trigger:  {:>4}", labeled.count_by_type("rlm_trigger"));
+        println!(
+            "  RLM Trigger:  {:>4}",
+            labeled.count_by_type("rlm_trigger")
+        );
         println!("  Total:        {:>4}", labeled.total_count());
     }
 
@@ -465,18 +471,32 @@ pub async fn performance(args: PerformanceArgs) -> Result<()> {
 
     // Show auto-optimizer config
     let config = crate::dspy::AutoOptimizerConfig::load();
-    println!("\nAuto-Optimization: {}", if config.enabled { "ENABLED" } else { "DISABLED" });
+    println!(
+        "\nAuto-Optimization: {}",
+        if config.enabled {
+            "ENABLED"
+        } else {
+            "DISABLED"
+        }
+    );
     println!("  Triggers:");
     println!("    - {} new labeled examples", config.min_labeled_examples);
-    println!("    - Accuracy below {:.0}%", config.accuracy_threshold * 100.0);
-    println!("    - Min {} hours between runs", config.min_hours_between_optimizations);
+    println!(
+        "    - Accuracy below {:.0}%",
+        config.accuracy_threshold * 100.0
+    );
+    println!(
+        "    - Min {} hours between runs",
+        config.min_hours_between_optimizations
+    );
 
     if args.history {
         let metrics = tracker.metrics();
         if !metrics.history.is_empty() {
             println!("\nAccuracy History:");
             for snapshot in metrics.history.iter().rev().take(10) {
-                println!("  {} - C:{:.0}% D:{:.0}% R:{:.0}% Task:{:.0}%",
+                println!(
+                    "  {} - C:{:.0}% D:{:.0}% R:{:.0}% Task:{:.0}%",
                     snapshot.timestamp.format("%Y-%m-%d"),
                     snapshot.complexity_accuracy * 100.0,
                     snapshot.delegation_accuracy * 100.0,
@@ -535,11 +555,27 @@ pub async fn auto_optimize(args: AutoOptimizeArgs) -> Result<()> {
         // Just show current config
         println!("Auto-Optimization Configuration");
         println!("===============================\n");
-        println!("Enabled:         {}", if config.enabled { "yes" } else { "no" });
+        println!(
+            "Enabled:         {}",
+            if config.enabled { "yes" } else { "no" }
+        );
         println!("Min examples:    {}", config.min_labeled_examples);
-        println!("Accuracy threshold: {:.0}%", config.accuracy_threshold * 100.0);
-        println!("Min hours:       {}", config.min_hours_between_optimizations);
-        println!("Background:      {}", if config.background_optimization { "yes" } else { "no" });
+        println!(
+            "Accuracy threshold: {:.0}%",
+            config.accuracy_threshold * 100.0
+        );
+        println!(
+            "Min hours:       {}",
+            config.min_hours_between_optimizations
+        );
+        println!(
+            "Background:      {}",
+            if config.background_optimization {
+                "yes"
+            } else {
+                "no"
+            }
+        );
         println!("\nUse --enable, --disable, or set thresholds to modify.");
     }
 

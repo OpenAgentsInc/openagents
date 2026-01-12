@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use wgpui::components::molecules::{SkillCategory, SkillInfo, SkillInstallStatus};
 
 use super::super::parsing::{
-    first_nonempty_line, frontmatter_list, frontmatter_scalar, parse_frontmatter, Frontmatter,
+    Frontmatter, first_nonempty_line, frontmatter_list, frontmatter_scalar, parse_frontmatter,
 };
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -81,13 +81,22 @@ fn parse_skill_category(frontmatter: &Frontmatter) -> SkillCategory {
         {
             return SkillCategory::FileProcessing;
         }
-        if normalized.contains("api") || normalized.contains("integration") || normalized.contains("http") {
+        if normalized.contains("api")
+            || normalized.contains("integration")
+            || normalized.contains("http")
+        {
             return SkillCategory::ApiIntegration;
         }
-        if normalized.contains("text") || normalized.contains("nlp") || normalized.contains("writing") {
+        if normalized.contains("text")
+            || normalized.contains("nlp")
+            || normalized.contains("writing")
+        {
             return SkillCategory::TextProcessing;
         }
-        if normalized.contains("image") || normalized.contains("vision") || normalized.contains("ocr") {
+        if normalized.contains("image")
+            || normalized.contains("vision")
+            || normalized.contains("ocr")
+        {
             return SkillCategory::ImageProcessing;
         }
     }
@@ -112,7 +121,11 @@ pub(crate) fn load_skill_entries(cwd: &Path) -> SkillCatalog {
     if let Some(user_dir) = user_dir.as_ref() {
         entries.extend(load_skill_dir(user_dir, SkillSource::User, &mut errors));
     }
-    entries.extend(load_skill_dir(&project_dir, SkillSource::Project, &mut errors));
+    entries.extend(load_skill_dir(
+        &project_dir,
+        SkillSource::Project,
+        &mut errors,
+    ));
 
     entries.sort_by(|a, b| a.info.name.cmp(&b.info.name));
 
@@ -183,8 +196,7 @@ fn parse_skill_file(path: &Path, source: SkillSource) -> Result<Option<SkillEntr
         .and_then(|parent| parent.file_name())
         .and_then(|name| name.to_str())
         .unwrap_or("skill");
-    let name = frontmatter_scalar(&frontmatter, "name")
-        .unwrap_or_else(|| folder_name.to_string());
+    let name = frontmatter_scalar(&frontmatter, "name").unwrap_or_else(|| folder_name.to_string());
     let description = frontmatter_scalar(&frontmatter, "description")
         .or_else(|| first_nonempty_line(&body))
         .unwrap_or_else(|| "No description provided.".to_string());
@@ -197,7 +209,8 @@ fn parse_skill_file(path: &Path, source: SkillSource) -> Result<Option<SkillEntr
     let price = frontmatter_scalar(&frontmatter, "price_sats")
         .or_else(|| frontmatter_scalar(&frontmatter, "price"))
         .and_then(|value| parse_price_sats(&value));
-    let downloads = frontmatter_scalar(&frontmatter, "downloads").and_then(|value| parse_u32(&value));
+    let downloads =
+        frontmatter_scalar(&frontmatter, "downloads").and_then(|value| parse_u32(&value));
     let rating = frontmatter_scalar(&frontmatter, "rating").and_then(|value| parse_f32(&value));
 
     let id = match source {

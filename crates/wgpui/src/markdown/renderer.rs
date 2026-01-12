@@ -82,7 +82,10 @@ impl MarkdownRenderer {
                             .unwrap_or(self.config.base_font_size * theme::line_height::NORMAL)
                     })
                     .sum();
-                content_height + metrics.padding * 2.0 + metrics.header_height + metrics.margin * 2.0
+                content_height
+                    + metrics.padding * 2.0
+                    + metrics.header_height
+                    + metrics.margin * 2.0
             }
 
             MarkdownBlock::Blockquote(blocks) => {
@@ -270,7 +273,9 @@ impl MarkdownRenderer {
                     )
             }
 
-            MarkdownBlock::CodeBlock { lines, language, .. } => self.render_code_block(
+            MarkdownBlock::CodeBlock {
+                lines, language, ..
+            } => self.render_code_block(
                 lines,
                 language,
                 origin,
@@ -281,29 +286,25 @@ impl MarkdownRenderer {
                 code_blocks,
             ),
 
-            MarkdownBlock::Blockquote(blocks) => {
-                self.render_blockquote(
-                    blocks,
-                    origin,
-                    max_width,
-                    text_system,
-                    scene,
-                    opacity,
-                    code_blocks,
-                )
-            }
+            MarkdownBlock::Blockquote(blocks) => self.render_blockquote(
+                blocks,
+                origin,
+                max_width,
+                text_system,
+                scene,
+                opacity,
+                code_blocks,
+            ),
 
-            MarkdownBlock::UnorderedList(items) => {
-                self.render_unordered_list(
-                    items,
-                    origin,
-                    max_width,
-                    text_system,
-                    scene,
-                    opacity,
-                    code_blocks,
-                )
-            }
+            MarkdownBlock::UnorderedList(items) => self.render_unordered_list(
+                items,
+                origin,
+                max_width,
+                text_system,
+                scene,
+                opacity,
+                code_blocks,
+            ),
 
             MarkdownBlock::OrderedList { start, items } => self.render_ordered_list(
                 *start,
@@ -387,8 +388,7 @@ impl MarkdownRenderer {
 
                     // Draw background if needed
                     if let Some(bg) = span.style.background {
-                        let text_size =
-                            text_system.measure_size(word, span.style.font_size, None);
+                        let text_size = text_system.measure_size(word, span.style.font_size, None);
                         let padding = 2.0;
                         let bg_with_opacity = bg.with_alpha(bg.a * opacity);
                         scene.draw_quad(Quad {
@@ -417,8 +417,7 @@ impl MarkdownRenderer {
 
                     // Draw strikethrough if needed
                     if span.style.strikethrough {
-                        let text_size =
-                            text_system.measure_size(word, span.style.font_size, None);
+                        let text_size = text_system.measure_size(word, span.style.font_size, None);
                         let strike_y = y + text_size.height * 0.5;
                         scene.draw_quad(Quad {
                             bounds: Bounds::new(current_x, strike_y, word_width, 1.0),
@@ -469,30 +468,36 @@ impl MarkdownRenderer {
             .code_background
             .with_alpha(self.config.code_background.a * opacity);
         let border_color = theme::border::DEFAULT.with_alpha(opacity);
-        let block_bounds = Bounds::new(origin.x, origin.y + metrics.margin, max_width, total_height);
+        let block_bounds =
+            Bounds::new(origin.x, origin.y + metrics.margin, max_width, total_height);
         scene.draw_quad(
             Quad::new(block_bounds)
                 .with_background(bg_color)
                 .with_border(border_color, metrics.border_width),
         );
 
-        let header_bounds =
-            Bounds::new(origin.x, origin.y + metrics.margin, max_width, metrics.header_height);
-        scene.draw_quad(Quad::new(header_bounds).with_background(
-            theme::bg::SURFACE.with_alpha(opacity),
-        ));
-        scene.draw_quad(Quad::new(Bounds::new(
-            header_bounds.origin.x,
-            header_bounds.origin.y + header_bounds.size.height - metrics.border_width,
-            header_bounds.size.width,
-            metrics.border_width,
-        ))
-        .with_background(border_color));
+        let header_bounds = Bounds::new(
+            origin.x,
+            origin.y + metrics.margin,
+            max_width,
+            metrics.header_height,
+        );
+        scene.draw_quad(
+            Quad::new(header_bounds).with_background(theme::bg::SURFACE.with_alpha(opacity)),
+        );
+        scene.draw_quad(
+            Quad::new(Bounds::new(
+                header_bounds.origin.x,
+                header_bounds.origin.y + header_bounds.size.height - metrics.border_width,
+                header_bounds.size.width,
+                metrics.border_width,
+            ))
+            .with_background(border_color),
+        );
 
         if let Some(lang) = language.as_ref() {
             let label_x = header_bounds.origin.x + metrics.padding;
-            let label_y = header_bounds.origin.y
-                + header_bounds.size.height * 0.5
+            let label_y = header_bounds.origin.y + header_bounds.size.height * 0.5
                 - theme::font_size::XS * 0.55;
             let label_color = theme::text::MUTED.with_alpha(opacity);
             let label = text_system.layout(

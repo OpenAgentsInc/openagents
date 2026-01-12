@@ -3,10 +3,10 @@
 //! This handler bridges tool calls from the Apple FM Bridge to the FRLM conductor,
 //! enabling recursive LLM sub-calls, fragment management, and execution tracing.
 
-use anyhow::{anyhow, Result};
-use frlm::{FrlmConductor, FrlmPolicy, Fragment, SubQuery, TraceEvent};
+use anyhow::{Result, anyhow};
+use frlm::{Fragment, FrlmConductor, FrlmPolicy, SubQuery, TraceEvent};
 use serde::Deserialize;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
@@ -214,10 +214,7 @@ impl FrlmToolHandler {
             .get("results")
             .ok_or_else(|| anyhow!("Missing required 'results' parameter"))?;
 
-        let tier = args
-            .get("tier")
-            .and_then(|v| v.as_str())
-            .unwrap_or("none");
+        let tier = args.get("tier").and_then(|v| v.as_str()).unwrap_or("none");
 
         let results: Vec<ResultInput> = serde_json::from_value(results_json.clone())?;
 
@@ -317,10 +314,7 @@ impl FrlmToolHandler {
 
     /// Handle get_trace_events tool call.
     async fn handle_get_trace_events(&self, args: Value) -> Result<Value> {
-        let limit = args
-            .get("limit")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(100) as usize;
+        let limit = args.get("limit").and_then(|v| v.as_u64()).unwrap_or(100) as usize;
 
         let event_types: Option<Vec<String>> = args
             .get("event_types")
@@ -600,6 +594,11 @@ mod tests {
         let result = handler.execute("unknown_tool", json!({})).await;
 
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("Unknown FRLM tool"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("Unknown FRLM tool")
+        );
     }
 }

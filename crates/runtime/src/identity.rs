@@ -3,13 +3,13 @@
 use crate::error::Result;
 use crate::types::AgentId;
 #[cfg(not(target_arch = "wasm32"))]
+use ::compute::domain::UnifiedIdentity;
+#[cfg(not(target_arch = "wasm32"))]
 use base64::Engine;
 #[cfg(not(target_arch = "wasm32"))]
 use base64::engine::general_purpose::STANDARD;
 #[cfg(not(target_arch = "wasm32"))]
 use bitcoin::secp256k1::{Keypair, Message, Secp256k1, SecretKey, XOnlyPublicKey, schnorr};
-#[cfg(not(target_arch = "wasm32"))]
-use ::compute::domain::UnifiedIdentity;
 #[cfg(not(target_arch = "wasm32"))]
 use nostr::{decrypt as decrypt_v1, decrypt_v2, encrypt_v2, get_public_key};
 use serde::{Deserialize, Serialize};

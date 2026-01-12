@@ -186,11 +186,13 @@ mod tests {
 
         assert!(agent.description.contains("RLM"));
         assert!(agent.tools.as_ref().unwrap().contains(&"Read".to_string()));
-        assert!(agent
-            .disallowed_tools
-            .as_ref()
-            .unwrap()
-            .contains(&"Edit".to_string()));
+        assert!(
+            agent
+                .disallowed_tools
+                .as_ref()
+                .unwrap()
+                .contains(&"Edit".to_string())
+        );
         assert!(matches!(agent.model, Some(AgentModel::Sonnet)));
     }
 

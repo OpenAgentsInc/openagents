@@ -271,8 +271,8 @@ impl SvgQuad {
 
 #[derive(Default)]
 pub struct Scene {
-    pub quads: Vec<(u32, Quad)>,           // (layer, quad)
-    pub text_runs: Vec<(u32, TextRun)>,    // (layer, text_run)
+    pub quads: Vec<(u32, Quad)>,        // (layer, quad)
+    pub text_runs: Vec<(u32, TextRun)>, // (layer, text_run)
     pub svg_quads: Vec<SvgQuad>,
     clip_stack: Vec<Bounds>,
     current_layer: u32,
@@ -382,7 +382,10 @@ impl Scene {
 
     /// Get all unique layers used in this scene, sorted.
     pub fn layers(&self) -> Vec<u32> {
-        let mut layers: Vec<u32> = self.quads.iter().map(|(l, _)| *l)
+        let mut layers: Vec<u32> = self
+            .quads
+            .iter()
+            .map(|(l, _)| *l)
             .chain(self.text_runs.iter().map(|(l, _)| *l))
             .collect();
         layers.sort();

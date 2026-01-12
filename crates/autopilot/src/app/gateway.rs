@@ -154,10 +154,7 @@ async fn run_gateway_loop(
                     }
                     Err(err) => {
                         let _ = event_tx
-                            .send(GatewayEvent::Error(format!(
-                                "Gateway init failed: {}",
-                                err
-                            )))
+                            .send(GatewayEvent::Error(format!("Gateway init failed: {}", err)))
                             .await;
                         continue;
                     }

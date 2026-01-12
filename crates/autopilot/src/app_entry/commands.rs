@@ -9,27 +9,26 @@ use tokio::sync::mpsc;
 use tokio::time::{self, Duration};
 use winit::keyboard::{Key as WinitKey, NamedKey as WinitNamedKey};
 
-use crate::app::catalog::{
-    expand_env_vars_in_value, parse_mcp_server_config, save_hook_config, McpServerEntry,
-};
+use crate::app::AppState;
 use crate::app::agents::AgentKind;
+use crate::app::catalog::{
+    McpServerEntry, expand_env_vars_in_value, parse_mcp_server_config, save_hook_config,
+};
 use crate::app::codex_app_server as app_server;
 use crate::app::codex_runtime::{CodexRuntime, CodexRuntimeConfig};
 use crate::app::config::{
-    app_server_model_entries, AgentKindConfig, ModelPickerEntry, SettingsItem, SettingsTab,
+    AgentKindConfig, ModelPickerEntry, SettingsItem, SettingsTab, app_server_model_entries,
 };
 use crate::app::events::{
-    convert_key_for_binding, convert_modifiers, CommandAction, CoderMode, ModalState, ResponseEvent,
+    CoderMode, CommandAction, ModalState, ResponseEvent, convert_key_for_binding, convert_modifiers,
 };
 use crate::app::permissions::{coder_mode_default_allow, coder_mode_label, parse_coder_mode};
 use crate::app::ui::ThemeSetting;
 use crate::app::{
-    settings_rows, HookModalView, HookSetting, ModelOption, SettingsInputMode,
-    SettingsSnapshot,
+    HookModalView, HookSetting, ModelOption, SettingsInputMode, SettingsSnapshot, settings_rows,
 };
-use crate::app::AppState;
 use crate::commands::Command;
-use crate::keybindings::{default_keybindings, Keybinding};
+use crate::keybindings::{Keybinding, default_keybindings};
 
 use super::settings::{clamp_font_size, rate_limits_from_snapshot, save_keybindings};
 
@@ -135,10 +134,7 @@ pub(super) fn handle_command(state: &mut AppState, command: Command) -> CommandA
                 state.workspaces.runtime.connect_workspace(workspace_id);
                 state.push_system_message("Connecting workspace...".to_string());
             } else {
-                state.push_system_message(format!(
-                    "Workspace not found for: {}.",
-                    hint.trim()
-                ));
+                state.push_system_message(format!("Workspace not found for: {}.", hint.trim()));
             }
             CommandAction::None
         }
@@ -162,7 +158,9 @@ pub(super) fn handle_command(state: &mut AppState, command: Command) -> CommandA
                 crate::commands::ReviewTarget::UncommittedChanges => false,
             };
             if invalid {
-                state.push_system_message("Review target is missing required arguments.".to_string());
+                state.push_system_message(
+                    "Review target is missing required arguments.".to_string(),
+                );
                 CommandAction::None
             } else if state.chat.is_thinking {
                 state.push_system_message(
@@ -232,14 +230,12 @@ pub(super) fn handle_command(state: &mut AppState, command: Command) -> CommandA
                         .set_output_style(Some(trimmed.to_string()));
                     state.push_system_message(message);
                 }
-                Ok(None) => state.push_system_message(format!(
-                    "Output style not found: {}.",
-                    trimmed
-                )),
-                Err(err) => state.push_system_message(format!(
-                    "Failed to load output style: {}.",
-                    err
-                )),
+                Ok(None) => {
+                    state.push_system_message(format!("Output style not found: {}.", trimmed))
+                }
+                Err(err) => {
+                    state.push_system_message(format!("Failed to load output style: {}.", err))
+                }
             }
             CommandAction::None
         }
@@ -473,10 +469,8 @@ pub(super) fn handle_command(state: &mut AppState, command: Command) -> CommandA
                             ));
                         }
                         Err(err) => {
-                            let _ = tx.send(ResponseEvent::Error(format!(
-                                "Failed to logout: {}",
-                                err
-                            )));
+                            let _ =
+                                tx.send(ResponseEvent::Error(format!("Failed to logout: {}", err)));
                             let _ = client.shutdown().await;
                             return;
                         }
@@ -638,7 +632,9 @@ pub(super) fn handle_command(state: &mut AppState, command: Command) -> CommandA
                     let expanded = expand_env_vars_in_value(&value);
                     match parse_mcp_server_config(trimmed_name, &expanded) {
                         Ok(server) => {
-                            state.catalogs.add_runtime_mcp_server(trimmed_name.to_string(), server);
+                            state
+                                .catalogs
+                                .add_runtime_mcp_server(trimmed_name.to_string(), server);
                             state.push_system_message(format!(
                                 "Added MCP server {} (applies next request).",
                                 trimmed_name
@@ -650,10 +646,9 @@ pub(super) fn handle_command(state: &mut AppState, command: Command) -> CommandA
                         )),
                     }
                 }
-                Err(err) => state.push_system_message(format!(
-                    "Failed to parse MCP server JSON: {}",
-                    err
-                )),
+                Err(err) => {
+                    state.push_system_message(format!("Failed to parse MCP server JSON: {}", err))
+                }
             }
             CommandAction::None
         }
@@ -999,12 +994,16 @@ pub(super) fn handle_modal_input(state: &mut AppState, key: &WinitKey) -> bool {
                 }
                 WinitKey::Named(WinitNamedKey::ArrowUp) => {
                     if selected > 0 {
-                        state.modal_state = ModalState::ModelPicker { selected: selected - 1 };
+                        state.modal_state = ModalState::ModelPicker {
+                            selected: selected - 1,
+                        };
                     }
                 }
                 WinitKey::Named(WinitNamedKey::ArrowDown) => {
                     if selected + 1 < models.len() {
-                        state.modal_state = ModalState::ModelPicker { selected: selected + 1 };
+                        state.modal_state = ModalState::ModelPicker {
+                            selected: selected + 1,
+                        };
                     }
                 }
                 WinitKey::Character(c) => {
@@ -1089,7 +1088,9 @@ pub(super) fn handle_modal_input(state: &mut AppState, key: &WinitKey) -> bool {
                     state.modal_state = ModalState::None;
                 }
                 WinitKey::Named(WinitNamedKey::Enter) => {
-                    let selected_name = state.catalogs.agent_entries
+                    let selected_name = state
+                        .catalogs
+                        .agent_entries
                         .get(*selected)
                         .map(|entry| entry.name.clone());
                     if let Some(name) = selected_name {
@@ -1137,10 +1138,7 @@ pub(super) fn handle_modal_input(state: &mut AppState, key: &WinitKey) -> bool {
             if *selected >= kinds.len() {
                 *selected = kinds.len().saturating_sub(1);
             }
-            let selected_kind = kinds
-                .get(*selected)
-                .copied()
-                .unwrap_or(AgentKind::Codex);
+            let selected_kind = kinds.get(*selected).copied().unwrap_or(AgentKind::Codex);
             let models = state.agent_backends.models_for_kind(selected_kind);
             let max_model_index = models.len();
             if *model_selected > max_model_index {
@@ -1159,7 +1157,9 @@ pub(super) fn handle_modal_input(state: &mut AppState, key: &WinitKey) -> bool {
                             .get(model_selected.saturating_sub(1))
                             .map(|model| model.id.clone())
                     };
-                    state.agent_backends.set_selection(selected_kind, model_id.clone());
+                    state
+                        .agent_backends
+                        .set_selection(selected_kind, model_id.clone());
                     state.agent_selection = state.agent_backends.settings.selected.clone();
                     if let Some(model_id) = model_id {
                         state.update_selected_model_id(model_id);
@@ -1174,20 +1174,14 @@ pub(super) fn handle_modal_input(state: &mut AppState, key: &WinitKey) -> bool {
                 WinitKey::Named(WinitNamedKey::ArrowUp) => {
                     if *selected > 0 {
                         *selected -= 1;
-                        let next_kind = kinds
-                            .get(*selected)
-                            .copied()
-                            .unwrap_or(AgentKind::Codex);
+                        let next_kind = kinds.get(*selected).copied().unwrap_or(AgentKind::Codex);
                         *model_selected = state.agent_backends.model_index_for_kind(next_kind);
                     }
                 }
                 WinitKey::Named(WinitNamedKey::ArrowDown) => {
                     if *selected + 1 < kinds.len() {
                         *selected += 1;
-                        let next_kind = kinds
-                            .get(*selected)
-                            .copied()
-                            .unwrap_or(AgentKind::Codex);
+                        let next_kind = kinds.get(*selected).copied().unwrap_or(AgentKind::Codex);
                         *model_selected = state.agent_backends.model_index_for_kind(next_kind);
                     }
                 }
@@ -1667,7 +1661,12 @@ pub(super) fn handle_modal_input(state: &mut AppState, key: &WinitKey) -> bool {
                     state.set_dspy_auto_optimizer_enabled(enabled);
                 }
                 WinitKey::Character(c) if c.eq_ignore_ascii_case("b") => {
-                    let enabled = !state.dspy.snapshot.auto_optimizer.config.background_optimization;
+                    let enabled = !state
+                        .dspy
+                        .snapshot
+                        .auto_optimizer
+                        .config
+                        .background_optimization;
                     state.set_dspy_background_optimization(enabled);
                 }
                 _ => {}
@@ -1677,7 +1676,9 @@ pub(super) fn handle_modal_input(state: &mut AppState, key: &WinitKey) -> bool {
         }
         ModalState::Help => {
             match key {
-                WinitKey::Named(WinitNamedKey::Escape | WinitNamedKey::Enter | WinitNamedKey::F1) => {
+                WinitKey::Named(
+                    WinitNamedKey::Escape | WinitNamedKey::Enter | WinitNamedKey::F1,
+                ) => {
                     state.modal_state = ModalState::None;
                 }
                 _ => {}
@@ -1737,7 +1738,10 @@ pub(super) fn handle_modal_input(state: &mut AppState, key: &WinitKey) -> bool {
                         *input_mode = SettingsInputMode::Normal;
                     }
                     WinitKey::Named(WinitNamedKey::Backspace | WinitNamedKey::Delete) => {
-                        state.settings.keybindings.retain(|binding| binding.action != *action);
+                        state
+                            .settings
+                            .keybindings
+                            .retain(|binding| binding.action != *action);
                         save_keybindings(&state.settings.keybindings);
                         *input_mode = SettingsInputMode::Normal;
                     }
@@ -1746,7 +1750,8 @@ pub(super) fn handle_modal_input(state: &mut AppState, key: &WinitKey) -> bool {
                             let modifiers = convert_modifiers(&state.modifiers);
                             state.settings.keybindings.retain(|binding| {
                                 binding.action != *action
-                                    && !(binding.key == binding_key && binding.modifiers == modifiers)
+                                    && !(binding.key == binding_key
+                                        && binding.modifiers == modifiers)
                             });
                             state.settings.keybindings.push(Keybinding {
                                 key: binding_key,
@@ -1785,7 +1790,12 @@ pub(super) fn handle_modal_input(state: &mut AppState, key: &WinitKey) -> bool {
                         if let Some(item) = current_item {
                             match item {
                                 SettingsItem::Theme => {
-                                    state.settings.coder_settings.theme = if state.settings.coder_settings.theme == ThemeSetting::Dark {
+                                    state.settings.coder_settings.theme = if state
+                                        .settings
+                                        .coder_settings
+                                        .theme
+                                        == ThemeSetting::Dark
+                                    {
                                         ThemeSetting::Light
                                     } else {
                                         ThemeSetting::Dark
@@ -1795,24 +1805,25 @@ pub(super) fn handle_modal_input(state: &mut AppState, key: &WinitKey) -> bool {
                                 }
                                 SettingsItem::FontSize => {
                                     let delta = if forward { 1.0 } else { -1.0 };
-                                    state.settings.coder_settings.font_size =
-                                        clamp_font_size(state.settings.coder_settings.font_size + delta);
+                                    state.settings.coder_settings.font_size = clamp_font_size(
+                                        state.settings.coder_settings.font_size + delta,
+                                    );
                                     state.apply_settings();
                                     state.persist_settings();
                                 }
                                 SettingsItem::AutoScroll => {
-                                    state.settings.coder_settings.auto_scroll = !state.settings.coder_settings.auto_scroll;
+                                    state.settings.coder_settings.auto_scroll =
+                                        !state.settings.coder_settings.auto_scroll;
                                     state.persist_settings();
                                 }
                                 SettingsItem::DefaultModel => {
                                     let models = model_picker_entries(state);
-                                    let ids: Vec<String> = models.iter().map(|model| model.id.clone()).collect();
-                                    let current = state
-                                        .settings
-                                        .coder_settings
-                                        .model
-                                        .clone()
-                                        .unwrap_or_else(|| state.settings.selected_model.model_id().to_string());
+                                    let ids: Vec<String> =
+                                        models.iter().map(|model| model.id.clone()).collect();
+                                    let current =
+                                        state.settings.coder_settings.model.clone().unwrap_or_else(
+                                            || state.settings.selected_model.model_id().to_string(),
+                                        );
                                     let next_id = cycle_string_option(&ids, &current, forward);
                                     state.update_selected_model_id(next_id);
                                 }
@@ -1841,16 +1852,23 @@ pub(super) fn handle_modal_input(state: &mut AppState, key: &WinitKey) -> bool {
                                     );
                                 }
                                 SettingsItem::PermissionMode => {
-                                    let next = cycle_coder_mode_standalone(state.permissions.coder_mode, forward);
+                                    let next = cycle_coder_mode_standalone(
+                                        state.permissions.coder_mode,
+                                        forward,
+                                    );
                                     state.permissions.coder_mode = next;
                                     state.permissions.permission_default_allow =
-                                        coder_mode_default_allow(next, state.permissions.permission_default_allow);
+                                        coder_mode_default_allow(
+                                            next,
+                                            state.permissions.permission_default_allow,
+                                        );
                                     state.session.session_info.permission_mode =
                                         coder_mode_label(next).to_string();
                                     state.permissions.persist_permission_config();
                                 }
                                 SettingsItem::PermissionDefaultAllow => {
-                                    state.permissions.permission_default_allow = !state.permissions.permission_default_allow;
+                                    state.permissions.permission_default_allow =
+                                        !state.permissions.permission_default_allow;
                                     state.permissions.persist_permission_config();
                                 }
                                 SettingsItem::PermissionRules
@@ -1861,7 +1879,8 @@ pub(super) fn handle_modal_input(state: &mut AppState, key: &WinitKey) -> bool {
                                     state.open_permission_rules();
                                 }
                                 SettingsItem::SessionAutoSave => {
-                                    state.settings.coder_settings.session_auto_save = !state.settings.coder_settings.session_auto_save;
+                                    state.settings.coder_settings.session_auto_save =
+                                        !state.settings.coder_settings.session_auto_save;
                                     state.persist_settings();
                                     if state.settings.coder_settings.session_auto_save {
                                         state.apply_session_history_limit();
@@ -1870,7 +1889,8 @@ pub(super) fn handle_modal_input(state: &mut AppState, key: &WinitKey) -> bool {
                                 SettingsItem::SessionHistoryLimit => {
                                     const HISTORY_STEP: usize = 10;
                                     const HISTORY_MAX: usize = 500;
-                                    let current = state.settings.coder_settings.session_history_limit;
+                                    let current =
+                                        state.settings.coder_settings.session_history_limit;
                                     let next = if forward {
                                         if current == 0 {
                                             HISTORY_STEP
@@ -1995,11 +2015,9 @@ fn available_reasoning_efforts(state: &AppState) -> Vec<String> {
 
     if options.len() == 1 {
         options.extend(
-            [
-                "none", "minimal", "low", "medium", "high", "xhigh",
-            ]
-            .iter()
-            .map(|value| value.to_string()),
+            ["none", "minimal", "low", "medium", "high", "xhigh"]
+                .iter()
+                .map(|value| value.to_string()),
         );
     }
 
@@ -2037,7 +2055,6 @@ fn cycle_coder_mode_standalone(current: CoderMode, forward: bool) -> CoderMode {
     modes[next]
 }
 
-
 fn resolve_output_style(name: &str) -> io::Result<Option<PathBuf>> {
     if name.trim().is_empty() {
         return Ok(None);
@@ -2051,10 +2068,18 @@ fn resolve_output_style(name: &str) -> io::Result<Option<PathBuf>> {
 
     let mut candidates = Vec::new();
     if let Ok(cwd) = std::env::current_dir() {
-        candidates.push(cwd.join(".openagents").join("output-styles").join(&file_name));
+        candidates.push(
+            cwd.join(".openagents")
+                .join("output-styles")
+                .join(&file_name),
+        );
     }
     if let Some(home) = dirs::home_dir() {
-        candidates.push(home.join(".openagents").join("output-styles").join(&file_name));
+        candidates.push(
+            home.join(".openagents")
+                .join("output-styles")
+                .join(&file_name),
+        );
     }
 
     for path in candidates {
@@ -2155,7 +2180,9 @@ async fn init_app_server_client(
             return None;
         }
     };
-    let CodexRuntime { client, channels, .. } = runtime;
+    let CodexRuntime {
+        client, channels, ..
+    } = runtime;
     Some((client, channels))
 }
 
@@ -2172,7 +2199,10 @@ fn format_account_status(response: &app_server::GetAccountResponse) -> String {
         }
         Some(app_server::AccountInfo::Chatgpt { email, plan_type }) => {
             let plan = format_plan_type(*plan_type);
-            format!("Signed in as {} (plan {}). {}", email, plan, auth_requirement)
+            format!(
+                "Signed in as {} (plan {}). {}",
+                email, plan, auth_requirement
+            )
         }
     }
 }

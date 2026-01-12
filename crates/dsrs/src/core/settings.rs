@@ -25,7 +25,11 @@ impl Settings {
     }
 
     /// Create settings with a callback.
-    pub fn with_callback(lm: LM, adapter: impl Adapter + 'static, callback: impl DspyCallback + 'static) -> Self {
+    pub fn with_callback(
+        lm: LM,
+        adapter: impl Adapter + 'static,
+        callback: impl DspyCallback + 'static,
+    ) -> Self {
         Self {
             lm: Arc::new(lm),
             adapter: Arc::new(adapter),

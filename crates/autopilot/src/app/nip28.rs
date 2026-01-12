@@ -1,7 +1,9 @@
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use nostr::{finalize_event, generate_secret_key, get_public_key, get_public_key_hex, EventTemplate};
-use nostr::{public_key_to_npub};
+use nostr::public_key_to_npub;
+use nostr::{
+    EventTemplate, finalize_event, generate_secret_key, get_public_key, get_public_key_hex,
+};
 use nostr_client::{RelayConnection, RelayMessage};
 use tokio::sync::mpsc;
 
@@ -59,9 +61,16 @@ pub(crate) enum Nip28Event {
         content: String,
         created_at: u64,
     },
-    Published { _event_id: String },
-    PublishFailed { error: String },
-    ChannelFound { channel_id: String, _name: String },
+    Published {
+        _event_id: String,
+    },
+    PublishFailed {
+        error: String,
+    },
+    ChannelFound {
+        channel_id: String,
+        _name: String,
+    },
 }
 
 #[derive(Debug)]
@@ -403,7 +412,10 @@ async fn handle_authenticate(
         }
         Err(err) => {
             let _ = event_tx
-                .send(Nip28Event::ConnectionFailed(format!("Auth failed: {}", err)))
+                .send(Nip28Event::ConnectionFailed(format!(
+                    "Auth failed: {}",
+                    err
+                )))
                 .await;
         }
     }
@@ -444,7 +456,9 @@ async fn handle_publish_chat_message(
                 Ok(confirmation) => {
                     if confirmation.accepted {
                         let _ = event_tx
-                            .send(Nip28Event::Published { _event_id: event_id })
+                            .send(Nip28Event::Published {
+                                _event_id: event_id,
+                            })
                             .await;
                     } else {
                         let _ = event_tx

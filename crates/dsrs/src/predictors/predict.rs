@@ -153,7 +153,13 @@ impl super::Predictor for Predict {
         };
 
         let result = ChatAdapter
-            .call_streaming(lm, self.signature.as_ref(), inputs, self.tools.clone(), callback)
+            .call_streaming(
+                lm,
+                self.signature.as_ref(),
+                inputs,
+                self.tools.clone(),
+                callback,
+            )
             .await;
 
         // Handle result and emit callbacks

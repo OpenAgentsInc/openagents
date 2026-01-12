@@ -4,12 +4,12 @@ use wgpui::input::Modifiers as UiModifiers;
 use crate::app::codex_app_server as app_server;
 use crate::app::codex_runtime::{CodexRuntime, CodexRuntimeConfig};
 use crate::app::config::{
-    config_dir, config_file, keybindings_file, CoderSettings, StoredKeybinding, StoredModifiers,
+    CoderSettings, StoredKeybinding, StoredModifiers, config_dir, config_file, keybindings_file,
 };
 use crate::app::events::{key_from_string, key_to_string};
 use crate::app::session::{RateLimitInfo, RateLimits};
-use crate::app::{format_relative_time, now_timestamp, ModelOption};
-use crate::keybindings::{default_keybindings, Action as KeyAction, Keybinding};
+use crate::app::{ModelOption, format_relative_time, now_timestamp};
+use crate::keybindings::{Action as KeyAction, Keybinding, default_keybindings};
 
 pub(super) fn clamp_font_size(size: f32) -> f32 {
     size.clamp(12.0, 18.0)
@@ -46,10 +46,7 @@ pub(super) fn rate_limits_from_snapshot(snapshot: app_server::RateLimitSnapshot)
     }
 }
 
-fn rate_limit_info_from_window(
-    name: &str,
-    window: app_server::RateLimitWindow,
-) -> RateLimitInfo {
+fn rate_limit_info_from_window(name: &str, window: app_server::RateLimitWindow) -> RateLimitInfo {
     let percent = window.used_percent.clamp(0, 100) as f64;
     RateLimitInfo {
         name: name.to_string(),
@@ -87,7 +84,10 @@ fn format_future_delta(delta_secs: i64) -> String {
 
 fn parse_legacy_model_setting(content: &str) -> Option<String> {
     for line in content.lines() {
-        if let Some(model_id) = line.strip_prefix("model = \"").and_then(|s| s.strip_suffix("\"")) {
+        if let Some(model_id) = line
+            .strip_prefix("model = \"")
+            .and_then(|s| s.strip_suffix("\""))
+        {
             return Some(model_id.to_string());
         }
     }
@@ -117,7 +117,6 @@ pub(super) fn save_settings(settings: &CoderSettings) {
         }
     }
 }
-
 
 pub(super) fn settings_model_option(settings: &CoderSettings) -> ModelOption {
     settings

@@ -32,11 +32,11 @@
 //! RLM_BACKEND=codex rlm-mcp-server
 //! ```
 
-use lm_router::backends::OllamaBackend;
 use lm_router::LmBackend;
-use rlm::mcp_tools::{rlm_tool_definitions, RlmFanoutInput, RlmQueryInput};
+use lm_router::backends::OllamaBackend;
+use rlm::mcp_tools::{RlmFanoutInput, RlmQueryInput, rlm_tool_definitions};
 use rlm::{Context, LmRouterClient, PythonExecutor, RlmConfig, RlmEngine};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::io::{self, BufRead, Write};
 use std::sync::Arc;
 
@@ -70,7 +70,10 @@ async fn create_router_with_backends() -> (Arc<lm_router::LmRouter>, String) {
             let models: Vec<String> = ollama.supported_models();
             if let Some(first_model) = models.first() {
                 default_model = first_model.to_string();
-                eprintln!("[rlm-mcp-server] Detected Ollama with {} models", models.len());
+                eprintln!(
+                    "[rlm-mcp-server] Detected Ollama with {} models",
+                    models.len()
+                );
             }
         }
         builder = builder.add_backend(ollama);
@@ -99,7 +102,9 @@ async fn handle_request(request: &Value) -> Value {
         "tools/list" => handle_tools_list(),
         "tools/call" => handle_tools_call(request).await,
         "shutdown" => json!({}),
-        _ => json!({ "error": { "code": -32601, "message": format!("Unknown method: {}", method) } }),
+        _ => {
+            json!({ "error": { "code": -32601, "message": format!("Unknown method: {}", method) } })
+        }
     };
 
     // Don't wrap result if it's already an error response
@@ -247,9 +252,7 @@ async fn execute_rlm_query(args: &Value) -> Value {
     // Execute with appropriate backend
     let result = match backend {
         #[cfg(feature = "codex")]
-        RlmBackend::Codex => {
-            execute_rlm_query_codex(&input, config).await
-        }
+        RlmBackend::Codex => execute_rlm_query_codex(&input, config).await,
         #[cfg(not(feature = "codex"))]
         RlmBackend::Codex => {
             return json!({
@@ -261,9 +264,7 @@ async fn execute_rlm_query(args: &Value) -> Value {
                 "isError": true
             });
         }
-        RlmBackend::Ollama => {
-            execute_rlm_query_ollama(&input, config).await
-        }
+        RlmBackend::Ollama => execute_rlm_query_ollama(&input, config).await,
     };
 
     match result {

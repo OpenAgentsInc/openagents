@@ -3,8 +3,8 @@
 //! Uses the Codex app-server for availability checks and model discovery.
 
 use std::future::Future;
-use std::pin::Pin;
 use std::path::PathBuf;
+use std::pin::Pin;
 
 use anyhow::anyhow;
 use tokio::sync::mpsc;
@@ -174,8 +174,6 @@ fn check_codex_availability() -> AgentAvailability {
         available: false,
         executable_path: None,
         version: None,
-        error: Some(
-            "Codex CLI not found. Install with: npm install -g @openai/codex".to_string(),
-        ),
+        error: Some("Codex CLI not found. Install with: npm install -g @openai/codex".to_string()),
     }
 }

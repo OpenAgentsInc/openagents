@@ -95,10 +95,7 @@ async fn main() -> anyhow::Result<()> {
     println!("   ```\n");
 
     // Create directory structure if it doesn't exist
-    let dirs = [
-        "assets/training_data",
-        "assets/optimized_prompts",
-    ];
+    let dirs = ["assets/training_data", "assets/optimized_prompts"];
 
     for dir in dirs {
         let path = Path::new(dir);
@@ -174,7 +171,9 @@ fn router_metric(prediction: &serde_json::Value, expected: &serde_json::Value) -
     // Simple overlap metric (in practice, use more sophisticated comparison)
     if pred_sections == exp_sections {
         1.0
-    } else if !exp_sections.is_empty() && pred_sections.contains(&exp_sections[..exp_sections.len().min(20)]) {
+    } else if !exp_sections.is_empty()
+        && pred_sections.contains(&exp_sections[..exp_sections.len().min(20)])
+    {
         0.5
     } else {
         0.0

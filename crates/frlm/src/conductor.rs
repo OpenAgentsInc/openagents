@@ -112,19 +112,25 @@ impl FrlmConductor {
     /// Load fragments into the environment.
     pub fn load_fragments(&mut self, fragments: Vec<Fragment>) {
         for fragment in fragments {
-            self.trace.load_fragment(&fragment.id, fragment.size_bytes());
+            self.trace
+                .load_fragment(&fragment.id, fragment.size_bytes());
             self.fragments.insert(fragment.id.clone(), fragment);
         }
     }
 
     /// Get remaining budget in sats.
     pub fn budget_remaining(&self) -> u64 {
-        self.policy.budget.limit_sats.saturating_sub(self.budget_spent)
+        self.policy
+            .budget
+            .limit_sats
+            .saturating_sub(self.budget_spent)
     }
 
     /// Check if budget allows estimated cost.
     pub fn can_afford(&self, estimated_cost: u64) -> bool {
-        self.policy.budget.can_afford(estimated_cost, self.budget_spent)
+        self.policy
+            .budget
+            .can_afford(estimated_cost, self.budget_spent)
     }
 
     /// Reserve budget for a query.
@@ -137,7 +143,8 @@ impl FrlmConductor {
         }
 
         self.budget_spent += estimated_cost;
-        self.trace.budget_reserve(query_id, estimated_cost, self.budget_remaining());
+        self.trace
+            .budget_reserve(query_id, estimated_cost, self.budget_remaining());
         Ok(())
     }
 
@@ -188,11 +195,14 @@ impl FrlmConductor {
 
         if sub_queries.is_empty() {
             // No fragments - run as single query
-            return self.run_single_query(program, submitter, local_executor).await;
+            return self
+                .run_single_query(program, submitter, local_executor)
+                .await;
         }
 
         // Execute with fanout
-        self.run_fanout(program, sub_queries, submitter, local_executor).await
+        self.run_fanout(program, sub_queries, submitter, local_executor)
+            .await
     }
 
     /// Build sub-queries from fragments.
@@ -226,11 +236,8 @@ impl FrlmConductor {
         let query_cost = self.policy.budget.estimate_cost(1000); // rough estimate
         for query in &sub_queries {
             self.reserve_budget(&query.id, query_cost)?;
-            self.trace.subquery_submit(
-                &query.id,
-                &query.prompt,
-                query.fragment_id.as_deref(),
-            );
+            self.trace
+                .subquery_submit(&query.id, &query.prompt, query.fragment_id.as_deref());
         }
 
         // Enqueue and submit
@@ -264,15 +271,18 @@ impl FrlmConductor {
 
         // Mark timeouts
         for query_id in &collect_result.timed_out {
-            self.trace.subquery_timeout(query_id, self.policy.timeout.per_query.as_millis() as u64);
+            self.trace
+                .subquery_timeout(query_id, self.policy.timeout.per_query.as_millis() as u64);
         }
 
         // Check quorum
         if !collect_result.quorum_met {
             // Try local fallback for missing results
             if self.policy.allow_local_fallback && local_executor.is_some() {
-                warn!("Quorum not met, attempting local fallback for {} queries",
-                      collect_result.timed_out.len());
+                warn!(
+                    "Quorum not met, attempting local fallback for {} queries",
+                    collect_result.timed_out.len()
+                );
                 // Could implement local retry here
             }
 
@@ -304,7 +314,8 @@ impl FrlmConductor {
             sub_query_results: verified_results,
         };
 
-        self.trace.run_done(&result.output, result.iterations, result.total_cost_sats);
+        self.trace
+            .run_done(&result.output, result.iterations, result.total_cost_sats);
 
         Ok(result)
     }
@@ -373,7 +384,8 @@ impl FrlmConductor {
             sub_query_results: collect_result.results,
         };
 
-        self.trace.run_done(&frlm_result.output, 1, frlm_result.total_cost_sats);
+        self.trace
+            .run_done(&frlm_result.output, 1, frlm_result.total_cost_sats);
 
         Ok(frlm_result)
     }
@@ -390,13 +402,15 @@ impl FrlmConductor {
         let venue = executor.venue();
         let model_id = executor.model_id();
         self.trace.subquery_submit(&query_id, &program.query, None);
-        self.trace.subquery_execute(&query_id, "local", venue, model_id);
+        self.trace
+            .subquery_execute(&query_id, "local", venue, model_id);
 
         let start = web_time::Instant::now();
         let output = executor.execute(&program.query).await?;
         let duration_ms = start.elapsed().as_millis() as u64;
 
-        self.trace.subquery_return(&query_id, &output, duration_ms, 0, true);
+        self.trace
+            .subquery_return(&query_id, &output, duration_ms, 0, true);
 
         let result = FrlmResult {
             run_id: program.run_id,
@@ -423,7 +437,9 @@ impl FrlmConductor {
         let verify_result = Verifier::verify(results, &self.policy.verification)?;
 
         if let Some(agreement) = verify_result.agreement {
-            if let crate::policy::VerificationTier::Redundancy { n, m, .. } = &self.policy.verification {
+            if let crate::policy::VerificationTier::Redundancy { n, m, .. } =
+                &self.policy.verification
+            {
                 for result in results {
                     self.trace.verify_redundant(
                         &result.query_id,
@@ -473,7 +489,10 @@ mod tests {
     #[async_trait]
     impl SubQuerySubmitter for MockSubmitter {
         async fn submit_batch(&self, queries: Vec<SubQuery>) -> Result<Vec<(String, String)>> {
-            Ok(queries.iter().map(|q| (q.id.clone(), q.id.clone())).collect())
+            Ok(queries
+                .iter()
+                .map(|q| (q.id.clone(), q.id.clone()))
+                .collect())
         }
 
         async fn is_available(&self) -> bool {
@@ -507,9 +526,7 @@ mod tests {
 
     #[test]
     fn test_budget_tracking() {
-        let mut conductor = FrlmConductor::new(
-            FrlmPolicy::default().with_budget_sats(1000)
-        );
+        let mut conductor = FrlmConductor::new(FrlmPolicy::default().with_budget_sats(1000));
 
         assert_eq!(conductor.budget_remaining(), 1000);
         assert!(conductor.can_afford(500));

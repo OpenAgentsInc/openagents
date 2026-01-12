@@ -57,7 +57,10 @@ pub async fn run(args: InferArgs) -> anyhow::Result<()> {
     }
 
     let model_id = resolve_model_id(&models, args.model)?;
-    eprintln!("[pylon] Selected backend={} model={}", model_id.0, model_id.1);
+    eprintln!(
+        "[pylon] Selected backend={} model={}",
+        model_id.0, model_id.1
+    );
     let backend = registry
         .get(&model_id.0)
         .ok_or_else(|| anyhow::anyhow!("backend not available: {}", model_id.0))?;

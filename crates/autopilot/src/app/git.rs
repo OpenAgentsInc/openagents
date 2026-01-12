@@ -2,10 +2,10 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
+use crate::app::workspaces::WorkspaceInfo;
 use git2::{DiffOptions, Repository, Status, StatusOptions, Tree};
 use tokio::sync::mpsc;
 use web_time::Instant;
-use crate::app::workspaces::WorkspaceInfo;
 
 const GIT_REFRESH_INTERVAL_SECS: u64 = 3;
 
@@ -82,14 +82,8 @@ pub(crate) enum GitEvent {
 
 #[derive(Debug)]
 pub(crate) enum GitCommand {
-    RefreshStatus {
-        workspace_id: String,
-        path: PathBuf,
-    },
-    RefreshDiffs {
-        workspace_id: String,
-        path: PathBuf,
-    },
+    RefreshStatus { workspace_id: String, path: PathBuf },
+    RefreshDiffs { workspace_id: String, path: PathBuf },
 }
 
 pub(crate) struct GitRuntime {
@@ -205,7 +199,10 @@ impl GitState {
         self.status_by_workspace.get(workspace_id)
     }
 
-    pub(crate) fn diff_snapshot_for_workspace(&self, workspace_id: &str) -> Option<&GitDiffSnapshot> {
+    pub(crate) fn diff_snapshot_for_workspace(
+        &self,
+        workspace_id: &str,
+    ) -> Option<&GitDiffSnapshot> {
         self.diff_by_workspace.get(workspace_id)
     }
 
@@ -242,17 +239,19 @@ impl GitState {
         self.diff_stale.remove(&workspace_id);
 
         if let Some(message) = error {
-            self.diff_by_workspace
-                .insert(workspace_id, GitDiffSnapshot { diffs: HashMap::new(), error: Some(message) });
+            self.diff_by_workspace.insert(
+                workspace_id,
+                GitDiffSnapshot {
+                    diffs: HashMap::new(),
+                    error: Some(message),
+                },
+            );
             return;
         }
 
         let mut map = HashMap::new();
         for diff in diffs {
-            map.insert(
-                diff.path,
-                GitDiffItem { diff: diff.diff },
-            );
+            map.insert(diff.path, GitDiffItem { diff: diff.diff });
         }
         self.diff_by_workspace.insert(
             workspace_id,
@@ -303,10 +302,7 @@ impl Default for GitState {
     }
 }
 
-async fn run_git_loop(
-    mut cmd_rx: mpsc::Receiver<GitCommand>,
-    event_tx: mpsc::Sender<GitEvent>,
-) {
+async fn run_git_loop(mut cmd_rx: mpsc::Receiver<GitCommand>, event_tx: mpsc::Sender<GitEvent>) {
     while let Some(cmd) = cmd_rx.recv().await {
         match cmd {
             GitCommand::RefreshStatus { workspace_id, path } => {
@@ -321,28 +317,26 @@ async fn run_git_loop(
                     })
                     .await;
             }
-            GitCommand::RefreshDiffs { workspace_id, path } => {
-                match read_git_diffs(&path) {
-                    Ok(diffs) => {
-                        let _ = event_tx
-                            .send(GitEvent::DiffsUpdated {
-                                workspace_id,
-                                diffs,
-                                error: None,
-                            })
-                            .await;
-                    }
-                    Err(err) => {
-                        let _ = event_tx
-                            .send(GitEvent::DiffsUpdated {
-                                workspace_id,
-                                diffs: Vec::new(),
-                                error: Some(err),
-                            })
-                            .await;
-                    }
+            GitCommand::RefreshDiffs { workspace_id, path } => match read_git_diffs(&path) {
+                Ok(diffs) => {
+                    let _ = event_tx
+                        .send(GitEvent::DiffsUpdated {
+                            workspace_id,
+                            diffs,
+                            error: None,
+                        })
+                        .await;
                 }
-            }
+                Err(err) => {
+                    let _ = event_tx
+                        .send(GitEvent::DiffsUpdated {
+                            workspace_id,
+                            diffs: Vec::new(),
+                            error: Some(err),
+                        })
+                        .await;
+                }
+            },
         }
 
         tokio::time::sleep(Duration::from_millis(20)).await;
@@ -445,9 +439,7 @@ fn read_git_status(path: &Path) -> Result<GitStatusSnapshot, String> {
         let status = entry.status();
         let status_str = if status.contains(Status::WT_NEW) || status.contains(Status::INDEX_NEW) {
             "A"
-        } else if status.contains(Status::WT_MODIFIED)
-            || status.contains(Status::INDEX_MODIFIED)
-        {
+        } else if status.contains(Status::WT_MODIFIED) || status.contains(Status::INDEX_MODIFIED) {
             "M"
         } else if status.contains(Status::WT_DELETED) || status.contains(Status::INDEX_DELETED) {
             "D"
@@ -506,10 +498,7 @@ fn read_git_status(path: &Path) -> Result<GitStatusSnapshot, String> {
 
 fn read_git_diffs(path: &Path) -> Result<Vec<GitFileDiff>, String> {
     let repo = Repository::open(path).map_err(|e| e.to_string())?;
-    let head_tree = repo
-        .head()
-        .ok()
-        .and_then(|head| head.peel_to_tree().ok());
+    let head_tree = repo.head().ok().and_then(|head| head.peel_to_tree().ok());
 
     let mut options = DiffOptions::new();
     options
@@ -528,10 +517,7 @@ fn read_git_diffs(path: &Path) -> Result<Vec<GitFileDiff>, String> {
 
     let mut results = Vec::new();
     for (index, delta) in diff.deltas().enumerate() {
-        let path = delta
-            .new_file()
-            .path()
-            .or_else(|| delta.old_file().path());
+        let path = delta.new_file().path().or_else(|| delta.old_file().path());
         let Some(path) = path else {
             continue;
         };

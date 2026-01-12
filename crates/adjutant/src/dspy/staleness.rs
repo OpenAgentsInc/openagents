@@ -5,7 +5,7 @@
 
 use anyhow::Result;
 use chrono::{DateTime, Utc};
-use dsrs::{example, Predict, Prediction, Predictor, Signature, GLOBAL_SETTINGS};
+use dsrs::{GLOBAL_SETTINGS, Predict, Prediction, Predictor, Signature, example};
 use oanix::IssueSummary;
 use std::path::Path;
 use std::process::Command;
@@ -144,12 +144,7 @@ pub async fn check_issue_staleness(
 /// Get recent git commits from the workspace.
 fn get_recent_commits(workspace_root: &Path, count: usize) -> Result<String> {
     let output = Command::new("git")
-        .args([
-            "log",
-            "--oneline",
-            &format!("-{}", count),
-            "--no-decorate",
-        ])
+        .args(["log", "--oneline", &format!("-{}", count), "--no-decorate"])
         .current_dir(workspace_root)
         .output()?;
 
@@ -164,12 +159,7 @@ fn get_recent_commits(workspace_root: &Path, count: usize) -> Result<String> {
 fn get_changed_files_summary(workspace_root: &Path) -> Result<String> {
     // Get files changed in the last 50 commits
     let output = Command::new("git")
-        .args([
-            "diff",
-            "--stat",
-            "--name-only",
-            "HEAD~50..HEAD",
-        ])
+        .args(["diff", "--stat", "--name-only", "HEAD~50..HEAD"])
         .current_dir(workspace_root)
         .output()?;
 

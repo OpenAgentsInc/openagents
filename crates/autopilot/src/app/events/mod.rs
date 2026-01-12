@@ -6,6 +6,6 @@ pub use commands::CoderMode;
 pub(crate) use commands::{CommandAction, ModalState};
 pub(crate) use input::{
     convert_key_for_binding, convert_key_for_input, convert_modifiers, convert_mouse_button,
-    format_keybinding, keybinding_labels, key_from_string, key_to_string,
+    format_keybinding, key_from_string, key_to_string, keybinding_labels,
 };
 pub(crate) use response::{QueryControl, ResponseEvent};

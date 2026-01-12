@@ -1,7 +1,7 @@
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use lm_router::backends::auto_detect_router;
 use lm_router::Error as LmRouterError;
+use lm_router::backends::auto_detect_router;
 use tokio::sync::mpsc;
 
 #[derive(Clone, Debug)]
@@ -149,35 +149,30 @@ async fn run_lm_router_loop(
 ) {
     while let Some(cmd) = cmd_rx.recv().await {
         match cmd {
-            LmRouterCommand::Refresh => {
-                match auto_detect_router().await {
-                    Ok(auto_router) => {
-                        let health = auto_router.router.health_check().await;
-                        let mut backends = Vec::new();
-                        for name in auto_router.backends {
-                            let healthy = health.get(&name).copied().unwrap_or(false);
-                            backends.push(LmBackendHealth { name, healthy });
-                        }
-                        let snapshot = LmRouterSnapshot {
-                            default_model: auto_router.default_model,
-                            backends,
-                            models: auto_router.router.available_models(),
-                        };
-                        let _ = event_tx.send(LmRouterEvent::Snapshot(snapshot)).await;
+            LmRouterCommand::Refresh => match auto_detect_router().await {
+                Ok(auto_router) => {
+                    let health = auto_router.router.health_check().await;
+                    let mut backends = Vec::new();
+                    for name in auto_router.backends {
+                        let healthy = health.get(&name).copied().unwrap_or(false);
+                        backends.push(LmBackendHealth { name, healthy });
                     }
-                    Err(LmRouterError::BackendNotFound(message)) => {
-                        let _ = event_tx.send(LmRouterEvent::NoBackends(message)).await;
-                    }
-                    Err(err) => {
-                        let _ = event_tx
-                            .send(LmRouterEvent::Error(format!(
-                                "LM router failed: {}",
-                                err
-                            )))
-                            .await;
-                    }
+                    let snapshot = LmRouterSnapshot {
+                        default_model: auto_router.default_model,
+                        backends,
+                        models: auto_router.router.available_models(),
+                    };
+                    let _ = event_tx.send(LmRouterEvent::Snapshot(snapshot)).await;
                 }
-            }
+                Err(LmRouterError::BackendNotFound(message)) => {
+                    let _ = event_tx.send(LmRouterEvent::NoBackends(message)).await;
+                }
+                Err(err) => {
+                    let _ = event_tx
+                        .send(LmRouterEvent::Error(format!("LM router failed: {}", err)))
+                        .await;
+                }
+            },
         }
 
         tokio::time::sleep(Duration::from_millis(20)).await;

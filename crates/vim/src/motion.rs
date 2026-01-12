@@ -77,13 +77,9 @@ pub enum Motion {
         line: Option<usize>,
     },
     /// Go to specific line
-    GoToLine {
-        line: usize,
-    },
+    GoToLine { line: usize },
     /// Go to percentage of file (%)
-    GoToPercentage {
-        percentage: usize,
-    },
+    GoToPercentage { percentage: usize },
 
     // Find character
     /// Find character forward (f)
@@ -131,13 +127,9 @@ pub enum Motion {
     /// Go to previous search match (N)
     SearchPrev,
     /// Search forward (/)
-    SearchForward {
-        query: String,
-    },
+    SearchForward { query: String },
     /// Search backward (?)
-    SearchBackward {
-        query: String,
-    },
+    SearchBackward { query: String },
     /// Search for word under cursor (*)
     SearchWordForward,
     /// Search for word under cursor backward (#)
@@ -145,13 +137,9 @@ pub enum Motion {
 
     // Marks
     /// Go to mark position (`)
-    GoToMark {
-        mark: char,
-    },
+    GoToMark { mark: char },
     /// Go to mark line (')
-    GoToMarkLine {
-        mark: char,
-    },
+    GoToMarkLine { mark: char },
 
     // Other
     /// Current line (used for operators like dd, yy)

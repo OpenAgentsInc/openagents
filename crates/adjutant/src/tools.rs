@@ -104,7 +104,7 @@ impl ToolRegistry {
                     "Failed to read {}: {}",
                     full_path.display(),
                     e
-                )))
+                )));
             }
         };
 
@@ -224,9 +224,7 @@ impl ToolRegistry {
 
             let path = entry.path();
             if path.is_file() {
-                let relative = path
-                    .strip_prefix(&self.workspace_root)
-                    .unwrap_or(path);
+                let relative = path.strip_prefix(&self.workspace_root).unwrap_or(path);
                 let relative_str = relative.to_string_lossy();
 
                 if matcher.matches(&relative_str) {
@@ -248,7 +246,11 @@ impl ToolRegistry {
     }
 
     /// Search for a pattern in files.
-    pub async fn grep(&self, pattern: &str, path: Option<&Path>) -> Result<ToolOutput, AdjutantError> {
+    pub async fn grep(
+        &self,
+        pattern: &str,
+        path: Option<&Path>,
+    ) -> Result<ToolOutput, AdjutantError> {
         tracing::debug!("Grepping: {} in {:?}", pattern, path);
 
         let search_path = path
@@ -302,7 +304,7 @@ impl ToolRegistry {
                     "Failed to list {}: {}",
                     full_path.display(),
                     e
-                )))
+                )));
             }
         };
 

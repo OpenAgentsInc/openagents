@@ -10,33 +10,33 @@ use wgpui::components::hud::Command as PaletteCommand;
 use wgpui::components::molecules::SessionAction;
 use wgpui::components::organisms::EventInspector;
 
+use crate::app::AppState;
 use crate::app::agents::AgentBackendsStatus;
+use crate::app::catalog::{SkillEntry, SkillUpdate};
 use crate::app::chat::{ChatMessage, MessageRole};
 use crate::app::codex_app_server as app_server;
 use crate::app::codex_runtime::{CodexRuntime, CodexRuntimeConfig};
-use crate::app::config::{config_dir, SettingsTab};
-use crate::app::events::{keybinding_labels, ModalState};
+use crate::app::config::SettingsUpdate;
+use crate::app::config::{SettingsTab, config_dir};
+use crate::app::dvm::DvmStatus;
+use crate::app::events::{ModalState, keybinding_labels};
 use crate::app::nip28::Nip28ConnectionStatus;
 use crate::app::nip90::Nip90ConnectionStatus;
-use crate::app::dvm::DvmStatus;
-use crate::app::{
-    build_input, build_markdown_config, build_markdown_document, build_markdown_renderer,
-    now_timestamp, AgentCardAction, HookLogEntry, HookModalView, HookSetting, ModelOption,
-    SettingsInputMode, SkillCardAction,
-};
 use crate::app::session::{SessionEntry, SessionUpdate};
-use crate::app::config::SettingsUpdate;
-use crate::app::catalog::{SkillEntry, SkillUpdate};
 use crate::app::tools::ToolVisualization;
 use crate::app::tools::parsing::{format_tool_input, tool_type_for_name};
 use crate::app::workspaces::{ConversationItem, ConversationRole, ReviewState, ToolItemData};
-use crate::app::AppState;
+use crate::app::{
+    AgentCardAction, HookLogEntry, HookModalView, HookSetting, ModelOption, SettingsInputMode,
+    SkillCardAction, build_input, build_markdown_config, build_markdown_document,
+    build_markdown_renderer, now_timestamp,
+};
 use crate::keybindings::Action as KeyAction;
 
+use super::COMMAND_PALETTE_ENABLED;
 use super::command_palette_ids;
 use super::hooks::hook_log_event_data;
 use super::settings::{normalize_settings, save_settings};
-use super::COMMAND_PALETTE_ENABLED;
 
 const HOOK_LOG_LIMIT: usize = 200;
 
@@ -57,7 +57,8 @@ impl AppState {
             commands.push(command);
         };
 
-        let interrupt_keys = keybinding_labels(&self.settings.keybindings, KeyAction::Interrupt, "Ctrl+C");
+        let interrupt_keys =
+            keybinding_labels(&self.settings.keybindings, KeyAction::Interrupt, "Ctrl+C");
         push_command(
             command_palette_ids::INTERRUPT_REQUEST,
             "Interrupt Request",
@@ -74,7 +75,11 @@ impl AppState {
             Some("F1".to_string()),
         );
 
-        let settings_keys = keybinding_labels(&self.settings.keybindings, KeyAction::OpenSettings, "Ctrl+,");
+        let settings_keys = keybinding_labels(
+            &self.settings.keybindings,
+            KeyAction::OpenSettings,
+            "Ctrl+,",
+        );
         push_command(
             command_palette_ids::SETTINGS,
             "Open Settings",
@@ -132,8 +137,11 @@ impl AppState {
             "Navigation",
             None,
         );
-        let dvm_keys =
-            keybinding_labels(&self.settings.keybindings, KeyAction::OpenDvm, "Ctrl+Shift+P");
+        let dvm_keys = keybinding_labels(
+            &self.settings.keybindings,
+            KeyAction::OpenDvm,
+            "Ctrl+Shift+P",
+        );
         push_command(
             command_palette_ids::DVM_OPEN,
             "Open DVM Providers",
@@ -141,8 +149,11 @@ impl AppState {
             "Marketplace",
             Some(dvm_keys),
         );
-        let gateway_keys =
-            keybinding_labels(&self.settings.keybindings, KeyAction::OpenGateway, "Ctrl+Shift+G");
+        let gateway_keys = keybinding_labels(
+            &self.settings.keybindings,
+            KeyAction::OpenGateway,
+            "Ctrl+Shift+G",
+        );
         push_command(
             command_palette_ids::GATEWAY_OPEN,
             "Open Gateway",
@@ -150,8 +161,11 @@ impl AppState {
             "System",
             Some(gateway_keys),
         );
-        let lm_router_keys =
-            keybinding_labels(&self.settings.keybindings, KeyAction::OpenLmRouter, "Ctrl+Shift+L");
+        let lm_router_keys = keybinding_labels(
+            &self.settings.keybindings,
+            KeyAction::OpenLmRouter,
+            "Ctrl+Shift+L",
+        );
         push_command(
             command_palette_ids::LM_ROUTER_OPEN,
             "Open LM Router",
@@ -159,8 +173,11 @@ impl AppState {
             "System",
             Some(lm_router_keys),
         );
-        let nexus_keys =
-            keybinding_labels(&self.settings.keybindings, KeyAction::OpenNexus, "Ctrl+Shift+X");
+        let nexus_keys = keybinding_labels(
+            &self.settings.keybindings,
+            KeyAction::OpenNexus,
+            "Ctrl+Shift+X",
+        );
         push_command(
             command_palette_ids::NEXUS_OPEN,
             "Open Nexus Stats",
@@ -168,8 +185,11 @@ impl AppState {
             "Nostr",
             Some(nexus_keys),
         );
-        let nip90_keys =
-            keybinding_labels(&self.settings.keybindings, KeyAction::OpenNip90, "Ctrl+Shift+J");
+        let nip90_keys = keybinding_labels(
+            &self.settings.keybindings,
+            KeyAction::OpenNip90,
+            "Ctrl+Shift+J",
+        );
         push_command(
             command_palette_ids::NIP90_OPEN,
             "Open NIP-90 Jobs",
@@ -177,8 +197,11 @@ impl AppState {
             "Nostr",
             Some(nip90_keys),
         );
-        let oanix_keys =
-            keybinding_labels(&self.settings.keybindings, KeyAction::OpenOanix, "Ctrl+Shift+O");
+        let oanix_keys = keybinding_labels(
+            &self.settings.keybindings,
+            KeyAction::OpenOanix,
+            "Ctrl+Shift+O",
+        );
         push_command(
             command_palette_ids::OANIX_OPEN,
             "Open OANIX",
@@ -198,8 +221,11 @@ impl AppState {
             "Workspace",
             Some(directives_keys),
         );
-        let issues_keys =
-            keybinding_labels(&self.settings.keybindings, KeyAction::OpenIssues, "Ctrl+Shift+I");
+        let issues_keys = keybinding_labels(
+            &self.settings.keybindings,
+            KeyAction::OpenIssues,
+            "Ctrl+Shift+I",
+        );
         push_command(
             command_palette_ids::ISSUES_OPEN,
             "Open Issues",
@@ -219,8 +245,11 @@ impl AppState {
             "Workspace",
             Some(tracker_keys),
         );
-        let nip28_keys =
-            keybinding_labels(&self.settings.keybindings, KeyAction::OpenNip28, "Ctrl+Shift+N");
+        let nip28_keys = keybinding_labels(
+            &self.settings.keybindings,
+            KeyAction::OpenNip28,
+            "Ctrl+Shift+N",
+        );
         push_command(
             command_palette_ids::NIP28_OPEN,
             "Open NIP-28 Chat",
@@ -273,12 +302,21 @@ impl AppState {
             None,
         );
 
-        let left_keys =
-            keybinding_labels(&self.settings.keybindings, KeyAction::ToggleLeftSidebar, "Ctrl+[");
-        let right_keys =
-            keybinding_labels(&self.settings.keybindings, KeyAction::ToggleRightSidebar, "Ctrl+]");
-        let toggle_keys =
-            keybinding_labels(&self.settings.keybindings, KeyAction::ToggleSidebars, "Ctrl+\\");
+        let left_keys = keybinding_labels(
+            &self.settings.keybindings,
+            KeyAction::ToggleLeftSidebar,
+            "Ctrl+[",
+        );
+        let right_keys = keybinding_labels(
+            &self.settings.keybindings,
+            KeyAction::ToggleRightSidebar,
+            "Ctrl+]",
+        );
+        let toggle_keys = keybinding_labels(
+            &self.settings.keybindings,
+            KeyAction::ToggleSidebars,
+            "Ctrl+\\",
+        );
         push_command(
             command_palette_ids::SIDEBAR_LEFT,
             "Open Left Sidebar",
@@ -378,7 +416,8 @@ impl AppState {
             self.chat.chat_context_menu.close();
             self.chat.chat_context_menu_target = None;
         }
-        self.command_palette.set_commands(self.build_command_palette_commands());
+        self.command_palette
+            .set_commands(self.build_command_palette_commands());
         self.command_palette.open();
     }
 
@@ -394,7 +433,9 @@ impl AppState {
             .iter()
             .position(|model| model.id == current_model_id)
             .unwrap_or(0);
-        self.modal_state = ModalState::ModelPicker { selected: current_idx };
+        self.modal_state = ModalState::ModelPicker {
+            selected: current_idx,
+        };
 
         let (update_tx, update_rx) = mpsc::unbounded_channel();
         self.settings.settings_update_tx = Some(update_tx.clone());
@@ -450,7 +491,9 @@ impl AppState {
         self.session.checkpoint_action_rx = Some(checkpoint_rx);
         self.session.refresh_session_cards(self.chat.is_thinking);
         self.session.refresh_checkpoint_restore(&self.chat.messages);
-        let selected = self.session.session_index
+        let selected = self
+            .session
+            .session_index
             .iter()
             .position(|entry| entry.id == self.session.session_info.session_id)
             .unwrap_or(0);
@@ -479,10 +522,13 @@ impl AppState {
         self.catalogs.agent_action_tx = Some(action_tx);
         self.catalogs.agent_action_rx = Some(action_rx);
         self.catalogs.refresh_agent_cards(self.chat.is_thinking);
-        let selected = self.catalogs.active_agent
+        let selected = self
+            .catalogs
+            .active_agent
             .as_ref()
             .and_then(|name| {
-                self.catalogs.agent_entries
+                self.catalogs
+                    .agent_entries
                     .iter()
                     .position(|entry| entry.name == *name)
             })
@@ -611,9 +657,7 @@ impl AppState {
     }
 
     pub(super) fn open_dvm(&mut self) {
-        if self.dvm.providers.is_empty()
-            || matches!(self.dvm.status, DvmStatus::Error(_))
-        {
+        if self.dvm.providers.is_empty() || matches!(self.dvm.status, DvmStatus::Error(_)) {
             self.dvm.refresh();
         }
         self.modal_state = ModalState::DvmProviders;
@@ -804,10 +848,9 @@ impl AppState {
                 "DSPy auto-optimizer {}.",
                 if enabled { "enabled" } else { "disabled" }
             )),
-            Err(err) => self.push_system_message(format!(
-                "Failed to update DSPy auto-optimizer: {}.",
-                err
-            )),
+            Err(err) => {
+                self.push_system_message(format!("Failed to update DSPy auto-optimizer: {}.", err))
+            }
         }
     }
 
@@ -862,7 +905,9 @@ impl AppState {
             self.push_system_message("NIP-28 message is empty.".to_string());
             return;
         }
-        self.nip28.runtime.publish_chat_message(&channel, message.trim());
+        self.nip28
+            .runtime
+            .publish_chat_message(&channel, message.trim());
         self.push_system_message("NIP-28 message sent.".to_string());
     }
 
@@ -903,7 +948,9 @@ impl AppState {
             self.input.focus();
         }
         self.chat.markdown_renderer = build_markdown_renderer(&self.settings.coder_settings);
-        self.chat.streaming_markdown.set_markdown_config(build_markdown_config(&self.settings.coder_settings));
+        self.chat
+            .streaming_markdown
+            .set_markdown_config(build_markdown_config(&self.settings.coder_settings));
     }
 
     pub(super) fn update_selected_model(&mut self, model: ModelOption) {
@@ -912,7 +959,10 @@ impl AppState {
         self.session.session_info.model = model_id.clone();
         self.settings.coder_settings.model = Some(model_id);
         self.persist_settings();
-        self.persist_codex_config_value("model".to_string(), Value::String(self.session.session_info.model.clone()));
+        self.persist_codex_config_value(
+            "model".to_string(),
+            Value::String(self.session.session_info.model.clone()),
+        );
     }
 
     pub(super) fn update_selected_model_id(&mut self, model_id: String) {
@@ -1069,7 +1119,9 @@ impl AppState {
     pub(super) fn handle_skill_card_action(&mut self, action: SkillCardAction, skill_id: String) {
         match action {
             SkillCardAction::View => {
-                if let Some(index) = self.catalogs.skill_entries
+                if let Some(index) = self
+                    .catalogs
+                    .skill_entries
                     .iter()
                     .position(|entry| entry.info.id == skill_id)
                 {
@@ -1079,7 +1131,9 @@ impl AppState {
                 }
             }
             SkillCardAction::Install => {
-                if let Some(entry) = self.catalogs.skill_entries
+                if let Some(entry) = self
+                    .catalogs
+                    .skill_entries
                     .iter()
                     .find(|entry| entry.info.id == skill_id)
                 {
@@ -1099,7 +1153,9 @@ impl AppState {
             self.push_system_message("Agent name is required.".to_string());
             return;
         }
-        if let Some(entry) = self.catalogs.agent_entries
+        if let Some(entry) = self
+            .catalogs
+            .agent_entries
             .iter()
             .find(|entry| entry.name.eq_ignore_ascii_case(trimmed))
         {
@@ -1213,14 +1269,10 @@ impl AppState {
             return;
         }
         match export_session_markdown(self) {
-            Ok(path) => self.push_system_message(format!(
-                "Exported session to {}.",
-                path.display()
-            )),
-            Err(err) => self.push_system_message(format!(
-                "Failed to export session: {}.",
-                err
-            )),
+            Ok(path) => {
+                self.push_system_message(format!("Exported session to {}.", path.display()))
+            }
+            Err(err) => self.push_system_message(format!("Failed to export session: {}.", err)),
         }
     }
 
@@ -1489,7 +1541,9 @@ impl AppState {
                         metadata: None,
                     });
                 }
-                ConversationItem::Reasoning { summary, content, .. } => {
+                ConversationItem::Reasoning {
+                    summary, content, ..
+                } => {
                     let mut combined = String::new();
                     if !summary.trim().is_empty() {
                         combined.push_str(summary);

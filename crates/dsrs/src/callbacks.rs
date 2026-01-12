@@ -12,8 +12,8 @@
 //! - Optimizer candidate evaluation
 //! - Trace completion
 
-use crate::data::{Example, Prediction};
 use crate::core::lm::LmUsage;
+use crate::data::{Example, Prediction};
 use crate::manifest::CompiledModuleManifest;
 use crate::trace::Graph;
 use anyhow::Error;
@@ -428,10 +428,13 @@ impl CollectingCallback {
 
 impl DspyCallback for CollectingCallback {
     fn on_module_start(&self, call_id: Uuid, module_name: &str, _inputs: &Example) {
-        self.events.lock().unwrap().push(CollectedEvent::ModuleStart {
-            call_id,
-            module_name: module_name.to_string(),
-        });
+        self.events
+            .lock()
+            .unwrap()
+            .push(CollectedEvent::ModuleStart {
+                call_id,
+                module_name: module_name.to_string(),
+            });
     }
 
     fn on_module_end(&self, call_id: Uuid, result: Result<&Prediction, &Error>) {
@@ -458,10 +461,13 @@ impl DspyCallback for CollectingCallback {
     }
 
     fn on_lm_stream_start(&self, call_id: Uuid, model: &str) {
-        self.events.lock().unwrap().push(CollectedEvent::LmStreamStart {
-            call_id,
-            model: model.to_string(),
-        });
+        self.events
+            .lock()
+            .unwrap()
+            .push(CollectedEvent::LmStreamStart {
+                call_id,
+                model: model.to_string(),
+            });
     }
 
     fn on_lm_token(&self, call_id: Uuid, token: &str) {
@@ -472,9 +478,10 @@ impl DspyCallback for CollectingCallback {
     }
 
     fn on_lm_stream_end(&self, call_id: Uuid) {
-        self.events.lock().unwrap().push(CollectedEvent::LmStreamEnd {
-            call_id,
-        });
+        self.events
+            .lock()
+            .unwrap()
+            .push(CollectedEvent::LmStreamEnd { call_id });
     }
 
     fn on_optimizer_candidate(&self, candidate_id: &str, metrics: &HashMap<String, f32>) {
@@ -546,7 +553,10 @@ mod tests {
         let call_id = Uuid::new_v4();
 
         cb.on_module_start(call_id, "module1", &example);
-        cb.on_module_end(call_id, Ok(&Prediction::new(HashMap::new(), LmUsage::default())));
+        cb.on_module_end(
+            call_id,
+            Ok(&Prediction::new(HashMap::new(), LmUsage::default())),
+        );
 
         let events = cb.events();
         assert_eq!(events.len(), 2);

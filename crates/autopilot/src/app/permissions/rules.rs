@@ -185,8 +185,16 @@ pub(crate) fn pattern_matches(pattern: &str, text: &str) -> bool {
 pub(crate) fn is_read_only_tool(tool_name: &str) -> bool {
     matches!(
         tool_name,
-        "Read" | "Grep" | "Glob" | "WebSearch" | "Search" | "WebFetch"
-            | "AskUserQuestion" | "Task" | "ExitPlanMode" | "LSP"
+        "Read"
+            | "Grep"
+            | "Glob"
+            | "WebSearch"
+            | "Search"
+            | "WebFetch"
+            | "AskUserQuestion"
+            | "Task"
+            | "ExitPlanMode"
+            | "LSP"
     )
 }
 

@@ -8,7 +8,7 @@ use std::io::Write;
 use agent_client_protocol_schema as acp;
 use serde_json::Value;
 
-use crate::autopilot_loop::{DspyStage, DSPY_META_KEY};
+use crate::autopilot_loop::{DSPY_META_KEY, DspyStage};
 
 const AI_PREFIX: &str = "[AI] ";
 const THOUGHT_PREFIX: &str = "[THINK] ";
@@ -252,10 +252,7 @@ impl<W: Write> CliAcpRenderer<W> {
                 self.write_line(
                     DSPY_PREFIX,
                     &indent,
-                    format!(
-                        "analysis: {}",
-                        truncate(&analysis, MAX_FIELD_LEN)
-                    ),
+                    format!("analysis: {}", truncate(&analysis, MAX_FIELD_LEN)),
                 );
                 self.write_line(
                     DSPY_PREFIX,
@@ -276,10 +273,7 @@ impl<W: Write> CliAcpRenderer<W> {
                 self.write_line(
                     DSPY_PREFIX,
                     &indent,
-                    format!(
-                        "tests: {}",
-                        truncate(&test_strategy, MAX_FIELD_LEN)
-                    ),
+                    format!("tests: {}", truncate(&test_strategy, MAX_FIELD_LEN)),
                 );
             }
             DspyStage::TodoList { tasks } => {
@@ -318,7 +312,10 @@ impl<W: Write> CliAcpRenderer<W> {
                     ),
                 );
             }
-            DspyStage::TaskComplete { task_index, success } => {
+            DspyStage::TaskComplete {
+                task_index,
+                success,
+            } => {
                 self.write_line(
                     DSPY_PREFIX,
                     &indent,
@@ -651,8 +648,16 @@ mod tests {
     fn renders_plan_entries() {
         let mut renderer = CliAcpRenderer::new(Vec::new());
         let plan = acp::Plan::new(vec![
-            acp::PlanEntry::new("First task", acp::PlanEntryPriority::Medium, acp::PlanEntryStatus::Pending),
-            acp::PlanEntry::new("Second task", acp::PlanEntryPriority::Medium, acp::PlanEntryStatus::Completed),
+            acp::PlanEntry::new(
+                "First task",
+                acp::PlanEntryPriority::Medium,
+                acp::PlanEntryStatus::Pending,
+            ),
+            acp::PlanEntry::new(
+                "Second task",
+                acp::PlanEntryPriority::Medium,
+                acp::PlanEntryStatus::Completed,
+            ),
         ]);
         renderer.handle_notification(notif(acp::SessionUpdate::Plan(plan)));
         renderer.finish();
@@ -675,7 +680,10 @@ mod tests {
             confidence: 0.82,
         };
         let mut meta = acp::Meta::new();
-        meta.insert(DSPY_META_KEY.to_string(), serde_json::to_value(stage).unwrap());
+        meta.insert(
+            DSPY_META_KEY.to_string(),
+            serde_json::to_value(stage).unwrap(),
+        );
         let chunk = acp::ContentChunk::new(acp::ContentBlock::Text(
             acp::TextContent::new("Planning").meta(meta),
         ));

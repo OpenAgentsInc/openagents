@@ -18,10 +18,7 @@ pub async fn discover_workspace() -> anyhow::Result<Option<WorkspaceManifest>> {
         .unwrap_or_else(|| PathBuf::from("."));
 
     // Get project name from directory name
-    let project_name = root
-        .file_name()
-        .and_then(|n| n.to_str())
-        .map(String::from);
+    let project_name = root.file_name().and_then(|n| n.to_str()).map(String::from);
 
     // Parse directives
     let directives = parse_directives(&openagents_dir).await;
@@ -41,11 +38,7 @@ pub async fn discover_workspace() -> anyhow::Result<Option<WorkspaceManifest>> {
                 _ => 4,
             };
             // Negative ID number to sort descending (higher IDs first)
-            let id_num: i32 = d
-                .id
-                .trim_start_matches("d-")
-                .parse()
-                .unwrap_or(0);
+            let id_num: i32 = d.id.trim_start_matches("d-").parse().unwrap_or(0);
             (priority_rank, -id_num)
         })
         .map(|d| d.id.clone());
@@ -142,11 +135,9 @@ fn parse_directive_file(path: &Path) -> Option<DirectiveSummary> {
     let frontmatter: DirectiveFrontmatter = serde_yaml::from_str(yaml_str).ok()?;
 
     // Parse progress percentage
-    let progress_pct = frontmatter.progress.and_then(|p| {
-        p.trim_end_matches('%')
-            .parse::<u8>()
-            .ok()
-    });
+    let progress_pct = frontmatter
+        .progress
+        .and_then(|p| p.trim_end_matches('%').parse::<u8>().ok());
 
     Some(DirectiveSummary {
         id: frontmatter.id,

@@ -7,7 +7,7 @@
 
 use std::collections::HashMap;
 use tokio::sync::mpsc;
-use tokio::time::{timeout, Instant};
+use tokio::time::{Instant, timeout};
 
 use crate::error::{FrlmError, Result};
 use crate::policy::{Quorum, QuorumPolicy, TimeoutPolicy};
@@ -66,7 +66,8 @@ impl SubQueryScheduler {
     /// Add queries to the pending queue.
     pub fn enqueue(&mut self, queries: Vec<SubQuery>) {
         for query in queries {
-            self.status.insert(query.id.clone(), SubQueryStatus::Pending);
+            self.status
+                .insert(query.id.clone(), SubQueryStatus::Pending);
             self.pending.push(query);
         }
     }
@@ -119,18 +120,12 @@ impl SubQueryScheduler {
 
     /// Get count of completed queries.
     pub fn completed_count(&self) -> usize {
-        self.status
-            .values()
-            .filter(|s| s.is_terminal())
-            .count()
+        self.status.values().filter(|s| s.is_terminal()).count()
     }
 
     /// Get count of successful queries.
     pub fn success_count(&self) -> usize {
-        self.status
-            .values()
-            .filter(|s| s.is_success())
-            .count()
+        self.status.values().filter(|s| s.is_success()).count()
     }
 
     /// Get count of total queries.
@@ -296,9 +291,7 @@ impl SubQueryBuilder {
 
     /// Build a sub-query for a fragment.
     pub fn build_for_fragment(&self, fragment_id: &str, fragment_content: &str) -> SubQuery {
-        let prompt = self
-            .prompt_template
-            .replace("{fragment}", fragment_content);
+        let prompt = self.prompt_template.replace("{fragment}", fragment_content);
 
         let mut query =
             SubQuery::for_fragment(format!("sq-{}", uuid::Uuid::new_v4()), prompt, fragment_id);

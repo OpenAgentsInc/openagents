@@ -171,7 +171,6 @@ pub fn parse_llm_query_calls(code: &str) -> Vec<LlmQueryCall> {
     calls
 }
 
-
 /// Check if a text expression is a simple string literal.
 pub fn is_string_literal(expr: &str) -> bool {
     let trimmed = expr.trim();

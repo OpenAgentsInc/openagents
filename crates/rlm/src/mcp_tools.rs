@@ -268,7 +268,12 @@ mod tests {
 
         // Check rlm_fanout tool
         assert_eq!(tools[1]["name"], "rlm_fanout");
-        assert!(tools[1]["description"].as_str().unwrap().contains("parallel"));
+        assert!(
+            tools[1]["description"]
+                .as_str()
+                .unwrap()
+                .contains("parallel")
+        );
         assert!(tools[1]["inputSchema"]["properties"]["venue"]["enum"].is_array());
     }
 

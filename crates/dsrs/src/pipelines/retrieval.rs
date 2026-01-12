@@ -9,7 +9,7 @@ use crate::data::example::Example;
 use crate::signatures::{
     CandidateRerankSignature, QueryComposerSignature, RetrievalRouterSignature,
 };
-use crate::{Predict, Predictor, LM, GLOBAL_SETTINGS};
+use crate::{GLOBAL_SETTINGS, LM, Predict, Predictor};
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -133,7 +133,11 @@ impl QueryComposerPipeline {
 
         let example = Example {
             data,
-            input_keys: vec!["goal".to_string(), "failure_log".to_string(), "previous_queries".to_string()],
+            input_keys: vec![
+                "goal".to_string(),
+                "failure_log".to_string(),
+                "previous_queries".to_string(),
+            ],
             output_keys: vec![],
             node_id: None,
         };
@@ -263,11 +267,18 @@ impl RetrievalRouterPipeline {
         let mut data = HashMap::new();
         data.insert("query".to_string(), json!(input.query));
         data.insert("available_lanes".to_string(), json!(available_lanes_json));
-        data.insert("budget_remaining".to_string(), json!(input.budget_remaining.to_string()));
+        data.insert(
+            "budget_remaining".to_string(),
+            json!(input.budget_remaining.to_string()),
+        );
 
         let example = Example {
             data,
-            input_keys: vec!["query".to_string(), "available_lanes".to_string(), "budget_remaining".to_string()],
+            input_keys: vec![
+                "query".to_string(),
+                "available_lanes".to_string(),
+                "budget_remaining".to_string(),
+            ],
             output_keys: vec![],
             node_id: None,
         };
@@ -403,7 +414,11 @@ impl CandidateRerankPipeline {
 
         let example = Example {
             data,
-            input_keys: vec!["user_task".to_string(), "candidates".to_string(), "k".to_string()],
+            input_keys: vec![
+                "user_task".to_string(),
+                "candidates".to_string(),
+                "k".to_string(),
+            ],
             output_keys: vec![],
             node_id: None,
         };

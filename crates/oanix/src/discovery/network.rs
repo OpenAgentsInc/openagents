@@ -14,7 +14,6 @@ const DEFAULT_RELAYS: &[&str] = &[
     "wss://nos.lol",
 ];
 
-
 /// Discover network connectivity.
 pub async fn discover_network() -> anyhow::Result<NetworkManifest> {
     // Check internet connectivity
@@ -91,7 +90,7 @@ async fn probe_relay(url: &str) -> RelayStatus {
                 url: url.to_string(),
                 connected: false,
                 latency_ms: None,
-            }
+            };
         }
     };
 
@@ -155,7 +154,11 @@ async fn discover_providers(relays: &[RelayStatus]) -> ProviderDiscovery {
             "limit": 200
         })];
 
-        if relay.subscribe("provider-discovery", &filters).await.is_err() {
+        if relay
+            .subscribe("provider-discovery", &filters)
+            .await
+            .is_err()
+        {
             let _ = relay.disconnect().await;
             continue;
         }

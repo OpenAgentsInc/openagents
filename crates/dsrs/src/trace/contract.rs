@@ -116,7 +116,11 @@ pub struct SpanEvent {
 
 impl TraceSpan {
     /// Create a new span with basic information.
-    pub fn new(trace_id: impl Into<String>, span_id: impl Into<String>, name: impl Into<String>) -> Self {
+    pub fn new(
+        trace_id: impl Into<String>,
+        span_id: impl Into<String>,
+        name: impl Into<String>,
+    ) -> Self {
         Self {
             trace_id: trace_id.into(),
             span_id: span_id.into(),
@@ -249,7 +253,10 @@ impl TraceContract {
         // Add manifest attributes if available
         if let Some(m) = manifest {
             span = span
-                .with_attribute("dsrs.compiled_id", Value::from(m.compiled_id.clone().unwrap_or_default()))
+                .with_attribute(
+                    "dsrs.compiled_id",
+                    Value::from(m.compiled_id.clone().unwrap_or_default()),
+                )
                 .with_attribute("dsrs.optimizer", Value::from(m.optimizer.clone()));
         }
 
@@ -275,7 +282,10 @@ impl TraceContract {
             }
             NodeType::Predict { signature_name, .. } => {
                 attributes.insert("dsrs.node_type".to_string(), Value::from("predict"));
-                attributes.insert("dsrs.signature_name".to_string(), Value::from(signature_name.clone()));
+                attributes.insert(
+                    "dsrs.signature_name".to_string(),
+                    Value::from(signature_name.clone()),
+                );
 
                 // Add token usage if available
                 if let Some(output) = &node.output {
@@ -397,7 +407,10 @@ mod tests {
         let span = TraceSpan::new("trace", "span", "name").error("Something went wrong");
 
         assert_eq!(span.status, SpanStatus::Error);
-        assert_eq!(span.status_message, Some("Something went wrong".to_string()));
+        assert_eq!(
+            span.status_message,
+            Some("Something went wrong".to_string())
+        );
     }
 
     #[test]

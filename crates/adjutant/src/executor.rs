@@ -79,7 +79,11 @@ pub async fn execute_with_tools(
     for file in &plan.files {
         let result = tools.read(file).await?;
         if result.success {
-            context.push_str(&format!("\n--- {} ---\n{}\n", file.display(), result.content));
+            context.push_str(&format!(
+                "\n--- {} ---\n{}\n",
+                file.display(),
+                result.content
+            ));
         }
     }
 
@@ -178,10 +182,7 @@ pub async fn create_commit(
     }
 
     // Create commit
-    let commit_cmd = format!(
-        "git commit -m \"{}\"",
-        message.replace('"', "'")
-    );
+    let commit_cmd = format!("git commit -m \"{}\"", message.replace('"', "'"));
     let commit_result = tools.bash(&commit_cmd).await?;
 
     if !commit_result.success {

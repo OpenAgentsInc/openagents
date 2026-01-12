@@ -44,10 +44,7 @@ impl PlanningTrainingExample {
     /// Convert to DSPy Example for optimization.
     pub fn to_example(&self) -> Example {
         let mut data = HashMap::new();
-        data.insert(
-            "task_title".to_string(),
-            serde_json::json!(self.task_title),
-        );
+        data.insert("task_title".to_string(), serde_json::json!(self.task_title));
         data.insert(
             "task_description".to_string(),
             serde_json::json!(self.task_description),
@@ -132,10 +129,7 @@ impl SynthesisTrainingExample {
     /// Convert to DSPy Example for optimization.
     pub fn to_example(&self) -> Example {
         let mut data = HashMap::new();
-        data.insert(
-            "task_title".to_string(),
-            serde_json::json!(self.task_title),
-        );
+        data.insert("task_title".to_string(), serde_json::json!(self.task_title));
         data.insert(
             "subtask_results".to_string(),
             serde_json::json!(self.subtask_results),
@@ -208,10 +202,7 @@ impl ComplexityTrainingExample {
             "complexity".to_string(),
             serde_json::json!(self.expected_complexity),
         );
-        data.insert(
-            "confidence".to_string(),
-            serde_json::json!(self.confidence),
-        );
+        data.insert("confidence".to_string(), serde_json::json!(self.confidence));
 
         Example::new(
             data,
@@ -248,10 +239,7 @@ impl DelegationTrainingExample {
             "task_description".to_string(),
             serde_json::json!(self.task_description),
         );
-        data.insert(
-            "complexity".to_string(),
-            serde_json::json!(self.complexity),
-        );
+        data.insert("complexity".to_string(), serde_json::json!(self.complexity));
         data.insert(
             "file_count".to_string(),
             serde_json::json!(self.file_count.to_string()),
@@ -268,10 +256,7 @@ impl DelegationTrainingExample {
             "delegation_target".to_string(),
             serde_json::json!(self.delegation_target),
         );
-        data.insert(
-            "confidence".to_string(),
-            serde_json::json!(self.confidence),
-        );
+        data.insert("confidence".to_string(), serde_json::json!(self.confidence));
 
         Example::new(
             data,
@@ -310,19 +295,13 @@ impl RlmTriggerTrainingExample {
             "task_description".to_string(),
             serde_json::json!(self.task_description),
         );
-        data.insert(
-            "complexity".to_string(),
-            serde_json::json!(self.complexity),
-        );
+        data.insert("complexity".to_string(), serde_json::json!(self.complexity));
         data.insert(
             "estimated_tokens".to_string(),
             serde_json::json!(self.estimated_tokens.to_string()),
         );
         data.insert("use_rlm".to_string(), serde_json::json!(self.use_rlm));
-        data.insert(
-            "confidence".to_string(),
-            serde_json::json!(self.confidence),
-        );
+        data.insert("confidence".to_string(), serde_json::json!(self.confidence));
 
         Example::new(
             data,
@@ -415,32 +394,50 @@ impl AdjutantTrainingDataset {
 
     /// Convert planning examples to DSPy Examples.
     pub fn planning_as_examples(&self) -> Vec<Example> {
-        self.planning_examples.iter().map(|e| e.to_example()).collect()
+        self.planning_examples
+            .iter()
+            .map(|e| e.to_example())
+            .collect()
     }
 
     /// Convert execution examples to DSPy Examples.
     pub fn execution_as_examples(&self) -> Vec<Example> {
-        self.execution_examples.iter().map(|e| e.to_example()).collect()
+        self.execution_examples
+            .iter()
+            .map(|e| e.to_example())
+            .collect()
     }
 
     /// Convert synthesis examples to DSPy Examples.
     pub fn synthesis_as_examples(&self) -> Vec<Example> {
-        self.synthesis_examples.iter().map(|e| e.to_example()).collect()
+        self.synthesis_examples
+            .iter()
+            .map(|e| e.to_example())
+            .collect()
     }
 
     /// Convert complexity examples to DSPy Examples.
     pub fn complexity_as_examples(&self) -> Vec<Example> {
-        self.complexity_examples.iter().map(|e| e.to_example()).collect()
+        self.complexity_examples
+            .iter()
+            .map(|e| e.to_example())
+            .collect()
     }
 
     /// Convert delegation examples to DSPy Examples.
     pub fn delegation_as_examples(&self) -> Vec<Example> {
-        self.delegation_examples.iter().map(|e| e.to_example()).collect()
+        self.delegation_examples
+            .iter()
+            .map(|e| e.to_example())
+            .collect()
     }
 
     /// Convert RLM trigger examples to DSPy Examples.
     pub fn rlm_trigger_as_examples(&self) -> Vec<Example> {
-        self.rlm_trigger_examples.iter().map(|e| e.to_example()).collect()
+        self.rlm_trigger_examples
+            .iter()
+            .map(|e| e.to_example())
+            .collect()
     }
 
     /// Get total number of examples.

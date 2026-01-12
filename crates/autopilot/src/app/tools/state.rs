@@ -3,8 +3,8 @@ use wgpui::components::atoms::ToolStatus;
 
 use crate::autopilot_loop::DspyStage;
 
-use super::{DspyStageVisualization, ToolVisualization};
 use super::parsing::{format_tool_input, tool_type_for_name};
+use super::{DspyStageVisualization, ToolVisualization};
 
 /// Check if two DspyStage values are the same variant (ignoring contents).
 /// Used for deduplication - we only want one card per stage type per message.

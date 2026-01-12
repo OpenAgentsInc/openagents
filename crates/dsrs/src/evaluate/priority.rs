@@ -300,8 +300,7 @@ impl CompileQueue {
 
         // Add updated entry (unless in progress)
         if !self.in_progress.contains(module_id) {
-            self.modules
-                .push(CompilePriority::new(module_id, factors));
+            self.modules.push(CompilePriority::new(module_id, factors));
         }
     }
 
@@ -517,14 +516,8 @@ mod tests {
     fn test_queue_builder() {
         let queue = CompileQueueBuilder::new()
             .max_concurrent(3)
-            .module(
-                "mod1",
-                PriorityFactors::new().with_invocation_rate(100.0),
-            )
-            .module(
-                "mod2",
-                PriorityFactors::new().with_invocation_rate(200.0),
-            )
+            .module("mod1", PriorityFactors::new().with_invocation_rate(100.0))
+            .module("mod2", PriorityFactors::new().with_invocation_rate(200.0))
             .build();
 
         assert_eq!(queue.len(), 2);

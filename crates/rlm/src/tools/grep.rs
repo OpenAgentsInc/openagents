@@ -8,7 +8,7 @@ use crate::span::SpanRef;
 use async_trait::async_trait;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::fs;
 use std::path::PathBuf;
 
@@ -55,10 +55,12 @@ impl GrepTool {
         globs: &[&str],
         max_hits: usize,
     ) -> ToolResult<Vec<GrepHit>> {
-        let regex = Regex::new(pattern)
-            .map_err(|e| ToolError::InvalidPattern(e.to_string()))?;
+        let regex = Regex::new(pattern).map_err(|e| ToolError::InvalidPattern(e.to_string()))?;
 
-        let commit = self.config.commit.clone()
+        let commit = self
+            .config
+            .commit
+            .clone()
             .or_else(|| get_current_commit(&self.repo_root));
 
         let mut hits = Vec::new();
@@ -93,7 +95,11 @@ impl GrepTool {
         }
 
         // Sort by score descending
-        hits.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+        hits.sort_by(|a, b| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
 
         Ok(hits)
     }
@@ -242,9 +248,7 @@ impl RlmTool for GrepTool {
             .map(|arr| arr.iter().filter_map(|v| v.as_str()).collect())
             .unwrap_or_else(|| vec!["**/*"]);
 
-        let max_hits = args["max_hits"]
-            .as_u64()
-            .unwrap_or(20) as usize;
+        let max_hits = args["max_hits"].as_u64().unwrap_or(20) as usize;
 
         let hits = self.search(pattern, &paths, max_hits).await?;
 

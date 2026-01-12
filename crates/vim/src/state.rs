@@ -191,7 +191,10 @@ impl VimState {
     }
 
     /// Get the visual selection range (anchor, current) normalized to (start, end)
-    pub fn visual_range(&self, current: (usize, usize)) -> Option<((usize, usize), (usize, usize))> {
+    pub fn visual_range(
+        &self,
+        current: (usize, usize),
+    ) -> Option<((usize, usize), (usize, usize))> {
         self.visual_anchor.map(|anchor| {
             if anchor.0 < current.0 || (anchor.0 == current.0 && anchor.1 <= current.1) {
                 (anchor, current)

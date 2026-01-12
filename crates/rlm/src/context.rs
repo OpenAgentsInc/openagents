@@ -104,7 +104,11 @@ impl Context {
             context_type: ContextType::File,
             file_count: Some(1),
             files: vec![FileEntry {
-                path: path.file_name().unwrap_or_default().to_string_lossy().to_string(),
+                path: path
+                    .file_name()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+                    .to_string(),
                 start_index: 0,
                 end_index: length,
                 size: length,
@@ -159,13 +163,14 @@ impl Context {
         file_count: &mut usize,
     ) -> Result<()> {
         let entries = std::fs::read_dir(current).map_err(|e| {
-            RlmError::ContextError(format!("Failed to read directory {}: {}", current.display(), e))
+            RlmError::ContextError(format!(
+                "Failed to read directory {}: {}",
+                current.display(),
+                e
+            ))
         })?;
 
-        let mut paths: Vec<_> = entries
-            .filter_map(|e| e.ok())
-            .map(|e| e.path())
-            .collect();
+        let mut paths: Vec<_> = entries.filter_map(|e| e.ok()).map(|e| e.path()).collect();
 
         // Sort for deterministic ordering
         paths.sort();
@@ -229,19 +234,69 @@ impl Context {
     /// Check if a file is likely a text file based on extension.
     fn is_text_file(path: &Path) -> bool {
         let text_extensions = [
-            "rs", "py", "js", "ts", "tsx", "jsx", "json", "toml", "yaml", "yml",
-            "md", "txt", "html", "css", "scss", "sass", "less", "xml", "svg",
-            "sh", "bash", "zsh", "fish", "c", "cpp", "h", "hpp", "go", "java",
-            "kt", "swift", "rb", "php", "sql", "graphql", "proto", "dockerfile",
-            "makefile", "cmake", "gradle", "properties", "env", "gitignore",
-            "editorconfig", "prettierrc", "eslintrc", "lock",
+            "rs",
+            "py",
+            "js",
+            "ts",
+            "tsx",
+            "jsx",
+            "json",
+            "toml",
+            "yaml",
+            "yml",
+            "md",
+            "txt",
+            "html",
+            "css",
+            "scss",
+            "sass",
+            "less",
+            "xml",
+            "svg",
+            "sh",
+            "bash",
+            "zsh",
+            "fish",
+            "c",
+            "cpp",
+            "h",
+            "hpp",
+            "go",
+            "java",
+            "kt",
+            "swift",
+            "rb",
+            "php",
+            "sql",
+            "graphql",
+            "proto",
+            "dockerfile",
+            "makefile",
+            "cmake",
+            "gradle",
+            "properties",
+            "env",
+            "gitignore",
+            "editorconfig",
+            "prettierrc",
+            "eslintrc",
+            "lock",
         ];
 
         // Files without extension that are typically text
         let text_filenames = [
-            "Makefile", "Dockerfile", "Cargo.toml", "package.json", "README",
-            "LICENSE", "CHANGELOG", "Gemfile", "Rakefile", ".gitignore",
-            ".env", ".env.example",
+            "Makefile",
+            "Dockerfile",
+            "Cargo.toml",
+            "package.json",
+            "README",
+            "LICENSE",
+            "CHANGELOG",
+            "Gemfile",
+            "Rakefile",
+            ".gitignore",
+            ".env",
+            ".env.example",
         ];
 
         if let Some(name) = path.file_name() {
@@ -367,7 +422,8 @@ mod tests {
 
     #[test]
     fn test_context_search() {
-        let ctx = Context::from_text("The quick brown fox jumps over the lazy dog. The fox is quick.");
+        let ctx =
+            Context::from_text("The quick brown fox jumps over the lazy dog. The fox is quick.");
         let results = ctx.search("fox", 10, 10);
         assert_eq!(results.len(), 2);
         assert!(results[0].context.contains("fox"));

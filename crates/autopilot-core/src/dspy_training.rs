@@ -29,7 +29,7 @@ use anyhow::{Context, Result};
 use dsrs::Example;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::fs::{self, create_dir_all, File};
+use std::fs::{self, File, create_dir_all};
 use std::io::{BufRead, BufReader, BufWriter, Write};
 use std::path::{Path, PathBuf};
 
@@ -164,7 +164,9 @@ impl TrainingExtractor {
 
         // Extract session ID from filename
         if let Some(stem) = session_path.file_stem() {
-            examples.session_ids.push(stem.to_string_lossy().to_string());
+            examples
+                .session_ids
+                .push(stem.to_string_lossy().to_string());
         }
 
         // Process entries by phase
@@ -185,7 +187,9 @@ impl TrainingExtractor {
 
         // Extract execution examples
         if let Some(execution_entries) = phase_entries.get("execution") {
-            examples.execution.extend(self.extract_execution_examples(execution_entries));
+            examples
+                .execution
+                .extend(self.extract_execution_examples(execution_entries));
         }
 
         // Extract verification examples
@@ -197,8 +201,12 @@ impl TrainingExtractor {
 
         // Extract tool examples from all phases
         for phase_entries in phase_entries.values() {
-            examples.tool_selection.extend(self.extract_tool_selection_examples(phase_entries));
-            examples.tool_interpretation.extend(self.extract_tool_interpretation_examples(phase_entries));
+            examples
+                .tool_selection
+                .extend(self.extract_tool_selection_examples(phase_entries));
+            examples
+                .tool_interpretation
+                .extend(self.extract_tool_interpretation_examples(phase_entries));
         }
 
         Ok(examples)
@@ -366,13 +374,21 @@ impl TrainingExtractor {
             match entry.event_type.as_str() {
                 "phase_start" => {
                     // Extract inputs from phase_start data
-                    if let Some(summary) = entry.data.get("repository_summary").and_then(|v| v.as_str()) {
+                    if let Some(summary) = entry
+                        .data
+                        .get("repository_summary")
+                        .and_then(|v| v.as_str())
+                    {
                         repository_summary = summary.to_string();
                     }
-                    if let Some(issue) = entry.data.get("issue_description").and_then(|v| v.as_str()) {
+                    if let Some(issue) =
+                        entry.data.get("issue_description").and_then(|v| v.as_str())
+                    {
                         issue_description = issue.to_string();
                     }
-                    if let Some(files_str) = entry.data.get("relevant_files").and_then(|v| v.as_str()) {
+                    if let Some(files_str) =
+                        entry.data.get("relevant_files").and_then(|v| v.as_str())
+                    {
                         relevant_files = files_str.to_string();
                     }
                 }
@@ -454,7 +470,10 @@ impl TrainingExtractor {
                                 execution_history: history.join("\n"),
                                 expected_action: tool.to_uppercase(),
                                 expected_params: input,
-                                expected_reasoning: format!("Execute {} for step: {}", tool, current_step),
+                                expected_reasoning: format!(
+                                    "Execute {} for step: {}",
+                                    tool, current_step
+                                ),
                             });
 
                             // Add to history
@@ -491,7 +510,9 @@ impl TrainingExtractor {
                                 .collect();
                         }
                     }
-                    if let Some(summary) = entry.data.get("solution_summary").and_then(|v| v.as_str()) {
+                    if let Some(summary) =
+                        entry.data.get("solution_summary").and_then(|v| v.as_str())
+                    {
                         solution_summary = summary.to_string();
                     }
                     if let Some(changes) = entry.data.get("code_changes").and_then(|v| v.as_str()) {
@@ -501,12 +522,14 @@ impl TrainingExtractor {
                 "tool_result" => {
                     if let Some(tool) = entry.data.get("tool").and_then(|v| v.as_str()) {
                         if tool.contains("build") || tool.contains("cargo") {
-                            if let Some(result) = entry.data.get("result").and_then(|v| v.as_str()) {
+                            if let Some(result) = entry.data.get("result").and_then(|v| v.as_str())
+                            {
                                 build_output = result.to_string();
                             }
                         }
                         if tool.contains("test") {
-                            if let Some(result) = entry.data.get("result").and_then(|v| v.as_str()) {
+                            if let Some(result) = entry.data.get("result").and_then(|v| v.as_str())
+                            {
                                 test_output = result.to_string();
                             }
                         }
@@ -552,8 +575,18 @@ impl TrainingExtractor {
             if entry.event_type == "tool_use" {
                 if let Some(tool) = entry.data.get("tool").and_then(|v| v.as_str()) {
                     // Extract context from previous entries if available
-                    let context = entry.data.get("context").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                    let task = entry.data.get("task").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                    let context = entry
+                        .data
+                        .get("context")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    let task = entry
+                        .data
+                        .get("task")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
 
                     if !context.is_empty() || !task.is_empty() {
                         let mut data = std::collections::HashMap::new();
@@ -572,8 +605,13 @@ impl TrainingExtractor {
                             serde_json::Value::String("0.9".to_string()),
                         );
 
-                        let input_keys = vec!["context".to_string(), "task".to_string(), "available_tools".to_string()];
-                        let output_keys = vec!["selected_tool".to_string(), "confidence".to_string()];
+                        let input_keys = vec![
+                            "context".to_string(),
+                            "task".to_string(),
+                            "available_tools".to_string(),
+                        ];
+                        let output_keys =
+                            vec!["selected_tool".to_string(), "confidence".to_string()];
 
                         examples.push(Example::new(data, input_keys, output_keys));
                     }
@@ -607,13 +645,22 @@ impl TrainingExtractor {
                             let result = entries[j].data.get("result").cloned().unwrap_or_default();
 
                             let mut data = std::collections::HashMap::new();
-                            data.insert("tool_name".to_string(), serde_json::Value::String(tool.to_string()));
+                            data.insert(
+                                "tool_name".to_string(),
+                                serde_json::Value::String(tool.to_string()),
+                            );
                             data.insert("tool_input".to_string(), input);
                             data.insert("tool_output".to_string(), result.clone());
-                            data.insert("success".to_string(), serde_json::Value::String("YES".to_string()));
+                            data.insert(
+                                "success".to_string(),
+                                serde_json::Value::String("YES".to_string()),
+                            );
                             data.insert(
                                 "interpretation".to_string(),
-                                serde_json::Value::String(format!("Tool {} completed successfully", tool)),
+                                serde_json::Value::String(format!(
+                                    "Tool {} completed successfully",
+                                    tool
+                                )),
                             );
                             data.insert(
                                 "next_action".to_string(),

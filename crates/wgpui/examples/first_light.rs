@@ -621,8 +621,7 @@ fn demo_molecules(
         .paint(Bounds::new(x + 8.0, *y + 8.0, width - 16.0, 32.0), &mut cx);
 
     ModeSelector::new(Mode::Normal).paint(Bounds::new(x + 12.0, *y + 50.0, 120.0, 28.0), &mut cx);
-    ModelSelector::new(Model::Codex)
-        .paint(Bounds::new(x + 145.0, *y + 50.0, 120.0, 28.0), &mut cx);
+    ModelSelector::new(Model::Codex).paint(Bounds::new(x + 145.0, *y + 50.0, 120.0, 28.0), &mut cx);
 
     let label = text_system.layout(
         "MessageHeader + Selectors",

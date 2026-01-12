@@ -270,14 +270,11 @@ fn parse_completion_response(value: serde_json::Value) -> Result<GptOssResponse>
         .and_then(|v| v.as_str())
         .map(|v| v.to_string());
 
-    let usage = value
-        .get("usage")
-        .and_then(parse_usage_stats)
-        .or_else(|| {
-            value
-                .get("usage")
-                .and_then(|usage| serde_json::from_value::<UsageStats>(usage.clone()).ok())
-        });
+    let usage = value.get("usage").and_then(parse_usage_stats).or_else(|| {
+        value
+            .get("usage")
+            .and_then(|usage| serde_json::from_value::<UsageStats>(usage.clone()).ok())
+    });
 
     let response = GptOssResponse {
         id: value

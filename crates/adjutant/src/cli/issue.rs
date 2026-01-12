@@ -1,7 +1,7 @@
 //! Issue management commands
 
-use clap::Args;
 use crate::cli::boot::boot_fast;
+use clap::Args;
 
 /// List issues arguments
 #[derive(Args)]
@@ -41,7 +41,10 @@ pub async fn list(args: ListArgs) -> anyhow::Result<()> {
         .as_ref()
         .ok_or_else(|| anyhow::anyhow!("No .openagents/ folder found"))?;
 
-    println!("Issues in {}", workspace.project_name.as_deref().unwrap_or("project"));
+    println!(
+        "Issues in {}",
+        workspace.project_name.as_deref().unwrap_or("project")
+    );
     println!();
 
     let issues = &workspace.issues;
@@ -108,7 +111,11 @@ pub async fn list(args: ListArgs) -> anyhow::Result<()> {
     }
 
     println!();
-    println!("Total: {} issues ({} actionable)", issues.len(), filtered.len());
+    println!(
+        "Total: {} issues ({} actionable)",
+        issues.len(),
+        filtered.len()
+    );
 
     Ok(())
 }

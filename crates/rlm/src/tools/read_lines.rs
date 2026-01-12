@@ -7,7 +7,7 @@ use super::{RlmTool, ToolConfig, ToolError, ToolResult, get_current_commit};
 use crate::span::SpanRef;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::fs;
 use std::path::PathBuf;
 
@@ -50,20 +50,14 @@ impl ReadLinesTool {
     /// Read lines from a file.
     ///
     /// Lines are 1-indexed, inclusive on both ends.
-    pub async fn read(
-        &self,
-        path: &str,
-        start_line: u32,
-        end_line: u32,
-    ) -> ToolResult<ReadResult> {
+    pub async fn read(&self, path: &str, start_line: u32, end_line: u32) -> ToolResult<ReadResult> {
         let file_path = self.repo_root.join(path);
 
         if !file_path.exists() {
             return Err(ToolError::PathNotFound(path.to_string()));
         }
 
-        let content = fs::read_to_string(&file_path)
-            .map_err(ToolError::Io)?;
+        let content = fs::read_to_string(&file_path).map_err(ToolError::Io)?;
 
         // Check file size
         if content.len() as u64 > self.config.max_file_size {
@@ -100,7 +94,10 @@ impl ReadLinesTool {
             end_byte += line.len() as u64 + 1;
         }
 
-        let commit = self.config.commit.clone()
+        let commit = self
+            .config
+            .commit
+            .clone()
             .or_else(|| get_current_commit(&self.repo_root));
 
         let span = SpanRef::with_range(
@@ -188,13 +185,9 @@ impl RlmTool for ReadLinesTool {
             .as_str()
             .ok_or_else(|| ToolError::ParseError("Missing 'path' argument".to_string()))?;
 
-        let start_line = args["start_line"]
-            .as_u64()
-            .unwrap_or(1) as u32;
+        let start_line = args["start_line"].as_u64().unwrap_or(1) as u32;
 
-        let end_line = args["end_line"]
-            .as_u64()
-            .unwrap_or(100) as u32;
+        let end_line = args["end_line"].as_u64().unwrap_or(100) as u32;
 
         let result = self.read(path, start_line, end_line).await?;
 

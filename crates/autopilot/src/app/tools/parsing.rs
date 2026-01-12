@@ -307,10 +307,7 @@ fn parse_search_matches_from_value(value: &Value) -> Option<Vec<SearchMatch>> {
                         .get("file")
                         .and_then(|v| v.as_str())
                         .unwrap_or("unknown");
-                    let count = match_obj
-                        .get("count")
-                        .and_then(|v| v.as_u64())
-                        .unwrap_or(0);
+                    let count = match_obj.get("count").and_then(|v| v.as_u64()).unwrap_or(0);
                     matches.push(SearchMatch {
                         file: file.to_string(),
                         line: 1,
@@ -445,12 +442,7 @@ pub(crate) fn parse_diff_lines(diff_text: &str) -> Vec<DiffLine> {
             if let Some(value) = new_line {
                 new_line = Some(value.saturating_add(1));
             }
-            (
-                DiffLineKind::Context,
-                raw[1..].to_string(),
-                old_no,
-                new_no,
-            )
+            (DiffLineKind::Context, raw[1..].to_string(), old_no, new_no)
         } else if old_line.is_some() || new_line.is_some() {
             let old_no = old_line;
             let new_no = new_line;
@@ -488,7 +480,10 @@ fn parse_hunk_header(line: &str) -> Option<(u32, u32)> {
 
 fn parse_hunk_range(part: &str, prefix: char) -> Option<u32> {
     let range = part.strip_prefix(prefix)?;
-    let start = range.split_once(',').map(|(start, _)| start).unwrap_or(range);
+    let start = range
+        .split_once(',')
+        .map(|(start, _)| start)
+        .unwrap_or(range);
     start.trim().parse().ok()
 }
 

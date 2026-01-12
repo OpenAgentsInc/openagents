@@ -1,8 +1,8 @@
 //! Pylon configuration
 
+use openagents_relay::CodexSessionAutonomy;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
-use openagents_relay::CodexSessionAutonomy;
 
 /// Pylon configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]

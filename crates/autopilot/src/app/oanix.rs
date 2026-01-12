@@ -21,11 +21,7 @@ pub(crate) fn format_bytes(bytes: u64) -> String {
 }
 
 pub(crate) fn format_bool(value: bool) -> &'static str {
-    if value {
-        "Yes"
-    } else {
-        "No"
-    }
+    if value { "Yes" } else { "No" }
 }
 
 pub(crate) fn format_latency(latency_ms: Option<u32>) -> String {
@@ -53,15 +49,16 @@ pub(crate) fn format_backend_summary(backend: &InferenceBackend) -> String {
             backend.name, readiness, model_count, endpoint
         )
     } else {
-        format!(
-            "{} - {} • {} models",
-            backend.name, readiness, model_count
-        )
+        format!("{} - {} • {} models", backend.name, readiness, model_count)
     }
 }
 
 pub(crate) fn format_relay_summary(relay: &RelayStatus) -> String {
-    let status = if relay.connected { "connected" } else { "offline" };
+    let status = if relay.connected {
+        "connected"
+    } else {
+        "offline"
+    };
     let latency = format_latency(relay.latency_ms);
     format!("{} - {} • {}", relay.url, status, latency)
 }

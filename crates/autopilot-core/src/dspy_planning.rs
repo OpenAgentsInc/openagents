@@ -22,7 +22,7 @@
 //! ```
 
 use dsrs::callbacks::DspyCallback;
-use dsrs::{example, LM, Predict, Predictor, Signature};
+use dsrs::{LM, Predict, Predictor, Signature, example};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
@@ -323,25 +323,16 @@ impl PlanningPipeline {
 
         issue_len > 500
             || file_count > 10
-            || input
-                .issue_description
-                .to_lowercase()
-                .contains("refactor")
+            || input.issue_description.to_lowercase().contains("refactor")
             || input
                 .issue_description
                 .to_lowercase()
                 .contains("architecture")
-            || input
-                .issue_description
-                .to_lowercase()
-                .contains("redesign")
+            || input.issue_description.to_lowercase().contains("redesign")
     }
 
     /// Classify task complexity using DSPy.
-    async fn classify_complexity(
-        &self,
-        input: &PlanningInput,
-    ) -> anyhow::Result<(String, f32)> {
+    async fn classify_complexity(&self, input: &PlanningInput) -> anyhow::Result<(String, f32)> {
         self.classify_complexity_with_callback(input, None).await
     }
 
@@ -365,7 +356,9 @@ impl PlanningPipeline {
         };
 
         let prediction = if let Some(lm) = &self.lm {
-            classifier.forward_with_streaming(example, lm.clone(), callback).await?
+            classifier
+                .forward_with_streaming(example, lm.clone(), callback)
+                .await?
         } else {
             classifier.forward(example).await?
         };
@@ -396,13 +389,16 @@ impl PlanningPipeline {
             .unwrap_or_else(|| Self::heuristic_complexity(input));
 
         let prediction = if use_deep_planning {
-            self.run_deep_planning_with_callback(input, callback).await?
+            self.run_deep_planning_with_callback(input, callback)
+                .await?
         } else {
-            self.run_basic_planning_with_callback(input, callback).await?
+            self.run_basic_planning_with_callback(input, callback)
+                .await?
         };
 
         // Parse results
-        let files_to_modify = Self::parse_json_array(&Self::get_string(&prediction, "files_to_modify"));
+        let files_to_modify =
+            Self::parse_json_array(&Self::get_string(&prediction, "files_to_modify"));
         let implementation_steps =
             Self::parse_json_array(&Self::get_string(&prediction, "implementation_steps"));
         let risk_factors = Self::parse_json_array(&Self::get_string(&prediction, "risk_factors"));
@@ -441,7 +437,9 @@ impl PlanningPipeline {
         };
 
         let prediction = if let Some(lm) = &self.lm {
-            planner.forward_with_streaming(example, lm.clone(), callback).await?
+            planner
+                .forward_with_streaming(example, lm.clone(), callback)
+                .await?
         } else {
             planner.forward(example).await?
         };
@@ -475,7 +473,9 @@ impl PlanningPipeline {
         };
 
         let prediction = if let Some(lm) = &self.lm {
-            deep_planner.forward_with_streaming(example, lm.clone(), callback).await?
+            deep_planner
+                .forward_with_streaming(example, lm.clone(), callback)
+                .await?
         } else {
             deep_planner.forward(example).await?
         };

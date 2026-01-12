@@ -175,15 +175,21 @@ impl Constraint {
 
     /// Create a budget constraint.
     pub fn budget_msats(msats: u64) -> Self {
-        Self::new(ConstraintKind::BudgetMsats, format!("Budget: {} msats", msats))
-            .with_value(serde_json::json!(msats))
+        Self::new(
+            ConstraintKind::BudgetMsats,
+            format!("Budget: {} msats", msats),
+        )
+        .with_value(serde_json::json!(msats))
     }
 
     /// Create a "must use file" constraint.
     pub fn must_use_file(path: impl Into<String>) -> Self {
         let path = path.into();
-        Self::new(ConstraintKind::MustUseFile, format!("Must use file: {}", path))
-            .with_value(serde_json::json!(path))
+        Self::new(
+            ConstraintKind::MustUseFile,
+            format!("Must use file: {}", path),
+        )
+        .with_value(serde_json::json!(path))
     }
 
     /// Create a "must not modify" constraint.
@@ -441,7 +447,11 @@ impl TaskMetadata {
     }
 
     /// Add extra metadata.
-    pub fn with_extra(mut self, key: impl Into<String>, value: impl Into<serde_json::Value>) -> Self {
+    pub fn with_extra(
+        mut self,
+        key: impl Into<String>,
+        value: impl Into<serde_json::Value>,
+    ) -> Self {
         self.extra.insert(key.into(), value.into());
         self
     }
@@ -561,9 +571,7 @@ mod tests {
     fn test_task_set() {
         let set = EvalTaskSet::new("retrieval-benchmark")
             .with_description("Benchmark for retrieval tasks")
-            .with_task(
-                EvalTask::new("t1", "Find error handlers").with_tag("retrieval"),
-            )
+            .with_task(EvalTask::new("t1", "Find error handlers").with_tag("retrieval"))
             .with_task(EvalTask::new("t2", "Fix bug").with_tag("bug-fix"));
 
         assert_eq!(set.tasks.len(), 2);

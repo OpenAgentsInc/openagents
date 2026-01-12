@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
-use oanix::manifest::IdentityManifest;
 use oanix::OanixManifest;
+use oanix::manifest::IdentityManifest;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum WalletIdentityState {
@@ -74,7 +74,9 @@ impl WalletIdentitySnapshot {
     }
 }
 
-pub(crate) fn identity_snapshot_from_identity(identity: &IdentityManifest) -> WalletIdentitySnapshot {
+pub(crate) fn identity_snapshot_from_identity(
+    identity: &IdentityManifest,
+) -> WalletIdentitySnapshot {
     let state = if identity.initialized {
         WalletIdentityState::Initialized
     } else {
@@ -93,9 +95,7 @@ pub(crate) fn parse_wallet_config(
     config_path: Option<PathBuf>,
     data_dir_fallback: Option<PathBuf>,
 ) -> WalletConfigSnapshot {
-    let enable_payments = value
-        .get("enable_payments")
-        .and_then(|v| v.as_bool());
+    let enable_payments = value.get("enable_payments").and_then(|v| v.as_bool());
     let spark_url = value
         .get("spark_url")
         .and_then(|v| v.as_str())

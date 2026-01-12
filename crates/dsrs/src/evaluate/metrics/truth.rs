@@ -561,7 +561,8 @@ mod tests {
     fn make_example(fields: &[(&str, &str)]) -> Example {
         let mut ex = Example::default();
         for (k, v) in fields {
-            ex.data.insert(k.to_string(), serde_json::Value::String(v.to_string()));
+            ex.data
+                .insert(k.to_string(), serde_json::Value::String(v.to_string()));
         }
         ex
     }

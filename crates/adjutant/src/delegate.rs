@@ -21,8 +21,7 @@ pub async fn delegate_to_codex(
     // Check if codex is available
     let codex_path = which::which("codex").map_err(|_| {
         AdjutantError::DelegationFailed(
-            "Codex CLI not found. Ensure `codex` is in your PATH."
-                .to_string(),
+            "Codex CLI not found. Ensure `codex` is in your PATH.".to_string(),
         )
     })?;
 

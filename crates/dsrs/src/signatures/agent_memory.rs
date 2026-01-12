@@ -6,7 +6,7 @@ use crate::core::signature::MetaSignature;
 use crate::data::example::Example;
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 /// A previous query and its results.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -65,7 +65,8 @@ pub struct AgentMemorySignature {
 impl Default for AgentMemorySignature {
     fn default() -> Self {
         Self {
-            instruction: r#"You are an expert at optimizing agent exploration. Given a proposed query and
+            instruction:
+                r#"You are an expert at optimizing agent exploration. Given a proposed query and
 the history of previous queries, determine if it would be redundant.
 
 A query is redundant if:
@@ -81,7 +82,7 @@ Consider:
 - Result coverage (previous queries may have found everything)
 
 If redundant, suggest an alternative that would find new information."#
-                .to_string(),
+                    .to_string(),
             demos: vec![],
         }
     }

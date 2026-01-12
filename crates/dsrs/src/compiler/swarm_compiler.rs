@@ -8,6 +8,7 @@
 //! The bootstrap_lm is used for prompt generation, while validation_lm is used
 //! for final evaluation with truth metrics.
 
+use crate::Evaluator;
 use crate::compiler::{
     BudgetManager, BudgetReport, CompileResult, ExecutionTrace, LMProvider, TraceCollector,
 };
@@ -16,7 +17,6 @@ use crate::data::example::Example;
 use crate::evaluate::{EvalTask, PromotionResult, PromotionState, ScorecardResult};
 use crate::manifest::CompiledModuleManifest;
 use crate::optimizer::{MIPROv2, Optimizer};
-use crate::Evaluator;
 use anyhow::Result;
 use std::sync::Arc;
 
@@ -40,8 +40,8 @@ pub struct SwarmCompileConfig {
 impl Default for SwarmCompileConfig {
     fn default() -> Self {
         Self {
-            bootstrap_budget_msats: 1000,   // ~100 calls at 10 msats
-            validation_budget_msats: 5000,  // ~5 calls at 1000 msats
+            bootstrap_budget_msats: 1000,  // ~100 calls at 10 msats
+            validation_budget_msats: 5000, // ~5 calls at 1000 msats
             bootstrap_rollouts: 3,
             validation_rollouts: 5,
             proxy_threshold: 0.7,
@@ -115,10 +115,7 @@ impl SwarmCompiler {
     /// # Arguments
     /// * `bootstrap_lm` - Cheap LM for bootstrap phase
     /// * `validation_lm` - Premium LM for validation phase
-    pub fn new(
-        bootstrap_lm: Arc<dyn LMProvider>,
-        validation_lm: Arc<dyn LMProvider>,
-    ) -> Self {
+    pub fn new(bootstrap_lm: Arc<dyn LMProvider>, validation_lm: Arc<dyn LMProvider>) -> Self {
         Self {
             bootstrap_lm,
             validation_lm,
@@ -248,7 +245,8 @@ impl SwarmCompiler {
 
         // Pre-calculate estimated cost and check budget
         let estimated_cost = self.bootstrap_lm.cost_per_1k_tokens()
-            * (config.bootstrap_rollouts as u64 * 100) / 1000;
+            * (config.bootstrap_rollouts as u64 * 100)
+            / 1000;
         allocation.try_spend(estimated_cost)?;
 
         // Run MIPROv2 optimization
@@ -278,8 +276,12 @@ impl SwarmCompiler {
             }
             Err(e) => {
                 // Optimization failed - fall back to simple evaluation
-                eprintln!("MIPROv2 optimization failed: {}. Falling back to simple evaluation.", e);
-                self.run_bootstrap_simple(trainset, allocation, config).await
+                eprintln!(
+                    "MIPROv2 optimization failed: {}. Falling back to simple evaluation.",
+                    e
+                );
+                self.run_bootstrap_simple(trainset, allocation, config)
+                    .await
             }
         }
     }
@@ -340,7 +342,11 @@ impl SwarmCompiler {
         let mut total_score = 0.0;
         let mut count = 0;
 
-        for (i, task) in eval_tasks.iter().take(config.validation_rollouts).enumerate() {
+        for (i, task) in eval_tasks
+            .iter()
+            .take(config.validation_rollouts)
+            .enumerate()
+        {
             // Simulate LM call cost
             let cost = self.validation_lm.cost_per_1k_tokens() * 500 / 1000; // ~500 tokens
             allocation.try_spend(cost)?;

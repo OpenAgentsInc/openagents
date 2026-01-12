@@ -278,7 +278,11 @@ mod tests {
     fn test_tools_have_descriptions() {
         let tools = create_frlm_tools();
         for tool in tools {
-            assert!(!tool.description.is_empty(), "Tool {} has no description", tool.name);
+            assert!(
+                !tool.description.is_empty(),
+                "Tool {} has no description",
+                tool.name
+            );
         }
     }
 
@@ -287,7 +291,11 @@ mod tests {
         let tools = create_frlm_tools();
         for tool in tools {
             // All FRLM tools should have parameters
-            assert!(tool.parameters.is_some(), "Tool {} has no parameters", tool.name);
+            assert!(
+                tool.parameters.is_some(),
+                "Tool {} has no parameters",
+                tool.name
+            );
         }
     }
 }

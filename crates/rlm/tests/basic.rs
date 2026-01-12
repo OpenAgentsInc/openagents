@@ -82,7 +82,7 @@ fn test_engine_creation() {
 /// Test that prompts are constructed correctly.
 #[test]
 fn test_prompts() {
-    use rlm::{SYSTEM_PROMPT, GUIDED_SYSTEM_PROMPT, PromptTier};
+    use rlm::{GUIDED_SYSTEM_PROMPT, PromptTier, SYSTEM_PROMPT};
 
     // Basic system prompt should contain key instructions
     assert!(SYSTEM_PROMPT.contains("FINAL"));
@@ -140,7 +140,8 @@ async fn test_rlm_with_fm_bridge() {
             println!("Result: {}", result.output);
             println!("Iterations: {}", result.iterations);
             for entry in &result.execution_log {
-                println!("  [{}] {} -> {}",
+                println!(
+                    "  [{}] {} -> {}",
                     entry.iteration,
                     entry.command_type,
                     entry.result.chars().take(50).collect::<String>()

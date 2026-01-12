@@ -7,7 +7,7 @@ use crate::core::signature::MetaSignature;
 use crate::data::example::Example;
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 /// A candidate for reranking.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -60,7 +60,8 @@ pub struct CandidateRerankSignature {
 impl Default for CandidateRerankSignature {
     fn default() -> Self {
         Self {
-            instruction: r#"You are an expert at evaluating code relevance. Given a user's task and a list
+            instruction:
+                r#"You are an expert at evaluating code relevance. Given a user's task and a list
 of code candidates, rerank them by relevance.
 
 For each candidate, consider:
@@ -70,7 +71,7 @@ For each candidate, consider:
 4. Specificity: Is it the right level of abstraction?
 
 Output the top-k candidates with relevance scores (0.0-1.0) and brief rationales."#
-                .to_string(),
+                    .to_string(),
             demos: vec![],
         }
     }

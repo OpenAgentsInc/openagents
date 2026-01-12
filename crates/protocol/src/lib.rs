@@ -46,7 +46,7 @@ pub mod verification;
 pub mod version;
 
 // Re-export commonly used types at crate root
-pub use hash::{canonical_hash, canonical_json, HashError, Hashable};
+pub use hash::{HashError, Hashable, canonical_hash, canonical_json};
 pub use jobs::{
     ChunkAnalysisRequest, ChunkAnalysisResponse, JobEnvelope, JobRequest, JobResponse,
     RerankRequest, RerankResponse, SandboxRunRequest, SandboxRunResponse,

@@ -37,8 +37,8 @@
 //! 2. **Local LLM** - If llama.cpp/GPT-OSS is available
 //! 3. **Tiered/Analysis** - If Cerebras is configured or as a fallback
 
-pub mod auth;
 mod app_server_executor;
+pub mod auth;
 pub mod autopilot_loop;
 pub mod cli;
 pub mod codex_executor;
@@ -59,18 +59,18 @@ use thiserror::Error;
 use tokio::sync::mpsc;
 
 pub use auth::{get_codex_path, has_codex_cli};
+pub use autopilot_loop::{
+    AcpChannelOutput, AutopilotConfig, AutopilotLoop, AutopilotOutput, AutopilotResult,
+    ChannelOutput, CliOutput, DSPY_META_KEY, DspyStage, SESSION_ID_META_KEY, TodoStatus, TodoTask,
+    Verification, generate_session_id,
+};
 pub use codex_executor::CodexExecutor;
+pub use dspy_orchestrator::{AssessmentResult, DspyOrchestrator};
 pub use executor::TaskResult;
 pub use planner::{Complexity, TaskPlan};
 pub use rlm_agent::{rlm_agent_definition, rlm_agent_with_write_access};
 pub use tiered::TieredExecutor;
 pub use tools::{Tool, ToolRegistry};
-pub use autopilot_loop::{
-    AcpChannelOutput, AutopilotConfig, AutopilotLoop, AutopilotOutput, AutopilotResult, ChannelOutput,
-    generate_session_id, CliOutput, DspyStage, TodoStatus, TodoTask, Verification, DSPY_META_KEY,
-    SESSION_ID_META_KEY,
-};
-pub use dspy_orchestrator::{AssessmentResult, DspyOrchestrator};
 
 /// Errors that can occur during Adjutant operations.
 #[derive(Error, Debug)]
@@ -114,7 +114,11 @@ pub struct Task {
 
 impl Task {
     /// Create a new task.
-    pub fn new(id: impl Into<String>, title: impl Into<String>, description: impl Into<String>) -> Self {
+    pub fn new(
+        id: impl Into<String>,
+        title: impl Into<String>,
+        description: impl Into<String>,
+    ) -> Self {
         Self {
             id: id.into(),
             title: title.into(),
@@ -357,11 +361,17 @@ impl Adjutant {
         if delegation.should_delegate {
             match delegation.delegation_target.as_str() {
                 "codex" | "codex_code" => {
-                    tracing::info!("DSPy: delegating to Codex (confidence: {:.2})", delegation.confidence);
+                    tracing::info!(
+                        "DSPy: delegating to Codex (confidence: {:.2})",
+                        delegation.confidence
+                    );
                     return self.delegate_to_codex(task).await;
                 }
                 "rlm" => {
-                    tracing::info!("DSPy: using RLM delegation (confidence: {:.2})", delegation.confidence);
+                    tracing::info!(
+                        "DSPy: using RLM delegation (confidence: {:.2})",
+                        delegation.confidence
+                    );
                     return self.execute_with_rlm_delegate(task, &plan).await;
                 }
                 _ => {
@@ -447,7 +457,11 @@ impl Adjutant {
     }
 
     /// Determine delegation decision (DSPy-first with legacy fallback).
-    async fn determine_delegation(&mut self, task: &Task, plan: &TaskPlan) -> dspy::DelegationResult {
+    async fn determine_delegation(
+        &mut self,
+        task: &Task,
+        plan: &TaskPlan,
+    ) -> dspy::DelegationResult {
         let complexity_str = match plan.complexity {
             Complexity::Low => "Low",
             Complexity::Medium => "Medium",
@@ -503,7 +517,10 @@ impl Adjutant {
                 dspy::DelegationResult::default()
             }
             Err(e) => {
-                tracing::debug!("DSPy delegation pipeline failed: {}, using legacy fallback", e);
+                tracing::debug!(
+                    "DSPy delegation pipeline failed: {}, using legacy fallback",
+                    e
+                );
                 // Return default (no delegation) - legacy rules will be checked
                 dspy::DelegationResult::default()
             }
@@ -545,9 +562,7 @@ impl Adjutant {
             Some(ExecutionBackend::Codex) => {
                 let executor = CodexExecutor::new(&self.workspace_root);
                 tracing::info!("Streaming with Codex");
-                return executor
-                    .execute_streaming(task, token_tx, acp_sender)
-                    .await;
+                return executor.execute_streaming(task, token_tx, acp_sender).await;
             }
             Some(ExecutionBackend::LocalTools) => {
                 let result = self.execute(task).await?;
@@ -578,11 +593,11 @@ impl Adjutant {
         token_tx: mpsc::UnboundedSender<String>,
         acp_sender: Option<crate::autopilot_loop::AcpEventSender>,
     ) -> Result<TaskResult, AdjutantError> {
-        use gpt_oss::{
-            GptOssClient, GptOssResponsesRequest, GptOssToolDefinition, GptOssToolFunction,
-            GptOssToolChoice,
-        };
         use agent_client_protocol_schema as acp;
+        use gpt_oss::{
+            GptOssClient, GptOssResponsesRequest, GptOssToolChoice, GptOssToolDefinition,
+            GptOssToolFunction,
+        };
         use std::path::Path;
 
         // Build initial context from relevant files
@@ -792,13 +807,13 @@ impl Adjutant {
                 "http://127.0.0.1:8000".to_string()
             });
 
-        let client = GptOssClient::with_base_url(&base_url)
-            .map_err(|e| AdjutantError::ExecutionFailed(format!("Failed to create gptoss client: {}", e)))?;
+        let client = GptOssClient::with_base_url(&base_url).map_err(|e| {
+            AdjutantError::ExecutionFailed(format!("Failed to create gptoss client: {}", e))
+        })?;
 
         // Build conversation as input
-        let mut messages: Vec<serde_json::Value> = vec![
-            serde_json::json!({"role": "system", "content": system_prompt}),
-        ];
+        let mut messages: Vec<serde_json::Value> =
+            vec![serde_json::json!({"role": "system", "content": system_prompt})];
 
         // Add any prior conversation history
         for turn in &self.conversation_history {
@@ -902,7 +917,10 @@ impl Adjutant {
                         let old_string = args["old_string"].as_str().unwrap_or("");
                         let new_string = args["new_string"].as_str().unwrap_or("");
                         let _ = token_tx.send(format!("Editing: {}\n", path));
-                        let result = self.tools.edit(Path::new(path), old_string, new_string).await?;
+                        let result = self
+                            .tools
+                            .edit(Path::new(path), old_string, new_string)
+                            .await?;
                         if result.success {
                             modified_files.push(path.to_string());
                         }
@@ -942,9 +960,7 @@ impl Adjutant {
                         full_response.push_str(&format!("\n\n## Summary\n{}", summary));
                         tools::ToolOutput::success(summary)
                     }
-                    _ => {
-                        tools::ToolOutput::failure(format!("Unknown tool: {}", tool_name))
-                    }
+                    _ => tools::ToolOutput::failure(format!("Unknown tool: {}", tool_name)),
                 };
 
                 // Show tool result (truncated)
@@ -979,8 +995,7 @@ impl Adjutant {
                         crate::autopilot_loop::SESSION_ID_META_KEY.to_string(),
                         serde_json::Value::String(sender.session_id.to_string()),
                     );
-                    let update =
-                        acp::ToolCallUpdate::new(tool_call_id.clone(), fields).meta(meta);
+                    let update = acp::ToolCallUpdate::new(tool_call_id.clone(), fields).meta(meta);
                     sender.send_update(acp::SessionUpdate::ToolCallUpdate(update));
                 }
 
@@ -1034,7 +1049,10 @@ impl Adjutant {
             modified_files,
             commit_hash: None,
             error: if !success && !task_completed {
-                Some("Task did not complete - no files modified and task_complete not called".to_string())
+                Some(
+                    "Task did not complete - no files modified and task_complete not called"
+                        .to_string(),
+                )
             } else {
                 None
             },
@@ -1073,7 +1091,8 @@ impl Adjutant {
             Message::user(&prompt),
         ]);
 
-        let response = lm.call(chat, vec![])
+        let response = lm
+            .call(chat, vec![])
             .await
             .map_err(|e| AdjutantError::ExecutionFailed(format!("LM call failed: {}", e)))?;
 
@@ -1220,7 +1239,10 @@ impl Adjutant {
                 planner::determine_complexity(&plan.files, plan.estimated_tokens, &task.description)
             }
             Err(e) => {
-                tracing::debug!("DSPy complexity pipeline failed: {}, using legacy fallback", e);
+                tracing::debug!(
+                    "DSPy complexity pipeline failed: {}, using legacy fallback",
+                    e
+                );
                 planner::determine_complexity(&plan.files, plan.estimated_tokens, &task.description)
             }
         }
@@ -1241,7 +1263,12 @@ fn parse_complexity(s: &str) -> Complexity {
 /// Extract complexity-relevant keywords from task description.
 fn extract_complexity_keywords(description: &str) -> Vec<String> {
     let keywords = [
-        "refactor", "rewrite", "migrate", "architect", "security", "audit",
+        "refactor",
+        "rewrite",
+        "migrate",
+        "architect",
+        "security",
+        "audit",
     ];
     let lower = description.to_lowercase();
     keywords

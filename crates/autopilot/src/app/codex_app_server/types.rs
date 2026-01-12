@@ -304,7 +304,9 @@ pub enum ReviewDelivery {
 pub enum ReviewTarget {
     UncommittedChanges,
     #[serde(rename_all = "camelCase")]
-    BaseBranch { branch: String },
+    BaseBranch {
+        branch: String,
+    },
     #[serde(rename_all = "camelCase")]
     Commit {
         sha: String,
@@ -312,7 +314,9 @@ pub enum ReviewTarget {
         title: Option<String>,
     },
     #[serde(rename_all = "camelCase")]
-    Custom { instructions: String },
+    Custom {
+        instructions: String,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -617,7 +621,10 @@ pub struct GetAccountResponse {
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum LoginAccountParams {
     #[serde(rename = "apiKey", rename_all = "camelCase")]
-    ApiKey { #[serde(rename = "apiKey")] api_key: String },
+    ApiKey {
+        #[serde(rename = "apiKey")]
+        api_key: String,
+    },
     #[serde(rename = "chatgpt")]
     Chatgpt,
 }

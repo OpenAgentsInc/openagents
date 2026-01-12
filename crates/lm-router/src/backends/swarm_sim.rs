@@ -7,14 +7,14 @@
 //! - Cost variance
 //! - Quorum behavior (multiple redundant responses)
 
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
 use async_trait::async_trait;
+use rand::SeedableRng;
 use rand::distributions::{Distribution, Standard};
 use rand::rngs::StdRng;
-use rand::SeedableRng;
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 use tracing::{debug, info};
@@ -293,8 +293,8 @@ impl SwarmSimulator {
             base_cost * provider.cost_multiplier
         };
 
-        let usage =
-            LmUsage::new(prompt_tokens, completion_tokens).with_cost_sats(cost_with_variance as u64);
+        let usage = LmUsage::new(prompt_tokens, completion_tokens)
+            .with_cost_sats(cost_with_variance as u64);
 
         Ok(LmResponse::new(response_text, "swarm-sim", usage).with_latency(latency_ms))
     }

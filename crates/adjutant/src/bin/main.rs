@@ -1,6 +1,6 @@
 //! Autopilot CLI - AI-powered coding assistant
 
-use adjutant::cli::{execute, AutopilotCli};
+use adjutant::cli::{AutopilotCli, execute};
 use clap::Parser;
 use tracing_subscriber::EnvFilter;
 

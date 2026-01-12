@@ -27,19 +27,19 @@
 //! }
 //! ```
 
-pub mod error;
-pub mod inference;
 #[cfg(feature = "dspy")]
 pub mod dspy;
+pub mod error;
+pub mod inference;
 pub mod traits;
 pub mod types;
 
 // Re-export commonly used items
-pub use error::{GatewayError, Result};
-pub use inference::{
-    cerebras::CerebrasGateway, ChatRequest, ChatResponse, Choice, Message, Role, Usage,
-};
 #[cfg(feature = "dspy")]
 pub use dspy::{GatewayDspyConfig, GatewayDspyExt, GatewayLM, query_with_signature};
+pub use error::{GatewayError, Result};
+pub use inference::{
+    ChatRequest, ChatResponse, Choice, Message, Role, Usage, cerebras::CerebrasGateway,
+};
 pub use traits::{Gateway, InferenceGateway};
 pub use types::{Capability, GatewayHealth, ModelInfo, ModelPricing};

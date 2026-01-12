@@ -46,9 +46,7 @@ fn has_action_verb(step: &str) -> bool {
 fn normalize_step(step: &str) -> String {
     let trimmed = step.trim();
     let stripped = trimmed.trim_start_matches(|c: char| {
-        c.is_ascii_digit()
-            || c.is_whitespace()
-            || matches!(c, '.' | ')' | '-' | '*' | ':' | '•')
+        c.is_ascii_digit() || c.is_whitespace() || matches!(c, '.' | ')' | '-' | '*' | ':' | '•')
     });
     stripped.to_lowercase()
 }

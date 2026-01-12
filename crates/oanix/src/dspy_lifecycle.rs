@@ -7,7 +7,7 @@ use anyhow::Result;
 use dsrs::core::signature::MetaSignature;
 use dsrs::data::example::Example;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 /// Estimated complexity for an issue or task.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

@@ -4,14 +4,14 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use dsrs::adapter::Adapter;
-use dsrs::{
-    Chat, ChatAdapter, CompletionProvider, Example, LmUsage, Message as DspyMessage,
-    MetaSignature, Prediction, get_callback,
-};
 use dsrs::adapter::Adapter;
+use dsrs::{
+    Chat, ChatAdapter, CompletionProvider, Example, LmUsage, Message as DspyMessage, MetaSignature,
+    Prediction, get_callback,
+};
+use rig_core::OneOrMany;
 use rig_core::completion::{CompletionError, CompletionRequest, CompletionResponse, Usage};
 use rig_core::message::{AssistantContent, Message as RigMessage, Text, UserContent};
-use rig_core::OneOrMany;
 use uuid::Uuid;
 
 use crate::error::{GatewayError, Result as GatewayResult};
@@ -110,10 +110,7 @@ impl GatewayLM {
         let usage = gateway_usage_to_dsrs(&response);
         callback.on_lm_end(call_id, Ok(()), &usage);
 
-        let text = response
-            .content()
-            .unwrap_or_default()
-            .to_string();
+        let text = response.content().unwrap_or_default().to_string();
         if text.is_empty() {
             return Err(CompletionError::ProviderError(
                 "Gateway response missing text content".to_string(),
@@ -158,11 +155,8 @@ pub async fn query_with_signature(
 ) -> GatewayResult<Prediction> {
     let adapter = ChatAdapter::default();
     let chat = adapter.format(signature, inputs);
-    let completion_request = completion_request_from_chat(
-        &chat,
-        config.temperature,
-        config.max_tokens,
-    );
+    let completion_request =
+        completion_request_from_chat(&chat, config.temperature, config.max_tokens);
 
     let mut lm = GatewayLM::new(gateway, config.model);
     if let Some(temp) = config.temperature {

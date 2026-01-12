@@ -202,7 +202,9 @@ mod tests {
         let request = RerankRequest {
             user_task: "Find relevant code".into(),
             candidates: vec![
-                RerankCandidate::new("c1", "code1").with_path("file1.rs").with_score(0.8),
+                RerankCandidate::new("c1", "code1")
+                    .with_path("file1.rs")
+                    .with_score(0.8),
                 RerankCandidate::new("c2", "code2").with_path("file2.rs"),
             ],
             k: 3,

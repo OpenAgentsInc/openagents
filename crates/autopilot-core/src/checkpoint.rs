@@ -8,9 +8,9 @@
 use std::fs;
 use std::path::PathBuf;
 
+use agent_client_protocol_schema as acp;
 use chrono::{DateTime, Local};
 use serde::{Deserialize, Serialize};
-use agent_client_protocol_schema as acp;
 
 use crate::startup::{AgentEvent, AgentModel, LogLine, StartupPhase};
 use crate::verification::TerminationChecklist;

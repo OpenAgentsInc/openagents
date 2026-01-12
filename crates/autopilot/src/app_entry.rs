@@ -17,7 +17,6 @@ mod state_actions;
 
 const COMMAND_PALETTE_ENABLED: bool = false;
 
-
 mod command_palette_ids {
     pub const HELP: &str = "help.open";
     pub const SETTINGS: &str = "settings.open";
@@ -69,8 +68,6 @@ mod command_palette_ids {
     pub const BUG_REPORT: &str = "bug.report";
     pub const KITCHEN_SINK: &str = "dev.kitchen_sink";
 }
-
-
 
 /// Main application
 pub struct AutopilotApp {

@@ -25,9 +25,7 @@ impl FmBridgeBackend {
 
     /// Create a new FM Bridge backend with a custom URL.
     pub fn with_url(url: impl Into<String>) -> Result<Self> {
-        let client = fm_bridge::FMClientBuilder::new()
-            .base_url(url)
-            .build()?;
+        let client = fm_bridge::FMClientBuilder::new().base_url(url).build()?;
         Ok(Self {
             client,
             models: vec!["apple-fm".to_string()],
@@ -112,15 +110,16 @@ impl LmBackend for FmBridgeBackend {
         };
 
         // Convert FinishReason enum to string
-        let finish_reason = response
-            .choices
-            .first()
-            .and_then(|c| c.finish_reason)
-            .map(|r| match r {
-                fm_bridge::FinishReason::Stop => "stop".to_string(),
-                fm_bridge::FinishReason::Length => "length".to_string(),
-                fm_bridge::FinishReason::ToolCalls => "tool_calls".to_string(),
-            });
+        let finish_reason =
+            response
+                .choices
+                .first()
+                .and_then(|c| c.finish_reason)
+                .map(|r| match r {
+                    fm_bridge::FinishReason::Stop => "stop".to_string(),
+                    fm_bridge::FinishReason::Length => "length".to_string(),
+                    fm_bridge::FinishReason::ToolCalls => "tool_calls".to_string(),
+                });
 
         let mut resp = LmResponse::new(text, model, usage);
         if let Some(reason) = finish_reason {
@@ -146,9 +145,7 @@ mod tests {
 
     #[test]
     fn test_supported_models() {
-        let backend = FmBridgeBackend::new()
-            .unwrap()
-            .with_model("custom-model");
+        let backend = FmBridgeBackend::new().unwrap().with_model("custom-model");
 
         let models = backend.supported_models();
         assert!(models.contains(&"apple-fm".to_string()));

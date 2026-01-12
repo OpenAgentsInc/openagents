@@ -6,7 +6,7 @@ use crate::core::signature::MetaSignature;
 use crate::data::example::Example;
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 /// Types of analysis tasks for code chunks.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -86,7 +86,8 @@ pub struct ChunkTaskSelectorSignature {
 impl Default for ChunkTaskSelectorSignature {
     fn default() -> Self {
         Self {
-            instruction: r#"You are an expert at analyzing code. Given a code chunk and the user's task,
+            instruction:
+                r#"You are an expert at analyzing code. Given a code chunk and the user's task,
 decide what analysis tasks would be most useful.
 
 Available analysis tasks:
@@ -105,7 +106,7 @@ Consider:
 4. Cost-effectiveness of each analysis
 
 Output the most useful tasks in priority order."#
-                .to_string(),
+                    .to_string(),
             demos: vec![],
         }
     }

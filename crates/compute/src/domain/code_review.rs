@@ -5,7 +5,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use nostr::nip90::{JobInput, JobRequest, JobResult, Nip90Error, KIND_JOB_CODE_REVIEW};
+use nostr::nip90::{JobInput, JobRequest, JobResult, KIND_JOB_CODE_REVIEW, Nip90Error};
 
 /// Severity level for review issues
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -206,7 +206,11 @@ pub enum ReviewInput {
     /// Commit SHA(s) to review
     Commits { repo: String, shas: Vec<String> },
     /// Specific files to review at a ref
-    Files { repo: String, git_ref: String, paths: Vec<String> },
+    Files {
+        repo: String,
+        git_ref: String,
+        paths: Vec<String>,
+    },
 }
 
 /// A code review request
@@ -351,7 +355,11 @@ impl CodeReviewRequest {
                     request = request.add_param(format!("commit_{}", i), sha);
                 }
             }
-            ReviewInput::Files { repo, git_ref, paths } => {
+            ReviewInput::Files {
+                repo,
+                git_ref,
+                paths,
+            } => {
                 request = request
                     .add_input(JobInput::url(repo).with_marker("repo"))
                     .add_param("git_ref", git_ref);
@@ -463,7 +471,9 @@ impl CodeReviewRequest {
                 paths: files,
             }
         } else {
-            return Err(Nip90Error::MissingTag("review input (diff, pr, commits, or files)".to_string()));
+            return Err(Nip90Error::MissingTag(
+                "review input (diff, pr, commits, or files)".to_string(),
+            ));
         };
 
         Ok(Self {
@@ -627,10 +637,11 @@ impl CodeReviewResult {
         amount: Option<u64>,
         bolt11: Option<String>,
     ) -> Result<JobResult, Nip90Error> {
-        let content = serde_json::to_string(self)
-            .map_err(|e| Nip90Error::Serialization(e.to_string()))?;
+        let content =
+            serde_json::to_string(self).map_err(|e| Nip90Error::Serialization(e.to_string()))?;
 
-        let mut result = JobResult::new(KIND_JOB_CODE_REVIEW, request_id, customer_pubkey, content)?;
+        let mut result =
+            JobResult::new(KIND_JOB_CODE_REVIEW, request_id, customer_pubkey, content)?;
 
         if let Some(amt) = amount {
             result = result.with_amount(amt, bolt11);
@@ -641,8 +652,7 @@ impl CodeReviewResult {
 
     /// Parse from NIP-90 JobResult content
     pub fn from_job_result(result: &JobResult) -> Result<Self, Nip90Error> {
-        serde_json::from_str(&result.content)
-            .map_err(|e| Nip90Error::Serialization(e.to_string()))
+        serde_json::from_str(&result.content).map_err(|e| Nip90Error::Serialization(e.to_string()))
     }
 
     /// Get the content for NIP-90 result event content field
@@ -753,8 +763,8 @@ mod tests {
 
     #[test]
     fn test_code_review_request_to_job() {
-        let request = CodeReviewRequest::from_diff("diff content")
-            .focus_on(IssueCategory::Security);
+        let request =
+            CodeReviewRequest::from_diff("diff content").focus_on(IssueCategory::Security);
 
         let job = request.to_job_request().unwrap();
         assert_eq!(job.kind, KIND_JOB_CODE_REVIEW);

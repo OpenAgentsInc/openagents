@@ -7,7 +7,9 @@ use wgpui::components::molecules::{
     CheckpointRestore, SessionAction, SessionCard, SessionInfo as SessionCardInfo,
 };
 
-use super::{CheckpointEntry, RateLimits, SessionEntry, SessionInfo, SessionUpdate, SessionUsageStats};
+use super::{
+    CheckpointEntry, RateLimits, SessionEntry, SessionInfo, SessionUpdate, SessionUsageStats,
+};
 use crate::app::chat::{ChatMessage, ChatState, MessageRole};
 use crate::app::config::session_messages_dir;
 use crate::app::events::ModalState;
@@ -81,10 +83,7 @@ impl SessionState {
                     SessionStatus::Completed
                 };
                 let title = if entry.last_message.trim().is_empty() {
-                    format!(
-                        "Session {}",
-                        super::super::truncate_preview(&entry.id, 8)
-                    )
+                    format!("Session {}", super::super::truncate_preview(&entry.id, 8))
                 } else {
                     super::super::truncate_preview(&entry.last_message, 64)
                 };
@@ -145,7 +144,11 @@ impl SessionState {
             .map(|msg| super::super::truncate_preview(&msg.content, 140))
             .unwrap_or_default();
 
-        if let Some(entry) = self.session_index.iter_mut().find(|entry| entry.id == session_id) {
+        if let Some(entry) = self
+            .session_index
+            .iter_mut()
+            .find(|entry| entry.id == session_id)
+        {
             entry.updated_at = now;
             entry.last_message = last_message;
             entry.message_count = messages.len();
@@ -174,7 +177,11 @@ impl SessionState {
         if let Err(err) = super::write_session_messages(session_id, messages) {
             tracing::error!("Failed to write session messages: {}", err);
         }
-        if let Some(entry) = self.session_index.iter().find(|entry| entry.id == session_id) {
+        if let Some(entry) = self
+            .session_index
+            .iter()
+            .find(|entry| entry.id == session_id)
+        {
             if let Err(err) = super::write_session_metadata(session_id, entry) {
                 tracing::error!("Failed to write session metadata: {}", err);
             }
@@ -256,15 +263,17 @@ impl SessionState {
         self.pending_fork_session = true;
         self.session_info.session_id = session_id.clone();
         self.session_info.codex_thread_id = None;
-        if let Some(entry) = self.session_index.iter().find(|entry| entry.id == session_id) {
+        if let Some(entry) = self
+            .session_index
+            .iter()
+            .find(|entry| entry.id == session_id)
+        {
             self.session_info.model = entry.model.clone();
             self.session_info.codex_thread_id = entry.codex_thread_id.clone();
         }
         match self.restore_session(&session_id, chat, tools) {
-            Ok(()) => chat.push_system_message(format!(
-                "Loaded cached history for session {}.",
-                session_id
-            )),
+            Ok(()) => chat
+                .push_system_message(format!("Loaded cached history for session {}.", session_id)),
             Err(_) => {
                 chat.messages.clear();
                 chat.push_system_message(format!(
@@ -273,10 +282,7 @@ impl SessionState {
                 ));
             }
         }
-        chat.push_system_message(format!(
-            "Next message will fork session {}.",
-            session_id
-        ));
+        chat.push_system_message(format!("Next message will fork session {}.", session_id));
         self.refresh_session_cards(chat.is_thinking);
     }
 
@@ -295,15 +301,17 @@ impl SessionState {
         self.pending_fork_session = false;
         self.session_info.session_id = session_id.clone();
         self.session_info.codex_thread_id = None;
-        if let Some(entry) = self.session_index.iter().find(|entry| entry.id == session_id) {
+        if let Some(entry) = self
+            .session_index
+            .iter()
+            .find(|entry| entry.id == session_id)
+        {
             self.session_info.model = entry.model.clone();
             self.session_info.codex_thread_id = entry.codex_thread_id.clone();
         }
         match self.restore_session(&session_id, chat, tools) {
-            Ok(()) => chat.push_system_message(format!(
-                "Loaded cached history for session {}.",
-                session_id
-            )),
+            Ok(()) => chat
+                .push_system_message(format!("Loaded cached history for session {}.", session_id)),
             Err(_) => {
                 chat.messages.clear();
                 chat.push_system_message(format!(
@@ -440,8 +448,7 @@ impl SessionState {
                     existing.updated_at = entry.updated_at;
                     updated = true;
                 }
-                if existing.last_message.trim().is_empty()
-                    && !entry.last_message.trim().is_empty()
+                if existing.last_message.trim().is_empty() && !entry.last_message.trim().is_empty()
                 {
                     existing.last_message = entry.last_message.clone();
                     updated = true;

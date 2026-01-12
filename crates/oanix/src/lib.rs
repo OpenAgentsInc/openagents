@@ -52,16 +52,15 @@ pub mod tick;
 pub use boot::{boot, boot_with_config};
 pub use manifest::{
     BootConfig, ComputeManifest, DirectiveSummary, GpuDevice, HardwareManifest, IdentityManifest,
-    InferenceBackend, IssueSummary, NetworkManifest, OanixManifest, RelayStatus,
-    WorkspaceManifest,
+    InferenceBackend, IssueSummary, NetworkManifest, OanixManifest, RelayStatus, WorkspaceManifest,
 };
 pub use situation::{
-    Connectivity, ComputePower, Environment, RecommendedAction, SituationAssessment,
+    ComputePower, Connectivity, Environment, RecommendedAction, SituationAssessment,
 };
 pub use state::{ActiveTask, OanixMode, OanixState, PersistedState};
 pub use tick::{
-    run_tick_loop, oanix_tick, HousekeepingTask, IssueWork, JobWork, TickConfig, TickResult,
-    UserAction, WorkItem,
+    HousekeepingTask, IssueWork, JobWork, TickConfig, TickResult, UserAction, WorkItem, oanix_tick,
+    run_tick_loop,
 };
 
 // DSPy signatures for learned decision making

@@ -6,7 +6,7 @@
 use super::{RlmTool, ToolConfig, ToolError, ToolResult};
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::fs;
 use std::path::PathBuf;
 
@@ -111,8 +111,9 @@ impl ListFilesTool {
         let full_pattern = self.repo_root.join(glob_pattern);
         let pattern_str = full_pattern.to_string_lossy();
 
-        let entries = glob::glob(&pattern_str)
-            .map_err(|e| ToolError::InvalidPattern(format!("Invalid glob '{}': {}", glob_pattern, e)))?;
+        let entries = glob::glob(&pattern_str).map_err(|e| {
+            ToolError::InvalidPattern(format!("Invalid glob '{}': {}", glob_pattern, e))
+        })?;
 
         let mut files = Vec::new();
 
@@ -186,7 +187,12 @@ impl ListFilesTool {
             "c" => vec!["**/*.c", "**/*.h"],
             "cpp" => vec!["**/*.cpp", "**/*.hpp", "**/*.cc", "**/*.cxx"],
             "markdown" => vec!["**/*.md", "**/*.markdown"],
-            _ => return Err(ToolError::InvalidPattern(format!("Unknown language: {}", language))),
+            _ => {
+                return Err(ToolError::InvalidPattern(format!(
+                    "Unknown language: {}",
+                    language
+                )));
+            }
         };
 
         let mut all_files = Vec::new();
@@ -277,9 +283,7 @@ impl RlmTool for ListFilesTool {
             }));
         }
 
-        let glob = args["glob"]
-            .as_str()
-            .unwrap_or("**/*");
+        let glob = args["glob"].as_str().unwrap_or("**/*");
 
         let files = self.list(glob).await?;
 
@@ -325,9 +329,18 @@ mod tests {
 
     #[tokio::test]
     async fn test_language_detection() {
-        assert_eq!(FileInfo::detect_language("foo.rs"), Some("rust".to_string()));
-        assert_eq!(FileInfo::detect_language("bar.py"), Some("python".to_string()));
-        assert_eq!(FileInfo::detect_language("baz.tsx"), Some("typescript-react".to_string()));
+        assert_eq!(
+            FileInfo::detect_language("foo.rs"),
+            Some("rust".to_string())
+        );
+        assert_eq!(
+            FileInfo::detect_language("bar.py"),
+            Some("python".to_string())
+        );
+        assert_eq!(
+            FileInfo::detect_language("baz.tsx"),
+            Some("typescript-react".to_string())
+        );
         assert_eq!(FileInfo::detect_language("unknown.xyz"), None);
     }
 

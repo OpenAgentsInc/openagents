@@ -30,10 +30,10 @@ pub mod list_files;
 pub mod read_lines;
 pub mod symbols;
 
-pub use grep::{GrepTool, GrepHit};
-pub use list_files::{ListFilesTool, FileInfo};
+pub use grep::{GrepHit, GrepTool};
+pub use list_files::{FileInfo, ListFilesTool};
 pub use read_lines::{ReadLinesTool, ReadResult};
-pub use symbols::{SymbolsTool, SymbolInfo, SymbolKind};
+pub use symbols::{SymbolInfo, SymbolKind, SymbolsTool};
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};

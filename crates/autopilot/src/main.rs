@@ -6,8 +6,8 @@ use clap::Parser;
 use tracing_subscriber::EnvFilter;
 use winit::event_loop::EventLoop;
 
+use adjutant::cli::{AutopilotCli, execute};
 use autopilot::AutopilotApp;
-use adjutant::cli::{execute, AutopilotCli};
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();

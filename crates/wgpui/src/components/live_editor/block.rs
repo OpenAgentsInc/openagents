@@ -419,7 +419,10 @@ mod tests {
         assert_eq!(parser.detect_block_type("```rust"), BlockType::CodeFence);
         assert_eq!(parser.detect_block_type("let x = 1;"), BlockType::CodeBlock);
         assert_eq!(parser.detect_block_type("```"), BlockType::CodeFence);
-        assert_eq!(parser.detect_block_type("normal text"), BlockType::Paragraph);
+        assert_eq!(
+            parser.detect_block_type("normal text"),
+            BlockType::Paragraph
+        );
     }
 
     #[test]

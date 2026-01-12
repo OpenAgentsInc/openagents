@@ -59,8 +59,9 @@ impl OpenAiBackend {
     ///
     /// Uses OPENAI_API_KEY environment variable.
     pub fn new() -> Result<Self> {
-        let api_key = std::env::var("OPENAI_API_KEY")
-            .map_err(|_| Error::RequestFailed("OPENAI_API_KEY environment variable not set".to_string()))?;
+        let api_key = std::env::var("OPENAI_API_KEY").map_err(|_| {
+            Error::RequestFailed("OPENAI_API_KEY environment variable not set".to_string())
+        })?;
 
         let client = Client::builder()
             .timeout(Duration::from_secs(120))
@@ -142,10 +143,9 @@ impl LmBackend for OpenAiBackend {
             )));
         }
 
-        let response_text: String = http_response
-            .text()
-            .await
-            .map_err(|e: reqwest::Error| Error::RequestFailed(format!("Failed to read response: {}", e)))?;
+        let response_text: String = http_response.text().await.map_err(|e: reqwest::Error| {
+            Error::RequestFailed(format!("Failed to read response: {}", e))
+        })?;
 
         let chat_response: ChatResponse = serde_json::from_str(&response_text)?;
 
@@ -155,7 +155,9 @@ impl LmBackend for OpenAiBackend {
             .map(|c| c.message.content.clone())
             .unwrap_or_default();
 
-        let usage = chat_response.usage.map(|u| LmUsage::new(u.prompt_tokens, u.completion_tokens))
+        let usage = chat_response
+            .usage
+            .map(|u| LmUsage::new(u.prompt_tokens, u.completion_tokens))
             .unwrap_or_else(|| LmUsage::new(prompt.len() / 4, text.len() / 4));
 
         Ok(LmResponse::new(text, model, usage))

@@ -112,9 +112,7 @@ impl NexusRuntime {
     }
 
     pub(crate) fn refresh(&self, stats_url: String) {
-        let _ = self
-            .cmd_tx
-            .try_send(NexusCommand::Refresh { stats_url });
+        let _ = self.cmd_tx.try_send(NexusCommand::Refresh { stats_url });
     }
 }
 
@@ -182,7 +180,10 @@ fn now() -> u64 {
         .as_secs()
 }
 
-async fn run_nexus_loop(mut cmd_rx: mpsc::Receiver<NexusCommand>, event_tx: mpsc::Sender<NexusEvent>) {
+async fn run_nexus_loop(
+    mut cmd_rx: mpsc::Receiver<NexusCommand>,
+    event_tx: mpsc::Sender<NexusEvent>,
+) {
     let client = reqwest::Client::new();
 
     while let Some(cmd) = cmd_rx.recv().await {
@@ -217,10 +218,7 @@ async fn run_nexus_loop(mut cmd_rx: mpsc::Receiver<NexusCommand>, event_tx: mpsc
                     }
                     Err(err) => {
                         let _ = event_tx
-                            .send(NexusEvent::Error(format!(
-                                "Stats fetch failed: {}",
-                                err
-                            )))
+                            .send(NexusEvent::Error(format!("Stats fetch failed: {}", err)))
                             .await;
                     }
                 }

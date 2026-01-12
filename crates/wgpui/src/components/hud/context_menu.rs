@@ -765,7 +765,12 @@ mod tests {
         assert_eq!(menu.hovered, Some(0));
         assert_eq!(menu.selected, Some(0));
 
-        let click_event = InputEvent::MouseDown { button: MouseButton::Left, x: point.x, y: point.y, modifiers: Modifiers::default() };
+        let click_event = InputEvent::MouseDown {
+            button: MouseButton::Left,
+            x: point.x,
+            y: point.y,
+            modifiers: Modifiers::default(),
+        };
         menu.event(&click_event, viewport, &mut cx);
         assert!(!menu.is_open());
         assert_eq!(menu.take_selected(), Some("a".to_string()));
@@ -781,7 +786,12 @@ mod tests {
         menu.open(Point::new(30.0, 30.0));
 
         let mut cx = EventContext::new();
-        let click_event = InputEvent::MouseDown { button: MouseButton::Left, x: 0.0, y: 0.0, modifiers: Modifiers::default() };
+        let click_event = InputEvent::MouseDown {
+            button: MouseButton::Left,
+            x: 0.0,
+            y: 0.0,
+            modifiers: Modifiers::default(),
+        };
         let result = menu.event(&click_event, viewport, &mut cx);
         assert_eq!(result, EventResult::Handled);
         assert!(!menu.is_open());

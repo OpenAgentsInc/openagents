@@ -72,7 +72,9 @@ impl LaneRouter {
         // Semantic (check for Ollama)
         let semantic = SemanticIndex::new(path.clone()).with_ollama("nomic-embed-text");
         if semantic.is_available().await {
-            router.lanes.insert("semantic".to_string(), Arc::new(semantic));
+            router
+                .lanes
+                .insert("semantic".to_string(), Arc::new(semantic));
         }
 
         // Set default to first available
@@ -190,7 +192,11 @@ impl LaneRouter {
             .collect();
 
         // Sort by score
-        all_results.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+        all_results.sort_by(|a, b| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
 
         // Deduplicate by path+line
         let mut seen = std::collections::HashSet::new();

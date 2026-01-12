@@ -9,9 +9,9 @@
 //! This enables robust execution of subjective tasks where
 //! quality varies between attempts.
 
-use crate::core::{Module, LM};
+use crate::core::{LM, Module};
 use crate::data::{Example, Prediction};
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use std::sync::Arc;
 
 /// A reward function that evaluates prediction quality.
@@ -334,16 +334,17 @@ mod tests {
             score: AtomicU32::new(0),
         };
 
-        let refined = Refine::new(module)
-            .with_retries(5)
-            .best_of_n()
-            .with_reward(|_input, pred| {
-                pred.data
-                    .get("score")
-                    .and_then(|v| v.as_u64())
-                    .map(|v| v as f32)
-                    .unwrap_or(0.0)
-            });
+        let refined =
+            Refine::new(module)
+                .with_retries(5)
+                .best_of_n()
+                .with_reward(|_input, pred| {
+                    pred.data
+                        .get("score")
+                        .and_then(|v| v.as_u64())
+                        .map(|v| v as f32)
+                        .unwrap_or(0.0)
+                });
 
         let example = Example::new(HashMap::new(), vec![], vec![]);
         let result = refined.forward(example).await.unwrap();

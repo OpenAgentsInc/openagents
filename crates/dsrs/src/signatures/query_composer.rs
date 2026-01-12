@@ -5,7 +5,7 @@
 use crate::core::signature::MetaSignature;
 use crate::data::example::Example;
 use anyhow::Result;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 /// Signature for composing retrieval queries from goals and context.
 ///

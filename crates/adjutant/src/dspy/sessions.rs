@@ -103,7 +103,10 @@ pub enum SessionOutcome {
         verification_passed: bool,
     },
     /// Task failed definitively
-    Failed { reason: String, error: Option<String> },
+    Failed {
+        reason: String,
+        error: Option<String>,
+    },
     /// Reached max iterations without success
     MaxIterationsReached { last_summary: Option<String> },
     /// User interrupted the task
@@ -154,7 +157,11 @@ pub struct AutopilotSession {
 
 impl AutopilotSession {
     /// Create a new session for a task.
-    pub fn new(task_id: impl Into<String>, task_title: impl Into<String>, task_description: impl Into<String>) -> Self {
+    pub fn new(
+        task_id: impl Into<String>,
+        task_title: impl Into<String>,
+        task_description: impl Into<String>,
+    ) -> Self {
         Self {
             id: Uuid::new_v4().to_string(),
             task_id: task_id.into(),
@@ -188,7 +195,8 @@ impl AutopilotSession {
 
     /// Get duration of the session in seconds.
     pub fn duration_secs(&self) -> Option<i64> {
-        self.ended_at.map(|end| (end - self.started_at).num_seconds())
+        self.ended_at
+            .map(|end| (end - self.started_at).num_seconds())
     }
 
     /// Get decisions of a specific type.
@@ -337,8 +345,14 @@ impl SessionStore {
     }
 
     /// Complete the active session with an outcome.
-    pub fn complete_session(&mut self, outcome: SessionOutcome, iterations: usize) -> anyhow::Result<SessionId> {
-        let mut session = self.active_session.take()
+    pub fn complete_session(
+        &mut self,
+        outcome: SessionOutcome,
+        iterations: usize,
+    ) -> anyhow::Result<SessionId> {
+        let mut session = self
+            .active_session
+            .take()
             .ok_or_else(|| anyhow::anyhow!("No active session"))?;
 
         session.complete(outcome.clone(), iterations);
@@ -404,7 +418,10 @@ impl SessionStore {
         for months_back in 0..12 {
             let date = now - chrono::Duration::days(months_back * 30);
             let date_str = date.format("%Y/%m").to_string();
-            let path = self.base_path.join(&date_str).join(format!("{}.json", session_id));
+            let path = self
+                .base_path
+                .join(&date_str)
+                .join(format!("{}.json", session_id));
 
             if path.exists() {
                 let content = fs::read_to_string(&path)?;
@@ -471,18 +488,24 @@ mod tests {
         let mut index = SessionIndex::new();
         assert_eq!(index.success_rate(), 0.0);
 
-        index.add_session("s1", &SessionOutcome::Success {
-            summary: "done".into(),
-            modified_files: vec![],
-            verification_passed: true,
-        });
+        index.add_session(
+            "s1",
+            &SessionOutcome::Success {
+                summary: "done".into(),
+                modified_files: vec![],
+                verification_passed: true,
+            },
+        );
         assert_eq!(index.success_count, 1);
         assert_eq!(index.success_rate(), 1.0);
 
-        index.add_session("s2", &SessionOutcome::Failed {
-            reason: "error".into(),
-            error: None,
-        });
+        index.add_session(
+            "s2",
+            &SessionOutcome::Failed {
+                reason: "error".into(),
+                error: None,
+            },
+        );
         assert_eq!(index.failed_count, 1);
         assert_eq!(index.success_rate(), 0.5);
     }

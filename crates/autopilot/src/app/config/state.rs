@@ -1,7 +1,7 @@
 use tokio::sync::mpsc;
 
-use crate::app::codex_app_server as app_server;
 use crate::app::ModelOption;
+use crate::app::codex_app_server as app_server;
 use crate::keybindings::Keybinding;
 
 use super::CoderSettings;

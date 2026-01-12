@@ -166,7 +166,12 @@ impl TraceCollector {
     pub fn get_traces_for_phase(&self, phase: &str) -> Vec<ExecutionTrace> {
         self.traces
             .read()
-            .map(|t| t.iter().filter(|trace| trace.phase == phase).cloned().collect())
+            .map(|t| {
+                t.iter()
+                    .filter(|trace| trace.phase == phase)
+                    .cloned()
+                    .collect()
+            })
             .unwrap_or_default()
     }
 
@@ -222,12 +227,13 @@ impl TraceCollector {
             Some(scores.iter().sum::<f64>() / scores.len() as f64)
         };
 
-        let by_phase: std::collections::HashMap<String, usize> = traces
-            .iter()
-            .fold(std::collections::HashMap::new(), |mut acc, t| {
-                *acc.entry(t.phase.clone()).or_insert(0) += 1;
-                acc
-            });
+        let by_phase: std::collections::HashMap<String, usize> =
+            traces
+                .iter()
+                .fold(std::collections::HashMap::new(), |mut acc, t| {
+                    *acc.entry(t.phase.clone()).or_insert(0) += 1;
+                    acc
+                });
 
         TraceSummary {
             total_count,
@@ -281,10 +287,11 @@ mod tests {
 
     #[test]
     fn test_trace_creation() {
-        let trace = ExecutionTrace::new("test_module", make_example(), make_prediction(), "model-1")
-            .with_score(0.85)
-            .with_cost(100)
-            .with_phase("bootstrap");
+        let trace =
+            ExecutionTrace::new("test_module", make_example(), make_prediction(), "model-1")
+                .with_score(0.85)
+                .with_cost(100)
+                .with_phase("bootstrap");
 
         assert_eq!(trace.module_name, "test_module");
         assert_eq!(trace.score, Some(0.85));
@@ -331,11 +338,11 @@ mod tests {
         let collector = TraceCollector::new();
 
         // High score trace
-        let trace1 = ExecutionTrace::new("mod", make_example(), make_prediction(), "m1")
-            .with_score(0.9);
+        let trace1 =
+            ExecutionTrace::new("mod", make_example(), make_prediction(), "m1").with_score(0.9);
         // Low score trace
-        let trace2 = ExecutionTrace::new("mod", make_example(), make_prediction(), "m2")
-            .with_score(0.5);
+        let trace2 =
+            ExecutionTrace::new("mod", make_example(), make_prediction(), "m2").with_score(0.5);
         // No score trace
         let trace3 = ExecutionTrace::new("mod", make_example(), make_prediction(), "m3");
 

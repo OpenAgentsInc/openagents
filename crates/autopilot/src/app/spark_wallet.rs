@@ -297,9 +297,7 @@ async fn run_spark_wallet_loop(
                     }
                 },
                 Err(message) => {
-                    let _ = event_tx
-                        .send(SparkWalletEvent::Error(message))
-                        .await;
+                    let _ = event_tx.send(SparkWalletEvent::Error(message)).await;
                 }
             },
         }

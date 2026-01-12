@@ -355,7 +355,12 @@ impl ApplicationHandler for App {
                                     if let ClickTarget::Position(p) = target {
                                         // Generate click events
                                         let move_event = InputEvent::MouseMove { x: p.x, y: p.y };
-                                        let down_event = InputEvent::MouseDown { button: *button, x: p.x, y: p.y, modifiers: Modifiers::default() };
+                                        let down_event = InputEvent::MouseDown {
+                                            button: *button,
+                                            x: p.x,
+                                            y: p.y,
+                                            modifiers: Modifiers::default(),
+                                        };
 
                                         // Observe in overlay
                                         state.demo.overlay.observe_event(&move_event);

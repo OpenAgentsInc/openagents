@@ -392,7 +392,6 @@ impl LMClient {
         };
         Ok(LMClient::Pylon(model))
     }
-
 }
 
 fn select_cheap_model(models: &[String]) -> Option<String> {

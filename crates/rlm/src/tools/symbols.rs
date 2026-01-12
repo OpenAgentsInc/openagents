@@ -9,7 +9,7 @@ use crate::span::SpanRef;
 use async_trait::async_trait;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::fs;
 use std::path::PathBuf;
 
@@ -114,19 +114,20 @@ impl SymbolsTool {
         }
 
         // Detect language from extension
-        let language = path
-            .rsplit('.')
-            .next()
-            .unwrap_or("")
-            .to_lowercase();
+        let language = path.rsplit('.').next().unwrap_or("").to_lowercase();
 
-        let commit = self.config.commit.clone()
+        let commit = self
+            .config
+            .commit
+            .clone()
             .or_else(|| get_current_commit(&self.repo_root));
 
         let symbols = match language.as_str() {
             "rs" => self.extract_rust(&content, path, commit.as_deref()),
             "py" => self.extract_python(&content, path, commit.as_deref()),
-            "ts" | "tsx" | "js" | "jsx" => self.extract_typescript(&content, path, commit.as_deref()),
+            "ts" | "tsx" | "js" | "jsx" => {
+                self.extract_typescript(&content, path, commit.as_deref())
+            }
             "go" => self.extract_go(&content, path, commit.as_deref()),
             _ => self.extract_generic(&content, path, commit.as_deref()),
         };
@@ -145,7 +146,10 @@ impl SymbolsTool {
             (r"^\s*(?:pub\s+)?struct\s+(\w+)", SymbolKind::Struct),
             (r"^\s*(?:pub\s+)?enum\s+(\w+)", SymbolKind::Enum),
             (r"^\s*(?:pub\s+)?trait\s+(\w+)", SymbolKind::Trait),
-            (r"^\s*impl(?:<[^>]+>)?\s+(?:(\w+)\s+for\s+)?(\w+)", SymbolKind::Impl),
+            (
+                r"^\s*impl(?:<[^>]+>)?\s+(?:(\w+)\s+for\s+)?(\w+)",
+                SymbolKind::Impl,
+            ),
             (r"^\s*(?:pub\s+)?const\s+(\w+)", SymbolKind::Const),
             (r"^\s*(?:pub\s+)?static\s+(\w+)", SymbolKind::Static),
             (r"^\s*(?:pub\s+)?type\s+(\w+)", SymbolKind::Type),
@@ -175,10 +179,8 @@ impl SymbolsTool {
                         let doc = self.extract_doc_comment(&lines, line_idx);
 
                         // Calculate byte offset
-                        let byte_offset: u64 = lines[..line_idx]
-                            .iter()
-                            .map(|l| l.len() as u64 + 1)
-                            .sum();
+                        let byte_offset: u64 =
+                            lines[..line_idx].iter().map(|l| l.len() as u64 + 1).sum();
 
                         let span = SpanRef::with_range(
                             format!("sym-{}-{}", path.replace('/', "-"), name),
@@ -234,10 +236,8 @@ impl SymbolsTool {
 
                             let doc = self.extract_python_docstring(&lines, line_idx);
 
-                            let byte_offset: u64 = lines[..line_idx]
-                                .iter()
-                                .map(|l| l.len() as u64 + 1)
-                                .sum();
+                            let byte_offset: u64 =
+                                lines[..line_idx].iter().map(|l| l.len() as u64 + 1).sum();
 
                             let span = SpanRef::with_range(
                                 format!("sym-{}-{}", path.replace('/', "-"), name),
@@ -272,18 +272,29 @@ impl SymbolsTool {
     }
 
     /// Extract symbols from TypeScript/JavaScript source.
-    fn extract_typescript(&self, content: &str, path: &str, commit: Option<&str>) -> Vec<SymbolInfo> {
+    fn extract_typescript(
+        &self,
+        content: &str,
+        path: &str,
+        commit: Option<&str>,
+    ) -> Vec<SymbolInfo> {
         let mut symbols = Vec::new();
         let lines: Vec<&str> = content.lines().collect();
 
         let patterns = [
-            (r"(?:export\s+)?(?:async\s+)?function\s+(\w+)", SymbolKind::Function),
+            (
+                r"(?:export\s+)?(?:async\s+)?function\s+(\w+)",
+                SymbolKind::Function,
+            ),
             (r"(?:export\s+)?class\s+(\w+)", SymbolKind::Class),
             (r"(?:export\s+)?interface\s+(\w+)", SymbolKind::Interface),
             (r"(?:export\s+)?type\s+(\w+)", SymbolKind::Type),
             (r"(?:export\s+)?const\s+(\w+)", SymbolKind::Const),
             (r"(?:export\s+)?(?:let|var)\s+(\w+)", SymbolKind::Variable),
-            (r"^\s+(?:async\s+)?(\w+)\s*\([^)]*\)\s*[:{]", SymbolKind::Method),
+            (
+                r"^\s+(?:async\s+)?(\w+)\s*\([^)]*\)\s*[:{]",
+                SymbolKind::Method,
+            ),
         ];
 
         for (pattern, kind) in &patterns {
@@ -296,10 +307,8 @@ impl SymbolsTool {
 
                             let doc = self.extract_jsdoc(&lines, line_idx);
 
-                            let byte_offset: u64 = lines[..line_idx]
-                                .iter()
-                                .map(|l| l.len() as u64 + 1)
-                                .sum();
+                            let byte_offset: u64 =
+                                lines[..line_idx].iter().map(|l| l.len() as u64 + 1).sum();
 
                             let span = SpanRef::with_range(
                                 format!("sym-{}-{}", path.replace('/', "-"), name),
@@ -356,10 +365,8 @@ impl SymbolsTool {
 
                             let doc = self.extract_doc_comment(&lines, line_idx);
 
-                            let byte_offset: u64 = lines[..line_idx]
-                                .iter()
-                                .map(|l| l.len() as u64 + 1)
-                                .sum();
+                            let byte_offset: u64 =
+                                lines[..line_idx].iter().map(|l| l.len() as u64 + 1).sum();
 
                             let span = SpanRef::with_range(
                                 format!("sym-{}-{}", path.replace('/', "-"), name),
@@ -412,10 +419,8 @@ impl SymbolsTool {
                             let name = name.as_str().to_string();
                             let line_num = line_idx as u32 + 1;
 
-                            let byte_offset: u64 = lines[..line_idx]
-                                .iter()
-                                .map(|l| l.len() as u64 + 1)
-                                .sum();
+                            let byte_offset: u64 =
+                                lines[..line_idx].iter().map(|l| l.len() as u64 + 1).sum();
 
                             let span = SpanRef::with_range(
                                 format!("sym-{}-{}", path.replace('/', "-"), name),
@@ -494,11 +499,20 @@ impl SymbolsTool {
 
         let next_line = lines[target_idx + 1].trim();
         if next_line.starts_with("\"\"\"") || next_line.starts_with("'''") {
-            let quote = if next_line.starts_with("\"\"\"") { "\"\"\"" } else { "'''" };
+            let quote = if next_line.starts_with("\"\"\"") {
+                "\"\"\""
+            } else {
+                "'''"
+            };
 
             if next_line.ends_with(quote) && next_line.len() > 6 {
                 // Single line docstring
-                return Some(next_line.trim_matches(|c| c == '"' || c == '\'').trim().to_string());
+                return Some(
+                    next_line
+                        .trim_matches(|c| c == '"' || c == '\'')
+                        .trim()
+                        .to_string(),
+                );
             }
 
             // Multi-line docstring
@@ -537,10 +551,7 @@ impl SymbolsTool {
                 in_jsdoc = true;
                 if line.starts_with("/**") {
                     // Single line JSDoc
-                    let content = line
-                        .trim_start_matches("/**")
-                        .trim_end_matches("*/")
-                        .trim();
+                    let content = line.trim_start_matches("/**").trim_end_matches("*/").trim();
                     return Some(content.to_string());
                 }
             } else if in_jsdoc {
@@ -641,13 +652,30 @@ mod tests {
         let tool = SymbolsTool::new(temp.path().to_path_buf());
         let symbols = tool.extract("test.rs").await.unwrap();
 
-        assert!(symbols.iter().any(|s| s.name == "hello" && s.kind == SymbolKind::Function));
-        assert!(symbols.iter().any(|s| s.name == "Point" && s.kind == SymbolKind::Struct));
-        assert!(symbols.iter().any(|s| s.name == "new" && s.kind == SymbolKind::Function));
+        assert!(
+            symbols
+                .iter()
+                .any(|s| s.name == "hello" && s.kind == SymbolKind::Function)
+        );
+        assert!(
+            symbols
+                .iter()
+                .any(|s| s.name == "Point" && s.kind == SymbolKind::Struct)
+        );
+        assert!(
+            symbols
+                .iter()
+                .any(|s| s.name == "new" && s.kind == SymbolKind::Function)
+        );
 
         // Check doc comment was extracted
         let hello = symbols.iter().find(|s| s.name == "hello").unwrap();
-        assert!(hello.doc.as_ref().map_or(false, |d| d.contains("test function")));
+        assert!(
+            hello
+                .doc
+                .as_ref()
+                .map_or(false, |d| d.contains("test function"))
+        );
     }
 
     #[tokio::test]
@@ -667,8 +695,16 @@ mod tests {
         let tool = SymbolsTool::new(temp.path().to_path_buf());
         let symbols = tool.extract("test.py").await.unwrap();
 
-        assert!(symbols.iter().any(|s| s.name == "hello" && s.kind == SymbolKind::Function));
-        assert!(symbols.iter().any(|s| s.name == "Point" && s.kind == SymbolKind::Class));
+        assert!(
+            symbols
+                .iter()
+                .any(|s| s.name == "hello" && s.kind == SymbolKind::Function)
+        );
+        assert!(
+            symbols
+                .iter()
+                .any(|s| s.name == "Point" && s.kind == SymbolKind::Class)
+        );
     }
 
     #[tokio::test]
@@ -685,9 +721,25 @@ mod tests {
         let tool = SymbolsTool::new(temp.path().to_path_buf());
         let symbols = tool.extract("test.ts").await.unwrap();
 
-        assert!(symbols.iter().any(|s| s.name == "hello" && s.kind == SymbolKind::Function));
-        assert!(symbols.iter().any(|s| s.name == "Point" && s.kind == SymbolKind::Class));
-        assert!(symbols.iter().any(|s| s.name == "Shape" && s.kind == SymbolKind::Interface));
-        assert!(symbols.iter().any(|s| s.name == "ID" && s.kind == SymbolKind::Type));
+        assert!(
+            symbols
+                .iter()
+                .any(|s| s.name == "hello" && s.kind == SymbolKind::Function)
+        );
+        assert!(
+            symbols
+                .iter()
+                .any(|s| s.name == "Point" && s.kind == SymbolKind::Class)
+        );
+        assert!(
+            symbols
+                .iter()
+                .any(|s| s.name == "Shape" && s.kind == SymbolKind::Interface)
+        );
+        assert!(
+            symbols
+                .iter()
+                .any(|s| s.name == "ID" && s.kind == SymbolKind::Type)
+        );
     }
 }

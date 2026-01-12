@@ -1,9 +1,9 @@
 //! Wallet service traits for Lightning payments and FX rates.
 
 use crate::fx::{FxError, FxRateProvider, FxRateSnapshot};
+use async_trait::async_trait;
 use std::future::Future;
 use std::sync::Arc;
-use async_trait::async_trait;
 
 /// Wallet errors.
 #[derive(Debug, thiserror::Error)]

@@ -62,7 +62,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // First, let's see what the LLM actually responds with
     println!("\n--- Testing raw LLM response ---\n");
-    let test_prompt = format!("You are an AI that can execute code. Answer this: {}\n\nRespond with FINAL <answer> when done.", query);
+    let test_prompt = format!(
+        "You are an AI that can execute code. Answer this: {}\n\nRespond with FINAL <answer> when done.",
+        query
+    );
     match client.complete(&test_prompt, None).await {
         Ok(resp) => {
             let text = resp.choices.first().map(|c| &c.message.content).unwrap();
@@ -85,9 +88,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     println!("--- Iteration {} ---", entry.iteration);
                     println!("Command: {}", entry.command_type);
                     if !entry.executed.is_empty() {
-                        println!("Executed: {}", entry.executed.chars().take(100).collect::<String>());
+                        println!(
+                            "Executed: {}",
+                            entry.executed.chars().take(100).collect::<String>()
+                        );
                     }
-                    println!("Result: {}", entry.result.chars().take(200).collect::<String>());
+                    println!(
+                        "Result: {}",
+                        entry.result.chars().take(200).collect::<String>()
+                    );
                     println!();
                 }
             }

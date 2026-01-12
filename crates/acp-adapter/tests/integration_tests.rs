@@ -531,9 +531,9 @@ async fn test_openagents_client_file_operations() {
 
 #[tokio::test]
 async fn test_rlog_streaming() {
+    use serde_json::json;
     use std::time::Duration;
     use tokio::time::sleep;
-    use serde_json::json;
 
     let temp_dir = std::env::temp_dir();
     let log_file = temp_dir.join("acp-test-stream.rlog");

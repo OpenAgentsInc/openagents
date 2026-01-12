@@ -1,6 +1,7 @@
 mod agent_state_inspector;
 mod apm_leaderboard;
 mod assistant_message;
+mod codex_event_cards;
 mod diff_tool_call;
 mod dm_thread;
 mod event_inspector;
@@ -24,6 +25,11 @@ pub use agent_state_inspector::{
 };
 pub use apm_leaderboard::{ApmLeaderboard, LeaderboardEntry};
 pub use assistant_message::AssistantMessage;
+pub use codex_event_cards::{
+    CodexEventCard, CodexEventLine, CodexEventTone, CodexMcpToolCallCard, CodexPlanCard,
+    CodexPlanStep, CodexPlanStepStatus, CodexRateLimitCard, CodexRateLimitWindow,
+    CodexRawResponseCard, CodexReasoningCard, CodexTerminalInteractionCard, CodexTokenUsageCard,
+};
 pub use diff_tool_call::{DiffLine, DiffLineKind, DiffToolCall};
 pub use dm_thread::DmThread;
 pub use event_inspector::{EventCategory, EventData, EventInspector, InspectorView, TagData};

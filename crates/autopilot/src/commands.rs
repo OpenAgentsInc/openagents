@@ -4,8 +4,8 @@ pub enum Command {
     Clear,
     Compact,
     Model,
-    Backend,      // Toggle between backends
-    BackendSet(String),  // Set specific backend
+    Backend,            // Toggle between backends
+    BackendSet(String), // Set specific backend
     Undo,
     Cancel,
     Bug,
@@ -660,7 +660,7 @@ pub fn parse_command(input: &str) -> Option<Command> {
 fn parse_backend_command(args: Vec<String>) -> Command {
     let mut parts = args.into_iter();
     match parts.next().as_deref() {
-        None => Command::Backend,  // Toggle
+        None => Command::Backend, // Toggle
         Some("toggle") => Command::Backend,
         Some(name) => Command::BackendSet(name.to_string()),
     }

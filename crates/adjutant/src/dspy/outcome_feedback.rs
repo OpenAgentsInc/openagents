@@ -117,9 +117,20 @@ impl LabeledExamplesStore {
     /// Get examples since last optimization (for triggering new optimization).
     pub fn examples_since(&self, since: Option<DateTime<Utc>>) -> usize {
         let cutoff = since.unwrap_or_else(|| DateTime::UNIX_EPOCH.into());
-        self.complexity.iter().filter(|e| e.labeled_at > cutoff).count()
-            + self.delegation.iter().filter(|e| e.labeled_at > cutoff).count()
-            + self.rlm_trigger.iter().filter(|e| e.labeled_at > cutoff).count()
+        self.complexity
+            .iter()
+            .filter(|e| e.labeled_at > cutoff)
+            .count()
+            + self
+                .delegation
+                .iter()
+                .filter(|e| e.labeled_at > cutoff)
+                .count()
+            + self
+                .rlm_trigger
+                .iter()
+                .filter(|e| e.labeled_at > cutoff)
+                .count()
     }
 
     /// Get accuracy for a decision type.
@@ -154,18 +165,20 @@ impl OutcomeFeedback {
     }
 
     /// Process a completed session and create labeled examples.
-    pub fn process_session(&mut self, session: &AutopilotSession) -> anyhow::Result<FeedbackResult> {
-        let outcome = session.outcome.as_ref()
+    pub fn process_session(
+        &mut self,
+        session: &AutopilotSession,
+    ) -> anyhow::Result<FeedbackResult> {
+        let outcome = session
+            .outcome
+            .as_ref()
             .ok_or_else(|| anyhow::anyhow!("Session has no outcome"))?;
 
         let mut result = FeedbackResult::default();
 
         for decision in &session.decisions {
-            let was_correct = self.evaluate_decision_correctness(
-                decision,
-                outcome,
-                session.iterations_used,
-            );
+            let was_correct =
+                self.evaluate_decision_correctness(decision, outcome, session.iterations_used);
 
             result.decisions_evaluated += 1;
             if was_correct {
@@ -223,7 +236,9 @@ impl OutcomeFeedback {
         outcome: &SessionOutcome,
         iterations_used: usize,
     ) -> bool {
-        let predicted = decision.output.get("complexity")
+        let predicted = decision
+            .output
+            .get("complexity")
             .and_then(|v| v.as_str())
             .unwrap_or("Medium");
 
@@ -256,12 +271,10 @@ impl OutcomeFeedback {
     /// Logic:
     /// - Success = delegation decision was correct (whatever we chose worked)
     /// - Failure when we didn't delegate = should have delegated
-    fn is_delegation_correct(
-        &self,
-        decision: &DecisionRecord,
-        outcome: &SessionOutcome,
-    ) -> bool {
-        let should_delegate = decision.output.get("should_delegate")
+    fn is_delegation_correct(&self, decision: &DecisionRecord, outcome: &SessionOutcome) -> bool {
+        let should_delegate = decision
+            .output
+            .get("should_delegate")
             .and_then(|v| v.as_bool())
             .unwrap_or(false);
 
@@ -284,20 +297,26 @@ impl OutcomeFeedback {
     /// Logic:
     /// - Success = RLM decision was correct
     /// - Large context + failure without RLM = should have used RLM
-    fn is_rlm_correct(
-        &self,
-        decision: &DecisionRecord,
-        outcome: &SessionOutcome,
-    ) -> bool {
-        let use_rlm = decision.output.get("use_rlm")
+    fn is_rlm_correct(&self, decision: &DecisionRecord, outcome: &SessionOutcome) -> bool {
+        let use_rlm = decision
+            .output
+            .get("use_rlm")
             .and_then(|v| v.as_bool())
             .unwrap_or(false);
 
         // Try to get estimated tokens from input
-        let estimated_tokens: usize = decision.input_summary
+        let estimated_tokens: usize = decision
+            .input_summary
             .split("estimated_tokens")
             .nth(1)
-            .and_then(|s| s.chars().filter(|c| c.is_ascii_digit()).take(10).collect::<String>().parse().ok())
+            .and_then(|s| {
+                s.chars()
+                    .filter(|c| c.is_ascii_digit())
+                    .take(10)
+                    .collect::<String>()
+                    .parse()
+                    .ok()
+            })
             .unwrap_or(0);
 
         match outcome {
@@ -320,19 +339,35 @@ impl OutcomeFeedback {
     /// Create a summary of the outcome for the labeled example.
     fn summarize_outcome(&self, outcome: &SessionOutcome) -> String {
         match outcome {
-            SessionOutcome::Success { summary, verification_passed, .. } => {
-                format!("Success (verified: {}): {}", verification_passed,
-                    summary.chars().take(100).collect::<String>())
+            SessionOutcome::Success {
+                summary,
+                verification_passed,
+                ..
+            } => {
+                format!(
+                    "Success (verified: {}): {}",
+                    verification_passed,
+                    summary.chars().take(100).collect::<String>()
+                )
             }
             SessionOutcome::Failed { reason, .. } => {
                 format!("Failed: {}", reason.chars().take(100).collect::<String>())
             }
             SessionOutcome::MaxIterationsReached { last_summary } => {
-                format!("MaxIterations: {}",
-                    last_summary.as_deref().unwrap_or("no summary").chars().take(100).collect::<String>())
+                format!(
+                    "MaxIterations: {}",
+                    last_summary
+                        .as_deref()
+                        .unwrap_or("no summary")
+                        .chars()
+                        .take(100)
+                        .collect::<String>()
+                )
             }
             SessionOutcome::UserInterrupted => "UserInterrupted".to_string(),
-            SessionOutcome::Error(e) => format!("Error: {}", e.chars().take(100).collect::<String>()),
+            SessionOutcome::Error(e) => {
+                format!("Error: {}", e.chars().take(100).collect::<String>())
+            }
         }
     }
 

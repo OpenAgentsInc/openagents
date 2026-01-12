@@ -124,9 +124,7 @@ pub(crate) fn parse_frontmatter(contents: &str) -> (Frontmatter, String) {
         if is_list_key(&key) {
             frontmatter.lists.insert(key, parse_list_values(value));
         } else {
-            frontmatter
-                .scalars
-                .insert(key, strip_quotes(value));
+            frontmatter.scalars.insert(key, strip_quotes(value));
         }
     }
 
