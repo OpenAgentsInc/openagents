@@ -304,3 +304,17 @@ RLM should trigger when:
 * **Optimize what matters:** outcome-coupled metrics, not formatting
 * **Avoid Goodhart:** pair metrics with objective checks and audits
 * **Archives over greed:** keep variants; don’t overwrite history
+
+---
+
+## Addendum: 2026-01-12 16:46:40 -0600 (Codex)
+
+Actions taken:
+* Ran `git pull remote` (failed: remote not found), then `git remote -v`, then `git pull origin` (already up to date).
+* Read `AGENT_FOUNDATIONS.md` and inspected Mana Tap + Adjutant code via `rg`/`sed`.
+* Added `tool_step_utility_predict()` and ToolStepUtilitySignature in `crates/adjutant/src/dspy/tool_step_utility.rs`.
+* Exported the ToolStepUtility predictor in `crates/adjutant/src/dspy/mod.rs`.
+* Added `tool_step_utility_metric` in `crates/adjutant/src/dspy/metrics.rs`.
+* Added tool receipts, hashing helpers, and utility gating (curiosity loop) in `crates/autopilot/src/app/manatap/chain/executor.rs`.
+* Added `sha2` + `hex` dependencies in `crates/autopilot/Cargo.toml` and updated `Cargo.lock`.
+* Ran `cargo check -p autopilot` (ok; existing dsrs warning about unused `extract_instruction`).
