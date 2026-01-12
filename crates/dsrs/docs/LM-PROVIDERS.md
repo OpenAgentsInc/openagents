@@ -1,6 +1,6 @@
 # LM Providers
 
-dsrs supports 14+ LM providers via rig-core, with special integrations for Codex SDK and Pylon.
+dsrs supports 14+ LM providers via rig-core, with special integrations for Codex SDK, Pylon, and GPT-OSS.
 
 ## Provider Hierarchy
 
@@ -22,8 +22,8 @@ dsrs supports 14+ LM providers via rig-core, with special integrations for Codex
 │                                                              │
 │  LOW PRIORITY (Local/Cheap)                                  │
 │  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐          │
-│  │   Ollama    │  │   Pylon     │  │ llama.cpp   │          │
-│  │  (local)    │  │(swarm/local)│  │   (local)   │          │
+│  │   Ollama    │  │   Pylon     │  │  GPT-OSS    │          │
+│  │  (local)    │  │(swarm/local)│  │ (llama.cpp) │          │
 │  └─────────────┘  └─────────────┘  └─────────────┘          │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -47,6 +47,45 @@ dsrs::configure_with_adapter(
 ```
 
 ## Codex SDK Provider
+
+## GPT-OSS Provider
+
+Local inference via llama-server with OpenAI's open-weight gpt-oss models.
+
+```rust
+use dsrs::prelude::*;
+
+// Using model string format
+let lm = LM::builder()
+    .model("gptoss:gpt-oss-20b".to_string())
+    .temperature(0.3)
+    .max_tokens(2048)
+    .build()
+    .await?;
+
+dsrs::configure(lm, ChatAdapter);
+
+// Or using base_url for OpenAI-compatible endpoint
+let lm = LM::builder()
+    .base_url("http://localhost:8000".to_string())
+    .model("gpt-oss-20b".to_string())
+    .build()
+    .await?;
+```
+
+**Features:**
+
+- **Structured Output**: Uses `/v1/chat/completions` with `response_format` for JSON schema constraints
+- **Auto-start**: Arrow test binary can auto-start llama-server if not running
+- **GBNF Grammar**: JSON schemas converted to GBNF for guaranteed output format
+- **Harmony Format**: Supports GPT-OSS Harmony prompt format for optimal results
+
+**Environment Variables:**
+
+| Variable | Description |
+|----------|-------------|
+| `GPTOSS_BASE_URL` | Base URL for llama-server (default: `http://localhost:8000`) |
+| `LLAMA_MODEL_PATH` | Path to `.gguf` model file |
 
 ## Pylon Provider
 
@@ -118,6 +157,7 @@ let result = predictor.forward(inputs).await?;  // Uses best available
 | Groq | Very Fast | $ | Good | No |
 | Cerebras | Very Fast | $ | Good | No |
 | Ollama | Variable | Free | Variable | Yes |
+| GPT-OSS | Variable | Free | Good | Yes |
 | Pylon Swarm | Medium | ¢ | Variable | No |
 | Pylon Local | Variable | Free | Variable | Yes |
 
@@ -186,11 +226,12 @@ let lm = LM::new("groq/mixtral-8x7b")
 | Variable | Description |
 |----------|-------------|
 | `OPENAI_API_KEY` | OpenAI API key |
-| `OPENAI_API_KEY` | OpenAI API key |
 | `GOOGLE_API_KEY` | Google AI API key |
 | `GROQ_API_KEY` | Groq API key |
 | `OLLAMA_HOST` | Ollama server URL |
 | `PYLON_RELAY_URL` | Pylon relay URL |
+| `GPTOSS_BASE_URL` | GPT-OSS server URL (default: `http://localhost:8000`) |
+| `LLAMA_MODEL_PATH` | Path to `.gguf` model file for auto-discovery |
 
 ## Error Handling
 

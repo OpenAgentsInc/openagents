@@ -50,7 +50,7 @@ println!("Answer: {}", result.get("answer", None));
 | **Predictors** | `Predict`, `ChainOfThought`, `Refine` for different reasoning patterns |
 | **Optimizers** | COPRO, MIPROv2, GEPA, Pareto for automatic prompt optimization |
 | **DAG Tracing** | Graph/Node types for execution visualization |
-| **Multi-Provider LM** | OpenAI, Gemini, Groq, OpenRouter, Ollama, Pylon, LM-Router, etc. |
+| **Multi-Provider LM** | OpenAI, Gemini, Groq, OpenRouter, Ollama, Pylon, GPT-OSS, LM-Router, etc. |
 | **Callbacks** | Observability hooks for HUD integration |
 | **Caching** | Hybrid memory + disk caching via foyer |
 
@@ -88,7 +88,7 @@ scale to many runs.
 │                                                              │
 │  LM PROVIDERS (via rig-core)                                 │
 │  ┌─────────────────────────────────────────────────────────┐│
-│  │ OpenAI │ Gemini │ Groq │ OpenRouter │ Ollama │ Pylon │ LM-Router │ ... ││
+│  │ OpenAI │ Gemini │ Groq │ OpenRouter │ Ollama │ Pylon │ GPT-OSS │ ... ││
 │  └─────────────────────────────────────────────────────────┘│
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -154,7 +154,8 @@ crates/dsrs/
 │   │   └── lm/
 │   │       ├── client_registry.rs # LM provider registry
 │   │       ├── lm_router.rs       # Provider selection/router
-│   │       └── pylon.rs           # Pylon LM provider
+│   │       ├── pylon.rs           # Pylon LM provider
+│   │       └── gptoss.rs          # GPT-OSS LM provider (structured output)
 │   ├── predictors/
 │   │   ├── predict.rs      # Base Predict with callbacks
 │   │   └── refine.rs       # Retry/fallback meta-operator
