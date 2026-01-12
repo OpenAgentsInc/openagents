@@ -1,6 +1,6 @@
 //! LLM initialization and configuration.
 
-use crate::app::manatap::chain::{ChainEventSender, ChainedCallback, VisualizerCallback};
+use crate::app::chainviz::chain::{ChainEventSender, ChainedCallback, VisualizerCallback};
 use anyhow::{Context, Result};
 use dsrs::{ChatAdapter, LM};
 use gpt_oss::{GptOssClient, LlamaServerManager};
@@ -71,10 +71,10 @@ pub async fn init_llm(
     if server_available {
         server_ready = true;
         status_message = format!("Connected to existing server at {}", config.server_url);
-        eprintln!("[manatap] {}", status_message);
+        eprintln!("[chainviz] {}", status_message);
     } else if config.auto_start {
         // Try to auto-start the server
-        eprintln!("[manatap] Server not running, attempting auto-start...");
+        eprintln!("[chainviz] Server not running, attempting auto-start...");
 
         // Check if binary is available
         if !LlamaServerManager::is_available() {
@@ -97,7 +97,7 @@ pub async fn init_llm(
             }
         };
 
-        eprintln!("[manatap] Using model: {}", model_path.display());
+        eprintln!("[chainviz] Using model: {}", model_path.display());
 
         // Start the server
         let mut manager = LlamaServerManager::new()
@@ -106,7 +106,7 @@ pub async fn init_llm(
 
         match manager.start() {
             Ok(_) => {
-                eprintln!("[manatap] Server started, waiting for readiness...");
+                eprintln!("[chainviz] Server started, waiting for readiness...");
 
                 // Wait for server to be ready
                 match manager
@@ -117,19 +117,19 @@ pub async fn init_llm(
                         server_ready = true;
                         status_message = "Server auto-started successfully".to_string();
                         server_manager = Some(manager);
-                        eprintln!("[manatap] Server ready!");
+                        eprintln!("[chainviz] Server ready!");
                     }
                     Err(e) => {
                         server_ready = false;
                         status_message = format!("Server startup timeout: {}", e);
-                        eprintln!("[manatap] {}", status_message);
+                        eprintln!("[chainviz] {}", status_message);
                     }
                 }
             }
             Err(e) => {
                 server_ready = false;
                 status_message = format!("Failed to start server: {}", e);
-                eprintln!("[manatap] {}", status_message);
+                eprintln!("[chainviz] {}", status_message);
             }
         }
     } else {
@@ -138,7 +138,7 @@ pub async fn init_llm(
             "Server not available at {} and auto-start is disabled",
             config.server_url
         );
-        eprintln!("[manatap] {}", status_message);
+        eprintln!("[chainviz] {}", status_message);
     }
 
     // Configure dsrs if server is ready
@@ -155,7 +155,7 @@ pub async fn init_llm(
         let callback = VisualizerCallback::new(event_sender);
         dsrs::configure_with_callback(lm, ChatAdapter, callback);
 
-        eprintln!("[manatap] dsrs configured with GPT-OSS backend");
+        eprintln!("[chainviz] dsrs configured with GPT-OSS backend");
     }
 
     Ok(LlmInitResult {

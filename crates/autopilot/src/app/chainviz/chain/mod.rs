@@ -5,7 +5,7 @@ pub mod signatures;
 
 pub use executor::MarkdownSummarizationChain;
 
-use crate::app::manatap::components::{ChainNode, NodeState};
+use crate::app::chainviz::components::{ChainNode, NodeState};
 use anyhow::Error;
 use dsrs::callbacks::DspyCallback;
 use dsrs::data::{Example, Prediction};

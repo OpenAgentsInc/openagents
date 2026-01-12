@@ -77,7 +77,7 @@ impl AutopilotApp {
         match action {
             CommandAction::SubmitPrompt(prompt) => self.submit_prompt(prompt),
             CommandAction::StartReview(review) => self.start_review(review),
-            CommandAction::StartManatap(prompt) => self.start_manatap(prompt),
+            CommandAction::StartChainViz(prompt) => self.start_chainviz(prompt),
             CommandAction::None => {
                 if let Some(prompt) = submit_prompt {
                     self.submit_prompt(prompt);
@@ -116,13 +116,13 @@ impl AutopilotApp {
         self.submit_codex_prompt(prompt);
     }
 
-    pub(super) fn start_manatap(&mut self, prompt: String) {
+    pub(super) fn start_chainviz(&mut self, prompt: String) {
         let Some(state) = &mut self.state else {
             return;
         };
 
-        state.manatap.start(&self.runtime_handle, state.window.clone(), prompt);
-        state.modal_state = ModalState::Manatap;
+        state.chainviz.start(&self.runtime_handle, state.window.clone(), prompt);
+        state.modal_state = ModalState::ChainViz;
         state.window.request_redraw();
     }
 
@@ -2643,8 +2643,8 @@ impl AutopilotApp {
                 self.start_review(review);
                 None
             }
-            Some(CommandAction::StartManatap(prompt)) => {
-                self.start_manatap(prompt);
+            Some(CommandAction::StartChainViz(prompt)) => {
+                self.start_chainviz(prompt);
                 None
             }
             _ => None,
