@@ -12,11 +12,13 @@ infrastructure stack, see [PROJECT_OVERVIEW.md](PROJECT_OVERVIEW.md).
 
 ## Quick Start
 
-Build and run the Autopilot app from this workspace:
+Build and run the Autopilot app from source in this workspace:
 
 ```bash
+git clone https://github.com/OpenAgentsInc/openagents.git
+cd openagents
 cargo build -p autopilot
-cargo run -p autopilot --
+cargo autopilot
 ```
 
 Run Autopilot in CLI mode for a one-off task:
