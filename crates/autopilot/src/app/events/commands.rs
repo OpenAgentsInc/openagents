@@ -1,12 +1,15 @@
 use codex_agent_sdk::{ApprovalMode, SandboxMode};
 use serde::{Deserialize, Serialize};
 
+use crate::commands::ReviewCommand;
+
 use super::super::config::SettingsTab;
 use super::super::{HookModalView, SettingsInputMode};
 
 pub(crate) enum CommandAction {
     None,
     SubmitPrompt(String),
+    StartReview(ReviewCommand),
 }
 
 /// Modal state for slash commands.

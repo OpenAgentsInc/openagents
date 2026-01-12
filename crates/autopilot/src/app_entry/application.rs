@@ -1219,10 +1219,14 @@ impl ApplicationHandler for AutopilotApp {
                                 }
                             }
 
-                            if let CommandAction::SubmitPrompt(prompt) = action {
-                                self.submit_prompt(prompt);
-                            } else if let Some(prompt) = submit_prompt {
-                                self.submit_prompt(prompt);
+                            match action {
+                                CommandAction::SubmitPrompt(prompt) => self.submit_prompt(prompt),
+                                CommandAction::StartReview(review) => self.start_review(review),
+                                CommandAction::None => {
+                                    if let Some(prompt) = submit_prompt {
+                                        self.submit_prompt(prompt);
+                                    }
+                                }
                             }
 
                             if let Some(s) = &self.state {

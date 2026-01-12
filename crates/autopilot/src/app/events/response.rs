@@ -33,6 +33,7 @@ pub(crate) enum ResponseEvent {
         model: String,
         permission_mode: String,
         session_id: String,
+        codex_thread_id: Option<String>,
         tool_count: usize,
         tools: Vec<String>,
         output_style: String,

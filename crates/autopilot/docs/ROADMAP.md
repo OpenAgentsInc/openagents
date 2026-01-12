@@ -12,11 +12,15 @@ coverage of approvals, tool results, and review flows while preserving local
 session continuity and the existing Adjutant-driven autopilot mode. The roadmap
 prioritizes robust transport, event mapping, and session persistence first, then
 builds toward config, auth, MCP, and skills integration that matches the app-server
-API surface. Codex should run as a sidecar runtime controlled over JSONL, with an
-adapter boundary that keeps Autopilot free to orchestrate other runtimes later. The
-event stream should double as the telemetry spine, with raw JSONL and normalized
-events persisted for replay and evaluation, and approvals treated as the autonomy
-control surface rather than a one-off dialog.
+API surface. Codex runs as a sidecar runtime controlled over JSONL, wrapped by an
+AgentRuntime adapter surface (start thread, start turn, stream events, respond to
+approvals, stop) so Autopilot can orchestrate other backends later without
+rewriting the UI. The event stream doubles as the HUD spine and telemetry bus, with
+raw JSONL plus a normalized event log stored as a flight recorder for replay,
+evaluation, and dataset capture, and approvals treated as the autonomy control
+surface rather than a one-off dialog. The sidecar boundary is intentional for crash
+isolation, upgrades, and embedding into other products while keeping an optional
+single-binary mode on the table for the future.
 
 ## Current State (v0.1 snapshot)
 
@@ -44,7 +48,9 @@ Scope: implement a managed process runner that spawns `codex app-server` (or the
 routing without the JSON-RPC version field. The client must perform the initialize
 handshake (`initialize` then `initialized`), detect double-init errors, and expose a
 typed wrapper for core requests and notifications so higher-level systems are not
-stringly typed.
+stringly typed. This milestone should also define the first concrete Codex runtime
+adapter with the minimal lifecycle surface (start thread, start turn, stream events,
+respond to approvals, stop), even if other runtimes are not yet wired in.
 
 Acceptance: Autopilot can start the app-server, issue `thread/start`, and receive
 `thread/started` and `turn/started` notifications without deadlock. The process
@@ -60,7 +66,9 @@ codex-agent-sdk. This includes items such as `userMessage`, `agentMessage`,
 `exitedReviewMode`, `webSearch`, `imageView`, and `compacted`, along with deltas
 (`item/agentMessage/delta`, `item/reasoning/*`, `item/commandExecution/outputDelta`,
 and `item/fileChange/outputDelta`). `turn/diff/updated`, `turn/plan/updated`, and
-`thread/tokenUsage/updated` should feed the existing diff, plan, and usage displays.
+`thread/tokenUsage/updated` should feed the existing diff, plan, and usage displays,
+and the normalized event stream should be ready to drive HUD panes and telemetry
+metrics without additional parsing.
 
 Acceptance: streaming responses and tool outputs render correctly for app-server
 runs, with plan updates and unified diffs appearing live without recompute. The UI
@@ -73,8 +81,10 @@ Scope: connect server-initiated approval requests
 the existing permission dialogs and rule persistence, and apply allow/deny rules to
 auto-decide when possible. Coder modes should map to `approvalPolicy` and
 `sandboxPolicy`, and the client must respond with accept or decline (including
-`acceptSettings` when relevant). Declined or failed approvals must render final
-item status so the user can see what happened.
+`acceptSettings` when relevant). This milestone should frame approvals as autonomy
+levels (read-only / propose / auto) so policy-driven decisions can be layered in
+without reworking the UI. Declined or failed approvals must render final item status
+so the user can see what happened.
 
 Acceptance: a dangerous command or file edit triggers a permission dialog, user
 choice gates execution, and allow/deny updates persist to disk. Subsequent requests
@@ -86,9 +96,13 @@ map to the correct approval response behavior.
 Scope: adopt `thread/list`, `thread/resume`, and `thread/archive` and connect them
 to the session list, resume, fork, and export UI. Store Codex `threadId` alongside
 local session metadata so rollouts can be resumed and archived from the UI, and
-capture raw JSONL wire logs plus normalized event traces for replay and eval. Add
-`review/start` support for inline and detached reviews and render entered/exited
-review items in the chat timeline or a dedicated view.
+capture raw JSONL wire logs plus normalized event traces for replay and eval,
+including per-run `wire.jsonl` plus an event log that maps into the UI timeline.
+This milestone also introduces `review/start` support for inline and detached
+reviews and renders entered/exited review items in the chat timeline or a
+dedicated view so review output is first-class alongside regular turns. The
+rollout artifacts should be usable for deterministic-ish replay and evaluation
+harnesses, not just local history recovery.
 
 Acceptance: session list shows Codex rollouts, resume uses `thread/resume`, and
 review results appear in the UI in a way that mirrors CLI behavior. Session metadata
@@ -104,7 +118,7 @@ auth flows for `account/read`, `account/login/start`, `account/login/cancel`,
 (`mcpServerStatus/list`, `mcpServer/oauth/login`) should drive MCP status and tool
 lists, and `skills/list` should feed skill discovery with a refresh path. Map
 Autopilot skills to Codex skills or MCP tools so capability discovery happens at
-the start of each run.
+the start of each run and tools feel first-class regardless of where they live.
 
 Acceptance: changing models or settings in the UI updates Codex configuration on
 disk, auth state changes are reflected in the UI, and MCP/skill lists populate with
@@ -125,9 +139,15 @@ coverage exists for thread start, turn stream, and approval accept/decline paths
 
 Scope: introduce a runtime adapter interface so Codex is one sidecar runtime behind
 a stable boundary, add runtime pooling with per-job isolation, and normalize event
-streams into a persistent trace format that feeds HUD metrics. Define a policy
-layer that can auto-approve or defer approvals based on rules, and allow multi-step
-workflows to schedule tasks at item boundaries (planner/executor/tester style).
+streams into a persistent trace format that feeds HUD metrics and offline evals.
+Define an autonomy policy layer (read-only / propose / auto) with a small DSL so
+approval decisions can be automated or escalated based on command patterns, path
+rules, and network settings, and add runtime pooling plus per-job isolation (e.g.,
+dedicated `CODEX_HOME`) to safely run multi-backend workflows that schedule work at
+item boundaries (planner/executor/tester style). This is also where multi-backend
+orchestration becomes first-class, with Codex acting as planner/executor while
+specialized runtimes handle tests or refactors and report back through diffs and
+approvals.
 
 Acceptance: Autopilot can select a runtime via the adapter, spin up isolated Codex
 instances, persist raw and normalized traces, and apply a policy-driven approval
@@ -140,7 +160,8 @@ must track versions carefully. Codex binary availability and auth requirements a
 prerequisites for most flows, and mapping local session metadata to Codex rollouts
 must preserve user-visible history without losing data. Codex should remain a
 sidecar process rather than an embedded library to keep lifecycle control and
-multi-runtime swaps safe.
+multi-runtime swaps safe, with embedding treated as an optional future distribution
+mode rather than the default architecture.
 
 ## Out of scope (for now)
 

@@ -7,7 +7,7 @@ use wgpui::components::molecules::{
     CheckpointRestore, SessionAction, SessionCard, SessionInfo as SessionCardInfo,
 };
 
-use super::{CheckpointEntry, RateLimits, SessionEntry, SessionInfo, SessionUsageStats};
+use super::{CheckpointEntry, RateLimits, SessionEntry, SessionInfo, SessionUpdate, SessionUsageStats};
 use crate::app::chat::{ChatMessage, ChatState, MessageRole};
 use crate::app::config::session_messages_dir;
 use crate::app::events::ModalState;
@@ -25,6 +25,8 @@ pub(crate) struct SessionState {
     pub(crate) session_cards: Vec<SessionCard>,
     pub(crate) session_action_tx: Option<mpsc::UnboundedSender<SessionCardEvent>>,
     pub(crate) session_action_rx: Option<mpsc::UnboundedReceiver<SessionCardEvent>>,
+    pub(crate) session_update_tx: Option<mpsc::UnboundedSender<SessionUpdate>>,
+    pub(crate) session_update_rx: Option<mpsc::UnboundedReceiver<SessionUpdate>>,
     pub(crate) checkpoint_restore: CheckpointRestore,
     pub(crate) checkpoint_entries: Vec<CheckpointEntry>,
     pub(crate) checkpoint_action_tx: Option<mpsc::UnboundedSender<usize>>,
@@ -53,6 +55,8 @@ impl SessionState {
             session_cards: Vec::new(),
             session_action_tx: None,
             session_action_rx: None,
+            session_update_tx: None,
+            session_update_rx: None,
             checkpoint_restore: CheckpointRestore::new(),
             checkpoint_entries: Vec::new(),
             checkpoint_action_tx: None,
@@ -146,9 +150,11 @@ impl SessionState {
             entry.last_message = last_message;
             entry.message_count = messages.len();
             entry.model = self.session_info.model.clone();
+            entry.codex_thread_id = self.session_info.codex_thread_id.clone();
         } else {
             self.session_index.push(SessionEntry {
                 id: session_id.to_string(),
+                codex_thread_id: self.session_info.codex_thread_id.clone(),
                 created_at: now,
                 updated_at: now,
                 last_message,
@@ -249,8 +255,10 @@ impl SessionState {
         self.pending_resume_session = Some(session_id.clone());
         self.pending_fork_session = true;
         self.session_info.session_id = session_id.clone();
+        self.session_info.codex_thread_id = None;
         if let Some(entry) = self.session_index.iter().find(|entry| entry.id == session_id) {
             self.session_info.model = entry.model.clone();
+            self.session_info.codex_thread_id = entry.codex_thread_id.clone();
         }
         match self.restore_session(&session_id, chat, tools) {
             Ok(()) => chat.push_system_message(format!(
@@ -286,8 +294,10 @@ impl SessionState {
         self.pending_resume_session = Some(session_id.clone());
         self.pending_fork_session = false;
         self.session_info.session_id = session_id.clone();
+        self.session_info.codex_thread_id = None;
         if let Some(entry) = self.session_index.iter().find(|entry| entry.id == session_id) {
             self.session_info.model = entry.model.clone();
+            self.session_info.codex_thread_id = entry.codex_thread_id.clone();
         }
         match self.restore_session(&session_id, chat, tools) {
             Ok(()) => chat.push_system_message(format!(
@@ -328,6 +338,7 @@ impl SessionState {
         tools.current_tool_use_id = None;
         tools.tool_history.clear();
         self.session_info.session_id.clear();
+        self.session_info.codex_thread_id = None;
         self.session_info.tool_count = 0;
         self.session_info.tools.clear();
         self.pending_resume_session = None;
@@ -351,6 +362,7 @@ impl SessionState {
         tools.tool_history.clear();
         self.session_usage = SessionUsageStats::default();
         self.session_info.session_id.clear();
+        self.session_info.codex_thread_id = None;
         self.session_info.tool_count = 0;
         self.session_info.tools.clear();
         self.pending_resume_session = None;
@@ -394,5 +406,90 @@ impl SessionState {
         } else {
             self.refresh_checkpoint_restore(&chat.messages);
         }
+    }
+
+    pub(crate) fn merge_session_entries(
+        &mut self,
+        entries: Vec<SessionEntry>,
+        settings: &crate::app::config::CoderSettings,
+        is_thinking: bool,
+    ) {
+        if entries.is_empty() {
+            return;
+        }
+
+        let mut changed = false;
+        for entry in entries {
+            let entry_thread_id = entry.codex_thread_id.as_deref();
+            let existing = self.session_index.iter_mut().find(|existing| {
+                existing.id == entry.id
+                    || (entry_thread_id.is_some()
+                        && existing.codex_thread_id.as_deref() == entry_thread_id)
+            });
+            if let Some(existing) = existing {
+                let mut updated = false;
+                if existing.codex_thread_id.is_none() {
+                    existing.codex_thread_id = entry.codex_thread_id.clone();
+                    updated = true;
+                }
+                if existing.created_at == 0 || entry.created_at < existing.created_at {
+                    existing.created_at = entry.created_at;
+                    updated = true;
+                }
+                if entry.updated_at > existing.updated_at {
+                    existing.updated_at = entry.updated_at;
+                    updated = true;
+                }
+                if existing.last_message.trim().is_empty()
+                    && !entry.last_message.trim().is_empty()
+                {
+                    existing.last_message = entry.last_message.clone();
+                    updated = true;
+                }
+                if existing.message_count == 0 && entry.message_count > 0 {
+                    existing.message_count = entry.message_count;
+                    updated = true;
+                }
+                if existing.model.trim().is_empty() && !entry.model.trim().is_empty() {
+                    existing.model = entry.model.clone();
+                    updated = true;
+                }
+                if updated {
+                    changed = true;
+                }
+            } else {
+                self.session_index.push(entry);
+                changed = true;
+            }
+        }
+
+        if !changed {
+            return;
+        }
+
+        let removed_sessions = super::apply_session_history_limit(
+            &mut self.session_index,
+            settings.session_history_limit,
+        );
+        if let Err(err) = super::save_session_index(&self.session_index) {
+            tracing::error!("Failed to save session index: {}", err);
+        }
+        for removed_id in removed_sessions {
+            let _ = fs::remove_dir_all(session_messages_dir(&removed_id));
+        }
+        self.refresh_session_cards(is_thinking);
+    }
+
+    pub(crate) fn remove_session_entry(&mut self, session_id: &str, is_thinking: bool) {
+        let before = self.session_index.len();
+        self.session_index.retain(|entry| entry.id != session_id);
+        if self.session_index.len() == before {
+            return;
+        }
+        if let Err(err) = super::save_session_index(&self.session_index) {
+            tracing::error!("Failed to save session index: {}", err);
+        }
+        let _ = fs::remove_dir_all(session_messages_dir(session_id));
+        self.refresh_session_cards(is_thinking);
     }
 }

@@ -68,6 +68,71 @@ pub struct ThreadStartResponse {
     pub model_provider: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct ThreadResumeParams {
+    pub thread_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model_provider: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cwd: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub approval_policy: Option<AskForApproval>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sandbox: Option<SandboxMode>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ThreadResumeResponse {
+    pub thread: ThreadRef,
+    pub model: String,
+    #[serde(default)]
+    pub model_provider: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ThreadArchiveParams {
+    pub thread_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct ThreadArchiveResponse {}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct ThreadListParams {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cursor: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub limit: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model_providers: Option<Vec<String>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ThreadSummary {
+    pub id: String,
+    #[serde(default)]
+    pub preview: String,
+    #[serde(default)]
+    pub model_provider: String,
+    #[serde(default)]
+    pub created_at: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ThreadListResponse {
+    pub data: Vec<ThreadSummary>,
+    #[serde(default)]
+    pub next_cursor: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ThreadStartedNotification {
@@ -104,6 +169,45 @@ pub struct TurnStartResponse {
 pub struct TurnStartedNotification {
     pub thread_id: String,
     pub turn: TurnRef,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ReviewDelivery {
+    Inline,
+    Detached,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "camelCase")]
+pub enum ReviewTarget {
+    UncommittedChanges,
+    #[serde(rename_all = "camelCase")]
+    BaseBranch { branch: String },
+    #[serde(rename_all = "camelCase")]
+    Commit {
+        sha: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        title: Option<String>,
+    },
+    #[serde(rename_all = "camelCase")]
+    Custom { instructions: String },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReviewStartParams {
+    pub thread_id: String,
+    pub target: ReviewTarget,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub delivery: Option<ReviewDelivery>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReviewStartResponse {
+    pub turn: TurnRef,
+    pub review_thread_id: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
