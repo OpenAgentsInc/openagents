@@ -1,15 +1,18 @@
-use std::sync::Arc;
+use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
 use wgpui::renderer::Renderer;
 use wgpui::{Bounds, Hsla, Quad, Scene, Size, TextSystem};
 use winit::application::ApplicationHandler;
 use winit::event::WindowEvent;
-use winit::event_loop::{ActiveEventLoop, EventLoop};
+use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::window::{Window, WindowId};
 
+mod chain;
 mod chain_data;
 mod components;
+mod llm;
 
-use chain_data::{demo_chain, demo_prompt};
+use chain::{ChainEvent, ChainState, MarkdownSummarizationChain};
 use components::{Connector, PromptCard};
 
 // Layout constants
@@ -24,15 +27,118 @@ const BG_COLOR: Hsla = Hsla {
     a: 1.0,
 };
 
+// Demo prompt
+const DEMO_PROMPT: &str = "Summarize the markdown files in the root level of this repository.";
+
 fn main() {
+    // Create tokio runtime for async operations
+    let runtime = tokio::runtime::Runtime::new().expect("Failed to create tokio runtime");
+
+    // Create unbounded channel for chain events
+    let (event_tx, event_rx) = tokio::sync::mpsc::unbounded_channel::<ChainEvent>();
+
+    // Create shared chain state
+    let chain_state = Arc::new(Mutex::new(ChainState::new(DEMO_PROMPT)));
+
+    // Clone for the async task
+    let chain_state_clone = chain_state.clone();
+    let event_tx_clone = event_tx.clone();
+
+    // Spawn the chain execution in the background
+    let _guard = runtime.enter();
+    runtime.spawn(async move {
+        run_chain(event_tx_clone, chain_state_clone).await;
+    });
+
+    // Create the event loop
     let event_loop = EventLoop::new().expect("Failed to create event loop");
-    let mut app = App::default();
+    event_loop.set_control_flow(ControlFlow::Wait);
+
+    let mut app = App {
+        state: None,
+        chain_state,
+        event_rx,
+        _runtime: runtime,
+    };
+
     event_loop.run_app(&mut app).expect("Event loop failed");
 }
 
-#[derive(Default)]
+/// Run the chain execution.
+async fn run_chain(
+    event_tx: tokio::sync::mpsc::UnboundedSender<ChainEvent>,
+    chain_state: Arc<Mutex<ChainState>>,
+) {
+    // Small delay to let the UI initialize
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+
+    // Initialize LLM
+    let config = llm::LlmConfig::default();
+    let init_result = match llm::init_llm(config, event_tx.clone()).await {
+        Ok(result) => result,
+        Err(e) => {
+            eprintln!("[manatap] Failed to initialize LLM: {}", e);
+            let _ = event_tx.send(ChainEvent::Progress {
+                message: format!("LLM init failed: {}", e),
+            });
+            return;
+        }
+    };
+
+    // Keep server manager alive
+    let _server_manager = init_result.server_manager;
+
+    if !init_result.server_ready {
+        eprintln!("[manatap] {}", init_result.status_message);
+        let _ = event_tx.send(ChainEvent::Progress {
+            message: init_result.status_message,
+        });
+        return;
+    }
+
+    // Get repo root (current directory or parent of manatap)
+    let repo_root = std::env::current_dir()
+        .map(|p| {
+            // If we're in crates/manatap, go up to repo root
+            if p.ends_with("crates/manatap") {
+                p.parent()
+                    .and_then(|p| p.parent())
+                    .map(PathBuf::from)
+                    .unwrap_or(p)
+            } else if p.ends_with("manatap") {
+                p.parent()
+                    .and_then(|p| p.parent())
+                    .map(PathBuf::from)
+                    .unwrap_or(p)
+            } else {
+                p
+            }
+        })
+        .unwrap_or_else(|_| PathBuf::from("."));
+
+    eprintln!("[manatap] Using repo root: {}", repo_root.display());
+
+    // Execute the chain
+    let chain = MarkdownSummarizationChain::new(event_tx.clone(), chain_state);
+    match chain.execute(DEMO_PROMPT, &repo_root).await {
+        Ok(result) => {
+            eprintln!("[manatap] Chain completed successfully!");
+            eprintln!("[manatap] Final summary: {}", result.final_summary);
+        }
+        Err(e) => {
+            eprintln!("[manatap] Chain execution failed: {}", e);
+            let _ = event_tx.send(ChainEvent::Progress {
+                message: format!("Chain failed: {}", e),
+            });
+        }
+    }
+}
+
 struct App {
     state: Option<RenderState>,
+    chain_state: Arc<Mutex<ChainState>>,
+    event_rx: tokio::sync::mpsc::UnboundedReceiver<ChainEvent>,
+    _runtime: tokio::runtime::Runtime,
 }
 
 struct RenderState {
@@ -138,6 +244,14 @@ impl ApplicationHandler for App {
                 state.window.request_redraw();
             }
             WindowEvent::RedrawRequested => {
+                // Process any pending chain events
+                let mut needs_redraw = false;
+                while let Ok(event) = self.event_rx.try_recv() {
+                    let mut chain_state = self.chain_state.lock().unwrap();
+                    chain_state.handle_event(event);
+                    needs_redraw = true;
+                }
+
                 let scale_factor = state.window.scale_factor() as f32;
                 let width = state.config.width as f32 / scale_factor;
                 let height = state.config.height as f32 / scale_factor;
@@ -152,8 +266,11 @@ impl ApplicationHandler for App {
                 let mut y = PADDING;
                 let content_width = width - PADDING * 2.0;
 
+                // Get the prompt and nodes from chain state
+                let chain_state = self.chain_state.lock().unwrap();
+
                 // Prompt card
-                let prompt_card = PromptCard::new(demo_prompt());
+                let prompt_card = PromptCard::new(&chain_state.prompt);
                 let prompt_height =
                     prompt_card.height(content_width, &mut state.text_system, scale_factor);
                 prompt_card.paint(
@@ -165,8 +282,8 @@ impl ApplicationHandler for App {
                 y += prompt_height + NODE_GAP;
 
                 // Chain nodes
-                let chain = demo_chain();
-                for (i, node) in chain.iter().enumerate() {
+                let nodes = chain_state.nodes();
+                for (i, node) in nodes.iter().enumerate() {
                     // Draw connector from previous element
                     if i == 0 {
                         // Connector from prompt card
@@ -185,6 +302,8 @@ impl ApplicationHandler for App {
                     );
                     y += node_height + NODE_GAP;
                 }
+
+                drop(chain_state);
 
                 // Render to GPU
                 let output = state
@@ -223,8 +342,21 @@ impl ApplicationHandler for App {
 
                 state.queue.submit(std::iter::once(encoder.finish()));
                 output.present();
+
+                // Request another redraw if we processed events (to keep updating)
+                if needs_redraw {
+                    state.window.request_redraw();
+                }
             }
             _ => {}
+        }
+    }
+
+    fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
+        // Check if there are pending events and request redraw
+        if let Some(state) = &self.state {
+            // Periodically check for new events
+            state.window.request_redraw();
         }
     }
 }
