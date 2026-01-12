@@ -3,11 +3,6 @@
 This directory contains the Rust crates that power OpenAgents. Each section below provides a
 single-paragraph overview of a crate to explain its role in the workspace.
 
-## acp-adapter
-The acp-adapter crate implements the Agent Client Protocol (ACP) adapter used to talk to external
-coding agents over JSON-RPC. It manages sessions and permissions, converts ACP notifications into
-OpenAgents events, and provides rlog replay/streaming utilities.
-
 ## adjutant
 The adjutant crate is the autonomous task execution engine. It plans and routes work via DSPy
 decision pipelines, delegates to Codex or RLM when needed, runs tool execution, and records session
@@ -91,10 +86,6 @@ verification strategies for the OpenAgents swarm.
 The pylon crate is the local runtime for sovereign agents. It supports host mode for running agents
 and provider mode for selling NIP-90 compute, with relay and wallet integration.
 
-## recorder
-The recorder crate parses, validates, and repairs rlog session logs, and ships a CLI for inspection
-and conversion.
-
 ## relay
 The relay crate defines the WebSocket protocol shared by tunnel clients and UI surfaces for session
 control and streaming.
@@ -109,9 +100,6 @@ mounts for compute, containers, identity, and telemetry.
 
 ## spark
 The spark crate integrates Breez Spark payments for OpenAgents wallets and compute flows.
-
-## testing
-The testing crate centralizes shared fixtures and helpers for workspace integration tests.
 
 ## vim
 The vim crate is an editor-agnostic Vim emulation layer with mode, motion, and operator handling.
