@@ -677,7 +677,7 @@ cargo add tokio --features full
 
 ## AI Stack (DSPy)
 
-OpenAgents uses DSPy as the compiler layer for agent behavior. See [docs/dspy/README.md](docs/dspy/README.md) for the full strategy.
+OpenAgents uses DSPy as the compiler layer for agent behavior. See [crates/dsrs/docs/README.md](crates/dsrs/docs/README.md) for the full strategy.
 
 **Key Concepts:**
 - **Signatures** — Typed I/O contracts for LLM tasks
@@ -948,8 +948,8 @@ nostr event --kind 5050 \
 
 - **[SYNTHESIS.md](SYNTHESIS.md)**: Comprehensive vision document — how all pieces fit together
 - **[SYNTHESIS_EXECUTION.md](SYNTHESIS_EXECUTION.md)**: System guide — products, infrastructure, AI stack
-- **[docs/dspy/README.md](docs/dspy/README.md)**: DSPy strategy — philosophy, architecture, self-improvement
-- **[docs/DSPY_ROADMAP.md](docs/DSPY_ROADMAP.md)**: DSPy implementation roadmap (Waves 0-14)
+- **[crates/dsrs/docs/README.md](crates/dsrs/docs/README.md)**: DSPy strategy — philosophy, architecture, self-improvement
+- **[crates/dsrs/docs/DSPY_ROADMAP.md](crates/dsrs/docs/DSPY_ROADMAP.md)**: DSPy implementation roadmap (Waves 0-14)
 - **Crate READMEs**: See `crates/*/README.md`
 - **Crate Docs**: See `crates/*/docs/` (adjutant, dsrs, pylon, nexus)
 - **API Docs**: `cargo doc --open`

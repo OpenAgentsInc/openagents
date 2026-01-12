@@ -1,7 +1,7 @@
-//! DSPy callback that sends events to the Coder UI.
+//! DSPy callback that sends events to the Autopilot UI.
 //!
 //! This module provides a callback implementation that bridges dsrs execution
-//! events to the Coder UI, enabling real-time visibility into:
+//! events to the Autopilot UI, enabling real-time visibility into:
 //! - Module execution lifecycle (start/end)
 //! - LLM inference calls (model, tokens, cost)
 //! - Optimizer progress (candidates, metrics)

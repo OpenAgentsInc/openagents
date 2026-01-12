@@ -123,8 +123,8 @@ See [crates/nexus/docs/MVP.md](crates/nexus/docs/MVP.md) for architecture.
 | Doc | Description |
 |-----|-------------|
 | [SYNTHESIS_EXECUTION.md](./SYNTHESIS_EXECUTION.md) | System guide — products, infrastructure, AI stack |
-| [docs/dspy/README.md](docs/dspy/README.md) | DSPy strategy — philosophy, architecture, self-improvement |
-| [docs/DSPY_ROADMAP.md](docs/DSPY_ROADMAP.md) | DSPy implementation roadmap (Waves 0-14) |
+| [crates/dsrs/docs/README.md](crates/dsrs/docs/README.md) | DSPy strategy — philosophy, architecture, self-improvement |
+| [crates/dsrs/docs/DSPY_ROADMAP.md](crates/dsrs/docs/DSPY_ROADMAP.md) | DSPy implementation roadmap (Waves 0-14) |
 | [crates/adjutant/docs/](crates/adjutant/docs/) | Adjutant execution engine + self-improvement |
 | [crates/dsrs/docs/](crates/dsrs/docs/) | dsrs implementation (signatures, retrieval, eval) |
 | [crates/pylon/docs/](crates/pylon/docs/) | Pylon documentation |
@@ -137,6 +137,6 @@ See [crates/nexus/docs/MVP.md](crates/nexus/docs/MVP.md) for architecture.
 **READ THIS FIRST:** [SYNTHESIS_EXECUTION.md](./SYNTHESIS_EXECUTION.md) — The essential guide to understanding how Pylon, Nexus, Runtime, Autopilot, and WGPUI fit together. Contains data flow diagrams, key paths, build commands, and completion standards. **Do not start coding until you've read it.**
 
 Also see:
-- [docs/dspy/README.md](docs/dspy/README.md) — DSPy strategy and self-improvement system
+- [crates/dsrs/docs/README.md](crates/dsrs/docs/README.md) — DSPy strategy and self-improvement system
 - [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) — Git rules, commit standards, design philosophy
 - [SYNTHESIS.md](./SYNTHESIS.md) — Full vision document (long, read if you need context on *why*)

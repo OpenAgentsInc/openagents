@@ -15,7 +15,8 @@ use anyhow::Result;
 use autopilot_core::{PlanningInput, PlanningPipeline, PlanningResult};
 use dsrs::LM;
 use dsrs::callbacks::DspyCallback;
-use oanix::OanixManifest;
+use oanix::{OanixManifest, SituationInput, SituationPipeline};
+use serde_json::json;
 use std::sync::Arc;
 
 fn has_action_verb(step: &str) -> bool {
@@ -188,24 +189,113 @@ impl DspyOrchestrator {
             .map(|b| b.name.clone())
             .collect();
 
-        // Default assessment (DSPy signature is optional enhancement)
-        let (priority_action, urgency, reasoning) = {
-            let action = if open_issues > 0 {
-                "WORK_ISSUE"
-            } else {
-                "AWAIT_USER"
-            };
-            let has_compute = !compute_backends.is_empty();
-            let reasoning = if has_compute {
-                format!(
-                    "Ready to work with {} backend(s). {} open issue(s).",
-                    compute_backends.len(),
-                    open_issues
-                )
-            } else {
-                "No compute backends available. Awaiting user direction.".to_string()
-            };
-            (action.to_string(), "NORMAL".to_string(), reasoning)
+        let system_state = json!({
+            "hardware": {
+                "cpu_cores": manifest.hardware.cpu_cores,
+                "cpu_model": manifest.hardware.cpu_model.clone(),
+                "ram_bytes": manifest.hardware.ram_bytes,
+                "ram_available": manifest.hardware.ram_available,
+                "gpus": manifest.hardware.gpus.iter().map(|gpu| json!({
+                    "name": gpu.name.clone(),
+                    "backend": gpu.backend.clone(),
+                    "available": gpu.available,
+                })).collect::<Vec<_>>(),
+            },
+            "compute": {
+                "total_models": manifest.compute.total_models,
+                "backends": manifest.compute.backends.iter().map(|backend| json!({
+                    "id": backend.id.clone(),
+                    "name": backend.name.clone(),
+                    "endpoint": backend.endpoint.clone(),
+                    "models": backend.models.clone(),
+                    "ready": backend.ready,
+                })).collect::<Vec<_>>(),
+            },
+            "network": {
+                "has_internet": manifest.network.has_internet,
+                "total_providers": manifest.network.total_providers,
+                "pylon_count": manifest.network.pylon_count,
+                "pylons_online": manifest.network.pylons_online,
+                "pylon_pubkeys": manifest.network.pylon_pubkeys.clone(),
+                "relays": manifest.network.relays.iter().map(|relay| json!({
+                    "url": relay.url.clone(),
+                    "connected": relay.connected,
+                    "latency_ms": relay.latency_ms,
+                })).collect::<Vec<_>>(),
+            },
+            "identity": {
+                "initialized": manifest.identity.initialized,
+                "npub": manifest.identity.npub.clone(),
+                "wallet_balance_sats": manifest.identity.wallet_balance_sats,
+                "network": manifest.identity.network.clone(),
+            },
+            "workspace": manifest.workspace.as_ref().map(|w| json!({
+                "root": w.root.display().to_string(),
+                "project_name": w.project_name.clone(),
+                "has_openagents": w.has_openagents,
+                "open_issues": w.open_issues,
+                "pending_issues": w.pending_issues,
+                "active_directive": w.active_directive.clone(),
+                "directives": w.directives.clone(),
+                "issues": w.issues.clone(),
+            })),
+        });
+
+        let pending_events = {
+            let mut events = Vec::new();
+            if open_issues > 0 {
+                events.push(json!({
+                    "type": "open_issues",
+                    "count": open_issues,
+                }));
+            }
+            if let Some(active) = active_directive.as_ref() {
+                events.push(json!({
+                    "type": "active_directive",
+                    "value": active,
+                }));
+            }
+            serde_json::to_string(&events)?
+        };
+
+        let pipeline = match &self.lm {
+            Some(lm) => SituationPipeline::with_lm(lm.clone()),
+            None => SituationPipeline::new(),
+        };
+
+        let dspy_result = pipeline
+            .assess(&SituationInput {
+                system_state: serde_json::to_string(&system_state)?,
+                pending_events,
+                recent_history: "[]".to_string(),
+            })
+            .await;
+
+        // DSPy assessment with heuristic fallback when no LM is configured.
+        let (priority_action, urgency, reasoning) = match dspy_result {
+            Ok(result) => (
+                result.priority_action.to_string(),
+                result.urgency.to_string(),
+                result.reasoning,
+            ),
+            Err(_) => {
+                let action = if open_issues > 0 {
+                    "WORK_ISSUE"
+                } else {
+                    "AWAIT_USER"
+                };
+                let has_compute = !compute_backends.is_empty();
+                let reasoning = if has_compute {
+                    format!(
+                        "Ready to work with {} backend(s). {} open issue(s).",
+                        compute_backends.len(),
+                        open_issues
+                    )
+                } else {
+                    "No compute backends available. Awaiting user direction.".to_string()
+                };
+                (action.to_string(), "NORMAL".to_string(), reasoning)
+            }
         };
 
         // Skip emitting EnvironmentAssessment card for now - it obscures other content
