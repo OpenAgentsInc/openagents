@@ -9,7 +9,7 @@ pub(crate) enum CommandAction {
     None,
     SubmitPrompt(String),
     StartReview(ReviewCommand),
-    StartManatap(String),
+    StartChainViz(String),
 }
 
 /// Modal state for slash commands.
@@ -56,7 +56,7 @@ pub(crate) enum ModalState {
     PylonEarnings,
     PylonJobs,
     Dspy,
-    Manatap,
+    ChainViz,
     Nip28Chat,
     Config {
         tab: SettingsTab,

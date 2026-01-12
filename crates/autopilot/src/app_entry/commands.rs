@@ -903,19 +903,19 @@ pub(super) fn handle_command(state: &mut AppState, command: Command) -> CommandA
             state.set_dspy_background_optimization(enabled);
             CommandAction::None
         }
-        Command::Manatap(prompt) => {
+        Command::ChainViz(prompt) => {
             if prompt.trim().is_empty() {
                 state.push_system_message(
-                    "Mana Tap prompt is required. Usage: /manatap <prompt>".to_string(),
+                    "Chain visualizer prompt is required. Usage: /chainviz <prompt>".to_string(),
                 );
                 CommandAction::None
             } else if state.chat.is_thinking {
                 state.push_system_message(
-                    "Cannot start Mana Tap while a request is active.".to_string(),
+                    "Cannot start chain visualizer while a request is active.".to_string(),
                 );
                 CommandAction::None
             } else {
-                CommandAction::StartManatap(prompt)
+                CommandAction::StartChainViz(prompt)
             }
         }
         Command::Nip28 => {
@@ -1267,7 +1267,7 @@ pub(super) fn handle_modal_input(state: &mut AppState, key: &WinitKey) -> bool {
             state.window.request_redraw();
             true
         }
-        ModalState::Manatap => {
+        ModalState::ChainViz => {
             if matches!(key, WinitKey::Named(WinitNamedKey::Escape)) {
                 state.modal_state = ModalState::None;
             }

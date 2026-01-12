@@ -937,7 +937,7 @@ impl MarkdownSummarizationChain {
 
         for iteration in 0..max_iterations {
             eprintln!(
-                "[manatap] Curiosity loop iteration {}/{}",
+                "[chainviz] Curiosity loop iteration {}/{}",
                 iteration + 1,
                 max_iterations
             );
@@ -961,10 +961,10 @@ impl MarkdownSummarizationChain {
             previous_questions.push(curiosity.question.clone());
 
             // Log the question
-            eprintln!("\n[manatap] ========== CURIOSITY Q{} ==========", iteration + 1);
-            eprintln!("[manatap] QUESTION: {}", curiosity.question);
-            eprintln!("[manatap] REASONING: {}", curiosity.reasoning);
-            eprintln!("[manatap] SEARCH PATTERNS: {:?}", curiosity.search_patterns);
+            eprintln!("\n[chainviz] ========== CURIOSITY Q{} ==========", iteration + 1);
+            eprintln!("[chainviz] QUESTION: {}", curiosity.question);
+            eprintln!("[chainviz] REASONING: {}", curiosity.reasoning);
+            eprintln!("[chainviz] SEARCH PATTERNS: {:?}", curiosity.search_patterns);
 
             // Search the codebase
             let search = self
@@ -976,7 +976,7 @@ impl MarkdownSummarizationChain {
                 )
                 .await?;
 
-            eprintln!("[manatap] Found {} matches in {} files", search.matches.len(), search.files_searched);
+            eprintln!("[chainviz] Found {} matches in {} files", search.matches.len(), search.files_searched);
 
             // Answer the question
             let answer = self
@@ -989,11 +989,11 @@ impl MarkdownSummarizationChain {
                 .await?;
 
             // Log the answer
-            eprintln!("\n[manatap] ANSWER: {}", answer.answer);
+            eprintln!("\n[chainviz] ANSWER: {}", answer.answer);
             if !answer.insights.is_empty() {
-                eprintln!("[manatap] INSIGHTS: {:?}", answer.insights);
+                eprintln!("[chainviz] INSIGHTS: {:?}", answer.insights);
             }
-            eprintln!("[manatap] =====================================\n");
+            eprintln!("[chainviz] =====================================\n");
 
             insights.push(CuriosityInsight {
                 iteration,
@@ -1040,7 +1040,7 @@ impl MarkdownSummarizationChain {
         {
             let mut state = self.chain_state.lock().unwrap();
             if let Some(&idx) = state.call_id_to_node.get(&call_id) {
-                state.nodes[idx].state = crate::app::manatap::components::NodeState::Running;
+                state.nodes[idx].state = crate::app::chainviz::components::NodeState::Running;
                 state.nodes[idx].progress_message = Some("Generating question...".to_string());
             }
         }
@@ -1138,7 +1138,7 @@ impl MarkdownSummarizationChain {
         {
             let mut state = self.chain_state.lock().unwrap();
             if let Some(&idx) = state.call_id_to_node.get(&call_id) {
-                state.nodes[idx].state = crate::app::manatap::components::NodeState::Running;
+                state.nodes[idx].state = crate::app::chainviz::components::NodeState::Running;
                 state.nodes[idx].progress_message = Some("Searching codebase...".to_string());
             }
         }
@@ -1311,7 +1311,7 @@ impl MarkdownSummarizationChain {
         {
             let mut state = self.chain_state.lock().unwrap();
             if let Some(&idx) = state.call_id_to_node.get(&call_id) {
-                state.nodes[idx].state = crate::app::manatap::components::NodeState::Running;
+                state.nodes[idx].state = crate::app::chainviz::components::NodeState::Running;
                 state.nodes[idx].progress_message = Some("Analyzing code...".to_string());
             }
         }

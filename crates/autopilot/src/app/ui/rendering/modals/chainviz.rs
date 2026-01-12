@@ -1,6 +1,6 @@
-use crate::app::manatap::{MANATAP_NODE_GAP, MANATAP_PADDING};
+use crate::app::chainviz::{CHAINVIZ_NODE_GAP, CHAINVIZ_PADDING};
 
-fn render_manatap_modal(
+fn render_chainviz_modal(
     state: &mut AppState,
     scene: &mut Scene,
     palette: &UiPalette,
@@ -28,8 +28,8 @@ fn render_manatap_modal(
 
             let title_y = modal_y + 12.0;
             let title_run = state.text_system.layout_styled_mono(
-                "Mana Tap — DSPy Chain Visualizer",
-                Point::new(modal_x + MANATAP_PADDING, title_y),
+                "DSPy Chain Visualizer",
+                Point::new(modal_x + CHAINVIZ_PADDING, title_y),
                 14.0,
                 palette.text_primary,
                 wgpui::text::FontStyle::default(),
@@ -40,19 +40,19 @@ fn render_manatap_modal(
             let footer_padding = 16.0;
             let content_top = modal_y + header_height + 8.0;
             let content_bottom = modal_y + modal_height - footer_padding;
-            let content_width = modal_width - MANATAP_PADDING * 2.0;
+            let content_width = modal_width - CHAINVIZ_PADDING * 2.0;
             let viewport_height = (content_bottom - content_top).max(0.0);
 
-            if state.manatap.drain_events() {
+            if state.chainviz.drain_events() {
                 state.window.request_redraw();
             }
 
-            state.manatap.viewport_height = viewport_height;
+            state.chainviz.viewport_height = viewport_height;
 
-            let Some(chain_state) = state.manatap.chain_state.as_ref() else {
+            let Some(chain_state) = state.chainviz.chain_state.as_ref() else {
                 let empty_run = state.text_system.layout_styled_mono(
-                    "No chain running. Use /manatap <prompt> to start.",
-                    Point::new(modal_x + MANATAP_PADDING, content_top + 8.0),
+                    "No chain running. Use /chainviz <prompt> to start.",
+                    Point::new(modal_x + CHAINVIZ_PADDING, content_top + 8.0),
                     12.0,
                     palette.text_faint,
                     wgpui::text::FontStyle::default(),
@@ -61,29 +61,30 @@ fn render_manatap_modal(
                 return;
             };
 
-            let theme = crate::app::manatap::components::ChainTheme::from_palette(palette);
+            let theme = crate::app::chainviz::components::ChainTheme::from_palette(palette);
             let chain_state = chain_state.lock().unwrap();
 
-            let prompt_card = crate::app::manatap::components::PromptCard::new(&chain_state.prompt);
+            let prompt_card =
+                crate::app::chainviz::components::PromptCard::new(&chain_state.prompt);
             let prompt_height =
                 prompt_card.height(content_width, &mut state.text_system, scale_factor);
 
-            let mut total_height = MANATAP_PADDING + prompt_height + MANATAP_NODE_GAP;
+            let mut total_height = CHAINVIZ_PADDING + prompt_height + CHAINVIZ_NODE_GAP;
             let nodes = chain_state.nodes();
             for node in nodes.iter() {
                 let node_height = node.height(content_width, &mut state.text_system, scale_factor);
-                total_height += node_height + MANATAP_NODE_GAP;
+                total_height += node_height + CHAINVIZ_NODE_GAP;
             }
-            total_height += MANATAP_PADDING;
-            state.manatap.content_height = total_height;
-            let max_scroll = (state.manatap.content_height - state.manatap.viewport_height)
+            total_height += CHAINVIZ_PADDING;
+            state.chainviz.content_height = total_height;
+            let max_scroll = (state.chainviz.content_height - state.chainviz.viewport_height)
                 .max(0.0);
-            if state.manatap.scroll_offset > max_scroll {
-                state.manatap.scroll_offset = max_scroll;
+            if state.chainviz.scroll_offset > max_scroll {
+                state.chainviz.scroll_offset = max_scroll;
             }
 
-            let mut y = content_top + MANATAP_PADDING - state.manatap.scroll_offset;
-            let content_left = modal_x + MANATAP_PADDING;
+            let mut y = content_top + CHAINVIZ_PADDING - state.chainviz.scroll_offset;
+            let content_left = modal_x + CHAINVIZ_PADDING;
 
             if y + prompt_height > content_top && y < content_bottom {
                 prompt_card.paint(
@@ -94,15 +95,15 @@ fn render_manatap_modal(
                     scale_factor,
                 );
             }
-            y += prompt_height + MANATAP_NODE_GAP;
+            y += prompt_height + CHAINVIZ_NODE_GAP;
 
             for node in nodes.iter() {
                 let node_height = node.height(content_width, &mut state.text_system, scale_factor);
                 if y + node_height > content_top && y < content_bottom {
-                    let connector_top = y - MANATAP_NODE_GAP + 4.0;
+                    let connector_top = y - CHAINVIZ_NODE_GAP + 4.0;
                     let connector_bottom = y - 4.0;
                     if connector_bottom > content_top && connector_top < content_bottom {
-                        crate::app::manatap::components::Connector::paint(
+                        crate::app::chainviz::components::Connector::paint(
                             connector_top,
                             connector_bottom,
                             modal_x + modal_width / 2.0,
@@ -120,6 +121,6 @@ fn render_manatap_modal(
                 } else if y > content_bottom {
                     break;
                 }
-                y += node_height + MANATAP_NODE_GAP;
+                y += node_height + CHAINVIZ_NODE_GAP;
             }
 }

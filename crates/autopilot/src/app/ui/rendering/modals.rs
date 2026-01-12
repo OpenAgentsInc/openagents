@@ -21,7 +21,7 @@ include!("modals/pylon_earnings.rs");
 include!("modals/pylon_jobs.rs");
 include!("modals/spark_wallet.rs");
 include!("modals/dspy.rs");
-include!("modals/manatap.rs");
+include!("modals/chainviz.rs");
 include!("modals/nip28.rs");
 include!("modals/nip90.rs");
 include!("modals/config.rs");
@@ -323,8 +323,8 @@ fn render_modals(
                 scale_factor,
             );
         }
-        ModalState::Manatap => {
-            render_manatap_modal(
+        ModalState::ChainViz => {
+            render_chainviz_modal(
                 state,
                 scene,
                 palette,

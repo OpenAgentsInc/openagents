@@ -2,17 +2,19 @@ pub(crate) mod chain;
 pub(crate) mod components;
 pub(crate) mod llm;
 
-use crate::app::manatap::chain::{ChainEvent, ChainEventSender, ChainState, MarkdownSummarizationChain};
-use crate::app::manatap::llm::LlmConfig;
+use crate::app::chainviz::chain::{
+    ChainEvent, ChainEventSender, ChainState, MarkdownSummarizationChain,
+};
+use crate::app::chainviz::llm::LlmConfig;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use tokio::sync::mpsc;
 use winit::window::Window;
 
-pub(crate) const MANATAP_PADDING: f32 = 16.0;
-pub(crate) const MANATAP_NODE_GAP: f32 = 24.0;
+pub(crate) const CHAINVIZ_PADDING: f32 = 16.0;
+pub(crate) const CHAINVIZ_NODE_GAP: f32 = 24.0;
 
-pub(crate) struct ManatapState {
+pub(crate) struct ChainVizState {
     pub(crate) chain_state: Option<Arc<Mutex<ChainState>>>,
     pub(crate) event_rx: Option<mpsc::UnboundedReceiver<ChainEvent>>,
     pub(crate) scroll_offset: f32,
@@ -20,7 +22,7 @@ pub(crate) struct ManatapState {
     pub(crate) viewport_height: f32,
 }
 
-impl ManatapState {
+impl ChainVizState {
     pub(crate) fn new() -> Self {
         Self {
             chain_state: None,
@@ -78,7 +80,7 @@ async fn run_chain(
     let init_result = match llm::init_llm(config, event_sender.clone()).await {
         Ok(result) => result,
         Err(e) => {
-            tracing::error!("[manatap] Failed to initialize LLM: {}", e);
+            tracing::error!("[chainviz] Failed to initialize LLM: {}", e);
             event_sender.send(ChainEvent::Progress {
                 message: format!("LLM init failed: {}", e),
             });
@@ -89,7 +91,7 @@ async fn run_chain(
     let _server_manager = init_result.server_manager;
 
     if !init_result.server_ready {
-        tracing::warn!("[manatap] {}", init_result.status_message);
+        tracing::warn!("[chainviz] {}", init_result.status_message);
         event_sender.send(ChainEvent::Progress {
             message: init_result.status_message,
         });
@@ -97,27 +99,27 @@ async fn run_chain(
     }
 
     let repo_root = resolve_repo_root();
-    tracing::info!("[manatap] Using repo root: {}", repo_root.display());
+    tracing::info!("[chainviz] Using repo root: {}", repo_root.display());
 
     let chain = MarkdownSummarizationChain::new(event_sender.clone(), chain_state);
     match chain.execute(&prompt, &repo_root).await {
         Ok(result) => {
-            tracing::info!("[manatap] Chain completed successfully!");
-            tracing::info!("[manatap] Final summary: {}", result.aggregated.final_summary);
+            tracing::info!("[chainviz] Chain completed successfully!");
+            tracing::info!("[chainviz] Final summary: {}", result.aggregated.final_summary);
             tracing::info!(
-                "[manatap] Explored {} curiosity questions",
+                "[chainviz] Explored {} curiosity questions",
                 result.curiosity_insights.len()
             );
             for insight in &result.curiosity_insights {
                 tracing::info!(
-                    "[manatap] Q{}: {}",
+                    "[chainviz] Q{}: {}",
                     insight.iteration + 1,
                     insight.question
                 );
             }
         }
         Err(e) => {
-            tracing::error!("[manatap] Chain execution failed: {}", e);
+            tracing::error!("[chainviz] Chain execution failed: {}", e);
             event_sender.send(ChainEvent::Progress {
                 message: format!("Chain failed: {}", e),
             });
@@ -134,11 +136,6 @@ fn resolve_repo_root() -> PathBuf {
                     .map(PathBuf::from)
                     .unwrap_or(p)
             } else if p.ends_with("autopilot") {
-                p.parent()
-                    .and_then(|p| p.parent())
-                    .map(PathBuf::from)
-                    .unwrap_or(p)
-            } else if p.ends_with("crates/manatap") {
                 p.parent()
                     .and_then(|p| p.parent())
                     .map(PathBuf::from)
