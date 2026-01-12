@@ -1,0 +1,16 @@
+[package]
+name = "manatap"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Mana Tap - minimal GPU window demo"
+
+[[bin]]
+name = "manatap"
+path = "src/main.rs"
+
+[dependencies]
+wgpui = { path = "../wgpui", default-features = false, features = ["desktop"] }
+wgpu = { workspace = true }
+winit = { workspace = true }
+pollster = { workspace = true }
