@@ -59,6 +59,7 @@ impl LocalModelBackend for GptOssClient {
             top_p: request.top_p,
             stop: request.stop,
             stream: false,
+            json_schema: None,
         };
 
         let response = self
@@ -92,6 +93,7 @@ impl LocalModelBackend for GptOssClient {
             top_p: request.top_p,
             stop: request.stop,
             stream: true,
+            json_schema: None,
         };
 
         let client = self.clone();

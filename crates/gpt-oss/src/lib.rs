@@ -34,7 +34,8 @@ pub use harmony::{
 };
 pub use server::{LlamaServerManager, ServerStatus};
 pub use types::{
-    GptOssReasoningEffort, GptOssRequest, GptOssResponse, GptOssResponsesRequest,
-    GptOssResponsesResponse, GptOssStreamChunk, GptOssToolCall, GptOssToolChoice,
-    GptOssToolChoiceFunction, GptOssToolDefinition, GptOssToolFunction,
+    ChatCompletionsRequest, ChatCompletionsResponse, ChatMessage, GptOssReasoningEffort,
+    GptOssRequest, GptOssResponse, GptOssResponsesRequest, GptOssResponsesResponse,
+    GptOssStreamChunk, GptOssToolCall, GptOssToolChoice, GptOssToolChoiceFunction,
+    GptOssToolDefinition, GptOssToolFunction, JsonSchemaSpec, ResponseFormat,
 };
