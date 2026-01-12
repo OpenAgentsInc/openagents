@@ -68,7 +68,7 @@ const TEXT_ACCENT: Hsla = Hsla {
 const TEXT_DESC: Hsla = Hsla {
     h: 0.0,
     s: 0.0,
-    l: 0.5,
+    l: 0.7,
     a: 1.0,
 };
 

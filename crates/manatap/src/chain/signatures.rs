@@ -378,3 +378,249 @@ impl MetaSignature for SummaryAggregatorSignature {
         Ok(())
     }
 }
+
+/// Signature for generating curiosity questions about the codebase.
+#[derive(Debug, Clone)]
+pub struct CuriosityGeneratorSignature {
+    instruction: String,
+    demos: Vec<Example>,
+}
+
+impl Default for CuriosityGeneratorSignature {
+    fn default() -> Self {
+        let instruction = r#"Based on the summary of this codebase and any previous questions explored,
+generate a specific, actionable question that would deepen understanding.
+
+Focus on:
+- Architecture patterns not fully explained in the summary
+- Connections between components that aren't clear
+- Implementation details worth exploring
+- Potential improvements or concerns raised by the summary
+
+Output:
+1. question: A focused, specific question about the codebase
+2. search_patterns: JSON array of regex patterns or keywords to search for
+3. reasoning: Brief explanation of why this question is interesting
+
+Avoid repeating questions that have already been explored (see previous_questions).
+Make search patterns specific enough to find relevant code."#
+            .to_string();
+
+        // Demo example
+        let mut demo_data = HashMap::new();
+        demo_data.insert(
+            "summary".to_string(),
+            json!("The codebase implements a DSPy chain visualizer with 5 stages..."),
+        );
+        demo_data.insert("previous_questions".to_string(), json!("[]"));
+        demo_data.insert("iteration".to_string(), json!(0));
+        demo_data.insert(
+            "question".to_string(),
+            json!("How does the callback system propagate events from the LLM to the UI?"),
+        );
+        demo_data.insert(
+            "search_patterns".to_string(),
+            json!(["DspyCallback", "ChainEvent", "event_sender"]),
+        );
+        demo_data.insert(
+            "reasoning".to_string(),
+            json!("Understanding the event flow is key to understanding how the UI stays synchronized."),
+        );
+
+        let demo = Example {
+            data: demo_data,
+            input_keys: vec![
+                "summary".to_string(),
+                "previous_questions".to_string(),
+                "iteration".to_string(),
+            ],
+            output_keys: vec![
+                "question".to_string(),
+                "search_patterns".to_string(),
+                "reasoning".to_string(),
+            ],
+            node_id: None,
+        };
+
+        Self {
+            instruction,
+            demos: vec![demo],
+        }
+    }
+}
+
+impl CuriosityGeneratorSignature {
+    pub fn new() -> Self {
+        Self::default()
+    }
+}
+
+impl MetaSignature for CuriosityGeneratorSignature {
+    fn signature_name(&self) -> &'static str {
+        "CuriosityGeneratorSignature"
+    }
+
+    fn demos(&self) -> Vec<Example> {
+        self.demos.clone()
+    }
+
+    fn set_demos(&mut self, demos: Vec<Example>) -> Result<()> {
+        self.demos = demos;
+        Ok(())
+    }
+
+    fn instruction(&self) -> String {
+        self.instruction.clone()
+    }
+
+    fn input_fields(&self) -> Value {
+        json!({
+            "summary": {
+                "type": "String",
+                "desc": "The aggregated summary of the codebase",
+                "__dsrs_field_type": "input"
+            },
+            "previous_questions": {
+                "type": "String",
+                "desc": "JSON array of questions already explored",
+                "__dsrs_field_type": "input"
+            },
+            "iteration": {
+                "type": "i32",
+                "desc": "Current iteration number (0-indexed)",
+                "__dsrs_field_type": "input"
+            }
+        })
+    }
+
+    fn output_fields(&self) -> Value {
+        json!({
+            "question": {
+                "type": "String",
+                "desc": "A specific question about the codebase",
+                "__dsrs_field_type": "output"
+            },
+            "search_patterns": {
+                "type": "String",
+                "desc": "JSON array of regex patterns or keywords to search",
+                "__dsrs_field_type": "output"
+            },
+            "reasoning": {
+                "type": "String",
+                "desc": "Brief explanation of why this question is interesting",
+                "__dsrs_field_type": "output"
+            }
+        })
+    }
+
+    fn update_instruction(&mut self, instruction: String) -> Result<()> {
+        self.instruction = instruction;
+        Ok(())
+    }
+
+    fn append(&mut self, _name: &str, _value: Value) -> Result<()> {
+        Ok(())
+    }
+}
+
+/// Signature for answering questions based on code snippets.
+#[derive(Debug, Clone)]
+pub struct QuestionAnswererSignature {
+    instruction: String,
+    demos: Vec<Example>,
+}
+
+impl Default for QuestionAnswererSignature {
+    fn default() -> Self {
+        let instruction = r#"Given a specific question about the codebase and relevant code snippets,
+provide a comprehensive answer.
+
+Include in your response:
+1. answer: Direct answer to the question based on the code snippets provided
+2. insights: JSON array of additional insights discovered while analyzing the code
+3. follow_up_topics: JSON array of related topics that could be explored next
+
+Be specific and reference the code snippets directly. If the snippets don't fully answer
+the question, note what additional information would be needed."#
+            .to_string();
+
+        Self {
+            instruction,
+            demos: vec![],
+        }
+    }
+}
+
+impl QuestionAnswererSignature {
+    pub fn new() -> Self {
+        Self::default()
+    }
+}
+
+impl MetaSignature for QuestionAnswererSignature {
+    fn signature_name(&self) -> &'static str {
+        "QuestionAnswererSignature"
+    }
+
+    fn demos(&self) -> Vec<Example> {
+        self.demos.clone()
+    }
+
+    fn set_demos(&mut self, demos: Vec<Example>) -> Result<()> {
+        self.demos = demos;
+        Ok(())
+    }
+
+    fn instruction(&self) -> String {
+        self.instruction.clone()
+    }
+
+    fn input_fields(&self) -> Value {
+        json!({
+            "question": {
+                "type": "String",
+                "desc": "The question to answer",
+                "__dsrs_field_type": "input"
+            },
+            "code_snippets": {
+                "type": "String",
+                "desc": "Relevant code snippets found by searching",
+                "__dsrs_field_type": "input"
+            },
+            "context": {
+                "type": "String",
+                "desc": "Additional context from previous exploration",
+                "__dsrs_field_type": "input"
+            }
+        })
+    }
+
+    fn output_fields(&self) -> Value {
+        json!({
+            "answer": {
+                "type": "String",
+                "desc": "Direct answer to the question",
+                "__dsrs_field_type": "output"
+            },
+            "insights": {
+                "type": "String",
+                "desc": "JSON array of additional insights",
+                "__dsrs_field_type": "output"
+            },
+            "follow_up_topics": {
+                "type": "String",
+                "desc": "JSON array of related topics to explore",
+                "__dsrs_field_type": "output"
+            }
+        })
+    }
+
+    fn update_instruction(&mut self, instruction: String) -> Result<()> {
+        self.instruction = instruction;
+        Ok(())
+    }
+
+    fn append(&mut self, _name: &str, _value: Value) -> Result<()> {
+        Ok(())
+    }
+}
