@@ -7,6 +7,9 @@ fn render_input(
     logical_height: f32,
     scale_factor: f32,
 ) {
+    if state.git.center_mode == crate::app::CenterMode::Diff {
+        return;
+    }
     let available_input_width = sidebar_layout.main.size.width - CONTENT_PADDING_X * 2.0;
     let input_width = available_input_width.max(0.0);
     let input_x = sidebar_layout.main.origin.x + CONTENT_PADDING_X;

@@ -34,14 +34,25 @@ pub(crate) fn render_app(state: &mut AppState) {
 
     render_sidebars(state, &mut scene, &palette, &sidebar_layout);
     render_topbar(state, &mut scene, &palette, &sidebar_layout);
-    render_chat(
-        state,
-        &mut scene,
-        &palette,
-        &sidebar_layout,
-        logical_height,
-        scale_factor,
-    );
+    if state.git.center_mode == crate::app::CenterMode::Diff {
+        render_git_diff_viewer(
+            state,
+            &mut scene,
+            &palette,
+            &sidebar_layout,
+            logical_height,
+            scale_factor,
+        );
+    } else {
+        render_chat(
+            state,
+            &mut scene,
+            &palette,
+            &sidebar_layout,
+            logical_height,
+            scale_factor,
+        );
+    }
     render_input(
         state,
         &mut scene,

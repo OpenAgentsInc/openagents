@@ -1283,6 +1283,7 @@ dependencies = [
  "dsrs",
  "futures",
  "gateway",
+ "git2",
  "issues",
  "lm-router",
  "nostr 0.1.0",
