@@ -6,6 +6,7 @@ Scope
 
 Codex feature inventory (from codex repo docs)
 - Core CLI flows: interactive TUI, non-interactive `codex exec`, streaming output.
+- CLI multitool surface: `codex review`, `codex resume` (picker, `--last`, `--all`), `codex apply` (apply latest diff), `codex completion` (shell completions), `codex mcp` (list/get/add/remove/login/logout with `--json`), `codex mcp-server`, `codex sandbox` (seatbelt/landlock/windows), `codex execpolicy check`, `codex app-server` schema generators, and `codex features` inspection.
 - Auth: ChatGPT OAuth login and API key auth.
 - Config: `~/.codex/config.toml` with advanced settings, MCP config, notifications.
 - Approvals + sandboxing: approval modes (suggest/auto-edit/full-auto), sandbox policies (`read-only`, `workspace-write`, `danger-full-access`), platform sandbox behavior.
@@ -14,6 +15,7 @@ Codex feature inventory (from codex repo docs)
 - MCP support: client for connecting to external MCP servers; experimental MCP server (`codex mcp-server`).
 - Notifications: post-turn notification hook + OS-specific notification behavior.
 - Multi-provider support (legacy TS CLI): configurable provider backends and base URLs.
+- TUI ergonomics: alternate screen policy (`auto`/`always`/`never`, `--no-alt-screen`), transcript pager + selection/copy, external editor toggle, and image attachments (`ctrl+v` / `--image`, `view_image` tool).
 
 OpenAgents current coverage (high level)
 - Codex execution via app-server: Autopilot and Adjutant run Codex through the app-server JSONL protocol for headless runs and streaming events.
@@ -70,6 +72,36 @@ Feature: Notifications on turn completion
 - OpenAgents: no Codex-compatible notification hook for Codex app-server turns.
 - Gap: missing out-of-band notifications for long runs.
 
+Feature: CLI multitool parity (review/resume/apply/completion/sandbox)
+- Codex: review subcommand, resume picker (`--last`/`--all`), apply latest diff, shell completion generator, sandbox debug commands, execpolicy check, and feature flag inspection.
+- OpenAgents: Autopilot CLI focuses on run/status/issues; no CLI parity for these utility subcommands.
+- Gap: missing CLI tool surface for review/resume/apply/completions/sandbox/execpolicy introspection and feature flag visibility.
+
+Feature: MCP management + OAuth from CLI
+- Codex: `codex mcp` manages server launchers, supports OAuth login/logout, and emits JSON output for tooling.
+- OpenAgents: MCP servers and status exist in the UI, but there is no CLI management flow or JSON output.
+- Gap: missing CLI management interface and OAuth helper for MCP servers.
+
+Feature: TUI ergonomics + transcript tooling
+- Codex: alternate screen modes with Zellij auto-detect, transcript pager/selection/copy, and inline transcript history handling.
+- OpenAgents: WGPUI does not offer alternate-screen toggles or transcript pager/copy selection parity for terminal users.
+- Gap: missing terminal scrollback ergonomics, transcript pager, and alternate-screen controls.
+
+Feature: Image attachments + view_image tool
+- Codex: composer supports image attachment (paste/file paths) and `view_image` tool config.
+- OpenAgents: app-server `imageView` events are surfaced as text, but there is no composer-level image attachment flow or view_image tool UI.
+- Gap: missing image attachment pipeline and richer rendering for view_image results.
+
+Feature: App-server schema tooling
+- Codex: CLI provides TS/JSON schema generation for app-server protocol.
+- OpenAgents: schema generation is not exposed; app-server changes are tracked manually.
+- Gap: missing local tooling for protocol schema generation in OpenAgents.
+
+Feature: Project docs toggles
+- Codex: `--no-project-doc` / `CODEX_DISABLE_PROJECT_DOC` disable AGENTS.md ingestion.
+- OpenAgents: AGENTS.md is injected by default without a user-facing toggle.
+- Gap: no toggle to disable project doc injection or match Codex’s precedence messaging.
+
 Feature: Multi-provider config (legacy CLI)
 - Codex TS CLI: provider model configuration and base URLs.
 - OpenAgents: OpenAgents has gateway + LM router, but no Codex CLI provider config compatibility layer.
@@ -100,6 +132,24 @@ Top integration priorities (recommended order)
 6) Skills compatibility shim (optional)
    - Why: longer tail, but enables sharing skills/prompt packs with Codex ecosystem.
    - Scope: define import/export mapping between Codex skills and OpenAgents SKILL.md.
+
+Additional opportunities (from deeper codex repo scan)
+
+7) CLI utilities parity (review/resume/apply/completion/sandbox/execpolicy/features)
+   - Why: codex CLI is a multitool; parity unlocks workflows outside the UI and reduces friction for power users.
+   - Scope: add Autopilot CLI subcommands for review, session resume, apply latest diff, shell completion generation, sandbox debug, execpolicy checks, and feature flag introspection.
+
+8) Image attachment + view_image UX
+   - Why: codex supports multimodal context via image attachments; parity enables diagram/screenshot-driven workflows.
+   - Scope: add composer image attachment pipeline and render view_image results instead of plain text.
+
+9) Terminal UX parity (alt-screen + transcript pager)
+   - Why: codex’s terminal ergonomics handle scrollback and transcript review cleanly.
+   - Scope: implement alternate-screen policy toggles for terminal UIs and add a transcript pager/selection overlay for CLI/TUI.
+
+10) Protocol schema tooling
+   - Why: codex ships schema generators for app-server protocol; keeping OpenAgents in sync lowers integration risk.
+   - Scope: add a CLI utility to emit JSON schema / TypeScript bindings for OpenAgents app-server surfaces.
 
 Notes / assumptions
 - This analysis uses codex repo docs plus OpenAgents usage of the Codex app-server. If Codex features exist outside those docs (e.g., TUI2-specific UX or new config flags), they should be added as a follow-up pass.
