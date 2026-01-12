@@ -1566,12 +1566,21 @@ impl AutopilotApp {
 
             match event {
                 WorkspaceEvent::WorkspacesLoaded { workspaces } => {
+                    let previous_active = state.workspaces.active_workspace_id.clone();
                     state.workspaces.apply_loaded(workspaces);
                     state.workspaces.connect_all_if_needed();
+                    if state.workspaces.active_workspace_id != previous_active {
+                        state
+                            .git
+                            .set_active_workspace(state.workspaces.active_workspace_id.as_deref());
+                    }
                     should_redraw = true;
                 }
                 WorkspaceEvent::WorkspaceAdded { workspace } => {
                     state.workspaces.apply_workspace_added(workspace);
+                    state
+                        .git
+                        .set_active_workspace(state.workspaces.active_workspace_id.as_deref());
                     should_redraw = true;
                 }
                 WorkspaceEvent::WorkspaceAddFailed { workspace_id, error } => {
@@ -1629,6 +1638,44 @@ impl AutopilotApp {
             state.workspaces.timeline_dirty = false;
             should_redraw = true;
         }
+
+        if should_redraw {
+            state.window.request_redraw();
+        }
+    }
+
+    pub(super) fn poll_git_events(&mut self) {
+        let Some(state) = &mut self.state else {
+            return;
+        };
+
+        let mut should_redraw = false;
+        while let Ok(event) = state.git.runtime.event_rx.try_recv() {
+            match event {
+                crate::app::git::GitEvent::StatusUpdated {
+                    workspace_id,
+                    status,
+                } => {
+                    state.git.apply_status_update(workspace_id, status);
+                    should_redraw = true;
+                }
+                crate::app::git::GitEvent::DiffsUpdated {
+                    workspace_id,
+                    diffs,
+                    error,
+                } => {
+                    state.git.apply_diff_update(workspace_id, diffs, error);
+                    should_redraw = true;
+                }
+            }
+        }
+
+        let active_workspace = state
+            .workspaces
+            .active_workspace_id
+            .as_ref()
+            .and_then(|id| state.workspaces.workspaces.iter().find(|ws| &ws.id == id));
+        state.git.refresh_if_needed(active_workspace);
 
         if should_redraw {
             state.window.request_redraw();

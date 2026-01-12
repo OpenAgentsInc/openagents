@@ -68,6 +68,12 @@ const WORKSPACE_ROW_GAP: f32 = 8.0;
 const WORKSPACE_ROW_PADDING_X: f32 = 12.0;
 const WORKSPACE_CONNECT_PILL_WIDTH: f32 = 58.0;
 const WORKSPACE_CONNECT_PILL_HEIGHT: f32 = 16.0;
+const GIT_PANEL_PADDING: f32 = 12.0;
+const GIT_PANEL_ROW_HEIGHT: f32 = 36.0;
+const GIT_PANEL_ROW_GAP: f32 = 6.0;
+const GIT_PANEL_HEADER_HEIGHT: f32 = 14.0;
+const GIT_PANEL_LINE_GAP: f32 = 8.0;
+const TOPBAR_BACK_BUTTON_SIZE: f32 = 20.0;
 
 #[derive(Clone, Debug)]
 struct LinePrefix {
@@ -87,6 +93,14 @@ pub(crate) struct WorkspaceListLayout {
     pub(crate) rows: Vec<Bounds>,
     pub(crate) connect_pills: Vec<Bounds>,
     pub(crate) empty_bounds: Option<Bounds>,
+}
+
+pub(crate) struct GitDiffPanelLayout {
+    pub(crate) header_bounds: Bounds,
+    pub(crate) status_bounds: Bounds,
+    pub(crate) branch_bounds: Bounds,
+    pub(crate) list_bounds: Bounds,
+    pub(crate) row_bounds: Vec<(usize, Bounds)>,
 }
 
 pub(crate) struct SessionListLayout {
@@ -166,6 +180,15 @@ pub(crate) fn new_session_button_bounds(sidebar_bounds: Bounds) -> Bounds {
     )
 }
 
+pub(crate) fn diff_back_button_bounds(sidebar_layout: &SidebarLayout) -> Bounds {
+    Bounds::new(
+        sidebar_layout.main.origin.x + 10.0,
+        sidebar_layout.main.origin.y + 10.0,
+        TOPBAR_BACK_BUTTON_SIZE,
+        TOPBAR_BACK_BUTTON_SIZE,
+    )
+}
+
 pub(crate) fn workspace_list_layout(
     sidebar_bounds: Bounds,
     workspace_count: usize,
@@ -210,6 +233,62 @@ pub(crate) fn workspace_list_layout(
         rows,
         connect_pills,
         empty_bounds,
+    }
+}
+
+pub(crate) fn git_diff_panel_layout(
+    sidebar_bounds: Bounds,
+    file_count: usize,
+) -> GitDiffPanelLayout {
+    let panel_x = sidebar_bounds.origin.x + GIT_PANEL_PADDING;
+    let panel_width = (sidebar_bounds.size.width - GIT_PANEL_PADDING * 2.0).max(0.0);
+    let mut y = sidebar_bounds.origin.y + GIT_PANEL_PADDING;
+
+    let header_bounds = Bounds::new(panel_x, y, panel_width, GIT_PANEL_HEADER_HEIGHT);
+    y += GIT_PANEL_HEADER_HEIGHT + GIT_PANEL_LINE_GAP;
+    let status_bounds = Bounds::new(panel_x, y, panel_width, 14.0);
+    y += 14.0 + GIT_PANEL_LINE_GAP;
+    let branch_bounds = Bounds::new(panel_x, y, panel_width, 14.0);
+    y += 14.0 + GIT_PANEL_LINE_GAP;
+
+    let available_height =
+        (sidebar_bounds.origin.y + sidebar_bounds.size.height - y - GIT_PANEL_PADDING).max(0.0);
+    let min_approvals = 140.0;
+    let diff_list_height = if available_height > min_approvals + 120.0 {
+        available_height - min_approvals
+    } else {
+        available_height * 0.55
+    }
+    .max(0.0)
+    .min(available_height);
+    let list_bounds = Bounds::new(panel_x, y, panel_width, diff_list_height);
+
+    let max_rows = if GIT_PANEL_ROW_HEIGHT + GIT_PANEL_ROW_GAP <= 0.0 {
+        0
+    } else {
+        ((diff_list_height + GIT_PANEL_ROW_GAP) / (GIT_PANEL_ROW_HEIGHT + GIT_PANEL_ROW_GAP))
+            .floor()
+            .max(0.0) as usize
+    };
+    let visible_count = file_count.min(max_rows);
+    let mut row_bounds = Vec::new();
+    if visible_count > 0 {
+        let mut row_y = list_bounds.origin.y;
+        for index in 0..visible_count {
+            row_bounds.push((
+                index,
+                Bounds::new(panel_x, row_y, panel_width, GIT_PANEL_ROW_HEIGHT),
+            ));
+            row_y += GIT_PANEL_ROW_HEIGHT + GIT_PANEL_ROW_GAP;
+        }
+    }
+
+    GitDiffPanelLayout {
+        header_bounds,
+        status_bounds,
+        branch_bounds,
+        list_bounds,
+        row_bounds,
     }
 }
 

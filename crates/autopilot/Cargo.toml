@@ -57,6 +57,7 @@ toml = { workspace = true }
 reqwest = { workspace = true, features = ["json"] }
 dsrs = { version = "0.1.0", path = "../dsrs" }
 uuid = { workspace = true }
+git2 = "0.20.3"
 
 [dev-dependencies]
 chrono = { workspace = true }

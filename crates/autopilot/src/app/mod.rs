@@ -11,6 +11,7 @@ pub(crate) mod dspy;
 pub(crate) mod dvm;
 pub(crate) mod events;
 pub(crate) mod gateway;
+pub(crate) mod git;
 pub(crate) mod issues;
 pub(crate) mod rlm;
 pub(crate) mod pylon_earnings;
@@ -40,6 +41,7 @@ pub(crate) use catalog::{
 pub(crate) use config::{settings_rows, ModelOption, SettingsInputMode, SettingsSnapshot};
 pub(crate) use permissions::sanitize_tokens;
 pub(crate) use session::SessionCardEvent;
+pub(crate) use git::CenterMode;
 pub(crate) use utils::{
     agent_capabilities, build_checkpoint_entries, build_input, build_markdown_config,
     build_markdown_document, build_markdown_renderer, default_auto_scroll, default_font_size,

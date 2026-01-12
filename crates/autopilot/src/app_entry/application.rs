@@ -18,6 +18,7 @@ use winit::window::{CursorIcon, Window, WindowId};
 
 use crate::app::autopilot::AutopilotState;
 use crate::app::autopilot_issues::AutopilotIssuesState;
+use crate::app::git::GitState;
 use crate::app::rlm::{RlmState, RlmTraceState};
 use crate::app::pylon_earnings::PylonEarningsState;
 use crate::app::pylon_jobs::PylonJobsState;
@@ -41,10 +42,10 @@ use crate::app::session::{
 };
 use crate::app::tools::ToolsState;
 use crate::app::ui::{
-    agent_list_layout, agent_modal_content_top, hook_event_layout, modal_y_in_content,
-    new_session_button_bounds, session_list_layout, sidebar_layout, skill_list_layout,
-    skill_modal_content_top, workspace_list_layout, CONTENT_PADDING_X, INPUT_PADDING,
-    SESSION_MODAL_HEIGHT,
+    agent_list_layout, agent_modal_content_top, diff_back_button_bounds, git_diff_panel_layout,
+    hook_event_layout, modal_y_in_content, new_session_button_bounds, session_list_layout,
+    sidebar_layout, skill_list_layout, skill_modal_content_top, workspace_list_layout,
+    CONTENT_PADDING_X, INPUT_PADDING, SESSION_MODAL_HEIGHT,
     STATUS_BAR_HEIGHT,
 };
 use crate::app::wallet::WalletState;
@@ -220,6 +221,7 @@ impl ApplicationHandler for AutopilotApp {
                 new_session_button_hovered: false,
                 chat: ChatState::new(&settings),
                 tools: ToolsState::new(),
+                git: GitState::new(),
                 session: SessionState::new(
                     selected_model,
                     coder_mode_label_str,
@@ -302,6 +304,7 @@ impl ApplicationHandler for AutopilotApp {
         self.poll_spark_wallet_events();
         self.poll_agent_backends_events();
         self.poll_workspace_events();
+        self.poll_git_events();
         self.poll_autopilot_history();
         self.poll_rate_limits();
 
@@ -344,6 +347,9 @@ impl ApplicationHandler for AutopilotApp {
             }
             WindowEvent::Focused(true) => {
                 state.workspaces.refresh_on_focus();
+                if let Some(active_id) = state.workspaces.active_workspace_id.as_ref() {
+                    state.git.force_refresh(active_id);
+                }
             }
             WindowEvent::Resized(size) => {
                 state.config.width = size.width.max(1);
@@ -544,6 +550,16 @@ impl ApplicationHandler for AutopilotApp {
                     // Reset cursor when sidebar closes
                     state.new_session_button_hovered = false;
                     state.window.set_cursor(CursorIcon::Default);
+                }
+
+                if state.git.center_mode == crate::app::CenterMode::Diff {
+                    let back_bounds = diff_back_button_bounds(&sidebar_layout);
+                    let hovered = back_bounds.contains(Point::new(x, y));
+                    if state.git.back_button_hovered != hovered {
+                        state.git.back_button_hovered = hovered;
+                        state.window.request_redraw();
+                    }
+                    return;
                 }
 
                 let input_event = InputEvent::MouseMove { x, y };
@@ -857,6 +873,7 @@ impl ApplicationHandler for AutopilotApp {
                                 let workspace_id = workspace.id.clone();
                                 let is_connected = workspace.connected;
                                 state.workspaces.set_active_workspace(workspace_id.clone());
+                                state.git.set_active_workspace(Some(&workspace_id));
                                 if is_connected {
                                     state.workspaces.runtime.list_threads(workspace_id);
                                 }
@@ -867,6 +884,60 @@ impl ApplicationHandler for AutopilotApp {
                             }
                         }
                     }
+                }
+
+                if button_state == ElementState::Pressed
+                    && matches!(button, winit::event::MouseButton::Left)
+                {
+                    if state.git.center_mode == crate::app::CenterMode::Diff {
+                        let back_bounds = diff_back_button_bounds(&sidebar_layout);
+                        if back_bounds.contains(Point::new(x, y)) {
+                            state.git.exit_diff_view();
+                            state.window.request_redraw();
+                            return;
+                        }
+                    }
+                    if state.right_sidebar_open {
+                        if let Some(right_bounds) = sidebar_layout.right {
+                            if let Some(active_id) = state.workspaces.active_workspace_id.as_ref() {
+                                if let Some(status) = state.git.status_for_workspace(active_id) {
+                                    let file_paths: Vec<String> = status
+                                        .files
+                                        .iter()
+                                        .map(|file| file.path.clone())
+                                        .collect();
+                                    let panel_layout = git_diff_panel_layout(
+                                        right_bounds,
+                                        file_paths.len(),
+                                    );
+                                    if panel_layout
+                                        .list_bounds
+                                        .contains(Point::new(x, y))
+                                    {
+                                        for (index, bounds) in panel_layout.row_bounds {
+                                            if bounds.contains(Point::new(x, y)) {
+                                                if let Some(path) = file_paths.get(index) {
+                                                    state.git.select_diff_path(path.clone());
+                                                    if let Some(active_id) =
+                                                        state.workspaces.active_workspace_id.as_ref()
+                                                    {
+                                                        state.git.force_refresh(active_id);
+                                                    }
+                                                    state.window.request_redraw();
+                                                    return;
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if state.git.center_mode == crate::app::CenterMode::Diff {
+                    state.window.request_redraw();
+                    return;
                 }
 
                 let chat_layout = state.build_chat_layout(
@@ -1111,6 +1182,12 @@ impl ApplicationHandler for AutopilotApp {
                     state.window.request_redraw();
                     return;
                 }
+                if state.git.center_mode == crate::app::CenterMode::Diff {
+                    state.git.diff_scroll_offset =
+                        (state.git.diff_scroll_offset - dy * 40.0).max(0.0);
+                    state.window.request_redraw();
+                    return;
+                }
                 // Scroll the message area (positive dy = scroll up, negative = scroll down)
                 state.chat.scroll_offset = (state.chat.scroll_offset - dy * 40.0).max(0.0);
                 state.window.request_redraw();
@@ -1178,6 +1255,14 @@ impl ApplicationHandler for AutopilotApp {
 
                     let modifiers = convert_modifiers(&state.modifiers);
 
+                    if state.git.center_mode == crate::app::CenterMode::Diff {
+                        if let WinitKey::Named(WinitNamedKey::Escape) = &key_event.logical_key {
+                            state.git.exit_diff_view();
+                            state.window.request_redraw();
+                            return;
+                        }
+                    }
+
                     if state.chat.chat_context_menu.is_open() {
                         if let Some(key) = convert_key_for_input(&key_event.logical_key) {
                             let input_event = InputEvent::KeyDown { key, modifiers };
@@ -1203,14 +1288,16 @@ impl ApplicationHandler for AutopilotApp {
                         }
                     }
 
-                    if state.handle_chat_shortcut(
-                        &key_event.logical_key,
-                        modifiers,
-                        &sidebar_layout,
-                        logical_height,
-                    ) {
-                        state.window.request_redraw();
-                        return;
+                    if state.git.center_mode != crate::app::CenterMode::Diff {
+                        if state.handle_chat_shortcut(
+                            &key_event.logical_key,
+                            modifiers,
+                            &sidebar_layout,
+                            logical_height,
+                        ) {
+                            state.window.request_redraw();
+                            return;
+                        }
                     }
 
                     if let Some(key) = convert_key_for_binding(&key_event.logical_key) {
@@ -1248,55 +1335,61 @@ impl ApplicationHandler for AutopilotApp {
                         }
                     }
 
-                    // Check for Enter key to submit (but not Shift+Enter, which inserts newline)
-                    if let WinitKey::Named(WinitNamedKey::Enter) = &key_event.logical_key {
-                        if !state.modifiers.shift_key() {
-                            let mut action = CommandAction::None;
-                            let mut submit_prompt = None;
+                    if state.git.center_mode != crate::app::CenterMode::Diff {
+                        // Check for Enter key to submit (but not Shift+Enter, which inserts newline)
+                        if let WinitKey::Named(WinitNamedKey::Enter) = &key_event.logical_key {
+                            if !state.modifiers.shift_key() {
+                                let mut action = CommandAction::None;
+                                let mut submit_prompt = None;
 
-                            {
-                                let prompt = state.input.get_value().to_string();
-                                if prompt.trim().is_empty() {
-                                    return;
-                                }
+                                {
+                                    let prompt = state.input.get_value().to_string();
+                                    if prompt.trim().is_empty() {
+                                        return;
+                                    }
 
-                                if let Some(command) = parse_command(&prompt) {
-                                    state.settings.command_history.push(prompt);
-                                    state.input.set_value("");
-                                    action = handle_command(state, command);
-                                } else if !state.chat.is_thinking {
-                                    state.settings.command_history.push(prompt.clone());
-                                    state.input.set_value("");
-                                    submit_prompt = Some(prompt);
-                                } else {
-                                    return;
-                                }
-                            }
-
-                            match action {
-                                CommandAction::SubmitPrompt(prompt) => self.submit_prompt(prompt),
-                                CommandAction::StartReview(review) => self.start_review(review),
-                                CommandAction::None => {
-                                    if let Some(prompt) = submit_prompt {
-                                        self.submit_prompt(prompt);
+                                    if let Some(command) = parse_command(&prompt) {
+                                        state.settings.command_history.push(prompt);
+                                        state.input.set_value("");
+                                        action = handle_command(state, command);
+                                    } else if !state.chat.is_thinking {
+                                        state.settings.command_history.push(prompt.clone());
+                                        state.input.set_value("");
+                                        submit_prompt = Some(prompt);
+                                    } else {
+                                        return;
                                     }
                                 }
-                            }
 
-                            if let Some(s) = &self.state {
-                                s.window.request_redraw();
+                                match action {
+                                    CommandAction::SubmitPrompt(prompt) => {
+                                        self.submit_prompt(prompt)
+                                    }
+                                    CommandAction::StartReview(review) => {
+                                        self.start_review(review)
+                                    }
+                                    CommandAction::None => {
+                                        if let Some(prompt) = submit_prompt {
+                                            self.submit_prompt(prompt);
+                                        }
+                                    }
+                                }
+
+                                if let Some(s) = &self.state {
+                                    s.window.request_redraw();
+                                }
+                                return;
                             }
-                            return;
+                            // Shift+Enter falls through to input handler below
                         }
-                        // Shift+Enter falls through to input handler below
-                    }
 
-                    if let Some(key) = convert_key_for_input(&key_event.logical_key) {
-                        let input_event = InputEvent::KeyDown { key, modifiers };
-                        state
-                            .input
-                            .event(&input_event, input_bounds, &mut state.event_context);
-                        state.window.request_redraw();
+                        if let Some(key) = convert_key_for_input(&key_event.logical_key) {
+                            let input_event = InputEvent::KeyDown { key, modifiers };
+                            state
+                                .input
+                                .event(&input_event, input_bounds, &mut state.event_context);
+                            state.window.request_redraw();
+                        }
                     }
                 }
             }

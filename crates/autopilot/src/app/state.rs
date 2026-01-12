@@ -23,6 +23,7 @@ use crate::app::config::SettingsState;
 use crate::app::dspy::DspyState;
 use crate::app::dvm::DvmState;
 use crate::app::events::ModalState;
+use crate::app::git::GitState;
 use crate::app::gateway::GatewayState;
 use crate::app::lm_router::LmRouterState;
 use crate::app::nexus::NexusState;
@@ -64,6 +65,7 @@ pub(crate) struct AppState {
     pub(crate) new_session_button_hovered: bool,
     pub(crate) chat: ChatState,
     pub(crate) tools: ToolsState,
+    pub(crate) git: GitState,
     pub(crate) session: SessionState,
     pub(crate) catalogs: CatalogState,
     pub(crate) agent_backends: AgentBackendsState,

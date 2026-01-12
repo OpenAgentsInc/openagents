@@ -39,6 +39,7 @@ include!("rendering/chat_selection.rs");
 include!("rendering/render_app.rs");
 include!("rendering/sidebars.rs");
 include!("rendering/chat.rs");
+include!("rendering/git_diff.rs");
 include!("rendering/tools.rs");
 include!("rendering/input.rs");
 include!("rendering/modals.rs");
