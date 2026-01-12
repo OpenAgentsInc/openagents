@@ -1,14 +1,13 @@
 //! Pylon daemon integration for autopilot
 //!
 //! Provides functions to check pylon status, start it if needed,
-//! discover swarm providers, and
-//! query neobank treasury status.
+//! and discover swarm providers.
 
 use std::process::Command;
 use std::time::Duration;
 use tracing::{debug, info, warn};
 
-use crate::preflight::{NeobankInfo, PylonInfo, SwarmProvider};
+use crate::preflight::{PylonInfo, SwarmProvider};
 
 /// Check if the pylon daemon is running
 ///
@@ -186,118 +185,6 @@ pub async fn discover_swarm_providers_async(_relays: &[String]) -> Vec<SwarmProv
     // TODO: Implement async NIP-89 discovery using nostr-sdk
     // For now, return empty list
     Vec::new()
-}
-
-/// Query neobank treasury status from pylon daemon
-///
-/// Returns None if:
-/// - Daemon is not running
-/// - Neobank is not initialized
-/// - Communication fails
-pub fn get_neobank_status() -> Option<NeobankInfo> {
-    let socket_path = match pylon::socket_path() {
-        Ok(p) => p,
-        Err(_) => return None,
-    };
-
-    if !socket_path.exists() {
-        return None;
-    }
-
-    let client = pylon::daemon::ControlClient::new(socket_path);
-
-    match client.neobank_status() {
-        Ok(pylon::daemon::DaemonResponse::NeobankStatus {
-            btc_balance_sats,
-            usd_balance_cents,
-            treasury_active,
-            btc_usd_rate,
-        }) => Some(NeobankInfo {
-            available: true,
-            btc_balance_sats,
-            usd_balance_cents,
-            treasury_active,
-            btc_usd_rate,
-        }),
-        Ok(pylon::daemon::DaemonResponse::Error(_)) => Some(NeobankInfo {
-            available: false,
-            ..Default::default()
-        }),
-        _ => None,
-    }
-}
-
-/// Get neobank balance for a specific currency
-pub fn get_neobank_balance(currency: &str) -> Option<u64> {
-    let socket_path = match pylon::socket_path() {
-        Ok(p) => p,
-        Err(_) => return None,
-    };
-
-    if !socket_path.exists() {
-        return None;
-    }
-
-    let client = pylon::daemon::ControlClient::new(socket_path);
-
-    match client.neobank_balance(currency) {
-        Ok(pylon::daemon::DaemonResponse::NeobankBalance { sats }) => Some(sats),
-        _ => None,
-    }
-}
-
-/// Pay a Lightning invoice via neobank
-pub fn neobank_pay(bolt11: &str) -> Result<String, String> {
-    let socket_path = pylon::socket_path().map_err(|e| e.to_string())?;
-
-    if !socket_path.exists() {
-        return Err("Pylon daemon not running".to_string());
-    }
-
-    let client = pylon::daemon::ControlClient::new(socket_path);
-
-    match client.neobank_pay(bolt11) {
-        Ok(pylon::daemon::DaemonResponse::NeobankPayment { preimage }) => Ok(preimage),
-        Ok(pylon::daemon::DaemonResponse::Error(e)) => Err(e),
-        Err(e) => Err(e.to_string()),
-        _ => Err("Unexpected response".to_string()),
-    }
-}
-
-/// Send Cashu tokens via neobank
-pub fn neobank_send(amount_sats: u64, currency: &str) -> Result<String, String> {
-    let socket_path = pylon::socket_path().map_err(|e| e.to_string())?;
-
-    if !socket_path.exists() {
-        return Err("Pylon daemon not running".to_string());
-    }
-
-    let client = pylon::daemon::ControlClient::new(socket_path);
-
-    match client.neobank_send(amount_sats, currency) {
-        Ok(pylon::daemon::DaemonResponse::NeobankSend { token }) => Ok(token),
-        Ok(pylon::daemon::DaemonResponse::Error(e)) => Err(e),
-        Err(e) => Err(e.to_string()),
-        _ => Err("Unexpected response".to_string()),
-    }
-}
-
-/// Receive Cashu tokens via neobank
-pub fn neobank_receive(token: &str) -> Result<u64, String> {
-    let socket_path = pylon::socket_path().map_err(|e| e.to_string())?;
-
-    if !socket_path.exists() {
-        return Err("Pylon daemon not running".to_string());
-    }
-
-    let client = pylon::daemon::ControlClient::new(socket_path);
-
-    match client.neobank_receive(token) {
-        Ok(pylon::daemon::DaemonResponse::NeobankReceive { amount_sats }) => Ok(amount_sats),
-        Ok(pylon::daemon::DaemonResponse::Error(e)) => Err(e),
-        Err(e) => Err(e.to_string()),
-        _ => Err("Unexpected response".to_string()),
-    }
 }
 
 #[cfg(test)]

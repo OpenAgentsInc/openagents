@@ -21,7 +21,6 @@ pub mod daemon;
 pub mod db;
 pub mod host;
 pub mod jobs;
-pub mod neobank_service;
 pub mod provider;
 
 pub use config::PylonConfig;
@@ -29,7 +28,6 @@ pub use daemon::{PidFile, is_daemon_running, pid_path, runtime_dir, socket_path}
 pub use db::PylonDb;
 pub use host::{AgentHandle, AgentRunner};
 pub use jobs::{JobRecord, JobStore};
-pub use neobank_service::{NeobankConfig, NeobankError, NeobankService, TreasuryStatus};
 pub use provider::PylonProvider;
 
 #[cfg(test)]

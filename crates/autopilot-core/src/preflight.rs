@@ -138,10 +138,6 @@ pub struct InferenceInfo {
     /// Remote swarm providers discovered via NIP-89
     #[serde(default)]
     pub swarm_providers: Vec<SwarmProvider>,
-
-    /// Neobank treasury status
-    #[serde(default)]
-    pub neobank: Option<NeobankInfo>,
 }
 
 /// Local Pylon daemon status
@@ -173,25 +169,6 @@ impl Default for PylonInfo {
             models: Vec::new(),
         }
     }
-}
-
-/// Neobank treasury status
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct NeobankInfo {
-    /// Whether neobank is available
-    pub available: bool,
-
-    /// BTC balance in satoshis
-    pub btc_balance_sats: u64,
-
-    /// USD balance in cents
-    pub usd_balance_cents: u64,
-
-    /// Whether treasury agent is active
-    pub treasury_active: bool,
-
-    /// Current BTC/USD rate if available
-    pub btc_usd_rate: Option<f64>,
 }
 
 /// Remote compute provider discovered via NIP-89
@@ -673,7 +650,6 @@ fn detect_inference() -> InferenceInfo {
         env_vars,
         pylon: None,                 // Filled in later by pylon integration
         swarm_providers: Vec::new(), // Filled in later by pylon integration
-        neobank: None,               // Filled in later by pylon integration
     }
 }
 
