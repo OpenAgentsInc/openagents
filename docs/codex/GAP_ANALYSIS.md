@@ -103,3 +103,13 @@ Top integration priorities (recommended order)
 
 Notes / assumptions
 - This analysis uses codex repo docs plus OpenAgents usage of `codex-agent-sdk`. If Codex features exist outside those docs (e.g., TUI2-specific UX or new config flags), they should be added as a follow-up pass.
+
+Recent implementation check (last ~10 commits)
+- App-server integration advanced: `9c8198cab`, `cd6d4d694`, `bf357856d`, `28ee37b89`, `55c0931c6`, `688c72bd4`, `41a49dd03` add Codex app-server transport + approvals wiring + event mapping + docs. This reduces the MCP/interop gap for running Codex-style workflows in OpenAgents, but it is not yet a Codex MCP server or config bridge.
+- Codex naming sweep + fixes: `c77a55895` aligns naming and fixes build/test failures; no functional parity gains for Codex CLI features.
+- Command palette disabled: `af4861f95` removes command palette access in Autopilot and Pylon Desktop; this widens the interactive UX gap relative to Codex CLI (by request).
+- Gap analysis doc added: `4341566f5` is the base document; this section updates it.
+
+Implications for priority order
+- MCP interop remains a gap despite app-server progress; treat the new app-server transport as a precursor, not a replacement, for a Codex-compatible MCP surface.
+- Config bridge + non-interactive CLI parity are still the fastest wins to close friction for Codex CLI users.
