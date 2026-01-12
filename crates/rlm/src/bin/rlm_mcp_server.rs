@@ -24,7 +24,7 @@
 //! # Backend Selection
 //!
 //! Set `RLM_BACKEND` environment variable:
-//! - `codex` - Use Codex via codex-agent-sdk (recommended, requires `codex` feature)
+//! - `codex` - Use Codex via app-server (requires `codex` feature)
 //! - `ollama` - Use Ollama at localhost:11434 (default)
 //!
 //! Example:
@@ -45,7 +45,7 @@ use std::sync::Arc;
 enum RlmBackend {
     /// Use Ollama at localhost:11434
     Ollama,
-    /// Use Codex via codex-agent-sdk (requires `codex` feature)
+    /// Use Codex via app-server (requires `codex` feature)
     Codex,
 }
 

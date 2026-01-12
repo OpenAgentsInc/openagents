@@ -267,7 +267,7 @@ rlm = { path = "crates/rlm", features = ["codex"] }
 | Feature | Description |
 |---------|-------------|
 | `dspy` | DSPy integration: signatures, orchestrator, LmRouter bridge, tools |
-| `codex` | Codex as RLM backend via codex-agent-sdk |
+| `codex` | Codex as RLM backend via app-server |
 
 ## Module Summary
 

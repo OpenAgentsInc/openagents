@@ -1,7 +1,7 @@
 Codex Gap Analysis
 
 Scope
-- Sources reviewed: `/home/christopherdavid/code/codex/README.md`, `/home/christopherdavid/code/codex/codex-rs/README.md`, `/home/christopherdavid/code/codex/docs/*.md`, `/home/christopherdavid/code/codex/codex-cli/README.md`, and OpenAgents Codex integration code/docs (notably `crates/codex-agent-sdk/README.md`, `crates/autopilot/src/app/agents/codex_backend.rs`, `crates/autopilot/src/app_entry/coder_actions.rs`, `crates/compute/README.md`, `crates/oanix/docs/README.md`, `crates/rlm/src/bin/rlm_mcp_server.rs`).
+- Sources reviewed: `/home/christopherdavid/code/codex/README.md`, `/home/christopherdavid/code/codex/codex-rs/README.md`, `/home/christopherdavid/code/codex/docs/*.md`, `/home/christopherdavid/code/codex/codex-cli/README.md`, and OpenAgents Codex integration code/docs (notably `docs/codex/APP_SERVER.md`, `crates/autopilot/src/app/agents/codex_backend.rs`, `crates/autopilot/src/app_entry/coder_actions.rs`, `crates/compute/README.md`, `crates/oanix/docs/README.md`, `crates/rlm/src/bin/rlm_mcp_server.rs`).
 - Goal: map Codex CLI capabilities to OpenAgents implementation coverage and prioritize integration gaps.
 
 Codex feature inventory (from codex repo docs)
@@ -16,8 +16,8 @@ Codex feature inventory (from codex repo docs)
 - Multi-provider support (legacy TS CLI): configurable provider backends and base URLs.
 
 OpenAgents current coverage (high level)
-- Codex execution via SDK: `codex-agent-sdk` is used by Autopilot and Adjutant for headless runs and streaming events.
-- Sandbox + approvals: OpenAgents maps CoderMode to Codex SDK sandbox + approval policy (read-only/workspace-write/danger-full-access, approval modes).
+- Codex execution via app-server: Autopilot and Adjutant run Codex through the app-server JSONL protocol for headless runs and streaming events.
+- Sandbox + approvals: OpenAgents maps CoderMode to app-server sandbox + approval policy (read-only/workspace-write/danger-full-access, approval modes).
 - UI: Autopilot GPU UI with streaming, tool cards, session state. (Command palette currently disabled per request.)
 - MCP: OpenAgents has its own MCP servers (e.g., `rlm-mcp-server`), plus internal MCP management in Autopilot UI, but does not expose OpenAgents as a Codex-compatible MCP server.
 - Compute backend: `CodexCodeBackend` exists in compute for sandboxed Codex CLI execution.
@@ -42,12 +42,12 @@ Feature: Config parity with `~/.codex/config.toml`
 
 Feature: Authentication UX
 - Codex: ChatGPT OAuth and API key flows in CLI.
-- OpenAgents: relies on Codex CLI being installed/authenticated via SDK; no OpenAgents UX for Codex OAuth state.
+- OpenAgents: relies on Codex CLI being installed/authenticated via app-server; no OpenAgents UX for Codex OAuth state.
 - Gap: no auth status UI or guidance for Codex auth errors beyond basic detection.
 
 Feature: Approval modes + sandbox policy
 - Codex: explicit approval modes and sandbox modes with dedicated CLI flags.
-- OpenAgents: CoderMode maps to sandbox + approval via SDK; no full parity with Codex CLI modes (suggest/auto-edit/full-auto semantics).
+- OpenAgents: CoderMode maps to sandbox + approval via app-server; no full parity with Codex CLI modes (suggest/auto-edit/full-auto semantics).
 - Gap: missing explicit mode selection parity and per-command execution policy surface.
 
 Feature: Skills + custom prompts
@@ -67,7 +67,7 @@ Feature: MCP client + MCP server behavior
 
 Feature: Notifications on turn completion
 - Codex: notification hook + WSL fallback.
-- OpenAgents: no Codex-compatible notification hook for Codex SDK turns.
+- OpenAgents: no Codex-compatible notification hook for Codex app-server turns.
 - Gap: missing out-of-band notifications for long runs.
 
 Feature: Multi-provider config (legacy CLI)
@@ -83,7 +83,7 @@ Top integration priorities (recommended order)
 
 2) Non-interactive CLI parity (`codex exec` equivalent)
    - Why: unlocks automation/CI use and allows OpenAgents to replace Codex CLI in scripts without UI.
-   - Scope: add `openagents exec` wrapper that invokes Codex SDK thread run with structured output + exit codes.
+- Scope: add `openagents exec` wrapper that invokes Codex app-server thread run with structured output + exit codes.
 
 3) Explicit approval + sandbox mode parity
    - Why: Codex users expect suggest/auto-edit/full-auto semantics; mapping reduces confusion.
@@ -102,7 +102,7 @@ Top integration priorities (recommended order)
    - Scope: define import/export mapping between Codex skills and OpenAgents SKILL.md.
 
 Notes / assumptions
-- This analysis uses codex repo docs plus OpenAgents usage of `codex-agent-sdk`. If Codex features exist outside those docs (e.g., TUI2-specific UX or new config flags), they should be added as a follow-up pass.
+- This analysis uses codex repo docs plus OpenAgents usage of the Codex app-server. If Codex features exist outside those docs (e.g., TUI2-specific UX or new config flags), they should be added as a follow-up pass.
 
 Recent implementation check (last ~10 commits)
 - App-server integration advanced: `9c8198cab`, `cd6d4d694`, `bf357856d`, `28ee37b89`, `55c0931c6`, `688c72bd4`, `41a49dd03` add Codex app-server transport + approvals wiring + event mapping + docs. This reduces the MCP/interop gap for running Codex-style workflows in OpenAgents, but it is not yet a Codex MCP server or config bridge.

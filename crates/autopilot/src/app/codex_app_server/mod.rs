@@ -591,6 +591,14 @@ struct AppServerCommand {
     args: Vec<String>,
 }
 
+const CODEX_PATHS: &[&str] = &[
+    ".npm-global/bin/codex",
+    ".local/bin/codex",
+    "node_modules/.bin/codex",
+    "/usr/local/bin/codex",
+    "/opt/homebrew/bin/codex",
+];
+
 fn resolve_app_server_command() -> Result<AppServerCommand> {
     if let Ok(program) = which::which("codex-app-server") {
         return Ok(AppServerCommand {
@@ -599,13 +607,33 @@ fn resolve_app_server_command() -> Result<AppServerCommand> {
         });
     }
 
-    let program = codex_agent_sdk::transport::find_codex_executable()
-        .context("codex executable not found")?;
+    let program = find_codex_executable().context("codex executable not found")?;
 
     Ok(AppServerCommand {
         program,
         args: vec!["app-server".to_string()],
     })
+}
+
+fn find_codex_executable() -> Result<PathBuf> {
+    if let Ok(path) = which::which("codex") {
+        return Ok(path);
+    }
+
+    if let Some(home) = dirs::home_dir() {
+        for path in CODEX_PATHS {
+            let full_path = if path.starts_with('/') {
+                PathBuf::from(path)
+            } else {
+                home.join(path)
+            };
+            if full_path.exists() && full_path.is_file() {
+                return Ok(full_path);
+            }
+        }
+    }
+
+    Err(anyhow::anyhow!("codex executable not found"))
 }
 
 #[cfg(test)]

@@ -12,6 +12,7 @@ use wgpui::components::organisms::EventInspector;
 use crate::app::agents::AgentBackendsStatus;
 use crate::app::chat::MessageRole;
 use crate::app::codex_app_server as app_server;
+use crate::app::codex_runtime::{CodexRuntime, CodexRuntimeConfig};
 use crate::app::config::{config_dir, SettingsTab};
 use crate::app::events::{keybinding_labels, ModalState};
 use crate::app::nip28::Nip28ConnectionStatus;
@@ -1266,31 +1267,16 @@ fn export_session_markdown(state: &AppState) -> io::Result<PathBuf> {
 }
 
 fn should_fetch_codex_sessions() -> bool {
-    match std::env::var("AUTOPILOT_CODEX_TRANSPORT") {
-        Ok(value) => matches!(
-            value.to_ascii_lowercase().as_str(),
-            "app-server" | "appserver" | "app_server"
-        ),
-        Err(_) => false,
-    }
+    CodexRuntime::is_available()
 }
 
 async fn fetch_codex_session_entries(cwd: PathBuf) -> Result<Vec<SessionEntry>> {
-    let (client, _channels) = app_server::AppServerClient::spawn(app_server::AppServerConfig {
+    let runtime = CodexRuntime::spawn(CodexRuntimeConfig {
         cwd: Some(cwd),
         wire_log: None,
     })
     .await?;
-
-    let client_info = app_server::ClientInfo {
-        name: "autopilot".to_string(),
-        title: Some("Autopilot".to_string()),
-        version: env!("CARGO_PKG_VERSION").to_string(),
-    };
-    if let Err(err) = client.initialize(client_info).await {
-        let _ = client.shutdown().await;
-        return Err(err);
-    }
+    let CodexRuntime { client, .. } = runtime;
 
     let mut entries = Vec::new();
     let mut cursor: Option<String> = None;
@@ -1363,20 +1349,12 @@ fn codex_skill_entry(skill: app_server::SkillMetadata) -> SkillEntry {
 }
 
 async fn fetch_codex_models(cwd: PathBuf) -> Result<Vec<app_server::ModelInfo>> {
-    let (client, _channels) = app_server::AppServerClient::spawn(app_server::AppServerConfig {
+    let runtime = CodexRuntime::spawn(CodexRuntimeConfig {
         cwd: Some(cwd),
         wire_log: None,
     })
     .await?;
-    let client_info = app_server::ClientInfo {
-        name: "autopilot".to_string(),
-        title: Some("Autopilot".to_string()),
-        version: env!("CARGO_PKG_VERSION").to_string(),
-    };
-    if let Err(err) = client.initialize(client_info).await {
-        let _ = client.shutdown().await;
-        return Err(err);
-    }
+    let CodexRuntime { client, .. } = runtime;
 
     let mut cursor: Option<String> = None;
     let mut models = Vec::new();
@@ -1401,20 +1379,12 @@ async fn fetch_codex_models(cwd: PathBuf) -> Result<Vec<app_server::ModelInfo>> 
 async fn fetch_codex_config_snapshot(
     cwd: PathBuf,
 ) -> Result<(Option<String>, Option<app_server::ReasoningEffort>)> {
-    let (client, _channels) = app_server::AppServerClient::spawn(app_server::AppServerConfig {
+    let runtime = CodexRuntime::spawn(CodexRuntimeConfig {
         cwd: Some(cwd),
         wire_log: None,
     })
     .await?;
-    let client_info = app_server::ClientInfo {
-        name: "autopilot".to_string(),
-        title: Some("Autopilot".to_string()),
-        version: env!("CARGO_PKG_VERSION").to_string(),
-    };
-    if let Err(err) = client.initialize(client_info).await {
-        let _ = client.shutdown().await;
-        return Err(err);
-    }
+    let CodexRuntime { client, .. } = runtime;
 
     let response = client
         .config_read(app_server::ConfigReadParams {
@@ -1440,20 +1410,12 @@ async fn fetch_codex_skills(
     cwd: PathBuf,
     force_reload: bool,
 ) -> Result<(Vec<SkillEntry>, Option<String>)> {
-    let (client, _channels) = app_server::AppServerClient::spawn(app_server::AppServerConfig {
+    let runtime = CodexRuntime::spawn(CodexRuntimeConfig {
         cwd: Some(cwd.clone()),
         wire_log: None,
     })
     .await?;
-    let client_info = app_server::ClientInfo {
-        name: "autopilot".to_string(),
-        title: Some("Autopilot".to_string()),
-        version: env!("CARGO_PKG_VERSION").to_string(),
-    };
-    if let Err(err) = client.initialize(client_info).await {
-        let _ = client.shutdown().await;
-        return Err(err);
-    }
+    let CodexRuntime { client, .. } = runtime;
 
     let response = client
         .skills_list(app_server::SkillsListParams {
@@ -1483,20 +1445,12 @@ async fn fetch_codex_skills(
 }
 
 async fn write_codex_config_value(cwd: PathBuf, key_path: String, value: Value) -> Result<()> {
-    let (client, _channels) = app_server::AppServerClient::spawn(app_server::AppServerConfig {
+    let runtime = CodexRuntime::spawn(CodexRuntimeConfig {
         cwd: Some(cwd),
         wire_log: None,
     })
     .await?;
-    let client_info = app_server::ClientInfo {
-        name: "autopilot".to_string(),
-        title: Some("Autopilot".to_string()),
-        version: env!("CARGO_PKG_VERSION").to_string(),
-    };
-    if let Err(err) = client.initialize(client_info).await {
-        let _ = client.shutdown().await;
-        return Err(err);
-    }
+    let CodexRuntime { client, .. } = runtime;
 
     let params = app_server::ConfigValueWriteParams {
         key_path,

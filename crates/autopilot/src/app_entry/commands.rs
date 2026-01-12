@@ -14,6 +14,7 @@ use crate::app::catalog::{
 };
 use crate::app::agents::AgentKind;
 use crate::app::codex_app_server as app_server;
+use crate::app::codex_runtime::{CodexRuntime, CodexRuntimeConfig};
 use crate::app::config::{
     app_server_model_entries, AgentKindConfig, ModelPickerEntry, SettingsItem, SettingsTab,
 };
@@ -2118,13 +2119,6 @@ fn start_app_server_task(
     state: &mut AppState,
     label: &str,
 ) -> Option<mpsc::UnboundedSender<ResponseEvent>> {
-    if !use_app_server_transport() {
-        state.push_system_message(format!(
-            "{} requires Codex app-server transport (set AUTOPILOT_CODEX_TRANSPORT=app-server).",
-            label
-        ));
-        return None;
-    }
     if state.chat.is_thinking || state.chat.response_rx.is_some() {
         state.push_system_message(format!(
             "Cannot start {} while another request is active.",
@@ -2146,13 +2140,13 @@ async fn init_app_server_client(
     tx: &mpsc::UnboundedSender<ResponseEvent>,
 ) -> Option<(app_server::AppServerClient, app_server::AppServerChannels)> {
     let cwd = std::env::current_dir().unwrap_or_default();
-    let (client, channels) = match app_server::AppServerClient::spawn(app_server::AppServerConfig {
+    let runtime = match CodexRuntime::spawn(CodexRuntimeConfig {
         cwd: Some(cwd),
         wire_log: None,
     })
     .await
     {
-        Ok(result) => result,
+        Ok(runtime) => runtime,
         Err(err) => {
             let _ = tx.send(ResponseEvent::Error(format!(
                 "Failed to start codex app-server: {}",
@@ -2161,19 +2155,7 @@ async fn init_app_server_client(
             return None;
         }
     };
-    let client_info = app_server::ClientInfo {
-        name: "autopilot".to_string(),
-        title: Some("Autopilot".to_string()),
-        version: env!("CARGO_PKG_VERSION").to_string(),
-    };
-    if let Err(err) = client.initialize(client_info).await {
-        let _ = tx.send(ResponseEvent::Error(format!(
-            "Failed to initialize codex app-server: {}",
-            err
-        )));
-        let _ = client.shutdown().await;
-        return None;
-    }
+    let CodexRuntime { client, channels, .. } = runtime;
     Some((client, channels))
 }
 
@@ -2205,16 +2187,6 @@ fn format_plan_type(plan: app_server::PlanType) -> &'static str {
         app_server::PlanType::Enterprise => "enterprise",
         app_server::PlanType::Edu => "edu",
         app_server::PlanType::Unknown => "unknown",
-    }
-}
-
-fn use_app_server_transport() -> bool {
-    match std::env::var("AUTOPILOT_CODEX_TRANSPORT") {
-        Ok(value) => matches!(
-            value.to_ascii_lowercase().as_str(),
-            "app-server" | "appserver" | "app_server"
-        ),
-        Err(_) => false,
     }
 }
 

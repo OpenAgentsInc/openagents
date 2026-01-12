@@ -7,31 +7,30 @@ threads, turns, items, approvals, and reviews directly through the JSONL protoco
 
 ## Goals
 
-Autopilot should treat the Codex app-server as its primary backend and deliver full
+Autopilot should treat the Codex app-server as its only backend and deliver full
 coverage of approvals, tool results, and review flows while preserving local
 session continuity and the existing Adjutant-driven autopilot mode. The roadmap
 prioritizes robust transport, event mapping, and session persistence first, then
 builds toward config, auth, MCP, and skills integration that matches the app-server
-API surface. Codex runs as a sidecar runtime controlled over JSONL, wrapped by an
-AgentRuntime adapter surface (start thread, start turn, stream events, respond to
-approvals, stop) so Autopilot can orchestrate other backends later without
-rewriting the UI. The event stream doubles as the HUD spine and telemetry bus, with
-raw JSONL plus a normalized event log stored as a flight recorder for replay,
-evaluation, and dataset capture, and approvals treated as the autonomy control
-surface rather than a one-off dialog. The sidecar boundary is intentional for crash
-isolation, upgrades, and embedding into other products while keeping an optional
-single-binary mode on the table for the future.
+API surface. Codex runs as a sidecar runtime controlled over JSONL, with lifecycle
+and restart logic centralized in a single Codex runtime module so UI, CLI, and
+Autopilot share one path and one process model. The event stream doubles as the HUD
+spine and telemetry bus, with raw JSONL wire logs plus a normalized event log stored
+as a flight recorder for replay, evaluation, and dataset capture, and approvals
+treated as the autonomy control surface rather than a one-off dialog. The sidecar
+boundary is intentional for crash isolation, upgrades, and embedding into other
+products while keeping an optional single-binary mode on the table for the future.
 
 ## Guiding principles
 
-Codex app-server should be treated as a sidecar runtime that Autopilot supervises over JSONL. That means a clean AgentRuntime
-adapter (start thread, start turn, stream events, respond to approvals, stop) and a default posture of spawning a separate
-process rather than embedding a library, so crashes are isolated, upgrades are simple, and multi-backend orchestration stays
-possible.
+Codex app-server is the sole runtime that Autopilot supervises over JSONL. Autopilot should spawn and manage it through a
+single Codex runtime module (start thread, start turn, stream events, respond to approvals, stop) rather than a generic
+adapter layer, so crashes are isolated, upgrades are simple, and the UI stays focused on one stable path.
 
 The v2 event stream is both the HUD spine and the telemetry bus. Autopilot should preserve item and turn boundaries, capture
-raw JSONL plus normalized trace events, and emit enough detail to compute APM-style metrics like tool latency, approval wait
-time, and token usage without reparsing raw output. The same flight recorder enables replay, resume, and offline evaluation.
+raw JSONL wire logs plus normalized trace events, and emit enough detail to compute APM-style metrics like tool latency,
+approval wait time, and token usage without reparsing raw output. The same flight recorder enables replay, resume, and offline
+evaluation.
 
 Approvals are the autonomy control surface. Treat approval requests as policy inputs (read-only / propose / auto / escalate),
 and make capability discovery first-class by enumerating models, skills, and MCP tools at the start of each run so the UI and
@@ -41,18 +40,18 @@ policy layer both see the same live surface area.
 
 Autopilot already ships as a Winit/WGPU desktop app with streaming Markdown, tool
 call cards, a command palette, and a large suite of telemetry panels. The Codex
-backend currently streams through codex-agent-sdk rather than the app-server, and
-Autopilot mode runs the Adjutant loop with OANIX and DSPy, capped at 10 iterations
-with verification enabled. Prompt expansion supports @file and !command, and
-session data is stored locally with list/fork/export and checkpoint restore UI.
+backend streams through the app-server transport, and Autopilot mode runs the
+Adjutant loop with OANIX and DSPy, capped at 10 iterations with verification
+enabled. Prompt expansion supports @file and !command, and session data is stored
+locally with list/fork/export and checkpoint restore UI.
 
 The remaining gaps are concentrated in app-server parity: Codex thread resume is
 not wired, the tool list is empty for the Codex path, and approval requests are not
 surfaced to the user. Catalog discovery for agents, skills, hooks, and MCP exists
 in the UI but does not yet drive Codex runs, and local session metadata is not
-linked to Codex rollouts. There is no runtime adapter boundary yet, approvals lack
-policy-driven auto decisions, and app-server runs do not capture a raw + normalized
-trace for replay or evaluation.
+linked to Codex rollouts. App-server runs emit wire + trace logs, but approvals
+still lack policy-driven auto decisions and the traces are not yet consumed for
+replay or evaluation.
 
 ## Milestones
 
@@ -63,9 +62,9 @@ Scope: implement a managed process runner that spawns `codex app-server` (or the
 routing without the JSON-RPC version field. The client must perform the initialize
 handshake (`initialize` then `initialized`), detect double-init errors, and expose a
 typed wrapper for core requests and notifications so higher-level systems are not
-stringly typed. This milestone should also define the first concrete Codex runtime
-adapter with the minimal lifecycle surface (start thread, start turn, stream events,
-respond to approvals, stop), even if other runtimes are not yet wired in.
+stringly typed. This milestone should also define the Codex runtime module with the
+minimal lifecycle surface (start thread, start turn, stream events, respond to
+approvals, stop) so Autopilot uses one Codex path throughout.
 
 Acceptance: Autopilot can start the app-server, issue `thread/start`, and receive
 `thread/started` and `turn/started` notifications without deadlock. The process
@@ -76,7 +75,7 @@ broken pipes.
 
 Scope: wire `turn/start` and `turn/interrupt` into the existing query flow and map
 app-server events into `ResponseEvent` so the UI renders the same way it does for
-codex-agent-sdk. This includes items such as `userMessage`, `agentMessage`,
+the Codex CLI. This includes items such as `userMessage`, `agentMessage`,
 `reasoning`, `commandExecution`, `fileChange`, `mcpToolCall`, `enteredReviewMode`,
 `exitedReviewMode`, `webSearch`, `imageView`, and `compacted`, along with deltas
 (`item/agentMessage/delta`, `item/reasoning/*`, `item/commandExecution/outputDelta`,
@@ -87,7 +86,7 @@ metrics without additional parsing.
 
 Acceptance: streaming responses and tool outputs render correctly for app-server
 runs, with plan updates and unified diffs appearing live without recompute. The UI
-should behave consistently across both the Codex SDK stream and app-server stream.
+should behave consistently with Codex CLI/app-server semantics.
 
 ### M3: Approvals and sandbox/permission parity
 
@@ -141,7 +140,7 @@ live data from the app-server.
 
 ### M6: Autopilot loop and reliability
 
-Scope: route Adjutant autopilot runs through the app-server when Codex is selected,
+Scope: route Adjutant autopilot runs through the app-server,
 use `command/exec` for safe one-off validation or prompt expansion, and add
 integration tests that cover initialize, turn streaming, and approval flows. Error
 handling and telemetry should be hardened so retries and failure states are visible
@@ -150,23 +149,20 @@ and recoverable.
 Acceptance: Autopilot mode can complete a turn via app-server end-to-end, and test
 coverage exists for thread start, turn stream, and approval accept/decline paths.
 
-### M7: Runtime adapters and orchestration
+### M7: Codex runtime consolidation and policy surface
 
-Scope: introduce a runtime adapter interface so Codex is one sidecar runtime behind
-a stable boundary, add runtime pooling with per-job isolation, and normalize event
-streams into a persistent trace format that feeds HUD metrics and offline evals.
-Define an autonomy policy layer (read-only / propose / auto) with a small DSL so
-approval decisions can be automated or escalated based on command patterns, path
-rules, and network settings, and add runtime pooling plus per-job isolation (e.g.,
-dedicated `CODEX_HOME`) to safely run multi-backend workflows that schedule work at
-item boundaries (planner/executor/tester style). This is also where multi-backend
-orchestration becomes first-class, with Codex acting as planner/executor while
-specialized runtimes handle tests or refactors and report back through diffs and
-approvals.
+Scope: make the app-server the sole Codex path in Autopilot UI and Adjutant, and
+centralize spawn, restart, and lifecycle handling in one Codex runtime module that
+all call sites use. Treat the existing wire logs, trace logs, and permission rules
+as the canonical telemetry/policy surface: persist wire JSONL and normalized trace
+events for every run, and drive auto-approve/deny decisions exclusively through the
+existing rules without adding a new adapter DSL. Tighten runtime stability (single
+supervisor, clean shutdown, predictable restart) and make CODEX_HOME/session wiring
+explicit so run artifacts remain deterministic and replayable.
 
-Acceptance: Autopilot can select a runtime via the adapter, spin up isolated Codex
-instances, persist raw and normalized traces, and apply a policy-driven approval
-decision without requiring a UI prompt.
+Acceptance: Autopilot always drives Codex through app-server, the unified runtime
+module owns spawn/restart, and every run produces wire + trace artifacts while
+approvals follow persisted rules without introducing a separate adapter layer.
 
 ## CodexMonitor Parity Track (Autopilot UI)
 
@@ -176,7 +172,7 @@ to fork a separate product, but to make Autopilot capable of running the same da
 workspace orchestration pattern: add a repository, start or resume threads, inspect git
 changes, approve tool actions, and track agent output with the same visual hierarchy and
 interaction flow CodexMonitor established. This work runs alongside M7 because the
-multi-runtime adapter and app-server event stream are the spine that will drive the
+Codex runtime module and app-server event stream are the spine that will drive the
 CodexMonitor layout.
 
 ### CM1: Workspace orchestration and session lifecycle

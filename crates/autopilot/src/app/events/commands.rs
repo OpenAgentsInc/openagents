@@ -1,4 +1,3 @@
-use codex_agent_sdk::{ApprovalMode, SandboxMode};
 use serde::{Deserialize, Serialize};
 
 use crate::commands::ReviewCommand;
@@ -52,7 +51,7 @@ pub(crate) enum ModalState {
 }
 
 /// Internal mode representation for Coder UI.
-/// Maps to PermissionMode for SDK calls, with Autopilot as a special case.
+/// Maps to app-server approval and sandbox policies.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum CoderMode {
@@ -66,24 +65,6 @@ pub enum CoderMode {
 }
 
 impl CoderMode {
-    /// Convert to Codex sandbox mode.
-    pub(crate) fn sandbox_mode(&self) -> SandboxMode {
-        match self {
-            CoderMode::BypassPermissions => SandboxMode::DangerFullAccess,
-            CoderMode::Plan => SandboxMode::ReadOnly,
-            CoderMode::Autopilot => SandboxMode::WorkspaceWrite,
-        }
-    }
-
-    /// Convert to Codex approval mode.
-    pub(crate) fn approval_mode(&self) -> ApprovalMode {
-        match self {
-            CoderMode::BypassPermissions => ApprovalMode::Never,
-            CoderMode::Plan => ApprovalMode::Never,
-            CoderMode::Autopilot => ApprovalMode::OnRequest,
-        }
-    }
-
     /// Label for UI/logging.
     pub(crate) fn mode_label(&self) -> &'static str {
         match self {

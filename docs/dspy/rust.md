@@ -23,7 +23,6 @@ crates/dsrs/src/
 ├── adapter/          # LM adapters (ChatAdapter)
 ├── core/
 │   ├── lm/           # LM providers
-│   │   ├── codex_sdk.rs    # Codex via codex-agent-sdk
 │   │   ├── pylon.rs         # Pylon local/swarm/hybrid
 │   │   ├── client_registry.rs  # 14+ provider registry
 │   │   └── ...
@@ -46,7 +45,7 @@ crates/dsrs/src/
 | **Modules** | `Module` trait for composable pipelines |
 | **Optimizers** | COPRO, MIPROv2, GEPA, Pareto |
 | **DAG Tracing** | Graph/Node types for execution tracing |
-| **LM Providers** | 14+ via rig-core + Codex SDK + Pylon |
+| **LM Providers** | 14+ via rig-core + Pylon |
 | **Hybrid Caching** | Memory + disk via foyer |
 | **Evaluator Trait** | Metrics for optimization |
 
@@ -56,19 +55,18 @@ dsrs supports multiple LM providers with smart priority/fallback:
 
 | Priority | Provider | Detection |
 |----------|----------|-----------|
-| 1 | Codex SDK | `codex` CLI available |
+| 1 | llama.cpp/GPT-OSS | `LLAMACPP_URL` or localhost:8080 |
 | 2 | Pylon Swarm | `PYLON_MNEMONIC` env var |
 | 3 | Cerebras | `CEREBRAS_API_KEY` env var |
 | 4 | Pylon Local | Ollama on :11434 |
 
 ```rust
-use dsrs::core::lm::{LMClient, codex_sdk};
+use dsrs::core::lm::LMClient;
 
 // Auto-detect best available
-let client = LMClient::from_model_string("codex-sdk:default")?;
+let client = LMClient::from_model_string("pylon:local")?;
 
 // Or specify explicitly
-let client = LMClient::codex_sdk()?;
 let client = LMClient::pylon_local("llama3.2:3b")?;
 let client = LMClient::pylon_swarm("llama3.2:3b", mnemonic)?;
 ```

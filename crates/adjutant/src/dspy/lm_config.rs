@@ -1,21 +1,18 @@
 //! Multi-provider LM configuration for dsrs.
 //!
 //! Supports multiple LM providers with smart priority/fallback:
-//! 1. Codex CLI headless (via codex-agent-sdk) - Primary provider
-//! 2. llama.cpp/GPT-OSS - Local inference fallback
-//! 3. Pylon swarm - Distributed inference via NIP-90
-//! 4. Cerebras - Fast, cheap tiered execution
-//! 5. Pylon local (Ollama) - Fallback when nothing else available
+//! 1. llama.cpp/GPT-OSS - Local inference fallback
+//! 2. Pylon swarm - Distributed inference via NIP-90
+//! 3. Cerebras - Fast, cheap tiered execution
+//! 4. Pylon local (Ollama) - Fallback when nothing else available
 
 use anyhow::Result;
-use dsrs::{configure, has_codex_cli, ChatAdapter, LMClient, LM};
+use dsrs::{configure, ChatAdapter, LM};
 use std::sync::Arc;
 
 /// Provider priority for LM selection.
 #[derive(Clone, Debug, PartialEq)]
 pub enum LmProvider {
-    /// Codex CLI headless via codex-agent-sdk (primary provider)
-    CodexSdk,
     /// llama.cpp/GPT-OSS: Local OSS models via OpenAI-compatible API
     LlamaCpp,
     /// Pylon swarm: distributed inference via NIP-90
@@ -29,7 +26,6 @@ pub enum LmProvider {
 impl std::fmt::Display for LmProvider {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            LmProvider::CodexSdk => write!(f, "Codex SDK (headless)"),
             LmProvider::LlamaCpp => write!(f, "llama.cpp/GPT-OSS (local)"),
             LmProvider::PylonSwarm => write!(f, "Pylon Swarm (NIP-90)"),
             LmProvider::Cerebras => write!(f, "Cerebras"),
@@ -42,7 +38,6 @@ impl LmProvider {
     /// Short name for status bar display.
     pub fn short_name(&self) -> &'static str {
         match self {
-            LmProvider::CodexSdk => "codex-sdk",
             LmProvider::LlamaCpp => "gptoss",
             LmProvider::PylonSwarm => "swarm",
             LmProvider::Cerebras => "cerebras",
@@ -54,33 +49,27 @@ impl LmProvider {
 /// Detect best available provider based on environment.
 ///
 /// Priority order:
-/// 1. Codex CLI available → CodexSdk (primary provider)
-/// 2. llama.cpp/GPT-OSS running on localhost:8080 → LlamaCpp
-/// 3. PYLON_MNEMONIC set → PylonSwarm
-/// 4. CEREBRAS_API_KEY set → Cerebras
-/// 5. Ollama running on localhost:11434 → PylonLocal
+/// 1. llama.cpp/GPT-OSS running on localhost:8080 → LlamaCpp
+/// 2. PYLON_MNEMONIC set → PylonSwarm
+/// 3. CEREBRAS_API_KEY set → Cerebras
+/// 4. Ollama running on localhost:11434 → PylonLocal
 pub fn detect_provider() -> Option<LmProvider> {
-    // Priority 1: Codex via SDK (primary provider)
-    if has_codex_cli() {
-        return Some(LmProvider::CodexSdk);
-    }
-
-    // Priority 2: llama.cpp/GPT-OSS (local inference fallback)
+    // Priority 1: llama.cpp/GPT-OSS (local inference fallback)
     if check_llamacpp_available() {
         return Some(LmProvider::LlamaCpp);
     }
 
-    // Priority 3: Pylon swarm (requires mnemonic)
+    // Priority 2: Pylon swarm (requires mnemonic)
     if std::env::var("PYLON_MNEMONIC").is_ok() {
         return Some(LmProvider::PylonSwarm);
     }
 
-    // Priority 4: Cerebras
+    // Priority 3: Cerebras
     if std::env::var("CEREBRAS_API_KEY").is_ok() {
         return Some(LmProvider::Cerebras);
     }
 
-    // Priority 5: Check for local Ollama
+    // Priority 4: Check for local Ollama
     if check_ollama_available() {
         return Some(LmProvider::PylonLocal);
     }
@@ -94,9 +83,6 @@ pub fn detect_provider() -> Option<LmProvider> {
 pub fn detect_all_providers() -> Vec<LmProvider> {
     let mut providers = Vec::new();
 
-    if has_codex_cli() {
-        providers.push(LmProvider::CodexSdk);
-    }
     if check_llamacpp_available() {
         providers.push(LmProvider::LlamaCpp);
     }
@@ -172,17 +158,6 @@ pub fn check_ollama_available() -> bool {
 /// Create LM for detected or specified provider.
 pub async fn create_lm(provider: &LmProvider) -> Result<LM> {
     match provider {
-        LmProvider::CodexSdk => {
-            let client = LMClient::codex_sdk()?;
-            LM::builder()
-                .model("codex-sdk:default".to_string())
-                .temperature(0.7)
-                .max_tokens(4000)
-                .build()
-                .await?
-                .with_client(client)
-                .await
-        }
         LmProvider::LlamaCpp => {
             let base_url = std::env::var("LLAMACPP_URL").unwrap_or_else(|_| {
                 // Auto-detect which port is available
@@ -244,7 +219,6 @@ pub async fn create_planning_lm() -> Result<LM> {
     let provider = detect_provider().ok_or_else(|| {
         anyhow::anyhow!(
             "No LM provider available. Options:\n\
-             - Install Codex CLI (primary provider)\n\
              - Run llama.cpp server (./llama-server -m model.gguf --port 8080)\n\
              - Set PYLON_MNEMONIC for swarm inference\n\
              - Set CEREBRAS_API_KEY for Cerebras\n\
@@ -299,7 +273,7 @@ pub async fn configure_dsrs() -> Result<()> {
 
 /// Configure global dsrs with optional provider preferences.
 ///
-/// If `use_codex` is true, will prefer CodexSdk; otherwise skips to next available.
+/// `use_codex` is a legacy knob; non-Codex selection is currently identical.
 pub async fn configure_dsrs_with_preference(use_codex: bool) -> Result<()> {
     let provider = if use_codex {
         detect_provider()
@@ -310,7 +284,6 @@ pub async fn configure_dsrs_with_preference(use_codex: bool) -> Result<()> {
     let provider = provider.ok_or_else(|| {
         anyhow::anyhow!(
             "No LM provider available. Options:\n\
-             - Install Codex CLI (primary provider)\n\
              - Run llama.cpp server (./llama-server -m model.gguf --port 8080)\n\
              - Set PYLON_MNEMONIC for swarm inference\n\
              - Set CEREBRAS_API_KEY for Cerebras\n\
@@ -324,29 +297,9 @@ pub async fn configure_dsrs_with_preference(use_codex: bool) -> Result<()> {
     Ok(())
 }
 
-/// Detect provider but skip CodexSdk (for when user explicitly wants different backend).
+/// Detect provider without Codex preference (currently identical to detect_provider).
 pub fn detect_provider_skip_codex() -> Option<LmProvider> {
-    // Priority 1: llama.cpp/GPT-OSS (local inference)
-    if check_llamacpp_available() {
-        return Some(LmProvider::LlamaCpp);
-    }
-
-    // Priority 2: Pylon swarm (requires mnemonic)
-    if std::env::var("PYLON_MNEMONIC").is_ok() {
-        return Some(LmProvider::PylonSwarm);
-    }
-
-    // Priority 3: Cerebras
-    if std::env::var("CEREBRAS_API_KEY").is_ok() {
-        return Some(LmProvider::Cerebras);
-    }
-
-    // Priority 4: Check for local Ollama
-    if check_ollama_available() {
-        return Some(LmProvider::PylonLocal);
-    }
-
-    None
+    detect_provider()
 }
 
 // ============ Legacy compatibility ============

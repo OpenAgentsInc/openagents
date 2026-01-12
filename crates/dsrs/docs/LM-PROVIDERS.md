@@ -48,29 +48,6 @@ dsrs::configure_with_adapter(
 
 ## Codex SDK Provider
 
-Headless Codex CLI integration for tool use and agentic workflows.
-
-```rust
-use dsrs::core::lm::codex_sdk::CodexSdkLM;
-
-let lm = CodexSdkLM::new()
-    .with_model("codex-3-sonnet")
-    .with_timeout(Duration::from_secs(60))
-    .with_working_dir("/path/to/repo");
-
-dsrs::configure(lm.into());
-```
-
-**Features:**
-- Full tool use support
-- Session persistence
-- Working directory context
-- Streaming responses
-
-**Requirements:**
-- `codex-agent-sdk` crate
-- Codex CLI installed
-
 ## Pylon Provider
 
 Distributed inference via Pylon swarm or local backends.
@@ -112,7 +89,6 @@ Automatic provider selection based on availability and cost.
 use dsrs::core::lm::LaneMux;
 
 let mux = LaneMux::new()
-    .add_lane("premium", CodexSdkLM::new())
     .add_lane("fast", GroqLM::new())
     .add_lane("cheap", PylonLM::new_swarm("wss://nexus.openagents.com"))
     .add_lane("local", PylonLM::new_local());
@@ -137,8 +113,6 @@ let result = predictor.forward(inputs).await?;  // Uses best available
 
 | Provider | Speed | Cost | Quality | Local |
 |----------|-------|------|---------|-------|
-| Codex SDK | Medium | $$$ | Excellent | No |
-| Codex API | Medium | $$$ | Excellent | No |
 | GPT-4 | Medium | $$$ | Excellent | No |
 | Gemini Pro | Fast | $$ | Good | No |
 | Groq | Very Fast | $ | Good | No |

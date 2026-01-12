@@ -1,11 +1,11 @@
 //! Agent backend abstraction layer
 //!
-//! This module provides the abstraction for AI coding agents (Codex, etc.)
+//! This module provides the abstraction for AI coding agents (Codex only today)
 //! following Zed's AgentServer pattern but adapted for Coder's architecture.
 //!
 //! ## Overview
 //!
-//! The agent system allows Coder to work with multiple AI backends:
+//! The agent system allows Coder to work with Codex:
 //! - **Codex**: OpenAI's coding agent (primary)
 //!
 //! ## Architecture
@@ -25,8 +25,7 @@
 //! │          AgentBackend trait         │
 //! ├─────────────────┬───────────────────┤
 //! │   CodexBackend  │
-//! │ (codex-agent-   │
-//! │      sdk)       │
+//! │ (app-server)    │
 //! └─────────────────┴───────────────────┘
 //! ```
 

@@ -56,7 +56,7 @@ Autopilot responses use DSPy signatures and optimizations. Read more about our D
 ## Current State (Implementation Snapshot)
 
 - **UI**: Winit/WGPU desktop app with GPU-rendered chat, Markdown streaming, tool call cards, command palette, keybindings, and left/right sidebar panels.
-- **Backends**: Interactive mode uses `codex-agent-sdk` directly; `/backend` toggles exist but only Codex is wired. The agent backend registry and model picker are implemented for Codex only.
+- **Backends**: Interactive mode uses the Codex app-server directly; `/backend` exists but only Codex is wired. The agent backend registry and model picker are implemented for Codex only.
 - **Autopilot mode**: When permission mode is set to autopilot, prompts run through Adjutant's autopilot loop with OANIX boot and DSPy stages; max iterations is 10 and verification is enabled. Requires an OANIX workspace (`oanix init`) for full context.
 - **Prompt expansion**: `@file` inlines local files and `!command` runs a shell command for context. Autopilot adds OANIX context (directives, issues, recent git log) before executing.
 - **Sessions**: Local history is stored in `~/.openagents/autopilot/sessions`, with list/fork/export and checkpoint restore UI. Resume loads cached history only; Codex thread resume is not wired, and delete is not implemented.

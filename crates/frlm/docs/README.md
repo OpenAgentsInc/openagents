@@ -216,7 +216,7 @@ FRLM supports multiple execution venues tracked in trace events:
 | `Local` | Local inference via FM Bridge, Ollama, or llama.cpp |
 | `Swarm` | Distributed execution via NIP-90 |
 | `Datacenter` | Remote API (e.g., Crusoe) |
-| `Codex` | Codex via codex-agent-sdk |
+| `Codex` | Codex via app-server |
 | `Unknown` | Fallback for unknown venues |
 
 ## DSPy Signatures
@@ -286,7 +286,7 @@ crates/frlm/
 | Feature | Description |
 |---------|-------------|
 | `trace-db` | SQLite persistence for trace events |
-| `codex` | Codex as execution backend via codex-agent-sdk |
+| `codex` | Codex as execution backend via app-server |
 
 **Note:** DSPy integration via `dsrs` is always enabled (not feature-gated).
 

@@ -775,7 +775,7 @@ The issue management crates handle work coordination. The issues crate provides 
 
 The configuration crate handles project settings including Codex configuration, sandbox settings, healer rules, parallel execution parameters, and custom hooks.
 
-The agent SDK crates provide integration with external AI systems. The codex-agent-sdk crate is a Rust SDK for Codex CLI with approximately one hundred percent parity with the TypeScript SDK, including permission handlers, session management, streaming support, and Rust-only extensions like abort. The codex-agent-sdk crate provides similar functionality for OpenAI Codex CLI. The fm-bridge crate is the Apple Foundation Models client for macOS 15.1 and later, supporting chat completions, guided generation for structured output, and on-device inference.
+The agent integration layer uses the Codex app-server JSONL protocol to run Codex as a sidecar runtime with approvals, tools, and persistence exposed over stdio. The fm-bridge crate is the Apple Foundation Models client for macOS 15.1 and later, supporting chat completions, guided generation for structured output, and on-device inference.
 
 The tech stack underlying all crates uses Rust edition 2024 with workspace-based organization, Tokio for async runtime, and SQLite via rusqlite for embedded database. The UI layer uses WGPUI (wgpu + winit) for native GPU-rendered interfaces. The protocol layer uses Nostr for decentralized messaging, NIP-90 for Data Vending Machines, MCP for model context protocol, and JSON-RPC 2.0 for RPC communication.
 

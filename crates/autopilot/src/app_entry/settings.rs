@@ -2,6 +2,7 @@ use std::fs;
 use wgpui::input::Modifiers as UiModifiers;
 
 use crate::app::codex_app_server as app_server;
+use crate::app::codex_runtime::{CodexRuntime, CodexRuntimeConfig};
 use crate::app::config::{
     config_dir, config_file, keybindings_file, CoderSettings, StoredKeybinding, StoredModifiers,
 };
@@ -20,26 +21,14 @@ pub(super) fn normalize_settings(settings: &mut CoderSettings) {
 
 /// Fetch rate limits for the active provider.
 pub(super) async fn fetch_rate_limits() -> Option<RateLimits> {
-    if !use_app_server_transport() {
-        return None;
-    }
-
     let cwd = std::env::current_dir().ok()?;
-    let (client, _channels) = app_server::AppServerClient::spawn(app_server::AppServerConfig {
+    let runtime = CodexRuntime::spawn(CodexRuntimeConfig {
         cwd: Some(cwd),
         wire_log: None,
     })
     .await
     .ok()?;
-    let client_info = app_server::ClientInfo {
-        name: "autopilot".to_string(),
-        title: Some("Autopilot".to_string()),
-        version: env!("CARGO_PKG_VERSION").to_string(),
-    };
-    if client.initialize(client_info).await.is_err() {
-        let _ = client.shutdown().await;
-        return None;
-    }
+    let CodexRuntime { client, .. } = runtime;
 
     let response = client.account_rate_limits_read().await.ok();
     let _ = client.shutdown().await;
@@ -96,15 +85,6 @@ fn format_future_delta(delta_secs: i64) -> String {
     }
 }
 
-fn use_app_server_transport() -> bool {
-    match std::env::var("AUTOPILOT_CODEX_TRANSPORT") {
-        Ok(value) => matches!(
-            value.to_ascii_lowercase().as_str(),
-            "app-server" | "appserver" | "app_server"
-        ),
-        Err(_) => false,
-    }
-}
 fn parse_legacy_model_setting(content: &str) -> Option<String> {
     for line in content.lines() {
         if let Some(model_id) = line.strip_prefix("model = \"").and_then(|s| s.strip_suffix("\"")) {

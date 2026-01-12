@@ -26,7 +26,6 @@ dependencies = [
  "anyhow",
  "async-trait",
  "chrono",
- "codex-agent-sdk",
  "futures",
  "recorder",
  "rusqlite",
@@ -259,7 +258,6 @@ dependencies = [
  "bon",
  "chrono",
  "clap",
- "codex-agent-sdk",
  "ctrlc",
  "dirs 5.0.1",
  "dsrs",
@@ -1281,7 +1279,6 @@ dependencies = [
  "async-trait",
  "chrono",
  "clap",
- "codex-agent-sdk",
  "dirs 6.0.0",
  "dsrs",
  "futures",
@@ -2630,20 +2627,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "codex-agent-sdk"
-version = "0.1.0"
-dependencies = [
- "futures",
- "serde",
- "serde_json",
- "tempfile",
- "thiserror 2.0.17",
- "tokio",
- "tracing",
- "which 7.0.3",
-]
-
-[[package]]
 name = "color_quant"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3919,7 +3902,6 @@ dependencies = [
  "async-trait",
  "bip39",
  "bon",
- "codex-agent-sdk",
  "csv",
  "dirs 5.0.1",
  "dsrs-macros",

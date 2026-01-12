@@ -110,27 +110,25 @@ let _ui_port: Option<u16> = if ui {
 
 ### 2. UI Renderer (ui_renderer.rs)
 
-Maps codex-agent-sdk `SdkMessage` types to recorder UI components:
+Maps Codex app-server response events to recorder UI components:
 
 ```rust
-pub fn render_sdk_message(msg: &SdkMessage) -> Option<Markup> {
-    match msg {
-        SdkMessage::Assistant(asst) => {
+pub fn render_event(event: &ResponseEvent) -> Option<Markup> {
+    match event {
+        ResponseEvent::AssistantMessage { .. } => {
             // Text blocks → AgentLine
             // Tool use → ToolLine with Pending state
         }
-        SdkMessage::User(user) => {
+        ResponseEvent::UserMessage { .. } => {
             // Tool results → Update existing ToolLine
         }
-        SdkMessage::System(Init) => {
+        ResponseEvent::SystemInit { .. } => {
             // lifecycle_line(Start {...})
         }
-        SdkMessage::Result(Success/Error) => {
+        ResponseEvent::Complete { .. } | ResponseEvent::Error(_) => {
             // lifecycle_line(End {...})
         }
-        SdkMessage::ToolProgress => {
-            // Future: update latency
-        }
+        _ => None,
     }
 }
 ```

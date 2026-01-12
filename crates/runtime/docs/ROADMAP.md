@@ -567,7 +567,7 @@ The `/codex` mount enables agents to command one or more Codex instances. Key in
 ### Implementation Notes (completed)
 
 - Added `crates/runtime/src/codex/` with core types, policy/state machine, budget tracking, and idempotency-aware `/codex` FileService endpoints (sessions, tools, usage, auth, providers, workers/pool/proxy).
-- Implemented provider routing + `CodexProvider` trait plus concrete providers: Local/Cloud (codex-agent-sdk process runner) and Tunnel (WebSocket tunnel with Nostr auth, streaming, and tool approval).
+- Implemented provider routing + `CodexProvider` trait plus concrete providers: Local/Cloud (codex app-server process runner) and Tunnel (WebSocket tunnel with Nostr auth, streaming, and tool approval).
 - Wired tool-approval workflow and append-only tool logs for both SDK-backed and tunnel sessions; output watch reconciles budget on completion/failure.
 - Added tunnel auth surfaces (`/codex/auth/{tunnels,challenge,status}`), provider health/endpoints surfaces, and admin-only policy/pool/proxy writes via `AgentEnv`.
 - Added runtime tests for `/codex/new` usage/idempotency and output watch; exported `/codex` APIs in `crates/runtime/src/lib.rs` and added required deps.

@@ -4,7 +4,7 @@ Agent Client Protocol (ACP) adapter for OpenAgents, enabling standardized commun
 
 ## Overview
 
-The ACP adapter wraps existing agent SDKs (`codex-agent-sdk`, `codex-agent-sdk`) to provide a unified protocol-based interface. It handles:
+The ACP adapter provides a unified protocol-based interface for ACP-compatible agents. It handles:
 
 - **Multi-agent support** - Work with Codex, or any ACP-compatible agent
 - **Protocol standardization** - JSON-RPC 2.0 communication following the ACP specification
@@ -372,22 +372,12 @@ pub async fn connect_codex(
 
 ## Converters
 
-The adapter includes bidirectional converters for various formats:
-
-### SDK <-> ACP
-
-- `converters::sdk_to_acp` - Convert Codex SDK messages to ACP notifications
-- `converters::acp_to_sdk` - Convert ACP requests to SDK types
+The adapter includes bidirectional converters for ACP and rlog formats:
 
 ### ACP <-> rlog
 
 - `converters::rlog::notification_to_rlog_line` - Convert ACP notification to rlog format
 - `converters::rlog::rlog_line_to_notification` - Parse rlog line to ACP notification
-
-### Codex <-> ACP
-
-- `converters::codex::thread_event_to_notification` - Convert Codex ThreadEvent to ACP
-- `converters::codex::todo_list_to_plan` - Map Codex TodoList to ACP Plan
 
 ## REST API Integration
 
@@ -552,21 +542,6 @@ if session.entry_count() > 1000 {
 
 // Or use bounded notification channels
 let (tx, rx) = mpsc::channel(100);  // Backpressure after 100 pending
-```
-
-### Codex tool calls not appearing
-
-**Problem**: Codex CommandExecution, FileChange, etc. don't show in UI
-
-**Cause**: Codex uses different event types than Codex SDK
-
-**Solution**: Ensure Codex converter is being used:
-
-```rust
-use acp_adapter::converters::codex::thread_event_to_notification;
-
-// Convert Codex events
-let notification = thread_event_to_notification(&thread_event, &session_id)?;
 ```
 
 ## Testing

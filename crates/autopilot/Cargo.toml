@@ -24,7 +24,6 @@ rfd = "0.14"
 web-time = "1.1.0"
 
 # Agent integrations
-codex-agent-sdk = { path = "../codex-agent-sdk" }
 agent-client-protocol-schema = { version = "0.10" }
 clap = { workspace = true }
 
