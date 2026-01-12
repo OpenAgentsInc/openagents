@@ -51,11 +51,13 @@ session will be stored locally for replay and continuation.
 
 ## Concepts
 
-### One conversation per project
+### Workspace threads and sessions
 
-Autopilot keeps one long-running thread per working directory. This keeps context
-stable for each repository while still allowing users to run multiple projects
-side-by-side without mixing histories.
+Autopilot now treats a workspace as the top-level container and allows multiple
+Codex threads per workspace. Each workspace can list, start, and resume threads,
+so a repository can have multiple parallel conversations instead of a single
+long-running thread. This matches the CodexMonitor-style workflow where you
+manage several threads per repo without mixing histories.
 
 ### Instant message processing
 
