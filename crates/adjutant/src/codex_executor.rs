@@ -2,6 +2,7 @@
 //!
 //! Uses the Codex CLI for agentic execution with tool support.
 
+use crate::app_server_executor::AppServerExecutor;
 use crate::autopilot_loop::AcpEventSender;
 use crate::{AdjutantError, Task, TaskResult};
 use acp_adapter::converters::codex::thread_event_to_notifications;
@@ -37,6 +38,12 @@ impl CodexExecutor {
 
     /// Execute a task using Codex (non-streaming).
     pub async fn execute(&self, task: &Task) -> Result<TaskResult, AdjutantError> {
+        if use_app_server_transport() {
+            tracing::info!("CodexExecutor: using app-server transport");
+            let executor = AppServerExecutor::new(&self.workspace_root);
+            return executor.execute(task).await;
+        }
+
         let codex = Codex::new();
         let mut thread = codex.start_thread(self.thread_options());
 
@@ -66,6 +73,14 @@ impl CodexExecutor {
         token_tx: mpsc::UnboundedSender<String>,
         acp_sender: Option<AcpEventSender>,
     ) -> Result<TaskResult, AdjutantError> {
+        if use_app_server_transport() {
+            tracing::info!("CodexExecutor: streaming via app-server transport");
+            let executor = AppServerExecutor::new(&self.workspace_root);
+            return executor
+                .execute_streaming(task, token_tx, acp_sender)
+                .await;
+        }
+
         let codex = Codex::new();
         let mut thread = codex.start_thread(self.thread_options());
 
@@ -201,4 +216,14 @@ fn detect_failures(items: &[codex_agent_sdk::ThreadItem]) -> bool {
         ThreadItemDetails::Error(_) => true,
         _ => false,
     })
+}
+
+fn use_app_server_transport() -> bool {
+    match std::env::var("AUTOPILOT_CODEX_TRANSPORT") {
+        Ok(value) => matches!(
+            value.to_ascii_lowercase().as_str(),
+            "app-server" | "appserver" | "app_server"
+        ),
+        Err(_) => false,
+    }
 }

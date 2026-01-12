@@ -21,6 +21,8 @@ use crate::app::events::{CommandAction, ModalState, QueryControl, ResponseEvent}
 use crate::app::nip28::{Nip28ConnectionStatus, Nip28Event, Nip28Message};
 use crate::app::nip90::{Nip90ConnectionStatus, Nip90Event};
 use crate::app::parsing::expand_prompt_text;
+use crate::app::parsing::prompt::{expand_prompt_text_async, format_command_output, MAX_COMMAND_BYTES};
+use crate::app::utils::truncate_bytes;
 use crate::app::permissions::{coder_mode_default_allow, parse_coder_mode, PermissionPending};
 use crate::app::permissions::request::{PermissionRequest, PermissionResult};
 use crate::app::session::{SessionInfo, SessionUpdate};
@@ -133,12 +135,17 @@ impl AutopilotApp {
         };
 
         let cwd = std::env::current_dir().unwrap_or_default();
-        let expanded_prompt = match expand_prompt_text(&prompt, &cwd) {
-            Ok(result) => result,
-            Err(err) => {
-                state.push_system_message(err);
-                state.window.request_redraw();
-                return;
+        let use_app_server = use_app_server_transport();
+        let expanded_prompt = if use_app_server {
+            None
+        } else {
+            match expand_prompt_text(&prompt, &cwd) {
+                Ok(result) => Some(result),
+                Err(err) => {
+                    state.push_system_message(err);
+                    state.window.request_redraw();
+                    return;
+                }
             }
         };
 
@@ -166,7 +173,7 @@ impl AutopilotApp {
             .as_deref()
             .and_then(parse_reasoning_effort);
 
-        if use_app_server_transport() {
+        if use_app_server {
             tracing::info!("Using Codex app-server transport");
             let (permission_tx, permission_rx) = mpsc::unbounded_channel();
             let (permission_action_tx, permission_action_rx) = mpsc::unbounded_channel();
@@ -177,7 +184,7 @@ impl AutopilotApp {
                 .as_ref()
                 .and_then(|session_id| resolve_codex_thread_id(&state.session, session_id));
             self.submit_codex_prompt_app_server(
-                expanded_prompt,
+                prompt,
                 cwd,
                 coder_mode,
                 resume_thread_id,
@@ -215,6 +222,7 @@ impl AutopilotApp {
             // Start streaming turn
             tracing::info!("Starting Codex query");
             let turn_options = TurnOptions::default();
+            let expanded_prompt = expanded_prompt.unwrap_or_else(|| prompt);
             match thread.run_streamed(expanded_prompt.as_str(), turn_options).await {
                 Ok(mut streamed) => {
                     tracing::info!("Codex query stream started");
@@ -489,6 +497,23 @@ impl AutopilotApp {
                 return;
             }
 
+            let expanded_prompt = match expand_prompt_with_app_server(
+                &client,
+                &prompt,
+                &cwd,
+                coder_mode,
+            )
+            .await
+            {
+                Ok(result) => result,
+                Err(err) => {
+                    let _ = tx.send(ResponseEvent::Error(err));
+                    window.request_redraw();
+                    let _ = client.shutdown().await;
+                    return;
+                }
+            };
+
             let (thread_id, model_name) = if let Some(resume_id) = resume_thread_id.clone()
                 .filter(|_| !fork_session)
             {
@@ -589,7 +614,9 @@ impl AutopilotApp {
 
             let turn_params = app_server::TurnStartParams {
                 thread_id: thread_id.clone(),
-                input: vec![app_server::UserInput::Text { text: prompt }],
+                input: vec![app_server::UserInput::Text {
+                    text: expanded_prompt,
+                }],
                 model: model_override.clone(),
                 effort: reasoning_effort,
                 summary: None,
@@ -2053,6 +2080,19 @@ fn sandbox_mode_for_mode(mode: CoderMode) -> app_server::SandboxMode {
     }
 }
 
+fn sandbox_policy_for_mode(mode: CoderMode) -> app_server::SandboxPolicy {
+    match mode {
+        CoderMode::BypassPermissions => app_server::SandboxPolicy::DangerFullAccess,
+        CoderMode::Plan => app_server::SandboxPolicy::ReadOnly,
+        CoderMode::Autopilot => app_server::SandboxPolicy::WorkspaceWrite {
+            writable_roots: Vec::new(),
+            network_access: false,
+            exclude_tmpdir_env_var: false,
+            exclude_slash_tmp: false,
+        },
+    }
+}
+
 async fn run_app_server_turn_loop(
     client: app_server::AppServerClient,
     mut notification_rx: mpsc::Receiver<app_server::AppServerNotification>,
@@ -2473,6 +2513,41 @@ async fn fetch_app_server_skills(
         skills.extend(entry.skills);
     }
     Ok(skills)
+}
+
+async fn expand_prompt_with_app_server(
+    client: &app_server::AppServerClient,
+    prompt: &str,
+    cwd: &PathBuf,
+    coder_mode: CoderMode,
+) -> Result<String, String> {
+    let sandbox_policy = sandbox_policy_for_mode(coder_mode);
+    expand_prompt_text_async(prompt, cwd, |command, cwd| {
+        let sandbox_policy = sandbox_policy.clone();
+        async move {
+            let command_label = command.clone();
+            let response = client
+                .command_exec(app_server::CommandExecParams {
+                    command: vec![
+                        "bash".to_string(),
+                        "-lc".to_string(),
+                        command,
+                    ],
+                    cwd: Some(cwd.to_string_lossy().to_string()),
+                    sandbox_policy: Some(sandbox_policy),
+                    timeout_ms: None,
+                })
+                .await
+                .map_err(|err| format!("Failed to run command '{}': {}", command_label, err))?;
+            let output = format_command_output(
+                response.exit_code,
+                response.stdout.as_bytes(),
+                response.stderr.as_bytes(),
+            );
+            Ok(truncate_bytes(output, MAX_COMMAND_BYTES))
+        }
+    })
+    .await
 }
 
 #[derive(Clone, Copy)]
