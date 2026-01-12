@@ -286,6 +286,7 @@ impl ApplicationHandler for AutopilotApp {
         self.poll_session_actions();
         self.poll_agent_actions();
         self.poll_skill_actions();
+        self.poll_settings_actions();
         self.poll_hook_inspector_actions();
         self.poll_oanix_manifest();
         self.poll_nip28_events();

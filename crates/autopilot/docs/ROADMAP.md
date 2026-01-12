@@ -22,6 +22,21 @@ surface rather than a one-off dialog. The sidecar boundary is intentional for cr
 isolation, upgrades, and embedding into other products while keeping an optional
 single-binary mode on the table for the future.
 
+## Guiding principles
+
+Codex app-server should be treated as a sidecar runtime that Autopilot supervises over JSONL. That means a clean AgentRuntime
+adapter (start thread, start turn, stream events, respond to approvals, stop) and a default posture of spawning a separate
+process rather than embedding a library, so crashes are isolated, upgrades are simple, and multi-backend orchestration stays
+possible.
+
+The v2 event stream is both the HUD spine and the telemetry bus. Autopilot should preserve item and turn boundaries, capture
+raw JSONL plus normalized trace events, and emit enough detail to compute APM-style metrics like tool latency, approval wait
+time, and token usage without reparsing raw output. The same flight recorder enables replay, resume, and offline evaluation.
+
+Approvals are the autonomy control surface. Treat approval requests as policy inputs (read-only / propose / auto / escalate),
+and make capability discovery first-class by enumerating models, skills, and MCP tools at the start of each run so the UI and
+policy layer both see the same live surface area.
+
 ## Current State (v0.1 snapshot)
 
 Autopilot already ships as a Winit/WGPU desktop app with streaming Markdown, tool

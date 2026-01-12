@@ -11,6 +11,7 @@ use super::super::parsing::{
 pub(crate) enum SkillSource {
     Project,
     User,
+    Codex,
 }
 
 #[derive(Clone, Debug)]
@@ -202,6 +203,7 @@ fn parse_skill_file(path: &Path, source: SkillSource) -> Result<Option<SkillEntr
     let id = match source {
         SkillSource::Project => format!("project:{}", folder_name),
         SkillSource::User => format!("user:{}", folder_name),
+        SkillSource::Codex => format!("codex:{}", folder_name),
     };
 
     let mut info = SkillInfo::new(id, name, description)

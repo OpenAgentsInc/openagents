@@ -15,6 +15,8 @@ pub(crate) struct CoderSettings {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) model: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) reasoning_effort: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) max_thinking_tokens: Option<u32>,
     #[serde(default = "super::super::default_session_auto_save")]
     pub(crate) session_auto_save: bool,
@@ -29,6 +31,7 @@ impl Default for CoderSettings {
             font_size: super::super::default_font_size(),
             auto_scroll: super::super::default_auto_scroll(),
             model: None,
+            reasoning_effort: None,
             max_thinking_tokens: None,
             session_auto_save: super::super::default_session_auto_save(),
             session_history_limit: super::super::default_session_history_limit(),
@@ -79,7 +82,7 @@ pub(crate) enum SettingsItem {
     FontSize,
     AutoScroll,
     DefaultModel,
-    MaxThinkingTokens,
+    ReasoningEffort,
     PermissionMode,
     PermissionDefaultAllow,
     PermissionRules,

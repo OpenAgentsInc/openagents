@@ -1,6 +1,7 @@
 use serde_json::Value;
 
 use crate::app::catalog::mcp::McpServerStatus;
+use crate::app::session::RateLimits;
 use crate::autopilot_loop::DspyStage;
 
 use super::super::chat::MessageMetadata;
@@ -43,6 +44,9 @@ pub(crate) enum ResponseEvent {
     McpStatus {
         servers: Vec<McpServerStatus>,
         error: Option<String>,
+    },
+    RateLimitsUpdated {
+        limits: RateLimits,
     },
     HookLog(HookLogEntry),
     DspyStage(DspyStage),

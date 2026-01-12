@@ -19,6 +19,7 @@ pub(crate) enum SettingsInputMode {
 pub(crate) struct SettingsSnapshot {
     pub(crate) settings: CoderSettings,
     pub(crate) selected_model: ModelOption,
+    pub(crate) selected_model_label: String,
     pub(crate) coder_mode: CoderMode,
     pub(crate) permission_default_allow: bool,
     pub(crate) permission_allow_count: usize,
@@ -41,9 +42,22 @@ pub(crate) struct KeybindingSummary {
 
 impl SettingsSnapshot {
     pub(crate) fn from_state(state: &AppState) -> Self {
+        let current_model_id = state
+            .settings
+            .coder_settings
+            .model
+            .as_deref()
+            .unwrap_or_else(|| state.settings.selected_model.model_id());
+        let models = super::models::app_server_model_entries(&state.settings.app_server_models);
+        let selected_label = models
+            .iter()
+            .find(|model| model.id == current_model_id)
+            .map(|model| model.name.clone())
+            .unwrap_or_else(|| state.settings.selected_model.name().to_string());
         Self {
             settings: state.settings.coder_settings.clone(),
             selected_model: state.settings.selected_model,
+            selected_model_label: selected_label,
             coder_mode: state.permissions.coder_mode,
             permission_default_allow: state.permissions.permission_default_allow,
             permission_allow_count: state.permissions.permission_allow_tools.len(),
@@ -116,19 +130,19 @@ pub(crate) fn settings_rows(
             rows.push(SettingsRow {
                 item: SettingsItem::DefaultModel,
                 label: "Default model".to_string(),
-                value: snapshot.selected_model.name().to_string(),
+                value: snapshot.selected_model_label.clone(),
                 hint: Some("Left/Right to cycle".to_string()),
             });
-            let thinking_value = snapshot
+            let effort_value = snapshot
                 .settings
-                .max_thinking_tokens
-                .map(|tokens| tokens.to_string())
-                .unwrap_or_else(|| "Auto".to_string());
+                .reasoning_effort
+                .clone()
+                .unwrap_or_else(|| "auto".to_string());
             rows.push(SettingsRow {
-                item: SettingsItem::MaxThinkingTokens,
-                label: "Max thinking tokens".to_string(),
-                value: thinking_value,
-                hint: Some("Left/Right to adjust".to_string()),
+                item: SettingsItem::ReasoningEffort,
+                label: "Reasoning effort".to_string(),
+                value: effort_value,
+                hint: Some("Left/Right to cycle".to_string()),
             });
         }
         SettingsTab::Permissions => {

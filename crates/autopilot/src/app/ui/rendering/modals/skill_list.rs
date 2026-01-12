@@ -37,7 +37,7 @@ fn render_skill_list_modal(
             y += 20.0;
 
             let desc_run = state.text_system.layout_styled_mono(
-                "Filesystem skills available to Codex.",
+                "Filesystem and Codex skills available to the agent.",
                 Point::new(modal_x + 16.0, y),
                 12.0,
                 Hsla::new(0.0, 0.0, 0.5, 1.0),
@@ -89,6 +89,19 @@ fn render_skill_list_modal(
                 y += 18.0;
             }
 
+            if let Some(error) = &state.catalogs.codex_skill_error {
+                let error_line = format!("Codex warning: {}", error);
+                let error_run = state.text_system.layout_styled_mono(
+                    &truncate_preview(&error_line, 100),
+                    Point::new(modal_x + 16.0, y),
+                    12.0,
+                    Hsla::new(15.0, 0.7, 0.6, 1.0),
+                    wgpui::text::FontStyle::default(),
+                );
+                scene.draw_text(error_run);
+                y += 18.0;
+            }
+
             let project_count = state
                 .catalogs
                 .skill_entries
@@ -101,7 +114,16 @@ fn render_skill_list_modal(
                 .iter()
                 .filter(|entry| entry.source == SkillSource::User)
                 .count();
-            let counts_line = format!("Skills: {} project · {} user", project_count, user_count);
+            let codex_count = state
+                .catalogs
+                .skill_entries
+                .iter()
+                .filter(|entry| entry.source == SkillSource::Codex)
+                .count();
+            let counts_line = format!(
+                "Skills: {} project · {} user · {} codex",
+                project_count, user_count, codex_count
+            );
             let counts_run = state.text_system.layout_styled_mono(
                 &counts_line,
                 Point::new(modal_x + 16.0, y),

@@ -25,12 +25,16 @@ pub(crate) struct CatalogState {
     pub(crate) agent_user_path: Option<PathBuf>,
     pub(crate) agent_load_error: Option<String>,
     pub(crate) skill_entries: Vec<SkillEntry>,
+    pub(crate) codex_skill_entries: Vec<SkillEntry>,
     pub(crate) skill_cards: Vec<SkillCard>,
     pub(crate) skill_action_tx: Option<mpsc::UnboundedSender<SkillCardEvent>>,
     pub(crate) skill_action_rx: Option<mpsc::UnboundedReceiver<SkillCardEvent>>,
+    pub(crate) skill_update_tx: Option<mpsc::UnboundedSender<SkillUpdate>>,
+    pub(crate) skill_update_rx: Option<mpsc::UnboundedReceiver<SkillUpdate>>,
     pub(crate) skill_project_path: Option<PathBuf>,
     pub(crate) skill_user_path: Option<PathBuf>,
     pub(crate) skill_load_error: Option<String>,
+    pub(crate) codex_skill_error: Option<String>,
     pub(crate) hook_config: HookConfig,
     pub(crate) hook_scripts: Vec<HookScriptEntry>,
     pub(crate) hook_project_path: Option<PathBuf>,
@@ -48,6 +52,11 @@ pub(crate) struct CatalogState {
     pub(crate) mcp_project_error: Option<String>,
     pub(crate) mcp_status_error: Option<String>,
     pub(crate) mcp_project_path: Option<PathBuf>,
+}
+
+pub(crate) enum SkillUpdate {
+    CodexSkillsLoaded { entries: Vec<SkillEntry>, error: Option<String> },
+    Error(String),
 }
 
 impl CatalogState {
@@ -70,12 +79,16 @@ impl CatalogState {
             agent_user_path: agent_catalog.user_path,
             agent_load_error: agent_catalog.error,
             skill_entries: skill_catalog.entries,
+            codex_skill_entries: Vec::new(),
             skill_cards: Vec::new(),
             skill_action_tx: None,
             skill_action_rx: None,
+            skill_update_tx: None,
+            skill_update_rx: None,
             skill_project_path: skill_catalog.project_path,
             skill_user_path: skill_catalog.user_path,
             skill_load_error: skill_catalog.error,
+            codex_skill_error: None,
             hook_config,
             hook_scripts: hook_catalog.entries,
             hook_project_path: hook_catalog.project_path,
@@ -321,11 +334,34 @@ impl CatalogState {
     pub(crate) fn reload_skills(&mut self) {
         let cwd = std::env::current_dir().unwrap_or_default();
         let catalog = super::load_skill_entries(&cwd);
-        self.skill_entries = catalog.entries;
+        self.skill_entries = self.merge_skill_entries(catalog.entries);
         self.skill_project_path = catalog.project_path;
         self.skill_user_path = catalog.user_path;
         self.skill_load_error = catalog.error;
         self.refresh_skill_cards();
+    }
+
+    pub(crate) fn update_codex_skills(
+        &mut self,
+        entries: Vec<SkillEntry>,
+        error: Option<String>,
+    ) {
+        self.codex_skill_entries = entries;
+        self.codex_skill_error = error;
+        let local_entries: Vec<SkillEntry> = self
+            .skill_entries
+            .iter()
+            .filter(|entry| entry.source != super::SkillSource::Codex)
+            .cloned()
+            .collect();
+        self.skill_entries = self.merge_skill_entries(local_entries);
+        self.refresh_skill_cards();
+    }
+
+    fn merge_skill_entries(&self, mut local_entries: Vec<SkillEntry>) -> Vec<SkillEntry> {
+        local_entries.extend(self.codex_skill_entries.iter().cloned());
+        local_entries.sort_by(|a, b| a.info.name.cmp(&b.info.name));
+        local_entries
     }
 
     pub(crate) fn reload_mcp_project_servers(&mut self) {

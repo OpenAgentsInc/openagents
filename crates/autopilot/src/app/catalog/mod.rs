@@ -15,7 +15,7 @@ pub(crate) use mcp::{
     parse_mcp_server_config, McpServerEntry, McpServerSource,
 };
 pub(crate) use skills::{load_skill_entries, SkillEntry, SkillSource};
-pub(crate) use state::CatalogState;
+pub(crate) use state::{CatalogState, SkillUpdate};
 pub(crate) use types::{
     AgentCardAction, AgentCardEvent, HookLogEntry, HookModalView, HookSetting, SkillCardAction,
     SkillCardEvent,

@@ -161,10 +161,19 @@ fn render_help_modal(
                     ],
                 ),
                 (
+                    "Account",
+                    vec![
+                        "/account - status; /account login apikey|chatgpt".to_string(),
+                        "/account login cancel <id>; /account logout".to_string(),
+                        "/account rate-limits - refresh ChatGPT limits".to_string(),
+                    ],
+                ),
+                (
                     "Tools, MCP, Hooks",
                     vec![
                         "/tools - list tools; /tools enable|disable <tool>".to_string(),
                         "/mcp - open MCP servers; /mcp add|remove <name> <json>".to_string(),
+                        "/mcp login <name>; /mcp status - refresh status".to_string(),
                         "/hooks - hook panel; /hooks reload - reload scripts".to_string(),
                     ],
                 ),
