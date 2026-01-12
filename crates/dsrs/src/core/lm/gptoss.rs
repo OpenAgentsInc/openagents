@@ -147,7 +147,19 @@ impl GptOssCompletionModel {
 
         // System message explaining output format
         let system_content = if schema.is_some() {
-            "You are a helpful AI assistant. You MUST respond with valid JSON matching the schema provided. Output ONLY the JSON object with actual values - no placeholders, no ellipsis (...), no question marks as filler. If you don't know a value, use an empty string or reasonable default.".to_string()
+            r#"You are a helpful AI assistant. You MUST respond with valid JSON matching the schema.
+
+FORMAT RULES:
+- For string arrays: ["item1", "item2", "item3"]
+- For strings: "actual meaningful text"
+- For numbers: 0.85 (decimal)
+
+CRITICAL:
+- Fill ALL fields with actual values
+- NEVER use "..." or "???" or "…" as placeholders
+- If uncertain, provide reasonable defaults
+- Output ONLY the JSON object, no other text"#
+                .to_string()
         } else {
             "You are a helpful AI assistant.".to_string()
         };

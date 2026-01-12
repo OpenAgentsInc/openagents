@@ -6,6 +6,7 @@ use crate::core::signature::MetaSignature;
 use crate::data::example::Example;
 use anyhow::Result;
 use serde_json::{Value, json};
+use std::collections::HashMap;
 
 /// Signature for composing retrieval queries from goals and context.
 ///
@@ -26,8 +27,7 @@ pub struct QueryComposerSignature {
 
 impl Default for QueryComposerSignature {
     fn default() -> Self {
-        Self {
-            instruction: r#"You are an expert at composing search queries for code exploration.
+        let instruction = r#"You are an expert at composing search queries for code exploration.
 Given a user's goal and any previous failed attempts, generate targeted search queries
 that will help locate relevant code.
 
@@ -37,9 +37,60 @@ Consider:
 3. Account for what queries have already been tried
 4. Suggest appropriate retrieval lanes (ripgrep for text, lsp for symbols, semantic for concepts)
 
-Output a list of queries with their recommended lanes."#
-                .to_string(),
-            demos: vec![],
+OUTPUT FORMAT (use these exact structures):
+- queries: ["struct Args", "clap::Parser", "fn main"]
+- lanes: ["ripgrep", "lsp", "ripgrep"]
+- rationale: "Brief explanation of why these queries will find relevant code"
+
+Available lanes: ripgrep (text search), lsp (symbols/definitions), semantic (concepts), git (history)
+
+Be specific. Use actual search terms, not placeholders."#
+            .to_string();
+
+        // Create demo example
+        let mut demo_data = HashMap::new();
+        demo_data.insert(
+            "goal".to_string(),
+            json!("Add --version flag to CLI; Read version from Cargo.toml"),
+        );
+        demo_data.insert("failure_log".to_string(), json!(""));
+        demo_data.insert("previous_queries".to_string(), json!([]));
+        demo_data.insert(
+            "queries".to_string(),
+            json!([
+                "struct Args",
+                "#[derive(Parser)]",
+                "clap version",
+                "CARGO_PKG_VERSION"
+            ]),
+        );
+        demo_data.insert(
+            "lanes".to_string(),
+            json!(["ripgrep", "ripgrep", "ripgrep", "ripgrep"]),
+        );
+        demo_data.insert(
+            "rationale".to_string(),
+            json!("Search for clap Args struct to find where CLI arguments are defined, then look for version-related patterns"),
+        );
+
+        let demo = Example {
+            data: demo_data,
+            input_keys: vec![
+                "goal".to_string(),
+                "failure_log".to_string(),
+                "previous_queries".to_string(),
+            ],
+            output_keys: vec![
+                "queries".to_string(),
+                "lanes".to_string(),
+                "rationale".to_string(),
+            ],
+            node_id: None,
+        };
+
+        Self {
+            instruction,
+            demos: vec![demo],
         }
     }
 }
