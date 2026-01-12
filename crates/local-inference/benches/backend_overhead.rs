@@ -2,7 +2,6 @@
 //!
 //! Run with:
 //!   GPT_OSS_BENCH_URL=http://localhost:8000 \
-//!   FM_BRIDGE_BENCH_URL=http://localhost:3030 \
 //!   cargo bench -p local-inference --bench backend_overhead
 
 use std::env;
@@ -15,12 +14,9 @@ fn bench_backend_overhead(c: &mut Criterion) {
     let gpt_url = env::var("GPT_OSS_BENCH_URL")
         .or_else(|_| env::var("GPT_OSS_URL"))
         .ok();
-    let fm_url = env::var("FM_BRIDGE_BENCH_URL")
-        .or_else(|_| env::var("FM_BRIDGE_URL"))
-        .ok();
 
-    if gpt_url.is_none() && fm_url.is_none() {
-        eprintln!("Set GPT_OSS_BENCH_URL or FM_BRIDGE_BENCH_URL to run benchmarks.");
+    if gpt_url.is_none() {
+        eprintln!("Set GPT_OSS_BENCH_URL to run benchmarks.");
         return;
     }
 
@@ -49,32 +45,6 @@ fn bench_backend_overhead(c: &mut Criterion) {
                     let response = rt
                         .block_on(LocalModelBackend::complete(&client, request))
                         .expect("GPT-OSS completion failed");
-                    black_box(response);
-                })
-            });
-        }
-    }
-
-    if let Some(url) = fm_url {
-        let model = env::var("FM_BRIDGE_BENCH_MODEL")
-            .unwrap_or_else(|_| "gpt-4o-mini-2024-07-18".to_string());
-        let mut client = fm_bridge::FMClient::builder()
-            .base_url(url)
-            .default_model(&model)
-            .build()
-            .expect("Failed to build FM bridge client");
-
-        if let Err(err) = rt.block_on(LocalModelBackend::initialize(&mut client)) {
-            eprintln!("Skipping FM bridge benchmark: {}", err);
-        } else {
-            group.bench_function(BenchmarkId::new("fm-bridge", &model), |b| {
-                b.iter(|| {
-                    let request = CompletionRequest::new(&model, prompt)
-                        .with_max_tokens(32)
-                        .with_temperature(0.2);
-                    let response = rt
-                        .block_on(LocalModelBackend::complete(&client, request))
-                        .expect("FM bridge completion failed");
                     black_box(response);
                 })
             });

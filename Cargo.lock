@@ -1837,7 +1837,6 @@ dependencies = [
  "dirs 5.0.1",
  "env_logger 0.11.8",
  "eventsource-stream",
- "fm-bridge",
  "frlm",
  "log",
  "nostr 0.1.0",
@@ -3206,25 +3205,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "fm-bridge"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "clap",
- "eventsource-stream",
- "local-inference",
- "reqwest",
- "serde",
- "serde_json",
- "thiserror 2.0.17",
- "tokio",
- "tokio-stream",
- "tokio-test",
- "tracing",
-]
-
-[[package]]
 name = "fnv"
 version = "1.0.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3448,7 +3428,6 @@ dependencies = [
  "async-trait",
  "criterion 0.5.1",
  "dsrs",
- "fm-bridge",
  "hex",
  "nostr 0.1.0",
  "rand 0.8.5",
@@ -5191,7 +5170,6 @@ name = "lm-router"
 version = "0.1.0"
 dependencies = [
  "async-trait",
- "fm-bridge",
  "futures",
  "rand 0.8.5",
  "reqwest",
@@ -5220,7 +5198,6 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "criterion 0.5.1",
- "fm-bridge",
  "gpt-oss",
  "serde",
  "serde_json",
@@ -7869,7 +7846,6 @@ dependencies = [
  "async-trait",
  "clap",
  "dsrs",
- "fm-bridge",
  "futures",
  "glob",
  "hex",

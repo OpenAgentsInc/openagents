@@ -1,15 +1,8 @@
 //! Basic integration tests for the RLM engine.
 //!
-//! Note: Tests that use the actual FMClient require the FM Bridge to be running.
 //! These tests use the MockExecutor for isolated testing.
 
 use rlm::{Command, MockExecutor, RlmConfig};
-
-#[cfg(all(feature = "fm-bridge", target_os = "macos"))]
-use rlm::RlmEngine;
-
-#[cfg(all(feature = "fm-bridge", target_os = "macos"))]
-use fm_bridge::FMClient;
 
 /// Test that the command parser works correctly.
 #[test]
@@ -97,68 +90,3 @@ fn test_prompts() {
     assert_eq!(PromptTier::default(), PromptTier::Full);
 }
 
-// ========================================
-// Integration tests (require FM Bridge)
-// ========================================
-
-/// Test the full RLM loop with FM Bridge.
-///
-/// This test is ignored by default since it requires:
-/// 1. FM Bridge running at localhost:3030
-/// 2. A working model loaded
-///
-/// Run with: cargo test -p rlm -- --ignored
-#[cfg(all(feature = "fm-bridge", target_os = "macos"))]
-#[tokio::test]
-#[ignore]
-async fn test_rlm_with_fm_bridge() {
-    // Create client - will fail if FM Bridge not running
-    let client = match FMClient::new() {
-        Ok(c) => c,
-        Err(e) => {
-            eprintln!("Skipping test - FM Bridge not available: {}", e);
-            return;
-        }
-    };
-
-    // Check if FM Bridge is healthy
-    if !client.health().await.unwrap_or(false) {
-        eprintln!("Skipping test - FM Bridge not healthy");
-        return;
-    }
-
-    // Create mock executor that simulates successful execution
-    let executor = MockExecutor::new()
-        .expect("15 * 23", "345")
-        .expect("2 + 2", "4");
-
-    let engine = RlmEngine::new(client, executor);
-
-    // Run a simple query
-    match engine.run("What is 2 + 2?").await {
-        Ok(result) => {
-            println!("Result: {}", result.output);
-            println!("Iterations: {}", result.iterations);
-            for entry in &result.execution_log {
-                println!(
-                    "  [{}] {} -> {}",
-                    entry.iteration,
-                    entry.command_type,
-                    entry.result.chars().take(50).collect::<String>()
-                );
-            }
-            assert!(result.iterations > 0);
-        }
-        Err(e) => {
-            println!("RLM execution failed: {}", e);
-            // Don't fail the test - LLM might give unexpected responses
-        }
-    }
-}
-
-#[cfg(not(all(feature = "fm-bridge", target_os = "macos")))]
-#[tokio::test]
-#[ignore]
-async fn test_rlm_with_fm_bridge() {
-    eprintln!("Skipping test - FM Bridge only supported on macOS with fm-bridge feature");
-}
