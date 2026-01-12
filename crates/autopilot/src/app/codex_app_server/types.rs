@@ -171,6 +171,8 @@ pub struct ThreadSummary {
     #[serde(default)]
     pub model_provider: String,
     #[serde(default)]
+    pub cwd: Option<String>,
+    #[serde(default)]
     pub created_at: i64,
 }
 

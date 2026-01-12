@@ -29,6 +29,7 @@ pub(crate) mod tools;
 pub(crate) mod ui;
 pub(crate) mod utils;
 pub(crate) mod wallet;
+pub(crate) mod workspaces;
 
 pub(crate) use state::AppState;
 pub use events::CoderMode;

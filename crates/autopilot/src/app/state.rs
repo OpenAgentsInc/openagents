@@ -33,6 +33,7 @@ use crate::app::permissions::PermissionState;
 use crate::app::session::SessionState;
 use crate::app::tools::ToolsState;
 use crate::app::wallet::WalletState;
+use crate::app::workspaces::WorkspaceState;
 use crate::panels::PanelLayout;
 use wgpui::components::EventContext;
 use wgpui::renderer::Renderer;
@@ -66,6 +67,7 @@ pub(crate) struct AppState {
     pub(crate) session: SessionState,
     pub(crate) catalogs: CatalogState,
     pub(crate) agent_backends: AgentBackendsState,
+    pub(crate) workspaces: WorkspaceState,
     pub(crate) settings: SettingsState,
     pub(crate) permissions: PermissionState,
     pub(crate) autopilot: AutopilotState,

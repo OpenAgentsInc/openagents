@@ -3,6 +3,7 @@ use std::io;
 use std::path::PathBuf;
 use std::process::{Command as ProcessCommand, Stdio};
 
+use rfd::FileDialog;
 use serde_json::Value;
 use tokio::sync::mpsc;
 use tokio::time::{self, Duration};
@@ -109,6 +110,45 @@ pub(super) fn handle_command(state: &mut AppState, command: Command) -> CommandA
         }
         Command::SessionExport => {
             state.export_session();
+            CommandAction::None
+        }
+        Command::WorkspaceList => {
+            let summary = state.workspaces.list_workspace_summary();
+            state.push_system_message(summary);
+            CommandAction::None
+        }
+        Command::WorkspaceAdd => {
+            match FileDialog::new().pick_folder() {
+                Some(path) => {
+                    state.workspaces.runtime.add_workspace(path, None);
+                    state.push_system_message("Adding workspace...".to_string());
+                }
+                None => {
+                    state.push_system_message("Workspace selection canceled.".to_string());
+                }
+            }
+            CommandAction::None
+        }
+        Command::WorkspaceConnect(hint) => {
+            if let Some(workspace_id) = state.workspaces.connect_by_hint(&hint) {
+                state.workspaces.runtime.connect_workspace(workspace_id);
+                state.push_system_message("Connecting workspace...".to_string());
+            } else {
+                state.push_system_message(format!(
+                    "Workspace not found for: {}.",
+                    hint.trim()
+                ));
+            }
+            CommandAction::None
+        }
+        Command::WorkspaceRefresh => {
+            state.workspaces.runtime.reload();
+            for workspace in &state.workspaces.workspaces {
+                if workspace.connected {
+                    state.workspaces.runtime.list_threads(workspace.id.clone());
+                }
+            }
+            state.push_system_message("Refreshing workspaces...".to_string());
             CommandAction::None
         }
         Command::Review(review) => {

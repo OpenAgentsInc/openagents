@@ -42,6 +42,10 @@ pub(crate) fn sessions_dir() -> PathBuf {
     config_dir().join("sessions")
 }
 
+pub(crate) fn workspaces_file() -> PathBuf {
+    config_dir().join("workspaces.json")
+}
+
 pub(crate) fn session_index_file() -> PathBuf {
     sessions_dir().join("index.json")
 }

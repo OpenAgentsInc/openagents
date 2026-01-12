@@ -22,11 +22,13 @@ pub enum AppServerRequestId {
     Integer(i64),
 }
 
+#[derive(Debug)]
 pub(crate) struct AppServerNotification {
     pub(crate) method: String,
     pub(crate) params: Option<Value>,
 }
 
+#[derive(Debug)]
 pub(crate) struct AppServerRequest {
     pub(crate) id: AppServerRequestId,
     pub(crate) method: String,
