@@ -128,14 +128,14 @@ async fn test_inference(client: &GptOssClient) -> anyhow::Result<()> {
     }
 }
 
-async fn test_dspy_code_change_chain(server_url: &str) -> anyhow::Result<()> {
+async fn test_dspy_code_change_chain(_server_url: &str) -> anyhow::Result<()> {
     info!("\n=== DSPy Code Change Chain Test ===\n");
 
-    // Configure dsrs with GPT-OSS backend via local OpenAI-compatible endpoint
-    info!("Configuring dsrs with GPT-OSS backend...");
+    // Configure dsrs with GPT-OSS backend using GptOssCompletionModel
+    // The gptoss: prefix triggers the Harmony format implementation with structured output
+    info!("Configuring dsrs with GPT-OSS backend (Harmony format)...");
     let lm = LM::builder()
-        .base_url(server_url.to_string())
-        .model("gpt-oss-20b".to_string())
+        .model("gptoss:gpt-oss-20b".to_string())
         .temperature(0.3)
         .max_tokens(2048)
         .build()
@@ -182,7 +182,10 @@ crates/arrow/
 
             // Stage 2: Code Exploration
             info!("\n[Stage 2] Exploring code...");
-            match pipeline.explore_code(&task.requirements, repo_structure).await {
+            match pipeline
+                .explore_code(&task.requirements, repo_structure)
+                .await
+            {
                 Ok(exploration) => {
                     info!("  Queries: {:?}", exploration.queries);
                     info!("  Lanes: {:?}", exploration.lanes);

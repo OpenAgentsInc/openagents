@@ -6,13 +6,11 @@
 //! 3. response_format for grammar enforcement during sampling
 
 use anyhow::Result;
-use gpt_oss::{
-    ChatCompletionsRequest, ChatMessage, GptOssClient, JsonSchemaSpec, ResponseFormat,
-};
+use gpt_oss::{ChatCompletionsRequest, ChatMessage, GptOssClient, JsonSchemaSpec, ResponseFormat};
 use rig::completion::{CompletionError, CompletionRequest, CompletionResponse};
 use rig::message::{AssistantContent, Text};
 use rig::one_or_many::OneOrMany;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use super::CompletionProvider;
 
@@ -139,129 +137,70 @@ impl GptOssCompletionModel {
         "Complete the task as specified.".to_string()
     }
 
-    /// Build Harmony-formatted messages for GPT-OSS.
-    fn build_harmony_messages(
-        request: &CompletionRequest,
-        schema: Option<&Value>,
-    ) -> Vec<ChatMessage> {
+    /// Build messages for GPT-OSS with structured output.
+    ///
+    /// Takes the full DSPy-formatted prompt and sends it with a system message
+    /// explaining the JSON output requirement. The response_format parameter
+    /// handles grammar enforcement.
+    fn build_messages(request: &CompletionRequest, schema: Option<&Value>) -> Vec<ChatMessage> {
         let mut messages = Vec::new();
 
-        // Get today's date
-        let today = chrono::Local::now().format("%Y-%m-%d").to_string();
-
-        // 1. System message with Harmony format
-        let system_content = format!(
-            r#"You are a helpful AI assistant.
-Knowledge cutoff: 2024-06
-Current date: {}
-
-Reasoning: medium
-
-# Valid channels: analysis, commentary, final. Channel must be included for every message."#,
-            today
-        );
+        // System message explaining output format
+        let system_content = if schema.is_some() {
+            "You are a helpful AI assistant. You MUST respond with valid JSON matching the schema provided. Output ONLY the JSON object with actual values - no placeholders, no ellipsis (...), no question marks as filler. If you don't know a value, use an empty string or reasonable default.".to_string()
+        } else {
+            "You are a helpful AI assistant.".to_string()
+        };
 
         messages.push(ChatMessage {
             role: "system".to_string(),
             content: system_content,
         });
 
-        // 2. Developer message with instructions and Response Formats
-        let mut developer_content = String::new();
+        // Build the full prompt from preamble + chat history
+        let mut full_prompt = String::new();
 
-        // Extract instruction from the original prompt
-        let full_prompt: String = request
-            .preamble
-            .as_deref()
-            .unwrap_or("")
-            .to_string()
-            + &request
-                .chat_history
-                .iter()
-                .filter_map(|m| match m {
-                    rig::message::Message::User { content } => {
-                        content.iter().find_map(|c| {
-                            if let rig::message::UserContent::Text(t) = c {
-                                Some(t.text.clone())
-                            } else {
-                                None
-                            }
-                        })
-                    }
-                    _ => None,
-                })
-                .collect::<Vec<_>>()
-                .join("\n");
-
-        let instruction = Self::extract_instruction(&full_prompt);
-
-        developer_content.push_str("# Instructions\n\n");
-        developer_content.push_str(&instruction);
-        developer_content.push_str("\n\n");
-
-        // Add Response Formats section if we have a schema
-        if let Some(schema) = schema {
-            developer_content.push_str("# Response Formats\n\n");
-            developer_content.push_str("## dspy_output\n\n");
-            developer_content.push_str("// Output must be valid JSON matching this schema\n");
-            developer_content.push_str(&schema.to_string());
-        }
-
-        messages.push(ChatMessage {
-            role: "user".to_string(), // Note: llama-server may not support "developer" role, use user
-            content: developer_content,
-        });
-
-        // 3. Add user message with the actual task/input
+        // Add the preamble (contains DSPy signature description, field info, instruction)
         if let Some(preamble) = &request.preamble {
-            // The preamble often contains the full DSPy formatted prompt
-            // Extract just the user input part
-            if let Some(user_section) = preamble.split("[[ ## ").nth(1) {
-                if let Some(content) = user_section.split(" ## ]]").nth(1) {
-                    let user_input = content.split("[[ ##").next().unwrap_or(content).trim();
-                    if !user_input.is_empty() {
-                        messages.push(ChatMessage {
-                            role: "user".to_string(),
-                            content: user_input.to_string(),
-                        });
-                    }
-                }
-            }
+            full_prompt.push_str(preamble);
+            full_prompt.push_str("\n\n");
         }
 
-        // Add any additional user messages from chat history
+        // Add chat history messages
         for msg in request.chat_history.iter() {
             match msg {
                 rig::message::Message::User { content } => {
-                    let mut text_parts = Vec::new();
                     for c in content.iter() {
                         if let rig::message::UserContent::Text(text) = c {
-                            text_parts.push(text.text.clone());
+                            full_prompt.push_str(&text.text);
+                            full_prompt.push_str("\n\n");
                         }
-                    }
-                    if !text_parts.is_empty() {
-                        messages.push(ChatMessage {
-                            role: "user".to_string(),
-                            content: text_parts.join("\n"),
-                        });
                     }
                 }
                 rig::message::Message::Assistant { content, .. } => {
-                    let mut text_parts = Vec::new();
                     for c in content.iter() {
                         if let rig::message::AssistantContent::Text(text) = c {
-                            text_parts.push(text.text.clone());
+                            full_prompt.push_str(&text.text);
+                            full_prompt.push_str("\n\n");
                         }
-                    }
-                    if !text_parts.is_empty() {
-                        messages.push(ChatMessage {
-                            role: "assistant".to_string(),
-                            content: text_parts.join("\n"),
-                        });
                     }
                 }
             }
         }
+
+        // Add schema information if available
+        if let Some(schema) = schema {
+            full_prompt.push_str("\n\nYou must respond with a JSON object matching this schema:\n");
+            full_prompt.push_str(
+                &serde_json::to_string_pretty(schema).unwrap_or_else(|_| schema.to_string()),
+            );
+            full_prompt.push_str("\n\nRespond with ONLY the JSON object, no other text.");
+        }
+
+        messages.push(ChatMessage {
+            role: "user".to_string(),
+            content: full_prompt,
+        });
 
         messages
     }
@@ -306,24 +245,18 @@ impl CompletionProvider for GptOssCompletionModel {
         request: CompletionRequest,
     ) -> Result<CompletionResponse<()>, CompletionError> {
         // Get combined prompt text to extract schema
-        let full_prompt: String = request
-            .preamble
-            .as_deref()
-            .unwrap_or("")
-            .to_string()
+        let full_prompt: String = request.preamble.as_deref().unwrap_or("").to_string()
             + &request
                 .chat_history
                 .iter()
                 .filter_map(|m| match m {
-                    rig::message::Message::User { content } => {
-                        content.iter().find_map(|c| {
-                            if let rig::message::UserContent::Text(t) = c {
-                                Some(t.text.clone())
-                            } else {
-                                None
-                            }
-                        })
-                    }
+                    rig::message::Message::User { content } => content.iter().find_map(|c| {
+                        if let rig::message::UserContent::Text(t) = c {
+                            Some(t.text.clone())
+                        } else {
+                            None
+                        }
+                    }),
                     _ => None,
                 })
                 .collect::<Vec<_>>()
@@ -332,8 +265,8 @@ impl CompletionProvider for GptOssCompletionModel {
         // Extract schema from DSPy prompt
         let schema = Self::extract_output_schema(&full_prompt);
 
-        // Build Harmony-formatted messages
-        let messages = Self::build_harmony_messages(&request, schema.as_ref());
+        // Build messages with full DSPy prompt + schema
+        let messages = Self::build_messages(&request, schema.as_ref());
 
         // Set up response_format for grammar enforcement
         let response_format = schema.as_ref().map(|s| ResponseFormat::JsonSchema {
@@ -362,6 +295,12 @@ impl CompletionProvider for GptOssCompletionModel {
             .map_err(|e| CompletionError::ProviderError(e.to_string()))?;
 
         let content = resp.content().to_string();
+
+        // Debug: log the raw response from the LLM
+        tracing::debug!(
+            "GPT-OSS raw response (first 500 chars): {}",
+            &content[..content.len().min(500)]
+        );
 
         // If we used structured output, wrap the JSON in DSPy format
         let response = if schema.is_some() {
