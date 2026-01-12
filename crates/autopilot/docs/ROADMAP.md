@@ -237,6 +237,47 @@ but a focused tool for troubleshooting protocol and runtime issues during multi-
 operation. Keeping the log capped and actionable preserves the CodexMonitor feel while
 reducing friction during development and support.
 
+### CM7: Thread hygiene, output caps, and workspace safety
+
+Recent CodexMonitor updates introduced hard caps for per-thread history and defensive
+truncation for large tool outputs, reasoning blocks, and diffs so long-running sessions
+remain responsive even when a model streams huge payloads. Autopilot should implement the
+same guardrails in the workspace timeline by enforcing a maximum item count per thread
+and truncating oversized text fields when items are inserted or updated. This phase also
+formalizes workspace safety rules already implied in the design: never mix git or thread
+data across workspaces, preserve activity flags when late events arrive, and merge resumed
+items by stable IDs so history remains consistent without duplicating entries.
+
+### CM8: Resizable panels and plan surface
+
+CodexMonitor now treats layout as user-configurable: left and right panels can be resized,
+and the plan panel docks above the composer with its own drag handle. To reach parity,
+Autopilot should add persistent panel widths and plan panel height to the WGPUI layout,
+including visual drag affordances and hit targets that do not interfere with scrolling.
+The plan panel should consume `turn/plan/updated` notifications and present steps and
+statuses in a compact list so users can track the agent's plan without scrolling the main
+timeline, while still honoring the app-server-first event stream.
+
+### CM9: Git history panel and remote context
+
+CodexMonitor added a right-panel mode that switches from diffs to git history, including a
+context menu for commit actions and remote URL awareness. Autopilot should mirror this by
+exposing a log viewer keyed to the active workspace, pulling a bounded list of commits with
+author, timestamp, and summary, and providing quick actions like copying the SHA or opening
+the commit in the remote when a URL is available. The log view should be a lightweight
+toggle in the existing right panel so diff inspection and history browsing share the same
+space without introducing a new modal.
+
+### CM10: Appearance parity and chrome polish
+
+CodexMonitor now follows system appearance, ships a custom icon, and tightens visual
+polish through composer control updates, conversation panel spacing adjustments, diff
+viewer padding tweaks, and improved command output layout. Autopilot should apply the
+same kind of finish: treat system theme as a first-class input to the palette, add an
+About window that enumerates version, runtime, and repo info, and refine spacing around
+command output cards so dense tool logs remain readable. This phase is about aligning the
+feel of the UI with CodexMonitor's latest ergonomics while staying inside the WGPUI shell.
+
 ## Dependencies and risks
 
 The app-server protocol may evolve and require schema regeneration, so the client
