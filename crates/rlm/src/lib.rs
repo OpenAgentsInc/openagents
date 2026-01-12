@@ -30,7 +30,6 @@
 //! ```
 
 pub mod chunking;
-#[cfg(feature = "fm-bridge")]
 pub mod cli;
 mod client;
 mod command;

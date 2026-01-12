@@ -1,13 +1,11 @@
 //! LM backend implementations.
 
-pub mod fm_bridge;
 pub mod mock;
 pub mod ollama;
 pub mod openai;
 pub mod openrouter;
 pub mod swarm_sim;
 
-pub use fm_bridge::FmBridgeBackend;
 pub use mock::MockBackend;
 pub use ollama::OllamaBackend;
 pub use openai::OpenAiBackend;
@@ -53,24 +51,6 @@ pub async fn auto_detect_router() -> Result<AutoRouter> {
         backends.push("ollama".to_string());
     } else {
         info!("Ollama not detected at localhost:11434");
-    }
-
-    // FM Bridge (Apple Foundation Models)
-    match FmBridgeBackend::new() {
-        Ok(fm) => {
-            if fm.health_check().await {
-                builder = builder.add_backend(fm);
-                backends.push("fm-bridge".to_string());
-                if default_model.is_none() {
-                    default_model = Some("apple-fm".to_string());
-                }
-            } else {
-                info!("FM Bridge detected but not healthy");
-            }
-        }
-        Err(err) => {
-            info!("FM Bridge unavailable: {}", err);
-        }
     }
 
     // OpenAI

@@ -36,10 +36,6 @@ pub enum FrlmError {
     #[error("local RLM error: {0}")]
     RlmError(#[from] rlm::RlmError),
 
-    /// FM Bridge error
-    #[error("FM Bridge error: {0}")]
-    FmBridgeError(#[from] fm_bridge::FMError),
-
     /// Nostr error
     #[error("Nostr error: {0}")]
     NostrError(String),

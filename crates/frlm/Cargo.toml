@@ -17,7 +17,6 @@ async-trait = "0.1"
 
 # RLM base (for local fallback)
 rlm = { path = "../rlm" }
-fm-bridge = { path = "../fm-bridge" }
 
 # Nostr for swarm communication
 nostr = { path = "../nostr/core" }

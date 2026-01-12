@@ -21,11 +21,6 @@ pub enum RlmError {
     #[error("Max iterations exceeded: {0}")]
     MaxIterationsExceeded(u32),
 
-    /// FM Bridge connection error (only available with fm-bridge feature).
-    #[cfg(feature = "fm-bridge")]
-    #[error("FM Bridge error: {0}")]
-    FmBridgeError(#[from] fm_bridge::FMError),
-
     /// Shell command execution error.
     #[error("Shell error: {0}")]
     ShellError(String),

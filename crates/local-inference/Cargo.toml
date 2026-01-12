@@ -15,7 +15,6 @@ tokio = { version = "1", features = ["full", "test-util"] }
 tokio-stream = "0.1"
 wiremock = "0.6"
 gpt-oss = { path = "../gpt-oss" }
-fm-bridge = { path = "../fm-bridge" }
 criterion = { version = "0.5", features = ["html_reports"] }
 
 [[bench]]

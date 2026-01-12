@@ -28,10 +28,6 @@ pub enum Error {
     #[error("simulated failure: {0}")]
     SimulatedFailure(String),
 
-    /// FM Bridge error.
-    #[error("FM Bridge error: {0}")]
-    FmBridge(#[from] fm_bridge::FMError),
-
     /// IO error.
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),

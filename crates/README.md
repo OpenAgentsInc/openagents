@@ -35,10 +35,6 @@ agent programming.
 The dsrs-macros crate provides procedural macros for declaring DSPy signatures and optimizable
 modules in Rust.
 
-## fm-bridge
-The fm-bridge crate is a Rust client for the Apple Foundation Models HTTP bridge with an
-OpenAI-compatible API surface.
-
 ## frlm
 The frlm crate implements Federated Recursive Language Models, orchestrating distributed subqueries
 across local and swarm backends with trace emission and verification.

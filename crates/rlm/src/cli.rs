@@ -1,12 +1,13 @@
 //! CLI commands for RLM.
 
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use clap::{Args, Subcommand, ValueEnum};
-use fm_bridge::FMClient;
 
 use crate::context::Context;
 use crate::error::Result;
+use crate::lm_router_adapter::LmRouterClient;
 use crate::orchestrator::OrchestratorConfig;
 use crate::prompts::PromptTier;
 use crate::python_executor::PythonExecutor;
@@ -47,9 +48,9 @@ pub struct RunArgs {
     /// The query to send to the RLM
     pub query: String,
 
-    /// FM Bridge URL
-    #[arg(long, default_value = "http://localhost:11435")]
-    pub fm_url: String,
+    /// Model to use (auto-detected if not specified)
+    #[arg(long)]
+    pub model: Option<String>,
 
     /// Maximum number of iterations
     #[arg(long, default_value = "10")]
@@ -100,9 +101,10 @@ pub async fn execute(cmd: Commands) -> Result<()> {
 }
 
 async fn run_rlm(args: RunArgs) -> Result<()> {
+    use crate::error::RlmError;
+
     println!("=== RLM Run ===");
     println!("Query: {}", args.query);
-    println!("FM URL: {}", args.fm_url);
     if args.orchestrated {
         println!("Mode: Orchestrated (engine-driven)");
         println!("Chunk size: {}", args.chunk_size);
@@ -131,25 +133,21 @@ async fn run_rlm(args: RunArgs) -> Result<()> {
 
     println!();
 
-    // Check FM Bridge health
-    println!("Connecting to FM Bridge...");
-    let client = FMClient::with_base_url(&args.fm_url)?;
+    // Auto-detect available backends
+    println!("Detecting available LM backends...");
+    let auto_router = lm_router::backends::auto_detect_router()
+        .await
+        .map_err(|e| RlmError::LlmError(format!("No backends available: {}", e)))?;
 
-    match client.health().await {
-        Ok(true) => println!("FM Bridge: OK\n"),
-        Ok(false) => {
-            println!("FM Bridge: NOT HEALTHY");
-            println!("\nPlease start FM Bridge first:");
-            println!("  pylon-desktop --cli");
-            return Ok(());
-        }
-        Err(e) => {
-            println!("FM Bridge: CONNECTION FAILED - {}", e);
-            println!("\nPlease start FM Bridge first:");
-            println!("  pylon-desktop --cli");
-            return Ok(());
-        }
-    }
+    let model = args
+        .model
+        .or(auto_router.default_model.clone())
+        .ok_or_else(|| RlmError::LlmError("No model available".to_string()))?;
+
+    println!("Backends: {}", auto_router.backends.join(", "));
+    println!("Model: {}\n", model);
+
+    let client = LmRouterClient::new(Arc::new(auto_router.router), &model);
 
     // For orchestrated mode, we don't need Python
     if args.orchestrated {

@@ -7,11 +7,6 @@ description = "Recursive Language Model execution engine"
 license = "CC-0"
 
 [[bin]]
-name = "rlm_test"
-path = "src/bin/rlm_test.rs"
-required-features = ["fm-bridge"]
-
-[[bin]]
 name = "rlm-mcp-server"
 path = "src/bin/rlm_mcp_server.rs"
 
@@ -27,9 +22,6 @@ lm-router = { path = "../lm-router" }
 # DSPy (DSRs) for declarative LLM programming (optional)
 dsrs = { path = "../dsrs", optional = true }
 anyhow = { version = "1", optional = true }
-
-# FM Bridge for LLM inference (optional, for backwards compatibility)
-fm-bridge = { path = "../fm-bridge", optional = true }
 
 futures = { version = "0.3", optional = true }
 

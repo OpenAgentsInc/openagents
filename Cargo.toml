@@ -9,7 +9,6 @@ members = [
     # DSPy integration (dsrs)
     "crates/dsrs",
     "crates/dsrs-macros",
-    "crates/fm-bridge",
     "crates/frlm",
     "crates/gateway",
     "crates/gpt-oss",
