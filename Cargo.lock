@@ -5495,7 +5495,15 @@ dependencies = [
 name = "manatap"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
+ "dsrs",
+ "glob",
+ "gpt-oss",
  "pollster 0.4.0",
+ "serde",
+ "serde_json",
+ "tokio",
+ "uuid",
  "wgpu",
  "wgpui",
  "winit",

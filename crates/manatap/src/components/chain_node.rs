@@ -6,6 +6,7 @@ const STATUS_DOT_SIZE: f32 = 8.0;
 const FONT_SIZE_TITLE: f32 = 14.0;
 const FONT_SIZE_BODY: f32 = 12.0;
 const FONT_SIZE_META: f32 = 10.0;
+const FONT_SIZE_DESC: f32 = 11.0;
 const CORNER_RADIUS: f32 = 6.0;
 const LINE_HEIGHT: f32 = 16.0;
 
@@ -64,6 +65,12 @@ const TEXT_ACCENT: Hsla = Hsla {
     l: 0.6,
     a: 1.0,
 };
+const TEXT_DESC: Hsla = Hsla {
+    h: 0.0,
+    s: 0.0,
+    l: 0.5,
+    a: 1.0,
+};
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum NodeState {
@@ -95,6 +102,7 @@ impl NodeState {
 
 pub struct ChainNode {
     pub name: String,
+    pub description: String,
     pub state: NodeState,
     pub inputs: Vec<(String, String)>,
     pub outputs: Vec<(String, String)>,
@@ -108,6 +116,7 @@ impl ChainNode {
     pub fn new(name: &str) -> Self {
         Self {
             name: name.to_string(),
+            description: String::new(),
             state: NodeState::Pending,
             inputs: Vec::new(),
             outputs: Vec::new(),
@@ -116,6 +125,11 @@ impl ChainNode {
             duration_ms: None,
             progress_message: None,
         }
+    }
+
+    pub fn with_description(mut self, desc: &str) -> Self {
+        self.description = desc.to_string();
+        self
     }
 
     pub fn with_state(mut self, state: NodeState) -> Self {
@@ -147,6 +161,11 @@ impl ChainNode {
 
     pub fn height(&self, _width: f32, _text: &mut TextSystem, _scale: f32) -> f32 {
         let mut h = CARD_PADDING * 2.0 + 20.0; // Header
+
+        // Description line
+        if !self.description.is_empty() {
+            h += 14.0;
+        }
 
         if !self.inputs.is_empty() {
             h += 14.0; // "INPUT:" label
@@ -227,6 +246,18 @@ impl ChainNode {
         scene.draw_text(badge_run);
 
         let mut content_y = y + CARD_PADDING + 24.0;
+
+        // Description (below name)
+        if !self.description.is_empty() {
+            let desc_run = text.layout_mono(
+                &self.description,
+                Point::new(dot_x + STATUS_DOT_SIZE + 8.0, content_y - 6.0),
+                FONT_SIZE_DESC,
+                TEXT_DESC,
+            );
+            scene.draw_text(desc_run);
+            content_y += 14.0;
+        }
 
         // Inputs section
         if !self.inputs.is_empty() {
