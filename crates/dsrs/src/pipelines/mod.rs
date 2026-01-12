@@ -15,6 +15,6 @@ pub use retrieval::{
 
 // Re-export code change pipeline
 pub use code_change::{
-    CodeChangeInput, CodeChangePipeline, CodeChangeResult, CodeEdit, CodeExplorationResult,
-    Scope, TaskType, TaskUnderstandingResult, VerificationResult, VerificationStatus,
+    CodeChangeInput, CodeChangePipeline, CodeChangeResult, CodeEdit, CodeExplorationResult, Scope,
+    TaskType, TaskUnderstandingResult, VerificationResult, VerificationStatus,
 };

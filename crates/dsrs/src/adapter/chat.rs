@@ -39,10 +39,7 @@ fn extract_json_from_text(text: &str, data_type: &str) -> Value {
     }
 
     // For objects: find {...} pattern
-    if data_type.contains("object")
-        || data_type.contains("Object")
-        || data_type.starts_with('{')
-    {
+    if data_type.contains("object") || data_type.contains("Object") || data_type.starts_with('{') {
         if let Some(start) = trimmed.find('{') {
             if let Some(end) = trimmed.rfind('}') {
                 let json_slice = &trimmed[start..=end];
@@ -57,7 +54,10 @@ fn extract_json_from_text(text: &str, data_type: &str) -> Value {
     if data_type == "f32" || data_type == "f64" || data_type == "i32" || data_type == "i64" {
         // Try to find a number in the text
         for word in trimmed.split_whitespace() {
-            if let Ok(n) = word.trim_matches(|c: char| !c.is_numeric() && c != '.' && c != '-').parse::<f64>() {
+            if let Ok(n) = word
+                .trim_matches(|c: char| !c.is_numeric() && c != '.' && c != '-')
+                .parse::<f64>()
+            {
                 return json!(n);
             }
         }

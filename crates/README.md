@@ -3,6 +3,26 @@
 This directory contains the Rust crates that power OpenAgents. Each section below provides a
 single-paragraph overview of a crate to explain its role in the workspace.
 
+## Workspace Layout Plan (Draft)
+This plan keeps a single Cargo workspace but groups crates by purpose so product code stays
+distinct from shared platform, core, and UI code. The UI group should live under `crates/ui/`
+(not `crates/ux/`).
+
+Proposed grouping (adjust as needed):
+- `crates/products/`: autopilot, pylon, onyx
+- `crates/core/`: adjutant, autopilot-core, dsrs, dsrs-macros, rlm, frlm
+- `crates/platform/`: agent, protocol, runtime, compute, gateway, lm-router, local-inference, relay, issues
+- `crates/ui/`: wgpui, vim, editor
+- `crates/integrations/`: gpt-oss, nostr, spark, voice
+- `crates/tools/`: arrow (Autopilot testing utilities)
+
+Proposed steps:
+1. Create the group folders under `crates/` and move the crate directories.
+2. Update the root `Cargo.toml` workspace members to include the new paths (glob per group).
+3. Update all path dependencies in crate `Cargo.toml` files to the new locations.
+4. Refresh docs and tooling references (this file, any build scripts, CI paths).
+5. Run `cargo check` and fix any path or feature fallout.
+
 ## adjutant
 The adjutant crate is the autonomous task execution engine. It plans and routes work via DSPy
 decision pipelines, delegates to Codex or RLM when needed, runs tool execution, and records session

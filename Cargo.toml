@@ -4,8 +4,13 @@ members = [
     "crates/adjutant",
     "crates/agent",
     "crates/arrow",
+    "crates/nucleus",
     "crates/autopilot",
     "crates/autopilot-core",
+    "crates/compute",
+    "crates/nucleus",
+    "crates/dsrs",
+    # DSPy integration (dsrs)
     "crates/compute",
     # DSPy integration (dsrs)
     "crates/dsrs",

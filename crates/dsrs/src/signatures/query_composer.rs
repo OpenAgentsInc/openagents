@@ -35,14 +35,19 @@ Consider:
 1. Break complex goals into specific, searchable terms
 2. Use different query strategies (function names, error messages, types, etc.)
 3. Account for what queries have already been tried
-4. Suggest appropriate retrieval lanes (ripgrep for text, lsp for symbols, semantic for concepts)
 
 OUTPUT FORMAT (use these exact structures):
 - queries: ["struct Args", "clap::Parser", "fn main"]
-- lanes: ["ripgrep", "lsp", "ripgrep"]
+- lanes: ["ripgrep", "ripgrep", "ripgrep"]
 - rationale: "Brief explanation of why these queries will find relevant code"
 
-Available lanes: ripgrep (text search), lsp (symbols/definitions), semantic (concepts), git (history)
+IMPORTANT - lanes must be ONE OF these exact values:
+- "ripgrep" = text search (USE THIS FOR MOST QUERIES)
+- "lsp" = symbol/definition lookup
+- "semantic" = concept search
+- "git" = history search
+
+Each query needs exactly one lane. When unsure, use "ripgrep".
 
 Be specific. Use actual search terms, not placeholders."#
             .to_string();
@@ -88,9 +93,45 @@ Be specific. Use actual search terms, not placeholders."#
             node_id: None,
         };
 
+        // Second demo - different task
+        let mut demo_data2 = HashMap::new();
+        demo_data2.insert(
+            "goal".to_string(),
+            json!("Fix the authentication bug where login fails"),
+        );
+        demo_data2.insert("failure_log".to_string(), json!(""));
+        demo_data2.insert("previous_queries".to_string(), json!([]));
+        demo_data2.insert(
+            "queries".to_string(),
+            json!(["fn login", "authenticate", "auth error", "session"]),
+        );
+        demo_data2.insert(
+            "lanes".to_string(),
+            json!(["ripgrep", "ripgrep", "ripgrep", "ripgrep"]),
+        );
+        demo_data2.insert(
+            "rationale".to_string(),
+            json!("Search for login and authentication functions to locate the bug"),
+        );
+
+        let demo2 = Example {
+            data: demo_data2,
+            input_keys: vec![
+                "goal".to_string(),
+                "failure_log".to_string(),
+                "previous_queries".to_string(),
+            ],
+            output_keys: vec![
+                "queries".to_string(),
+                "lanes".to_string(),
+                "rationale".to_string(),
+            ],
+            node_id: None,
+        };
+
         Self {
             instruction,
-            demos: vec![demo],
+            demos: vec![demo, demo2],
         }
     }
 }
@@ -157,7 +198,7 @@ impl MetaSignature for QueryComposerSignature {
             },
             "lanes": {
                 "type": "Vec<String>",
-                "desc": "Suggested retrieval lane for each query (ripgrep, lsp, semantic, git)",
+                "desc": "One lane per query. MUST be exactly: ripgrep OR lsp OR semantic OR git. Use ripgrep for most queries.",
                 "__dsrs_field_type": "output"
             },
             "rationale": {

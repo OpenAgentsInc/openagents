@@ -5,7 +5,7 @@
 use crate::core::signature::MetaSignature;
 use crate::data::example::Example;
 use anyhow::Result;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 /// Signature for verifying code changes are correct and complete.
 ///
@@ -29,7 +29,8 @@ pub struct VerificationSignature {
 impl Default for VerificationSignature {
     fn default() -> Self {
         Self {
-            instruction: r#"You are an expert code reviewer verifying that changes meet requirements.
+            instruction:
+                r#"You are an expert code reviewer verifying that changes meet requirements.
 
 Analyze the original request, the changes made, and any test output to determine:
 
@@ -51,7 +52,7 @@ Analyze the original request, the changes made, and any test output to determine
 4. Suggested Fixes: For each issue, suggest a specific fix.
 
 Be thorough but fair in your assessment."#
-                .to_string(),
+                    .to_string(),
             demos: vec![],
         }
     }
