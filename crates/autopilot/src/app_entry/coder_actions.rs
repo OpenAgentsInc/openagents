@@ -21,7 +21,9 @@ use crate::app::codex_runtime::{CodexRuntime, CodexRuntimeConfig};
 use crate::app::events::{CommandAction, ModalState, QueryControl, ResponseEvent};
 use crate::app::nip28::{Nip28ConnectionStatus, Nip28Event, Nip28Message};
 use crate::app::nip90::{Nip90ConnectionStatus, Nip90Event};
-use crate::app::workspaces::WorkspaceEvent;
+use crate::app::workspaces::{
+    conversation_item_from_value, turn_diff_item, ConversationItem, ConversationRole, WorkspaceEvent,
+};
 use crate::app::parsing::prompt::{expand_prompt_text_async, format_command_output, MAX_COMMAND_BYTES};
 use crate::app::utils::truncate_bytes;
 use crate::app::permissions::{coder_mode_default_allow, parse_coder_mode, PermissionPending};
@@ -31,6 +33,7 @@ use crate::app::config::{ModelOption, SettingsUpdate};
 use crate::app::catalog::SkillUpdate;
 use crate::app::ui::render_app;
 use crate::app::CoderMode;
+use crate::app::AppState;
 use crate::autopilot_loop::{DspyStage, TodoStatus, TodoTask};
 use crate::commands::{Command, ReviewCommand, ReviewDelivery, ReviewTarget};
 
@@ -1603,14 +1606,278 @@ impl AutopilotApp {
                     ));
                     should_redraw = true;
                 }
-                WorkspaceEvent::AppServerNotification { .. } => {}
-                WorkspaceEvent::AppServerRequest { .. } => {}
+                WorkspaceEvent::AppServerNotification {
+                    workspace_id,
+                    notification,
+                } => {
+                    if Self::apply_workspace_notification(state, &workspace_id, notification) {
+                        should_redraw = true;
+                    }
+                }
+                WorkspaceEvent::AppServerRequest { workspace_id, request } => {
+                    tracing::debug!(
+                        workspace_id = %workspace_id,
+                        method = %request.method,
+                        "Workspace app-server request received"
+                    );
+                }
             }
+        }
+
+        if state.workspaces.timeline_dirty {
+            state.sync_workspace_timeline_view();
+            state.workspaces.timeline_dirty = false;
+            should_redraw = true;
         }
 
         if should_redraw {
             state.window.request_redraw();
         }
+    }
+
+    fn apply_workspace_notification(
+        state: &mut AppState,
+        workspace_id: &str,
+        notification: app_server::AppServerNotification,
+    ) -> bool {
+        let mut updated = false;
+        match notification.method.as_str() {
+            "thread/started" => {
+                if let Some(params) = notification.params {
+                    if let Ok(event) =
+                        serde_json::from_value::<app_server::ThreadStartedNotification>(params)
+                    {
+                        state
+                            .workspaces
+                            .ensure_thread(workspace_id, &event.thread.id);
+                        updated = true;
+                    }
+                }
+            }
+            "turn/started" => {
+                if let Some(params) = notification.params {
+                    if let Ok(event) =
+                        serde_json::from_value::<app_server::TurnStartedNotification>(params)
+                    {
+                        state
+                            .workspaces
+                            .mark_processing(workspace_id, &event.thread_id, true);
+                        updated = true;
+                    }
+                }
+            }
+            "turn/completed" => {
+                if let Some(params) = notification.params {
+                    if let Ok(event) =
+                        serde_json::from_value::<app_server::TurnCompletedNotification>(params)
+                    {
+                        state
+                            .workspaces
+                            .mark_processing(workspace_id, &event.thread_id, false);
+                        updated = true;
+                    }
+                }
+            }
+            "item/agentMessage/delta" => {
+                if let Some(params) = notification.params {
+                    if let Ok(event) = serde_json::from_value::<
+                        app_server::AgentMessageDeltaNotification,
+                    >(params)
+                    {
+                        state.workspaces.append_agent_delta(
+                            workspace_id,
+                            &event.thread_id,
+                            &event.item_id,
+                            &event.delta,
+                        );
+                        updated = true;
+                    }
+                }
+            }
+            "item/reasoning/summaryTextDelta" => {
+                if let Some(params) = notification.params {
+                    if let Ok(event) = serde_json::from_value::<
+                        app_server::ReasoningSummaryTextDeltaNotification,
+                    >(params)
+                    {
+                        state.workspaces.append_reasoning_summary(
+                            workspace_id,
+                            &event.thread_id,
+                            &event.item_id,
+                            &event.delta,
+                        );
+                        updated = true;
+                    }
+                }
+            }
+            "item/reasoning/textDelta" => {
+                if let Some(params) = notification.params {
+                    if let Ok(event) =
+                        serde_json::from_value::<app_server::ReasoningTextDeltaNotification>(params)
+                    {
+                        state.workspaces.append_reasoning_content(
+                            workspace_id,
+                            &event.thread_id,
+                            &event.item_id,
+                            &event.delta,
+                        );
+                        updated = true;
+                    }
+                }
+            }
+            "item/commandExecution/outputDelta" => {
+                if let Some(params) = notification.params {
+                    if let Ok(event) = serde_json::from_value::<
+                        app_server::CommandExecutionOutputDeltaNotification,
+                    >(params)
+                    {
+                        state.workspaces.append_tool_output(
+                            workspace_id,
+                            &event.thread_id,
+                            &event.item_id,
+                            &event.delta,
+                        );
+                        updated = true;
+                    }
+                }
+            }
+            "item/fileChange/outputDelta" => {
+                if let Some(params) = notification.params {
+                    if let Ok(event) = serde_json::from_value::<
+                        app_server::FileChangeOutputDeltaNotification,
+                    >(params)
+                    {
+                        state.workspaces.append_tool_output(
+                            workspace_id,
+                            &event.thread_id,
+                            &event.item_id,
+                            &event.delta,
+                        );
+                        updated = true;
+                    }
+                }
+            }
+            "item/started" => {
+                if let Some(params) = notification.params {
+                    if let Ok(event) =
+                        serde_json::from_value::<app_server::ItemStartedNotification>(params)
+                    {
+                        if let Some(item_type) = event.item.get("type").and_then(Value::as_str) {
+                            match item_type {
+                                "enteredReviewMode" => state.workspaces.mark_reviewing(
+                                    workspace_id,
+                                    &event.thread_id,
+                                    true,
+                                ),
+                                "exitedReviewMode" => state.workspaces.mark_reviewing(
+                                    workspace_id,
+                                    &event.thread_id,
+                                    false,
+                                ),
+                                _ => {}
+                            }
+                        }
+                        if let Some(item) = conversation_item_from_value(&event.item) {
+                            state
+                                .workspaces
+                                .apply_item_update(workspace_id, &event.thread_id, item);
+                            updated = true;
+                        }
+                    }
+                }
+            }
+            "item/completed" => {
+                if let Some(params) = notification.params {
+                    if let Ok(event) =
+                        serde_json::from_value::<app_server::ItemCompletedNotification>(params)
+                    {
+                        if let Some(item_type) = event.item.get("type").and_then(Value::as_str) {
+                            match item_type {
+                                "enteredReviewMode" => state.workspaces.mark_reviewing(
+                                    workspace_id,
+                                    &event.thread_id,
+                                    true,
+                                ),
+                                "exitedReviewMode" => {
+                                    state.workspaces.mark_reviewing(
+                                        workspace_id,
+                                        &event.thread_id,
+                                        false,
+                                    );
+                                    state.workspaces.mark_processing(
+                                        workspace_id,
+                                        &event.thread_id,
+                                        false,
+                                    );
+                                }
+                                _ => {}
+                            }
+                        }
+                        if let Some(item) = conversation_item_from_value(&event.item) {
+                            state
+                                .workspaces
+                                .apply_item_update(workspace_id, &event.thread_id, item);
+                            updated = true;
+                        }
+                    }
+                }
+            }
+            "turn/diff/updated" => {
+                if let Some(params) = notification.params {
+                    if let Ok(event) =
+                        serde_json::from_value::<app_server::TurnDiffUpdatedNotification>(params)
+                    {
+                        let diff_item = turn_diff_item(&event.turn_id, &event.diff);
+                        state.workspaces.apply_item_update(
+                            workspace_id,
+                            &event.thread_id,
+                            diff_item,
+                        );
+                        updated = true;
+                    }
+                }
+            }
+            "thread/compacted" => {
+                if let Some(params) = notification.params {
+                    if let Ok(event) =
+                        serde_json::from_value::<app_server::ContextCompactedNotification>(params)
+                    {
+                        let item = ConversationItem::Message {
+                            id: format!("compacted-{}-{}", event.thread_id, event.turn_id),
+                            role: ConversationRole::Assistant,
+                            text: "Context compacted.".to_string(),
+                        };
+                        state.workspaces.apply_item_update(
+                            workspace_id,
+                            &event.thread_id,
+                            item,
+                        );
+                        updated = true;
+                    }
+                }
+            }
+            "error" => {
+                if let Some(params) = notification.params {
+                    if let Ok(event) =
+                        serde_json::from_value::<app_server::ErrorNotification>(params)
+                    {
+                        let item = ConversationItem::Message {
+                            id: format!("error-{}-{}", event.thread_id, event.turn_id),
+                            role: ConversationRole::Assistant,
+                            text: format!("Error: {}", event.error.message),
+                        };
+                        state.workspaces.apply_item_update(
+                            workspace_id,
+                            &event.thread_id,
+                            item,
+                        );
+                        updated = true;
+                    }
+                }
+            }
+            _ => {}
+        }
+        updated
     }
 
     pub(super) fn poll_autopilot_history(&mut self) {
