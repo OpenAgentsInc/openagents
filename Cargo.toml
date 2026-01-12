@@ -2,181 +2,38 @@
 resolver = "2"
 members = [
     "crates/acp-adapter",
+    "crates/adjutant",
     "crates/agent",
-    "crates/agent-orchestrator",
     "crates/autopilot",
     "crates/autopilot-core",
-    "crates/autopilot-service",
-    "crates/autopilot-shell",
-    "crates/autopilot-wasm",
-    "crates/gitafter",
-    "crates/frostr",
-    "crates/gpt-oss",
-    "crates/gpt-oss-agent",
-    "crates/gpt-oss-metal",
-    "crates/issue-tool",
-    "crates/issues",
-    "crates/local-inference",
-    "crates/marketplace",
-    "crates/ml",
-    "crates/ml/candle-wgpu",
-    "crates/nexus",
-    "crates/recorder",
-    "crates/testing",
-    "crates/fm-bridge",
-    "crates/fm-bridge-agent",
-    "crates/daytona",
-    "crates/opencode-sdk",
-    "crates/nostr/core",
-    "crates/nostr/relay",
-    "crates/nostr/client",
-    "crates/nostr/tests",
     "crates/compute",
-    "crates/config",
-    "crates/spark",
-    "crates/wallet",
-    "crates/auth",
-    "crates/wgpui",
-    "crates/pylon",
-    "crates/neobank",
-    "crates/orderbook",
-    "crates/relay",
-    "crates/runtime",
-    "crates/editor",
-    "crates/web",
-    "crates/viz",
-    "crates/pylon-desktop",
-    "crates/rlm",
-    "crates/frlm",
-    "crates/lm-router",
-    "crates/bench-harness",
-    "crates/bench-datasets",
-    "crates/rlm-methods",
-    "crates/bench-runner",
-    "crates/onyx",
-    "crates/vim",
-    "crates/voice",
-    "crates/voice-daemon",
-    "crates/oanix",
-    "crates/adjutant",
-    "crates/gateway",
+    "crates/daytona",
     # DSPy integration (dsrs)
     "crates/dsrs",
     "crates/dsrs-macros",
+    "crates/fm-bridge",
+    "crates/frlm",
+    "crates/gateway",
+    "crates/gpt-oss",
+    "crates/issues",
+    "crates/lm-router",
+    "crates/local-inference",
+    "crates/neobank",
+    "crates/nostr/core",
+    "crates/nostr/client",
+    "crates/oanix",
+    "crates/pylon",
+    "crates/recorder",
+    "crates/relay",
+    "crates/runtime",
+    "crates/rlm",
+    "crates/spark",
+    "crates/testing",
+    "crates/vim",
+    "crates/wgpui",
     # Protocol layer for typed job schemas
     "crates/protocol",
 ]
-
-# Unified OpenAgents binary
-[package]
-name = "openagents"
-version.workspace = true
-edition.workspace = true
-authors.workspace = true
-license.workspace = true
-publish.workspace = true
-description = "OpenAgents - Unified desktop application and CLI"
-
-[lib]
-name = "openagents"
-path = "src/lib.rs"
-
-[[bin]]
-name = "openagents"
-path = "src/main.rs"
-
-[[bin]]
-name = "autopilot-gui"
-path = "src/bin/autopilot.rs"
-
-[[bin]]
-name = "agent-provider"
-path = "src/bin/agent_provider.rs"
-
-[[bin]]
-name = "agent-customer"
-path = "src/bin/agent_customer.rs"
-
-[[bin]]
-name = "agent-runner"
-path = "src/bin/agent_runner.rs"
-
-[dependencies]
-# OpenAgents crates
-agent = { path = "crates/agent" }
-autopilot-core = { path = "crates/autopilot-core" }
-autopilot-service = { path = "crates/autopilot-service" }
-autopilot-shell = { path = "crates/autopilot-shell" }
-wallet = { path = "crates/wallet" }
-marketplace = { path = "crates/marketplace" }
-gitafter = { path = "crates/gitafter" }
-pylon = { path = "crates/pylon" }
-rlm = { path = "crates/rlm" }
-acp-adapter = { path = "crates/acp-adapter" }
-gpt-oss-agent = { path = "crates/gpt-oss-agent" }
-gpt-oss = { path = "crates/gpt-oss" }
-fm-bridge-agent = { path = "crates/fm-bridge-agent" }
-issues = { path = "crates/issues" }
-nostr = { path = "crates/nostr/core" }
-nostr-client = { path = "crates/nostr/client" }
-openagents-spark = { path = "crates/spark" }
-compute = { path = "crates/compute" }
-openagents-runtime = { path = "crates/runtime", default-features = false }
-hex = { workspace = true }
-sha2 = { workspace = true }
-rand = { workspace = true }
-bitcoin = { workspace = true }
-
-# WGPUI for autopilot
-wgpui = { path = "crates/wgpui", default-features = false, features = ["desktop"] }
-wgpu = "24.0"
-winit = "0.30"
-pollster = "0.4"
-
-# CLI
-clap = { version = "4.4", features = ["derive", "wrap_help"] }
-
-# Async
-tokio = { version = "1", features = ["full", "signal"] }
-futures-util = "0.3"
-async-trait = { workspace = true }
-
-# Serialization
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-
-# Error handling
-anyhow = "1"
-
-# Logging
-tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-
-# Utilities
-shellexpand = "2.1"
-chrono = { version = "0.4", features = ["serde"] }
-base64 = { workspace = true }
-uuid = { workspace = true }
-bech32 = "0.11.0"
-colored = "2.0"
-rusqlite = { version = "0.31", features = ["bundled"] }
-toml = { workspace = true }
-
-# HTTP client for quota API
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
-governor = "0.10.4"
-once_cell = "1.21.3"
-which = "8.0.0"
-ctrlc = "3.4"
-dirs = "5.0"
-
-[target.'cfg(any(target_os = "linux", target_os = "dragonfly", target_os = "freebsd", target_os = "netbsd", target_os = "openbsd"))'.dependencies]
-gtk = { version = "0.18.2", features = ["v3_24"] }
-
-[dev-dependencies]
-assert_cmd = "2.0"
-predicates = "3.0"
-bip39 = "2"
 
 [workspace.lints.rust]
 missing_docs = "allow"

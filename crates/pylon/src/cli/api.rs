@@ -14,14 +14,9 @@ use std::collections::HashMap;
 use std::convert::Infallible;
 use std::sync::Arc;
 use std::time::Duration;
-#[cfg(feature = "gpt-oss-gguf")]
-use tokio::sync::RwLock;
 use tokio_stream::wrappers::ReceiverStream;
 use tokio_stream::StreamExt;
 use tower_http::cors::{Any, CorsLayer};
-
-#[cfg(feature = "gpt-oss-gguf")]
-use ml::GptOssGgufBackend;
 
 #[derive(Args)]
 pub struct ApiArgs {
@@ -31,16 +26,7 @@ pub struct ApiArgs {
 }
 
 pub async fn run(args: ApiArgs) -> anyhow::Result<()> {
-    #[allow(unused_mut)]
-    let mut registry = BackendRegistry::detect().await;
-
-    #[cfg(feature = "gpt-oss-gguf")]
-    if let Ok(backend) = GptOssGgufBackend::from_env() {
-        registry.register_with_id(
-            "gpt-oss-gguf",
-            Arc::new(RwLock::new(backend)),
-        );
-    }
+    let registry = BackendRegistry::detect().await;
 
     let state = ApiState {
         registry: Arc::new(registry),

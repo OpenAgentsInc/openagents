@@ -6,9 +6,6 @@ use serde_json::Value;
 use std::collections::HashMap;
 use std::io::{self, Write};
 
-#[cfg(feature = "gpt-oss-gguf")]
-use ml::GptOssGgufBackend;
-
 /// Arguments for the infer command
 #[derive(Args)]
 pub struct InferArgs {
@@ -48,13 +45,7 @@ pub struct InferArgs {
 }
 
 pub async fn run(args: InferArgs) -> anyhow::Result<()> {
-    #[allow(unused_mut)]
-    let mut registry = BackendRegistry::detect().await;
-
-    #[cfg(feature = "gpt-oss-gguf")]
-    if let Ok(backend) = GptOssGgufBackend::from_env() {
-        registry.register_with_id("gpt-oss-gguf", std::sync::Arc::new(tokio::sync::RwLock::new(backend)));
-    }
+    let registry = BackendRegistry::detect().await;
 
     let models = registry.list_all_models().await;
     eprintln!("[pylon] Available models:");
@@ -120,43 +111,6 @@ fn resolve_model_id(
             return Ok((backend_id.clone(), info.id.clone()));
         }
         anyhow::bail!("model not found: {model}");
-    }
-
-    if let Ok(model) = std::env::var("GPT_OSS_METAL_MODEL_ID") {
-        let hit = models.iter().find(|(_, info)| info.id == model);
-        if let Some((backend_id, info)) = hit {
-            return Ok((backend_id.clone(), info.id.clone()));
-        }
-    }
-
-    if let Ok(model) = std::env::var("GPT_OSS_GGUF_MODEL_ID") {
-        let hit = models.iter().find(|(_, info)| info.id == model);
-        if let Some((backend_id, info)) = hit {
-            return Ok((backend_id.clone(), info.id.clone()));
-        }
-    }
-
-    // If GPT_OSS_METAL_MODEL_PATH is set, prefer the gpt-oss-metal backend.
-    if std::env::var("GPT_OSS_METAL_MODEL_PATH").is_ok() {
-        let hit = models.iter().find(|(backend_id, _)| backend_id == "gpt-oss-metal");
-        if let Some((backend_id, info)) = hit {
-            return Ok((backend_id.clone(), info.id.clone()));
-        }
-    }
-
-    // If GPT_OSS_GGUF_PATH is set, prefer the gpt-oss-gguf backend
-    if std::env::var("GPT_OSS_GGUF_PATH").is_ok() {
-        let hit = models.iter().find(|(backend_id, _)| backend_id == "gpt-oss-gguf");
-        if let Some((backend_id, info)) = hit {
-            return Ok((backend_id.clone(), info.id.clone()));
-        }
-    }
-
-    if let Some((backend_id, info)) = models
-        .iter()
-        .find(|(backend_id, _)| backend_id == "gpt-oss-metal")
-    {
-        return Ok((backend_id.clone(), info.id.clone()));
     }
 
     models

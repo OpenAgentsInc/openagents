@@ -44,7 +44,6 @@ async-trait = "0.1"
 # HTTP client
 reqwest = { version = "0.12", features = ["json", "stream"] }
 eventsource-stream = "0.2"
-gpt-oss-metal = { path = "../gpt-oss-metal", optional = true, features = ["link"] }
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
@@ -71,7 +70,6 @@ sha2.workspace = true
 [features]
 default = []
 ui = []
-gpt-oss-metal = ["dep:gpt-oss-metal"]
 
 [dev-dependencies]
 tempfile = "3.10"

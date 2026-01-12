@@ -7,7 +7,6 @@
 //! - Ollama (localhost:11434)
 //! - Apple Foundation Models (localhost:11435)
 //! - Llama.cpp / GPT-OSS (localhost:8080)
-//! - GPT-OSS Metal (local model.bin, macOS)
 //!
 //! ## Agent Backends
 //! Complex agentic tasks for Bazaar jobs (NIP-90 kinds 5930-5933):
@@ -16,8 +15,6 @@
 
 pub mod agent;
 mod apple_fm;
-#[cfg(all(feature = "gpt-oss-metal", target_os = "macos"))]
-mod gpt_oss_metal;
 mod llamacpp;
 mod ollama;
 
@@ -25,8 +22,6 @@ pub use agent::{
     AgentBackend, AgentCapabilities, AgentError, AgentRegistry, AgentBackendStatus, JobProgress,
 };
 pub use apple_fm::{AppleFmBackend, FmSession, FmToolDefinition, FmTranscriptMessage};
-#[cfg(all(feature = "gpt-oss-metal", target_os = "macos"))]
-pub use gpt_oss_metal::GptOssMetalBackend;
 pub use llamacpp::LlamaCppBackend;
 pub use ollama::OllamaBackend;
 
@@ -242,20 +237,6 @@ impl BackendRegistry {
     /// Probe localhost for available backends and register them
     pub async fn detect() -> Self {
         let mut registry = Self::new();
-
-        // Try GPT-OSS Metal (macOS, local model.bin)
-        #[cfg(all(feature = "gpt-oss-metal", target_os = "macos"))]
-        match GptOssMetalBackend::from_env() {
-            Ok(backend) => {
-                if backend.is_ready().await {
-                    tracing::info!("Detected GPT-OSS Metal backend");
-                    registry.register_with_id("gpt-oss-metal", Arc::new(RwLock::new(backend)));
-                }
-            }
-            Err(e) => {
-                tracing::debug!("GPT-OSS Metal not available: {}", e);
-            }
-        }
 
         // Try Ollama at :11434
         match OllamaBackend::new("http://localhost:11434") {
