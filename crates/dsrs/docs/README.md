@@ -121,8 +121,9 @@ crates/dsrs/
 │   │   ├── module.rs       # Module, Optimizable traits
 │   │   ├── settings.rs     # Global LM + callback configuration
 │   │   └── lm/
-│   │       ├── codex_sdk.rs  # Codex headless
-│   │       └── pylon.rs       # Pylon LM provider
+│   │       ├── client_registry.rs # LM provider registry
+│   │       ├── lm_router.rs       # Provider selection/router
+│   │       └── pylon.rs           # Pylon LM provider
 │   ├── predictors/
 │   │   ├── predict.rs      # Base Predict with callbacks
 │   │   └── refine.rs       # Retry/fallback meta-operator
