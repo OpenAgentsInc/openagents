@@ -49,3 +49,4 @@ which = "7.0"
 dirs = "5.0"
 tracing.workspace = true
 gpt-oss = { version = "0.1.0", path = "../gpt-oss" }
+chrono.workspace = true

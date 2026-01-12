@@ -1,7 +1,9 @@
 //! GPT-OSS LM client with structured output support.
 //!
-//! Uses chat completions API with response_format to constrain output
-//! to a JSON schema via llama-server's GBNF grammar support.
+//! Uses the Harmony prompt format with:
+//! 1. System message with reasoning effort and valid channels
+//! 2. Developer message with instructions and Response Formats section
+//! 3. response_format for grammar enforcement during sampling
 
 use anyhow::Result;
 use gpt_oss::{
@@ -14,10 +16,12 @@ use serde_json::{json, Value};
 
 use super::CompletionProvider;
 
-/// GPT-OSS completion model using chat completions with structured output.
+/// GPT-OSS completion model using Harmony format with structured output.
 ///
-/// This client uses the /v1/chat/completions endpoint with response_format
-/// to constrain output via JSON schema (converted to GBNF grammar by llama-server).
+/// This client uses the proper GPT-OSS Harmony format:
+/// - System message with reasoning effort
+/// - Developer message with # Response Formats section
+/// - response_format for GBNF grammar enforcement
 #[derive(Clone)]
 pub struct GptOssCompletionModel {
     client: GptOssClient,
@@ -53,7 +57,7 @@ impl GptOssCompletionModel {
     /// Extract output schema from the DSPy-formatted prompt.
     ///
     /// The ChatAdapter formats prompts with output field descriptions like:
-    /// "[[ ## field_name ## ]]" followed by type/schema hints.
+    /// "1. `field_name` (Type): description"
     /// We parse these to build a JSON schema for structured output.
     fn extract_output_schema(prompt: &str) -> Option<Value> {
         // Look for "Your output fields are:" section
@@ -109,6 +113,158 @@ impl GptOssCompletionModel {
             "additionalProperties": false
         }))
     }
+
+    /// Extract the task instruction from DSPy prompt.
+    fn extract_instruction(prompt: &str) -> String {
+        // Look for "your objective is:" section
+        if let Some(idx) = prompt.to_lowercase().find("your objective is:") {
+            let after = &prompt[idx + 18..];
+            if let Some(end) = after.find('\n') {
+                return after[..end].trim().to_string();
+            }
+            return after.trim().to_string();
+        }
+
+        // Fallback: use first non-empty line after "Given the fields"
+        if let Some(idx) = prompt.find("Given the fields") {
+            let after = &prompt[idx..];
+            for line in after.lines().skip(1) {
+                let trimmed = line.trim();
+                if !trimmed.is_empty() {
+                    return trimmed.to_string();
+                }
+            }
+        }
+
+        "Complete the task as specified.".to_string()
+    }
+
+    /// Build Harmony-formatted messages for GPT-OSS.
+    fn build_harmony_messages(
+        request: &CompletionRequest,
+        schema: Option<&Value>,
+    ) -> Vec<ChatMessage> {
+        let mut messages = Vec::new();
+
+        // Get today's date
+        let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+
+        // 1. System message with Harmony format
+        let system_content = format!(
+            r#"You are a helpful AI assistant.
+Knowledge cutoff: 2024-06
+Current date: {}
+
+Reasoning: medium
+
+# Valid channels: analysis, commentary, final. Channel must be included for every message."#,
+            today
+        );
+
+        messages.push(ChatMessage {
+            role: "system".to_string(),
+            content: system_content,
+        });
+
+        // 2. Developer message with instructions and Response Formats
+        let mut developer_content = String::new();
+
+        // Extract instruction from the original prompt
+        let full_prompt: String = request
+            .preamble
+            .as_deref()
+            .unwrap_or("")
+            .to_string()
+            + &request
+                .chat_history
+                .iter()
+                .filter_map(|m| match m {
+                    rig::message::Message::User { content } => {
+                        content.iter().find_map(|c| {
+                            if let rig::message::UserContent::Text(t) = c {
+                                Some(t.text.clone())
+                            } else {
+                                None
+                            }
+                        })
+                    }
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+                .join("\n");
+
+        let instruction = Self::extract_instruction(&full_prompt);
+
+        developer_content.push_str("# Instructions\n\n");
+        developer_content.push_str(&instruction);
+        developer_content.push_str("\n\n");
+
+        // Add Response Formats section if we have a schema
+        if let Some(schema) = schema {
+            developer_content.push_str("# Response Formats\n\n");
+            developer_content.push_str("## dspy_output\n\n");
+            developer_content.push_str("// Output must be valid JSON matching this schema\n");
+            developer_content.push_str(&schema.to_string());
+        }
+
+        messages.push(ChatMessage {
+            role: "user".to_string(), // Note: llama-server may not support "developer" role, use user
+            content: developer_content,
+        });
+
+        // 3. Add user message with the actual task/input
+        if let Some(preamble) = &request.preamble {
+            // The preamble often contains the full DSPy formatted prompt
+            // Extract just the user input part
+            if let Some(user_section) = preamble.split("[[ ## ").nth(1) {
+                if let Some(content) = user_section.split(" ## ]]").nth(1) {
+                    let user_input = content.split("[[ ##").next().unwrap_or(content).trim();
+                    if !user_input.is_empty() {
+                        messages.push(ChatMessage {
+                            role: "user".to_string(),
+                            content: user_input.to_string(),
+                        });
+                    }
+                }
+            }
+        }
+
+        // Add any additional user messages from chat history
+        for msg in request.chat_history.iter() {
+            match msg {
+                rig::message::Message::User { content } => {
+                    let mut text_parts = Vec::new();
+                    for c in content.iter() {
+                        if let rig::message::UserContent::Text(text) = c {
+                            text_parts.push(text.text.clone());
+                        }
+                    }
+                    if !text_parts.is_empty() {
+                        messages.push(ChatMessage {
+                            role: "user".to_string(),
+                            content: text_parts.join("\n"),
+                        });
+                    }
+                }
+                rig::message::Message::Assistant { content, .. } => {
+                    let mut text_parts = Vec::new();
+                    for c in content.iter() {
+                        if let rig::message::AssistantContent::Text(text) = c {
+                            text_parts.push(text.text.clone());
+                        }
+                    }
+                    if !text_parts.is_empty() {
+                        messages.push(ChatMessage {
+                            role: "assistant".to_string(),
+                            content: text_parts.join("\n"),
+                        });
+                    }
+                }
+            }
+        }
+
+        messages
+    }
 }
 
 /// Convert Rust type annotation to JSON schema type
@@ -144,74 +300,48 @@ fn rust_type_to_json_schema(rust_type: &str) -> Value {
     }
 }
 
-/// Build chat messages from rig CompletionRequest
-fn build_messages_from_request(request: &CompletionRequest) -> Vec<ChatMessage> {
-    let mut messages = Vec::new();
-
-    // Add preamble/system prompt
-    if let Some(preamble) = &request.preamble {
-        messages.push(ChatMessage {
-            role: "system".to_string(),
-            content: preamble.clone(),
-        });
-    }
-
-    // Add chat history
-    for msg in request.chat_history.iter() {
-        match msg {
-            rig::message::Message::User { content } => {
-                let mut text_parts = Vec::new();
-                for c in content.iter() {
-                    if let rig::message::UserContent::Text(text) = c {
-                        text_parts.push(text.text.clone());
-                    }
-                }
-                if !text_parts.is_empty() {
-                    messages.push(ChatMessage {
-                        role: "user".to_string(),
-                        content: text_parts.join("\n"),
-                    });
-                }
-            }
-            rig::message::Message::Assistant { content, .. } => {
-                let mut text_parts = Vec::new();
-                for c in content.iter() {
-                    if let rig::message::AssistantContent::Text(text) = c {
-                        text_parts.push(text.text.clone());
-                    }
-                }
-                if !text_parts.is_empty() {
-                    messages.push(ChatMessage {
-                        role: "assistant".to_string(),
-                        content: text_parts.join("\n"),
-                    });
-                }
-            }
-        }
-    }
-
-    messages
-}
-
 impl CompletionProvider for GptOssCompletionModel {
     async fn completion(
         &self,
         request: CompletionRequest,
     ) -> Result<CompletionResponse<()>, CompletionError> {
-        let messages = build_messages_from_request(&request);
+        // Get combined prompt text to extract schema
+        let full_prompt: String = request
+            .preamble
+            .as_deref()
+            .unwrap_or("")
+            .to_string()
+            + &request
+                .chat_history
+                .iter()
+                .filter_map(|m| match m {
+                    rig::message::Message::User { content } => {
+                        content.iter().find_map(|c| {
+                            if let rig::message::UserContent::Text(t) = c {
+                                Some(t.text.clone())
+                            } else {
+                                None
+                            }
+                        })
+                    }
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+                .join("\n");
 
-        // Get combined prompt text to check for schema
-        let full_prompt: String = messages.iter().map(|m| m.content.as_str()).collect();
+        // Extract schema from DSPy prompt
+        let schema = Self::extract_output_schema(&full_prompt);
 
-        // Try to extract schema and use structured output
-        let response_format = Self::extract_output_schema(&full_prompt).map(|schema| {
-            ResponseFormat::JsonSchema {
-                json_schema: JsonSchemaSpec {
-                    name: Some("dspy_output".to_string()),
-                    schema,
-                    strict: Some(true),
-                },
-            }
+        // Build Harmony-formatted messages
+        let messages = Self::build_harmony_messages(&request, schema.as_ref());
+
+        // Set up response_format for grammar enforcement
+        let response_format = schema.as_ref().map(|s| ResponseFormat::JsonSchema {
+            json_schema: JsonSchemaSpec {
+                name: Some("dspy_output".to_string()),
+                schema: s.clone(),
+                strict: Some(true),
+            },
         });
 
         let req = ChatCompletionsRequest {
@@ -234,7 +364,7 @@ impl CompletionProvider for GptOssCompletionModel {
         let content = resp.content().to_string();
 
         // If we used structured output, wrap the JSON in DSPy format
-        let response = if Self::extract_output_schema(&full_prompt).is_some() {
+        let response = if schema.is_some() {
             // Parse JSON and format as DSPy expected format
             if let Ok(json_obj) = serde_json::from_str::<serde_json::Map<String, Value>>(&content) {
                 let mut output = String::new();
@@ -305,7 +435,10 @@ All interactions will be structured...
 
     #[test]
     fn test_rust_type_to_json_schema() {
-        assert_eq!(rust_type_to_json_schema("String"), json!({"type": "string"}));
+        assert_eq!(
+            rust_type_to_json_schema("String"),
+            json!({"type": "string"})
+        );
         assert_eq!(rust_type_to_json_schema("i32"), json!({"type": "integer"}));
         assert_eq!(rust_type_to_json_schema("f64"), json!({"type": "number"}));
         assert_eq!(rust_type_to_json_schema("bool"), json!({"type": "boolean"}));
@@ -313,5 +446,12 @@ All interactions will be structured...
             rust_type_to_json_schema("Vec<String>"),
             json!({"type": "array", "items": {"type": "string"}})
         );
+    }
+
+    #[test]
+    fn test_extract_instruction() {
+        let prompt = "In adhering to this structure, your objective is:\n\tAnalyze the task and produce requirements.";
+        let instruction = GptOssCompletionModel::extract_instruction(prompt);
+        assert!(instruction.contains("Analyze"));
     }
 }
