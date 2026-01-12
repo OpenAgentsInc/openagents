@@ -364,38 +364,138 @@ fn parse_search_matches_from_text(output: &str) -> Vec<SearchMatch> {
 
 pub(crate) fn parse_diff_lines(diff_text: &str) -> Vec<DiffLine> {
     let mut lines = Vec::new();
-    for line in diff_text.lines() {
-        if line.starts_with("diff --git") || line.starts_with("index ") {
-            continue;
-        }
-        let (kind, content) = if line.starts_with("+++ ") || line.starts_with("--- ") {
-            (DiffLineKind::Header, line.to_string())
-        } else if line.starts_with("@@") {
-            (DiffLineKind::Header, line.to_string())
-        } else if line.starts_with('+') {
-            (DiffLineKind::Addition, line[1..].to_string())
-        } else if line.starts_with('-') {
-            (DiffLineKind::Deletion, line[1..].to_string())
-        } else if line.starts_with(' ') {
-            (DiffLineKind::Context, line[1..].to_string())
-        } else {
-            (DiffLineKind::Context, line.to_string())
-        };
-        lines.push(DiffLine {
-            kind,
-            content,
-            old_line: None,
-            new_line: None,
-        });
+    let mut old_line: Option<u32> = None;
+    let mut new_line: Option<u32> = None;
+
+    for raw in diff_text.lines() {
         if lines.len() >= 200 {
             break;
         }
+        if raw.starts_with("diff --git") || raw.starts_with("index ") {
+            old_line = None;
+            new_line = None;
+            continue;
+        }
+        if raw.starts_with("new file mode")
+            || raw.starts_with("deleted file mode")
+            || raw.starts_with("old mode")
+            || raw.starts_with("new mode")
+            || raw.starts_with("rename from")
+            || raw.starts_with("rename to")
+            || raw.starts_with("similarity index")
+        {
+            lines.push(DiffLine {
+                kind: DiffLineKind::Header,
+                content: raw.to_string(),
+                old_line: None,
+                new_line: None,
+            });
+            continue;
+        }
+        if raw.starts_with("@@") {
+            if let Some((old_start, new_start)) = parse_hunk_header(raw) {
+                old_line = Some(old_start);
+                new_line = Some(new_start);
+            }
+            lines.push(DiffLine {
+                kind: DiffLineKind::Header,
+                content: raw.to_string(),
+                old_line: None,
+                new_line: None,
+            });
+            continue;
+        }
+        if raw.starts_with("+++ ") || raw.starts_with("--- ") {
+            lines.push(DiffLine {
+                kind: DiffLineKind::Header,
+                content: raw.to_string(),
+                old_line: None,
+                new_line: None,
+            });
+            continue;
+        }
+        if raw.starts_with("\\ No newline at end of file") {
+            lines.push(DiffLine {
+                kind: DiffLineKind::Header,
+                content: "No newline at end of file".to_string(),
+                old_line: None,
+                new_line: None,
+            });
+            continue;
+        }
+
+        let (kind, content, old, new) = if raw.starts_with('+') {
+            let line_no = new_line;
+            if let Some(value) = new_line {
+                new_line = Some(value.saturating_add(1));
+            }
+            (DiffLineKind::Addition, raw[1..].to_string(), None, line_no)
+        } else if raw.starts_with('-') {
+            let line_no = old_line;
+            if let Some(value) = old_line {
+                old_line = Some(value.saturating_add(1));
+            }
+            (DiffLineKind::Deletion, raw[1..].to_string(), line_no, None)
+        } else if raw.starts_with(' ') {
+            let old_no = old_line;
+            let new_no = new_line;
+            if let Some(value) = old_line {
+                old_line = Some(value.saturating_add(1));
+            }
+            if let Some(value) = new_line {
+                new_line = Some(value.saturating_add(1));
+            }
+            (
+                DiffLineKind::Context,
+                raw[1..].to_string(),
+                old_no,
+                new_no,
+            )
+        } else if old_line.is_some() || new_line.is_some() {
+            let old_no = old_line;
+            let new_no = new_line;
+            if let Some(value) = old_line {
+                old_line = Some(value.saturating_add(1));
+            }
+            if let Some(value) = new_line {
+                new_line = Some(value.saturating_add(1));
+            }
+            (DiffLineKind::Context, raw.to_string(), old_no, new_no)
+        } else {
+            (DiffLineKind::Header, raw.to_string(), None, None)
+        };
+
+        lines.push(DiffLine {
+            kind,
+            content,
+            old_line: old,
+            new_line: new,
+        });
     }
+
     lines
+}
+
+fn parse_hunk_header(line: &str) -> Option<(u32, u32)> {
+    let mut parts = line.split_whitespace();
+    let _marker = parts.next()?;
+    let old_part = parts.next()?;
+    let new_part = parts.next()?;
+    let old_start = parse_hunk_range(old_part, '-')?;
+    let new_start = parse_hunk_range(new_part, '+')?;
+    Some((old_start, new_start))
+}
+
+fn parse_hunk_range(part: &str, prefix: char) -> Option<u32> {
+    let range = part.strip_prefix(prefix)?;
+    let start = range.split_once(',').map(|(start, _)| start).unwrap_or(range);
+    start.trim().parse().ok()
 }
 
 pub(crate) fn build_simple_diff(old_text: &str, new_text: &str) -> Vec<DiffLine> {
     let mut lines = Vec::new();
+    let mut old_line: u32 = 1;
+    let mut new_line: u32 = 1;
     lines.push(DiffLine {
         kind: DiffLineKind::Header,
         content: "@@ -1 +1 @@".to_string(),
@@ -406,17 +506,19 @@ pub(crate) fn build_simple_diff(old_text: &str, new_text: &str) -> Vec<DiffLine>
         lines.push(DiffLine {
             kind: DiffLineKind::Deletion,
             content: line.to_string(),
-            old_line: None,
+            old_line: Some(old_line),
             new_line: None,
         });
+        old_line = old_line.saturating_add(1);
     }
     for line in new_text.lines() {
         lines.push(DiffLine {
             kind: DiffLineKind::Addition,
             content: line.to_string(),
             old_line: None,
-            new_line: None,
+            new_line: Some(new_line),
         });
+        new_line = new_line.saturating_add(1);
     }
     lines
 }
