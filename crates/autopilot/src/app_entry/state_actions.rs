@@ -1243,6 +1243,7 @@ impl AppState {
             .clear_conversation(&mut self.chat, &mut self.tools);
     }
 
+    #[allow(dead_code)]
     pub(super) fn start_new_session(&mut self) {
         self.session
             .start_new_session(&mut self.chat, &mut self.tools);

@@ -332,6 +332,7 @@ impl PlanningPipeline {
     }
 
     /// Classify task complexity using DSPy.
+    #[allow(dead_code)]
     async fn classify_complexity(&self, input: &PlanningInput) -> anyhow::Result<(String, f32)> {
         self.classify_complexity_with_callback(input, None).await
     }
@@ -418,6 +419,7 @@ impl PlanningPipeline {
     }
 
     /// Run basic planning for simpler tasks.
+    #[allow(dead_code)]
     async fn run_basic_planning(&self, input: &PlanningInput) -> anyhow::Result<dsrs::Prediction> {
         self.run_basic_planning_with_callback(input, None).await
     }
@@ -448,6 +450,7 @@ impl PlanningPipeline {
     }
 
     /// Run deep planning with chain-of-thought for complex tasks.
+    #[allow(dead_code)]
     async fn run_deep_planning(&self, input: &PlanningInput) -> anyhow::Result<dsrs::Prediction> {
         self.run_deep_planning_with_callback(input, None).await
     }

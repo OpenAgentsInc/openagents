@@ -325,7 +325,7 @@ impl Adjutant {
         );
 
         // 2. Determine if RLM mode should be used (DSPy-first with fallback)
-        let use_rlm = self.determine_use_rlm(task, &plan).await;
+        let _use_rlm = self.determine_use_rlm(task, &plan).await;
 
         // 3. Check which execution backend to use
         let resolved_backend = self.execution_backend.resolve();

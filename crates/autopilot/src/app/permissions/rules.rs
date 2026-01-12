@@ -182,6 +182,7 @@ pub(crate) fn pattern_matches(pattern: &str, text: &str) -> bool {
     true
 }
 
+#[allow(dead_code)]
 pub(crate) fn is_read_only_tool(tool_name: &str) -> bool {
     matches!(
         tool_name,

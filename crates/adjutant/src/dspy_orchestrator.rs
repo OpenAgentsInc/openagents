@@ -148,7 +148,7 @@ impl DspyOrchestrator {
     pub async fn assess_environment<O: AutopilotOutput>(
         &self,
         manifest: &OanixManifest,
-        output: &O,
+        _output: &O,
     ) -> Result<AssessmentResult> {
         // Extract info from manifest for display
         let system_info = format!(

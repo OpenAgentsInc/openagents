@@ -17,6 +17,7 @@ path = "src/bin/rlm_mcp_server.rs"
 
 [features]
 default = []
+codex = []
 dspy = ["dsrs", "anyhow"]
 
 [dependencies]

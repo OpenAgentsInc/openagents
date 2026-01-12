@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use serde_json::Value;
 use wgpui::components::atoms::ToolType;
 use wgpui::components::organisms::{DiffLine, DiffLineKind, SearchMatch};

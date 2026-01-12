@@ -33,6 +33,7 @@ pub(crate) struct WorkspaceInfo {
     pub(crate) id: String,
     pub(crate) name: String,
     pub(crate) path: String,
+    #[allow(dead_code)]
     pub(crate) codex_bin: Option<String>,
     pub(crate) connected: bool,
     pub(crate) settings: WorkspaceSettings,
@@ -57,6 +58,7 @@ pub(crate) struct WorkspaceThreadSummary {
     pub(crate) id: String,
     pub(crate) name: String,
     pub(crate) preview: String,
+    #[allow(dead_code)]
     pub(crate) created_at: i64,
 }
 
@@ -256,6 +258,7 @@ pub(crate) struct ComposerLabels {
     pub(crate) skill: String,
 }
 
+#[allow(dead_code)]
 #[derive(Clone, Debug, Default)]
 pub(crate) struct ConversationChange {
     pub(crate) path: String,
@@ -306,6 +309,7 @@ pub(crate) struct ThreadStatus {
     pub(crate) is_reviewing: bool,
 }
 
+#[allow(dead_code)]
 #[derive(Clone, Debug)]
 pub(crate) struct WorkspacePlanSnapshot {
     pub(crate) turn_id: String,
@@ -313,6 +317,7 @@ pub(crate) struct WorkspacePlanSnapshot {
     pub(crate) steps: Vec<WorkspacePlanStep>,
 }
 
+#[allow(dead_code)]
 #[derive(Clone, Debug)]
 pub(crate) struct WorkspacePlanStep {
     pub(crate) step: String,
@@ -697,6 +702,7 @@ pub(crate) enum WorkspaceCommand {
     Connect {
         workspace_id: String,
     },
+    #[allow(dead_code)]
     UpdateSettings {
         workspace_id: String,
         settings: WorkspaceSettings,
@@ -704,6 +710,7 @@ pub(crate) enum WorkspaceCommand {
     ListThreads {
         workspace_id: String,
     },
+    #[allow(dead_code)]
     StartThread {
         workspace_id: String,
         model: Option<String>,
@@ -713,6 +720,7 @@ pub(crate) enum WorkspaceCommand {
         workspace_id: String,
         thread_id: String,
     },
+    #[allow(dead_code)]
     ArchiveThread {
         workspace_id: String,
         thread_id: String,
@@ -781,6 +789,7 @@ impl WorkspaceRuntime {
             .try_send(WorkspaceCommand::Connect { workspace_id });
     }
 
+    #[allow(dead_code)]
     pub(crate) fn update_workspace_settings(
         &self,
         workspace_id: String,
@@ -798,6 +807,7 @@ impl WorkspaceRuntime {
             .try_send(WorkspaceCommand::ListThreads { workspace_id });
     }
 
+    #[allow(dead_code)]
     pub(crate) fn start_thread(
         &self,
         workspace_id: String,
@@ -818,6 +828,7 @@ impl WorkspaceRuntime {
         });
     }
 
+    #[allow(dead_code)]
     pub(crate) fn archive_thread(&self, workspace_id: String, thread_id: String) {
         let _ = self.cmd_tx.try_send(WorkspaceCommand::ArchiveThread {
             workspace_id,
@@ -908,6 +919,7 @@ pub(crate) struct WorkspaceState {
     pub(crate) composer_menu: Option<ComposerMenuKind>,
     pub(crate) timelines_by_thread: HashMap<String, ThreadTimeline>,
     pub(crate) plans_by_thread: HashMap<String, WorkspacePlanSnapshot>,
+    #[allow(dead_code)]
     pub(crate) expanded_workspaces: HashSet<String>,
     pub(crate) loaded_threads: HashSet<String>,
     pub(crate) timeline_dirty: bool,
@@ -1095,6 +1107,7 @@ impl WorkspaceState {
         self.timeline_dirty = true;
     }
 
+    #[allow(dead_code)]
     pub(crate) fn set_home_active(&mut self, active: bool) {
         self.home_active = active;
         self.timeline_dirty = true;
@@ -1284,10 +1297,12 @@ impl WorkspaceState {
             .unwrap_or(false)
     }
 
+    #[allow(dead_code)]
     pub(crate) fn is_workspace_expanded(&self, workspace_id: &str) -> bool {
         self.expanded_workspaces.contains(workspace_id)
     }
 
+    #[allow(dead_code)]
     pub(crate) fn toggle_workspace_expanded(&mut self, workspace_id: &str) {
         if self.expanded_workspaces.contains(workspace_id) {
             self.expanded_workspaces.remove(workspace_id);
@@ -1315,6 +1330,7 @@ impl WorkspaceState {
         self.timeline_dirty = true;
     }
 
+    #[allow(dead_code)]
     pub(crate) fn plan_for_thread(&self, thread_id: &str) -> Option<&WorkspacePlanSnapshot> {
         self.plans_by_thread.get(thread_id)
     }
@@ -1396,6 +1412,7 @@ impl WorkspaceState {
             .or_default()
     }
 
+    #[allow(dead_code)]
     pub(crate) fn active_timeline(&self) -> Option<&ThreadTimeline> {
         let thread_id = self.active_thread_id()?;
         self.timelines_by_thread.get(&thread_id)

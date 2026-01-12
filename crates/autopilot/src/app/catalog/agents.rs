@@ -14,10 +14,12 @@ pub(crate) enum AgentModel {
 #[derive(Clone, Debug)]
 pub(crate) struct AgentDefinition {
     pub(crate) description: String,
+    #[allow(dead_code)]
     pub(crate) prompt: String,
     pub(crate) tools: Option<Vec<String>>,
     pub(crate) disallowed_tools: Option<Vec<String>>,
     pub(crate) model: Option<AgentModel>,
+    #[allow(dead_code)]
     pub(crate) critical_system_reminder_experimental: Option<String>,
 }
 

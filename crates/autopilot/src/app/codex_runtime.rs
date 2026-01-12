@@ -21,6 +21,7 @@ pub(crate) struct CodexRuntimeConfig {
 pub(crate) struct CodexRuntime {
     pub(crate) client: app_server::AppServerClient,
     pub(crate) channels: app_server::AppServerChannels,
+    #[allow(dead_code)]
     config: CodexRuntimeConfig,
 }
 
@@ -73,11 +74,13 @@ impl CodexRuntime {
         })
     }
 
+    #[allow(dead_code)]
     pub(crate) async fn restart(self) -> Result<Self> {
         let _ = self.client.shutdown().await;
         Self::spawn(self.config).await
     }
 
+    #[allow(dead_code)]
     pub(crate) async fn shutdown(self) -> Result<()> {
         self.client.shutdown().await
     }
