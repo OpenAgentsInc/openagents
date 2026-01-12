@@ -4,11 +4,10 @@ impl AppState {
         sidebar_layout: &SidebarLayout,
         logical_height: f32,
     ) -> ChatLayout {
-        let viewport_top = OUTPUT_PADDING;
+        let viewport_top = TOPBAR_HEIGHT + OUTPUT_PADDING;
         // Calculate input width for wrapping
-        let max_input_width = 768.0_f32;
-        let available_input_width = sidebar_layout.main.size.width - INPUT_PADDING * 2.0;
-        let input_width = available_input_width.min(max_input_width);
+        let available_input_width = sidebar_layout.main.size.width - CONTENT_PADDING_X * 2.0;
+        let input_width = available_input_width.max(0.0);
         // Set max width for wrapping, then calculate dynamic height
         self.input.set_max_width(input_width);
         let input_height = self.input.current_height().max(40.0);
@@ -16,12 +15,9 @@ impl AppState {
             logical_height - input_height - INPUT_PADDING * 2.0 - STATUS_BAR_HEIGHT - 16.0;
         let viewport_height = (viewport_bottom - viewport_top).max(0.0);
 
-        // Apply max width 768px and center content (matching input container)
-        let max_content_width = 768.0_f32;
-        let full_available_width = sidebar_layout.main.size.width - OUTPUT_PADDING * 2.0;
-        let available_width = full_available_width.min(max_content_width);
-        let content_x = sidebar_layout.main.origin.x
-            + (sidebar_layout.main.size.width - available_width) / 2.0;
+        let full_available_width = sidebar_layout.main.size.width - CONTENT_PADDING_X * 2.0;
+        let available_width = full_available_width.max(0.0);
+        let content_x = sidebar_layout.main.origin.x + CONTENT_PADDING_X;
 
         let chat_font_size = self.settings.coder_settings.font_size;
         let chat_line_height = (chat_font_size * 1.4).round();

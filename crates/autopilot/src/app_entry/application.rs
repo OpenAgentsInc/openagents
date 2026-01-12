@@ -3,6 +3,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use arboard::Clipboard;
+use rfd::FileDialog;
 use tokio::sync::mpsc;
 use web_time::Instant;
 use wgpui::components::{Component, EventContext, EventResult};
@@ -42,7 +43,8 @@ use crate::app::tools::ToolsState;
 use crate::app::ui::{
     agent_list_layout, agent_modal_content_top, hook_event_layout, modal_y_in_content,
     new_session_button_bounds, session_list_layout, sidebar_layout, skill_list_layout,
-    skill_modal_content_top, INPUT_PADDING, OUTPUT_PADDING, SESSION_MODAL_HEIGHT,
+    skill_modal_content_top, workspace_list_layout, CONTENT_PADDING_X, INPUT_PADDING,
+    SESSION_MODAL_HEIGHT,
     STATUS_BAR_HEIGHT,
 };
 use crate::app::wallet::WalletState;
@@ -213,8 +215,8 @@ impl ApplicationHandler for AutopilotApp {
                 last_tick: Instant::now(),
                 modal_state: ModalState::None,
                 panel_layout: PanelLayout::Single,
-                left_sidebar_open: false,
-                right_sidebar_open: false,
+                left_sidebar_open: true,
+                right_sidebar_open: true,
                 new_session_button_hovered: false,
                 chat: ChatState::new(&settings),
                 tools: ToolsState::new(),
@@ -317,12 +319,10 @@ impl ApplicationHandler for AutopilotApp {
             state.left_sidebar_open,
             state.right_sidebar_open,
         );
-        let content_x = sidebar_layout.main.origin.x + OUTPUT_PADDING;
-        // Input bounds above status bar (max width 768px, centered)
-        let max_input_width = 768.0_f32;
-        let available_input_width = sidebar_layout.main.size.width - INPUT_PADDING * 2.0;
-        let input_width = available_input_width.min(max_input_width);
-        let input_x = sidebar_layout.main.origin.x + (sidebar_layout.main.size.width - input_width) / 2.0;
+        let content_x = sidebar_layout.main.origin.x + CONTENT_PADDING_X;
+        let available_input_width = sidebar_layout.main.size.width - CONTENT_PADDING_X * 2.0;
+        let input_width = available_input_width.max(0.0);
+        let input_x = sidebar_layout.main.origin.x + CONTENT_PADDING_X;
         // Set max width for text wrapping, then calculate dynamic height
         state.input.set_max_width(input_width);
         let input_height = state.input.current_height().max(40.0);
@@ -814,10 +814,59 @@ impl ApplicationHandler for AutopilotApp {
                     if let Some(left_bounds) = sidebar_layout.left {
                         let btn_bounds = new_session_button_bounds(left_bounds);
                         if btn_bounds.contains(Point::new(x, y)) {
-                            state.start_new_session();
-                            state.input.focus();
+                            match FileDialog::new().pick_folder() {
+                                Some(path) => {
+                                    state.workspaces.runtime.add_workspace(path, None);
+                                    state.push_system_message("Adding workspace...".to_string());
+                                }
+                                None => {
+                                    state.push_system_message(
+                                        "Workspace selection canceled.".to_string(),
+                                    );
+                                }
+                            }
                             state.window.request_redraw();
                             return;
+                        }
+                    }
+                }
+
+                // Handle selection/connect clicks in workspace list
+                if button_state == ElementState::Pressed
+                    && matches!(button, winit::event::MouseButton::Left)
+                    && state.left_sidebar_open
+                {
+                    if let Some(left_bounds) = sidebar_layout.left {
+                        let list_layout = workspace_list_layout(
+                            left_bounds,
+                            state.workspaces.workspaces.len(),
+                        );
+                        for (index, workspace) in state.workspaces.workspaces.iter().enumerate() {
+                            if index < list_layout.connect_pills.len()
+                                && !workspace.connected
+                                && list_layout.connect_pills[index].contains(Point::new(x, y))
+                            {
+                                state
+                                    .workspaces
+                                    .runtime
+                                    .connect_workspace(workspace.id.clone());
+                                state.window.request_redraw();
+                                return;
+                            }
+                            if index < list_layout.rows.len()
+                                && list_layout.rows[index].contains(Point::new(x, y))
+                            {
+                                state.workspaces.active_workspace_id =
+                                    Some(workspace.id.clone());
+                                if workspace.connected {
+                                    state
+                                        .workspaces
+                                        .runtime
+                                        .list_threads(workspace.id.clone());
+                                }
+                                state.window.request_redraw();
+                                return;
+                            }
                         }
                     }
                 }
