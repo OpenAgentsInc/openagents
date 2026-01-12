@@ -846,24 +846,22 @@ impl ApplicationHandler for AutopilotApp {
                                 && !workspace.connected
                                 && list_layout.connect_pills[index].contains(Point::new(x, y))
                             {
-                                state
-                                    .workspaces
-                                    .runtime
-                                    .connect_workspace(workspace.id.clone());
+                                let workspace_id = workspace.id.clone();
+                                state.workspaces.runtime.connect_workspace(workspace_id);
                                 state.window.request_redraw();
                                 return;
                             }
                             if index < list_layout.rows.len()
                                 && list_layout.rows[index].contains(Point::new(x, y))
                             {
-                                state.workspaces.active_workspace_id =
-                                    Some(workspace.id.clone());
-                                if workspace.connected {
-                                    state
-                                        .workspaces
-                                        .runtime
-                                        .list_threads(workspace.id.clone());
+                                let workspace_id = workspace.id.clone();
+                                let is_connected = workspace.connected;
+                                state.workspaces.set_active_workspace(workspace_id.clone());
+                                if is_connected {
+                                    state.workspaces.runtime.list_threads(workspace_id);
                                 }
+                                state.sync_workspace_timeline_view();
+                                state.workspaces.timeline_dirty = false;
                                 state.window.request_redraw();
                                 return;
                             }

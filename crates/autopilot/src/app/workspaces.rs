@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use tokio::sync::mpsc;
 use uuid::Uuid;
 use web_time::Instant;
@@ -36,6 +37,256 @@ pub(crate) struct WorkspaceThreadSummary {
     pub(crate) name: String,
     pub(crate) preview: String,
     pub(crate) created_at: i64,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) enum ConversationRole {
+    User,
+    Assistant,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) enum ReviewState {
+    Started,
+    Completed,
+}
+
+#[derive(Clone, Debug, Default)]
+pub(crate) struct ConversationChange {
+    pub(crate) path: String,
+    pub(crate) kind: Option<String>,
+    pub(crate) diff: Option<String>,
+}
+
+#[derive(Clone, Debug, Default)]
+pub(crate) struct ToolItemData {
+    pub(crate) tool_name: String,
+    pub(crate) tool_type: String,
+    pub(crate) title: String,
+    pub(crate) detail: String,
+    pub(crate) status: Option<String>,
+    pub(crate) output: String,
+    pub(crate) input_value: Option<Value>,
+    pub(crate) output_value: Option<Value>,
+    pub(crate) changes: Vec<ConversationChange>,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) enum ConversationItem {
+    Message {
+        id: String,
+        role: ConversationRole,
+        text: String,
+    },
+    Reasoning {
+        id: String,
+        summary: String,
+        content: String,
+    },
+    Tool {
+        id: String,
+        data: ToolItemData,
+    },
+    Review {
+        id: String,
+        state: ReviewState,
+        text: String,
+    },
+}
+
+#[derive(Clone, Debug, Default)]
+pub(crate) struct ThreadStatus {
+    pub(crate) is_processing: bool,
+    pub(crate) has_unread: bool,
+    pub(crate) is_reviewing: bool,
+}
+
+#[derive(Clone, Debug, Default)]
+pub(crate) struct ThreadTimeline {
+    pub(crate) items: Vec<ConversationItem>,
+    index_by_id: HashMap<String, usize>,
+}
+
+impl ThreadTimeline {
+    pub(crate) fn upsert(&mut self, item: ConversationItem) {
+        let id = item.id().to_string();
+        if let Some(index) = self.index_by_id.get(&id).copied() {
+            if let Some(existing) = self.items.get_mut(index) {
+                existing.merge(item);
+            }
+            return;
+        }
+        self.index_by_id.insert(id, self.items.len());
+        self.items.push(item);
+    }
+
+    pub(crate) fn append_agent_delta(&mut self, item_id: &str, delta: &str) {
+        if delta.is_empty() {
+            return;
+        }
+        if let Some(index) = self.index_by_id.get(item_id).copied() {
+            if let Some(ConversationItem::Message { text, .. }) = self.items.get_mut(index) {
+                text.push_str(delta);
+            }
+            return;
+        }
+        let item = ConversationItem::Message {
+            id: item_id.to_string(),
+            role: ConversationRole::Assistant,
+            text: delta.to_string(),
+        };
+        self.index_by_id.insert(item_id.to_string(), self.items.len());
+        self.items.push(item);
+    }
+
+    pub(crate) fn append_reasoning_summary(&mut self, item_id: &str, delta: &str) {
+        if delta.is_empty() {
+            return;
+        }
+        if let Some(index) = self.index_by_id.get(item_id).copied() {
+            if let Some(ConversationItem::Reasoning { summary, .. }) = self.items.get_mut(index) {
+                summary.push_str(delta);
+            }
+            return;
+        }
+        let item = ConversationItem::Reasoning {
+            id: item_id.to_string(),
+            summary: delta.to_string(),
+            content: String::new(),
+        };
+        self.index_by_id.insert(item_id.to_string(), self.items.len());
+        self.items.push(item);
+    }
+
+    pub(crate) fn append_reasoning_content(&mut self, item_id: &str, delta: &str) {
+        if delta.is_empty() {
+            return;
+        }
+        if let Some(index) = self.index_by_id.get(item_id).copied() {
+            if let Some(ConversationItem::Reasoning { content, .. }) = self.items.get_mut(index) {
+                content.push_str(delta);
+            }
+            return;
+        }
+        let item = ConversationItem::Reasoning {
+            id: item_id.to_string(),
+            summary: String::new(),
+            content: delta.to_string(),
+        };
+        self.index_by_id.insert(item_id.to_string(), self.items.len());
+        self.items.push(item);
+    }
+
+    pub(crate) fn append_tool_output(&mut self, item_id: &str, delta: &str) {
+        if delta.is_empty() {
+            return;
+        }
+        if let Some(index) = self.index_by_id.get(item_id).copied() {
+            if let Some(ConversationItem::Tool { data, .. }) = self.items.get_mut(index) {
+                data.output.push_str(delta);
+            }
+        }
+    }
+}
+
+impl ConversationItem {
+    pub(crate) fn id(&self) -> &str {
+        match self {
+            ConversationItem::Message { id, .. } => id,
+            ConversationItem::Reasoning { id, .. } => id,
+            ConversationItem::Tool { id, .. } => id,
+            ConversationItem::Review { id, .. } => id,
+        }
+    }
+
+    fn merge(&mut self, incoming: ConversationItem) {
+        match (self, incoming) {
+            (
+                ConversationItem::Message { role, text, .. },
+                ConversationItem::Message {
+                    role: new_role,
+                    text: new_text,
+                    ..
+                },
+            ) => {
+                *role = new_role;
+                if !new_text.is_empty() {
+                    *text = new_text;
+                }
+            }
+            (
+                ConversationItem::Reasoning { summary, content, .. },
+                ConversationItem::Reasoning {
+                    summary: new_summary,
+                    content: new_content,
+                    ..
+                },
+            ) => {
+                if !new_summary.is_empty() {
+                    *summary = new_summary;
+                }
+                if !new_content.is_empty() {
+                    *content = new_content;
+                }
+            }
+            (
+                ConversationItem::Tool { data, .. },
+                ConversationItem::Tool { data: new_data, .. },
+            ) => {
+                data.merge(new_data);
+            }
+            (
+                ConversationItem::Review { state, text, .. },
+                ConversationItem::Review {
+                    state: new_state,
+                    text: new_text,
+                    ..
+                },
+            ) => {
+                *state = new_state;
+                if !new_text.is_empty() {
+                    *text = new_text;
+                }
+            }
+            (slot, incoming) => {
+                *slot = incoming;
+            }
+        }
+    }
+}
+
+impl ToolItemData {
+    fn merge(&mut self, incoming: ToolItemData) {
+        if !incoming.tool_name.is_empty() {
+            self.tool_name = incoming.tool_name;
+        }
+        if !incoming.tool_type.is_empty() {
+            self.tool_type = incoming.tool_type;
+        }
+        if !incoming.title.is_empty() {
+            self.title = incoming.title;
+        }
+        if !incoming.detail.is_empty() {
+            self.detail = incoming.detail;
+        }
+        if let Some(status) = incoming.status {
+            if !status.trim().is_empty() {
+                self.status = Some(status);
+            }
+        }
+        if !incoming.output.is_empty() {
+            self.output = incoming.output;
+        }
+        if let Some(input_value) = incoming.input_value {
+            self.input_value = Some(input_value);
+        }
+        if let Some(output_value) = incoming.output_value {
+            self.output_value = Some(output_value);
+        }
+        if !incoming.changes.is_empty() {
+            self.changes = incoming.changes;
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -140,6 +391,10 @@ pub(crate) struct WorkspaceState {
     pub(crate) workspaces: Vec<WorkspaceInfo>,
     pub(crate) threads_by_workspace: HashMap<String, Vec<WorkspaceThreadSummary>>,
     pub(crate) active_workspace_id: Option<String>,
+    pub(crate) active_thread_by_workspace: HashMap<String, String>,
+    pub(crate) thread_status_by_id: HashMap<String, ThreadStatus>,
+    pub(crate) timelines_by_thread: HashMap<String, ThreadTimeline>,
+    pub(crate) timeline_dirty: bool,
     pub(crate) status_message: Option<String>,
     last_focus_refresh: Option<Instant>,
     initial_restore_pending: bool,
@@ -152,6 +407,10 @@ impl WorkspaceState {
             workspaces: Vec::new(),
             threads_by_workspace: HashMap::new(),
             active_workspace_id: None,
+            active_thread_by_workspace: HashMap::new(),
+            thread_status_by_id: HashMap::new(),
+            timelines_by_thread: HashMap::new(),
+            timeline_dirty: false,
             status_message: None,
             last_focus_refresh: None,
             initial_restore_pending: true,
@@ -170,6 +429,7 @@ impl WorkspaceState {
         } else {
             self.active_workspace_id = self.workspaces.first().map(|ws| ws.id.clone());
         }
+        self.timeline_dirty = true;
     }
 
     pub(crate) fn apply_workspace_added(&mut self, workspace: WorkspaceInfo) {
@@ -178,6 +438,7 @@ impl WorkspaceState {
         }
         self.active_workspace_id = Some(workspace.id.clone());
         self.workspaces.push(workspace);
+        self.timeline_dirty = true;
     }
 
     pub(crate) fn apply_workspace_connected(&mut self, workspace_id: &str) {
@@ -195,7 +456,18 @@ impl WorkspaceState {
         workspace_id: String,
         threads: Vec<WorkspaceThreadSummary>,
     ) {
+        for thread in &threads {
+            self.thread_status_by_id
+                .entry(thread.id.clone())
+                .or_default();
+        }
+        if let Some(first) = threads.first() {
+            self.active_thread_by_workspace
+                .entry(workspace_id.clone())
+                .or_insert_with(|| first.id.clone());
+        }
         self.threads_by_workspace.insert(workspace_id, threads);
+        self.timeline_dirty = true;
     }
 
     pub(crate) fn connect_all_if_needed(&mut self) {
@@ -207,6 +479,170 @@ impl WorkspaceState {
             if !workspace.connected {
                 self.runtime.connect_workspace(workspace.id.clone());
             }
+        }
+    }
+
+    pub(crate) fn set_active_workspace(&mut self, workspace_id: String) {
+        if self.active_workspace_id.as_deref() == Some(&workspace_id) {
+            return;
+        }
+        self.active_workspace_id = Some(workspace_id);
+        self.timeline_dirty = true;
+    }
+
+    pub(crate) fn active_thread_id(&self) -> Option<String> {
+        let workspace_id = self.active_workspace_id.as_ref()?;
+        self.active_thread_by_workspace
+            .get(workspace_id)
+            .cloned()
+            .or_else(|| {
+                self.threads_by_workspace
+                    .get(workspace_id)
+                    .and_then(|threads| threads.first().map(|thread| thread.id.clone()))
+            })
+    }
+
+    pub(crate) fn set_active_thread(&mut self, workspace_id: &str, thread_id: &str) {
+        self.active_thread_by_workspace
+            .insert(workspace_id.to_string(), thread_id.to_string());
+        if let Some(status) = self.thread_status_by_id.get_mut(thread_id) {
+            status.has_unread = false;
+        }
+        self.timeline_dirty = true;
+    }
+
+    pub(crate) fn ensure_thread(&mut self, workspace_id: &str, thread_id: &str) {
+        let threads = self.threads_by_workspace.entry(workspace_id.to_string()).or_default();
+        if !threads.iter().any(|thread| thread.id == thread_id) {
+            let name = format!("Agent {}", threads.len() + 1);
+            threads.push(WorkspaceThreadSummary {
+                id: thread_id.to_string(),
+                name,
+                preview: String::new(),
+                created_at: 0,
+            });
+        }
+        self.thread_status_by_id
+            .entry(thread_id.to_string())
+            .or_default();
+        if !self.active_thread_by_workspace.contains_key(workspace_id) {
+            self.active_thread_by_workspace
+                .insert(workspace_id.to_string(), thread_id.to_string());
+        }
+    }
+
+    pub(crate) fn timeline_for_thread_mut(&mut self, thread_id: &str) -> &mut ThreadTimeline {
+        self.timelines_by_thread
+            .entry(thread_id.to_string())
+            .or_default()
+    }
+
+    pub(crate) fn active_timeline(&self) -> Option<&ThreadTimeline> {
+        let thread_id = self.active_thread_id()?;
+        self.timelines_by_thread.get(&thread_id)
+    }
+
+    pub(crate) fn mark_processing(&mut self, workspace_id: &str, thread_id: &str, active: bool) {
+        self.ensure_thread(workspace_id, thread_id);
+        if let Some(status) = self.thread_status_by_id.get_mut(thread_id) {
+            status.is_processing = active;
+        }
+        self.mark_dirty_for(workspace_id, thread_id);
+    }
+
+    pub(crate) fn mark_reviewing(&mut self, workspace_id: &str, thread_id: &str, active: bool) {
+        self.ensure_thread(workspace_id, thread_id);
+        if let Some(status) = self.thread_status_by_id.get_mut(thread_id) {
+            status.is_reviewing = active;
+        }
+        self.mark_dirty_for(workspace_id, thread_id);
+    }
+
+    pub(crate) fn mark_unread(&mut self, workspace_id: &str, thread_id: &str) {
+        self.ensure_thread(workspace_id, thread_id);
+        if !self.is_active_thread(workspace_id, thread_id) {
+            if let Some(status) = self.thread_status_by_id.get_mut(thread_id) {
+                status.has_unread = true;
+            }
+        }
+    }
+
+    pub(crate) fn apply_item_update(
+        &mut self,
+        workspace_id: &str,
+        thread_id: &str,
+        item: ConversationItem,
+    ) {
+        self.ensure_thread(workspace_id, thread_id);
+        let timeline = self.timeline_for_thread_mut(thread_id);
+        timeline.upsert(item);
+        self.mark_dirty_for(workspace_id, thread_id);
+    }
+
+    pub(crate) fn append_agent_delta(
+        &mut self,
+        workspace_id: &str,
+        thread_id: &str,
+        item_id: &str,
+        delta: &str,
+    ) {
+        self.ensure_thread(workspace_id, thread_id);
+        let timeline = self.timeline_for_thread_mut(thread_id);
+        timeline.append_agent_delta(item_id, delta);
+        self.mark_dirty_for(workspace_id, thread_id);
+    }
+
+    pub(crate) fn append_reasoning_summary(
+        &mut self,
+        workspace_id: &str,
+        thread_id: &str,
+        item_id: &str,
+        delta: &str,
+    ) {
+        self.ensure_thread(workspace_id, thread_id);
+        let timeline = self.timeline_for_thread_mut(thread_id);
+        timeline.append_reasoning_summary(item_id, delta);
+        self.mark_dirty_for(workspace_id, thread_id);
+    }
+
+    pub(crate) fn append_reasoning_content(
+        &mut self,
+        workspace_id: &str,
+        thread_id: &str,
+        item_id: &str,
+        delta: &str,
+    ) {
+        self.ensure_thread(workspace_id, thread_id);
+        let timeline = self.timeline_for_thread_mut(thread_id);
+        timeline.append_reasoning_content(item_id, delta);
+        self.mark_dirty_for(workspace_id, thread_id);
+    }
+
+    pub(crate) fn append_tool_output(
+        &mut self,
+        workspace_id: &str,
+        thread_id: &str,
+        item_id: &str,
+        delta: &str,
+    ) {
+        self.ensure_thread(workspace_id, thread_id);
+        let timeline = self.timeline_for_thread_mut(thread_id);
+        timeline.append_tool_output(item_id, delta);
+        self.mark_dirty_for(workspace_id, thread_id);
+    }
+
+    fn is_active_thread(&self, workspace_id: &str, thread_id: &str) -> bool {
+        self.active_thread_by_workspace
+            .get(workspace_id)
+            .map(|active| active == thread_id)
+            .unwrap_or(false)
+    }
+
+    fn mark_dirty_for(&mut self, workspace_id: &str, thread_id: &str) {
+        if self.is_active_thread(workspace_id, thread_id) {
+            self.timeline_dirty = true;
+        } else {
+            self.mark_unread(workspace_id, thread_id);
         }
     }
 
@@ -614,4 +1050,315 @@ fn save_workspace_entries(
     let list: Vec<WorkspaceEntry> = entries.values().cloned().collect();
     let data = serde_json::to_string_pretty(&list).map_err(|err| err.to_string())?;
     std::fs::write(path, data).map_err(|err| err.to_string())
+}
+
+pub(crate) fn conversation_item_from_value(item: &Value) -> Option<ConversationItem> {
+    let item_type = item.get("type").and_then(Value::as_str)?;
+    let id = item.get("id").and_then(Value::as_str)?.to_string();
+    match item_type {
+        "userMessage" => {
+            let content = item.get("content").and_then(Value::as_array).cloned().unwrap_or_default();
+            let text = user_inputs_to_text(&content);
+            Some(ConversationItem::Message {
+                id,
+                role: ConversationRole::User,
+                text: if text.is_empty() { "[message]".to_string() } else { text },
+            })
+        }
+        "agentMessage" => {
+            let text = item.get("text").and_then(Value::as_str).unwrap_or("").to_string();
+            Some(ConversationItem::Message {
+                id,
+                role: ConversationRole::Assistant,
+                text,
+            })
+        }
+        "reasoning" => {
+            let summary = item
+                .get("summary")
+                .and_then(Value::as_array)
+                .map(|parts| join_string_array(parts))
+                .or_else(|| item.get("summary").and_then(Value::as_str).map(|s| s.to_string()))
+                .unwrap_or_default();
+            let content = item
+                .get("content")
+                .and_then(Value::as_array)
+                .map(|parts| join_string_array(parts))
+                .or_else(|| item.get("content").and_then(Value::as_str).map(|s| s.to_string()))
+                .unwrap_or_default();
+            Some(ConversationItem::Reasoning { id, summary, content })
+        }
+        "commandExecution" => {
+            let command = command_string_from_item(item);
+            let cwd = item.get("cwd").and_then(Value::as_str).unwrap_or("").to_string();
+            let title = if command.is_empty() {
+                "Command".to_string()
+            } else {
+                format!("Command: {}", command)
+            };
+            let output = item
+                .get("aggregatedOutput")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .to_string();
+            let mut data = ToolItemData {
+                tool_name: "Bash".to_string(),
+                tool_type: item_type.to_string(),
+                title,
+                detail: cwd,
+                status: item.get("status").and_then(Value::as_str).map(|s| s.to_string()),
+                output,
+                ..ToolItemData::default()
+            };
+            if !command.is_empty() {
+                data.input_value = Some(serde_json::json!({ "command": command }));
+            }
+            Some(ConversationItem::Tool { id, data })
+        }
+        "fileChange" => {
+            let (changes, paths, first_path, first_diff) = parse_file_changes(item);
+            let detail = if paths.is_empty() {
+                "Pending changes".to_string()
+            } else {
+                paths.join(", ")
+            };
+            let output = changes
+                .iter()
+                .filter_map(|change| change.diff.clone())
+                .filter(|diff| !diff.trim().is_empty())
+                .collect::<Vec<_>>()
+                .join("\n\n");
+            let mut data = ToolItemData {
+                tool_name: "Edit".to_string(),
+                tool_type: item_type.to_string(),
+                title: "File changes".to_string(),
+                detail,
+                status: item.get("status").and_then(Value::as_str).map(|s| s.to_string()),
+                output,
+                changes,
+                ..ToolItemData::default()
+            };
+            if !paths.is_empty() || first_path.is_some() {
+                data.input_value = Some(serde_json::json!({
+                    "files": paths,
+                    "file_path": first_path,
+                }));
+            }
+            if let Some(diff) = first_diff {
+                data.output_value = Some(serde_json::json!({ "diff": diff }));
+            }
+            Some(ConversationItem::Tool { id, data })
+        }
+        "mcpToolCall" => {
+            let server = item_string(item, "server");
+            let tool = item_string(item, "tool");
+            let tool_name = match (server.as_deref(), tool.as_deref()) {
+                (Some(server), Some(tool)) => format!("mcp__{}__{}", server, tool),
+                (Some(server), None) => format!("mcp__{}__", server),
+                _ => "mcp__tool".to_string(),
+            };
+            let args = item.get("arguments").cloned();
+            let detail = args
+                .as_ref()
+                .map(|value| serde_json::to_string_pretty(value).unwrap_or_default())
+                .unwrap_or_default();
+            let output_value = item.get("result").cloned().or_else(|| item.get("error").cloned());
+            let output = output_value
+                .as_ref()
+                .map(|value| serde_json::to_string_pretty(value).unwrap_or_default())
+                .unwrap_or_default();
+            let title = match (server.as_deref(), tool.as_deref()) {
+                (Some(server), Some(tool)) => format!("Tool: {} / {}", server, tool),
+                (Some(server), None) => format!("Tool: {}", server),
+                _ => "MCP tool".to_string(),
+            };
+            let data = ToolItemData {
+                tool_name,
+                tool_type: item_type.to_string(),
+                title,
+                detail,
+                status: item.get("status").and_then(Value::as_str).map(|s| s.to_string()),
+                output,
+                input_value: args,
+                output_value,
+                ..ToolItemData::default()
+            };
+            Some(ConversationItem::Tool { id, data })
+        }
+        "webSearch" => {
+            let query = item_string(item, "query").unwrap_or_default();
+            let data = ToolItemData {
+                tool_name: "Search".to_string(),
+                tool_type: item_type.to_string(),
+                title: "Web search".to_string(),
+                detail: query.clone(),
+                status: item.get("status").and_then(Value::as_str).map(|s| s.to_string()),
+                input_value: if query.is_empty() {
+                    None
+                } else {
+                    Some(serde_json::json!({ "query": query }))
+                },
+                ..ToolItemData::default()
+            };
+            Some(ConversationItem::Tool { id, data })
+        }
+        "imageView" => {
+            let path = item_string(item, "path").unwrap_or_default();
+            let data = ToolItemData {
+                tool_name: "Read".to_string(),
+                tool_type: item_type.to_string(),
+                title: "Image view".to_string(),
+                detail: path.clone(),
+                status: item.get("status").and_then(Value::as_str).map(|s| s.to_string()),
+                input_value: if path.is_empty() {
+                    None
+                } else {
+                    Some(serde_json::json!({ "file_path": path }))
+                },
+                ..ToolItemData::default()
+            };
+            Some(ConversationItem::Tool { id, data })
+        }
+        "enteredReviewMode" => {
+            let text = item_string(item, "review").unwrap_or_default();
+            Some(ConversationItem::Review {
+                id,
+                state: ReviewState::Started,
+                text,
+            })
+        }
+        "exitedReviewMode" => {
+            let text = item_string(item, "review").unwrap_or_default();
+            Some(ConversationItem::Review {
+                id,
+                state: ReviewState::Completed,
+                text,
+            })
+        }
+        _ => None,
+    }
+}
+
+pub(crate) fn turn_diff_item(turn_id: &str, diff: &str) -> ConversationItem {
+    let data = ToolItemData {
+        tool_name: "Diff".to_string(),
+        tool_type: "diff".to_string(),
+        title: "Turn diff".to_string(),
+        detail: String::new(),
+        status: Some("updated".to_string()),
+        output: diff.to_string(),
+        output_value: Some(serde_json::json!({ "diff": diff })),
+        ..ToolItemData::default()
+    };
+    ConversationItem::Tool {
+        id: format!("turn-diff-{}", turn_id),
+        data,
+    }
+}
+
+fn join_string_array(parts: &[Value]) -> String {
+    parts
+        .iter()
+        .filter_map(|value| value.as_str())
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn item_string(item: &Value, key: &str) -> Option<String> {
+    item.get(key).and_then(Value::as_str).map(|s| s.to_string())
+}
+
+fn command_string_from_item(item: &Value) -> String {
+    item.get("command")
+        .and_then(value_to_command_string)
+        .unwrap_or_default()
+}
+
+fn value_to_command_string(value: &Value) -> Option<String> {
+    match value {
+        Value::String(text) => {
+            if text.trim().is_empty() {
+                None
+            } else {
+                Some(text.to_string())
+            }
+        }
+        Value::Array(parts) => {
+            let items: Vec<&str> = parts.iter().filter_map(|val| val.as_str()).collect();
+            if items.is_empty() {
+                None
+            } else {
+                Some(items.join(" "))
+            }
+        }
+        _ => None,
+    }
+}
+
+fn parse_file_changes(
+    item: &Value,
+) -> (Vec<ConversationChange>, Vec<String>, Option<String>, Option<String>) {
+    let mut changes = Vec::new();
+    let mut paths = Vec::new();
+    let mut first_path = None;
+    let mut first_diff = None;
+    if let Some(change_list) = item.get("changes").and_then(Value::as_array) {
+        for change in change_list {
+            let path = change.get("path").and_then(Value::as_str).unwrap_or("").to_string();
+            if path.is_empty() {
+                continue;
+            }
+            if first_path.is_none() {
+                first_path = Some(path.clone());
+            }
+            let kind = change
+                .get("kind")
+                .and_then(|value| {
+                    if value.is_string() {
+                        value.as_str().map(|s| s.to_string())
+                    } else {
+                        value.get("type").and_then(Value::as_str).map(|s| s.to_string())
+                    }
+                })
+                .map(|value| value.to_ascii_lowercase());
+            let diff = change.get("diff").and_then(Value::as_str).map(|s| s.to_string());
+            if first_diff.is_none() {
+                first_diff = diff.clone();
+            }
+            let prefix = match kind.as_deref() {
+                Some("add") => "A",
+                Some("delete") => "D",
+                Some(_) => "M",
+                None => "",
+            };
+            let display = if prefix.is_empty() {
+                path.clone()
+            } else {
+                format!("{} {}", prefix, path)
+            };
+            paths.push(display);
+            changes.push(ConversationChange { path, kind, diff });
+        }
+    }
+    (changes, paths, first_path, first_diff)
+}
+
+fn user_inputs_to_text(content: &[Value]) -> String {
+    content
+        .iter()
+        .filter_map(|input| {
+            let input_type = input.get("type").and_then(Value::as_str)?;
+            match input_type {
+                "text" => input.get("text").and_then(Value::as_str).map(|s| s.to_string()),
+                "skill" => input
+                    .get("name")
+                    .and_then(Value::as_str)
+                    .map(|s| format!("${}", s)),
+                "image" | "localImage" => Some("[image]".to_string()),
+                _ => None,
+            }
+        })
+        .filter(|value| !value.is_empty())
+        .collect::<Vec<_>>()
+        .join(" ")
 }

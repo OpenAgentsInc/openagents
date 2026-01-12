@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::fs;
 use std::io::{self, Write};
 use std::path::PathBuf;
@@ -10,7 +11,7 @@ use wgpui::components::molecules::SessionAction;
 use wgpui::components::organisms::EventInspector;
 
 use crate::app::agents::AgentBackendsStatus;
-use crate::app::chat::MessageRole;
+use crate::app::chat::{ChatMessage, MessageRole};
 use crate::app::codex_app_server as app_server;
 use crate::app::codex_runtime::{CodexRuntime, CodexRuntimeConfig};
 use crate::app::config::{config_dir, SettingsTab};
@@ -19,13 +20,16 @@ use crate::app::nip28::Nip28ConnectionStatus;
 use crate::app::nip90::Nip90ConnectionStatus;
 use crate::app::dvm::DvmStatus;
 use crate::app::{
-    build_input, build_markdown_config, build_markdown_renderer, now_timestamp,
-    AgentCardAction, HookLogEntry, HookModalView, HookSetting, ModelOption, SettingsInputMode,
-    SkillCardAction,
+    build_input, build_markdown_config, build_markdown_document, build_markdown_renderer,
+    now_timestamp, AgentCardAction, HookLogEntry, HookModalView, HookSetting, ModelOption,
+    SettingsInputMode, SkillCardAction,
 };
 use crate::app::session::{SessionEntry, SessionUpdate};
 use crate::app::config::SettingsUpdate;
 use crate::app::catalog::{SkillEntry, SkillUpdate};
+use crate::app::tools::ToolVisualization;
+use crate::app::tools::parsing::{format_tool_input, tool_type_for_name};
+use crate::app::workspaces::{ConversationItem, ConversationRole, ReviewState, ToolItemData};
 use crate::app::AppState;
 use crate::keybindings::Action as KeyAction;
 
@@ -1442,6 +1446,198 @@ async fn fetch_codex_skills(
         Some(errors.join(" | "))
     };
     Ok((entries, error))
+}
+
+impl AppState {
+    pub(super) fn sync_workspace_timeline_view(&mut self) {
+        if self.workspaces.active_workspace_id.is_none() {
+            return;
+        }
+        let Some(thread_id) = self.workspaces.active_thread_id() else {
+            self.clear_workspace_view();
+            return;
+        };
+        let Some(timeline) = self.workspaces.timelines_by_thread.get(&thread_id) else {
+            self.clear_workspace_view();
+            return;
+        };
+
+        let mut tool_cache: HashMap<String, ToolVisualization> = self
+            .tools
+            .tool_history
+            .drain(..)
+            .map(|tool| (tool.tool_use_id.clone(), tool))
+            .collect();
+
+        let mut messages = Vec::new();
+        let mut tool_history = Vec::new();
+
+        for item in &timeline.items {
+            match item {
+                ConversationItem::Message { role, text, .. } => {
+                    let (chat_role, document) = match role {
+                        ConversationRole::User => (MessageRole::User, None),
+                        ConversationRole::Assistant => {
+                            (MessageRole::Assistant, Some(build_markdown_document(text)))
+                        }
+                    };
+                    messages.push(ChatMessage {
+                        role: chat_role,
+                        content: text.clone(),
+                        document,
+                        uuid: None,
+                        metadata: None,
+                    });
+                }
+                ConversationItem::Reasoning { summary, content, .. } => {
+                    let mut combined = String::new();
+                    if !summary.trim().is_empty() {
+                        combined.push_str(summary);
+                    }
+                    if !content.trim().is_empty() {
+                        if !combined.is_empty() {
+                            combined.push_str("\n\n");
+                        }
+                        combined.push_str(content);
+                    }
+                    let combined = if combined.is_empty() {
+                        "Reasoning".to_string()
+                    } else {
+                        combined
+                    };
+                    messages.push(ChatMessage {
+                        role: MessageRole::AssistantThought,
+                        content: combined,
+                        document: None,
+                        uuid: None,
+                        metadata: None,
+                    });
+                }
+                ConversationItem::Review { state, text, .. } => {
+                    let label = match state {
+                        ReviewState::Started => "Review started",
+                        ReviewState::Completed => "Review completed",
+                    };
+                    let content = if text.trim().is_empty() {
+                        label.to_string()
+                    } else {
+                        format!("{}: {}", label, text)
+                    };
+                    messages.push(ChatMessage {
+                        role: MessageRole::Assistant,
+                        content,
+                        document: None,
+                        uuid: None,
+                        metadata: None,
+                    });
+                }
+                ConversationItem::Tool { id, data } => {
+                    let msg_index = messages.len();
+                    let title = if data.title.is_empty() {
+                        data.tool_name.clone()
+                    } else {
+                        data.title.clone()
+                    };
+                    messages.push(ChatMessage {
+                        role: MessageRole::Assistant,
+                        content: title,
+                        document: None,
+                        uuid: None,
+                        metadata: None,
+                    });
+
+                    let mut tool = tool_cache.remove(id).unwrap_or_else(|| {
+                        ToolVisualization::new(
+                            id.clone(),
+                            data.tool_name.clone(),
+                            tool_type_for_name(&data.tool_name),
+                            msg_index,
+                        )
+                    });
+
+                    tool.message_index = msg_index;
+                    sync_tool_from_item(&mut tool, data);
+                    tool_history.push(tool);
+                }
+            }
+        }
+
+        self.chat.messages = messages;
+        self.chat.streaming_markdown.reset();
+        self.chat.chat_selection = None;
+        self.chat.is_thinking = self
+            .workspaces
+            .thread_status_by_id
+            .get(&thread_id)
+            .map(|status| status.is_processing)
+            .unwrap_or(false);
+
+        self.tools.tool_history = tool_history;
+        self.tools.dspy_stages.clear();
+        self.tools.current_tool_name = None;
+        self.tools.current_tool_input.clear();
+        self.tools.current_tool_use_id = None;
+    }
+
+    fn clear_workspace_view(&mut self) {
+        self.chat.messages.clear();
+        self.chat.streaming_markdown.reset();
+        self.chat.chat_selection = None;
+        self.chat.is_thinking = false;
+        self.tools.tool_history.clear();
+        self.tools.dspy_stages.clear();
+        self.tools.current_tool_name = None;
+        self.tools.current_tool_input.clear();
+        self.tools.current_tool_use_id = None;
+    }
+}
+
+fn sync_tool_from_item(tool: &mut ToolVisualization, data: &ToolItemData) {
+    tool.name = data.tool_name.clone();
+    tool.tool_type = tool_type_for_name(&data.tool_name);
+    tool.status = tool_status_from_item(data.status.as_deref(), data.output.as_str());
+    tool.output = if data.output.trim().is_empty() {
+        None
+    } else {
+        Some(data.output.clone())
+    };
+    tool.output_value = data.output_value.clone();
+
+    if let Some(value) = data.input_value.as_ref() {
+        if let Ok(json) = serde_json::to_string(value) {
+            tool.input = Some(format_tool_input(&data.tool_name, &json));
+        }
+        tool.input_value = Some(value.clone());
+    } else if !data.detail.trim().is_empty() {
+        tool.input = Some(data.detail.clone());
+        tool.input_value = None;
+    } else {
+        tool.input = None;
+        tool.input_value = None;
+    }
+
+    tool.refresh_components();
+}
+
+fn tool_status_from_item(
+    status: Option<&str>,
+    output: &str,
+) -> wgpui::components::atoms::ToolStatus {
+    let status = status.unwrap_or("").trim().to_ascii_lowercase();
+    match status.as_str() {
+        "failed" | "declined" | "error" => wgpui::components::atoms::ToolStatus::Error,
+        "completed" | "complete" | "succeeded" | "success" => {
+            wgpui::components::atoms::ToolStatus::Success
+        }
+        "running" | "started" | "pending" => wgpui::components::atoms::ToolStatus::Running,
+        _ => {
+            if output.trim().is_empty() {
+                wgpui::components::atoms::ToolStatus::Running
+            } else {
+                wgpui::components::atoms::ToolStatus::Success
+            }
+        }
+    }
 }
 
 async fn write_codex_config_value(cwd: PathBuf, key_path: String, value: Value) -> Result<()> {
