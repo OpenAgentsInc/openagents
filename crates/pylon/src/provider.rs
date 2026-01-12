@@ -3,13 +3,7 @@
 use crate::bridge_manager::BridgeManager;
 use crate::config::PylonConfig;
 use crate::neobank_service::{NeobankConfig, NeobankService, TreasuryStatus};
-use compute::backends::{
-    AgentRegistry, BackendRegistry,
-};
-#[cfg(feature = "ml-native")]
-use ml::{MlProvider, MlProviderConfig};
-#[cfg(feature = "gpt-oss-gguf")]
-use ml::GptOssGgufBackend;
+use compute::backends::{AgentRegistry, BackendRegistry};
 use compute::domain::DomainEvent;
 use openagents_runtime::UnifiedIdentity;
 use compute::services::{DvmConfig, DvmService, RelayService};
@@ -136,39 +130,7 @@ impl PylonProvider {
         let bridge_manager = Self::try_start_fm_bridge().await;
 
         // Auto-detect inference backends (will now find Apple FM if bridge started)
-        #[allow(unused_mut)]
-        let mut registry = BackendRegistry::detect().await;
-
-        #[cfg(feature = "ml-native")]
-        {
-            match MlProviderConfig::from_env() {
-                Ok(config) => match MlProvider::new(config).await {
-                    Ok(provider) => {
-                        registry.register_with_id("ml-candle", Arc::new(RwLock::new(provider)));
-                        tracing::info!("Registered Candle ML backend");
-                    }
-                    Err(err) => {
-                        tracing::warn!("Failed to initialize Candle ML backend: {err}");
-                    }
-                },
-                Err(err) => {
-                    tracing::debug!("Candle ML backend not configured: {err}");
-                }
-            }
-        }
-
-        #[cfg(feature = "gpt-oss-gguf")]
-        {
-            match GptOssGgufBackend::from_env() {
-                Ok(backend) => {
-                    registry.register_with_id("gpt-oss-gguf", Arc::new(RwLock::new(backend)));
-                    tracing::info!("Registered GPT-OSS GGUF backend");
-                }
-                Err(err) => {
-                    tracing::debug!("GPT-OSS GGUF backend not configured: {err}");
-                }
-            }
-        }
+        let registry = BackendRegistry::detect().await;
 
         if !registry.has_backends() {
             tracing::warn!("No inference backends detected");
@@ -461,7 +423,7 @@ impl PylonProvider {
         let registry = self.backend_registry.read().await;
 
         // Check each potential backend
-        for backend_id in ["ollama", "apple_fm", "llamacpp", "gpt-oss-gguf"] {
+        for backend_id in ["ollama", "apple_fm", "llamacpp"] {
             let available = registry.get(backend_id).is_some();
             backends.push((backend_id.to_string(), available));
         }

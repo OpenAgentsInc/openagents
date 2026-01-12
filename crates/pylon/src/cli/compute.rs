@@ -179,7 +179,6 @@ async fn detect_local_backends() -> Vec<BackendInfo> {
     backends.push(apple_fm);
     backends.push(llamacpp);
     backends.push(fm_bridge);
-    backends.push(check_local_gguf_backend());
 
     backends
 }
@@ -212,33 +211,6 @@ async fn check_backend(name: &str, base_url: &str, health_path: &str) -> Backend
         name: name.to_string(),
         available,
         endpoint: base_url.to_string(),
-        models,
-    }
-}
-
-fn check_local_gguf_backend() -> BackendInfo {
-    let path = std::env::var("GPT_OSS_GGUF_PATH").ok();
-    let model_id = std::env::var("GPT_OSS_GGUF_MODEL_ID").ok();
-    let available = path
-        .as_ref()
-        .map(|value| std::path::Path::new(value).exists())
-        .unwrap_or(false);
-    let mut models = Vec::new();
-    if let Some(id) = model_id {
-        models.push(id);
-    } else if let Some(path) = path.as_ref() {
-        if let Some(stem) = std::path::Path::new(path)
-            .file_stem()
-            .and_then(|value| value.to_str())
-        {
-            models.push(stem.to_string());
-        }
-    }
-
-    BackendInfo {
-        name: "gpt-oss-gguf".to_string(),
-        available,
-        endpoint: "local gguf".to_string(),
         models,
     }
 }

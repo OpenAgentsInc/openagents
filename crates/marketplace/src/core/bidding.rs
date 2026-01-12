@@ -1,1 +1,0 @@
-//! Bidding module
