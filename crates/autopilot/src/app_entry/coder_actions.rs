@@ -22,7 +22,8 @@ use crate::app::events::{CommandAction, ModalState, QueryControl, ResponseEvent}
 use crate::app::nip28::{Nip28ConnectionStatus, Nip28Event, Nip28Message};
 use crate::app::nip90::{Nip90ConnectionStatus, Nip90Event};
 use crate::app::workspaces::{
-    conversation_item_from_value, turn_diff_item, ConversationItem, ConversationRole, WorkspaceEvent,
+    conversation_item_from_value, turn_diff_item, ConversationItem, ConversationRole, ReviewState,
+    WorkspaceAccessMode, WorkspaceApprovalRequest, WorkspaceEvent,
 };
 use crate::app::parsing::prompt::{expand_prompt_text_async, format_command_output, MAX_COMMAND_BYTES};
 use crate::app::utils::truncate_bytes;
@@ -35,7 +36,7 @@ use crate::app::ui::render_app;
 use crate::app::CoderMode;
 use crate::app::AppState;
 use crate::autopilot_loop::{DspyStage, TodoStatus, TodoTask};
-use crate::commands::{Command, ReviewCommand, ReviewDelivery, ReviewTarget};
+use crate::commands::{parse_command, Command, ReviewCommand, ReviewDelivery, ReviewTarget};
 
 use super::AutopilotApp;
 use super::command_palette_ids;
@@ -44,10 +45,53 @@ use super::commands::handle_command;
 use super::settings::rate_limits_from_snapshot;
 
 impl AutopilotApp {
+    pub(super) fn submit_input(&mut self) {
+        let Some(state) = &mut self.state else {
+            return;
+        };
+
+        let mut action = CommandAction::None;
+        let mut submit_prompt = None;
+
+        {
+            let prompt = state.input.get_value().to_string();
+            if prompt.trim().is_empty() {
+                return;
+            }
+
+            if let Some(command) = parse_command(&prompt) {
+                state.settings.command_history.push(prompt);
+                state.input.set_value("");
+                action = handle_command(state, command);
+            } else if !state.chat.is_thinking || state.workspaces.active_workspace_id.is_some() {
+                state.settings.command_history.push(prompt.clone());
+                state.input.set_value("");
+                submit_prompt = Some(prompt);
+            } else {
+                return;
+            }
+        }
+
+        match action {
+            CommandAction::SubmitPrompt(prompt) => self.submit_prompt(prompt),
+            CommandAction::StartReview(review) => self.start_review(review),
+            CommandAction::None => {
+                if let Some(prompt) = submit_prompt {
+                    self.submit_prompt(prompt);
+                }
+            }
+        }
+    }
+
     pub(super) fn submit_prompt(&mut self, prompt: String) {
         let Some(state) = &mut self.state else {
             return;
         };
+
+        if state.workspaces.active_workspace_id.is_some() {
+            self.submit_workspace_prompt(prompt);
+            return;
+        }
 
         tracing::info!("Submitted prompt: {}", prompt);
 
@@ -69,10 +113,55 @@ impl AutopilotApp {
         self.submit_codex_prompt(prompt);
     }
 
+    fn submit_workspace_prompt(&mut self, prompt: String) {
+        let Some(state) = &mut self.state else {
+            return;
+        };
+
+        let Some(workspace_id) = state.workspaces.active_workspace_id.clone() else {
+            return;
+        };
+        let is_connected = state
+            .workspaces
+            .workspaces
+            .iter()
+            .any(|workspace| workspace.id == workspace_id && workspace.connected);
+        if !is_connected {
+            state.push_system_message("Workspace not connected.".to_string());
+            return;
+        }
+        if state.workspaces.active_thread_is_reviewing() {
+            state.push_system_message("Review in progress. Wait for it to finish.".to_string());
+            return;
+        }
+
+        let composer = state.workspaces.composer_state(&workspace_id);
+        let model = composer.and_then(|composer| composer.selected_model_id.clone());
+        let effort = composer.and_then(|composer| composer.selected_effort);
+        let access_mode = composer
+            .map(|composer| composer.access_mode)
+            .unwrap_or(WorkspaceAccessMode::FullAccess);
+        let thread_id = state.workspaces.active_thread_id();
+
+        state.workspaces.runtime.send_user_message(
+            workspace_id,
+            thread_id,
+            prompt,
+            model,
+            effort,
+            access_mode,
+        );
+    }
+
     pub(super) fn start_review(&mut self, review: ReviewCommand) {
         let Some(state) = &mut self.state else {
             return;
         };
+
+        if state.workspaces.active_workspace_id.is_some() {
+            self.start_workspace_review(review);
+            return;
+        }
 
         if state.chat.is_thinking {
             state.push_system_message("Cannot start review during an active request.".to_string());
@@ -124,6 +213,60 @@ impl AutopilotApp {
             permission_tx,
             control_rx,
             window,
+        );
+    }
+
+    fn start_workspace_review(&mut self, review: ReviewCommand) {
+        let Some(state) = &mut self.state else {
+            return;
+        };
+        let Some(workspace_id) = state.workspaces.active_workspace_id.clone() else {
+            return;
+        };
+        let is_connected = state
+            .workspaces
+            .workspaces
+            .iter()
+            .any(|workspace| workspace.id == workspace_id && workspace.connected);
+        if !is_connected {
+            state.push_system_message("Workspace not connected.".to_string());
+            return;
+        }
+        if state.workspaces.active_thread_is_reviewing() {
+            state.push_system_message("Review already in progress.".to_string());
+            return;
+        }
+
+        let ReviewCommand { delivery, target } = review;
+        let label = review_label(&target);
+        let target = match target {
+            ReviewTarget::UncommittedChanges => app_server::ReviewTarget::UncommittedChanges,
+            ReviewTarget::BaseBranch { branch } => app_server::ReviewTarget::BaseBranch { branch },
+            ReviewTarget::Commit { sha, title } => {
+                app_server::ReviewTarget::Commit { sha, title }
+            }
+            ReviewTarget::Custom { instructions } => {
+                app_server::ReviewTarget::Custom { instructions }
+            }
+        };
+        let delivery = match delivery {
+            ReviewDelivery::Inline => None,
+            ReviewDelivery::Detached => Some(app_server::ReviewDelivery::Detached),
+        };
+        let access_mode = state
+            .workspaces
+            .composer_state(&workspace_id)
+            .map(|composer| composer.access_mode)
+            .unwrap_or(WorkspaceAccessMode::FullAccess);
+        let thread_id = state.workspaces.active_thread_id();
+
+        state.workspaces.runtime.start_review(
+            workspace_id,
+            thread_id,
+            target,
+            delivery,
+            label,
+            access_mode,
         );
     }
 
@@ -345,6 +488,9 @@ impl AutopilotApp {
                 model: model_override.clone(),
                 effort: reasoning_effort,
                 summary: None,
+                approval_policy: Some(approval_policy_for_mode(coder_mode)),
+                sandbox_policy: Some(sandbox_policy_for_mode(coder_mode)),
+                cwd: Some(cwd.to_string_lossy().to_string()),
             };
 
             let turn_id = match client.turn_start(turn_params).await {
@@ -1592,6 +1738,7 @@ impl AutopilotApp {
                 }
                 WorkspaceEvent::WorkspaceConnected { workspace_id } => {
                     state.workspaces.apply_workspace_connected(&workspace_id);
+                    state.workspaces.request_composer_data(&workspace_id);
                     should_redraw = true;
                 }
                 WorkspaceEvent::WorkspaceConnectFailed { workspace_id, error } => {
@@ -1615,6 +1762,109 @@ impl AutopilotApp {
                     ));
                     should_redraw = true;
                 }
+                WorkspaceEvent::UserMessageQueued {
+                    workspace_id,
+                    thread_id,
+                    text,
+                } => {
+                    state.workspaces.ensure_thread(&workspace_id, &thread_id);
+                    state.workspaces.set_active_thread(&workspace_id, &thread_id);
+                    state
+                        .workspaces
+                        .update_thread_preview(&workspace_id, &thread_id, &text);
+                    let item = ConversationItem::Message {
+                        id: format!("user-{}-{}", thread_id, current_timestamp_ms()),
+                        role: ConversationRole::User,
+                        text,
+                    };
+                    state
+                        .workspaces
+                        .apply_item_update(&workspace_id, &thread_id, item);
+                    state
+                        .workspaces
+                        .mark_processing(&workspace_id, &thread_id, true);
+                    should_redraw = true;
+                }
+                WorkspaceEvent::UserMessageFailed { workspace_id, error } => {
+                    state.push_system_message(format!(
+                        "Workspace message failed ({}): {}",
+                        workspace_id, error
+                    ));
+                    if let Some(thread_id) = state.workspaces.active_thread_id() {
+                        state
+                            .workspaces
+                            .mark_processing(&workspace_id, &thread_id, false);
+                    }
+                    should_redraw = true;
+                }
+                WorkspaceEvent::ReviewQueued {
+                    workspace_id,
+                    thread_id,
+                    label,
+                } => {
+                    state.workspaces.ensure_thread(&workspace_id, &thread_id);
+                    state.workspaces.set_active_thread(&workspace_id, &thread_id);
+                    let item = ConversationItem::Review {
+                        id: format!("review-start-{}-{}", thread_id, current_timestamp_ms()),
+                        state: ReviewState::Started,
+                        text: label,
+                    };
+                    state
+                        .workspaces
+                        .apply_item_update(&workspace_id, &thread_id, item);
+                    state
+                        .workspaces
+                        .mark_processing(&workspace_id, &thread_id, true);
+                    state
+                        .workspaces
+                        .mark_reviewing(&workspace_id, &thread_id, true);
+                    should_redraw = true;
+                }
+                WorkspaceEvent::ReviewFailed { workspace_id, error } => {
+                    state.push_system_message(format!(
+                        "Review failed ({}): {}",
+                        workspace_id, error
+                    ));
+                    if let Some(thread_id) = state.workspaces.active_thread_id() {
+                        state
+                            .workspaces
+                            .mark_reviewing(&workspace_id, &thread_id, false);
+                        state
+                            .workspaces
+                            .mark_processing(&workspace_id, &thread_id, false);
+                    }
+                    should_redraw = true;
+                }
+                WorkspaceEvent::ModelsListed {
+                    workspace_id,
+                    models,
+                } => {
+                    state
+                        .workspaces
+                        .set_models_for_workspace(&workspace_id, models);
+                    should_redraw = true;
+                }
+                WorkspaceEvent::ModelListFailed { workspace_id, error } => {
+                    state.workspaces.set_models_error(&workspace_id, error);
+                    should_redraw = true;
+                }
+                WorkspaceEvent::SkillsListed {
+                    workspace_id,
+                    skills,
+                    error,
+                } => {
+                    state
+                        .workspaces
+                        .set_skills_for_workspace(&workspace_id, skills);
+                    if let Some(error) = error {
+                        state.workspaces.set_skills_error(&workspace_id, error);
+                    }
+                    should_redraw = true;
+                }
+                WorkspaceEvent::SkillsListFailed { workspace_id, error } => {
+                    state.workspaces.set_skills_error(&workspace_id, error);
+                    should_redraw = true;
+                }
                 WorkspaceEvent::AppServerNotification {
                     workspace_id,
                     notification,
@@ -1624,11 +1874,42 @@ impl AutopilotApp {
                     }
                 }
                 WorkspaceEvent::AppServerRequest { workspace_id, request } => {
-                    tracing::debug!(
-                        workspace_id = %workspace_id,
-                        method = %request.method,
-                        "Workspace app-server request received"
-                    );
+                    let is_approval = request.method.contains("requestApproval");
+                    if is_approval {
+                        let access_mode = state
+                            .workspaces
+                            .composer_state(&workspace_id)
+                            .map(|composer| composer.access_mode)
+                            .unwrap_or(WorkspaceAccessMode::FullAccess);
+                        if access_mode.auto_approves() {
+                            let response = app_server::ApprovalResponse {
+                                decision: app_server::ApprovalDecision::Accept,
+                                accept_settings: None,
+                            };
+                            state.workspaces.runtime.respond_to_request(
+                                workspace_id,
+                                request.id,
+                                response,
+                            );
+                        } else {
+                            let params = request.params.unwrap_or(Value::Null);
+                            state.workspaces.add_approval(
+                                &workspace_id,
+                                WorkspaceApprovalRequest {
+                                    id: request.id,
+                                    method: request.method,
+                                    params,
+                                },
+                            );
+                            should_redraw = true;
+                        }
+                    } else {
+                        tracing::debug!(
+                            workspace_id = %workspace_id,
+                            method = %request.method,
+                            "Workspace app-server request received"
+                        );
+                    }
                 }
             }
         }
@@ -3502,6 +3783,37 @@ fn current_timestamp_ms() -> u64 {
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_millis() as u64
+}
+
+fn review_label(target: &ReviewTarget) -> String {
+    match target {
+        ReviewTarget::UncommittedChanges => "current changes".to_string(),
+        ReviewTarget::BaseBranch { branch } => {
+            if branch.trim().is_empty() {
+                "base branch".to_string()
+            } else {
+                format!("base branch {}", branch.trim())
+            }
+        }
+        ReviewTarget::Commit { sha, title } => {
+            let title = title.as_deref().unwrap_or("").trim();
+            if title.is_empty() {
+                format!("commit {}", sha.trim())
+            } else {
+                format!("commit {}: {}", sha.trim(), title)
+            }
+        }
+        ReviewTarget::Custom { instructions } => {
+            let instructions = instructions.trim();
+            if instructions.is_empty() {
+                "custom review".to_string()
+            } else if instructions.len() > 80 {
+                format!("{}…", &instructions[..80])
+            } else {
+                instructions.to_string()
+            }
+        }
+    }
 }
 
 fn reasoning_effort_to_string(effort: app_server::ReasoningEffort) -> String {

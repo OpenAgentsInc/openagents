@@ -5,14 +5,8 @@ impl AppState {
         logical_height: f32,
     ) -> ChatLayout {
         let viewport_top = TOPBAR_HEIGHT + OUTPUT_PADDING;
-        // Calculate input width for wrapping
-        let available_input_width = sidebar_layout.main.size.width - CONTENT_PADDING_X * 2.0;
-        let input_width = available_input_width.max(0.0);
-        // Set max width for wrapping, then calculate dynamic height
-        self.input.set_max_width(input_width);
-        let input_height = self.input.current_height().max(40.0);
-        let viewport_bottom =
-            logical_height - input_height - INPUT_PADDING * 2.0 - STATUS_BAR_HEIGHT - 16.0;
+        let input_layout = self.build_input_layout(sidebar_layout, logical_height);
+        let viewport_bottom = input_layout.area_bounds.origin.y - 16.0;
         let viewport_height = (viewport_bottom - viewport_top).max(0.0);
 
         let full_available_width = sidebar_layout.main.size.width - CONTENT_PADDING_X * 2.0;

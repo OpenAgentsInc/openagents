@@ -29,10 +29,11 @@ use crate::app::catalog::{
 use crate::app::agents::AgentBackendsState;
 use crate::app::chat::{ChatSelection, ChatState};
 use crate::app::agents::AgentRegistry;
+use crate::app::codex_app_server as app_server;
 use crate::app::config::{mcp_project_file, AgentSelection, SettingsState};
 use crate::app::events::{
     convert_key_for_binding, convert_key_for_input, convert_modifiers, convert_mouse_button,
-    CommandAction, CoderMode, ModalState,
+    CoderMode, ModalState,
 };
 use crate::app::permissions::{
     coder_mode_default_allow, coder_mode_label, load_permission_config, PermissionState,
@@ -42,11 +43,11 @@ use crate::app::session::{
 };
 use crate::app::tools::ToolsState;
 use crate::app::ui::{
-    agent_list_layout, agent_modal_content_top, diff_back_button_bounds, git_diff_panel_layout,
-    hook_event_layout, modal_y_in_content, new_session_button_bounds, session_list_layout,
-    sidebar_layout, skill_list_layout, skill_modal_content_top, workspace_list_layout,
-    CONTENT_PADDING_X, INPUT_PADDING, SESSION_MODAL_HEIGHT,
-    STATUS_BAR_HEIGHT,
+    agent_list_layout, agent_modal_content_top, approvals_panel_layout, composer_bar_layout,
+    composer_menu_layout, diff_back_button_bounds, git_diff_panel_layout, hook_event_layout,
+    modal_y_in_content, new_session_button_bounds, session_list_layout, sidebar_layout,
+    skill_list_layout, skill_modal_content_top, workspace_list_layout, CONTENT_PADDING_X,
+    SESSION_MODAL_HEIGHT, STATUS_BAR_HEIGHT,
 };
 use crate::app::wallet::WalletState;
 use crate::app::dspy::DspyState;
@@ -57,14 +58,13 @@ use crate::app::gateway::GatewayState;
 use crate::app::lm_router::LmRouterState;
 use crate::app::nexus::NexusState;
 use crate::app::spark_wallet::SparkWalletState;
-use crate::app::workspaces::WorkspaceState;
+use crate::app::workspaces::{ComposerMenuKind, WorkspaceAccessMode, WorkspaceState};
 use crate::app::{build_input, AppState, HookModalView};
-use crate::commands::parse_command;
 use crate::keybindings::{match_action, Action as KeyAction};
 use crate::panels::PanelLayout;
 
 use super::AutopilotApp;
-use super::commands::{handle_command, handle_modal_input};
+use super::commands::handle_modal_input;
 use super::settings::{fetch_rate_limits, load_keybindings, load_settings, settings_model_option};
 
 impl ApplicationHandler for AutopilotApp {
@@ -323,18 +323,9 @@ impl ApplicationHandler for AutopilotApp {
             state.right_sidebar_open,
         );
         let content_x = sidebar_layout.main.origin.x + CONTENT_PADDING_X;
-        let available_input_width = sidebar_layout.main.size.width - CONTENT_PADDING_X * 2.0;
-        let input_width = available_input_width.max(0.0);
-        let input_x = sidebar_layout.main.origin.x + CONTENT_PADDING_X;
-        // Set max width for text wrapping, then calculate dynamic height
-        state.input.set_max_width(input_width);
-        let input_height = state.input.current_height().max(40.0);
-        let input_bounds = Bounds::new(
-            input_x,
-            logical_height - input_height - INPUT_PADDING - STATUS_BAR_HEIGHT,
-            input_width,
-            input_height,
-        );
+        let input_layout = state.build_input_layout(&sidebar_layout, logical_height);
+        let input_bounds = input_layout.input_bounds;
+        let input_disabled = state.workspaces.active_thread_is_reviewing();
         let permission_open = state.permissions.permission_dialog
             .as_ref()
             .map(|dialog| dialog.is_open())
@@ -619,9 +610,11 @@ impl ApplicationHandler for AutopilotApp {
                 if tools_handled {
                     state.window.request_redraw();
                 }
-                state
-                    .input
-                    .event(&input_event, input_bounds, &mut state.event_context);
+                if !input_disabled {
+                    state
+                        .input
+                        .event(&input_event, input_bounds, &mut state.event_context);
+                }
             }
             WindowEvent::MouseInput {
                 state: button_state,
@@ -875,8 +868,12 @@ impl ApplicationHandler for AutopilotApp {
                                 state.workspaces.set_active_workspace(workspace_id.clone());
                                 state.git.set_active_workspace(Some(&workspace_id));
                                 if is_connected {
-                                    state.workspaces.runtime.list_threads(workspace_id);
+                                    state
+                                        .workspaces
+                                        .runtime
+                                        .list_threads(workspace_id.clone());
                                 }
+                                state.workspaces.request_composer_data(&workspace_id);
                                 state.sync_workspace_timeline_view();
                                 state.workspaces.timeline_dirty = false;
                                 state.window.request_redraw();
@@ -899,8 +896,8 @@ impl ApplicationHandler for AutopilotApp {
                     }
                     if state.right_sidebar_open {
                         if let Some(right_bounds) = sidebar_layout.right {
-                            if let Some(active_id) = state.workspaces.active_workspace_id.as_ref() {
-                                if let Some(status) = state.git.status_for_workspace(active_id) {
+                            if let Some(active_id) = state.workspaces.active_workspace_id.clone() {
+                                if let Some(status) = state.git.status_for_workspace(&active_id) {
                                     let file_paths: Vec<String> = status
                                         .files
                                         .iter()
@@ -914,15 +911,70 @@ impl ApplicationHandler for AutopilotApp {
                                         .list_bounds
                                         .contains(Point::new(x, y))
                                     {
-                                        for (index, bounds) in panel_layout.row_bounds {
+                                        for (index, bounds) in &panel_layout.row_bounds {
                                             if bounds.contains(Point::new(x, y)) {
-                                                if let Some(path) = file_paths.get(index) {
+                                                if let Some(path) = file_paths.get(*index) {
                                                     state.git.select_diff_path(path.clone());
                                                     if let Some(active_id) =
                                                         state.workspaces.active_workspace_id.as_ref()
                                                     {
                                                         state.git.force_refresh(active_id);
                                                     }
+                                                    state.window.request_redraw();
+                                                    return;
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    let approvals = state
+                                        .workspaces
+                                        .approvals_for_workspace(&active_id)
+                                        .to_vec();
+                                    if let Some(approvals_layout) = approvals_panel_layout(
+                                        right_bounds,
+                                        &panel_layout,
+                                        approvals.len(),
+                                    ) {
+                                        for (index, bounds) in &approvals_layout.approve_bounds {
+                                            if bounds.contains(Point::new(x, y)) {
+                                                if let Some(request) = approvals.get(*index) {
+                                                    let response = app_server::ApprovalResponse {
+                                                        decision:
+                                                            app_server::ApprovalDecision::Accept,
+                                                        accept_settings: None,
+                                                    };
+                                                    state.workspaces.runtime.respond_to_request(
+                                                        active_id.clone(),
+                                                        request.id.clone(),
+                                                        response,
+                                                    );
+                                                    state.workspaces.remove_approval(
+                                                        &active_id,
+                                                        &request.id_label(),
+                                                    );
+                                                    state.window.request_redraw();
+                                                    return;
+                                                }
+                                            }
+                                        }
+                                        for (index, bounds) in &approvals_layout.decline_bounds {
+                                            if bounds.contains(Point::new(x, y)) {
+                                                if let Some(request) = approvals.get(*index) {
+                                                    let response = app_server::ApprovalResponse {
+                                                        decision:
+                                                            app_server::ApprovalDecision::Decline,
+                                                        accept_settings: None,
+                                                    };
+                                                    state.workspaces.runtime.respond_to_request(
+                                                        active_id.clone(),
+                                                        request.id.clone(),
+                                                        response,
+                                                    );
+                                                    state.workspaces.remove_approval(
+                                                        &active_id,
+                                                        &request.id_label(),
+                                                    );
                                                     state.window.request_redraw();
                                                     return;
                                                 }
@@ -938,6 +990,150 @@ impl ApplicationHandler for AutopilotApp {
                 if state.git.center_mode == crate::app::CenterMode::Diff {
                     state.window.request_redraw();
                     return;
+                }
+
+                let composer_disabled = state.workspaces.active_thread_is_reviewing();
+                if button_state == ElementState::Pressed
+                    && matches!(button, winit::event::MouseButton::Left)
+                {
+                    let click = Point::new(x, y);
+                    let labels = state.workspaces.composer_labels();
+                    let bar_layout = composer_bar_layout(
+                        &mut state.text_system,
+                        input_layout.bar_bounds,
+                        &crate::app::workspaces::ComposerLabels {
+                            model: format!("{} ▾", labels.model),
+                            effort: format!("{} ▾", labels.effort),
+                            access: format!("{} ▾", labels.access),
+                            skill: format!("{} ▾", labels.skill),
+                        },
+                    );
+
+                    let mut menu_handled = false;
+                    if let Some(menu) = state.workspaces.composer_menu {
+                        let composer = state.workspaces.active_composer();
+                        let item_count = match menu {
+                            ComposerMenuKind::Model => composer.map(|c| c.models.len()).unwrap_or(0),
+                            ComposerMenuKind::Effort => composer
+                                .map(|c| c.reasoning_options().len().max(1))
+                                .unwrap_or(0),
+                            ComposerMenuKind::Access => WorkspaceAccessMode::all().len(),
+                            ComposerMenuKind::Skill => composer
+                                .map(|c| c.skills.len().max(1))
+                                .unwrap_or(0),
+                        };
+                        if item_count > 0 {
+                            let anchor = match menu {
+                                ComposerMenuKind::Model => bar_layout.model_bounds,
+                                ComposerMenuKind::Effort => bar_layout.effort_bounds,
+                                ComposerMenuKind::Access => bar_layout.access_bounds,
+                                ComposerMenuKind::Skill => bar_layout.skill_bounds,
+                            };
+                            let menu_layout = composer_menu_layout(anchor, item_count);
+                            if menu_layout.bounds.contains(click) {
+                                for (index, bounds) in menu_layout.item_bounds {
+                                    if bounds.contains(click) {
+                                        if let Some(composer) =
+                                            state.workspaces.active_composer_mut()
+                                        {
+                                            match menu {
+                                                ComposerMenuKind::Model => {
+                                                    if let Some(model) =
+                                                        composer.models.get(index)
+                                                    {
+                                                        composer.selected_model_id =
+                                                            Some(model.id.clone());
+                                                        composer.selected_effort =
+                                                            Some(model.default_reasoning_effort);
+                                                    }
+                                                }
+                                                ComposerMenuKind::Effort => {
+                                                    let options = composer.reasoning_options();
+                                                    if let Some(effort) = options.get(index) {
+                                                        composer.selected_effort = Some(*effort);
+                                                    }
+                                                }
+                                                ComposerMenuKind::Access => {
+                                                    if let Some(mode) =
+                                                        WorkspaceAccessMode::all().get(index)
+                                                    {
+                                                        composer.access_mode = *mode;
+                                                    }
+                                                }
+                                                ComposerMenuKind::Skill => {
+                                                    if let Some(skill) =
+                                                        composer.skills.get(index)
+                                                    {
+                                                        let snippet =
+                                                            format!("${}", skill.name);
+                                                        let current =
+                                                            state.input.get_value().to_string();
+                                                        let next = if current.trim().is_empty()
+                                                        {
+                                                            format!("{} ", snippet)
+                                                        } else if current.contains(&snippet) {
+                                                            current
+                                                        } else {
+                                                            format!(
+                                                                "{} {} ",
+                                                                current.trim_end(),
+                                                                snippet
+                                                            )
+                                                        };
+                                                        state.input.set_value(next);
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        state.workspaces.set_composer_menu(None);
+                                        menu_handled = true;
+                                        break;
+                                    }
+                                }
+                            } else {
+                                state.workspaces.set_composer_menu(None);
+                            }
+                        } else {
+                            state.workspaces.set_composer_menu(None);
+                        }
+                    }
+
+                    if menu_handled {
+                        state.window.request_redraw();
+                        return;
+                    }
+
+                    if input_layout.send_bounds.contains(click) {
+                        let window = state.window.clone();
+                        if !composer_disabled {
+                            self.submit_input();
+                        }
+                        window.request_redraw();
+                        return;
+                    }
+
+                    if !composer_disabled {
+                        let next_menu = if bar_layout.model_bounds.contains(click) {
+                            Some(ComposerMenuKind::Model)
+                        } else if bar_layout.effort_bounds.contains(click) {
+                            Some(ComposerMenuKind::Effort)
+                        } else if bar_layout.access_bounds.contains(click) {
+                            Some(ComposerMenuKind::Access)
+                        } else if bar_layout.skill_bounds.contains(click) {
+                            Some(ComposerMenuKind::Skill)
+                        } else {
+                            None
+                        };
+                        if let Some(kind) = next_menu {
+                            if state.workspaces.composer_menu == Some(kind) {
+                                state.workspaces.set_composer_menu(None);
+                            } else {
+                                state.workspaces.set_composer_menu(Some(kind));
+                            }
+                            state.window.request_redraw();
+                            return;
+                        }
+                    }
                 }
 
                 let chat_layout = state.build_chat_layout(
@@ -1065,9 +1261,11 @@ impl ApplicationHandler for AutopilotApp {
                         return;
                     }
                 }
-                state
-                    .input
-                    .event(&input_event, input_bounds, &mut state.event_context);
+                if !input_disabled {
+                    state
+                        .input
+                        .event(&input_event, input_bounds, &mut state.event_context);
+                }
                 state.window.request_redraw();
             }
             WindowEvent::MouseWheel { delta, .. } => {
@@ -1339,45 +1537,12 @@ impl ApplicationHandler for AutopilotApp {
                         // Check for Enter key to submit (but not Shift+Enter, which inserts newline)
                         if let WinitKey::Named(WinitNamedKey::Enter) = &key_event.logical_key {
                             if !state.modifiers.shift_key() {
-                                let mut action = CommandAction::None;
-                                let mut submit_prompt = None;
-
-                                {
-                                    let prompt = state.input.get_value().to_string();
-                                    if prompt.trim().is_empty() {
-                                        return;
-                                    }
-
-                                    if let Some(command) = parse_command(&prompt) {
-                                        state.settings.command_history.push(prompt);
-                                        state.input.set_value("");
-                                        action = handle_command(state, command);
-                                    } else if !state.chat.is_thinking {
-                                        state.settings.command_history.push(prompt.clone());
-                                        state.input.set_value("");
-                                        submit_prompt = Some(prompt);
-                                    } else {
-                                        return;
-                                    }
+                                if input_disabled {
+                                    return;
                                 }
-
-                                match action {
-                                    CommandAction::SubmitPrompt(prompt) => {
-                                        self.submit_prompt(prompt)
-                                    }
-                                    CommandAction::StartReview(review) => {
-                                        self.start_review(review)
-                                    }
-                                    CommandAction::None => {
-                                        if let Some(prompt) = submit_prompt {
-                                            self.submit_prompt(prompt);
-                                        }
-                                    }
-                                }
-
-                                if let Some(s) = &self.state {
-                                    s.window.request_redraw();
-                                }
+                                let window = state.window.clone();
+                                self.submit_input();
+                                window.request_redraw();
                                 return;
                             }
                             // Shift+Enter falls through to input handler below
@@ -1385,10 +1550,12 @@ impl ApplicationHandler for AutopilotApp {
 
                         if let Some(key) = convert_key_for_input(&key_event.logical_key) {
                             let input_event = InputEvent::KeyDown { key, modifiers };
-                            state
-                                .input
-                                .event(&input_event, input_bounds, &mut state.event_context);
-                            state.window.request_redraw();
+                            if !input_disabled {
+                                state
+                                    .input
+                                    .event(&input_event, input_bounds, &mut state.event_context);
+                                state.window.request_redraw();
+                            }
                         }
                     }
                 }
