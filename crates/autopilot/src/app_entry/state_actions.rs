@@ -31,6 +31,7 @@ use crate::app::{
     SkillCardAction, build_input, build_markdown_config, build_markdown_document,
     build_markdown_renderer, now_timestamp,
 };
+use crate::app::ui::resolve_theme;
 use crate::keybindings::Action as KeyAction;
 
 use super::COMMAND_PALETTE_ENABLED;
@@ -940,17 +941,23 @@ impl AppState {
 
     pub(super) fn apply_settings(&mut self) {
         normalize_settings(&mut self.settings.coder_settings);
+        let resolved_theme =
+            resolve_theme(self.settings.coder_settings.theme, self.system_theme);
         let current_value = self.input.get_value().to_string();
         let focused = self.input.is_focused();
-        self.input = build_input(&self.settings.coder_settings);
+        self.input = build_input(&self.settings.coder_settings, resolved_theme);
         self.input.set_value(current_value);
         if focused {
             self.input.focus();
         }
-        self.chat.markdown_renderer = build_markdown_renderer(&self.settings.coder_settings);
+        self.chat.markdown_renderer =
+            build_markdown_renderer(&self.settings.coder_settings, resolved_theme);
         self.chat
             .streaming_markdown
-            .set_markdown_config(build_markdown_config(&self.settings.coder_settings));
+            .set_markdown_config(build_markdown_config(
+                &self.settings.coder_settings,
+                resolved_theme,
+            ));
     }
 
     pub(super) fn update_selected_model(&mut self, model: ModelOption) {

@@ -60,6 +60,7 @@ use crate::app::ui::{
 use crate::app::wallet::WalletState;
 use crate::app::workspaces::{ComposerMenuKind, WorkspaceAccessMode, WorkspaceState};
 use crate::app::{AppState, HookModalView, build_input};
+use crate::app::ui::{ThemeSetting, resolve_theme};
 use crate::keybindings::{Action as KeyAction, match_action};
 use crate::panels::PanelLayout;
 
@@ -151,7 +152,14 @@ impl ApplicationHandler for AutopilotApp {
                     let _ = command_palette_tx.send(command.id.clone());
                 });
             let settings = load_settings();
-            let input = build_input(&settings);
+            let system_theme = window
+                .theme()
+                .map(|theme| match theme {
+                    winit::window::Theme::Light => ThemeSetting::Light,
+                    winit::window::Theme::Dark => ThemeSetting::Dark,
+                });
+            let resolved_theme = resolve_theme(settings.theme, system_theme);
+            let input = build_input(&settings, resolved_theme);
 
             let selected_model = settings_model_option(&settings);
             let mut session_index = load_session_index();
@@ -221,7 +229,7 @@ impl ApplicationHandler for AutopilotApp {
                 left_sidebar_open: true,
                 right_sidebar_open: true,
                 new_session_button_hovered: false,
-                chat: ChatState::new(&settings),
+                chat: ChatState::new(&settings, resolved_theme),
                 tools: ToolsState::new(),
                 git: GitState::new(),
                 session: SessionState::new(
@@ -265,6 +273,7 @@ impl ApplicationHandler for AutopilotApp {
                 spark_wallet: SparkWalletState::new(),
                 nip28: Nip28State::new(),
                 nip90: Nip90State::new(),
+                system_theme,
                 show_kitchen_sink: false,
                 kitchen_sink_scroll: 0.0,
                 help_scroll_offset: 0.0,
@@ -345,6 +354,16 @@ impl ApplicationHandler for AutopilotApp {
                 if let Some(active_id) = state.workspaces.active_workspace_id.as_ref() {
                     state.git.force_refresh(active_id);
                 }
+            }
+            WindowEvent::ThemeChanged(theme) => {
+                state.system_theme = Some(match theme {
+                    winit::window::Theme::Light => ThemeSetting::Light,
+                    winit::window::Theme::Dark => ThemeSetting::Dark,
+                });
+                if state.settings.coder_settings.theme == ThemeSetting::System {
+                    state.apply_settings();
+                }
+                state.window.request_redraw();
             }
             WindowEvent::Resized(size) => {
                 state.config.width = size.width.max(1);

@@ -21,7 +21,7 @@ pub(crate) fn render_app(state: &mut AppState) {
 
     let mut scene = Scene::new();
     let bounds = Bounds::new(0.0, 0.0, logical_width, logical_height);
-    let palette = palette_for(state.settings.coder_settings.theme);
+    let palette = palette_for(state.resolved_theme());
     let sidebar_layout = sidebar_layout(
         logical_width,
         logical_height,

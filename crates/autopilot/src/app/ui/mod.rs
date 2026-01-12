@@ -10,4 +10,4 @@ pub(crate) use rendering::{
     new_session_button_bounds, render_app, session_list_layout, sidebar_layout, skill_list_layout,
     skill_modal_content_top, workspace_list_layout,
 };
-pub(crate) use theme::{ThemeSetting, UiPalette, palette_for, theme_label};
+pub(crate) use theme::{ThemeSetting, UiPalette, palette_for, resolve_theme, theme_label};

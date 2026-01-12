@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
@@ -24,6 +24,8 @@ pub(crate) struct WorkspaceEntry {
     pub(crate) path: String,
     #[serde(default)]
     pub(crate) codex_bin: Option<String>,
+    #[serde(default)]
+    pub(crate) settings: WorkspaceSettings,
 }
 
 #[derive(Debug, Clone)]
@@ -33,6 +35,21 @@ pub(crate) struct WorkspaceInfo {
     pub(crate) path: String,
     pub(crate) codex_bin: Option<String>,
     pub(crate) connected: bool,
+    pub(crate) settings: WorkspaceSettings,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct WorkspaceSettings {
+    #[serde(default)]
+    pub(crate) sidebar_collapsed: bool,
+}
+
+impl Default for WorkspaceSettings {
+    fn default() -> Self {
+        Self {
+            sidebar_collapsed: false,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -289,6 +306,19 @@ pub(crate) struct ThreadStatus {
     pub(crate) is_reviewing: bool,
 }
 
+#[derive(Clone, Debug)]
+pub(crate) struct WorkspacePlanSnapshot {
+    pub(crate) turn_id: String,
+    pub(crate) explanation: Option<String>,
+    pub(crate) steps: Vec<WorkspacePlanStep>,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct WorkspacePlanStep {
+    pub(crate) step: String,
+    pub(crate) status: String,
+}
+
 #[derive(Clone, Debug, Default)]
 pub(crate) struct ThreadTimeline {
     pub(crate) items: Vec<ConversationItem>,
@@ -429,7 +459,7 @@ impl ConversationItem {
                 },
             ) => {
                 *role = new_role;
-                if !new_text.is_empty() {
+                if !new_text.is_empty() && new_text.len() >= text.len() {
                     *text = new_text;
                 }
             }
@@ -443,10 +473,10 @@ impl ConversationItem {
                     ..
                 },
             ) => {
-                if !new_summary.is_empty() {
+                if !new_summary.is_empty() && new_summary.len() >= summary.len() {
                     *summary = new_summary;
                 }
-                if !new_content.is_empty() {
+                if !new_content.is_empty() && new_content.len() >= content.len() {
                     *content = new_content;
                 }
             }
@@ -484,10 +514,10 @@ impl ToolItemData {
         if !incoming.tool_type.is_empty() {
             self.tool_type = incoming.tool_type;
         }
-        if !incoming.title.is_empty() {
+        if !incoming.title.is_empty() && self.title.is_empty() {
             self.title = incoming.title;
         }
-        if !incoming.detail.is_empty() {
+        if !incoming.detail.is_empty() && self.detail.is_empty() {
             self.detail = incoming.detail;
         }
         if let Some(status) = incoming.status {
@@ -495,16 +525,20 @@ impl ToolItemData {
                 self.status = Some(status);
             }
         }
-        if !incoming.output.is_empty() {
+        if !incoming.output.is_empty() && incoming.output.len() >= self.output.len() {
             self.output = incoming.output;
         }
         if let Some(input_value) = incoming.input_value {
-            self.input_value = Some(input_value);
+            if self.input_value.is_none() {
+                self.input_value = Some(input_value);
+            }
         }
         if let Some(output_value) = incoming.output_value {
-            self.output_value = Some(output_value);
+            if self.output_value.is_none() {
+                self.output_value = Some(output_value);
+            }
         }
-        if !incoming.changes.is_empty() {
+        if !incoming.changes.is_empty() && self.changes.is_empty() {
             self.changes = incoming.changes;
         }
     }
@@ -559,6 +593,14 @@ pub(crate) enum WorkspaceEvent {
     WorkspaceConnected {
         workspace_id: String,
     },
+    WorkspaceSettingsUpdated {
+        workspace_id: String,
+        settings: WorkspaceSettings,
+    },
+    WorkspaceSettingsUpdateFailed {
+        workspace_id: String,
+        error: String,
+    },
     WorkspaceConnectFailed {
         workspace_id: String,
         error: String,
@@ -569,6 +611,35 @@ pub(crate) enum WorkspaceEvent {
     },
     ThreadsListFailed {
         workspace_id: String,
+        error: String,
+    },
+    ThreadStarted {
+        workspace_id: String,
+        thread_id: String,
+    },
+    ThreadStartFailed {
+        workspace_id: String,
+        error: String,
+    },
+    ThreadResumed {
+        workspace_id: String,
+        thread_id: String,
+        items: Vec<ConversationItem>,
+        reviewing: bool,
+        preview: Option<String>,
+    },
+    ThreadResumeFailed {
+        workspace_id: String,
+        thread_id: String,
+        error: String,
+    },
+    ThreadArchived {
+        workspace_id: String,
+        thread_id: String,
+    },
+    ThreadArchiveFailed {
+        workspace_id: String,
+        thread_id: String,
         error: String,
     },
     UserMessageQueued {
@@ -626,8 +697,25 @@ pub(crate) enum WorkspaceCommand {
     Connect {
         workspace_id: String,
     },
+    UpdateSettings {
+        workspace_id: String,
+        settings: WorkspaceSettings,
+    },
     ListThreads {
         workspace_id: String,
+    },
+    StartThread {
+        workspace_id: String,
+        model: Option<String>,
+        access_mode: WorkspaceAccessMode,
+    },
+    ResumeThread {
+        workspace_id: String,
+        thread_id: String,
+    },
+    ArchiveThread {
+        workspace_id: String,
+        thread_id: String,
     },
     SendUserMessage {
         workspace_id: String,
@@ -693,10 +781,48 @@ impl WorkspaceRuntime {
             .try_send(WorkspaceCommand::Connect { workspace_id });
     }
 
+    pub(crate) fn update_workspace_settings(
+        &self,
+        workspace_id: String,
+        settings: WorkspaceSettings,
+    ) {
+        let _ = self.cmd_tx.try_send(WorkspaceCommand::UpdateSettings {
+            workspace_id,
+            settings,
+        });
+    }
+
     pub(crate) fn list_threads(&self, workspace_id: String) {
         let _ = self
             .cmd_tx
             .try_send(WorkspaceCommand::ListThreads { workspace_id });
+    }
+
+    pub(crate) fn start_thread(
+        &self,
+        workspace_id: String,
+        model: Option<String>,
+        access_mode: WorkspaceAccessMode,
+    ) {
+        let _ = self.cmd_tx.try_send(WorkspaceCommand::StartThread {
+            workspace_id,
+            model,
+            access_mode,
+        });
+    }
+
+    pub(crate) fn resume_thread(&self, workspace_id: String, thread_id: String) {
+        let _ = self.cmd_tx.try_send(WorkspaceCommand::ResumeThread {
+            workspace_id,
+            thread_id,
+        });
+    }
+
+    pub(crate) fn archive_thread(&self, workspace_id: String, thread_id: String) {
+        let _ = self.cmd_tx.try_send(WorkspaceCommand::ArchiveThread {
+            workspace_id,
+            thread_id,
+        });
     }
 
     pub(crate) fn send_user_message(
@@ -781,8 +907,12 @@ pub(crate) struct WorkspaceState {
     pub(crate) approvals_by_workspace: HashMap<String, Vec<WorkspaceApprovalRequest>>,
     pub(crate) composer_menu: Option<ComposerMenuKind>,
     pub(crate) timelines_by_thread: HashMap<String, ThreadTimeline>,
+    pub(crate) plans_by_thread: HashMap<String, WorkspacePlanSnapshot>,
+    pub(crate) expanded_workspaces: HashSet<String>,
+    pub(crate) loaded_threads: HashSet<String>,
     pub(crate) timeline_dirty: bool,
     pub(crate) status_message: Option<String>,
+    pub(crate) home_active: bool,
     last_focus_refresh: Option<Instant>,
     initial_restore_pending: bool,
 }
@@ -800,8 +930,12 @@ impl WorkspaceState {
             approvals_by_workspace: HashMap::new(),
             composer_menu: None,
             timelines_by_thread: HashMap::new(),
+            plans_by_thread: HashMap::new(),
+            expanded_workspaces: HashSet::new(),
+            loaded_threads: HashSet::new(),
             timeline_dirty: false,
             status_message: None,
+            home_active: false,
             last_focus_refresh: None,
             initial_restore_pending: true,
         }
@@ -856,6 +990,17 @@ impl WorkspaceState {
             .or_default();
     }
 
+    pub(crate) fn apply_workspace_settings(&mut self, workspace_id: &str, settings: WorkspaceSettings) {
+        if let Some(workspace) = self
+            .workspaces
+            .iter_mut()
+            .find(|workspace| workspace.id == workspace_id)
+        {
+            workspace.settings = settings;
+        }
+        self.timeline_dirty = true;
+    }
+
     pub(crate) fn apply_threads(
         &mut self,
         workspace_id: String,
@@ -872,6 +1017,59 @@ impl WorkspaceState {
                 .or_insert_with(|| first.id.clone());
         }
         self.threads_by_workspace.insert(workspace_id, threads);
+        self.timeline_dirty = true;
+    }
+
+    pub(crate) fn apply_thread_started(&mut self, workspace_id: &str, thread_id: &str) {
+        self.ensure_thread(workspace_id, thread_id);
+        self.set_active_thread(workspace_id, thread_id);
+        self.timeline_dirty = true;
+    }
+
+    pub(crate) fn apply_thread_resumed(
+        &mut self,
+        workspace_id: &str,
+        thread_id: &str,
+        items: Vec<ConversationItem>,
+        reviewing: bool,
+        preview: Option<String>,
+    ) {
+        self.ensure_thread(workspace_id, thread_id);
+        if let Some(preview) = preview {
+            self.update_thread_preview(workspace_id, thread_id, &preview);
+        }
+        let timeline = self.timeline_for_thread_mut(thread_id);
+        for item in items {
+            timeline.upsert(item);
+        }
+        if let Some(status) = self.thread_status_by_id.get_mut(thread_id) {
+            status.is_reviewing = reviewing;
+        }
+        self.set_thread_loaded(thread_id);
+        self.mark_dirty_for(workspace_id, thread_id);
+    }
+
+    pub(crate) fn apply_thread_archived(&mut self, workspace_id: &str, thread_id: &str) {
+        if let Some(list) = self.threads_by_workspace.get_mut(workspace_id) {
+            list.retain(|thread| thread.id != thread_id);
+        }
+        self.thread_status_by_id.remove(thread_id);
+        self.timelines_by_thread.remove(thread_id);
+        self.plans_by_thread.remove(thread_id);
+        self.loaded_threads.remove(thread_id);
+        if let Some(active) = self.active_thread_by_workspace.get(workspace_id) {
+            if active == thread_id {
+                self.active_thread_by_workspace.remove(workspace_id);
+                if let Some(first) = self
+                    .threads_by_workspace
+                    .get(workspace_id)
+                    .and_then(|threads| threads.first())
+                {
+                    self.active_thread_by_workspace
+                        .insert(workspace_id.to_string(), first.id.clone());
+                }
+            }
+        }
         self.timeline_dirty = true;
     }
 
@@ -892,7 +1090,13 @@ impl WorkspaceState {
             return;
         }
         self.active_workspace_id = Some(workspace_id);
+        self.home_active = false;
         self.composer_menu = None;
+        self.timeline_dirty = true;
+    }
+
+    pub(crate) fn set_home_active(&mut self, active: bool) {
+        self.home_active = active;
         self.timeline_dirty = true;
     }
 
@@ -1078,6 +1282,41 @@ impl WorkspaceState {
         self.active_thread_status()
             .map(|status| status.is_reviewing)
             .unwrap_or(false)
+    }
+
+    pub(crate) fn is_workspace_expanded(&self, workspace_id: &str) -> bool {
+        self.expanded_workspaces.contains(workspace_id)
+    }
+
+    pub(crate) fn toggle_workspace_expanded(&mut self, workspace_id: &str) {
+        if self.expanded_workspaces.contains(workspace_id) {
+            self.expanded_workspaces.remove(workspace_id);
+        } else {
+            self.expanded_workspaces.insert(workspace_id.to_string());
+        }
+        self.timeline_dirty = true;
+    }
+
+    pub(crate) fn set_thread_loaded(&mut self, thread_id: &str) {
+        self.loaded_threads.insert(thread_id.to_string());
+    }
+
+    pub(crate) fn is_thread_loaded(&self, thread_id: &str) -> bool {
+        self.loaded_threads.contains(thread_id)
+    }
+
+    pub(crate) fn set_plan_for_thread(
+        &mut self,
+        thread_id: &str,
+        plan: WorkspacePlanSnapshot,
+    ) {
+        self.plans_by_thread
+            .insert(thread_id.to_string(), plan);
+        self.timeline_dirty = true;
+    }
+
+    pub(crate) fn plan_for_thread(&self, thread_id: &str) -> Option<&WorkspacePlanSnapshot> {
+        self.plans_by_thread.get(thread_id)
     }
 
     pub(crate) fn set_composer_menu(&mut self, menu: Option<ComposerMenuKind>) {
@@ -1430,8 +1669,43 @@ async fn run_workspace_loop(
                             workspace_id: entry.id.clone(),
                             error: err,
                         })
-                        .await;
+                    .await;
                 }
+            }
+            WorkspaceCommand::UpdateSettings {
+                workspace_id,
+                settings,
+            } => {
+                let entry_id = match workspaces.get_mut(&workspace_id) {
+                    Some(entry) => {
+                        entry.settings = settings.clone();
+                        entry.id.clone()
+                    }
+                    None => {
+                        let _ = event_tx
+                            .send(WorkspaceEvent::WorkspaceSettingsUpdateFailed {
+                                workspace_id,
+                                error: "Workspace not found".to_string(),
+                            })
+                            .await;
+                        continue;
+                    }
+                };
+                if let Err(err) = save_workspace_entries(&storage_path, &workspaces) {
+                    let _ = event_tx
+                        .send(WorkspaceEvent::WorkspaceSettingsUpdateFailed {
+                            workspace_id: entry_id.clone(),
+                            error: err,
+                        })
+                        .await;
+                    continue;
+                }
+                let _ = event_tx
+                    .send(WorkspaceEvent::WorkspaceSettingsUpdated {
+                        workspace_id: entry_id,
+                        settings,
+                    })
+                    .await;
             }
             WorkspaceCommand::ListThreads { workspace_id } => {
                 let Some(session) = sessions.get(&workspace_id) else {
@@ -1457,6 +1731,129 @@ async fn run_workspace_loop(
                             .send(WorkspaceEvent::ThreadsListFailed {
                                 workspace_id: session.entry.id.clone(),
                                 error: err,
+                            })
+                            .await;
+                    }
+                }
+            }
+            WorkspaceCommand::StartThread {
+                workspace_id,
+                model,
+                access_mode,
+            } => {
+                let Some(session) = sessions.get(&workspace_id) else {
+                    let _ = event_tx
+                        .send(WorkspaceEvent::ThreadStartFailed {
+                            workspace_id,
+                            error: "Workspace not connected".to_string(),
+                        })
+                        .await;
+                    continue;
+                };
+                let start_params = app_server::ThreadStartParams {
+                    model,
+                    model_provider: None,
+                    cwd: Some(session.entry.path.clone()),
+                    approval_policy: Some(access_mode.approval_policy()),
+                    sandbox: Some(access_mode.sandbox_mode()),
+                };
+                match session.client.thread_start(start_params).await {
+                    Ok(response) => {
+                        let _ = event_tx
+                            .send(WorkspaceEvent::ThreadStarted {
+                                workspace_id: session.entry.id.clone(),
+                                thread_id: response.thread.id,
+                            })
+                            .await;
+                    }
+                    Err(err) => {
+                        let _ = event_tx
+                            .send(WorkspaceEvent::ThreadStartFailed {
+                                workspace_id: session.entry.id.clone(),
+                                error: format!("thread/start failed: {}", err),
+                            })
+                            .await;
+                    }
+                }
+            }
+            WorkspaceCommand::ResumeThread {
+                workspace_id,
+                thread_id,
+            } => {
+                let Some(session) = sessions.get(&workspace_id) else {
+                    let _ = event_tx
+                        .send(WorkspaceEvent::ThreadResumeFailed {
+                            workspace_id,
+                            thread_id,
+                            error: "Workspace not connected".to_string(),
+                        })
+                        .await;
+                    continue;
+                };
+                let resume_params = app_server::ThreadResumeParams {
+                    thread_id: thread_id.clone(),
+                    model: None,
+                    model_provider: None,
+                    cwd: Some(session.entry.path.clone()),
+                    approval_policy: None,
+                    sandbox: None,
+                };
+                match session.client.thread_resume(resume_params).await {
+                    Ok(response) => {
+                        let (items, reviewing, preview) = items_from_thread_snapshot(&response.thread);
+                        let _ = event_tx
+                            .send(WorkspaceEvent::ThreadResumed {
+                                workspace_id: session.entry.id.clone(),
+                                thread_id: response.thread.id,
+                                items,
+                                reviewing,
+                                preview,
+                            })
+                            .await;
+                    }
+                    Err(err) => {
+                        let _ = event_tx
+                            .send(WorkspaceEvent::ThreadResumeFailed {
+                                workspace_id: session.entry.id.clone(),
+                                thread_id,
+                                error: format!("thread/resume failed: {}", err),
+                            })
+                            .await;
+                    }
+                }
+            }
+            WorkspaceCommand::ArchiveThread {
+                workspace_id,
+                thread_id,
+            } => {
+                let Some(session) = sessions.get(&workspace_id) else {
+                    let _ = event_tx
+                        .send(WorkspaceEvent::ThreadArchiveFailed {
+                            workspace_id,
+                            thread_id,
+                            error: "Workspace not connected".to_string(),
+                        })
+                        .await;
+                    continue;
+                };
+                let params = app_server::ThreadArchiveParams {
+                    thread_id: thread_id.clone(),
+                };
+                match session.client.thread_archive(params).await {
+                    Ok(_response) => {
+                        let _ = event_tx
+                            .send(WorkspaceEvent::ThreadArchived {
+                                workspace_id: session.entry.id.clone(),
+                                thread_id,
+                            })
+                            .await;
+                    }
+                    Err(err) => {
+                        let _ = event_tx
+                            .send(WorkspaceEvent::ThreadArchiveFailed {
+                                workspace_id: session.entry.id.clone(),
+                                thread_id,
+                                error: format!("thread/archive failed: {}", err),
                             })
                             .await;
                     }
@@ -1884,6 +2281,7 @@ fn create_workspace_entry(path: &Path, codex_bin: Option<String>) -> WorkspaceEn
         name,
         path: path.to_string_lossy().to_string(),
         codex_bin,
+        settings: WorkspaceSettings::default(),
     }
 }
 
@@ -1894,6 +2292,7 @@ fn entry_to_info(entry: &WorkspaceEntry, connected: bool) -> WorkspaceInfo {
         path: entry.path.clone(),
         codex_bin: entry.codex_bin.clone(),
         connected,
+        settings: entry.settings.clone(),
     }
 }
 
@@ -1928,7 +2327,19 @@ pub(crate) fn conversation_item_from_value(item: &Value) -> Option<ConversationI
     let item_type = item.get("type").and_then(Value::as_str)?;
     let id = item.get("id").and_then(Value::as_str)?.to_string();
     match item_type {
-        "userMessage" => None,
+        "userMessage" => {
+            let text = item
+                .get("content")
+                .and_then(Value::as_array)
+                .map(|parts| join_user_inputs(parts))
+                .or_else(|| item.get("text").and_then(Value::as_str).map(|s| s.to_string()))
+                .unwrap_or_default();
+            Some(ConversationItem::Message {
+                id,
+                role: ConversationRole::User,
+                text,
+            })
+        }
         "agentMessage" => {
             let text = item
                 .get("text")
@@ -2158,12 +2569,57 @@ pub(crate) fn turn_diff_item(turn_id: &str, diff: &str) -> ConversationItem {
     }
 }
 
+fn items_from_thread_snapshot(
+    thread: &app_server::ThreadSnapshot,
+) -> (Vec<ConversationItem>, bool, Option<String>) {
+    let mut items = Vec::new();
+    let mut reviewing = false;
+    for turn in &thread.turns {
+        for item in &turn.items {
+            if let Some(item_type) = item.get("type").and_then(Value::as_str) {
+                match item_type {
+                    "enteredReviewMode" => reviewing = true,
+                    "exitedReviewMode" => reviewing = false,
+                    _ => {}
+                }
+            }
+            if let Some(converted) = conversation_item_from_value(item) {
+                items.push(converted);
+            }
+        }
+    }
+    let preview = if thread.preview.trim().is_empty() {
+        None
+    } else {
+        Some(thread.preview.trim().to_string())
+    };
+    (items, reviewing, preview)
+}
+
 fn join_string_array(parts: &[Value]) -> String {
     parts
         .iter()
         .filter_map(|value| value.as_str())
         .collect::<Vec<_>>()
         .join("\n")
+}
+
+fn join_user_inputs(parts: &[Value]) -> String {
+    let mut lines = Vec::new();
+    for entry in parts {
+        if let Some(text) = entry.get("text").and_then(Value::as_str) {
+            if !text.trim().is_empty() {
+                lines.push(text.to_string());
+            }
+            continue;
+        }
+        if let Some(value) = entry.as_str() {
+            if !value.trim().is_empty() {
+                lines.push(value.to_string());
+            }
+        }
+    }
+    lines.join("\n")
 }
 
 fn item_string(item: &Value, key: &str) -> Option<String> {

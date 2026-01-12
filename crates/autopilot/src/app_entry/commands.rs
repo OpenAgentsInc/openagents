@@ -1790,15 +1790,14 @@ pub(super) fn handle_modal_input(state: &mut AppState, key: &WinitKey) -> bool {
                         if let Some(item) = current_item {
                             match item {
                                 SettingsItem::Theme => {
-                                    state.settings.coder_settings.theme = if state
+                                    state.settings.coder_settings.theme = match state
                                         .settings
                                         .coder_settings
                                         .theme
-                                        == ThemeSetting::Dark
                                     {
-                                        ThemeSetting::Light
-                                    } else {
-                                        ThemeSetting::Dark
+                                        ThemeSetting::System => ThemeSetting::Dark,
+                                        ThemeSetting::Dark => ThemeSetting::Light,
+                                        ThemeSetting::Light => ThemeSetting::System,
                                     };
                                     state.apply_settings();
                                     state.persist_settings();
