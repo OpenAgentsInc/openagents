@@ -21,6 +21,7 @@ pub mod module;
 pub mod outcome_feedback;
 pub mod performance;
 pub mod sessions;
+pub mod situation;
 pub mod staleness;
 pub mod training;
 
@@ -32,5 +33,6 @@ pub use module::*;
 pub use outcome_feedback::*;
 pub use performance::*;
 pub use sessions::*;
+pub use situation::*;
 pub use staleness::*;
 pub use training::*;

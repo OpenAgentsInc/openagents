@@ -120,7 +120,7 @@ pub async fn list(args: ListArgs) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn print_issue_line(issue: &oanix::IssueSummary) {
+fn print_issue_line(issue: &crate::manifest::IssueSummary) {
     let status_icon = if issue.is_blocked { "[x]" } else { "[ ]" };
     println!("  {} #{}: {}", status_icon, issue.number, issue.title);
 }

@@ -924,7 +924,7 @@ impl AppState {
         let (tx, rx) = mpsc::unbounded_channel();
         self.autopilot.oanix_manifest_rx = Some(rx);
         tokio::spawn(async move {
-            match oanix::boot().await {
+            match adjutant::boot().await {
                 Ok(manifest) => {
                     let _ = tx.send(manifest);
                 }

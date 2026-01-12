@@ -190,7 +190,7 @@ impl ApplicationHandler for AutopilotApp {
             let (oanix_tx, oanix_rx) = mpsc::unbounded_channel();
             let oanix_manifest_rx = Some(oanix_rx);
             tokio::spawn(async move {
-                match oanix::boot().await {
+                match adjutant::boot().await {
                     Ok(manifest) => {
                         tracing::info!(
                             "OANIX booted on startup, workspace: {:?}",

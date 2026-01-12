@@ -32,7 +32,6 @@ which = "7.0"
 
 # Autopilot/Adjutant
 adjutant = { path = "../adjutant" }
-oanix = { path = "../oanix" }
 gateway = { path = "../gateway" }
 lm-router = { path = "../lm-router" }
 openagents-spark = { path = "../spark" }

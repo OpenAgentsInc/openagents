@@ -94,7 +94,7 @@ pub(crate) fn submit_autopilot_prompt(
             }
         } else {
             tracing::info!("Autopilot: booting OANIX...");
-            match oanix::boot().await {
+            match adjutant::boot().await {
                 Ok(m) => {
                     tracing::info!(
                         "Autopilot: OANIX booted, workspace: {:?}",

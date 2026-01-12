@@ -1,21 +1,18 @@
-//! Display formatting for OANIX boot output.
+//! Display formatting for boot output.
 
 use crate::manifest::OanixManifest;
-use crate::situation::SituationAssessment;
 
 /// Print the full manifest in a nice format.
 pub fn print_manifest(manifest: &OanixManifest) {
-    print_hardware(&manifest);
+    print_hardware(manifest);
     println!();
-    print_compute(&manifest);
+    print_compute(manifest);
     println!();
-    print_network(&manifest);
+    print_network(manifest);
     println!();
-    print_identity(&manifest);
+    print_identity(manifest);
     println!();
-    print_workspace(&manifest);
-    println!();
-    print_situation(&manifest);
+    print_workspace(manifest);
 }
 
 fn print_hardware(manifest: &OanixManifest) {
@@ -305,47 +302,4 @@ fn print_workspace(manifest: &OanixManifest) {
             println!("       Run in a project directory with .openagents/");
         }
     }
-}
-
-fn print_situation(manifest: &OanixManifest) {
-    let situation = SituationAssessment::from_manifest(manifest);
-
-    println!("Situation Assessment");
-
-    // Environment
-    let env_str = match &situation.environment {
-        crate::situation::Environment::Developer { os } => format!("Developer ({})", os),
-        crate::situation::Environment::Server => "Server".to_string(),
-        crate::situation::Environment::Container => "Container".to_string(),
-        crate::situation::Environment::Unknown => "Unknown".to_string(),
-    };
-    println!("  Environment: {}", env_str);
-
-    // Compute power
-    let compute_str = match situation.compute_power {
-        crate::situation::ComputePower::High => "High (can run large models)",
-        crate::situation::ComputePower::Medium => "Medium (can run 7B models)",
-        crate::situation::ComputePower::Low => "Low (small models or API)",
-        crate::situation::ComputePower::SwarmOnly => "Swarm only (no local inference)",
-    };
-    println!("  Compute: {}", compute_str);
-
-    // Connectivity
-    let conn_str = match situation.connectivity {
-        crate::situation::Connectivity::Full => "Full (internet + nostr)",
-        crate::situation::Connectivity::InternetOnly => "Internet only",
-        crate::situation::Connectivity::Offline => "Offline",
-    };
-    println!("  Connectivity: {}", conn_str);
-
-    // Recommended action
-    let action_str = match situation.recommended_action {
-        crate::situation::RecommendedAction::AwaitUser => "Awaiting user direction",
-        crate::situation::RecommendedAction::InitializeIdentity => {
-            "Initialize identity first (run 'pylon init')"
-        }
-        crate::situation::RecommendedAction::ConnectNetwork => "Connect to network",
-        crate::situation::RecommendedAction::StartProvider => "Could start provider mode",
-    };
-    println!("\nRecommended: {}", action_str);
 }

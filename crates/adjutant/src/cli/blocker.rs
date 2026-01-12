@@ -1,6 +1,6 @@
 //! Blocker analysis - categorize why issues are blocked and suggest unblocking work.
 
-use oanix::IssueSummary;
+use crate::manifest::IssueSummary;
 use std::collections::HashMap;
 
 /// Analysis of blocked issues.

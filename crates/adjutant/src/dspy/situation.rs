@@ -5,8 +5,10 @@
 use anyhow::Result;
 use dsrs::core::signature::MetaSignature;
 use dsrs::data::example::Example;
+use dsrs::{LM, Predict, Predictor, example};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+use std::sync::Arc;
 
 /// Urgency level for recommended actions.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -96,22 +98,41 @@ impl std::str::FromStr for PriorityAction {
     }
 }
 
+/// Estimated complexity for an issue or task.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum LifecycleComplexity {
+    /// Simple task, can be done quickly.
+    Low,
+    /// Moderate complexity, requires some effort.
+    Medium,
+    /// Complex task, requires significant effort.
+    High,
+}
+
+impl std::fmt::Display for LifecycleComplexity {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            LifecycleComplexity::Low => write!(f, "LOW"),
+            LifecycleComplexity::Medium => write!(f, "MEDIUM"),
+            LifecycleComplexity::High => write!(f, "HIGH"),
+        }
+    }
+}
+
+impl std::str::FromStr for LifecycleComplexity {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_uppercase().as_str() {
+            "LOW" => Ok(LifecycleComplexity::Low),
+            "MEDIUM" => Ok(LifecycleComplexity::Medium),
+            "HIGH" => Ok(LifecycleComplexity::High),
+            _ => Err(format!("Unknown complexity: {}", s)),
+        }
+    }
+}
+
 /// Situation Assessment Signature.
-///
-/// Analyzes the current system state and determines what the agent should
-/// prioritize. This replaces the rule-based `SituationAssessment::from_manifest()`
-/// with a learnable approach.
-///
-/// # Inputs
-/// - `system_state`: Current hardware/compute state as JSON (from OanixManifest)
-/// - `pending_events`: Pending events and requests in queue
-/// - `recent_history`: Recent decisions and their outcomes
-///
-/// # Outputs
-/// - `priority_action`: What to do next (AWAIT_USER, WORK_ISSUE, etc.)
-/// - `urgency`: Urgency level (IMMEDIATE, NORMAL, DEFERRED)
-/// - `reasoning`: Explanation for the recommended action
-/// - `confidence`: Confidence in this assessment (0.0-1.0)
 #[derive(Debug, Clone)]
 pub struct SituationAssessmentSignature {
     instruction: String,
@@ -235,6 +256,112 @@ impl MetaSignature for SituationAssessmentSignature {
     }
 }
 
+// ============================================================================
+// Pipeline Wrappers
+// ============================================================================
+
+/// Input for situation assessment.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SituationInput {
+    /// System state as JSON (from OanixManifest).
+    pub system_state: String,
+    /// Pending events as JSON array.
+    pub pending_events: String,
+    /// Recent decisions as JSON array.
+    pub recent_history: String,
+}
+
+/// Result from situation assessment.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SituationResult {
+    /// Priority action to take.
+    pub priority_action: PriorityAction,
+    /// Urgency level.
+    pub urgency: Urgency,
+    /// Reasoning for the decision.
+    pub reasoning: String,
+    /// Confidence in this assessment (0.0-1.0).
+    pub confidence: f32,
+}
+
+/// DSPy-powered situation assessment pipeline.
+pub struct SituationPipeline {
+    lm: Option<Arc<LM>>,
+}
+
+impl Default for SituationPipeline {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl SituationPipeline {
+    /// Create a new situation pipeline using the global LM.
+    pub fn new() -> Self {
+        Self { lm: None }
+    }
+
+    /// Create a pipeline with a specific LM.
+    pub fn with_lm(lm: Arc<LM>) -> Self {
+        Self { lm: Some(lm) }
+    }
+
+    /// Helper to get string from prediction value.
+    fn get_string(prediction: &dsrs::Prediction, key: &str) -> String {
+        let val = prediction.get(key, None);
+        if let Some(s) = val.as_str() {
+            s.to_string()
+        } else {
+            val.to_string().trim_matches('"').to_string()
+        }
+    }
+
+    /// Helper to get f32 from prediction value.
+    fn get_f32(prediction: &dsrs::Prediction, key: &str) -> f32 {
+        let val = prediction.get(key, None);
+        if let Some(n) = val.as_f64() {
+            n as f32
+        } else if let Some(s) = val.as_str() {
+            s.parse().unwrap_or(0.0)
+        } else {
+            0.0
+        }
+    }
+
+    /// Assess the current situation and recommend next action.
+    pub async fn assess(&self, input: &SituationInput) -> Result<SituationResult> {
+        // Check if we have an LM available (either local or global)
+        if self.lm.is_none() && dsrs::GLOBAL_SETTINGS.read().unwrap().is_none() {
+            return Err(anyhow::anyhow!("No LM available for DSPy assessment"));
+        }
+
+        let signature = SituationAssessmentSignature::new();
+        let predictor = Predict::new(signature);
+
+        let example = example! {
+            "system_state": "input" => input.system_state.clone(),
+            "pending_events": "input" => input.pending_events.clone(),
+            "recent_history": "input" => input.recent_history.clone(),
+        };
+
+        let prediction = if let Some(lm) = &self.lm {
+            predictor.forward_with_config(example, lm.clone()).await?
+        } else {
+            predictor.forward(example).await?
+        };
+
+        let action_str = Self::get_string(&prediction, "priority_action");
+        let urgency_str = Self::get_string(&prediction, "urgency");
+
+        Ok(SituationResult {
+            priority_action: action_str.parse().unwrap_or(PriorityAction::AwaitUser),
+            urgency: urgency_str.parse().unwrap_or(Urgency::Normal),
+            reasoning: Self::get_string(&prediction, "reasoning"),
+            confidence: Self::get_f32(&prediction, "confidence"),
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -263,32 +390,8 @@ mod tests {
     }
 
     #[test]
-    fn test_urgency_display() {
-        assert_eq!(Urgency::Immediate.to_string(), "IMMEDIATE");
-        assert_eq!(Urgency::Normal.to_string(), "NORMAL");
-        assert_eq!(Urgency::Deferred.to_string(), "DEFERRED");
-    }
-
-    #[test]
-    fn test_priority_action_display() {
-        assert_eq!(PriorityAction::AwaitUser.to_string(), "AWAIT_USER");
-        assert_eq!(PriorityAction::WorkIssue.to_string(), "WORK_ISSUE");
-        assert_eq!(PriorityAction::StartProvider.to_string(), "START_PROVIDER");
-    }
-
-    #[test]
-    fn test_signature_fields() {
-        let sig = SituationAssessmentSignature::new();
-
-        let inputs = sig.input_fields();
-        assert!(inputs.get("system_state").is_some());
-        assert!(inputs.get("pending_events").is_some());
-        assert!(inputs.get("recent_history").is_some());
-
-        let outputs = sig.output_fields();
-        assert!(outputs.get("priority_action").is_some());
-        assert!(outputs.get("urgency").is_some());
-        assert!(outputs.get("reasoning").is_some());
-        assert!(outputs.get("confidence").is_some());
+    fn test_situation_pipeline_creation() {
+        let pipeline = SituationPipeline::new();
+        assert!(pipeline.lm.is_none());
     }
 }

@@ -1,9 +1,8 @@
 //! Status command - show current autopilot state
 
-use clap::Args;
-use oanix::display::print_manifest;
-
 use crate::cli::boot::{boot_fast, boot_full, print_quick_checks};
+use crate::display::print_manifest;
+use clap::Args;
 
 /// Status command arguments
 #[derive(Args)]

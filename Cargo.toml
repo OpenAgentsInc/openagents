@@ -17,7 +17,6 @@ members = [
     "crates/local-inference",
     "crates/nostr/core",
     "crates/nostr/client",
-    "crates/oanix",
     "crates/pylon",
     "crates/relay",
     "crates/runtime",

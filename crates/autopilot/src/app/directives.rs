@@ -1,6 +1,5 @@
+use adjutant::DirectiveSummary;
 use std::cmp::Reverse;
-
-use oanix::manifest::DirectiveSummary;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum DirectiveStatus {

@@ -40,19 +40,22 @@
 mod app_server_executor;
 pub mod auth;
 pub mod autopilot_loop;
+pub mod boot;
 pub mod cli;
 pub mod codex_executor;
 pub mod delegate;
+pub mod discovery;
+pub mod display;
 pub mod dspy;
 pub mod dspy_orchestrator;
 pub mod executor;
+pub mod manifest;
 pub mod planner;
 pub mod rlm_agent;
 pub mod tiered;
 pub mod tools;
 
 use dsrs::LM;
-use oanix::{OanixManifest, WorkspaceManifest};
 use std::path::PathBuf;
 use std::sync::Arc;
 use thiserror::Error;
@@ -64,13 +67,25 @@ pub use autopilot_loop::{
     ChannelOutput, CliOutput, DSPY_META_KEY, DspyStage, SESSION_ID_META_KEY, TodoStatus, TodoTask,
     Verification, generate_session_id,
 };
+pub use boot::{boot, boot_with_config};
 pub use codex_executor::CodexExecutor;
+pub use display::print_manifest;
 pub use dspy_orchestrator::{AssessmentResult, DspyOrchestrator};
 pub use executor::TaskResult;
+pub use manifest::{
+    BootConfig, ComputeManifest, DirectiveSummary, GpuDevice, HardwareManifest, IdentityManifest,
+    InferenceBackend, IssueSummary, NetworkManifest, OanixManifest, RelayStatus, WorkspaceManifest,
+};
 pub use planner::{Complexity, TaskPlan};
 pub use rlm_agent::{rlm_agent_definition, rlm_agent_with_write_access};
 pub use tiered::TieredExecutor;
 pub use tools::{Tool, ToolRegistry};
+
+// Re-export DSPy situation types
+pub use dspy::situation::{
+    LifecycleComplexity, PriorityAction, SituationInput, SituationPipeline, SituationResult,
+    Urgency,
+};
 
 /// Errors that can occur during Adjutant operations.
 #[derive(Error, Debug)]

@@ -62,10 +62,6 @@ engines.
 The nostr workspace provides core Nostr protocol types, relay client APIs, a relay server, and
 integration tests.
 
-## oanix
-The oanix crate is the agent OS runtime for environment discovery, capability manifests, and
-situation assessment during boot.
-
 ## protocol
 The protocol crate provides typed job schemas with deterministic hashing, provenance, and
 verification strategies for the OpenAgents swarm.
