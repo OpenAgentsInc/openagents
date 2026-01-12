@@ -1,7 +1,6 @@
 [workspace]
 resolver = "2"
 members = [
-    "crates/acp-adapter",
     "crates/adjutant",
     "crates/agent",
     "crates/autopilot",
@@ -23,12 +22,10 @@ members = [
     "crates/nostr/client",
     "crates/oanix",
     "crates/pylon",
-    "crates/recorder",
     "crates/relay",
     "crates/runtime",
     "crates/rlm",
     "crates/spark",
-    "crates/testing",
     "crates/vim",
     "crates/wgpui",
     # Protocol layer for typed job schemas

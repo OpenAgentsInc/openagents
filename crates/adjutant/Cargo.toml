@@ -22,7 +22,6 @@ oanix = { path = "../oanix" }
 rlm = { path = "../rlm" }
 issues = { path = "../issues" }
 gateway = { path = "../gateway" }
-acp-adapter = { path = "../acp-adapter" }
 dsrs = { path = "../dsrs" }
 dsrs-macros = { path = "../dsrs-macros" }
 
