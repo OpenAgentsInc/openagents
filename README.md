@@ -1,4 +1,4 @@
-# Autopilot (OpenAgents)
+# OpenAgents Autopilot
 
 Autopilot is the autonomous coding agent in the OpenAgents workspace. It runs a
 full GUI and CLI experience on top of the Codex app-server for interactive work,
@@ -8,7 +8,7 @@ verify, and report without hand-holding, while keeping the entire run local-firs
 and fully inspectable.
 
 If you are looking for the broader OpenAgents vision, product lineup, and
-infrastructure stack, see `PROJECT_OVERVIEW.md`.
+infrastructure stack, see [PROJECT_OVERVIEW.md](PROJECT_OVERVIEW.md).
 
 ## Quick Start
 
@@ -35,9 +35,9 @@ becomes a training signal for future runs.
 
 ## Documentation
 
-- Autopilot MVP: `crates/autopilot/docs/MVP.md`
-- Autopilot Roadmap: `crates/autopilot/docs/ROADMAP.md`
-- Autopilot Execution Flow: `crates/autopilot-core/docs/EXECUTION_FLOW.md`
-- DSPy Strategy: `crates/dsrs/docs/README.md`
-- DSPy Roadmap: `crates/dsrs/docs/DSPY_ROADMAP.md`
-- Project Overview: `PROJECT_OVERVIEW.md`
+- Autopilot MVP: [crates/autopilot/docs/MVP.md](crates/autopilot/docs/MVP.md)
+- Autopilot Roadmap: [crates/autopilot/docs/ROADMAP.md](crates/autopilot/docs/ROADMAP.md)
+- Autopilot Execution Flow: [crates/autopilot-core/docs/EXECUTION_FLOW.md](crates/autopilot-core/docs/EXECUTION_FLOW.md)
+- DSPy Strategy: [crates/dsrs/docs/README.md](crates/dsrs/docs/README.md)
+- DSPy Roadmap: [crates/dsrs/docs/DSPY_ROADMAP.md](crates/dsrs/docs/DSPY_ROADMAP.md)
+- Project Overview: [PROJECT_OVERVIEW.md](PROJECT_OVERVIEW.md)
