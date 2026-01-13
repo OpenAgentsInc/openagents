@@ -18,6 +18,8 @@ OpenAgents uses Nostr event kinds for job coordination and agent lifecycle.
 
 ### NIP-90 Job Events (Implemented)
 
+> **Note:** Kind numbers shown are current defaults per the NIP-90 specification. Schema IDs (e.g., `oa.code_chunk_analysis.v1`) are the canonical identifiers for job types and will remain stable even if kind numbers change.
+
 | Kind | Name | Purpose | Status |
 |------|------|---------|--------|
 | 5050 | Job Request | Buyer submits job with typed schema | 🟡 Partial |
