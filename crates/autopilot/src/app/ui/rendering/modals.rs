@@ -28,6 +28,7 @@ include!("modals/nip90.rs");
 include!("modals/config.rs");
 include!("modals/mcp_config.rs");
 include!("modals/help.rs");
+include!("modals/issue_validation.rs");
 
 fn render_modals(
     state: &mut AppState,
@@ -402,6 +403,40 @@ fn render_modals(
                 logical_height,
                 scale_factor,
                 state.help_scroll_offset,
+            );
+        }
+        ModalState::ValidatingIssue {
+            issue_number,
+            ref title,
+        } => {
+            render_validating_issue_modal(
+                state,
+                scene,
+                palette,
+                bounds,
+                logical_width,
+                logical_height,
+                scale_factor,
+                issue_number,
+                title,
+            );
+        }
+        ModalState::IssueValidationFailed {
+            issue_number,
+            ref title,
+            ref reason,
+        } => {
+            render_issue_validation_failed_modal(
+                state,
+                scene,
+                palette,
+                bounds,
+                logical_width,
+                logical_height,
+                scale_factor,
+                issue_number,
+                title,
+                reason,
             );
         }
     }

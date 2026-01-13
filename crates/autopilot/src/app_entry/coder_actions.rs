@@ -44,7 +44,7 @@ use crate::commands::{Command, ReviewCommand, ReviewDelivery, ReviewTarget, pars
 use super::AutopilotApp;
 use super::COMMAND_PALETTE_ENABLED;
 use super::command_palette_ids;
-use super::commands::handle_command;
+use super::commands::{handle_command, track_selected_issue};
 use super::settings::rate_limits_from_snapshot;
 
 impl AutopilotApp {
@@ -1713,6 +1713,128 @@ impl AutopilotApp {
                 }
                 Err(TryRecvError::Disconnected) => {
                     state.autopilot.post_completion_rx = None;
+                }
+                Err(TryRecvError::Empty) => {}
+            }
+        }
+
+        // Spawn issue validation task if pending and not already running
+        if state.autopilot.pending_validation.is_some()
+            && state.autopilot.validation_result_rx.is_none()
+            && matches!(state.modal_state, ModalState::ValidatingIssue { .. })
+        {
+            if let Some(pending) = state.autopilot.pending_validation.clone() {
+                if let Some(workspace) = state
+                    .autopilot
+                    .oanix_manifest
+                    .as_ref()
+                    .and_then(|m| m.workspace.as_ref())
+                {
+                    let workspace_root = workspace.root.clone();
+                    let (validation_tx, validation_rx) =
+                        tokio::sync::mpsc::unbounded_channel();
+                    state.autopilot.validation_result_rx = Some(validation_rx);
+
+                    self.runtime_handle.spawn(async move {
+                        tracing::info!(
+                            "Validating issue #{}: {}",
+                            pending.issue_number,
+                            pending.title
+                        );
+                        let pipeline = adjutant::dspy::IssueValidationPipeline::new();
+                        let input = adjutant::dspy::IssueValidationInput {
+                            issue_number: pending.issue_number,
+                            issue_title: pending.title.clone(),
+                            issue_description: pending.description.clone(),
+                            blocked_reason: pending.blocked_reason.clone(),
+                            workspace_root,
+                        };
+                        match pipeline.validate(&input).await {
+                            Ok(result) => {
+                                tracing::info!(
+                                    "Validation result: valid={}, status={:?}, reason={}",
+                                    result.is_valid,
+                                    result.status,
+                                    result.reason
+                                );
+                                let _ = validation_tx.send(result);
+                            }
+                            Err(e) => {
+                                tracing::error!("Validation error: {}", e);
+                                // On error, assume valid to not block workflow
+                                let result = adjutant::dspy::IssueValidationResult {
+                                    is_valid: true,
+                                    status: adjutant::dspy::ValidationStatus::Valid,
+                                    reason: format!("Validation error (proceeding anyway): {}", e),
+                                    confidence: 0.0,
+                                };
+                                let _ = validation_tx.send(result);
+                            }
+                        }
+                    });
+                }
+            }
+        }
+
+        // Check for validation results
+        if let Some(rx) = &mut state.autopilot.validation_result_rx {
+            match rx.try_recv() {
+                Ok(result) => {
+                    state.autopilot.validation_result_rx = None;
+
+                    if let Some(pending) = state.autopilot.pending_validation.take() {
+                        if result.is_valid {
+                            // Valid - proceed with the issue
+                            let prompt = format!(
+                                "Work on issue #{}: {}",
+                                pending.issue_number, pending.title
+                            );
+                            track_selected_issue(
+                                state,
+                                pending.issue_number as i32,
+                                &pending.title,
+                            );
+                            state.autopilot.pending_issue_prompt = Some(prompt);
+                            state.autopilot.issue_suggestions = None;
+                            state.modal_state = ModalState::None;
+                            tracing::info!(
+                                "Issue #{} validated successfully, proceeding",
+                                pending.issue_number
+                            );
+                        } else {
+                            // Invalid - show warning modal
+                            state.modal_state = ModalState::IssueValidationFailed {
+                                issue_number: pending.issue_number,
+                                title: pending.title,
+                                reason: result.reason,
+                            };
+                            tracing::warn!(
+                                "Issue #{} validation failed: {:?}",
+                                pending.issue_number,
+                                result.status
+                            );
+                        }
+                        needs_redraw = true;
+                    }
+                }
+                Err(TryRecvError::Disconnected) => {
+                    state.autopilot.validation_result_rx = None;
+                    // On disconnect, proceed anyway
+                    if let Some(pending) = state.autopilot.pending_validation.take() {
+                        let prompt = format!(
+                            "Work on issue #{}: {}",
+                            pending.issue_number, pending.title
+                        );
+                        track_selected_issue(
+                            state,
+                            pending.issue_number as i32,
+                            &pending.title,
+                        );
+                        state.autopilot.pending_issue_prompt = Some(prompt);
+                        state.autopilot.issue_suggestions = None;
+                        state.modal_state = ModalState::None;
+                        needs_redraw = true;
+                    }
                 }
                 Err(TryRecvError::Empty) => {}
             }

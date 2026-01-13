@@ -70,6 +70,17 @@ pub(crate) enum ModalState {
     McpConfig {
         selected: usize,
     },
+    /// Issue validation in progress
+    ValidatingIssue {
+        issue_number: u32,
+        title: String,
+    },
+    /// Issue validation failed - show warning
+    IssueValidationFailed {
+        issue_number: u32,
+        title: String,
+        reason: String,
+    },
 }
 
 /// Internal mode representation for Coder UI.

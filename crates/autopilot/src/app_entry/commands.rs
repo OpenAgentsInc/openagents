@@ -2033,25 +2033,38 @@ pub(super) fn handle_modal_input(state: &mut AppState, key: &WinitKey) -> bool {
                     DspyStage::UnblockSuggestion {
                         issue_number,
                         title,
+                        blocked_reason,
                         ..
                     } => {
                         match key {
-                            // Y or Enter = confirm and start working on issue
+                            // Y or Enter = trigger validation before starting work
                             WinitKey::Character(c) if c.eq_ignore_ascii_case("y") => {
-                                let prompt = format!("Work on issue #{}: {}", issue_number, title);
-                                track_selected_issue(state, *issue_number as i32, title);
-                                state.autopilot.pending_issue_prompt = Some(prompt);
-                                state.autopilot.issue_suggestions = None;
-                                state.modal_state = ModalState::None;
+                                use crate::app::autopilot::PendingValidation;
+                                state.autopilot.pending_validation = Some(PendingValidation {
+                                    issue_number: *issue_number,
+                                    title: title.clone(),
+                                    description: None,
+                                    blocked_reason: Some(blocked_reason.clone()),
+                                });
+                                state.modal_state = ModalState::ValidatingIssue {
+                                    issue_number: *issue_number,
+                                    title: title.clone(),
+                                };
                                 state.window.request_redraw();
                                 true
                             }
                             WinitKey::Named(WinitNamedKey::Enter) => {
-                                let prompt = format!("Work on issue #{}: {}", issue_number, title);
-                                track_selected_issue(state, *issue_number as i32, title);
-                                state.autopilot.pending_issue_prompt = Some(prompt);
-                                state.autopilot.issue_suggestions = None;
-                                state.modal_state = ModalState::None;
+                                use crate::app::autopilot::PendingValidation;
+                                state.autopilot.pending_validation = Some(PendingValidation {
+                                    issue_number: *issue_number,
+                                    title: title.clone(),
+                                    description: None,
+                                    blocked_reason: Some(blocked_reason.clone()),
+                                });
+                                state.modal_state = ModalState::ValidatingIssue {
+                                    issue_number: *issue_number,
+                                    title: title.clone(),
+                                };
                                 state.window.request_redraw();
                                 true
                             }
@@ -2080,25 +2093,24 @@ pub(super) fn handle_modal_input(state: &mut AppState, key: &WinitKey) -> bool {
                             return false;
                         }
                         match key {
-                            // 1-9 = select by number
+                            // 1-9 = select by number - triggers validation
                             WinitKey::Character(c) if c.len() == 1 => {
                                 if let Some(digit) = c.chars().next().and_then(|ch| ch.to_digit(10))
                                 {
                                     let idx = (digit as usize).saturating_sub(1);
                                     if idx < suggestions.len() {
+                                        use crate::app::autopilot::PendingValidation;
                                         let suggestion = &suggestions[idx];
-                                        let prompt = format!(
-                                            "Work on issue #{}: {}",
-                                            suggestion.number, suggestion.title
-                                        );
-                                        track_selected_issue(
-                                            state,
-                                            suggestion.number as i32,
-                                            &suggestion.title,
-                                        );
-                                        state.autopilot.pending_issue_prompt = Some(prompt);
-                                        state.autopilot.issue_suggestions = None;
-                                        state.modal_state = ModalState::None;
+                                        state.autopilot.pending_validation = Some(PendingValidation {
+                                            issue_number: suggestion.number,
+                                            title: suggestion.title.clone(),
+                                            description: None,
+                                            blocked_reason: None,
+                                        });
+                                        state.modal_state = ModalState::ValidatingIssue {
+                                            issue_number: suggestion.number,
+                                            title: suggestion.title.clone(),
+                                        };
                                         state.window.request_redraw();
                                         return true;
                                     }
@@ -2127,6 +2139,58 @@ pub(super) fn handle_modal_input(state: &mut AppState, key: &WinitKey) -> bool {
                 handled
             } else {
                 false
+            }
+        }
+        ModalState::ValidatingIssue { .. } => {
+            // While validating, only allow cancel
+            match key {
+                WinitKey::Named(WinitNamedKey::Escape) => {
+                    state.autopilot.pending_validation = None;
+                    state.modal_state = ModalState::None;
+                    state.window.request_redraw();
+                    true
+                }
+                _ => false,
+            }
+        }
+        ModalState::IssueValidationFailed {
+            issue_number,
+            title,
+            ..
+        } => {
+            let issue_number = *issue_number;
+            let title = title.clone();
+            match key {
+                WinitKey::Named(WinitNamedKey::Escape) => {
+                    // Cancel - return to bootloader/none
+                    state.modal_state = ModalState::None;
+                    state.window.request_redraw();
+                    true
+                }
+                WinitKey::Character(c) if c.eq_ignore_ascii_case("c") => {
+                    // Cancel - return to bootloader/none
+                    state.modal_state = ModalState::None;
+                    state.window.request_redraw();
+                    true
+                }
+                WinitKey::Character(c) if c.eq_ignore_ascii_case("p") => {
+                    // Proceed anyway - submit the prompt despite validation failure
+                    let prompt = format!("Work on issue #{}: {}", issue_number, title);
+                    track_selected_issue(state, issue_number as i32, &title);
+                    state.autopilot.pending_issue_prompt = Some(prompt);
+                    state.autopilot.issue_suggestions = None;
+                    state.modal_state = ModalState::None;
+                    state.window.request_redraw();
+                    true
+                }
+                WinitKey::Character(c) if c.eq_ignore_ascii_case("s") => {
+                    // Skip - dismiss warning and return to suggestions (if any)
+                    state.modal_state = ModalState::None;
+                    // The issue_suggestions should still be there for user to pick another
+                    state.window.request_redraw();
+                    true
+                }
+                _ => false,
             }
         }
         ModalState::None => false,
@@ -2427,7 +2491,7 @@ fn open_url(url: &str) -> io::Result<()> {
 ///
 /// Looks up the issue by number in the database to get the full issue details,
 /// then stores the issue info in the autopilot state for post-completion tracking.
-fn track_selected_issue(state: &mut AppState, issue_number: i32, title: &str) {
+pub(super) fn track_selected_issue(state: &mut AppState, issue_number: i32, title: &str) {
     // Get workspace root from manifest
     let workspace_root = state
         .autopilot
