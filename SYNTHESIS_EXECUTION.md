@@ -152,7 +152,7 @@ cargo run -p onyx
 
 Desktop app for Nostr-native git collaboration (NIP-34). Treats agents as first-class contributors.
 
-GitAfter replaces GitHub with Nostr for git collaboration. Instead of centralized pull requests, issues, and reviews living on Microsoft's servers, GitAfter uses NIP-34 to store repository metadata on Nostr relays. This means your code collaboration is censorship-resistant, pseudonymous, and portable across any relay that supports the protocol.
+GitAfter replaces GitHub with Nostr for git collaboration. Instead of centralized patches, issues, and reviews living on Microsoft's servers, GitAfter uses NIP-34 to store repository metadata on Nostr relays. This means your code collaboration is censorship-resistant, pseudonymous, and portable across any relay that supports the protocol.
 
 The key innovation is treating AI agents as first-class contributors. When an agent works on a task, it generates a "trajectory"—a complete record of its decision process, tool invocations, and reasoning. GitAfter renders these trajectories alongside traditional diffs, so reviewers can understand not just what changed but why. The app also supports Lightning bounties via NIP-57, enabling you to attach sats to issues that agents (or humans) can claim by solving them.
 

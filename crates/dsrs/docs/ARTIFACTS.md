@@ -8,7 +8,7 @@
 - **Doc owner:** adjutant
 - **If this doc conflicts with code, code wins.**
 
-The "Verified PR Bundle" - three artifacts that capture everything about a completed task. For terminology, see [GLOSSARY.md](../../../GLOSSARY.md).
+The "Verified Patch Bundle" - a forge-agnostic artifact set describing a code change, including verification transcripts and cryptographic provenance. For terminology, see [GLOSSARY.md](../../../GLOSSARY.md).
 
 ## Overview
 
@@ -16,11 +16,11 @@ Every module execution in production produces three artifacts:
 
 | Artifact | Format | Purpose |
 |----------|--------|---------|
-| `PR_SUMMARY.md` | Markdown | Human-readable summary |
+| `PR_SUMMARY.md` | Markdown | Human-readable patch summary (filename kept for tooling stability) |
 | `RECEIPT.json` | JSON | Cryptographic audit trail |
 | `REPLAY.jsonl` | JSONL | Event stream for replay/debugging |
 
-Together, these form the **Verified PR Bundle** - the canonical output of an agent task.
+Together, these form the **Verified Patch Bundle** - the canonical output of an agent session, independent of any specific forge or workflow.
 
 ---
 
@@ -28,21 +28,21 @@ Together, these form the **Verified PR Bundle** - the canonical output of an age
 
 ```
 .adjutant/sessions/{session_id}/
-├── PR_SUMMARY.md      # Human-readable summary
+├── PR_SUMMARY.md      # Human-readable patch summary
 ├── RECEIPT.json       # Cryptographic receipt
 └── REPLAY.jsonl       # Event stream
 ```
 
 ---
 
-## PR_SUMMARY.md
+## PR_SUMMARY.md (Patch Summary)
 
-Human-readable summary of what was accomplished.
+Human-readable summary of what was accomplished. Filename kept as `PR_SUMMARY.md` for tooling stability.
 
 ### Schema
 
 ```markdown
-# PR Summary
+# Patch Summary
 
 ## Changes Made
 - {bullet list of changes}
@@ -78,7 +78,7 @@ Human-readable summary of what was accomplished.
 ### Example
 
 ```markdown
-# PR Summary
+# Patch Summary
 
 ## Changes Made
 - Fixed authentication bug in password reset flow
@@ -291,7 +291,7 @@ fn canonical_serialize(value: &Value) -> String {
 │             │ receipts                                           │
 │             ▼                                                    │
 │  ┌──────────────────────┐                                        │
-│  │ ResultSynthesisSig   │ ← Generates PR_SUMMARY.md              │
+│  │ ResultSynthesisSig   │ ← Generates Patch Summary              │
 │  └──────────┬───────────┘                                        │
 │             │                                                    │
 │             ▼                                                    │

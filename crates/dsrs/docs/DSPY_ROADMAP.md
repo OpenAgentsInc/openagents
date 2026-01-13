@@ -102,7 +102,7 @@ them.
 
 | Gate | Status | Notes |
 |------|--------|-------|
-| Verified PR Bundle emission | 🔄 Partial | ReplayBundle exists; REPLAY.jsonl exporter pending |
+| Verified Patch Bundle emission | 🔄 Partial | ReplayBundle exists; REPLAY.jsonl exporter pending |
 | ToolCallSignature wired | ⏳ Spec only | Defined in SIGNATURES.md |
 | ToolResultSignature wired | ⏳ Spec only | Defined in SIGNATURES.md |
 | VerificationSignature wired | ⏳ Spec only | Defined in SIGNATURES.md |

@@ -95,8 +95,8 @@ Canonical definitions for OpenAgents terminology. All docs should use these term
 
 | Term | Definition |
 |------|------------|
-| **Verified PR Bundle** | The three artifacts emitted by every session: PR_SUMMARY.md, RECEIPT.json, REPLAY.jsonl. |
-| **PR_SUMMARY.md** | Human-readable summary of what changed, verification results, and confidence. |
+| **Verified Patch Bundle** | The canonical output of an agent session: a human-readable patch summary, a machine-verifiable receipt, and a replay log—independent of any specific forge or workflow. Files: `PR_SUMMARY.md`, `RECEIPT.json`, `REPLAY.jsonl`. |
+| **Patch Summary** | Human-readable summary of what changed, verification results, and confidence. File: `PR_SUMMARY.md` (filename kept for tooling stability). |
 | **RECEIPT.json** | Machine-readable receipt with hashes, tool calls, verification, and policy_bundle_id. |
 | **REPLAY.jsonl** | Target canonical event stream format for replay and debugging. Spec in `crates/dsrs/docs/REPLAY.md`. |
 | **ReplayBundle** | Current implementation format in `autopilot-core/src/replay.rs`. Different from REPLAY.jsonl v1. |

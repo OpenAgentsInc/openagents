@@ -264,6 +264,6 @@ Providers register via NIP-89 kind 31990 events.
 
 - [GLOSSARY.md](../GLOSSARY.md) - Canonical terminology
 - [crates/dsrs/docs/REPLAY.md](../crates/dsrs/docs/REPLAY.md) - REPLAY.jsonl specification
-- [crates/dsrs/docs/ARTIFACTS.md](../crates/dsrs/docs/ARTIFACTS.md) - Verified PR Bundle schemas
+- [crates/dsrs/docs/ARTIFACTS.md](../crates/dsrs/docs/ARTIFACTS.md) - Verified Patch Bundle schemas
 - [PAPER.md](../PAPER.md) Appendix G - Protocol surface summary
 - [crates/protocol/](../crates/protocol/) - Protocol implementation
