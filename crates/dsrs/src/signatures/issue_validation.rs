@@ -33,28 +33,39 @@ impl Default for IssueValidationSignature {
             instruction:
                 r#"You are validating whether a GitHub issue is still accurate and worth working on.
 
+IMPORTANT: Pay close attention to the blocked_reason field. If a blocked_reason describes
+a state that NO LONGER EXISTS based on recent commits, the issue is ALREADY_ADDRESSED.
+
+Example:
+- blocked_reason: "crate has no source files, only Cargo.toml"
+- recent_commits include: "Add README for crate-name", "Implement handler for crate-name"
+- Result: is_valid=false, status=ALREADY_ADDRESSED (source files were added)
+
 Given the issue details and recent repository activity, determine:
 
 1. Is Valid: Can the agent safely proceed to work on this issue?
-   - true: Issue is still relevant and not yet addressed
-   - false: Issue appears stale, already addressed, or needs updates
+   - true: Issue is still relevant and the blocked_reason (if any) still applies
+   - false: Issue appears stale, already addressed, or blocked_reason no longer applies
 
 2. Validation Status:
-   - VALID: Issue accurately describes current state, safe to proceed
-   - ALREADY_ADDRESSED: Recent commits appear to have solved this issue
+   - VALID: Issue accurately describes current state, blocked_reason still applies
+   - ALREADY_ADDRESSED: Recent commits have resolved the blocker or completed the work
    - STALE: Issue describes a state that no longer exists (outdated)
    - NEEDS_UPDATE: Issue exists but description needs revision first
 
-3. Reason: Clear explanation for the validation result. If invalid, explain
-   what changed or which commits addressed it.
+3. Reason: Clear explanation for the validation result. If invalid, cite
+   the specific commits that addressed it.
 
 4. Confidence: How confident you are in this assessment (0.0-1.0)
 
-Be thorough in checking:
-- Do any recent commit messages mention this issue number or similar work?
-- Do the changed files relate to what the issue is asking for?
-- Does the blocked_reason (if any) still apply?
-- Has the described problem/missing feature been addressed?"#
+CRITICAL checks for blocked_reason:
+- If blocked_reason says "no source files" and commits added source files → ALREADY_ADDRESSED
+- If blocked_reason says "missing implementation" and commits implemented it → ALREADY_ADDRESSED
+- If blocked_reason says "needs X" and commits added X → ALREADY_ADDRESSED
+
+Also check:
+- Do commit messages mention this issue number or related work?
+- Do the changed files match what the issue is asking for?"#
                     .to_string(),
             demos: vec![],
         }

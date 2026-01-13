@@ -346,6 +346,13 @@ impl IssueSuggestionPipeline {
         // Validate the result before returning
         if let Some(ref result) = unblock_result {
             if let Some(root) = workspace_root {
+                tracing::info!(
+                    "Validating issue #{} blocked_reason: '{}' against recent commits at {:?}",
+                    result.issue_number,
+                    result.blocked_reason,
+                    root
+                );
+
                 // Validate that the blocked_reason is still accurate
                 let validation = validate_blocked_issue(
                     result.issue_number,
@@ -356,30 +363,32 @@ impl IssueSuggestionPipeline {
                 .await;
 
                 match validation {
-                    Ok(v) if !v.is_valid => {
-                        tracing::info!(
-                            "Issue #{} blocked_reason is stale: {} (status: {:?})",
-                            result.issue_number,
-                            v.reason,
-                            v.status
-                        );
-                        // Exclude this issue and try next candidate
-                        excluded.push(result.issue_number);
-                        return self
-                            .suggest_unblock_internal(
-                                issues,
-                                workspace_context,
-                                workspace_root,
-                                excluded,
-                            )
-                            .await;
-                    }
                     Ok(v) => {
-                        tracing::debug!(
-                            "Issue #{} validated as still relevant (confidence: {})",
+                        tracing::info!(
+                            "Validation result for #{}: is_valid={}, status={:?}, reason='{}', confidence={}",
                             result.issue_number,
+                            v.is_valid,
+                            v.status,
+                            v.reason,
                             v.confidence
                         );
+
+                        if !v.is_valid {
+                            tracing::info!(
+                                "Issue #{} blocked_reason is stale - trying next candidate",
+                                result.issue_number
+                            );
+                            // Exclude this issue and try next candidate
+                            excluded.push(result.issue_number);
+                            return self
+                                .suggest_unblock_internal(
+                                    issues,
+                                    workspace_context,
+                                    workspace_root,
+                                    excluded,
+                                )
+                                .await;
+                        }
                     }
                     Err(e) => {
                         // Validation failed (e.g., no LLM available), proceed anyway
@@ -390,6 +399,11 @@ impl IssueSuggestionPipeline {
                         );
                     }
                 }
+            } else {
+                tracing::warn!(
+                    "No workspace_root provided - skipping validation for issue #{}",
+                    result.issue_number
+                );
             }
         }
 

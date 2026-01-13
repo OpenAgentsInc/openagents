@@ -9,6 +9,7 @@ use rig::{
 use std::borrow::Cow;
 use std::sync::Arc;
 
+use super::codex::CodexCompletionModel;
 use super::gptoss::GptOssCompletionModel;
 use super::lm_router::LmRouterLM;
 use super::pylon::{PylonCompletionModel, PylonConfig};
@@ -39,6 +40,7 @@ pub enum LMClient {
     Pylon(PylonCompletionModel),
     LmRouter(LmRouterLM),
     GptOss(GptOssCompletionModel),
+    Codex(CodexCompletionModel),
 }
 
 // Implement the trait for each concrete provider type using the CompletionModel trait from rig
@@ -340,9 +342,18 @@ impl LMClient {
                 let model = GptOssCompletionModel::new(&base_url, model_id)?;
                 Ok(LMClient::GptOss(model))
             }
+            "codex" => {
+                // Uses Codex app-server for completions
+                // Format: codex:model_name (model_name is informational only)
+                if !CodexCompletionModel::is_available() {
+                    anyhow::bail!("Codex is not available. Install codex or codex-app-server.");
+                }
+                let model = CodexCompletionModel::new(model_id);
+                Ok(LMClient::Codex(model))
+            }
             _ => {
                 anyhow::bail!(
-                    "Unsupported provider: {}. Supported providers are: openai, gemini, groq, openrouter, ollama, pylon, lm-router, gptoss",
+                    "Unsupported provider: {}. Supported providers are: openai, gemini, groq, openrouter, ollama, pylon, lm-router, gptoss, codex",
                     provider
                 );
             }

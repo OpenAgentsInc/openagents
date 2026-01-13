@@ -1,3 +1,5 @@
+//! Codex app-server types for JSON-RPC API.
+
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
