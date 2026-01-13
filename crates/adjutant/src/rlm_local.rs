@@ -589,7 +589,7 @@ impl<'a> RlmLocalExecutor<'a> {
             max_items = 1;
         }
         let mut chunk_ids = Vec::new();
-        let mut current_files = Vec::new();
+        let mut current_files: Vec<PathBuf> = Vec::new();
         let mut current_content = String::new();
         let max_file_chars = (self.config.max_chunk_chars / max_items).max(256);
 
@@ -652,7 +652,7 @@ impl<'a> RlmLocalExecutor<'a> {
         chunk_ids: &[String],
     ) -> Result<(Vec<String>, u32), AdjutantError> {
         let mut outputs = Vec::new();
-        let mut tokens_used = 0;
+        let mut tokens_used: u32 = 0;
         let remaining = self
             .config
             .max_map_calls
