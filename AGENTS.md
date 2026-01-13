@@ -96,6 +96,18 @@ Use this to avoid scattering logic:
 
 ---
 
+## CLI surfaces (which binary owns what)
+
+| Binary | Purpose | Status |
+|--------|---------|--------|
+| `autopilot` | Product CLI: sessions, run, export, UI | 🟢 Implemented |
+| `pylon` | Network node CLI: jobs, wallet, provider mode, doctor | 🟢 Implemented |
+| `adjutant` | Internal/dev CLI: replay viewer, policy tooling | ⚪ Planned (commands shown in docs are spec) |
+
+If a doc references `adjutant replay ...` or `adjutant policy ...`, treat those as **planned CLI surfaces** until the binary exists.
+
+---
+
 ## Checklists (what to do when adding things)
 
 ### If you add a new decision point
