@@ -1,3 +1,4 @@
+include!("modals/bootloader.rs");
 include!("modals/model_picker.rs");
 include!("modals/session_list.rs");
 include!("modals/agent_list.rs");
@@ -58,6 +59,17 @@ fn render_modals(
     let modal_state = state.modal_state.clone();
     match modal_state {
         ModalState::None => {}
+        ModalState::Bootloader => {
+            render_bootloader_modal(
+                state,
+                scene,
+                palette,
+                bounds,
+                logical_width,
+                logical_height,
+                scale_factor,
+            );
+        }
         ModalState::ModelPicker { selected } => {
             render_model_picker_modal(
                 state,

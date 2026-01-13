@@ -2025,6 +2025,11 @@ pub(super) fn handle_modal_input(state: &mut AppState, key: &WinitKey) -> bool {
             state.window.request_redraw();
             true
         }
+        ModalState::Bootloader => {
+            // Bootloader modal doesn't respond to keyboard input
+            // Let it complete naturally
+            false
+        }
         ModalState::None => false,
     }
 }
