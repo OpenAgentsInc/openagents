@@ -6,7 +6,10 @@ ROOT_DIR="$SCRIPT_DIR/../../.."
 
 # Root-level docs to include
 ROOT_DOCS=(
+    "$ROOT_DIR/GLOSSARY.md"
+    "$ROOT_DIR/PAPER.md"
     "$ROOT_DIR/ROADMAP.md"
+    "$ROOT_DIR/SYNTHESIS.md"
     "$ROOT_DIR/SYNTHESIS_EXECUTION.md"
 )
 
