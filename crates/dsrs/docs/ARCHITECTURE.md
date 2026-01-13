@@ -8,17 +8,18 @@
 
 ## Terminology
 
-Before diving into traits, understand the key terms used throughout dsrs:
+Before diving into traits, understand the key terms used throughout dsrs. For the complete canonical vocabulary, see [GLOSSARY.md](../../../GLOSSARY.md).
 
 | Term | Definition |
 |------|------------|
-| **Adapter** | Prompt formatting + output parsing (e.g., `ChatAdapter`) |
+| **Adapter** | Prompt formatting + output parsing (e.g., `ChatAdapter`). Does NOT validate or retry. |
 | **Provider** | LM backend implementation (e.g., Codex, GPT-OSS, PylonLM) |
 | **Lane** | Selection category for LM routing (local/cheap/premium) as used by `LaneMux` |
 | **Dispatcher** | NIP-90 job submitter to the swarm (e.g., `SwarmDispatcher`) |
 | **Module** | Callable unit that transforms Examples to Predictions |
 | **Signature** | Input/output contract for a reasoning task |
 | **Predictor** | Module that executes a signature |
+| **Execution Runtime** | The layer that validates tool params, enforces retries, and runs tools. Distinct from adapters. |
 
 ## Core Traits
 

@@ -8,7 +8,7 @@
 > **Doc owner:** adjutant
 > **If this doc conflicts with code, code wins.**
 
-The "Verified PR Bundle" - three artifacts that capture everything about a completed task.
+The "Verified PR Bundle" - three artifacts that capture everything about a completed task. For terminology, see [GLOSSARY.md](../../../GLOSSARY.md).
 
 ## Overview
 
