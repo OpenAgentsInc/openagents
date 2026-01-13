@@ -8,9 +8,19 @@ This roadmap is the execution plan for the OpenAgents paper. Each phase turns a 
 
 These are the highest-ROI items that close the loop between execution, measurement, and optimization. They should be completed before advancing phases.
 
+**Progress Legend:** ✅ Done | 🔄 In Progress | ⏳ Not Started
+
+### Recent Progress (Jan 2025)
+
+- ✅ **Issue Validation Pipeline** - `IssueValidationSignature` implemented, gates stale/invalid work before agent starts
+- ✅ **DSPy Primitives Documentation** - Comprehensive docs for all 6 primitives (Signatures, Modules, Tools, Adapters, Optimizers, Metrics)
+- ✅ **Post-completion Hooks** - Hook system for autopilot post-run actions
+- ✅ **Single-instance Mode** - Prevents multiple autopilot processes from running simultaneously
+- 🔄 **Outcome-coupled Metrics** - Spec complete in docs, implementation pending
+
 ## NOW (MVP Critical Path)
 
-### 1. Ship the "Verified PR Bundle" artifact
+### 1. Ship the "Verified PR Bundle" artifact 🔄
 
 **Every Autopilot run must emit:**
 - `PR_SUMMARY.md` - Human-readable summary
@@ -27,7 +37,7 @@ These are the highest-ROI items that close the loop between execution, measureme
 
 **Definition of done:** Every session ends with artifacts + verification recorded + terminal status.
 
-### 2. Implement ToolCallSignature + ToolResultSignature
+### 2. Implement ToolCallSignature + ToolResultSignature ⏳
 
 Move from spec to implementation:
 - `crates/dsrs/src/signatures/tool_call.rs`
@@ -38,19 +48,19 @@ Move from spec to implementation:
 
 Wire into single-step executor for Autopilot/Adjutant execution loop.
 
-### 3. Tool params schema validation at adapter boundary
+### 3. Tool params schema validation at adapter boundary ⏳
 
 - Strict validator: `tool` ∈ allowed names, `params` matches JSON schema
 - Auto-Refine retry on parse error (up to N attempts)
 - Add `ToolParamsSchemaMetric` as proxy metric
 
-### 4. Policy bundles with pin/rollback (visible versioning)
+### 4. Policy bundles with pin/rollback (visible versioning) ⏳
 
 - Persist `policy_bundle_id` with every session and decision
 - Bundle structure: instruction text + demos + optimizer config + timestamp + metrics snapshot
 - CLI commands: `autopilot policy list`, `autopilot policy pin <bundle>`, `autopilot policy rollback`
 
-### 5. Replay Viewer (CLI first)
+### 5. Replay Viewer (CLI first) ⏳
 
 `autopilot replay <session_id>` renders:
 - Decisions timeline
@@ -61,7 +71,7 @@ Wire into single-step executor for Autopilot/Adjutant execution loop.
 
 Optional: `autopilot export-replay <session_id> --html`
 
-### 6. Outcome-coupled metrics wiring
+### 6. Outcome-coupled metrics wiring 🔄
 
 Write `tool_calls.jsonl` dataset with:
 - inputs/outputs + computed labels
@@ -74,7 +84,7 @@ Update Scorer/Evaluator to incorporate:
 - verification_delta reward
 - repetition penalty
 
-### 7. Shadow/canary mode for decision pipelines
+### 7. Shadow/canary mode for decision pipelines ⏳
 
 - Always compute legacy + DSPy decision
 - Execute legacy unless DSPy confidence > threshold
@@ -586,15 +596,17 @@ Do these later because they multiply complexity or require economic controls:
 
 # Suggested repo milestones (tight, product-friendly)
 
-### Milestone M1: "Autopilot ships"
+### Milestone M1: "Autopilot ships" ✅
 
 Phase 0 done. The loop is stable, verifiable, and logs trajectories.
 
-### Milestone M2: "Self-improving Autopilot"
+### Milestone M2: "Self-improving Autopilot" 🔄
 
-Phase 1 done. Outcome-coupled optimization produces measurable improvements.
+Phase 1 in progress. DSPy signatures implemented, outcome-coupled metrics specified, optimization infrastructure building.
 
-### Milestone M3: "Big repo stability"
+**Current focus:** MVP "Add Next" items to close the loop.
+
+### Milestone M3: "Big repo stability" 🔄
 
 Phase 2 in progress. Local RLM executor + trigger v2 signals are implemented; validation suite pending.
 
