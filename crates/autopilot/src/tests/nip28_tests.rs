@@ -1,5 +1,5 @@
 use crate::app::nip28::{Nip28Message, Nip28State};
-use crate::commands::{parse_command, Command};
+use crate::commands::{Command, parse_command};
 
 #[test]
 fn parse_nip28_commands() {

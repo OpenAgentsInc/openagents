@@ -1665,6 +1665,7 @@ impl AppState {
             }
         }
         self.chat.streaming_markdown.reset();
+        self.chat.streaming_thought.reset();
         self.chat.chat_selection = None;
         self.chat.is_thinking = self
             .workspaces
@@ -1683,6 +1684,7 @@ impl AppState {
     fn clear_workspace_view(&mut self) {
         self.chat.messages.clear();
         self.chat.streaming_markdown.reset();
+        self.chat.streaming_thought.reset();
         self.chat.chat_selection = None;
         self.chat.is_thinking = false;
         self.tools.tool_history.clear();

@@ -6,6 +6,7 @@ members = [
     "crates/arrow",
     "crates/autopilot",
     "crates/autopilot-core",
+    "crates/codex-mcp",
     "crates/compute",
     "crates/dsrs",
     "crates/dsrs-macros",

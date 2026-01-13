@@ -91,7 +91,10 @@ impl CurvePrimitive {
         for i in 1..=segments {
             let t = i as f32 / segments as f32;
             let curr = self.evaluate(t);
-            result.push(LineSegment { start: prev, end: curr });
+            result.push(LineSegment {
+                start: prev,
+                end: curr,
+            });
             prev = curr;
         }
 

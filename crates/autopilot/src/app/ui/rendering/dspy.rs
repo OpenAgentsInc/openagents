@@ -52,6 +52,11 @@ fn render_dspy_stage_card(
             Hsla::new(160.0 / 360.0, 0.6, 0.5, 1.0), // Teal
             "🎯",
         ),
+        DspyStage::UnblockSuggestion { .. } => (
+            "Unblock Suggestion",
+            Hsla::new(160.0 / 360.0, 0.6, 0.5, 1.0), // Teal
+            "🔓",
+        ),
     };
 
     // Card background
@@ -374,6 +379,74 @@ fn render_dspy_stage_card(
                 Point::new(content_x, y),
                 font_size,
                 accent_color,
+                wgpui::text::FontStyle::default(),
+            );
+            cx.scene.draw_text(run);
+        }
+        DspyStage::UnblockSuggestion {
+            issue_number,
+            title,
+            blocked_reason,
+            unblock_rationale,
+            unblock_strategy,
+            estimated_effort,
+            other_blocked_count,
+        } => {
+            // Issue title
+            let title_line = format!("#{} {}", issue_number, truncate_preview(title, 50));
+            let run = cx.text.layout_styled_mono(
+                &title_line,
+                Point::new(content_x, y),
+                font_size,
+                palette.text_primary,
+                wgpui::text::FontStyle::default(),
+            );
+            cx.scene.draw_text(run);
+            y += small_line_height + 4.0;
+
+            // Blocked reason
+            let blocked_line = format!("Blocked: \"{}\"", truncate_preview(blocked_reason, 60));
+            let run = cx.text.layout_styled_mono(
+                &blocked_line,
+                Point::new(content_x, y),
+                small_font_size,
+                Hsla::new(0.0, 0.5, 0.6, 1.0),
+                wgpui::text::FontStyle::default(),
+            );
+            cx.scene.draw_text(run);
+            y += small_line_height + 4.0;
+
+            // Rationale
+            let why_line = format!("Why: {}", truncate_preview(unblock_rationale, 60));
+            let run = cx.text.layout_styled_mono(
+                &why_line,
+                Point::new(content_x, y),
+                small_font_size,
+                palette.text_muted,
+                wgpui::text::FontStyle::default(),
+            );
+            cx.scene.draw_text(run);
+            y += small_line_height;
+
+            // Strategy
+            let strategy_line = format!("Strategy: {}", truncate_preview(unblock_strategy, 55));
+            let run = cx.text.layout_styled_mono(
+                &strategy_line,
+                Point::new(content_x, y),
+                small_font_size,
+                palette.text_muted,
+                wgpui::text::FontStyle::default(),
+            );
+            cx.scene.draw_text(run);
+            y += small_line_height;
+
+            // Effort + other count
+            let effort_line = format!("Effort: {} | {} other blocked", estimated_effort, other_blocked_count);
+            let run = cx.text.layout_styled_mono(
+                &effort_line,
+                Point::new(content_x, y),
+                small_font_size,
+                palette.text_dim,
                 wgpui::text::FontStyle::default(),
             );
             cx.scene.draw_text(run);

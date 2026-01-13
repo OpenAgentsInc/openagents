@@ -1173,9 +1173,6 @@ mod tests {
     #[test]
     fn parse_chainviz_prompt() {
         let parsed = parse_command("/chainviz summarize readme").unwrap();
-        assert_eq!(
-            parsed,
-            Command::ChainViz("summarize readme".to_string())
-        );
+        assert_eq!(parsed, Command::ChainViz("summarize readme".to_string()));
     }
 }

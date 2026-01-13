@@ -9,7 +9,9 @@
 //! Each stage emits UI events through the AutopilotOutput trait so the
 //! user can see progress in real-time.
 
-use crate::autopilot_loop::{AutopilotOutput, DspyStage, IssueSuggestionDisplay, TodoStatus, TodoTask};
+use crate::autopilot_loop::{
+    AutopilotOutput, DspyStage, IssueSuggestionDisplay, TodoStatus, TodoTask,
+};
 use crate::dspy::issue_suggestion::{IssueSuggestionInput, IssueSuggestionPipeline};
 use crate::dspy::situation::{SituationInput, SituationPipeline};
 use crate::manifest::{IssueSummary, OanixManifest};
@@ -490,10 +492,7 @@ impl DspyOrchestrator {
         autopilot_mode: bool,
     ) -> Result<Option<u32>> {
         // Build workspace context
-        let workspace_context = format!(
-            "Repository at {}",
-            self.tools.workspace_root().display()
-        );
+        let workspace_context = format!("Repository at {}", self.tools.workspace_root().display());
 
         let input = IssueSuggestionInput {
             issues: issues.to_vec(),
@@ -522,6 +521,27 @@ impl DspyOrchestrator {
                 complexity: s.complexity.clone(),
             })
             .collect();
+
+        // If no suggestions but filtered issues exist, try unblock suggestion
+        if suggestions.is_empty() && result.filtered_count > 0 {
+            // Try to suggest which blocked issue to unblock
+            let workspace_root = self.tools.workspace_root();
+            if let Ok(Some(unblock)) = pipeline
+                .suggest_unblock(issues, &input.workspace_context, Some(workspace_root))
+                .await
+            {
+                output.emit_stage(DspyStage::UnblockSuggestion {
+                    issue_number: unblock.issue_number,
+                    title: unblock.title,
+                    blocked_reason: unblock.blocked_reason,
+                    unblock_rationale: unblock.unblock_rationale,
+                    unblock_strategy: unblock.unblock_strategy,
+                    estimated_effort: unblock.estimated_effort,
+                    other_blocked_count: unblock.total_blocked.saturating_sub(1),
+                });
+                return Ok(None);
+            }
+        }
 
         // Emit suggestions stage
         output.emit_stage(DspyStage::IssueSuggestions {

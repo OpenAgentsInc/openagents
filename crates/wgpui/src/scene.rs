@@ -305,8 +305,8 @@ impl SvgQuad {
 
 #[derive(Default)]
 pub struct Scene {
-    pub quads: Vec<(u32, Quad)>,           // (layer, quad)
-    pub text_runs: Vec<(u32, TextRun)>,    // (layer, text_run)
+    pub quads: Vec<(u32, Quad)>,            // (layer, quad)
+    pub text_runs: Vec<(u32, TextRun)>,     // (layer, text_run)
     pub curves: Vec<(u32, CurvePrimitive)>, // (layer, curve)
     pub svg_quads: Vec<SvgQuad>,
     clip_stack: Vec<Bounds>,

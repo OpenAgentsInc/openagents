@@ -3,7 +3,7 @@
 use anyhow::Result;
 use dsrs::core::signature::MetaSignature;
 use dsrs::data::example::Example;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::collections::HashMap;
 
 /// Signature for analyzing a user's task and extracting intent.
@@ -388,7 +388,8 @@ pub struct CuriosityGeneratorSignature {
 
 impl Default for CuriosityGeneratorSignature {
     fn default() -> Self {
-        let instruction = r#"Based on the summary of this codebase and any previous questions explored,
+        let instruction =
+            r#"Based on the summary of this codebase and any previous questions explored,
 generate a specific, actionable question that would deepen understanding.
 
 Focus on:
@@ -404,7 +405,7 @@ Output:
 
 Avoid repeating questions that have already been explored (see previous_questions).
 Make search patterns specific enough to find relevant code."#
-            .to_string();
+                .to_string();
 
         // Demo example
         let mut demo_data = HashMap::new();
@@ -532,7 +533,8 @@ pub struct QuestionAnswererSignature {
 
 impl Default for QuestionAnswererSignature {
     fn default() -> Self {
-        let instruction = r#"Given a specific question about the codebase and relevant code snippets,
+        let instruction =
+            r#"Given a specific question about the codebase and relevant code snippets,
 provide a comprehensive answer.
 
 Include in your response:
@@ -542,7 +544,7 @@ Include in your response:
 
 Be specific and reference the code snippets directly. If the snippets don't fully answer
 the question, note what additional information would be needed."#
-            .to_string();
+                .to_string();
 
         Self {
             instruction,

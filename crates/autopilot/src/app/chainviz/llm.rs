@@ -43,10 +43,7 @@ pub struct LlmInitResult {
 /// 1. Checks if llama-server is already running
 /// 2. Auto-starts it if not (and auto_start is enabled)
 /// 3. Configures dsrs with the GPT-OSS backend and visualizer callback
-pub async fn init_llm(
-    config: LlmConfig,
-    event_sender: ChainEventSender,
-) -> Result<LlmInitResult> {
+pub async fn init_llm(config: LlmConfig, event_sender: ChainEventSender) -> Result<LlmInitResult> {
     let has_settings = dsrs::GLOBAL_SETTINGS.read().unwrap().is_some();
     if has_settings {
         let callback = Arc::new(VisualizerCallback::new(event_sender));

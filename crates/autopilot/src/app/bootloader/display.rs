@@ -35,7 +35,10 @@ pub fn render_event(event: &BootEvent) {
             println!();
         }
 
-        BootEvent::StageStarted { stage, description: _ } => {
+        BootEvent::StageStarted {
+            stage,
+            description: _,
+        } => {
             print!(
                 "{}{} {}{} {}... ",
                 colors::YELLOW,
@@ -48,13 +51,7 @@ pub fn render_event(event: &BootEvent) {
         }
 
         BootEvent::StageProgress { stage: _, message } => {
-            println!(
-                "  {}{}  {}{}",
-                colors::DIM,
-                ARROW,
-                message,
-                colors::RESET
-            );
+            println!("  {}{}  {}{}", colors::DIM, ARROW, message, colors::RESET);
         }
 
         BootEvent::StageCompleted {
@@ -157,12 +154,7 @@ fn render_stage_details(details: &StageDetails) {
                 hw.cpu_cores,
                 colors::RESET
             );
-            println!(
-                "  {}RAM: {:.1} GB{}",
-                colors::DIM,
-                hw.ram_gb,
-                colors::RESET
-            );
+            println!("  {}RAM: {:.1} GB{}", colors::DIM, hw.ram_gb, colors::RESET);
             if hw.apple_silicon {
                 println!(
                     "  {}GPU: Apple Silicon (Metal){}",
@@ -236,12 +228,7 @@ fn render_stage_details(details: &StageDetails) {
                     } else {
                         npub.clone()
                     };
-                    println!(
-                        "  {}Pubkey: {}{}",
-                        colors::DIM,
-                        short_npub,
-                        colors::RESET
-                    );
+                    println!("  {}Pubkey: {}{}", colors::DIM, short_npub, colors::RESET);
                 }
                 if id.has_wallet {
                     println!("  {}Wallet: Available{}", colors::DIM, colors::RESET);
@@ -276,12 +263,7 @@ fn render_stage_details(details: &StageDetails) {
                 );
             }
             if let Some(directive) = &ws.active_directive {
-                println!(
-                    "  {}Active: {}{}",
-                    colors::DIM,
-                    directive,
-                    colors::RESET
-                );
+                println!("  {}Active: {}{}", colors::DIM, directive, colors::RESET);
             }
         }
 
@@ -299,7 +281,9 @@ fn render_stage_details(details: &StageDetails) {
 /// Format for structured logging (non-interactive).
 pub fn render_event_structured(event: &BootEvent) -> String {
     match event {
-        BootEvent::StageCompleted { stage, duration, .. } => {
+        BootEvent::StageCompleted {
+            stage, duration, ..
+        } => {
             format!(
                 "[BOOT] {} completed in {}ms",
                 stage.name(),
@@ -323,7 +307,10 @@ pub fn render_to_string(events: &[BootEvent]) -> String {
     for event in events {
         match event {
             BootEvent::BootStarted { total_stages } => {
-                output.push_str(&format!("=== OpenAgents Boot ===\nStages: {}\n\n", total_stages));
+                output.push_str(&format!(
+                    "=== OpenAgents Boot ===\nStages: {}\n\n",
+                    total_stages
+                ));
             }
             BootEvent::StageCompleted {
                 stage, duration, ..

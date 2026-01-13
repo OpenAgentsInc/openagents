@@ -6,7 +6,7 @@
 // Re-export core types from adjutant
 pub use adjutant::autopilot_loop::{
     AutopilotConfig, AutopilotLoop, AutopilotOutput, AutopilotResult, ChannelOutput, CliOutput,
-    Verification,
+    IssueSuggestionDisplay, Verification,
 };
 
 // Re-export DSPy stage types for UI rendering

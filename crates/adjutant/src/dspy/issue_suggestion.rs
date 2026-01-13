@@ -3,14 +3,16 @@
 //! DSPy-powered pipeline for suggesting top issues to work on.
 //! Integrates staleness filtering with LLM-based prioritization.
 
-use super::staleness::{filter_issues_for_suggestion, StalenessScore};
 use super::get_planning_lm;
+use super::staleness::{StalenessScore, filter_issues_for_suggestion};
 use crate::manifest::IssueSummary;
 use anyhow::Result;
-use dsrs::{example, Predict, Prediction, Predictor, LM, GLOBAL_SETTINGS};
-use dsrs::signatures::IssueSuggestionSignature;
+use dsrs::signatures::{IssueSuggestionSignature, UnblockSuggestionSignature};
+use dsrs::{GLOBAL_SETTINGS, LM, Predict, Prediction, Predictor, example};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use std::path::Path;
+use std::process::Command;
 use std::sync::Arc;
 
 // ============================================================================
@@ -71,6 +73,27 @@ impl Default for IssueSuggestionResult {
     }
 }
 
+/// Result for unblock suggestion (when all issues are blocked).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UnblockSuggestionResult {
+    /// Issue to unblock
+    pub issue_number: u32,
+    /// Issue title
+    pub title: String,
+    /// Blocked reason
+    pub blocked_reason: String,
+    /// Why unblock this first
+    pub unblock_rationale: String,
+    /// How to unblock it
+    pub unblock_strategy: String,
+    /// Effort estimate
+    pub estimated_effort: String,
+    /// Cascade potential description
+    pub cascade_potential: String,
+    /// Total blocked issues
+    pub total_blocked: usize,
+}
+
 // ============================================================================
 // Pipeline
 // ============================================================================
@@ -103,6 +126,9 @@ impl IssueSuggestionPipeline {
     }
 
     /// Suggest top issues to work on.
+    ///
+    /// Returns Ok(Some(result)) with suggestions if candidates exist,
+    /// or attempts unblock suggestion if all issues are blocked.
     pub async fn suggest(&self, input: &IssueSuggestionInput) -> Result<IssueSuggestionResult> {
         // Step 1: Filter out stale/blocked issues
         let (candidates, filtered) = filter_issues_for_suggestion(&input.issues);
@@ -113,7 +139,7 @@ impl IssueSuggestionPipeline {
             .map(|(issue, reason)| (issue.number, reason.clone()))
             .collect();
 
-        // If no candidates, return empty result
+        // If no candidates, return empty result (unblock suggestion handled separately)
         if candidates.is_empty() {
             return Ok(IssueSuggestionResult {
                 suggestions: Vec::new(),
@@ -166,7 +192,9 @@ impl IssueSuggestionPipeline {
         let lm = if let Some(lm) = &self.lm {
             lm.clone()
         } else if GLOBAL_SETTINGS.read().unwrap().is_some() {
-            return self.suggest_with_global(input, &candidates, filtered_count, filtered_reasons).await;
+            return self
+                .suggest_with_global(input, &candidates, filtered_count, filtered_reasons)
+                .await;
         } else {
             get_planning_lm().await?
         };
@@ -238,6 +266,172 @@ impl IssueSuggestionPipeline {
             confidence,
         })
     }
+
+    /// Suggest which blocked issue to unblock first.
+    ///
+    /// Call this when all issues are blocked (suggest() returns empty suggestions).
+    pub async fn suggest_unblock(
+        &self,
+        issues: &[IssueSummary],
+        workspace_context: &str,
+        workspace_root: Option<&Path>,
+    ) -> Result<Option<UnblockSuggestionResult>> {
+        // Get blocked issues
+        let blocked: Vec<_> = issues
+            .iter()
+            .filter(|i| i.is_blocked && i.status == "open")
+            .collect();
+
+        if blocked.is_empty() {
+            return Ok(None);
+        }
+
+        // Get recent commits for context
+        let recent_commits = workspace_root
+            .map(|root| get_recent_commits(root, 20))
+            .transpose()?
+            .unwrap_or_else(|| "No commit history available".to_string());
+
+        // Prepare blocked issues JSON
+        let blocked_json: Vec<serde_json::Value> = blocked
+            .iter()
+            .map(|issue| {
+                json!({
+                    "number": issue.number,
+                    "title": issue.title,
+                    "blocked_reason": issue.blocked_reason.as_deref().unwrap_or("Unknown"),
+                    "priority": issue.priority,
+                    "issue_type": issue.issue_type,
+                })
+            })
+            .collect();
+
+        // Try LLM prediction, fallback to heuristic if no LLM available
+        let prediction_result = self
+            .try_lm_unblock_prediction(&blocked_json, workspace_context, &recent_commits)
+            .await;
+
+        match prediction_result {
+            Ok(prediction) => self.parse_unblock_result(&prediction, &blocked),
+            Err(_) => {
+                // Fallback to heuristic selection when LLM is unavailable
+                Ok(Some(self.heuristic_unblock_selection(&blocked)))
+            }
+        }
+    }
+
+    /// Try to get LLM prediction for unblock suggestion.
+    async fn try_lm_unblock_prediction(
+        &self,
+        blocked_json: &[serde_json::Value],
+        workspace_context: &str,
+        recent_commits: &str,
+    ) -> Result<Prediction> {
+        let lm = if let Some(lm) = &self.lm {
+            lm.clone()
+        } else if GLOBAL_SETTINGS.read().unwrap().is_some() {
+            let signature = UnblockSuggestionSignature::new();
+            let predictor = Predict::new(signature);
+            let example = example! {
+                "blocked_issues": "input" => serde_json::to_string(blocked_json)?,
+                "workspace_context": "input" => workspace_context.to_string(),
+                "recent_commits": "input" => recent_commits.to_string(),
+            };
+            return predictor.forward(example).await;
+        } else {
+            get_planning_lm().await?
+        };
+
+        let signature = UnblockSuggestionSignature::new();
+        let predictor = Predict::new(signature);
+
+        let example = example! {
+            "blocked_issues": "input" => serde_json::to_string(blocked_json)?,
+            "workspace_context": "input" => workspace_context.to_string(),
+            "recent_commits": "input" => recent_commits.to_string(),
+        };
+
+        predictor.forward_with_config(example, lm).await
+    }
+
+    /// Heuristic selection when LLM is unavailable.
+    fn heuristic_unblock_selection(&self, blocked: &[&IssueSummary]) -> UnblockSuggestionResult {
+        // Sort by priority (high > medium > low) and pick first
+        let mut sorted: Vec<_> = blocked.iter().copied().collect();
+        sorted.sort_by(|a, b| {
+            let priority_order = |p: &str| match p.to_lowercase().as_str() {
+                "critical" => 0,
+                "high" => 1,
+                "medium" => 2,
+                "low" => 3,
+                _ => 4,
+            };
+            priority_order(&a.priority).cmp(&priority_order(&b.priority))
+        });
+
+        let selected = sorted.first().copied().unwrap_or(blocked[0]);
+
+        UnblockSuggestionResult {
+            issue_number: selected.number,
+            title: selected.title.clone(),
+            blocked_reason: selected.blocked_reason.clone().unwrap_or_else(|| "Unknown".to_string()),
+            unblock_rationale: format!(
+                "Selected as highest priority blocked issue ({} priority). Consider breaking it into smaller tasks or addressing the blocker directly.",
+                selected.priority
+            ),
+            unblock_strategy: "Review the blocked reason and identify the smallest actionable step to make progress.".to_string(),
+            estimated_effort: estimate_effort_from_blocked_reason(selected.blocked_reason.as_deref()),
+            cascade_potential: format!("{} other issues may be unblocked", blocked.len() - 1),
+            total_blocked: blocked.len(),
+        }
+    }
+
+    fn parse_unblock_result(
+        &self,
+        prediction: &Prediction,
+        blocked: &[&IssueSummary],
+    ) -> Result<Option<UnblockSuggestionResult>> {
+        let selected_number = get_u32(prediction, "selected_issue_number");
+
+        // Find the selected issue
+        let selected = blocked
+            .iter()
+            .find(|i| i.number == selected_number)
+            .or_else(|| blocked.first())
+            .map(|i| *i);
+
+        let Some(issue) = selected else {
+            return Ok(None);
+        };
+
+        Ok(Some(UnblockSuggestionResult {
+            issue_number: issue.number,
+            title: issue.title.clone(),
+            blocked_reason: issue
+                .blocked_reason
+                .clone()
+                .unwrap_or_else(|| "Unknown".to_string()),
+            unblock_rationale: get_string(prediction, "unblock_rationale"),
+            unblock_strategy: get_string(prediction, "unblock_strategy"),
+            estimated_effort: get_string(prediction, "estimated_effort"),
+            cascade_potential: get_string(prediction, "cascade_potential"),
+            total_blocked: blocked.len(),
+        }))
+    }
+}
+
+/// Get recent git commits from the workspace.
+fn get_recent_commits(workspace_root: &Path, count: usize) -> Result<String> {
+    let output = Command::new("git")
+        .args(["log", "--oneline", &format!("-{}", count), "--no-decorate"])
+        .current_dir(workspace_root)
+        .output()?;
+
+    if output.status.success() {
+        Ok(String::from_utf8_lossy(&output.stdout).to_string())
+    } else {
+        Ok("No recent commits available".to_string())
+    }
 }
 
 // ============================================================================
@@ -263,7 +457,8 @@ fn parse_suggestions(
     let mut suggestions = Vec::new();
 
     for item in parsed.into_iter().take(3) {
-        let number = item.get("number")
+        let number = item
+            .get("number")
             .and_then(|n| n.as_u64())
             .map(|n| n as u32)
             .unwrap_or(0);
@@ -276,27 +471,31 @@ fn parse_suggestions(
             .unwrap_or_else(|| {
                 // Fallback to first candidate if number not found
                 candidates.first().cloned().unwrap_or_else(|| {
-                    (IssueSummary {
-                        number,
-                        title: item.get("title")
-                            .and_then(|t| t.as_str())
-                            .unwrap_or("Unknown")
-                            .to_string(),
-                        description: None,
-                        issue_type: None,
-                        status: "open".to_string(),
-                        priority: "medium".to_string(),
-                        is_blocked: false,
-                        blocked_reason: None,
-                        created_at: None,
-                        updated_at: None,
-                        last_checked: None,
-                    }, StalenessScore {
-                        score: 0.0,
-                        factors: Default::default(),
-                        exclude_from_suggestions: false,
-                        exclusion_reason: None,
-                    })
+                    (
+                        IssueSummary {
+                            number,
+                            title: item
+                                .get("title")
+                                .and_then(|t| t.as_str())
+                                .unwrap_or("Unknown")
+                                .to_string(),
+                            description: None,
+                            issue_type: None,
+                            status: "open".to_string(),
+                            priority: "medium".to_string(),
+                            is_blocked: false,
+                            blocked_reason: None,
+                            created_at: None,
+                            updated_at: None,
+                            last_checked: None,
+                        },
+                        StalenessScore {
+                            score: 0.0,
+                            factors: Default::default(),
+                            exclude_from_suggestions: false,
+                            exclusion_reason: None,
+                        },
+                    )
                 })
             });
 
@@ -304,11 +503,13 @@ fn parse_suggestions(
             number: issue.number,
             title: issue.title,
             priority: issue.priority,
-            rationale: item.get("rationale")
+            rationale: item
+                .get("rationale")
                 .and_then(|r| r.as_str())
                 .unwrap_or("Suggested by priority ranking")
                 .to_string(),
-            complexity: item.get("complexity")
+            complexity: item
+                .get("complexity")
                 .and_then(|c| c.as_str())
                 .unwrap_or("medium")
                 .to_string(),
@@ -361,6 +562,32 @@ fn estimate_complexity(issue: &IssueSummary) -> String {
     "medium".to_string()
 }
 
+/// Estimate effort from blocked reason text.
+fn estimate_effort_from_blocked_reason(reason: Option<&str>) -> String {
+    let reason = reason.unwrap_or("").to_lowercase();
+
+    // High effort indicators
+    if reason.contains("extensive")
+        || reason.contains("major")
+        || reason.contains("large")
+        || reason.contains("complete rewrite")
+        || reason.contains("significant")
+    {
+        return "high".to_string();
+    }
+
+    // Low effort indicators
+    if reason.contains("simple")
+        || reason.contains("small")
+        || reason.contains("minor")
+        || reason.contains("quick")
+    {
+        return "low".to_string();
+    }
+
+    "medium".to_string()
+}
+
 /// Truncate a string to max_len characters.
 fn truncate(s: &str, max_len: usize) -> String {
     if s.len() <= max_len {
@@ -379,6 +606,30 @@ fn get_f32(prediction: &Prediction, key: &str) -> f32 {
         s.parse().unwrap_or(0.0)
     } else {
         0.0
+    }
+}
+
+/// Helper to get u32 from prediction value.
+fn get_u32(prediction: &Prediction, key: &str) -> u32 {
+    let val = prediction.get(key, None);
+    if let Some(n) = val.as_u64() {
+        n as u32
+    } else if let Some(n) = val.as_i64() {
+        n as u32
+    } else if let Some(s) = val.as_str() {
+        s.parse().unwrap_or(0)
+    } else {
+        0
+    }
+}
+
+/// Helper to get String from prediction value.
+fn get_string(prediction: &Prediction, key: &str) -> String {
+    let val = prediction.get(key, None);
+    if let Some(s) = val.as_str() {
+        s.to_string()
+    } else {
+        val.to_string().trim_matches('"').to_string()
     }
 }
 

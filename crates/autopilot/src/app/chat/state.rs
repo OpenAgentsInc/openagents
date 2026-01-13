@@ -12,6 +12,7 @@ use crate::app::ui::ThemeSetting;
 pub(crate) struct ChatState {
     pub(crate) messages: Vec<ChatMessage>,
     pub(crate) streaming_markdown: StreamingMarkdown,
+    pub(crate) streaming_thought: StreamingMarkdown,
     pub(crate) markdown_renderer: MdRenderer,
     pub(crate) is_thinking: bool,
     pub(crate) chat_selection: Option<ChatSelection>,
@@ -28,10 +29,14 @@ impl ChatState {
         let mut streaming_markdown = StreamingMarkdown::new();
         streaming_markdown
             .set_markdown_config(super::super::build_markdown_config(settings, theme));
+        let mut streaming_thought = StreamingMarkdown::new();
+        streaming_thought
+            .set_markdown_config(super::super::build_markdown_config(settings, theme));
         let markdown_renderer = super::super::build_markdown_renderer(settings, theme);
         Self {
             messages: Vec::new(),
             streaming_markdown,
+            streaming_thought,
             markdown_renderer,
             is_thinking: false,
             chat_selection: None,

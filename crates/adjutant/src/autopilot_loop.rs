@@ -102,6 +102,24 @@ pub enum DspyStage {
         /// Selection method: "user" or "autopilot"
         selection_method: String,
     },
+
+    /// Suggestion for which blocked issue to unblock first
+    UnblockSuggestion {
+        /// Issue number to unblock
+        issue_number: u32,
+        /// Issue title
+        title: String,
+        /// Why this issue is blocked
+        blocked_reason: String,
+        /// Why unblock this issue first
+        unblock_rationale: String,
+        /// How to unblock it
+        unblock_strategy: String,
+        /// Estimated effort: low/medium/high
+        estimated_effort: String,
+        /// How many other issues are also blocked
+        other_blocked_count: usize,
+    },
 }
 
 /// Display format for an issue suggestion.
@@ -390,13 +408,7 @@ impl AutopilotOutput for CliOutput {
                 println!("│ 📋 Issue Suggestions                                        │");
                 println!("├─────────────────────────────────────────────────────────────┤");
                 for (i, s) in suggestions.iter().enumerate() {
-                    println!(
-                        "│ {}. [#{}] {} ({})",
-                        i + 1,
-                        s.number,
-                        s.title,
-                        s.priority
-                    );
+                    println!("│ {}. [#{}] {} ({})", i + 1, s.number, s.title, s.priority);
                     println!("│    \"{}\"", s.rationale);
                     println!("│    Complexity: {}", s.complexity);
                 }
@@ -420,7 +432,33 @@ impl AutopilotOutput for CliOutput {
                 title,
                 selection_method,
             } => {
-                println!("\n🎯 Selected issue #{}: {} ({})\n", number, title, selection_method);
+                println!(
+                    "\n🎯 Selected issue #{}: {} ({})\n",
+                    number, title, selection_method
+                );
+            }
+            DspyStage::UnblockSuggestion {
+                issue_number,
+                title,
+                blocked_reason,
+                unblock_rationale,
+                unblock_strategy,
+                estimated_effort,
+                other_blocked_count,
+            } => {
+                println!("\n┌─────────────────────────────────────────────────────────────┐");
+                println!("│ 🔓 Suggested Issue to Unblock                               │");
+                println!("├─────────────────────────────────────────────────────────────┤");
+                println!("│ #{} {}", issue_number, title);
+                println!("│ Blocked: \"{}\"", blocked_reason);
+                println!("│");
+                println!("│ Why: {}", unblock_rationale);
+                println!("│ Strategy: {}", unblock_strategy);
+                println!("│ Effort: {}", estimated_effort);
+                if other_blocked_count > 0 {
+                    println!("│ [{} other issues also blocked]", other_blocked_count);
+                }
+                println!("└─────────────────────────────────────────────────────────────┘\n");
             }
         }
     }
@@ -770,6 +808,24 @@ impl AutopilotOutput for AcpChannelOutput {
                     format!(
                         "Selected issue #{}: {} ({})",
                         number, title, selection_method
+                    ),
+                    meta,
+                );
+            }
+            DspyStage::UnblockSuggestion {
+                issue_number,
+                title,
+                blocked_reason,
+                unblock_rationale,
+                unblock_strategy,
+                estimated_effort,
+                other_blocked_count,
+            } => {
+                self.send_message_with_meta(
+                    format!(
+                        "Suggest unblocking #{}: {} (effort: {}, {} others blocked)\nBlocked: {}\nRationale: {}\nStrategy: {}",
+                        issue_number, title, estimated_effort, other_blocked_count,
+                        blocked_reason, unblock_rationale, unblock_strategy
                     ),
                     meta,
                 );

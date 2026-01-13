@@ -9,9 +9,7 @@ use super::signatures::BootManifest;
 #[derive(Debug, Clone)]
 pub enum BootEvent {
     /// Boot sequence starting
-    BootStarted {
-        total_stages: u8,
-    },
+    BootStarted { total_stages: u8 },
 
     /// A stage has started
     StageStarted {
@@ -20,10 +18,7 @@ pub enum BootEvent {
     },
 
     /// Progress within a stage (for stages with sub-steps)
-    StageProgress {
-        stage: BootStage,
-        message: String,
-    },
+    StageProgress { stage: BootStage, message: String },
 
     /// A stage completed successfully
     StageCompleted {
@@ -53,9 +48,7 @@ pub enum BootEvent {
     },
 
     /// Boot failed entirely (fatal error)
-    BootFailed {
-        error: String,
-    },
+    BootFailed { error: String },
 }
 
 /// Identifiers for each boot stage.

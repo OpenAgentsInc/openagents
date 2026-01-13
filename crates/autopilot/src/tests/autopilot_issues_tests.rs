@@ -1,4 +1,4 @@
-use crate::commands::{parse_command, Command};
+use crate::commands::{Command, parse_command};
 
 #[test]
 fn parse_issue_tracker_commands() {
@@ -14,8 +14,5 @@ fn parse_issue_tracker_commands() {
         parse_command("/autopilot-issues status"),
         Some(Command::AutopilotIssues)
     );
-    assert_eq!(
-        parse_command("/issue-db"),
-        Some(Command::AutopilotIssues)
-    );
+    assert_eq!(parse_command("/issue-db"), Some(Command::AutopilotIssues));
 }

@@ -201,6 +201,7 @@ impl SessionState {
     ) -> io::Result<()> {
         chat.messages = super::read_session_messages(session_id)?;
         chat.streaming_markdown.reset();
+        chat.streaming_thought.reset();
         chat.scroll_offset = 0.0;
         tools.current_tool_name = None;
         tools.current_tool_input.clear();
@@ -340,6 +341,7 @@ impl SessionState {
         }
         chat.messages.clear();
         chat.streaming_markdown.reset();
+        chat.streaming_thought.reset();
         chat.scroll_offset = 0.0;
         tools.current_tool_name = None;
         tools.current_tool_input.clear();
@@ -364,6 +366,7 @@ impl SessionState {
         }
         chat.messages.clear();
         chat.streaming_markdown.reset();
+        chat.streaming_thought.reset();
         chat.scroll_offset = 0.0;
         tools.current_tool_name = None;
         tools.current_tool_input.clear();

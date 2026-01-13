@@ -1,4 +1,4 @@
-use crate::commands::{parse_command, Command};
+use crate::commands::{Command, parse_command};
 
 #[test]
 fn parse_dvm_commands() {
@@ -7,6 +7,9 @@ fn parse_dvm_commands() {
         parse_command("/dvm connect wss://relay.example"),
         Some(Command::DvmConnect("wss://relay.example".to_string()))
     );
-    assert_eq!(parse_command("/dvm kind 5050"), Some(Command::DvmKind(5050)));
+    assert_eq!(
+        parse_command("/dvm kind 5050"),
+        Some(Command::DvmKind(5050))
+    );
     assert_eq!(parse_command("/dvm refresh"), Some(Command::DvmRefresh));
 }

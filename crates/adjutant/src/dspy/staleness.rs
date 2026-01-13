@@ -8,7 +8,7 @@
 use crate::manifest::IssueSummary;
 use anyhow::Result;
 use chrono::{DateTime, Utc};
-use dsrs::{example, Predict, Prediction, Predictor, Signature, GLOBAL_SETTINGS};
+use dsrs::{GLOBAL_SETTINGS, Predict, Prediction, Predictor, Signature, example};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 use std::process::Command;
@@ -284,9 +284,7 @@ pub fn compute_staleness_score(issue: &IssueSummary) -> StalenessScore {
     // Factor 1: Days since update (14+ days = stale)
     if let Some(updated_at) = &issue.updated_at {
         if let Ok(dt) = DateTime::parse_from_rfc3339(updated_at) {
-            let days = now
-                .signed_duration_since(dt.with_timezone(&Utc))
-                .num_days();
+            let days = now.signed_duration_since(dt.with_timezone(&Utc)).num_days();
             factors.days_since_update = Some(days as u32);
             if days >= 14 {
                 // Score increases linearly from 0 to 0.3 for days 14-42
@@ -296,9 +294,7 @@ pub fn compute_staleness_score(issue: &IssueSummary) -> StalenessScore {
     } else if let Some(created_at) = &issue.created_at {
         // Use created_at if updated_at is missing
         if let Ok(dt) = DateTime::parse_from_rfc3339(created_at) {
-            let days = now
-                .signed_duration_since(dt.with_timezone(&Utc))
-                .num_days();
+            let days = now.signed_duration_since(dt.with_timezone(&Utc)).num_days();
             factors.days_since_update = Some(days as u32);
             if days >= 14 {
                 score += 0.3 * ((days as f32 - 14.0) / 28.0).min(1.0);
@@ -380,7 +376,10 @@ pub fn compute_staleness_score(issue: &IssueSummary) -> StalenessScore {
 /// Candidates are sorted by freshness (lowest staleness score first).
 pub fn filter_issues_for_suggestion(
     issues: &[IssueSummary],
-) -> (Vec<(IssueSummary, StalenessScore)>, Vec<(IssueSummary, String)>) {
+) -> (
+    Vec<(IssueSummary, StalenessScore)>,
+    Vec<(IssueSummary, String)>,
+) {
     let mut candidates = Vec::new();
     let mut filtered = Vec::new();
 

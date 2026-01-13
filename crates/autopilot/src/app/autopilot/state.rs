@@ -18,6 +18,8 @@ pub(crate) struct AutopilotState {
     pub(crate) issue_suggestions: Option<DspyStage>,
     /// Channel for receiving issue suggestions from async task
     pub(crate) issue_suggestions_rx: Option<mpsc::UnboundedReceiver<DspyStage>>,
+    /// Pending issue prompt to submit (set when user selects an issue from suggestions)
+    pub(crate) pending_issue_prompt: Option<String>,
 }
 
 impl AutopilotState {
@@ -34,6 +36,7 @@ impl AutopilotState {
             autopilot_max_iterations: 10,
             issue_suggestions: None,
             issue_suggestions_rx: None,
+            pending_issue_prompt: None,
         }
     }
 }

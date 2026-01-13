@@ -24,26 +24,32 @@ impl ModelOption {
 
     pub(crate) fn model_id(&self) -> &'static str {
         match self {
-            ModelOption::Default => "gpt-4o",
-            ModelOption::Mini => "gpt-4o-mini",
-            ModelOption::Reasoning => "o1",
+            ModelOption::Default => "gpt-5.1-codex-max",
+            ModelOption::Mini => "gpt-5.1-codex-mini",
+            ModelOption::Reasoning => "gpt-5.2",
         }
     }
 
     pub(crate) fn from_id(id: &str) -> ModelOption {
         match id {
-            "gpt-4o" => ModelOption::Default,
-            "gpt-4o-mini" => ModelOption::Mini,
-            "o1" => ModelOption::Reasoning,
-            _ => ModelOption::Default, // Default fallback
+            "gpt-5.1-codex-max" => ModelOption::Default,
+            "gpt-5.1-codex-mini" => ModelOption::Mini,
+            "gpt-5.2" => ModelOption::Reasoning,
+            // Legacy fallbacks
+            "gpt-4o" | "gpt-5" | "gpt-5.1" | "gpt-5-codex" | "gpt-5.1-codex" => {
+                ModelOption::Default
+            }
+            "gpt-4o-mini" | "gpt-5-codex-mini" | "codex-mini-latest" => ModelOption::Mini,
+            "o1" | "o3" => ModelOption::Reasoning,
+            _ => ModelOption::Default,
         }
     }
 
     pub(crate) fn description(&self) -> &'static str {
         match self {
-            ModelOption::Default => "GPT-4o · General purpose",
-            ModelOption::Mini => "GPT-4o Mini · Faster, lower cost",
-            ModelOption::Reasoning => "O1 · Reasoning focused",
+            ModelOption::Default => "GPT-5.1 Codex Max · Deep and fast reasoning",
+            ModelOption::Mini => "GPT-5.1 Codex Mini · Faster, lower cost",
+            ModelOption::Reasoning => "GPT-5.2 · Latest frontier model",
         }
     }
 }

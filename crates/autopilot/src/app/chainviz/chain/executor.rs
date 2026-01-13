@@ -5,11 +5,11 @@ use super::signatures::{
     SummaryAggregatorSignature, TaskAnalysisSignature,
 };
 use super::{ChainEvent, ChainEventSender, ChainState};
-use adjutant::dspy::{tool_step_utility_predict, LabeledToolCall, TrainingCollector};
+use adjutant::dspy::{LabeledToolCall, TrainingCollector, tool_step_utility_predict};
 use anyhow::{Context, Result};
 use chrono::Utc;
-use dsrs::predictors::Predict;
 use dsrs::Predictor;
+use dsrs::predictors::Predict;
 use glob::glob;
 use hex::encode as hex_encode;
 use regex::Regex;
@@ -164,10 +164,7 @@ pub struct MarkdownSummarizationChain {
 
 impl MarkdownSummarizationChain {
     /// Create a new chain executor.
-    pub fn new(
-        event_sender: ChainEventSender,
-        chain_state: Arc<Mutex<ChainState>>,
-    ) -> Self {
+    pub fn new(event_sender: ChainEventSender, chain_state: Arc<Mutex<ChainState>>) -> Self {
         Self {
             event_sender,
             chain_state,
@@ -208,7 +205,12 @@ impl MarkdownSummarizationChain {
                 contents.files.len()
             ));
             let summary = self
-                .run_content_summarizer(&file.content, &file.path.to_string_lossy(), i, contents.files.len())
+                .run_content_summarizer(
+                    &file.content,
+                    &file.path.to_string_lossy(),
+                    i,
+                    contents.files.len(),
+                )
                 .await?;
             summaries.push(summary);
         }
@@ -369,8 +371,7 @@ impl MarkdownSummarizationChain {
             "scope": scope,
             "glob_pattern": glob_pattern.to_string_lossy(),
         });
-        let mut path_strings: Vec<String> =
-            paths.iter().map(|p| p.display().to_string()).collect();
+        let mut path_strings: Vec<String> = paths.iter().map(|p| p.display().to_string()).collect();
         path_strings.sort();
         let outputs_value = json!({
             "paths": path_strings,
@@ -438,7 +439,10 @@ impl MarkdownSummarizationChain {
                         paths
                             .iter()
                             .take(3)
-                            .map(|p| format!("\"{}\"", p.file_name().unwrap_or_default().to_string_lossy()))
+                            .map(|p| format!(
+                                "\"{}\"",
+                                p.file_name().unwrap_or_default().to_string_lossy()
+                            ))
                             .collect::<Vec<_>>()
                             .join(", ")
                     ) + if paths.len() > 3 { "..." } else { "" },
@@ -520,8 +524,10 @@ impl MarkdownSummarizationChain {
         });
 
         file_entries.sort_by(|a, b| a.0.cmp(&b.0));
-        let mut failed_path_strings: Vec<String> =
-            failed_paths.iter().map(|p| p.display().to_string()).collect();
+        let mut failed_path_strings: Vec<String> = failed_paths
+            .iter()
+            .map(|p| p.display().to_string())
+            .collect();
         failed_path_strings.sort();
         let outputs_value = json!({
             "files": file_entries
@@ -585,10 +591,7 @@ impl MarkdownSummarizationChain {
         // Complete the node
         {
             let mut state = self.chain_state.lock().unwrap();
-            let inputs = HashMap::from([(
-                "paths".to_string(),
-                format!("[{} files]", paths.len()),
-            )]);
+            let inputs = HashMap::from([("paths".to_string(), format!("[{} files]", paths.len()))]);
             let outputs = HashMap::from([
                 ("total_size".to_string(), total_size.to_string()),
                 (
@@ -648,9 +651,17 @@ impl MarkdownSummarizationChain {
         // Update progress
         {
             let mut state = self.chain_state.lock().unwrap();
-            if let Some(node) = state.nodes.iter_mut().find(|n| n.name == "ContentSummarizer") {
-                node.progress_message = Some(format!("Processing {} ({}/{})...",
-                    PathBuf::from(filename).file_name().unwrap_or_default().to_string_lossy(),
+            if let Some(node) = state
+                .nodes
+                .iter_mut()
+                .find(|n| n.name == "ContentSummarizer")
+            {
+                node.progress_message = Some(format!(
+                    "Processing {} ({}/{})...",
+                    PathBuf::from(filename)
+                        .file_name()
+                        .unwrap_or_default()
+                        .to_string_lossy(),
                     file_index + 1,
                     total_files
                 ));
@@ -703,7 +714,11 @@ impl MarkdownSummarizationChain {
                 if let Some(s) = v.as_str() {
                     serde_json::from_str(s).ok()
                 } else if let Some(arr) = v.as_array() {
-                    Some(arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+                    Some(
+                        arr.iter()
+                            .filter_map(|v| v.as_str().map(String::from))
+                            .collect(),
+                    )
                 } else {
                     None
                 }
@@ -720,12 +735,11 @@ impl MarkdownSummarizationChain {
         // Complete node after last file
         if file_index == total_files - 1 {
             let mut state = self.chain_state.lock().unwrap();
-            let inputs = HashMap::from([
-                ("files".to_string(), format!("{} files", total_files)),
-            ]);
-            let outputs = HashMap::from([
-                ("summaries".to_string(), format!("{} generated", total_files)),
-            ]);
+            let inputs = HashMap::from([("files".to_string(), format!("{} files", total_files))]);
+            let outputs = HashMap::from([(
+                "summaries".to_string(),
+                format!("{} generated", total_files),
+            )]);
             state.complete_tool_node(call_id, inputs, outputs, duration);
         }
 
@@ -755,7 +769,10 @@ impl MarkdownSummarizationChain {
             call_id,
             signature_name: "SummaryAggregator".to_string(),
             inputs: HashMap::from([
-                ("summaries".to_string(), format!("{} summaries", summaries.len())),
+                (
+                    "summaries".to_string(),
+                    format!("{} summaries", summaries.len()),
+                ),
                 ("original_request".to_string(), original_request.to_string()),
             ]),
         });
@@ -796,7 +813,11 @@ impl MarkdownSummarizationChain {
                 if let Some(s) = v.as_str() {
                     serde_json::from_str(s).ok()
                 } else if let Some(arr) = v.as_array() {
-                    Some(arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+                    Some(
+                        arr.iter()
+                            .filter_map(|v| v.as_str().map(String::from))
+                            .collect(),
+                    )
                 } else {
                     None
                 }
@@ -810,7 +831,11 @@ impl MarkdownSummarizationChain {
                 if let Some(s) = v.as_str() {
                     serde_json::from_str(s).ok()
                 } else if let Some(arr) = v.as_array() {
-                    Some(arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+                    Some(
+                        arr.iter()
+                            .filter_map(|v| v.as_str().map(String::from))
+                            .collect(),
+                    )
                 } else {
                     None
                 }
@@ -824,7 +849,11 @@ impl MarkdownSummarizationChain {
                 if let Some(s) = v.as_str() {
                     serde_json::from_str(s).ok()
                 } else if let Some(arr) = v.as_array() {
-                    Some(arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+                    Some(
+                        arr.iter()
+                            .filter_map(|v| v.as_str().map(String::from))
+                            .collect(),
+                    )
                 } else {
                     None
                 }
@@ -840,7 +869,10 @@ impl MarkdownSummarizationChain {
             let mut state = self.chain_state.lock().unwrap();
             state.complete_tool_node(
                 call_id,
-                HashMap::from([("summaries".to_string(), format!("{} files", summaries.len()))]),
+                HashMap::from([(
+                    "summaries".to_string(),
+                    format!("{} files", summaries.len()),
+                )]),
                 outputs.clone(),
                 duration,
             );
@@ -953,14 +985,12 @@ impl MarkdownSummarizationChain {
         let prediction = predictor.forward(inputs).await?;
         let duration = start.elapsed().as_millis() as u64;
 
-        let step_utility = parse_f32_value(prediction.data.get("step_utility"), 0.5)
-            .clamp(0.0, 1.0);
+        let step_utility =
+            parse_f32_value(prediction.data.get("step_utility"), 0.5).clamp(0.0, 1.0);
         let should_continue =
             parse_bool_value(prediction.data.get("should_continue")).unwrap_or(true);
-        let next_action_hint = parse_string_value(
-            prediction.data.get("next_action_hint"),
-            "Continue",
-        );
+        let next_action_hint =
+            parse_string_value(prediction.data.get("next_action_hint"), "Continue");
         let confidence = parse_f32_value(prediction.data.get("confidence"), 0.5).clamp(0.0, 1.0);
 
         tracing::info!(
@@ -1022,10 +1052,16 @@ impl MarkdownSummarizationChain {
             previous_questions.push(curiosity.question.clone());
 
             // Log the question
-            eprintln!("\n[chainviz] ========== CURIOSITY Q{} ==========", iteration + 1);
+            eprintln!(
+                "\n[chainviz] ========== CURIOSITY Q{} ==========",
+                iteration + 1
+            );
             eprintln!("[chainviz] QUESTION: {}", curiosity.question);
             eprintln!("[chainviz] REASONING: {}", curiosity.reasoning);
-            eprintln!("[chainviz] SEARCH PATTERNS: {:?}", curiosity.search_patterns);
+            eprintln!(
+                "[chainviz] SEARCH PATTERNS: {:?}",
+                curiosity.search_patterns
+            );
 
             // Search the codebase
             let search = self
@@ -1037,7 +1073,11 @@ impl MarkdownSummarizationChain {
                 )
                 .await?;
 
-            eprintln!("[chainviz] Found {} matches in {} files", search.matches.len(), search.files_searched);
+            eprintln!(
+                "[chainviz] Found {} matches in {} files",
+                search.matches.len(),
+                search.files_searched
+            );
 
             // Answer the question
             let answer = self
@@ -1326,7 +1366,10 @@ impl MarkdownSummarizationChain {
                 format!("{} patterns", patterns.len()),
             )]);
             let outputs = HashMap::from([
-                ("matches".to_string(), format!("{} found", all_matches.len())),
+                (
+                    "matches".to_string(),
+                    format!("{} found", all_matches.len()),
+                ),
                 ("files".to_string(), format!("{} searched", files_searched)),
                 ("receipt".to_string(), format_receipt_summary(&receipt)),
                 (
@@ -1460,7 +1503,10 @@ impl MarkdownSummarizationChain {
             let inputs = HashMap::from([("question".to_string(), question.to_string())]);
             let outputs = HashMap::from([
                 ("answer".to_string(), answer.clone()),
-                ("insights".to_string(), format!("{} insights", insights.len())),
+                (
+                    "insights".to_string(),
+                    format!("{} insights", insights.len()),
+                ),
             ]);
             state.complete_tool_node(call_id, inputs, outputs, duration);
         }

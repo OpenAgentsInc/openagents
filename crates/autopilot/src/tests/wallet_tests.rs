@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use adjutant::IdentityManifest;
 
 use crate::app::wallet::{
-    identity_snapshot_from_identity, parse_wallet_config, WalletIdentityState,
+    WalletIdentityState, identity_snapshot_from_identity, parse_wallet_config,
 };
 
 #[test]
@@ -37,8 +37,11 @@ spark_token = ""
 "#,
     )
     .expect("valid toml");
-    let snapshot =
-        parse_wallet_config(&value, Some(PathBuf::from("/tmp/config.toml")), Some(PathBuf::from("/fallback")));
+    let snapshot = parse_wallet_config(
+        &value,
+        Some(PathBuf::from("/tmp/config.toml")),
+        Some(PathBuf::from("/fallback")),
+    );
     assert_eq!(snapshot.spark_token_present, Some(false));
     assert_eq!(snapshot.data_dir, Some(PathBuf::from("/fallback")));
 }

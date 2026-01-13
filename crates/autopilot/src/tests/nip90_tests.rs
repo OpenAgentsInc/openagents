@@ -1,5 +1,5 @@
 use crate::app::nip90::{Nip90Message, Nip90MessageKind, Nip90State};
-use crate::commands::{parse_command, Command};
+use crate::commands::{Command, parse_command};
 
 #[test]
 fn parse_nip90_commands() {

@@ -24,8 +24,8 @@ pub mod performance;
 pub mod sessions;
 pub mod situation;
 pub mod staleness;
-pub mod training;
 pub mod tool_step_utility;
+pub mod training;
 
 pub use auto_optimizer::*;
 pub use decision_pipelines::*;
@@ -38,5 +38,5 @@ pub use performance::*;
 pub use sessions::*;
 pub use situation::*;
 pub use staleness::*;
-pub use training::*;
 pub use tool_step_utility::tool_step_utility_predict;
+pub use training::*;

@@ -3,10 +3,10 @@
 //! Provides context operations (peek/grep/partition/map/summarize) with budgets,
 //! logs tool calls for training, and synthesizes a final answer.
 
-use crate::{AdjutantError, Task, TaskPlan, ToolRegistry};
 use crate::dspy::{LabeledToolCall, TrainingCollector};
+use crate::{AdjutantError, Task, TaskPlan, ToolRegistry};
 use chrono::Utc;
-use dsrs::{Chat, Message, LM};
+use dsrs::{Chat, LM, Message};
 use serde::Deserialize;
 use serde_json::json;
 use std::collections::HashSet;
@@ -383,10 +383,10 @@ impl<'a> RlmLocalExecutor<'a> {
                 end_line,
             } => {
                 let start = start_line.unwrap_or(1).max(1);
-                let end = end_line
-                    .unwrap_or(start + self.config.max_peek_lines.saturating_sub(1));
-                let snippet =
-                    self.peek_file(Path::new(&path), start_line, end_line).await?;
+                let end = end_line.unwrap_or(start + self.config.max_peek_lines.saturating_sub(1));
+                let snippet = self
+                    .peek_file(Path::new(&path), start_line, end_line)
+                    .await?;
                 let label = format!("{}:{}-{}", path, start, end);
                 let chunk_id = self.context.add_chunk(
                     RlmChunkKind::Peek,
@@ -404,9 +404,7 @@ impl<'a> RlmLocalExecutor<'a> {
             }
             RlmAction::Grep { pattern, scope } => {
                 let output = self.grep(&pattern, scope.as_deref()).await?;
-                let label = scope
-                    .clone()
-                    .unwrap_or_else(|| "workspace".to_string());
+                let label = scope.clone().unwrap_or_else(|| "workspace".to_string());
                 let chunk_id = self.context.add_chunk(
                     RlmChunkKind::Grep,
                     format!("{} in {}", pattern, label),
@@ -496,7 +494,11 @@ impl<'a> RlmLocalExecutor<'a> {
             return Ok(());
         }
         let (map_outputs, map_tokens) = self
-            .map_chunks(task, "Find key facts and relevant code references.", &chunk_ids)
+            .map_chunks(
+                task,
+                "Find key facts and relevant code references.",
+                &chunk_ids,
+            )
             .await?;
         if !map_outputs.is_empty() {
             let map_outputs_clone = map_outputs.clone();
@@ -555,9 +557,7 @@ impl<'a> RlmLocalExecutor<'a> {
     }
 
     async fn grep(&self, pattern: &str, scope: Option<&str>) -> Result<String, AdjutantError> {
-        let scope_path = scope
-            .filter(|s| !s.is_empty())
-            .map(|s| PathBuf::from(s));
+        let scope_path = scope.filter(|s| !s.is_empty()).map(|s| PathBuf::from(s));
         let output = self.tools.grep(pattern, scope_path.as_deref()).await?;
         if !output.success {
             return Ok(output.error.unwrap_or_else(|| "grep failed".to_string()));
@@ -582,9 +582,7 @@ impl<'a> RlmLocalExecutor<'a> {
             return Ok(Vec::new());
         }
 
-        let mut max_items = max_items
-            .unwrap_or(self.config.max_partition_items)
-            .max(1);
+        let mut max_items = max_items.unwrap_or(self.config.max_partition_items).max(1);
         if matches!(strategy, Some("by_file")) {
             max_items = 1;
         }
@@ -613,11 +611,7 @@ impl<'a> RlmLocalExecutor<'a> {
             }
 
             current_files.push(file.clone());
-            current_content.push_str(&format!(
-                "\n--- {} ---\n{}\n",
-                file.display(),
-                snippet
-            ));
+            current_content.push_str(&format!("\n--- {} ---\n{}\n", file.display(), snippet));
         }
 
         if !current_files.is_empty() {
@@ -626,7 +620,9 @@ impl<'a> RlmLocalExecutor<'a> {
                 current_files.first().unwrap().display(),
                 current_files.last().unwrap().display()
             );
-            let chunk_id = self.context.add_chunk(RlmChunkKind::Partition, label, None, current_content);
+            let chunk_id =
+                self.context
+                    .add_chunk(RlmChunkKind::Partition, label, None, current_content);
             chunk_ids.push(chunk_id);
         }
 
@@ -653,13 +649,11 @@ impl<'a> RlmLocalExecutor<'a> {
     ) -> Result<(Vec<String>, u32), AdjutantError> {
         let mut outputs = Vec::new();
         let mut tokens_used: u32 = 0;
-        let remaining = self
-            .config
-            .max_map_calls
-            .saturating_sub(self.map_calls);
+        let remaining = self.config.max_map_calls.saturating_sub(self.map_calls);
 
         for chunk_id in chunk_ids.iter().take(remaining) {
-            if self.subcalls >= self.config.max_subcalls || self.map_calls >= self.config.max_map_calls
+            if self.subcalls >= self.config.max_subcalls
+                || self.map_calls >= self.config.max_map_calls
             {
                 break;
             }
@@ -681,9 +675,12 @@ impl<'a> RlmLocalExecutor<'a> {
             self.subcalls += 1;
             self.map_calls += 1;
             let label = format!("map {} -> {}", chunk.id, query_label);
-            let output_id =
-                self.context
-                    .add_chunk(RlmChunkKind::Map, label, chunk.source.clone(), output.clone());
+            let output_id = self.context.add_chunk(
+                RlmChunkKind::Map,
+                label,
+                chunk.source.clone(),
+                output.clone(),
+            );
             outputs.push(output_id);
         }
 
@@ -706,9 +703,9 @@ impl<'a> RlmLocalExecutor<'a> {
         let (summary, tokens) = self.call_lm(SUMMARIZE_SYSTEM_PROMPT, &prompt).await?;
         self.subcalls += 1;
         self.summary_calls += 1;
-        let chunk_id = self
-            .context
-            .add_chunk(RlmChunkKind::Summary, "summary".to_string(), None, summary);
+        let chunk_id =
+            self.context
+                .add_chunk(RlmChunkKind::Summary, "summary".to_string(), None, summary);
         Ok((chunk_id, tokens))
     }
 
@@ -741,7 +738,12 @@ impl<'a> RlmLocalExecutor<'a> {
                 break;
             }
             if let Some(chunk) = self.context.get_chunk(chunk_id) {
-                let header = format!("--- {} [{}] {} ---\n", chunk.id, chunk.kind.as_str(), chunk.label);
+                let header = format!(
+                    "--- {} [{}] {} ---\n",
+                    chunk.id,
+                    chunk.kind.as_str(),
+                    chunk.label
+                );
                 let remaining = max_chars.saturating_sub(out.len());
                 if remaining <= header.len() {
                     break;

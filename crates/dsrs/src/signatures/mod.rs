@@ -19,6 +19,7 @@ pub mod query_composer;
 pub mod retrieval_router;
 pub mod sandbox_profile;
 pub mod task_understanding;
+pub mod unblock_suggestion;
 pub mod verification;
 
 // Re-export all signatures
@@ -34,4 +35,5 @@ pub use query_composer::QueryComposerSignature;
 pub use retrieval_router::RetrievalRouterSignature;
 pub use sandbox_profile::SandboxProfileSelectionSignature;
 pub use task_understanding::TaskUnderstandingSignature;
+pub use unblock_suggestion::UnblockSuggestionSignature;
 pub use verification::VerificationSignature;
