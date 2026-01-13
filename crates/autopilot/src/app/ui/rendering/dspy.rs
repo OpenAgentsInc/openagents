@@ -42,6 +42,16 @@ fn render_dspy_stage_card(
             Hsla::new(120.0 / 360.0, 0.6, 0.5, 1.0), // Green
             "🏁",
         ),
+        DspyStage::IssueSuggestions { .. } => (
+            "Issue Suggestions",
+            Hsla::new(45.0 / 360.0, 0.7, 0.5, 1.0), // Gold
+            "📋",
+        ),
+        DspyStage::IssueSelected { .. } => (
+            "Issue Selected",
+            Hsla::new(160.0 / 360.0, 0.6, 0.5, 1.0), // Teal
+            "🎯",
+        ),
     };
 
     // Card background
@@ -270,6 +280,100 @@ fn render_dspy_stage_card(
                 Point::new(content_x, y),
                 font_size,
                 color,
+                wgpui::text::FontStyle::default(),
+            );
+            cx.scene.draw_text(run);
+        }
+        DspyStage::IssueSuggestions {
+            suggestions,
+            filtered_count,
+            confidence,
+            await_selection,
+        } => {
+            // Show confidence and selection status
+            let status = if *await_selection { "Awaiting selection..." } else { "Auto-selecting..." };
+            let status_line = format!("Confidence: {:.0}% · {}", confidence * 100.0, status);
+            let run = cx.text.layout_styled_mono(
+                &status_line,
+                Point::new(content_x, y),
+                small_font_size,
+                palette.text_dim,
+                wgpui::text::FontStyle::default(),
+            );
+            cx.scene.draw_text(run);
+            y += small_line_height + 4.0;
+
+            // Show each suggestion
+            for (i, suggestion) in suggestions.iter().enumerate() {
+                let title_line = format!(
+                    "{}. [#{}] {} ({})",
+                    i + 1,
+                    suggestion.number,
+                    truncate_preview(&suggestion.title, 50),
+                    suggestion.priority
+                );
+                let run = cx.text.layout_styled_mono(
+                    &title_line,
+                    Point::new(content_x, y),
+                    small_font_size,
+                    palette.text_primary,
+                    wgpui::text::FontStyle::default(),
+                );
+                cx.scene.draw_text(run);
+                y += small_line_height;
+
+                let rationale_line = format!("   \"{}\"", truncate_preview(&suggestion.rationale, 60));
+                let run = cx.text.layout_styled_mono(
+                    &rationale_line,
+                    Point::new(content_x, y),
+                    small_font_size,
+                    palette.text_dim,
+                    wgpui::text::FontStyle::default(),
+                );
+                cx.scene.draw_text(run);
+                y += small_line_height;
+
+                let complexity_line = format!("   Complexity: {}", suggestion.complexity);
+                let run = cx.text.layout_styled_mono(
+                    &complexity_line,
+                    Point::new(content_x, y),
+                    small_font_size,
+                    palette.text_dim,
+                    wgpui::text::FontStyle::default(),
+                );
+                cx.scene.draw_text(run);
+                y += small_line_height + 4.0;
+            }
+
+            // Show filtered count
+            if *filtered_count > 0 {
+                let filtered_line = format!("[{} issues filtered as stale/blocked]", filtered_count);
+                let run = cx.text.layout_styled_mono(
+                    &filtered_line,
+                    Point::new(content_x, y),
+                    small_font_size,
+                    palette.text_dim,
+                    wgpui::text::FontStyle::default(),
+                );
+                cx.scene.draw_text(run);
+            }
+        }
+        DspyStage::IssueSelected {
+            number,
+            title,
+            selection_method,
+        } => {
+            let summary = format!(
+                "Selected issue #{}: {} ({})",
+                number,
+                truncate_preview(title, 50),
+                selection_method
+            );
+            let run = cx.text.layout_styled_mono(
+                &summary,
+                Point::new(content_x, y),
+                font_size,
+                accent_color,
                 wgpui::text::FontStyle::default(),
             );
             cx.scene.draw_text(run);
