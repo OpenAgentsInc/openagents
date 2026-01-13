@@ -288,6 +288,38 @@ mod tests {
     }
 
     #[test]
+    fn test_streaming_bold_text_content() {
+        let mut streaming = StreamingMarkdown::new();
+
+        // Simulate streaming "**Planning"
+        streaming.append("**Planning");
+        streaming.tick();
+
+        let doc = streaming.document();
+        assert_eq!(doc.blocks.len(), 1, "Should have exactly one block");
+
+        match &doc.blocks[0] {
+            MarkdownBlock::Paragraph(lines) => {
+                assert_eq!(lines.len(), 1, "Should have exactly one line");
+                // Check that we have a bold span with "Planning" text
+                let bold_span = lines[0].spans.iter().find(|s| s.style.bold);
+                assert!(bold_span.is_some(), "Should have a bold span");
+                let bold_text = &bold_span.unwrap().text;
+                assert_eq!(bold_text, "Planning", "Bold span should contain 'Planning'");
+                // Also verify no asterisks in any span
+                for span in &lines[0].spans {
+                    assert!(
+                        !span.text.contains("**"),
+                        "Span should not contain raw asterisks: {:?}",
+                        span.text
+                    );
+                }
+            }
+            _ => panic!("Expected paragraph"),
+        }
+    }
+
+    #[test]
     fn test_fade_state_initial() {
         let streaming = StreamingMarkdown::new();
         let fade = streaming.fade_state();

@@ -142,7 +142,11 @@ impl ChainState {
             }
             ChainEvent::Progress { message } => {
                 // Find the currently running node and update its progress
-                if let Some(node) = self.nodes.iter_mut().find(|n| n.state == NodeState::Running) {
+                if let Some(node) = self
+                    .nodes
+                    .iter_mut()
+                    .find(|n| n.state == NodeState::Running)
+                {
                     node.progress_message = Some(message);
                 }
             }

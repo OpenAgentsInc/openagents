@@ -42,10 +42,7 @@ impl BootloaderUIState {
             BootStage::Summary,
         ];
 
-        let cards = stages
-            .iter()
-            .map(|stage| BootCard::new(*stage))
-            .collect();
+        let cards = stages.iter().map(|stage| BootCard::new(*stage)).collect();
 
         Self {
             cards,

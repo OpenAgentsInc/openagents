@@ -97,7 +97,10 @@ async fn test_bootloader_event_emission() {
             }
         )
     });
-    assert!(has_hardware_completed, "Should have Hardware stage completed");
+    assert!(
+        has_hardware_completed,
+        "Should have Hardware stage completed"
+    );
 
     // Wait for the spawned task
     let _ = handle.await;

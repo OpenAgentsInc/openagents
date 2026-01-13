@@ -8,7 +8,10 @@ pub fn demo_chain() -> Vec<ChainNode> {
     vec![
         ChainNode::new("TaskAnalysisSignature")
             .with_state(NodeState::Complete)
-            .with_input("prompt", "Summarize the markdown files in the root level...")
+            .with_input(
+                "prompt",
+                "Summarize the markdown files in the root level...",
+            )
             .with_output("task_type", "summarize")
             .with_output("file_pattern", "*.md")
             .with_output("scope", "root")
@@ -35,7 +38,6 @@ pub fn demo_chain() -> Vec<ChainNode> {
             .with_input("filename", "README.md")
             .with_input("content_type", "markdown")
             .with_progress("Processing README.md (1/4)..."),
-        ChainNode::new("SummaryAggregatorSignature")
-            .with_state(NodeState::Pending),
+        ChainNode::new("SummaryAggregatorSignature").with_state(NodeState::Pending),
     ]
 }

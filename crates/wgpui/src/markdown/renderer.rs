@@ -368,10 +368,10 @@ impl MarkdownRenderer {
                 };
                 let color = span.style.color.with_alpha(span.style.color.a * opacity);
 
-                // Split span text into words (keeping whitespace attached)
-                let words: Vec<&str> = split_into_words(&span.text);
+                // Split span text into words (keeping whitespace attached, newlines converted to spaces)
+                let words = split_into_words(&span.text);
 
-                for word in words {
+                for word in &words {
                     if word.is_empty() {
                         continue;
                     }
@@ -810,33 +810,40 @@ pub fn render_markdown(
     renderer.render(&document, origin, max_width, text_system, scene)
 }
 
-/// Split text into words, keeping whitespace attached to preceding word.
+/// Split text into words, keeping spaces attached to preceding word.
+/// Newlines are converted to spaces to prevent cosmic_text from creating line breaks.
 /// This is optimized for word wrapping - each segment can be wrapped independently.
-fn split_into_words(text: &str) -> Vec<&str> {
+fn split_into_words(text: &str) -> Vec<String> {
     let mut words = Vec::new();
-    let mut start = 0;
-    let mut in_word = false;
+    let mut current_word = String::new();
 
-    for (i, c) in text.char_indices() {
-        if c.is_whitespace() {
-            if in_word {
-                // End of word - include this whitespace char with the word
-                in_word = false;
+    for c in text.chars() {
+        if c == '\n' || c == '\r' {
+            // Convert newlines to spaces, attach to current word if we have content
+            if !current_word.is_empty() {
+                current_word.push(' ');
             }
-            // Continue accumulating whitespace
+        } else if c.is_whitespace() {
+            // Regular whitespace (spaces, tabs) - attach to current word
+            current_word.push(c);
         } else {
-            if !in_word && start < i {
-                // We have accumulated whitespace, push it as a segment
-                words.push(&text[start..i]);
-                start = i;
+            // Non-whitespace character
+            if !current_word.is_empty()
+                && current_word
+                    .chars()
+                    .last()
+                    .map_or(false, |c| c.is_whitespace())
+            {
+                // Previous segment ended with whitespace, push it and start new word
+                words.push(std::mem::take(&mut current_word));
             }
-            in_word = true;
+            current_word.push(c);
         }
     }
 
     // Push remaining text
-    if start < text.len() {
-        words.push(&text[start..]);
+    if !current_word.is_empty() {
+        words.push(current_word);
     }
 
     words

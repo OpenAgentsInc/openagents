@@ -105,7 +105,10 @@ async fn run_chain(
     match chain.execute(&prompt, &repo_root).await {
         Ok(result) => {
             tracing::info!("[chainviz] Chain completed successfully!");
-            tracing::info!("[chainviz] Final summary: {}", result.aggregated.final_summary);
+            tracing::info!(
+                "[chainviz] Final summary: {}",
+                result.aggregated.final_summary
+            );
             tracing::info!(
                 "[chainviz] Explored {} curiosity questions",
                 result.curiosity_insights.len()

@@ -121,7 +121,9 @@ impl AutopilotApp {
             return;
         };
 
-        state.chainviz.start(&self.runtime_handle, state.window.clone(), prompt);
+        state
+            .chainviz
+            .start(&self.runtime_handle, state.window.clone(), prompt);
         state.modal_state = ModalState::ChainViz;
         state.window.request_redraw();
     }
@@ -219,6 +221,7 @@ impl AutopilotApp {
         state.chat.query_control_tx = Some(control_tx);
         state.chat.is_thinking = true;
         state.chat.streaming_markdown.reset();
+        state.chat.streaming_thought.reset();
         state.catalogs.refresh_agent_cards(state.chat.is_thinking);
 
         let window = state.window.clone();
@@ -329,6 +332,7 @@ impl AutopilotApp {
         state.chat.query_control_tx = Some(control_tx);
         state.chat.is_thinking = true;
         state.chat.streaming_markdown.reset();
+        state.chat.streaming_thought.reset();
         state.catalogs.refresh_agent_cards(state.chat.is_thinking);
 
         // Get window handle for triggering redraws from async task
@@ -400,6 +404,7 @@ impl AutopilotApp {
     ) {
         let handle = self.runtime_handle.clone();
         handle.spawn(async move {
+            tracing::info!("CODEX_FLOW: Starting async Codex task");
             let wire_log = app_server::AppServerWireLog::new();
             let trace_log = TraceLogger::new();
             let runtime = match CodexRuntime::spawn(CodexRuntimeConfig {
@@ -408,8 +413,12 @@ impl AutopilotApp {
             })
             .await
             {
-                Ok(runtime) => runtime,
+                Ok(runtime) => {
+                    tracing::info!("CODEX_FLOW: CodexRuntime spawned successfully");
+                    runtime
+                }
                 Err(err) => {
+                    tracing::error!("CODEX_FLOW: Failed to spawn CodexRuntime: {}", err);
                     let _ = tx.send(ResponseEvent::Error(format!(
                         "Failed to start codex app-server: {}",
                         err
@@ -545,9 +554,14 @@ impl AutopilotApp {
                 cwd: Some(cwd.to_string_lossy().to_string()),
             };
 
+            tracing::info!("CODEX_FLOW: Starting turn for thread {}", thread_id);
             let turn_id = match client.turn_start(turn_params).await {
-                Ok(response) => Some(response.turn.id),
+                Ok(response) => {
+                    tracing::info!("CODEX_FLOW: Turn started, id={}", response.turn.id);
+                    Some(response.turn.id)
+                }
                 Err(err) => {
+                    tracing::error!("CODEX_FLOW: Failed to start turn: {}", err);
                     let _ = emitter.send(ResponseEvent::Error(format!(
                         "Failed to start codex turn: {}",
                         err
@@ -557,6 +571,7 @@ impl AutopilotApp {
                     return;
                 }
             };
+            tracing::info!("CODEX_FLOW: Entering turn loop");
             run_app_server_turn_loop(
                 client,
                 notification_rx,
@@ -760,36 +775,27 @@ impl AutopilotApp {
         for event in events {
             match event {
                 ResponseEvent::Chunk(text) => {
+                    tracing::info!(
+                        chunk_len = text.len(),
+                        has_newline = text.contains('\n'),
+                        chunk_preview = ?text.chars().take(50).collect::<String>(),
+                        "STREAM_DEBUG: Chunk received"
+                    );
                     state.chat.streaming_markdown.append(&text);
                     state.chat.streaming_markdown.tick();
+                    let doc = state.chat.streaming_markdown.document();
+                    tracing::info!(
+                        source_len = state.chat.streaming_markdown.source().len(),
+                        block_count = doc.blocks.len(),
+                        is_complete = doc.is_complete,
+                        "STREAM_DEBUG: After tick - document state"
+                    );
                     needs_redraw = true;
                 }
                 ResponseEvent::ThoughtChunk(text) => {
-                    if let Some(last) = state.chat.messages.last_mut() {
-                        if last.role == MessageRole::AssistantThought {
-                            // Add newline between thought chunks for proper formatting
-                            if !last.content.is_empty() && !last.content.ends_with('\n') {
-                                last.content.push('\n');
-                            }
-                            last.content.push_str(&text);
-                        } else {
-                            state.chat.messages.push(ChatMessage {
-                                role: MessageRole::AssistantThought,
-                                content: text,
-                                document: None,
-                                uuid: None,
-                                metadata: None,
-                            });
-                        }
-                    } else {
-                        state.chat.messages.push(ChatMessage {
-                            role: MessageRole::AssistantThought,
-                            content: text,
-                            document: None,
-                            uuid: None,
-                            metadata: None,
-                        });
-                    }
+                    // Use streaming markdown for thoughts, just like regular chunks
+                    state.chat.streaming_thought.append(&text);
+                    state.chat.streaming_thought.tick();
                     needs_redraw = true;
                 }
                 ResponseEvent::ToolCallStart { name, tool_use_id } => {
@@ -907,6 +913,7 @@ impl AutopilotApp {
                         });
                     }
                     state.chat.streaming_markdown.reset();
+                    state.chat.streaming_thought.reset();
                     state.session.record_session(
                         &state.settings.coder_settings,
                         &state.chat.messages,
@@ -938,6 +945,7 @@ impl AutopilotApp {
                         metadata: None,
                     });
                     state.chat.streaming_markdown.reset();
+                    state.chat.streaming_thought.reset();
                     state.session.record_session(
                         &state.settings.coder_settings,
                         &state.chat.messages,
@@ -1011,11 +1019,30 @@ impl AutopilotApp {
                     state.tools.push_dspy_stage(stage, message_index);
                     needs_redraw = true;
                 }
+                ResponseEvent::CodexPromptReady(prompt) => {
+                    // Autopilot context is ready, store prompt for submission after state borrow ends
+                    state.autopilot.pending_issue_prompt = Some(prompt);
+                    // Clear thinking state since we're about to restart with Codex
+                    state.chat.is_thinking = false;
+                    state.chat.response_rx = None;
+                    needs_redraw = true;
+                }
             }
         }
 
         if needs_redraw {
             state.window.request_redraw();
+        }
+
+        // Check if we have a pending Codex prompt to submit (from CodexPromptReady event)
+        if let Some(state) = &mut self.state {
+            if let Some(prompt) = state.autopilot.pending_issue_prompt.take() {
+                tracing::info!(
+                    "Submitting context-enriched prompt to Codex: {} chars",
+                    prompt.len()
+                );
+                self.submit_codex_prompt(prompt);
+            }
         }
     }
 
@@ -1387,20 +1414,31 @@ impl AutopilotApp {
 
                     // Spawn issue suggestion task if we have issues
                     if let Some(workspace) = &manifest.workspace {
+                        tracing::info!(
+                            "Autopilot: workspace has {} issues",
+                            workspace.issues.len()
+                        );
                         if !workspace.issues.is_empty() {
                             let issues = workspace.issues.clone();
                             let workspace_root = workspace.root.clone();
-                            let (suggestion_tx, suggestion_rx) = tokio::sync::mpsc::unbounded_channel();
+                            let (suggestion_tx, suggestion_rx) =
+                                tokio::sync::mpsc::unbounded_channel();
                             state.autopilot.issue_suggestions_rx = Some(suggestion_rx);
 
                             self.runtime_handle.spawn(async move {
-                                tracing::info!("Autopilot: running issue suggestions for {} issues", issues.len());
+                                tracing::info!(
+                                    "Autopilot: running issue suggestions for {} issues",
+                                    issues.len()
+                                );
                                 let tools = adjutant::ToolRegistry::new(workspace_root);
-                                let orchestrator = adjutant::dspy_orchestrator::DspyOrchestrator::new(None, tools);
+                                let orchestrator =
+                                    adjutant::dspy_orchestrator::DspyOrchestrator::new(None, tools);
 
                                 // Create a minimal output that captures the stage
                                 struct CaptureOutput {
-                                    tx: tokio::sync::mpsc::UnboundedSender<adjutant::autopilot_loop::DspyStage>,
+                                    tx: tokio::sync::mpsc::UnboundedSender<
+                                        adjutant::autopilot_loop::DspyStage,
+                                    >,
                                 }
                                 impl adjutant::AutopilotOutput for CaptureOutput {
                                     fn iteration_start(&self, _: usize, _: usize) {}
@@ -1410,17 +1448,25 @@ impl AutopilotApp {
                                     fn error(&self, _: &str) {}
                                     fn interrupted(&self) {}
                                     fn max_iterations(&self, _: usize) {}
-                                    fn emit_stage(&self, stage: adjutant::autopilot_loop::DspyStage) {
+                                    fn emit_stage(
+                                        &self,
+                                        stage: adjutant::autopilot_loop::DspyStage,
+                                    ) {
                                         let _ = self.tx.send(stage);
                                     }
                                 }
 
                                 let output = CaptureOutput { tx: suggestion_tx };
-                                if let Err(e) = orchestrator.suggest_issues(&issues, vec![], &output, false).await {
+                                if let Err(e) = orchestrator
+                                    .suggest_issues(&issues, vec![], &output, false)
+                                    .await
+                                {
                                     tracing::warn!("Autopilot: issue suggestions failed: {}", e);
                                 }
                             });
                         }
+                    } else {
+                        tracing::info!("Autopilot: no workspace in manifest");
                     }
 
                     state.autopilot.oanix_manifest = Some(manifest);
@@ -1446,7 +1492,30 @@ impl AutopilotApp {
         if let Some(rx) = &mut state.autopilot.issue_suggestions_rx {
             match rx.try_recv() {
                 Ok(stage) => {
-                    tracing::info!("Autopilot: received issue suggestions");
+                    if let adjutant::autopilot_loop::DspyStage::IssueSuggestions {
+                        ref suggestions,
+                        filtered_count,
+                        confidence,
+                        ..
+                    } = stage
+                    {
+                        tracing::info!(
+                            "Autopilot: received {} suggestions, {} filtered, confidence={:.2}",
+                            suggestions.len(),
+                            filtered_count,
+                            confidence
+                        );
+                        for s in suggestions {
+                            tracing::info!(
+                                "  Suggestion: #{} {} ({})",
+                                s.number,
+                                s.title,
+                                s.priority
+                            );
+                        }
+                    } else {
+                        tracing::warn!("Autopilot: received non-suggestion stage: {:?}", stage);
+                    }
                     state.autopilot.issue_suggestions = Some(stage);
                     state.autopilot.issue_suggestions_rx = None;
                     needs_redraw = true;
@@ -2826,6 +2895,7 @@ async fn run_app_server_turn_loop(
                 }
             }
             Some(notification) = notification_rx.recv() => {
+                tracing::info!("CODEX_FLOW: Received notification: {}", notification.method);
                 match notification.method.as_str() {
                     "thread/started" => {
                         if let Some(params) = notification.params {
@@ -2847,6 +2917,11 @@ async fn run_app_server_turn_loop(
                         if let Some(params) = notification.params {
                             match serde_json::from_value::<app_server::AgentMessageDeltaNotification>(params) {
                                 Ok(event) => {
+                                    tracing::info!(
+                                        delta_len = event.delta.len(),
+                                        delta_preview = ?event.delta.chars().take(50).collect::<String>(),
+                                        "CODEX_FLOW: Sending chunk to emitter"
+                                    );
                                     agent_message_with_delta.insert(event.item_id);
                                     let _ = emitter.send(ResponseEvent::Chunk(event.delta));
                                     window.request_redraw();
@@ -4098,6 +4173,12 @@ impl TraceLogger {
                 self.log_event(
                     "dspy_stage",
                     serde_json::json!({ "stage": format!("{:?}", stage) }),
+                );
+            }
+            ResponseEvent::CodexPromptReady(prompt) => {
+                self.log_event(
+                    "codex_prompt_ready",
+                    serde_json::json!({ "prompt_len": prompt.len() }),
                 );
             }
         }

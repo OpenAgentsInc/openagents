@@ -42,6 +42,11 @@ Codex app-server runs and Adjutant autopilot loops.
 The autopilot-core crate provides shared execution logic for Autopilot, including DSPy workflows,
 checkpointing, preflight checks, session logging, and streaming event normalization.
 
+## codex-mcp
+The codex-mcp crate provides minimal Rust helpers for implementing MCP (Model Context Protocol)
+JSON-RPC servers over stdio in the style expected by Codex integrations. It focuses on the core
+tool flow (`tools/list`, `tools/call`) with small protocol types and a server loop.
+
 ## compute
 The compute crate implements a NIP-90 DVM provider that sells compute on Nostr. It bids on jobs,
 executes inference or agent backends, and publishes results back to relays.

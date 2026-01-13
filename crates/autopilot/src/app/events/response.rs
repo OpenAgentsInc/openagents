@@ -60,6 +60,8 @@ pub(crate) enum ResponseEvent {
     },
     HookLog(HookLogEntry),
     DspyStage(DspyStage),
+    /// Autopilot context is ready, submit to Codex via app-server
+    CodexPromptReady(String),
 }
 
 #[allow(dead_code)]

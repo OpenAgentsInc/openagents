@@ -168,7 +168,7 @@ impl BootEdge {
         match self.state {
             CardState::Complete => Hsla::new(0.0, 0.0, 0.5, 1.0), // 50% gray, full alpha
             CardState::Running => Hsla::new(200.0 / 360.0, 0.6, 0.5, 1.0), // Blue, full alpha
-            _ => Hsla::new(0.0, 0.0, 0.35, 0.9), // 35% gray, 90% alpha
+            _ => Hsla::new(0.0, 0.0, 0.35, 0.9),                  // 35% gray, 90% alpha
         }
     }
 }
@@ -191,12 +191,12 @@ pub fn calculate_radial_layout(
     // Stage nodes arranged radially
     // Angles in degrees, converted to radians
     let stage_angles = [
-        (BootStage::Hardware, 315.0_f32),  // Top-right
+        (BootStage::Hardware, 315.0_f32), // Top-right
         (BootStage::Compute, 350.0),
         (BootStage::Network, 25.0),
         (BootStage::Identity, 60.0),
         (BootStage::Workspace, 95.0),
-        (BootStage::Summary, 225.0),       // Bottom-left (context)
+        (BootStage::Summary, 225.0), // Bottom-left (context)
     ];
 
     let mut stage_nodes = Vec::new();
@@ -257,16 +257,20 @@ impl BootGraphLayout {
 
     /// Check if all stages are complete.
     pub fn all_complete(&self) -> bool {
-        self.stage_nodes.iter().all(|n| {
-            n.state == CardState::Complete || n.state == CardState::Skipped
-        })
+        self.stage_nodes
+            .iter()
+            .all(|n| n.state == CardState::Complete || n.state == CardState::Skipped)
     }
 
     /// Update primary node state based on overall progress.
     pub fn update_primary_state(&mut self) {
         if self.all_complete() {
             self.primary.state = CardState::Complete;
-        } else if self.stage_nodes.iter().any(|n| n.state == CardState::Running) {
+        } else if self
+            .stage_nodes
+            .iter()
+            .any(|n| n.state == CardState::Running)
+        {
             self.primary.state = CardState::Running;
         }
     }

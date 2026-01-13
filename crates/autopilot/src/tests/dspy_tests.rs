@@ -1,14 +1,20 @@
 use adjutant::dspy::SessionIndex;
 
 use crate::app::dspy::DspySessionSummary;
-use crate::commands::{parse_command, Command};
+use crate::commands::{Command, parse_command};
 
 #[test]
 fn parse_dspy_commands() {
     assert_eq!(parse_command("/dspy"), Some(Command::Dspy));
     assert_eq!(parse_command("/dspy refresh"), Some(Command::DspyRefresh));
-    assert_eq!(parse_command("/dspy auto on"), Some(Command::DspyAuto(true)));
-    assert_eq!(parse_command("/dspy auto off"), Some(Command::DspyAuto(false)));
+    assert_eq!(
+        parse_command("/dspy auto on"),
+        Some(Command::DspyAuto(true))
+    );
+    assert_eq!(
+        parse_command("/dspy auto off"),
+        Some(Command::DspyAuto(false))
+    );
     assert_eq!(
         parse_command("/dspy background off"),
         Some(Command::DspyBackground(false))

@@ -1347,11 +1347,8 @@ impl Adjutant {
         plan: &TaskPlan,
     ) -> Result<TaskResult, AdjutantError> {
         if let Some(lm) = self.get_or_create_decision_lm().await {
-            let mut executor = rlm_local::RlmLocalExecutor::new(
-                &self.tools,
-                lm,
-                self.decision_training.as_ref(),
-            );
+            let mut executor =
+                rlm_local::RlmLocalExecutor::new(&self.tools, lm, self.decision_training.as_ref());
             match executor.execute(task, plan).await {
                 Ok(result) => {
                     let summary = if result.context_handle.is_empty() {

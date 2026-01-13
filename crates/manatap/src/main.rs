@@ -125,17 +125,16 @@ async fn run_chain(
     match chain.execute(DEMO_PROMPT, &repo_root).await {
         Ok(result) => {
             eprintln!("[manatap] Chain completed successfully!");
-            eprintln!("[manatap] Final summary: {}", result.aggregated.final_summary);
+            eprintln!(
+                "[manatap] Final summary: {}",
+                result.aggregated.final_summary
+            );
             eprintln!(
                 "[manatap] Explored {} curiosity questions",
                 result.curiosity_insights.len()
             );
             for insight in &result.curiosity_insights {
-                eprintln!(
-                    "[manatap] Q{}: {}",
-                    insight.iteration + 1,
-                    insight.question
-                );
+                eprintln!("[manatap] Q{}: {}", insight.iteration + 1, insight.question);
             }
         }
         Err(e) => {
@@ -339,7 +338,12 @@ impl ApplicationHandler for App {
                         let connector_top = y - NODE_GAP + 4.0;
                         let connector_bottom = y - 4.0;
                         if connector_bottom > 0.0 && connector_top < height {
-                            Connector::paint(connector_top, connector_bottom, width / 2.0, &mut scene);
+                            Connector::paint(
+                                connector_top,
+                                connector_bottom,
+                                width / 2.0,
+                                &mut scene,
+                            );
                         }
 
                         node.paint(
@@ -368,11 +372,12 @@ impl ApplicationHandler for App {
                     .texture
                     .create_view(&wgpu::TextureViewDescriptor::default());
 
-                let mut encoder = state
-                    .device
-                    .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                        label: Some("Render Encoder"),
-                    });
+                let mut encoder =
+                    state
+                        .device
+                        .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                            label: Some("Render Encoder"),
+                        });
 
                 state.renderer.resize(
                     &state.queue,

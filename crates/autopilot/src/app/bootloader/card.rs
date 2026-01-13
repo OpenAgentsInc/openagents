@@ -46,11 +46,11 @@ impl CardState {
 
     pub fn symbol(&self) -> &'static str {
         match self {
-            CardState::Pending => "\u{25CB}", // ○
-            CardState::Running => "\u{25CF}", // ●
+            CardState::Pending => "\u{25CB}",  // ○
+            CardState::Running => "\u{25CF}",  // ●
             CardState::Complete => "\u{2713}", // ✓
-            CardState::Failed => "\u{2717}",  // ✗
-            CardState::Skipped => "\u{2212}", // −
+            CardState::Failed => "\u{2717}",   // ✗
+            CardState::Skipped => "\u{2212}",  // −
         }
     }
 }
@@ -277,7 +277,11 @@ impl BootCard {
                     );
                 } else {
                     for backend in &comp.backends {
-                        let status_symbol = if backend.ready { "\u{2713}" } else { "\u{2717}" };
+                        let status_symbol = if backend.ready {
+                            "\u{2713}"
+                        } else {
+                            "\u{2717}"
+                        };
                         let line = format!(
                             "{} {} ({} models)",
                             status_symbol, backend.name, backend.model_count
@@ -289,7 +293,11 @@ impl BootCard {
             }
 
             StageDetails::Network(net) => {
-                let inet_symbol = if net.has_internet { "\u{2713}" } else { "\u{2717}" };
+                let inet_symbol = if net.has_internet {
+                    "\u{2713}"
+                } else {
+                    "\u{2717}"
+                };
                 self.draw_detail_line(
                     &format!("{} Internet connectivity", inet_symbol),
                     detail_x,
@@ -300,7 +308,10 @@ impl BootCard {
                 );
                 y += LINE_HEIGHT;
                 self.draw_detail_line(
-                    &format!("Relays: {}/{} connected", net.relays_connected, net.relays_total),
+                    &format!(
+                        "Relays: {}/{} connected",
+                        net.relays_connected, net.relays_total
+                    ),
                     detail_x,
                     y,
                     scene,
@@ -328,7 +339,14 @@ impl BootCard {
                         y += LINE_HEIGHT;
                     }
                     if id.has_wallet {
-                        self.draw_detail_line("Wallet: Available", detail_x, y, scene, text, palette);
+                        self.draw_detail_line(
+                            "Wallet: Available",
+                            detail_x,
+                            y,
+                            scene,
+                            text,
+                            palette,
+                        );
                     }
                 } else {
                     self.draw_detail_line(
@@ -411,7 +429,12 @@ impl BootCard {
         text: &mut TextSystem,
         palette: &UiPalette,
     ) {
-        let run = text.layout_mono(text_content, Point::new(x, y), FONT_SIZE_META, palette.text_muted);
+        let run = text.layout_mono(
+            text_content,
+            Point::new(x, y),
+            FONT_SIZE_META,
+            palette.text_muted,
+        );
         scene.draw_text(run);
     }
 }
@@ -424,7 +447,13 @@ impl BootConnector {
     const ARROW_SIZE: f32 = 6.0;
 
     /// Draw a vertical connector between cards.
-    pub(crate) fn paint(y_start: f32, y_end: f32, x_center: f32, scene: &mut Scene, palette: &UiPalette) {
+    pub(crate) fn paint(
+        y_start: f32,
+        y_end: f32,
+        x_center: f32,
+        scene: &mut Scene,
+        palette: &UiPalette,
+    ) {
         let line_height = y_end - y_start - Self::ARROW_SIZE;
 
         if line_height > 0.0 {

@@ -28,6 +28,7 @@ use crate::app::ui::ThemeSetting;
 use crate::app::{
     HookModalView, HookSetting, ModelOption, SettingsInputMode, SettingsSnapshot, settings_rows,
 };
+use crate::autopilot_loop::DspyStage;
 use crate::commands::Command;
 use crate::keybindings::{Keybinding, default_keybindings};
 
@@ -2026,9 +2027,100 @@ pub(super) fn handle_modal_input(state: &mut AppState, key: &WinitKey) -> bool {
             true
         }
         ModalState::Bootloader => {
-            // Bootloader modal doesn't respond to keyboard input
-            // Let it complete naturally
-            false
+            // Handle keyboard input for issue suggestions in bootloader
+            if let Some(stage) = state.autopilot.issue_suggestions.clone() {
+                let handled = match &stage {
+                    DspyStage::UnblockSuggestion {
+                        issue_number,
+                        title,
+                        ..
+                    } => {
+                        match key {
+                            // Y or Enter = confirm and start working on issue
+                            WinitKey::Character(c) if c.eq_ignore_ascii_case("y") => {
+                                let prompt = format!("Work on issue #{}: {}", issue_number, title);
+                                state.autopilot.pending_issue_prompt = Some(prompt);
+                                state.autopilot.issue_suggestions = None;
+                                state.modal_state = ModalState::None;
+                                state.window.request_redraw();
+                                true
+                            }
+                            WinitKey::Named(WinitNamedKey::Enter) => {
+                                let prompt = format!("Work on issue #{}: {}", issue_number, title);
+                                state.autopilot.pending_issue_prompt = Some(prompt);
+                                state.autopilot.issue_suggestions = None;
+                                state.modal_state = ModalState::None;
+                                state.window.request_redraw();
+                                true
+                            }
+                            // N or Escape = skip, dismiss suggestions
+                            WinitKey::Character(c) if c.eq_ignore_ascii_case("n") => {
+                                state.autopilot.issue_suggestions = None;
+                                state.modal_state = ModalState::None;
+                                state.window.request_redraw();
+                                true
+                            }
+                            WinitKey::Named(WinitNamedKey::Escape) => {
+                                state.autopilot.issue_suggestions = None;
+                                state.modal_state = ModalState::None;
+                                state.window.request_redraw();
+                                true
+                            }
+                            _ => false,
+                        }
+                    }
+                    DspyStage::IssueSuggestions {
+                        suggestions,
+                        await_selection,
+                        ..
+                    } => {
+                        if !await_selection {
+                            return false;
+                        }
+                        match key {
+                            // 1-9 = select by number
+                            WinitKey::Character(c) if c.len() == 1 => {
+                                if let Some(digit) = c.chars().next().and_then(|ch| ch.to_digit(10))
+                                {
+                                    let idx = (digit as usize).saturating_sub(1);
+                                    if idx < suggestions.len() {
+                                        let suggestion = &suggestions[idx];
+                                        let prompt = format!(
+                                            "Work on issue #{}: {}",
+                                            suggestion.number, suggestion.title
+                                        );
+                                        state.autopilot.pending_issue_prompt = Some(prompt);
+                                        state.autopilot.issue_suggestions = None;
+                                        state.modal_state = ModalState::None;
+                                        state.window.request_redraw();
+                                        return true;
+                                    }
+                                }
+                                // S = skip
+                                if c.eq_ignore_ascii_case("s") {
+                                    state.autopilot.issue_suggestions = None;
+                                    state.modal_state = ModalState::None;
+                                    state.window.request_redraw();
+                                    return true;
+                                }
+                                false
+                            }
+                            // Escape = skip
+                            WinitKey::Named(WinitNamedKey::Escape) => {
+                                state.autopilot.issue_suggestions = None;
+                                state.modal_state = ModalState::None;
+                                state.window.request_redraw();
+                                true
+                            }
+                            _ => false,
+                        }
+                    }
+                    _ => false,
+                };
+                handled
+            } else {
+                false
+            }
         }
         ModalState::None => false,
     }
@@ -2221,6 +2313,7 @@ fn start_app_server_task(
     state.chat.query_control_tx = None;
     state.chat.is_thinking = true;
     state.chat.streaming_markdown.reset();
+    state.chat.streaming_thought.reset();
     state.catalogs.refresh_agent_cards(state.chat.is_thinking);
     state.window.request_redraw();
     Some(tx)

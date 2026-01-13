@@ -363,6 +363,10 @@ impl AppState {
                 suggestion_height + filtered_height + small_line_height
             }
             DspyStage::IssueSelected { .. } => line_height,
+            DspyStage::UnblockSuggestion { .. } => {
+                // Header + title + blocked reason + rationale + strategy + effort + other count
+                small_line_height * 7.0 + 24.0
+            }
         };
 
         header_height + content_height + padding

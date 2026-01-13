@@ -396,6 +396,51 @@ impl<W: Write> CliAcpRenderer<W> {
                     ),
                 );
             }
+            DspyStage::UnblockSuggestion {
+                issue_number,
+                title,
+                blocked_reason,
+                unblock_rationale,
+                unblock_strategy,
+                estimated_effort,
+                other_blocked_count,
+            } => {
+                self.write_line(
+                    DSPY_PREFIX,
+                    &indent,
+                    format!(
+                        "unblock suggestion: #{} {} (effort: {})",
+                        issue_number,
+                        truncate(&title, 40),
+                        estimated_effort
+                    ),
+                );
+                self.write_line(
+                    DSPY_PREFIX,
+                    &indent,
+                    format!("  blocked: {}", truncate(&blocked_reason, MAX_FIELD_LEN)),
+                );
+                self.write_line(
+                    DSPY_PREFIX,
+                    &indent,
+                    format!(
+                        "  rationale: {}",
+                        truncate(&unblock_rationale, MAX_FIELD_LEN)
+                    ),
+                );
+                self.write_line(
+                    DSPY_PREFIX,
+                    &indent,
+                    format!("  strategy: {}", truncate(&unblock_strategy, MAX_FIELD_LEN)),
+                );
+                if other_blocked_count > 0 {
+                    self.write_line(
+                        DSPY_PREFIX,
+                        &indent,
+                        format!("  [{} other issues also blocked]", other_blocked_count),
+                    );
+                }
+            }
         }
     }
 

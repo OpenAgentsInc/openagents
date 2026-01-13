@@ -2,9 +2,8 @@ use std::process::Command as ProcessCommand;
 use std::sync::atomic::Ordering;
 
 use adjutant::{
-    AcpChannelOutput, Adjutant, AdjutantError, DSPY_META_KEY, Task as AdjutantTask,
-    ToolRegistry, generate_session_id,
-    dspy_orchestrator::DspyOrchestrator,
+    AcpChannelOutput, Adjutant, AdjutantError, DSPY_META_KEY, Task as AdjutantTask, ToolRegistry,
+    dspy_orchestrator::DspyOrchestrator, generate_session_id,
 };
 use agent_client_protocol_schema as acp;
 use tokio::sync::mpsc;
@@ -44,6 +43,7 @@ pub(crate) fn submit_autopilot_prompt(
     state.chat.response_rx = Some(rx);
     state.chat.is_thinking = true;
     state.chat.streaming_markdown.reset();
+    state.chat.streaming_thought.reset();
 
     // Reset interrupt flag for new loop
     state
@@ -127,6 +127,34 @@ pub(crate) fn submit_autopilot_prompt(
             .map(|w| w.root.clone())
             .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
 
+        // EARLY BRANCH: If Codex is selected, skip dsrs/Adjutant and use CodexRuntime
+        if use_codex {
+            tracing::info!("Autopilot: Codex selected, routing to app-server");
+
+            // Build enriched prompt with OANIX context
+            let full_prompt = build_autopilot_context(&manifest, &workspace_root, &prompt_clone);
+
+            tracing::info!(
+                "Autopilot: context gathered for Codex (directives: {}, issues: {})",
+                manifest
+                    .workspace
+                    .as_ref()
+                    .map(|w| w.directives.len())
+                    .unwrap_or(0),
+                manifest
+                    .workspace
+                    .as_ref()
+                    .map(|w| w.issues.len())
+                    .unwrap_or(0)
+            );
+
+            // Signal to UI to submit this prompt via Codex
+            let _ = tx.send(ResponseEvent::CodexPromptReady(full_prompt));
+            window.request_redraw();
+            return;
+        }
+
+        // dsrs/Adjutant path (for local models like llama.cpp, Ollama, Pylon, etc.)
         match Adjutant::new(manifest.clone()) {
             Ok(adjutant) => {
                 tracing::info!("Autopilot: Adjutant initialized, starting autonomous loop");
@@ -539,6 +567,76 @@ fn format_tool_output(value: &serde_json::Value) -> Option<String> {
         }
     }
     Some(value.to_string())
+}
+
+/// Build enriched prompt with OANIX context (issues, directives, recent commits).
+/// Used for both Codex and dsrs/Adjutant paths.
+fn build_autopilot_context(
+    manifest: &adjutant::OanixManifest,
+    workspace_root: &std::path::Path,
+    user_prompt: &str,
+) -> String {
+    let mut context_parts = Vec::new();
+
+    // Add active directive info
+    if let Some(workspace) = &manifest.workspace {
+        // Find active directive
+        if let Some(active_id) = &workspace.active_directive {
+            if let Some(directive) = workspace.directives.iter().find(|d| &d.id == active_id) {
+                let priority = directive.priority.as_deref().unwrap_or("unknown");
+                let progress = directive.progress_pct.unwrap_or(0);
+                context_parts.push(format!(
+                    "## Active Directive\n{}: {} (Priority: {}, Progress: {}%)",
+                    directive.id, directive.title, priority, progress
+                ));
+            }
+        }
+
+        // Add open issues
+        let open_issues: Vec<_> = workspace
+            .issues
+            .iter()
+            .filter(|i| i.status == "open" && !i.is_blocked)
+            .take(5)
+            .collect();
+
+        if !open_issues.is_empty() {
+            let mut issues_text = String::from("## Open Issues\n");
+            for issue in open_issues {
+                issues_text.push_str(&format!(
+                    "- #{}: {} (Priority: {})\n",
+                    issue.number, issue.title, issue.priority
+                ));
+            }
+            context_parts.push(issues_text);
+        }
+    }
+
+    // Get recent commits (quick git log)
+    if let Ok(output) = ProcessCommand::new("git")
+        .args(["log", "--oneline", "-5", "--no-decorate"])
+        .current_dir(workspace_root)
+        .output()
+    {
+        if output.status.success() {
+            let commits = String::from_utf8_lossy(&output.stdout);
+            if !commits.trim().is_empty() {
+                context_parts.push(format!("## Recent Commits\n{}", commits.trim()));
+            }
+        }
+    }
+
+    // Build the full prompt with context
+    if context_parts.is_empty() {
+        user_prompt.to_string()
+    } else {
+        format!(
+            "{}\n\n---\n\n## User Request\n{}\n\n\
+            Use the tools to complete the task. Read relevant files, make changes, run tests.",
+            context_parts.join("\n\n"),
+            user_prompt
+        )
+    }
 }
 
 #[cfg(test)]

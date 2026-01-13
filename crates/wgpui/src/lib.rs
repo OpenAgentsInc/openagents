@@ -83,7 +83,6 @@ pub use bleeps::{
 };
 pub use clipboard::copy_to_clipboard;
 pub use color::Hsla;
-pub use curve::{CurvePrimitive, LineSegment};
 pub use components::hud::{
     ContextMenu, CssSize, MenuItem, StyleFrameClipKranoxProps, StyleFrameClipOctagonProps, Tooltip,
     TooltipPosition, style_frame_clip_kranox, style_frame_clip_octagon,
@@ -94,6 +93,7 @@ pub use components::{
     TextDecipher, TextDurationOptions, TextEffectAnimator, TextEffectFrame, TextEffectTiming,
     TextInput, TextSequence, VirtualList, animation_text_duration,
 };
+pub use curve::{CurvePrimitive, LineSegment};
 pub use effects::{Illuminator, IlluminatorSvg};
 pub use element::{
     AnyElement, ComponentElement, Drawable, Element, ElementId, ElementPaintContext, IntoElement,
@@ -114,7 +114,9 @@ pub use markdown::{
     StyledLine, StyledSpan, SyntaxHighlighter, TextStyle, render_markdown,
 };
 pub use platform::Platform;
-pub use scene::{GlyphInstance, GpuImageQuad, GpuLine, GpuQuad, GpuTextQuad, Quad, Scene, SvgQuad, TextRun};
+pub use scene::{
+    GlyphInstance, GpuImageQuad, GpuLine, GpuQuad, GpuTextQuad, Quad, Scene, SvgQuad, TextRun,
+};
 pub use scroll::{ScrollContainer, ScrollDirection};
 pub use styled::{Style, StyleRefinement, Styled, button, div, text};
 pub use svg::{SvgRasterized, SvgRenderer};

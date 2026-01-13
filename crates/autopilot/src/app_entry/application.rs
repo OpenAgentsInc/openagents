@@ -25,6 +25,7 @@ use crate::app::catalog::{
     CatalogState, load_agent_entries, load_hook_config, load_hook_scripts,
     load_mcp_project_servers, load_skill_entries,
 };
+use crate::app::chainviz::ChainVizState;
 use crate::app::chat::{ChatSelection, ChatState};
 use crate::app::codex_app_server as app_server;
 use crate::app::config::{AgentSelection, SettingsState, mcp_project_file};
@@ -36,7 +37,6 @@ use crate::app::events::{
 };
 use crate::app::gateway::GatewayState;
 use crate::app::git::GitState;
-use crate::app::chainviz::ChainVizState;
 use crate::app::lm_router::LmRouterState;
 use crate::app::nexus::NexusState;
 use crate::app::nip28::Nip28State;
@@ -294,7 +294,9 @@ impl ApplicationHandler for AutopilotApp {
 
         // Start bootloader in the GPU UI
         if let Some(state) = &mut self.state {
-            state.bootloader.start(&runtime_handle, state.window.clone());
+            state
+                .bootloader
+                .start(&runtime_handle, state.window.clone());
         }
 
         // Request initial redraw
@@ -1347,8 +1349,8 @@ impl ApplicationHandler for AutopilotApp {
                     return;
                 }
                 if matches!(state.modal_state, ModalState::ChainViz) {
-                    let max_scroll = (state.chainviz.content_height - state.chainviz.viewport_height)
-                        .max(0.0);
+                    let max_scroll =
+                        (state.chainviz.content_height - state.chainviz.viewport_height).max(0.0);
                     state.chainviz.scroll_offset =
                         (state.chainviz.scroll_offset - dy * 40.0).clamp(0.0, max_scroll);
                     state.window.request_redraw();
@@ -1527,6 +1529,10 @@ impl ApplicationHandler for AutopilotApp {
                         return;
                     }
                     if handle_modal_input(state, &key_event.logical_key) {
+                        // Check if there's a pending issue prompt to submit
+                        if let Some(prompt) = state.autopilot.pending_issue_prompt.take() {
+                            self.submit_prompt(prompt);
+                        }
                         return;
                     }
 
