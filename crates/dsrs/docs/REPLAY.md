@@ -329,6 +329,25 @@ pub fn verify_replay(
 
 ---
 
+## Compatibility Plan
+
+**Current state:** `autopilot-core/src/replay.rs` emits `ReplayBundle` (JSON format, different schema).
+
+**Target state:** Native emission of `REPLAY.jsonl v1` as specified in this document.
+
+**Migration path:**
+1. Implement `ReplayBundle → REPLAY.jsonl v1` exporter
+2. `adjutant replay` command accepts both formats
+3. Once stable, optionally migrate to native REPLAY.jsonl emission
+
+**MVP acceptance:** Either:
+- Native emission of REPLAY.jsonl, OR
+- Emission of ReplayBundle + working exporter to REPLAY.jsonl v1
+
+This allows shipping with current implementation while maintaining a clear upgrade path.
+
+---
+
 ## Integration with Other Primitives
 
 | Primitive | Relationship |

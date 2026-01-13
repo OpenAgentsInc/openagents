@@ -120,6 +120,8 @@ swap providers or change routing without touching the signature definitions.
 
 ## Wave Status
 
+> **Note:** Wave status tracks component readiness (structs + unit tests); MVP readiness depends on wiring. See root ROADMAP.md "NOW" section for true MVP gates.
+
 | Wave | Status | Description |
 |------|--------|-------------|
 | 0 | Complete | Protocol + Schema Registry |

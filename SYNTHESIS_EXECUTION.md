@@ -1,8 +1,27 @@
 # OpenAgents: System Guide
 
+> **Status:** Needs audit
+> **Last verified:** f2a78c3cd
+> **Source of truth:** `crates/*` for each subsystem
+> **If this doc conflicts with code, code wins.**
+
 A decentralized AI compute marketplace where agents run inference, earn Bitcoin, and operate autonomously. This document explains how the entire system works.
 
 For the full vision, see [SYNTHESIS.md](./SYNTHESIS.md). For the agent OS concept, see [OANIX.md](./docs/OANIX.md).
+
+### Implementation Status
+
+| Claim | Status | Source of Truth |
+|-------|--------|-----------------|
+| Nexus runs on Cloudflare Workers | ⏳ Planned | `crates/nexus/` |
+| NIP-90 kinds: 5050/6050/7000 | 🔄 Partial | `crates/nostr-sdk/` |
+| Tick model filesystem paths | ⏳ Planned | `crates/runtime/` |
+| Autopilot container mode | 🔄 Partial | `crates/autopilot/` |
+| Pylon local node | ✅ Implemented | `crates/pylon/` |
+| DSPy decision layer | ✅ Implemented | `crates/dsrs/`, `crates/adjutant/` |
+| Lightning/Spark payments | ⏳ Planned | `crates/spark-rs/` |
+
+**Legend:** ✅ Implemented | 🔄 Partial/In Progress | ⏳ Planned/Not Started
 
 ---
 
