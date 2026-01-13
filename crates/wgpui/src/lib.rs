@@ -114,7 +114,7 @@ pub use markdown::{
     StyledLine, StyledSpan, SyntaxHighlighter, TextStyle, render_markdown,
 };
 pub use platform::Platform;
-pub use scene::{GlyphInstance, GpuImageQuad, GpuQuad, GpuTextQuad, Quad, Scene, SvgQuad, TextRun};
+pub use scene::{GlyphInstance, GpuImageQuad, GpuLine, GpuQuad, GpuTextQuad, Quad, Scene, SvgQuad, TextRun};
 pub use scroll::{ScrollContainer, ScrollDirection};
 pub use styled::{Style, StyleRefinement, Styled, button, div, text};
 pub use svg::{SvgRasterized, SvgRenderer};

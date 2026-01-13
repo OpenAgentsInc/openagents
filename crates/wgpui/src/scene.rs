@@ -141,6 +141,39 @@ impl GpuQuad {
     }
 }
 
+/// GPU-ready line instance for rendering.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Pod, Zeroable)]
+pub struct GpuLine {
+    pub start: [f32; 2],
+    pub end: [f32; 2],
+    pub width: f32,
+    pub _pad: f32,
+    pub color: [f32; 4],
+}
+
+impl GpuLine {
+    /// Create a GPU line from start/end points and styling.
+    pub fn new(start: Point, end: Point, width: f32, color: Hsla, scale_factor: f32) -> Self {
+        Self {
+            start: [start.x * scale_factor, start.y * scale_factor],
+            end: [end.x * scale_factor, end.y * scale_factor],
+            width: width * scale_factor,
+            _pad: 0.0,
+            color: {
+                #[cfg(not(target_arch = "wasm32"))]
+                {
+                    color.to_linear_rgba()
+                }
+                #[cfg(target_arch = "wasm32")]
+                {
+                    color.to_rgba()
+                }
+            },
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct GlyphInstance {
     pub glyph_id: u16,
@@ -342,64 +375,36 @@ impl Scene {
         self.curves.push((self.current_layer, curve));
     }
 
-    /// Convert curves in a layer to quads (for rendering).
-    /// This tessellates curves into line segments and creates thin rotated quads.
-    pub fn curve_quads_for_layer(&self, layer: u32, scale_factor: f32, segments: usize) -> Vec<GpuQuad> {
-        let mut quads = Vec::new();
+    /// Convert curves in a layer to GPU lines for rendering.
+    /// Tessellates curves into line segments with adaptive subdivision.
+    pub fn curve_lines_for_layer(&self, layer: u32, scale_factor: f32) -> Vec<GpuLine> {
+        let mut lines = Vec::new();
 
         for (l, curve) in &self.curves {
             if *l != layer {
                 continue;
             }
 
-            let line_segments = curve.tessellate(segments);
+            // Use adaptive tessellation for smooth curves
+            let segments = curve.tessellate_adaptive(0.5);
 
-            for seg in line_segments {
-                // Create a thin quad for each line segment
-                let dx = seg.end.x - seg.start.x;
-                let dy = seg.end.y - seg.start.y;
-                let length = (dx * dx + dy * dy).sqrt();
-
-                if length < 0.001 {
-                    continue;
-                }
-
-                // Create a quad centered on the line segment
-                // The quad has width = length, height = stroke_width
-                // Then we need to rotate it - but since we can't rotate quads,
-                // we approximate with a quad that covers the segment's bounding box
-
-                // For simplicity, we'll create quads along the curve path
-                // Each quad is a small rectangle oriented along the segment
-
-                // Calculate perpendicular offset for stroke width
-                let half_width = curve.stroke_width / 2.0;
-                let perp_x = -dy / length * half_width;
-                let perp_y = dx / length * half_width;
-
-                // Calculate bounding box of the stroked segment
-                let x1 = seg.start.x + perp_x;
-                let y1 = seg.start.y + perp_y;
-                let x2 = seg.start.x - perp_x;
-                let y2 = seg.start.y - perp_y;
-                let x3 = seg.end.x + perp_x;
-                let y3 = seg.end.y + perp_y;
-                let x4 = seg.end.x - perp_x;
-                let y4 = seg.end.y - perp_y;
-
-                let min_x = x1.min(x2).min(x3).min(x4);
-                let max_x = x1.max(x2).max(x3).max(x4);
-                let min_y = y1.min(y2).min(y3).min(y4);
-                let max_y = y1.max(y2).max(y3).max(y4);
-
-                let quad = Quad::new(Bounds::new(min_x, min_y, max_x - min_x, max_y - min_y))
-                    .with_background(curve.color);
-
-                quads.push(GpuQuad::from_quad(&quad, scale_factor));
+            for seg in segments {
+                lines.push(GpuLine::new(
+                    seg.start,
+                    seg.end,
+                    curve.stroke_width,
+                    curve.color,
+                    scale_factor,
+                ));
             }
         }
 
-        quads
+        lines
+    }
+
+    /// Check if a layer has curves.
+    pub fn has_curves_in_layer(&self, layer: u32) -> bool {
+        self.curves.iter().any(|(l, _)| *l == layer)
     }
 
     pub fn push_clip(&mut self, bounds: Bounds) {

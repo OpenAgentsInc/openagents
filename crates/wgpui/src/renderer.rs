@@ -1,5 +1,5 @@
 use crate::geometry::Size;
-use crate::scene::{GpuImageQuad, GpuQuad, GpuTextQuad, Scene};
+use crate::scene::{GpuImageQuad, GpuLine, GpuQuad, GpuTextQuad, Scene};
 use crate::svg::SvgRenderer;
 use bytemuck::{Pod, Zeroable};
 use std::collections::HashMap;
@@ -43,11 +43,14 @@ struct PreparedLayer {
     quad_count: u32,
     text_buffer: Option<wgpu::Buffer>,
     text_count: u32,
+    line_buffer: Option<wgpu::Buffer>,
+    line_count: u32,
 }
 
 pub struct Renderer {
     quad_pipeline: wgpu::RenderPipeline,
     text_pipeline: wgpu::RenderPipeline,
+    line_pipeline: wgpu::RenderPipeline,
     image_pipeline: wgpu::RenderPipeline,
     uniform_buffer: wgpu::Buffer,
     uniform_bind_group: wgpu::BindGroup,
@@ -284,6 +287,77 @@ impl Renderer {
             cache: None,
         });
 
+        // Line pipeline for rendering anti-aliased lines
+        let line_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("Line Shader"),
+            source: wgpu::ShaderSource::Wgsl(include_str!("shaders/line.wgsl").into()),
+        });
+
+        let line_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("Line Pipeline Layout"),
+            bind_group_layouts: &[&uniform_bind_group_layout],
+            push_constant_ranges: &[],
+        });
+
+        let line_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("Line Pipeline"),
+            layout: Some(&line_pipeline_layout),
+            vertex: wgpu::VertexState {
+                module: &line_shader,
+                entry_point: Some("vs_main"),
+                buffers: &[wgpu::VertexBufferLayout {
+                    array_stride: std::mem::size_of::<GpuLine>() as u64,
+                    step_mode: wgpu::VertexStepMode::Instance,
+                    attributes: &[
+                        wgpu::VertexAttribute {
+                            format: wgpu::VertexFormat::Float32x2,
+                            offset: 0, // start
+                            shader_location: 0,
+                        },
+                        wgpu::VertexAttribute {
+                            format: wgpu::VertexFormat::Float32x2,
+                            offset: 8, // end
+                            shader_location: 1,
+                        },
+                        wgpu::VertexAttribute {
+                            format: wgpu::VertexFormat::Float32,
+                            offset: 16, // width
+                            shader_location: 2,
+                        },
+                        wgpu::VertexAttribute {
+                            format: wgpu::VertexFormat::Float32x4,
+                            offset: 24, // color (after width + padding)
+                            shader_location: 3,
+                        },
+                    ],
+                }],
+                compilation_options: Default::default(),
+            },
+            fragment: Some(wgpu::FragmentState {
+                module: &line_shader,
+                entry_point: Some("fs_main"),
+                targets: &[Some(wgpu::ColorTargetState {
+                    format: surface_format,
+                    blend: Some(wgpu::BlendState::PREMULTIPLIED_ALPHA_BLENDING),
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+                compilation_options: Default::default(),
+            }),
+            primitive: wgpu::PrimitiveState {
+                topology: wgpu::PrimitiveTopology::TriangleStrip,
+                strip_index_format: None,
+                front_face: wgpu::FrontFace::Ccw,
+                cull_mode: None,
+                polygon_mode: wgpu::PolygonMode::Fill,
+                unclipped_depth: false,
+                conservative: false,
+            },
+            depth_stencil: None,
+            multisample: wgpu::MultisampleState::default(),
+            multiview: None,
+            cache: None,
+        });
+
         let text_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("Text Pipeline Layout"),
             bind_group_layouts: &[&uniform_bind_group_layout, &atlas_bind_group_layout],
@@ -423,6 +497,7 @@ impl Renderer {
         Self {
             quad_pipeline,
             text_pipeline,
+            line_pipeline,
             image_pipeline,
             uniform_buffer,
             uniform_bind_group,
@@ -493,12 +568,10 @@ impl Renderer {
         let layers = scene.layers();
 
         for layer in layers {
-            // Get regular quads and curve quads, merge them
-            let mut quads = scene.gpu_quads_for_layer(layer, scale_factor);
-            let curve_quads = scene.curve_quads_for_layer(layer, scale_factor, 20);
-            quads.extend(curve_quads);
-
+            // Get quads (no longer merging curve quads - curves render as lines)
+            let quads = scene.gpu_quads_for_layer(layer, scale_factor);
             let text_quads = scene.gpu_text_quads_for_layer(layer, scale_factor);
+            let lines = scene.curve_lines_for_layer(layer, scale_factor);
 
             let quad_buffer = if !quads.is_empty() {
                 Some(
@@ -524,11 +597,25 @@ impl Renderer {
                 None
             };
 
+            let line_buffer = if !lines.is_empty() {
+                Some(
+                    device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                        label: Some(&format!("Line Instance Buffer Layer {}", layer)),
+                        contents: bytemuck::cast_slice(&lines),
+                        usage: wgpu::BufferUsages::VERTEX,
+                    }),
+                )
+            } else {
+                None
+            };
+
             self.prepared_layers.push(PreparedLayer {
                 quad_buffer,
                 quad_count: quads.len() as u32,
                 text_buffer,
                 text_count: text_quads.len() as u32,
+                line_buffer,
+                line_count: lines.len() as u32,
             });
         }
 
@@ -695,8 +782,16 @@ impl Renderer {
             occlusion_query_set: None,
         });
 
-        // Render layers in order - each layer's quads then text
+        // Render layers in order - lines, then quads, then text
         for layer in &self.prepared_layers {
+            // Render lines first (behind quads)
+            if let Some(buffer) = &layer.line_buffer {
+                render_pass.set_pipeline(&self.line_pipeline);
+                render_pass.set_bind_group(0, &self.uniform_bind_group, &[]);
+                render_pass.set_vertex_buffer(0, buffer.slice(..));
+                render_pass.draw(0..4, 0..layer.line_count);
+            }
+
             // Render quads for this layer
             if let Some(buffer) = &layer.quad_buffer {
                 render_pass.set_pipeline(&self.quad_pipeline);
