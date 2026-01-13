@@ -16,6 +16,10 @@ fn main() {
         return;
     }
 
+    // Kill any other running autopilot instances (single instance mode)
+    #[cfg(feature = "single-instance")]
+    autopilot::kill_other_instances();
+
     // Create tokio runtime for async SDK operations
     let runtime = tokio::runtime::Runtime::new().expect("Failed to create tokio runtime");
     let _guard = runtime.enter();
