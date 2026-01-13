@@ -4,6 +4,7 @@
 //! Integrates staleness filtering with LLM-based prioritization.
 
 use super::get_planning_lm;
+use super::issue_validation::validate_blocked_issue;
 use super::staleness::{StalenessScore, filter_issues_for_suggestion};
 use crate::manifest::IssueSummary;
 use anyhow::Result;
@@ -270,19 +271,42 @@ impl IssueSuggestionPipeline {
     /// Suggest which blocked issue to unblock first.
     ///
     /// Call this when all issues are blocked (suggest() returns empty suggestions).
+    ///
+    /// This function validates the suggested issue against recent commits before
+    /// returning. If the blocked_reason is stale (already addressed by recent commits),
+    /// it will try the next candidate.
     pub async fn suggest_unblock(
         &self,
         issues: &[IssueSummary],
         workspace_context: &str,
         workspace_root: Option<&Path>,
     ) -> Result<Option<UnblockSuggestionResult>> {
-        // Get blocked issues
+        // Track excluded issues (those that failed validation)
+        let mut excluded: Vec<u32> = Vec::new();
+
+        self.suggest_unblock_internal(issues, workspace_context, workspace_root, &mut excluded)
+            .await
+    }
+
+    /// Internal implementation with exclusion list for retry logic.
+    ///
+    /// Uses Box::pin for the recursive call to avoid infinite-sized futures.
+    fn suggest_unblock_internal<'a>(
+        &'a self,
+        issues: &'a [IssueSummary],
+        workspace_context: &'a str,
+        workspace_root: Option<&'a Path>,
+        excluded: &'a mut Vec<u32>,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<Option<UnblockSuggestionResult>>> + Send + 'a>> {
+        Box::pin(async move {
+        // Get blocked issues, excluding already-validated-as-stale ones
         let blocked: Vec<_> = issues
             .iter()
-            .filter(|i| i.is_blocked && i.status == "open")
+            .filter(|i| i.is_blocked && i.status == "open" && !excluded.contains(&i.number))
             .collect();
 
         if blocked.is_empty() {
+            tracing::info!("No more blocked issues to consider (all excluded or none exist)");
             return Ok(None);
         }
 
@@ -311,13 +335,66 @@ impl IssueSuggestionPipeline {
             .try_lm_unblock_prediction(&blocked_json, workspace_context, &recent_commits)
             .await;
 
-        match prediction_result {
-            Ok(prediction) => self.parse_unblock_result(&prediction, &blocked),
+        let unblock_result = match prediction_result {
+            Ok(prediction) => self.parse_unblock_result(&prediction, &blocked)?,
             Err(_) => {
                 // Fallback to heuristic selection when LLM is unavailable
-                Ok(Some(self.heuristic_unblock_selection(&blocked)))
+                Some(self.heuristic_unblock_selection(&blocked))
+            }
+        };
+
+        // Validate the result before returning
+        if let Some(ref result) = unblock_result {
+            if let Some(root) = workspace_root {
+                // Validate that the blocked_reason is still accurate
+                let validation = validate_blocked_issue(
+                    result.issue_number,
+                    &result.title,
+                    &result.blocked_reason,
+                    root,
+                )
+                .await;
+
+                match validation {
+                    Ok(v) if !v.is_valid => {
+                        tracing::info!(
+                            "Issue #{} blocked_reason is stale: {} (status: {:?})",
+                            result.issue_number,
+                            v.reason,
+                            v.status
+                        );
+                        // Exclude this issue and try next candidate
+                        excluded.push(result.issue_number);
+                        return self
+                            .suggest_unblock_internal(
+                                issues,
+                                workspace_context,
+                                workspace_root,
+                                excluded,
+                            )
+                            .await;
+                    }
+                    Ok(v) => {
+                        tracing::debug!(
+                            "Issue #{} validated as still relevant (confidence: {})",
+                            result.issue_number,
+                            v.confidence
+                        );
+                    }
+                    Err(e) => {
+                        // Validation failed (e.g., no LLM available), proceed anyway
+                        tracing::warn!(
+                            "Could not validate issue #{}: {}. Proceeding anyway.",
+                            result.issue_number,
+                            e
+                        );
+                    }
+                }
             }
         }
+
+        Ok(unblock_result)
+        })
     }
 
     /// Try to get LLM prediction for unblock suggestion.

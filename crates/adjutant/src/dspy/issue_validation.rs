@@ -216,6 +216,36 @@ fn get_f32(prediction: &Prediction, key: &str) -> f32 {
     }
 }
 
+// ============================================================================
+// Convenience Helper for Blocked Issue Validation
+// ============================================================================
+
+/// Validate that a blocked issue's blocked_reason is still accurate.
+///
+/// This is a convenience function that creates a pipeline and validates
+/// whether recent commits have resolved the blocker described in blocked_reason.
+///
+/// Returns `is_valid=false` if the blocked_reason describes a state that
+/// no longer exists (e.g., "crate has no source files" when source files
+/// were recently added).
+pub async fn validate_blocked_issue(
+    issue_number: u32,
+    title: &str,
+    blocked_reason: &str,
+    workspace_root: &Path,
+) -> Result<IssueValidationResult> {
+    let pipeline = IssueValidationPipeline::new();
+    pipeline
+        .validate(&IssueValidationInput {
+            issue_number,
+            issue_title: title.to_string(),
+            issue_description: None,
+            blocked_reason: Some(blocked_reason.to_string()),
+            workspace_root: workspace_root.to_path_buf(),
+        })
+        .await
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
