@@ -3,6 +3,7 @@ use std::sync::atomic::AtomicBool;
 
 use tokio::sync::mpsc;
 
+use crate::app::autopilot::PostCompletionResult;
 use crate::autopilot_loop::DspyStage;
 
 pub(crate) struct AutopilotState {
@@ -20,6 +21,22 @@ pub(crate) struct AutopilotState {
     pub(crate) issue_suggestions_rx: Option<mpsc::UnboundedReceiver<DspyStage>>,
     /// Pending issue prompt to submit (set when user selects an issue from suggestions)
     pub(crate) pending_issue_prompt: Option<String>,
+
+    // === Post-completion hook state ===
+    /// Issue currently being worked on (UUID)
+    pub(crate) current_issue_id: Option<String>,
+    /// Issue number for display/prompts
+    pub(crate) current_issue_number: Option<i32>,
+    /// Issue title for retry prompts
+    pub(crate) current_issue_title: Option<String>,
+    /// Issue description for verification
+    pub(crate) current_issue_description: Option<String>,
+    /// Retry count for verification failures (max 1)
+    pub(crate) current_issue_retry_count: u8,
+    /// Whether to auto-start next issue after completion (autopilot continuous mode)
+    pub(crate) autopilot_continuous_mode: bool,
+    /// Channel for receiving post-completion results from async task
+    pub(crate) post_completion_rx: Option<mpsc::UnboundedReceiver<PostCompletionResult>>,
 }
 
 impl AutopilotState {
@@ -37,6 +54,23 @@ impl AutopilotState {
             issue_suggestions: None,
             issue_suggestions_rx: None,
             pending_issue_prompt: None,
+            // Post-completion hook state
+            current_issue_id: None,
+            current_issue_number: None,
+            current_issue_title: None,
+            current_issue_description: None,
+            current_issue_retry_count: 0,
+            autopilot_continuous_mode: false,
+            post_completion_rx: None,
         }
+    }
+
+    /// Clear current issue tracking state
+    pub(crate) fn clear_current_issue(&mut self) {
+        self.current_issue_id = None;
+        self.current_issue_number = None;
+        self.current_issue_title = None;
+        self.current_issue_description = None;
+        self.current_issue_retry_count = 0;
     }
 }

@@ -12,6 +12,7 @@ use tokio::sync::oneshot;
 use crate::app::AppState;
 use crate::app::CoderMode;
 use crate::app::agents::AgentBackendsEvent;
+use crate::app::autopilot::{PostCompletionEvent, PostCompletionHook};
 use crate::app::catalog::SkillUpdate;
 use crate::app::chat::{ChatMessage, MessageRole};
 use crate::app::codex_app_server as app_server;
@@ -920,6 +921,55 @@ impl AutopilotApp {
                     state.tools.current_tool_name = None;
                     state.tools.current_tool_input.clear();
                     state.tools.current_tool_use_id = None;
+
+                    // Trigger post-completion hook if there's a current issue
+                    if let Some(issue_id) = state.autopilot.current_issue_id.clone() {
+                        // Get workspace root from manifest
+                        let workspace_root = state
+                            .autopilot
+                            .oanix_manifest
+                            .as_ref()
+                            .and_then(|m| m.workspace.as_ref())
+                            .map(|w| w.root.clone())
+                            .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
+
+                        let event = PostCompletionEvent {
+                            issue_id,
+                            issue_number: state.autopilot.current_issue_number.unwrap_or(0),
+                            issue_title: state
+                                .autopilot
+                                .current_issue_title
+                                .clone()
+                                .unwrap_or_default(),
+                            issue_description: state.autopilot.current_issue_description.clone(),
+                            workspace_root,
+                            task_summary: state
+                                .chat
+                                .messages
+                                .last()
+                                .map(|m| m.content.clone())
+                                .unwrap_or_default(),
+                            retry_count: state.autopilot.current_issue_retry_count,
+                            autopilot_continuous: state.autopilot.autopilot_continuous_mode,
+                        };
+
+                        tracing::info!(
+                            issue_number = event.issue_number,
+                            "Triggering post-completion hook"
+                        );
+
+                        // Create channel for receiving result
+                        let (result_tx, result_rx) = mpsc::unbounded_channel();
+                        state.autopilot.post_completion_rx = Some(result_rx);
+
+                        // Spawn async task to run post-completion hook
+                        self.runtime_handle.spawn(async move {
+                            let hook = PostCompletionHook::new();
+                            let result = hook.process(event).await;
+                            let _ = result_tx.send(result);
+                        });
+                    }
+
                     needs_redraw = true;
                     break;
                 }
@@ -1019,6 +1069,14 @@ impl AutopilotApp {
                     state.chat.is_thinking = false;
                     state.chat.response_rx = None;
                     needs_redraw = true;
+                }
+                // Post-completion events are handled via the post_completion_rx channel,
+                // not through the response stream
+                ResponseEvent::PostCompletionStarted { .. }
+                | ResponseEvent::PostCompletionComplete { .. }
+                | ResponseEvent::AutoStartNextIssue { .. } => {
+                    // These events are currently unused in the response stream
+                    // They exist for potential future use
                 }
             }
         }
@@ -1515,6 +1573,105 @@ impl AutopilotApp {
                 }
                 Err(TryRecvError::Disconnected) => {
                     state.autopilot.issue_suggestions_rx = None;
+                }
+                Err(TryRecvError::Empty) => {}
+            }
+        }
+
+        // Check for post-completion results
+        if let Some(rx) = &mut state.autopilot.post_completion_rx {
+            match rx.try_recv() {
+                Ok(result) => {
+                    tracing::info!("Autopilot: received post-completion result: {:?}", result);
+                    state.autopilot.post_completion_rx = None;
+
+                    match result {
+                        crate::app::autopilot::PostCompletionResult::Success {
+                            issue_number,
+                            next_issue,
+                        } => {
+                            state.push_system_message(format!(
+                                "✓ Issue #{} completed successfully",
+                                issue_number
+                            ));
+                            state.autopilot.clear_current_issue();
+
+                            // Auto-start next issue if available
+                            if let Some(next) = next_issue {
+                                tracing::info!(
+                                    "Auto-starting next issue: #{} {}",
+                                    next.number,
+                                    next.title
+                                );
+                                state.autopilot.current_issue_id = Some(next.id);
+                                state.autopilot.current_issue_number = Some(next.number);
+                                state.autopilot.current_issue_title = Some(next.title.clone());
+                                state.autopilot.current_issue_description = next.description;
+                                state.autopilot.current_issue_retry_count = 0;
+                                state.autopilot.pending_issue_prompt =
+                                    Some(format!("Work on issue #{}: {}", next.number, next.title));
+                            }
+                        }
+                        crate::app::autopilot::PostCompletionResult::RetryNeeded {
+                            issue_number,
+                            issue_title,
+                            reason,
+                        } => {
+                            state.push_system_message(format!(
+                                "⚠ Issue #{} verification failed: {}. Retrying...",
+                                issue_number, reason
+                            ));
+                            state.autopilot.current_issue_retry_count += 1;
+                            state.autopilot.pending_issue_prompt = Some(format!(
+                                "Continue working on issue #{}: {}. Previous attempt failed verification: {}",
+                                issue_number, issue_title, reason
+                            ));
+                        }
+                        crate::app::autopilot::PostCompletionResult::MovingToNext {
+                            failed_issue_number,
+                            reason,
+                            next_issue,
+                        } => {
+                            state.push_system_message(format!(
+                                "⚠ Issue #{} failed after retry: {}. Moving to next issue.",
+                                failed_issue_number, reason
+                            ));
+                            state.autopilot.clear_current_issue();
+
+                            // Auto-start next issue if available
+                            if let Some(next) = next_issue {
+                                tracing::info!(
+                                    "Auto-starting next issue: #{} {}",
+                                    next.number,
+                                    next.title
+                                );
+                                state.autopilot.current_issue_id = Some(next.id);
+                                state.autopilot.current_issue_number = Some(next.number);
+                                state.autopilot.current_issue_title = Some(next.title.clone());
+                                state.autopilot.current_issue_description = next.description;
+                                state.autopilot.current_issue_retry_count = 0;
+                                state.autopilot.pending_issue_prompt =
+                                    Some(format!("Work on issue #{}: {}", next.number, next.title));
+                            }
+                        }
+                        crate::app::autopilot::PostCompletionResult::NoMoreIssues => {
+                            state.push_system_message(
+                                "✓ All issues completed! No more issues in queue.".to_string(),
+                            );
+                            state.autopilot.clear_current_issue();
+                        }
+                        crate::app::autopilot::PostCompletionResult::Error(e) => {
+                            state.push_system_message(format!(
+                                "Error in post-completion processing: {}",
+                                e
+                            ));
+                            state.autopilot.clear_current_issue();
+                        }
+                    }
+                    needs_redraw = true;
+                }
+                Err(TryRecvError::Disconnected) => {
+                    state.autopilot.post_completion_rx = None;
                 }
                 Err(TryRecvError::Empty) => {}
             }
@@ -4163,6 +4320,27 @@ impl TraceLogger {
                 self.log_event(
                     "codex_prompt_ready",
                     serde_json::json!({ "prompt_len": prompt.len() }),
+                );
+            }
+            ResponseEvent::PostCompletionStarted { issue_number } => {
+                self.log_event(
+                    "post_completion_started",
+                    serde_json::json!({ "issue_number": issue_number }),
+                );
+            }
+            ResponseEvent::PostCompletionComplete { result } => {
+                self.log_event(
+                    "post_completion_complete",
+                    serde_json::json!({ "result": format!("{:?}", result) }),
+                );
+            }
+            ResponseEvent::AutoStartNextIssue {
+                issue_number,
+                title,
+            } => {
+                self.log_event(
+                    "auto_start_next_issue",
+                    serde_json::json!({ "issue_number": issue_number, "title": title }),
                 );
             }
         }

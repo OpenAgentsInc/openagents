@@ -32,6 +32,7 @@ which = "7.0"
 
 # Autopilot/Adjutant
 adjutant = { path = "../adjutant" }
+autopilot-core = { path = "../autopilot-core" }
 gateway = { path = "../gateway" }
 lm-router = { path = "../lm-router" }
 openagents-spark = { path = "../spark" }
