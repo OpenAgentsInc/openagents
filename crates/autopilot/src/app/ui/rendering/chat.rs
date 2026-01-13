@@ -85,7 +85,100 @@ fn render_chat(
         }
     }
 
+    // Render boot sections at top of chat
+    let boot_section_font_size = 13.0_f32;
+    let boot_section_line_height = boot_section_font_size * 1.4;
+    let boot_section_padding = 8.0_f32;
+    let boot_section_indent = 16.0_f32;
+    for boot_section in &chat_layout.boot_sections {
+        let section_top = boot_section.y_offset;
+        let section_bottom = section_top + boot_section.height;
+
+        // Skip if outside viewport
+        if section_bottom < viewport_top || section_top > viewport_bottom {
+            continue;
+        }
+
+        // Arrow indicator
+        let arrow = if boot_section.expanded { "▼" } else { "▶" };
+        let arrow_color = palette.text_muted;
+        let arrow_run = state.text_system.layout_styled_mono(
+            arrow,
+            Point::new(content_x, section_top + boot_section_font_size * 0.3),
+            boot_section_font_size,
+            arrow_color,
+            wgpui::text::FontStyle::default(),
+        );
+        scene.draw_text(arrow_run);
+
+        // Summary text
+        let summary_x = content_x + boot_section_font_size * 1.5;
+        let summary_run = state.text_system.layout_styled_mono(
+            &boot_section.summary,
+            Point::new(summary_x, section_top + boot_section_font_size * 0.3),
+            boot_section_font_size,
+            palette.text_secondary,
+            wgpui::text::FontStyle::default(),
+        );
+        scene.draw_text(summary_run);
+
+        // Status icon on right
+        let status_icon = match boot_section.status {
+            SectionStatus::Pending => "",
+            SectionStatus::InProgress => "...",
+            SectionStatus::Success => "[OK]",
+            SectionStatus::Error => "[X]",
+        };
+        if !status_icon.is_empty() {
+            let status_color = match boot_section.status {
+                SectionStatus::Pending => palette.text_muted,
+                SectionStatus::InProgress => Hsla::new(45.0 / 360.0, 0.8, 0.5, 1.0), // Warning yellow
+                SectionStatus::Success => Hsla::new(120.0 / 360.0, 0.6, 0.45, 1.0),  // Success green
+                SectionStatus::Error => Hsla::new(0.0, 0.7, 0.55, 1.0),              // Error red
+            };
+            let status_width = status_icon.len() as f32 * boot_section_font_size * 0.6;
+            let status_run = state.text_system.layout_styled_mono(
+                status_icon,
+                Point::new(
+                    content_x + available_width - status_width - boot_section_padding,
+                    section_top + boot_section_font_size * 0.3,
+                ),
+                boot_section_font_size,
+                status_color,
+                wgpui::text::FontStyle::default(),
+            );
+            scene.draw_text(status_run);
+        }
+
+        // Detail lines (only when expanded)
+        if boot_section.expanded && !boot_section.details.is_empty() {
+            let header_height = boot_section_font_size * 1.6;
+            let mut detail_y = section_top + header_height + 4.0;
+
+            for detail in &boot_section.details {
+                if detail_y + boot_section_line_height > viewport_bottom {
+                    break;
+                }
+
+                let detail_run = state.text_system.layout_styled_mono(
+                    detail,
+                    Point::new(content_x + boot_section_indent, detail_y),
+                    boot_section_font_size,
+                    palette.text_muted,
+                    wgpui::text::FontStyle::default(),
+                );
+                scene.draw_text(detail_run);
+
+                detail_y += boot_section_line_height;
+            }
+        }
+    }
+
     let mut y = viewport_top - state.chat.scroll_offset;
+    // Advance y past boot sections
+    for boot_section in &chat_layout.boot_sections {
+        y += boot_section.height + 8.0; // boot_section_gap
+    }
     let mut inline_tools_render_idx = 0;
     let mut dspy_stages_render_idx = 0;
     for (i, msg) in state.chat.messages.iter().enumerate() {

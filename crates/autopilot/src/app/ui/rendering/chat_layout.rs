@@ -23,6 +23,60 @@ impl AppState {
         let mut dspy_stage_layouts: Vec<DspyStageLayout> = Vec::new();
         let mut total_content_height = 0.0_f32;
 
+        // Calculate boot section layouts (displayed at top of chat)
+        let boot_section_font_size = 13.0_f32;
+        let boot_section_header_height = boot_section_font_size * 1.6;
+        let boot_section_line_height = boot_section_font_size * 1.4;
+        let boot_section_gap = 8.0_f32;
+
+        let mut boot_section_layouts: Vec<BootSectionLayout> = Vec::new();
+        if let Some(sections) = &self.chat.boot_sections {
+            // Environment section
+            let env = &sections.environment;
+            if env.active || !env.details.is_empty() || env.status != SectionStatus::Pending {
+                let env_height = if env.expanded && !env.details.is_empty() {
+                    boot_section_header_height
+                        + 4.0
+                        + (env.details.len() as f32 * boot_section_line_height)
+                } else {
+                    boot_section_header_height
+                };
+                boot_section_layouts.push(BootSectionLayout {
+                    y_offset: total_content_height,
+                    height: env_height,
+                    summary: env.summary.clone(),
+                    details: env.details.clone(),
+                    status: env.status,
+                    expanded: env.expanded,
+                    section_id: env.id,
+                });
+                total_content_height += env_height + boot_section_gap;
+            }
+
+            // Issues section
+            let issues = &sections.issues;
+            if issues.active || !issues.details.is_empty() || issues.status != SectionStatus::Pending
+            {
+                let issues_height = if issues.expanded && !issues.details.is_empty() {
+                    boot_section_header_height
+                        + 4.0
+                        + (issues.details.len() as f32 * boot_section_line_height)
+                } else {
+                    boot_section_header_height
+                };
+                boot_section_layouts.push(BootSectionLayout {
+                    y_offset: total_content_height,
+                    height: issues_height,
+                    summary: issues.summary.clone(),
+                    details: issues.details.clone(),
+                    status: issues.status,
+                    expanded: issues.expanded,
+                    section_id: issues.id,
+                });
+                total_content_height += issues_height + boot_section_gap;
+            }
+        }
+
         // Group tools by message_index
         let mut tools_by_message: HashMap<usize, Vec<usize>> = HashMap::new();
         for (tool_idx, tool) in self.tools.tool_history.iter().enumerate() {
@@ -174,9 +228,18 @@ impl AppState {
             }
         }
 
-        // Apply scroll offset to message Y positions
+        // Apply scroll offset to boot section Y positions
         let scroll_adjust = viewport_top - self.chat.scroll_offset;
+        for bsl in &mut boot_section_layouts {
+            bsl.y_offset += scroll_adjust;
+        }
+
+        // Apply scroll offset to message Y positions
         let mut y = scroll_adjust;
+        // Start y after boot sections
+        for bsl in &boot_section_layouts {
+            y += bsl.height + boot_section_gap;
+        }
         let mut inline_tools_idx = 0;
         let mut dspy_stages_idx = 0;
         for (msg_idx, layout) in message_layouts.iter_mut().enumerate() {
@@ -239,6 +302,7 @@ impl AppState {
             available_width,
             chat_font_size,
             chat_line_height,
+            boot_sections: boot_section_layouts,
             message_layouts,
             streaming_thought_height,
             streaming_height,

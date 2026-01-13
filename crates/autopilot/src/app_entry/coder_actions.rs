@@ -38,7 +38,8 @@ use crate::app::workspaces::{
     ConversationItem, ConversationRole, ReviewState, WorkspaceAccessMode, WorkspaceApprovalRequest,
     WorkspaceEvent, conversation_item_from_value, turn_diff_item,
 };
-use crate::app::bootloader::{CardState, IssuesDetails, StageDetails};
+use crate::app::bootloader::{BootEvent, BootStage, CardState, IssuesDetails, StageDetails};
+use wgpui::components::molecules::SectionStatus;
 use crate::autopilot_loop::{DspyStage, TodoStatus, TodoTask};
 use crate::commands::{Command, ReviewCommand, ReviewDelivery, ReviewTarget, parse_command};
 
@@ -1621,7 +1622,47 @@ impl AutopilotApp {
                             suggestions_found: suggestions.len(),
                             provider: "Codex".to_string(),
                         });
-                        state.bootloader.complete_issues(details, 0);
+                        state.bootloader.complete_issues(details.clone(), 0);
+
+                        // Also update the chat boot section for issues
+                        if let Some(sections) = &mut state.chat.boot_sections {
+                            sections.issues.status = SectionStatus::Success;
+                            sections.issues.active = false;
+                            sections.issues.expanded = false;
+                            sections.issues.summary = format!(
+                                "Issues evaluated: {} suggestions found",
+                                suggestions.len()
+                            );
+                            sections.issues.details.push(format!(
+                                "✓ Evaluated {} issues",
+                                total_evaluated
+                            ));
+                        }
+
+                        // Add issue suggestions as numbered chat messages
+                        if !suggestions.is_empty() {
+                            state.chat.push_system_message(format!(
+                                "Found {} actionable issue suggestions. Reply with a number to start:",
+                                suggestions.len()
+                            ));
+                            for (idx, suggestion) in suggestions.iter().enumerate() {
+                                let summary = {
+                                    let first_line = suggestion.rationale.lines().next().unwrap_or("");
+                                    if first_line.len() > 60 {
+                                        format!("{}...", &first_line[..60])
+                                    } else {
+                                        first_line.to_string()
+                                    }
+                                };
+                                state.chat.push_system_message(format!(
+                                    "{}. #{} {} - {}",
+                                    idx + 1,
+                                    suggestion.number,
+                                    suggestion.title,
+                                    summary
+                                ));
+                            }
+                        }
                     } else {
                         tracing::warn!("Autopilot: received non-suggestion stage: {:?}", stage);
                     }
@@ -1871,22 +1912,160 @@ impl AutopilotApp {
             return;
         };
 
-        // Only process if bootloader modal is active
-        if !matches!(state.modal_state, ModalState::Bootloader) {
+        // Collect events from bootloader channel
+        let events: Vec<BootEvent> = if let Some(rx) = &mut state.bootloader.event_rx {
+            let mut events = Vec::new();
+            while let Ok(event) = rx.try_recv() {
+                events.push(event);
+            }
+            events
+        } else {
+            return;
+        };
+
+        if events.is_empty() {
             return;
         }
 
-        // Drain events and check for completion
-        let updated = state.bootloader.drain_events();
+        // Process each event: update both bootloader UI state and chat boot sections
+        for event in events {
+            // Update chat boot sections
+            Self::handle_boot_event_to_chat(&mut state.chat, event.clone());
 
-        // Auto-transition disabled for now - stay on bootloader UI
-        // if state.bootloader.is_ready_to_transition() {
-        //     // Transition from Bootloader to None (main UI)
-        //     state.modal_state = ModalState::None;
-        //     state.window.request_redraw();
-        // } else
-        if updated {
-            state.window.request_redraw();
+            // Update bootloader UI state (for legacy modal if needed)
+            state.bootloader.handle_event_external(event);
+        }
+
+        state.window.request_redraw();
+    }
+
+    /// Handle a boot event and update chat boot sections.
+    fn handle_boot_event_to_chat(
+        chat: &mut crate::app::chat::ChatState,
+        event: BootEvent,
+    ) {
+        let Some(sections) = &mut chat.boot_sections else {
+            return;
+        };
+
+        match event {
+            BootEvent::BootStarted { .. } => {
+                // Set environment section to in-progress
+                sections.environment.status = SectionStatus::InProgress;
+                sections.environment.summary = "Checking environment...".to_string();
+                sections.environment.active = true;
+            }
+
+            BootEvent::StageStarted { stage, description } => {
+                if stage == BootStage::Issues {
+                    // Issues stage goes to its own section
+                    sections.issues.status = SectionStatus::InProgress;
+                    sections.issues.summary = "Evaluating blocked issues...".to_string();
+                    sections.issues.details.push(description.to_string());
+                    sections.issues.active = true;
+                } else {
+                    // All other stages go to environment section
+                    sections.environment.details.push(format!("→ {}", description));
+                }
+            }
+
+            BootEvent::StageProgress { stage, message } => {
+                if stage == BootStage::Issues {
+                    sections.issues.details.push(format!("  {}", message));
+                } else {
+                    // Update last detail or append
+                    if let Some(last) = sections.environment.details.last_mut() {
+                        if last.starts_with("→ ") || last.starts_with("  ") {
+                            *last = format!("  {}", message);
+                        } else {
+                            sections.environment.details.push(format!("  {}", message));
+                        }
+                    } else {
+                        sections.environment.details.push(format!("  {}", message));
+                    }
+                }
+            }
+
+            BootEvent::StageCompleted {
+                stage,
+                duration,
+                details,
+            } => {
+                let ms = duration.as_millis();
+                if stage == BootStage::Issues {
+                    // Complete issues section
+                    sections.issues.status = SectionStatus::Success;
+                    sections.issues.active = false;
+                    sections.issues.expanded = false;
+
+                    // Extract suggestions count if available
+                    if let StageDetails::Issues(issues) = details {
+                        sections.issues.summary = format!(
+                            "Issues evaluated: {} suggestions found",
+                            issues.suggestions_found
+                        );
+                        sections.issues.details.push(format!(
+                            "✓ Evaluated {} issues ({}ms)",
+                            issues.total_evaluated, ms
+                        ));
+                    }
+                } else {
+                    // Add completion line to environment section
+                    sections
+                        .environment
+                        .details
+                        .push(format!("✓ {} ({}ms)", stage.name(), ms));
+                }
+            }
+
+            BootEvent::StageFailed {
+                stage,
+                duration,
+                error,
+            } => {
+                let ms = duration.as_millis();
+                if stage == BootStage::Issues {
+                    sections.issues.status = SectionStatus::Error;
+                    sections.issues.active = false;
+                    sections.issues.details.push(format!("✗ {} ({}ms)", error, ms));
+                } else {
+                    sections
+                        .environment
+                        .details
+                        .push(format!("✗ {} failed: {} ({}ms)", stage.name(), error, ms));
+                }
+            }
+
+            BootEvent::StageSkipped { stage, reason } => {
+                if stage == BootStage::Issues {
+                    sections.issues.summary = format!("Issues skipped: {}", reason);
+                    sections.issues.status = SectionStatus::Pending;
+                    sections.issues.active = false;
+                } else {
+                    sections
+                        .environment
+                        .details
+                        .push(format!("⊘ {} skipped: {}", stage.name(), reason));
+                }
+            }
+
+            BootEvent::BootCompleted { summary, .. } => {
+                // Complete environment section
+                sections.environment.status = SectionStatus::Success;
+                sections.environment.active = false;
+                sections.environment.expanded = false;
+                if let Some(sum) = summary {
+                    sections.environment.summary = sum;
+                } else {
+                    sections.environment.summary = "Environment ready".to_string();
+                }
+            }
+
+            BootEvent::BootFailed { error } => {
+                sections.environment.status = SectionStatus::Error;
+                sections.environment.active = false;
+                sections.environment.details.push(format!("✗ Boot failed: {}", error));
+            }
         }
     }
 
