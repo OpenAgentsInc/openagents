@@ -34,14 +34,14 @@ fn vs_main(
 
     // Calculate line direction and perpendicular
     let dir = instance.end - instance.start;
-    let length = length(dir);
-    let unit_dir = dir / max(length, 0.001);
+    let line_len = length(dir);
+    let unit_dir = dir / max(line_len, 0.001);
     let perp = vec2<f32>(-unit_dir.y, unit_dir.x);
 
     // Expand line by half width on each side, plus a pixel for anti-aliasing
     let half_width = instance.width * 0.5 + 1.0;
 
-    // 4 vertices forming a quad around the line
+    // 4 vertices forming a quad around the line (triangle strip order)
     // 0: start - perp, 1: start + perp, 2: end - perp, 3: end + perp
     let vertex_positions = array<vec2<f32>, 4>(
         instance.start - perp * half_width,
@@ -51,13 +51,11 @@ fn vs_main(
     );
 
     // Local coordinates for SDF calculation
-    // x: along line (0 at start, length at end)
-    // y: perpendicular (-half_width to +half_width)
     let local_coords = array<vec2<f32>, 4>(
         vec2<f32>(0.0, -half_width),
         vec2<f32>(0.0, half_width),
-        vec2<f32>(length, -half_width),
-        vec2<f32>(length, half_width),
+        vec2<f32>(line_len, -half_width),
+        vec2<f32>(line_len, half_width),
     );
 
     let world_pos = vertex_positions[vertex_idx];
@@ -69,7 +67,7 @@ fn vs_main(
 
     out.position = vec4<f32>(ndc, 0.0, 1.0);
     out.local_pos = local_coords[vertex_idx];
-    out.line_length = length;
+    out.line_length = line_len;
     out.line_width = instance.width;
     out.color = instance.color;
 
@@ -81,16 +79,12 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // SDF for a line segment (capsule shape)
     let half_width = in.line_width * 0.5;
 
-    // Clamp x to line segment
-    let x = clamp(in.local_pos.x, 0.0, in.line_length);
-    let y = in.local_pos.y;
-
     // Distance from the line center
-    let dist_from_center = abs(y);
+    let dist_from_center = abs(in.local_pos.y);
 
     // Distance to the line endpoints (for rounded caps)
-    let dist_to_start = length(vec2<f32>(in.local_pos.x, y));
-    let dist_to_end = length(vec2<f32>(in.local_pos.x - in.line_length, y));
+    let dist_to_start = length(in.local_pos);
+    let dist_to_end = length(vec2<f32>(in.local_pos.x - in.line_length, in.local_pos.y));
 
     // SDF: negative inside, positive outside
     var sdf: f32;
@@ -109,6 +103,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         discard;
     }
 
+    // Use the input color with SDF-based alpha
     let final_alpha = in.color.a * alpha;
     return vec4<f32>(in.color.rgb * final_alpha, final_alpha);
 }

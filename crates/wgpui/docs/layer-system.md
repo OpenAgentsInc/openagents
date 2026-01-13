@@ -42,15 +42,25 @@ impl Component for MyOverlay {
 
 ## Rendering Order
 
-The renderer processes layers in ascending order:
+The renderer processes layers in ascending order. Within each layer, primitives render in this order:
 
+1. **Quads** (background, panels, nodes)
+2. **Lines** (connections, curves, edges)
+3. **Text** (labels, content)
+
+Full render sequence:
 1. Layer 0 quads
-2. Layer 0 text
-3. Layer 1 quads
-4. Layer 1 text
-5. ... and so on
+2. Layer 0 lines
+3. Layer 0 text
+4. Layer 1 quads
+5. Layer 1 lines
+6. Layer 1 text
+7. ... and so on
 
-This ensures that layer 1 content (both quads and text) completely covers layer 0 content.
+This ensures:
+- Lines render ON TOP of quads (connections visible over nodes)
+- Text renders ON TOP of lines (labels always readable)
+- Higher layers completely cover lower layers
 
 ## Common Layer Assignments
 
@@ -66,6 +76,7 @@ This ensures that layer 1 content (both quads and text) completely covers layer 
 The `Scene` struct tracks:
 - `current_layer: u32` - the layer for new draw calls
 - `quads: Vec<(u32, Quad)>` - quads with their layer
+- `curves: Vec<(u32, CurvePrimitive)>` - curves with their layer
 - `text_runs: Vec<(u32, TextRun)>` - text runs with their layer
 
 Key methods:
@@ -73,6 +84,7 @@ Key methods:
 - `layer() -> u32` - get current layer
 - `layers() -> Vec<u32>` - get sorted unique layers used
 - `gpu_quads_for_layer(layer, scale)` - get GPU quads for a specific layer
+- `curve_lines_for_layer(layer, scale)` - tessellate curves to GPU lines
 - `gpu_text_quads_for_layer(layer, scale)` - get GPU text quads for a specific layer
 
 ### Renderer
@@ -83,14 +95,16 @@ The `Renderer` prepares separate GPU buffers for each layer during `prepare()`, 
 // In prepare()
 for layer in scene.layers() {
     let quads = scene.gpu_quads_for_layer(layer, scale_factor);
+    let lines = scene.curve_lines_for_layer(layer, scale_factor);
     let text = scene.gpu_text_quads_for_layer(layer, scale_factor);
     // Create buffers...
 }
 
 // In render()
 for layer in &self.prepared_layers {
-    // Render layer's quads
-    // Render layer's text
+    // Render layer's quads (background)
+    // Render layer's lines (on top of quads)
+    // Render layer's text (on top of lines)
 }
 ```
 

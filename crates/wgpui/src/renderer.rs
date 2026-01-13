@@ -258,6 +258,11 @@ impl Renderer {
                             offset: 48,
                             shader_location: 4,
                         },
+                        wgpu::VertexAttribute {
+                            format: wgpu::VertexFormat::Float32,
+                            offset: 52, // corner_radius
+                            shader_location: 5,
+                        },
                     ],
                 }],
                 compilation_options: Default::default(),
@@ -782,17 +787,9 @@ impl Renderer {
             occlusion_query_set: None,
         });
 
-        // Render layers in order - lines, then quads, then text
+        // Render layers in order - quads first, then lines (on top), then text
         for layer in &self.prepared_layers {
-            // Render lines first (behind quads)
-            if let Some(buffer) = &layer.line_buffer {
-                render_pass.set_pipeline(&self.line_pipeline);
-                render_pass.set_bind_group(0, &self.uniform_bind_group, &[]);
-                render_pass.set_vertex_buffer(0, buffer.slice(..));
-                render_pass.draw(0..4, 0..layer.line_count);
-            }
-
-            // Render quads for this layer
+            // Render quads first (background)
             if let Some(buffer) = &layer.quad_buffer {
                 render_pass.set_pipeline(&self.quad_pipeline);
                 render_pass.set_bind_group(0, &self.uniform_bind_group, &[]);
@@ -800,7 +797,15 @@ impl Renderer {
                 render_pass.draw(0..4, 0..layer.quad_count);
             }
 
-            // Render text for this layer
+            // Render lines on top of quads (connections between nodes)
+            if let Some(buffer) = &layer.line_buffer {
+                render_pass.set_pipeline(&self.line_pipeline);
+                render_pass.set_bind_group(0, &self.uniform_bind_group, &[]);
+                render_pass.set_vertex_buffer(0, buffer.slice(..));
+                render_pass.draw(0..4, 0..layer.line_count);
+            }
+
+            // Render text on top
             if let Some(buffer) = &layer.text_buffer {
                 render_pass.set_pipeline(&self.text_pipeline);
                 render_pass.set_bind_group(0, &self.uniform_bind_group, &[]);

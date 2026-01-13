@@ -380,11 +380,9 @@ impl Scene {
     pub fn curve_lines_for_layer(&self, layer: u32, scale_factor: f32) -> Vec<GpuLine> {
         let mut lines = Vec::new();
 
-        for (l, curve) in &self.curves {
-            if *l != layer {
-                continue;
-            }
+        let curves_in_layer: Vec<_> = self.curves.iter().filter(|(l, _)| *l == layer).collect();
 
+        for (_l, curve) in curves_in_layer {
             // Use adaptive tessellation for smooth curves
             let segments = curve.tessellate_adaptive(0.5);
 

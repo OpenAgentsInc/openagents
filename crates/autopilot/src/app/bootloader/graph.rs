@@ -166,9 +166,9 @@ impl BootEdge {
     /// Get the color for this edge based on state.
     pub fn edge_color(&self) -> Hsla {
         match self.state {
-            CardState::Complete => Hsla::new(0.0, 0.0, 0.35, 0.8), // Brighter gray
-            CardState::Running => Hsla::new(200.0 / 360.0, 0.4, 0.4, 0.8), // Blue tint
-            _ => Hsla::new(0.0, 0.0, 0.2, 0.4), // Very faint
+            CardState::Complete => Hsla::new(0.0, 0.0, 0.5, 1.0), // 50% gray, full alpha
+            CardState::Running => Hsla::new(200.0 / 360.0, 0.6, 0.5, 1.0), // Blue, full alpha
+            _ => Hsla::new(0.0, 0.0, 0.35, 0.9), // 35% gray, 90% alpha
         }
     }
 }
