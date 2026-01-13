@@ -724,6 +724,290 @@ impl Evaluator for MyModule {
 
 ---
 
+## Outcome-Coupled Scoring
+
+The MVP uses outcome-coupled metrics that link tool call decisions to their actual impact.
+
+### Step Score Formula
+
+```
+step_score = 0.4 × step_utility
+           + 0.3 × (1 - was_repeated)
+           + 0.2 × verification_delta_normalized
+           + 0.1 × params_valid
+```
+
+| Component | Weight | Source | Description |
+|-----------|--------|--------|-------------|
+| `step_utility` | 40% | ToolResultSignature | Did the step advance the goal? (-1 to +1) |
+| `was_repeated` | 30% | Execution history | Penalize redundant tool calls |
+| `verification_delta` | 20% | Test results | Did tests improve after this step? |
+| `params_valid` | 10% | Schema validation | Were tool params schema-valid? |
+
+### Implementation
+
+```rust
+// File: crates/dsrs/src/evaluate/outcome_coupled.rs
+
+pub struct OutcomeCoupledScorer {
+    step_utility_weight: f32,
+    repetition_weight: f32,
+    verification_weight: f32,
+    schema_weight: f32,
+}
+
+impl OutcomeCoupledScorer {
+    pub fn score(&self, tool_result: &ToolResultRecord) -> f32 {
+        let utility_score = (tool_result.step_utility + 1.0) / 2.0;  // Normalize -1..1 to 0..1
+        let repetition_score = if tool_result.was_repeated { 0.0 } else { 1.0 };
+        let verification_score = self.normalize_verification_delta(tool_result.verification_delta);
+        let schema_score = if tool_result.params_valid { 1.0 } else { 0.0 };
+
+        self.step_utility_weight * utility_score
+            + self.repetition_weight * repetition_score
+            + self.verification_weight * verification_score
+            + self.schema_weight * schema_score
+    }
+
+    fn normalize_verification_delta(&self, delta: i32) -> f32 {
+        // Positive delta = tests improved, negative = tests regressed
+        match delta {
+            d if d > 0 => 1.0,
+            d if d == 0 => 0.5,
+            _ => 0.0,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ToolResultRecord {
+    pub step_utility: f32,
+    pub was_repeated: bool,
+    pub verification_delta: i32,
+    pub params_valid: bool,
+}
+```
+
+### Training Data Labels
+
+```rust
+#[derive(Serialize, Deserialize)]
+pub struct OutcomeCoupledLabels {
+    /// From ToolResultSignature output (-1.0 to +1.0)
+    pub step_utility: f32,
+
+    /// Tests passing before this step
+    pub tests_before: i32,
+
+    /// Tests passing after this step
+    pub tests_after: i32,
+
+    /// Computed: tests_after - tests_before
+    pub verification_delta: i32,
+
+    /// Did the exact same tool+params appear earlier?
+    pub was_repeated: bool,
+
+    /// Did params pass schema validation?
+    pub params_valid: bool,
+
+    /// Computed outcome-coupled score
+    pub outcome_score: f32,
+}
+```
+
+### Usage in Optimization
+
+```rust
+// MIPROv2 uses outcome-coupled scores for candidate selection
+let optimizer = MIPROv2::builder()
+    .num_candidates(10)
+    .evaluation_metric(OutcomeCoupledMetric::new())  // Use outcome-coupled scoring
+    .build();
+
+// Training examples include outcome labels
+let examples = load_jsonl_with_labels("tool_calls.jsonl").await?;
+optimizer.compile(&mut module, examples).await?;
+```
+
+---
+
+## ToolParamsSchemaMetric (Proxy)
+
+Validates tool call parameters against JSON schema.
+
+```rust
+// File: crates/dsrs/src/evaluate/metrics/proxy.rs
+
+pub struct ToolParamsSchemaMetric {
+    tool_schemas: HashMap<String, Value>,
+}
+
+impl ToolParamsSchemaMetric {
+    pub fn new(tools: &[Arc<dyn RlmTool>]) -> Self {
+        let mut tool_schemas = HashMap::new();
+        for tool in tools {
+            tool_schemas.insert(tool.name().to_string(), tool.args_schema());
+        }
+        Self { tool_schemas }
+    }
+}
+
+#[async_trait]
+impl Metric for ToolParamsSchemaMetric {
+    fn name(&self) -> &str { "ToolParamsSchema" }
+    fn tier(&self) -> MetricTier { MetricTier::Proxy }
+    fn cost_estimate(&self) -> u64 { 0 }
+
+    async fn evaluate(&self, _input: &Example, output: &Example) -> Result<MetricScore> {
+        let tool_name = output.get("tool")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        let params = output.get("params").unwrap_or(&Value::Null);
+
+        let score = if let Some(schema) = self.tool_schemas.get(tool_name) {
+            match jsonschema::JSONSchema::compile(schema) {
+                Ok(compiled) => {
+                    if compiled.is_valid(params) { 1.0 } else { 0.0 }
+                }
+                Err(_) => 0.5  // Schema compilation error
+            }
+        } else {
+            0.0  // Unknown tool
+        };
+
+        Ok(MetricScore {
+            value: score,
+            confidence: 1.0,
+            details: Some(format!("Tool: {}, Params valid: {}", tool_name, score == 1.0)),
+            cost_msats: 0,
+        })
+    }
+}
+```
+
+---
+
+## VerificationDeltaMetric (Truth)
+
+Measures improvement in test results after a tool execution.
+
+```rust
+// File: crates/dsrs/src/evaluate/metrics/truth.rs
+
+pub struct VerificationDeltaMetric {
+    test_command: String,
+    sandbox: PylonSandboxProvider,
+}
+
+impl VerificationDeltaMetric {
+    pub fn new(test_command: &str) -> Self {
+        Self {
+            test_command: test_command.to_string(),
+            sandbox: PylonSandboxProvider::online(Default::default()),
+        }
+    }
+}
+
+#[async_trait]
+impl Metric for VerificationDeltaMetric {
+    fn name(&self) -> &str { "VerificationDelta" }
+    fn tier(&self) -> MetricTier { MetricTier::Truth }
+    fn cost_estimate(&self) -> u64 { 500 }  // Sandbox execution cost
+
+    async fn evaluate(&self, input: &Example, output: &Example) -> Result<MetricScore> {
+        // Get baseline test count from input
+        let tests_before = input.get("tests_passing")
+            .and_then(|v| v.as_i64())
+            .unwrap_or(0) as i32;
+
+        // Run tests in sandbox
+        let response = self.sandbox.run_commands(&[&self.test_command]).await?;
+
+        // Parse test results from output
+        let tests_after = parse_test_count(&response.stdout.unwrap_or_default());
+
+        let delta = tests_after - tests_before;
+        let score = match delta {
+            d if d > 0 => 1.0,     // Tests improved
+            d if d == 0 => 0.5,   // No change
+            _ => 0.0,             // Tests regressed
+        };
+
+        Ok(MetricScore {
+            value: score,
+            confidence: 0.9,
+            details: Some(format!(
+                "Tests before: {}, after: {}, delta: {}",
+                tests_before, tests_after, delta
+            )),
+            cost_msats: 500,
+        })
+    }
+}
+
+fn parse_test_count(output: &str) -> i32 {
+    // Parse "X passed" from test output
+    // e.g., "24 passed; 0 failed"
+    let re = regex::Regex::new(r"(\d+) passed").unwrap();
+    re.captures(output)
+        .and_then(|c| c.get(1))
+        .and_then(|m| m.as_str().parse().ok())
+        .unwrap_or(0)
+}
+```
+
+---
+
+## WasRepeatedMetric (Proxy)
+
+Detects redundant tool calls in execution history.
+
+```rust
+// File: crates/dsrs/src/evaluate/metrics/proxy.rs
+
+pub struct WasRepeatedMetric;
+
+#[async_trait]
+impl Metric for WasRepeatedMetric {
+    fn name(&self) -> &str { "WasRepeated" }
+    fn tier(&self) -> MetricTier { MetricTier::Proxy }
+    fn cost_estimate(&self) -> u64 { 0 }
+
+    async fn evaluate(&self, input: &Example, output: &Example) -> Result<MetricScore> {
+        let execution_history = input.get("execution_history")
+            .and_then(|v| v.as_array())
+            .unwrap_or(&vec![]);
+
+        let current_tool = output.get("tool").unwrap_or(&Value::Null);
+        let current_params = output.get("params").unwrap_or(&Value::Null);
+        let current_hash = canonical_hash(&json!({
+            "tool": current_tool,
+            "params": current_params
+        }));
+
+        let was_repeated = execution_history.iter().any(|prev| {
+            let prev_tool = prev.get("tool").unwrap_or(&Value::Null);
+            let prev_params = prev.get("params").unwrap_or(&Value::Null);
+            let prev_hash = canonical_hash(&json!({
+                "tool": prev_tool,
+                "params": prev_params
+            }));
+            prev_hash == current_hash
+        });
+
+        Ok(MetricScore {
+            value: if was_repeated { 0.0 } else { 1.0 },
+            confidence: 1.0,
+            details: Some(format!("Was repeated: {}", was_repeated)),
+            cost_msats: 0,
+        })
+    }
+}
+```
+
+---
+
 ## Metric Index
 
 | Metric | Location | Tier | Cost | Purpose |
@@ -733,11 +1017,16 @@ impl Evaluator for MyModule {
 | KeywordMetric | `dsrs/src/evaluate/metrics/proxy.rs` | Proxy | 0 | Keyword checking |
 | LengthMetric | `dsrs/src/evaluate/metrics/proxy.rs` | Proxy | 0 | Length bounds |
 | SyntaxMetric | `dsrs/src/evaluate/metrics/proxy.rs` | Proxy | 0 | Syntax validation |
+| ToolParamsSchemaMetric | `dsrs/src/evaluate/metrics/proxy.rs` | Proxy | 0 | Schema validation |
+| WasRepeatedMetric | `dsrs/src/evaluate/metrics/proxy.rs` | Proxy | 0 | Repetition detection |
 | **Truth Metrics** |
 | LlmJudgeMetric | `dsrs/src/evaluate/metrics/truth.rs` | Truth | ~100 | LLM evaluation |
 | DiffMetric | `dsrs/src/evaluate/metrics/truth.rs` | Truth | 0-50 | Output comparison |
 | SandboxMetric | `dsrs/src/evaluate/metrics/truth.rs` | Truth | ~500 | Command execution |
 | TestPassMetric | `dsrs/src/evaluate/metrics/truth.rs` | Truth | ~500 | Test execution |
+| VerificationDeltaMetric | `dsrs/src/evaluate/metrics/truth.rs` | Truth | ~500 | Test improvement |
+| **Outcome-Coupled** |
+| OutcomeCoupledScorer | `dsrs/src/evaluate/outcome_coupled.rs` | Composite | varies | Combined step score |
 | **Adjutant Metrics** |
 | subtask_planning_metric | `adjutant/src/dspy/metrics.rs` | Custom | 0 | Planning validation |
 | subtask_execution_metric | `adjutant/src/dspy/metrics.rs` | Custom | 0 | Execution validation |
