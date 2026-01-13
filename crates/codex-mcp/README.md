@@ -18,6 +18,13 @@ This crate intentionally stays small and focused on the “tools” path (`tools
 
 If you need a broader MCP implementation, treat this crate as a small foundation (or introduce a richer MCP crate) rather than expecting full protocol coverage here.
 
+## Design goals (what this crate optimizes for)
+
+- **Zero ceremony**: implement a small trait and call `serve()`.
+- **Stdio-first**: a subprocess model where stdin/stdout is the protocol channel.
+- **Codex-compatible**: focuses on the JSON shapes and method names Codex uses in practice.
+- **Extensible**: you can add other MCP methods later without rewriting your server.
+
 ## What you get
 
 - **Protocol types**: `Request`, `Response`, `Tool`, `ToolsListResult`, `ToolCallParams`, `ToolCallResult`
@@ -113,6 +120,35 @@ impl McpHandler for Echo {
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     serve(StdioTransport::new(), &Echo).await
+}
+```
+
+### Override `initialize` (optional)
+
+Codex will typically call `initialize` before listing/calling tools. `codex-mcp` provides a sensible default response, but you can override it to customize `serverInfo` and/or capabilities:
+
+```rust
+use codex_mcp::server::McpHandler;
+use codex_mcp::protocol::{ToolCallParams, ToolCallResult, ToolsListResult};
+
+struct Echo;
+
+#[async_trait::async_trait]
+impl McpHandler for Echo {
+    async fn initialize(&self, _params: serde_json::Value) -> anyhow::Result<serde_json::Value> {
+        Ok(serde_json::json!({
+            "capabilities": { "tools": {} },
+            "serverInfo": { "name": "echo-mcp", "version": "0.1.0" }
+        }))
+    }
+
+    async fn tools_list(&self) -> anyhow::Result<ToolsListResult> {
+        Ok(ToolsListResult { tools: vec![] })
+    }
+
+    async fn tools_call(&self, _params: ToolCallParams) -> anyhow::Result<ToolCallResult> {
+        anyhow::bail!("unimplemented")
+    }
 }
 ```
 
@@ -286,6 +322,32 @@ The `protocol` module defines the subset of JSON-RPC/MCP that this crate uses:
   - `error.data`: `{ "error": "<stringified anyhow error>" }`
 - `tools/call` param decoding failures:
   - `-32000` with `"tools/call failed"` and `error.data` from the decode error
+
+## Concurrency and performance
+
+The built-in `serve()` loop processes one request at a time. If a tool call can be long-running:
+
+- implement timeouts/cancellation inside your handler,
+- push work onto a worker pool / spawn tasks in your handler,
+- send progress via stderr logs (not stdout).
+
+## Security notes (servers are “code execution surfaces”)
+
+Tools are capabilities invoked by an LLM agent; treat tool arguments as untrusted inputs:
+
+- Validate `ToolCallParams::arguments` strictly (types, ranges, allowlists).
+- Avoid passing arguments directly into shells or interpreters.
+- Consider sandboxing or gating privileged tools behind user confirmation.
+
+## Development
+
+Run the crate tests:
+
+```bash
+cargo test -p codex-mcp
+```
+
+This crate’s public docs are this README (embedded via `crates/codex-mcp/src/lib.rs`).
 
 If you want structured error codes for tool failures, encode them in `ToolCallResult` and set `is_error = true`.
 
