@@ -2,7 +2,7 @@
 
 Architecture Decision Records for the OpenAgents project.
 
-**Quick links:** [README.md](./README.md) (process) | [TEMPLATE.md](./TEMPLATE.md) | Next available: **ADR-0009**
+**Quick links:** [README.md](./README.md) (process) | [TEMPLATE.md](./TEMPLATE.md) | Next available: **ADR-0016**
 
 ---
 
@@ -18,6 +18,13 @@ Architecture Decision Records for the OpenAgents project.
 | [ADR-0006](./ADR-0006-deterministic-hashing.md) | Deterministic Hashing and Canonicalization | Proposed | 2026-01-13 | Protocol | — | protocol | — |
 | [ADR-0007](./ADR-0007-tool-execution-contract.md) | Tool Execution Contract | Proposed | 2026-01-13 | Execution | — | dsrs | — |
 | [ADR-0008](./ADR-0008-session-storage-layout.md) | Session Storage Layout | Proposed | 2026-01-13 | Execution | — | adjutant | — |
+| [ADR-0009](./ADR-0009-planir-canonical-schema.md) | PlanIR Canonical Schema | Proposed | 2026-01-13 | Compiler | — | dsrs | — |
+| [ADR-0010](./ADR-0010-decision-pipeline-gating.md) | Decision Pipeline Gating | Proposed | 2026-01-13 | Compiler | — | adjutant | — |
+| [ADR-0011](./ADR-0011-schema-ids-canonical.md) | Schema IDs Canonical | Proposed | 2026-01-13 | Protocol | — | protocol | — |
+| [ADR-0012](./ADR-0012-objective-vs-subjective-jobs.md) | Objective vs Subjective Jobs | Proposed | 2026-01-13 | Protocol | — | protocol | — |
+| [ADR-0013](./ADR-0013-receipt-schema-payment-proofs.md) | Receipt Schema + Payment Proofs | Proposed | 2026-01-13 | Economy | — | protocol | — |
+| [ADR-0014](./ADR-0014-cli-surface-ownership.md) | CLI Surface Ownership | Proposed | 2026-01-13 | UX | — | core | — |
+| [ADR-0015](./ADR-0015-policy-bundles.md) | Policy Bundles | Proposed | 2026-01-13 | Compiler | — | dsrs | — |
 
 ---
 
@@ -31,18 +38,23 @@ Architecture Decision Records for the OpenAgents project.
 
 ### Compiler (policy bundles, signatures, metrics)
 - [ADR-0005](./ADR-0005-step-utility-semantics.md) — Step Utility Semantics
+- [ADR-0009](./ADR-0009-planir-canonical-schema.md) — PlanIR Canonical Schema *(Proposed)*
+- [ADR-0010](./ADR-0010-decision-pipeline-gating.md) — Decision Pipeline Gating *(Proposed)*
+- [ADR-0015](./ADR-0015-policy-bundles.md) — Policy Bundles *(Proposed)*
 
 ### Routing (lanes, providers)
 - [ADR-0004](./ADR-0004-lane-taxonomy.md) — Lane Taxonomy and Naming
 
 ### Protocol (job schemas, NIP-90, hashing)
 - [ADR-0006](./ADR-0006-deterministic-hashing.md) — Deterministic Hashing and Canonicalization *(Proposed)*
+- [ADR-0011](./ADR-0011-schema-ids-canonical.md) — Schema IDs Canonical *(Proposed)*
+- [ADR-0012](./ADR-0012-objective-vs-subjective-jobs.md) — Objective vs Subjective Jobs *(Proposed)*
 
 ### Economy (treasury, payments)
-- (none yet)
+- [ADR-0013](./ADR-0013-receipt-schema-payment-proofs.md) — Receipt Schema + Payment Proofs *(Proposed)*
 
 ### UX (CLI surfaces)
-- (none yet)
+- [ADR-0014](./ADR-0014-cli-surface-ownership.md) — CLI Surface Ownership *(Proposed)*
 
 ### Security (privacy, redaction)
 - (none yet)
@@ -58,7 +70,7 @@ Architecture Decision Records for the OpenAgents project.
 - ADR-0001, ADR-0002, ADR-0003, ADR-0004, ADR-0005
 
 ### Proposed
-- ADR-0006, ADR-0007, ADR-0008
+- ADR-0006, ADR-0007, ADR-0008, ADR-0009, ADR-0010, ADR-0011, ADR-0012, ADR-0013, ADR-0014, ADR-0015
 
 ### Superseded
 - (none)
@@ -71,19 +83,6 @@ Architecture Decision Records for the OpenAgents project.
 ## Backlog (Proposed Future ADRs)
 
 These are identified needs, not yet written. Claim one by writing the ADR.
-
-### Priority A — Closes recurring doc/code disagreements
-- **ADR-0009**: PlanIR canonical schema + unification
-- **ADR-0010**: Decision pipeline gating + counterfactual schema
-
-### Priority B — Makes marketplaces/receipts coherent
-- **ADR-0011**: Schema IDs are canonical; kind numbers are incidental
-- **ADR-0012**: Objective vs subjective jobs + settlement rules
-- **ADR-0013**: Receipt schema + payment proof types + rail/AssetId semantics
-
-### Priority C — Stops "surface drift" for users
-- **ADR-0014**: CLI surface ownership and naming
-- **ADR-0015**: Policy bundles: format + pin/rollback + rollout states
 
 ### Priority D — Governance + privacy (when ready)
 - **ADR-0016**: Privacy defaults for swarm dispatch
