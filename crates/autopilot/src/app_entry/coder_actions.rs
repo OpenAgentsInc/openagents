@@ -38,6 +38,7 @@ use crate::app::workspaces::{
     ConversationItem, ConversationRole, ReviewState, WorkspaceAccessMode, WorkspaceApprovalRequest,
     WorkspaceEvent, conversation_item_from_value, turn_diff_item,
 };
+use crate::app::bootloader::{CardState, IssuesDetails, StageDetails};
 use crate::autopilot_loop::{DspyStage, TodoStatus, TodoTask};
 use crate::commands::{Command, ReviewCommand, ReviewDelivery, ReviewTarget, parse_command};
 
@@ -1517,6 +1518,12 @@ impl AutopilotApp {
                                 tokio::sync::mpsc::unbounded_channel();
                             state.autopilot.issue_suggestions_rx = Some(suggestion_rx);
 
+                            // Update boot graph to show Issues evaluation started
+                            state.bootloader.update_issues_state(
+                                CardState::Running,
+                                Some(format!("Evaluating {} blocked issues...", issues.len())),
+                            );
+
                             self.runtime_handle.spawn(async move {
                                 tracing::info!(
                                     "Autopilot: running issue suggestions for {} issues",
@@ -1605,6 +1612,16 @@ impl AutopilotApp {
                                 s.priority
                             );
                         }
+
+                        // Update boot graph to show Issues evaluation complete
+                        // Total evaluated = suggestions shown + filtered out
+                        let total_evaluated = suggestions.len() + filtered_count;
+                        let details = StageDetails::Issues(IssuesDetails {
+                            total_evaluated,
+                            suggestions_found: suggestions.len(),
+                            provider: "Codex".to_string(),
+                        });
+                        state.bootloader.complete_issues(details, 0);
                     } else {
                         tracing::warn!("Autopilot: received non-suggestion stage: {:?}", stage);
                     }

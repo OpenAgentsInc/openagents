@@ -42,7 +42,7 @@ pub mod ui_state;
 
 pub use card::{BootCard, BootConnector, CardState};
 pub use display::render_event;
-pub use events::{BootEvent, BootStage, StageDetails};
+pub use events::{BootEvent, BootStage, IssuesDetails, StageDetails};
 pub use graph::{BootEdge, BootGraphLayout, BootNode, BootNodeType, calculate_radial_layout};
 pub use module::{BootloaderConfig, BootloaderModule};
 pub use signatures::BootManifest;

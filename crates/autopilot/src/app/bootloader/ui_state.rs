@@ -40,6 +40,7 @@ impl BootloaderUIState {
             BootStage::Identity,
             BootStage::Workspace,
             BootStage::Summary,
+            BootStage::Issues,
         ];
 
         let cards = stages.iter().map(|stage| BootCard::new(*stage)).collect();
@@ -54,6 +55,24 @@ impl BootloaderUIState {
             summary: None,
             failed: false,
             error_message: None,
+        }
+    }
+
+    /// Update the Issues stage state directly (for issue evaluation).
+    pub fn update_issues_state(&mut self, state: CardState, message: Option<String>) {
+        if let Some(card) = self.find_card_mut(BootStage::Issues) {
+            card.state = state;
+            card.progress_message = message;
+        }
+    }
+
+    /// Set Issues stage as complete with details.
+    pub fn complete_issues(&mut self, details: super::events::StageDetails, duration_ms: u64) {
+        if let Some(card) = self.find_card_mut(BootStage::Issues) {
+            card.state = CardState::Complete;
+            card.duration_ms = Some(duration_ms);
+            card.details = Some(details);
+            card.progress_message = None;
         }
     }
 
