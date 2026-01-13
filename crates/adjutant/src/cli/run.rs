@@ -5,14 +5,16 @@ use crate::app_server_executor::{
     ReviewDelivery, ReviewTarget, SandboxMode, SandboxPolicy,
 };
 use crate::autopilot_loop::{
-    AcpChannelOutput, AutopilotConfig, AutopilotLoop, AutopilotResult, generate_session_id,
+    AcpChannelOutput, AutopilotConfig, AutopilotLoop, AutopilotResult, CliOutput,
+    generate_session_id,
 };
 use crate::cli::blocker::{analyze_blockers, print_blocker_summary};
 use crate::cli::boot::{boot_fast, boot_full, print_quick_checks};
 use crate::cli::directive::build_directive_task;
 use crate::cli::stream::CliAcpRenderer;
+use crate::dspy_orchestrator::DspyOrchestrator;
 use crate::manifest::{OanixManifest, WorkspaceManifest};
-use crate::{Adjutant, ExecutionBackend, Task};
+use crate::{Adjutant, ExecutionBackend, Task, ToolRegistry};
 use agent_client_protocol_schema as acp;
 use clap::{Args, ValueEnum};
 use std::sync::Arc;
@@ -384,18 +386,39 @@ pub async fn run(args: RunArgs) -> anyhow::Result<()> {
                     .ok_or_else(|| anyhow::anyhow!("Issue #{} not found", number))?,
             )
         } else {
-            // Find next available issue
-            workspace
-                .issues
-                .iter()
-                .filter(|i| i.status == "open" && !i.is_blocked)
-                .min_by_key(|i| match i.priority.as_str() {
-                    "urgent" => 0,
-                    "high" => 1,
-                    "medium" => 2,
-                    "low" => 3,
-                    _ => 4,
-                })
+            // Use DSPy suggestion system to pick the best issue
+            println!();
+            println!("Analyzing issues to suggest best candidates...");
+
+            let workspace_root = workspace.root.clone();
+            let tools = ToolRegistry::new(workspace_root);
+            let orchestrator = DspyOrchestrator::new(None, tools);
+            let cli_output = CliOutput;
+
+            // Run suggestion pipeline (autopilot_mode = false for now)
+            let suggested = orchestrator
+                .suggest_issues(&workspace.issues, vec![], &cli_output, false)
+                .await
+                .ok()
+                .flatten();
+
+            // If we got a suggestion, use it; otherwise fall back to priority sorting
+            if let Some(number) = suggested {
+                workspace.issues.iter().find(|i| i.number == number)
+            } else {
+                // Fall back to simple priority sorting
+                workspace
+                    .issues
+                    .iter()
+                    .filter(|i| i.status == "open" && !i.is_blocked)
+                    .min_by_key(|i| match i.priority.as_str() {
+                        "urgent" => 0,
+                        "high" => 1,
+                        "medium" => 2,
+                        "low" => 3,
+                        _ => 4,
+                    })
+            }
         };
 
         match issue {

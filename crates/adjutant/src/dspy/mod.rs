@@ -15,6 +15,7 @@
 
 pub mod auto_optimizer;
 pub mod decision_pipelines;
+pub mod issue_suggestion;
 pub mod lm_config;
 pub mod metrics;
 pub mod module;
@@ -28,6 +29,7 @@ pub mod tool_step_utility;
 
 pub use auto_optimizer::*;
 pub use decision_pipelines::*;
+pub use issue_suggestion::*;
 pub use lm_config::*;
 pub use metrics::*;
 pub use module::*;

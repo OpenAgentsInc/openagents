@@ -1,12 +1,15 @@
 //! Issue staleness checking for Adjutant.
 //!
-//! Provides a DSPy signature and helpers to evaluate whether an issue
-//! is still relevant given recent codebase changes.
+//! Provides:
+//! - DSPy signature for LLM-based staleness evaluation
+//! - Multi-factor staleness scoring for issue suggestion filtering
+//! - Helpers to update staleness timestamps
 
 use crate::manifest::IssueSummary;
 use anyhow::Result;
 use chrono::{DateTime, Utc};
-use dsrs::{GLOBAL_SETTINGS, Predict, Prediction, Predictor, Signature, example};
+use dsrs::{example, Predict, Prediction, Predictor, Signature, GLOBAL_SETTINGS};
+use serde::{Deserialize, Serialize};
 use std::path::Path;
 use std::process::Command;
 
@@ -227,6 +230,186 @@ fn get_bool(prediction: &Prediction, key: &str) -> bool {
     } else {
         false
     }
+}
+
+// ============================================================================
+// Multi-Factor Staleness Scoring (for Issue Suggestions)
+// ============================================================================
+
+/// Multi-factor staleness score for filtering issue suggestions.
+///
+/// This is different from `StalenessResult` which uses an LLM to evaluate
+/// issue relevance. This score is computed locally and used to filter
+/// issues before presenting suggestions to the user.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StalenessScore {
+    /// Overall staleness score (0.0 = fresh, 1.0 = very stale)
+    pub score: f32,
+    /// Individual factor contributions
+    pub factors: StalenessFactors,
+    /// Whether the issue should be filtered out from suggestions
+    pub exclude_from_suggestions: bool,
+    /// Reason for exclusion (if applicable)
+    pub exclusion_reason: Option<String>,
+}
+
+/// Individual staleness factors with their contributions.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct StalenessFactors {
+    /// Days since last update
+    pub days_since_update: Option<u32>,
+    /// No `last_checked` date
+    pub never_checked: bool,
+    /// Missing required fields
+    pub missing_fields: Vec<String>,
+    /// Blocked without clear unblock path
+    pub unclear_blocker: bool,
+}
+
+/// Compute a multi-factor staleness score for an issue.
+///
+/// Factors and weights:
+/// - Days since update (14+ days): weight 0.3
+/// - Never checked (no last_checked): weight 0.2
+/// - Missing required fields: weight 0.2
+/// - Blocked without clear unblock path: weight 0.3
+///
+/// Issues with score >= 0.7 or is_blocked == true are excluded from suggestions.
+pub fn compute_staleness_score(issue: &IssueSummary) -> StalenessScore {
+    let mut score = 0.0f32;
+    let mut factors = StalenessFactors::default();
+
+    let now = Utc::now();
+
+    // Factor 1: Days since update (14+ days = stale)
+    if let Some(updated_at) = &issue.updated_at {
+        if let Ok(dt) = DateTime::parse_from_rfc3339(updated_at) {
+            let days = now
+                .signed_duration_since(dt.with_timezone(&Utc))
+                .num_days();
+            factors.days_since_update = Some(days as u32);
+            if days >= 14 {
+                // Score increases linearly from 0 to 0.3 for days 14-42
+                score += 0.3 * ((days as f32 - 14.0) / 28.0).min(1.0);
+            }
+        }
+    } else if let Some(created_at) = &issue.created_at {
+        // Use created_at if updated_at is missing
+        if let Ok(dt) = DateTime::parse_from_rfc3339(created_at) {
+            let days = now
+                .signed_duration_since(dt.with_timezone(&Utc))
+                .num_days();
+            factors.days_since_update = Some(days as u32);
+            if days >= 14 {
+                score += 0.3 * ((days as f32 - 14.0) / 28.0).min(1.0);
+            }
+        }
+    }
+
+    // Factor 2: Never checked
+    if issue.last_checked.is_none() {
+        factors.never_checked = true;
+        score += 0.2;
+    }
+
+    // Factor 3: Missing required fields
+    if issue.description.is_none()
+        || issue
+            .description
+            .as_ref()
+            .map(|d| d.trim().is_empty())
+            .unwrap_or(true)
+    {
+        factors.missing_fields.push("description".to_string());
+        score += 0.1;
+    }
+    if issue.priority.is_empty() || issue.priority == "unknown" {
+        factors.missing_fields.push("priority".to_string());
+        score += 0.1;
+    }
+    if issue.issue_type.is_none() {
+        factors.missing_fields.push("issue_type".to_string());
+        score += 0.05;
+    }
+
+    // Factor 4: Blocked without clear unblock path
+    if issue.is_blocked {
+        let has_clear_path = issue
+            .blocked_reason
+            .as_ref()
+            .map(|r| {
+                let r_lower = r.to_lowercase();
+                r_lower.contains("waiting")
+                    || r_lower.contains("depends on")
+                    || r_lower.contains("after")
+                    || r_lower.contains("blocked by #")
+            })
+            .unwrap_or(false);
+
+        if !has_clear_path {
+            factors.unclear_blocker = true;
+            score += 0.3;
+        }
+    }
+
+    // Determine exclusion
+    let exclude = score >= 0.7 || issue.is_blocked;
+    let reason = if issue.is_blocked {
+        Some(
+            issue
+                .blocked_reason
+                .clone()
+                .unwrap_or_else(|| "Blocked".to_string()),
+        )
+    } else if score >= 0.7 {
+        Some("Too stale - needs triage".to_string())
+    } else {
+        None
+    };
+
+    StalenessScore {
+        score: score.min(1.0),
+        factors,
+        exclude_from_suggestions: exclude,
+        exclusion_reason: reason,
+    }
+}
+
+/// Filter issues for suggestion, returning (candidates, filtered_out).
+///
+/// Candidates are sorted by freshness (lowest staleness score first).
+pub fn filter_issues_for_suggestion(
+    issues: &[IssueSummary],
+) -> (Vec<(IssueSummary, StalenessScore)>, Vec<(IssueSummary, String)>) {
+    let mut candidates = Vec::new();
+    let mut filtered = Vec::new();
+
+    for issue in issues {
+        // Skip non-open issues
+        if issue.status != "open" {
+            continue;
+        }
+
+        let staleness = compute_staleness_score(issue);
+
+        if staleness.exclude_from_suggestions {
+            let reason = staleness
+                .exclusion_reason
+                .unwrap_or_else(|| "Filtered".to_string());
+            filtered.push((issue.clone(), reason));
+        } else {
+            candidates.push((issue.clone(), staleness));
+        }
+    }
+
+    // Sort candidates by staleness score (freshest first)
+    candidates.sort_by(|a, b| {
+        a.1.score
+            .partial_cmp(&b.1.score)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+
+    (candidates, filtered)
 }
 
 #[cfg(test)]
