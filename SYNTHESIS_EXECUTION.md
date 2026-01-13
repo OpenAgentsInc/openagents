@@ -615,13 +615,14 @@ Issues are NOT done unless:
 | `RECEIPT.json` | JSON | Cryptographic audit trail |
 | `REPLAY.jsonl` | JSONL | Event stream for replay/debugging |
 
-**Current artifact directory:**
+**Canonical artifact directory** (per [ADR-0008](./docs/adr/ADR-0008-session-storage-layout.md)):
 ```
-.autopilot/sessions/{session_id}/
+${OPENAGENTS_HOME}/sessions/{session_id}/
 ├── PR_SUMMARY.md
 ├── RECEIPT.json
 └── REPLAY.jsonl
 ```
+Default: `~/.openagents/sessions/{session_id}/`
 
 **Replay format status:**
 - **Current:** `ReplayBundle` format in `crates/autopilot-core/src/replay.rs`

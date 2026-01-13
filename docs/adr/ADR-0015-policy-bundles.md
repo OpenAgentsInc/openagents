@@ -59,7 +59,13 @@ Policy bundles progress through rollout states:
 - **Promoted** — default for new sessions
 - **RolledBack** — removed from default due to regression (kept for audit)
 
-Promotion gates are defined by the evaluation system (proxy + truth metrics + shadow comparisons). The *state* must be recorded in the bundle manifest.
+Promotion gates are defined by the evaluation system (proxy + truth metrics + shadow comparisons). The *state* must be recorded in the bundle manifest as `rollout_state`.
+
+### rollout_state field (normative)
+
+- `rollout_state` is **required** in all new bundles created after this ADR.
+- If `rollout_state` is missing in older bundles, treat as `Candidate` (conservative default).
+- Valid values: `Candidate`, `Staged`, `Shadow`, `Promoted`, `RolledBack`.
 
 ### Pin / rollback (normative)
 
@@ -95,6 +101,7 @@ What this ADR does NOT cover:
 | Immutability | Bundles are append-only; existing bundles are not rewritten |
 | Attribution | Sessions record `policy_bundle_id` in receipt + replay |
 | Rollout states | Candidate → Staged → Shadow → Promoted (+ RolledBack) |
+| `rollout_state` field | Required in new bundles; missing = `Candidate` |
 
 Backward compatibility expectations:
 - Adding optional metadata fields to bundle manifests is allowed.

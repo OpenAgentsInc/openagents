@@ -651,6 +651,7 @@ ${OPENAGENTS_HOME}/policies/
 ```json
 {
   "version": "v1.2.3",
+  "rollout_state": "Promoted",
   "created_at": "2025-01-13T10:00:00Z",
   "parent_version": "v1.2.2",
   "optimization_method": "MIPROv2",

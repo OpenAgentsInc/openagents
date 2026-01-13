@@ -651,12 +651,14 @@ Datasets used for optimizer compilation.
 
 ### Dataset Sources
 
+Stored under `${OPENAGENTS_HOME}/datasets/` (see [ADR-0008](../../../docs/adr/ADR-0008-session-storage-layout.md)).
+
 | Dataset | Location | Examples | Description |
 |---------|----------|----------|-------------|
-| **Tool Call Training** | `.autopilot/datasets/tool_calls.jsonl` | ~500 | Labeled tool selection decisions |
-| **Planning Training** | `.autopilot/datasets/planning.jsonl` | ~200 | Task → PlanIR examples |
-| **Synthesis Training** | `.autopilot/datasets/synthesis.jsonl` | ~150 | Subtask results → PR summary |
-| **Issue Validation** | `.autopilot/datasets/issue_validation.jsonl` | ~100 | Issue + context → valid/stale |
+| **Tool Call Training** | `${OPENAGENTS_HOME}/datasets/tool_calls.jsonl` | ~500 | Labeled tool selection decisions |
+| **Planning Training** | `${OPENAGENTS_HOME}/datasets/planning.jsonl` | ~200 | Task → PlanIR examples |
+| **Synthesis Training** | `${OPENAGENTS_HOME}/datasets/synthesis.jsonl` | ~150 | Subtask results → PR summary |
+| **Issue Validation** | `${OPENAGENTS_HOME}/datasets/issue_validation.jsonl` | ~100 | Issue + context → valid/stale |
 
 ### Dataset Format
 
