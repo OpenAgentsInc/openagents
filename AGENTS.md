@@ -1,87 +1,164 @@
-# OpenAgents
+# OpenAgents: Agent Contract (READ THIS FIRST)
 
-Decentralized AI compute marketplace. Run inference, earn Bitcoin.
+## What OpenAgents is
 
-## Products
+OpenAgents is a runtime + compiler + (optional) market for autonomous agents:
 
-| Product | Description | Status |
-|---------|-------------|--------|
-| **Pylon** | Node software for compute marketplace (provider + host) | v0.1 |
-| **Coder** | GPU-accelerated terminal for Codex | Active |
-| **Onyx** | Local-first Markdown editor | Alpha |
-| **GitAfter** | Nostr-native git collaboration (NIP-34) | v0.1 |
-| **Autopilot** | Autonomous coding agent | Active |
-| **Nexus** | Agent-centric Nostr relay | v0.1 |
-| **OANIX** | Agent OS runtime (environment discovery) | Wave 8 |
+- Runtime: executes tool/sandbox/job actions, enforces schemas + retries, records replayable receipts.
+- Compiler layer (dsrs / DSPy): expresses agent behavior as typed Signatures + Modules and optimizes them via metrics into policy bundles.
+- RLM/FRLM: execution modes for out-of-core reasoning over large repos / long sessions.
+- Market layer (Pylon + NIP-90 + relays): makes compute and sandbox execution purchasable with receipts and budgets.
+- Verification (tests/builds): anchors correctness; everything else is optimization.
 
-## AI Stack
+If you are writing code here, you are usually adding:
+1) a capability (tool/job/provider/lane),
+2) a policy (signature/module/routing),
+3) measurement (metrics/labels/counterfactuals/eval).
 
-| Component | Description | Status |
-|-----------|-------------|--------|
-| **Adjutant** | Execution engine with DSPy decision pipelines | Wave 14 |
-| **dsrs** | Rust DSPy implementation (5,771 LOC) | Complete |
-| **Gateway** | Unified AI provider interface | Complete |
-| **Protocol** | Typed job schemas with deterministic hashing | Complete |
+---
 
-## Quick Start: Pylon
+## Authority and conflict rules (non-negotiable)
 
-Pylon connects your compute to the AI marketplace via Nostr.
+1) If documentation conflicts with code behavior: CODE WINS.
+2) If terminology conflicts across docs: GLOSSARY WINS.
+3) If implementation status conflicts across docs: prefer the crate sources + SYNTHESIS_EXECUTION.
 
-### Install
+Read and apply:
+- Canonical terminology: ./GLOSSARY.md
+- Current system guide (what is wired): ./SYNTHESIS_EXECUTION.md
+- MVP priorities / acceptance: ./ROADMAP.md
+
+---
+
+## Required reading order (fast)
+
+1) ./GLOSSARY.md
+2) ./SYNTHESIS_EXECUTION.md
+3) ./ROADMAP.md
+4) ./PROJECT_OVERVIEW.md (product map; short)
+5) ./AGENT_FOUNDATIONS.md (conceptual model; signatures/tools/metrics/RLM)
+
+Then go crate-local:
+- dsrs docs: crates/dsrs/docs/README.md + ARCHITECTURE.md + TOOLS.md + METRICS.md + OPTIMIZERS.md + EVALUATION.md
+- Autopilot docs: crates/autopilot/docs/
+- Autopilot-core flow: crates/autopilot-core/docs/EXECUTION_FLOW.md
+- Protocol surface: docs/PROTOCOL_SURFACE.md
+
+---
+
+## Engineering invariants (ship-quality rules)
+
+Verification first
+- Do not claim success without running the relevant verification harness (tests/build/lint as appropriate).
+
+No stubs policy
+- Do not add TODO-only “NotImplemented”, placeholder returns, mock implementations in production paths.
+- If it’s not ready, gate behind a feature flag or remove the code path.
+
+Typed contracts everywhere
+- If it gates a decision or action, make it a Signature (or signature-backed pipeline).
+- Tools must have schemas; runtime validates schemas before execution.
+
+Everything is logged and replayable
+- Tool calls must emit deterministic hashes + receipts.
+- Decisions must be recorded with counterfactuals when migrating from legacy heuristics.
+
+Adapters do serialization/parsing only
+- Adapters do not own validation/retry logic. Runtime (or meta-operators like Refine) owns retries/guardrails.
+
+---
+
+## “Where do I change things?” (map)
+
+Use this to avoid scattering logic:
+
+### dsrs (compiler layer)
+- Signatures/modules/optimizers/metrics/tracing: crates/dsrs/
+- Docs: crates/dsrs/docs/
+- If you change signature semantics, update docs + ensure parsing/tests still pass.
+
+### Adjutant (execution engine + DSPy decision pipelines)
+- DSPy pipelines + session tracking + auto-optimization: crates/adjutant/
+- Tool registry (local tools): crates/adjutant/src/tools.rs
+
+### Autopilot (product surfaces)
+- UI/CLI orchestration + user-facing flow: crates/autopilot/
+- Core execution flow + replay impl: crates/autopilot-core/
+
+### RLM / FRLM
+- Local recursion tooling + signatures: crates/rlm/
+- Federated recursion conductor + map-reduce: crates/frlm/
+
+### Protocol / Marketplace plumbing
+- Typed job schemas + hashing: crates/protocol/
+- Node software (provider + host): crates/pylon/
+- Relay (agent coordination): crates/nexus/
+
+---
+
+## Checklists (what to do when adding things)
+
+### If you add a new decision point
+- Create a Signature with confidence (if it routes/overrides).
+- Confidence-gate behavior (fallback to legacy rules when low confidence).
+- Record counterfactuals (DSPy output vs legacy output vs executed choice).
+- Add outcome labeling (verification_delta, repetition, cost).
+- Make it eligible for optimization targeting (rolling accuracy / impact).
+
+### If you add a new tool
+- Register it in the canonical tool registry.
+- Provide a JSON schema for params; runtime validates before execution.
+- Emit a receipt record:
+  - tool, params_hash, output_hash, latency_ms, side_effects
+- Bound outputs, add timeouts, deterministic failure modes.
+- Add tests for schema, truncation, and error behavior.
+
+### If you add a new provider / lane
+- Add provider integration + health detection.
+- Implement adapter formatting/parsing (no retries here).
+- Add cost accounting (tokens/latency/msats).
+- Make lane selection policy-driven (signature) and auditable.
+- Add fallback/circuit breaker behavior.
+
+### If you “improve performance”
+- Don’t hand-tweak prompts inline.
+- Convert the behavior into a signature/module, add a metric, compile into a policy bundle.
+- Preserve rollback/canary path.
+
+---
+
+## Build + test quick commands (use these before claiming done)
+
+Workspace:
+```bash
+cargo build --release
+cargo test
+````
+
+Autopilot:
 
 ```bash
-git clone https://github.com/OpenAgentsInc/openagents.git
-cd openagents
+cargo build -p autopilot
+cargo test  -p autopilot
+cargo run   -p autopilot
+```
+
+Adjutant + dsrs:
+
+```bash
+cargo test -p adjutant
+cargo test -p dsrs
+```
+
+Pylon:
+
+```bash
 cargo build --release -p pylon
-```
-
-### Run as Provider (earn Bitcoin)
-
-```bash
-# Initialize identity
-./target/release/pylon init
-
-# Check what backends are available
+cargo test -p pylon
 ./target/release/pylon doctor
-
-# Get regtest sats for testing
-./target/release/pylon wallet fund
-
-# Start provider
-./target/release/pylon start -f -m provider
 ```
 
-### Run as Buyer (use the network)
-
-```bash
-# Submit a job
-./target/release/pylon job submit "What is 2+2?" --auto-pay
-
-# Run RLM query (fans out to swarm)
-./target/release/pylon rlm "Explain this concept"
-```
-
-### Inference Backends
-
-Pylon auto-detects backends at startup:
-
-| Backend | Platform | How to run |
-|---------|----------|------------|
-| **Ollama** | Any | `ollama serve` on :11434 |
-| **llama.cpp** | Any | `llama-server` on :8080 |
-| **Apple FM** | macOS | Auto-starts if available |
-
-See [crates/pylon/docs/CLI.md](crates/pylon/docs/CLI.md) for full CLI reference.
-
-## Quick Start: Nexus
-
-Nexus is a Nostr relay optimized for AI agent coordination.
-
-### Live Instance
-
-**wss://nexus.openagents.com** - Requires NIP-42 authentication
-
-### Deploy Your Own
+Nexus (worker):
 
 ```bash
 cd crates/nexus/worker
@@ -89,54 +166,63 @@ bun install
 bun run deploy
 ```
 
-See [crates/nexus/docs/MVP.md](crates/nexus/docs/MVP.md) for architecture.
+---
 
-## Architecture
+## Artifact expectations (when you finish an agent session)
+
+The canonical output of an autonomous run is the Verified Patch Bundle:
+
+* PR_SUMMARY.md
+* RECEIPT.json
+* REPLAY.jsonl (or ReplayBundle + exporter until native REPLAY.jsonl is wired)
+
+See:
+
+* crates/dsrs/docs/ARTIFACTS.md
+* crates/dsrs/docs/REPLAY.md
+* ./ROADMAP.md (MVP gate: Verified Patch Bundle)
+
+---
+
+## Documentation pointers (don’t duplicate; link)
+
+Core:
+
+* ./GLOSSARY.md (canonical vocabulary)
+* ./SYNTHESIS_EXECUTION.md (how the system works today)
+* ./ROADMAP.md (what to build next; MVP gates)
+* ./PROJECT_OVERVIEW.md (product + stack overview)
+* ./AGENT_FOUNDATIONS.md (conceptual foundations and checklists)
+
+DSPy/dsrs:
+
+* crates/dsrs/docs/README.md
+* crates/dsrs/docs/ARCHITECTURE.md
+* crates/dsrs/docs/SIGNATURES.md
+* crates/dsrs/docs/TOOLS.md
+* crates/dsrs/docs/METRICS.md
+* crates/dsrs/docs/OPTIMIZERS.md
+* crates/dsrs/docs/EVALUATION.md
+
+Protocol / network:
+
+* docs/PROTOCOL_SURFACE.md
+* crates/protocol/
+* crates/pylon/
+* crates/nexus/
+
+---
+
+## Final note
+
+If you are uncertain whether something belongs in the runtime, dsrs, or a product crate:
+
+* Prefer keeping policy in dsrs/adjutant (Signatures/Modules/Pipelines),
+* Keep execution enforcement (schema validation, retries, receipts) in the runtime/tooling layer,
+* Keep UI/UX wiring in product crates.
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                        NOSTR RELAYS                         │
-│  (nexus.openagents.com, relay.damus.io, nos.lol)           │
-└─────────────────────────────────────────────────────────────┘
-                              │
-              ┌───────────────┼───────────────┐
-              ▼               ▼               ▼
-        ┌──────────┐   ┌──────────┐   ┌──────────┐
-        │  PYLON   │   │  PYLON   │   │  PYLON   │
-        │ Provider │   │ Provider │   │  Buyer   │
-        └──────────┘   └──────────┘   └──────────┘
-              │               │
-              ▼               ▼
-        ┌──────────┐   ┌──────────┐
-        │  Ollama  │   │ llama.cpp│
-        └──────────┘   └──────────┘
+
+If you want, I can also produce a **second variant** that’s even shorter (pure “agent contract” + doc links, no product tables) to keep AGENTS.md under ~80 lines.
+::contentReference[oaicite:0]{index=0}
 ```
-
-## Key Protocols
-
-- **NIP-90**: Data Vending Machines (job requests/results)
-- **NIP-42**: Authentication (required for Nexus)
-- **NIP-89**: Handler discovery
-
-## Documentation
-
-| Doc | Description |
-|-----|-------------|
-| [SYNTHESIS_EXECUTION.md](./SYNTHESIS_EXECUTION.md) | System guide — products, infrastructure, AI stack |
-| [crates/dsrs/docs/README.md](crates/dsrs/docs/README.md) | DSPy strategy — philosophy, architecture, self-improvement |
-| [crates/dsrs/docs/DSPY_ROADMAP.md](crates/dsrs/docs/DSPY_ROADMAP.md) | DSPy implementation roadmap (Waves 0-14) |
-| [crates/adjutant/docs/](crates/adjutant/docs/) | Adjutant execution engine + self-improvement |
-| [crates/dsrs/docs/](crates/dsrs/docs/) | dsrs implementation (signatures, retrieval, eval) |
-| [crates/pylon/docs/](crates/pylon/docs/) | Pylon documentation |
-| [crates/nexus/docs/](crates/nexus/docs/) | Nexus documentation |
-| [docs/OANIX.md](docs/OANIX.md) | OANIX vision (agent OS runtime) |
-| [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) | Contributing / coding agents |
-
-## For Coding Agents
-
-**READ THIS FIRST:** [SYNTHESIS_EXECUTION.md](./SYNTHESIS_EXECUTION.md) — The essential guide to understanding how Pylon, Nexus, Runtime, Autopilot, and WGPUI fit together. Contains data flow diagrams, key paths, build commands, and completion standards. **Do not start coding until you've read it.**
-
-Also see:
-- [crates/dsrs/docs/README.md](crates/dsrs/docs/README.md) — DSPy strategy and self-improvement system
-- [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) — Git rules, commit standards, design philosophy
-- [SYNTHESIS.md](./SYNTHESIS.md) — Full vision document (long, read if you need context on *why*)
