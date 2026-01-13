@@ -141,7 +141,7 @@ Cryptographic receipt for verifiability and audit.
     "verification_delta": "number"
   },
   "final_confidence": "number (0.0-1.0)",
-  "policy_version": "string",
+  "policy_bundle_id": "string",
   "signature": "sig:... | null"
 }
 ```
@@ -179,7 +179,7 @@ Cryptographic receipt for verifiability and audit.
     "verification_delta": 3
   },
   "final_confidence": 0.92,
-  "policy_version": "v1.2.3",
+  "policy_bundle_id": "v1.2.3",
   "signature": null
 }
 ```
@@ -194,7 +194,7 @@ Cryptographic receipt for verifiability and audit.
 | `output_hash` | SHA256 of canonical tool output |
 | `step_utility` | Learning signal: how useful was this tool call? (-1.0..+1.0) |
 | `verification_delta` | Change in failing tests: (before - after) |
-| `policy_version` | Which policy bundle was used |
+| `policy_bundle_id` | Which policy bundle was used |
 | `signature` | Optional Nostr signature for attestation |
 
 ### Enables

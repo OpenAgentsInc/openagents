@@ -41,7 +41,7 @@ pub enum ReplayEvent {
         t: DateTime<Utc>,
         session_id: String,
         issue_number: Option<i64>,
-        policy_version: String,
+        policy_bundle_id: String,
     },
 
     /// Plan generated
@@ -210,7 +210,7 @@ ReplayHeader {
 
 ```jsonl
 {"event":"ReplayHeader","created_at":"2026-01-13T10:00:00Z","producer":"adjutant@1.2.3","replay_version":1}
-{"event":"SessionStart","issue_number":42,"policy_version":"v1.2.3","session_id":"sess_abc123","t":"2026-01-13T10:00:00Z"}
+{"event":"SessionStart","issue_number":42,"policy_bundle_id":"v1.2.3","session_id":"sess_abc123","t":"2026-01-13T10:00:00Z"}
 {"event":"PlanStart","plan_hash":"sha256:abc123...","step_count":3,"t":"2026-01-13T10:00:01Z"}
 {"event":"ToolCall","id":"tc_001","params":{"path":"src/auth.rs"},"params_hash":"sha256:def456...","step_id":"step-1","t":"2026-01-13T10:00:02Z","tool":"file_read"}
 {"event":"ToolResult","exit_code":null,"id":"tc_001","latency_ms":45,"output_hash":"sha256:ghi789...","step_utility":0.8,"t":"2026-01-13T10:00:02Z"}
