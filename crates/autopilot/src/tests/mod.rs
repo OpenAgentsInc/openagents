@@ -1,3 +1,4 @@
+mod bootloader_tests;
 mod wallet_tests;
 mod dspy_tests;
 mod dvm_tests;
