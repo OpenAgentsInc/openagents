@@ -69,7 +69,8 @@ What this ADR does NOT cover:
 |-----------|-----------|
 | File names | Stable: `PR_SUMMARY.md`, `RECEIPT.json`, `REPLAY.jsonl` |
 | Bundle term | Stable: "Verified Patch Bundle" |
-| Location | Stable: `.autopilot/sessions/{session_id}/` |
+| Relative layout | Stable: all three files in a single session directory |
+| Base path | Defined by [ADR-0008](./ADR-0008-session-storage-layout.md) |
 
 Backward compatibility:
 - Adding new optional fields to RECEIPT.json is allowed
@@ -120,3 +121,4 @@ The Verified Patch Bundle is the internal format. Forge Adapters export to:
 - [crates/dsrs/docs/ARTIFACTS.md](../../crates/dsrs/docs/ARTIFACTS.md) — Canonical artifact schemas
 - [crates/dsrs/docs/REPLAY.md](../../crates/dsrs/docs/REPLAY.md) — Canonical replay schema
 - [ADR-0003](./ADR-0003-replay-formats.md) — Replay format specification
+- [ADR-0008](./ADR-0008-session-storage-layout.md) — Session storage layout (base paths)

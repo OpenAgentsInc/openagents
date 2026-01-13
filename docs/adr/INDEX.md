@@ -2,7 +2,7 @@
 
 Architecture Decision Records for the OpenAgents project.
 
-**Quick links:** [README.md](./README.md) (process) | [TEMPLATE.md](./TEMPLATE.md) | Next available: **ADR-0006**
+**Quick links:** [README.md](./README.md) (process) | [TEMPLATE.md](./TEMPLATE.md) | Next available: **ADR-0009**
 
 ---
 
@@ -15,6 +15,9 @@ Architecture Decision Records for the OpenAgents project.
 | [ADR-0003](./ADR-0003-replay-formats.md) | Replay Formats and Migration | Accepted | 2026-01-13 | Execution | — | dsrs | 2026-01-13 |
 | [ADR-0004](./ADR-0004-lane-taxonomy.md) | Lane Taxonomy and Naming | Accepted | 2026-01-13 | Routing | — | frlm | 2026-01-13 |
 | [ADR-0005](./ADR-0005-step-utility-semantics.md) | Step Utility Semantics | Accepted | 2026-01-13 | Compiler | — | dsrs | 2026-01-13 |
+| [ADR-0006](./ADR-0006-deterministic-hashing.md) | Deterministic Hashing and Canonicalization | Proposed | 2026-01-13 | Protocol | — | protocol | — |
+| [ADR-0007](./ADR-0007-tool-execution-contract.md) | Tool Execution Contract | Proposed | 2026-01-13 | Execution | — | dsrs | — |
+| [ADR-0008](./ADR-0008-session-storage-layout.md) | Session Storage Layout | Proposed | 2026-01-13 | Execution | — | adjutant | — |
 
 ---
 
@@ -23,6 +26,8 @@ Architecture Decision Records for the OpenAgents project.
 ### Execution (artifacts, receipts, replay)
 - [ADR-0002](./ADR-0002-verified-patch-bundle.md) — Verified Patch Bundle Contract
 - [ADR-0003](./ADR-0003-replay-formats.md) — Replay Formats and Migration
+- [ADR-0007](./ADR-0007-tool-execution-contract.md) — Tool Execution Contract *(Proposed)*
+- [ADR-0008](./ADR-0008-session-storage-layout.md) — Session Storage Layout *(Proposed)*
 
 ### Compiler (policy bundles, signatures, metrics)
 - [ADR-0005](./ADR-0005-step-utility-semantics.md) — Step Utility Semantics
@@ -30,8 +35,8 @@ Architecture Decision Records for the OpenAgents project.
 ### Routing (lanes, providers)
 - [ADR-0004](./ADR-0004-lane-taxonomy.md) — Lane Taxonomy and Naming
 
-### Protocol (job schemas, NIP-90)
-- (none yet)
+### Protocol (job schemas, NIP-90, hashing)
+- [ADR-0006](./ADR-0006-deterministic-hashing.md) — Deterministic Hashing and Canonicalization *(Proposed)*
 
 ### Economy (treasury, payments)
 - (none yet)
@@ -53,7 +58,7 @@ Architecture Decision Records for the OpenAgents project.
 - ADR-0001, ADR-0002, ADR-0003, ADR-0004, ADR-0005
 
 ### Proposed
-- (none)
+- ADR-0006, ADR-0007, ADR-0008
 
 ### Superseded
 - (none)
@@ -68,9 +73,6 @@ Architecture Decision Records for the OpenAgents project.
 These are identified needs, not yet written. Claim one by writing the ADR.
 
 ### Priority A — Closes recurring doc/code disagreements
-- **ADR-0006**: Deterministic hashing + canonicalization rules
-- **ADR-0007**: Tool execution contract (Adapter vs Runtime vs Refine)
-- **ADR-0008**: Session storage layout + artifact paths
 - **ADR-0009**: PlanIR canonical schema + unification
 - **ADR-0010**: Decision pipeline gating + counterfactual schema
 

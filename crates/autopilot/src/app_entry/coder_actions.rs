@@ -1533,56 +1533,24 @@ impl AutopilotApp {
                                 issues.len()
                             ));
 
+                            // Use app-server based suggestions with streaming tokens
+                            let workspace_context = format!("Repository at {}", workspace_root.display());
                             self.runtime_handle.spawn(async move {
                                 tracing::info!(
                                     "Autopilot: running issue suggestions for {} issues",
                                     issues.len()
                                 );
-                                let tools = adjutant::ToolRegistry::new(workspace_root);
-                                let orchestrator =
-                                    adjutant::dspy_orchestrator::DspyOrchestrator::new(None, tools);
-
-                                // Create output that captures stages
-                                struct CaptureOutput {
-                                    stage_tx: tokio::sync::mpsc::UnboundedSender<
-                                        adjutant::autopilot_loop::DspyStage,
-                                    >,
-                                }
-                                impl adjutant::AutopilotOutput for CaptureOutput {
-                                    fn iteration_start(&self, _: usize, _: usize) {}
-                                    fn token(&self, _: &str) {}
-                                    fn verification_start(&self) {}
-                                    fn verification_result(&self, _: bool, _: &str) {}
-                                    fn error(&self, _: &str) {}
-                                    fn interrupted(&self) {}
-                                    fn max_iterations(&self, _: usize) {}
-                                    fn emit_stage(
-                                        &self,
-                                        stage: adjutant::autopilot_loop::DspyStage,
-                                    ) {
-                                        let _ = self.stage_tx.send(stage);
+                                match adjutant::issue_suggestions_appserver::suggest_issues_streaming(
+                                    &issues,
+                                    &workspace_context,
+                                    token_tx,
+                                ).await {
+                                    Ok(stage) => {
+                                        let _ = suggestion_tx.send(stage);
                                     }
-                                }
-
-                                // Create callback that streams LLM tokens
-                                struct StreamingCallback {
-                                    token_tx: tokio::sync::mpsc::UnboundedSender<String>,
-                                }
-                                impl adjutant::dspy_orchestrator::DspyCallback for StreamingCallback {
-                                    fn on_lm_token(&self, _call_id: uuid::Uuid, token: &str) {
-                                        let _ = self.token_tx.send(token.to_string());
+                                    Err(e) => {
+                                        tracing::warn!("Autopilot: issue suggestions failed: {}", e);
                                     }
-                                }
-
-                                let output = CaptureOutput {
-                                    stage_tx: suggestion_tx,
-                                };
-                                let callback = StreamingCallback { token_tx };
-                                if let Err(e) = orchestrator
-                                    .suggest_issues_with_callback(&issues, vec![], &output, false, Some(&callback))
-                                    .await
-                                {
-                                    tracing::warn!("Autopilot: issue suggestions failed: {}", e);
                                 }
                             });
                         }
