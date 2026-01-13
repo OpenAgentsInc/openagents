@@ -1,6 +1,11 @@
 # Protocol Crate Documentation
 
-The `protocol` crate provides the foundation for the OpenAgents swarm protocol. It defines typed job schemas with deterministic hashing, verification modes, and provenance tracking.
+- **Status:** Accurate
+- **Last verified:** (see commit)
+- **Source of truth:** terminology → [GLOSSARY.md](../../../GLOSSARY.md), protocol → [docs/PROTOCOL_SURFACE.md](../../../docs/PROTOCOL_SURFACE.md), behavior → code
+- **If this doc conflicts with code, code wins.**
+
+The `protocol` crate provides the Rust API for OpenAgents job schemas. Protocol policy lives in [PROTOCOL_SURFACE.md](../../../docs/PROTOCOL_SURFACE.md); this doc covers crate-specific usage.
 
 ## Overview
 
@@ -10,12 +15,14 @@ Every job in the OpenAgents swarm follows a common structure:
 ┌─────────────────────────────────────────────────────────────┐
 │                       JobEnvelope                           │
 ├─────────────────────────────────────────────────────────────┤
-│  job_type: "oa.code_chunk_analysis.v1"                     │
+│  schema_id: "oa.code_chunk_analysis.v1"                    │
 │  schema_version: "1.0.0"                                    │
 │  job_hash: "a1b2c3..." (SHA-256 of canonical JSON)         │
 │  payload: { ... typed request/response ... }               │
 └─────────────────────────────────────────────────────────────┘
 ```
+
+> **Note:** `schema_id` is the canonical identifier for job types. Transport uses NIP-90; see [PROTOCOL_SURFACE.md](../../../docs/PROTOCOL_SURFACE.md) for kind mappings.
 
 ## Quick Start
 
@@ -43,7 +50,7 @@ let request = ChunkAnalysisRequest {
 let envelope = JobEnvelope::from_request(request);
 
 // Access metadata
-println!("Job type: {}", envelope.job_type);
+println!("Schema ID: {}", envelope.schema_id);
 println!("Hash: {:?}", envelope.job_hash);
 ```
 

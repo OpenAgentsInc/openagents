@@ -1,5 +1,10 @@
 # RLM Paper Replication Infrastructure
 
+- **Status:** Accurate
+- **Last verified:** (see commit)
+- **Source of truth:** terminology → [GLOSSARY.md](../../../GLOSSARY.md), behavior → code
+- **If this doc conflicts with code, code wins.**
+
 Infrastructure for replicating the Recursive Language Models paper (arXiv 2512.24601v1) using modular Rust crates designed for reuse across future paper replications.
 
 ## Overview
@@ -218,7 +223,7 @@ Available tools:
 | Tool | Description |
 |------|-------------|
 | `rlm_query` | Deep recursive analysis using prompt-execute loop |
-| `rlm_fanout` | Distribute query across workers (local/swarm/datacenter) |
+| `rlm_fanout` | Distribute query across workers (Local/Cloud/Swarm lanes) |
 
 ### Mode B: Codex AS the RLM Backend
 

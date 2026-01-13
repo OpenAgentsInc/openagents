@@ -1,5 +1,10 @@
 # Pylon Documentation
 
+- **Status:** Accurate
+- **Last verified:** (see commit)
+- **Source of truth:** terminology → [GLOSSARY.md](../../../GLOSSARY.md), protocol → [PROTOCOL_SURFACE.md](../../../docs/PROTOCOL_SURFACE.md), behavior → code
+- **If this doc conflicts with code, code wins.**
+
 Pylon is the local runtime for sovereign AI agents in the OpenAgents ecosystem. It serves two purposes:
 
 1. **Host Mode**: Run your own sovereign agents that pay for their own compute
