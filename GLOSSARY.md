@@ -4,7 +4,9 @@
 - **Last verified:** (see commit)
 - **Source of truth:** This document is the canonical vocabulary reference for all OpenAgents documentation
 - **Doc owner:** root
-- **If this doc conflicts with code, code wins.**
+- **Conflict rules:**
+  - If *terminology* conflicts across docs, **GLOSSARY wins**.
+  - If *behavior/implementation details* conflict with code, **code wins**.
 
 Canonical definitions for OpenAgents terminology. All docs should use these terms consistently.
 
@@ -29,6 +31,7 @@ Canonical definitions for OpenAgents terminology. All docs should use these term
 | **Rail** | A payment network + settlement mechanism (Lightning, Cashu mint, Taproot Assets, on-chain). Each rail has distinct trust properties. |
 | **AssetId** | Specific asset on a specific rail. `BTC_LN` ≠ `BTC_CASHU(mint_url)` ≠ `USD_CASHU(mint_url)`. |
 | **Quote** | Prepared payment intent with reserved funds, expiry timestamp, and idempotency key. States: CREATED → UNPAID → PENDING → PAID/FAILED/EXPIRED. |
+| **Cashu Proof** | A blind-signed token ("coin") redeemable at a Cashu mint. Avoid generic "proof" which collides with other meanings. |
 | **Reconciliation** | Background process resolving pending quotes, expiring reservations, and repairing state after crashes. |
 
 ---
@@ -74,7 +77,9 @@ Canonical definitions for OpenAgents terminology. All docs should use these term
 | **Optimizer** | Algorithm that improves signatures (MIPROv2, COPRO, GEPA, Pareto). |
 | **Metric** | Scoring function that measures prediction quality. Drives optimization. |
 | **Adapter** | Serializes requests and parses responses for a specific LLM format. Does NOT validate or retry. |
-| **Provider** | Backend that actually runs inference (Ollama, llama.cpp, Codex, etc.). |
+| **Provider** | Backend that runs inference or compute. See subtypes below. |
+| **Inference Provider** | Model backend that runs LLM inference (Ollama, llama.cpp, Codex, GPT-OSS, etc.). |
+| **Compute Provider (DVM)** | NIP-90 responder that fulfills jobs (sandbox execution, embeddings, etc.). |
 | **Policy Bundle** | Versioned compilation of signatures/modules/routing thresholds. Contains instructions, demos, optimizer config. |
 | **Forge Adapter** | Integration layer that maps Verified Patch Bundles to a target collaboration surface (GitAfter, GitHub, git, NIP-34). Handles PR creation, branch management, and platform-specific operations. |
 
@@ -85,7 +90,7 @@ Canonical definitions for OpenAgents terminology. All docs should use these term
 | Term | Definition |
 |------|------------|
 | **Execution Runtime** | The layer that validates tool params, enforces retries, and runs tools. Distinct from adapters. |
-| **Lane** | Routing category for inference: Local (free), Swarm (NIP-90), Datacenter (API). |
+| **Lane** | Named routing bucket for inference/execution. Standard *classes* are Local (free), Swarm (NIP-90), Datacenter (API). Implementations may expose additional lane names (e.g., `cheap`, `fast`, `premium`) that map onto these classes. |
 | **Dispatcher** | Component that sends NIP-90 jobs to the swarm (e.g., SwarmDispatcher). |
 | **step_utility** | Learning signal for a tool call. Canonical range: **-1.0..+1.0** (from `ToolResultSignature`). |
 | **verification_delta** | Change in failing tests: `tests_before - tests_after`. Positive = improvement. |
@@ -118,6 +123,7 @@ Canonical definitions for OpenAgents terminology. All docs should use these term
 | **ToolParamsSchemaMetric** | Proxy metric scoring whether tool params match JSON schema. Does NOT block execution (that's runtime's job). |
 | **OutcomeCoupledScorer** | Composite scorer using step_utility, verification_delta, repetition, and schema validity. |
 | **APM** | Actions Per Minute. Velocity metric: (messages + tool calls) / duration. Higher = faster autonomous operation. |
+| **sAPM** | Success-adjusted APM. Default: `APM × 1{verified_success}` (or optionally weighted by `verification_delta`). Measures productive velocity rather than raw speed. |
 
 ---
 

@@ -258,10 +258,10 @@ pub struct SandboxRunResponse {
 ### NIP-90 Integration
 
 ```rust
-// Creates NIP-90 kind:5102 jobs for sandbox execution
+// Submits NIP-90 sandbox execution jobs (kind depends on schema; see PROTOCOL_SURFACE)
 
 pub struct Nip90SandboxJob {
-    pub kind: u16,           // 5102
+    pub schema_id: String,   // "oa.sandbox_run.v1"
     pub commands: Vec<String>,
     pub profile: SandboxProfile,
     pub timeout_secs: u64,
