@@ -517,7 +517,7 @@ let score = synthesis_metric(&example, &prediction);
 
 ### tool_step_utility_metric
 
-Validates tool step utility evaluation.
+Validates tool step utility evaluation (from `ToolStepUtilitySignature`).
 
 ```rust
 use adjutant::dspy::metrics::tool_step_utility_metric;
@@ -526,7 +526,7 @@ let score = tool_step_utility_metric(&example, &prediction);
 ```
 
 **Checks (25% each):**
-1. step_utility in range 0.0-1.0
+1. `step_utility_norm` in range 0.0-1.0 (this is the judge output, not the canonical -1..+1 label)
 2. should_continue boolean
 3. Substantive next_action_hint
 4. Calibrated confidence
@@ -764,6 +764,7 @@ pub struct OutcomeCoupledScorer {
 
 impl OutcomeCoupledScorer {
     pub fn score(&self, tool_result: &ToolResultRecord) -> f32 {
+        // NOTE: Only normalize `step_utility` (-1..+1). Do NOT re-normalize `step_utility_norm` (already 0..1).
         let utility_score = (tool_result.step_utility + 1.0) / 2.0;  // Normalize -1..1 to 0..1
         let repetition_score = if tool_result.was_repeated { 0.0 } else { 1.0 };
         let verification_score = self.normalize_verification_delta(tool_result.verification_delta);
