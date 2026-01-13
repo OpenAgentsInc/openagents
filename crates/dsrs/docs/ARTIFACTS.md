@@ -27,7 +27,7 @@ Together, these form the **Verified Patch Bundle** - the canonical output of an 
 ## Artifact Locations
 
 ```
-.adjutant/sessions/{session_id}/
+.autopilot/sessions/{session_id}/
 ├── PR_SUMMARY.md      # Human-readable patch summary
 ├── RECEIPT.json       # Cryptographic receipt
 └── REPLAY.jsonl       # Event stream
@@ -132,7 +132,8 @@ Cryptographic receipt for verifiability and audit.
       "params_hash": "sha256:...",
       "output_hash": "sha256:...",
       "step_utility": "number (-1.0..+1.0)",
-      "latency_ms": "number"
+      "latency_ms": "number",
+      "side_effects": ["optional array of SideEffect"]
     }
   ],
   "verification": {
@@ -162,7 +163,8 @@ Cryptographic receipt for verifiability and audit.
       "params_hash": "sha256:def456...",
       "output_hash": "sha256:ghi789...",
       "step_utility": 0.8,
-      "latency_ms": 45
+      "latency_ms": 45,
+      "side_effects": []
     },
     {
       "id": "tc_002",
@@ -170,7 +172,8 @@ Cryptographic receipt for verifiability and audit.
       "params_hash": "sha256:jkl012...",
       "output_hash": "sha256:mno345...",
       "step_utility": 0.95,
-      "latency_ms": 120
+      "latency_ms": 120,
+      "side_effects": [{"type": "file_modified", "path": "src/auth.rs"}]
     }
   ],
   "verification": {
@@ -227,7 +230,7 @@ Canonical event stream for replay and debugging. See [REPLAY.md](REPLAY.md) for 
 
 ### Enables
 
-- CLI replay viewer (`adjutant replay sess_abc123`)
+- CLI replay viewer (`autopilot replay sess_abc123`)
 - Counterfactual analysis
 - Shadow mode comparison
 - Training data generation
@@ -314,19 +317,19 @@ fn canonical_serialize(value: &Value) -> String {
 
 ```bash
 # View session artifacts
-adjutant session show sess_abc123
+autopilot session show sess_abc123
 
 # View replay
-adjutant replay sess_abc123
+autopilot replay sess_abc123
 
 # Verify receipt integrity
-adjutant receipt verify sess_abc123
+autopilot receipt verify sess_abc123
 
 # Export artifacts for sharing
-adjutant session export sess_abc123 --output ./artifacts/
+autopilot session export sess_abc123 --output ./artifacts/
 
 # Compare two sessions (counterfactual)
-adjutant session diff sess_abc123 sess_def456
+autopilot session diff sess_abc123 sess_def456
 ```
 
 ---

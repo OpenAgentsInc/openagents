@@ -100,11 +100,10 @@ Use this to avoid scattering logic:
 
 | Binary | Purpose | Status |
 |--------|---------|--------|
-| `autopilot` | Product CLI: sessions, run, export, UI | 🟢 Implemented |
+| `autopilot` | Product CLI: sessions, run, export, replay, policy, UI | 🟢 Implemented |
 | `pylon` | Network node CLI: jobs, wallet, provider mode, doctor | 🟢 Implemented |
-| `adjutant` | Internal/dev CLI: replay viewer, policy tooling | ⚪ Planned (commands shown in docs are spec) |
 
-If a doc references `adjutant replay ...` or `adjutant policy ...`, treat those as **planned CLI surfaces** until the binary exists.
+`adjutant` is an internal library/codename for our DSPy decision pipelines—not a user-facing CLI. All CLI commands use `autopilot`.
 
 ---
 

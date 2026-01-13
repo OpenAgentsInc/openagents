@@ -393,7 +393,7 @@ The execution engine with DSPy-powered decision making.
 
 **Decision pipelines:**
 1. **ComplexityPipeline** — Classify task (Low/Medium/High/VeryHigh)
-2. **DelegationPipeline** — Route to codex_code, rlm, or local_tools
+2. **DelegationPipeline** — Route to codex, rlm, or local_tools
 3. **RlmTriggerPipeline** — Decide if RLM is needed
 
 **Execution priority:**
@@ -476,7 +476,7 @@ Tracks usage per model for billing and context optimization.
 6. Loop until success or max iterations
 ```
 
-**Autopilot needs swarm inference:**
+**Autopilot needs swarm inference** (kind numbers illustrative; see [PROTOCOL_SURFACE.md](./docs/PROTOCOL_SURFACE.md)):
 ```
 1. Runtime /compute/new → NIP-90 kind:5050
 2. Nexus broadcasts to providers
@@ -486,7 +486,7 @@ Tracks usage per model for billing and context optimization.
 6. Runtime returns result
 ```
 
-**Provider earns Bitcoin:**
+**Provider earns Bitcoin** (kind numbers illustrative):
 ```
 1. pylon start -m provider
 2. Connect to Nexus, subscribe to kind:5050
@@ -617,7 +617,7 @@ Issues are NOT done unless:
 
 **Current artifact directory:**
 ```
-.adjutant/sessions/{session_id}/
+.autopilot/sessions/{session_id}/
 ├── PR_SUMMARY.md
 ├── RECEIPT.json
 └── REPLAY.jsonl

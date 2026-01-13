@@ -552,7 +552,7 @@ When an agent uses a skill:
 3. If valid, marketplace participates in ECDH
 4. Agent decrypts skill content
 5. Agent executes skill in memory (never persists plaintext)
-6. Usage may be metered via kind:7000 feedback events
+6. Usage may be metered via kind:7000 feedback events (NIP-90 standard)
 
 ## Agent Wallet
 

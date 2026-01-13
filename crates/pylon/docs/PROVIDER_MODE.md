@@ -44,6 +44,8 @@ Customer                    Nostr Relays                    Provider (Pylon)
 | 6000-6999 | Result | Job result events |
 | 7000 | Status | Job status/feedback |
 
+> **Note:** Kind numbers are illustrative. Schema IDs (e.g., `oa.sandbox_run.v1`) are the canonical job type identifiers. See [PROTOCOL_SURFACE.md](/docs/PROTOCOL_SURFACE.md).
+
 ### Job Targeting
 
 - If a job request includes a `#p` tag, Pylon only processes it when the pubkey matches the provider identity.
@@ -383,7 +385,7 @@ pylon status
 #   Available: ollama (default)
 #
 # Agent Backends:
-#   Available: codex_code
+#   Available: codex
 #   Supported Bazaar Kinds: 5930, 5932, 5933
 #
 # Relays:

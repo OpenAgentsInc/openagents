@@ -515,7 +515,7 @@ Optimized prompts are stored in versioned policy bundles.
 ### Bundle Directory Structure
 
 ```
-.adjutant/policies/
+.autopilot/policies/
 ├── v1.2.3/
 │   ├── manifest.json          # Bundle metadata
 │   ├── signatures/
@@ -652,10 +652,10 @@ Datasets used for optimizer compilation.
 
 | Dataset | Location | Examples | Description |
 |---------|----------|----------|-------------|
-| **Tool Call Training** | `.adjutant/datasets/tool_calls.jsonl` | ~500 | Labeled tool selection decisions |
-| **Planning Training** | `.adjutant/datasets/planning.jsonl` | ~200 | Task → PlanIR examples |
-| **Synthesis Training** | `.adjutant/datasets/synthesis.jsonl` | ~150 | Subtask results → PR summary |
-| **Issue Validation** | `.adjutant/datasets/issue_validation.jsonl` | ~100 | Issue + context → valid/stale |
+| **Tool Call Training** | `.autopilot/datasets/tool_calls.jsonl` | ~500 | Labeled tool selection decisions |
+| **Planning Training** | `.autopilot/datasets/planning.jsonl` | ~200 | Task → PlanIR examples |
+| **Synthesis Training** | `.autopilot/datasets/synthesis.jsonl` | ~150 | Subtask results → PR summary |
+| **Issue Validation** | `.autopilot/datasets/issue_validation.jsonl` | ~100 | Issue + context → valid/stale |
 
 ### Dataset Format
 

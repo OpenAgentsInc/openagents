@@ -527,7 +527,7 @@ The result is a flywheel: successful sessions generate training data → dsrs op
 
 PerformanceTracker maintains rolling accuracy windows (default: 50 decisions) per signature. When accuracy drops below threshold or enough new examples accumulate, AutoOptimizer triggers MIPROv2 optimization on the weakest signature. The loop is automatic: run autopilot → decisions recorded → outcomes labeled → accuracy tracked → optimization triggered → better prompts deployed → run autopilot. The agent improves itself without human intervention.
 
-Decision pipelines drive this: ComplexityPipeline classifies task complexity (Low/Medium/High/VeryHigh), DelegationPipeline chooses execution path (codex_code/rlm/local_tools), RlmTriggerPipeline decides when recursive analysis is needed. Each pipeline is a DSPy module that can be optimized independently, promoting modularity and targeted improvement.
+Decision pipelines drive this: ComplexityPipeline classifies task complexity (Low/Medium/High/VeryHigh), DelegationPipeline chooses execution path (codex/rlm/local_tools), RlmTriggerPipeline decides when recursive analysis is needed. Each pipeline is a DSPy module that can be optimized independently, promoting modularity and targeted improvement.
 
 See [crates/dsrs/docs/DSPY_ROADMAP.md](./crates/dsrs/docs/DSPY_ROADMAP.md) for the full implementation roadmap.
 

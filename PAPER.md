@@ -702,14 +702,14 @@ Delegation determines whether the core Autopilot loop should run locally or be d
 Outputs include:
 
 * `should_delegate: bool`
-* `delegation_target ∈ {codex_code, rlm, local_tools, swarm_fanout, objective_job}`
+* `delegation_target ∈ {codex, rlm, local_tools, swarm_fanout, objective_job}`
 * `reasoning`
 * `confidence`
 
 **Interpretation of delegation targets:**
 
 * `local_tools`: run the normal tool loop locally (default).
-* `codex_code`: delegate to a high-capability coding runtime (e.g., app-server-backed lane).
+* `codex`: delegate to a high-capability coding runtime (e.g., app-server-backed lane).
 * `rlm`: switch the execution substrate to RLM/FRLM (see §7).
 * `swarm_fanout`: fan out to a provider network for parallel subqueries or specialized skills.
 * `objective_job`: dispatch a sandboxed, objectively verifiable job (e.g., tests/builds) as a NIP-90 job type.
@@ -1614,7 +1614,7 @@ The following gates define minimum viable product readiness for OpenAgents:
 | **ToolResultSignature wired** | ⏳ Spec only | Defined in `crates/dsrs/docs/SIGNATURES.md` |
 | **Tool params schema validation** | ✅ Implemented | Execution runtime validates (`crates/adjutant/`) |
 | **Policy bundle pin/rollback** | ⏳ Not started | CLI commands pending |
-| **Replay viewer CLI** | ⏳ Spec only | `adjutant replay` command pending |
+| **Replay viewer CLI** | ⏳ Spec only | `autopilot replay` command pending |
 | **Outcome-coupled metrics wiring** | 🔄 Partial | `step_utility` defined; full labeling pending |
 | **Shadow/canary counterfactual recording** | ⏳ Spec only | Architecture defined; not wired |
 | **DSPy decision pipelines** | ✅ Implemented | `ComplexityPipeline`, `DelegationPipeline`, `RlmTriggerPipeline` |
@@ -1826,7 +1826,7 @@ Note: Added Economic Routing and expanded counterfactual routing to include mark
 
 **Make “delegation_target” richer:**
 
-* codex_code / rlm / local_tools is fine, but add “swarm_fanout” and “objective_job” (sandbox_run) explicitly.
+* codex / rlm / local_tools is fine, but add “swarm_fanout” and “objective_job” (sandbox_run) explicitly.
 
 ---
 
