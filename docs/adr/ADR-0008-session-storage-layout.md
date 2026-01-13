@@ -23,40 +23,61 @@ We need one canonical answer for:
 
 ## Decision
 
-**OpenAgents defines a canonical storage layout with a single session directory per session, containing the Verified Patch Bundle. Base paths are centralized and configurable, but the internal bundle layout is stable.**
+**OpenAgents defines a canonical storage layout with `OPENAGENTS_HOME` as the single root. Base paths are centralized and configurable, but the internal layout is stable.**
+
+### OPENAGENTS_HOME (Normative)
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `OPENAGENTS_HOME` | `~/.openagents` | Root directory for all OpenAgents data |
+
+All paths below are relative to `${OPENAGENTS_HOME}`.
 
 ### Canonical Layout (Normative)
 
-A "session directory" contains the Verified Patch Bundle:
-- `PR_SUMMARY.md`
-- `RECEIPT.json`
-- `REPLAY.jsonl`
+```
+${OPENAGENTS_HOME}/
+├── sessions/{session_id}/     # Verified Patch Bundles (one per session)
+│   ├── PR_SUMMARY.md
+│   ├── RECEIPT.json
+│   └── REPLAY.jsonl
+├── policies/{version}/        # Policy bundles
+│   ├── manifest.json
+│   └── signatures/
+├── datasets/                  # Training datasets
+├── metrics/                   # Metrics and traces
+└── config/                    # Configuration
+```
 
-(See [ADR-0002](./ADR-0002-verified-patch-bundle.md) for the bundle contract.)
+A "session directory" contains the Verified Patch Bundle (see [ADR-0002](./ADR-0002-verified-patch-bundle.md)).
 
 The session directory path is derived from a single path resolver (e.g., `OpenAgentsPaths`) so crates do not invent their own roots.
 
-### Default Roots (Proposed defaults)
+### Repo-Local Storage
 
-- **User-global OpenAgents home**: `~/.openagents/`
-- **Session storage**: `~/.openagents/sessions/{session_id}/`
-- **Policy bundles**: `~/.openagents/policies/`
-- **Training datasets**: `~/.openagents/datasets/`
-- **Metrics/traces**: `~/.openagents/metrics/`
-- **Config**: `~/.openagents/config/`
+Repo-local storage (e.g., `.autopilot/`) is **not written by default**. If repo-local artifacts are needed for workflow reasons (demos, reproducible sharing, PR attachments), they must be produced via an explicit **export** command:
 
-If repo-local storage is required for workflow reasons (e.g., demos, reproducible sharing), it must be produced via an explicit **export** command rather than silently writing into the repo.
+```bash
+autopilot session export {session_id} --output ./.autopilot/
+```
 
-### Configuration
+This keeps repos clean and makes the export action explicit and auditable.
 
-The base path may be overridden by environment/config (e.g., `OPENAGENTS_HOME`), but the relative layout under that base must remain stable.
+### Legacy Locations
+
+If code currently writes to legacy locations (e.g., `.autopilot/sessions/`), it must:
+1. Migrate to `${OPENAGENTS_HOME}/sessions/` as the primary write location
+2. Optionally support reading from legacy locations for backward compatibility
+3. Document the migration in release notes
 
 ## Scope
 
 What this ADR covers:
+- `OPENAGENTS_HOME` environment variable and default
 - Stable internal structure of a session directory
 - Stable canonical base-path resolver responsibility
 - Default directory layout for sessions/policies/datasets/metrics
+- Repo-local storage policy (export-only)
 
 What this ADR does NOT cover:
 - Exact receipt/replay schemas (ARTIFACTS.md, REPLAY.md)
@@ -67,13 +88,15 @@ What this ADR does NOT cover:
 
 | Invariant | Guarantee |
 |-----------|-----------|
+| `OPENAGENTS_HOME` | Stable env var name; default `~/.openagents` |
 | Bundle filenames | Stable: `PR_SUMMARY.md`, `RECEIPT.json`, `REPLAY.jsonl` |
 | Session directory contains bundle | Stable |
 | Base path resolution | Centralized; crates must not hardcode paths |
-| Export is explicit | Stable: do not write repo-local by default |
+| Repo-local write | Never by default; export-only |
 
 Backward compatibility:
 - If current code writes to a different path, add a migration (symlink, exporter, or dual-write) and document it in the migration plan.
+- Legacy `.autopilot/` locations may be read for migration but not written.
 
 ## Migration Plan
 

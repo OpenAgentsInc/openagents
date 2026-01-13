@@ -1658,6 +1658,8 @@ impl AutopilotApp {
                     state.autopilot.issue_suggestions = Some(stage);
                     state.autopilot.issue_suggestions_rx = None;
                     state.autopilot.streaming_tokens_rx = None;
+                    // Activate bootloader modal to enable issue selection via keyboard
+                    state.modal_state = ModalState::Bootloader;
                     // Complete the streaming markdown and convert to message
                     state.chat.streaming_markdown.complete();
                     let source = state.chat.streaming_markdown.source().to_string();

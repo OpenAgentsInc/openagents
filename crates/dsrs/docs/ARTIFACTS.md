@@ -26,12 +26,16 @@ Together, these form the **Verified Patch Bundle** - the canonical output of an 
 
 ## Artifact Locations
 
+Stored under `${OPENAGENTS_HOME}/sessions/{session_id}/` (see [ADR-0008](../../../docs/adr/ADR-0008-session-storage-layout.md) for path resolution).
+
 ```
-~/.openagents/sessions/{session_id}/
+${OPENAGENTS_HOME}/sessions/{session_id}/
 ├── PR_SUMMARY.md      # Human-readable patch summary
 ├── RECEIPT.json       # Cryptographic receipt
 └── REPLAY.jsonl       # Event stream
 ```
+
+Default: `~/.openagents/sessions/{session_id}/` (illustrative)
 
 ---
 

@@ -628,12 +628,12 @@ The MVP execution flow uses merged signatures for efficiency:
 
 ## Policy Bundles
 
-Policy bundles are versioned artifacts containing optimized prompts and configuration.
+Policy bundles are versioned artifacts containing optimized prompts and configuration. Stored under `${OPENAGENTS_HOME}/policies/` (see [ADR-0008](../../../docs/adr/ADR-0008-session-storage-layout.md)).
 
 ### Bundle Structure
 
 ```
-.autopilot/policies/
+${OPENAGENTS_HOME}/policies/
 ├── v1.2.3/
 │   ├── manifest.json
 │   ├── signatures/
