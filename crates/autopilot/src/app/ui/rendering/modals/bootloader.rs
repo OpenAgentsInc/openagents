@@ -106,14 +106,12 @@ fn calculate_card_exclusion_zone(
 /// Draw bezier curve edges between nodes.
 fn draw_edges(scene: &mut Scene, layout: &BootGraphLayout, exclusion_zone: Option<&Bounds>) {
     for edge in &layout.edges {
-        // Skip edges whose endpoints fall in exclusion zone
+        // Skip edges whose destination (stage node) falls in exclusion zone
+        // Note: We only check the 'to' point, not 'from' (primary node),
+        // because the primary is at a fixed central position and checking it
+        // would cause ALL edges to disappear when the card overlaps center.
         if let Some(bounds) = exclusion_zone {
-            // Check if edge endpoint (to) is in exclusion zone
             if point_in_bounds(edge.to.x, edge.to.y, Some(bounds)) {
-                continue;
-            }
-            // Also check start point
-            if point_in_bounds(edge.from.x, edge.from.y, Some(bounds)) {
                 continue;
             }
         }
