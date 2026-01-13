@@ -187,10 +187,10 @@ This phase delivers the verifiable execution layer (paper Section 5). Without a 
 - `autopilot replay <session_id>` shows timeline: decisions -> tools -> diffs -> verification
 - Filters for edits/tests/failures and optional HTML export
 
-3. **Scheduled runs ("wake up to merged code")**
+3. **Scheduled runs ("wake up to landed patches")**
 
 - `autopilot schedule nightly --repo ./myrepo --label "autopilot" --max 3`
-- Pulls from a queue (local or GitHub labels), runs end-to-end, emits change bundles
+- Pulls from a queue (local or forge adapter), runs end-to-end, emits Patch Bundles
 
 4. **APM + success-adjusted APM (sAPM)**
 

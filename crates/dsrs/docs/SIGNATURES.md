@@ -1114,7 +1114,7 @@ Evaluates how useful a tool call was for the task (learning signal).
 // - receipt: JSON receipt for the tool call (hashes, latency, side effects)
 
 // Outputs:
-// - step_utility: Utility score (0.0 = no value, 1.0 = decisive progress)
+// - step_utility_norm: Utility score normalized to 0.0..1.0 (0.0 = no value, 1.0 = decisive progress)
 // - should_continue: Whether the workflow should continue
 // - next_action_hint: Short hint for the next action (max 12 words)
 // - confidence: Confidence in the utility judgment (0.0 to 1.0)
@@ -1124,7 +1124,7 @@ use adjutant::dspy::tool_step_utility::tool_step_utility_predict;
 let predictor = tool_step_utility_predict();
 ```
 
-- **Naming collision note:** This signature outputs `step_utility` in range **0.0..1.0**, while `ToolResultSignature` outputs `step_utility` in range **-1.0..+1.0**. The canonical label for training/optimization is `ToolResultSignature.step_utility (-1..+1)`. `ToolStepUtilitySignature` serves as a utility judge that can be used to produce labels, but its output should be normalized or renamed to `step_utility_norm` to avoid confusion.
+- **Naming collision note:** This signature outputs `step_utility_norm` in range **0.0..1.0**, while `ToolResultSignature` outputs `step_utility` in range **-1.0..+1.0**. The canonical label for training/optimization is `ToolResultSignature.step_utility (-1..+1)`. `ToolStepUtilitySignature` serves as a utility judge; its output uses the `_norm` suffix to distinguish from the canonical -1..+1 range.
 
 ---
 

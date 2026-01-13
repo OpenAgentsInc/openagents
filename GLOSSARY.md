@@ -46,12 +46,14 @@ Canonical definitions for OpenAgents terminology. All docs should use these term
 
 ## Nostr Protocols
 
+> **Note:** NIP-90 kind numbers shown are current defaults per the NIP-90 specification. Schema IDs (e.g., `oa.code_chunk_analysis.v1`) are the canonical identifiers for job types and will remain stable even if kind numbers change.
+
 | Term | Definition |
 |------|------------|
 | **NIP-90** | Data Vending Machine protocol. Defines job request/result flow. |
-| **kind:5050** | Job request event (NIP-90). |
-| **kind:6050** | Job result event (NIP-90). |
-| **kind:7000** | Job invoice/feedback event (NIP-90). |
+| **kind:5050** | Job request event (NIP-90). Default for text generation jobs. |
+| **kind:6050** | Job result event (NIP-90). Default for text generation results. |
+| **kind:7000** | Job invoice/feedback event (NIP-90). Used for all job types. |
 | **NIP-SA** | Sovereign Agent Protocol (proposed). Defines agent lifecycle events: profile, state, schedule, ticks, trajectories. |
 | **NIP-57** | Zaps. Lightning payments attached to Nostr events. |
 | **NIP-42** | Authentication. Required for agent relay access. |
@@ -74,6 +76,7 @@ Canonical definitions for OpenAgents terminology. All docs should use these term
 | **Adapter** | Serializes requests and parses responses for a specific LLM format. Does NOT validate or retry. |
 | **Provider** | Backend that actually runs inference (Ollama, llama.cpp, Codex, etc.). |
 | **Policy Bundle** | Versioned compilation of signatures/modules/routing thresholds. Contains instructions, demos, optimizer config. |
+| **Forge Adapter** | Integration layer that maps Verified Patch Bundles to a target collaboration surface (GitAfter, GitHub, git, NIP-34). Handles PR creation, branch management, and platform-specific operations. |
 
 ---
 
@@ -177,7 +180,7 @@ Status legend used in docs:
 
 | Collision | Resolution |
 |-----------|------------|
-| `step_utility` (0..1 vs -1..+1) | Canonical is **-1.0..+1.0** from `ToolResultSignature`. `ToolStepUtilitySignature` outputs 0..1 and should be normalized or renamed to `step_utility_norm`. |
+| `step_utility` vs `step_utility_norm` | Canonical `step_utility` is **-1.0..+1.0** from `ToolResultSignature`. `ToolStepUtilitySignature` outputs `step_utility_norm` in range **0.0..1.0** (the `_norm` suffix distinguishes it). |
 | `policy_version` vs `policy_bundle_id` | Canonical is **policy_bundle_id**. `policy_version` may be used as display metadata derived from bundle. |
 | `rlog` vs `trajectory` vs `REPLAY.jsonl` | `rlog` and `trajectory` are conceptual terms for session logs. `ReplayBundle` is current implementation. `REPLAY.jsonl v1` is target interoperable format. |
 

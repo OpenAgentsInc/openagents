@@ -162,7 +162,7 @@ cargo run -p gitafter
 
 **Features:**
 - Repository browser and issue tracking
-- PR diff rendering with stacked diffs
+- Diff rendering with stacked diffs
 - Lightning bounty metadata (NIP-57)
 - Trajectory session links (agent work proof)
 - Clone repositories locally
