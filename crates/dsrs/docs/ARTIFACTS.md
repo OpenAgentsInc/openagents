@@ -27,7 +27,7 @@ Together, these form the **Verified Patch Bundle** - the canonical output of an 
 ## Artifact Locations
 
 ```
-.autopilot/sessions/{session_id}/
+~/.openagents/sessions/{session_id}/
 ├── PR_SUMMARY.md      # Human-readable patch summary
 ├── RECEIPT.json       # Cryptographic receipt
 └── REPLAY.jsonl       # Event stream

@@ -35,6 +35,18 @@ The **canonical schema definitions** live in:
 
 This ADR states **what is canonical** and **compatibility guarantees**. It does not duplicate the full schemas.
 
+### Implementation Status
+
+**Current state:** `autopilot-core/src/replay.rs` emits `ReplayBundle` format (JSON, different schema).
+
+**Target state:** Native emission of `REPLAY.jsonl v1` as specified in REPLAY.md.
+
+**MVP acceptance:** Either:
+- Native emission of REPLAY.jsonl, OR
+- Emission of ReplayBundle + working exporter to REPLAY.jsonl v1
+
+See [ADR-0003](./ADR-0003-replay-formats.md) for migration details.
+
 ### File Purposes (Illustrative)
 
 **PR_SUMMARY.md** — Human-readable summary of changes:

@@ -15,7 +15,7 @@ Architecture Decision Records for the OpenAgents project.
 | [ADR-0003](./ADR-0003-replay-formats.md) | Replay Formats and Migration | Accepted | 2026-01-13 | Execution | — | dsrs | 2026-01-13 |
 | [ADR-0004](./ADR-0004-lane-taxonomy.md) | Lane Taxonomy and Naming | Accepted | 2026-01-13 | Routing | — | frlm | 2026-01-13 |
 | [ADR-0005](./ADR-0005-step-utility-semantics.md) | Step Utility Semantics | Accepted | 2026-01-13 | Compiler | — | dsrs | 2026-01-13 |
-| [ADR-0006](./ADR-0006-deterministic-hashing.md) | Deterministic Hashing and Canonicalization | Proposed | 2026-01-13 | Protocol | — | protocol | — |
+| [ADR-0006](./ADR-0006-deterministic-hashing.md) | Deterministic Hashing and Canonicalization | Accepted | 2026-01-13 | Protocol | — | protocol | 2026-01-13 |
 | [ADR-0007](./ADR-0007-tool-execution-contract.md) | Tool Execution Contract | Proposed | 2026-01-13 | Execution | — | dsrs | — |
 | [ADR-0008](./ADR-0008-session-storage-layout.md) | Session Storage Layout | Proposed | 2026-01-13 | Execution | — | adjutant | — |
 | [ADR-0009](./ADR-0009-planir-canonical-schema.md) | PlanIR Canonical Schema | Proposed | 2026-01-13 | Compiler | — | dsrs | — |
@@ -46,7 +46,7 @@ Architecture Decision Records for the OpenAgents project.
 - [ADR-0004](./ADR-0004-lane-taxonomy.md) — Lane Taxonomy and Naming
 
 ### Protocol (job schemas, NIP-90, hashing)
-- [ADR-0006](./ADR-0006-deterministic-hashing.md) — Deterministic Hashing and Canonicalization *(Proposed)*
+- [ADR-0006](./ADR-0006-deterministic-hashing.md) — Deterministic Hashing and Canonicalization
 - [ADR-0011](./ADR-0011-schema-ids-canonical.md) — Schema IDs Canonical *(Proposed)*
 - [ADR-0012](./ADR-0012-objective-vs-subjective-jobs.md) — Objective vs Subjective Jobs *(Proposed)*
 
@@ -67,10 +67,10 @@ Architecture Decision Records for the OpenAgents project.
 ## By Status
 
 ### Accepted
-- ADR-0001, ADR-0002, ADR-0003, ADR-0004, ADR-0005
+- ADR-0001, ADR-0002, ADR-0003, ADR-0004, ADR-0005, ADR-0006
 
 ### Proposed
-- ADR-0006, ADR-0007, ADR-0008, ADR-0009, ADR-0010, ADR-0011, ADR-0012, ADR-0013, ADR-0014, ADR-0015
+- ADR-0007, ADR-0008, ADR-0009, ADR-0010, ADR-0011, ADR-0012, ADR-0013, ADR-0014, ADR-0015
 
 ### Superseded
 - (none)
