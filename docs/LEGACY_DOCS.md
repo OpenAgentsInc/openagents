@@ -7,11 +7,24 @@ This document maps legacy/archived documentation to their canonical replacements
 | Concern | Source |
 |---------|--------|
 | Terminology | [GLOSSARY.md](../GLOSSARY.md) |
+| Architecture decisions | [docs/adr/](./adr/) (ADRs for contracts, invariants, interfaces) |
 | Agent architecture | [AGENTS.md](../AGENTS.md) |
 | Execution flow | [SYNTHESIS_EXECUTION.md](../SYNTHESIS_EXECUTION.md) |
 | Protocol/Transport | [PROTOCOL_SURFACE.md](./PROTOCOL_SURFACE.md) |
 | Roadmap | [ROADMAP.md](../ROADMAP.md) |
 | DSPy modules | [crates/dsrs/docs/](../crates/dsrs/docs/) |
+
+## Authority Hierarchy
+
+See [ADR-0001](./adr/ADR-0001-adoption-of-adrs.md) for the full specification.
+
+| Priority | Concern | Authoritative Source |
+|----------|---------|---------------------|
+| 1 | Behavior | Code wins |
+| 2 | Terminology | GLOSSARY.md wins |
+| 3 | Architecture intent | ADRs win |
+| 4 | Implementation status | Crate sources + SYNTHESIS_EXECUTION.md |
+| 5 | Priorities/sequencing | ROADMAP.md |
 
 ## Archived Documents
 
