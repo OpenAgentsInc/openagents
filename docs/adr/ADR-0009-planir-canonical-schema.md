@@ -26,7 +26,11 @@ We need a single plan intermediate representation that:
 
 ### Canonical Owner
 
-- Canonical type definition: `crates/dsrs/src/ir/plan.rs` (or equivalent `crates/dsrs/src/ir/*`)
+- **Spec definition:** [crates/dsrs/docs/SIGNATURES.md](../../crates/dsrs/docs/SIGNATURES.md) (planning signatures define PlanIR shape)
+- **Target code location:** `crates/dsrs/src/ir/plan.rs` (not yet implemented — spec-only status)
+- **Current implementations:**
+  - Adjutant: `SubtaskPlanningSignature.subtasks` → maps to `PlanIR.steps`
+  - Autopilot: `PlanningSignature.implementation_steps` → maps to `PlanIR.steps`
 - Canonical terminology: [GLOSSARY.md](../../GLOSSARY.md) (`PlanIR`, `StepIntent`, `verification_delta`)
 - Execution/replay integration: [crates/dsrs/docs/REPLAY.md](../../crates/dsrs/docs/REPLAY.md) (step_id linkage)
 

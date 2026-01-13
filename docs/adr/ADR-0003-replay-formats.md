@@ -47,6 +47,14 @@ The `ReplayBundle` struct in `crates/autopilot-core/src/replay.rs` is the curren
 3. **Phase 3:** Importers read both formats
 4. **Phase 4:** `ReplayBundle` becomes internal-only (or deprecated)
 
+### MVP Acceptance Criteria
+
+Per [REPLAY.md](../../crates/dsrs/docs/REPLAY.md) and [PROTOCOL_SURFACE.md](../PROTOCOL_SURFACE.md), MVP is achieved when either:
+- Native REPLAY.jsonl v1 emission is implemented, OR
+- ReplayBundle emission + working exporter to REPLAY.jsonl v1 exists
+
+This allows shipping with current implementation while maintaining upgrade path.
+
 ### Exporter Requirements
 
 The `autopilot export` command must:

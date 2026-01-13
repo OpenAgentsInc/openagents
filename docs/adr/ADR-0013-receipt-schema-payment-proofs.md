@@ -39,7 +39,14 @@ We need canonical receipt semantics to make spending auditable and machine-verif
    - `amount_msats` (or a rail-appropriate amount field if non-msats; if so, must be unambiguous)
    - `payment_proof` (typed)
 
-2. payment_proof is a tagged union (at minimum):
+2. payment_proof is a typed object:
+   ```json
+   {
+     "type": "lightning_preimage | cashu_proof | onchain_txid | taproot_assets_proof",
+     "value": "..."
+   }
+   ```
+   Valid `type` values:
    - `lightning_preimage`
    - `cashu_proof` (**use term "Cashu Proof"** in docs)
    - `onchain_txid`
@@ -77,7 +84,7 @@ What this ADR does NOT cover:
 | Identifier | `policy_bundle_id` is canonical |
 | Asset identity | Must be `AssetId` (rail-qualified) |
 | Cashu naming | Use "Cashu Proof" term |
-| Proof typing | payment_proof uses explicit variant tags |
+| Proof typing | payment_proof uses `{type, value}` format per PROTOCOL_SURFACE.md |
 
 Backward compatibility:
 - New proof types may be added, but existing tags remain stable.
