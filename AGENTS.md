@@ -21,10 +21,13 @@ If you are writing code here, you are usually adding:
 
 1) If documentation conflicts with code behavior: CODE WINS.
 2) If terminology conflicts across docs: GLOSSARY WINS.
-3) If implementation status conflicts across docs: prefer the crate sources + SYNTHESIS_EXECUTION.
+3) If architecture intent conflicts (invariants, interfaces, contracts): ADRs WIN.
+4) If implementation status conflicts across docs: prefer the crate sources + SYNTHESIS_EXECUTION.
+5) If priority/sequencing conflicts: ROADMAP wins.
 
 Read and apply:
 - Canonical terminology: ./GLOSSARY.md
+- Architecture decisions: ./docs/adr/ (see [ADR-0001](./docs/adr/ADR-0001-adoption-of-adrs.md))
 - Current system guide (what is wired): ./SYNTHESIS_EXECUTION.md
 - MVP priorities / acceptance: ./ROADMAP.md
 
@@ -37,6 +40,8 @@ Read and apply:
 3) ./ROADMAP.md
 4) ./PROJECT_OVERVIEW.md (product map; short)
 5) ./AGENT_FOUNDATIONS.md (conceptual model; signatures/tools/metrics/RLM)
+
+For architecture decisions, see ./docs/adr/INDEX.md (read relevant ADRs as needed).
 
 Then go crate-local:
 - dsrs docs: crates/dsrs/docs/README.md + ARCHITECTURE.md + TOOLS.md + METRICS.md + OPTIMIZERS.md + EVALUATION.md
@@ -66,9 +71,15 @@ Everything is logged and replayable
 Adapters do serialization/parsing only
 - Adapters do not own validation/retry logic. Runtime (or meta-operators like Refine) owns retries/guardrails.
 
+Doc gate for contracts
+- If you introduce/modify a **contract** (interface, invariant, protocol), you must:
+  - Add/update an ADR in docs/adr/
+  - Update GLOSSARY.md if terminology changes
+  - Update affected specs (ARTIFACTS.md, REPLAY.md, PROTOCOL_SURFACE.md)
+
 ---
 
-## “Where do I change things?” (map)
+## "Where do I change things?" (map)
 
 Use this to avoid scattering logic:
 
@@ -221,6 +232,12 @@ Protocol / network:
 * crates/protocol/
 * crates/pylon/
 * crates/nexus/
+
+Architecture Decisions (ADRs):
+
+* docs/adr/INDEX.md (decision index)
+* docs/adr/README.md (ADR process)
+* Key ADRs: ADR-0001 (authority), ADR-0002 (Verified Patch Bundle), ADR-0003 (replay), ADR-0004 (lanes), ADR-0005 (step_utility)
 
 ---
 

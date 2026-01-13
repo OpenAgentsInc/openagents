@@ -74,4 +74,5 @@ OpenAgents is organized as a layered stack:
 - Implementation priorities + MVP gates: [ROADMAP.md](./ROADMAP.md)
 - Current status / what's actually wired: [SYNTHESIS_EXECUTION.md](./SYNTHESIS_EXECUTION.md)
 - Architecture & strategy: [SYNTHESIS.md](./SYNTHESIS.md)
+- Architecture decisions: [docs/adr/](./docs/adr/) (ADRs for contracts and invariants)
 - Formal paper: [PAPER.md](./PAPER.md)

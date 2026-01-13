@@ -9,8 +9,9 @@
 > Start here, then branch:
 > - **Vocabulary:** [GLOSSARY.md](./GLOSSARY.md)
 > - **Repo map:** [PROJECT_OVERVIEW.md](./PROJECT_OVERVIEW.md)
-> - **MVP gates / “what to ship next”:** [ROADMAP.md](./ROADMAP.md)
-> - **Reality / what’s wired:** [SYNTHESIS_EXECUTION.md](./SYNTHESIS_EXECUTION.md)
+> - **MVP gates / "what to ship next":** [ROADMAP.md](./ROADMAP.md)
+> - **Reality / what's wired:** [SYNTHESIS_EXECUTION.md](./SYNTHESIS_EXECUTION.md)
+> - **Architecture decisions:** [docs/adr/](./docs/adr/) (ADRs for contracts, interfaces, invariants)
 > - **DSPy core docs:** `crates/dsrs/docs/*` (ARCHITECTURE, SIGNATURES, TOOLS, METRICS, OPTIMIZERS, EVALUATION)
 > - **Protocol surface:** [docs/PROTOCOL_SURFACE.md](./docs/PROTOCOL_SURFACE.md)
 
