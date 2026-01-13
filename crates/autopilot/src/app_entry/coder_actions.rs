@@ -1002,7 +1002,13 @@ impl AutopilotApp {
                     needs_redraw = true;
                 }
                 ResponseEvent::DspyStage(stage) => {
-                    let message_index = state.chat.messages.len().saturating_sub(1);
+                    // During streaming, associate with the streaming message (messages.len())
+                    // After completion, associate with the last message
+                    let message_index = if state.chat.is_thinking {
+                        state.chat.messages.len()
+                    } else {
+                        state.chat.messages.len().saturating_sub(1)
+                    };
                     state.tools.push_dspy_stage(stage, message_index);
                     needs_redraw = true;
                 }
