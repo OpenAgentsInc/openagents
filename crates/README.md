@@ -45,7 +45,8 @@ checkpointing, preflight checks, session logging, and streaming event normalizat
 ## codex-mcp
 The codex-mcp crate provides minimal Rust helpers for implementing MCP (Model Context Protocol)
 JSON-RPC servers over stdio in the style expected by Codex integrations. It focuses on the core
-tool flow (`tools/list`, `tools/call`) with small protocol types and a server loop.
+tool flow (`tools/list`, `tools/call`) with small protocol types and a server loop. See
+`crates/codex-mcp/README.md` for usage and protocol details.
 
 ## compute
 The compute crate implements a NIP-90 DVM provider that sells compute on Nostr. It bids on jobs,

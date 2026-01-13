@@ -6,6 +6,7 @@ authors.workspace = true
 license.workspace = true
 publish.workspace = true
 description = "Minimal MCP (Model Context Protocol) JSON-RPC helpers for Codex-style stdio servers"
+readme = "README.md"
 
 [dependencies]
 anyhow = { workspace = true }
