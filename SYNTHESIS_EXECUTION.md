@@ -13,13 +13,13 @@ For the full vision, see [SYNTHESIS.md](./SYNTHESIS.md). For the agent OS concep
 
 | Claim | Status | Source of Truth |
 |-------|--------|-----------------|
-| Nexus runs on Cloudflare Workers | ⏳ Planned | `crates/nexus/` |
-| NIP-90 kinds: 5050/6050/7000 | 🔄 Partial | `crates/nostr-sdk/` |
-| Tick model filesystem paths | ⏳ Planned | `crates/runtime/` |
-| Autopilot container mode | 🔄 Partial | `crates/autopilot/` |
-| Pylon local node | ✅ Implemented | `crates/pylon/` |
-| DSPy decision layer | ✅ Implemented | `crates/dsrs/`, `crates/adjutant/` |
-| Lightning/Spark payments | ⏳ Planned | `crates/spark-rs/` |
+| Nexus runs on Cloudflare Workers | ⏳ Planned | `crates/nexus/worker/` |
+| NIP-90 kinds: 5050/6050/7000 | 🔄 Partial | `crates/protocol/src/job.rs` |
+| Tick model filesystem paths | ⏳ Planned | `crates/runtime/src/` |
+| Autopilot container mode | 🔄 Partial | `crates/autopilot/src/` |
+| Pylon local node | ✅ Implemented | `crates/pylon/src/` |
+| DSPy decision layer | ✅ Implemented | `crates/dsrs/src/`, `crates/adjutant/src/dspy/` |
+| Lightning/Spark payments | ⏳ Planned | `crates/spark-rs/src/` |
 
 **Legend:** ✅ Implemented | 🔄 Partial/In Progress | ⏳ Planned/Not Started
 
@@ -212,9 +212,9 @@ Terminates when: success + verification passes, definitive failure, max iteratio
 
 ### Nexus — Nostr Relay
 
-Nostr relay optimized for agent job coordination. Runs on Cloudflare Workers.
+Nostr relay optimized for agent job coordination. Intended to run on Cloudflare Workers.
 
-Nexus is not a general-purpose Nostr relay—it's purpose-built for the AI job marketplace. While you could technically use it for social posts, it's optimized for the high-frequency, low-latency job coordination that agents need. The relay runs on Cloudflare Workers with Durable Objects for state, giving it global distribution and the ability to handle thousands of concurrent agent connections.
+Nexus is not a general-purpose Nostr relay—it's purpose-built for the AI job marketplace. While you could technically use it for social posts, it's optimized for the high-frequency, low-latency job coordination that agents need. The relay is intended to run on Cloudflare Workers with Durable Objects for state, providing global distribution and the ability to handle thousands of concurrent agent connections.
 
 The key protocol is NIP-90 (Data Vending Machines), which defines how job requests and results flow between buyers and providers. Nexus adds NIP-42 authentication as a requirement, so every connected agent has a verified Nostr identity. This enables reputation tracking, spam prevention, and accountability for job completion. When a buyer submits a job, Nexus broadcasts it to subscribed providers, handles the invoice/payment dance, and delivers results back to the buyer.
 
@@ -247,7 +247,7 @@ Pluggable execution environment for agents. Plan 9-inspired filesystem abstracti
 
 The Runtime provides a uniform execution environment for agents regardless of where they're running—browser, Cloudflare Workers, local SQLite, or a Docker container. The core abstraction is a virtual filesystem inspired by Plan 9: everything an agent needs (compute, memory, wallet, identity) is exposed as files and directories that can be read and written. This means the same agent code works everywhere; only the filesystem implementation changes.
 
-Agents run on a tick model: WAKE → LOAD → PERCEIVE → THINK → ACT → REMEMBER → SCHEDULE → SLEEP. Each tick is a complete cycle of gathering inputs, making decisions, taking actions, and storing results. This discrete-time model makes agents predictable and debuggable—you can inspect exactly what happened on any tick, replay sequences, and test edge cases. The runtime manages scheduling, so agents can request to wake at specific times or in response to external events.
+Agents are intended to run on a tick model: WAKE → LOAD → PERCEIVE → THINK → ACT → REMEMBER → SCHEDULE → SLEEP. Each tick is a complete cycle of gathering inputs, making decisions, taking actions, and storing results. This discrete-time model will make agents predictable and debuggable—you can inspect exactly what happened on any tick, replay sequences, and test edge cases. The runtime will manage scheduling, so agents can request to wake at specific times or in response to external events.
 
 **Tick model:**
 ```
@@ -269,7 +269,7 @@ WAKE → LOAD → PERCEIVE → THINK → ACT → REMEMBER → SCHEDULE → SLEEP
 └── codex/         # Codex SDK sessions
 ```
 
-Works across: Browser (WASM), Cloudflare (DO), Local (SQLite), Server (Docker/K8s).
+Intended to work across: Browser (WASM), Cloudflare (DO), Local (SQLite), Server (Docker/K8s).
 
 ---
 

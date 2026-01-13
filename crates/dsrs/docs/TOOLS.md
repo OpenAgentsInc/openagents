@@ -621,10 +621,10 @@ pub fn validate_tool_params(
 
 ### Retry Behavior
 
-When validation fails, the adapter re-prompts with error context:
+When validation fails, the execution runtime re-prompts with error context:
 
 ```rust
-// ChatAdapter retry logic
+// Execution runtime retry logic (not adapter responsibility)
 if let Err(validation_error) = validate_tool_params(&tool, &params) {
     // Append error to execution_history
     let retry_context = format!(

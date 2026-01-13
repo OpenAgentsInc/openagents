@@ -1153,17 +1153,17 @@ Quick reference for all signatures by category:
 
 | Category | Signature | Location | Status |
 |----------|-----------|----------|--------|
-| **Retrieval** | QueryComposerSignature | `dsrs/src/signatures/query_composer.rs` | Spec only |
-| | RetrievalRouterSignature | `dsrs/src/signatures/retrieval_router.rs` | Spec only |
-| | CandidateRerankSignature | `dsrs/src/signatures/candidate_rerank.rs` | Spec only |
-| **Chunk Analysis** | ChunkTaskSelectorSignature | `dsrs/src/signatures/chunk_task.rs` | Spec only |
-| | ChunkAnalysisToActionSignature | `dsrs/src/signatures/chunk_aggregator.rs` | Spec only |
-| **Sandbox** | SandboxProfileSelectionSignature | `dsrs/src/signatures/sandbox_profile.rs` | Spec only |
-| | FailureTriageSignature | `dsrs/src/signatures/failure_triage.rs` | Spec only |
-| **Budget** | LaneBudgeterSignature | `dsrs/src/signatures/lane_budgeter.rs` | Spec only |
-| | AgentMemorySignature | `dsrs/src/signatures/agent_memory.rs` | Spec only |
-| **Execution** | ToolCallSignature | `dsrs/docs/SIGNATURES.md` | Spec only |
-| | ToolResultSignature | `dsrs/docs/SIGNATURES.md` | Spec only |
+| **Retrieval** | QueryComposerSignature | Spec in this doc | Spec only |
+| | RetrievalRouterSignature | Spec in this doc | Spec only |
+| | CandidateRerankSignature | Spec in this doc | Spec only |
+| **Chunk Analysis** | ChunkTaskSelectorSignature | Spec in this doc | Spec only |
+| | ChunkAnalysisToActionSignature | Spec in this doc | Spec only |
+| **Sandbox** | SandboxProfileSelectionSignature | Spec in this doc | Spec only |
+| | FailureTriageSignature | Spec in this doc | Spec only |
+| **Budget** | LaneBudgeterSignature | Spec in this doc | Spec only |
+| | AgentMemorySignature | Spec in this doc | Spec only |
+| **Execution** | ToolCallSignature | Spec in this doc | Spec only |
+| | ToolResultSignature | Spec in this doc | Spec only |
 | **Adjutant** | SubtaskPlanningSignature | `adjutant/src/dspy/module.rs` | Implemented |
 | | SubtaskExecutionSignature | `adjutant/src/dspy/module.rs` | Implemented |
 | | ResultSynthesisSignature | `adjutant/src/dspy/module.rs` | Implemented |
@@ -1173,11 +1173,11 @@ Quick reference for all signatures by category:
 | | StalenessCheckSignature | `adjutant/src/dspy/staleness.rs` | Implemented |
 | | ToolStepUtilitySignature | `adjutant/src/dspy/tool_step_utility.rs` | Implemented |
 | **Issues** | IssueValidationSignature | `adjutant/src/dspy/issue_validation.rs` | Implemented |
-| | IssueSuggestionSignature | `dsrs/src/signatures/issue_suggestion.rs` | Spec only |
-| | UnblockSuggestionSignature | `dsrs/src/signatures/unblock_suggestion.rs` | Spec only |
-| **Code Edit** | CodeEditSignature | `dsrs/src/signatures/code_edit.rs` | Spec only |
-| | TaskUnderstandingSignature | `dsrs/src/signatures/task_understanding.rs` | Spec only |
-| | VerificationSignature | `dsrs/src/signatures/verification.rs` | Spec only |
+| | IssueSuggestionSignature | Spec in this doc | Spec only |
+| | UnblockSuggestionSignature | Spec in this doc | Spec only |
+| **Code Edit** | CodeEditSignature | Spec in this doc | Spec only |
+| | TaskUnderstandingSignature | Spec in this doc | Spec only |
+| | VerificationSignature | Spec in this doc | Spec only |
 | **RLM** | RouterSignature | `rlm/src/signatures.rs` | Implemented |
 | | ExtractorSignature | `rlm/src/signatures.rs` | Implemented |
 | | SimpleExtractorSignature | `rlm/src/signatures.rs` | Implemented |

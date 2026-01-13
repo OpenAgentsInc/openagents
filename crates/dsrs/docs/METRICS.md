@@ -842,6 +842,8 @@ optimizer.compile(&mut module, examples).await?;
 
 Validates tool call parameters against JSON schema.
 
+> **Note:** This is a **metric** for evaluating/scoring predictions, not the runtime validation that blocks execution. Runtime validation happens in the execution layer (see TOOLS.md "Tool Schema Validation"). This metric scores how often a signature produces schema-valid tool params, which is useful for optimization but does not replace runtime enforcement.
+
 ```rust
 // File: crates/dsrs/src/evaluate/metrics/proxy.rs
 

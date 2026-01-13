@@ -153,7 +153,8 @@ This phase delivers the verifiable execution layer (paper Section 5). Without a 
 
 2. **Trajectory Logging v1**
 
-- rlog/JSON session format
+- `ReplayBundle` format (current: `autopilot-core/src/replay.rs`)
+- Target: `REPLAY.jsonl` v1 per spec in `dsrs/docs/REPLAY.md`
 - Tool calls, diffs, verification outputs, timing, token usage, lane used
 - Deterministic session IDs, reproducible timestamps
 
