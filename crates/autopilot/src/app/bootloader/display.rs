@@ -275,6 +275,29 @@ fn render_stage_details(details: &StageDetails) {
                 colors::RESET
             );
         }
+
+        StageDetails::Issues(issues) => {
+            println!(
+                "  {}Evaluated: {} issues{}",
+                colors::DIM,
+                issues.total_evaluated,
+                colors::RESET
+            );
+            if issues.suggestions_found > 0 {
+                println!(
+                    "  {}Found: {} actionable suggestions{}",
+                    colors::DIM,
+                    issues.suggestions_found,
+                    colors::RESET
+                );
+            }
+            println!(
+                "  {}Provider: {}{}",
+                colors::DIM,
+                issues.provider,
+                colors::RESET
+            );
+        }
     }
 }
 

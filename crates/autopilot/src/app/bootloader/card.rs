@@ -123,6 +123,7 @@ impl BootCard {
                 lines.max(1.0) * LINE_HEIGHT
             }
             StageDetails::Summary(_) => LINE_HEIGHT,
+            StageDetails::Issues(_) => 2.0 * LINE_HEIGHT,
         }
     }
 
@@ -415,6 +416,27 @@ impl BootCard {
                     text,
                     palette,
                 );
+            }
+
+            StageDetails::Issues(issues) => {
+                self.draw_detail_line(
+                    &format!(
+                        "Evaluated {} issues via {}",
+                        issues.total_evaluated, issues.provider
+                    ),
+                    detail_x,
+                    y,
+                    scene,
+                    text,
+                    palette,
+                );
+                y += LINE_HEIGHT;
+                let status = if issues.suggestions_found > 0 {
+                    format!("Found {} actionable suggestions", issues.suggestions_found)
+                } else {
+                    "No actionable suggestions found".to_string()
+                };
+                self.draw_detail_line(&status, detail_x, y, scene, text, palette);
             }
         }
     }

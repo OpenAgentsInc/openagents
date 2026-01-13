@@ -60,6 +60,8 @@ pub enum BootStage {
     Identity,
     Workspace,
     Summary,
+    /// Issue evaluation stage (runs after boot, analyzes blocked issues)
+    Issues,
 }
 
 impl BootStage {
@@ -71,6 +73,7 @@ impl BootStage {
             Self::Identity => "Identity",
             Self::Workspace => "Workspace",
             Self::Summary => "Summary",
+            Self::Issues => "Issues",
         }
     }
 
@@ -82,6 +85,7 @@ impl BootStage {
             Self::Identity => "Loading Nostr identity and wallet",
             Self::Workspace => "Scanning project context",
             Self::Summary => "Generating capability summary",
+            Self::Issues => "Evaluating blocked issues",
         }
     }
 }
@@ -95,6 +99,7 @@ pub enum StageDetails {
     Identity(IdentityDetails),
     Workspace(WorkspaceDetails),
     Summary(SummaryDetails),
+    Issues(IssuesDetails),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -148,4 +153,14 @@ pub struct WorkspaceDetails {
 pub struct SummaryDetails {
     pub capability_summary: String,
     pub recommended_lane: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IssuesDetails {
+    /// Number of blocked issues evaluated
+    pub total_evaluated: usize,
+    /// Number of actionable suggestions found
+    pub suggestions_found: usize,
+    /// LM provider used for evaluation
+    pub provider: String,
 }

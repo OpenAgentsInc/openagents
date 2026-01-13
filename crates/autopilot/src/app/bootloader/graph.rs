@@ -197,6 +197,7 @@ pub fn calculate_radial_layout(
         (BootStage::Identity, 60.0),
         (BootStage::Workspace, 95.0),
         (BootStage::Summary, 225.0), // Bottom-left (context)
+        (BootStage::Issues, 180.0),  // Left side (post-boot evaluation)
     ];
 
     let mut stage_nodes = Vec::new();
@@ -205,7 +206,8 @@ pub fn calculate_radial_layout(
         let x = center_x + outer_radius * angle.cos();
         let y = center_y - outer_radius * angle.sin(); // Negative because Y is flipped
 
-        let mut node = if stage == BootStage::Summary {
+        let mut node = if stage == BootStage::Summary || stage == BootStage::Issues {
+            // Summary and Issues are context nodes (post-boot analysis)
             BootNode::context(stage.name(), Point::new(x, y))
         } else {
             BootNode::feature(stage, Point::new(x, y))
