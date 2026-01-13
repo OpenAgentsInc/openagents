@@ -34,6 +34,9 @@ fn render_plan_panel(
         return;
     };
 
+    // Render on layer 1 to appear above chat content
+    scene.set_layer(1);
+
     // Background
     scene.draw_quad(
         Quad::new(bounds)
@@ -178,4 +181,7 @@ fn render_plan_panel(
         );
         scene.draw_text(desc_run);
     }
+
+    // Reset to layer 0
+    scene.set_layer(0);
 }
