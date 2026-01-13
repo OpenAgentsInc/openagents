@@ -1,10 +1,10 @@
 # Glossary
 
-> **Status:** Accurate
-> **Last verified:** (see commit)
-> **Source of truth:** This document is the canonical vocabulary reference for all OpenAgents documentation
-> **Doc owner:** root
-> **If this doc conflicts with code, code wins.**
+- **Status:** Accurate
+- **Last verified:** (see commit)
+- **Source of truth:** This document is the canonical vocabulary reference for all OpenAgents documentation
+- **Doc owner:** root
+- **If this doc conflicts with code, code wins.**
 
 Canonical definitions for OpenAgents terminology. All docs should use these terms consistently.
 

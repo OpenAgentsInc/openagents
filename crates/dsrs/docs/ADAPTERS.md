@@ -1,10 +1,10 @@
 # Adapters
 
-> **Status:** Needs audit
-> **Last verified:** d44f9cd3f
-> **Source of truth:** `crates/dsrs/src/adapter/`
-> **Doc owner:** dsrs
-> **If this doc conflicts with code, code wins.**
+- **Status:** Needs audit
+- **Last verified:** d44f9cd3f
+- **Source of truth:** `crates/dsrs/src/adapter/`
+- **Doc owner:** dsrs
+- **If this doc conflicts with code, code wins.**
 
 How intent becomes prompts.
 
@@ -17,7 +17,7 @@ Adapters control **serialization**:
 
 This is where formats like JSON, XML, and custom schemas live. Adapters let you change *representation* without changing *meaning*.
 
-> **Mental model:** "Same intelligence, different surface syntax."
+- **Mental model:** "Same intelligence, different surface syntax."
 
 ---
 
@@ -501,7 +501,7 @@ The session executor (not adapters) emits replay events during execution for aud
 | PylonSandboxProvider | `dsrs/src/adapter/pylon_sandbox.rs` | Sandboxed execution (NIP-90) |
 | SwarmDispatcher | `dsrs/src/adapter/swarm_dispatch.rs` | Swarm job dispatch (NIP-90) |
 
-> **Note:** Replay emission is handled by the session executor, not adapters. See [REPLAY.md](REPLAY.md) and [ARTIFACTS.md](ARTIFACTS.md).
+- **Note:** Replay emission is handled by the session executor, not adapters. See [REPLAY.md](REPLAY.md) and [ARTIFACTS.md](ARTIFACTS.md).
 
 ---
 

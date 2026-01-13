@@ -1,12 +1,12 @@
 # MVP Artifacts
 
-> **Status:** Spec (partially implemented)
-> **Last verified:** 634f5b627
-> **Source of truth:**
+- **Status:** Spec (partially implemented)
+- **Last verified:** 634f5b627
+- **Source of truth:**
 > - Artifact layout/emission: `crates/adjutant/src/artifacts/` (not yet implemented)
 > - Replay implementation: `crates/autopilot-core/src/replay.rs` (different format)
-> **Doc owner:** adjutant
-> **If this doc conflicts with code, code wins.**
+- **Doc owner:** adjutant
+- **If this doc conflicts with code, code wins.**
 
 The "Verified PR Bundle" - three artifacts that capture everything about a completed task. For terminology, see [GLOSSARY.md](../../../GLOSSARY.md).
 
@@ -211,7 +211,7 @@ Cryptographic receipt for verifiability and audit.
 
 Canonical event stream for replay and debugging. See [REPLAY.md](REPLAY.md) for full specification.
 
-> **Note:** Current code emits `ReplayBundle` format (`autopilot-core/src/replay.rs`). An exporter to this REPLAY.jsonl spec is pending. See REPLAY.md "Compatibility Plan" for migration path.
+- **Note:** Current code emits `ReplayBundle` format (`autopilot-core/src/replay.rs`). An exporter to this REPLAY.jsonl spec is pending. See REPLAY.md "Compatibility Plan" for migration path.
 
 ### Quick Reference
 

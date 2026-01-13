@@ -1,10 +1,10 @@
 # DSPy Training Data Marketplace
 
-> **Status:** Needs audit
-> **Last verified:** d44f9cd3f
-> **Source of truth:** N/A (spec doc - MVP: not wired; roadmap only)
-> **Doc owner:** dsrs
-> **If this doc conflicts with code, code wins.**
+- **Status:** Needs audit
+- **Last verified:** d44f9cd3f
+- **Source of truth:** N/A (spec doc - MVP: not wired; roadmap only)
+- **Doc owner:** dsrs
+- **If this doc conflicts with code, code wins.**
 
 How learned agent patterns become a tradeable asset.
 
