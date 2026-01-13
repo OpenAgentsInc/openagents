@@ -60,15 +60,7 @@ fn render_modals(
     match modal_state {
         ModalState::None => {}
         ModalState::Bootloader => {
-            render_bootloader_modal(
-                state,
-                scene,
-                palette,
-                bounds,
-                logical_width,
-                logical_height,
-                scale_factor,
-            );
+            // Bootloader is rendered in render_app.rs as a center view, not as a modal
         }
         ModalState::ModelPicker { selected } => {
             render_model_picker_modal(
