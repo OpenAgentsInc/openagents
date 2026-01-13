@@ -106,6 +106,14 @@ impl IssueValidationPipeline {
         let recent_commits = get_recent_commits(&input.workspace_root, 20)?;
         let changed_files = get_changed_files(&input.workspace_root)?;
 
+        tracing::debug!(
+            "Issue validation context for #{}: blocked_reason={:?}, commits:\n{}\nchanged_files:\n{}",
+            input.issue_number,
+            input.blocked_reason,
+            recent_commits,
+            changed_files
+        );
+
         // Build signature and predictor
         let signature = IssueValidationSignature::new();
         let predictor = Predict::new(signature);

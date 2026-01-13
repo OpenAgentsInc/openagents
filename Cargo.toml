@@ -6,6 +6,7 @@ members = [
     "crates/arrow",
     "crates/autopilot",
     "crates/autopilot-core",
+    "crates/codex-client",
     "crates/codex-mcp",
     "crates/compute",
     "crates/dsrs",
@@ -59,6 +60,7 @@ publish = false
 
 [workspace.dependencies]
 # OpenAgents workspace crates
+codex-client = { path = "crates/codex-client" }
 issues = { path = "crates/issues" }
 nostr = { path = "crates/nostr/core" }
 

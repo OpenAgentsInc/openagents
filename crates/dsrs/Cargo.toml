@@ -44,6 +44,7 @@ protocol = { path = "../protocol" }
 uuid = { version = "1.1", features = ["v4"] }
 
 # Codex SDK integration (headless mode, primary)
+codex-client = { workspace = true }
 
 which = "7.0"
 dirs = "5.0"

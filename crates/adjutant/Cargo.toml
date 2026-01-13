@@ -18,6 +18,7 @@ path = "src/bin/main.rs"
 # CLI
 clap = { workspace = true }
 # OpenAgents internal crates
+codex-client = { workspace = true }
 rlm = { path = "../rlm" }
 issues = { path = "../issues" }
 gateway = { path = "../gateway" }

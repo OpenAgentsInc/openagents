@@ -29,6 +29,7 @@ dependencies = [
  "bon",
  "chrono",
  "clap",
+ "codex-client",
  "ctrlc",
  "dirs 5.0.1",
  "dsrs",
@@ -941,6 +942,7 @@ dependencies = [
  "autopilot-core",
  "chrono",
  "clap",
+ "codex-client",
  "dirs 6.0.0",
  "dsrs",
  "futures",
@@ -1856,6 +1858,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "codex-client"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "dirs 5.0.1",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "which 6.0.3",
+]
+
+[[package]]
 name = "codex-mcp"
 version = "0.1.0"
 dependencies = [
@@ -2742,6 +2757,7 @@ dependencies = [
  "bip39",
  "bon",
  "chrono",
+ "codex-client",
  "csv",
  "dirs 5.0.1",
  "dsrs-macros",
@@ -4313,6 +4329,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6c49c37c09c17a53d937dfbb742eb3a961d65a994e6bcdcf37e7399d0cc8ab5e"
 dependencies = [
  "digest 0.10.7",
+]
+
+[[package]]
+name = "home"
+version = "0.5.12"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cc627f471c528ff0c4a49e1d5e60450c8f6461dd6d10ba9dcd3a61d3dff7728d"
+dependencies = [
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -10876,6 +10901,18 @@ dependencies = [
  "web-time",
  "wgpu",
  "winit",
+]
+
+[[package]]
+name = "which"
+version = "6.0.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b4ee928febd44d98f2f459a4a79bd4d928591333a494a10a868418ac1b39cf1f"
+dependencies = [
+ "either",
+ "home",
+ "rustix 0.38.44",
+ "winsafe",
 ]
 
 [[package]]
