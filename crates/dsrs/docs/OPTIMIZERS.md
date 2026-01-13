@@ -510,12 +510,12 @@ optimizer.compile(&mut module, trainset).await?;
 
 ## Policy Bundle Format
 
-Optimized prompts are stored in versioned policy bundles.
+Optimized prompts are stored in versioned policy bundles under `${OPENAGENTS_HOME}/policies/` (see [ADR-0008](../../../docs/adr/ADR-0008-session-storage-layout.md) for path resolution).
 
 ### Bundle Directory Structure
 
 ```
-.autopilot/policies/
+${OPENAGENTS_HOME}/policies/
 ├── v1.2.3/
 │   ├── manifest.json          # Bundle metadata
 │   ├── signatures/
