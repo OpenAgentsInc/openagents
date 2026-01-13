@@ -90,6 +90,7 @@ fn render_chat(
     let boot_section_line_height = boot_section_font_size * 1.4;
     let boot_section_padding = 8.0_f32;
     let boot_section_indent = 16.0_f32;
+
     for boot_section in &chat_layout.boot_sections {
         let section_top = boot_section.y_offset;
         let section_bottom = section_top + boot_section.height;

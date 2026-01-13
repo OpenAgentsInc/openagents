@@ -1912,10 +1912,18 @@ impl AutopilotApp {
             return;
         };
 
+        // Check if event_rx exists
+        let has_rx = state.bootloader.event_rx.is_some();
+        if !has_rx {
+            // No receiver, bootloader not started or already drained
+            return;
+        }
+
         // Collect events from bootloader channel
         let events: Vec<BootEvent> = if let Some(rx) = &mut state.bootloader.event_rx {
             let mut events = Vec::new();
             while let Ok(event) = rx.try_recv() {
+                tracing::info!("Boot event received: {:?}", event);
                 events.push(event);
             }
             events
@@ -1926,6 +1934,8 @@ impl AutopilotApp {
         if events.is_empty() {
             return;
         }
+
+        tracing::info!("Processing {} boot events", events.len());
 
         // Process each event: update both bootloader UI state and chat boot sections
         for event in events {
