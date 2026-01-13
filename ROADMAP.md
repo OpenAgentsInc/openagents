@@ -137,6 +137,11 @@ This phase implements scalable long-horizon reasoning (paper Section 7). RLM tur
   - partition(scope, strategy)
   - map(query, chunks)
 - Everything logged as tool calls (for training)
+- Implemented local single-machine executor in Adjutant:
+  - LM-driven action planning with JSON action plans
+  - Context store with run handle (`rlm://<id>`) + chunk registry
+  - Fallback flow when controller fails (partition + map + summarize)
+  - Tool-call logging to `LabeledToolCall` for training capture
 
 2. **RLM Trigger v2**
 
@@ -146,22 +151,35 @@ This phase implements scalable long-horizon reasoning (paper Section 7). RLM tur
   - file_count
   - repeated actions indicator
 - Confidence-gated
+- Implemented new inputs (`file_count`, `repeated_actions`) in DSPy signature + training examples
+- Repeated-actions signal currently derived from task text markers (retry/again/stuck/etc.)
 
 3. **Signature integration**
 
-- Planner signature accepts `context_handle` (or equivalent) instead of raw text where possible
-- RLM "tool ops" become part of plan/execution
+- Planner signature accepts `context_handle` alongside raw text for large-context workflows
+- DSRS planning uses an inline handle today; RLM executor returns a handle for future use
+- RLM context ops are now first-class tool calls for training
 
 4. **RLM budgets**
 
 - Max recursion depth
 - Max subcalls
 - Stop criteria
+- Implemented budgets for steps, subcalls, map/summarize calls, peek lines, and digest size
+- Local executor falls back to external RLM (pylon) when no decision LM exists
+
+### Current implementation snapshot
+
+- Local RLM executor (`RlmLocalExecutor`) with context ops, tool-call logging, and synthesis pass
+- RLM delegation now prefers local executor when a decision LM is available
+- RLM trigger pipeline + training updated with file_count and repeated_actions signals
+- Planning signature accepts a context handle and carries it through DSRS planning
 
 ### Definition of done
 
 - A "large repo suite" where RLM mode improves success rate on high-context tasks or reduces iterations/thrash
 - No uncontrolled recursion cost blowups
+- RLM tooling is measurable via tool-call logs and policy bundles can optimize routing
 
 ---
 
@@ -422,7 +440,7 @@ Phase 1 done. Outcome-coupled optimization produces measurable improvements.
 
 ### Milestone M3: "Big repo stability"
 
-Phase 2 done. RLM handles large context without collapse.
+Phase 2 in progress. Local RLM executor + trigger v2 signals are implemented; validation suite pending.
 
 ### Milestone M4: "Autopilot buys verified compute"
 
