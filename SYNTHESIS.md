@@ -28,6 +28,8 @@
 - 🔵 **Specified**: Protocol/types defined, not yet wired
 - ⚪ **Planned**: Roadmap item, design incomplete
 
+> For values, motivation, and political framing, see [MANIFESTO.md](./MANIFESTO.md). This document focuses on architecture and strategy.
+
 > **Implementation Status:** This document mixes shipped components with planned ones. For current implementation status, see [SYNTHESIS_EXECUTION.md](./SYNTHESIS_EXECUTION.md). For canonical terminology, see [GLOSSARY.md](./GLOSSARY.md). For protocol details, see [docs/PROTOCOL_SURFACE.md](./docs/PROTOCOL_SURFACE.md).
 
 ---
