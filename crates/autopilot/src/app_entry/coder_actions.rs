@@ -1517,13 +1517,21 @@ impl AutopilotApp {
                             let workspace_root = workspace.root.clone();
                             let (suggestion_tx, suggestion_rx) =
                                 tokio::sync::mpsc::unbounded_channel();
+                            let (token_tx, token_rx) = tokio::sync::mpsc::unbounded_channel();
                             state.autopilot.issue_suggestions_rx = Some(suggestion_rx);
+                            state.autopilot.streaming_tokens_rx = Some(token_rx);
 
                             // Update boot graph to show Issues evaluation started
                             state.bootloader.update_issues_state(
                                 CardState::Running,
                                 Some(format!("Evaluating {} blocked issues...", issues.len())),
                             );
+
+                            // Add system message to indicate evaluation is starting
+                            state.chat.push_system_message(format!(
+                                "Evaluating {} issues for actionability...",
+                                issues.len()
+                            ));
 
                             self.runtime_handle.spawn(async move {
                                 tracing::info!(
@@ -1534,9 +1542,9 @@ impl AutopilotApp {
                                 let orchestrator =
                                     adjutant::dspy_orchestrator::DspyOrchestrator::new(None, tools);
 
-                                // Create a minimal output that captures the stage
+                                // Create output that captures stages
                                 struct CaptureOutput {
-                                    tx: tokio::sync::mpsc::UnboundedSender<
+                                    stage_tx: tokio::sync::mpsc::UnboundedSender<
                                         adjutant::autopilot_loop::DspyStage,
                                     >,
                                 }
@@ -1552,13 +1560,26 @@ impl AutopilotApp {
                                         &self,
                                         stage: adjutant::autopilot_loop::DspyStage,
                                     ) {
-                                        let _ = self.tx.send(stage);
+                                        let _ = self.stage_tx.send(stage);
                                     }
                                 }
 
-                                let output = CaptureOutput { tx: suggestion_tx };
+                                // Create callback that streams LLM tokens
+                                struct StreamingCallback {
+                                    token_tx: tokio::sync::mpsc::UnboundedSender<String>,
+                                }
+                                impl adjutant::dspy_orchestrator::DspyCallback for StreamingCallback {
+                                    fn on_lm_token(&self, _call_id: uuid::Uuid, token: &str) {
+                                        let _ = self.token_tx.send(token.to_string());
+                                    }
+                                }
+
+                                let output = CaptureOutput {
+                                    stage_tx: suggestion_tx,
+                                };
+                                let callback = StreamingCallback { token_tx };
                                 if let Err(e) = orchestrator
-                                    .suggest_issues(&issues, vec![], &output, false)
+                                    .suggest_issues_with_callback(&issues, vec![], &output, false, Some(&callback))
                                     .await
                                 {
                                     tracing::warn!("Autopilot: issue suggestions failed: {}", e);
@@ -1668,10 +1689,28 @@ impl AutopilotApp {
                     }
                     state.autopilot.issue_suggestions = Some(stage);
                     state.autopilot.issue_suggestions_rx = None;
+                    state.autopilot.streaming_tokens_rx = None;
+                    // Complete the streaming markdown and convert to message
+                    state.chat.streaming_markdown.complete();
+                    let source = state.chat.streaming_markdown.source().to_string();
+                    if !source.is_empty() {
+                        let doc = state.chat.streaming_markdown.document().clone();
+                        state.chat.messages.push(crate::app::chat::ChatMessage {
+                            role: crate::app::chat::MessageRole::Assistant,
+                            content: source,
+                            document: Some(doc),
+                            uuid: None,
+                            metadata: None,
+                        });
+                    }
+                    state.chat.streaming_markdown.reset();
                     needs_redraw = true;
                 }
                 Err(TryRecvError::Disconnected) => {
                     state.autopilot.issue_suggestions_rx = None;
+                    state.autopilot.streaming_tokens_rx = None;
+                    state.chat.streaming_markdown.complete();
+                    state.chat.streaming_markdown.reset();
                 }
                 Err(TryRecvError::Empty) => {}
             }
@@ -1946,6 +1985,35 @@ impl AutopilotApp {
             state.bootloader.handle_event_external(event);
         }
 
+        state.window.request_redraw();
+    }
+
+    /// Poll for streaming tokens from LLM during issue evaluation and display in chat.
+    pub(super) fn poll_streaming_tokens(&mut self) {
+        let Some(state) = &mut self.state else {
+            return;
+        };
+
+        // Collect tokens from the channel
+        let tokens: Vec<String> = if let Some(rx) = &mut state.autopilot.streaming_tokens_rx {
+            let mut tokens = Vec::new();
+            while let Ok(token) = rx.try_recv() {
+                tokens.push(token);
+            }
+            tokens
+        } else {
+            return;
+        };
+
+        if tokens.is_empty() {
+            return;
+        }
+
+        // Append all tokens to streaming markdown
+        for token in tokens {
+            state.chat.streaming_markdown.append(&token);
+        }
+        state.chat.streaming_markdown.tick();
         state.window.request_redraw();
     }
 

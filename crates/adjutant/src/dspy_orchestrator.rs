@@ -18,8 +18,8 @@ use crate::manifest::{IssueSummary, OanixManifest};
 use crate::{Task, TaskPlan, ToolRegistry};
 use anyhow::Result;
 use autopilot_core::{PlanningInput, PlanningPipeline, PlanningResult};
+pub use dsrs::callbacks::DspyCallback;
 use dsrs::LM;
-use dsrs::callbacks::DspyCallback;
 use serde_json::json;
 use std::sync::Arc;
 
@@ -491,6 +491,21 @@ impl DspyOrchestrator {
         output: &O,
         autopilot_mode: bool,
     ) -> Result<Option<u32>> {
+        self.suggest_issues_with_callback(issues, recent_work, output, autopilot_mode, None)
+            .await
+    }
+
+    /// Suggest issues with streaming callback.
+    ///
+    /// Same as `suggest_issues()` but streams LLM tokens via callback.
+    pub async fn suggest_issues_with_callback<O: AutopilotOutput>(
+        &self,
+        issues: &[IssueSummary],
+        recent_work: Vec<u32>,
+        output: &O,
+        autopilot_mode: bool,
+        callback: Option<&dyn DspyCallback>,
+    ) -> Result<Option<u32>> {
         // Build workspace context
         let workspace_context = format!("Repository at {}", self.tools.workspace_root().display());
 
@@ -501,13 +516,13 @@ impl DspyOrchestrator {
             user_preferences: None,
         };
 
-        // Run suggestion pipeline
+        // Run suggestion pipeline with callback
         let pipeline = match &self.lm {
             Some(lm) => IssueSuggestionPipeline::with_lm(lm.clone()),
             None => IssueSuggestionPipeline::new(),
         };
 
-        let result = pipeline.suggest(&input).await?;
+        let result = pipeline.suggest_with_callback(&input, callback).await?;
 
         // Convert to display format
         let suggestions: Vec<IssueSuggestionDisplay> = result
