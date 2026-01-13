@@ -536,6 +536,284 @@ User Request
 
 ---
 
+## Tool Schema Validation
+
+Every tool call must validate parameters against a JSON schema before execution.
+
+### Validation Flow
+
+```
+ToolCallSignature Output
+         │
+         ▼
+┌─────────────────────┐
+│ Schema Validation   │ ← Validates params against tool's args_schema()
+└─────────┬───────────┘
+          │
+          ├── PASS: Continue to execution
+          │
+          └── FAIL: Return ToolParamsSchemaMetric = 0.0
+                    │
+                    ▼
+              Retry with feedback
+```
+
+### Tool Schema Example
+
+```rust
+impl RlmTool for GrepTool {
+    fn args_schema(&self) -> Value {
+        json!({
+            "type": "object",
+            "required": ["pattern"],
+            "properties": {
+                "pattern": {
+                    "type": "string",
+                    "description": "Regex pattern to search for"
+                },
+                "globs": {
+                    "type": "array",
+                    "items": { "type": "string" },
+                    "description": "File patterns to include"
+                },
+                "max_hits": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 1000,
+                    "default": 50
+                }
+            }
+        })
+    }
+}
+```
+
+### Validation Implementation
+
+```rust
+// File: crates/dsrs/src/tools/validation.rs
+
+use jsonschema::JSONSchema;
+
+pub fn validate_tool_params(
+    tool: &dyn RlmTool,
+    params: &Value,
+) -> Result<(), ValidationError> {
+    let schema = tool.args_schema();
+    let compiled = JSONSchema::compile(&schema)?;
+
+    if let Err(errors) = compiled.validate(params) {
+        let error_msgs: Vec<String> = errors
+            .map(|e| format!("{}: {}", e.instance_path, e))
+            .collect();
+        return Err(ValidationError::SchemaViolation(error_msgs));
+    }
+
+    Ok(())
+}
+```
+
+### Retry Behavior
+
+When validation fails, the adapter re-prompts with error context:
+
+```rust
+// ChatAdapter retry logic
+if let Err(validation_error) = validate_tool_params(&tool, &params) {
+    // Append error to execution_history
+    let retry_context = format!(
+        "Previous tool call failed validation: {}\nPlease fix the parameters.",
+        validation_error
+    );
+
+    // Re-invoke ToolCallSignature with updated context
+    let retried = tool_call_predictor.forward(example_with_retry_context).await?;
+}
+```
+
+### Schema Validation Metrics
+
+```rust
+/// Proxy metric: did tool params pass schema validation?
+pub struct ToolParamsSchemaMetric;
+
+impl Metric for ToolParamsSchemaMetric {
+    fn tier(&self) -> MetricTier { MetricTier::Proxy }
+
+    fn score(&self, _example: &Example, prediction: &Prediction) -> f32 {
+        let params = prediction.get("params", None);
+        let tool_name = prediction.get("tool", None).as_str().unwrap_or("");
+
+        if let Some(tool) = get_tool_by_name(tool_name) {
+            match validate_tool_params(tool, &params) {
+                Ok(_) => 1.0,
+                Err(_) => 0.0,
+            }
+        } else {
+            0.0 // Unknown tool
+        }
+    }
+}
+```
+
+---
+
+## Receipt Hooks
+
+Every tool execution emits a receipt for audit and reproducibility.
+
+### Receipt Structure
+
+```rust
+// File: crates/dsrs/src/tools/receipt.rs
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct ToolReceipt {
+    /// Unique receipt ID
+    pub id: String,
+
+    /// Tool that was executed
+    pub tool: String,
+
+    /// Deterministic hash of input parameters
+    pub params_hash: String,
+
+    /// Deterministic hash of output
+    pub output_hash: String,
+
+    /// Wall-clock latency in milliseconds
+    pub latency_ms: u64,
+
+    /// Side effects produced (files written, commands run)
+    pub side_effects: Vec<SideEffect>,
+
+    /// Timestamp of execution
+    pub timestamp: DateTime<Utc>,
+
+    /// Git commit at execution time (if available)
+    pub git_commit: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub enum SideEffect {
+    FileWritten { path: String, hash: String },
+    FileDeleted { path: String },
+    CommandExecuted { command: String, exit_code: i32 },
+}
+```
+
+### Deterministic Hashing
+
+```rust
+// Canonical JSON serialization for deterministic hashing
+pub fn canonical_hash(value: &Value) -> String {
+    // Sort object keys, normalize whitespace
+    let canonical = serde_json::to_string(&canonicalize(value)).unwrap();
+    format!("sha256:{}", sha256::digest(canonical.as_bytes()))
+}
+
+// Usage
+let params_hash = canonical_hash(&params);
+let output_hash = canonical_hash(&output);
+```
+
+### Receipt Emission
+
+```rust
+impl ToolRegistry {
+    pub async fn execute_with_receipt(
+        &self,
+        tool: AvailableTools,
+        params: Value,
+    ) -> Result<(ToolOutput, ToolReceipt)> {
+        let start = Instant::now();
+        let params_hash = canonical_hash(&params);
+
+        // Execute tool
+        let output = self.execute(tool, params.clone()).await?;
+
+        let latency_ms = start.elapsed().as_millis() as u64;
+        let output_hash = canonical_hash(&serde_json::to_value(&output)?);
+
+        // Collect side effects
+        let side_effects = self.collect_side_effects(&tool, &params);
+
+        let receipt = ToolReceipt {
+            id: uuid::Uuid::new_v4().to_string(),
+            tool: tool.to_string(),
+            params_hash,
+            output_hash,
+            latency_ms,
+            side_effects,
+            timestamp: Utc::now(),
+            git_commit: get_current_git_commit(),
+        };
+
+        // Emit to REPLAY.jsonl
+        self.emit_to_replay(&receipt).await?;
+
+        Ok((output, receipt))
+    }
+}
+```
+
+### Linking Receipts to RECEIPT.json
+
+```rust
+// Final session RECEIPT.json includes all tool receipts
+pub struct SessionReceipt {
+    pub session_id: String,
+    pub tool_calls: Vec<ToolReceipt>,  // All receipts from this session
+    pub verification: VerificationResult,
+    pub final_confidence: f32,
+}
+
+// Tool receipts are linked by ID
+impl SessionReceipt {
+    pub fn get_tool_receipt(&self, receipt_id: &str) -> Option<&ToolReceipt> {
+        self.tool_calls.iter().find(|r| r.id == receipt_id)
+    }
+
+    pub fn total_latency_ms(&self) -> u64 {
+        self.tool_calls.iter().map(|r| r.latency_ms).sum()
+    }
+
+    pub fn side_effects_summary(&self) -> Vec<SideEffect> {
+        self.tool_calls.iter()
+            .flat_map(|r| r.side_effects.clone())
+            .collect()
+    }
+}
+```
+
+### Replay Verification
+
+```rust
+// Verify a replay matches the original receipt
+pub fn verify_replay(
+    replay_events: &[ReplayEvent],
+    original_receipt: &SessionReceipt,
+) -> VerificationResult {
+    let mut mismatches = Vec::new();
+
+    for (event, receipt) in replay_events.iter().zip(&original_receipt.tool_calls) {
+        if event.output_hash != receipt.output_hash {
+            mismatches.push(format!(
+                "Tool {} output mismatch: expected {}, got {}",
+                receipt.tool, receipt.output_hash, event.output_hash
+            ));
+        }
+    }
+
+    VerificationResult {
+        success: mismatches.is_empty(),
+        mismatches,
+    }
+}
+```
+
+---
+
 ## Tool Index
 
 | Tool | Location | Type | Purpose |

@@ -502,6 +502,255 @@ optimizer.compile(&mut module, trainset).await?;
 
 ---
 
+## Policy Bundle Format
+
+Optimized prompts are stored in versioned policy bundles.
+
+### Bundle Directory Structure
+
+```
+.adjutant/policies/
+├── v1.2.3/
+│   ├── manifest.json          # Bundle metadata
+│   ├── signatures/
+│   │   ├── ToolCallSignature.json
+│   │   ├── SubtaskPlanningSignature.json
+│   │   └── ResultSynthesisSignature.json
+│   └── demos/
+│       ├── tool_call_demos.jsonl
+│       ├── planning_demos.jsonl
+│       └── synthesis_demos.jsonl
+├── v1.2.2/
+│   └── ...
+└── current -> v1.2.3/         # Symlink to active version
+```
+
+### manifest.json Format
+
+```json
+{
+  "version": "v1.2.3",
+  "created_at": "2025-01-13T10:00:00Z",
+  "parent_version": "v1.2.2",
+  "optimization_method": "MIPROv2",
+  "optimization_config": {
+    "num_candidates": 10,
+    "num_trials": 20,
+    "max_bootstrapped_demos": 3,
+    "temperature": 1.0
+  },
+  "training_dataset": "labeled_examples_v3.jsonl",
+  "training_examples": 150,
+  "validation_score": 0.87,
+  "signatures": [
+    {
+      "name": "ToolCallSignature",
+      "instruction_hash": "sha256:abc123...",
+      "demo_count": 5
+    },
+    {
+      "name": "SubtaskPlanningSignature",
+      "instruction_hash": "sha256:def456...",
+      "demo_count": 3
+    }
+  ],
+  "locked": false,
+  "notes": "Improved tool selection accuracy by 12%"
+}
+```
+
+### Signature File Format
+
+```json
+{
+  "name": "ToolCallSignature",
+  "instruction": "Given a plan step and available tools, select the best tool and generate valid parameters...",
+  "instruction_hash": "sha256:abc123...",
+  "input_fields": ["step", "step_intent", "available_tools", "execution_history", "file_context"],
+  "output_fields": ["tool", "params", "expected_outcome", "progress", "needs_user_input"],
+  "demos": [
+    {
+      "inputs": { "step": "Read the authentication module", "step_intent": "Investigate" },
+      "outputs": { "tool": "file_read", "params": {"path": "src/auth.rs"} }
+    }
+  ],
+  "optimization_history": [
+    { "version": "v1.2.2", "score": 0.82 },
+    { "version": "v1.2.3", "score": 0.87 }
+  ]
+}
+```
+
+### Loading Policy Bundles
+
+```rust
+// File: crates/dsrs/src/optimizer/policy.rs
+
+pub struct PolicyBundle {
+    pub manifest: PolicyManifest,
+    pub signatures: HashMap<String, OptimizedSignature>,
+}
+
+impl PolicyBundle {
+    /// Load from directory
+    pub fn load(path: &Path) -> Result<Self> {
+        let manifest_path = path.join("manifest.json");
+        let manifest: PolicyManifest = serde_json::from_reader(File::open(manifest_path)?)?;
+
+        let mut signatures = HashMap::new();
+        for sig_entry in &manifest.signatures {
+            let sig_path = path.join("signatures").join(format!("{}.json", sig_entry.name));
+            let sig: OptimizedSignature = serde_json::from_reader(File::open(sig_path)?)?;
+            signatures.insert(sig_entry.name.clone(), sig);
+        }
+
+        Ok(Self { manifest, signatures })
+    }
+
+    /// Apply to a module
+    pub fn apply_to<M: Optimizable>(&self, module: &mut M) -> Result<()> {
+        for (name, params) in module.parameters() {
+            if let Some(sig) = self.signatures.get(&name) {
+                params.update_signature_instruction(sig.instruction.clone())?;
+                // Apply demos...
+            }
+        }
+        Ok(())
+    }
+
+    /// Save after optimization
+    pub fn save(&self, path: &Path) -> Result<()> {
+        fs::create_dir_all(path)?;
+        // Save manifest
+        let manifest_path = path.join("manifest.json");
+        serde_json::to_writer_pretty(File::create(manifest_path)?, &self.manifest)?;
+        // Save signatures
+        let sig_dir = path.join("signatures");
+        fs::create_dir_all(&sig_dir)?;
+        for (name, sig) in &self.signatures {
+            let sig_path = sig_dir.join(format!("{}.json", name));
+            serde_json::to_writer_pretty(File::create(sig_path)?, sig)?;
+        }
+        Ok(())
+    }
+}
+```
+
+---
+
+## Training Datasets
+
+Datasets used for optimizer compilation.
+
+### Dataset Sources
+
+| Dataset | Location | Examples | Description |
+|---------|----------|----------|-------------|
+| **Tool Call Training** | `.adjutant/datasets/tool_calls.jsonl` | ~500 | Labeled tool selection decisions |
+| **Planning Training** | `.adjutant/datasets/planning.jsonl` | ~200 | Task → PlanIR examples |
+| **Synthesis Training** | `.adjutant/datasets/synthesis.jsonl` | ~150 | Subtask results → PR summary |
+| **Issue Validation** | `.adjutant/datasets/issue_validation.jsonl` | ~100 | Issue + context → valid/stale |
+
+### Dataset Format
+
+```jsonl
+{"inputs":{"step":"Read auth module","step_intent":"Investigate"},"outputs":{"tool":"file_read","params":{"path":"src/auth.rs"}},"labels":{"step_utility":0.9,"was_repeated":false}}
+{"inputs":{"step":"Run tests","step_intent":"Verify"},"outputs":{"tool":"shell","params":{"command":"cargo test"}},"labels":{"step_utility":0.8,"verification_delta":3}}
+```
+
+### Dataset Collection
+
+Datasets are collected from production sessions:
+
+```rust
+// File: crates/adjutant/src/dspy/dataset_collector.rs
+
+pub struct DatasetCollector {
+    tool_calls: Vec<LabeledToolCall>,
+    plans: Vec<LabeledPlan>,
+}
+
+impl DatasetCollector {
+    /// Record a tool call with outcome labels
+    pub fn record_tool_call(&mut self, call: LabeledToolCall) {
+        self.tool_calls.push(call);
+    }
+
+    /// Export to JSONL for training
+    pub fn export_tool_calls(&self, path: &Path) -> Result<()> {
+        let file = File::create(path)?;
+        let mut writer = BufWriter::new(file);
+        for call in &self.tool_calls {
+            let line = serde_json::to_string(call)?;
+            writeln!(writer, "{}", line)?;
+        }
+        Ok(())
+    }
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct LabeledToolCall {
+    pub inputs: ToolCallInputs,
+    pub outputs: ToolCallOutputs,
+    pub labels: ToolCallLabels,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct ToolCallLabels {
+    pub step_utility: f32,          // From ToolResultSignature
+    pub verification_delta: i32,     // Test delta after step
+    pub was_repeated: bool,          // Did we repeat this exact call?
+    pub cost_tokens: u64,            // Tokens consumed
+    pub cost_tool_calls: u64,        // Number of tool invocations
+}
+```
+
+### Dataset Statistics
+
+```bash
+# View dataset statistics
+adjutant dataset stats
+
+# Output:
+# Dataset: tool_calls.jsonl
+#   Examples: 523
+#   Avg step_utility: 0.72
+#   Repeated calls: 8.2%
+#   Avg tokens/call: 1,450
+#
+# Dataset: planning.jsonl
+#   Examples: 198
+#   Avg confidence: 0.81
+#   Avg steps/plan: 4.2
+```
+
+### Train/Test Split
+
+```rust
+/// Split dataset for optimization
+pub fn split_dataset(
+    examples: Vec<Example>,
+    train_ratio: f32,
+    seed: u64,
+) -> (Vec<Example>, Vec<Example>) {
+    let mut rng = StdRng::seed_from_u64(seed);
+    let mut shuffled = examples;
+    shuffled.shuffle(&mut rng);
+
+    let split_idx = (shuffled.len() as f32 * train_ratio) as usize;
+    let train = shuffled[..split_idx].to_vec();
+    let test = shuffled[split_idx..].to_vec();
+
+    (train, test)
+}
+
+// Usage in optimization
+let (trainset, valset) = split_dataset(examples, 0.8, 42);
+optimizer.compile_with_validation(&mut module, trainset, valset).await?;
+```
+
+---
+
 ## Optimizer Index
 
 | Optimizer | Location | Algorithm | Use Case |

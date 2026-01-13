@@ -2,6 +2,108 @@
 
 This roadmap is the execution plan for the OpenAgents paper. Each phase turns a paper claim into a concrete, testable artifact. The ordering is deliberate: we establish verifiable execution and measurement first, then optimize behavior, then scale reasoning, and only then open economic and marketplace surfaces. That sequence avoids Goodhart traps, keeps costs bounded, and ensures every new capability is grounded in objective feedback.
 
+---
+
+# MVP "Add Next" Priorities
+
+These are the highest-ROI items that close the loop between execution, measurement, and optimization. They should be completed before advancing phases.
+
+## NOW (MVP Critical Path)
+
+### 1. Ship the "Verified PR Bundle" artifact
+
+**Every Autopilot run must emit:**
+- `PR_SUMMARY.md` - Human-readable summary
+- `RECEIPT.json` - Machine-readable receipt
+- `REPLAY.jsonl` - Replayable event stream
+
+**Contents:**
+- What changed (files + diff stats)
+- Verification transcript (commands, exit codes, failing tests before/after)
+- Policy bundle ID / signature versions used
+- APM + success-adjusted APM (sAPM)
+- Cost summary (tokens + msats)
+- "Next steps if failed" guidance
+
+**Definition of done:** Every session ends with artifacts + verification recorded + terminal status.
+
+### 2. Implement ToolCallSignature + ToolResultSignature
+
+Move from spec to implementation:
+- `crates/dsrs/src/signatures/tool_call.rs`
+- `crates/dsrs/src/signatures/tool_result.rs`
+
+**ToolCallSignature outputs:** tool, params, expected_outcome, progress, needs_user_input
+**ToolResultSignature outputs:** success (YES/PARTIAL/NO), extracted_facts, should_continue, step_utility (-1..+1)
+
+Wire into single-step executor for Autopilot/Adjutant execution loop.
+
+### 3. Tool params schema validation at adapter boundary
+
+- Strict validator: `tool` ∈ allowed names, `params` matches JSON schema
+- Auto-Refine retry on parse error (up to N attempts)
+- Add `ToolParamsSchemaMetric` as proxy metric
+
+### 4. Policy bundles with pin/rollback (visible versioning)
+
+- Persist `policy_bundle_id` with every session and decision
+- Bundle structure: instruction text + demos + optimizer config + timestamp + metrics snapshot
+- CLI commands: `autopilot policy list`, `autopilot policy pin <bundle>`, `autopilot policy rollback`
+
+### 5. Replay Viewer (CLI first)
+
+`autopilot replay <session_id>` renders:
+- Decisions timeline
+- Tool calls (inputs/outputs truncated)
+- Verification history
+- Diffs summary
+- APM timeline
+
+Optional: `autopilot export-replay <session_id> --html`
+
+### 6. Outcome-coupled metrics wiring
+
+Write `tool_calls.jsonl` dataset with:
+- inputs/outputs + computed labels
+- verification_delta (prev failing - current failing)
+- was_repeated (call hash)
+- cost_tokens
+
+Update Scorer/Evaluator to incorporate:
+- step_utility weight
+- verification_delta reward
+- repetition penalty
+
+### 7. Shadow/canary mode for decision pipelines
+
+- Always compute legacy + DSPy decision
+- Execute legacy unless DSPy confidence > threshold
+- Store counterfactual fields in DecisionRecord
+
+---
+
+## FUTURE (Post-MVP)
+
+### A. Retrieval Pipeline Module
+Compose QueryComposer → RetrievalRouter → CandidateRerank → ChunkTaskSelector → ChunkAnalysisToAction into reusable `RetrievalPipelineModule` with budget integration.
+
+### B. NIP-90 Objective Jobs (`oa.sandbox_run.v1`)
+Deterministic hashing, pay-after-verify logic, provider capability announcements.
+
+### C. Neobank Lite (budgets + receipts)
+Budget enforcement across lanes, receipt format tying spend → session_id → job hash.
+
+### D. FRLM + NIP-90 Map-Reduce
+FRLMDecompose → SwarmDispatcher → FRLMAggregate with stop rules and cost logging.
+
+### E. Skills Marketplace (local first)
+Skill package format, progressive disclosure, invocation logging.
+
+### F. Exchange + FX Routing
+Only after Neobank is stable.
+
+---
+
 Guiding principles that shape the order:
 
 - Verification first. If we cannot measure progress with deterministic checks, later optimization and market routing will amplify errors.

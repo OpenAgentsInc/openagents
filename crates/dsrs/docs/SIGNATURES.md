@@ -1134,41 +1134,65 @@ let predictor = tool_step_utility_predict();
 
 ---
 
+## MVP Critical Signatures
+
+These signatures must be wired end-to-end for the MVP to function:
+
+| # | Signature | Why Critical | Status |
+|---|-----------|--------------|--------|
+| 1 | **ToolCallSignature** | Single decision point for tool selection + params | Spec only |
+| 2 | **ToolResultSignature** | Learning signal (step_utility) for MIPRO | Spec only |
+| 3 | **SubtaskPlanningSignature** | Emits PlanIR for all task execution | Implemented |
+| 4 | **SubtaskExecutionSignature** | Executes atomic plan steps | Implemented |
+| 5 | **ResultSynthesisSignature** | Produces final PR_SUMMARY.md | Implemented |
+| 6 | **IssueValidationSignature** | Gates stale/invalid work | Implemented |
+| 7 | **VerificationSignature** | Computes verification_delta metric | Spec only |
+| 8 | **ToolStepUtilitySignature** | Outcome-coupled scoring per tool call | Implemented |
+
+**MVP Critical Path:** Issue → Plan → (ToolCall → Execute → ToolResult)* → Synthesis → PR_SUMMARY.md + RECEIPT.json
+
+---
+
 ## Signature Index
 
 Quick reference for all signatures by category:
 
-| Category | Signature | Location |
-|----------|-----------|----------|
-| **Retrieval** | QueryComposerSignature | `dsrs/src/signatures/query_composer.rs` |
-| | RetrievalRouterSignature | `dsrs/src/signatures/retrieval_router.rs` |
-| | CandidateRerankSignature | `dsrs/src/signatures/candidate_rerank.rs` |
-| **Chunk Analysis** | ChunkTaskSelectorSignature | `dsrs/src/signatures/chunk_task.rs` |
-| | ChunkAnalysisToActionSignature | `dsrs/src/signatures/chunk_aggregator.rs` |
-| **Sandbox** | SandboxProfileSelectionSignature | `dsrs/src/signatures/sandbox_profile.rs` |
-| | FailureTriageSignature | `dsrs/src/signatures/failure_triage.rs` |
-| **Budget** | LaneBudgeterSignature | `dsrs/src/signatures/lane_budgeter.rs` |
-| | AgentMemorySignature | `dsrs/src/signatures/agent_memory.rs` |
-| **Execution** | ToolCallSignature | `dsrs/docs/SIGNATURES.md` (spec) |
-| | ToolResultSignature | `dsrs/docs/SIGNATURES.md` (spec) |
-| **Adjutant** | SubtaskPlanningSignature | `adjutant/src/dspy/module.rs` |
-| | SubtaskExecutionSignature | `adjutant/src/dspy/module.rs` |
-| | ResultSynthesisSignature | `adjutant/src/dspy/module.rs` |
-| | ComplexityClassificationSignature | `adjutant/src/dspy/decision_pipelines.rs` |
-| | DelegationDecisionSignature | `adjutant/src/dspy/decision_pipelines.rs` |
-| | RlmTriggerSignature | `adjutant/src/dspy/decision_pipelines.rs` |
-| | StalenessCheckSignature | `adjutant/src/dspy/staleness.rs` |
-| | ToolStepUtilitySignature | `adjutant/src/dspy/tool_step_utility.rs` |
-| **Issues** | IssueValidationSignature | `dsrs/src/signatures/issue_validation.rs` |
-| | IssueSuggestionSignature | `dsrs/src/signatures/issue_suggestion.rs` |
-| | UnblockSuggestionSignature | `dsrs/src/signatures/unblock_suggestion.rs` |
-| **Code Edit** | CodeEditSignature | `dsrs/src/signatures/code_edit.rs` |
-| | TaskUnderstandingSignature | `dsrs/src/signatures/task_understanding.rs` |
-| | VerificationSignature | `dsrs/src/signatures/verification.rs` |
-| **RLM** | RouterSignature | `rlm/src/signatures.rs` |
-| | ExtractorSignature | `rlm/src/signatures.rs` |
-| | SimpleExtractorSignature | `rlm/src/signatures.rs` |
-| | ReducerSignature | `rlm/src/signatures.rs` |
-| | VerifierSignature | `rlm/src/signatures.rs` |
-| **FRLM** | FRLMDecomposeSignature | `frlm/src/dspy_signatures.rs` |
-| | FRLMAggregateSignature | `frlm/src/dspy_signatures.rs` |
+| Category | Signature | Location | Status |
+|----------|-----------|----------|--------|
+| **Retrieval** | QueryComposerSignature | `dsrs/src/signatures/query_composer.rs` | Spec only |
+| | RetrievalRouterSignature | `dsrs/src/signatures/retrieval_router.rs` | Spec only |
+| | CandidateRerankSignature | `dsrs/src/signatures/candidate_rerank.rs` | Spec only |
+| **Chunk Analysis** | ChunkTaskSelectorSignature | `dsrs/src/signatures/chunk_task.rs` | Spec only |
+| | ChunkAnalysisToActionSignature | `dsrs/src/signatures/chunk_aggregator.rs` | Spec only |
+| **Sandbox** | SandboxProfileSelectionSignature | `dsrs/src/signatures/sandbox_profile.rs` | Spec only |
+| | FailureTriageSignature | `dsrs/src/signatures/failure_triage.rs` | Spec only |
+| **Budget** | LaneBudgeterSignature | `dsrs/src/signatures/lane_budgeter.rs` | Spec only |
+| | AgentMemorySignature | `dsrs/src/signatures/agent_memory.rs` | Spec only |
+| **Execution** | ToolCallSignature | `dsrs/docs/SIGNATURES.md` | Spec only |
+| | ToolResultSignature | `dsrs/docs/SIGNATURES.md` | Spec only |
+| **Adjutant** | SubtaskPlanningSignature | `adjutant/src/dspy/module.rs` | Implemented |
+| | SubtaskExecutionSignature | `adjutant/src/dspy/module.rs` | Implemented |
+| | ResultSynthesisSignature | `adjutant/src/dspy/module.rs` | Implemented |
+| | ComplexityClassificationSignature | `adjutant/src/dspy/decision_pipelines.rs` | Implemented |
+| | DelegationDecisionSignature | `adjutant/src/dspy/decision_pipelines.rs` | Implemented |
+| | RlmTriggerSignature | `adjutant/src/dspy/decision_pipelines.rs` | Implemented |
+| | StalenessCheckSignature | `adjutant/src/dspy/staleness.rs` | Implemented |
+| | ToolStepUtilitySignature | `adjutant/src/dspy/tool_step_utility.rs` | Implemented |
+| **Issues** | IssueValidationSignature | `adjutant/src/dspy/issue_validation.rs` | Implemented |
+| | IssueSuggestionSignature | `dsrs/src/signatures/issue_suggestion.rs` | Spec only |
+| | UnblockSuggestionSignature | `dsrs/src/signatures/unblock_suggestion.rs` | Spec only |
+| **Code Edit** | CodeEditSignature | `dsrs/src/signatures/code_edit.rs` | Spec only |
+| | TaskUnderstandingSignature | `dsrs/src/signatures/task_understanding.rs` | Spec only |
+| | VerificationSignature | `dsrs/src/signatures/verification.rs` | Spec only |
+| **RLM** | RouterSignature | `rlm/src/signatures.rs` | Implemented |
+| | ExtractorSignature | `rlm/src/signatures.rs` | Implemented |
+| | SimpleExtractorSignature | `rlm/src/signatures.rs` | Implemented |
+| | ReducerSignature | `rlm/src/signatures.rs` | Implemented |
+| | VerifierSignature | `rlm/src/signatures.rs` | Implemented |
+| **FRLM** | FRLMDecomposeSignature | `frlm/src/dspy_signatures.rs` | Implemented |
+| | FRLMAggregateSignature | `frlm/src/dspy_signatures.rs` | Implemented |
+
+**Status Legend:**
+- **Implemented**: Signature struct exists in code and is called in production
+- **In code**: Signature struct exists but not yet wired to production paths
+- **Spec only**: Documented specification, code not yet written
