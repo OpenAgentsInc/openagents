@@ -43,20 +43,21 @@ Canonical definitions for OpenAgents terminology. All docs should use these term
 | **Neobank** | Programmable treasury layer for agents. Not a bank but a payments router with budget enforcement, multi-rail support, and audit trails. |
 | **TreasuryRouter** | Policy engine deciding payment routing: which rail, which asset, which limits, which approvals. |
 | **Exchange** | Agent-to-agent marketplace for FX (BTC↔USD), liquidity swaps, and payment routing services. |
+| **FX Quote** | Price + expiry + settlement instructions for an asset swap. Distinct from payment **Quote** (which is a payment intent state machine). |
 | **Treasury Agent** | Specialized agent providing financial services to the network. |
 
 ---
 
 ## Nostr Protocols
 
-> **Note:** NIP-90 kind numbers shown are current defaults per the NIP-90 specification. Schema IDs (e.g., `oa.code_chunk_analysis.v1`) are the canonical identifiers for job types and will remain stable even if kind numbers change.
+> **Note:** Kind numbers are illustrative examples. Schema IDs (e.g., `oa.code_chunk_analysis.v1`) are the canonical identifiers for job types. See [PROTOCOL_SURFACE.md](docs/PROTOCOL_SURFACE.md) for authoritative kind assignments.
 
 | Term | Definition |
 |------|------------|
 | **NIP-90** | Data Vending Machine protocol. Defines job request/result flow. |
-| **kind:5050** | Job request event (NIP-90). Default for text generation jobs. |
-| **kind:6050** | Job result event (NIP-90). Default for text generation results. |
-| **kind:7000** | Job invoice/feedback event (NIP-90). Used for all job types. |
+| **NIP-90 Job Request** | Job submission event (e.g., kind:5050 for text generation). |
+| **NIP-90 Job Result** | Job completion event (e.g., kind:6050 for text generation). |
+| **NIP-90 Job Feedback** | Invoice/status event (kind:7000). Used for all job types. |
 | **NIP-SA** | Sovereign Agent Protocol (proposed). Defines agent lifecycle events: profile, state, schedule, ticks, trajectories. |
 | **NIP-57** | Zaps. Lightning payments attached to Nostr events. |
 | **NIP-42** | Authentication. Required for agent relay access. |
@@ -81,7 +82,7 @@ Canonical definitions for OpenAgents terminology. All docs should use these term
 | **Inference Provider** | Model backend that runs LLM inference (Ollama, llama.cpp, Codex, GPT-OSS, etc.). |
 | **Compute Provider (DVM)** | NIP-90 responder that fulfills jobs (sandbox execution, embeddings, etc.). |
 | **Policy Bundle** | Versioned compilation of signatures/modules/routing thresholds. Contains instructions, demos, optimizer config. |
-| **Forge Adapter** | Integration layer that maps Verified Patch Bundles to a target collaboration surface (GitAfter, GitHub, git, NIP-34). Handles PR creation, branch management, and platform-specific operations. |
+| **Forge Adapter** | Integration layer that maps Verified Patch Bundles to a target collaboration surface (GitAfter, GitHub, git, NIP-34). Handles PR creation, branch management, and platform-specific operations. *(Not a DSPy Adapter; this is a forge integration surface.)* |
 
 ---
 
@@ -90,7 +91,7 @@ Canonical definitions for OpenAgents terminology. All docs should use these term
 | Term | Definition |
 |------|------------|
 | **Execution Runtime** | The layer that validates tool params, enforces retries, and runs tools. Distinct from adapters. |
-| **Lane** | Named routing bucket for inference/execution. Standard *classes* are Local (free), Swarm (NIP-90), Datacenter (API). Implementations may expose additional lane names (e.g., `cheap`, `fast`, `premium`) that map onto these classes. |
+| **Lane** | Named routing bucket for inference/execution. Standard *classes* are **Local** (free, on-device), **Cloud** (hosted API), **Swarm** (NIP-90 marketplace). Implementations may expose additional lane names (e.g., `cheap`, `fast`, `premium`) that map onto these classes. Note: "Datacenter" in supply class docs refers to Cloud lanes. |
 | **Dispatcher** | Component that sends NIP-90 jobs to the swarm (e.g., SwarmDispatcher). |
 | **step_utility** | Learning signal for a tool call. Canonical range: **-1.0..+1.0** (from `ToolResultSignature`). |
 | **verification_delta** | Change in failing tests: `tests_before - tests_after`. Positive = improvement. |
@@ -123,7 +124,7 @@ Canonical definitions for OpenAgents terminology. All docs should use these term
 | **ToolParamsSchemaMetric** | Proxy metric scoring whether tool params match JSON schema. Does NOT block execution (that's runtime's job). |
 | **OutcomeCoupledScorer** | Composite scorer using step_utility, verification_delta, repetition, and schema validity. |
 | **APM** | Actions Per Minute. Velocity metric: (messages + tool calls) / duration. Higher = faster autonomous operation. |
-| **sAPM** | Success-adjusted APM. Default: `APM × 1{verified_success}` (or optionally weighted by `verification_delta`). Measures productive velocity rather than raw speed. |
+| **sAPM** | Success-adjusted APM. Formula: `APM × 1{verified_success}`. For objective jobs: `verified_success` = verification harness passes (all exit codes 0). For subjective jobs: use separate metric or N/A. Measures productive velocity rather than raw speed. |
 
 ---
 
