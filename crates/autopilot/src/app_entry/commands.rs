@@ -2447,7 +2447,7 @@ fn track_selected_issue(state: &mut AppState, issue_number: i32, title: &str) {
 
     // Look up issue in database to get full details
     let db_path = workspace_root.join(".openagents").join("autopilot.db");
-    match rusqlite::Connection::open(&db_path) {
+    match issues::db::init_db(&db_path) {
         Ok(conn) => {
             match issues::issue::get_issue_by_number(&conn, issue_number) {
                 Ok(Some(issue)) => {
