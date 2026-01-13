@@ -331,13 +331,23 @@ Treasury Agents become a new profitable agent class. They hold capital, quote tw
 
 With cryptographic identity, decentralized communication, and economic capability established, directive d-006 defines NIP-SA, the Sovereign Agent Protocol specifying how these capabilities combine into coherent agent behavior. NIP-SA defines ten event kinds describing the full lifecycle of an autonomous agent.
 
-*Note on kind numbers:* NIP-SA uses the 39200+ range to avoid collisions with existing NIPs. In particular, NIP-87 uses kind 38000 for mint recommendation events—we deliberately avoid this range to ensure protocol compatibility.
+> **Protocol Status:** NIP-SA is proposed but not yet implemented. The kind numbers below are **examples for illustration**—final numbers will be assigned when the NIP is formalized. For canonical protocol details and current implementation status, see [docs/PROTOCOL_SURFACE.md](./docs/PROTOCOL_SURFACE.md).
 
-AgentProfile events (kind 39200) announce an agent's existence, including threshold key configuration specifying which signers must cooperate. AgentState events (kind 39201) store encrypted goals, memory, and wallet balance—encrypted because internal state may contain sensitive information. AgentSchedule events (kind 39202) define when the agent should wake up and act, whether on regular heartbeat intervals or in response to triggering events.
+*Note on kind numbers:* NIP-SA proposes using the 39200+ range to avoid collisions with existing NIPs. In particular, NIP-87 uses kind 38000 for mint recommendation events—we deliberately avoid this range to ensure protocol compatibility. **These numbers are subject to change.**
 
-TickRequest and TickResult events (kinds 39210/39211) bracket autonomous execution cycles—when an agent begins a tick, it publishes a request; when complete, the result. This creates an auditable record visible to anyone subscribed. TrajectorySession and TrajectoryEvent types (kinds 39230/39231) publish the agent's decision-making process—thoughts, tool calls, and outcomes. This transparency is fundamental to NIP-SA: agents operate in public, reasoning inspectable by anyone.
+**Agent Lifecycle Events (proposed):**
+- **AgentProfile** (example: kind 39200) — announces agent existence with threshold key configuration
+- **AgentState** (example: kind 39201) — encrypted goals, memory, wallet balance
+- **AgentSchedule** (example: kind 39202) — wake schedules and trigger conditions
 
-SkillLicense and SkillDelivery events (kinds 39220/39221) handle marketplace transactions for agent capabilities. Agents purchase skills from the marketplace, receiving encrypted delivery, and sell their own skills. The marketplace signer enforces license compliance before participating in threshold signatures authorizing transactions.
+**Tick Execution Events (proposed):**
+- **TickRequest/TickResult** (example: kinds 39210/39211) — bracket autonomous execution cycles, creating auditable records
+- **TrajectorySession/TrajectoryEvent** (example: kinds 39230/39231) — publish decision-making process for transparency
+
+**Marketplace Events (proposed):**
+- **SkillLicense/SkillDelivery** (example: kinds 39220/39221) — handle skill marketplace transactions with encrypted delivery
+
+This transparency is fundamental to NIP-SA: agents operate in public, reasoning inspectable by anyone. The marketplace signer enforces license compliance before participating in threshold signatures authorizing transactions.
 
 ## Part Five: The Unified Wallet Application
 
@@ -365,9 +375,11 @@ Directive d-008 builds economic infrastructure for agent commerce through a unif
 
 The Bazaar promises: open entry (anyone can supply work), price discovery (market-based pricing, not opaque SaaS tiers), composability (jobs, skills, and providers mix and match), proof/provenance (receipts, logs, reputation), and fluid routing (the system chooses the best stall for the job). **Not reselling models—clearing work.** See [docs/bazaar/BAZAAR.md](docs/bazaar/BAZAAR.md) for the full specification.
 
-The mechanics of compute acquisition illustrate how the entire stack works. When an agent needs inference, it publishes a kind 5xxx job request to Nostr relays. Providers subscribe, see requests, bid, execute, and publish kind 6xxx results. Before submitting, the agent's CostTracker checks budget against quoted price—if the quote exceeds daily or session budget, the request blocks. If approved, the agent pays via its threshold-protected Spark wallet, the provider executes, and the cost records against a running tally across all backends: cloud APIs, local inference, and decentralized DVMs.
+The mechanics of compute acquisition illustrate how the entire stack works. When an agent needs inference, it publishes a NIP-90 job request (kind 5050) to Nostr relays. Providers subscribe, see requests, bid, execute, and publish results (kind 6050). Before submitting, the agent's CostTracker checks budget against quoted price—if the quote exceeds daily or session budget, the request blocks. If approved, the agent pays via its threshold-protected Spark wallet, the provider executes, and the cost records against a running tally across all backends: cloud APIs, local inference, and decentralized DVMs.
 
-The v1 compute marketplace focuses on two verifiable job types. **SandboxRun** (kind 5930/6930) executes commands against a repo snapshot in an isolated sandbox—`cargo test`, `cargo clippy`, builds, benchmarks, static analysis. Verification is straightforward: exit code plus logs plus artifact hashes. If the output hash matches expectations, payment releases; if not, no payment and provider reputation takes a hit. **RepoIndex** (kind 5931/6931) produces indexing artifacts—embeddings for code search, symbol maps, file digests. Verification uses schema validation (correct dimensions, chunk counts) and spot-check redundancy (re-run a sample on a trusted provider; mismatches trigger penalties). These verifiable workloads enable **pay-after-verify settlement**: providers include their Lightning invoice in the job result, and Autopilot pays only after verification passes. This creates trust without requiring trust—providers cannot get paid for garbage.
+> **Job Type Status:** The job schemas below use NIP-90 as a base. Specific job type identifiers (e.g., `oa.sandbox_run.v1`) are defined in [docs/PROTOCOL_SURFACE.md](./docs/PROTOCOL_SURFACE.md). Kind numbers for specialized job types are examples subject to change.
+
+The v1 compute marketplace focuses on two verifiable job types. **SandboxRun** (`oa.sandbox_run.v1`) executes commands against a repo snapshot in an isolated sandbox—`cargo test`, `cargo clippy`, builds, benchmarks, static analysis. Verification is straightforward: exit code plus logs plus artifact hashes. If the output hash matches expectations, payment releases; if not, no payment and provider reputation takes a hit. **RepoIndex** (`oa.repo_index.v1`) produces indexing artifacts—embeddings for code search, symbol maps, file digests. Verification uses schema validation (correct dimensions, chunk counts) and spot-check redundancy (re-run a sample on a trusted provider; mismatches trigger penalties). These verifiable workloads enable **pay-after-verify settlement**: providers include their Lightning invoice in the job result, and Autopilot pays only after verification passes. This creates trust without requiring trust—providers cannot get paid for garbage.
 
 **Inference Verification: A Tiered Model.** LLM inference outputs are inherently subjective—a summarization or code generation cannot be verified by hash comparison. The marketplace addresses this through tiered verification with escalating cost and confidence:
 
