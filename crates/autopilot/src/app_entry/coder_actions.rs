@@ -2822,7 +2822,7 @@ fn sandbox_policy_for_mode(mode: CoderMode) -> app_server::SandboxPolicy {
         CoderMode::Plan => app_server::SandboxPolicy::ReadOnly,
         CoderMode::Autopilot => app_server::SandboxPolicy::WorkspaceWrite {
             writable_roots: Vec::new(),
-            network_access: false,
+            network_access: true,
             exclude_tmpdir_env_var: false,
             exclude_slash_tmp: false,
         },

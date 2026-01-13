@@ -6,6 +6,18 @@ This crate intentionally stays small and focused on the “tools” path (`tools
 
 `codex-mcp` is published as a normal Rust library crate and its crate-level docs are this README (via `#![doc = include_str!("../README.md")]`).
 
+## Status / scope
+
+`codex-mcp` implements a pragmatic subset of MCP suitable for Codex-style stdio servers:
+
+- ✅ JSON-RPC request/response envelope
+- ✅ `initialize`
+- ✅ `tools/list`, `tools/call`
+- ✅ newline-delimited JSON framing over stdio
+- ❌ MCP resources/prompts/sampling and other extended surface area (by design)
+
+If you need a broader MCP implementation, treat this crate as a small foundation (or introduce a richer MCP crate) rather than expecting full protocol coverage here.
+
 ## What you get
 
 - **Protocol types**: `Request`, `Response`, `Tool`, `ToolsListResult`, `ToolCallParams`, `ToolCallResult`
@@ -114,6 +126,28 @@ codex --mcp-server "echo:stdio:echo-mcp-server"
 
 The name before `:stdio:` is the server identifier that will show up in tool call events.
 
+## Manual smoke test (stdio)
+
+You can also test your server without Codex by piping JSON-RPC lines into stdin.
+
+1) Run your server (replace `./echo-mcp-server`):
+
+```bash
+./echo-mcp-server
+```
+
+2) In another terminal, send JSON-RPC requests (each request must be on a single line):
+
+```bash
+printf '%s\n' \
+  '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}' \
+  '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}' \
+  '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"echo","arguments":{"message":"hi"}}}' \
+| ./echo-mcp-server
+```
+
+Responses are written one-per-line to stdout.
+
 ## JSON-RPC methods handled
 
 `codex-mcp` routes these methods:
@@ -143,6 +177,10 @@ Implement `server::McpHandler`:
   - `params.arguments` is arbitrary JSON.
   - Set `ToolCallResult::is_error = true` for “tool-level” failures (unknown tool, validation failures, domain errors), even if the JSON-RPC request itself was valid.
 
+### Tool naming
+
+Codex will typically address tools by `name` as returned from `tools/list`. Prefer stable, lowercase names and avoid whitespace. If you need namespacing, encode it in the tool name (for example `fs.read_file`), not in the server name.
+
 ## Transport
 
 The transport layer is a tiny abstraction so you can swap framing/IO later:
@@ -154,6 +192,7 @@ The transport layer is a tiny abstraction so you can swap framing/IO later:
   - Reads stdin line-by-line (newline-delimited JSON).
   - Writes one JSON-RPC response per line to stdout and flushes.
   - Empty lines are tolerated and ignored by `serve()` (they become a request with an empty `method`).
+  - EOF cleanly shuts down the server loop.
 
 If you need TCP/WebSocket/HTTP, implement `Transport` and keep `server::serve()` unchanged.
 
@@ -168,6 +207,12 @@ The `protocol` module defines the subset of JSON-RPC/MCP that this crate uses:
   - Use `Response::ok(id, result)` or `Response::err(id, code, message, data)`.
 - `ToolCallResult { content, is_error }`
   - `content` is a list of `ToolResultContent` items (currently just `text`).
+
+### Notes on IDs and notifications
+
+- If a request comes in with `id = null` or no `id`, it is treated as a JSON-RPC notification.
+- `server::serve()` still calls your handler for notifications, but will emit a response with `id = None`.
+  - If your caller is strict about “no response for notifications”, wrap `Transport` and drop responses where `response.id.is_none()`.
 
 ## Error behavior
 
@@ -218,6 +263,24 @@ impl McpHandler for Echo {
     }
 }
 ```
+
+## Logging / tracing
+
+This crate does not emit logs by itself, but it depends on `tracing` so downstream crates can instrument handlers and transports in a consistent way. A typical server binary sets up a subscriber and then logs inside `tools_call`:
+
+```rust,no_run
+use codex_mcp::protocol::ToolCallParams;
+
+fn log_tools_call(params: &ToolCallParams) {
+    tracing::info!(tool = %params.name, "tools/call");
+}
+```
+
+## Versioning and compatibility
+
+- The crate is intended to be “boring” and stable, but it is not a complete MCP implementation.
+- The on-the-wire format is JSON-RPC 2.0. The method names and result shapes are those commonly used by Codex-style MCP tool servers.
+
 
 ## Design notes / non-goals
 
