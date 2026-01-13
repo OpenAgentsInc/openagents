@@ -1,6 +1,7 @@
 pub(crate) mod agents;
 pub(crate) mod autopilot;
 pub(crate) mod autopilot_issues;
+pub mod bootloader;
 pub(crate) mod catalog;
 pub(crate) mod chat;
 pub(crate) mod codex_app_server;

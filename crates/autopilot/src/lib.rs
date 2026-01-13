@@ -10,4 +10,7 @@ pub mod commands;
 pub mod keybindings;
 pub mod panels;
 
+#[cfg(test)]
+mod tests;
+
 pub use app_entry::AutopilotApp;

@@ -63,9 +63,9 @@ regex = "1.12.2"
 uuid = { workspace = true }
 git2 = "0.20.3"
 walkdir = { workspace = true }
+chrono = { workspace = true }
 
 [dev-dependencies]
-chrono = { workspace = true }
 
 [package.metadata.bundle]
 name = "Autopilot"
