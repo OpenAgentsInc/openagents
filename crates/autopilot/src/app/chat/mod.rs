@@ -4,7 +4,8 @@ pub(crate) mod selection;
 pub(crate) mod state;
 
 pub(crate) use layout::{
-    ChatLayout, ChatLineLayout, InlineToolsLayout, MessageLayout, MessageLayoutBuilder,
+    BootSectionLayout, ChatLayout, ChatLineLayout, InlineToolsLayout, MessageLayout,
+    MessageLayoutBuilder,
 };
 pub(crate) use message::{ChatMessage, MessageMetadata, MessageRole};
 pub(crate) use selection::{ChatSelection, ChatSelectionPoint};

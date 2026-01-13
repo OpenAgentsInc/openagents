@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use wgpui::components::PaintContext;
 use wgpui::components::atoms::{ToolStatus, ToolType};
+use wgpui::components::molecules::SectionStatus;
 use wgpui::components::organisms::{
     ChildTool, DiffLine, DiffLineKind, DiffToolCall, EventData, EventInspector, InspectorView,
     PermissionDialog, PermissionType, SearchMatch, SearchToolCall, TagData, TerminalToolCall,
@@ -15,8 +16,8 @@ use crate::app::catalog::{
     AgentSource, HookScriptSource, McpServerSource, SkillSource, describe_mcp_config,
 };
 use crate::app::chat::{
-    ChatLayout, ChatLineLayout, ChatSelection, ChatSelectionPoint, InlineToolsLayout,
-    MessageLayout, MessageLayoutBuilder, MessageRole,
+    BootSectionLayout, ChatLayout, ChatLineLayout, ChatSelection, ChatSelectionPoint,
+    InlineToolsLayout, MessageLayout, MessageLayoutBuilder, MessageRole,
 };
 use crate::app::config::{SettingsItem, SettingsTab};
 use crate::app::events::{ModalState, keybinding_labels};

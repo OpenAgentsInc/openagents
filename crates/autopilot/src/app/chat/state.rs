@@ -1,5 +1,6 @@
 use tokio::sync::mpsc;
 use wgpui::ContextMenu;
+use wgpui::components::molecules::SectionStatus;
 use wgpui::markdown::{MarkdownRenderer as MdRenderer, StreamingMarkdown};
 
 use super::{ChatMessage, ChatSelection, MessageRole};
@@ -8,6 +9,56 @@ use crate::app::events::{QueryControl, ResponseEvent};
 use crate::app::session::SessionState;
 use crate::app::truncate_preview;
 use crate::app::ui::ThemeSetting;
+
+/// State for a collapsible boot section displayed in chat
+pub(crate) struct BootSection {
+    /// Unique identifier for this section
+    pub(crate) id: usize,
+    /// Summary line shown in header
+    pub(crate) summary: String,
+    /// Detail lines shown when expanded
+    pub(crate) details: Vec<String>,
+    /// Current status (Pending, InProgress, Success, Error)
+    pub(crate) status: SectionStatus,
+    /// Whether section is expanded
+    pub(crate) expanded: bool,
+    /// Whether section is still receiving updates
+    pub(crate) active: bool,
+}
+
+impl BootSection {
+    fn new(id: usize, summary: &str) -> Self {
+        Self {
+            id,
+            summary: summary.to_string(),
+            details: Vec::new(),
+            status: SectionStatus::Pending,
+            expanded: true,
+            active: true,
+        }
+    }
+}
+
+/// Boot sections displayed at top of chat during startup
+pub(crate) struct BootSections {
+    /// Environment check section (Hardware, Compute, Network, Identity, Workspace, Summary)
+    pub(crate) environment: BootSection,
+    /// Issue verification section
+    pub(crate) issues: BootSection,
+}
+
+impl BootSections {
+    pub(crate) fn new() -> Self {
+        Self {
+            environment: BootSection::new(1, "Checking environment..."),
+            issues: {
+                let mut section = BootSection::new(2, "Evaluating blocked issues...");
+                section.active = false; // Will activate after environment completes
+                section
+            },
+        }
+    }
+}
 
 pub(crate) struct ChatState {
     pub(crate) messages: Vec<ChatMessage>,
@@ -22,6 +73,8 @@ pub(crate) struct ChatState {
     pub(crate) response_rx: Option<mpsc::UnboundedReceiver<ResponseEvent>>,
     pub(crate) query_control_tx: Option<mpsc::UnboundedSender<QueryControl>>,
     pub(crate) scroll_offset: f32,
+    /// Boot sections displayed at top of chat during startup
+    pub(crate) boot_sections: Option<BootSections>,
 }
 
 impl ChatState {
@@ -45,6 +98,7 @@ impl ChatState {
             response_rx: None,
             query_control_tx: None,
             scroll_offset: 0.0,
+            boot_sections: Some(BootSections::new()),
         }
     }
 

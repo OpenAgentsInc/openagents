@@ -1,4 +1,16 @@
 use super::super::tools::{DspyStageLayout, ToolPanelBlock};
+use wgpui::components::molecules::SectionStatus;
+
+/// Layout for a boot section displayed at the top of chat.
+pub(crate) struct BootSectionLayout {
+    pub(crate) y_offset: f32,
+    pub(crate) height: f32,
+    pub(crate) summary: String,
+    pub(crate) details: Vec<String>,
+    pub(crate) status: SectionStatus,
+    pub(crate) expanded: bool,
+    pub(crate) section_id: usize,
+}
 
 #[derive(Clone, Debug)]
 pub(crate) struct ChatLineLayout {
@@ -35,6 +47,8 @@ pub(crate) struct ChatLayout {
     pub(crate) available_width: f32,
     pub(crate) chat_font_size: f32,
     pub(crate) chat_line_height: f32,
+    /// Boot sections displayed at the top of chat during startup.
+    pub(crate) boot_sections: Vec<BootSectionLayout>,
     pub(crate) message_layouts: Vec<MessageLayout>,
     pub(crate) streaming_thought_height: f32,
     pub(crate) streaming_height: f32,

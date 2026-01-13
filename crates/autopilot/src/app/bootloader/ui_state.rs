@@ -112,6 +112,11 @@ impl BootloaderUIState {
         updated
     }
 
+    /// Handle a single boot event (public wrapper for external callers).
+    pub fn handle_event_external(&mut self, event: BootEvent) {
+        self.handle_event(event);
+    }
+
     /// Handle a single boot event.
     fn handle_event(&mut self, event: BootEvent) {
         match event {

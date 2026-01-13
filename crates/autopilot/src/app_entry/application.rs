@@ -227,7 +227,7 @@ impl ApplicationHandler for AutopilotApp {
                 mouse_pos: (0.0, 0.0),
                 modifiers: ModifiersState::default(),
                 last_tick: Instant::now(),
-                modal_state: ModalState::Bootloader,
+                modal_state: ModalState::None, // Skip bootloader UI, stream to chat instead
                 panel_layout: PanelLayout::Single,
                 left_sidebar_open: false,
                 right_sidebar_open: false,
@@ -1204,6 +1204,38 @@ impl ApplicationHandler for AutopilotApp {
                             state.chat.chat_context_menu_target = None;
                         }
                         state.window.request_redraw();
+                        return;
+                    }
+                }
+                // Handle boot section expand/collapse clicks
+                if button_state == ElementState::Pressed
+                    && matches!(button, winit::event::MouseButton::Left)
+                {
+                    let boot_section_header_height = 13.0 * 1.6;
+                    let click_point = wgpui::Point::new(x, y);
+                    let mut handled = false;
+                    for (idx, boot_section) in chat_layout.boot_sections.iter().enumerate() {
+                        let header_bounds = wgpui::Bounds::new(
+                            chat_layout.content_x,
+                            boot_section.y_offset,
+                            chat_layout.available_width,
+                            boot_section_header_height,
+                        );
+                        if header_bounds.contains(click_point) {
+                            // Toggle expanded state in the actual state
+                            if let Some(sections) = &mut state.chat.boot_sections {
+                                if idx == 0 {
+                                    sections.environment.expanded = !sections.environment.expanded;
+                                } else if idx == 1 {
+                                    sections.issues.expanded = !sections.issues.expanded;
+                                }
+                            }
+                            state.window.request_redraw();
+                            handled = true;
+                            break;
+                        }
+                    }
+                    if handled {
                         return;
                     }
                 }
