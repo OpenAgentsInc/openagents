@@ -73,6 +73,16 @@ pub(crate) fn render_app(state: &mut AppState) {
             logical_height,
             scale_factor,
         );
+
+        // Render plan panel (right sidebar) if there's an active plan
+        if state.active_plan.is_some() && !state.plan_panel_collapsed {
+            let plan_bounds = plan_panel_bounds(
+                logical_width,
+                logical_height,
+                state.plan_panel_height,
+            );
+            render_plan_panel(state, &mut scene, &palette, plan_bounds);
+        }
     }
     render_modals(
         state,

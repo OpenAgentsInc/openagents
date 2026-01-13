@@ -50,3 +50,4 @@ include!("rendering/overlays.rs");
 include!("rendering/dspy.rs");
 include!("rendering/kitchen_sink.rs");
 include!("rendering/layouts.rs");
+include!("rendering/plan_panel.rs");

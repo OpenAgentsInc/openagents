@@ -284,6 +284,10 @@ impl ApplicationHandler for AutopilotApp {
                 help_scroll_offset: 0.0,
                 agent_selection: AgentSelection::default(),
                 agent_registry: AgentRegistry::new(),
+                // Plan sidebar state
+                active_plan: None,
+                plan_panel_collapsed: false,
+                plan_panel_height: 220.0,
             }
         });
 
