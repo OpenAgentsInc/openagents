@@ -11,126 +11,126 @@
 docs:
   ADAPTERS.md:
     owner: dsrs
-    last_verified_sha: d44f9cd3f
-    status: needs-audit
+    last_verified_sha: 634f5b627
+    status: accurate
     auto_check: true
-    notes: "Cleaned up - links to CALLBACKS.md, TOOLS.md, REPLAY.md"
+    notes: "Cleaned up - links to CALLBACKS.md, TOOLS.md, REPLAY.md. Tool validation wording fixed."
 
   ARCHITECTURE.md:
     owner: dsrs
-    last_verified_sha: d44f9cd3f
+    last_verified_sha: 634f5b627
     status: accurate
     auto_check: true
-    notes: "Added terminology section"
+    notes: "Added terminology section. Optimizable/Adapter traits match code."
 
   ARTIFACTS.md:
     owner: adjutant
-    last_verified_sha: d44f9cd3f
-    status: accurate
+    last_verified_sha: 634f5b627
+    status: spec
     auto_check: true
-    notes: "New file - MVP artifact schemas"
+    notes: "MVP artifact schemas. step_utility: -1.0..+1.0. Partial impl in autopilot-core."
 
   CALLBACKS.md:
     owner: dsrs
-    last_verified_sha: d44f9cd3f
+    last_verified_sha: 634f5b627
     status: accurate
     auto_check: true
     notes: "CANONICAL for callback API"
 
   COMPILER-CONTRACT.md:
     owner: dsrs
-    last_verified_sha: d44f9cd3f
+    last_verified_sha: 634f5b627
     status: needs-audit
     auto_check: true
-    notes: ""
+    notes: "Added Policy Bundles section linking to OPTIMIZERS.md"
 
   DSPY_ROADMAP.md:
     owner: dsrs
-    last_verified_sha: d44f9cd3f
+    last_verified_sha: 634f5b627
     status: needs-audit
     auto_check: false
     notes: "Planning doc - added reality check note"
 
   EVALUATION.md:
     owner: dsrs
-    last_verified_sha: d44f9cd3f
+    last_verified_sha: 634f5b627
     status: accurate
     auto_check: true
     notes: ""
 
   LM-PROVIDERS.md:
     owner: dsrs
-    last_verified_sha: d44f9cd3f
+    last_verified_sha: 634f5b627
     status: accurate
     auto_check: true
     notes: ""
 
   MARKETPLACE.md:
     owner: dsrs
-    last_verified_sha: d44f9cd3f
+    last_verified_sha: 634f5b627
     status: needs-audit
     auto_check: false
     notes: "Spec doc - MVP: not wired"
 
   METRICS.md:
     owner: dsrs
-    last_verified_sha: d44f9cd3f
+    last_verified_sha: 634f5b627
     status: accurate
     auto_check: true
     notes: ""
 
   MODULES.md:
     owner: dsrs
-    last_verified_sha: d44f9cd3f
+    last_verified_sha: 634f5b627
     status: accurate
     auto_check: true
     notes: "CANONICAL for execution flow v2"
 
   OPTIMIZERS.md:
     owner: dsrs
-    last_verified_sha: d44f9cd3f
+    last_verified_sha: 634f5b627
     status: accurate
     auto_check: true
     notes: ""
 
   PRIVACY.md:
     owner: dsrs
-    last_verified_sha: d44f9cd3f
+    last_verified_sha: 634f5b627
     status: needs-audit
     auto_check: true
     notes: ""
 
   README.md:
     owner: dsrs
-    last_verified_sha: d44f9cd3f
+    last_verified_sha: 634f5b627
     status: accurate
     auto_check: false
     notes: "Entry point doc"
 
   REPLAY.md:
     owner: dsrs
-    last_verified_sha: d44f9cd3f
-    status: accurate
+    last_verified_sha: 634f5b627
+    status: spec
     auto_check: true
-    notes: "New file - CANONICAL for REPLAY.jsonl format"
+    notes: "CANONICAL for REPLAY.jsonl format. Added ReplayHeader. step_utility: -1.0..+1.0. Current impl in autopilot-core differs."
 
   RETRIEVAL.md:
     owner: dsrs
-    last_verified_sha: d44f9cd3f
+    last_verified_sha: 634f5b627
     status: needs-audit
     auto_check: true
     notes: ""
 
   SIGNATURES.md:
     owner: dsrs
-    last_verified_sha: d44f9cd3f
+    last_verified_sha: 634f5b627
     status: needs-audit
     auto_check: true
-    notes: "Cleaned up - links to MODULES.md for execution flow"
+    notes: "Manual status table - unreliable until generator exists. Links to MODULES.md for execution flow."
 
   TOOLS.md:
     owner: dsrs
-    last_verified_sha: d44f9cd3f
+    last_verified_sha: 634f5b627
     status: accurate
     auto_check: true
     notes: "CANONICAL for tool schema validation"

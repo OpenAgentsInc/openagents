@@ -1,8 +1,10 @@
 # Replay Serialization
 
-> **Status:** Accurate
-> **Last verified:** d44f9cd3f
-> **Source of truth:** `crates/dsrs/src/adapter/replay.rs`
+> **Status:** Spec (implementation differs)
+> **Last verified:** 634f5b627
+> **Source of truth:**
+> - Spec: This document defines the target format
+> - Current impl: `crates/autopilot-core/src/replay.rs` (uses `ReplayBundle` format)
 > **Doc owner:** dsrs
 > **If this doc conflicts with code, code wins.**
 
@@ -22,11 +24,18 @@ REPLAY.jsonl files capture a complete event stream of a session for:
 ## Event Types
 
 ```rust
-// File: crates/dsrs/src/adapter/replay.rs
+// File: crates/dsrs/src/adapter/replay.rs (SPEC - not yet implemented)
 
 #[derive(Serialize, Deserialize)]
 #[serde(tag = "event")]
 pub enum ReplayEvent {
+    /// Format version header - MUST be first line
+    ReplayHeader {
+        replay_version: u8,
+        producer: String,
+        created_at: DateTime<Utc>,
+    },
+
     /// Session started
     SessionStart {
         t: DateTime<Utc>,
@@ -58,7 +67,7 @@ pub enum ReplayEvent {
         id: String,
         output_hash: String,
         exit_code: Option<i32>,
-        step_utility: f32,
+        step_utility: f32,  // -1.0..+1.0 (THE LEARNING SIGNAL)
         latency_ms: u64,
     },
 
@@ -170,7 +179,7 @@ pub fn canonical_hash(value: &Value) -> String {
 
 ## Truncation Rules
 
-For large outputs, apply truncation before hashing:
+**Important:** Hashes are ALWAYS computed from full output, never truncated previews. Truncation is only for display/storage of preview fields.
 
 | Field | Max Size | Truncation Method |
 |-------|----------|-------------------|
@@ -182,17 +191,25 @@ For large outputs, apply truncation before hashing:
 
 ## Versioning
 
-```json
-{"replay_version": 1, "event": "SessionStart", ...}
+Use a `ReplayHeader` event as the first line to specify format version (avoids per-line bloat):
+
+```rust
+/// Header event - MUST be first line of REPLAY.jsonl
+ReplayHeader {
+    replay_version: u8,      // Currently: 1
+    producer: String,        // e.g., "adjutant@1.2.3"
+    created_at: DateTime<Utc>,
+}
 ```
 
-**Compatibility note:** Fields can be added but existing fields must preserve backward parsing. Consumers should ignore unknown fields.
+**Compatibility note:** Fields can be added but existing fields must preserve backward parsing. Consumers should ignore unknown events/fields.
 
 ---
 
 ## Example REPLAY.jsonl
 
 ```jsonl
+{"event":"ReplayHeader","created_at":"2026-01-13T10:00:00Z","producer":"adjutant@1.2.3","replay_version":1}
 {"event":"SessionStart","issue_number":42,"policy_version":"v1.2.3","session_id":"sess_abc123","t":"2026-01-13T10:00:00Z"}
 {"event":"PlanStart","plan_hash":"sha256:abc123...","step_count":3,"t":"2026-01-13T10:00:01Z"}
 {"event":"ToolCall","id":"tc_001","params":{"path":"src/auth.rs"},"params_hash":"sha256:def456...","step_id":"step-1","t":"2026-01-13T10:00:02Z","tool":"file_read"}

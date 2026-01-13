@@ -73,9 +73,17 @@ pub trait Predictor: Module {
 Modules that can have their signatures optimized.
 
 ```rust
+// File: crates/dsrs/src/core/module.rs
+
 pub trait Optimizable {
+    /// Get the module's signature for analysis.
     fn get_signature(&self) -> &dyn MetaSignature;
-    fn update_instruction(&mut self, instruction: String) -> Result<()>;
+
+    /// Get nested optimizable parameters (for composite modules).
+    fn parameters(&mut self) -> IndexMap<String, &mut dyn Optimizable>;
+
+    /// Update the signature's instruction text.
+    fn update_signature_instruction(&mut self, instruction: String) -> Result<()>;
 }
 ```
 
@@ -84,15 +92,37 @@ pub trait Optimizable {
 Transforms signatures into LM-specific prompts.
 
 ```rust
+// File: crates/dsrs/src/adapter/mod.rs
+
 #[async_trait]
-pub trait Adapter: Send + Sync {
-    fn format_fields(&self, ...) -> HashMap<String, Value>;
+pub trait Adapter: Send + Sync + 'static {
+    /// Format signature + inputs into Chat messages.
+    fn format(&self, signature: &dyn MetaSignature, inputs: Example) -> Chat;
+
+    /// Parse LLM response into structured fields.
+    fn parse_response(
+        &self,
+        signature: &dyn MetaSignature,
+        response: Message,
+    ) -> HashMap<String, Value>;
+
+    /// Execute LLM call with optional tools.
     async fn call(
         &self,
         lm: Arc<LM>,
         signature: &dyn MetaSignature,
         inputs: Example,
         tools: Vec<Arc<dyn ToolDyn>>,
+    ) -> Result<Prediction>;
+
+    /// Execute with streaming callback support.
+    async fn call_streaming(
+        &self,
+        lm: Arc<LM>,
+        signature: &dyn MetaSignature,
+        inputs: Example,
+        tools: Vec<Arc<dyn ToolDyn>>,
+        callback: Option<&dyn DspyCallback>,
     ) -> Result<Prediction>;
 }
 ```
