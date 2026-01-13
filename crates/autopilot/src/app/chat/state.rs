@@ -30,8 +30,7 @@ impl ChatState {
         streaming_markdown
             .set_markdown_config(super::super::build_markdown_config(settings, theme));
         let mut streaming_thought = StreamingMarkdown::new();
-        streaming_thought
-            .set_markdown_config(super::super::build_markdown_config(settings, theme));
+        streaming_thought.set_markdown_config(super::super::build_markdown_config(settings, theme));
         let markdown_renderer = super::super::build_markdown_renderer(settings, theme);
         Self {
             messages: Vec::new(),

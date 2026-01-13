@@ -45,6 +45,8 @@ codex-mcp = { workspace = true }
 
 # Or, if you’re in a separate repo and want a path dependency:
 # codex-mcp = { path = "../openagents/crates/codex-mcp" }
+
+# Runtime / utilities you’ll typically want in an MCP server binary:
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -118,13 +120,33 @@ async fn main() -> anyhow::Result<()> {
 
 Codex supports stdio MCP servers by launching a subprocess and speaking JSON-RPC over stdin/stdout.
 
-Example (conceptual):
+Configure via Codex settings (example):
+
+```json
+{
+  "mcpServers": {
+    "echo": {
+      "type": "stdio",
+      "command": "echo-mcp-server"
+    }
+  }
+}
+```
+
+Or via CLI (example):
 
 ```bash
 codex --mcp-server "echo:stdio:echo-mcp-server"
 ```
 
 The name before `:stdio:` is the server identifier that will show up in tool call events.
+
+### Important: keep stdout clean
+
+For stdio MCP servers, **stdout is the protocol channel**. Any extra output (println debug, logs written to stdout, progress bars, etc.) will corrupt the JSON stream.
+
+- Write logs to stderr (`eprintln!`, or `tracing_subscriber` defaults).
+- Only JSON-RPC responses should be written to stdout.
 
 ## Manual smoke test (stdio)
 
@@ -148,6 +170,14 @@ printf '%s\n' \
 
 Responses are written one-per-line to stdout.
 
+## Concepts
+
+- **Server**: a subprocess Codex launches (stdio transport).
+- **Tool**: a named capability listed by `tools/list` and invoked by `tools/call`.
+- **Tool input schema**: `Tool::input_schema` is arbitrary JSON Schema that Codex can use for UI/validation hints (your server should still validate inputs).
+- **Tool call arguments**: `ToolCallParams::arguments` is arbitrary JSON (often an object).
+- **Tool result content**: `ToolCallResult::content` is a list of typed items. This crate currently supports text content only (`ToolResultContent::Text`).
+
 ## JSON-RPC methods handled
 
 `codex-mcp` routes these methods:
@@ -157,6 +187,31 @@ Responses are written one-per-line to stdout.
 - `tools/call`
 
 Unknown methods return JSON-RPC `-32601 (Method not found)`.
+
+## Wire format (stdio)
+
+`StdioTransport` uses **newline-delimited JSON**:
+
+- Each JSON-RPC request must be a single line of JSON.
+- Each JSON-RPC response is emitted as a single line of JSON followed by `\n`.
+- EOF cleanly shuts down the server loop.
+
+This framing is simple and works well for subprocess integration, but it means callers must not pretty-print or send multi-line JSON.
+
+## Protocol shapes (subset)
+
+This crate implements the shapes it needs for the tools flow. In practice that means:
+
+- `initialize`:
+  - Request params: any JSON (passed through to your override).
+  - Default result:
+    - `capabilities: { tools: {} }`
+    - `serverInfo: { name: "codex-mcp", version: <crate version> }`
+- `tools/list`:
+  - Result: `{ "tools": [ { "name": "...", "description": "...?", "input_schema": <json> } ] }`
+- `tools/call`:
+  - Params: `{ "name": "<tool name>", "arguments": <json> }`
+  - Result: `{ "content": [ { "type": "text", "text": "..." } ], "is_error": <bool> }`
 
 ## Handler API
 
@@ -180,6 +235,13 @@ Implement `server::McpHandler`:
 ### Tool naming
 
 Codex will typically address tools by `name` as returned from `tools/list`. Prefer stable, lowercase names and avoid whitespace. If you need namespacing, encode it in the tool name (for example `fs.read_file`), not in the server name.
+
+### Validation
+
+`codex-mcp` does not enforce JSON Schema at runtime. If you publish an `input_schema`, you should still validate `ToolCallParams::arguments`:
+
+- For small servers, decode to a struct with `serde` (see example below).
+- For stricter validation, you can use a JSON Schema validator in your binary crate.
 
 ## Transport
 
@@ -276,11 +338,20 @@ fn log_tools_call(params: &ToolCallParams) {
 }
 ```
 
+## Troubleshooting
+
+- **Codex can’t parse responses**: ensure *nothing* else writes to stdout (logs, debug prints, banners). Use stderr for logs.
+- **Hangs / no responses**: requests must be one JSON object per line; pretty-printed JSON will block `read_line`.
+- **`tools/call` fails to decode**: confirm the request uses `{ "name": "...", "arguments": ... }` (and that `arguments` is valid JSON).
+
 ## Versioning and compatibility
 
 - The crate is intended to be “boring” and stable, but it is not a complete MCP implementation.
 - The on-the-wire format is JSON-RPC 2.0. The method names and result shapes are those commonly used by Codex-style MCP tool servers.
 
+## License
+
+This crate inherits the workspace license (see the repo root `Cargo.toml`).
 
 ## Design notes / non-goals
 
