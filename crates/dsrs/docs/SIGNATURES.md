@@ -578,3 +578,597 @@ impl MetaSignature for MySignature {
     fn append(&mut self, name: &str, value: Value) -> Result<()> { /* ... */ }
 }
 ```
+
+---
+
+## Adjutant Task Execution
+
+Signatures for Adjutant's 3-phase tiered execution model.
+
+**Module:** `AdjutantModule` in `crates/adjutant/src/dspy/module.rs`
+
+### SubtaskPlanningSignature
+
+Breaks a task into atomic subtasks. Used by the planning phase (GLM 4.7).
+
+```rust
+// File: crates/adjutant/src/dspy/module.rs:19-54
+
+// Inputs:
+// - task_title: Title of the task to accomplish
+// - task_description: Detailed description of what needs to be done
+// - context_handle: Context handle or summary reference for large contexts
+// - context: Repository context including relevant file contents
+
+// Outputs:
+// - subtasks: JSON array with id, action (read/edit/bash), target, instruction
+// - reasoning: Brief explanation of the planning approach
+// - confidence: Confidence in the plan (0.0 to 1.0)
+
+let module = AdjutantModule::new();
+let plan = module.plan(
+    "Fix authentication bug",
+    "Users cannot log in after password reset",
+    "inline",
+    &file_contents
+).await?;
+```
+
+### SubtaskExecutionSignature
+
+Executes a single subtask. Used by the execution phase (Qwen-3-32B).
+
+```rust
+// File: crates/adjutant/src/dspy/module.rs:57-92
+
+// Inputs:
+// - action: Action type (read, edit, or bash)
+// - target: Target file path (empty for bash actions)
+// - instruction: Instruction describing what to do
+// - file_context: Current file content (for read/edit actions)
+
+// Outputs:
+// - result: JSON with {old_string, new_string} for edit, {command} for bash
+// - reasoning: Explanation of what was done
+// - success: Whether the action completed successfully
+
+let result = module.execute_subtask(
+    "edit",
+    "src/auth.rs",
+    "Fix the password validation logic",
+    &current_file_content
+).await?;
+```
+
+### ResultSynthesisSignature
+
+Synthesizes subtask results into final outcome. Used by synthesis phase (GLM 4.7).
+
+```rust
+// File: crates/adjutant/src/dspy/module.rs:95-124
+
+// Inputs:
+// - task_title: Original task title
+// - subtask_results: Formatted results from all subtasks
+
+// Outputs:
+// - success: Overall success boolean
+// - summary: Brief description of what was accomplished or failed
+// - modified_files: JSON array of files that were modified
+// - confidence: Confidence in the result assessment (0.0 to 1.0)
+
+let synthesis = module.synthesize(
+    "Fix authentication bug",
+    &subtask_results_formatted
+).await?;
+```
+
+---
+
+## Adjutant Decision Routing
+
+Signatures for intelligent task routing decisions.
+
+**Location:** `crates/adjutant/src/dspy/decision_pipelines.rs`
+
+### ComplexityClassificationSignature
+
+Classifies task complexity level for routing decisions.
+
+```rust
+// File: crates/adjutant/src/dspy/decision_pipelines.rs:20-56
+
+// Inputs:
+// - task_description: Description of the task to classify
+// - file_count: Number of files likely to be affected
+// - estimated_tokens: Estimated token count for context
+// - keywords: Keywords found in task (refactor, migrate, rewrite, etc.)
+
+// Outputs:
+// - complexity: Low, Medium, High, or VeryHigh
+// - reasoning: Explanation of the classification
+// - confidence: Confidence in classification (0.0 to 1.0)
+
+// Complexity levels:
+// - Low: Simple single-file edit, minimal risk
+// - Medium: Multi-file edit, moderate scope
+// - High: Complex refactoring, many files, architectural changes
+// - VeryHigh: Massive scope, system-wide changes, high risk
+
+let pipeline = ComplexityPipeline::new();
+let result = pipeline.classify(&ComplexityInput {
+    task_description: "Refactor auth module".to_string(),
+    file_count: 5,
+    estimated_tokens: 10000,
+    keywords: vec!["refactor".to_string()],
+}).await?;
+```
+
+### DelegationDecisionSignature
+
+Decides whether to delegate task execution and to which target.
+
+```rust
+// File: crates/adjutant/src/dspy/decision_pipelines.rs:60-100
+
+// Inputs:
+// - task_description: Description of the task
+// - complexity: Classified complexity level
+// - file_count: Number of files involved
+// - estimated_tokens: Estimated token count for context
+
+// Outputs:
+// - should_delegate: Whether to delegate this task
+// - delegation_target: codex_code | rlm | local_tools
+// - reasoning: Explanation of the delegation decision
+// - confidence: Confidence in decision (0.0 to 1.0)
+
+// Delegation targets:
+// - codex_code: Complex multi-file tasks, architectural work
+// - rlm: Large context analysis, recursive investigation
+// - local_tools: Simple edits, small scope tasks
+
+let pipeline = DelegationPipeline::new();
+let result = pipeline.decide(&DelegationInput {
+    task_description: "Fix login bug".to_string(),
+    complexity: "Low".to_string(),
+    file_count: 2,
+    estimated_tokens: 5000,
+}).await?;
+```
+
+### RlmTriggerSignature
+
+Decides whether to use Recursive Language Model for deep analysis.
+
+```rust
+// File: crates/adjutant/src/dspy/decision_pipelines.rs:104-142
+
+// Inputs:
+// - task_description: Description of the task
+// - complexity: Classified complexity level
+// - estimated_tokens: Estimated token count for context
+// - file_count: Number of files involved
+// - repeated_actions: Whether recent actions show repetition or thrash
+
+// Outputs:
+// - use_rlm: Whether to use RLM for this task
+// - reasoning: Explanation of the RLM decision
+// - confidence: Confidence in decision (0.0 to 1.0)
+
+// RLM is good for: deep code analysis, recursive investigation,
+// security audits, comprehensive reviews, finding all occurrences
+// RLM is overkill for: simple edits, single-file changes, well-scoped tasks
+
+let pipeline = RlmTriggerPipeline::new();
+let result = pipeline.should_trigger(&RlmTriggerInput {
+    task_description: "Analyze security vulnerabilities".to_string(),
+    complexity: "High".to_string(),
+    estimated_tokens: 50000,
+    file_count: 12,
+    repeated_actions: true,
+}).await?;
+```
+
+---
+
+## Issue Management
+
+Signatures for intelligent issue triage and suggestion.
+
+### IssueValidationSignature
+
+Validates if an issue is still accurate before agent starts work.
+
+```rust
+// File: crates/dsrs/src/signatures/issue_validation.rs
+
+// Inputs:
+// - issue_title: Title of the issue
+// - issue_description: Full description of the issue
+// - blocked_reason: Reason if issue is blocked (optional)
+// - recent_commits: Recent git commits since issue was created
+// - changed_files: Files that have changed recently
+
+// Outputs:
+// - is_valid: Whether the issue is still valid to work on
+// - validation_status: VALID | ALREADY_ADDRESSED | STALE | NEEDS_UPDATE
+// - reason: Explanation of the validation result
+// - confidence: Confidence in validation (0.0 to 1.0)
+
+use dsrs::signatures::IssueValidationSignature;
+```
+
+### IssueSuggestionSignature
+
+Suggests top issues for an agent to work on.
+
+```rust
+// File: crates/dsrs/src/signatures/issue_suggestion.rs
+
+// Inputs:
+// - available_issues: JSON array of open issues
+// - workspace_context: Current workspace state
+// - recent_work: What the agent has been working on
+// - user_preferences: User's stated preferences
+
+// Outputs:
+// - suggestions: JSON array of top 3 suggested issues with rationale
+// - confidence: Overall confidence in suggestions
+
+use dsrs::signatures::IssueSuggestionSignature;
+```
+
+### UnblockSuggestionSignature
+
+Recommends which blocked issue to unblock first.
+
+```rust
+// File: crates/dsrs/src/signatures/unblock_suggestion.rs
+
+// Inputs:
+// - blocked_issues: JSON array of blocked issues
+// - workspace_context: Current workspace state
+// - recent_commits: Recent git activity
+
+// Outputs:
+// - selected_issue_number: Issue number to unblock
+// - unblock_rationale: Why this issue should be unblocked
+// - unblock_strategy: How to unblock it
+// - estimated_effort: low | medium | high
+// - cascade_potential: How many other issues this unblocks
+
+use dsrs::signatures::UnblockSuggestionSignature;
+```
+
+### StalenessCheckSignature
+
+Checks if an issue is still relevant given recent codebase changes.
+
+```rust
+// File: crates/adjutant/src/dspy/staleness.rs:23-63
+
+// Inputs:
+// - issue_title: Title of the issue
+// - issue_description: Description of the issue
+// - issue_type: Type of issue (bug, feature, task)
+// - recent_commits: Recent git commits since issue was created
+// - changed_files: Files that have changed recently
+
+// Outputs:
+// - is_relevant: Is this issue still relevant and actionable?
+// - reason: Brief explanation of relevance assessment
+// - recommendation: proceed | close | needs_update | blocked
+
+use adjutant::dspy::staleness::check_issue_staleness;
+
+let result = check_issue_staleness(&issue, &workspace_root).await?;
+```
+
+---
+
+## Code Editing
+
+Signatures for code generation and verification.
+
+### CodeEditSignature
+
+Generates code changes as unified diff patches.
+
+```rust
+// File: crates/dsrs/src/signatures/code_edit.rs
+
+// Inputs:
+// - file_path: Path to the file being edited
+// - current_content: Current content of the file
+// - edit_instruction: What changes to make
+// - code_context: Surrounding code context
+
+// Outputs:
+// - unified_diff: The changes in unified diff format
+// - edit_summary: Human-readable summary of changes
+// - affected_lines: Lines that were modified
+// - confidence: Confidence in the edit (0.0 to 1.0)
+
+use dsrs::signatures::CodeEditSignature;
+```
+
+### TaskUnderstandingSignature
+
+Parses user intent and extracts requirements.
+
+```rust
+// File: crates/dsrs/src/signatures/task_understanding.rs
+
+// Inputs:
+// - user_request: The user's original request
+// - repo_context: Context about the repository
+
+// Outputs:
+// - task_type: FEATURE | BUGFIX | REFACTOR | DOCS | TEST
+// - requirements: Extracted requirements list
+// - scope_estimate: SMALL | MEDIUM | LARGE
+// - clarifying_questions: Questions to ask user if unclear
+// - confidence: Confidence in understanding (0.0 to 1.0)
+
+use dsrs::signatures::TaskUnderstandingSignature;
+```
+
+### VerificationSignature
+
+Verifies code changes meet requirements.
+
+```rust
+// File: crates/dsrs/src/signatures/verification.rs
+
+// Inputs:
+// - original_request: The user's original request
+// - changes_made: Summary of changes that were made
+// - test_output: Output from running tests
+
+// Outputs:
+// - verification_status: PASS | PARTIAL | FAIL
+// - missing_requirements: Requirements not yet met
+// - issues_found: Problems discovered during verification
+// - suggested_fixes: How to fix the issues
+// - confidence: Confidence in verification (0.0 to 1.0)
+
+use dsrs::signatures::VerificationSignature;
+```
+
+---
+
+## RLM Document Extraction
+
+Signatures for provenance-first document analysis with span-based evidence tracking.
+
+**Location:** `crates/rlm/src/signatures.rs`
+
+### RouterSignature
+
+Identifies relevant document sections given a query.
+
+```rust
+// File: crates/rlm/src/signatures.rs:34-54
+
+// Inputs:
+// - query: The user's question or information need
+// - document_preview: First ~1000 chars of document for structure detection
+
+// Outputs:
+// - candidate_spans: JSON array of [{path, start_line, end_line, why}]
+// - confidence: Confidence in routing decisions (0.0-1.0)
+
+use rlm::signatures::RouterSignature;
+```
+
+### ExtractorSignature
+
+Extracts findings from a chunk with chain-of-thought reasoning and provenance.
+
+```rust
+// File: crates/rlm/src/signatures.rs:65-93
+
+#[Signature(cot)]  // Enables chain-of-thought reasoning
+pub struct ExtractorSignature { ... }
+
+// Inputs:
+// - query: The user's question
+// - chunk: Content of this chunk
+// - span_ref: JSON-encoded SpanRef for this chunk
+
+// Outputs:
+// - findings: Extracted findings as structured text
+// - evidence_spans: JSON array of SpanRefs within chunk supporting findings
+// - relevance: Relevance score (0.0-1.0)
+```
+
+### SimpleExtractorSignature
+
+Fast extraction without chain-of-thought (for speed-sensitive operations).
+
+```rust
+// File: crates/rlm/src/signatures.rs:96-119
+
+// Same inputs as ExtractorSignature, but:
+// - No chain-of-thought reasoning
+// - Faster execution
+// - Less thorough analysis
+
+// Outputs:
+// - findings: Extracted findings
+// - relevance: Relevance score (0.0-1.0)
+```
+
+### ReducerSignature
+
+Synthesizes findings from multiple chunks into a coherent answer with citations.
+
+```rust
+// File: crates/rlm/src/signatures.rs:130-154
+
+// Inputs:
+// - query: The user's question
+// - findings: Combined findings from all chunks (section-labeled)
+// - evidence_spans: JSON array of all evidence SpanRefs from extractions
+
+// Outputs:
+// - answer: Final synthesized answer
+// - citations: JSON array of SpanRefs cited in the answer
+// - confidence: Confidence in answer (0.0-1.0)
+```
+
+### VerifierSignature
+
+Validates answers against cited evidence.
+
+```rust
+// File: crates/rlm/src/signatures.rs:168-199
+
+// Inputs:
+// - query: The user's question
+// - answer: The proposed answer to verify
+// - citations: JSON array of SpanRefs cited as evidence
+
+// Outputs:
+// - verdict: PASS | FAIL | PARTIAL
+// - explanation: Explanation of the verdict
+// - missing_spans: JSON array describing what evidence is missing
+// - corrections: Suggested corrections if answer is incorrect
+```
+
+---
+
+## FRLM Federated Extraction
+
+Signatures for federated recursive language model operations (map-reduce pattern).
+
+**Location:** `crates/frlm/src/dspy_signatures.rs`
+
+### FRLMDecomposeSignature
+
+Map phase: decides what subcalls to spawn over which spans.
+
+```rust
+// File: crates/frlm/src/dspy_signatures.rs:137-253
+
+// Inputs:
+// - query: The user query to process
+// - env_summary: Summary of the environment/document
+// - progress: Current progress state (what's been done)
+
+// Outputs:
+// - subqueries: JSON array of [{span_selector, question, schema}]
+// - stopping_rule: When to stop recursing
+
+let sig = FRLMDecomposeSignature::new();
+```
+
+### FRLMAggregateSignature
+
+Reduce phase: merges worker results into final answer.
+
+```rust
+// File: crates/frlm/src/dspy_signatures.rs:273-390
+
+// Inputs:
+// - query: The original user query
+// - worker_results: JSON array of worker outputs
+
+// Outputs:
+// - answer: The aggregated answer
+// - citations: SpanRefs or doc IDs for evidence
+// - confidence: Confidence score (0.0-1.0)
+
+let sig = FRLMAggregateSignature::new();
+```
+
+### Supporting Enums
+
+```rust
+/// When to stop recursive decomposition
+pub enum StoppingRule {
+    Exhaustive,          // Process all spans
+    SufficientEvidence,  // Stop when enough evidence found
+    BudgetExhausted,     // Stop when budget depleted
+    ConfidenceThreshold, // Stop when confidence exceeds threshold
+}
+
+/// Which spans to process
+pub enum SpanSelector {
+    All,                           // Select all spans
+    ByType(String),                // Select by content type
+    ByRelevance,                   // Select most relevant
+    ByPosition { start, end },     // Select by position range
+}
+```
+
+---
+
+## Utility Signatures
+
+### ToolStepUtilitySignature
+
+Evaluates how useful a tool call was for the task (learning signal).
+
+```rust
+// File: crates/adjutant/src/dspy/tool_step_utility.rs:5-47
+
+// Inputs:
+// - tool_name: Name of the tool that executed
+// - step_goal: Goal of this step in the overall task
+// - inputs_summary: Deterministic summary of the tool inputs
+// - outputs_summary: Deterministic summary of the tool outputs
+// - receipt: JSON receipt for the tool call (hashes, latency, side effects)
+
+// Outputs:
+// - step_utility: Utility score (0.0 = no value, 1.0 = decisive progress)
+// - should_continue: Whether the workflow should continue
+// - next_action_hint: Short hint for the next action (max 12 words)
+// - confidence: Confidence in the utility judgment (0.0 to 1.0)
+
+use adjutant::dspy::tool_step_utility::tool_step_utility_predict;
+
+let predictor = tool_step_utility_predict();
+```
+
+---
+
+## Signature Index
+
+Quick reference for all signatures by category:
+
+| Category | Signature | Location |
+|----------|-----------|----------|
+| **Retrieval** | QueryComposerSignature | `dsrs/src/signatures/query_composer.rs` |
+| | RetrievalRouterSignature | `dsrs/src/signatures/retrieval_router.rs` |
+| | CandidateRerankSignature | `dsrs/src/signatures/candidate_rerank.rs` |
+| **Chunk Analysis** | ChunkTaskSelectorSignature | `dsrs/src/signatures/chunk_task.rs` |
+| | ChunkAnalysisToActionSignature | `dsrs/src/signatures/chunk_aggregator.rs` |
+| **Sandbox** | SandboxProfileSelectionSignature | `dsrs/src/signatures/sandbox_profile.rs` |
+| | FailureTriageSignature | `dsrs/src/signatures/failure_triage.rs` |
+| **Budget** | LaneBudgeterSignature | `dsrs/src/signatures/lane_budgeter.rs` |
+| | AgentMemorySignature | `dsrs/src/signatures/agent_memory.rs` |
+| **Execution** | ToolCallSignature | `dsrs/docs/SIGNATURES.md` (spec) |
+| | ToolResultSignature | `dsrs/docs/SIGNATURES.md` (spec) |
+| **Adjutant** | SubtaskPlanningSignature | `adjutant/src/dspy/module.rs` |
+| | SubtaskExecutionSignature | `adjutant/src/dspy/module.rs` |
+| | ResultSynthesisSignature | `adjutant/src/dspy/module.rs` |
+| | ComplexityClassificationSignature | `adjutant/src/dspy/decision_pipelines.rs` |
+| | DelegationDecisionSignature | `adjutant/src/dspy/decision_pipelines.rs` |
+| | RlmTriggerSignature | `adjutant/src/dspy/decision_pipelines.rs` |
+| | StalenessCheckSignature | `adjutant/src/dspy/staleness.rs` |
+| | ToolStepUtilitySignature | `adjutant/src/dspy/tool_step_utility.rs` |
+| **Issues** | IssueValidationSignature | `dsrs/src/signatures/issue_validation.rs` |
+| | IssueSuggestionSignature | `dsrs/src/signatures/issue_suggestion.rs` |
+| | UnblockSuggestionSignature | `dsrs/src/signatures/unblock_suggestion.rs` |
+| **Code Edit** | CodeEditSignature | `dsrs/src/signatures/code_edit.rs` |
+| | TaskUnderstandingSignature | `dsrs/src/signatures/task_understanding.rs` |
+| | VerificationSignature | `dsrs/src/signatures/verification.rs` |
+| **RLM** | RouterSignature | `rlm/src/signatures.rs` |
+| | ExtractorSignature | `rlm/src/signatures.rs` |
+| | SimpleExtractorSignature | `rlm/src/signatures.rs` |
+| | ReducerSignature | `rlm/src/signatures.rs` |
+| | VerifierSignature | `rlm/src/signatures.rs` |
+| **FRLM** | FRLMDecomposeSignature | `frlm/src/dspy_signatures.rs` |
+| | FRLMAggregateSignature | `frlm/src/dspy_signatures.rs` |
