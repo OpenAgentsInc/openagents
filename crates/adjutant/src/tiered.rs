@@ -401,8 +401,9 @@ impl TieredExecutor {
 
         // PHASE 1: Plan with DSPy signature
         tracing::info!("Phase 1: Planning with DSPy SubtaskPlanningSignature");
+        let context_handle = "inline";
         let plan_prediction = module
-            .plan(&task.title, &task.description, context)
+            .plan(&task.title, &task.description, context_handle, context)
             .await
             .map_err(|e| AdjutantError::PlanningFailed(format!("DSPy planning failed: {}", e)))?;
 
@@ -417,6 +418,7 @@ impl TieredExecutor {
             let example = PlanningTrainingExample {
                 task_title: task.title.clone(),
                 task_description: task.description.clone(),
+                context_handle: context_handle.to_string(),
                 context: context.to_string(),
                 expected_subtasks: subtasks
                     .iter()

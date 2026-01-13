@@ -32,6 +32,10 @@ struct SubtaskPlanningSignature {
     #[input]
     pub task_description: String,
 
+    /// Context handle or summary reference for large contexts
+    #[input]
+    pub context_handle: String,
+
     /// Repository context including relevant file contents
     #[input]
     pub context: String,
@@ -160,11 +164,13 @@ impl AdjutantModule {
         &self,
         task_title: &str,
         task_description: &str,
+        context_handle: &str,
         context: &str,
     ) -> Result<Prediction> {
         let input = example! {
             "task_title": "input" => task_title.to_string(),
             "task_description": "input" => task_description.to_string(),
+            "context_handle": "input" => context_handle.to_string(),
             "context": "input" => context.to_string(),
         };
 
@@ -244,8 +250,15 @@ impl Module for AdjutantModule {
             .get("context")
             .and_then(|v| v.as_str())
             .unwrap_or_default();
+        let context_handle = inputs
+            .data
+            .get("context_handle")
+            .and_then(|v| v.as_str())
+            .unwrap_or("inline");
 
-        let plan_result = self.plan(task_title, task_description, context).await?;
+        let plan_result = self
+            .plan(task_title, task_description, context_handle, context)
+            .await?;
 
         let subtasks = plan_result.get("subtasks", None);
 

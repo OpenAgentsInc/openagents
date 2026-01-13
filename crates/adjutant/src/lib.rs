@@ -52,6 +52,7 @@ pub mod executor;
 pub mod manifest;
 pub mod planner;
 pub mod rlm_agent;
+pub mod rlm_local;
 pub mod tiered;
 pub mod tools;
 
@@ -437,11 +438,14 @@ impl Adjutant {
             Complexity::VeryHigh => "VeryHigh",
         };
 
+        let repeated_actions = Self::detect_repeated_actions(task);
         let input_summary = format!(
-            "desc=\"{}\" complexity={} estimated_tokens={}",
+            "desc=\"{}\" complexity={} estimated_tokens={} file_count={} repeated_actions={}",
             truncate_for_summary(&task.description, 140),
             complexity_str,
-            plan.estimated_tokens
+            plan.estimated_tokens,
+            plan.files.len(),
+            repeated_actions
         );
         let legacy_use_rlm = self.should_use_rlm(task, plan);
         let legacy_output = serde_json::json!({
@@ -451,6 +455,8 @@ impl Adjutant {
             task_description: task.description.clone(),
             complexity: complexity_str.to_string(),
             estimated_tokens: plan.estimated_tokens,
+            file_count: plan.files.len() as u32,
+            repeated_actions,
         };
 
         // Get or create cached LM, create ephemeral pipeline
@@ -476,6 +482,8 @@ impl Adjutant {
                         task_description: task.description.clone(),
                         complexity: complexity_str.to_string(),
                         estimated_tokens: plan.estimated_tokens,
+                        file_count: plan.files.len() as u32,
+                        repeated_actions,
                         use_rlm: result.use_rlm,
                         confidence: result.confidence,
                     });
@@ -1277,6 +1285,24 @@ impl Adjutant {
         false
     }
 
+    /// Detect repeated actions or thrash hints in the task text.
+    fn detect_repeated_actions(task: &Task) -> bool {
+        let text = format!("{} {}", task.title, task.description).to_lowercase();
+        let markers = [
+            "again",
+            "retry",
+            "rerun",
+            "repeat",
+            "re-run",
+            "still failing",
+            "stuck",
+            "loop",
+            "thrash",
+            "another attempt",
+        ];
+        markers.iter().any(|marker| text.contains(marker))
+    }
+
     /// Build context string from planned files.
     async fn build_context(&mut self, plan: &TaskPlan) -> Result<String, AdjutantError> {
         let mut context = String::new();
@@ -1316,10 +1342,41 @@ impl Adjutant {
 
     /// Execute task using RLM delegate for large context.
     async fn execute_with_rlm_delegate(
-        &self,
+        &mut self,
         task: &Task,
         plan: &TaskPlan,
     ) -> Result<TaskResult, AdjutantError> {
+        if let Some(lm) = self.get_or_create_decision_lm().await {
+            let mut executor = rlm_local::RlmLocalExecutor::new(
+                &self.tools,
+                lm,
+                self.decision_training.as_ref(),
+            );
+            match executor.execute(task, plan).await {
+                Ok(result) => {
+                    let summary = if result.context_handle.is_empty() {
+                        result.summary
+                    } else {
+                        format!(
+                            "{}\n\nRLM context handle: {}",
+                            result.summary, result.context_handle
+                        )
+                    };
+                    return Ok(TaskResult {
+                        success: true,
+                        summary,
+                        modified_files: Vec::new(),
+                        commit_hash: None,
+                        error: None,
+                        session_id: self.session_id.clone(),
+                    });
+                }
+                Err(e) => {
+                    tracing::warn!("Local RLM executor failed: {}", e);
+                }
+            }
+        }
+
         delegate::execute_with_rlm(&self.workspace_root, task, plan).await
     }
 
