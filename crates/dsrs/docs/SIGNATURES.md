@@ -1,5 +1,11 @@
 # Signatures (Wave 4)
 
+> **Status:** Needs audit
+> **Last verified:** d44f9cd3f
+> **Source of truth:** `crates/dsrs/src/signatures/`, `crates/adjutant/src/dspy/`
+> **Doc owner:** dsrs
+> **If this doc conflicts with code, code wins.**
+
 Optimizable DSPy signatures for agent decision-making.
 
 ## Overview
@@ -482,27 +488,11 @@ training_collector.record_tool_call(LabeledToolCall {
 });
 ```
 
-### Execution Flow Comparison
+### Execution Flow
 
-**v1 (Current):** 2 LLM calls per step
-```
-ExecutionStrategySignature → next_action, action_params
-ToolSelectionSignature     → selected_tool, tool_params   ← REDUNDANT
-Tool Execution
-(no interpretation)
-```
+> See [MODULES.md](MODULES.md#execution-flow-v2) for the canonical execution flow diagram.
 
-**v2 (Proposed):** 2 LLM calls per step, but second is for learning
-```
-ToolCallSignature      → tool, params, expected_outcome
-Tool Execution
-ToolResultSignature    → success, extracted_facts, step_utility   ← LEARNING SIGNAL
-```
-
-**Net effect:**
-- Same call count, but second call now captures outcome signal
-- Training data includes step_utility for better MIPRO optimization
-- Reduces format-only metrics, adds outcome-coupled metrics
+The merged signature model (`ToolCallSignature` + `ToolResultSignature`) replaces the previous redundant two-signature approach and captures outcome signals for training.
 
 ## Using Signatures
 

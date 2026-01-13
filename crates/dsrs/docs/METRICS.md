@@ -1,5 +1,11 @@
 # Metrics
 
+> **Status:** Accurate
+> **Last verified:** d44f9cd3f
+> **Source of truth:** `crates/dsrs/src/evaluate/`
+> **Doc owner:** dsrs
+> **If this doc conflicts with code, code wins.**
+
 What does 'better' mean?
 
 ## Overview

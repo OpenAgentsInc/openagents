@@ -1,0 +1,144 @@
+# DSPy Documentation Status Tracker
+#
+# Each doc has:
+# - owner: team/crate responsible
+# - last_verified_sha: git SHA when doc was last verified against code
+# - status: accurate | needs-audit | deprecated
+# - auto_check: whether CI should validate paths/types
+#
+# Update this file when modifying docs.
+
+docs:
+  ADAPTERS.md:
+    owner: dsrs
+    last_verified_sha: d44f9cd3f
+    status: needs-audit
+    auto_check: true
+    notes: "Cleaned up - links to CALLBACKS.md, TOOLS.md, REPLAY.md"
+
+  ARCHITECTURE.md:
+    owner: dsrs
+    last_verified_sha: d44f9cd3f
+    status: accurate
+    auto_check: true
+    notes: "Added terminology section"
+
+  ARTIFACTS.md:
+    owner: adjutant
+    last_verified_sha: d44f9cd3f
+    status: accurate
+    auto_check: true
+    notes: "New file - MVP artifact schemas"
+
+  CALLBACKS.md:
+    owner: dsrs
+    last_verified_sha: d44f9cd3f
+    status: accurate
+    auto_check: true
+    notes: "CANONICAL for callback API"
+
+  COMPILER-CONTRACT.md:
+    owner: dsrs
+    last_verified_sha: d44f9cd3f
+    status: needs-audit
+    auto_check: true
+    notes: ""
+
+  DSPY_ROADMAP.md:
+    owner: dsrs
+    last_verified_sha: d44f9cd3f
+    status: needs-audit
+    auto_check: false
+    notes: "Planning doc - added reality check note"
+
+  EVALUATION.md:
+    owner: dsrs
+    last_verified_sha: d44f9cd3f
+    status: accurate
+    auto_check: true
+    notes: ""
+
+  LM-PROVIDERS.md:
+    owner: dsrs
+    last_verified_sha: d44f9cd3f
+    status: accurate
+    auto_check: true
+    notes: ""
+
+  MARKETPLACE.md:
+    owner: dsrs
+    last_verified_sha: d44f9cd3f
+    status: needs-audit
+    auto_check: false
+    notes: "Spec doc - MVP: not wired"
+
+  METRICS.md:
+    owner: dsrs
+    last_verified_sha: d44f9cd3f
+    status: accurate
+    auto_check: true
+    notes: ""
+
+  MODULES.md:
+    owner: dsrs
+    last_verified_sha: d44f9cd3f
+    status: accurate
+    auto_check: true
+    notes: "CANONICAL for execution flow v2"
+
+  OPTIMIZERS.md:
+    owner: dsrs
+    last_verified_sha: d44f9cd3f
+    status: accurate
+    auto_check: true
+    notes: ""
+
+  PRIVACY.md:
+    owner: dsrs
+    last_verified_sha: d44f9cd3f
+    status: needs-audit
+    auto_check: true
+    notes: ""
+
+  README.md:
+    owner: dsrs
+    last_verified_sha: d44f9cd3f
+    status: accurate
+    auto_check: false
+    notes: "Entry point doc"
+
+  REPLAY.md:
+    owner: dsrs
+    last_verified_sha: d44f9cd3f
+    status: accurate
+    auto_check: true
+    notes: "New file - CANONICAL for REPLAY.jsonl format"
+
+  RETRIEVAL.md:
+    owner: dsrs
+    last_verified_sha: d44f9cd3f
+    status: needs-audit
+    auto_check: true
+    notes: ""
+
+  SIGNATURES.md:
+    owner: dsrs
+    last_verified_sha: d44f9cd3f
+    status: needs-audit
+    auto_check: true
+    notes: "Cleaned up - links to MODULES.md for execution flow"
+
+  TOOLS.md:
+    owner: dsrs
+    last_verified_sha: d44f9cd3f
+    status: accurate
+    auto_check: true
+    notes: "CANONICAL for tool schema validation"
+
+# CI Integration
+# Add to .github/workflows/docs.yml:
+#
+# - name: Doc Audit
+#   run: ./crates/dsrs/scripts/doc_audit.sh
+#
+# Gate: fail PR if missing paths detected

@@ -1,5 +1,11 @@
 # Evaluation System (Wave 5)
 
+> **Status:** Accurate
+> **Last verified:** d44f9cd3f
+> **Source of truth:** `crates/dsrs/src/evaluate/`
+> **Doc owner:** dsrs
+> **If this doc conflicts with code, code wins.**
+
 Eval harness and promotion gates for safe, cost-efficient module optimization.
 
 ## Overview
