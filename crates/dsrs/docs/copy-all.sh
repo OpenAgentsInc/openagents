@@ -6,6 +6,8 @@ ROOT_DIR="$SCRIPT_DIR/../../.."
 
 # Root-level docs to include
 ROOT_DOCS=(
+    "$ROOT_DIR/AGENT_FOUNDATIONS.md"
+    "$ROOT_DIR/AGENTS.md"
     "$ROOT_DIR/GLOSSARY.md"
     "$ROOT_DIR/MANIFESTO.md"
     "$ROOT_DIR/PAPER.md"

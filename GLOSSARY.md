@@ -181,6 +181,11 @@ Status legend used in docs:
 - 🔵 **Specified**: Protocol/types defined, not yet wired
 - ⚪ **Planned**: Roadmap item, design incomplete
 
+ROADMAP.md uses execution-focused emoji (✅/🔄/⏳). Rough mapping:
+- ✅ ≈ Implemented (shipped/done)
+- 🔄 ≈ In Progress (active work)
+- ⏳ ≈ Planned/Not started
+
 ---
 
 ## Naming Collisions (Resolved)

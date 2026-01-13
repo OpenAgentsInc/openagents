@@ -133,7 +133,7 @@ Workspace:
 ```bash
 cargo build --release
 cargo test
-````
+```
 
 Autopilot:
 
@@ -220,9 +220,3 @@ If you are uncertain whether something belongs in the runtime, dsrs, or a produc
 * Prefer keeping policy in dsrs/adjutant (Signatures/Modules/Pipelines),
 * Keep execution enforcement (schema validation, retries, receipts) in the runtime/tooling layer,
 * Keep UI/UX wiring in product crates.
-
-```
-
-If you want, I can also produce a **second variant** that’s even shorter (pure “agent contract” + doc links, no product tables) to keep AGENTS.md under ~80 lines.
-::contentReference[oaicite:0]{index=0}
-```
