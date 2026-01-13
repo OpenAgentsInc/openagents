@@ -54,11 +54,47 @@ This phase delivers the verifiable execution layer (paper Section 5). Without a 
 - CLI: run task, show progress, show verification results, export session
 - UI: session browser + live log view (even minimal)
 
+### MVP++ product hooks (ship inside Phase 0)
+
+1. **Verified change bundle**
+
+- `CHANGE_SUMMARY.md` (human-readable): what changed, verification transcript, approach rationale, confidence, risks
+- `RECEIPT.json` (machine-readable): session_id, policy_bundle_id, tool counts, tokens, latency, verification hash, diff hash, replay instructions
+- Deterministic output so bundles are shareable and auditable
+
+2. **Replay viewer**
+
+- `autopilot replay <session_id>` shows timeline: decisions -> tools -> diffs -> verification
+- Filters for edits/tests/failures and optional HTML export
+
+3. **Scheduled runs ("wake up to merged code")**
+
+- `autopilot schedule nightly --repo ./myrepo --label "autopilot" --max 3`
+- Pulls from a queue (local or GitHub labels), runs end-to-end, emits change bundles
+
+4. **APM + success-adjusted APM (sAPM)**
+
+- Display in CLI/UI HUD and in `CHANGE_SUMMARY.md`
+- APM = (messages + tool calls) / minutes
+- sAPM = APM * success indicator (or verification improvement)
+
+5. **One-command install + onboarding**
+
+- `curl | sh` (or brew) + `autopilot init` wizard
+- First-run demo task that produces a verified change bundle in under 5 minutes
+
+6. **GitHub-native intake (without full GitAfter)**
+
+- Read issues, open a branch/patch, and comment with the change bundle + receipt
+- Label results "autopilot verified" (no PR emphasis required)
+
 ### Definition of done
 
 - 30+ real tasks run end-to-end without manual patching of the system
 - No silent tool hallucinations (tool middleware enforces real calls)
 - Sessions always end in an explicit state with verification history
+- Every run emits a deterministic change bundle + receipt
+- Replay timeline is available for every session
 
 ---
 
@@ -108,10 +144,28 @@ This phase implements compiled cognition and outcome-coupled optimization (paper
 - Always record legacy output alongside DSPy output
 - Record whether fallback used and why
 
+### Product hooks for visible self-improvement (Phase 1)
+
+1. **Policy bundle surfaced as a product artifact**
+
+- CLI: `autopilot policy list`, `autopilot policy pin <bundle_id>`, `autopilot policy rollback`
+- Bundle changelog with signature deltas and metrics (success/cost/thrash)
+
+2. **Shadow mode + canary rollout**
+
+- Shadow runs collect metrics without changing decisions
+- Progressive rollout with promote/rollback controls
+
+3. **Anti-thrash metrics**
+
+- Thrash score: repeated tool calls, repeated file reads, no-op iterations, regressions
+- Surface in replay, change bundle, and policy bundle reports
+
 ### Definition of done
 
 - Before/after bundles improve success rate or cost per success or thrash rate
 - Optimization produces versioned policy bundles you can pin/rollback
+- Policy bundles are visible and controllable by users (pin/rollback/canary)
 
 ---
 
