@@ -10,16 +10,26 @@ We present **OpenAgents**, a systems and learning framework for building **self-
    1.3 Contributions
 
 2. **Background and Related Work**
-   2.1 Declarative LM Programming and Compilation (DSPy)
-   2.2 Auto-Curricula and Interestingness (OMNI, OMNI-EPIC)
-   2.3 Self-Improving Agents via Empirical Validation (Darwin Gödel Machine)
-   2.4 Long-Horizon Inference and Externalized Context (RLMs)
+   2.1 Declarative LM Programming and Compilation
+   2.2 Auto-Curricula and Interestingness in Open-Ended Learning
+   2.3 Self-Improving Agents via Empirical Validation
+   2.4 Long-Horizon Inference and Externalized Context
    2.5 Markets, Identity, and Verification for Agent Economies
+   2.6 Crypto Identity and Threshold Signing
+   2.7 Decentralized Job Markets and DVMs
+   2.8 Pay-per-Call and Lightning-Native Payments
+   2.9 Agent Wallets, Receipts, and Verifiable Work
 
 3. **System Overview**
    3.1 OpenAgents Stack and Design Principles
+   3.1.1 Agentic OS primitives
+   3.1.2 Protocol substrate
+   3.1.3 Identity and payments unification
    3.2 Threat Model and Assumptions
    3.3 Execution Substrates: Local, Cloud, Swarm
+   3.4 Agent Execution Flow
+   3.5 Data Products: Trajectories, Datasets, and Policy Bundles
+   3.6 Summary
 
 4. **Programming Model**
    4.1 Signatures: Typed Contracts for Agent Cognition
@@ -27,57 +37,83 @@ We present **OpenAgents**, a systems and learning framework for building **self-
    4.3 Metrics: From Format Correctness to Outcome-Coupled Utility
    4.4 Optimizers: MIPROv2 and Beyond
    4.5 Policy Bundles, Versioning, and Reproducibility
+   4.6 Design Implications
 
 5. **Agent Runtime**
    5.1 Tick Model and State Surfaces
    5.2 Tooling and Sandboxed Execution
-   5.3 Verification Harnesses (Tests, Builds, Deterministic Jobs)
+   5.3 Verification Harnesses and Objective Checks
    5.4 Trajectory Logging and Provenance
+   5.5 Runtime–Compiler Interface
+   5.6 Summary
 
 6. **Decision Pipelines and Routing**
    6.1 Complexity Classification
-   6.2 Delegation Decisions (Codex / RLM / Local Tools / Swarm)
-   6.3 Provider Lane Selection and Fallback Strategies
-   6.4 Counterfactual Recording and Shadow Mode
+   6.2 Delegation Decisions
+   6.3 RLM Triggering
+   6.4 Provider Lane Selection and Fallback Strategies
+   6.5 Economic Routing
+   6.6 Counterfactual Recording and Shadow Mode
+   6.7 Outcome-Coupled Labeling of Decisions
+   6.8 Summary
 
 7. **Recursive Language Models in OpenAgents**
    7.1 RLM as an Execution Substrate
    7.2 Context Externalization and REPL Environments
    7.3 FRLM: Federated Recursion Across Providers
    7.4 Cost/Latency Tradeoffs and Stopping Criteria
+   7.5 RLM–DSPy Integration Patterns
+   7.6 Failure Modes and Mitigations
+   7.7 Summary
 
 8. **Self-Improvement Loop**
    8.1 SessionStore and Outcome Labeling
-   8.2 Rolling Accuracy and Drift Detection
-   8.3 Auto-Optimization Triggers
-   8.4 Avoiding Goodhart Pathologies (Utility, Cost, Repetition, Verification Delta)
-   8.5 Archives and Stepping Stones: Toward Open-Ended Improvement
+   8.2 Outcome Feedback: Turning Runs into Labeled Examples
+   8.3 Performance Tracking: Rolling Accuracy and Drift
+   8.4 Auto-Optimization: When to Recompile and What to Target
+   8.5 Avoiding Goodhart Pathologies
+   8.6 Archives and Stepping Stones: Toward Open-Ended Improvement
+   8.8 Canary + Progressive Rollout
+   8.9 APM and Fleet KPIs
+   8.10 Summary
 
 9. **Marketplace and Economic Constraints**
-   9.1 Identity and Authentication (Nostr, NIP-42)
-   9.2 Job Schemas and Deterministic Hashing
-   9.3 Payments, Budgets, and Treasury Policy
-   9.4 Incentives, Reputation, and Provider Selection
+   9.0 Motivation: Economics as Control Surface
+   9.1 Neobank: Treasury OS for Agent Fleets
+   9.2 Compute Marketplace: Verified Jobs and Demand Floor
+   9.3 Exchange: Liquidity and FX Routing for Agents
+   9.4 End-to-End Payment-Linked Autonomy
+   9.5 Summary
 
 10. **Evaluation**
-    10.1 Benchmarks: SWE-bench, Polyglot, Real Repos, Long-Context Tasks
-    10.2 Metrics: Success, Cost, Actions-per-Minute, Stability, Regression Rate
-    10.3 Ablations: DSPy vs Rules, With/Without RLM, With/Without Outcome Coupling
-    10.4 Market Experiments: Swarm vs Local vs Cloud
-    10.5 Failure Modes and Case Studies
+    10.1 Evaluation Questions
+    10.2 Task Suites
+    10.3 Experimental Conditions (Ablations)
+    10.4 Metrics (Explicit Definitions)
+    10.5 Tables and Figures to Add
+    10.6 Methodology Details
+    10.7 Case Studies
+    10.8 Summary
 
 11. **Safety and Governance**
     11.1 Sandboxing and Capability Containment
     11.2 Objective Hacking and Robust Evaluation Design
-    11.3 Privacy, Redaction, and Data Sharing Policies
-    11.4 Human Oversight: Intervention Points and Budgets
+    11.3 Provider and Marketplace Safety
+    11.4 Privacy, Redaction, and Data Sharing Policies
+    11.5 Human Oversight and Intervention Points
+    11.6 Governance for Self-Improvement
+    11.7 Summary
 
 12. **Discussion**
     12.1 Why Compiled Agents + Markets Changes the Scaling Story
-    12.2 Limits and Open Problems
-    12.3 Implications for Self-Improving AI
+    12.2 Limits and Practical Constraints
+    12.3 Open Problems and Research Directions
+    12.4 Implications
+    12.5 Summary
 
 13. **Conclusion**
+
+**References**
 
 **Appendices**
 A. Implementation Details (Interfaces, Storage Layouts, Config)
@@ -86,6 +122,7 @@ C. Metric Definitions and Scoring Functions
 D. Optimization Recipes and Hyperparameters
 E. Additional Plots and Tables
 F. Reproducibility Checklist
+G. Protocol Surface (High-Level)
 
 ## 1 Introduction
 
@@ -123,9 +160,9 @@ OpenAgents sits at the intersection of (i) **declarative programming and compila
 
 ### 2.1 Declarative LM Programming and Compilation
 
-Early “prompt engineering” treated LMs as black boxes controlled through hand-written instructions and few-shot examples. As pipelines grew (retrieval → reasoning → tool use → verification), hand-tuned prompts became brittle: small changes to context or model provider often required extensive re-tuning, and prompt logic was duplicated across systems. Recent work reframes LM applications as **programs**: structured compositions of model calls, tools, and intermediate variables, analogous to classical software pipelines.
+Early “prompt engineering” treated LMs as black boxes controlled through hand-written instructions and few-shot examples. As pipelines grew (retrieval → reasoning → tool use → verification), hand-tuned prompts became brittle: small changes to context or model provider often required extensive re-tuning, and prompt logic was duplicated across systems. Recent work reframes LM applications as **programs**: structured compositions of model calls, tools, and intermediate variables, analogous to classical software pipelines (TODO:CITE).
 
-DSPy popularized a particularly useful abstraction: **Signatures** (typed I/O contracts expressed in natural language field names) and **Modules** (composable units whose internal prompting strategy is optimizable), paired with **optimizers** that compile programs to prompts/demonstrations for a target metric. This compilation view matters for OpenAgents because it turns “agent behavior” into an artifact that can be versioned, evaluated, and improved without rewriting orchestration code. In OpenAgents, signatures provide stable contracts across heterogeneous execution lanes (local inference, cloud APIs, swarm providers), and optimization (e.g., MIPRO-style prompt search) provides the mechanism for systematic improvement.
+DSPy popularized a particularly useful abstraction: **Signatures** (typed I/O contracts expressed in natural language field names) and **Modules** (composable units whose internal prompting strategy is optimizable), paired with **optimizers** that compile programs to prompts/demonstrations for a target metric (TODO:CITE). This compilation view matters for OpenAgents because it turns “agent behavior” into an artifact that can be versioned, evaluated, and improved without rewriting orchestration code. In OpenAgents, signatures provide stable contracts across heterogeneous execution lanes (local inference, cloud APIs, swarm providers), and optimization (e.g., MIPRO-style prompt search) provides the mechanism for systematic improvement.
 
 OpenAgents extends this line in two ways. First, it treats routing decisions (complexity, delegation, recursion triggers) as **first-class compiled components**, not as ad-hoc heuristics. Second, it emphasizes **outcome-coupled optimization**: rather than optimizing only for format correctness or synthetic evals, it ties optimization to real execution outcomes such as test deltas, cost, repetition, and verified completion in real repositories.
 
@@ -133,13 +170,13 @@ OpenAgents extends this line in two ways. First, it treats routing decisions (co
 
 Open-ended learning aims to generate a continual stream of novel, learnable behaviors without a fixed terminal objective. A central challenge is **task selection** in vast spaces: uniform sampling wastes effort on impossible tasks, while learning-progress-driven curricula can become distracted by endless variants of trivial tasks. This mirrors Goodhart-style failure modes: when a metric becomes a target, it can be optimized in ways that miss the intended goal.
 
-The OMNI family addresses this by introducing **Models of Interestingness**: using foundation models as a proxy for human judgments about what is novel, worthwhile, and meaningfully distinct. OMNI demonstrates that adding “interestingness” filtering to learning progress improves open-ended training in both finite and effectively infinite task spaces. OMNI-EPIC extends the paradigm further by generating **environments programmed in code**, expanding the space of possible tasks by synthesizing executable environments and reward checks.
+The OMNI family addresses this by introducing **Models of Interestingness**: using foundation models as a proxy for human judgments about what is novel, worthwhile, and meaningfully distinct (TODO:CITE). OMNI demonstrates that adding “interestingness” filtering to learning progress improves open-ended training in both finite and effectively infinite task spaces. OMNI-EPIC extends the paradigm further by generating **environments programmed in code**, expanding the space of possible tasks by synthesizing executable environments and reward checks (TODO:CITE).
 
 OpenAgents draws a direct analogy: the “task space” for an autonomous coding agent is enormous, and naive progress signals (e.g., “we did something” or “we produced valid JSON”) can be hijacked by low-value behaviors such as repeated file openings, unproductive edits, or verbose-but-incorrect synthesis. OpenAgents operationalizes interestingness as **utility under verification**, with metrics grounded in software development reality: test improvements, build success, reduced repetition, and controlled cost. In this view, OMNI’s core insight becomes a systems requirement: successful autonomy requires a notion of “worth doing next,” not merely “learnable” or “syntactically valid.”
 
 ### 2.3 Self-Improving Agents via Empirical Validation
 
-Self-improvement has long been studied as a theoretical concept (e.g., Gödel machines), but practical systems require replacing formal proofs of improvement with **empirical evaluation**. Recent work on self-improving coding agents explores loops where an agent modifies parts of its own scaffolding, tools, and workflows, then validates improvements on coding benchmarks. The Darwin Gödel Machine (DGM) formalizes a particularly relevant pattern: (i) self-modify, (ii) evaluate on downstream tasks, (iii) retain variants in an archive, and (iv) explore multiple evolutionary branches so that stepping stones can yield later breakthroughs.
+Self-improvement has long been studied as a theoretical concept (e.g., Gödel machines), but practical systems require replacing formal proofs of improvement with **empirical evaluation**. Recent work on self-improving coding agents explores loops where an agent modifies parts of its own scaffolding, tools, and workflows, then validates improvements on coding benchmarks (TODO:CITE). The Darwin Gödel Machine (DGM) formalizes a particularly relevant pattern: (i) self-modify, (ii) evaluate on downstream tasks, (iii) retain variants in an archive, and (iv) explore multiple evolutionary branches so that stepping stones can yield later breakthroughs (TODO:CITE).
 
 OpenAgents adopts the same empirical posture but targets a more product-oriented surface area first: instead of evolving the entire agent codebase immediately, it evolves the **compiled cognition layer** (signatures, instructions, routing policies) and the **execution policies** that govern tool use, delegation, and recursion. This choice reduces risk and improves reproducibility: optimization changes are expressed as explicit, versionable prompt/program artifacts rather than arbitrary code mutations. Nonetheless, the DGM lesson remains central: greedy “always update the latest” loops are fragile; archives, counterfactual logging, and stepping-stone exploration help escape local optima and prevent regressions.
 
@@ -149,21 +186,37 @@ OpenAgents also incorporates DGM’s warning about **objective hacking**. Any me
 
 A persistent obstacle for agent autonomy is long-horizon reasoning over large contexts: repositories with thousands of files, long tool traces, and multi-hour sessions. Simply expanding context windows often yields diminishing returns: models exhibit “context rot,” attention diffusion, and rising cost. Tool-using agent methods (e.g., ReAct-style loops) help by enabling external actions, but they do not by themselves solve the problem of representing and manipulating extremely large state.
 
-Recursive Language Models (RLMs) propose an inference-time strategy for effectively unbounded context: rather than ingesting the entire state into a single prompt, a “root” model interacts with a programmable environment (e.g., a REPL) that holds large context and supports operations like search, partitioning, summarization, and recursive sub-queries. This makes long-context reasoning a **procedural interaction** rather than a single monolithic forward pass.
+Recursive Language Models (RLMs) propose an inference-time strategy for effectively unbounded context: rather than ingesting the entire state into a single prompt, a “root” model interacts with a programmable environment (e.g., a REPL) that holds large context and supports operations like search, partitioning, summarization, and recursive sub-queries (TODO:CITE). This makes long-context reasoning a **procedural interaction** rather than a single monolithic forward pass.
 
 OpenAgents integrates RLM/FRLM as an execution substrate: when tasks exceed context or require deep global reasoning, the agent switches into a recursive mode that externalizes state, performs targeted retrieval and transformations, and optionally federates sub-queries across local models, cloud APIs, or swarm providers. This complements DSPy: DSPy compiles *what the agent should do*; RLM provides the substrate that makes those policies robust under large-scale state and long-run execution.
 
 ### 2.5 Markets, Identity, and Verification for Agent Economies
 
-Most agent systems implicitly assume a trusted operator: a human provides API keys, pays for compute, and absorbs the risk of failures. This assumption becomes a bottleneck for scaling fleets of agents and for enabling autonomous cooperation across organizational boundaries. A parallel line of work argues that agents require **identity, budgets, and verification** to be first-class participants in open ecosystems.
+Most agent systems implicitly assume a trusted operator: a human provides API keys, pays for compute, and absorbs the risk of failures. This assumption becomes a bottleneck for scaling fleets of agents and for enabling autonomous cooperation across organizational boundaries. A parallel line of work argues that agents require **identity, budgets, and verification** to be first-class participants in open ecosystems (TODO:CITE).
 
 OpenAgents takes this seriously as a core design constraint. Agents authenticate and sign actions, maintain budgets, and purchase compute across heterogeneous providers. Work products are coupled to **verifiable receipts**: deterministic verification (tests/builds/sandbox runs) and traceable trajectories enable external observers to audit not only outputs but the process that produced them. This is the systems analog of the “empirical validation” principle: improvements and transactions should be grounded in objective checks whenever possible, and subjective tasks should be explicitly recognized as requiring judges, consensus, or human feedback.
 
 This market framing also shapes how OpenAgents relates to DSPy and self-improvement: compilation and optimization are not just about quality, but about **cost-aware performance under constraints**. A signature that is accurate but expensive may be dominated by a slightly less accurate but far cheaper policy when operating under budget limits. In OpenAgents, evaluation therefore includes resource-aware metrics (tokens, tool calls, latency) alongside correctness and verification, aligning “agent intelligence” with economic reality.
 
+### 2.6 Crypto Identity and Threshold Signing
+
+A growing body of work explores cryptographic identity for autonomous agents, including threshold signatures that prevent any single operator from extracting agent keys. FROST provides a practical threshold Schnorr scheme, while FROSTR adapts these signatures to Nostr event signing (TODO:CITE). Bifrost-style coordination layers handle participant discovery, share aggregation, and timeout logic so threshold operations remain usable in distributed settings. OpenAgents adopts these approaches to make agent identity sovereign and enforceable: an agent can authenticate, sign actions, and spend only within policy, without revealing a single extractable private key.
+
+### 2.7 Decentralized Job Markets and DVMs
+
+Decentralized job markets based on Nostr Data Vending Machines (DVMs) define how buyers and providers publish, bid on, and fulfill tasks in open networks. NIP-90 specifies job request and result events, allowing marketplaces to route compute across heterogeneous providers without centralized coordination (TODO:CITE). OpenAgents builds on this line by adding typed job schemas, objective verification where possible, and receipts that link jobs to payments and trajectories.
+
+### 2.8 Pay-per-Call and Lightning-Native Payments
+
+Payment-gated APIs have emerged as a pragmatic alternative to centralized accounts. L402 combines HTTP authentication with Lightning payments, while LNURL and NIP-57 zaps provide lightweight payment primitives that can be embedded into protocol flows (TODO:CITE). These mechanisms motivate OpenAgents’ treasury layer: agents should be able to pay per call, per job, or per verification artifact without manual operator intervention.
+
+### 2.9 Agent Wallets, Receipts, and Verifiable Work
+
+Prior systems for verifiable computation and reproducible builds show that **receipted work** can be audited after the fact (TODO:CITE). In agent settings, this translates to receipts that bind a payment to a job hash, a policy bundle, and a trajectory snapshot. OpenAgents extends this notion by treating receipts as both governance artifacts (auditability) and training signals (what spend produced verified progress).
+
 ---
 
-**Positioning OpenAgents.** Taken together, prior work provides the ingredients for self-improving agents: compiled LM programs (DSPy), interestingness-aware task selection (OMNI), empirically validated self-modification with archives (DGM), and scalable long-horizon reasoning (RLM). OpenAgents contributes a synthesis that is explicitly production-aligned: it binds these ideas to the realities of software development (tests/builds as rewards), heterogeneous inference markets (local/cloud/swarm), and the economic + cryptographic primitives needed for agents to operate as autonomous actors.
+**Positioning OpenAgents.** Taken together, prior work provides the ingredients for self-improving agents: compiled LM programs (DSPy), interestingness-aware task selection (OMNI), empirically validated self-modification with archives (DGM), scalable long-horizon reasoning (RLM), and protocol-native markets (NIP-90, L402, LNURL). OpenAgents contributes a synthesis that is explicitly production-aligned: it binds these ideas to the realities of software development (tests/builds as rewards), heterogeneous inference markets (local/cloud/swarm), and the economic + cryptographic primitives needed for agents to operate as autonomous actors.
 
 ## 3 System Overview
 
@@ -171,7 +224,37 @@ OpenAgents is a full-stack system for autonomous agents that (i) execute real wo
 
 ### 3.1 OpenAgents Stack and Design Principles
 
-OpenAgents is organized as a layered stack. At the top are user-facing products (Autopilot, Onyx, GitAfter). Beneath them is an execution layer (Adjutant + Autopilot loop) built on a programming and compilation substrate (dsrs/DSPy). Below that sits infrastructure for execution, routing, identity, payments, and marketplace coordination (Pylon, Nexus, Gateway, Protocol, Runtime). The core system insight is that *agent capability is not only model intelligence*—it is the interaction of:
+OpenAgents is organized as a layered stack. At the top are user-facing products (Autopilot, Onyx, GitAfter). Beneath them is an execution layer (Adjutant + Autopilot loop) built on a programming and compilation substrate (dsrs/DSPy). Below that sits infrastructure for execution, routing, identity, payments, and marketplace coordination (Pylon, Nexus, Gateway, Protocol, Runtime).
+
+**Figure 1: OpenAgents stack.** Protocol substrate → treasury/exchange → execution/runtime → products.
+
+#### 3.1.1 Agentic OS primitives
+
+OpenAgents treats autonomy as an OS problem: identity, spending, verification, and transparency are system primitives rather than prompt artifacts. Table 1 summarizes the primitives and their concrete components.
+
+**Table 1: Agentic OS primitives**
+
+| Primitive | Role | OpenAgents components |
+| --- | --- | --- |
+| Identity | Auth, signing, policy enforcement | FROST/FROSTR threshold keys, NIP-06 derivation, agent profiles |
+| Transport | Event delivery and coordination | Nostr relays, NIP-42 auth, NIP-44 encryption |
+| Payments | Settlement rails | Spark/LN, eCash mints, on-chain, Taproot Assets |
+| Treasury | Budgets and routing | Neobank, TreasuryRouter, quote state machines |
+| Marketplace | Compute and skills | NIP-90 job schemas, Pylon provider/host |
+| Verification | Objective ground truth | Sandboxed tools, test/build harnesses |
+| Transparency | Auditability | Trajectories, receipts, NIP-SA lifecycle logs |
+
+#### 3.1.2 Protocol substrate
+
+OpenAgents builds on Nostr as the transport layer. NIP-42 provides authenticated relay access, NIP-44 provides end-to-end encryption for agent state, and NIP-90 defines job request/result flows for compute markets. OpenAgents proposes NIP-SA as a lifecycle protocol for autonomous agents (profile, schedule, ticks, trajectories) and uses NIP-57 payment events to bind Lightning payments to protocol events. These protocols provide a minimal, interoperable surface while keeping the execution logic local to the agent runtime.
+
+#### 3.1.3 Identity and payments unification
+
+OpenAgents unifies cryptographic identity and payments through a single root seed. A BIP39 mnemonic derives a Nostr identity (via NIP-06 paths) and a wallet identity (via BIP44 paths), so an agent can authenticate and spend without managing disjoint keys. For sovereign agents, these keys are protected by FROST threshold signing; FROSTR adapts threshold signatures to Nostr events, while Bifrost coordinates the distributed signing sessions. This design prevents operator key extraction while still enabling policy-gated co-signing.
+
+Autopilot is the wedge: it is the first buyer of compute and the first consumer of treasury routing. The market layers (compute + exchange) turn that wedge into a platform by allowing independent providers and treasury agents to participate in routing, settlement, and verification.
+
+The core system insight is that *agent capability is not only model intelligence*—it is the interaction of:
 
 1. **Compiled Cognition:** Agent behavior is expressed as typed programs (Signatures + Modules), not prompt strings. These programs are optimizable using offline or online compilation (e.g., MIPROv2).
 2. **Verifiable Execution:** Agents operate in environments with deterministic checks (tests/builds/sandbox runs). Verification is treated as the primary ground-truth reward signal for software tasks.
@@ -252,6 +335,8 @@ At a high level, OpenAgents executes tasks through an iterative loop:
 5. **Route:** On each iteration, decide whether to delegate, recurse (RLM), or continue locally.
 
 Each stage is implemented as a DSPy-style signature/module pair, meaning the agent’s cognition is explicitly typed and optimizable. Decision pipelines (complexity, delegation, recursion trigger) run alongside the loop and can override legacy heuristics when confidence is high.
+
+**Figure 2: End-to-end execution flow.** Task → plan → tool execution → verification → routing + payment/receipt → iteration/termination.
 
 ### 3.5 Data Products: Trajectories, Datasets, and Policy Bundles
 
@@ -427,17 +512,23 @@ OpenAgents executes agents in discrete steps (“ticks”) to make long-running 
 7. **SCHEDULE**: choose next wake time or termination
 8. **SLEEP**: yield control
 
-This discrete-time model has two pragmatic benefits. First, it provides a natural unit of logging and evaluation (per-tick costs, progress, and regressions). Second, it enables deterministic replay: given the same repo snapshot, tool outputs, and policy bundle, the system can reproduce decision making for debugging or audit.
+This discrete-time model has two pragmatic benefits. First, it provides a natural unit of logging and evaluation (per-tick costs, progress, and regressions). Second, it enables deterministic replay: given the same repo snapshot, tool outputs, and policy bundle, the system can reproduce decision making for debugging or audit. Tick lifecycle events map cleanly onto NIP-SA style lifecycle logging (wake, tick request/result, trajectory session), making execution observable outside the local runtime.
 
 The runtime exposes the agent’s world as **state surfaces**—structured, inspectable objects that include:
 
 * repository snapshot + diffs relative to a base commit
 * plan state (subtasks pending/completed)
 * verification state (test failures, build status, lint output)
+* identity state (agent profile, threshold config, signing policy)
+* wallet and treasury state (balances, budgets, pending quotes)
+* approval state (pending approvals, autonomy level, guardians)
 * cost accounting (tokens, tool calls, provider spend)
 * provider health and lane availability
 * execution history (tool calls and results)
+* receipt ledger (payments linked to jobs and trajectories)
 * session metadata (iterations, timestamps, termination reason)
+
+These surfaces are exposed through runtime queries and tool endpoints, acting as OS-style mounts: the agent can query only what it needs, and the runtime can enforce visibility, access control, and redaction per autonomy policy.
 
 ### 5.2 Tooling and Sandboxed Execution
 
@@ -483,6 +574,10 @@ Examples:
 * isolation per run (so a failed run doesn’t poison subsequent runs)
 
 The runtime treats sandboxing as a safety feature *and* as a measurement primitive: sandbox boundaries define what counts as an objective check (e.g., “tests passed inside the sandbox” is a valid completion signal).
+
+#### 5.2.3 Approval workflows and autonomy levels
+
+OpenAgents treats approvals as first-class runtime gates rather than ad hoc prompt instructions. Each session runs under an autonomy level (supervised, semi-autonomous, autonomous), which controls whether actions such as network writes, payments, delegation to untrusted providers, or publish steps require human or guardian approval. Approval decisions are logged with the same provenance as tool calls so that “who approved what” is part of the audit trail and can be used to enforce spending policy.
 
 ### 5.3 Verification Harnesses and Objective Checks
 
@@ -535,6 +630,18 @@ Trajectories support three essential properties:
 3. **Data extraction:** convert trajectories into training datasets for compilation/optimization.
 
 We treat trajectories as first-class data products. They can be stored locally by default and optionally contributed (redacted) for shared training, depending on privacy policies.
+
+#### 5.4.1 Trajectory as the system log
+
+Trajectories function as the OS event log for autonomous execution. Each event is deterministic when possible and includes both intent and outcome. Receipt entries bind economic actions to execution state by linking:
+
+* session id and trajectory hash
+* policy bundle id (compiled behavior version)
+* job hash or tool invocation id
+* payment proof (preimage/txid or equivalent)
+* authorization rule id and approval decision
+
+This linkage makes spending auditable and measurable: a payment can be traced to a specific policy decision, tool result, and verification delta.
 
 ### 5.5 Runtime–Compiler Interface
 
@@ -589,7 +696,7 @@ Delegation determines whether the core Autopilot loop should run locally or be d
 Outputs include:
 
 * `should_delegate: bool`
-* `delegation_target ∈ {codex_code, rlm, local_tools, swarm}`
+* `delegation_target ∈ {codex_code, rlm, local_tools, swarm_fanout, objective_job}`
 * `reasoning`
 * `confidence`
 
@@ -598,7 +705,8 @@ Outputs include:
 * `local_tools`: run the normal tool loop locally (default).
 * `codex_code`: delegate to a high-capability coding runtime (e.g., app-server-backed lane).
 * `rlm`: switch the execution substrate to RLM/FRLM (see §7).
-* `swarm`: fan out to a provider network for burst compute or specialized skills.
+* `swarm_fanout`: fan out to a provider network for parallel subqueries or specialized skills.
+* `objective_job`: dispatch a sandboxed, objectively verifiable job (e.g., tests/builds) as a NIP-90 job type.
 
 Delegation is conservative by default: a low-confidence “delegate” prediction does not trigger delegation. This avoids expensive or destabilizing routing.
 
@@ -631,18 +739,38 @@ OpenAgents uses a multi-stage routing strategy:
 
 This routing is intentionally separate from the DSPy decision pipelines: the pipelines determine *what class of execution to use* (delegate/rlm), while the lane router determines *which provider instance* should serve the request within that class.
 
-### 6.5 Counterfactual Recording and Shadow Mode
+### 6.5 Economic Routing
+
+Routing decisions in OpenAgents are not only about model selection; they also include **economic routing**: which provider to pay, which rail and asset to settle on, and whether approvals are required. The EconomicRoutingPipeline consumes:
+
+* task description and complexity
+* treasury budgets and remaining spend
+* asset availability and rail health
+* provider reputation and pricing
+* approval policy (auto / guardian / deny)
+
+and outputs:
+
+* `lane` (local/cloud/swarm)
+* `rail` and `asset_id` (e.g., `BTC_LN`, `USD_CASHU(mint)`)
+* `approval_required: bool`
+* `reasoning` and `confidence`
+
+This makes cost and compliance part of routing rather than after-the-fact bookkeeping. The TreasuryRouter enforces the decision by issuing quotes, recording receipts, and blocking disallowed payments.
+
+### 6.6 Counterfactual Recording and Shadow Mode
 
 A central challenge in migrating from hand-built heuristics to learned/compiled policies is avoiding regressions. OpenAgents therefore records counterfactuals: for every decision, it stores both:
 
 * **DSPy output** (what the pipeline predicted)
 * **legacy output** (what rules would have chosen)
+* **market-aware output** (what economic routing would have chosen)
 * whether DSPy was used or fell back
 * the reason for fallback (low confidence, parse error, timeout, provider missing)
 
 This enables two critical capabilities:
 
-#### 6.5.1 Offline Policy Evaluation
+#### 6.6.1 Offline Policy Evaluation
 
 After a session completes and an outcome is known (success/failure/max iterations), we can estimate:
 
@@ -653,7 +781,7 @@ After a session completes and an outcome is known (success/failure/max iteration
 
 This is the foundation for safe iteration: we can improve pipelines using data where legacy clearly beats DSPy, without guessing.
 
-#### 6.5.2 Safe Gradual Rollout
+#### 6.6.2 Safe Gradual Rollout
 
 Shadow mode allows DSPy to run in parallel without controlling behavior. In shadow mode:
 
@@ -663,7 +791,7 @@ Shadow mode allows DSPy to run in parallel without controlling behavior. In shad
 
 Once DSPy performance is strong and stable in shadow mode, the confidence gating threshold can be lowered or DSPy can be enabled for specific decision types first (e.g., enable complexity classification before enabling delegation). This incremental rollout significantly reduces operational risk.
 
-### 6.6 Outcome-Coupled Labeling of Decisions
+### 6.7 Outcome-Coupled Labeling of Decisions
 
 After session completion, OpenAgents maps outcomes to decision correctness. Correctness is not treated as an abstract label; it is derived from execution performance:
 
@@ -673,7 +801,7 @@ After session completion, OpenAgents maps outcomes to decision correctness. Corr
 
 These labels feed into rolling accuracy trackers per signature and determine when auto-optimization triggers (§8).
 
-### 6.7 Summary
+### 6.8 Summary
 
 Decision pipelines transform routing from brittle heuristics into measurable, optimizable policy. OpenAgents keeps these policies safe via confidence gating, records counterfactuals to quantify regressions, and uses outcomes to label decisions and improve them over time. The next section (§7) details how Recursive Language Models are integrated as an execution substrate and how federated recursion (FRLM) allows OpenAgents to scale reasoning across local, cloud, and swarm compute while maintaining cost-aware control.
 
@@ -718,6 +846,8 @@ The root model does not receive this state directly. Instead, it can call operat
 
 The design principle is that these operations are **cheap, deterministic, and replayable** whenever possible. This allows RLM runs to produce stable trajectories that can be used as training signal for compiled policies.
 
+Context operations are logged as first-class tool calls with costs, repetition penalties, and verification deltas where applicable. This makes recursion behavior measurable and optimizable in the same way as planning and execution signatures.
+
 ### 7.3 FRLM: Federated Recursion Across Providers
 
 OpenAgents extends RLM to **FRLM (Federated RLM)**, where recursive subcalls can be executed across heterogeneous lanes:
@@ -726,6 +856,10 @@ OpenAgents extends RLM to **FRLM (Federated RLM)**, where recursive subcalls can
 * **Cloud lane**: strong frontier models for difficult reasoning
 * **Swarm lane**: distributed parallel subqueries via paid jobs
 * **Specialized lane**: e.g., code-only models, embedding rerankers, lint analyzers
+
+FRLM fanout is expressed in terms of NIP-90 job types. Subjective jobs (e.g., `code_chunk_analysis`, `rerank`) are treated as model outputs that require judging or aggregation, while objective jobs (e.g., `sandbox_run` for tests/builds) return verifiable artifacts. This distinction allows the runtime to pay-after-verify when possible and to route subjective work with tighter budget caps.
+
+Lane selection for FRLM is budget- and value-aware: the root model proposes subcalls, while the runtime enforces spend caps and selects local vs cloud vs swarm lanes based on expected utility, price, and provider reputation.
 
 FRLM enables a “fan-out / gather / synthesize” pattern:
 
@@ -960,7 +1094,28 @@ This is sufficient to realize “stepping stone” benefits without immediately 
 
 A natural extension (future work) is explicit branching: keeping multiple top-performing policy bundles active and sampling them under controlled A/B policies, approximating evolutionary selection while maintaining safety gates.
 
-### 8.7 Summary
+### 8.8 Canary + Progressive Rollout
+
+Policy bundles are deployed with production discipline. A new bundle moves through staged rollout states:
+
+* **candidate** → compiled and evaluated offline
+* **staged** → activated for a small, low-risk slice of sessions
+* **shadow** → evaluated in parallel without controlling decisions
+* **promoted** → becomes default after meeting performance gates
+
+Promotion gates check verified success rate, regression rate, and cost deltas against the previous bundle. If any gate fails, the bundle is rolled back and quarantined for further analysis. This rollout workflow treats policy updates like production software releases rather than prompt edits.
+
+### 8.9 APM and Fleet KPIs
+
+OpenAgents tracks throughput and reliability metrics at the fleet level. We define **APM (Actions Per Minute)** as the number of tool and model actions executed per minute of wall-clock time. APM is paired with success and cost metrics to avoid “fast failure” optimization:
+
+* **Success-normalized APM:** APM weighted by verified success rate.
+* **Rework rate:** fraction of actions that repeat or regress verified state.
+* **Cost per success:** tokens + sats spent per verified completion.
+
+These KPIs are used by the rollout gates and by the optimizer to prioritize which signatures to recompile.
+
+### 8.10 Summary
 
 OpenAgents closes the loop from autonomy to improvement by (i) recording full sessions, (ii) labeling decisions and steps based on outcomes and verification deltas, (iii) tracking rolling accuracy and drift per signature, and (iv) triggering incremental compilation when performance degrades or enough data accumulates. The design is intentionally conservative—confidence gating, counterfactual baselines, and multi-objective metrics—to avoid Goodhart pathologies and regressions. The next section (§9) describes how this self-improvement loop interacts with OpenAgents’ market substrate: identity, payments, budgets, and provider selection in a decentralized compute marketplace.
 
@@ -968,217 +1123,256 @@ OpenAgents closes the loop from autonomy to improvement by (i) recording full se
 
 OpenAgents treats economic constraints as a first-class control surface for autonomy. Instead of assuming an agent can freely call any model or run unlimited compute, OpenAgents places agents inside an explicit economy: agents have identities, hold budgets, pay for compute, and are accountable for the costs they incur. This framing is not only product-relevant—it is technically stabilizing. Many failure modes in autonomous agents (thrash, over-exploration, unnecessary escalation) are best controlled by making actions *costful* and therefore optimizable under constraints.
 
-### 9.1 Identity and Authentication
+### 9.0 Motivation: Economics as Control Surface
 
-To participate in an open marketplace, agents require stable, cryptographic identity. OpenAgents assigns each agent a long-lived identity used to:
+Economic controls turn autonomy into a bounded optimization problem rather than an open-ended search. Budgets, approvals, and receipts are the enforcement layer that aligns routing decisions (§6) and recursion fanout (§7) with real-world constraints. OpenAgents therefore treats treasury policy as part of the runtime, not as external accounting.
 
-* authenticate to coordination relays and providers
-* sign job requests and results
-* build reputations and maintain accountability
-* bind trajectories and receipts to a verifiable actor
+### 9.1 Neobank: Treasury OS for Agent Fleets
 
-Identity is treated as infrastructure, not an application feature: it is used by all layers (runtime, marketplace, and product UIs). This enables interactions such as “this provider produced this result using this policy bundle and this model” to be verifiable without trusting a centralized platform.
+#### 9.1.1 Design goals
 
-### 9.2 Job Schemas and Deterministic Hashing
+* Budget-bounded autonomy with explicit approval gates
+* Multi-rail and multi-asset payments without silent risk coupling
+* Idempotent payment flows with crash recovery
+* Receipts bound to trajectories and policy bundles
+* Enterprise legibility (budget in stable units, settle on BTC rails)
 
-The compute marketplace exposes work as typed **job schemas**. A job schema defines:
+#### 9.1.2 Core abstractions
 
-* required inputs (including exact types and formats)
-* expected outputs (structured fields)
-* verification mode (objective or subjective)
-* deterministic hashing rules for inputs/outputs
-* provenance metadata (model, sampling, token counts, timestamps)
+**Table 2: Treasury abstractions**
 
-This design solves the “garbage in, garbage out” problem common in ad-hoc agent markets. Providers cannot claim completion without producing outputs that match the schema. For **objective jobs** (e.g., running a command in a sandbox), verification is deterministic and automated. For **subjective jobs** (e.g., summarization, ranking), results require a judge model, consensus, or human review.
+| Concept | Definition | Why it matters |
+| --- | --- | --- |
+| Rail | Settlement network (LN, eCash, on-chain, Taproot Assets) | Different latency and trust models |
+| AssetId | Currency bound to a rail and issuer (e.g., `USD_CASHU(mint)`) | Prevents silent risk coupling |
+| TreasuryRouter | Policy engine selecting rail/asset/budget/approvals | Makes spend controllable |
+| Account | Partitioned wallet bucket (ops, escrow, treasury) | Limits blast radius |
+| Quote | Prepared payment intent with expiry | Enables idempotency |
+| Receipt | Cryptographic proof + context | Auditability + training signal |
 
-Deterministic hashing enables receipts: two parties can independently compute the same hash for a job request and result, making the transaction verifiable and replayable.
+#### 9.1.3 Quote state machine
 
-### 9.3 Payments, Budgets, and Treasury Policy
+**Figure 3: Quote lifecycle.** `CREATED → UNPAID → PENDING → {PAID | FAILED | EXPIRED}`.
 
-OpenAgents enforces budgets at runtime. Each agent operates under a treasury policy that can define:
+Quotes reserve budget, attach idempotency keys, and protect against retries. If an agent crashes or a rail stalls, the reconciler can safely resume without double spending.
 
-* global spend limits (per hour/day/session)
-* per-task spend caps
-* per-lane caps (how much can be spent on cloud or swarm calls)
-* escalation thresholds (when higher-cost models are allowed)
-* cost targets (maximize success under a cost ceiling)
+#### 9.1.4 Reconciliation and idempotency
 
-Budgets are not only guardrails; they are training signals. A policy that solves tasks but burns budget is dominated by one that achieves similar success at lower cost. Accordingly, OpenAgents logs spend and token usage per tick and per decision, and uses cost as an input to both routing policies and self-improvement (§8).
+Autonomous agents crash and networks stall. The Neobank therefore runs a reconciliation loop that:
 
-### 9.4 Incentives, Reputation, and Provider Selection
+* expires stale quotes
+* retries pending payments with idempotency keys
+* resolves “unknown” states when a rail returns ambiguous results
 
-OpenAgents supports decentralized provider networks where providers offer compute in exchange for payment. This requires incentives and selection mechanisms that favor reliable providers and penalize low-quality or malicious behavior.
+This is an operational requirement, not an optimization: without reconciliation, autonomous spending cannot be audited or trusted.
 
-Provider selection can incorporate:
+#### 9.1.5 Budget enforcement and approvals
 
-* advertised capabilities (models, hardware, tools)
-* historical success rate on similar job types
-* latency distributions
-* cost and pricing
-* cryptographic reputation signals (signed receipts, verified outputs)
-* dispute history (failed objective checks, inconsistencies)
+Budgets can be enforced at multiple levels (org/repo/issue) and can trigger approval workflows. Example policy rules include:
 
-OpenAgents is designed so that provider quality can be learned and improved: the system can treat “provider choice” as another decision pipeline that can be compiled, evaluated, and updated over time.
+* “< $5 equivalent auto-approve”
+* “> $200 requires guardian co-signature”
+* “unverified provider blocks until reputation threshold met”
 
-### 9.5 Market-Aware Routing: Cost as a Control Surface
+Approval decisions are recorded in receipts and trajectories, making policy compliance auditable.
 
-Economic constraints shape the routing layer (§6) in two ways:
+#### 9.1.6 Receipts bound to trajectories
 
-1. **Lane arbitration:** delegation decisions are cost-sensitive. For example, a task may be complex, but if budget is low, the system may prefer local tools + RLM rather than cloud escalation.
-2. **Federation planning:** FRLM fanout is bounded by budget. The root model can request parallel subcalls, but the runtime enforces maximum spend, and the optimizer learns which fanout patterns deliver value.
+Receipts bind payment events to execution state so a spend can be traced to a job, a policy, and an outcome.
 
-This is analogous to resource-bounded planning: OpenAgents is optimizing not just for correctness, but for *expected verified success per unit cost*.
+**Table 3: Minimal receipt schema**
 
-### 9.6 Receipts, Provenance, and Auditability in Market Transactions
+| Field | Description |
+| --- | --- |
+| `receipt_id` | Unique receipt identifier |
+| `session_id` | Autopilot session id |
+| `trajectory_hash` | Hash of trajectory log |
+| `policy_bundle_id` | Compiled policy version |
+| `job_hash` | Deterministic job hash (when applicable) |
+| `payment_proof` | Preimage/txid/rail proof |
+| `rail` / `asset_id` | Settlement rail and asset |
+| `amount` | Amount paid |
+| `provider_id` | Counterparty identity |
+| `approval_rule_id` | Policy rule that authorized spend |
+| `timestamp` | Receipt time |
 
-Every market transaction produces an auditable artifact:
+#### 9.1.7 Multi-currency strategies
 
-* the job request and its hash
-* provider identity and signature
-* the result payload and its hash
-* verification outcome (when objective)
-* cost metadata (invoice amounts, token usage when available)
-* links to supporting trajectories (optional)
+The TreasuryRouter enforces exposure limits per rail and issuer, supports FX-aware budgeting (e.g., USD-denominated caps), and can route payments across assets when the provider’s pricing and the agent’s budget are in different currencies.
 
-This provenance supports:
+#### 9.1.8 Summary
 
-* dispute resolution (“did the provider actually do the work?”)
-* accountability (“which model produced this?”)
-* reproducible evaluation (“can we replay the job?”)
-* training signals (“which providers produce higher utility outputs?”)
+The Neobank is a treasury OS: it makes autonomous spending programmable, recoverable, and auditable while exposing consistent APIs to the runtime and routing layers.
 
-Critically, provenance makes economic control compatible with self-improvement: the system can learn not only better prompts and routing, but also better market behavior—who to buy from, when to escalate, and how to allocate budget across subproblems.
+### 9.2 Compute Marketplace: Verified Jobs and Demand Floor
 
-### 9.7 Summary
+#### 9.2.1 Autopilot as first buyer
 
-OpenAgents treats autonomy as an economic activity. Identity enables accountability, job schemas ensure typed exchange, deterministic hashing yields verifiable receipts, and budgets create a resource-bounded control surface that reduces thrash and aligns optimization with real-world constraints. These market primitives integrate tightly with routing (§6), RLM federation (§7), and self-improvement (§8): the system learns not only how to solve tasks, but how to solve them efficiently under budget, provider variability, and verification requirements. The next section (§10) describes evaluation protocols and benchmarks for measuring success, stability, cost-efficiency, and resistance to Goodhart-style failure modes.
+Autopilot acts as the demand floor for compute. As the first large-scale buyer, it seeds provider incentives, generates reliable job volume, and supplies early feedback on provider quality and pricing.
+
+#### 9.2.2 Job taxonomy: objective vs subjective
+
+OpenAgents distinguishes between **objective** jobs (sandboxed runs, tests, builds) and **subjective** jobs (summaries, rankings, analysis). Objective jobs are pay-after-verify; subjective jobs require judges or aggregation. This taxonomy is reflected in Protocol job schemas and determines how receipts are generated and how disputes are handled.
+
+#### 9.2.3 Settlement patterns
+
+We use three settlement patterns depending on job type and trust:
+
+* **Pay-after-verify** for objective jobs with deterministic checks.
+* **Escrow + dispute window** for jobs with delayed or partial verification.
+* **Reputation-weighted prepay** for low-latency subjective tasks.
+
+#### 9.2.4 Provider capability and reputation
+
+Provider selection incorporates advertised capabilities, historical success rates, latency distributions, and cryptographic receipts. Providers that fail objective verification are down-ranked or excluded. This turns the marketplace into a measurable system rather than a trust-based marketplace.
+
+#### 9.2.5 Routing under budget
+
+Marketplace routing integrates with economic routing (§6.5) and FRLM fanout (§7.3). Providers, rails, and assets are selected jointly to satisfy both performance and budget policies, and the TreasuryRouter enforces spend caps at execution time.
+
+#### 9.2.6 Summary
+
+The compute marketplace is not only a network of providers; it is a verification-driven routing system where payments, receipts, and outcomes are bound together.
+
+### 9.3 Exchange: Liquidity and FX Routing for Agents
+
+#### 9.3.1 Why Exchange exists
+
+A compute provider may price in USD while an agent holds BTC. The Exchange layer provides liquidity and routing so agents can pay in the provider’s required asset without human intervention. This enables enterprise budgeting in stable units while still settling on Bitcoin rails.
+
+#### 9.3.2 Actors: Treasury Agents
+
+Treasury Agents are specialized liquidity providers. They quote FX rates, route payments across rails, and earn spreads for providing liquidity. This turns treasury routing into a market with competition and measurable performance.
+
+#### 9.3.3 Protocol-native design
+
+The Exchange is built on existing Nostr protocol surfaces:
+
+* **NIP-69** for P2P order events
+* **NIP-60** for wallet state synchronization
+* **NIP-32** labels for reputation metadata
+* **NIP-44** encryption for sensitive quote payloads
+
+This avoids inventing bespoke exchange protocols while remaining interoperable with existing Nostr tooling.
+
+#### 9.3.4 Settlement progression v0 → v2
+
+We outline a staged progression:
+
+* **v0 (reputation-based):** quote + pay with trust-weighted settlement
+* **v1 (atomic eCash):** atomic swaps for mint-based assets
+* **v2 (cross-mint):** multi-hop settlement across mints with escrow
+
+Each stage increases safety and interoperability while retaining the same quote and receipt interfaces.
+
+#### 9.3.5 Summary
+
+The Exchange layer turns treasury routing into a liquidity market, enabling agents to operate with multi-rail, multi-asset budgets without manual intervention.
+
+### 9.4 End-to-End Payment-Linked Autonomy
+
+An end-to-end run links the policy decision to a payment and a verified result: the agent selects a lane and rail, the TreasuryRouter issues a quote, a provider executes a job, verification determines success, and a receipt binds the spend to the trajectory and policy bundle. This is the economic analog of the verification loop in §5 and the routing policies in §6.
+
+### 9.5 Summary
+
+OpenAgents’ market layer combines treasury controls, a verified compute marketplace, and a liquidity exchange so autonomous agents can operate economically without sacrificing auditability or verification guarantees. The next section (§10) describes how we evaluate these claims empirically.
 
 ## 10 Evaluation
 
-OpenAgents targets a domain where “correctness” is often measurable (tests/builds) but autonomy introduces new axes that typical LLM benchmarks do not capture: stability across long sessions, cost-aware routing, resistance to degenerate loops, and reproducible provenance. Accordingly, our evaluation is designed to measure **verified task success** and the system properties that determine whether autonomy is usable in practice.
+OpenAgents targets a domain where “correctness” is often measurable (tests/builds), but autonomy introduces additional axes that typical LLM benchmarks do not capture: stability across long sessions, cost-aware routing, resistance to degenerate loops, and reproducible provenance. Our evaluation is designed to measure **verified task success** and the system properties that determine whether autonomy is usable in practice.
 
-### 10.1 Benchmarks and Task Suites
+### 10.1 Evaluation Questions
 
-We evaluate OpenAgents across four complementary settings:
+We answer five core questions:
 
-**(A) Real-World Repository Tasks**
+1. Does DSPy compilation improve verified success and cost versus fixed prompts?
+2. Does outcome-coupled optimization reduce thrash/repetition and improve convergence?
+3. Do RLM/FRLM improve success on long-context and long-horizon repo tasks?
+4. Does market-aware routing reduce cost for a fixed success rate (or improve success under fixed budgets)?
+5. Do canary/shadow rollouts reduce regressions versus always-on policy updates?
 
-* A curated suite of tasks drawn from active open-source repositories (bug fixes, feature additions, refactors, build breaks).
-* Each task defines a verification harness (tests/build/lint) and a completion criterion (pass/fail + artifact checks).
+### 10.2 Task Suites
 
-**(B) Standard Coding Benchmarks**
+We evaluate on three complementary suites.
 
-* **SWE-bench Verified–style tasks** for multi-file bugfixes with private-style verification (but evaluated via our own harness for reproducibility).
-* **Polyglot-style tasks** spanning multiple languages with pass@1 constraints (no ground-truth test reveal during execution).
-* These benchmarks provide comparability to existing agent literature, while our runtime adds budgets, trajectories, and routing.
+**Suite A: RepoOps (OpenAgents internal)**
 
-**(C) Long-Context / Long-Horizon Suites**
+* Real repository tasks with pinned harnesses (tests/builds/lints).
+* Includes bug fixes, refactors, and cross-file changes.
+* Used to measure end-to-end verified success under realistic constraints.
 
-* Tasks designed to stress context growth: large repos, extensive log histories, deep dependency chains, and multi-iteration debugging.
-* Includes “session-length stress” variants where the agent must work through multiple verification cycles and maintain coherence.
+**Suite B: SWE-bench Verified subset + Polyglot**
 
-**(D) Market-Integrated Tasks**
+* Provides comparability to existing agent literature.
+* Ensures tasks span multiple languages and repository styles.
 
-* A subset of tasks executed with FRLM enabled, where subqueries can fan out to a swarm provider network.
-* These experiments measure economic routing and distributed recursion under budget constraints.
+**Suite C: Long-Context / Session-Scale**
 
-For each suite we publish task definitions, verification harnesses, and reproducible environment setup (container images, pinned dependencies), so results can be replayed.
+* Tasks with large codebases, long logs, and multi-iteration debugging.
+* Stress-tests context growth and RLM/FRLM stability.
 
-### 10.2 Metrics
+### 10.3 Experimental Conditions (Ablations)
 
-We report three categories of metrics: **task success**, **efficiency**, and **stability/safety**.
+We run the following configurations:
 
-#### 10.2.1 Task Success
+* **C0 Baseline:** legacy prompts + rule-based routing.
+* **C1 DSPy-only:** compiled signatures, legacy routing.
+* **C2 DSPy + outcome-coupled:** compiled signatures + outcome-based optimization.
+* **C3 DSPy + outcome-coupled + RLM:** RLM enabled for long-context tasks.
+* **C4 + FRLM:** federated fanout across local/cloud/swarm lanes.
+* **C5 Canary/shadow:** progressive rollout with shadow evaluation.
 
-* **Verified Success Rate:** fraction of tasks whose verification harness passes at termination.
-* **Time-to-Success / Iterations-to-Success:** iterations needed to reach passing verification.
-* **Regression Rate:** frequency of introducing new failing tests/build errors during the run.
+### 10.4 Metrics (Explicit Definitions)
 
-#### 10.2.2 Efficiency and Cost
+**Success / correctness**
 
-* **Token Cost:** total tokens consumed, broken down by lane (local / cloud / swarm).
-* **Tool Cost:** number of tool calls and sandbox executions.
-* **Cost-Adjusted Success:** success per 1k tokens, success per dollar, and success per unit time.
-* **Escalation Frequency:** how often the system delegates to expensive lanes (Codex/swarm) vs staying local.
+* **Verified Success Rate** = successful tasks / total tasks.
+* **Iterations-to-Success** = mean iterations for successful tasks.
 
-#### 10.2.3 Stability and Anti-Thrash
+**Stability / thrash**
 
-* **Repetition Rate:** fraction of actions that repeat an identical (or near-identical) tool call within a session.
-* **Verification Delta Trajectory:** distribution of per-iteration test deltas (how often iterations improve vs worsen).
-* **Hallucination Indicators:** incidence of “claimed-but-not-executed” tool calls (where detectable via tool middleware).
-* **Termination Quality:** proportion of failures that are graceful (bounded) vs pathological (budget burn, infinite-like loops).
+* **Repetition Rate** = repeated actions / total actions.
+* **Thrash Index** = repeated identical tool calls per session / session length.
 
-These metrics align with our self-improvement objectives (§8): we optimize for verified success while penalizing cost and degenerate behavior.
+**Verification progress**
 
-### 10.3 Ablation Studies
+* **Verification Delta Trajectory** = mean change in failing tests per iteration.
 
-We evaluate the contribution of each system component via controlled ablations. Key comparisons include:
+**Cost / efficiency**
 
-**DSPy compilation vs. static prompts**
+* **APM** = total actions / total minutes.
+* **Success-Normalized APM** = APM × Verified Success Rate.
+* **Cost per Success** = (tokens + sats spent) / successful tasks.
 
-* Replace optimized signatures with fixed handcrafted prompts.
-* Measure success rate, cost, and stability to quantify “compiled cognition” gains.
+**Market quality**
 
-**Outcome-coupled optimization vs. format-only optimization**
+* **Provider Reliability** = verified jobs / total jobs.
+* **Escalation Rate** = delegated jobs / total jobs.
+* **Rail Mix** = spend share per rail/asset.
 
-* Compare pipelines optimized only for parse/format correctness against pipelines optimized using verification delta, repetition, and cost signals.
-* This isolates Goodhart effects and validates that outcome coupling improves real task completion.
+### 10.5 Tables and Figures to Add
 
-**RLM/FRLM vs. non-recursive execution**
+* **Table 4:** Task suite composition and harnesses.
+* **Table 5:** Ablation results (success, cost, thrash) across suites.
+* **Table 6:** Market routing breakdown (lanes, rails, assets, approvals).
+* **Figure 4:** Verification delta trajectories by condition.
+* **Figure 5:** Cost vs success scatter plot (per suite).
 
-* Disable RLM and force all reasoning through standard prompt contexts.
-* Evaluate on long-context suites to measure improvements in stability and success under context growth.
+### 10.6 Methodology Details
 
-**Counterfactual gating vs. always-on learned routing**
+We pin environments via container images or Nix-style lockfiles, record all tool invocations, and run each condition with a fixed budget and deterministic verification harness. Sessions are capped by iteration and spend limits, and we record provider failures to avoid conflating model errors with marketplace faults. All runs store trajectories, receipts, and policy bundle hashes for reproducibility.
 
-* Remove confidence gating and execute DSPy routing decisions unconditionally.
-* Quantify regressions and demonstrate why gated rollout + shadow-mode evaluation reduces risk.
+### 10.7 Case Studies
 
-**Archive effects (policy bundles)**
+We include short, high-signal case studies:
 
-* Compare a single continuously-updated policy bundle against retaining an archive of prior bundles (A/B sampling or rollback strategy).
-* Measure whether archives reduce regressions and improve recovery from local optima.
+* **Context rot vs RLM recovery:** identical tasks with and without RLM.
+* **Outcome-coupled vs format-only:** examples where JSON validity improved but verification stalled.
+* **Market routing failures:** provider timeouts and fallback behavior with receipts.
 
-### 10.4 Market Experiments: Swarm vs Local vs Cloud
+### 10.8 Summary
 
-To evaluate OpenAgents as an economic system, we run experiments where identical tasks are executed under different market configurations:
-
-1. **Local-only:** all inference local, no delegation.
-2. **Cloud-first:** plan/synthesize on a strong cloud model, tools local.
-3. **FRLM hybrid:** root execution local, federated fan-out to cloud and swarm for subqueries.
-4. **Swarm-augmented:** parallel subqueries and specialized jobs purchased from distributed providers.
-
-We measure:
-
-* verified success and time-to-success
-* total spend (tokens, invoices) and cost-adjusted success
-* provider reliability (success rate, latency) and how provider selection evolves
-* how often federation is actually used vs. avoided due to budget constraints
-
-These experiments are essential: the same autonomy policy can be “good” in a local setting but “bad” in a market setting if it escalates too aggressively or fails to bound fan-out.
-
-### 10.5 Failure Modes and Case Studies
-
-Quantitative metrics do not fully capture agent behavior under stress. We therefore include qualitative case studies with full trajectories:
-
-* **Context rot vs RLM recovery:** identical tasks where non-RLM runs degrade over long traces and RLM-backed runs remain coherent by externalizing state.
-* **Objective hacking attempts:** cases where format correctness improves but verification stagnates, illustrating why outcome-coupled metrics are necessary.
-* **Delegation mistakes:** tasks where delegation was unnecessary (wasted spend) or insufficient (should have escalated), highlighting the importance of counterfactual logging and confidence gating.
-* **Provider faults:** swarm runs where providers time out or return low-quality results, showing how fallback strategies and receipts prevent silent failures.
-
-Each case study is reported with:
-
-* the task + verification harness
-* policy bundle version
-* lane routing decisions + confidence
-* tool traces and diffs
-* verification history over iterations
-* cost breakdown
-
-### 10.6 Summary
-
-Our evaluation framework measures OpenAgents along the axes that matter for production autonomy: verified success, cost efficiency, stability under long sessions and large contexts, and resilience to Goodhart-style pathologies. The ablations isolate the value of compiled cognition (DSPy), recursion (RLM/FRLM), and outcome-coupled self-improvement, while market experiments validate that the system remains effective under budgets and heterogeneous providers. The next section (§11) focuses on safety and governance: sandboxing, objective hacking, privacy, and human oversight strategies for self-improving agents.
-
+The evaluation framework measures verified task success alongside stability, cost-efficiency, and market routing behavior. It isolates the impact of compiled cognition, recursion, and economic routing while remaining reproducible across repositories and providers. The next section (§11) addresses safety and governance.
 
 ## 11 Safety and Governance
 
@@ -1416,6 +1610,68 @@ OpenAgents is designed as a conservative self-improvement system. Decisions are 
 
 We believe the broader implication is that progress toward reliable autonomous agents will be driven as much by **systems architecture and economic constraints** as by model capability alone. OpenAgents offers a practical blueprint: make agent behavior programmable and compilable, make execution verifiable and replayable, make long-horizon reasoning scalable via recursion, and make autonomy economically legible through budgets and receipts. This combination shifts autonomy from an artisanal craft into an engineering discipline—one that can support fleets of agents operating continuously in real environments, improving from experience while remaining auditable, bounded, and cost-aware.
 
+## References
+
+- DSPy: declarative LM programming and signatures (TODO:CITE)
+- MIPROv2 and prompt compilation (TODO:CITE)
+- OMNI / OMNI-EPIC interestingness curricula (TODO:CITE)
+- Darwin Gödel Machine and empirical self-improvement (TODO:CITE)
+- Recursive Language Models / FRLM (TODO:CITE)
+- Nostr protocol basics and NIP-42/NIP-44 (TODO:CITE)
+- NIP-90 Data Vending Machines (TODO:CITE)
+- NIP-57 zaps / LNURL payment primitives (TODO:CITE)
+- L402 pay-per-call authentication (TODO:CITE)
+- FROST threshold signatures and FROSTR adaptations (TODO:CITE)
+- Proof-carrying execution / reproducible builds (TODO:CITE)
+
+## Appendix G: Protocol Surface (High-Level)
+
+This appendix summarizes the protocol surface used by OpenAgents. It is intentionally high-level and omits implementation details.
+
+### G.1 Event Kinds and Lifecycles
+
+* **NIP-90 Job Request / Result:** compute and sandbox jobs with typed schemas.
+* **NIP-SA Tick Request / Tick Result:** lifecycle boundaries for autonomous execution.
+* **NIP-SA Trajectory Session / Trajectory Event:** structured audit logs for plans, tool calls, and outcomes.
+* **Payment Events:** receipts or zaps linking spend to jobs and sessions.
+
+### G.2 Job Schema Surface
+
+Minimum fields for a job schema:
+
+* `inputs` (typed fields)
+* `outputs` (typed fields)
+* `verification_mode` (objective | subjective)
+* `hash_rules` (deterministic hashing)
+* `provenance` (model/provider metadata)
+
+### G.3 Receipt Surface
+
+Receipts bind payments to execution state:
+
+* `receipt_id`
+* `session_id`
+* `trajectory_hash`
+* `policy_bundle_id`
+* `job_hash`
+* `payment_proof`
+* `rail` / `asset_id`
+* `amount`
+* `provider_id`
+* `approval_rule_id`
+* `timestamp`
+
+### G.4 Trajectory Format
+
+Trajectory records include:
+
+* signature inputs/outputs per call
+* tool invocations and results
+* verification commands and deltas
+* lane/provider choices and fallbacks
+* receipts and spend metadata
+* termination reason and summary
+
 
 ---
 
@@ -1430,22 +1686,27 @@ Below are the **paper sections that are currently underpowered relative to your 
 ## 1) §9 Marketplace and Economic Constraints — **needs the most work**
 
 Right now it’s generic. Your OS doc has *actual novel substance* (Neobank/TreasuryRouter, rails/assets, quotes, reconciliation, receipts tied to trajectories, Exchange layer, Treasury Agents, demand-floor via Autopilot). This should become one of the paper’s strongest differentiators.
+Note: Implemented full §9 rewrite with Neobank/TreasuryRouter, quote state machine, receipts schema, marketplace taxonomy, and Exchange layer.
 
 ## 2) §3 System Overview — **missing the “Agentic OS primitives”**
 
 The paper currently frames OpenAgents as compiled cognition + verifiable execution + recursion + economy. Good—but the OS doc provides concrete primitives and protocol components (FROST/FROSTR, Bifrost, NIP-SA, NIP-90, Spark/LN, protocol layers). Those need to appear as the *actual stack*.
+Note: Added §3.1.1–§3.1.3 with primitives table, protocol substrate, and identity/payments unification including FROST/FROSTR + Bifrost.
 
 ## 3) §5 Agent Runtime — **needs Plan 9 / OS framing + state surfaces**
 
 Your OS doc emphasizes “OS semantics”: identity, budgets, receipts, trajectories, tick lifecycle, filesystem-like mounts. The paper’s runtime section should include those details explicitly.
+Note: Expanded §5.1 state surfaces, added OS-style mounts language, approval gates, and a “Trajectory as system log” subsection with receipt linkage.
 
 ## 4) §8 Self-Improvement Loop — **needs fleet ops + canary/shadow rollout**
 
 You already have the learning loop, but the doc has strong operational machinery: APM, canary deployments, promotion gates, regression detection. That should be formalized as “production-grade policy deployment.”
+Note: Added §8.8 canary/progressive rollout with promotion gates and §8.9 APM/KPI definitions.
 
 ## 5) §10 Evaluation — **currently a template; needs real experimental plan**
 
 You need concrete experiments that validate (a) DSPy compilation, (b) RLM/FRLM benefit, (c) market-aware routing + budget enforcement, and (d) end-to-end economic flows (Autopilot-as-buyer, provider reliability, cost arbitrage).
+Note: Rewrote §10 with explicit questions, suites, ablations, metrics, and methodology details.
 
 ## 6) §2 Related Work — **needs tighter positioning**
 
@@ -1455,14 +1716,17 @@ You reference DSPy/OMNI/DGM/RLM, but should also cover:
 * decentralized job markets (NIP-90 DVMs)
 * agent identity protocols (Nostr identity, threshold signing)
 * verifiable/receipted work (proof-carrying execution, reproducible builds-ish framing)
+Note: Expanded §2 with new subsections on threshold identity, DVMs, pay-per-call payments, and receipted work, plus TODO:CITE placeholders.
 
 ## 7) §6 Decision Pipelines and Routing — **should incorporate budgets + rails**
 
 Routing isn’t only “which model”; it’s “which provider + which rail + which asset + which approval workflow.” That’s in the OS doc; paper should reflect it.
+Note: Added §6.5 Economic Routing and extended counterfactual logging to include market-aware decisions.
 
 ## 8) §7 RLM/FRLM — **fine conceptually, but needs tighter integration hooks**
 
 You should explicitly specify *what FRLM fans out to* (NIP-90 job kinds; subjective vs objective verification; cost caps), and how its recursion actions are logged and optimized like DSPy.
+Note: Added FRLM/NIP-90 job taxonomy and logging of context ops as tool calls with costs.
 
 ---
 
@@ -1473,23 +1737,28 @@ You should explicitly specify *what FRLM fans out to* (NIP-90 job kinds; subject
 1. **Keep the arXiv paper technical.**
 
    * Move the OS doc’s political framing into 1–2 sentences of motivation at most (optional), but don’t let it dominate.
+   Note: Kept new sections technical and focused on primitives, state machines, and evaluation.
 2. **Introduce a “Primitives Table” early (Section 3).**
 
    * One table mapping: Identity / Transport / Payments / Treasury / Marketplace / Verification / Transparency → concrete OpenAgents components (FROSTR/Bifrost, NIP-90, Spark, Neobank, etc.).
+   Note: Added Table 1 in §3.1.1 mapping primitives to components.
 3. **Add 2–3 figures.**
 
    * Fig A: Stack diagram (protocol → treasury → execution → products).
    * Fig B: End-to-end flow (Autopilot task → decisions → tool exec → verification → payment/receipt).
    * Fig C (optional): Neobank quote state machine + reconciliation loop.
+   Note: Added figure callouts for stack (Figure 1), flow (Figure 2), and quote lifecycle (Figure 3).
 4. **Add a “Protocol Surface” appendix.**
 
    * Enumerate event kinds / job schemas / receipts / trajectory formats at a high level (without drowning in implementation).
+   Note: Added Appendix G with event kinds, schema, receipt, and trajectory surface summaries.
 
 ---
 
 ## Section-by-section expansion tasks
 
 ### §3 System Overview — expand into OS-style primitives
+Note: Implemented §3.1.1–§3.1.3 with primitives table, protocol substrate, and identity/payments unification.
 
 **Add subsections:**
 
@@ -1505,6 +1774,7 @@ You should explicitly specify *what FRLM fans out to* (NIP-90 job kinds; subject
 ---
 
 ### §5 Agent Runtime — add OS semantics and audit surfaces
+Note: Added OS-style state surfaces, approvals, receipt linkage, and a dedicated trajectory-as-log subsection.
 
 **Add details:**
 
@@ -1520,6 +1790,7 @@ You should explicitly specify *what FRLM fans out to* (NIP-90 job kinds; subject
 ---
 
 ### §6 Decision Pipelines and Routing — incorporate budgets + market routing
+Note: Added Economic Routing and expanded counterfactual routing to include market-aware decisions; updated delegation targets.
 
 **Expand the routing model beyond model selection:**
 
@@ -1535,6 +1806,7 @@ You should explicitly specify *what FRLM fans out to* (NIP-90 job kinds; subject
 ---
 
 ### §7 RLM/FRLM — tie recursion to NIP-90 + verification taxonomy
+Note: Added NIP-90 job taxonomy, subjective vs objective split, and logging of context ops as tool calls.
 
 **Add two concrete integration points:**
 
@@ -1553,6 +1825,7 @@ You should explicitly specify *what FRLM fans out to* (NIP-90 job kinds; subject
 ---
 
 ### §8 Self-Improvement Loop — add deployment discipline
+Note: Added canary/progressive rollout flow and APM/KPI definitions for fleet ops.
 
 You already have the learning loop; add **production guardrails** from the OS doc:
 
@@ -1570,6 +1843,7 @@ You already have the learning loop; add **production guardrails** from the OS do
 ---
 
 ### §9 Marketplace and Economic Constraints — rewrite as a major contribution
+Note: Rewrote §9 with Neobank, Compute Marketplace, Exchange, and end-to-end payment-linked autonomy.
 
 This section should be expanded into **three major subsections**:
 
@@ -1605,6 +1879,7 @@ Keep this section technical and mechanistic: primitives, state machines, and flo
 ---
 
 ### §10 Evaluation — convert from “outline” to “actual plan”
+Note: Replaced with explicit questions, suites, ablations, metrics, and methodology details.
 
 **Add specific evaluation questions:**
 
@@ -1633,6 +1908,7 @@ Keep this section technical and mechanistic: primitives, state machines, and flo
 ---
 
 ### §2 Related Work — tighten and widen
+Note: Expanded §2 with threshold identity, DVMs, pay-per-call payments, and receipted work subsections.
 
 **Add short subsections:**
 
@@ -1652,6 +1928,7 @@ Keep this section technical and mechanistic: primitives, state machines, and flo
 ---
 
 # Deliverable format for the writer agent
+Note: Delivered a single integrated rewrite with expanded sections, figure callouts, and a new References section with TODO:CITE placeholders.
 
 Ask the writer agent to produce **one PR-style update** with:
 
@@ -1671,6 +1948,7 @@ Below is a **drop-in skeleton** for an expanded **§9** and a **concrete §10 ev
 ---
 
 # Writer Agent Instructions: Expanded §9 Skeleton
+Note: Implemented the §9 rewrite; this skeleton now serves as traceability for the applied changes.
 
 ## Section 9: Marketplace and Economic Constraints (rewrite + expand)
 
@@ -1883,6 +2161,7 @@ This ties the whole paper together and sets up evaluation.
 ---
 
 # Writer Agent Instructions: Concrete §10 Evaluation Plan
+Note: Implemented the §10 rewrite with explicit questions, suites, ablations, and metrics.
 
 ## Rewrite §10 to contain: questions, methodology, datasets, metrics, ablations, tables/figures.
 
@@ -2045,6 +2324,7 @@ Each case study includes:
 ---
 
 # Output expectation for the writer agent
+Note: Implemented as a single PAPER.md update with sections expanded per the checklist.
 
 1. Replace current §9 with the above structure (9.0–9.4).
 2. Replace current §10 with the above evaluation plan (10.1–10.7).
