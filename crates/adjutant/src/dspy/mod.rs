@@ -16,6 +16,7 @@
 pub mod auto_optimizer;
 pub mod decision_pipelines;
 pub mod issue_suggestion;
+pub mod issue_validation;
 pub mod lm_config;
 pub mod metrics;
 pub mod module;
@@ -30,6 +31,7 @@ pub mod training;
 pub use auto_optimizer::*;
 pub use decision_pipelines::*;
 pub use issue_suggestion::*;
+pub use issue_validation::*;
 pub use lm_config::*;
 pub use metrics::*;
 pub use module::*;

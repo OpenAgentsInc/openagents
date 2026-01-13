@@ -6,6 +6,15 @@ use tokio::sync::mpsc;
 use crate::app::autopilot::PostCompletionResult;
 use crate::autopilot_loop::DspyStage;
 
+/// Issue pending validation after user selection.
+#[derive(Debug, Clone)]
+pub(crate) struct PendingValidation {
+    pub issue_number: u32,
+    pub title: String,
+    pub description: Option<String>,
+    pub blocked_reason: Option<String>,
+}
+
 pub(crate) struct AutopilotState {
     pub(crate) oanix_manifest: Option<adjutant::OanixManifest>,
     pub(crate) oanix_manifest_rx: Option<mpsc::UnboundedReceiver<adjutant::OanixManifest>>,
@@ -21,6 +30,12 @@ pub(crate) struct AutopilotState {
     pub(crate) issue_suggestions_rx: Option<mpsc::UnboundedReceiver<DspyStage>>,
     /// Pending issue prompt to submit (set when user selects an issue from suggestions)
     pub(crate) pending_issue_prompt: Option<String>,
+
+    // === Issue validation state ===
+    /// Issue pending validation (after user selects but before work starts)
+    pub(crate) pending_validation: Option<PendingValidation>,
+    /// Channel for receiving validation results from async task
+    pub(crate) validation_result_rx: Option<mpsc::UnboundedReceiver<adjutant::dspy::IssueValidationResult>>,
 
     // === Post-completion hook state ===
     /// Issue currently being worked on (UUID)
@@ -54,6 +69,9 @@ impl AutopilotState {
             issue_suggestions: None,
             issue_suggestions_rx: None,
             pending_issue_prompt: None,
+            // Issue validation state
+            pending_validation: None,
+            validation_result_rx: None,
             // Post-completion hook state
             current_issue_id: None,
             current_issue_number: None,
