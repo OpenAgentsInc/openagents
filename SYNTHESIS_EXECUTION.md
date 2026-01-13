@@ -224,7 +224,7 @@ The key protocol is NIP-90 (Data Vending Machines), which defines how job reques
 - NIP-42: Authentication (required)
 - NIP-01: Basic protocol
 
-**Job flow:**
+**Job flow** (kind numbers illustrative; see [PROTOCOL_SURFACE.md](./docs/PROTOCOL_SURFACE.md) for canonical assignments):
 ```
 Buyer → kind:5050 (job) → Nexus → Provider
 Provider → kind:7000 (invoice) → Nexus → Buyer
@@ -602,6 +602,37 @@ Issues are NOT done unless:
 | Neobank | MVP | Treasury primitives |
 
 **Bitcoin network:** Default is `regtest` for testing. Mainnet available.
+
+---
+
+## Artifact Location & Formats
+
+**Canonical output of an agent session is the Verified Patch Bundle:**
+
+| Artifact | Format | Purpose |
+|----------|--------|---------|
+| `PR_SUMMARY.md` | Markdown | Human-readable patch summary (filename kept for tooling stability) |
+| `RECEIPT.json` | JSON | Cryptographic audit trail |
+| `REPLAY.jsonl` | JSONL | Event stream for replay/debugging |
+
+**Current artifact directory:**
+```
+.adjutant/sessions/{session_id}/
+├── PR_SUMMARY.md
+├── RECEIPT.json
+└── REPLAY.jsonl
+```
+
+**Replay format status:**
+- **Current:** `ReplayBundle` format in `crates/autopilot-core/src/replay.rs`
+- **Target:** `REPLAY.jsonl v1` per spec in `crates/dsrs/docs/REPLAY.md`
+- **MVP acceptance:** Native REPLAY.jsonl emission OR ReplayBundle + working exporter
+
+**Canonical specs:**
+- Schema definitions: [crates/dsrs/docs/ARTIFACTS.md](./crates/dsrs/docs/ARTIFACTS.md)
+- REPLAY.jsonl format: [crates/dsrs/docs/REPLAY.md](./crates/dsrs/docs/REPLAY.md)
+
+> Other docs should link here rather than restating artifact paths/formats.
 
 ---
 
