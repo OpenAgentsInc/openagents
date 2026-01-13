@@ -228,11 +228,10 @@ fn render_chat(
     }
 
     // Render streaming thought (reasoning) content
+    let streaming_thought_height = chat_layout.streaming_thought_height;
     if !state.chat.streaming_thought.source().is_empty() {
         let doc = state.chat.streaming_thought.document();
-        // Estimate height based on document blocks - simple heuristic
-        let thought_height = (doc.blocks.len().max(1) as f32) * chat_line_height * 2.0;
-        let content_visible = y + thought_height > viewport_top && y < viewport_bottom;
+        let content_visible = y + streaming_thought_height > viewport_top && y < viewport_bottom;
         if content_visible {
             state.chat.markdown_renderer.render(
                 doc,
@@ -242,20 +241,12 @@ fn render_chat(
                 scene,
             );
         }
-        y += thought_height;
+        y += streaming_thought_height;
     }
 
     if !state.chat.streaming_markdown.source().is_empty() {
         let doc = state.chat.streaming_markdown.document();
         let content_visible = y + streaming_height > viewport_top && y < viewport_bottom;
-        tracing::debug!(
-            source_len = state.chat.streaming_markdown.source().len(),
-            block_count = doc.blocks.len(),
-            content_visible,
-            y,
-            streaming_height,
-            "RENDER_DEBUG: Rendering streaming markdown"
-        );
         if content_visible {
             state.chat.markdown_renderer.render(
                 doc,
@@ -266,7 +257,6 @@ fn render_chat(
             );
         }
     } else if state.chat.is_thinking {
-        tracing::debug!("RENDER_DEBUG: Source empty, showing thinking indicator");
         if y < viewport_bottom && y + chat_line_height > viewport_top {
             let text_run = state.text_system.layout_styled_mono(
                 "...",

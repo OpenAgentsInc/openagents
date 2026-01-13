@@ -36,6 +36,7 @@ pub(crate) struct ChatLayout {
     pub(crate) chat_font_size: f32,
     pub(crate) chat_line_height: f32,
     pub(crate) message_layouts: Vec<MessageLayout>,
+    pub(crate) streaming_thought_height: f32,
     pub(crate) streaming_height: f32,
     /// Inline tool layouts positioned after their associated messages.
     pub(crate) inline_tools: Vec<InlineToolsLayout>,

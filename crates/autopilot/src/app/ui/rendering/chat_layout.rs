@@ -99,6 +99,19 @@ impl AppState {
             }
         }
 
+        // Calculate streaming thought height (reasoning/thinking content)
+        let streaming_thought_height = if !self.chat.streaming_thought.source().is_empty() {
+            let doc = self.chat.streaming_thought.document();
+            let size = self
+                .chat
+                .markdown_renderer
+                .measure(doc, available_width, &mut self.text_system);
+            size.height + chat_line_height
+        } else {
+            0.0
+        };
+        total_content_height += streaming_thought_height;
+
         let streaming_height = if !self.chat.streaming_markdown.source().is_empty() {
             let doc = self.chat.streaming_markdown.document();
             let size = self
@@ -227,6 +240,7 @@ impl AppState {
             chat_font_size,
             chat_line_height,
             message_layouts,
+            streaming_thought_height,
             streaming_height,
             inline_tools: inline_tools_layouts,
             dspy_stages: dspy_stage_layouts,
