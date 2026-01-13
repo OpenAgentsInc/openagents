@@ -7,6 +7,8 @@ pub mod app;
 mod app_entry;
 pub mod autopilot_loop;
 pub mod commands;
+#[cfg(feature = "single-instance")]
+mod instance;
 pub mod keybindings;
 pub mod panels;
 
@@ -14,3 +16,5 @@ pub mod panels;
 mod tests;
 
 pub use app_entry::AutopilotApp;
+#[cfg(feature = "single-instance")]
+pub use instance::kill_other_instances;

@@ -962,6 +962,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
+ "sysinfo",
  "tokio",
  "toml 0.8.2",
  "tracing",

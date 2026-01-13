@@ -9,7 +9,13 @@ description = "GPU-accelerated terminal UI for Autopilot"
 name = "autopilot"
 path = "src/main.rs"
 
+[features]
+default = ["single-instance"]
+single-instance = ["dep:sysinfo"]
+
 [dependencies]
+# Single instance management
+sysinfo = { version = "0.33", optional = true, default-features = false, features = ["system"] }
 # GPU UI
 wgpui = { path = "../wgpui", default-features = false, features = ["desktop"] }
 wgpu = { workspace = true }
