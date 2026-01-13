@@ -57,7 +57,7 @@ pub mod tools;
 
 use dsrs::LM;
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use thiserror::Error;
 use tokio::sync::mpsc;
 
@@ -224,6 +224,8 @@ pub struct Adjutant {
     decision_lm: Option<Arc<LM>>,
     /// Training data collector for decision pipelines
     decision_training: Option<dspy::TrainingCollector>,
+    /// Session store for decision recording (optional)
+    session_store: Option<Arc<Mutex<dspy::SessionStore>>>,
 }
 
 impl Adjutant {
@@ -246,6 +248,7 @@ impl Adjutant {
             decision_lm: None,
             decision_training: dspy::TrainingCollector::new(true).ok(),
             execution_backend: ExecutionBackend::Auto,
+            session_store: None,
         })
     }
 
@@ -282,6 +285,19 @@ impl Adjutant {
     /// Set preferred execution backend.
     pub fn set_execution_backend(&mut self, backend: ExecutionBackend) {
         self.execution_backend = backend;
+    }
+
+    /// Attach a session store for decision recording.
+    pub fn set_session_store(&mut self, store: Arc<Mutex<dspy::SessionStore>>) {
+        self.session_store = Some(store);
+    }
+
+    fn record_decision(&self, decision: dspy::DecisionRecord) {
+        if let Some(store) = &self.session_store {
+            if let Ok(mut store) = store.lock() {
+                store.record_decision(decision);
+            }
+        }
     }
 
     /// Get current execution backend preference.
@@ -421,6 +437,16 @@ impl Adjutant {
             Complexity::VeryHigh => "VeryHigh",
         };
 
+        let input_summary = format!(
+            "desc=\"{}\" complexity={} estimated_tokens={}",
+            truncate_for_summary(&task.description, 140),
+            complexity_str,
+            plan.estimated_tokens
+        );
+        let legacy_use_rlm = self.should_use_rlm(task, plan);
+        let legacy_output = serde_json::json!({
+            "use_rlm": legacy_use_rlm,
+        });
         let input = dspy::RlmTriggerInput {
             task_description: task.description.clone(),
             complexity: complexity_str.to_string(),
@@ -455,6 +481,20 @@ impl Adjutant {
                     });
                 }
 
+                let decision_output = serde_json::json!({
+                    "use_rlm": result.use_rlm,
+                    "confidence": result.confidence,
+                    "reasoning": result.reasoning,
+                });
+                let decision = dspy::DecisionRecord::new(
+                    "rlm_trigger",
+                    input_summary,
+                    decision_output,
+                    result.confidence,
+                )
+                .with_legacy_output(legacy_output);
+                self.record_decision(decision);
+
                 result.use_rlm
             }
             Ok(result) => {
@@ -462,11 +502,38 @@ impl Adjutant {
                     "DSPy RLM confidence too low ({:.2}), using legacy fallback",
                     result.confidence
                 );
-                self.should_use_rlm(task, plan)
+                let decision_output = serde_json::json!({
+                    "use_rlm": result.use_rlm,
+                    "confidence": result.confidence,
+                    "reasoning": result.reasoning,
+                });
+                let decision = dspy::DecisionRecord::new(
+                    "rlm_trigger",
+                    input_summary,
+                    decision_output,
+                    result.confidence,
+                )
+                .with_legacy_output(legacy_output)
+                .with_fallback(dspy::FallbackReason::LowConfidence {
+                    confidence: result.confidence,
+                });
+                self.record_decision(decision);
+                legacy_use_rlm
             }
             Err(e) => {
                 tracing::debug!("DSPy RLM pipeline failed: {}, using legacy fallback", e);
-                self.should_use_rlm(task, plan)
+                let decision = dspy::DecisionRecord::new(
+                    "rlm_trigger",
+                    input_summary,
+                    serde_json::json!({}),
+                    0.0,
+                )
+                .with_legacy_output(legacy_output)
+                .with_fallback(dspy::FallbackReason::PipelineError {
+                    message: e.to_string(),
+                });
+                self.record_decision(decision);
+                legacy_use_rlm
             }
         }
     }
@@ -484,6 +551,14 @@ impl Adjutant {
             Complexity::VeryHigh => "VeryHigh",
         };
 
+        let input_summary = format!(
+            "desc=\"{}\" complexity={} file_count={} estimated_tokens={}",
+            truncate_for_summary(&task.description, 140),
+            complexity_str,
+            plan.files.len(),
+            plan.estimated_tokens
+        );
+        let legacy_output = legacy_delegation_output(plan);
         let input = dspy::DelegationInput {
             task_description: task.description.clone(),
             complexity: complexity_str.to_string(),
@@ -521,6 +596,21 @@ impl Adjutant {
                     });
                 }
 
+                let decision_output = serde_json::json!({
+                    "should_delegate": result.should_delegate,
+                    "delegation_target": result.delegation_target,
+                    "confidence": result.confidence,
+                    "reasoning": result.reasoning,
+                });
+                let decision = dspy::DecisionRecord::new(
+                    "delegation",
+                    input_summary,
+                    decision_output,
+                    result.confidence,
+                )
+                .with_legacy_output(legacy_output);
+                self.record_decision(decision);
+
                 result
             }
             Ok(result) => {
@@ -528,6 +618,23 @@ impl Adjutant {
                     "DSPy delegation confidence too low ({:.2}), using legacy fallback",
                     result.confidence
                 );
+                let decision_output = serde_json::json!({
+                    "should_delegate": result.should_delegate,
+                    "delegation_target": result.delegation_target,
+                    "confidence": result.confidence,
+                    "reasoning": result.reasoning,
+                });
+                let decision = dspy::DecisionRecord::new(
+                    "delegation",
+                    input_summary,
+                    decision_output,
+                    result.confidence,
+                )
+                .with_legacy_output(legacy_output)
+                .with_fallback(dspy::FallbackReason::LowConfidence {
+                    confidence: result.confidence,
+                });
+                self.record_decision(decision);
                 // Return default (no delegation) - legacy rules will be checked
                 dspy::DelegationResult::default()
             }
@@ -536,6 +643,17 @@ impl Adjutant {
                     "DSPy delegation pipeline failed: {}, using legacy fallback",
                     e
                 );
+                let decision = dspy::DecisionRecord::new(
+                    "delegation",
+                    input_summary,
+                    serde_json::json!({}),
+                    0.0,
+                )
+                .with_legacy_output(legacy_output)
+                .with_fallback(dspy::FallbackReason::PipelineError {
+                    message: e.to_string(),
+                });
+                self.record_decision(decision);
                 // Return default (no delegation) - legacy rules will be checked
                 dspy::DelegationResult::default()
             }
@@ -1208,6 +1326,18 @@ impl Adjutant {
     /// Determine complexity using DSPy pipeline (with legacy fallback).
     async fn determine_complexity_dspy(&mut self, task: &Task, plan: &TaskPlan) -> Complexity {
         let keywords = extract_complexity_keywords(&task.description);
+        let input_summary = format!(
+            "desc=\"{}\" file_count={} estimated_tokens={} keywords=[{}]",
+            truncate_for_summary(&task.description, 140),
+            plan.files.len(),
+            plan.estimated_tokens,
+            keywords.join(", ")
+        );
+        let legacy_complexity =
+            planner::determine_complexity(&plan.files, plan.estimated_tokens, &task.description);
+        let legacy_output = serde_json::json!({
+            "complexity": complexity_label(legacy_complexity),
+        });
         let input = dspy::ComplexityInput {
             task_description: task.description.clone(),
             file_count: plan.files.len() as u32,
@@ -1244,6 +1374,20 @@ impl Adjutant {
                     });
                 }
 
+                let decision_output = serde_json::json!({
+                    "complexity": result.complexity,
+                    "confidence": result.confidence,
+                    "reasoning": result.reasoning,
+                });
+                let decision = dspy::DecisionRecord::new(
+                    "complexity",
+                    input_summary,
+                    decision_output,
+                    result.confidence,
+                )
+                .with_legacy_output(legacy_output);
+                self.record_decision(decision);
+
                 parse_complexity(&result.complexity)
             }
             Ok(result) => {
@@ -1251,14 +1395,41 @@ impl Adjutant {
                     "DSPy complexity confidence too low ({:.2}), using legacy fallback",
                     result.confidence
                 );
-                planner::determine_complexity(&plan.files, plan.estimated_tokens, &task.description)
+                let decision_output = serde_json::json!({
+                    "complexity": result.complexity,
+                    "confidence": result.confidence,
+                    "reasoning": result.reasoning,
+                });
+                let decision = dspy::DecisionRecord::new(
+                    "complexity",
+                    input_summary,
+                    decision_output,
+                    result.confidence,
+                )
+                .with_legacy_output(legacy_output)
+                .with_fallback(dspy::FallbackReason::LowConfidence {
+                    confidence: result.confidence,
+                });
+                self.record_decision(decision);
+                legacy_complexity
             }
             Err(e) => {
                 tracing::debug!(
                     "DSPy complexity pipeline failed: {}, using legacy fallback",
                     e
                 );
-                planner::determine_complexity(&plan.files, plan.estimated_tokens, &task.description)
+                let decision = dspy::DecisionRecord::new(
+                    "complexity",
+                    input_summary,
+                    serde_json::json!({}),
+                    0.0,
+                )
+                .with_legacy_output(legacy_output)
+                .with_fallback(dspy::FallbackReason::PipelineError {
+                    message: e.to_string(),
+                });
+                self.record_decision(decision);
+                legacy_complexity
             }
         }
     }
@@ -1272,6 +1443,15 @@ fn parse_complexity(s: &str) -> Complexity {
         "high" => Complexity::High,
         "veryhigh" | "very_high" | "very high" => Complexity::VeryHigh,
         _ => Complexity::Medium, // Default fallback
+    }
+}
+
+fn complexity_label(complexity: Complexity) -> &'static str {
+    match complexity {
+        Complexity::Low => "Low",
+        Complexity::Medium => "Medium",
+        Complexity::High => "High",
+        Complexity::VeryHigh => "VeryHigh",
     }
 }
 
@@ -1291,4 +1471,34 @@ fn extract_complexity_keywords(description: &str) -> Vec<String> {
         .filter(|k| lower.contains(*k))
         .map(|k| k.to_string())
         .collect()
+}
+
+fn legacy_delegation_output(plan: &TaskPlan) -> serde_json::Value {
+    if plan.complexity >= Complexity::High || plan.files.len() > 20 {
+        return serde_json::json!({
+            "should_delegate": true,
+            "delegation_target": "codex",
+        });
+    }
+
+    if plan.estimated_tokens > 100_000 {
+        return serde_json::json!({
+            "should_delegate": true,
+            "delegation_target": "rlm",
+        });
+    }
+
+    serde_json::json!({
+        "should_delegate": false,
+        "delegation_target": "local_tools",
+    })
+}
+
+fn truncate_for_summary(value: &str, max_len: usize) -> String {
+    if value.len() <= max_len {
+        return value.to_string();
+    }
+    let mut out = value.chars().take(max_len).collect::<String>();
+    out.push_str("...");
+    out
 }

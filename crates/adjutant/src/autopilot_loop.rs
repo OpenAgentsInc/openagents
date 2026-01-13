@@ -749,13 +749,13 @@ pub struct AutopilotLoop<O: AutopilotOutput> {
     output: O,
     interrupt_flag: Arc<AtomicBool>,
     /// Session store for tracking decisions and outcomes (self-improvement)
-    session_store: Option<SessionStore>,
+    session_store: Option<Arc<Mutex<SessionStore>>>,
 }
 
 impl<O: AutopilotOutput> AutopilotLoop<O> {
     /// Create a new autopilot loop.
     pub fn new(
-        adjutant: Adjutant,
+        mut adjutant: Adjutant,
         task: Task,
         config: AutopilotConfig,
         output: O,
@@ -763,8 +763,13 @@ impl<O: AutopilotOutput> AutopilotLoop<O> {
     ) -> Self {
         // Try to open session store for self-improvement tracking
         let session_store = SessionStore::open()
+            .map(|store| Arc::new(Mutex::new(store)))
             .map_err(|e| tracing::debug!("Session tracking disabled: {}", e))
             .ok();
+
+        if let Some(store) = session_store.clone() {
+            adjutant.set_session_store(store);
+        }
 
         Self {
             adjutant,
@@ -806,16 +811,18 @@ impl<O: AutopilotOutput> AutopilotLoop<O> {
         let mut last_result: Option<TaskResult> = None;
 
         // Start session tracking for self-improvement
-        if let Some(ref mut store) = self.session_store {
-            store.start_session(
-                &self.original_task.id,
-                &self.original_task.title,
-                &self.original_task.description,
-            );
-            tracing::debug!(
-                "Started session tracking for task: {}",
-                self.original_task.id
-            );
+        if let Some(store) = &self.session_store {
+            if let Ok(mut store) = store.lock() {
+                store.start_session(
+                    &self.original_task.id,
+                    &self.original_task.title,
+                    &self.original_task.description,
+                );
+                tracing::debug!(
+                    "Started session tracking for task: {}",
+                    self.original_task.id
+                );
+            }
         }
 
         // ============================================================
@@ -1105,16 +1112,18 @@ impl<O: AutopilotOutput> AutopilotLoop<O> {
         let mut last_result: Option<TaskResult> = None;
 
         // Start session tracking for self-improvement
-        if let Some(ref mut store) = self.session_store {
-            store.start_session(
-                &self.original_task.id,
-                &self.original_task.title,
-                &self.original_task.description,
-            );
-            tracing::debug!(
-                "Started session tracking for task: {}",
-                self.original_task.id
-            );
+        if let Some(store) = &self.session_store {
+            if let Ok(mut store) = store.lock() {
+                store.start_session(
+                    &self.original_task.id,
+                    &self.original_task.title,
+                    &self.original_task.description,
+                );
+                tracing::debug!(
+                    "Started session tracking for task: {}",
+                    self.original_task.id
+                );
+            }
         }
 
         loop {
@@ -1272,34 +1281,40 @@ impl<O: AutopilotOutput> AutopilotLoop<O> {
 
     /// Complete the session with an outcome.
     fn complete_session(&mut self, outcome: SessionOutcome, iterations: usize) {
-        if let Some(ref mut store) = self.session_store {
-            match store.complete_session(outcome, iterations) {
-                Ok(session_id) => {
-                    tracing::info!(
-                        "Session {} completed with {} iterations",
-                        session_id,
-                        iterations
-                    );
+        if let Some(store) = &self.session_store {
+            if let Ok(mut store) = store.lock() {
+                match store.complete_session(outcome, iterations) {
+                    Ok(session_id) => {
+                        tracing::info!(
+                            "Session {} completed with {} iterations",
+                            session_id,
+                            iterations
+                        );
 
-                    // Process self-improvement (outcome feedback + optimization check)
-                    if let Ok(session) = store.get_session(&session_id) {
-                        if let Some(session) = session {
-                            self.process_self_improvement(&session);
+                        // Process self-improvement (outcome feedback + optimization check)
+                        if let Ok(session) = store.get_session(&session_id) {
+                            if let Some(session) = session {
+                                self.process_self_improvement(&mut store, session);
+                            }
                         }
                     }
-                }
-                Err(e) => {
-                    tracing::warn!("Failed to save session: {}", e);
+                    Err(e) => {
+                        tracing::warn!("Failed to save session: {}", e);
+                    }
                 }
             }
         }
     }
 
     /// Process self-improvement after session completion.
-    fn process_self_improvement(&self, session: &crate::dspy::AutopilotSession) {
+    fn process_self_improvement(
+        &self,
+        store: &mut SessionStore,
+        mut session: crate::dspy::AutopilotSession,
+    ) {
         match SelfImprover::new() {
             Ok(mut improver) => {
-                match improver.process_session_completion(session) {
+                match improver.process_session_completion(&mut session) {
                     Ok(result) => {
                         tracing::info!(
                             "Self-improvement: labeled {} decisions ({} correct, {} incorrect)",
@@ -1316,6 +1331,10 @@ impl<O: AutopilotOutput> AutopilotLoop<O> {
                             );
                             // TODO: Spawn background optimization task
                             // For now, just log that optimization is needed
+                        }
+
+                        if let Err(err) = store.update_session(&session) {
+                            tracing::warn!("Failed to update session labels: {}", err);
                         }
                     }
                     Err(e) => {
@@ -1508,15 +1527,17 @@ impl<O: AutopilotOutput> AutopilotLoop<O> {
         let reason = reasons.join(", ");
 
         // Record verification result for session tracking
-        if let Some(ref mut store) = self.session_store {
-            let mut record = VerificationRecord::new(iteration, passed, &reason);
-            if let Some(check) = cargo_check_result {
-                record = record.with_cargo_check(check);
+        if let Some(store) = &self.session_store {
+            if let Ok(mut store) = store.lock() {
+                let mut record = VerificationRecord::new(iteration, passed, &reason);
+                if let Some(check) = cargo_check_result {
+                    record = record.with_cargo_check(check);
+                }
+                if let Some(test) = cargo_test_result {
+                    record = record.with_cargo_test(test);
+                }
+                store.record_verification(record);
             }
-            if let Some(test) = cargo_test_result {
-                record = record.with_cargo_test(test);
-            }
-            store.record_verification(record);
         }
 
         Verification { passed, reason }

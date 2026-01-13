@@ -5,8 +5,9 @@ use super::signatures::{
     SummaryAggregatorSignature, TaskAnalysisSignature,
 };
 use super::{ChainEvent, ChainEventSender, ChainState};
-use adjutant::dspy::tool_step_utility_predict;
+use adjutant::dspy::{tool_step_utility_predict, LabeledToolCall, TrainingCollector};
 use anyhow::{Context, Result};
+use chrono::Utc;
 use dsrs::predictors::Predict;
 use dsrs::Predictor;
 use glob::glob;
@@ -15,7 +16,7 @@ use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use sha2::{Digest, Sha256};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
@@ -158,6 +159,7 @@ pub struct CuriosityInsight {
 pub struct MarkdownSummarizationChain {
     event_sender: ChainEventSender,
     chain_state: Arc<Mutex<ChainState>>,
+    tool_call_history: Arc<Mutex<HashSet<String>>>,
 }
 
 impl MarkdownSummarizationChain {
@@ -169,6 +171,7 @@ impl MarkdownSummarizationChain {
         Self {
             event_sender,
             chain_state,
+            tool_call_history: Arc::new(Mutex::new(HashSet::new())),
         }
     }
 
@@ -412,6 +415,13 @@ impl MarkdownSummarizationChain {
                 fallback_tool_step_utility()
             }
         };
+        self.record_tool_call_label(
+            "FileDiscovery",
+            &inputs_value,
+            &outputs_value,
+            &receipt,
+            &utility,
+        );
 
         // Complete the node
         {
@@ -564,6 +574,13 @@ impl MarkdownSummarizationChain {
                 fallback_tool_step_utility()
             }
         };
+        self.record_tool_call_label(
+            "ContentReader",
+            &inputs_value,
+            &outputs_value,
+            &receipt,
+            &utility,
+        );
 
         // Complete the node
         {
@@ -849,6 +866,50 @@ impl MarkdownSummarizationChain {
         self.event_sender.send(ChainEvent::Progress {
             message: message.to_string(),
         });
+    }
+
+    fn record_tool_call_label(
+        &self,
+        signature: &str,
+        inputs: &serde_json::Value,
+        outputs: &serde_json::Value,
+        receipt: &ToolReceipt,
+        utility: &ToolStepUtilityEvaluation,
+    ) {
+        let call_hash = format!(
+            "{}:{}:{}",
+            signature, receipt.inputs_hash, receipt.outputs_hash
+        );
+        let was_repeated = if let Ok(mut history) = self.tool_call_history.lock() {
+            let repeated = history.contains(&call_hash);
+            history.insert(call_hash);
+            repeated
+        } else {
+            false
+        };
+
+        let labeled = LabeledToolCall {
+            signature: signature.to_string(),
+            inputs: inputs.clone(),
+            outputs: outputs.clone(),
+            step_utility: utility.result.step_utility,
+            verification_delta: 0,
+            cost_tokens: utility.tokens as u32,
+            cost_tool_calls: 1,
+            was_repeated,
+            recorded_at: Utc::now(),
+        };
+
+        match TrainingCollector::new(false) {
+            Ok(collector) => {
+                if let Err(err) = collector.record_tool_call(labeled) {
+                    tracing::warn!("Failed to record tool call label: {}", err);
+                }
+            }
+            Err(err) => {
+                tracing::warn!("Failed to init training collector: {}", err);
+            }
+        }
     }
 
     /// Evaluate utility for a tool-based step.
@@ -1249,6 +1310,13 @@ impl MarkdownSummarizationChain {
                 fallback_tool_step_utility()
             }
         };
+        self.record_tool_call_label(
+            "CodeSearch",
+            &receipt_inputs,
+            &receipt_outputs,
+            &receipt,
+            &utility,
+        );
 
         // Complete the node
         {
