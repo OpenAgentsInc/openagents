@@ -1,10 +1,12 @@
 # Signatures (Wave 4)
 
-> **Status:** Needs audit
-> **Last verified:** d44f9cd3f
+> **Status:** Needs audit (manual status table - unreliable until generator exists)
+> **Last verified:** 634f5b627
 > **Source of truth:** `crates/dsrs/src/signatures/`, `crates/adjutant/src/dspy/`
 > **Doc owner:** dsrs
 > **If this doc conflicts with code, code wins.**
+>
+> **Warning:** The Signature Index table at the end of this doc is manually maintained and may not reflect actual code. A signature index generator is planned to automate this.
 
 Optimizable DSPy signatures for agent decision-making.
 

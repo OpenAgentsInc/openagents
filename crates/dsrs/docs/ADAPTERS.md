@@ -480,7 +480,7 @@ let prediction = ChatAdapter::call_streaming(
 
 > See [TOOLS.md](TOOLS.md#tool-schema-validation) for the canonical validation API.
 
-ChatAdapter validates tool parameters before execution. If validation fails, it retries with error context (up to 3 attempts).
+Tool parameters are validated against tool schemas before tool execution. Adapters only serialize/parse; validation is performed by the execution runtime. If validation fails, the runtime retries with error context (up to 3 attempts).
 
 ---
 
@@ -489,7 +489,7 @@ ChatAdapter validates tool parameters before execution. If validation fails, it 
 > See [REPLAY.md](REPLAY.md) for the canonical REPLAY.jsonl format.
 > See [ARTIFACTS.md](ARTIFACTS.md) for the full MVP artifact specification.
 
-Adapters emit replay events during execution for audit and reproducibility.
+The session executor (not adapters) emits replay events during execution for audit and reproducibility. Adapters only handle prompt formatting and response parsing.
 
 ---
 
@@ -500,8 +500,8 @@ Adapters emit replay events during execution for audit and reproducibility.
 | ChatAdapter | `dsrs/src/adapter/chat.rs` | Prompt formatting & output parsing |
 | PylonSandboxProvider | `dsrs/src/adapter/pylon_sandbox.rs` | Sandboxed execution (NIP-90) |
 | SwarmDispatcher | `dsrs/src/adapter/swarm_dispatch.rs` | Swarm job dispatch (NIP-90) |
-| ReplayWriter | `dsrs/src/adapter/replay.rs` | REPLAY.jsonl emission |
-| ReplayReader | `dsrs/src/adapter/replay.rs` | REPLAY.jsonl parsing |
+
+> **Note:** Replay emission is handled by the session executor, not adapters. See [REPLAY.md](REPLAY.md) and [ARTIFACTS.md](ARTIFACTS.md).
 
 ---
 

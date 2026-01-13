@@ -1,8 +1,10 @@
 # MVP Artifacts
 
-> **Status:** Accurate
-> **Last verified:** d44f9cd3f
-> **Source of truth:** `crates/adjutant/src/artifacts/`
+> **Status:** Spec (partially implemented)
+> **Last verified:** 634f5b627
+> **Source of truth:**
+> - Artifact layout/emission: `crates/adjutant/src/artifacts/` (not yet implemented)
+> - Replay implementation: `crates/autopilot-core/src/replay.rs` (different format)
 > **Doc owner:** adjutant
 > **If this doc conflicts with code, code wins.**
 
@@ -109,7 +111,7 @@ Cryptographic receipt for verifiability and audit.
       "tool": "string",
       "params_hash": "sha256:...",
       "output_hash": "sha256:...",
-      "step_utility": "number (0.0-1.0)",
+      "step_utility": "number (-1.0..+1.0)",
       "latency_ms": "number"
     }
   ],
@@ -170,7 +172,7 @@ Cryptographic receipt for verifiability and audit.
 | `plan_hash` | SHA256 of the canonical plan JSON |
 | `params_hash` | SHA256 of canonical tool input parameters |
 | `output_hash` | SHA256 of canonical tool output |
-| `step_utility` | Learning signal: how useful was this tool call? (-1.0 to +1.0) |
+| `step_utility` | Learning signal: how useful was this tool call? (-1.0..+1.0) |
 | `verification_delta` | Change in failing tests: (before - after) |
 | `policy_version` | Which policy bundle was used |
 | `signature` | Optional Nostr signature for attestation |

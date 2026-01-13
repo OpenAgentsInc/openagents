@@ -358,6 +358,31 @@ let result = refined.forward(inputs).await?;
 5. Return best prediction if any attempt reached 50% of threshold
 6. Otherwise return error
 
+## Policy Bundles
+
+> See [OPTIMIZERS.md](OPTIMIZERS.md#policy-bundle-format) for the full policy bundle specification.
+
+A **Policy Bundle** is a versioned artifact containing one or more `CompiledModuleManifest` entries. It provides:
+- Pin/rollback capability across module versions
+- Shadow/canary mode for A/B testing
+- Unified versioning for multi-module pipelines
+
+**Relationship:**
+- `CompiledModuleManifest`: Single optimized signature artifact
+- `PolicyBundle`: Collection of manifests + routing rules + version metadata
+
+```rust
+// Policy bundle references manifests by compiled_id
+pub struct PolicyBundle {
+    pub version: String,
+    pub modules: Vec<CompiledModuleManifest>,
+    pub routing_rules: Option<RoutingRules>,
+    pub created_at: u64,
+}
+```
+
+---
+
 ## Integration Example
 
 Full example combining all Wave 3 features:
