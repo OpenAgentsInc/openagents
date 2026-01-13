@@ -404,7 +404,7 @@ impl AutopilotApp {
     ) {
         let handle = self.runtime_handle.clone();
         handle.spawn(async move {
-            tracing::info!("CODEX_FLOW: Starting async Codex task");
+            tracing::trace!("CODEX_FLOW: Starting async Codex task");
             let wire_log = app_server::AppServerWireLog::new();
             let trace_log = TraceLogger::new();
             let runtime = match CodexRuntime::spawn(CodexRuntimeConfig {
@@ -414,7 +414,7 @@ impl AutopilotApp {
             .await
             {
                 Ok(runtime) => {
-                    tracing::info!("CODEX_FLOW: CodexRuntime spawned successfully");
+                    tracing::trace!("CODEX_FLOW: CodexRuntime spawned successfully");
                     runtime
                 }
                 Err(err) => {
@@ -554,10 +554,10 @@ impl AutopilotApp {
                 cwd: Some(cwd.to_string_lossy().to_string()),
             };
 
-            tracing::info!("CODEX_FLOW: Starting turn for thread {}", thread_id);
+            tracing::trace!("CODEX_FLOW: Starting turn for thread {}", thread_id);
             let turn_id = match client.turn_start(turn_params).await {
                 Ok(response) => {
-                    tracing::info!("CODEX_FLOW: Turn started, id={}", response.turn.id);
+                    tracing::trace!("CODEX_FLOW: Turn started, id={}", response.turn.id);
                     Some(response.turn.id)
                 }
                 Err(err) => {
@@ -571,7 +571,7 @@ impl AutopilotApp {
                     return;
                 }
             };
-            tracing::info!("CODEX_FLOW: Entering turn loop");
+            tracing::trace!("CODEX_FLOW: Entering turn loop");
             run_app_server_turn_loop(
                 client,
                 notification_rx,
@@ -775,21 +775,8 @@ impl AutopilotApp {
         for event in events {
             match event {
                 ResponseEvent::Chunk(text) => {
-                    tracing::info!(
-                        chunk_len = text.len(),
-                        has_newline = text.contains('\n'),
-                        chunk_preview = ?text.chars().take(50).collect::<String>(),
-                        "STREAM_DEBUG: Chunk received"
-                    );
                     state.chat.streaming_markdown.append(&text);
                     state.chat.streaming_markdown.tick();
-                    let doc = state.chat.streaming_markdown.document();
-                    tracing::info!(
-                        source_len = state.chat.streaming_markdown.source().len(),
-                        block_count = doc.blocks.len(),
-                        is_complete = doc.is_complete,
-                        "STREAM_DEBUG: After tick - document state"
-                    );
                     needs_redraw = true;
                 }
                 ResponseEvent::ThoughtChunk(text) => {
@@ -2895,7 +2882,7 @@ async fn run_app_server_turn_loop(
                 }
             }
             Some(notification) = notification_rx.recv() => {
-                tracing::info!("CODEX_FLOW: Received notification: {}", notification.method);
+                tracing::trace!("CODEX_FLOW: Received notification: {}", notification.method);
                 match notification.method.as_str() {
                     "thread/started" => {
                         if let Some(params) = notification.params {
@@ -2917,11 +2904,6 @@ async fn run_app_server_turn_loop(
                         if let Some(params) = notification.params {
                             match serde_json::from_value::<app_server::AgentMessageDeltaNotification>(params) {
                                 Ok(event) => {
-                                    tracing::info!(
-                                        delta_len = event.delta.len(),
-                                        delta_preview = ?event.delta.chars().take(50).collect::<String>(),
-                                        "CODEX_FLOW: Sending chunk to emitter"
-                                    );
                                     agent_message_with_delta.insert(event.item_id);
                                     let _ = emitter.send(ResponseEvent::Chunk(event.delta));
                                     window.request_redraw();
