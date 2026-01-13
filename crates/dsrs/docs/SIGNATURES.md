@@ -1,12 +1,12 @@
 # Signatures (Wave 4)
 
-> **Status:** Needs audit (manual status table - unreliable until generator exists)
-> **Last verified:** 634f5b627
-> **Source of truth:** `crates/dsrs/src/signatures/`, `crates/adjutant/src/dspy/`
-> **Doc owner:** dsrs
-> **If this doc conflicts with code, code wins.**
+- **Status:** Needs audit (manual status table - unreliable until generator exists)
+- **Last verified:** 634f5b627
+- **Source of truth:** `crates/dsrs/src/signatures/`, `crates/adjutant/src/dspy/`
+- **Doc owner:** dsrs
+- **If this doc conflicts with code, code wins.**
 >
-> **Warning:** The Signature Index table at the end of this doc is manually maintained and may not reflect actual code. A signature index generator is planned to automate this.
+- **Warning:** The Signature Index table at the end of this doc is manually maintained and may not reflect actual code. A signature index generator is planned to automate this.
 
 Optimizable DSPy signatures for agent decision-making.
 
@@ -1124,7 +1124,7 @@ use adjutant::dspy::tool_step_utility::tool_step_utility_predict;
 let predictor = tool_step_utility_predict();
 ```
 
-> **Naming collision note:** This signature outputs `step_utility` in range **0.0..1.0**, while `ToolResultSignature` outputs `step_utility` in range **-1.0..+1.0**. The canonical label for training/optimization is `ToolResultSignature.step_utility (-1..+1)`. `ToolStepUtilitySignature` serves as a utility judge that can be used to produce labels, but its output should be normalized or renamed to `step_utility_norm` to avoid confusion.
+- **Naming collision note:** This signature outputs `step_utility` in range **0.0..1.0**, while `ToolResultSignature` outputs `step_utility` in range **-1.0..+1.0**. The canonical label for training/optimization is `ToolResultSignature.step_utility (-1..+1)`. `ToolStepUtilitySignature` serves as a utility judge that can be used to produce labels, but its output should be normalized or renamed to `step_utility_norm` to avoid confusion.
 
 ---
 

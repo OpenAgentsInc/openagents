@@ -1,10 +1,10 @@
 # DSPy Roadmap (OpenAgents)
 
-> **Status:** Needs audit
-> **Last verified:** d44f9cd3f
-> **Source of truth:** N/A (planning doc)
-> **Doc owner:** dsrs
-> **If this doc conflicts with code, code wins.**
+- **Status:** Needs audit
+- **Last verified:** d44f9cd3f
+- **Source of truth:** N/A (planning doc)
+- **Doc owner:** dsrs
+- **If this doc conflicts with code, code wins.**
 
 **Reality check:** "Wave complete" means structs exist + unit tests. "MVP ready" means wired into production path.
 
@@ -78,7 +78,7 @@ them.
 
 ## Wave Status
 
-> **Note:** Wave status tracks component readiness (structs + unit tests); MVP readiness depends on wiring. See ROADMAP.md "NOW" section for true MVP gates.
+- **Note:** Wave status tracks component readiness (structs + unit tests); MVP readiness depends on wiring. See ROADMAP.md "NOW" section for true MVP gates.
 
 | Wave | Status | Description |
 | --- | --- | --- |

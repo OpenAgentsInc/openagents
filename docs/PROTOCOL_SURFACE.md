@@ -1,10 +1,10 @@
 # Protocol Surface
 
-> **Status:** Accurate
-> **Last verified:** (see commit)
-> **Source of truth:** This document is the canonical protocol reference
-> **Doc owner:** protocol
-> **If this doc conflicts with code, code wins.**
+- **Status:** Accurate
+- **Last verified:** (see commit)
+- **Source of truth:** This document is the canonical protocol reference
+- **Doc owner:** protocol
+- **If this doc conflicts with code, code wins.**
 
 High-level protocol surface for OpenAgents. This document enumerates event kinds, job schemas, receipt formats, and trajectory specifications at a level suitable for implementers and auditors.
 
@@ -41,7 +41,7 @@ OpenAgents uses Nostr event kinds for job coordination and agent lifecycle.
 |------|------|---------|--------|
 | 31990 | Handler Announcement | Provider advertises capabilities, pricing, capacity | 🟢 Implemented |
 
-> **Note:** Kind numbers marked TBD are under design. See [GLOSSARY.md](../GLOSSARY.md) for status terminology.
+- **Note:** Kind numbers marked TBD are under design. See [GLOSSARY.md](../GLOSSARY.md) for status terminology.
 
 ---
 

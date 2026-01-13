@@ -1,9 +1,9 @@
 # OpenAgents: System Guide
 
-> **Status:** Needs audit
-> **Last verified:** f2a78c3cd
-> **Source of truth:** `crates/*` for each subsystem
-> **If this doc conflicts with code, code wins.**
+- **Status:** Needs audit
+- **Last verified:** f2a78c3cd
+- **Source of truth:** `crates/*` for each subsystem
+- **If this doc conflicts with code, code wins.**
 
 A decentralized AI compute marketplace where agents run inference, earn Bitcoin, and operate autonomously. This document explains how the entire system works.
 

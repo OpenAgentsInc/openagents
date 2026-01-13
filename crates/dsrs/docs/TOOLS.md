@@ -1,10 +1,10 @@
 # Tools
 
-> **Status:** Accurate
-> **Last verified:** d44f9cd3f
-> **Source of truth:** `crates/rlm/src/tools/`, `crates/adjutant/src/tools.rs`
-> **Doc owner:** dsrs
-> **If this doc conflicts with code, code wins.**
+- **Status:** Accurate
+- **Last verified:** d44f9cd3f
+- **Source of truth:** `crates/rlm/src/tools/`, `crates/adjutant/src/tools.rs`
+- **Doc owner:** dsrs
+- **If this doc conflicts with code, code wins.**
 
 Touching the outside world.
 
@@ -21,7 +21,7 @@ Touching the outside world.
 
 DSPy treats tools as **first-class capabilities**, not hacks glued onto prompts. The model decides *when* and *how* to use tools—guided by signatures and metrics.
 
-> **Mental model:** "LLMs reason; tools act."
+- **Mental model:** "LLMs reason; tools act."
 
 ---
 

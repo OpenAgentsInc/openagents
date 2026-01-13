@@ -1,10 +1,10 @@
 # Metrics
 
-> **Status:** Accurate
-> **Last verified:** d44f9cd3f
-> **Source of truth:** `crates/dsrs/src/evaluate/`
-> **Doc owner:** dsrs
-> **If this doc conflicts with code, code wins.**
+- **Status:** Accurate
+- **Last verified:** d44f9cd3f
+- **Source of truth:** `crates/dsrs/src/evaluate/`
+- **Doc owner:** dsrs
+- **If this doc conflicts with code, code wins.**
 
 What does 'better' mean?
 
@@ -21,7 +21,7 @@ Metrics define **success**. They can measure:
 
 Optimizers use metrics as the objective function. Without metrics, DSPy has no direction.
 
-> **Mental model:** "Metrics turn vague intelligence into something measurable."
+- **Mental model:** "Metrics turn vague intelligence into something measurable."
 
 ---
 
@@ -842,7 +842,7 @@ optimizer.compile(&mut module, examples).await?;
 
 Validates tool call parameters against JSON schema.
 
-> **Note:** This is a **metric** for evaluating/scoring predictions, not the runtime validation that blocks execution. Runtime validation happens in the execution layer (see TOOLS.md "Tool Schema Validation"). This metric scores how often a signature produces schema-valid tool params, which is useful for optimization but does not replace runtime enforcement.
+- **Note:** This is a **metric** for evaluating/scoring predictions, not the runtime validation that blocks execution. Runtime validation happens in the execution layer (see TOOLS.md "Tool Schema Validation"). This metric scores how often a signature produces schema-valid tool params, which is useful for optimization but does not replace runtime enforcement.
 
 ```rust
 // File: crates/dsrs/src/evaluate/metrics/proxy.rs

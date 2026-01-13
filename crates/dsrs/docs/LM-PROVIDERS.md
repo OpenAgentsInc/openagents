@@ -1,10 +1,10 @@
 # LM Providers
 
-> **Status:** Accurate
-> **Last verified:** d44f9cd3f
-> **Source of truth:** `crates/dsrs/src/lm/`
-> **Doc owner:** dsrs
-> **If this doc conflicts with code, code wins.**
+- **Status:** Accurate
+- **Last verified:** d44f9cd3f
+- **Source of truth:** `crates/dsrs/src/lm/`
+- **Doc owner:** dsrs
+- **If this doc conflicts with code, code wins.**
 
 dsrs supports 14+ LM providers via rig-core, with special integrations for Codex SDK, Pylon, and GPT-OSS.
 

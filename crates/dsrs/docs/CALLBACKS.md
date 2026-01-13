@@ -1,10 +1,10 @@
 # Callbacks System
 
-> **Status:** Accurate (CANONICAL)
-> **Last verified:** d44f9cd3f
-> **Source of truth:** `crates/dsrs/src/callbacks.rs`
-> **Doc owner:** dsrs
-> **If this doc conflicts with code, code wins.**
+- **Status:** Accurate (CANONICAL)
+- **Last verified:** d44f9cd3f
+- **Source of truth:** `crates/dsrs/src/callbacks.rs`
+- **Doc owner:** dsrs
+- **If this doc conflicts with code, code wins.**
 
 The callback system provides observability hooks for monitoring dsrs execution in real-time.
 

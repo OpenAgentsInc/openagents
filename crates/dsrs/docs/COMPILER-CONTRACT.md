@@ -1,10 +1,10 @@
 # Compiler Contract (Wave 3)
 
-> **Status:** Needs audit
-> **Last verified:** d44f9cd3f
-> **Source of truth:** `crates/dsrs/src/compiler/`
-> **Doc owner:** dsrs
-> **If this doc conflicts with code, code wins.**
+- **Status:** Needs audit
+- **Last verified:** d44f9cd3f
+- **Source of truth:** `crates/dsrs/src/compiler/`
+- **Doc owner:** dsrs
+- **If this doc conflicts with code, code wins.**
 
 The Compiler Contract bridges DSPy's compiler layer with OpenAgents execution, providing:
 - Versioned, hashable module artifacts

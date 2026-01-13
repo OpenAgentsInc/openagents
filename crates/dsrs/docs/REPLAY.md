@@ -1,12 +1,12 @@
 # Replay Serialization
 
-> **Status:** Spec (implementation differs)
-> **Last verified:** 634f5b627
-> **Source of truth:**
+- **Status:** Spec (implementation differs)
+- **Last verified:** 634f5b627
+- **Source of truth:**
 > - Spec: This document defines the target format
 > - Current impl: `crates/autopilot-core/src/replay.rs` (uses `ReplayBundle` format)
-> **Doc owner:** dsrs
-> **If this doc conflicts with code, code wins.**
+- **Doc owner:** dsrs
+- **If this doc conflicts with code, code wins.**
 
 Canonical JSONL event format for REPLAY.jsonl files. For terminology, see [GLOSSARY.md](../../../GLOSSARY.md).
 

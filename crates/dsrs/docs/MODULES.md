@@ -1,10 +1,10 @@
 # Modules
 
-> **Status:** Accurate
-> **Last verified:** d44f9cd3f
-> **Source of truth:** `crates/dsrs/src/core/module.rs`, `crates/adjutant/src/dspy/`
-> **Doc owner:** dsrs
-> **If this doc conflicts with code, code wins.**
+- **Status:** Accurate
+- **Last verified:** d44f9cd3f
+- **Source of truth:** `crates/dsrs/src/core/module.rs`, `crates/adjutant/src/dspy/`
+- **Doc owner:** dsrs
+- **If this doc conflicts with code, code wins.**
 
 Composable intelligence blocks for structuring reasoning.
 
@@ -18,7 +18,7 @@ A **Module** is a unit of behavior built on one or more signatures. Modules defi
 
 If signatures define *what* intelligence looks like, modules define **how intelligence flows**.
 
-> **Mental model:** "An LLM program is a graph of reasoning steps, not a single prompt."
+- **Mental model:** "An LLM program is a graph of reasoning steps, not a single prompt."
 
 ## Core Traits
 

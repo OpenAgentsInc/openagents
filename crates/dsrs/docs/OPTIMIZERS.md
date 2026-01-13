@@ -1,10 +1,10 @@
 # Optimizers
 
-> **Status:** Accurate
-> **Last verified:** d44f9cd3f
-> **Source of truth:** `crates/dsrs/src/optimizer/`
-> **Doc owner:** dsrs
-> **If this doc conflicts with code, code wins.**
+- **Status:** Accurate
+- **Last verified:** d44f9cd3f
+- **Source of truth:** `crates/dsrs/src/optimizer/`
+- **Doc owner:** dsrs
+- **If this doc conflicts with code, code wins.**
 
 Learning without training models.
 
@@ -18,7 +18,7 @@ An **Optimizer** improves your DSPy program automatically by:
 
 This is **ML-style optimization**, but applied to *program structure*, not weights. No fine-tuning required.
 
-> **Mental model:** "The system learns how to ask better questions."
+- **Mental model:** "The system learns how to ask better questions."
 
 ---
 
