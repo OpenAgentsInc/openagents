@@ -6,6 +6,29 @@ This crate intentionally stays small and focused on the “tools” path (`tools
 
 `codex-mcp` is published as a normal Rust library crate and its crate-level docs are this README (via `#![doc = include_str!("../README.md")]`).
 
+## Table of contents
+
+- [Status / scope](#status--scope)
+- [MSRV / compatibility](#msrv--compatibility)
+- [Design goals](#design-goals-what-this-crate-optimizes-for)
+- [What you get](#what-you-get)
+- [Key semantics](#key-semantics-json-rpc-errors-vs-tool-errors)
+- [Crate layout](#crate-layout)
+- [When to use this](#when-to-use-this)
+- [Install](#install)
+- [Quickstart](#quickstart-minimal-server)
+- [Create a new server crate](#create-a-new-server-crate-from-scratch)
+- [Wire into Codex](#wire-into-codex)
+- [Manual smoke test](#manual-smoke-test-stdio)
+- [Wire format](#wire-format-stdio)
+- [Protocol shapes](#protocol-shapes-subset)
+- [Handler API](#handler-api)
+- [Transport](#transport)
+- [Error behavior](#error-behavior)
+- [Security notes](#security-notes-servers-are-code-execution-surfaces)
+- [Development](#development)
+- [Troubleshooting](#troubleshooting)
+
 ## Status / scope
 
 `codex-mcp` implements a pragmatic subset of MCP suitable for Codex-style stdio servers:
@@ -17,6 +40,11 @@ This crate intentionally stays small and focused on the “tools” path (`tools
 - ❌ MCP resources/prompts/sampling and other extended surface area (by design)
 
 If you need a broader MCP implementation, treat this crate as a small foundation (or introduce a richer MCP crate) rather than expecting full protocol coverage here.
+
+## MSRV / compatibility
+
+- This crate follows the workspace Rust toolchain/MSRV (see the repo root).
+- The on-the-wire format is JSON-RPC 2.0. The method names and result shapes are those commonly used by Codex-style MCP tool servers.
 
 ## Design goals (what this crate optimizes for)
 
@@ -30,6 +58,23 @@ If you need a broader MCP implementation, treat this crate as a small foundation
 - **Protocol types**: `Request`, `Response`, `Tool`, `ToolsListResult`, `ToolCallParams`, `ToolCallResult`
 - **Transport**: newline-delimited JSON over stdio via `StdioTransport`
 - **Server loop**: `server::serve()` that routes JSON-RPC methods to a handler
+
+## Key semantics (JSON-RPC errors vs tool errors)
+
+There are two “levels” of failure:
+
+- **JSON-RPC / protocol-level**: invalid JSON, unknown method, handler returned `Err(...)`, etc.
+  - These become a JSON-RPC `error` response (for example code `-32601` or `-32000`).
+- **Tool-level**: the `tools/call` request is valid, but the tool name is unknown, arguments are invalid, or the domain operation failed.
+  - These are *successful* JSON-RPC responses whose `result` is a `ToolCallResult` with `is_error: true`.
+
+This distinction matters: Codex can treat tool-level failures as part of the agent’s reasoning loop without classifying the server as “broken”.
+
+## Crate layout
+
+- `codex_mcp::protocol`: JSON-RPC envelope + MCP tools subset types
+- `codex_mcp::transport`: `Transport` trait + `StdioTransport`
+- `codex_mcp::server`: `McpHandler` trait + `serve()` router/loop
 
 ## When to use this
 
@@ -59,6 +104,9 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 anyhow = "1"
 async-trait = "0.1"
+tracing = "0.1"
+# Optional (recommended for stderr logging):
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 ```
 
 In this repo, it’s already part of the workspace (`crates/codex-mcp`).
@@ -121,6 +169,53 @@ impl McpHandler for Echo {
 async fn main() -> anyhow::Result<()> {
     serve(StdioTransport::new(), &Echo).await
 }
+```
+
+### Async runtime note
+
+`StdioTransport` is implemented with `tokio` I/O, so your server binary must run inside a `tokio` runtime (for example `#[tokio::main]` as above).
+
+## Create a new server crate (from scratch)
+
+This is a complete “hello world” MCP tool server you can copy into a new repo.
+
+1) Create a new binary crate:
+
+```bash
+cargo new echo-mcp-server
+cd echo-mcp-server
+```
+
+2) Add dependencies to `Cargo.toml`:
+
+```toml
+[dependencies]
+codex-mcp = "0.1"
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+anyhow = "1"
+async-trait = "0.1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+```
+
+3) Implement your server in `src/main.rs` (use the [Quickstart](#quickstart-minimal-server) code above).
+
+4) Run it directly:
+
+```bash
+cargo run
+```
+
+5) Smoke test it via stdin (in another terminal):
+
+```bash
+printf '%s\n' \
+  '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}' \
+  '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}' \
+  '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"echo","arguments":{"message":"hi"}}}' \
+| cargo run --quiet
 ```
 
 ### Override `initialize` (optional)
@@ -309,8 +404,16 @@ The `protocol` module defines the subset of JSON-RPC/MCP that this crate uses:
 ### Notes on IDs and notifications
 
 - If a request comes in with `id = null` or no `id`, it is treated as a JSON-RPC notification.
-- `server::serve()` still calls your handler for notifications, but will emit a response with `id = None`.
-  - If your caller is strict about “no response for notifications”, wrap `Transport` and drop responses where `response.id.is_none()`.
+- `server::serve()` still calls your handler for notifications, and will currently still write a response with `id = None`.
+  - If your caller is strict about “no response for notifications”, wrap `Transport` and drop responses where `response.id.is_none()` (or fork `serve()`).
+
+## Extending beyond tools (intentionally manual)
+
+This crate is intentionally small. If you want to add more MCP methods (resources/prompts/etc), the expected pattern is to:
+
+- add types to `codex_mcp::protocol`,
+- extend `server::serve()` routing (or copy it into your binary crate and customize),
+- keep using the same `Transport` framing.
 
 ## Error behavior
 
@@ -392,6 +495,17 @@ impl McpHandler for Echo {
 
 This crate does not emit logs by itself, but it depends on `tracing` so downstream crates can instrument handlers and transports in a consistent way. A typical server binary sets up a subscriber and then logs inside `tools_call`:
 
+`tracing_subscriber` defaults to stderr, which is safe for stdio MCP servers:
+
+```rust,no_run
+fn init_logging() {
+    tracing_subscriber::fmt()
+        .with_writer(std::io::stderr)
+        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+        .init();
+}
+```
+
 ```rust,no_run
 use codex_mcp::protocol::ToolCallParams;
 
@@ -405,6 +519,7 @@ fn log_tools_call(params: &ToolCallParams) {
 - **Codex can’t parse responses**: ensure *nothing* else writes to stdout (logs, debug prints, banners). Use stderr for logs.
 - **Hangs / no responses**: requests must be one JSON object per line; pretty-printed JSON will block `read_line`.
 - **`tools/call` fails to decode**: confirm the request uses `{ "name": "...", "arguments": ... }` (and that `arguments` is valid JSON).
+- **Server exits immediately**: stdin hit EOF; ensure the parent process is keeping stdin open.
 
 ## Versioning and compatibility
 
