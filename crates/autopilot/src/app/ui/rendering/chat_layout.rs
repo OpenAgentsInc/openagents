@@ -144,7 +144,7 @@ impl AppState {
             }
         }
 
-        // Inline tools for streaming message
+        // Inline tools for streaming message - positioned after streaming content
         if let Some(tool_indices) = tools_by_message.get(&streaming_msg_index) {
             if !tool_indices.is_empty() {
                 let inline_layout = self.build_inline_tools_layout(
