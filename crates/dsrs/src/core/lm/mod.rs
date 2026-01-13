@@ -405,6 +405,16 @@ impl LM {
                 let completion = router.completion_with_signature(signature, request).await?;
                 (completion.response, Some(completion.usage))
             }
+            LMClient::Codex(codex) => {
+                // Use streaming completion for Codex to get token-by-token output
+                let cb_clone = callback.map(|cb| {
+                    let call_id = call_id;
+                    move |token: &str| {
+                        cb.on_lm_token(call_id, token);
+                    }
+                });
+                (codex.completion_streaming(request, cb_clone).await?, None)
+            }
             _ => (client.completion(request).await?, None),
         };
 

@@ -20,6 +20,17 @@ ADRs are authoritative for architecture decisions (invariants, interfaces, trade
 | 4 | Implementation status | Crate sources + SYNTHESIS_EXECUTION.md |
 | 5 | Priorities/sequencing | ROADMAP.md |
 
+## Accepted vs Wired
+
+Important distinction:
+
+- **Accepted** = we commit to this direction/contract. The ADR is the decision.
+- **Wired/Implemented** = code path exists and is used in production.
+
+An ADR being "Accepted" does **not** mean the code is implemented. For implementation status, check:
+- Crate sources (the code itself)
+- [SYNTHESIS_EXECUTION.md](../../SYNTHESIS_EXECUTION.md)
+
 ## When to Write an ADR
 
 Write an ADR for changes affecting **interfaces or invariants**, including:
@@ -33,6 +44,21 @@ Write an ADR for changes affecting **interfaces or invariants**, including:
 - Cross-crate boundaries
 
 If it's "just implementation" (bug fix, perf tweak) and doesn't change contracts, no ADR needed.
+
+## Don't Restate Canonical Specs
+
+ADRs should **decide**, not **reproduce** full schemas.
+
+If a schema is canonical elsewhere:
+- [crates/dsrs/docs/ARTIFACTS.md](../../crates/dsrs/docs/ARTIFACTS.md)
+- [crates/dsrs/docs/REPLAY.md](../../crates/dsrs/docs/REPLAY.md)
+- [docs/PROTOCOL_SURFACE.md](../PROTOCOL_SURFACE.md)
+
+Then ADRs should:
+1. Link to the canonical spec
+2. State what is canonical
+3. Define migration/compatibility guarantees
+4. NOT duplicate the full schema (examples are "illustrative only")
 
 ## Naming Convention
 
@@ -58,12 +84,31 @@ Do not rename ADRs unless absolutely necessary. The title should be short and st
 ## Creating a New ADR
 
 1. Copy [TEMPLATE.md](./TEMPLATE.md)
-2. Use the next available number: `ADR-XXXX-your-title.md`
+2. Use the next available number (see [INDEX.md](./INDEX.md))
 3. Fill in all required sections
 4. Set status to `Proposed`
 5. Submit PR for review
 6. Once merged, update status to `Accepted`
 7. Update [INDEX.md](./INDEX.md)
+
+## PR Requirements (Checklist)
+
+When a PR touches a contract, the author must:
+
+- [ ] Update existing ADR **or** create new ADR (status: Proposed)
+- [ ] Update [INDEX.md](./INDEX.md) with new/changed ADR
+- [ ] Update [GLOSSARY.md](../../GLOSSARY.md) if terminology changes
+- [ ] Update affected canonical specs (ARTIFACTS.md, REPLAY.md, PROTOCOL_SURFACE.md)
+- [ ] Mention ADR in PR_SUMMARY.md (if agent-generated)
+
+## Lint Policy (Future)
+
+CI may enforce:
+- New ADR files have corresponding INDEX.md entry
+- All required headings present (Status, Date, Context, Decision, Consequences)
+- No hardcoded kind numbers (reference schema IDs instead)
+
+Not yet implemented — stated here so tooling can be built.
 
 ## Superseding an ADR
 

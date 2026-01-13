@@ -27,66 +27,53 @@ We need a canonical output format that serves all three purposes and can be expo
 | `RECEIPT.json` | Machine-verifiable receipt | JSON |
 | `REPLAY.jsonl` | Replay log | JSON Lines |
 
-### PR_SUMMARY.md
+### Schema Authority
 
-Human-readable summary of changes:
+The **canonical schema definitions** live in:
+- [crates/dsrs/docs/ARTIFACTS.md](../../crates/dsrs/docs/ARTIFACTS.md) — RECEIPT.json + PR_SUMMARY.md schemas
+- [crates/dsrs/docs/REPLAY.md](../../crates/dsrs/docs/REPLAY.md) — REPLAY.jsonl v1 schema
 
-```markdown
-## Summary
-Brief description of what was done.
+This ADR states **what is canonical** and **compatibility guarantees**. It does not duplicate the full schemas.
 
-## Changes
-- File-by-file breakdown
-- Rationale for key decisions
+### File Purposes (Illustrative)
 
-## Test Results
-- Tests run: X
-- Tests passed: Y
-- Coverage: Z%
+**PR_SUMMARY.md** — Human-readable summary of changes:
+- Changes made
+- Files modified
+- Verification results
+- Confidence score
 
-## Verification
-- [ ] Tests pass
-- [ ] CI green
-- [ ] No regressions
-```
+**RECEIPT.json** — Machine-verifiable attestation:
+- Session metadata
+- Tool call hashes (params_hash, output_hash)
+- Verification results (verification_delta)
+- Policy bundle ID
 
-### RECEIPT.json
+**REPLAY.jsonl** — Event stream for replay (see [ADR-0003](./ADR-0003-replay-formats.md))
 
-Machine-verifiable attestation:
+## Scope
 
-```json
-{
-  "schema_version": "1.0.0",
-  "session_id": "uuid",
-  "policy_bundle_id": "string",
-  "started_at": "ISO8601",
-  "ended_at": "ISO8601",
-  "verification": {
-    "tests_before": 0,
-    "tests_after": 0,
-    "verification_delta": 0,
-    "ci_status": "pass|fail|skip"
-  },
-  "costs": {
-    "total_tokens": 0,
-    "total_sats": 0
-  },
-  "tool_calls": [{
-    "id": "string",
-    "tool": "string",
-    "params_hash": "sha256:...",
-    "output_hash": "sha256:...",
-    "step_utility": -1.0,
-    "latency_ms": 0,
-    "side_effects": []
-  }],
-  "replay_hash": "sha256:..."
-}
-```
+What this ADR covers:
+- The three-file structure of Verified Patch Bundle
+- Which specs are canonical for schema details
+- Naming conventions
 
-### REPLAY.jsonl
+What this ADR does NOT cover:
+- Full schema definitions (see ARTIFACTS.md, REPLAY.md)
+- Implementation details
+- Forge adapter behavior
 
-See [ADR-0003](./ADR-0003-replay-formats.md) for replay format details.
+## Invariants / Compatibility
+
+| Invariant | Guarantee |
+|-----------|-----------|
+| File names | Stable: `PR_SUMMARY.md`, `RECEIPT.json`, `REPLAY.jsonl` |
+| Bundle term | Stable: "Verified Patch Bundle" |
+| Location | Stable: `.autopilot/sessions/{session_id}/` |
+
+Backward compatibility:
+- Adding new optional fields to RECEIPT.json is allowed
+- Removing or renaming existing fields requires a new ADR
 
 ### Naming Conventions
 
@@ -130,5 +117,6 @@ The Verified Patch Bundle is the internal format. Forge Adapters export to:
 ## References
 
 - [GLOSSARY.md](../../GLOSSARY.md) — `Verified Patch Bundle`, `policy_bundle_id`
-- [crates/dsrs/docs/ARTIFACTS.md](../../crates/dsrs/docs/ARTIFACTS.md) — Detailed artifact schemas
+- [crates/dsrs/docs/ARTIFACTS.md](../../crates/dsrs/docs/ARTIFACTS.md) — Canonical artifact schemas
+- [crates/dsrs/docs/REPLAY.md](../../crates/dsrs/docs/REPLAY.md) — Canonical replay schema
 - [ADR-0003](./ADR-0003-replay-formats.md) — Replay format specification
