@@ -20,10 +20,10 @@ These are the highest-ROI items that close the loop between execution, measureme
 
 ## NOW (MVP Critical Path)
 
-### 1. Ship the "Verified PR Bundle" artifact 🔄
+### 1. Ship the "Verified Patch Bundle" artifact 🔄
 
 **Every Autopilot run must emit:**
-- `PR_SUMMARY.md` - Human-readable summary
+- `PR_SUMMARY.md` - Human-readable patch summary (filename kept for tooling stability)
 - `RECEIPT.json` - Machine-readable receipt
 - `REPLAY.jsonl` - Replayable event stream
 
@@ -176,9 +176,9 @@ This phase delivers the verifiable execution layer (paper Section 5). Without a 
 
 ### MVP++ product hooks (ship inside Phase 0)
 
-1. **Verified change bundle**
+1. **Verified Patch Bundle**
 
-- `PR_SUMMARY.md` (human-readable): what changed, verification transcript, approach rationale, confidence, risks
+- `PR_SUMMARY.md` (human-readable patch summary): what changed, verification transcript, approach rationale, confidence, risks
 - `RECEIPT.json` (machine-readable): session_id, policy_bundle_id, tool counts, tokens, latency, verification hash, diff hash, replay instructions
 - Deterministic output so bundles are shareable and auditable
 
@@ -194,7 +194,7 @@ This phase delivers the verifiable execution layer (paper Section 5). Without a 
 
 4. **APM + success-adjusted APM (sAPM)**
 
-- Display in CLI/UI HUD and in `PR_SUMMARY.md`
+- Display in CLI/UI HUD and in patch summary (`PR_SUMMARY.md`)
 - APM = (messages + tool calls) / minutes
 - sAPM = APM * success indicator (or verification improvement)
 
@@ -203,17 +203,17 @@ This phase delivers the verifiable execution layer (paper Section 5). Without a 
 - `curl | sh` (or brew) + `autopilot init` wizard
 - First-run demo task that produces a verified change bundle in under 5 minutes
 
-6. **GitHub-native intake (without full GitAfter)**
+6. **Forge-native intake (without full GitAfter)**
 
-- Read issues, open a branch/patch, and comment with the change bundle + receipt
-- Label results "autopilot verified" (no PR emphasis required)
+- Read issues, open a branch, and publish the patch bundle + receipt
+- Label results "autopilot verified"
 
 ### Definition of done
 
 - 30+ real tasks run end-to-end without manual patching of the system
 - No silent tool hallucinations (tool middleware enforces real calls)
 - Sessions always end in an explicit state with verification history
-- Every run emits a deterministic change bundle + receipt
+- Every run emits a deterministic Patch Bundle + receipt
 - Replay timeline is available for every session
 
 ---

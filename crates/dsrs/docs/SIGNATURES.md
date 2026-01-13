@@ -1138,12 +1138,12 @@ These signatures must be wired end-to-end for the MVP to function:
 | 2 | **ToolResultSignature** | Learning signal (step_utility) for MIPRO | Spec only |
 | 3 | **SubtaskPlanningSignature** | Emits PlanIR for all task execution | Implemented |
 | 4 | **SubtaskExecutionSignature** | Executes atomic plan steps | Implemented |
-| 5 | **ResultSynthesisSignature** | Produces final PR_SUMMARY.md | Implemented |
+| 5 | **ResultSynthesisSignature** | Produces final patch summary (PR_SUMMARY.md) | Implemented |
 | 6 | **IssueValidationSignature** | Gates stale/invalid work | Implemented |
 | 7 | **VerificationSignature** | Computes verification_delta metric | Spec only |
 | 8 | **ToolStepUtilitySignature** | Outcome-coupled scoring per tool call | Implemented |
 
-**MVP Critical Path:** Issue → Plan → (ToolCall → Execute → ToolResult)* → Synthesis → PR_SUMMARY.md + RECEIPT.json
+**MVP Critical Path:** Issue → Plan → (ToolCall → Execute → ToolResult)* → Synthesis → Patch Summary + RECEIPT.json
 
 ---
 

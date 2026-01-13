@@ -1609,7 +1609,7 @@ The following gates define minimum viable product readiness for OpenAgents:
 
 | Gate | Status | Notes |
 |------|--------|-------|
-| **Verified PR Bundle emission** | 🔄 Partial | `ReplayBundle` exists; `REPLAY.jsonl` exporter pending |
+| **Verified Patch Bundle emission** | 🔄 Partial | `ReplayBundle` exists; `REPLAY.jsonl` exporter pending |
 | **ToolCallSignature wired** | ⏳ Spec only | Defined in `crates/dsrs/docs/SIGNATURES.md` |
 | **ToolResultSignature wired** | ⏳ Spec only | Defined in `crates/dsrs/docs/SIGNATURES.md` |
 | **Tool params schema validation** | ✅ Implemented | Execution runtime validates (`crates/adjutant/`) |

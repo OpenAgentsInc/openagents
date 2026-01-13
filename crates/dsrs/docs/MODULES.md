@@ -548,11 +548,11 @@ impl Optimizable for OptimizableModule {
 
 > See [ARTIFACTS.md](ARTIFACTS.md) for full schemas and specifications.
 
-Every module execution in production produces three artifacts (the "Verified PR Bundle"):
+Every module execution in production produces three artifacts (the "Verified Patch Bundle"):
 
 | Artifact | Format | Purpose |
 |----------|--------|---------|
-| `PR_SUMMARY.md` | Markdown | Human-readable summary |
+| `PR_SUMMARY.md` | Markdown | Human-readable patch summary |
 | `RECEIPT.json` | JSON | Cryptographic audit trail |
 | `REPLAY.jsonl` | JSONL | Event stream for replay/debugging |
 
@@ -602,7 +602,7 @@ The MVP execution flow uses merged signatures for efficiency:
 │             │                                                    │
 │             ▼                                                    │
 │  ┌──────────────────────┐                                        │
-│  │ ResultSynthesisSig   │ → PR_SUMMARY.md                        │
+│  │ ResultSynthesisSig   │ → Patch Summary (PR_SUMMARY.md)        │
 │  └──────────┬───────────┘                                        │
 │             │                                                    │
 │             ▼                                                    │
