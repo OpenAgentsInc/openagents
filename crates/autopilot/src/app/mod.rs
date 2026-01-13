@@ -22,6 +22,7 @@ pub(crate) mod nip90;
 pub(crate) mod oanix;
 pub(crate) mod parsing;
 pub(crate) mod permissions;
+pub(crate) mod plan;
 pub(crate) mod pylon_earnings;
 pub(crate) mod pylon_jobs;
 pub(crate) mod pylon_paths;
@@ -42,6 +43,7 @@ pub(crate) use config::{ModelOption, SettingsInputMode, SettingsSnapshot, settin
 pub use events::CoderMode;
 pub(crate) use git::CenterMode;
 pub(crate) use permissions::sanitize_tokens;
+pub(crate) use plan::{ActivePlan, PlanTask, TaskStatus};
 pub(crate) use session::SessionCardEvent;
 pub(crate) use state::AppState;
 pub(crate) use utils::{

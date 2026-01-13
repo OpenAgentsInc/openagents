@@ -1052,14 +1052,55 @@ impl AutopilotApp {
                     needs_redraw = true;
                 }
                 ResponseEvent::DspyStage(stage) => {
-                    // During streaming, associate with the streaming message (messages.len())
-                    // After completion, associate with the last message
-                    let message_index = if state.chat.is_thinking {
-                        state.chat.messages.len()
-                    } else {
-                        state.chat.messages.len().saturating_sub(1)
-                    };
-                    state.tools.push_dspy_stage(stage, message_index);
+                    // Route TodoList and Planning to sidebar, others stay inline
+                    match &stage {
+                        DspyStage::TodoList { tasks } => {
+                            // Update sidebar plan with todo list
+                            use crate::app::{ActivePlan, PlanTask, TaskStatus};
+                            state.active_plan = Some(ActivePlan {
+                                explanation: None,
+                                tasks: tasks
+                                    .iter()
+                                    .map(|t| PlanTask {
+                                        description: t.description.clone(),
+                                        status: match t.status {
+                                            TodoStatus::Pending => TaskStatus::Pending,
+                                            TodoStatus::InProgress => TaskStatus::InProgress,
+                                            TodoStatus::Complete => TaskStatus::Completed,
+                                            TodoStatus::Failed => TaskStatus::Failed,
+                                        },
+                                    })
+                                    .collect(),
+                            });
+                        }
+                        DspyStage::Planning {
+                            analysis,
+                            implementation_steps,
+                            ..
+                        } => {
+                            // Update sidebar plan with planning stage
+                            use crate::app::{ActivePlan, PlanTask, TaskStatus};
+                            state.active_plan = Some(ActivePlan {
+                                explanation: Some(analysis.clone()),
+                                tasks: implementation_steps
+                                    .iter()
+                                    .map(|step| PlanTask {
+                                        description: step.clone(),
+                                        status: TaskStatus::Pending,
+                                    })
+                                    .collect(),
+                            });
+                        }
+                        _ => {
+                            // Other stages go inline as before
+                            let message_index = if state.chat.is_thinking {
+                                state.chat.messages.len()
+                            } else {
+                                state.chat.messages.len().saturating_sub(1)
+                            };
+                            state.tools.push_dspy_stage(stage, message_index);
+                        }
+                    }
                     needs_redraw = true;
                 }
                 ResponseEvent::CodexPromptReady(prompt) => {

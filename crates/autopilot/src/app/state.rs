@@ -36,6 +36,7 @@ use crate::app::session::SessionState;
 use crate::app::spark_wallet::SparkWalletState;
 use crate::app::tools::ToolsState;
 use crate::app::ui::{ThemeSetting, resolve_theme};
+use crate::app::plan::ActivePlan;
 use crate::app::wallet::WalletState;
 use crate::app::workspaces::WorkspaceState;
 use crate::panels::PanelLayout;
@@ -101,6 +102,14 @@ pub(crate) struct AppState {
     /// Agent availability registry
     #[allow(dead_code)]
     pub(crate) agent_registry: AgentRegistry,
+
+    // === Plan sidebar state ===
+    /// Active plan displayed in sidebar (TodoList/Planning stages)
+    pub(crate) active_plan: Option<ActivePlan>,
+    /// Whether the plan panel is collapsed
+    pub(crate) plan_panel_collapsed: bool,
+    /// Height of the plan panel (resizable, 140-420px)
+    pub(crate) plan_panel_height: f32,
 }
 
 impl AppState {
