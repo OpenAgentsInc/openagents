@@ -10,61 +10,76 @@
 
 ## Context
 
-OpenAgents captures agent execution traces for debugging, training data generation, transparency, and session replay. We need a canonical format specification.
+OpenAgents captures agent execution traces for debugging, training data generation, transparency, and session replay. We need a canonical format specification and a migration path from the current implementation.
 
 ## Decision
 
-**`REPLAY.jsonl` v1 is the target canonical format. `ReplayBundle` is the current implementation.**
+**`REPLAY.jsonl` v1 is the canonical target format. `ReplayBundle` is the current implementation.**
 
-### REPLAY.jsonl v1 Specification
+### Schema Authority
 
-A JSON Lines file where each line is a typed event:
+The **canonical REPLAY.jsonl v1 schema** is defined in:
+- [crates/dsrs/docs/REPLAY.md](../../crates/dsrs/docs/REPLAY.md)
 
-```jsonl
-{"type":"ReplayHeader","version":"1.0.0","session_id":"...","policy_bundle_id":"...","started_at":"ISO8601"}
-{"type":"SessionStart","task":"...","context":{}}
-{"type":"ToolCall","id":"...","tool":"...","params":{}}
-{"type":"ToolResult","id":"...","output":"...","step_utility":0.5,"latency_ms":100}
-{"type":"Verification","tests_before":0,"tests_after":0,"delta":0}
-{"type":"SessionEnd","ended_at":"ISO8601","outcome":"success|failure|timeout"}
-```
+This ADR states **what is canonical**, **migration expectations**, and **exporter requirements**. It does not duplicate the full schema.
 
-### Event Types
+### Format Summary (per REPLAY.md)
 
-| Event | Required Fields | Optional Fields |
-|-------|-----------------|-----------------|
-| `ReplayHeader` | version, session_id, started_at | policy_bundle_id |
-| `SessionStart` | task | context, instructions |
-| `ToolCall` | id, tool, params | |
-| `ToolResult` | id, output | step_utility, latency_ms, side_effects |
-| `Verification` | tests_before, tests_after, delta | ci_status |
-| `SessionEnd` | ended_at, outcome | error_message |
+REPLAY.jsonl is a JSON Lines file where each line is a typed event with an `event` discriminator tag:
+
+- `ReplayHeader` — Format version header (first line)
+- `SessionStart` — Session metadata
+- `PlanStart` — Plan generated
+- `ToolCall` — Tool invocation with `params_hash`
+- `ToolResult` — Tool result with `output_hash`, `step_utility`
+- `StepComplete` — Step completion
+- `Verification` — Verification run with `verification_delta`
+- `SessionEnd` — Session completion
 
 ### Current Implementation: ReplayBundle
 
-The `ReplayBundle` struct in `crates/autopilot-core` is the current runtime representation:
-
-```rust
-pub struct ReplayBundle {
-    pub header: ReplayHeader,
-    pub events: Vec<ReplayEvent>,
-}
-```
+The `ReplayBundle` struct in `crates/autopilot-core/src/replay.rs` is the current runtime representation. It differs from the target REPLAY.jsonl format.
 
 ### Migration Path
 
 1. **Phase 1 (Current):** `ReplayBundle` is used internally
-2. **Phase 2:** Exporter writes `REPLAY.jsonl` v1 format
+2. **Phase 2:** Exporter writes `REPLAY.jsonl v1` format per REPLAY.md
 3. **Phase 3:** Importers read both formats
-4. **Phase 4:** `ReplayBundle` becomes internal-only
+4. **Phase 4:** `ReplayBundle` becomes internal-only (or deprecated)
 
-### Exporter Expectations
+### Exporter Requirements
 
 The `autopilot export` command must:
 - Accept `ReplayBundle` as input
-- Output `REPLAY.jsonl` v1 format
+- Output `REPLAY.jsonl v1` format per REPLAY.md
 - Validate all required fields are present
 - Compute `replay_hash` for `RECEIPT.json`
+
+## Scope
+
+What this ADR covers:
+- Which format is canonical (REPLAY.jsonl v1)
+- Migration path from ReplayBundle
+- Exporter expectations
+
+What this ADR does NOT cover:
+- Full schema definition (see REPLAY.md)
+- ReplayBundle internal implementation details
+- Viewer/importer implementation
+
+## Invariants / Compatibility
+
+| Invariant | Guarantee |
+|-----------|-----------|
+| File extension | Stable: `.jsonl` |
+| Event tag | Stable: `"event"` field discriminates event type |
+| Header | Stable: `ReplayHeader` with `replay_version: 1` as first line |
+| Hashing | Stable: `params_hash`, `output_hash` use canonical JSON serialization |
+
+Backward compatibility:
+- New event types may be added; consumers should ignore unknown events
+- New fields may be added to existing events; consumers should ignore unknown fields
+- Existing required fields will not be removed
 
 ### Terminology
 
@@ -84,7 +99,7 @@ The `autopilot export` command must:
 
 **Negative:**
 - Two representations to maintain during migration
-- Potential inconsistencies if migration incomplete
+- Exporter complexity
 
 **Neutral:**
 - Exporters/importers handle format conversion
@@ -99,6 +114,7 @@ The `autopilot export` command must:
 
 ## References
 
-- [crates/dsrs/docs/REPLAY.md](../../crates/dsrs/docs/REPLAY.md) — Detailed replay specification
+- [crates/dsrs/docs/REPLAY.md](../../crates/dsrs/docs/REPLAY.md) — Canonical REPLAY.jsonl v1 specification
+- [crates/dsrs/docs/ARTIFACTS.md](../../crates/dsrs/docs/ARTIFACTS.md) — Artifact overview
 - [ADR-0002](./ADR-0002-verified-patch-bundle.md) — Verified Patch Bundle contract
 - [GLOSSARY.md](../../GLOSSARY.md) — `REPLAY.jsonl`, `ReplayBundle`

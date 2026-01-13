@@ -117,6 +117,17 @@ impl CodexCompletionModel {
     async fn collect_response(
         channels: &mut AppServerChannels,
     ) -> Result<String, CompletionError> {
+        Self::collect_response_streaming(channels, None::<fn(&str)>).await
+    }
+
+    /// Collect response from Codex with streaming callback.
+    async fn collect_response_streaming<F>(
+        channels: &mut AppServerChannels,
+        on_token: Option<F>,
+    ) -> Result<String, CompletionError>
+    where
+        F: Fn(&str),
+    {
         let mut response = String::new();
 
         loop {
@@ -129,6 +140,10 @@ impl CodexCompletionModel {
                                     // Parse delta notification
                                     if let Some(params) = notif.params {
                                         if let Some(delta) = params.get("delta").and_then(|v| v.as_str()) {
+                                            // Stream token via callback
+                                            if let Some(ref cb) = on_token {
+                                                cb(delta);
+                                            }
                                             response.push_str(delta);
                                         }
                                     }
@@ -166,6 +181,60 @@ impl CodexCompletionModel {
         }
 
         Ok(response)
+    }
+
+    /// Completion with streaming callback.
+    pub async fn completion_streaming<F>(
+        &self,
+        request: CompletionRequest,
+        on_token: Option<F>,
+    ) -> Result<CompletionResponse<()>, CompletionError>
+    where
+        F: Fn(&str),
+    {
+        // Ensure client is connected
+        self.ensure_client().await?;
+
+        let prompt = Self::convert_to_prompt(&request);
+
+        // Get access to client state
+        let mut guard = self.client.lock().await;
+        let state = guard
+            .as_mut()
+            .ok_or_else(|| CompletionError::ProviderError("Codex client not initialized".to_string()))?;
+
+        // Start a turn with the prompt
+        let turn_params = TurnStartParams {
+            thread_id: state.thread_id.clone(),
+            input: vec![UserInput::Text { text: prompt }],
+            model: None,
+            effort: None,
+            summary: None,
+            approval_policy: None,
+            sandbox_policy: None,
+            cwd: None,
+        };
+
+        state
+            .client
+            .turn_start(turn_params)
+            .await
+            .map_err(|e| CompletionError::ProviderError(e.to_string()))?;
+
+        // Collect response with streaming callback
+        let response_text = Self::collect_response_streaming(&mut state.channels, on_token).await?;
+
+        Ok(CompletionResponse {
+            choice: OneOrMany::one(AssistantContent::Text(rig::message::Text {
+                text: response_text,
+            })),
+            usage: Usage {
+                input_tokens: 0,
+                output_tokens: 0,
+                total_tokens: 0,
+            },
+            raw_response: (),
+        })
     }
 }
 

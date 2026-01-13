@@ -10,7 +10,7 @@
 
 ## Context
 
-OpenAgents routes inference requests through different "lanes" based on cost, latency, privacy, and capability requirements. This ADR establishes the canonical lane taxonomy.
+OpenAgents routes inference requests through different "lanes" based on cost, latency, privacy, and capability requirements. We need a canonical lane taxonomy that all components use consistently.
 
 ## Decision
 
@@ -21,7 +21,7 @@ OpenAgents routes inference requests through different "lanes" based on cost, la
 | Lane | Description | Examples |
 |------|-------------|----------|
 | `Local` | On-device inference | FM Bridge, Ollama, llama.cpp, MLX |
-| `Cloud` | Remote API providers | Anthropic, OpenAI, Cerebras, Crusoe |
+| `Cloud` | Remote API providers | Anthropic, OpenAI, Cerebras, Crusoe, Codex |
 | `Swarm` | Distributed NIP-90 network | Pylon providers, NIP-90 DVMs |
 
 ### Routing Semantics
@@ -38,29 +38,51 @@ OpenAgents routes inference requests through different "lanes" based on cost, la
 - **Cloud**: High capability models, guaranteed availability
 - **Swarm**: Cost optimization, decentralization, earning sats
 
+### Venue vs Lane
+
+The `Venue` enum in code may include more specific provider identifiers. The mapping:
+
+| Venue (code) | Lane (taxonomy) | Notes |
+|--------------|-----------------|-------|
+| `Local` | Local | On-device |
+| `Datacenter` | Cloud | Legacy name, use Cloud in docs |
+| `Cloud` | Cloud | Preferred |
+| `Codex` | Cloud | Codex app-server routes through Cloud |
+| `Swarm` | Swarm | NIP-90 distributed |
+| `Unknown` | — | Fallback |
+
+**Key clarification:** `Codex` is a **provider** (like Anthropic or OpenAI), not a separate lane class. For lane semantics, Codex routes as Cloud.
+
+## Scope
+
+What this ADR covers:
+- Canonical lane class names
+- Lane semantics (cost, latency, privacy, trust)
+- Mapping from code enums to taxonomy
+
+What this ADR does NOT cover:
+- Routing algorithm implementation
+- Provider-specific configuration
+- Budget allocation logic
+
+## Invariants / Compatibility
+
+| Invariant | Guarantee |
+|-----------|-----------|
+| Lane names | Stable: `Local`, `Cloud`, `Swarm` |
+| Lane count | Stable: exactly 3 lane classes |
+
+Backward compatibility:
+- Internal code may use `Datacenter` enum variant; map to `Cloud` in docs/UI
+- New providers may be added without changing lane taxonomy
+
 ### Deprecations
 
 | Deprecated | Replacement | Notes |
 |------------|-------------|-------|
-| `Datacenter` | `Cloud` | Internal enum may still use `Datacenter` |
+| `Datacenter` | `Cloud` | Internal enum may retain; use Cloud in docs |
 | `Remote` | `Cloud` | Too generic |
 | `External` | `Cloud` or `Swarm` | Ambiguous |
-
-### Code Alignment
-
-The `Venue` enum in `crates/frlm/src/types.rs` should align:
-
-```rust
-pub enum Venue {
-    Local,   // On-device
-    Cloud,   // Remote API (may internally be "Datacenter")
-    Swarm,   // NIP-90 distributed
-    Codex,   // Codex app-server
-    Unknown, // Fallback
-}
-```
-
-Note: `Codex` is a special case that routes through the Codex app-server.
 
 ## Consequences
 
@@ -70,8 +92,7 @@ Note: `Codex` is a special case that routes through the Codex app-server.
 - Simpler documentation
 
 **Negative:**
-- Requires updating existing code that uses `Datacenter`
-- Brief confusion during transition
+- Internal code migration to prefer `Cloud` over `Datacenter`
 
 **Neutral:**
 - Internal enums may retain old names with mapping layer

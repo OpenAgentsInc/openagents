@@ -26,6 +26,30 @@ Be specific about:
 - What is deprecated (if anything)
 - What constraints apply
 
+## Scope
+
+What this ADR covers:
+- ...
+
+What this ADR does NOT cover (non-goals):
+- ...
+
+## Invariants / Compatibility
+
+What must remain stable:
+
+| Invariant | Guarantee |
+|-----------|-----------|
+| Filename/path | Stable: `example.json` |
+| Field name | Stable: `step_utility` |
+| Value range | Stable: -1.0 to +1.0 |
+
+Backward compatibility expectations:
+- ...
+
+Versioning rules (if applicable):
+- ...
+
 ## Consequences
 
 What are the results of this decision?
@@ -41,15 +65,15 @@ What are the results of this decision?
 
 ## Alternatives Considered
 
-1. **Alternative A** - Brief description. Why rejected.
-2. **Alternative B** - Brief description. Why rejected.
-3. **Alternative C** - Brief description. Why rejected.
+1. **Alternative A** — Brief description. Why rejected.
+2. **Alternative B** — Brief description. Why rejected.
+3. **Alternative C** — Brief description. Why rejected.
 
 ## References
 
 - [Relevant code path](../../crates/example/src/file.rs)
-- [GLOSSARY.md](../../GLOSSARY.md) - Canonical terminology
-- [PROTOCOL_SURFACE.md](../PROTOCOL_SURFACE.md) - Protocol details
+- [GLOSSARY.md](../../GLOSSARY.md) — Canonical terminology
+- [PROTOCOL_SURFACE.md](../PROTOCOL_SURFACE.md) — Protocol details
 
 ---
 
@@ -66,3 +90,17 @@ List any terms, files, or protocols being deprecated:
 | Deprecated | Replacement | Removal Target |
 |------------|-------------|----------------|
 | `old_term` | `new_term` | v2.0 |
+
+### Operational Considerations
+
+**Telemetry:**
+- What must be logged/traced?
+
+**Security/Privacy:**
+- Redaction requirements
+- Secrets handling
+
+**Rollout:**
+- Shadow mode plan
+- Canary requirements
+- Rollback procedure
