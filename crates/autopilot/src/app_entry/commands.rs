@@ -2145,7 +2145,11 @@ pub(super) fn handle_modal_input(state: &mut AppState, key: &WinitKey) -> bool {
             // While validating, only allow cancel
             match key {
                 WinitKey::Named(WinitNamedKey::Escape) => {
+                    // Clear all validation state
                     state.autopilot.pending_validation = None;
+                    state.autopilot.validation_result_rx = None;
+                    state.autopilot.current_issue_number = None;
+                    state.autopilot.current_issue_title = None;
                     state.modal_state = ModalState::None;
                     state.window.request_redraw();
                     true

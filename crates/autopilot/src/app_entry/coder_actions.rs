@@ -1736,11 +1736,15 @@ impl AutopilotApp {
         }
 
         // Spawn issue validation task if pending and not already running
+        // IMPORTANT: We take() pending_validation immediately to prevent double-spawn,
+        // but we need to keep the info for the result handler, so we store it in
+        // validating_issue fields (reusing current_issue_* fields during validation)
         if state.autopilot.pending_validation.is_some()
             && state.autopilot.validation_result_rx.is_none()
             && matches!(state.modal_state, ModalState::ValidatingIssue { .. })
         {
-            if let Some(pending) = state.autopilot.pending_validation.clone() {
+            // Take the pending validation immediately to prevent double-spawn
+            if let Some(pending) = state.autopilot.pending_validation.take() {
                 if let Some(workspace) = state
                     .autopilot
                     .oanix_manifest
@@ -1751,6 +1755,10 @@ impl AutopilotApp {
                     let (validation_tx, validation_rx) =
                         tokio::sync::mpsc::unbounded_channel();
                     state.autopilot.validation_result_rx = Some(validation_rx);
+
+                    // Store pending info for when result arrives (reusing current_issue_* fields)
+                    state.autopilot.current_issue_number = Some(pending.issue_number as i32);
+                    state.autopilot.current_issue_title = Some(pending.title.clone());
 
                     self.runtime_handle.spawn(async move {
                         tracing::info!(
@@ -1789,45 +1797,45 @@ impl AutopilotApp {
                             }
                         }
                     });
+                } else {
+                    // No workspace, restore pending_validation so user can retry
+                    tracing::warn!("Validation failed: no workspace in manifest");
+                    state.autopilot.pending_validation = Some(pending);
                 }
             }
         }
 
         // Check for validation results
+        // Note: We use current_issue_number/title which were set when spawning validation,
+        // since pending_validation was taken() at spawn time to prevent double-spawn.
         if let Some(rx) = &mut state.autopilot.validation_result_rx {
             match rx.try_recv() {
                 Ok(result) => {
                     state.autopilot.validation_result_rx = None;
 
-                    if let Some(pending) = state.autopilot.pending_validation.take() {
+                    // Get the issue info that was stored when validation started
+                    let issue_number = state.autopilot.current_issue_number.take();
+                    let issue_title = state.autopilot.current_issue_title.take();
+
+                    if let (Some(num), Some(title)) = (issue_number, issue_title) {
                         if result.is_valid {
                             // Valid - proceed with the issue
-                            let prompt = format!(
-                                "Work on issue #{}: {}",
-                                pending.issue_number, pending.title
-                            );
-                            track_selected_issue(
-                                state,
-                                pending.issue_number as i32,
-                                &pending.title,
-                            );
+                            let prompt = format!("Work on issue #{}: {}", num, title);
+                            track_selected_issue(state, num, &title);
                             state.autopilot.pending_issue_prompt = Some(prompt);
                             state.autopilot.issue_suggestions = None;
                             state.modal_state = ModalState::None;
-                            tracing::info!(
-                                "Issue #{} validated successfully, proceeding",
-                                pending.issue_number
-                            );
+                            tracing::info!("Issue #{} validated successfully, proceeding", num);
                         } else {
                             // Invalid - show warning modal
                             state.modal_state = ModalState::IssueValidationFailed {
-                                issue_number: pending.issue_number,
-                                title: pending.title,
+                                issue_number: num as u32,
+                                title,
                                 reason: result.reason,
                             };
                             tracing::warn!(
                                 "Issue #{} validation failed: {:?}",
-                                pending.issue_number,
+                                num,
                                 result.status
                             );
                         }
@@ -1836,17 +1844,13 @@ impl AutopilotApp {
                 }
                 Err(TryRecvError::Disconnected) => {
                     state.autopilot.validation_result_rx = None;
-                    // On disconnect, proceed anyway
-                    if let Some(pending) = state.autopilot.pending_validation.take() {
-                        let prompt = format!(
-                            "Work on issue #{}: {}",
-                            pending.issue_number, pending.title
-                        );
-                        track_selected_issue(
-                            state,
-                            pending.issue_number as i32,
-                            &pending.title,
-                        );
+                    // On disconnect, proceed anyway using stored issue info
+                    let issue_number = state.autopilot.current_issue_number.take();
+                    let issue_title = state.autopilot.current_issue_title.take();
+
+                    if let (Some(num), Some(title)) = (issue_number, issue_title) {
+                        let prompt = format!("Work on issue #{}: {}", num, title);
+                        track_selected_issue(state, num, &title);
                         state.autopilot.pending_issue_prompt = Some(prompt);
                         state.autopilot.issue_suggestions = None;
                         state.modal_state = ModalState::None;
