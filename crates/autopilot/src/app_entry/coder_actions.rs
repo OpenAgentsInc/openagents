@@ -2820,12 +2820,8 @@ fn sandbox_policy_for_mode(mode: CoderMode) -> app_server::SandboxPolicy {
     match mode {
         CoderMode::BypassPermissions => app_server::SandboxPolicy::DangerFullAccess,
         CoderMode::Plan => app_server::SandboxPolicy::ReadOnly,
-        CoderMode::Autopilot => app_server::SandboxPolicy::WorkspaceWrite {
-            writable_roots: Vec::new(),
-            network_access: true,
-            exclude_tmpdir_env_var: false,
-            exclude_slash_tmp: false,
-        },
+        // Autopilot needs full access to write files and run commands autonomously
+        CoderMode::Autopilot => app_server::SandboxPolicy::DangerFullAccess,
     }
 }
 
