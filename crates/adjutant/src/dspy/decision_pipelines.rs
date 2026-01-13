@@ -120,6 +120,14 @@ struct RlmTriggerSignature {
     #[input]
     pub estimated_tokens: String,
 
+    /// Number of files involved
+    #[input]
+    pub file_count: String,
+
+    /// Whether recent actions show repetition or thrash
+    #[input]
+    pub repeated_actions: String,
+
     /// Whether to use RLM for this task
     #[output]
     pub use_rlm: bool,
@@ -375,6 +383,12 @@ pub struct RlmTriggerInput {
     pub complexity: String,
     /// Estimated token count
     pub estimated_tokens: usize,
+    /// Number of files involved
+    #[serde(default)]
+    pub file_count: u32,
+    /// Whether recent actions repeat
+    #[serde(default)]
+    pub repeated_actions: bool,
 }
 
 /// Result from RLM trigger decision.
@@ -438,6 +452,8 @@ impl RlmTriggerPipeline {
             "task_description": "input" => input.task_description.clone(),
             "complexity": "input" => input.complexity.clone(),
             "estimated_tokens": "input" => input.estimated_tokens.to_string(),
+            "file_count": "input" => input.file_count.to_string(),
+            "repeated_actions": "input" => input.repeated_actions.to_string(),
         };
 
         let prediction = predictor.forward_with_config(example, lm).await?;
@@ -460,6 +476,8 @@ impl RlmTriggerPipeline {
             "task_description": "input" => input.task_description.clone(),
             "complexity": "input" => input.complexity.clone(),
             "estimated_tokens": "input" => input.estimated_tokens.to_string(),
+            "file_count": "input" => input.file_count.to_string(),
+            "repeated_actions": "input" => input.repeated_actions.to_string(),
         };
 
         let prediction = predictor.forward(example).await?;
@@ -588,11 +606,15 @@ mod tests {
             task_description: "Analyze security vulnerabilities".to_string(),
             complexity: "High".to_string(),
             estimated_tokens: 50000,
+            file_count: 12,
+            repeated_actions: true,
         };
 
         let json = serde_json::to_string(&input).unwrap();
         let parsed: RlmTriggerInput = serde_json::from_str(&json).unwrap();
         assert_eq!(parsed.task_description, input.task_description);
+        assert_eq!(parsed.file_count, input.file_count);
+        assert_eq!(parsed.repeated_actions, input.repeated_actions);
     }
 
     #[test]

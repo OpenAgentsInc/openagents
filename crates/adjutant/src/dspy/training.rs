@@ -39,6 +39,8 @@ pub struct PlanningTrainingExample {
     // Inputs
     pub task_title: String,
     pub task_description: String,
+    #[serde(default)]
+    pub context_handle: String,
     pub context: String,
     // Expected outputs (from successful executions)
     pub expected_subtasks: Vec<SubtaskData>,
@@ -54,6 +56,10 @@ impl PlanningTrainingExample {
             "task_description".to_string(),
             serde_json::json!(self.task_description),
         );
+        data.insert(
+            "context_handle".to_string(),
+            serde_json::json!(self.context_handle),
+        );
         data.insert("context".to_string(), serde_json::json!(self.context));
         data.insert(
             "subtasks".to_string(),
@@ -65,6 +71,7 @@ impl PlanningTrainingExample {
             vec![
                 "task_title".to_string(),
                 "task_description".to_string(),
+                "context_handle".to_string(),
                 "context".to_string(),
             ],
             vec!["subtasks".to_string()],
@@ -357,6 +364,10 @@ pub struct RlmTriggerTrainingExample {
     pub task_description: String,
     pub complexity: String,
     pub estimated_tokens: usize,
+    #[serde(default)]
+    pub file_count: u32,
+    #[serde(default)]
+    pub repeated_actions: bool,
     // Expected outputs
     pub use_rlm: bool,
     pub confidence: f32,
@@ -375,6 +386,14 @@ impl RlmTriggerTrainingExample {
             "estimated_tokens".to_string(),
             serde_json::json!(self.estimated_tokens.to_string()),
         );
+        data.insert(
+            "file_count".to_string(),
+            serde_json::json!(self.file_count.to_string()),
+        );
+        data.insert(
+            "repeated_actions".to_string(),
+            serde_json::json!(self.repeated_actions.to_string()),
+        );
         data.insert("use_rlm".to_string(), serde_json::json!(self.use_rlm));
         data.insert("confidence".to_string(), serde_json::json!(self.confidence));
 
@@ -384,6 +403,8 @@ impl RlmTriggerTrainingExample {
                 "task_description".to_string(),
                 "complexity".to_string(),
                 "estimated_tokens".to_string(),
+                "file_count".to_string(),
+                "repeated_actions".to_string(),
             ],
             vec!["use_rlm".to_string(), "confidence".to_string()],
         )
@@ -643,6 +664,7 @@ mod tests {
         let example = PlanningTrainingExample {
             task_title: "Add hello world".to_string(),
             task_description: "Add a hello world function".to_string(),
+            context_handle: "inline".to_string(),
             context: "// lib.rs\npub fn main() {}".to_string(),
             expected_subtasks: vec![SubtaskData {
                 id: "1".to_string(),
@@ -666,6 +688,7 @@ mod tests {
         dataset.add_planning_example(PlanningTrainingExample {
             task_title: "Test".to_string(),
             task_description: "Test task".to_string(),
+            context_handle: "inline".to_string(),
             context: "".to_string(),
             expected_subtasks: vec![],
             success: true,
