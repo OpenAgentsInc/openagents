@@ -37,6 +37,12 @@ These are the highest-ROI items that close the loop between execution, measureme
 
 **Definition of done:** Every session ends with artifacts + verification recorded + terminal status.
 
+**MVP acceptance:** Either:
+- Native emission of `REPLAY.jsonl` per spec, OR
+- Emission of `ReplayBundle` (current format) + working exporter to `REPLAY.jsonl v1`
+
+This allows shipping with current implementation while maintaining interoperability path.
+
 ### 2. Implement ToolCallSignature + ToolResultSignature ⏳
 
 Move from spec to implementation:
@@ -48,9 +54,10 @@ Move from spec to implementation:
 
 Wire into single-step executor for Autopilot/Adjutant execution loop.
 
-### 3. Tool params schema validation at adapter boundary ⏳
+### 3. Tool params schema validation in execution runtime ⏳
 
 - Strict validator: `tool` ∈ allowed names, `params` matches JSON schema
+- Adapters remain pure serialize/parse; executor enforces tool whitelist + JSONSchema
 - Auto-Refine retry on parse error (up to N attempts)
 - Add `ToolParamsSchemaMetric` as proxy metric
 
@@ -170,7 +177,7 @@ This phase delivers the verifiable execution layer (paper Section 5). Without a 
 
 1. **Verified change bundle**
 
-- `CHANGE_SUMMARY.md` (human-readable): what changed, verification transcript, approach rationale, confidence, risks
+- `PR_SUMMARY.md` (human-readable): what changed, verification transcript, approach rationale, confidence, risks
 - `RECEIPT.json` (machine-readable): session_id, policy_bundle_id, tool counts, tokens, latency, verification hash, diff hash, replay instructions
 - Deterministic output so bundles are shareable and auditable
 
@@ -186,7 +193,7 @@ This phase delivers the verifiable execution layer (paper Section 5). Without a 
 
 4. **APM + success-adjusted APM (sAPM)**
 
-- Display in CLI/UI HUD and in `CHANGE_SUMMARY.md`
+- Display in CLI/UI HUD and in `PR_SUMMARY.md`
 - APM = (messages + tool calls) / minutes
 - sAPM = APM * success indicator (or verification improvement)
 

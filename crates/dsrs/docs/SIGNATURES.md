@@ -1124,6 +1124,8 @@ use adjutant::dspy::tool_step_utility::tool_step_utility_predict;
 let predictor = tool_step_utility_predict();
 ```
 
+> **Naming collision note:** This signature outputs `step_utility` in range **0.0..1.0**, while `ToolResultSignature` outputs `step_utility` in range **-1.0..+1.0**. The canonical label for training/optimization is `ToolResultSignature.step_utility (-1..+1)`. `ToolStepUtilitySignature` serves as a utility judge that can be used to produce labels, but its output should be normalized or renamed to `step_utility_norm` to avoid confusion.
+
 ---
 
 ## MVP Critical Signatures

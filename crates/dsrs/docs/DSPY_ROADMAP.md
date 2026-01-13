@@ -78,6 +78,8 @@ them.
 
 ## Wave Status
 
+> **Note:** Wave status tracks component readiness (structs + unit tests); MVP readiness depends on wiring. See ROADMAP.md "NOW" section for true MVP gates.
+
 | Wave | Status | Description |
 | --- | --- | --- |
 | 0 | Complete | Protocol and schema registry |
@@ -95,6 +97,16 @@ them.
 | 12 | Complete | FRLM signatures |
 | 13 | Complete | Pipeline wiring (adjutant, runtime, oanix, autopilot-core) |
 | 14 | Complete | Self-improving Autopilot loop |
+
+### MVP Gates (Beyond Wave Completion)
+
+| Gate | Status | Notes |
+|------|--------|-------|
+| Verified PR Bundle emission | 🔄 Partial | ReplayBundle exists; REPLAY.jsonl exporter pending |
+| ToolCallSignature wired | ⏳ Spec only | Defined in SIGNATURES.md |
+| ToolResultSignature wired | ⏳ Spec only | Defined in SIGNATURES.md |
+| VerificationSignature wired | ⏳ Spec only | Defined in SIGNATURES.md |
+| Policy pin/rollback basic | ⏳ Not started | CLI commands pending |
 
 The wave table captures the current implementation status, but it is also a
 dependency map. Earlier waves establish the data structures and runtime
