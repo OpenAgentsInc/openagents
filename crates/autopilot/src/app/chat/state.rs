@@ -49,6 +49,7 @@ pub(crate) struct BootSections {
 
 impl BootSections {
     pub(crate) fn new() -> Self {
+        tracing::info!("Creating BootSections for chat display");
         Self {
             environment: BootSection::new(1, "Checking environment..."),
             issues: {
