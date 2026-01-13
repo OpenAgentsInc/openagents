@@ -13,6 +13,7 @@ use crate::app::agents::AgentBackendsState;
 use crate::app::agents::AgentRegistry;
 use crate::app::autopilot::AutopilotState;
 use crate::app::autopilot_issues::AutopilotIssuesState;
+use crate::app::bootloader::BootloaderUIState;
 use crate::app::catalog::CatalogState;
 use crate::app::chat::ChatState;
 use crate::app::config::AgentSelection;
@@ -86,6 +87,7 @@ pub(crate) struct AppState {
     pub(crate) gateway: GatewayState,
     pub(crate) lm_router: LmRouterState,
     pub(crate) chainviz: ChainVizState,
+    pub(crate) bootloader: BootloaderUIState,
     pub(crate) nexus: NexusState,
     pub(crate) spark_wallet: SparkWalletState,
     pub(crate) nip28: Nip28State,

@@ -20,6 +20,7 @@ use crate::app::agents::AgentBackendsState;
 use crate::app::agents::AgentRegistry;
 use crate::app::autopilot::AutopilotState;
 use crate::app::autopilot_issues::AutopilotIssuesState;
+use crate::app::bootloader::BootloaderUIState;
 use crate::app::catalog::{
     CatalogState, load_agent_entries, load_hook_config, load_hook_scripts,
     load_mcp_project_servers, load_skill_entries,
@@ -226,7 +227,7 @@ impl ApplicationHandler for AutopilotApp {
                 mouse_pos: (0.0, 0.0),
                 modifiers: ModifiersState::default(),
                 last_tick: Instant::now(),
-                modal_state: ModalState::None,
+                modal_state: ModalState::Bootloader,
                 panel_layout: PanelLayout::Single,
                 left_sidebar_open: true,
                 right_sidebar_open: true,
@@ -272,6 +273,7 @@ impl ApplicationHandler for AutopilotApp {
                 gateway: GatewayState::new(),
                 lm_router: LmRouterState::new(),
                 chainviz: ChainVizState::new(),
+                bootloader: BootloaderUIState::new(),
                 nexus: NexusState::new(),
                 spark_wallet: SparkWalletState::new(),
                 nip28: Nip28State::new(),
@@ -286,8 +288,14 @@ impl ApplicationHandler for AutopilotApp {
         });
 
         let window_clone = state.window.clone();
+        let runtime_handle = self.runtime_handle.clone();
         self.state = Some(state);
         tracing::info!("Window initialized");
+
+        // Start bootloader in the GPU UI
+        if let Some(state) = &mut self.state {
+            state.bootloader.start(&runtime_handle, state.window.clone());
+        }
 
         // Request initial redraw
         window_clone.request_redraw();
@@ -309,6 +317,7 @@ impl ApplicationHandler for AutopilotApp {
         self.poll_settings_actions();
         self.poll_hook_inspector_actions();
         self.poll_oanix_manifest();
+        self.poll_bootloader_events();
         self.poll_nip28_events();
         self.poll_nip90_events();
         self.poll_dvm_events();

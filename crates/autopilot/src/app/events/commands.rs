@@ -16,6 +16,8 @@ pub(crate) enum CommandAction {
 #[derive(Clone)]
 pub(crate) enum ModalState {
     None,
+    /// Bootloader modal shown on startup.
+    Bootloader,
     ModelPicker {
         selected: usize,
     },

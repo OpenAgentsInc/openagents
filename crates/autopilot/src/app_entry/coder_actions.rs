@@ -1408,6 +1408,28 @@ impl AutopilotApp {
         }
     }
 
+    pub(super) fn poll_bootloader_events(&mut self) {
+        let Some(state) = &mut self.state else {
+            return;
+        };
+
+        // Only process if bootloader modal is active
+        if !matches!(state.modal_state, ModalState::Bootloader) {
+            return;
+        }
+
+        // Drain events and check for completion
+        let updated = state.bootloader.drain_events();
+
+        if state.bootloader.is_ready_to_transition() {
+            // Transition from Bootloader to None (main UI)
+            state.modal_state = ModalState::None;
+            state.window.request_redraw();
+        } else if updated {
+            state.window.request_redraw();
+        }
+    }
+
     pub(super) fn poll_nip28_events(&mut self) {
         let Some(state) = &mut self.state else {
             return;
