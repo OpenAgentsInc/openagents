@@ -1,6 +1,11 @@
 # Adjutant
 
-The agent that DOES THE WORK. Named after StarCraft's command & control AI.
+- **Status:** Accurate
+- **Last verified:** (see commit)
+- **Source of truth:** terminology → [GLOSSARY.md](../../../GLOSSARY.md), behavior → code, status → [SYNTHESIS_EXECUTION.md](../../../SYNTHESIS_EXECUTION.md)
+- **If this doc conflicts with code, code wins.**
+
+The execution engine that DOES THE WORK. Named after StarCraft's command & control AI. Adjutant is an internal library—all user-facing CLI commands use `autopilot`.
 
 ## Overview
 
@@ -429,7 +434,7 @@ When executing with RLM support, Codex has access to:
 | Tool | Description |
 |------|-------------|
 | `rlm_query` | Deep recursive analysis using prompt-execute loop |
-| `rlm_fanout` | Distribute query across multiple workers (local/swarm/datacenter) |
+| `rlm_fanout` | Distribute query across multiple workers (Local/Cloud/Swarm lanes) |
 
 Enable via environment variable:
 ```bash

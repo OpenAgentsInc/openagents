@@ -1,5 +1,10 @@
 # Gateway Crate
 
+- **Status:** Accurate
+- **Last verified:** (see commit)
+- **Source of truth:** terminology → [GLOSSARY.md](../../../GLOSSARY.md), behavior → code
+- **If this doc conflicts with code, code wins.**
+
 Unified abstraction layer for external AI service providers.
 
 ## Overview

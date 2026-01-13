@@ -1,5 +1,10 @@
 # Autopilot Execution Flow
 
+- **Status:** Accurate
+- **Last verified:** (see commit)
+- **Source of truth:** terminology → [GLOSSARY.md](../../../GLOSSARY.md), behavior → code, status → [SYNTHESIS_EXECUTION.md](../../../SYNTHESIS_EXECUTION.md)
+- **If this doc conflicts with code, code wins.**
+
 This document describes the DSPy signature execution flow in the Autopilot agent, including the current v1 design and proposed v2 improvements.
 
 ## Overview
@@ -32,8 +37,8 @@ learning signals are generated, and where the remaining gaps still sit.
 │  ② TaskComplexityClassifier                                                  │
 │     └─ autopilot-core/src/dspy_planning.rs:132                               │
 │     └─ Inputs: task_description, file_count, codebase_context               │
-│     └─ Outputs: complexity (Simple/Moderate/Complex/VeryComplex), confidence│
-│     └─ Decision: use_deep_planning = complexity >= Complex && conf >= 0.4   │
+│     └─ Outputs: complexity (Low/Medium/High/VeryHigh), confidence           │
+│     └─ Decision: use_deep_planning = complexity >= High && conf >= 0.4   │
 │                                                                              │
 │  ③ PlanningSignature OR DeepPlanningSignature                                │
 │     └─ autopilot-core/src/dspy_planning.rs:33 or :80                         │
@@ -152,12 +157,13 @@ Adjutant and Autopilot have different plan outputs:
 This causes fragmented training data, conflicting schemas, and duplicated
 optimization effort across the two pipelines.
 
-As long as the plan formats are split, it is difficult to aggregate training
-data and to compare performance across the two execution paths. A unified Plan
-IR would allow a single evaluation framework to reason about plan quality and
-would reduce the amount of signature-specific glue code in the pipelines.
+The target is a canonical **PlanIR** (see [GLOSSARY.md](../../../GLOSSARY.md)) that unifies plan
+representation across both execution paths. This enables aggregated training data
+and a single evaluation framework for plan quality.
 
 ## Proposed Signature Chain (v2)
+
+> **Status:** The v2 signatures (`ToolCallSignature`, `ToolResultSignature`) are **Spec only (not wired)**. See [SIGNATURES.md](../../dsrs/docs/SIGNATURES.md) and [ROADMAP.md](../../../ROADMAP.md) NOW section for implementation status.
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────────┐
@@ -284,20 +290,20 @@ This replaces implicit heuristics with explicit classification.
 
 ## File Locations
 
-| Component | File |
-|-----------|------|
-| Planning signatures | `crates/autopilot-core/src/dspy_planning.rs` |
-| Execution signatures (v1) | `crates/autopilot-core/src/dspy_execution.rs` |
-| Verification signatures | `crates/autopilot-core/src/dspy_verify.rs` |
-| ToolCallSignature (v2) | `crates/dsrs/src/signatures/tool_call.rs` (proposed) |
-| ToolResultSignature (v2) | `crates/dsrs/src/signatures/tool_result.rs` (proposed) |
-| PlanIR types | `crates/dsrs/src/ir/plan.rs` (proposed) |
-| Autopilot loop | `crates/adjutant/src/autopilot_loop.rs` |
-| Failure triage wiring | `crates/adjutant/src/dspy/failure_triage.rs` (proposed) |
+| Component | File | Status |
+|-----------|------|--------|
+| Planning signatures | `crates/autopilot-core/src/dspy_planning.rs` | Implemented |
+| Execution signatures (v1) | `crates/autopilot-core/src/dspy_execution.rs` | Implemented |
+| Verification signatures | `crates/autopilot-core/src/dspy_verify.rs` | Implemented |
+| ToolCallSignature (v2) | `crates/dsrs/src/signatures/tool_call.rs` | Spec only |
+| ToolResultSignature (v2) | `crates/dsrs/src/signatures/tool_result.rs` | Spec only |
+| PlanIR types | `crates/dsrs/src/ir/plan.rs` | Spec only |
+| Autopilot loop | `crates/adjutant/src/autopilot_loop.rs` | Implemented |
+| Failure triage wiring | `crates/adjutant/src/dspy/failure_triage.rs` | Spec only |
 
 ## See Also
 
-- [dsrs/docs/README.md](../../dsrs/docs/README.md) - DSPy overview and architecture
-- [adjutant/docs/DSPY-INTEGRATION.md](../../adjutant/docs/DSPY-INTEGRATION.md) - Self-improvement loop
-- [adjutant/docs/FAILURE_TRIAGE.md](../../adjutant/docs/FAILURE_TRIAGE.md) - Failure handling details
+- [GLOSSARY.md](../../../GLOSSARY.md) - Canonical terminology
+- [SYNTHESIS_EXECUTION.md](../../../SYNTHESIS_EXECUTION.md) - What's wired today
 - [dsrs/docs/SIGNATURES.md](../../dsrs/docs/SIGNATURES.md) - Signature inventory
+- [adjutant/docs/DSPY-INTEGRATION.md](../../adjutant/docs/DSPY-INTEGRATION.md) - Self-improvement loop

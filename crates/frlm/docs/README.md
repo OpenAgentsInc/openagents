@@ -1,5 +1,10 @@
 # FRLM - Federated Recursive Language Models
 
+- **Status:** Accurate
+- **Last verified:** (see commit)
+- **Source of truth:** terminology → [GLOSSARY.md](../../../GLOSSARY.md), behavior → code
+- **If this doc conflicts with code, code wins.**
+
 FRLM extends the RLM (Recursive Language Model) execution model with federation capabilities, enabling distributed sub-query execution across a swarm of providers via NIP-90.
 
 ## Overview
@@ -137,7 +142,7 @@ Every operation emits structured trace events for observability:
 | `RunDone` | FRLM run completed |
 
 The `SubQueryExecute` event includes:
-- `venue`: Execution venue (`Local`, `Swarm`, `Datacenter`, `Codex`)
+- `venue`: Execution venue (`Local`, `Swarm`, `Cloud`, `Codex`)
 - `model_id`: Optional model identifier (e.g., `codex-opus-4-5-20251101`)
 
 ## Integration
@@ -215,7 +220,7 @@ FRLM supports multiple execution venues tracked in trace events:
 |-------|-------------|
 | `Local` | Local inference via FM Bridge, Ollama, or llama.cpp |
 | `Swarm` | Distributed execution via NIP-90 |
-| `Datacenter` | Remote API (e.g., Crusoe) |
+| `Cloud` | Remote API (e.g., Crusoe). Internal enum may still be `Datacenter`. |
 | `Codex` | Codex via app-server |
 | `Unknown` | Fallback for unknown venues |
 

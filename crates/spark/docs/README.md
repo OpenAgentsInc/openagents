@@ -1,5 +1,10 @@
 # Spark Crate Docs
 
+- **Status:** Accurate
+- **Last verified:** (see commit)
+- **Source of truth:** terminology → [GLOSSARY.md](../../../GLOSSARY.md), behavior → code
+- **If this doc conflicts with code, code wins.**
+
 This folder documents the OpenAgents Spark integration (Breez SDK wrapper).
 
 ## Contents
