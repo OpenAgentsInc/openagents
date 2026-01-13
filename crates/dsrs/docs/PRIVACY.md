@@ -1,5 +1,11 @@
 # Privacy Module (Wave 7)
 
+> **Status:** Needs audit
+> **Last verified:** d44f9cd3f
+> **Source of truth:** `crates/dsrs/src/privacy/`
+> **Doc owner:** dsrs
+> **If this doc conflicts with code, code wins.**
+
 The privacy module provides content protection for dispatching jobs to the swarm. It enables redaction, chunking, and policy enforcement to protect sensitive code before sending to untrusted providers.
 
 ## Overview

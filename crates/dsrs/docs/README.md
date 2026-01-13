@@ -1,5 +1,11 @@
 # dsrs - Rust DSPy
 
+> **Status:** Accurate
+> **Last verified:** d44f9cd3f
+> **Source of truth:** `crates/dsrs/`
+> **Doc owner:** dsrs
+> **If this doc conflicts with code, code wins.**
+
 Rust implementation of DSPy (Declarative Self-improving Python) for the OpenAgents ecosystem.
 
 ## Overview

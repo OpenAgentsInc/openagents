@@ -1,5 +1,11 @@
 # Tools
 
+> **Status:** Accurate
+> **Last verified:** d44f9cd3f
+> **Source of truth:** `crates/rlm/src/tools/`, `crates/adjutant/src/tools.rs`
+> **Doc owner:** dsrs
+> **If this doc conflicts with code, code wins.**
+
 Touching the outside world.
 
 ## Overview

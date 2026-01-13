@@ -1,5 +1,13 @@
 # DSPy Roadmap (OpenAgents)
 
+> **Status:** Needs audit
+> **Last verified:** d44f9cd3f
+> **Source of truth:** N/A (planning doc)
+> **Doc owner:** dsrs
+> **If this doc conflicts with code, code wins.**
+
+**Reality check:** "Wave complete" means structs exist + unit tests. "MVP ready" means wired into production path.
+
 ## North Star: DSPy as the Compiler Layer
 
 DSPy is the compiler layer for agent behavior in OpenAgents. It turns a task

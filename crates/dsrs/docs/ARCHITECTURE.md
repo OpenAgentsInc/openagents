@@ -1,5 +1,25 @@
 # dsrs Architecture
 
+> **Status:** Accurate
+> **Last verified:** d44f9cd3f
+> **Source of truth:** `crates/dsrs/src/`
+> **Doc owner:** dsrs
+> **If this doc conflicts with code, code wins.**
+
+## Terminology
+
+Before diving into traits, understand the key terms used throughout dsrs:
+
+| Term | Definition |
+|------|------------|
+| **Adapter** | Prompt formatting + output parsing (e.g., `ChatAdapter`) |
+| **Provider** | LM backend implementation (e.g., Codex, GPT-OSS, PylonLM) |
+| **Lane** | Selection category for LM routing (local/cheap/premium) as used by `LaneMux` |
+| **Dispatcher** | NIP-90 job submitter to the swarm (e.g., `SwarmDispatcher`) |
+| **Module** | Callable unit that transforms Examples to Predictions |
+| **Signature** | Input/output contract for a reasoning task |
+| **Predictor** | Module that executes a signature |
+
 ## Core Traits
 
 ### MetaSignature

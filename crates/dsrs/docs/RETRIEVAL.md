@@ -1,5 +1,11 @@
 # Retrieval System (Wave 4)
 
+> **Status:** Needs audit
+> **Last verified:** d44f9cd3f
+> **Source of truth:** `crates/dsrs/src/retrieval/`
+> **Doc owner:** dsrs
+> **If this doc conflicts with code, code wins.**
+
 Multi-lane retrieval system for intelligent code exploration.
 
 ## Overview
