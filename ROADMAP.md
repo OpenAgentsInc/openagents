@@ -1,411 +1,455 @@
 ## OpenAgents Implementation Roadmap
 
-This roadmap is organized as **phases** with concrete deliverables, “definition of done,” and the order that minimizes risk while maximizing immediate product value. It assumes you already have the dsrs + Adjutant integration underway (Wave 14 vibe), and treats “paper promises” as backlog items that become code artifacts.
+This roadmap is the execution plan for the OpenAgents paper. Each phase turns a paper claim into a concrete, testable artifact. The ordering is deliberate: we establish verifiable execution and measurement first, then optimize behavior, then scale reasoning, and only then open economic and marketplace surfaces. That sequence avoids Goodhart traps, keeps costs bounded, and ensures every new capability is grounded in objective feedback.
+
+Guiding principles that shape the order:
+
+- Verification first. If we cannot measure progress with deterministic checks, later optimization and market routing will amplify errors.
+- Measurement before optimization. Trajectories and outcome labels must exist before DSPy compilation can improve anything.
+- Economic controls before open markets. Budgets, quotes, and receipts are the safety rails for spending and federation.
+- Incremental rollout with rollback. Every behavioral change is a deployable policy bundle with clear fallback.
+- Protocol interoperability. We favor Nostr-native job and payment flows so agents can operate in open networks.
+
+Each phase below includes a goal, rationale, deliverables, and definition of done, plus explicit tie-ins to the paper sections.
 
 ---
 
-# Phase 0 — Autopilot MVP (Ship + stabilize)
+# Phase 0 - Autopilot MVP (ship + stabilize)
 
 ### Goal
 
 A rock-solid autonomous coding loop that reliably completes repo tasks with verification, logs trajectories, and has a usable UI/CLI.
 
+### Why this phase exists
+
+This phase delivers the verifiable execution layer (paper Section 5). Without a stable loop, test harnesses, and logged trajectories, all later work is speculative. The MVP must make tasks finish with explicit terminal states so we can label outcomes, reproduce behavior, and trust the logs. This is the substrate on which compiled cognition and marketplace actions depend.
+
 ### Deliverables
 
 1. **Autopilot Loop v1**
 
-* Plan → Execute → Verify → Iterate → Succeed/Fail/MaxIterations
-* Deterministic verification harness config (`cargo test`, `cargo check`, etc.)
-* Hard iteration cap + timeouts
+- Plan -> Execute -> Verify -> Iterate -> Succeed/Fail/MaxIterations
+- Deterministic verification harness config (`cargo test`, `cargo check`, etc.)
+- Hard iteration cap + timeouts
 
 2. **Trajectory Logging v1**
 
-* rlog/JSON session format
-* Tool calls, diffs, verification outputs, timing, token usage, lane used
-* Deterministic session IDs, reproducible timestamps
+- rlog/JSON session format
+- Tool calls, diffs, verification outputs, timing, token usage, lane used
+- Deterministic session IDs, reproducible timestamps
 
 3. **DSPy Mode v1 (dsrs)**
 
-* `SubtaskPlanningSignature`, `SubtaskExecutionSignature`, `ResultSynthesisSignature`
-* Basic metrics: parse/format correctness + minimal quality checks
-* TrainingCollector writes dataset.json
+- `SubtaskPlanningSignature`, `SubtaskExecutionSignature`, `ResultSynthesisSignature`
+- Basic metrics: parse/format correctness + minimal quality checks
+- TrainingCollector writes dataset.json
 
 4. **Routing v1**
 
-* Complexity / Delegation / RLM-trigger pipelines exist but are conservative
-* Confidence-gated override (>0.7) with legacy fallback
+- Complexity / Delegation / RLM-trigger pipelines exist but are conservative
+- Confidence-gated override (>0.7) with legacy fallback
 
 5. **UI/CLI v1**
 
-* CLI: run task, show progress, show verification results, export session
-* UI: session browser + live log view (even minimal)
+- CLI: run task, show progress, show verification results, export session
+- UI: session browser + live log view (even minimal)
 
 ### Definition of done
 
-* 30+ real tasks run end-to-end without manual patching of the system
-* No silent tool hallucinations (tool middleware enforces real calls)
-* Sessions always end in an explicit state with verification history
+- 30+ real tasks run end-to-end without manual patching of the system
+- No silent tool hallucinations (tool middleware enforces real calls)
+- Sessions always end in an explicit state with verification history
 
 ---
 
-# Phase 1 — Make DSPy a real compiler (Outcome-coupled learning)
+# Phase 1 - Make DSPy a real compiler (outcome-coupled learning)
 
 ### Goal
 
-Stop optimizing for “pretty JSON.” Optimize for “passes tests fast, cheaply, without thrash.”
+Stop optimizing for "pretty JSON." Optimize for "passes tests fast, cheaply, without thrash."
+
+### Why this phase exists
+
+This phase implements compiled cognition and outcome-coupled optimization (paper Sections 4 and 8). It turns the planning/execution loop into a measurable program that can be improved safely. Without outcome labels and policy bundles, the system cannot learn from experience and cannot defend against Goodhart effects.
 
 ### Deliverables
 
 1. **Outcome-coupled labels**
 
-* Implement `LabeledToolCall` and compute:
+- Implement `LabeledToolCall` and compute:
 
-  * `verification_delta` (prev failing − current failing)
-  * `was_repeated` (call hash)
-  * `step_utility` (simple heuristic v1)
-  * `cost_tokens`, `cost_tool_calls`
+  - `verification_delta` (prev failing - current failing)
+  - `was_repeated` (call hash)
+  - `step_utility` (simple heuristic v1)
+  - `cost_tokens`, `cost_tool_calls`
 
 2. **Decision labels**
 
-* OutcomeFeedback assigns correctness for:
+- OutcomeFeedback assigns correctness for:
 
-  * complexity
-  * delegation
-  * rlm_trigger
-    (start simple; refine later)
+  - complexity
+  - delegation
+  - rlm_trigger
+  (start simple; refine later)
 
 3. **PerformanceTracker v1**
 
-* Rolling accuracy per signature (window=50)
-* Track success rate, avg iterations, repetition rate, cost per success
+- Rolling accuracy per signature (window=50)
+- Track success rate, avg iterations, repetition rate, cost per success
 
 4. **AutoOptimizer v1**
 
-* Trigger rules: min examples, accuracy threshold, min hours since last
-* Optimize lowest-accuracy signature with MIPROv2
-* Store optimization runs + policy bundle ID
+- Trigger rules: min examples, accuracy threshold, min hours since last
+- Optimize lowest-accuracy signature with MIPROv2
+- Store optimization runs + policy bundle ID
 
 5. **Counterfactual recording v1**
 
-* Always record legacy output alongside DSPy output
-* Record whether fallback used and why
+- Always record legacy output alongside DSPy output
+- Record whether fallback used and why
 
 ### Definition of done
 
-* You can show before/after bundles improving:
-
-  * success rate OR cost per success OR thrash rate
-* Optimization produces versioned policy bundles you can pin/rollback
+- Before/after bundles improve success rate or cost per success or thrash rate
+- Optimization produces versioned policy bundles you can pin/rollback
 
 ---
 
-# Phase 2 — RLM mode (local, single-machine) integrated with DSPy
+# Phase 2 - RLM mode (local, single-machine) integrated with DSPy
 
 ### Goal
 
-Autopilot doesn’t collapse on big repos or long sessions.
+Autopilot does not collapse on big repos or long sessions.
+
+### Why this phase exists
+
+This phase implements scalable long-horizon reasoning (paper Section 7). RLM turns context management into a procedural interaction rather than a monolithic prompt, which is critical for large repositories. We do this after Phase 1 because we need logging and metrics to measure RLM effectiveness and avoid context-ops thrash.
 
 ### Deliverables
 
 1. **RLM Executor v1**
 
-* Root LM + context store + context ops tools:
+- Root LM + context store + context ops tools:
 
-  * peek(path, range)
-  * grep(pattern, scope)
-  * summarize(chunks)
-  * partition(scope, strategy)
-  * map(query, chunks)
-* Everything logged as tool calls (for training)
+  - peek(path, range)
+  - grep(pattern, scope)
+  - summarize(chunks)
+  - partition(scope, strategy)
+  - map(query, chunks)
+- Everything logged as tool calls (for training)
 
 2. **RLM Trigger v2**
 
-* Pipeline uses more signals:
+- Pipeline uses more signals:
 
-  * estimated token growth
-  * file_count
-  * repeated actions indicator
-* Confidence-gated
+  - estimated token growth
+  - file_count
+  - repeated actions indicator
+- Confidence-gated
 
 3. **Signature integration**
 
-* Planner signature accepts `context_handle` (or equivalent) instead of raw text where possible
-* RLM “tool ops” become part of plan/execution
+- Planner signature accepts `context_handle` (or equivalent) instead of raw text where possible
+- RLM "tool ops" become part of plan/execution
 
 4. **RLM budgets**
 
-* Max recursion depth
-* Max subcalls
-* Stop criteria
+- Max recursion depth
+- Max subcalls
+- Stop criteria
 
 ### Definition of done
 
-* A “large repo suite” where RLM mode improves:
-
-  * success rate on high-context tasks
-  * or reduces iterations/thrash
-* No uncontrolled recursion cost blowups
+- A "large repo suite" where RLM mode improves success rate on high-context tasks or reduces iterations/thrash
+- No uncontrolled recursion cost blowups
 
 ---
 
-# Phase 3 — Marketplace-ready compute primitives (objective jobs first)
+# Phase 3 - Marketplace-ready compute primitives (objective jobs first)
 
 ### Goal
 
 Autopilot becomes the first buyer of compute. Providers can earn for verifiable work.
 
+### Why this phase exists
+
+This phase introduces the compute marketplace substrate (paper Section 9) while keeping verification objective. We intentionally start with objective jobs so that payments can be pay-after-verify, which creates safety and trust early. Economic risk is constrained by deterministic outputs and receipt linkage.
+
 ### Deliverables
 
 1. **Protocol job schemas v1**
 
-* `oa.sandbox_run.v1` (objective)
-* `oa.repo_index.v1` (objective-ish)
-* Deterministic hashing of inputs/outputs
-* Provenance fields
+- `oa.sandbox_run.v1` (objective)
+- `oa.repo_index.v1` (objective-ish)
+- Deterministic hashing of inputs/outputs
+- Provenance fields
 
 2. **NIP-90 wiring v1**
 
-* Job request → provider response → result
-* Pay-after-verify flow for objective jobs:
+- Job request -> provider response -> result
+- Pay-after-verify flow for objective jobs:
 
-  * verify exit code + artifact hashes
-  * only then pay invoice
+  - verify exit code + artifact hashes
+  - only then pay invoice
 
 3. **Pylon provider mode v1**
 
-* Providers advertise capabilities (models/hardware)
-* Execute sandbox_run jobs safely
-* Rate limits + health checks
+- Providers advertise capabilities (models/hardware)
+- Execute sandbox_run jobs safely
+- Rate limits + health checks
 
 4. **Reserve pool**
 
-* Always-available fallback provider (even if internal)
-* Prevents dead marketplace UX
+- Always-available fallback provider (even if internal)
+- Prevents dead marketplace UX
 
 ### Definition of done
 
-* Autopilot runs tests/builds via marketplace providers with:
-
-  * deterministic verification
-  * receipts
-  * no payment for incorrect output
+- Autopilot runs tests/builds via marketplace providers with deterministic verification
+- Receipts exist for each paid job
+- No payment for incorrect output
 
 ---
 
-# Phase 4 — Neobank Treasury OS (budgets, quotes, receipts)
+# Phase 4 - Neobank Treasury OS (budgets, quotes, receipts)
 
 ### Goal
 
-Agents can spend money autonomously **without** becoming a liability. Enterprises can reason about spend.
+Agents can spend money autonomously without becoming a liability. Enterprises can reason about spend.
+
+### Why this phase exists
+
+This phase implements the economic control plane described in the paper (Section 9). Market integration without budgets and receipts is unsafe. TreasuryRouter, quotes, reconciliation, and receipts are the guardrails that make autonomous spending auditable and enforceable. This must precede federation and Exchange.
 
 ### Deliverables
 
 1. **TreasuryRouter v1**
 
-* Policy decides rail + approvals + caps
-* Account partitions: operating / escrow / treasury
-* AssetId abstraction (BTC_LN, USD_CASHU(mint), etc.)
+- Policy decides rail + approvals + caps
+- Account partitions: operating / escrow / treasury
+- AssetId abstraction (BTC_LN, USD_CASHU(mint), etc.)
 
 2. **Quote state machine**
 
-* CREATED → UNPAID → PENDING → PAID/FAILED/EXPIRED
-* Idempotency keys
-* Reservation and release
+- CREATED -> UNPAID -> PENDING -> PAID/FAILED/EXPIRED
+- Idempotency keys
+- Reservation and release
 
 3. **Reconciliation daemon**
 
-* Resolve pending quotes
-* Expire reservations
-* Repair state after crash
+- Resolve pending quotes
+- Expire reservations
+- Repair state after crash
 
 4. **Receipts v1**
 
-* Every payment produces:
+- Every payment produces:
 
-  * tx proof (preimage/txid)
-  * job hash (if any)
-  * session id + policy bundle id
-  * policy rule id
-* Receipts stored locally and optionally published
+  - tx proof (preimage/txid)
+  - job hash (if any)
+  - session id + policy bundle id
+  - policy rule id
+- Receipts stored locally and optionally published
 
 ### Definition of done
 
-* Autopilot can run with a hard daily cap (USD-denominated) and never exceed it
-* Every spend is auditable back to a session + decision
+- Autopilot can run with a hard daily cap (USD-denominated) and never exceed it
+- Every spend is auditable back to a session + decision
 
 ---
 
-# Phase 5 — FRLM federation (swarm + cloud + local recursion)
+# Phase 5 - FRLM federation (swarm + cloud + local recursion)
 
 ### Goal
 
 RLM becomes distributed: parallel subqueries and objective jobs purchased across providers.
 
+### Why this phase exists
+
+This phase implements federated recursion (paper Section 7) and depends on treasury controls. Fan-out without budgets is dangerous; fan-out without receipts is un-auditable. FRLM is the first place where economic routing and scalable reasoning intersect.
+
 ### Deliverables
 
 1. **FRLM planner**
 
-* When root identifies broad subproblem:
+- When root identifies broad subproblem:
 
-  * partition
-  * dispatch map queries as NIP-90 subjective jobs
-  * gather results
-  * rank + synthesize
+  - partition
+  - dispatch map queries as NIP-90 subjective jobs
+  - gather results
+  - rank + synthesize
 
 2. **Subjective job verification tiers**
 
-* reputation-only
-* best-of-N consensus
-* judge model (optional)
+- reputation-only
+- best-of-N consensus
+- judge model (optional)
 
 3. **Market-aware routing policy**
 
-* Delegation pipeline now considers:
+- Delegation pipeline now considers:
 
-  * budget remaining
-  * provider reliability
-  * expected value of fanout
+  - budget remaining
+  - provider reliability
+  - expected value of fanout
 
 4. **Cost control**
 
-* Fanout budgets and stop rules
-* Per-provider circuit breakers
+- Fanout budgets and stop rules
+- Per-provider circuit breakers
 
 ### Definition of done
 
-* FRLM beats local RLM on “many-file” tasks while keeping spend bounded
-* Providers receive payments and reputation updates correctly
+- FRLM beats local RLM on many-file tasks while keeping spend bounded
+- Providers receive payments and reputation updates correctly
 
 ---
 
-# Phase 6 — Skills marketplace (attach rate + distillation)
+# Phase 6 - Skills marketplace (attach rate + distillation)
 
 ### Goal
 
 Capabilities become composable products. Teacher lanes distill into cheap local policies.
 
+### Why this phase exists
+
+This phase connects compiled cognition with a marketplace model. Skills are packaged policies and workflows that can be purchased, audited, and distilled. The paper claims that policy bundles are versioned artifacts; this phase turns that into a product surface and economic incentive.
+
 ### Deliverables
 
 1. **Skill format v1**
 
-* package: instructions + scripts + metadata
-* progressive disclosure to manage context windows
+- package: instructions + scripts + metadata
+- progressive disclosure to manage context windows
 
 2. **Skill licensing + delivery**
 
-* NIP-SA-ish events or marketplace events
-* encrypted delivery, idempotent purchase records
+- NIP-SA-ish events or marketplace events
+- encrypted delivery, idempotent purchase records
 
 3. **Teacher/student compilation**
 
-* “teacher” runs (Codex/swarm) generate trajectories
-* compile student policies for local lanes via dsrs
-* ship policy bundle as “skill”
+- "teacher" runs (Codex/swarm) generate trajectories
+- compile student policies for local lanes via dsrs
+- ship policy bundle as "skill"
 
 4. **Revenue split + receipts**
 
-* simple splits: creator/provider/platform
-* receipts tie skill invocation to payment + session
+- simple splits: creator/provider/platform
+- receipts tie skill invocation to payment + session
 
 ### Definition of done
 
-* A skill can be purchased and invoked by Autopilot
-* The invocation pays creator + provider
-* The skill improves success/cost in a measurable way
+- A skill can be purchased and invoked by Autopilot
+- The invocation pays creator + provider
+- The skill improves success/cost in a measurable way
 
 ---
 
-# Phase 7 — Exchange + FX routing (optional until Neobank is solid)
+# Phase 7 - Exchange + FX routing (optional until Neobank is solid)
 
 ### Goal
 
-Agents can hold USD-denom budgets and pay BTC-only providers by sourcing liquidity.
+Agents can hold USD-denominated budgets and pay BTC-only providers by sourcing liquidity.
+
+### Why this phase exists
+
+This phase implements the Exchange layer described in the paper (Section 9). It is optional until the Neobank is stable because liquidity without treasury controls is unsafe. Once stable, Exchange enables enterprise budgeting and multi-rail settlement in open markets.
 
 ### Deliverables
 
-* RFQ quoting + settlement receipts
-* NIP-native order/reputation model (start v0 reputation-based)
-* atomic swap v1 later (Cashu P2PK + HODL invoices)
-* Treasury Agents as makers
+- RFQ quoting + settlement receipts
+- NIP-native order/reputation model (start v0 reputation-based)
+- atomic swap v1 later (Cashu P2PK + HODL invoices)
+- Treasury Agents as makers
 
 ### Definition of done
 
-* Autopilot can pay a sat invoice with a USD-denom budget through an RFQ swap
-* Receipts include quote id + rate source
+- Autopilot can pay a sat invoice with a USD-denominated budget through an RFQ swap
+- Receipts include quote id + rate source
 
 ---
 
-# Phase 8 — Full “Agentic OS” protocolization (NIP-SA, trajectories, coalitions)
+# Phase 8 - Full "Agentic OS" protocolization (NIP-SA, trajectories, coalitions)
 
 ### Goal
 
 Standardize lifecycle + portability: agents survive platforms, move between operators, form coalitions.
 
+### Why this phase exists
+
+This phase turns OpenAgents into a protocol ecosystem rather than a single implementation. It operationalizes the agent lifecycle, trajectories, and coalition primitives described in the paper, enabling interoperability across clients and operators.
+
 ### Deliverables
 
-* NIP-SA event kinds implemented + published
-* coalition primitives (group budgets, multi-party payouts)
-* reputation labels and trust graphs
-* governance hooks (disputes, arbitration)
+- NIP-SA event kinds implemented + published
+- coalition primitives (group budgets, multi-party payouts)
+- reputation labels and trust graphs
+- governance hooks (disputes, arbitration)
 
 ### Definition of done
 
-* Another client can reconstruct agent lifecycle from Nostr events
-* Agents can coordinate work across machines/owners with auditable trails
+- Another client can reconstruct agent lifecycle from Nostr events
+- Agents can coordinate work across machines/owners with auditable trails
 
 ---
 
 # Implementation ordering constraints (important)
 
-**Do these early:**
+Do these early because they are foundational and reduce the risk of Goodhart behavior:
 
-* Outcome-coupled metrics (or you will Goodhart yourself)
-* Versioned policy bundles + rollback
-* Counterfactual logging (shadow mode)
+- Outcome-coupled metrics (or you will optimize for the wrong target)
+- Versioned policy bundles + rollback (so behavior changes are reversible)
+- Counterfactual logging (so you can measure regressions safely)
 
-**Do these later:**
+Do these later because they multiply complexity or require economic controls:
 
-* Exchange/FX (only after TreasuryRouter + quotes + reconciliation are solid)
-* Coalitions (only after identity + receipts are stable)
+- Exchange/FX (only after TreasuryRouter + quotes + reconciliation are solid)
+- Coalitions (only after identity + receipts are stable and auditable)
+- Large-scale federation (only after budgets and circuit breakers are enforced)
 
 ---
 
 # Suggested repo milestones (tight, product-friendly)
 
-### Milestone M1: “Autopilot ships”
+### Milestone M1: "Autopilot ships"
 
-* Phase 0 done
+Phase 0 done. The loop is stable, verifiable, and logs trajectories.
 
-### Milestone M2: “Self-improving Autopilot”
+### Milestone M2: "Self-improving Autopilot"
 
-* Phase 1 done
+Phase 1 done. Outcome-coupled optimization produces measurable improvements.
 
-### Milestone M3: “Big repo stability”
+### Milestone M3: "Big repo stability"
 
-* Phase 2 done
+Phase 2 done. RLM handles large context without collapse.
 
-### Milestone M4: “Autopilot buys verified compute”
+### Milestone M4: "Autopilot buys verified compute"
 
-* Phase 3 done
+Phase 3 done. Objective jobs run through the marketplace with receipts.
 
-### Milestone M5: “Enterprise budgets + receipts”
+### Milestone M5: "Enterprise budgets + receipts"
 
-* Phase 4 done
+Phase 4 done. Treasury controls make spend auditable and enforceable.
 
-### Milestone M6: “Federated deep research for code”
+### Milestone M6: "Federated deep research for code"
 
-* Phase 5 done
+Phase 5 done. FRLM fanout improves large tasks within budget.
 
-### Milestone M7: “Skills economy”
+### Milestone M7: "Skills economy"
 
-* Phase 6 done
+Phase 6 done. Skills are purchaseable, measurable, and economically viable.
+
+### Milestone M8: "Exchange + protocol surface"
+
+Phase 7 and Phase 8 done. Liquidity and lifecycle protocols are standardized.
 
 ---
 
-If you want this as **a set of GitHub issues / epics**, I can translate each deliverable into:
+If you want this as a set of GitHub issues / epics, I can translate each deliverable into:
 
-* issue title
-* acceptance criteria
-* files to touch (based on your crate layout)
-* test plan
-* telemetry to add
+- issue title
+- acceptance criteria
+- files to touch (based on your crate layout)
+- test plan
+- telemetry to add
