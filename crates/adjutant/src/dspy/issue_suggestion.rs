@@ -8,6 +8,7 @@ use super::issue_validation::validate_blocked_issue;
 use super::staleness::{StalenessScore, filter_issues_for_suggestion};
 use crate::manifest::IssueSummary;
 use anyhow::Result;
+use dsrs::callbacks::DspyCallback;
 use dsrs::signatures::{IssueSuggestionSignature, UnblockSuggestionSignature};
 use dsrs::{GLOBAL_SETTINGS, LM, Predict, Prediction, Predictor, example};
 use serde::{Deserialize, Serialize};
@@ -211,6 +212,103 @@ impl IssueSuggestionPipeline {
         };
 
         let prediction = predictor.forward_with_config(example, lm).await?;
+
+        // Step 4: Parse suggestions from prediction
+        let suggestions = parse_suggestions(&prediction, &candidates)?;
+        let confidence = get_f32(&prediction, "confidence");
+
+        Ok(IssueSuggestionResult {
+            suggestions,
+            filtered_count,
+            filtered_reasons,
+            confidence,
+        })
+    }
+
+    /// Suggest top issues with streaming callback.
+    ///
+    /// Same as `suggest()` but streams LLM tokens via callback.
+    pub async fn suggest_with_callback(
+        &self,
+        input: &IssueSuggestionInput,
+        callback: Option<&dyn DspyCallback>,
+    ) -> Result<IssueSuggestionResult> {
+        // Step 1: Filter out stale/blocked issues
+        let (candidates, filtered) = filter_issues_for_suggestion(&input.issues);
+
+        let filtered_count = filtered.len();
+        let filtered_reasons: Vec<(u32, String)> = filtered
+            .iter()
+            .map(|(issue, reason)| (issue.number, reason.clone()))
+            .collect();
+
+        // If no candidates, return empty result
+        if candidates.is_empty() {
+            return Ok(IssueSuggestionResult {
+                suggestions: Vec::new(),
+                filtered_count,
+                filtered_reasons,
+                confidence: 0.0,
+            });
+        }
+
+        // If only 1-3 candidates, skip LLM and return them directly
+        let candidate_count = candidates.len();
+        if candidate_count <= 3 {
+            let total_issues = candidate_count + filtered_count;
+            let suggestions = candidates
+                .into_iter()
+                .map(|(issue, staleness)| IssueSuggestion {
+                    number: issue.number,
+                    title: issue.title.clone(),
+                    priority: issue.priority.clone(),
+                    rationale: format!("One of {} available issues", total_issues),
+                    complexity: estimate_complexity(&issue),
+                    staleness_score: staleness.score,
+                })
+                .collect();
+
+            return Ok(IssueSuggestionResult {
+                suggestions,
+                filtered_count,
+                filtered_reasons,
+                confidence: 0.8,
+            });
+        }
+
+        // Step 2: Prepare candidate data for LLM
+        let candidate_json: Vec<serde_json::Value> = candidates
+            .iter()
+            .map(|(issue, staleness)| {
+                json!({
+                    "number": issue.number,
+                    "title": issue.title,
+                    "priority": issue.priority,
+                    "issue_type": issue.issue_type,
+                    "description": issue.description.as_ref().map(|d| truncate(d, 200)),
+                    "staleness_score": staleness.score,
+                })
+            })
+            .collect();
+
+        // Step 3: Run DSPy prediction with streaming
+        let lm = if let Some(lm) = &self.lm {
+            lm.clone()
+        } else {
+            get_planning_lm().await?
+        };
+
+        let signature = IssueSuggestionSignature::new();
+        let predictor = Predict::new(signature);
+
+        let example = example! {
+            "available_issues": "input" => serde_json::to_string(&candidate_json)?,
+            "workspace_context": "input" => input.workspace_context.clone(),
+            "recent_work": "input" => serde_json::to_string(&input.recent_work)?,
+            "user_preferences": "input" => input.user_preferences.clone().map(|v| v.to_string()).unwrap_or_default(),
+        };
+
+        let prediction = predictor.forward_with_streaming(example, lm, callback).await?;
 
         // Step 4: Parse suggestions from prediction
         let suggestions = parse_suggestions(&prediction, &candidates)?;

@@ -324,6 +324,7 @@ impl ApplicationHandler for AutopilotApp {
         self.poll_hook_inspector_actions();
         self.poll_oanix_manifest();
         self.poll_bootloader_events();
+        self.poll_streaming_tokens();
         self.poll_nip28_events();
         self.poll_nip90_events();
         self.poll_dvm_events();

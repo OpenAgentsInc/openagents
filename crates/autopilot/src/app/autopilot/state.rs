@@ -28,6 +28,8 @@ pub(crate) struct AutopilotState {
     pub(crate) issue_suggestions: Option<DspyStage>,
     /// Channel for receiving issue suggestions from async task
     pub(crate) issue_suggestions_rx: Option<mpsc::UnboundedReceiver<DspyStage>>,
+    /// Channel for receiving streaming tokens from LLM during issue evaluation
+    pub(crate) streaming_tokens_rx: Option<mpsc::UnboundedReceiver<String>>,
     /// Pending issue prompt to submit (set when user selects an issue from suggestions)
     pub(crate) pending_issue_prompt: Option<String>,
 
@@ -68,6 +70,7 @@ impl AutopilotState {
             autopilot_max_iterations: 10,
             issue_suggestions: None,
             issue_suggestions_rx: None,
+            streaming_tokens_rx: None,
             pending_issue_prompt: None,
             // Issue validation state
             pending_validation: None,
