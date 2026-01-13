@@ -32,6 +32,7 @@ pub mod bleeps;
 pub mod clipboard;
 pub mod color;
 pub mod components;
+pub mod curve;
 pub mod effects;
 pub mod element;
 pub mod focus;
@@ -82,6 +83,7 @@ pub use bleeps::{
 };
 pub use clipboard::copy_to_clipboard;
 pub use color::Hsla;
+pub use curve::{CurvePrimitive, LineSegment};
 pub use components::hud::{
     ContextMenu, CssSize, MenuItem, StyleFrameClipKranoxProps, StyleFrameClipOctagonProps, Tooltip,
     TooltipPosition, style_frame_clip_kranox, style_frame_clip_octagon,

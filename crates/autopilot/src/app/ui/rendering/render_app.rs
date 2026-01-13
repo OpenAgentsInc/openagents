@@ -32,36 +32,49 @@ pub(crate) fn render_app(state: &mut AppState) {
     // Dark terminal background
     scene.draw_quad(Quad::new(bounds).with_background(palette.background));
 
-    render_sidebars(state, &mut scene, &palette, &sidebar_layout);
-    render_topbar(state, &mut scene, &palette, &sidebar_layout);
-    if state.git.center_mode == crate::app::CenterMode::Diff {
-        render_git_diff_viewer(
+    if matches!(state.modal_state, ModalState::Bootloader) {
+        // BOOTLOADER MODE: Only render bootloader in center, no sidebars/topbar/input
+        render_bootloader_center(
             state,
             &mut scene,
             &palette,
-            &sidebar_layout,
+            logical_width,
             logical_height,
             scale_factor,
         );
     } else {
-        render_chat(
+        // NORMAL MODE: Render full UI
+        render_sidebars(state, &mut scene, &palette, &sidebar_layout);
+        render_topbar(state, &mut scene, &palette, &sidebar_layout);
+        if state.git.center_mode == crate::app::CenterMode::Diff {
+            render_git_diff_viewer(
+                state,
+                &mut scene,
+                &palette,
+                &sidebar_layout,
+                logical_height,
+                scale_factor,
+            );
+        } else {
+            render_chat(
+                state,
+                &mut scene,
+                &palette,
+                &sidebar_layout,
+                logical_height,
+                scale_factor,
+            );
+        }
+        render_input(
             state,
             &mut scene,
             &palette,
             &sidebar_layout,
+            logical_width,
             logical_height,
             scale_factor,
         );
     }
-    render_input(
-        state,
-        &mut scene,
-        &palette,
-        &sidebar_layout,
-        logical_width,
-        logical_height,
-        scale_factor,
-    );
     render_modals(
         state,
         &mut scene,

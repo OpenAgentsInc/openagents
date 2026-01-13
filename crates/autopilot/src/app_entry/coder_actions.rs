@@ -1421,11 +1421,13 @@ impl AutopilotApp {
         // Drain events and check for completion
         let updated = state.bootloader.drain_events();
 
-        if state.bootloader.is_ready_to_transition() {
-            // Transition from Bootloader to None (main UI)
-            state.modal_state = ModalState::None;
-            state.window.request_redraw();
-        } else if updated {
+        // Auto-transition disabled for now - stay on bootloader UI
+        // if state.bootloader.is_ready_to_transition() {
+        //     // Transition from Bootloader to None (main UI)
+        //     state.modal_state = ModalState::None;
+        //     state.window.request_redraw();
+        // } else
+        if updated {
             state.window.request_redraw();
         }
     }

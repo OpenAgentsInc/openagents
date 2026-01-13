@@ -1,4 +1,5 @@
 use crate::color::Hsla;
+use crate::curve::CurvePrimitive;
 use crate::geometry::{Bounds, Point, Size};
 use bytemuck::{Pod, Zeroable};
 
@@ -271,8 +272,9 @@ impl SvgQuad {
 
 #[derive(Default)]
 pub struct Scene {
-    pub quads: Vec<(u32, Quad)>,        // (layer, quad)
-    pub text_runs: Vec<(u32, TextRun)>, // (layer, text_run)
+    pub quads: Vec<(u32, Quad)>,           // (layer, quad)
+    pub text_runs: Vec<(u32, TextRun)>,    // (layer, text_run)
+    pub curves: Vec<(u32, CurvePrimitive)>, // (layer, curve)
     pub svg_quads: Vec<SvgQuad>,
     clip_stack: Vec<Bounds>,
     current_layer: u32,
@@ -286,6 +288,7 @@ impl Scene {
     pub fn clear(&mut self) {
         self.quads.clear();
         self.text_runs.clear();
+        self.curves.clear();
         self.svg_quads.clear();
         self.clip_stack.clear();
         self.current_layer = 0;
@@ -331,6 +334,72 @@ impl Scene {
         } else {
             self.svg_quads.push(svg);
         }
+    }
+
+    /// Draw a bezier curve.
+    pub fn draw_curve(&mut self, curve: CurvePrimitive) {
+        // TODO: Add clipping support for curves
+        self.curves.push((self.current_layer, curve));
+    }
+
+    /// Convert curves in a layer to quads (for rendering).
+    /// This tessellates curves into line segments and creates thin rotated quads.
+    pub fn curve_quads_for_layer(&self, layer: u32, scale_factor: f32, segments: usize) -> Vec<GpuQuad> {
+        let mut quads = Vec::new();
+
+        for (l, curve) in &self.curves {
+            if *l != layer {
+                continue;
+            }
+
+            let line_segments = curve.tessellate(segments);
+
+            for seg in line_segments {
+                // Create a thin quad for each line segment
+                let dx = seg.end.x - seg.start.x;
+                let dy = seg.end.y - seg.start.y;
+                let length = (dx * dx + dy * dy).sqrt();
+
+                if length < 0.001 {
+                    continue;
+                }
+
+                // Create a quad centered on the line segment
+                // The quad has width = length, height = stroke_width
+                // Then we need to rotate it - but since we can't rotate quads,
+                // we approximate with a quad that covers the segment's bounding box
+
+                // For simplicity, we'll create quads along the curve path
+                // Each quad is a small rectangle oriented along the segment
+
+                // Calculate perpendicular offset for stroke width
+                let half_width = curve.stroke_width / 2.0;
+                let perp_x = -dy / length * half_width;
+                let perp_y = dx / length * half_width;
+
+                // Calculate bounding box of the stroked segment
+                let x1 = seg.start.x + perp_x;
+                let y1 = seg.start.y + perp_y;
+                let x2 = seg.start.x - perp_x;
+                let y2 = seg.start.y - perp_y;
+                let x3 = seg.end.x + perp_x;
+                let y3 = seg.end.y + perp_y;
+                let x4 = seg.end.x - perp_x;
+                let y4 = seg.end.y - perp_y;
+
+                let min_x = x1.min(x2).min(x3).min(x4);
+                let max_x = x1.max(x2).max(x3).max(x4);
+                let min_y = y1.min(y2).min(y3).min(y4);
+                let max_y = y1.max(y2).max(y3).max(y4);
+
+                let quad = Quad::new(Bounds::new(min_x, min_y, max_x - min_x, max_y - min_y))
+                    .with_background(curve.color);
+
+                quads.push(GpuQuad::from_quad(&quad, scale_factor));
+            }
+        }
+
+        quads
     }
 
     pub fn push_clip(&mut self, bounds: Bounds) {
@@ -387,6 +456,7 @@ impl Scene {
             .iter()
             .map(|(l, _)| *l)
             .chain(self.text_runs.iter().map(|(l, _)| *l))
+            .chain(self.curves.iter().map(|(l, _)| *l))
             .collect();
         layers.sort();
         layers.dedup();

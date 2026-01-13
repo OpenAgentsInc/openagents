@@ -493,7 +493,11 @@ impl Renderer {
         let layers = scene.layers();
 
         for layer in layers {
-            let quads = scene.gpu_quads_for_layer(layer, scale_factor);
+            // Get regular quads and curve quads, merge them
+            let mut quads = scene.gpu_quads_for_layer(layer, scale_factor);
+            let curve_quads = scene.curve_quads_for_layer(layer, scale_factor, 20);
+            quads.extend(curve_quads);
+
             let text_quads = scene.gpu_text_quads_for_layer(layer, scale_factor);
 
             let quad_buffer = if !quads.is_empty() {
