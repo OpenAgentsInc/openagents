@@ -2039,6 +2039,7 @@ pub(super) fn handle_modal_input(state: &mut AppState, key: &WinitKey) -> bool {
                             // Y or Enter = confirm and start working on issue
                             WinitKey::Character(c) if c.eq_ignore_ascii_case("y") => {
                                 let prompt = format!("Work on issue #{}: {}", issue_number, title);
+                                track_selected_issue(state, *issue_number as i32, title);
                                 state.autopilot.pending_issue_prompt = Some(prompt);
                                 state.autopilot.issue_suggestions = None;
                                 state.modal_state = ModalState::None;
@@ -2047,6 +2048,7 @@ pub(super) fn handle_modal_input(state: &mut AppState, key: &WinitKey) -> bool {
                             }
                             WinitKey::Named(WinitNamedKey::Enter) => {
                                 let prompt = format!("Work on issue #{}: {}", issue_number, title);
+                                track_selected_issue(state, *issue_number as i32, title);
                                 state.autopilot.pending_issue_prompt = Some(prompt);
                                 state.autopilot.issue_suggestions = None;
                                 state.modal_state = ModalState::None;
@@ -2088,6 +2090,11 @@ pub(super) fn handle_modal_input(state: &mut AppState, key: &WinitKey) -> bool {
                                         let prompt = format!(
                                             "Work on issue #{}: {}",
                                             suggestion.number, suggestion.title
+                                        );
+                                        track_selected_issue(
+                                            state,
+                                            suggestion.number as i32,
+                                            &suggestion.title,
                                         );
                                         state.autopilot.pending_issue_prompt = Some(prompt);
                                         state.autopilot.issue_suggestions = None;
@@ -2414,4 +2421,69 @@ fn open_url(url: &str) -> io::Result<()> {
         io::ErrorKind::Other,
         "open_url not supported on this platform",
     ))
+}
+
+/// Track an issue when the user selects it for work.
+///
+/// Looks up the issue by number in the database to get the full issue details,
+/// then stores the issue info in the autopilot state for post-completion tracking.
+fn track_selected_issue(state: &mut AppState, issue_number: i32, title: &str) {
+    // Get workspace root from manifest
+    let workspace_root = state
+        .autopilot
+        .oanix_manifest
+        .as_ref()
+        .and_then(|m| m.workspace.as_ref())
+        .map(|w| w.root.clone());
+
+    let Some(workspace_root) = workspace_root else {
+        tracing::warn!("No workspace root found, skipping issue tracking");
+        // Still track basic info even without DB lookup
+        state.autopilot.current_issue_number = Some(issue_number);
+        state.autopilot.current_issue_title = Some(title.to_string());
+        state.autopilot.current_issue_retry_count = 0;
+        return;
+    };
+
+    // Look up issue in database to get full details
+    let db_path = workspace_root.join(".openagents").join("autopilot.db");
+    match rusqlite::Connection::open(&db_path) {
+        Ok(conn) => {
+            match issues::issue::get_issue_by_number(&conn, issue_number) {
+                Ok(Some(issue)) => {
+                    tracing::info!(
+                        issue_id = %issue.id,
+                        issue_number = issue.number,
+                        "Tracking issue for post-completion hook"
+                    );
+                    state.autopilot.current_issue_id = Some(issue.id);
+                    state.autopilot.current_issue_number = Some(issue.number);
+                    state.autopilot.current_issue_title = Some(issue.title);
+                    state.autopilot.current_issue_description = issue.description;
+                    state.autopilot.current_issue_retry_count = 0;
+                }
+                Ok(None) => {
+                    tracing::warn!(
+                        issue_number = issue_number,
+                        "Issue not found in database, tracking basic info only"
+                    );
+                    state.autopilot.current_issue_number = Some(issue_number);
+                    state.autopilot.current_issue_title = Some(title.to_string());
+                    state.autopilot.current_issue_retry_count = 0;
+                }
+                Err(e) => {
+                    tracing::error!(error = %e, "Failed to look up issue in database");
+                    state.autopilot.current_issue_number = Some(issue_number);
+                    state.autopilot.current_issue_title = Some(title.to_string());
+                    state.autopilot.current_issue_retry_count = 0;
+                }
+            }
+        }
+        Err(e) => {
+            tracing::error!(error = %e, "Failed to open database for issue lookup");
+            state.autopilot.current_issue_number = Some(issue_number);
+            state.autopilot.current_issue_title = Some(title.to_string());
+            state.autopilot.current_issue_retry_count = 0;
+        }
+    }
 }

@@ -1,5 +1,6 @@
 use serde_json::Value;
 
+use crate::app::autopilot::PostCompletionResult;
 use crate::app::catalog::mcp::McpServerStatus;
 use crate::app::session::RateLimits;
 use crate::autopilot_loop::DspyStage;
@@ -62,6 +63,19 @@ pub(crate) enum ResponseEvent {
     DspyStage(DspyStage),
     /// Autopilot context is ready, submit to Codex via app-server
     CodexPromptReady(String),
+    /// Post-completion verification started
+    PostCompletionStarted {
+        issue_number: i32,
+    },
+    /// Post-completion processing result
+    PostCompletionComplete {
+        result: PostCompletionResult,
+    },
+    /// Auto-starting next issue in autopilot mode
+    AutoStartNextIssue {
+        issue_number: i32,
+        title: String,
+    },
 }
 
 #[allow(dead_code)]
