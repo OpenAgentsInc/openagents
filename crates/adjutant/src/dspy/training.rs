@@ -4,6 +4,7 @@
 //! them for use with MIPROv2 optimization.
 
 use anyhow::Result;
+use chrono::{DateTime, Utc};
 use dsrs::Example;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -13,6 +14,10 @@ use std::path::PathBuf;
 pub fn training_data_path() -> PathBuf {
     let home = dirs::home_dir().expect("No home directory");
     home.join(".openagents/adjutant/training")
+}
+
+fn tool_calls_path() -> PathBuf {
+    training_data_path().join("labeled").join("tool_calls.json")
 }
 
 // ============================================================================
@@ -123,6 +128,76 @@ pub struct SynthesisTrainingExample {
     pub expected_success: bool,
     pub expected_summary: String,
     pub expected_modified_files: Vec<String>,
+}
+
+// ============================================================================
+// Outcome-Coupled Tool Call Labels
+// ============================================================================
+
+/// Outcome-labeled tool call for training.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LabeledToolCall {
+    /// Which signature or tool was used
+    pub signature: String,
+    /// Signature inputs (structured)
+    pub inputs: serde_json::Value,
+    /// Signature outputs (structured)
+    pub outputs: serde_json::Value,
+    /// Step utility from ToolStepUtilitySignature (0.0 to 1.0)
+    pub step_utility: f32,
+    /// Change in failing tests after this step (negative = improvement)
+    pub verification_delta: i32,
+    /// Tokens used for this call (if any)
+    pub cost_tokens: u32,
+    /// Tool calls made (usually 1)
+    pub cost_tool_calls: u32,
+    /// Did we make this exact call before in this session?
+    pub was_repeated: bool,
+    /// Timestamp when recorded
+    pub recorded_at: DateTime<Utc>,
+}
+
+/// Storage for labeled tool calls.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToolCallStore {
+    pub tool_calls: Vec<LabeledToolCall>,
+    pub updated_at: DateTime<Utc>,
+}
+
+impl ToolCallStore {
+    pub fn load() -> Result<Self> {
+        let path = tool_calls_path();
+        if path.exists() {
+            let content = std::fs::read_to_string(&path)?;
+            Ok(serde_json::from_str(&content).unwrap_or_default())
+        } else {
+            Ok(Self::default())
+        }
+    }
+
+    pub fn save(&self) -> Result<()> {
+        let path = tool_calls_path();
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        let content = serde_json::to_string_pretty(self)?;
+        std::fs::write(path, content)?;
+        Ok(())
+    }
+
+    pub fn add(&mut self, call: LabeledToolCall) {
+        self.tool_calls.push(call);
+        self.updated_at = Utc::now();
+    }
+}
+
+impl Default for ToolCallStore {
+    fn default() -> Self {
+        Self {
+            tool_calls: Vec::new(),
+            updated_at: Utc::now(),
+        }
+    }
 }
 
 impl SynthesisTrainingExample {
@@ -539,6 +614,13 @@ impl TrainingCollector {
             }
         }
         Ok(())
+    }
+
+    /// Record a labeled tool call (outcome-coupled).
+    pub fn record_tool_call(&self, call: LabeledToolCall) -> Result<()> {
+        let mut store = ToolCallStore::load()?;
+        store.add(call);
+        store.save()
     }
 
     /// Get access to the underlying dataset.

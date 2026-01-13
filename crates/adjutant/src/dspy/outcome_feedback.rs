@@ -167,7 +167,7 @@ impl OutcomeFeedback {
     /// Process a completed session and create labeled examples.
     pub fn process_session(
         &mut self,
-        session: &AutopilotSession,
+        session: &mut AutopilotSession,
     ) -> anyhow::Result<FeedbackResult> {
         let outcome = session
             .outcome
@@ -176,9 +176,10 @@ impl OutcomeFeedback {
 
         let mut result = FeedbackResult::default();
 
-        for decision in &session.decisions {
+        for decision in &mut session.decisions {
             let was_correct =
                 self.evaluate_decision_correctness(decision, outcome, session.iterations_used);
+            decision.was_correct = Some(was_correct);
 
             result.decisions_evaluated += 1;
             if was_correct {

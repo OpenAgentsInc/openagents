@@ -28,6 +28,15 @@ pub struct DecisionRecord {
     pub timestamp: DateTime<Utc>,
     /// Retrospective: was this decision correct? (set after outcome)
     pub was_correct: Option<bool>,
+    /// Legacy output that would have been used without DSPy
+    #[serde(default)]
+    pub legacy_output: Option<serde_json::Value>,
+    /// Whether legacy fallback was used
+    #[serde(default)]
+    pub fallback_used: bool,
+    /// Reason for fallback (if any)
+    #[serde(default)]
+    pub fallback_reason: Option<FallbackReason>,
 }
 
 impl DecisionRecord {
@@ -45,8 +54,34 @@ impl DecisionRecord {
             predicted_confidence,
             timestamp: Utc::now(),
             was_correct: None,
+            legacy_output: None,
+            fallback_used: false,
+            fallback_reason: None,
         }
     }
+
+    /// Attach a legacy output for counterfactual analysis.
+    pub fn with_legacy_output(mut self, output: serde_json::Value) -> Self {
+        self.legacy_output = Some(output);
+        self
+    }
+
+    /// Mark that a legacy fallback was used.
+    pub fn with_fallback(mut self, reason: FallbackReason) -> Self {
+        self.fallback_used = true;
+        self.fallback_reason = Some(reason);
+        self
+    }
+}
+
+/// Why DSPy fell back to legacy behavior.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", content = "details")]
+pub enum FallbackReason {
+    /// DSPy confidence below threshold
+    LowConfidence { confidence: f32 },
+    /// DSPy pipeline failed or returned invalid output
+    PipelineError { message: String },
 }
 
 /// Record of a verification attempt during the autopilot loop.
@@ -445,6 +480,11 @@ impl SessionStore {
         }
 
         Ok(sessions)
+    }
+
+    /// Update a stored session after post-processing (e.g., labeling).
+    pub fn update_session(&self, session: &AutopilotSession) -> anyhow::Result<()> {
+        self.save_session(session)
     }
 
     /// Get the session index.

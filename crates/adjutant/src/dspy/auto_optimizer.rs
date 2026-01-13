@@ -244,7 +244,7 @@ impl SelfImprover {
     /// 3. Check for optimization triggers
     pub fn process_session_completion(
         &mut self,
-        session: &super::sessions::AutopilotSession,
+        session: &mut super::sessions::AutopilotSession,
     ) -> anyhow::Result<SelfImprovementResult> {
         let mut result = SelfImprovementResult::default();
 
