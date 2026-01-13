@@ -1,5 +1,7 @@
 Abstract
 
+> **Implementation Status:** This paper describes the OpenAgents system architecture. Some components are implemented and production-ready; others are specified but not yet wired. For current implementation status, see [SYNTHESIS_EXECUTION.md](./SYNTHESIS_EXECUTION.md). For canonical terminology, see [GLOSSARY.md](./GLOSSARY.md). For protocol details, see [docs/PROTOCOL_SURFACE.md](./docs/PROTOCOL_SURFACE.md).
+
 We present **OpenAgents**, a systems and learning framework for building **self-improving, economically grounded AI agents** that operate over real software artifacts and open compute markets. OpenAgents unifies three previously separate threads: (i) **declarative agent programming and compilation** (DSPy-style signatures, modules, and optimizers), (ii) **open-ended curriculum and task selection** guided by models of interestingness (OMNI/OMNI-EPIC), and (iii) **empirically validated self-modification loops** for agent improvement (Darwin Gödel Machine). Concretely, we replace brittle prompt strings with typed **Signatures** spanning planning, tool execution, synthesis, and routing, and close the loop by logging trajectories, labeling decisions using downstream outcomes (e.g., test deltas, cost, repetition), and triggering automatic recompilation via prompt optimization. To scale beyond context limits and mitigate long-horizon “context rot,” we integrate **Recursive Language Models (RLM/FRLM)** as an execution substrate that externalizes long context into a programmable environment and enables recursive sub-queries across large codebases and document sets. OpenAgents additionally introduces a market-aware runtime in which agents possess cryptographic identity, hold budgets, purchase compute from a decentralized provider network, and emit verifiable receipts for work. We argue that this combination—**compiled behavior + outcome-coupled optimization + scalable recursion + economic constraints**—yields a practical path toward open-ended, continuously improving agents in production domains, and we outline evaluation protocols that measure not only task success but also stability, cost-efficiency, and resistance to Goodhart-style pathologies.
 
 ## Table of Contents
@@ -224,7 +226,9 @@ OpenAgents is a full-stack system for autonomous agents that (i) execute real wo
 
 ### 3.1 OpenAgents Stack and Design Principles
 
-OpenAgents is organized as a layered stack. At the top are user-facing products (Autopilot, Onyx, GitAfter). Beneath them is an execution layer (Adjutant + Autopilot loop) built on a programming and compilation substrate (dsrs/DSPy). Below that sits infrastructure for execution, routing, identity, payments, and marketplace coordination (Pylon, Nexus, Gateway, Protocol, Runtime).
+OpenAgents is organized as a layered stack. At the top are user-facing products (Autopilot, Onyx, GitAfter). Beneath them is an execution layer (Adjutant + Autopilot loop) built on a programming and compilation substrate (dsrs/DSPy; implemented in `crates/dsrs/`). Below that sits infrastructure for execution, routing, identity, payments, and marketplace coordination (Pylon, Nexus, Gateway, Protocol, Runtime).
+
+> **Implementation note:** The DSPy compiler layer (`crates/dsrs/`) and Adjutant execution engine (`crates/adjutant/`) are implemented. Treasury (Neobank), Exchange, and full NIP-SA lifecycle are specified but not yet production-wired. See [SYNTHESIS_EXECUTION.md](./SYNTHESIS_EXECUTION.md) for detailed status.
 
 **Figure 1: OpenAgents stack.** Protocol substrate → treasury/exchange → execution/runtime → products.
 
@@ -247,6 +251,8 @@ OpenAgents treats autonomy as an OS problem: identity, spending, verification, a
 #### 3.1.2 Protocol substrate
 
 OpenAgents builds on Nostr as the transport layer. NIP-42 provides authenticated relay access, NIP-44 provides end-to-end encryption for agent state, and NIP-90 defines job request/result flows for compute markets. OpenAgents proposes NIP-SA as a lifecycle protocol for autonomous agents (profile, schedule, ticks, trajectories) and uses NIP-57 payment events to bind Lightning payments to protocol events. These protocols provide a minimal, interoperable surface while keeping the execution logic local to the agent runtime.
+
+> **Status:** NIP-90 job events are partially implemented (`crates/protocol/`). NIP-SA is proposed/specified but not yet implemented. See [docs/PROTOCOL_SURFACE.md](./docs/PROTOCOL_SURFACE.md) for canonical protocol details and kind numbers.
 
 #### 3.1.3 Identity and payments unification
 
@@ -612,7 +618,7 @@ This distinction informs both payment/receipts and what outcomes can be used as 
 
 ### 5.4 Trajectory Logging and Provenance
 
-Every Autopilot session emits a **trajectory**: a structured record of the entire run. The trajectory includes:
+Every Autopilot session emits a **trajectory**: a structured record of the entire run (current implementation: `ReplayBundle` in `crates/autopilot-core/src/replay.rs`; target format: `REPLAY.jsonl v1` per spec in `crates/dsrs/docs/REPLAY.md`). The trajectory includes:
 
 * policy bundle identifier and hashes
 * signature inputs/outputs per call
@@ -1595,7 +1601,26 @@ At the same time, the approach highlights the central tension of open-ended prog
 
 ### 12.5 Summary
 
-OpenAgents changes the autonomy problem from “get a model to do tasks” to “build a system that can reliably improve at doing tasks under constraints.” Compiled cognition enables systematic optimization; verification provides ground truth; recursion enables long-horizon reasoning; and markets enforce cost-aware behavior. The remaining challenges—generalization, objective hacking, robust federation, and governance—define the next research frontier for production-grade self-improving agents.
+OpenAgents changes the autonomy problem from "get a model to do tasks" to "build a system that can reliably improve at doing tasks under constraints." Compiled cognition enables systematic optimization; verification provides ground truth; recursion enables long-horizon reasoning; and markets enforce cost-aware behavior. The remaining challenges—generalization, objective hacking, robust federation, and governance—define the next research frontier for production-grade self-improving agents.
+
+### 12.6 MVP Gates
+
+The following gates define minimum viable product readiness for OpenAgents:
+
+| Gate | Status | Notes |
+|------|--------|-------|
+| **Verified PR Bundle emission** | 🔄 Partial | `ReplayBundle` exists; `REPLAY.jsonl` exporter pending |
+| **ToolCallSignature wired** | ⏳ Spec only | Defined in `crates/dsrs/docs/SIGNATURES.md` |
+| **ToolResultSignature wired** | ⏳ Spec only | Defined in `crates/dsrs/docs/SIGNATURES.md` |
+| **Tool params schema validation** | ✅ Implemented | Execution runtime validates (`crates/adjutant/`) |
+| **Policy bundle pin/rollback** | ⏳ Not started | CLI commands pending |
+| **Replay viewer CLI** | ⏳ Spec only | `adjutant replay` command pending |
+| **Outcome-coupled metrics wiring** | 🔄 Partial | `step_utility` defined; full labeling pending |
+| **Shadow/canary counterfactual recording** | ⏳ Spec only | Architecture defined; not wired |
+| **DSPy decision pipelines** | ✅ Implemented | `ComplexityPipeline`, `DelegationPipeline`, `RlmTriggerPipeline` |
+| **Self-improvement loop** | ✅ Implemented | `SessionStore`, `AutoOptimizer` in `crates/adjutant/` |
+
+> **Note:** "Self-improving" claims are valid only once the full loop is wired: trajectory logging → step_utility labels → policy bundles with pin/rollback → promotion gates. See [ROADMAP.md](./ROADMAP.md) for current status.
 
 
 ## 13 Conclusion
@@ -1626,7 +1651,7 @@ We believe the broader implication is that progress toward reliable autonomous a
 
 ## Appendix G: Protocol Surface (High-Level)
 
-This appendix summarizes the protocol surface used by OpenAgents. It is intentionally high-level and omits implementation details.
+This appendix summarizes the protocol surface used by OpenAgents. It is intentionally high-level and omits implementation details. For the canonical, maintained protocol reference, see [docs/PROTOCOL_SURFACE.md](./docs/PROTOCOL_SURFACE.md). For canonical terminology, see [GLOSSARY.md](./GLOSSARY.md).
 
 ### G.1 Event Kinds and Lifecycles
 
