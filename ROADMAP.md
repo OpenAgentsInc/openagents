@@ -189,7 +189,7 @@ This phase delivers the verifiable execution layer (paper Section 5). Without a 
 
 3. **Scheduled runs ("wake up to landed patches")**
 
-- `autopilot schedule nightly --repo ./myrepo --label "autopilot" --max 3`
+- `autopilot schedule nightly --repo ./myrepo --tag "autopilot" --max 3`
 - Pulls from a queue (local or forge adapter), runs end-to-end, emits Patch Bundles
 
 4. **APM + success-adjusted APM (sAPM)**
@@ -206,7 +206,7 @@ This phase delivers the verifiable execution layer (paper Section 5). Without a 
 6. **Forge-native intake (without full GitAfter)**
 
 - Read issues, open a branch, and publish the patch bundle + receipt
-- Label results "autopilot verified"
+- Attach status tag "autopilot verified"
 
 ### Definition of done
 
