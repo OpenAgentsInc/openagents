@@ -356,6 +356,13 @@ impl AppState {
             DspyStage::ExecutingTask { .. } => line_height,
             DspyStage::TaskComplete { .. } => line_height,
             DspyStage::Complete { .. } => line_height,
+            DspyStage::IssueSuggestions { suggestions, filtered_count, .. } => {
+                // Header line + each suggestion (3 lines each) + filtered count line
+                let suggestion_height = suggestions.len() as f32 * (small_line_height * 3.0 + 4.0);
+                let filtered_height = if *filtered_count > 0 { small_line_height + 4.0 } else { 0.0 };
+                suggestion_height + filtered_height + small_line_height
+            }
+            DspyStage::IssueSelected { .. } => line_height,
         };
 
         header_height + content_height + padding

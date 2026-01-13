@@ -113,6 +113,7 @@ impl GptOssCompletionModel {
     }
 
     /// Extract the task instruction from DSPy prompt.
+    #[allow(dead_code)]
     fn extract_instruction(prompt: &str) -> String {
         // Look for "your objective is:" section
         if let Some(idx) = prompt.to_lowercase().find("your objective is:") {
