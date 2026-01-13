@@ -2,8 +2,8 @@ use std::process::Command as ProcessCommand;
 use std::sync::atomic::Ordering;
 
 use adjutant::{
-    AcpChannelOutput, Adjutant, AdjutantError, DSPY_META_KEY, Task as AdjutantTask, ToolRegistry,
-    dspy_orchestrator::DspyOrchestrator, generate_session_id,
+    AcpChannelOutput, Adjutant, AdjutantError, DSPY_META_KEY, Task as AdjutantTask,
+    generate_session_id,
 };
 use agent_client_protocol_schema as acp;
 use tokio::sync::mpsc;
@@ -171,44 +171,8 @@ pub(crate) fn submit_autopilot_prompt(
                 }
                 tracing::info!("Autopilot: dsrs configured");
 
-                // Run issue suggestion right after boot
-                if let Some(workspace) = &manifest.workspace {
-                    if !workspace.issues.is_empty() {
-                        tracing::info!("Autopilot: running issue suggestions for {} issues", workspace.issues.len());
-                        let tools = ToolRegistry::new(workspace.root.clone());
-                        let orchestrator = DspyOrchestrator::new(None, tools);
-
-                        // Create a simple output adapter that sends DspyStage events
-                        struct SuggestionOutput {
-                            tx: mpsc::UnboundedSender<ResponseEvent>,
-                        }
-                        impl adjutant::AutopilotOutput for SuggestionOutput {
-                            fn iteration_start(&self, _: usize, _: usize) {}
-                            fn token(&self, _: &str) {}
-                            fn verification_start(&self) {}
-                            fn verification_result(&self, _: bool, _: &str) {}
-                            fn error(&self, _: &str) {}
-                            fn interrupted(&self) {}
-                            fn max_iterations(&self, _: usize) {}
-                            fn emit_stage(&self, stage: DspyStage) {
-                                let _ = self.tx.send(ResponseEvent::DspyStage(stage));
-                            }
-                        }
-
-                        let suggestion_output = SuggestionOutput { tx: tx.clone() };
-
-                        // Run suggestions (not autopilot mode - show to user)
-                        match orchestrator.suggest_issues(&workspace.issues, vec![], &suggestion_output, false).await {
-                            Ok(_) => {
-                                tracing::info!("Autopilot: issue suggestions emitted");
-                                window.request_redraw();
-                            }
-                            Err(e) => {
-                                tracing::warn!("Autopilot: issue suggestions failed: {}", e);
-                            }
-                        }
-                    }
-                }
+                // Note: Issue suggestions are already run during bootloader (coder_actions.rs)
+                // when the OANIX manifest arrives, so we don't duplicate them here.
 
                 // Build rich context from OANIX manifest
                 let mut context_parts = Vec::new();
