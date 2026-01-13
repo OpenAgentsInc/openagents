@@ -18,6 +18,7 @@ struct InstanceInput {
     @location(2) background: vec4<f32>,
     @location(3) border_color: vec4<f32>,
     @location(4) border_width: f32,
+    @location(5) corner_radius: f32,
 }
 
 struct VertexOutput {
@@ -27,6 +28,7 @@ struct VertexOutput {
     @location(2) background: vec4<f32>,
     @location(3) border_color: vec4<f32>,
     @location(4) border_width: f32,
+    @location(5) corner_radius: f32,
 }
 
 @vertex
@@ -54,31 +56,60 @@ fn vs_main(vertex: VertexInput, instance: InstanceInput) -> VertexOutput {
     out.background = instance.background;
     out.border_color = instance.border_color;
     out.border_width = instance.border_width;
+    out.corner_radius = instance.corner_radius;
 
     return out;
 }
 
+// Signed distance function for a rounded rectangle
+fn rounded_box_sdf(p: vec2<f32>, size: vec2<f32>, radius: f32) -> f32 {
+    // p is relative to center, size is half-extents
+    let q = abs(p) - size + radius;
+    return length(max(q, vec2<f32>(0.0))) + min(max(q.x, q.y), 0.0) - radius;
+}
+
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    let p = in.local_pos;
-    let half_border = in.border_width * 0.5;
+    // Convert local_pos to centered coordinates (center of quad = 0,0)
+    let half_size = in.size * 0.5;
+    let centered_pos = in.local_pos - half_size;
 
-    let in_border_x = p.x < in.border_width || p.x > in.size.x - in.border_width;
-    let in_border_y = p.y < in.border_width || p.y > in.size.y - in.border_width;
-    let in_border = in_border_x || in_border_y;
+    // Clamp corner radius to reasonable value
+    let max_radius = min(half_size.x, half_size.y);
+    let radius = min(in.corner_radius, max_radius);
 
-    var color: vec4<f32>;
-    if in_border && in.border_width > 0.0 {
-        color = vec4<f32>(
-            in.border_color.rgb * in.border_color.a,
-            in.border_color.a
-        );
-    } else {
-        color = vec4<f32>(
-            in.background.rgb * in.background.a,
-            in.background.a
-        );
+    // Calculate SDF for the rounded rectangle
+    let sdf = rounded_box_sdf(centered_pos, half_size, radius);
+
+    // Anti-aliasing: smooth transition at edge
+    let aa_width = 1.0; // 1 pixel anti-aliasing
+    let alpha = 1.0 - smoothstep(-aa_width, aa_width, sdf);
+
+    if alpha < 0.001 {
+        discard;
     }
+
+    // Determine if we're in the border region
+    var color: vec4<f32>;
+    if in.border_width > 0.0 {
+        // Calculate inner rounded rect for border
+        let inner_half_size = half_size - in.border_width;
+        let inner_radius = max(0.0, radius - in.border_width);
+        let inner_sdf = rounded_box_sdf(centered_pos, inner_half_size, inner_radius);
+
+        // Smooth border transition
+        let border_alpha = smoothstep(-aa_width, aa_width, inner_sdf);
+
+        // Mix border and background colors
+        let bg_color = vec4<f32>(in.background.rgb * in.background.a, in.background.a);
+        let bd_color = vec4<f32>(in.border_color.rgb * in.border_color.a, in.border_color.a);
+        color = mix(bg_color, bd_color, border_alpha);
+    } else {
+        color = vec4<f32>(in.background.rgb * in.background.a, in.background.a);
+    }
+
+    // Apply outer edge anti-aliasing
+    color = color * alpha;
 
     if color.a < 0.001 {
         discard;
