@@ -13,7 +13,7 @@ Canonical JSONL event format for REPLAY.jsonl files. For terminology, see [GLOSS
 ## Overview
 
 REPLAY.jsonl files capture a complete event stream of a session for:
-- CLI replay viewer (`adjutant replay sess_abc123`)
+- CLI replay viewer (`autopilot replay sess_abc123`)
 - Counterfactual analysis
 - Shadow mode comparison
 - Training data generation
@@ -337,7 +337,7 @@ pub fn verify_replay(
 
 **Migration path:**
 1. Implement `ReplayBundle → REPLAY.jsonl v1` exporter
-2. `adjutant replay` command accepts both formats
+2. `autopilot replay` command accepts both formats
 3. Once stable, optionally migrate to native REPLAY.jsonl emission
 
 **MVP acceptance:** Either:

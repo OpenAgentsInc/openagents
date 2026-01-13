@@ -412,7 +412,7 @@ Decides whether to delegate task execution and to which target.
 | `file_count` | String | input | Number of files |
 | `estimated_tokens` | String | input | Estimated context tokens |
 | `should_delegate` | bool | output | Whether to delegate |
-| `delegation_target` | String | output | codex_code, rlm, or local_tools |
+| `delegation_target` | String | output | codex, rlm, or local_tools |
 | `reasoning` | String | output | Explanation of decision |
 | `confidence` | f32 | output | Confidence score (0.0-1.0) |
 
@@ -451,7 +451,7 @@ pub async fn execute(&mut self, task: &Task) -> Result<TaskResult, AdjutantError
 
     if delegation.should_delegate && delegation.confidence > 0.7 {
         match delegation.delegation_target.as_str() {
-            "codex_code" => return self.delegate_to_codex_code(task).await,
+            "codex" => return self.delegate_to_codex(task).await,
             "rlm" => return self.execute_with_rlm_delegate(task, &plan).await,
             _ => {} // local_tools - fall through
         }

@@ -91,7 +91,7 @@ Bazaar jobs require an **agent backend** (e.g., Codex) and support pay-after-ver
    - Manages agent backends for complex, multi-step tasks
    - Routes Bazaar jobs to appropriate agent (e.g., Codex)
 
-5. **CodexCodeBackend** (`backends/codex_code.rs`):
+5. **CodexCodeBackend** (`backends/codex.rs`):
    - Executes Codex in sandboxed environment
    - Supports PatchGen, CodeReview, SandboxRun jobs
    - Isolation modes: local, container, gvisor

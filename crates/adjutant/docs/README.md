@@ -113,7 +113,7 @@ RUST_LOG=adjutant=info cargo run -p autopilot -- run "Summarize README.md"
 │     └── fallback → delegation / tool executor                │
 │                                                              │
 │  5. determine_delegation() [DSPy-first]                     │
-│     ├── codex_code → delegate_to_codex_code()             │
+│     ├── codex → delegate_to_codex()             │
 │     ├── rlm → execute_with_rlm_delegate()                   │
 │     └── local_tools → execute_with_tools()                  │
 │                                                              │
@@ -255,7 +255,7 @@ let result = executor.execute_dsrs(&task, &context, &mut tools).await?;
 | Signature | Purpose | Fallback |
 |-----------|---------|----------|
 | `ComplexityClassificationSignature` | Classify task complexity (Low/Medium/High/VeryHigh) | Rule-based heuristics |
-| `DelegationDecisionSignature` | Decide if/where to delegate (codex_code/rlm/local_tools) | Complexity thresholds |
+| `DelegationDecisionSignature` | Decide delegation target (see [GLOSSARY.md](../../../GLOSSARY.md) for full enum) | Complexity thresholds |
 | `RlmTriggerSignature` | Decide if RLM should be used | Token count + keywords |
 
 Decision pipelines use a 0.7 confidence threshold - below that, they fall back to legacy rule-based logic.
@@ -345,7 +345,7 @@ For very complex tasks, Adjutant delegates to Codex:
 ```rust
 // When complexity >= VeryHigh or files > 20
 if plan.complexity >= Complexity::High || plan.files.len() > 20 {
-    return self.delegate_to_codex_code(task).await;
+    return self.delegate_to_codex(task).await;
 }
 
 // When context is too large

@@ -711,14 +711,16 @@ Decides whether to delegate task execution and to which target.
 
 // Outputs:
 // - should_delegate: Whether to delegate this task
-// - delegation_target: codex_code | rlm | local_tools
+// - delegation_target: local_tools | rlm | codex | swarm_fanout | objective_job
 // - reasoning: Explanation of the delegation decision
 // - confidence: Confidence in decision (0.0 to 1.0)
 
-// Delegation targets:
-// - codex_code: Complex multi-file tasks, architectural work
-// - rlm: Large context analysis, recursive investigation
+// Delegation targets (see GLOSSARY.md for canonical definitions):
 // - local_tools: Simple edits, small scope tasks
+// - rlm: Large context analysis, recursive investigation
+// - codex: Complex multi-file tasks, architectural work
+// - swarm_fanout: Fan out to provider network for parallel queries
+// - objective_job: Sandboxed, objectively verifiable job (tests/builds)
 
 let pipeline = DelegationPipeline::new();
 let result = pipeline.decide(&DelegationInput {

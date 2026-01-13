@@ -93,6 +93,7 @@ Canonical definitions for OpenAgents terminology. All docs should use these term
 | **Execution Runtime** | The layer that validates tool params, enforces retries, and runs tools. Distinct from adapters. |
 | **Lane** | Named routing bucket for inference/execution. Standard *classes* are **Local** (free, on-device), **Cloud** (hosted API), **Swarm** (NIP-90 marketplace). Implementations may expose additional lane names (e.g., `cheap`, `fast`, `premium`) that map onto these classes. Note: "Datacenter" in supply class docs refers to Cloud lanes. |
 | **Dispatcher** | Component that sends NIP-90 jobs to the swarm (e.g., SwarmDispatcher). |
+| **DelegationTarget** | Where to route a task. Canonical enum: `local_tools` (simple edits), `rlm` (recursive analysis), `codex` (complex multi-file), `swarm_fanout` (parallel provider queries), `objective_job` (sandboxed verifiable jobs like tests/builds). |
 | **step_utility** | Learning signal for a tool call. Canonical range: **-1.0..+1.0** (from `ToolResultSignature`). |
 | **verification_delta** | Change in failing tests: `tests_before - tests_after`. Positive = improvement. |
 | **PlanIR** | Canonical intermediate representation for plans. Emitted by both Adjutant and Autopilot planners. |

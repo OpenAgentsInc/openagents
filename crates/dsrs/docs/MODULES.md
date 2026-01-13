@@ -316,17 +316,19 @@ let result = pipeline.decide(&DelegationInput {
 
 // Result contains:
 // - should_delegate: bool
-// - delegation_target: "codex_code" | "rlm" | "local_tools"
+// - delegation_target: "local_tools" | "rlm" | "codex" | "swarm_fanout" | "objective_job"
 // - reasoning: String
 // - confidence: f32
 ```
 
-**Delegation Targets:**
+**Delegation Targets** (see [GLOSSARY.md](../../../GLOSSARY.md) for canonical definitions):
 | Target | Use Case |
 |--------|----------|
-| `codex_code` | Complex multi-file tasks, architectural work |
-| `rlm` | Large context analysis, recursive investigation |
 | `local_tools` | Simple edits, small scope tasks |
+| `rlm` | Large context analysis, recursive investigation |
+| `codex` | Complex multi-file tasks, architectural work |
+| `swarm_fanout` | Parallel provider queries, specialized skills |
+| `objective_job` | Sandboxed verifiable jobs (tests/builds) |
 
 ---
 
@@ -631,7 +633,7 @@ Policy bundles are versioned artifacts containing optimized prompts and configur
 ### Bundle Structure
 
 ```
-.adjutant/policies/
+.autopilot/policies/
 ├── v1.2.3/
 │   ├── manifest.json
 │   ├── signatures/
@@ -667,30 +669,30 @@ Policy bundles are versioned artifacts containing optimized prompts and configur
 
 ```bash
 # List policy versions
-adjutant policy list
+autopilot policy list
 # v1.2.3 (current)
 # v1.2.2
 # v1.2.1
 
 # Pin to specific version
-adjutant policy pin v1.2.2
+autopilot policy pin v1.2.2
 # Pinned to v1.2.2
 
 # Rollback to previous version
-adjutant policy rollback
+autopilot policy rollback
 # Rolled back from v1.2.3 to v1.2.2
 
 # Create new policy from training data
-adjutant policy compile --trainset ./labeled_examples.jsonl
+autopilot policy compile --trainset ./labeled_examples.jsonl
 # Compiled v1.2.4 with validation score 0.89
 
 # Diff two policy versions
-adjutant policy diff v1.2.2 v1.2.3
+autopilot policy diff v1.2.2 v1.2.3
 # ToolCallSignature: instruction changed (+15 chars)
 # SubtaskPlanningSignature: 3 new demos added
 
 # Lock a policy (prevent modification)
-adjutant policy lock v1.2.3
+autopilot policy lock v1.2.3
 # Locked v1.2.3
 ```
 
@@ -700,10 +702,10 @@ Run new policies alongside production without affecting output:
 
 ```bash
 # Shadow mode: record what new policy would have done
-adjutant run --shadow-policy v1.2.4
+autopilot run --shadow-policy v1.2.4
 
 # Canary mode: 10% of requests use new policy
-adjutant run --canary-policy v1.2.4 --canary-percent 10
+autopilot run --canary-policy v1.2.4 --canary-percent 10
 ```
 
 **Shadow mode output:**
