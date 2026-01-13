@@ -14,7 +14,7 @@ pub(crate) const COMPOSER_MENU_ITEM_HEIGHT: f32 = 22.0;
 pub(crate) const COMPOSER_MENU_PADDING: f32 = 6.0;
 pub(crate) const COMPOSER_MENU_MIN_WIDTH: f32 = 140.0;
 pub(crate) const COMPOSER_MENU_MAX_ITEMS: usize = 8;
-pub(crate) const TOPBAR_HEIGHT: f32 = 44.0;
+pub(crate) const TOPBAR_HEIGHT: f32 = 0.0;
 pub(crate) const CONTENT_PADDING_X: f32 = 32.0;
 /// Height of input area (input + padding + status bar) for modal positioning
 pub(crate) const INPUT_AREA_HEIGHT: f32 = INPUT_HEIGHT

@@ -60,7 +60,9 @@ impl MarkdownRenderer {
         text_system: &mut TextSystem,
     ) -> f32 {
         match block {
-            MarkdownBlock::Paragraph(lines) => self.measure_lines(lines),
+            MarkdownBlock::Paragraph(lines) => {
+                self.measure_lines(lines, max_width, 0, text_system)
+            }
 
             MarkdownBlock::Header { level, lines } => {
                 let margin_top = match level {
@@ -68,7 +70,7 @@ impl MarkdownRenderer {
                     2 => theme::spacing::LG,
                     _ => theme::spacing::MD,
                 };
-                margin_top + self.measure_lines(lines)
+                margin_top + self.measure_lines(lines, max_width, 0, text_system)
             }
 
             MarkdownBlock::CodeBlock { lines, .. } => {
@@ -142,16 +144,58 @@ impl MarkdownRenderer {
         }
     }
 
-    fn measure_lines(&self, lines: &[StyledLine]) -> f32 {
+    fn measure_lines(
+        &self,
+        lines: &[StyledLine],
+        max_width: f32,
+        base_indent: u32,
+        text_system: &mut TextSystem,
+    ) -> f32 {
         let mut height = 0.0;
         for line in lines {
             height += line.margin_top;
+            let indent = (base_indent + line.indent) as f32 * theme::spacing::LG;
+            let line_start_x = indent;
+            let right_edge = max_width;
+
             let base_font_size = line
                 .spans
                 .first()
                 .map(|s| s.style.font_size)
                 .unwrap_or(self.config.base_font_size);
-            height += base_font_size * line.line_height;
+            let line_height = base_font_size * line.line_height;
+
+            let mut current_x = line_start_x;
+
+            // Simulate word wrapping like render_lines does
+            for span in &line.spans {
+                let font_style = FontStyle {
+                    bold: span.style.bold,
+                    italic: span.style.italic,
+                };
+
+                let words = split_into_words(&span.text);
+
+                for word in &words {
+                    if word.is_empty() {
+                        continue;
+                    }
+
+                    let word_width =
+                        text_system.measure_styled_mono(word, span.style.font_size, font_style);
+
+                    // Check if word would wrap to next line
+                    if current_x + word_width > right_edge && current_x > line_start_x {
+                        height += line_height;
+                        current_x = line_start_x;
+                    }
+
+                    current_x += word_width;
+                }
+            }
+
+            // Add final line height
+            height += line_height;
         }
         height
     }
