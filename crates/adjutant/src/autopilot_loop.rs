@@ -80,6 +80,43 @@ pub enum DspyStage {
         successful: usize,
         failed: usize,
     },
+
+    /// Issue suggestions for user to choose from
+    IssueSuggestions {
+        /// Top 3 suggested issues
+        suggestions: Vec<IssueSuggestionDisplay>,
+        /// Number of issues filtered out as stale/blocked
+        filtered_count: usize,
+        /// Confidence in suggestions (0.0-1.0)
+        confidence: f32,
+        /// Whether to await user selection (false = autopilot picks)
+        await_selection: bool,
+    },
+
+    /// An issue was selected to work on
+    IssueSelected {
+        /// Issue number
+        number: u32,
+        /// Issue title
+        title: String,
+        /// Selection method: "user" or "autopilot"
+        selection_method: String,
+    },
+}
+
+/// Display format for an issue suggestion.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IssueSuggestionDisplay {
+    /// Issue number
+    pub number: u32,
+    /// Issue title
+    pub title: String,
+    /// Priority level
+    pub priority: String,
+    /// Rationale for suggestion
+    pub rationale: String,
+    /// Estimated complexity
+    pub complexity: String,
 }
 
 /// ACP meta key for embedding serialized DSPy stage data in content blocks.
@@ -342,6 +379,48 @@ impl AutopilotOutput for CliOutput {
                     total_tasks, successful, failed
                 );
                 println!("└─────────────────────────────────────────────────────────────┘\n");
+            }
+            DspyStage::IssueSuggestions {
+                suggestions,
+                filtered_count,
+                confidence,
+                await_selection,
+            } => {
+                println!("\n┌─────────────────────────────────────────────────────────────┐");
+                println!("│ 📋 Issue Suggestions                                        │");
+                println!("├─────────────────────────────────────────────────────────────┤");
+                for (i, s) in suggestions.iter().enumerate() {
+                    println!(
+                        "│ {}. [#{}] {} ({})",
+                        i + 1,
+                        s.number,
+                        s.title,
+                        s.priority
+                    );
+                    println!("│    \"{}\"", s.rationale);
+                    println!("│    Complexity: {}", s.complexity);
+                }
+                if filtered_count > 0 {
+                    println!("│");
+                    println!("│ [{} issues filtered as stale/blocked]", filtered_count);
+                }
+                println!(
+                    "│ Confidence: {:.0}% | {}",
+                    confidence * 100.0,
+                    if await_selection {
+                        "Awaiting selection..."
+                    } else {
+                        "Auto-selecting..."
+                    }
+                );
+                println!("└─────────────────────────────────────────────────────────────┘\n");
+            }
+            DspyStage::IssueSelected {
+                number,
+                title,
+                selection_method,
+            } => {
+                println!("\n🎯 Selected issue #{}: {} ({})\n", number, title, selection_method);
             }
         }
     }
@@ -674,6 +753,23 @@ impl AutopilotOutput for AcpChannelOutput {
                     format!(
                         "Execution complete: {} total, {} successful, {} failed.",
                         total_tasks, successful, failed
+                    ),
+                    meta,
+                );
+            }
+            DspyStage::IssueSuggestions { .. } => {
+                // Card renders the suggestions UI, just attach metadata
+                self.send_thought_with_meta(String::new(), meta);
+            }
+            DspyStage::IssueSelected {
+                number,
+                title,
+                selection_method,
+            } => {
+                self.send_message_with_meta(
+                    format!(
+                        "Selected issue #{}: {} ({})",
+                        number, title, selection_method
                     ),
                     meta,
                 );

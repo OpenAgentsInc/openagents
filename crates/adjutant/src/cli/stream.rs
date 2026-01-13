@@ -340,6 +340,62 @@ impl<W: Write> CliAcpRenderer<W> {
                     ),
                 );
             }
+            DspyStage::IssueSuggestions {
+                suggestions,
+                filtered_count,
+                confidence,
+                await_selection,
+            } => {
+                self.write_line(
+                    DSPY_PREFIX,
+                    &indent,
+                    format!(
+                        "issue suggestions: {} options, confidence={:.0}%",
+                        suggestions.len(),
+                        confidence * 100.0
+                    ),
+                );
+                for (i, s) in suggestions.iter().enumerate() {
+                    self.write_line(
+                        DSPY_PREFIX,
+                        &indent,
+                        format!(
+                            "  {}. [#{}] {} ({}) - {}",
+                            i + 1,
+                            s.number,
+                            truncate(&s.title, 40),
+                            s.priority,
+                            s.complexity
+                        ),
+                    );
+                }
+                if filtered_count > 0 {
+                    self.write_line(
+                        DSPY_PREFIX,
+                        &indent,
+                        format!("  [{} issues filtered]", filtered_count),
+                    );
+                }
+                if await_selection {
+                    self.write_line(DSPY_PREFIX, &indent, "  awaiting selection...".to_string());
+                }
+            }
+            DspyStage::IssueSelected {
+                number,
+                title,
+                selection_method,
+            } => {
+                self.write_line(
+                    DSPY_PREFIX,
+                    &indent,
+                    format!(
+                        "selected: #{} {} ({})",
+                        number,
+                        truncate(&title, MAX_FIELD_LEN),
+                        selection_method
+                    ),
+                );
+            }
         }
     }
 

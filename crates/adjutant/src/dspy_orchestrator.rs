@@ -9,9 +9,10 @@
 //! Each stage emits UI events through the AutopilotOutput trait so the
 //! user can see progress in real-time.
 
-use crate::autopilot_loop::{AutopilotOutput, DspyStage, TodoStatus, TodoTask};
+use crate::autopilot_loop::{AutopilotOutput, DspyStage, IssueSuggestionDisplay, TodoStatus, TodoTask};
+use crate::dspy::issue_suggestion::{IssueSuggestionInput, IssueSuggestionPipeline};
 use crate::dspy::situation::{SituationInput, SituationPipeline};
-use crate::manifest::OanixManifest;
+use crate::manifest::{IssueSummary, OanixManifest};
 use crate::{Task, TaskPlan, ToolRegistry};
 use anyhow::Result;
 use autopilot_core::{PlanningInput, PlanningPipeline, PlanningResult};
@@ -465,6 +466,83 @@ impl DspyOrchestrator {
         }
 
         Ok(files)
+    }
+
+    /// Suggest issues to work on next.
+    ///
+    /// Uses the IssueSuggestionPipeline to rank and filter issues,
+    /// then emits the suggestions to the UI.
+    ///
+    /// # Arguments
+    /// * `issues` - Available issues from the manifest
+    /// * `recent_work` - Recently worked issue numbers
+    /// * `output` - Output for emitting stages
+    /// * `autopilot_mode` - If true, auto-select the first suggestion
+    ///
+    /// # Returns
+    /// * `Some(number)` - Issue number if auto-selected in autopilot mode
+    /// * `None` - Awaiting user selection
+    pub async fn suggest_issues<O: AutopilotOutput>(
+        &self,
+        issues: &[IssueSummary],
+        recent_work: Vec<u32>,
+        output: &O,
+        autopilot_mode: bool,
+    ) -> Result<Option<u32>> {
+        // Build workspace context
+        let workspace_context = format!(
+            "Repository at {}",
+            self.tools.workspace_root().display()
+        );
+
+        let input = IssueSuggestionInput {
+            issues: issues.to_vec(),
+            workspace_context,
+            recent_work,
+            user_preferences: None,
+        };
+
+        // Run suggestion pipeline
+        let pipeline = match &self.lm {
+            Some(lm) => IssueSuggestionPipeline::with_lm(lm.clone()),
+            None => IssueSuggestionPipeline::new(),
+        };
+
+        let result = pipeline.suggest(&input).await?;
+
+        // Convert to display format
+        let suggestions: Vec<IssueSuggestionDisplay> = result
+            .suggestions
+            .iter()
+            .map(|s| IssueSuggestionDisplay {
+                number: s.number,
+                title: s.title.clone(),
+                priority: s.priority.clone(),
+                rationale: s.rationale.clone(),
+                complexity: s.complexity.clone(),
+            })
+            .collect();
+
+        // Emit suggestions stage
+        output.emit_stage(DspyStage::IssueSuggestions {
+            suggestions: suggestions.clone(),
+            filtered_count: result.filtered_count,
+            confidence: result.confidence,
+            await_selection: !autopilot_mode,
+        });
+
+        // In autopilot mode, auto-select the first suggestion
+        if autopilot_mode && !suggestions.is_empty() {
+            let selected = &suggestions[0];
+            output.emit_stage(DspyStage::IssueSelected {
+                number: selected.number,
+                title: selected.title.clone(),
+                selection_method: "autopilot".to_string(),
+            });
+            return Ok(Some(selected.number));
+        }
+
+        Ok(None)
     }
 }
 
