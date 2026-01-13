@@ -49,6 +49,7 @@ pub mod display;
 pub mod dspy;
 pub mod dspy_orchestrator;
 pub mod executor;
+pub mod issue_suggestions_appserver;
 pub mod manifest;
 pub mod planner;
 pub mod rlm_agent;

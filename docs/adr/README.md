@@ -110,6 +110,8 @@ CI may enforce:
 
 Not yet implemented — stated here so tooling can be built.
 
+Suggested implementation: `scripts/adr_lint.rs` (or `.py`). Do not create alternative linters elsewhere.
+
 ## Superseding an ADR
 
 When a decision changes:
