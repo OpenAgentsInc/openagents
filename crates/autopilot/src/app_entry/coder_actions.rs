@@ -1384,6 +1384,45 @@ impl AutopilotApp {
             match rx.try_recv() {
                 Ok(manifest) => {
                     tracing::info!("Autopilot: cached OANIX manifest");
+
+                    // Spawn issue suggestion task if we have issues
+                    if let Some(workspace) = &manifest.workspace {
+                        if !workspace.issues.is_empty() {
+                            let issues = workspace.issues.clone();
+                            let workspace_root = workspace.root.clone();
+                            let (suggestion_tx, suggestion_rx) = tokio::sync::mpsc::unbounded_channel();
+                            state.autopilot.issue_suggestions_rx = Some(suggestion_rx);
+
+                            self.runtime_handle.spawn(async move {
+                                tracing::info!("Autopilot: running issue suggestions for {} issues", issues.len());
+                                let tools = adjutant::ToolRegistry::new(workspace_root);
+                                let orchestrator = adjutant::dspy_orchestrator::DspyOrchestrator::new(None, tools);
+
+                                // Create a minimal output that captures the stage
+                                struct CaptureOutput {
+                                    tx: tokio::sync::mpsc::UnboundedSender<adjutant::autopilot_loop::DspyStage>,
+                                }
+                                impl adjutant::AutopilotOutput for CaptureOutput {
+                                    fn iteration_start(&self, _: usize, _: usize) {}
+                                    fn token(&self, _: &str) {}
+                                    fn verification_start(&self) {}
+                                    fn verification_result(&self, _: bool, _: &str) {}
+                                    fn error(&self, _: &str) {}
+                                    fn interrupted(&self) {}
+                                    fn max_iterations(&self, _: usize) {}
+                                    fn emit_stage(&self, stage: adjutant::autopilot_loop::DspyStage) {
+                                        let _ = self.tx.send(stage);
+                                    }
+                                }
+
+                                let output = CaptureOutput { tx: suggestion_tx };
+                                if let Err(e) = orchestrator.suggest_issues(&issues, vec![], &output, false).await {
+                                    tracing::warn!("Autopilot: issue suggestions failed: {}", e);
+                                }
+                            });
+                        }
+                    }
+
                     state.autopilot.oanix_manifest = Some(manifest);
                     state
                         .wallet
@@ -1398,6 +1437,22 @@ impl AutopilotApp {
                     tracing::warn!("Autopilot: OANIX manifest channel closed");
                     state.autopilot.oanix_manifest_rx = None;
                     needs_redraw = true;
+                }
+                Err(TryRecvError::Empty) => {}
+            }
+        }
+
+        // Check for issue suggestions
+        if let Some(rx) = &mut state.autopilot.issue_suggestions_rx {
+            match rx.try_recv() {
+                Ok(stage) => {
+                    tracing::info!("Autopilot: received issue suggestions");
+                    state.autopilot.issue_suggestions = Some(stage);
+                    state.autopilot.issue_suggestions_rx = None;
+                    needs_redraw = true;
+                }
+                Err(TryRecvError::Disconnected) => {
+                    state.autopilot.issue_suggestions_rx = None;
                 }
                 Err(TryRecvError::Empty) => {}
             }

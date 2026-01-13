@@ -55,6 +55,11 @@ pub fn render_bootloader_center(
     if let Some(summary) = state.bootloader.summary.clone() {
         draw_summary(state, scene, &summary, logical_width, logical_height, palette);
     }
+
+    // Draw issue suggestions if available
+    if let Some(suggestions) = state.autopilot.issue_suggestions.clone() {
+        draw_issue_suggestions(state, scene, &suggestions, logical_width, logical_height, palette);
+    }
 }
 
 /// Draw bezier curve edges between nodes.
@@ -280,5 +285,129 @@ fn draw_summary(
             palette.text_muted,
         );
         scene.draw_text(summary_run);
+    }
+}
+
+/// Draw issue suggestions card.
+fn draw_issue_suggestions(
+    state: &mut AppState,
+    scene: &mut Scene,
+    stage: &DspyStage,
+    logical_width: f32,
+    logical_height: f32,
+    palette: &UiPalette,
+) {
+    let DspyStage::IssueSuggestions {
+        suggestions,
+        filtered_count,
+        confidence,
+        await_selection,
+    } = stage else {
+        return;
+    };
+
+    if suggestions.is_empty() {
+        return;
+    }
+
+    // Card dimensions
+    let card_width = 360.0_f32.min(logical_width - 40.0);
+    let line_height = 16.0;
+    let card_height = 60.0 + (suggestions.len() as f32 * line_height * 3.0) + 20.0;
+    let card_x = (logical_width - card_width) / 2.0;
+    let card_y = logical_height - card_height - 100.0;
+
+    // Card background
+    scene.draw_quad(
+        Quad::new(Bounds::new(card_x, card_y, card_width, card_height))
+            .with_background(palette.panel)
+            .with_border(Hsla::new(45.0 / 360.0, 0.7, 0.5, 1.0), 2.0) // Gold
+            .with_corner_radius(8.0),
+    );
+
+    let mut y = card_y + 12.0;
+    let font_size = 12.0;
+    let small_font_size = 11.0;
+
+    // Header
+    let header = "📋 Suggested Issues";
+    let header_run = state.text_system.layout_mono(
+        header,
+        Point::new(card_x + 12.0, y),
+        font_size,
+        Hsla::new(45.0 / 360.0, 0.7, 0.5, 1.0),
+    );
+    scene.draw_text(header_run);
+    y += line_height + 4.0;
+
+    // Status line
+    let status = if *await_selection { "Select an issue:" } else { "Auto-selecting..." };
+    let status_line = format!("Confidence: {:.0}% · {}", confidence * 100.0, status);
+    let status_run = state.text_system.layout_mono(
+        &status_line,
+        Point::new(card_x + 12.0, y),
+        small_font_size,
+        palette.text_muted,
+    );
+    scene.draw_text(status_run);
+    y += line_height + 8.0;
+
+    // Suggestions
+    for (i, suggestion) in suggestions.iter().enumerate() {
+        let title_line = format!(
+            "{}. [#{}] {} ({})",
+            i + 1,
+            suggestion.number,
+            truncate(&suggestion.title, 35),
+            suggestion.priority
+        );
+        let title_run = state.text_system.layout_mono(
+            &title_line,
+            Point::new(card_x + 12.0, y),
+            small_font_size,
+            palette.text_primary,
+        );
+        scene.draw_text(title_run);
+        y += line_height;
+
+        let rationale_line = format!("   \"{}\"", truncate(&suggestion.rationale, 40));
+        let rationale_run = state.text_system.layout_mono(
+            &rationale_line,
+            Point::new(card_x + 12.0, y),
+            small_font_size,
+            palette.text_muted,
+        );
+        scene.draw_text(rationale_run);
+        y += line_height;
+
+        let complexity_line = format!("   Complexity: {}", suggestion.complexity);
+        let complexity_run = state.text_system.layout_mono(
+            &complexity_line,
+            Point::new(card_x + 12.0, y),
+            small_font_size,
+            palette.text_dim,
+        );
+        scene.draw_text(complexity_run);
+        y += line_height + 4.0;
+    }
+
+    // Filtered count
+    if *filtered_count > 0 {
+        let filtered_line = format!("[{} issues filtered as stale/blocked]", filtered_count);
+        let filtered_run = state.text_system.layout_mono(
+            &filtered_line,
+            Point::new(card_x + 12.0, y),
+            small_font_size,
+            palette.text_dim,
+        );
+        scene.draw_text(filtered_run);
+    }
+}
+
+fn truncate(s: &str, max_len: usize) -> String {
+    if s.len() <= max_len {
+        s.to_string()
+    } else {
+        format!("{}...", &s[..max_len.saturating_sub(3)])
     }
 }
