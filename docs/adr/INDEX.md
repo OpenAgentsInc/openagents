@@ -2,7 +2,7 @@
 
 Architecture Decision Records for the OpenAgents project.
 
-**Quick links:** [README.md](./README.md) (process) | [TEMPLATE.md](./TEMPLATE.md) | Next available: **ADR-0016**
+**Quick links:** [README.md](./README.md) (process) | [TEMPLATE.md](./TEMPLATE.md) | Next available: **ADR-0019**
 
 ---
 
@@ -25,6 +25,9 @@ Architecture Decision Records for the OpenAgents project.
 | [ADR-0013](./ADR-0013-receipt-schema-payment-proofs.md) | Receipt Schema + Payment Proofs | Accepted | 2026-01-13 | Economy | — | protocol | 2026-01-13 |
 | [ADR-0014](./ADR-0014-cli-surface-ownership.md) | CLI Surface Ownership | Accepted | 2026-01-13 | UX | — | core | 2026-01-13 |
 | [ADR-0015](./ADR-0015-policy-bundles.md) | Policy Bundles | Accepted | 2026-01-13 | Compiler | — | dsrs | 2026-01-13 |
+| [ADR-0016](./ADR-0016-privacy-defaults-swarm-dispatch.md) | Privacy Defaults for Swarm Dispatch | Accepted | 2026-01-13 | Security | — | dsrs | 2026-01-13 |
+| [ADR-0017](./ADR-0017-telemetry-trace-contract.md) | Telemetry and Trace Contract | Accepted | 2026-01-13 | Execution | — | dsrs | 2026-01-13 |
+| [ADR-0018](./ADR-0018-forge-adapter-contract.md) | Forge Adapter Contract | Accepted | 2026-01-13 | Execution | — | adjutant | 2026-01-13 |
 
 ---
 
@@ -35,6 +38,8 @@ Architecture Decision Records for the OpenAgents project.
 - [ADR-0003](./ADR-0003-replay-formats.md) — Replay Formats and Migration
 - [ADR-0007](./ADR-0007-tool-execution-contract.md) — Tool Execution Contract
 - [ADR-0008](./ADR-0008-session-storage-layout.md) — Session Storage Layout
+- [ADR-0017](./ADR-0017-telemetry-trace-contract.md) — Telemetry and Trace Contract
+- [ADR-0018](./ADR-0018-forge-adapter-contract.md) — Forge Adapter Contract
 
 ### Compiler (policy bundles, signatures, metrics)
 - [ADR-0005](./ADR-0005-step-utility-semantics.md) — Step Utility Semantics
@@ -57,7 +62,7 @@ Architecture Decision Records for the OpenAgents project.
 - [ADR-0014](./ADR-0014-cli-surface-ownership.md) — CLI Surface Ownership
 
 ### Security (privacy, redaction)
-- (none yet)
+- [ADR-0016](./ADR-0016-privacy-defaults-swarm-dispatch.md) — Privacy Defaults for Swarm Dispatch
 
 ### Ops (governance, process)
 - [ADR-0001](./ADR-0001-adoption-of-adrs.md) — Adoption of Architecture Decision Records
@@ -67,7 +72,7 @@ Architecture Decision Records for the OpenAgents project.
 ## By Status
 
 ### Accepted
-- ADR-0001, ADR-0002, ADR-0003, ADR-0004, ADR-0005, ADR-0006, ADR-0007, ADR-0008, ADR-0009, ADR-0010, ADR-0011, ADR-0012, ADR-0013, ADR-0014, ADR-0015
+- ADR-0001, ADR-0002, ADR-0003, ADR-0004, ADR-0005, ADR-0006, ADR-0007, ADR-0008, ADR-0009, ADR-0010, ADR-0011, ADR-0012, ADR-0013, ADR-0014, ADR-0015, ADR-0016, ADR-0017, ADR-0018
 
 ### Proposed
 - (none)
@@ -84,7 +89,4 @@ Architecture Decision Records for the OpenAgents project.
 
 These are identified needs, not yet written. Claim one by writing the ADR.
 
-### Priority D — Governance + privacy (when ready)
-- **ADR-0016**: Privacy defaults for swarm dispatch
-- **ADR-0017**: Telemetry/trace contract
-- **ADR-0018**: Forge adapter contract
+(none currently identified)
