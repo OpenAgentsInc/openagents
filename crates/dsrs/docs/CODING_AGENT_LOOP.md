@@ -441,3 +441,5 @@ That’s the core loop. Everything else (skills, UI, multi-agent, marketplace jo
 - 2026-01-14: Fixed CODING_AGENT_LOOP compile errors (Predictor trait import, LM builder ordering).
 - 2026-01-14: Forced Autopilot to always route autonomous execution through Adjutant (Codex backend selection is chat-only).
 - 2026-01-14: Added .env.local loading in Autopilot to pick up OPENAI_API_KEY for DSPy signatures.
+- 2026-01-14: Shifted .env.local lookup into Adjutant LM config to avoid mutating env at runtime while keeping OPENAI_API_KEY available.
+- 2026-01-14: Improved DSPy stage UI and markdown layout wrapping to prevent long-token overflow in Autopilot rendering.

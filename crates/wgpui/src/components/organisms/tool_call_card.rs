@@ -235,6 +235,18 @@ impl Component for ToolCallCard {
         } else {
             self.tool_name.clone()
         };
+        let right_padding = if self.status == ToolStatus::Running && self.elapsed_secs.is_some() {
+            50.0
+        } else {
+            12.0
+        };
+        let name_available =
+            (bounds.size.width - (name_x - bounds.origin.x) - right_padding).max(0.0);
+        let display_name = if name_available > 0.0 {
+            Self::truncate_text(&display_name, name_available, Self::FONT_SIZE)
+        } else {
+            display_name
+        };
 
         let name_run = cx.text.layout_styled_mono(
             &display_name,
@@ -272,6 +284,17 @@ impl Component for ToolCallCard {
             if let Some(output) = &self.output {
                 // Format as "└ Read 25 lines" or similar
                 let output_display = format!("└ {}", output);
+                let output_available = (bounds.size.width - (x + indent - bounds.origin.x) - 12.0)
+                    .max(0.0);
+                let output_display = if output_available > 0.0 {
+                    Self::truncate_text(
+                        &output_display,
+                        output_available,
+                        Self::DETAIL_FONT_SIZE,
+                    )
+                } else {
+                    output_display
+                };
                 let output_run = cx.text.layout_styled_mono(
                     &output_display,
                     Point::new(x + indent, detail_y),

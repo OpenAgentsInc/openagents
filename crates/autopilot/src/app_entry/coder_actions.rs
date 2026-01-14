@@ -38,7 +38,7 @@ use crate::app::workspaces::{
     ConversationItem, ConversationRole, ReviewState, WorkspaceAccessMode, WorkspaceApprovalRequest,
     WorkspaceEvent, conversation_item_from_value, turn_diff_item,
 };
-use crate::app::bootloader::{BootEvent, BootStage, CardState, IssuesDetails, StageDetails};
+use crate::app::bootloader::{BootEvent, BootStage, IssuesDetails, StageDetails};
 use wgpui::components::molecules::SectionStatus;
 use crate::autopilot_loop::{DspyStage, TodoStatus, TodoTask};
 use adjutant::issue_suggestions_appserver::suggest_issues_streaming;

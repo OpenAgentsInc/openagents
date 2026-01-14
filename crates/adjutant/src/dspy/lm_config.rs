@@ -8,7 +8,9 @@
 
 use anyhow::Result;
 use dsrs::{ChatAdapter, LM, configure, check_codex_available};
+use std::collections::HashMap;
 use std::sync::Arc;
+use std::sync::OnceLock;
 
 /// Provider priority for LM selection.
 #[derive(Clone, Debug, PartialEq)]
@@ -54,6 +56,51 @@ impl LmProvider {
     }
 }
 
+fn env_or_local(key: &str) -> Option<String> {
+    std::env::var(key).ok().or_else(|| env_local_map().get(key).cloned())
+}
+
+fn env_or_local_required(key: &str) -> Result<String> {
+    env_or_local(key).ok_or_else(|| anyhow::anyhow!("{key} not set"))
+}
+
+fn env_local_map() -> &'static HashMap<String, String> {
+    static MAP: OnceLock<HashMap<String, String>> = OnceLock::new();
+    MAP.get_or_init(|| load_env_local())
+}
+
+fn load_env_local() -> HashMap<String, String> {
+    let path = std::path::Path::new(".env.local");
+    let Ok(contents) = std::fs::read_to_string(path) else {
+        return HashMap::new();
+    };
+
+    let mut values = HashMap::new();
+    for line in contents.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+        let trimmed = trimmed.strip_prefix("export ").unwrap_or(trimmed);
+        let Some((key, value)) = trimmed.split_once('=') else {
+            continue;
+        };
+        let key = key.trim().to_string();
+        if key.is_empty() {
+            continue;
+        }
+        let mut value = value.trim().to_string();
+        if value.starts_with('"') && value.ends_with('"') && value.len() >= 2 {
+            value = value[1..value.len() - 1].to_string();
+        }
+        if value.starts_with('\'') && value.ends_with('\'') && value.len() >= 2 {
+            value = value[1..value.len() - 1].to_string();
+        }
+        values.insert(key, value);
+    }
+    values
+}
+
 /// Detect best available provider based on environment.
 ///
 /// Priority order:
@@ -64,7 +111,7 @@ impl LmProvider {
 /// 4. Ollama running on localhost:11434 → PylonLocal
 pub fn detect_provider() -> Option<LmProvider> {
     // Priority 0: OpenAI Responses (preferred for DSPy signatures)
-    if std::env::var("OPENAI_API_KEY").is_ok() {
+    if env_or_local("OPENAI_API_KEY").is_some() {
         return Some(LmProvider::OpenAiResponses);
     }
 
@@ -79,12 +126,12 @@ pub fn detect_provider() -> Option<LmProvider> {
     }
 
     // Priority 3: Pylon swarm (requires mnemonic)
-    if std::env::var("PYLON_MNEMONIC").is_ok() {
+    if env_or_local("PYLON_MNEMONIC").is_some() {
         return Some(LmProvider::PylonSwarm);
     }
 
     // Priority 4: Cerebras
-    if std::env::var("CEREBRAS_API_KEY").is_ok() {
+    if env_or_local("CEREBRAS_API_KEY").is_some() {
         return Some(LmProvider::Cerebras);
     }
 
@@ -102,7 +149,7 @@ pub fn detect_provider() -> Option<LmProvider> {
 pub fn detect_all_providers() -> Vec<LmProvider> {
     let mut providers = Vec::new();
 
-    if std::env::var("OPENAI_API_KEY").is_ok() {
+    if env_or_local("OPENAI_API_KEY").is_some() {
         providers.push(LmProvider::OpenAiResponses);
     }
     if check_codex_available() {
@@ -111,10 +158,10 @@ pub fn detect_all_providers() -> Vec<LmProvider> {
     if check_llamacpp_available() {
         providers.push(LmProvider::LlamaCpp);
     }
-    if std::env::var("PYLON_MNEMONIC").is_ok() {
+    if env_or_local("PYLON_MNEMONIC").is_some() {
         providers.push(LmProvider::PylonSwarm);
     }
-    if std::env::var("CEREBRAS_API_KEY").is_ok() {
+    if env_or_local("CEREBRAS_API_KEY").is_some() {
         providers.push(LmProvider::Cerebras);
     }
     if check_ollama_available() {
@@ -127,7 +174,7 @@ pub fn detect_all_providers() -> Vec<LmProvider> {
 /// Check if llama.cpp/GPT-OSS server is running locally.
 pub fn check_llamacpp_available() -> bool {
     // Check custom endpoint first via environment variable
-    if let Ok(endpoint) = std::env::var("LLAMACPP_URL") {
+    if let Some(endpoint) = env_or_local("LLAMACPP_URL") {
         // Try to extract host:port from URL
         if let Some(host_port) = endpoint
             .strip_prefix("http://")
@@ -184,19 +231,17 @@ pub fn check_ollama_available() -> bool {
 pub async fn create_lm(provider: &LmProvider) -> Result<LM> {
     match provider {
         LmProvider::OpenAiResponses => {
-            let api_key = std::env::var("OPENAI_API_KEY")?;
-            let model = std::env::var("OPENAI_RESPONSES_MODEL")
-                .or_else(|_| std::env::var("OPENAI_MODEL"))
-                .unwrap_or_else(|_| "gpt-5-nano".to_string());
-            let max_tokens = std::env::var("OPENAI_MAX_TOKENS")
-                .ok()
+            let api_key = env_or_local_required("OPENAI_API_KEY")?;
+            let model = env_or_local("OPENAI_RESPONSES_MODEL")
+                .or_else(|| env_or_local("OPENAI_MODEL"))
+                .unwrap_or_else(|| "gpt-5-nano".to_string());
+            let max_tokens = env_or_local("OPENAI_MAX_TOKENS")
                 .and_then(|value| value.parse::<u32>().ok())
                 .unwrap_or(4000);
-            let temperature = std::env::var("OPENAI_TEMPERATURE")
-                .ok()
+            let temperature = env_or_local("OPENAI_TEMPERATURE")
                 .and_then(|value| value.parse::<f32>().ok())
                 .unwrap_or(0.7);
-            if let Ok(base_url) = std::env::var("OPENAI_BASE_URL") {
+            if let Some(base_url) = env_or_local("OPENAI_BASE_URL") {
                 LM::builder()
                     .base_url(base_url)
                     .model(format!("openai-responses:{}", model))
@@ -225,7 +270,7 @@ pub async fn create_lm(provider: &LmProvider) -> Result<LM> {
                 .await
         }
         LmProvider::LlamaCpp => {
-            let base_url = std::env::var("LLAMACPP_URL").unwrap_or_else(|_| {
+            let base_url = env_or_local("LLAMACPP_URL").unwrap_or_else(|| {
                 // Auto-detect which port is available
                 for port in [8080, 8000] {
                     if std::net::TcpStream::connect_timeout(
@@ -251,7 +296,7 @@ pub async fn create_lm(provider: &LmProvider) -> Result<LM> {
                 .await
         }
         LmProvider::PylonSwarm => {
-            let mnemonic = std::env::var("PYLON_MNEMONIC")?;
+            let mnemonic = env_or_local_required("PYLON_MNEMONIC")?;
             LM::builder()
                 .model("pylon:swarm".to_string())
                 .api_key(mnemonic)
@@ -261,7 +306,7 @@ pub async fn create_lm(provider: &LmProvider) -> Result<LM> {
                 .await
         }
         LmProvider::Cerebras => {
-            let api_key = std::env::var("CEREBRAS_API_KEY")?;
+            let api_key = env_or_local_required("CEREBRAS_API_KEY")?;
             LM::builder()
                 .base_url(CEREBRAS_BASE_URL.to_string())
                 .api_key(api_key)
@@ -307,7 +352,7 @@ pub async fn create_execution_lm() -> Result<LM> {
 
     // For Cerebras, use cheaper model for execution
     if provider == LmProvider::Cerebras {
-        let api_key = std::env::var("CEREBRAS_API_KEY")?;
+        let api_key = env_or_local_required("CEREBRAS_API_KEY")?;
         return LM::builder()
             .base_url(CEREBRAS_BASE_URL.to_string())
             .api_key(api_key)
@@ -372,16 +417,16 @@ pub async fn configure_dsrs_with_preference(use_codex: bool) -> Result<()> {
 /// Detect provider without Codex - skips Codex even if available.
 pub fn detect_provider_skip_codex() -> Option<LmProvider> {
     // Skip Codex, check other providers in priority order
-    if std::env::var("OPENAI_API_KEY").is_ok() {
+    if env_or_local("OPENAI_API_KEY").is_some() {
         return Some(LmProvider::OpenAiResponses);
     }
     if check_llamacpp_available() {
         return Some(LmProvider::LlamaCpp);
     }
-    if std::env::var("PYLON_MNEMONIC").is_ok() {
+    if env_or_local("PYLON_MNEMONIC").is_some() {
         return Some(LmProvider::PylonSwarm);
     }
-    if std::env::var("CEREBRAS_API_KEY").is_ok() {
+    if env_or_local("CEREBRAS_API_KEY").is_some() {
         return Some(LmProvider::Cerebras);
     }
     if check_ollama_available() {
@@ -403,8 +448,7 @@ const CEREBRAS_BASE_URL: &str = "https://api.cerebras.ai/v1";
 
 /// Create an LM configured for Cerebras (legacy).
 pub async fn create_cerebras_lm(model: &str) -> Result<LM> {
-    let api_key = std::env::var("CEREBRAS_API_KEY")
-        .map_err(|_| anyhow::anyhow!("CEREBRAS_API_KEY not set"))?;
+    let api_key = env_or_local_required("CEREBRAS_API_KEY")?;
 
     LM::builder()
         .base_url(CEREBRAS_BASE_URL.to_string())
@@ -429,12 +473,12 @@ pub async fn configure_cerebras_dsrs() -> Result<()> {
 /// Prefer using `create_planning_lm()` which supports all providers.
 pub async fn create_lm_from_env(model: &str) -> Result<LM> {
     // Try Cerebras first
-    if std::env::var("CEREBRAS_API_KEY").is_ok() {
+    if env_or_local("CEREBRAS_API_KEY").is_some() {
         return create_cerebras_lm(model).await;
     }
 
     // Fall back to OpenAI-compatible (model should be in provider:model format)
-    if std::env::var("OPENAI_API_KEY").is_ok() {
+    if env_or_local("OPENAI_API_KEY").is_some() {
         return LM::builder()
             .model(format!("openai:{}", model))
             .build()

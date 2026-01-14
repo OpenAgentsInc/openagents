@@ -59,6 +59,7 @@ struct ToolHistoryEntry {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+#[allow(dead_code)]
 struct ContextPlan {
     include_paths: Option<Vec<String>>,
     exclude_paths: Option<Vec<String>>,
@@ -67,6 +68,7 @@ struct ContextPlan {
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 struct ToolCallDecision {
     tool: String,
     params: Value,
@@ -78,6 +80,7 @@ struct ToolCallDecision {
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 struct ToolResultInterpretation {
     success: String,
     extracted_facts: Vec<String>,
@@ -175,6 +178,7 @@ enum ReplayEvent {
 }
 
 #[derive(Serialize, Debug, Clone, Copy)]
+#[allow(dead_code)]
 enum StepStatus {
     Success,
     Failed,
@@ -183,6 +187,7 @@ enum StepStatus {
 }
 
 #[derive(Serialize, Debug, Clone, Copy)]
+#[allow(dead_code)]
 enum SessionStatus {
     Success,
     Failed,
