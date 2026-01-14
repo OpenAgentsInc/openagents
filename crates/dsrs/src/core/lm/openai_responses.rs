@@ -11,7 +11,6 @@ use async_openai::{
     },
 };
 use futures::StreamExt;
-use super::client_registry::CompletionProvider;
 use rig::completion::{CompletionError, CompletionRequest, CompletionResponse, Usage};
 use rig::message::{AssistantContent, Message as RigMessage, Text, ToolCall, ToolFunction};
 use rig::message::{ToolResultContent, UserContent};
@@ -53,6 +52,17 @@ impl OpenAiResponsesCompletionModel {
         request: CompletionRequest,
         on_token: Option<&(dyn Fn(&str) + Send + Sync)>,
     ) -> Result<CompletionResponse<()>, CompletionError> {
+        let (response, _) = self
+            .completion_streaming_with_usage_details(request, on_token)
+            .await?;
+        Ok(response)
+    }
+
+    pub async fn completion_streaming_with_usage_details(
+        &self,
+        request: CompletionRequest,
+        on_token: Option<&(dyn Fn(&str) + Send + Sync)>,
+    ) -> Result<(CompletionResponse<()>, Option<Value>), CompletionError> {
         let fallback_request = request.clone();
         let create_request = build_create_request(&self.model, &request, true)?;
         let mut stream = self
@@ -216,40 +226,44 @@ impl OpenAiResponsesCompletionModel {
         });
 
         if let Ok(response) = response {
+            let usage_details = response.usage.as_ref().and_then(usage_to_value);
             match response_to_completion(response) {
-                Ok(result) => return Ok(result),
+                Ok(result) => return Ok((result, usage_details)),
                 Err(err)
                     if streamed_text.is_empty() && output_items.is_empty() =>
                 {
-                    let fallback = self.completion(fallback_request).await?;
+                    let (fallback, fallback_usage) =
+                        self.completion_with_usage_details(fallback_request).await?;
                     if let Some(cb) = on_token {
                         emit_completion_tokens(&fallback, cb);
                     }
-                    return Ok(fallback);
+                    return Ok((fallback, fallback_usage));
                 }
                 Err(err) => return Err(err),
             }
         }
 
+        let usage_details = last_usage.as_ref().and_then(usage_to_value);
+
         if !output_items.is_empty() {
-            return completion_from_output_and_usage(output_items, last_usage);
+            let completion = completion_from_output_and_usage(output_items, last_usage)?;
+            return Ok((completion, usage_details));
         }
 
         if !streamed_text.is_empty() {
-            return completion_from_text(streamed_text, last_usage);
+            let completion = completion_from_text(streamed_text, last_usage)?;
+            return Ok((completion, usage_details));
         }
 
         Err(CompletionError::ResponseError(
             "OpenAI stream ended without completion".to_string(),
         ))
     }
-}
 
-impl super::CompletionProvider for OpenAiResponsesCompletionModel {
-    async fn completion(
+    pub async fn completion_with_usage_details(
         &self,
         request: CompletionRequest,
-    ) -> Result<CompletionResponse<()>, CompletionError> {
+    ) -> Result<(CompletionResponse<()>, Option<Value>), CompletionError> {
         let create_request = build_create_request(&self.model, &request, false)?;
         let response = self
             .client
@@ -258,7 +272,17 @@ impl super::CompletionProvider for OpenAiResponsesCompletionModel {
             .await
             .map_err(|e| CompletionError::ProviderError(e.to_string()))?;
 
-        response_to_completion(response)
+        response_to_completion_with_details(response)
+    }
+}
+
+impl super::CompletionProvider for OpenAiResponsesCompletionModel {
+    async fn completion(
+        &self,
+        request: CompletionRequest,
+    ) -> Result<CompletionResponse<()>, CompletionError> {
+        let (response, _) = self.completion_with_usage_details(request).await?;
+        Ok(response)
     }
 }
 
@@ -539,6 +563,14 @@ fn response_to_completion(response: Response) -> Result<CompletionResponse<()>, 
     completion_from_output_and_usage(response.output, response.usage)
 }
 
+fn response_to_completion_with_details(
+    response: Response,
+) -> Result<(CompletionResponse<()>, Option<Value>), CompletionError> {
+    let usage_details = response.usage.as_ref().and_then(usage_to_value);
+    let completion = response_to_completion(response)?;
+    Ok((completion, usage_details))
+}
+
 fn completion_from_output_and_usage(
     output: Vec<OutputItem>,
     usage: Option<ResponseUsage>,
@@ -620,6 +652,10 @@ fn completion_from_text(
         usage,
         raw_response: (),
     })
+}
+
+fn usage_to_value(usage: &ResponseUsage) -> Option<Value> {
+    serde_json::to_value(usage).ok()
 }
 
 fn emit_completion_tokens(
