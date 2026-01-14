@@ -64,15 +64,16 @@ pub(crate) fn render_app(state: &mut AppState) {
                 scale_factor,
             );
         }
-        render_input(
-            state,
-            &mut scene,
-            &palette,
-            &sidebar_layout,
-            logical_width,
-            logical_height,
-            scale_factor,
-        );
+        // Chat input bar hidden for now
+        // render_input(
+        //     state,
+        //     &mut scene,
+        //     &palette,
+        //     &sidebar_layout,
+        //     logical_width,
+        //     logical_height,
+        //     scale_factor,
+        // );
 
         // Render plan panel (right sidebar) if there's an active plan
         if state.active_plan.is_some() && !state.plan_panel_collapsed {

@@ -85,65 +85,75 @@ fn render_chat(
         }
     }
 
-    // Render boot sections at top of chat
+    // Render boot sections in centered card
     let boot_section_font_size = 13.0_f32;
-    let boot_section_line_height = boot_section_font_size * 1.4;
-    let boot_section_padding = 8.0_f32;
-    let boot_section_indent = 16.0_f32;
+    let boot_section_line_height = boot_section_font_size * 1.6;
+    let boot_section_padding = 16.0_f32;
+    let header_height = 44.0_f32;
 
-    for boot_section in &chat_layout.boot_sections {
-        let section_top = boot_section.y_offset;
-        let section_bottom = section_top + boot_section.height;
+    // Card dimensions
+    let card_width = 400.0_f32;
+    let card_corner_radius = 8.0_f32;
 
-        // Skip if outside viewport
-        if section_bottom < viewport_top || section_top > viewport_bottom {
-            continue;
-        }
+    // Get the first active boot section and its details
+    let (boot_section, detail_count) = chat_layout
+        .boot_sections
+        .iter()
+        .find(|s| !s.summary.is_empty())
+        .map(|s| (Some(s), s.details.len()))
+        .unwrap_or((None, 0));
 
-        // Arrow indicator
-        let arrow = if boot_section.expanded { "▼" } else { "▶" };
-        let arrow_color = palette.text_muted;
-        let arrow_run = state.text_system.layout_styled_mono(
-            arrow,
-            Point::new(content_x, section_top + boot_section_font_size * 0.3),
-            boot_section_font_size,
-            arrow_color,
-            wgpui::text::FontStyle::default(),
-        );
-        scene.draw_text(arrow_run);
+    // Calculate card height based on expanded state
+    let is_expanded = boot_section.map(|s| s.expanded).unwrap_or(false);
+    let details_height = if is_expanded && detail_count > 0 {
+        detail_count as f32 * boot_section_line_height + boot_section_padding
+    } else {
+        0.0
+    };
+    let card_height = header_height + details_height;
 
-        // Summary text
-        let summary_x = content_x + boot_section_font_size * 1.5;
-        let summary_run = state.text_system.layout_styled_mono(
-            &boot_section.summary,
-            Point::new(summary_x, section_top + boot_section_font_size * 0.3),
-            boot_section_font_size,
-            palette.text_secondary,
-            wgpui::text::FontStyle::default(),
-        );
-        scene.draw_text(summary_run);
+    // Center card horizontally, position 100px from top
+    let main_center_x = sidebar_layout.main.origin.x + sidebar_layout.main.size.width / 2.0;
+    let card_x = main_center_x - card_width / 2.0;
+    let card_y = sidebar_layout.main.origin.y + 100.0;
 
-        // Status icon on right
+    let card_bounds = Bounds::new(card_x, card_y, card_width, card_height);
+
+    // Store card bounds for click detection
+    if let Some(sections) = &mut state.chat.boot_sections {
+        sections.card_bounds = Some(card_bounds);
+    }
+
+    // Draw card background with white border (10% opacity)
+    let border_color = Hsla::new(0.0, 0.0, 1.0, 0.1); // White at 10% opacity
+    scene.draw_quad(
+        Quad::new(card_bounds)
+            .with_background(Hsla::new(0.0, 0.0, 0.0, 0.3)) // Slight dark bg
+            .with_border(border_color, 1.0)
+            .with_corner_radius(card_corner_radius),
+    );
+
+    // Render boot section content inside card
+    if let Some(boot_section) = boot_section {
+        let header_y = card_y + header_height / 2.0 - boot_section_font_size / 2.0;
+
+        // Status indicator on left (green dot for success, etc)
         let status_icon = match boot_section.status {
             SectionStatus::Pending => "",
-            SectionStatus::InProgress => "...",
-            SectionStatus::Success => "[OK]",
-            SectionStatus::Error => "[X]",
+            SectionStatus::InProgress => "◌", // Empty circle
+            SectionStatus::Success => "●",    // Filled circle
+            SectionStatus::Error => "✕",
         };
         if !status_icon.is_empty() {
             let status_color = match boot_section.status {
                 SectionStatus::Pending => palette.text_muted,
-                SectionStatus::InProgress => Hsla::new(45.0 / 360.0, 0.8, 0.5, 1.0), // Warning yellow
-                SectionStatus::Success => Hsla::new(120.0 / 360.0, 0.6, 0.45, 1.0),  // Success green
-                SectionStatus::Error => Hsla::new(0.0, 0.7, 0.55, 1.0),              // Error red
+                SectionStatus::InProgress => Hsla::new(45.0 / 360.0, 0.8, 0.5, 1.0),
+                SectionStatus::Success => Hsla::new(120.0 / 360.0, 0.6, 0.45, 1.0),
+                SectionStatus::Error => Hsla::new(0.0, 0.7, 0.55, 1.0),
             };
-            let status_width = status_icon.len() as f32 * boot_section_font_size * 0.6;
             let status_run = state.text_system.layout_styled_mono(
                 status_icon,
-                Point::new(
-                    content_x + available_width - status_width - boot_section_padding,
-                    section_top + boot_section_font_size * 0.3,
-                ),
+                Point::new(card_x + boot_section_padding, header_y),
                 boot_section_font_size,
                 status_color,
                 wgpui::text::FontStyle::default(),
@@ -151,25 +161,33 @@ fn render_chat(
             scene.draw_text(status_run);
         }
 
-        // Detail lines (only when expanded)
+        // Summary text
+        let summary_x = card_x + boot_section_padding + boot_section_font_size * 1.5;
+        let summary_run = state.text_system.layout_styled_mono(
+            &boot_section.summary,
+            Point::new(summary_x, header_y),
+            boot_section_font_size,
+            palette.text_secondary,
+            wgpui::text::FontStyle::default(),
+        );
+        scene.draw_text(summary_run);
+
+        // No arrow - card is always expanded
+
+        // Render detail lines when expanded
         if boot_section.expanded && !boot_section.details.is_empty() {
-            let header_height = boot_section_font_size * 1.6;
-            let mut detail_y = section_top + header_height + 4.0;
+            let detail_x = card_x + boot_section_padding;
+            let mut detail_y = card_y + header_height;
 
             for detail in &boot_section.details {
-                if detail_y + boot_section_line_height > viewport_bottom {
-                    break;
-                }
-
                 let detail_run = state.text_system.layout_styled_mono(
                     detail,
-                    Point::new(content_x + boot_section_indent, detail_y),
-                    boot_section_font_size,
+                    Point::new(detail_x, detail_y),
+                    boot_section_font_size - 1.0,
                     palette.text_muted,
                     wgpui::text::FontStyle::default(),
                 );
                 scene.draw_text(detail_run);
-
                 detail_y += boot_section_line_height;
             }
         }

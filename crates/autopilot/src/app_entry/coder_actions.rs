@@ -1507,55 +1507,12 @@ impl AutopilotApp {
                     tracing::info!("Autopilot: cached OANIX manifest");
 
                     // Spawn issue suggestion task if we have issues
+                    // Issue suggestion disabled - boot stops after initialization
                     if let Some(workspace) = &manifest.workspace {
                         tracing::info!(
-                            "Autopilot: workspace has {} issues",
+                            "Autopilot: workspace has {} issues (suggestion disabled)",
                             workspace.issues.len()
                         );
-                        if !workspace.issues.is_empty() {
-                            let issues = workspace.issues.clone();
-                            let workspace_root = workspace.root.clone();
-                            let (suggestion_tx, suggestion_rx) =
-                                tokio::sync::mpsc::unbounded_channel();
-                            let (token_tx, token_rx) = tokio::sync::mpsc::unbounded_channel();
-                            state.autopilot.issue_suggestions_rx = Some(suggestion_rx);
-                            state.autopilot.streaming_tokens_rx = Some(token_rx);
-
-                            // Update boot graph to show Issues evaluation started
-                            state.bootloader.update_issues_state(
-                                CardState::Running,
-                                Some(format!("Evaluating {} blocked issues...", issues.len())),
-                            );
-
-                            // Add system message to indicate evaluation is starting
-                            state.chat.push_system_message(format!(
-                                "Evaluating {} issues for actionability...",
-                                issues.len()
-                            ));
-
-                            // Use app-server based suggestions with streaming tokens
-                            let workspace_context = format!("Repository at {}", workspace_root.display());
-                            self.runtime_handle.spawn(async move {
-                                tracing::info!(
-                                    "Autopilot: running issue suggestions for {} issues",
-                                    issues.len()
-                                );
-                                match adjutant::issue_suggestions_appserver::suggest_issues_streaming(
-                                    &issues,
-                                    &workspace_context,
-                                    token_tx,
-                                ).await {
-                                    Ok(stage) => {
-                                        let _ = suggestion_tx.send(stage);
-                                    }
-                                    Err(e) => {
-                                        tracing::warn!("Autopilot: issue suggestions failed: {}", e);
-                                    }
-                                }
-                            });
-                        }
-                    } else {
-                        tracing::info!("Autopilot: no workspace in manifest");
                     }
 
                     state.autopilot.oanix_manifest = Some(manifest);
@@ -1999,8 +1956,79 @@ impl AutopilotApp {
                         sections.suggest_issues.summary =
                             format!("{} suggestions", issues.suggestions_found);
                     }
+                } else {
+                    // Store details for initialize section
+                    match &details {
+                        StageDetails::Hardware(hw) => {
+                            sections.initialize.details.push(format!(
+                                "CPU: {} ({} cores)",
+                                hw.cpu_model, hw.cpu_cores
+                            ));
+                            sections.initialize.details.push(format!(
+                                "RAM: {:.0} GB{}",
+                                hw.ram_gb,
+                                if hw.apple_silicon { " (Apple Silicon)" } else { "" }
+                            ));
+                        }
+                        StageDetails::Compute(comp) => {
+                            let ready_backends: Vec<_> = comp.backends.iter()
+                                .filter(|b| b.ready)
+                                .map(|b| b.name.as_str())
+                                .collect();
+                            if !ready_backends.is_empty() {
+                                sections.initialize.details.push(format!(
+                                    "Compute: {}",
+                                    ready_backends.join(", ")
+                                ));
+                            }
+                        }
+                        StageDetails::Network(net) => {
+                            sections.initialize.details.push(format!(
+                                "Network: {} ({}/{} relays)",
+                                if net.has_internet { "online" } else { "offline" },
+                                net.relays_connected,
+                                net.relays_total
+                            ));
+                        }
+                        StageDetails::Identity(id) => {
+                            if id.initialized {
+                                if let Some(npub) = &id.npub {
+                                    let short = if npub.len() > 16 {
+                                        format!("{}...{}", &npub[..8], &npub[npub.len()-4..])
+                                    } else {
+                                        npub.clone()
+                                    };
+                                    sections.initialize.details.push(format!("Identity: {}", short));
+                                }
+                            }
+                        }
+                        StageDetails::Workspace(ws) => {
+                            if let Some(name) = &ws.project_name {
+                                let lang = if !ws.language_hints.is_empty() {
+                                    format!(" ({})", ws.language_hints.join(", "))
+                                } else {
+                                    String::new()
+                                };
+                                sections.initialize.details.push(format!(
+                                    "Workspace: {}{}",
+                                    name, lang
+                                ));
+                            }
+                            if ws.open_issues > 0 {
+                                sections.initialize.details.push(format!(
+                                    "Issues: {} open",
+                                    ws.open_issues
+                                ));
+                            }
+                        }
+                        StageDetails::Summary(_) => {
+                            // Summary doesn't add detail lines
+                        }
+                        StageDetails::Issues(_) => {
+                            // Handled above
+                        }
+                    }
                 }
-                // Skip details for initialize section - keep it minimal
             }
 
             BootEvent::StageFailed {
@@ -2029,7 +2057,7 @@ impl AutopilotApp {
             BootEvent::BootCompleted { summary: _, .. } => {
                 sections.initialize.status = SectionStatus::Success;
                 sections.initialize.active = false;
-                sections.initialize.expanded = false;
+                // Keep expanded = true (default) so details always show
                 sections.initialize.summary = "Ready".to_string();
             }
 

@@ -45,20 +45,23 @@ impl BootSection {
 pub(crate) struct BootSections {
     /// Initialize section (Hardware, Compute, Network, Identity, Workspace, Summary)
     pub(crate) initialize: BootSection,
-    /// Issue suggestion section
+    /// Issue suggestion section (disabled for now)
     pub(crate) suggest_issues: BootSection,
+    /// Bounds of the boot card (for click detection)
+    pub(crate) card_bounds: Option<Bounds>,
 }
 
 impl BootSections {
     pub(crate) fn new() -> Self {
         tracing::info!("Creating BootSections for chat display");
         Self {
-            initialize: BootSection::new(1, "Initializing..."),
+            initialize: BootSection::new(1, "..."),
             suggest_issues: {
-                let mut section = BootSection::new(2, "Analyzing issues...");
-                section.active = false; // Will activate after initialize completes
+                let mut section = BootSection::new(2, "");
+                section.active = false;
                 section
             },
+            card_bounds: None,
         }
     }
 }

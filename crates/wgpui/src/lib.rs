@@ -117,7 +117,7 @@ pub use platform::Platform;
 pub use scene::{
     GlyphInstance, GpuImageQuad, GpuLine, GpuQuad, GpuTextQuad, Quad, Scene, SvgQuad, TextRun,
 };
-pub use scroll::{ScrollContainer, ScrollDirection};
+pub use scroll::{ScrollContainer, ScrollDirection, ScrollRegion};
 pub use styled::{Style, StyleRefinement, Styled, button, div, text};
 pub use svg::{SvgRasterized, SvgRenderer};
 pub use text::{FontStyle, TextSystem};

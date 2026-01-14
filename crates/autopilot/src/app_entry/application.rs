@@ -80,7 +80,7 @@ impl ApplicationHandler for AutopilotApp {
 
         let window_attrs = Window::default_attributes()
             .with_title("Autopilot")
-            .with_inner_size(winit::dpi::LogicalSize::new(900, 600));
+            .with_inner_size(winit::dpi::LogicalSize::new(1400, 900));
 
         let window = Arc::new(
             event_loop
@@ -1293,38 +1293,7 @@ impl ApplicationHandler for AutopilotApp {
                         return;
                     }
                 }
-                // Handle boot section expand/collapse clicks
-                if button_state == ElementState::Pressed
-                    && matches!(button, winit::event::MouseButton::Left)
-                {
-                    let boot_section_header_height = 13.0 * 1.6;
-                    let click_point = wgpui::Point::new(x, y);
-                    let mut handled = false;
-                    for (idx, boot_section) in chat_layout.boot_sections.iter().enumerate() {
-                        let header_bounds = wgpui::Bounds::new(
-                            chat_layout.content_x,
-                            boot_section.y_offset,
-                            chat_layout.available_width,
-                            boot_section_header_height,
-                        );
-                        if header_bounds.contains(click_point) {
-                            // Toggle expanded state in the actual state
-                            if let Some(sections) = &mut state.chat.boot_sections {
-                                if idx == 0 {
-                                    sections.initialize.expanded = !sections.initialize.expanded;
-                                } else if idx == 1 {
-                                    sections.suggest_issues.expanded = !sections.suggest_issues.expanded;
-                                }
-                            }
-                            state.window.request_redraw();
-                            handled = true;
-                            break;
-                        }
-                    }
-                    if handled {
-                        return;
-                    }
-                }
+                // Boot card is always expanded, no click handling needed
                 if button_state == ElementState::Pressed
                     && matches!(button, winit::event::MouseButton::Left)
                 {
