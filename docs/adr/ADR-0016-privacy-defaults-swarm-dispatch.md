@@ -20,54 +20,77 @@ We need canonical defaults that are safe-by-default while allowing explicit opt-
 
 ## Decision
 
-**Swarm dispatch MUST apply a privacy policy. The default is `private_repo`. Callers MAY override to `open_source` or `paranoid` explicitly.**
+**Swarm dispatch MUST apply a privacy policy. The recommended default for swarm dispatch is `private_repo`. Callers MAY override to `open_source` or `paranoid` explicitly.**
+
+### Implementation Status
+
+| Component | Status |
+|-----------|--------|
+| PrivacyPolicy struct | Implemented (`crates/dsrs/src/privacy/policy.rs`) |
+| Preset constructors | Implemented (`open_source()`, `private_repo()`, `paranoid()`) |
+| SwarmDispatcher integration | Implemented (`crates/dsrs/src/adapter/swarm_dispatch.rs`) |
+| Default enforcement | Partial (struct Default ≠ swarm default) |
+
+**Note:** The `PrivacyPolicy::default()` trait implementation returns permissive settings (no redaction, all jobs allowed). This ADR specifies that **swarm dispatch code** should apply `private_repo` when no policy is explicitly provided — this is a dispatch-layer default, not a struct Default.
 
 ### Canonical owner
 
-- Implementation: `crates/dsrs/src/privacy/` (redaction, chunking, policy)
-- Integration: `crates/dsrs/src/adapter/swarm.rs` (SwarmDispatcher)
-- Terminology: [GLOSSARY.md](../../GLOSSARY.md)
+- Preset definitions: [crates/dsrs/docs/PRIVACY.md](../../crates/dsrs/docs/PRIVACY.md) (canonical)
+- Implementation: `crates/dsrs/src/privacy/policy.rs`
+- Integration: `crates/dsrs/src/adapter/swarm_dispatch.rs`
 
-### Privacy policy presets (Normative)
+### Privacy policy presets
 
-| Preset | Redaction | Chunking | Max Size | File Paths | Verification | Use Case |
-|--------|-----------|----------|----------|------------|--------------|----------|
-| `open_source` | None | Full | Unlimited | Allowed | Optional | Public repos |
-| `private_repo` | PathsOnly | MinimalSpans(5) | 50KB | Blocked | Required | **Default** |
-| `paranoid` | Full | MinimalSpans(2) | 10KB | Blocked | Required | Sensitive code |
+Preset parameters are defined in [PRIVACY.md](../../crates/dsrs/docs/PRIVACY.md). This ADR specifies only the invariants:
+
+| Preset | Purpose | Invariant |
+|--------|---------|-----------|
+| `open_source` | Public repos | No redaction, no restrictions |
+| `private_repo` | Private repos | Path redaction, size limits, verification required |
+| `paranoid` | Sensitive code | Full redaction, strict limits |
+
+For exact parameter values (max sizes, context lines, allowed job types), see PRIVACY.md.
 
 ### Default behavior (Normative)
 
-1. If no privacy policy is specified, `private_repo` is applied.
+1. **Swarm dispatch** MUST apply `private_repo` if no policy is explicitly provided.
 2. `SwarmDispatcher` MUST validate content against the active policy before dispatch.
-3. Policy violations MUST reject the job (not silently redact and proceed).
-4. Callers MUST explicitly opt into `open_source` if they want no redaction.
+3. Policy violations MUST either:
+   - (a) Reject the job with an error, OR
+   - (b) Auto-redact and proceed **only if** the preset explicitly permits automatic redaction
+4. Callers MUST explicitly opt into `open_source` to disable redaction.
 
-### Redaction modes (Normative)
+### Redaction modes
+
+Defined in `crates/dsrs/src/privacy/redaction.rs`:
 
 | Mode | Description |
 |------|-------------|
 | `None` | No redaction |
-| `PathsOnly` | Redact file paths (`/Users/alice/...` → `/workspace/...`) |
+| `PathsOnly` | Redact file paths only |
 | `Identifiers` | Redact paths + class/function names |
-| `Full` | Full content anonymization with mapping |
+| `Full` | Full content anonymization |
 
-### Chunking policies (Normative)
+### Redaction mapping
 
-| Policy | Description |
-|--------|-------------|
-| `Full` | Send entire content |
-| `MinimalSpans { context_lines }` | Only relevant lines + N lines context |
-| `AstNodesOnly { node_types }` | Only specific AST nodes |
-| `FixedSize { max_chars, overlap }` | Fixed-size chunks |
+For modes that transform content (`PathsOnly`, `Identifiers`, `Full`):
+- A `RedactedContent` struct holds the mapping from original → redacted
+- Restoration is possible **only if** the mapping is preserved
+- Callers requiring roundtrip restoration MUST retain the mapping artifact
 
-### Trusted providers (Normative)
+This ADR does NOT guarantee all redaction is reversible — only that modes preserving the mapping support restoration.
 
-- Policies MAY specify `trusted_providers: Vec<String>` (npubs).
-- Jobs to trusted providers MAY relax redaction (policy-dependent).
-- `ReservePool` providers are implicitly trusted (OpenAgents-controlled).
+### Trusted providers
+
+Trust tiers for providers are defined in:
+- Policy bundle configuration (per ADR-0015)
+- PROTOCOL_SURFACE.md provider reputation
+
+This ADR only specifies that **privacy policy MAY vary by trust tier** — the trust model itself is defined elsewhere.
 
 ### Policy violations
+
+Per `crates/dsrs/src/privacy/policy.rs`:
 
 ```rust
 pub enum PolicyViolation {
@@ -79,28 +102,26 @@ pub enum PolicyViolation {
 }
 ```
 
-Violations MUST be returned as errors, not silently handled.
-
 ## Scope
 
 What this ADR covers:
 - Default privacy policy for swarm dispatch
-- Preset definitions and their parameters
-- Validation behavior on policy violations
+- Invariants for preset behavior
+- Violation handling behavior
 
 What this ADR does NOT cover:
-- Redaction algorithm implementation details
-- Provider reputation/trust scoring
-- Per-job-type privacy overrides
+- Exact preset parameter values (see PRIVACY.md)
+- Redaction algorithm implementation
+- Provider trust model (see PROTOCOL_SURFACE.md)
 
 ## Invariants / Compatibility
 
 | Invariant | Guarantee |
 |-----------|-----------|
-| Default policy | `private_repo` when unspecified |
+| Swarm dispatch default | `private_repo` when unspecified |
 | Preset names | Stable: `open_source`, `private_repo`, `paranoid` |
-| Violation behavior | Reject, never silently proceed |
-| Redaction roundtrip | Redacted content MUST be restorable via mapping |
+| Violation handling | Never silently lose data without explicit permission |
+| PolicyViolation enum | Stable variants |
 
 Backward compatibility:
 - New presets may be added.
@@ -111,7 +132,7 @@ Backward compatibility:
 
 **Positive:**
 - Safe-by-default for private repositories
-- Clear escalation path (private_repo → paranoid)
+- Clear escalation path (open_source → private_repo → paranoid)
 - Prevents accidental sensitive code leaks
 
 **Negative:**
@@ -119,17 +140,19 @@ Backward compatibility:
 - Some performance overhead from redaction/chunking
 
 **Neutral:**
-- Trusted provider lists require maintenance
+- Struct Default differs from swarm dispatch default (requires documentation)
 
 ## Alternatives Considered
 
 1. **No default (require explicit policy)** — rejected (too easy to forget, unsafe).
 2. **Default to `open_source`** — rejected (unsafe for private repos).
 3. **Default to `paranoid`** — rejected (too restrictive for most use cases).
+4. **Make struct Default = private_repo** — rejected (breaks other use cases).
 
 ## References
 
-- [crates/dsrs/docs/PRIVACY.md](../../crates/dsrs/docs/PRIVACY.md) — full privacy module documentation
+- [crates/dsrs/docs/PRIVACY.md](../../crates/dsrs/docs/PRIVACY.md) — canonical preset definitions
 - [GLOSSARY.md](../../GLOSSARY.md) — terminology
 - [ADR-0004](./ADR-0004-lane-taxonomy.md) — lane taxonomy (Swarm lane)
-- `crates/dsrs/src/privacy/` — implementation
+- [ADR-0017](./ADR-0017-telemetry-trace-contract.md) — Layer C redaction references this policy
+- `crates/dsrs/src/privacy/policy.rs` — implementation

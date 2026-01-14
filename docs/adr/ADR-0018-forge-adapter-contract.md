@@ -26,13 +26,25 @@ Without a contract:
 
 **Forge Adapters implement a common trait that maps Verified Patch Bundles to forge-specific operations. Adapters MUST preserve bundle attribution and trajectory references.**
 
+### Implementation Status
+
+| Component | Status |
+|-----------|--------|
+| ForgeAdapter trait | Not yet implemented |
+| GitHub adapter | Ad-hoc (no trait) |
+| GitAfter adapter | Spec only |
+| NIP-34 builders | Partial (`crates/nostr/core/src/nip61.rs`) |
+
 ### Canonical owner
 
-- Trait definition: `crates/adjutant/src/forge/mod.rs` (planned)
+- Trait definition: TBD (target: `crates/adjutant/src/forge/mod.rs`)
 - Bundle format: [crates/dsrs/docs/ARTIFACTS.md](../../crates/dsrs/docs/ARTIFACTS.md)
+- GitAfter tags: [crates/nostr/GIT_AFTER.md](../../crates/nostr/GIT_AFTER.md)
 - Terminology: [GLOSSARY.md](../../GLOSSARY.md) (`Forge Adapter`)
 
-### ForgeAdapter trait (Normative)
+### ForgeAdapter trait (Illustrative)
+
+This trait is **illustrative** — it defines the target interface but is not yet implemented in code.
 
 ```rust
 #[async_trait]
@@ -70,13 +82,25 @@ All Forge Adapters MUST implement:
 
 When creating a PR, adapters MUST:
 
-1. Include `PR_SUMMARY.md` content in PR description
+1. Include `PR_SUMMARY.md` content in PR description (with truncation if needed)
 2. Reference `session_id` in PR metadata (where supported)
 3. Reference `policy_bundle_id` in PR metadata (where supported)
-4. Link to trajectory if forge supports it (NIP-34, GitAfter)
+4. Link to trajectory via `trajectory_hash` if forge supports it
 5. Preserve verification results in PR description
 
-### Forge capabilities
+### PR truncation rules (Normative)
+
+If `PR_SUMMARY.md` exceeds forge max length (e.g., GitHub ~65536 chars):
+
+1. Truncate human-readable summary text
+2. ALWAYS preserve these fields (in metadata or footer):
+   - `session_id`
+   - `policy_bundle_id`
+   - `trajectory_hash`
+   - `verification_passed`
+3. Add truncation notice: `[Summary truncated. Full summary in PR_SUMMARY.md]`
+
+### Forge capabilities (Illustrative)
 
 ```rust
 pub struct ForgeCapabilities {
@@ -97,10 +121,19 @@ pub struct ForgeCapabilities {
 
 | Forge | Trajectory Linking | Agent Identity | Bounties | Status |
 |-------|-------------------|----------------|----------|--------|
-| GitHub | No (comment only) | No (bot token) | No | 🟢 Implemented |
-| GitAfter | Yes (NIP-34 tags) | Yes (npub) | Yes (NIP-57) | 🔵 Specified |
-| Bare git | No | No | No | 🟢 Implemented |
-| NIP-34 | Yes | Yes (npub) | Yes (NIP-57) | 🔵 Specified |
+| GitHub | No (comment only) | No (bot token) | No | Ad-hoc |
+| GitAfter | Yes (NIP-34 tags) | Yes (npub) | Yes (NIP-57) | Spec only |
+| Bare git | No | No | No | Ad-hoc |
+| NIP-34 | Yes | Yes (npub) | Yes (NIP-57) | Partial |
+
+### Canonical hash field: `trajectory_hash`
+
+The canonical field name is **`trajectory_hash`** (not `replay_hash`).
+
+This is consistent with:
+- [PROTOCOL_SURFACE.md](../PROTOCOL_SURFACE.md) receipt schema
+- [ADR-0013](./ADR-0013-receipt-schema-payment-proofs.md) receipt fields
+- [GIT_AFTER.md](../../crates/nostr/GIT_AFTER.md) tag definitions
 
 ### PR metadata format (Normative)
 
@@ -128,27 +161,30 @@ For GitHub (no structured metadata), append to PR description:
 <!-- trajectory_hash: sha256:... -->
 ```
 
-### Trajectory linking (NIP-34 / GitAfter)
+### NIP-34 / GitAfter tags (Normative)
 
-For forges supporting trajectory linking, PR events MUST include:
+For forges supporting trajectory linking, PR events (kind:1618) MUST include these tags per [GIT_AFTER.md](../../crates/nostr/GIT_AFTER.md):
 
 ```json
 {
   "tags": [
     ["trajectory", "<session_id>", "<relay_url>"],
-    ["trajectory_hash", "sha256:..."],
-    ["policy_bundle_id", "v1.2.3"]
+    ["trajectory_hash", "<sha256-of-all-trajectory-events>"],
+    ["policy_bundle_id", "<version>"]
   ]
 }
 ```
 
+The exact tag format is defined in GIT_AFTER.md; this ADR only requires their presence.
+
 ## Scope
 
 What this ADR covers:
-- ForgeAdapter trait interface
+- ForgeAdapter trait interface (illustrative)
 - Required operations and their semantics
 - Bundle → PR mapping requirements
-- Metadata preservation rules
+- Metadata and truncation rules
+- Canonical hash field name
 
 What this ADR does NOT cover:
 - Authentication/credential management per forge
@@ -160,10 +196,10 @@ What this ADR does NOT cover:
 
 | Invariant | Guarantee |
 |-----------|-----------|
-| Trait interface | Stable method signatures |
+| Hash field name | Canonical: `trajectory_hash` |
 | Bundle attribution | `policy_bundle_id` always preserved |
-| PR description | Always includes PR_SUMMARY.md content |
-| Capabilities | Stable capability flags |
+| PR description | Always includes PR_SUMMARY.md (possibly truncated) |
+| Preserved fields | session_id, policy_bundle_id, trajectory_hash, verification_passed |
 
 Backward compatibility:
 - New optional methods may be added with default implementations.
@@ -181,6 +217,7 @@ Backward compatibility:
 **Negative:**
 - Lowest-common-denominator for features (GitHub limitations)
 - Metadata in comments is fragile (GitHub)
+- Trait not yet implemented (requires implementation work)
 
 **Neutral:**
 - Each forge adapter still needs forge-specific implementation
@@ -190,11 +227,14 @@ Backward compatibility:
 1. **Forge-specific APIs only** — rejected (duplication, inconsistent attribution).
 2. **Single GitHub-only adapter** — rejected (limits future forges).
 3. **Generic "post to URL" interface** — rejected (loses structure).
+4. **Use `replay_hash` instead** — rejected (`trajectory_hash` is already canonical).
 
 ## References
 
 - [GLOSSARY.md](../../GLOSSARY.md) — `Forge Adapter` definition
 - [crates/dsrs/docs/ARTIFACTS.md](../../crates/dsrs/docs/ARTIFACTS.md) — Verified Patch Bundle format
-- [crates/nostr/GIT_AFTER.md](../../crates/nostr/GIT_AFTER.md) — GitAfter design
+- [crates/nostr/GIT_AFTER.md](../../crates/nostr/GIT_AFTER.md) — GitAfter design and tag format
+- [docs/PROTOCOL_SURFACE.md](../PROTOCOL_SURFACE.md) — `trajectory_hash` in receipt schema
 - [ADR-0002](./ADR-0002-verified-patch-bundle.md) — Verified Patch Bundle contract
+- [ADR-0013](./ADR-0013-receipt-schema-payment-proofs.md) — receipt fields including `trajectory_hash`
 - [ADR-0015](./ADR-0015-policy-bundles.md) — policy_bundle_id attribution
