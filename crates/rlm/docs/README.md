@@ -154,15 +154,37 @@ historical reference:
 
 ## Paper Methods
 
-The RLM paper compares 5 methods:
+The RLM paper compares 5 methods. Our implementation follows Omar's (DSPy/RLM creator)
+guidance on proper RLM implementation:
+
+> "The way people tend to implement recursive sub-calls or 'sub-agents' don't work.
+> In particular, you cannot express sub-agents as tool calls... the recursion has to
+> be symbolic through code, not tool calls."
 
 | Method | Description | Implementation |
 |--------|-------------|----------------|
 | Base | Direct LLM call with full context | Archived (`rlm-methods`) |
 | Summary Agent | Iterative context summarization | Archived (`rlm-methods`) |
 | CodeAct+BM25 | ReAct with BM25 retrieval | Planned |
-| RLM | Recursive LM with `llm_query` | Planned |
-| RLM (no sub-calls) | Ablation without recursion | Planned |
+| RLM | Symbolic recursion via EngineOrchestrator | `orchestrator.rs` |
+| RLM (FRLM) | Federated/distributed symbolic recursion | `frlm` crate |
+
+### Symbolic Recursion Pattern
+
+The key insight: **CODE generates O(N) sub-calls, not the LLM**. The model processes
+individual chunks but never needs to "verbalize" the recursive structure:
+
+```text
+Document (10M chars)
+    ↓ detect_structure() [CODE]
+Structure
+    ↓ chunk_by_structure() [CODE]
+Vec<Chunk> with position pointers
+    ↓ extract_from_chunks() [CODE LOOP]
+LLM processes each chunk individually
+    ↓ synthesize() [CODE]
+Final Answer
+```
 
 ## Benchmarks
 

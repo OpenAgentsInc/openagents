@@ -6,4 +6,4 @@ pub mod relay_service;
 // pub mod wallet_service;
 
 pub use dvm_service::{DvmConfig, DvmError, DvmService};
-pub use relay_service::RelayService;
+pub use relay_service::{RelayService, RelayServiceApi};

@@ -9,7 +9,7 @@ use wgpui::components::organisms::{
     ToolCallCard,
 };
 use wgpui::markdown::{MarkdownBlock, MarkdownConfig, MarkdownDocument, StyledLine};
-use wgpui::{Bounds, Component, Hsla, Point, Quad, Scene, Size, TextSystem, copy_to_clipboard};
+use wgpui::{Bounds, Component, Hsla, Point, Quad, Scene, ScrollRegion, Size, TextSystem, copy_to_clipboard};
 
 use crate::app::AppState;
 use crate::app::catalog::{

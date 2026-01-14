@@ -7,7 +7,7 @@ use crate::backends::{AgentRegistry, BackendRegistry, CompletionRequest};
 use crate::domain::{
     CodeReviewRequest, DomainEvent, Job, PatchGenRequest, SandboxRunRequest, UnifiedIdentity,
 };
-use crate::services::RelayService;
+use crate::services::RelayServiceApi;
 use chrono::Utc;
 use nostr::nip90::{
     JobFeedback, JobStatus, KIND_JOB_CODE_REVIEW, KIND_JOB_PATCH_GEN, KIND_JOB_REPO_INDEX,
@@ -150,7 +150,7 @@ pub struct DvmService {
     /// User identity for signing events
     identity: Arc<RwLock<Option<Arc<UnifiedIdentity>>>>,
     /// Relay service for Nostr communication
-    relay_service: Arc<RelayService>,
+    relay_service: Arc<dyn RelayServiceApi>,
     /// Backend registry for inference (Ollama, Apple FM, Llama.cpp)
     backend_registry: Arc<RwLock<BackendRegistry>>,
     /// Agent registry for Bazaar jobs (Codex, etc.)
@@ -172,7 +172,7 @@ pub struct DvmService {
 impl DvmService {
     /// Create a new DVM service
     pub fn new(
-        relay_service: Arc<RelayService>,
+        relay_service: Arc<dyn RelayServiceApi>,
         backend_registry: Arc<RwLock<BackendRegistry>>,
         event_tx: broadcast::Sender<DomainEvent>,
     ) -> Self {
@@ -192,7 +192,7 @@ impl DvmService {
 
     /// Create a new DVM service with agent registry
     pub fn with_agent_registry(
-        relay_service: Arc<RelayService>,
+        relay_service: Arc<dyn RelayServiceApi>,
         backend_registry: Arc<RwLock<BackendRegistry>>,
         agent_registry: Arc<RwLock<AgentRegistry>>,
         event_tx: broadcast::Sender<DomainEvent>,
@@ -253,7 +253,7 @@ impl DvmService {
 
     /// Create a DVM service with auto-detected backends
     pub async fn with_auto_detect(
-        relay_service: Arc<RelayService>,
+        relay_service: Arc<dyn RelayServiceApi>,
         event_tx: broadcast::Sender<DomainEvent>,
     ) -> Self {
         let registry = BackendRegistry::detect().await;
@@ -1553,6 +1553,7 @@ impl DvmService {
 mod tests {
     use super::*;
     use crate::domain::UnifiedIdentity;
+    use crate::services::RelayService;
 
     #[test]
     fn test_supported_kinds() {

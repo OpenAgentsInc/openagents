@@ -74,6 +74,7 @@ walkdir = { workspace = true }
 chrono = { workspace = true }
 
 [dev-dependencies]
+tempfile = { workspace = true }
 
 [package.metadata.bundle]
 name = "Autopilot"
