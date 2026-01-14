@@ -438,3 +438,4 @@ That’s the core loop. Everything else (skills, UI, multi-agent, marketplace jo
 - 2026-01-14: Implemented `crates/adjutant/src/coding_agent_loop.rs` with PlanIR planning, tool execution, replay + receipt emission, and verification hooks.
 - 2026-01-14: Wired coding loop into Adjutant execution paths and added OpenAgents paths helper for bundle storage.
 - 2026-01-14: Updated LM provider priority to prefer OpenAI Responses for signature inference.
+- 2026-01-14: Fixed CODING_AGENT_LOOP compile errors (Predictor trait import, LM builder ordering).

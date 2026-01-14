@@ -196,18 +196,24 @@ pub async fn create_lm(provider: &LmProvider) -> Result<LM> {
                 .ok()
                 .and_then(|value| value.parse::<f32>().ok())
                 .unwrap_or(0.7);
-
-            let mut builder = LM::builder()
-                .model(format!("openai-responses:{}", model))
-                .api_key(api_key)
-                .max_tokens(max_tokens)
-                .temperature(temperature);
-
             if let Ok(base_url) = std::env::var("OPENAI_BASE_URL") {
-                builder = builder.base_url(base_url);
+                LM::builder()
+                    .base_url(base_url)
+                    .model(format!("openai-responses:{}", model))
+                    .api_key(api_key)
+                    .max_tokens(max_tokens)
+                    .temperature(temperature)
+                    .build()
+                    .await
+            } else {
+                LM::builder()
+                    .model(format!("openai-responses:{}", model))
+                    .api_key(api_key)
+                    .max_tokens(max_tokens)
+                    .temperature(temperature)
+                    .build()
+                    .await
             }
-
-            builder.build().await
         }
         LmProvider::Codex => {
             tracing::info!("Codex: using codex app-server for LM");
