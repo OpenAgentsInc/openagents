@@ -256,6 +256,21 @@ impl Module for QARater {
 
 ---
 
+## CODING_AGENT_LOOP Modules (Additions)
+
+*Italicized items are CODING_AGENT_LOOP additions or wiring targets.*
+
+- *SessionContextModule* — runs ContextSelectionSignature, integrates compaction/branch summaries, outputs deterministic context ingredients.
+- *PromptAssemblyModule* — builds system prompt from tools, context files, skills, and settings (deterministic, hashable).
+- *PlanningModule* — runs PlanningSignature to emit PlanIR with stable step IDs.
+- *ToolExecutionModule* — runs ToolCallSignature, delegates tool execution to runtime, then runs ToolResultSignature.
+- *VerificationModule* — runs objective verification commands and records verification_delta.
+- *ModelRoutingModule* — optional lane/model selection (ModelSelectionSignature).
+- *SkillLoaderModule* — loads SKILL.md content based on SkillMatchSignature.
+- *RetryAndRecoveryModule* — wraps transient failure handling (retry policy + failure triage).
+
+---
+
 ## Pipeline Modules
 
 Specialized modules for decision routing in Adjutant.
@@ -733,6 +748,15 @@ autopilot run --canary-policy v1.2.4 --canary-percent 10
 | **Core** |
 | Predict | `dsrs/src/predictors/predict.rs` | Core | Single signature executor |
 | Refine | `dsrs/src/predictors/refine.rs` | Wrapper | Retry/fallback logic |
+| **Coding Agent Loop** |
+| *SessionContextModule* | Spec in `crates/dsrs/docs/CODING_AGENT_LOOP.md` | Composite | Context selection + summaries |
+| *PromptAssemblyModule* | Spec in `crates/dsrs/docs/CODING_AGENT_LOOP.md` | Composite | Deterministic prompt assembly |
+| *PlanningModule* | Spec in `crates/dsrs/docs/CODING_AGENT_LOOP.md` | Composite | PlanIR emission |
+| *ToolExecutionModule* | Spec in `crates/dsrs/docs/CODING_AGENT_LOOP.md` | Composite | ToolCall → runtime → ToolResult |
+| *VerificationModule* | Spec in `crates/dsrs/docs/CODING_AGENT_LOOP.md` | Composite | Objective verification + delta |
+| *ModelRoutingModule* | Spec in `crates/dsrs/docs/CODING_AGENT_LOOP.md` | Decision | Lane/model selection |
+| *SkillLoaderModule* | Spec in `crates/dsrs/docs/CODING_AGENT_LOOP.md` | Composite | Skill discovery + loading |
+| *RetryAndRecoveryModule* | Spec in `crates/dsrs/docs/CODING_AGENT_LOOP.md` | Wrapper | Retries + failure triage |
 | **Composite** |
 | AdjutantModule | `adjutant/src/dspy/module.rs` | Composite | 3-phase task execution |
 | QARater | `examples/01-simple.rs` | Example | Question → Answer → Rate |

@@ -1,20 +1,23 @@
 use async_openai::{
     Client,
     config::OpenAIConfig,
+    traits::EventType,
     types::responses::{
         CreateResponseArgs, CustomToolCall, EasyInputContent, EasyInputMessage, FunctionCallOutput,
         FunctionCallOutputItemParam, FunctionTool, FunctionToolCall, InputItem, InputParam, Item,
         MessageType, OutputItem, OutputMessageContent, OutputStatus, Response, ResponseStreamEvent,
-        Role, Tool, ToolChoiceAllowed, ToolChoiceAllowedMode, ToolChoiceFunction,
+        ResponseUsage, Role, Tool, ToolChoiceAllowed, ToolChoiceAllowedMode, ToolChoiceFunction,
         ToolChoiceOptions, ToolChoiceParam,
     },
 };
 use futures::StreamExt;
+use super::client_registry::CompletionProvider;
 use rig::completion::{CompletionError, CompletionRequest, CompletionResponse, Usage};
 use rig::message::{AssistantContent, Message as RigMessage, Text, ToolCall, ToolFunction};
 use rig::message::{ToolResultContent, UserContent};
 use rig::OneOrMany;
 use serde_json::{Value, json};
+use std::collections::HashSet;
 
 #[derive(Clone)]
 pub struct OpenAiResponsesCompletionModel {
@@ -50,6 +53,7 @@ impl OpenAiResponsesCompletionModel {
         request: CompletionRequest,
         on_token: Option<&(dyn Fn(&str) + Send + Sync)>,
     ) -> Result<CompletionResponse<()>, CompletionError> {
+        let fallback_request = request.clone();
         let create_request = build_create_request(&self.model, &request, true)?;
         let mut stream = self
             .client
@@ -59,16 +63,134 @@ impl OpenAiResponsesCompletionModel {
             .map_err(|e| CompletionError::ProviderError(e.to_string()))?;
 
         let mut final_response = None;
+        let mut output_items = Vec::new();
+        let mut output_item_ids = HashSet::new();
+        let mut streamed_text = String::new();
+        let mut saw_text_delta = false;
+        let mut last_usage: Option<ResponseUsage> = None;
+        let debug_events = debug_enabled();
 
         while let Some(result) = stream.next().await {
             match result {
+                Ok(event) if debug_events => {
+                    eprintln!("[openai-responses] event: {}", event.event_type());
+                    match event {
+                        ResponseStreamEvent::ResponseOutputTextDelta(delta) => {
+                            saw_text_delta = true;
+                            streamed_text.push_str(&delta.delta);
+                            if let Some(cb) = on_token {
+                                cb(&delta.delta);
+                            }
+                        }
+                        ResponseStreamEvent::ResponseOutputTextDone(done) => {
+                            if !done.text.is_empty() {
+                                streamed_text = done.text;
+                            }
+                        }
+                        ResponseStreamEvent::ResponseContentPartAdded(part) => {
+                            if !saw_text_delta {
+                                append_output_content(&mut streamed_text, &part.part);
+                            }
+                        }
+                        ResponseStreamEvent::ResponseContentPartDone(part) => {
+                            if !saw_text_delta {
+                                append_output_content(&mut streamed_text, &part.part);
+                            }
+                        }
+                        ResponseStreamEvent::ResponseCompleted(done) => {
+                            last_usage = done.response.usage.clone();
+                            final_response = Some(done.response);
+                        }
+                        ResponseStreamEvent::ResponseInProgress(progress) => {
+                            last_usage = progress.response.usage.clone();
+                        }
+                        ResponseStreamEvent::ResponseCreated(created) => {
+                            last_usage = created.response.usage.clone();
+                        }
+                        ResponseStreamEvent::ResponseIncomplete(incomplete) => {
+                            if let Some(details) = &incomplete.response.incomplete_details {
+                                eprintln!(
+                                    "[openai-responses] incomplete: {}",
+                                    details.reason
+                                );
+                            }
+                            last_usage = incomplete.response.usage.clone();
+                            final_response = Some(incomplete.response);
+                        }
+                        ResponseStreamEvent::ResponseOutputItemDone(done) => {
+                            eprintln!(
+                                "[openai-responses] output_item_done: {}",
+                                output_item_kind(&done.item)
+                            );
+                            append_output_item_text(&mut streamed_text, &done.item);
+                            push_output_item(&mut output_items, &mut output_item_ids, done.item);
+                        }
+                        ResponseStreamEvent::ResponseOutputItemAdded(added) => {
+                            eprintln!(
+                                "[openai-responses] output_item_added: {}",
+                                output_item_kind(&added.item)
+                            );
+                            append_output_item_text(&mut streamed_text, &added.item);
+                            push_output_item(&mut output_items, &mut output_item_ids, added.item);
+                        }
+                        ResponseStreamEvent::ResponseFailed(failed) => {
+                            let message = failed
+                                .response
+                                .error
+                                .as_ref()
+                                .map(|err| err.message.clone())
+                                .unwrap_or_else(|| "OpenAI response failed".to_string());
+                            return Err(CompletionError::ProviderError(message));
+                        }
+                        ResponseStreamEvent::ResponseError(error) => {
+                            return Err(CompletionError::ProviderError(error.message));
+                        }
+                        _ => {}
+                    }
+                }
                 Ok(ResponseStreamEvent::ResponseOutputTextDelta(delta)) => {
+                    saw_text_delta = true;
+                    streamed_text.push_str(&delta.delta);
                     if let Some(cb) = on_token {
                         cb(&delta.delta);
                     }
                 }
+                Ok(ResponseStreamEvent::ResponseOutputTextDone(done)) => {
+                    if !done.text.is_empty() {
+                        streamed_text = done.text;
+                    }
+                }
+                Ok(ResponseStreamEvent::ResponseContentPartAdded(part)) => {
+                    if !saw_text_delta {
+                        append_output_content(&mut streamed_text, &part.part);
+                    }
+                }
+                Ok(ResponseStreamEvent::ResponseContentPartDone(part)) => {
+                    if !saw_text_delta {
+                        append_output_content(&mut streamed_text, &part.part);
+                    }
+                }
                 Ok(ResponseStreamEvent::ResponseCompleted(done)) => {
+                    last_usage = done.response.usage.clone();
                     final_response = Some(done.response);
+                }
+                Ok(ResponseStreamEvent::ResponseInProgress(progress)) => {
+                    last_usage = progress.response.usage.clone();
+                }
+                Ok(ResponseStreamEvent::ResponseCreated(created)) => {
+                    last_usage = created.response.usage.clone();
+                }
+                Ok(ResponseStreamEvent::ResponseIncomplete(incomplete)) => {
+                    last_usage = incomplete.response.usage.clone();
+                    final_response = Some(incomplete.response);
+                }
+                Ok(ResponseStreamEvent::ResponseOutputItemDone(done)) => {
+                    append_output_item_text(&mut streamed_text, &done.item);
+                    push_output_item(&mut output_items, &mut output_item_ids, done.item);
+                }
+                Ok(ResponseStreamEvent::ResponseOutputItemAdded(added)) => {
+                    append_output_item_text(&mut streamed_text, &added.item);
+                    push_output_item(&mut output_items, &mut output_item_ids, added.item);
                 }
                 Ok(ResponseStreamEvent::ResponseFailed(failed)) => {
                     let message = failed
@@ -91,9 +213,35 @@ impl OpenAiResponsesCompletionModel {
 
         let response = final_response.ok_or_else(|| {
             CompletionError::ResponseError("OpenAI stream ended without completion".to_string())
-        })?;
+        });
 
-        response_to_completion(response)
+        if let Ok(response) = response {
+            match response_to_completion(response) {
+                Ok(result) => return Ok(result),
+                Err(err)
+                    if streamed_text.is_empty() && output_items.is_empty() =>
+                {
+                    let fallback = self.completion(fallback_request).await?;
+                    if let Some(cb) = on_token {
+                        emit_completion_tokens(&fallback, cb);
+                    }
+                    return Ok(fallback);
+                }
+                Err(err) => return Err(err),
+            }
+        }
+
+        if !output_items.is_empty() {
+            return completion_from_output_and_usage(output_items, last_usage);
+        }
+
+        if !streamed_text.is_empty() {
+            return completion_from_text(streamed_text, last_usage);
+        }
+
+        Err(CompletionError::ResponseError(
+            "OpenAI stream ended without completion".to_string(),
+        ))
     }
 }
 
@@ -133,7 +281,9 @@ fn build_create_request(
     }
 
     if let Some(temperature) = request.temperature {
-        builder.temperature(temperature as f32);
+        if temperature_supported(model) {
+            builder.temperature(temperature as f32);
+        }
     }
 
     if let Some(max_tokens) = request.max_tokens {
@@ -268,6 +418,29 @@ fn request_error(message: &str) -> CompletionError {
     )))
 }
 
+fn temperature_supported(model: &str) -> bool {
+    let model = model.trim().to_lowercase();
+    let without_prefix = model
+        .split_once(':')
+        .map(|(_, name)| name.to_string())
+        .unwrap_or(model);
+
+    let name = without_prefix.trim();
+
+    if name.starts_with("gpt-5") {
+        return false;
+    }
+
+    if name.starts_with('o') {
+        let digits = name[1..].chars().next().map(|c| c.is_ascii_digit()).unwrap_or(false);
+        if digits {
+            return false;
+        }
+    }
+
+    true
+}
+
 fn build_tools(request: &CompletionRequest) -> Option<Vec<Tool>> {
     if request.tools.is_empty() {
         return None;
@@ -338,6 +511,13 @@ fn parse_env_bool(value: &str) -> Option<bool> {
     }
 }
 
+fn debug_enabled() -> bool {
+    std::env::var("OPENAI_RESPONSES_DEBUG")
+        .ok()
+        .and_then(|value| parse_env_bool(&value))
+        .unwrap_or(false)
+}
+
 fn tool_result_to_text(tool_result: &rig::message::ToolResult) -> String {
     let mut parts = Vec::new();
 
@@ -355,12 +535,17 @@ fn tool_result_to_text(tool_result: &rig::message::ToolResult) -> String {
     }
 }
 
-fn response_to_completion(
-    response: Response,
+fn response_to_completion(response: Response) -> Result<CompletionResponse<()>, CompletionError> {
+    completion_from_output_and_usage(response.output, response.usage)
+}
+
+fn completion_from_output_and_usage(
+    output: Vec<OutputItem>,
+    usage: Option<ResponseUsage>,
 ) -> Result<CompletionResponse<()>, CompletionError> {
     let mut content = Vec::new();
 
-    for item in response.output {
+    for item in output {
         match item {
             OutputItem::Message(message) => {
                 for part in message.content {
@@ -394,8 +579,7 @@ fn response_to_completion(
         CompletionError::ResponseError("OpenAI Responses output was empty".to_string())
     })?;
 
-    let usage = response
-        .usage
+    let usage = usage
         .as_ref()
         .map(|usage| Usage {
             input_tokens: usage.input_tokens as u64,
@@ -409,6 +593,44 @@ fn response_to_completion(
         usage,
         raw_response: (),
     })
+}
+
+fn completion_from_text(
+    text: String,
+    usage: Option<ResponseUsage>,
+) -> Result<CompletionResponse<()>, CompletionError> {
+    if text.is_empty() {
+        return Err(CompletionError::ResponseError(
+            "OpenAI Responses output was empty".to_string(),
+        ));
+    }
+
+    let choice = OneOrMany::one(AssistantContent::Text(Text { text }));
+    let usage = usage
+        .as_ref()
+        .map(|usage| Usage {
+            input_tokens: usage.input_tokens as u64,
+            output_tokens: usage.output_tokens as u64,
+            total_tokens: usage.total_tokens as u64,
+        })
+        .unwrap_or_default();
+
+    Ok(CompletionResponse {
+        choice,
+        usage,
+        raw_response: (),
+    })
+}
+
+fn emit_completion_tokens(
+    response: &CompletionResponse<()>,
+    on_token: &(dyn Fn(&str) + Send + Sync),
+) {
+    for choice in response.choice.iter() {
+        if let AssistantContent::Text(text) = choice {
+            on_token(&text.text);
+        }
+    }
 }
 
 fn function_call_to_tool_call(call: &FunctionToolCall) -> ToolCall {
@@ -433,5 +655,96 @@ fn custom_call_to_tool_call(call: &CustomToolCall) -> ToolCall {
             name: call.name.clone(),
             arguments: Value::String(call.input.clone()),
         },
+    }
+}
+
+fn append_output_content(text: &mut String, part: &async_openai::types::responses::OutputContent) {
+    match part {
+        async_openai::types::responses::OutputContent::OutputText(content) => {
+            text.push_str(&content.text);
+        }
+        async_openai::types::responses::OutputContent::Refusal(content) => {
+            text.push_str(&content.refusal);
+        }
+        async_openai::types::responses::OutputContent::ReasoningText(content) => {
+            if !content.text.is_empty() {
+                text.push_str(&content.text);
+            }
+        }
+    }
+}
+
+fn push_output_item(
+    items: &mut Vec<OutputItem>,
+    seen: &mut HashSet<String>,
+    item: OutputItem,
+) {
+    if let Some(id) = output_item_id(&item) {
+        if seen.insert(id) {
+            items.push(item);
+        }
+    } else {
+        items.push(item);
+    }
+}
+
+fn output_item_id(item: &OutputItem) -> Option<String> {
+    match item {
+        OutputItem::Message(message) => Some(message.id.clone()),
+        OutputItem::FunctionCall(call) => call.id.clone().or_else(|| Some(call.call_id.clone())),
+        OutputItem::CustomToolCall(call) => Some(call.id.clone()),
+        OutputItem::WebSearchCall(call) => Some(call.id.clone()),
+        OutputItem::FileSearchCall(call) => Some(call.id.clone()),
+        OutputItem::ComputerCall(call) => Some(call.id.clone()),
+        OutputItem::CodeInterpreterCall(call) => Some(call.id.clone()),
+        OutputItem::LocalShellCall(call) => Some(call.id.clone()),
+        OutputItem::ShellCall(call) => Some(call.id.clone()),
+        OutputItem::ApplyPatchCall(call) => Some(call.id.clone()),
+        OutputItem::ImageGenerationCall(call) => Some(call.id.clone()),
+        OutputItem::ShellCallOutput(call) => Some(call.id.clone()),
+        OutputItem::ApplyPatchCallOutput(call) => Some(call.id.clone()),
+        OutputItem::McpCall(call) => Some(call.id.clone()),
+        OutputItem::McpListTools(call) => Some(call.id.clone()),
+        OutputItem::McpApprovalRequest(call) => Some(call.id.clone()),
+        OutputItem::Reasoning(reasoning) => Some(reasoning.id.clone()),
+        OutputItem::Compaction(compaction) => Some(compaction.id.clone()),
+    }
+}
+
+fn append_output_item_text(text: &mut String, item: &OutputItem) {
+    if let OutputItem::Message(message) = item {
+        for part in &message.content {
+            match part {
+                OutputMessageContent::OutputText(content) => {
+                    text.push_str(&content.text);
+                }
+                OutputMessageContent::Refusal(content) => {
+                    text.push_str(&content.refusal);
+                }
+            }
+        }
+    }
+}
+
+fn output_item_kind(item: &OutputItem) -> &'static str {
+    match item {
+        OutputItem::Message(_) => "message",
+        OutputItem::FileSearchCall(_) => "file_search_call",
+        OutputItem::FunctionCall(_) => "function_call",
+        OutputItem::WebSearchCall(_) => "web_search_call",
+        OutputItem::ComputerCall(_) => "computer_call",
+        OutputItem::Reasoning(_) => "reasoning",
+        OutputItem::Compaction(_) => "compaction",
+        OutputItem::ImageGenerationCall(_) => "image_generation_call",
+        OutputItem::CodeInterpreterCall(_) => "code_interpreter_call",
+        OutputItem::LocalShellCall(_) => "local_shell_call",
+        OutputItem::ShellCall(_) => "shell_call",
+        OutputItem::ShellCallOutput(_) => "shell_call_output",
+        OutputItem::ApplyPatchCall(_) => "apply_patch_call",
+        OutputItem::ApplyPatchCallOutput(_) => "apply_patch_call_output",
+        OutputItem::McpCall(_) => "mcp_call",
+        OutputItem::McpListTools(_) => "mcp_list_tools",
+        OutputItem::McpApprovalRequest(_) => "mcp_approval_request",
+        OutputItem::CustomToolCall(_) => "custom_tool_call",
     }
 }

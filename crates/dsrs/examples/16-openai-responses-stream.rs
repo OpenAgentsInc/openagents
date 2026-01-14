@@ -11,7 +11,7 @@ Optional env:
 */
 
 use anyhow::Result;
-use dsrs::{Example, LM, Predict, Predictor, Signature, example};
+use dsrs::{LM, Predict, Predictor, Signature, example};
 use dsrs::callbacks::DspyCallback;
 use std::io::{self, Write};
 use std::sync::Arc;
@@ -38,8 +38,13 @@ impl DspyCallback for TokenPrinter {
 #[tokio::main]
 async fn main() -> Result<()> {
     let model = std::env::var("OPENAI_MODEL").unwrap_or_else(|_| "gpt-5-nano".to_string());
+    let max_tokens: u32 = std::env::var("OPENAI_MAX_TOKENS")
+        .ok()
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(2048);
     let lm = LM::builder()
         .model(format!("openai-responses:{model}"))
+        .max_tokens(max_tokens)
         .build()
         .await?;
 

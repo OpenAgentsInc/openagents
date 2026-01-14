@@ -366,6 +366,54 @@ Typical code homes (may evolve; code is truth):
 * Replay writer/exporter: autopilot-core replay + exporter to `REPLAY.jsonl`
 * Policy bundles: dsrs compiler/optimizer artifacts + selection logic
 
+### Autopilot integration map (current wiring)
+
+If you are making CODING_AGENT_LOOP real in the **Autopilot UI**, these are the main touch points:
+
+* **Loop entry + backend routing:** `crates/autopilot/src/app/autopilot/handler.rs`
+  * `submit_autopilot_prompt()` builds OANIX context and chooses **Codex** vs **Adjutant**.
+  * The CODING_AGENT_LOOP spec only applies to the Adjutant path today; Codex uses app-server.
+  * New plan/tool/verification events should be emitted through ACP and mapped here.
+
+* **Loop type re-exports:** `crates/autopilot/src/autopilot_loop.rs`
+  * Re-exports `adjutant::autopilot_loop::*` for the UI and CLI.
+  * When the loop shape changes, update here to keep the UI types in sync.
+
+* **ACP → UI event mapping:** `crates/autopilot/src/app/autopilot/handler.rs`
+  * `acp_notification_to_response()` converts ACP `SessionNotification` to `ResponseEvent`.
+  * Add mappings for new loop stages (PlanStart, Verification, Artifacts, etc.).
+
+* **UI event model:** `crates/autopilot/src/app/events/response.rs`
+  * Extend `ResponseEvent` to represent new stages or artifacts.
+  * Tool call/result UI uses `ToolCallStart`, `ToolCallInput`, `ToolResult`.
+
+* **DSPy stage visualization:** `crates/autopilot/src/app/tools/dspy_stages.rs`
+  * UI storage for DSPy stage cards (per message index).
+
+* **Stage rendering:** `crates/autopilot/src/app/ui/rendering/dspy.rs`
+  * Add new `DspyStage` variants and their visual layout here.
+
+* **Autopilot state + loop control:** `crates/autopilot/src/app/autopilot/state.rs`
+  * Holds loop iteration counts, interrupt flag, issue state, and pending validation.
+  * If the loop needs new state (policy_bundle_id, verification status), add it here.
+
+* **Post-completion verification:** `crates/autopilot/src/app/autopilot/post_completion.rs`
+  * Runs `autopilot_core::dspy_verify` and issues DB updates.
+  * Align with CODING_AGENT_LOOP verification semantics or relocate into runtime.
+
+* **DSPy metrics UI:** `crates/autopilot/src/app/dspy.rs`
+  * Reads `adjutant::dspy::{SessionStore, PerformanceTracker}` for UI summaries.
+  * Update if the loop adds new metrics or dataset formats.
+
+* **Codex (non-DSPy) path:** `crates/autopilot/src/app/codex_runtime.rs` and
+  `crates/autopilot/src/app/codex_app_server/*`
+  * Codex bypasses dsrs/adjutant loop today; parity would require a bridge or
+    adapter that emits CODING_AGENT_LOOP events.
+
+* **Session UI persistence:** `crates/autopilot/src/app/session/*`
+  * Manages UI chat/session history (not REPLAY/RECEIPT).
+  * If you want UI access to Verified Patch Bundle artifacts, wire it here.
+
 ---
 
 ## Summary

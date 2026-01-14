@@ -20,7 +20,16 @@ These are the highest-ROI items that close the loop between execution, measureme
 
 ## NOW (MVP Critical Path)
 
-### 1. Ship the "Verified Patch Bundle" artifact 🔄
+### 1. Implement the CODING_AGENT_LOOP spec ⏳
+
+Follow `crates/dsrs/docs/CODING_AGENT_LOOP.md` as the primary loop contract:
+- DSPy signatures at each control point (context, planning, tool call, tool result).
+- Runtime-enforced tool execution (schema validation, retries, receipts).
+- REPLAY/RECEIPT emission and verification gating.
+
+This is the sequencing anchor for the remaining MVP items.
+
+### 2. Ship the "Verified Patch Bundle" artifact 🔄
 
 **Every Autopilot run must emit:**
 - `PR_SUMMARY.md` - Human-readable patch summary (filename kept for tooling stability)
@@ -43,7 +52,7 @@ These are the highest-ROI items that close the loop between execution, measureme
 
 This allows shipping with current implementation while maintaining interoperability path.
 
-### 2. Implement ToolCallSignature + ToolResultSignature ⏳
+### 3. Implement ToolCallSignature + ToolResultSignature ⏳
 
 Move from spec to implementation:
 - `crates/dsrs/src/signatures/tool_call.rs`
@@ -54,20 +63,20 @@ Move from spec to implementation:
 
 Wire into single-step executor for Autopilot/Adjutant execution loop.
 
-### 3. Tool params schema validation in execution runtime ⏳
+### 4. Tool params schema validation in execution runtime ⏳
 
 - Strict validator: `tool` ∈ allowed names, `params` matches JSON schema
 - Adapters remain pure serialize/parse; executor enforces tool whitelist + JSONSchema
 - Auto-Refine retry on parse error (up to N attempts)
 - Add `ToolParamsSchemaMetric` as proxy metric
 
-### 4. Policy bundles with pin/rollback (visible versioning) ⏳
+### 5. Policy bundles with pin/rollback (visible versioning) ⏳
 
 - Persist `policy_bundle_id` with every session and decision
 - Bundle structure: instruction text + demos + optimizer config + timestamp + metrics snapshot
 - CLI commands: `autopilot policy list`, `autopilot policy pin <bundle>`, `autopilot policy rollback`
 
-### 5. Replay Viewer (CLI first) ⏳
+### 6. Replay Viewer (CLI first) ⏳
 
 `autopilot replay <session_id>` renders:
 - Decisions timeline
@@ -78,7 +87,7 @@ Wire into single-step executor for Autopilot/Adjutant execution loop.
 
 Optional: `autopilot export-replay <session_id> --html`
 
-### 6. Outcome-coupled metrics wiring 🔄
+### 7. Outcome-coupled metrics wiring 🔄
 
 Write `tool_calls.jsonl` dataset with:
 - inputs/outputs + computed labels
@@ -91,7 +100,7 @@ Update Scorer/Evaluator to incorporate:
 - verification_delta reward
 - repetition penalty
 
-### 7. Shadow/canary mode for decision pipelines ⏳
+### 8. Shadow/canary mode for decision pipelines ⏳
 
 - Always compute legacy + DSPy decision
 - Execute legacy unless DSPy confidence > threshold
