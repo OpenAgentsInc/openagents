@@ -379,6 +379,12 @@ The compute provider will integrate with the marketplace crate to:
 cargo test
 ```
 
+Run only the end-to-end DVM job execution flow test (mock relay + mock backend):
+
+```bash
+cargo test -p compute dvm_executes_job_from_relay_and_publishes_result
+```
+
 ### Logging
 
 Enable debug logging:

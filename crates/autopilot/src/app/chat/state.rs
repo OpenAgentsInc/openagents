@@ -45,10 +45,14 @@ impl BootSection {
 pub(crate) struct BootSections {
     /// Initialize section (Hardware, Compute, Network, Identity, Workspace, Summary)
     pub(crate) initialize: BootSection,
-    /// Issue suggestion section (disabled for now)
+    /// Issue suggestion section
     pub(crate) suggest_issues: BootSection,
     /// Bounds of the boot card (for click detection)
     pub(crate) card_bounds: Option<Bounds>,
+    /// Streaming text for issue analysis (rendered in suggest_issues card)
+    pub(crate) streaming_text: String,
+    /// Scroll offset for streaming text viewport
+    pub(crate) streaming_scroll_offset: f32,
 }
 
 impl BootSections {
@@ -58,10 +62,13 @@ impl BootSections {
             initialize: BootSection::new(1, "..."),
             suggest_issues: {
                 let mut section = BootSection::new(2, "");
-                section.active = false;
+                section.active = true;
+                section.expanded = true;
                 section
             },
             card_bounds: None,
+            streaming_text: String::new(),
+            streaming_scroll_offset: 0.0,
         }
     }
 }

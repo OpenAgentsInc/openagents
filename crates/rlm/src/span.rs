@@ -410,4 +410,115 @@ mod tests {
         assert!(display.contains("20"));
         assert!(display.contains("abc123d")); // Truncated commit
     }
+
+    /// SpanRef is a pointer/reference, not embedded content.
+    ///
+    /// Per Omar: "prompts/requests accessible through pointers as an object"
+    ///
+    /// This test validates that SpanRef contains metadata (the pointer) rather
+    /// than the actual content, enabling symbolic access to large contexts.
+    #[test]
+    fn test_spanref_is_pointer_not_content() {
+        // Create a span that references 5000 bytes of content
+        let span = SpanRef::with_range("span-1", "/path/to/file.rs", 1, 100, 0, 5000)
+            .with_commit("abc123def456789");
+
+        // The SpanRef struct contains METADATA about where to find content
+        // It does NOT contain the 5000 bytes of content itself
+        // This is the "pointer as object" pattern Omar describes
+
+        // Verify the struct is small (just metadata)
+        let serialized = span.to_json();
+        assert!(
+            serialized.len() < 300,
+            "SpanRef JSON should be small (metadata only), got {} bytes",
+            serialized.len()
+        );
+
+        // The span knows WHERE the content is (path, lines, bytes)
+        // but doesn't store WHAT the content is
+        assert_eq!(span.path, "/path/to/file.rs");
+        assert_eq!(span.start_line, 1);
+        assert_eq!(span.end_line, 100);
+        assert_eq!(span.start_byte, 0);
+        assert_eq!(span.end_byte, 5000);
+        assert_eq!(span.byte_len(), 5000); // Knows the SIZE
+
+        // The optional content_hash allows VERIFICATION without storing content
+        // This is key for provenance: we can verify later without embedding now
+    }
+
+    /// SpanRef enables git-aware symbolic references.
+    ///
+    /// This allows reproducible access to content at specific commits,
+    /// a key requirement for symbolic recursion over large repositories.
+    #[test]
+    fn test_spanref_enables_symbolic_repository_access() {
+        // Create spans referencing different parts of a repository
+        let spans = vec![
+            SpanRef::with_range("evidence-1", "src/auth/login.rs", 50, 75, 1000, 2500)
+                .with_commit("abc123"),
+            SpanRef::with_range("evidence-2", "src/auth/session.rs", 100, 150, 3000, 5000)
+                .with_commit("abc123"),
+            SpanRef::with_range("evidence-3", "tests/auth_test.rs", 10, 30, 200, 800)
+                .with_commit("abc123"),
+        ];
+
+        // Each span is a lightweight reference (pointer)
+        // All together they reference 4100 bytes of content
+        // (1500 + 2000 + 600 = 4100)
+        // But the spans themselves are very small
+        let total_referenced_bytes: u64 = spans.iter().map(|s| s.byte_len()).sum();
+        assert_eq!(total_referenced_bytes, 4100);
+
+        // The JSON representation of all spans is tiny compared to referenced content
+        let json = SpanRef::to_json_array(&spans);
+        assert!(
+            json.len() < 1000,
+            "SpanRef array should be much smaller than referenced content"
+        );
+
+        // This enables O(N) citations without O(N) content duplication
+        // The LLM can produce spans; the system resolves them to content
+    }
+
+    /// SpanRefs can reference large contexts via symbolic lookup.
+    ///
+    /// This test demonstrates the pattern for handling 10M+ token contexts:
+    /// use pointers (SpanRefs) to reference content, don't embed it.
+    #[test]
+    fn test_large_context_via_symbolic_references() {
+        // Simulate referencing a 10MB file via SpanRefs
+        // In practice, these would reference chunks of a large document
+        let spans: Vec<SpanRef> = (0..1000)
+            .map(|i| {
+                SpanRef::with_range(
+                    format!("chunk-{}", i),
+                    "large_document.md",
+                    i * 100 + 1,
+                    (i + 1) * 100,
+                    i as u64 * 10000,
+                    (i + 1) as u64 * 10000,
+                )
+            })
+            .collect();
+
+        // 1000 spans, each referencing 10KB = 10MB total
+        let total_bytes: u64 = spans.iter().map(|s| s.byte_len()).sum();
+        assert_eq!(total_bytes, 10_000_000);
+
+        // But the spans themselves are tiny
+        let json = SpanRef::to_json_array(&spans);
+        assert!(
+            json.len() < 200_000,
+            "1000 SpanRefs should be << 10MB, got {} bytes",
+            json.len()
+        );
+
+        // This is how RLM handles large contexts:
+        // - Content is external (filesystem, git, database)
+        // - SpanRefs are lightweight pointers
+        // - The system resolves pointers to content on-demand
+        // - O(N) references don't require O(N) prompt tokens
+    }
 }

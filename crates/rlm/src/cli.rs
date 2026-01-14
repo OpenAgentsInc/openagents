@@ -160,7 +160,6 @@ async fn run_rlm(args: RunArgs) -> Result<()> {
             verbose: true,
             prompt_tier: args.prompt_tier.into(),
             enable_stuck_detection: !args.no_stuck_detection,
-            disable_subqueries: false,
         };
 
         let mut engine = RlmEngine::with_config(client, executor, config);
@@ -237,7 +236,6 @@ async fn run_rlm(args: RunArgs) -> Result<()> {
             verbose: true, // Always verbose for CLI
             prompt_tier: args.prompt_tier.into(),
             enable_stuck_detection: !args.no_stuck_detection,
-            disable_subqueries: false,
         };
 
         println!("Prompt tier: {:?}", config.prompt_tier);

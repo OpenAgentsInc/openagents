@@ -1,10 +1,41 @@
-//! Recursive Language Model (RLM) execution engine.
+//! # RLM: Recursive Language Models (OpenAgents Implementation)
 //!
-//! RLMs enable LLMs to programmatically examine, decompose, and recursively
-//! call themselves over input data. This replaces the canonical `llm.complete()`
-//! call with an iterative prompt-execute-loop pattern.
+//! ## Design Principle: Symbolic Recursion (per Omar/DSPy)
 //!
-//! # Architecture
+//! > "The way people tend to implement recursive sub-calls or 'sub-agents' don't work.
+//! > In particular, you cannot express sub-agents as tool calls."
+//! > — Omar (DSPy/RLM creator)
+//!
+//! This implementation follows Omar's requirements:
+//!
+//! 1. **Recursion is symbolic through code, not tool calls**
+//!    - The [`EngineOrchestrator`] generates chunks programmatically
+//!    - Sub-queries are created by code loops, not LLM verbalization
+//!    - The model processes individual chunks, never writes O(N) sub-calls
+//!
+//! 2. **Context accessible through pointers**
+//!    - [`SpanRef`] provides git-aware references (path, lines, bytes, commit)
+//!    - Chunks reference positions, not embedded content
+//!    - Large contexts (10M+ tokens) handled without fitting in prompts
+//!
+//! ## Architecture
+//!
+//! ```text
+//! Document (10M chars)
+//!     ↓ detect_structure() [CODE]
+//! Structure
+//!     ↓ chunk_by_structure() [CODE]
+//! Vec<Chunk> with position pointers
+//!     ↓ extract_from_chunks() [CODE LOOP]
+//! LLM processes each chunk individually
+//!     ↓ synthesize() [CODE]
+//! Final Answer
+//! ```
+//!
+//! The critical insight: **The model never writes the O(N) sub-calls**.
+//! Code generates them symbolically.
+//!
+//! ## Simple REPL Loop (for small queries)
 //!
 //! ```text
 //! User Query → RlmEngine → LlmClient (any backend) → Parse Commands → Executor
@@ -13,7 +44,7 @@
 //!                               (loop until FINAL)
 //! ```
 //!
-//! # Example
+//! ## Example
 //!
 //! ```rust,ignore
 //! use std::sync::Arc;
@@ -26,7 +57,12 @@
 //! let executor = MockExecutor::new();
 //! let engine = RlmEngine::new(client, executor);
 //!
+//! // For small queries, use REPL loop
 //! let result = engine.run("What is 2 + 2?").await?;
+//!
+//! // For large documents, use orchestrated mode (symbolic recursion)
+//! engine.set_context(large_document);
+//! let result = engine.run_orchestrated("Find all security issues").await?;
 //! ```
 
 pub mod chunking;
@@ -46,7 +82,6 @@ mod mock_executor;
 pub mod orchestrator;
 mod prompts;
 mod python_executor;
-mod subquery;
 
 // Provenance tracking
 pub mod span;

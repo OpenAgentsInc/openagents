@@ -41,6 +41,7 @@ use crate::app::workspaces::{
 use crate::app::bootloader::{BootEvent, BootStage, CardState, IssuesDetails, StageDetails};
 use wgpui::components::molecules::SectionStatus;
 use crate::autopilot_loop::{DspyStage, TodoStatus, TodoTask};
+use adjutant::issue_suggestions_appserver::suggest_issues_streaming;
 use crate::commands::{Command, ReviewCommand, ReviewDelivery, ReviewTarget, parse_command};
 
 use super::AutopilotApp;
@@ -760,6 +761,22 @@ impl AutopilotApp {
     }
 
     pub(super) fn poll_responses(&mut self) {
+        // First, always check for pending issue prompts (from validation success)
+        // This must happen before the early return below
+        let pending_prompt = if let Some(state) = &mut self.state {
+            state.autopilot.pending_issue_prompt.take()
+        } else {
+            None
+        };
+        if let Some(prompt) = pending_prompt {
+            tracing::info!(
+                "Submitting validated issue prompt to Codex: {} chars",
+                prompt.len()
+            );
+            self.submit_codex_prompt(prompt);
+            return; // Return after submitting - next poll will process responses
+        }
+
         let Some(state) = &mut self.state else {
             return;
         };
@@ -1507,12 +1524,49 @@ impl AutopilotApp {
                     tracing::info!("Autopilot: cached OANIX manifest");
 
                     // Spawn issue suggestion task if we have issues
-                    // Issue suggestion disabled - boot stops after initialization
                     if let Some(workspace) = &manifest.workspace {
-                        tracing::info!(
-                            "Autopilot: workspace has {} issues (suggestion disabled)",
-                            workspace.issues.len()
-                        );
+                        if !workspace.issues.is_empty() {
+                            tracing::info!(
+                                "Autopilot: workspace has {} issues, spawning suggestion task",
+                                workspace.issues.len()
+                            );
+
+                            // Update boot section to show analyzing
+                            if let Some(sections) = &mut state.chat.boot_sections {
+                                sections.suggest_issues.status = SectionStatus::InProgress;
+                                sections.suggest_issues.summary = "Analyzing...".to_string();
+                                sections.suggest_issues.active = true;
+                                sections.streaming_text.clear();
+                            }
+
+                            // Create channels
+                            let (issue_tx, issue_rx) = mpsc::unbounded_channel();
+                            let (token_tx, token_rx) = mpsc::unbounded_channel();
+
+                            // Store receivers
+                            state.autopilot.issue_suggestions_rx = Some(issue_rx);
+                            state.autopilot.streaming_tokens_rx = Some(token_rx);
+
+                            // Spawn async task
+                            let issues = workspace.issues.clone();
+                            let workspace_context = format!(
+                                "Project: {}, {} open issues",
+                                workspace.project_name.as_deref().unwrap_or("unknown"),
+                                workspace.issues.len()
+                            );
+                            tokio::spawn(async move {
+                                match suggest_issues_streaming(&issues, &workspace_context, token_tx).await {
+                                    Ok(stage) => {
+                                        let _ = issue_tx.send(stage);
+                                    }
+                                    Err(e) => {
+                                        tracing::error!("Issue suggestion failed: {}", e);
+                                    }
+                                }
+                            });
+                        } else {
+                            tracing::info!("Autopilot: workspace has no issues");
+                        }
                     }
 
                     state.autopilot.oanix_manifest = Some(manifest);
@@ -1884,7 +1938,7 @@ impl AutopilotApp {
         state.window.request_redraw();
     }
 
-    /// Poll for streaming tokens from LLM during issue evaluation and display in chat.
+    /// Poll for streaming tokens from LLM during issue evaluation and display in card.
     pub(super) fn poll_streaming_tokens(&mut self) {
         let Some(state) = &mut self.state else {
             return;
@@ -1905,11 +1959,13 @@ impl AutopilotApp {
             return;
         }
 
-        // Append all tokens to streaming markdown
-        for token in tokens {
-            state.chat.streaming_markdown.append(&token);
+        // Append tokens to boot sections streaming text (for card display only)
+        if let Some(sections) = &mut state.chat.boot_sections {
+            for token in tokens {
+                sections.streaming_text.push_str(&token);
+            }
         }
-        state.chat.streaming_markdown.tick();
+
         state.window.request_redraw();
     }
 

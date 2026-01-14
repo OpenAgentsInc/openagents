@@ -200,35 +200,46 @@ while not done:
         return answer
 ```
 
-### RLM Full
+### RLM Full (Symbolic Recursion)
 
-Recursive Language Model with `llm_query` capability.
+**Note:** The `llm_query` pattern described in the original paper has been replaced with
+**symbolic recursion** following Omar's (DSPy/RLM creator) guidance:
 
-**Key Feature:** The LLM can programmatically call itself:
+> "The way people tend to implement recursive sub-calls or 'sub-agents' don't work.
+> In particular, you cannot express sub-agents as tool calls... the recursion has to
+> be symbolic through code, not tool calls."
 
-```python
-# Inside LLM-generated code
-answer = llm_query("What is the capital of France?")
-# answer = "Paris"
+**Why `llm_query()` parsing doesn't work:**
+1. The model can't verbalize O(N) sub-prompts for large N
+2. You'd need to fit the entire prompt in context to generate the sub-calls
+3. This is tool-call style recursion, just disguised as Python code
+
+**Correct Pattern (EngineOrchestrator):**
+
+```rust
+// CODE generates the chunks, not the LLM
+let structure = detect_structure(&document);
+let chunks = chunk_by_structure(&document, &structure, 6000, 200);
+
+// CODE iterates through chunks, not LLM verbalization
+for chunk in &chunks {
+    let findings = llm.extract(&chunk.content, &query).await?;
+    results.push(findings);
+}
+
+// CODE synthesizes results
+let answer = llm.synthesize(&results, &query).await?;
 ```
 
-**Algorithm:**
-```
-while not done:
-    code = llm.generate_code(context, query)
-    if contains_llm_query(code):
-        # Replace llm_query calls with actual LLM responses
-        code = resolve_queries(code, llm)
-    output = execute(code)
-    if contains_final_answer(output):
-        return extract_answer(output)
-```
+**Key insight:** The model never writes O(N) sub-calls. Code generates them symbolically.
 
-### RLM No Sub-calls (Ablation)
+**Implementation:** See `rlm/src/orchestrator.rs` and `frlm/src/conductor.rs`
 
-Same as RLM Full but with `llm_query` disabled.
+### RLM Ablation Study
 
-This tests the contribution of recursive sub-calls vs. just having a REPL environment.
+The ablation now tests:
+- **Orchestrated mode** (symbolic recursion) vs **REPL mode** (single-shot)
+- The contribution comes from CODE-driven traversal, not from llm_query parsing
 
 ## Creating Custom Methods
 

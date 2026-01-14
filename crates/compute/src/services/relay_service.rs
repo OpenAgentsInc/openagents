@@ -2,11 +2,26 @@
 //!
 //! Manages connections to Nostr relays and subscriptions for NIP-90 job requests.
 
+use async_trait::async_trait;
 use nostr_client::{PoolConfig, RelayPool};
 use std::sync::Arc;
 use thiserror::Error;
 use tokio::sync::{RwLock, mpsc};
 use tracing::{debug, info, warn};
+
+/// Minimal interface used by `DvmService` so the relay layer can be mocked in tests.
+#[async_trait]
+pub trait RelayServiceApi: Send + Sync {
+    async fn set_auth_key(&self, key: [u8; 32]);
+    async fn connected_relays(&self) -> Vec<String>;
+    async fn connect(&self) -> Result<(), RelayError>;
+    async fn disconnect(&self);
+    async fn subscribe_job_requests(
+        &self,
+        pubkey: &str,
+    ) -> Result<(String, mpsc::Receiver<nostr::Event>), RelayError>;
+    async fn publish(&self, event: nostr::Event) -> Result<usize, RelayError>;
+}
 
 /// Default Nostr relays for the compute provider
 pub const DEFAULT_RELAYS: &[&str] = &[
@@ -254,6 +269,36 @@ impl RelayService {
         let pool_guard = self.pool.read().await;
         let pool = pool_guard.as_ref()?;
         Some(pool.pool_stats().await)
+    }
+}
+
+#[async_trait]
+impl RelayServiceApi for RelayService {
+    async fn set_auth_key(&self, key: [u8; 32]) {
+        RelayService::set_auth_key(self, key).await;
+    }
+
+    async fn connected_relays(&self) -> Vec<String> {
+        RelayService::connected_relays(self).await
+    }
+
+    async fn connect(&self) -> Result<(), RelayError> {
+        RelayService::connect(self).await
+    }
+
+    async fn disconnect(&self) {
+        RelayService::disconnect(self).await;
+    }
+
+    async fn subscribe_job_requests(
+        &self,
+        pubkey: &str,
+    ) -> Result<(String, mpsc::Receiver<nostr::Event>), RelayError> {
+        RelayService::subscribe_job_requests(self, pubkey).await
+    }
+
+    async fn publish(&self, event: nostr::Event) -> Result<usize, RelayError> {
+        RelayService::publish(self, event).await
     }
 }
 

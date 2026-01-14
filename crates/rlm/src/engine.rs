@@ -14,7 +14,6 @@ use crate::prompts::{
     PromptTier, continuation_prompt, continuation_prompt_with_reminder, error_prompt,
     error_prompt_with_reminder, initial_prompt, system_prompt_for_tier,
 };
-use crate::subquery::{execute_sub_query, generate_result_injection, process_code_for_queries};
 
 /// Detects when the model is stuck in a loop.
 ///
@@ -154,8 +153,6 @@ pub struct RlmConfig {
     pub prompt_tier: PromptTier,
     /// Whether to enable stuck detection.
     pub enable_stuck_detection: bool,
-    /// Whether to disable llm_query() sub-calls (for ablation study).
-    pub disable_subqueries: bool,
 }
 
 impl Default for RlmConfig {
@@ -166,7 +163,6 @@ impl Default for RlmConfig {
             verbose: false,
             prompt_tier: PromptTier::Full,
             enable_stuck_detection: true,
-            disable_subqueries: false,
         }
     }
 }
@@ -210,15 +206,18 @@ pub struct ExecutionLogEntry {
 /// - `C`: The LLM client (any type implementing `LlmClient`)
 /// - `E`: The execution environment (any type implementing `ExecutionEnvironment`)
 ///
-/// Following the RLM paper, the engine supports using different models for:
-/// - Root LM: The main iterative loop (e.g., GPT-5)
-/// - Sub-LM: Recursive llm_query() calls (e.g., GPT-5-mini for cost efficiency)
+/// ## Design Note: Symbolic Recursion (per Omar/DSPy)
+///
+/// This engine does NOT use "sub-agent tool calls" for recursion. Per Omar's RLM
+/// analysis, recursion must be **symbolic through code**, not tool calls, because
+/// the model cannot verbalize O(N) sub-prompts explicitly.
+///
+/// For large documents, use `run_orchestrated()` which drives document traversal
+/// from code, generating sub-queries programmatically without requiring the model
+/// to write them.
 pub struct RlmEngine<C: LlmClient, E: ExecutionEnvironment> {
-    /// The LLM client for root-level inference.
+    /// The LLM client for inference.
     client: C,
-    /// Optional separate client for sub-queries (llm_query calls).
-    /// If None, uses the same client as root.
-    sub_client: Option<C>,
     /// The execution environment for running code.
     executor: E,
     /// Loaded context for the REPL (file/directory content).
@@ -232,7 +231,6 @@ impl<C: LlmClient + Clone, E: ExecutionEnvironment> RlmEngine<C, E> {
     pub fn new(client: C, executor: E) -> Self {
         Self {
             client,
-            sub_client: None,
             executor,
             loaded_context: None,
             config: RlmConfig::default(),
@@ -243,21 +241,6 @@ impl<C: LlmClient + Clone, E: ExecutionEnvironment> RlmEngine<C, E> {
     pub fn with_config(client: C, executor: E, config: RlmConfig) -> Self {
         Self {
             client,
-            sub_client: None,
-            executor,
-            loaded_context: None,
-            config,
-        }
-    }
-
-    /// Create an RLM engine with separate models for root and sub-calls.
-    ///
-    /// Following the RLM paper: use a powerful model (GPT-5) for root
-    /// and a cheaper model (GPT-5-mini) for recursive sub-calls.
-    pub fn with_sub_client(client: C, sub_client: C, executor: E, config: RlmConfig) -> Self {
-        Self {
-            client,
-            sub_client: Some(sub_client),
             executor,
             loaded_context: None,
             config,
@@ -346,66 +329,6 @@ def search_context(pattern, max_results=10, window=200):
         } else {
             continuation_prompt(output)
         }
-    }
-
-    /// Process code for llm_query() calls and execute sub-queries.
-    ///
-    /// Returns the modified code with llm_query results injected as variables.
-    async fn process_sub_queries(&self, code: &str) -> Result<String> {
-        // If subqueries are disabled (ablation study), return code unchanged
-        if self.config.disable_subqueries {
-            return Ok(code.to_string());
-        }
-
-        // Get context content if available
-        let context_content = self.loaded_context.as_ref().map(|c| c.content.as_str());
-
-        // Parse and process llm_query calls
-        let processed = process_code_for_queries(code, context_content);
-
-        if processed.pending_queries.is_empty() {
-            return Ok(code.to_string());
-        }
-
-        if self.config.verbose {
-            eprintln!(
-                "[SUBQUERY] Processing {} llm_query calls",
-                processed.pending_queries.len()
-            );
-        }
-
-        // Execute each sub-query using sub_client if available, otherwise use main client
-        let query_client = self.sub_client.as_ref().unwrap_or(&self.client);
-
-        let mut results = Vec::new();
-        for query in &processed.pending_queries {
-            if self.config.verbose {
-                eprintln!(
-                    "[SUBQUERY] Executing: \"{}\" over {} chars",
-                    query.prompt,
-                    query.text.len()
-                );
-            }
-
-            let result = execute_sub_query(query_client, &query.prompt, &query.text).await?;
-
-            if self.config.verbose {
-                let preview = if result.len() > 100 {
-                    format!("{}...", &result[..100])
-                } else {
-                    result.clone()
-                };
-                eprintln!("[SUBQUERY] Result: {}", preview);
-            }
-
-            results.push((query.id.clone(), result));
-        }
-
-        // Generate code to inject results
-        let injection = generate_result_injection(&results);
-
-        // Combine: injected results + processed code
-        Ok(format!("{}{}", injection, processed.code))
     }
 
     /// Run the RLM on a query.
@@ -536,11 +459,8 @@ def search_context(pattern, max_results=10, window=200):
                         code.clone()
                     };
 
-                    // Process sub-queries (llm_query calls) if any
-                    let code_with_queries = self.process_sub_queries(&code_to_execute).await?;
-
                     // Inject context variable if loaded
-                    let code_with_context = self.inject_context(&code_with_queries);
+                    let code_with_context = self.inject_context(&code_to_execute);
 
                     if self.config.verbose {
                         eprintln!("[EXECUTING PYTHON]");
@@ -626,11 +546,8 @@ def search_context(pattern, max_results=10, window=200):
                 Command::RunCode(code) => {
                     debug!("Executing code block");
 
-                    // Process sub-queries (llm_query calls) if any
-                    let code_with_queries = self.process_sub_queries(code).await?;
-
                     // Inject context variable if loaded
-                    let code_with_context = self.inject_context(&code_with_queries);
+                    let code_with_context = self.inject_context(code);
 
                     if self.config.verbose {
                         eprintln!("[EXECUTING PYTHON]");
