@@ -41,15 +41,15 @@ ${OPENAGENTS_HOME}/
 │   ├── PR_SUMMARY.md
 │   ├── RECEIPT.json
 │   └── REPLAY.jsonl
-├── policies/{version}/        # Policy bundles
-│   ├── manifest.json
-│   └── signatures/
+├── policies/                  # Policy bundles (layout per OPTIMIZERS.md)
 ├── datasets/                  # Training datasets
 ├── metrics/                   # Metrics and traces
 └── config/                    # Configuration
 ```
 
 A "session directory" contains the Verified Patch Bundle (see [ADR-0002](./ADR-0002-verified-patch-bundle.md)).
+
+**Policy bundle internal layout** (subdirectory structure, manifest format) is defined by [OPTIMIZERS.md](../../crates/dsrs/docs/OPTIMIZERS.md). This ADR only defines the root discovery (`${OPENAGENTS_HOME}/policies/`).
 
 The session directory path is derived from a single path resolver (e.g., `OpenAgentsPaths`) so crates do not invent their own roots.
 

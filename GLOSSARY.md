@@ -109,7 +109,7 @@ Canonical definitions for OpenAgents terminology. All docs should use these term
 | **Patch Summary** | Human-readable summary of what changed, verification results, and confidence. File: `PR_SUMMARY.md` (filename kept for tooling stability). |
 | **RECEIPT.json** | Machine-readable receipt with hashes, tool calls, verification, and policy_bundle_id. |
 | **REPLAY.jsonl** | Target canonical event stream format for replay and debugging. Spec in `crates/dsrs/docs/REPLAY.md`. |
-| **ReplayBundle** | Current implementation format in `autopilot-core/src/replay.rs`. Different from REPLAY.jsonl v1. |
+| **ReplayBundle** | Current implementation format in `crates/autopilot-core/src/replay.rs`. Different from REPLAY.jsonl v1. |
 | **rlog** | Session recording format. Structured logs capturing agent trajectories (messages, tool calls, thinking, errors). Predecessor to REPLAY.jsonl. |
 | **Trajectory** | Full record of decisions, tool calls, intermediate outputs, and verification steps for a session. |
 | **policy_bundle_id** | Identifier for the policy bundle used in a session. Canonical term (not `policy_version`). |

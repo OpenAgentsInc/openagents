@@ -38,7 +38,7 @@ REPLAY.jsonl is a JSON Lines file where each line is a typed event with an `even
 
 ### Current Implementation: ReplayBundle
 
-The `ReplayBundle` struct in `crates/autopilot-core/src/replay.rs` is the current runtime representation. It differs from the target REPLAY.jsonl format.
+The `ReplayBundle` struct in [`crates/autopilot-core/src/replay.rs`](../../crates/autopilot-core/src/replay.rs) is the current runtime representation. It differs from the target REPLAY.jsonl format.
 
 ### Migration Path
 
@@ -49,7 +49,7 @@ The `ReplayBundle` struct in `crates/autopilot-core/src/replay.rs` is the curren
 
 ### MVP Acceptance Criteria
 
-Per [REPLAY.md](../../crates/dsrs/docs/REPLAY.md) and [PROTOCOL_SURFACE.md](../PROTOCOL_SURFACE.md), MVP is achieved when either:
+Per [REPLAY.md](../../crates/dsrs/docs/REPLAY.md), MVP is achieved when either:
 - Native REPLAY.jsonl v1 emission is implemented, OR
 - ReplayBundle emission + working exporter to REPLAY.jsonl v1 exists
 

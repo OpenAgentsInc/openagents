@@ -48,9 +48,10 @@ This ADR defines **cross-system invariants** and forbids divergent "local" hashi
    - Hashes MUST be computed from the **full** value.
    - Truncation is permitted only for *display previews* and must never affect hashes.
 
-4. **Avoid floats in hashed payloads**
-   - Prefer integers or strings for values that must be hashed.
-   - If floats are unavoidable, they must have a single canonical encoding rule (documented in `crates/protocol`).
+4. **Floats in hashed payloads (guidance)**
+   - Prefer integers or strings for values that must be hashed across languages.
+   - Floats are allowed if covered by the canonical JSON rules in `crates/protocol`.
+   - Note: `step_utility` is a float but is not necessarily part of hashed payloads unless a schema explicitly includes it.
 
 ## Scope
 

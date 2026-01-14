@@ -26,6 +26,19 @@ Be specific about:
 - What is deprecated (if anything)
 - What constraints apply
 
+### Schema / Spec Authority (if applicable)
+
+If this ADR relates to schemas defined elsewhere, link to the canonical spec:
+
+- [crates/dsrs/docs/ARTIFACTS.md](../../crates/dsrs/docs/ARTIFACTS.md) — RECEIPT.json, PR_SUMMARY.md
+- [crates/dsrs/docs/REPLAY.md](../../crates/dsrs/docs/REPLAY.md) — REPLAY.jsonl
+- [crates/dsrs/docs/OPTIMIZERS.md](../../crates/dsrs/docs/OPTIMIZERS.md) — Policy bundles
+- [docs/PROTOCOL_SURFACE.md](../PROTOCOL_SURFACE.md) — Protocol schemas
+
+This ADR states *what is canonical* and *compatibility guarantees*, not full schema duplication.
+
+(Delete this section if not applicable.)
+
 ## Scope
 
 What this ADR covers:
