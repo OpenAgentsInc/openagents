@@ -134,12 +134,42 @@ impl IssueValidationPipeline {
             predictor.forward_with_config(example, lm).await?
         };
 
-        // Parse results
+        // Debug: log all prediction keys and values
+        tracing::debug!(
+            "Prediction keys: {:?}, values: {:?}",
+            prediction.keys(),
+            prediction.values()
+        );
+
+        // Parse results with improved handling
         let is_valid = get_bool(&prediction, "is_valid");
         let status_str = get_string(&prediction, "validation_status");
         let status = ValidationStatus::from_str(&status_str);
         let reason = get_string(&prediction, "reason");
         let confidence = get_f32(&prediction, "confidence");
+
+        // If reason is empty but status indicates invalid, derive reason from status
+        let reason = if reason.is_empty() && !is_valid {
+            match status {
+                ValidationStatus::AlreadyAddressed => "Issue appears to have been addressed by recent commits.".to_string(),
+                ValidationStatus::Stale => "Issue description appears outdated.".to_string(),
+                ValidationStatus::NeedsUpdate => "Issue needs description update before work can begin.".to_string(),
+                ValidationStatus::Valid => "Validation returned invalid but no reason provided.".to_string(),
+            }
+        } else {
+            reason
+        };
+
+        // Derive is_valid from status if they conflict (status is more reliable)
+        let is_valid = match status {
+            ValidationStatus::Valid => true,
+            ValidationStatus::AlreadyAddressed | ValidationStatus::Stale | ValidationStatus::NeedsUpdate => false,
+        };
+
+        tracing::debug!(
+            "Parsed validation: is_valid={}, status={:?}, reason={}",
+            is_valid, status, reason
+        );
 
         Ok(IssueValidationResult {
             is_valid,
@@ -194,9 +224,13 @@ fn get_changed_files(workspace_root: &Path) -> Result<String> {
 fn get_string(prediction: &Prediction, key: &str) -> String {
     let val = prediction.get(key, None);
     if let Some(s) = val.as_str() {
-        s.to_string()
+        s.trim().to_string()
+    } else if val.is_null() {
+        String::new()
     } else {
-        val.to_string().trim_matches('"').to_string()
+        // Handle JSON values - strip quotes and clean up
+        let s = val.to_string();
+        s.trim().trim_matches('"').trim_matches('\\').to_string()
     }
 }
 
@@ -206,9 +240,15 @@ fn get_bool(prediction: &Prediction, key: &str) -> bool {
     if let Some(b) = val.as_bool() {
         b
     } else if let Some(s) = val.as_str() {
-        s.eq_ignore_ascii_case("true") || s == "1"
+        let s = s.trim().to_lowercase();
+        s == "true" || s == "1" || s == "yes" || s == "valid"
+    } else if val.is_null() {
+        // Default to true if not specified (proceed with issue)
+        true
     } else {
-        false
+        // Try parsing the string representation
+        let s = val.to_string().trim().to_lowercase();
+        s == "true" || s == "1" || s == "yes" || s == "valid"
     }
 }
 
