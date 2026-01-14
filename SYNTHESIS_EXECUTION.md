@@ -625,7 +625,7 @@ ${OPENAGENTS_HOME}/sessions/{session_id}/
 Default: `~/.openagents/sessions/{session_id}/`
 
 **Replay format status:**
-- **Current:** `ReplayBundle` format in `crates/autopilot-core/src/replay.rs`
+- **Current:** `ReplayBundle` format in [`crates/autopilot-core/src/replay.rs`](./crates/autopilot-core/src/replay.rs)
 - **Target:** `REPLAY.jsonl v1` per spec in `crates/dsrs/docs/REPLAY.md`
 - **MVP acceptance:** Native REPLAY.jsonl emission OR ReplayBundle + working exporter
 

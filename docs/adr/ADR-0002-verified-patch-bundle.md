@@ -37,7 +37,7 @@ This ADR states **what is canonical** and **compatibility guarantees**. It does 
 
 ### Implementation Status
 
-**Current state:** `autopilot-core/src/replay.rs` emits `ReplayBundle` format (JSON, different schema).
+**Current state:** `crates/autopilot-core/src/replay.rs` emits `ReplayBundle` format (JSON, different schema).
 
 **Target state:** Native emission of `REPLAY.jsonl v1` as specified in REPLAY.md.
 
