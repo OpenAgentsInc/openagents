@@ -141,10 +141,11 @@ pub async fn suggest_issues_streaming(
     let thread_id = thread_response.thread.id;
 
     // Start turn with prompt
+    // TEMP: Force gpt-5.1-codex-mini model override
     let turn_params = TurnStartParams {
         thread_id: thread_id.clone(),
         input: vec![UserInput::Text { text: prompt }],
-        model: None,
+        model: Some("gpt-5.1-codex-mini".to_string()),
         effort: None,
         summary: None,
         approval_policy: None,
@@ -195,10 +196,11 @@ async fn run_llm_suggestion(
     let thread_id = thread_response.thread.id;
 
     // Start turn with prompt
+    // TEMP: Force gpt-5.1-codex-mini model override
     let turn_params = TurnStartParams {
         thread_id: thread_id.clone(),
         input: vec![UserInput::Text { text: prompt.to_string() }],
-        model: None,
+        model: Some("gpt-5.1-codex-mini".to_string()),
         effort: None,
         summary: None,
         approval_policy: None,
