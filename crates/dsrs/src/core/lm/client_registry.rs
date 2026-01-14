@@ -12,6 +12,7 @@ use std::sync::Arc;
 use super::codex::CodexCompletionModel;
 use super::gptoss::GptOssCompletionModel;
 use super::lm_router::LmRouterLM;
+use super::openai_responses::OpenAiResponsesCompletionModel;
 use super::pylon::{PylonCompletionModel, PylonConfig};
 
 #[enum_dispatch]
@@ -39,6 +40,7 @@ pub enum LMClient {
     Deepseek(deepseek::CompletionModel<reqwest::Client>),
     Pylon(PylonCompletionModel),
     LmRouter(LmRouterLM),
+    OpenAIResponses(OpenAiResponsesCompletionModel),
     GptOss(GptOssCompletionModel),
     Codex(CodexCompletionModel),
 }
@@ -246,6 +248,11 @@ impl LMClient {
         ))?;
 
         match provider {
+            "openai-responses" | "openai_responses" | "openairesponses" => {
+                let key = api_key.map(|value| value.to_string());
+                let model = OpenAiResponsesCompletionModel::from_env(model_id, key.as_deref(), None);
+                Ok(LMClient::OpenAIResponses(model))
+            }
             "openai" => {
                 let key = Self::get_api_key(api_key, "OPENAI_API_KEY")?;
                 let client = openai::CompletionsClient::builder()
@@ -353,7 +360,7 @@ impl LMClient {
             }
             _ => {
                 anyhow::bail!(
-                    "Unsupported provider: {}. Supported providers are: openai, gemini, groq, openrouter, ollama, pylon, lm-router, gptoss, codex",
+                    "Unsupported provider: {}. Supported providers are: openai, openai-responses, gemini, groq, openrouter, ollama, pylon, lm-router, gptoss, codex",
                     provider
                 );
             }

@@ -3,6 +3,7 @@ pub mod client_registry;
 pub mod codex;
 pub mod gptoss;
 pub mod lm_router;
+pub mod openai_responses;
 pub mod pylon;
 pub mod usage;
 
@@ -11,6 +12,7 @@ pub use client_registry::*;
 pub use codex::*;
 pub use gptoss::*;
 pub use lm_router::*;
+pub use openai_responses::*;
 pub use pylon::*;
 pub use usage::*;
 
@@ -115,6 +117,24 @@ impl LM {
     async fn initialize_client(mut self) -> Result<Self> {
         // Determine which build case based on what's provided
         let client = match (&self.base_url, &self.api_key, &self.model) {
+            // OpenAI Responses API with custom base_url.
+            (Some(base_url), api_key, model)
+                if model.starts_with("openai-responses:")
+                    || model.starts_with("openai_responses:")
+                    || model.starts_with("openairesponses:") =>
+            {
+                let model_id = model
+                    .split_once(':')
+                    .map(|(_, id)| id)
+                    .unwrap_or(model);
+                Arc::new(LMClient::OpenAIResponses(
+                    OpenAiResponsesCompletionModel::from_env(
+                        model_id,
+                        api_key.as_deref(),
+                        Some(base_url),
+                    ),
+                ))
+            }
             // Case 1: OpenAI-compatible with authentication (base_url + api_key)
             // For custom OpenAI-compatible APIs that require API keys
             (Some(base_url), Some(api_key), _) => Arc::new(LMClient::from_openai_compatible(
@@ -414,6 +434,21 @@ impl LM {
                     }
                 });
                 (codex.completion_streaming(request, cb_clone).await?, None)
+            }
+            LMClient::OpenAIResponses(openai) => {
+                if let Some(cb) = callback {
+                    let on_token = |token: &str| {
+                        cb.on_lm_token(call_id, token);
+                    };
+                    (
+                        openai
+                            .completion_streaming(request, Some(&on_token))
+                            .await?,
+                        None,
+                    )
+                } else {
+                    (openai.completion(request).await?, None)
+                }
             }
             _ => (client.completion(request).await?, None),
         };
