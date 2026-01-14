@@ -73,7 +73,27 @@ pub async fn execute_with_tools(
 ) -> Result<TaskResult, AdjutantError> {
     tracing::info!("Executing task: {}", task.title);
 
-    // 1. Read relevant files to build context
+    // 1. Try the CODING_AGENT_LOOP runtime first.
+    let decision_lm = crate::dspy::lm_config::get_planning_lm().await.ok();
+    let loop_config = crate::coding_agent_loop::CodingAgentConfig::default();
+    match crate::coding_agent_loop::execute_coding_agent_loop(
+        tools,
+        workspace_root,
+        task,
+        plan,
+        decision_lm,
+        None,
+        loop_config,
+    )
+    .await
+    {
+        Ok(result) => return Ok(result),
+        Err(err) => {
+            tracing::warn!("Coding agent loop failed, falling back: {}", err);
+        }
+    }
+
+    // 2. Read relevant files to build context for legacy fallbacks
     let mut context = String::new();
     tracing::info!("Reading {} relevant files", plan.files.len());
     for file in &plan.files {

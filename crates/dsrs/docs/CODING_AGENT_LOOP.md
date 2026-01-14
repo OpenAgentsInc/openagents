@@ -80,6 +80,7 @@ Canonical schemas:
   * chooses tool calls (and parameters)
   * interprets tool results (facts + utility)
   * chooses model/lane (optional)
+  * **default signature inference** prefers OpenAI Responses when configured (see `OPENAI_API_KEY`)
 * **Execution runtime (adjutant/autopilot loop):**
 
   * validates tool params against JSON schema
@@ -370,6 +371,8 @@ Typical code homes (may evolve; code is truth):
 
 If you are making CODING_AGENT_LOOP real in the **Autopilot UI**, these are the main touch points:
 
+**Flow context:** Autopilot boot + DSPy issue selection decide *what* to do. The CODING_AGENT_LOOP is the *execution engine* that performs the work once a task is selected. User messages during execution are not wired yet but should be treated as live context updates in future iterations.
+
 * **Loop entry + backend routing:** `crates/autopilot/src/app/autopilot/handler.rs`
   * `submit_autopilot_prompt()` builds OANIX context and chooses **Codex** vs **Adjutant**.
   * The CODING_AGENT_LOOP spec only applies to the Adjutant path today; Codex uses app-server.
@@ -426,3 +429,12 @@ A long-running coding agent becomes robust and optimizable when:
 * every decision is **confidence-gated** and attributable to a **policy_bundle_id**.
 
 That’s the core loop. Everything else (skills, UI, multi-agent, marketplace jobs) composes cleanly on top.
+
+---
+
+## Worklog
+
+- 2026-01-14: Added PlanIR types in `crates/dsrs/src/ir/` and new CODING_AGENT_LOOP signatures (ContextSelection, Planning, ToolCall, ToolResult).
+- 2026-01-14: Implemented `crates/adjutant/src/coding_agent_loop.rs` with PlanIR planning, tool execution, replay + receipt emission, and verification hooks.
+- 2026-01-14: Wired coding loop into Adjutant execution paths and added OpenAgents paths helper for bundle storage.
+- 2026-01-14: Updated LM provider priority to prefer OpenAI Responses for signature inference.

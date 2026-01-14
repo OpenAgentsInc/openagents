@@ -4,6 +4,7 @@ pub mod compiler;
 pub mod core;
 pub mod data;
 pub mod evaluate;
+pub mod ir;
 pub mod manifest;
 pub mod optimizer;
 pub mod pipelines;
@@ -19,6 +20,7 @@ pub use callbacks::*;
 pub use core::*;
 pub use data::*;
 pub use evaluate::*;
+pub use ir::*;
 pub use manifest::*;
 pub use optimizer::*;
 pub use pipelines::{

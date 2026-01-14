@@ -13,6 +13,8 @@ use std::sync::Arc;
 /// Provider priority for LM selection.
 #[derive(Clone, Debug, PartialEq)]
 pub enum LmProvider {
+    /// OpenAI Responses API (preferred for DSPy signatures)
+    OpenAiResponses,
     /// Codex: Uses Codex app-server (highest priority when available)
     Codex,
     /// llama.cpp/GPT-OSS: Local OSS models via OpenAI-compatible API
@@ -29,6 +31,7 @@ impl std::fmt::Display for LmProvider {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             LmProvider::Codex => write!(f, "Codex"),
+            LmProvider::OpenAiResponses => write!(f, "OpenAI Responses"),
             LmProvider::LlamaCpp => write!(f, "llama.cpp/GPT-OSS (local)"),
             LmProvider::PylonSwarm => write!(f, "Pylon Swarm (NIP-90)"),
             LmProvider::Cerebras => write!(f, "Cerebras"),
@@ -42,6 +45,7 @@ impl LmProvider {
     pub fn short_name(&self) -> &'static str {
         match self {
             LmProvider::Codex => "codex",
+            LmProvider::OpenAiResponses => "openai",
             LmProvider::LlamaCpp => "gptoss",
             LmProvider::PylonSwarm => "swarm",
             LmProvider::Cerebras => "cerebras",
@@ -59,27 +63,32 @@ impl LmProvider {
 /// 3. CEREBRAS_API_KEY set → Cerebras
 /// 4. Ollama running on localhost:11434 → PylonLocal
 pub fn detect_provider() -> Option<LmProvider> {
-    // Priority 0: Codex (highest priority when available)
+    // Priority 0: OpenAI Responses (preferred for DSPy signatures)
+    if std::env::var("OPENAI_API_KEY").is_ok() {
+        return Some(LmProvider::OpenAiResponses);
+    }
+
+    // Priority 1: Codex (when available)
     if check_codex_available() {
         return Some(LmProvider::Codex);
     }
 
-    // Priority 1: llama.cpp/GPT-OSS (local inference fallback)
+    // Priority 2: llama.cpp/GPT-OSS (local inference fallback)
     if check_llamacpp_available() {
         return Some(LmProvider::LlamaCpp);
     }
 
-    // Priority 2: Pylon swarm (requires mnemonic)
+    // Priority 3: Pylon swarm (requires mnemonic)
     if std::env::var("PYLON_MNEMONIC").is_ok() {
         return Some(LmProvider::PylonSwarm);
     }
 
-    // Priority 3: Cerebras
+    // Priority 4: Cerebras
     if std::env::var("CEREBRAS_API_KEY").is_ok() {
         return Some(LmProvider::Cerebras);
     }
 
-    // Priority 4: Check for local Ollama
+    // Priority 5: Check for local Ollama
     if check_ollama_available() {
         return Some(LmProvider::PylonLocal);
     }
@@ -93,6 +102,9 @@ pub fn detect_provider() -> Option<LmProvider> {
 pub fn detect_all_providers() -> Vec<LmProvider> {
     let mut providers = Vec::new();
 
+    if std::env::var("OPENAI_API_KEY").is_ok() {
+        providers.push(LmProvider::OpenAiResponses);
+    }
     if check_codex_available() {
         providers.push(LmProvider::Codex);
     }
@@ -171,6 +183,32 @@ pub fn check_ollama_available() -> bool {
 /// Create LM for detected or specified provider.
 pub async fn create_lm(provider: &LmProvider) -> Result<LM> {
     match provider {
+        LmProvider::OpenAiResponses => {
+            let api_key = std::env::var("OPENAI_API_KEY")?;
+            let model = std::env::var("OPENAI_RESPONSES_MODEL")
+                .or_else(|_| std::env::var("OPENAI_MODEL"))
+                .unwrap_or_else(|_| "gpt-5-nano".to_string());
+            let max_tokens = std::env::var("OPENAI_MAX_TOKENS")
+                .ok()
+                .and_then(|value| value.parse::<u32>().ok())
+                .unwrap_or(4000);
+            let temperature = std::env::var("OPENAI_TEMPERATURE")
+                .ok()
+                .and_then(|value| value.parse::<f32>().ok())
+                .unwrap_or(0.7);
+
+            let mut builder = LM::builder()
+                .model(format!("openai-responses:{}", model))
+                .api_key(api_key)
+                .max_tokens(max_tokens)
+                .temperature(temperature);
+
+            if let Ok(base_url) = std::env::var("OPENAI_BASE_URL") {
+                builder = builder.base_url(base_url);
+            }
+
+            builder.build().await
+        }
         LmProvider::Codex => {
             tracing::info!("Codex: using codex app-server for LM");
             LM::builder()
@@ -243,6 +281,7 @@ pub async fn create_planning_lm() -> Result<LM> {
     let provider = detect_provider().ok_or_else(|| {
         anyhow::anyhow!(
             "No LM provider available. Options:\n\
+             - Set OPENAI_API_KEY for OpenAI Responses\n\
              - Install Codex (npm install -g @anthropic-ai/claude-code)\n\
              - Run llama.cpp server (./llama-server -m model.gguf --port 8080)\n\
              - Set PYLON_MNEMONIC for swarm inference\n\
@@ -309,6 +348,7 @@ pub async fn configure_dsrs_with_preference(use_codex: bool) -> Result<()> {
     let provider = provider.ok_or_else(|| {
         anyhow::anyhow!(
             "No LM provider available. Options:\n\
+             - Set OPENAI_API_KEY for OpenAI Responses\n\
              - Install Codex (npm install -g @anthropic-ai/claude-code)\n\
              - Run llama.cpp server (./llama-server -m model.gguf --port 8080)\n\
              - Set PYLON_MNEMONIC for swarm inference\n\
@@ -326,6 +366,9 @@ pub async fn configure_dsrs_with_preference(use_codex: bool) -> Result<()> {
 /// Detect provider without Codex - skips Codex even if available.
 pub fn detect_provider_skip_codex() -> Option<LmProvider> {
     // Skip Codex, check other providers in priority order
+    if std::env::var("OPENAI_API_KEY").is_ok() {
+        return Some(LmProvider::OpenAiResponses);
+    }
     if check_llamacpp_available() {
         return Some(LmProvider::LlamaCpp);
     }

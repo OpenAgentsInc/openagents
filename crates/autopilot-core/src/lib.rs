@@ -1,6 +1,7 @@
 // Core agent module - works on both native and WASM
 pub mod agent;
 pub mod deprecation;
+pub mod paths;
 
 // Browser entry point - WASM only
 #[cfg(feature = "wasm")]
@@ -64,6 +65,8 @@ pub use ci::{CICheckResult, CIClient, CIStatus, CISystem, CheckDetail, detect_te
 
 #[cfg(not(target_arch = "wasm32"))]
 pub use logger::{LogEntry, SessionLogger, generate_session_id};
+
+pub use paths::{OpenAgentsPaths, openagents_home};
 
 #[cfg(not(target_arch = "wasm32"))]
 pub use github::{

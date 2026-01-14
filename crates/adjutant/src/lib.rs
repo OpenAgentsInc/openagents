@@ -42,6 +42,7 @@ pub mod auth;
 pub mod autopilot_loop;
 pub mod boot;
 pub mod cli;
+pub mod coding_agent_loop;
 pub mod codex_executor;
 pub mod delegate;
 pub mod discovery;
@@ -683,6 +684,30 @@ impl Adjutant {
 
         // 1. Plan the task
         let plan = self.plan_task(task).await?;
+
+        // Prefer the CODING_AGENT_LOOP runtime unless Codex is explicitly selected.
+        if self.execution_backend != ExecutionBackend::Codex {
+            tracing::info!("Streaming with CODING_AGENT_LOOP (preferred)");
+            let ui = crate::coding_agent_loop::CodingAgentUi {
+                token_tx: Some(token_tx.clone()),
+                acp_sender: acp_sender.clone(),
+            };
+            let decision_lm = self.get_or_create_decision_lm().await;
+            if let Ok(result) = crate::coding_agent_loop::execute_coding_agent_loop(
+                &mut self.tools,
+                &self.workspace_root,
+                task,
+                &plan,
+                decision_lm,
+                Some(ui),
+                crate::coding_agent_loop::CodingAgentConfig::default(),
+            )
+            .await
+            {
+                return Ok(result);
+            }
+            tracing::warn!("Coding agent loop failed, falling back to backend execution");
+        }
 
         // 2. Check which execution backend to use
         let resolved_backend = self.execution_backend.resolve();
