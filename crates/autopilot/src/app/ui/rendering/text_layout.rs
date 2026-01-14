@@ -68,6 +68,8 @@ fn layout_styled_lines(
         let mut current_x = line_start_x;
         let mut line_x = line_start_x;
         let mut current_line_text = String::new();
+        let mut line_has_text = false;
+        let max_line_width = (right_edge - line_start_x).max(0.0);
 
         if first_visual_line {
             if let Some(prefix_line) = prefix.take() {
@@ -84,6 +86,7 @@ fn layout_styled_lines(
                 italic: span.style.italic,
             };
             let words = split_into_words_for_layout(&span.text);
+            let char_width = (span.style.font_size * 0.6).max(1.0);
 
             for word in words {
                 if word.is_empty() {
@@ -92,6 +95,86 @@ fn layout_styled_lines(
 
                 let word_width =
                     text_system.measure_styled_mono(word, span.style.font_size, font_style);
+                let available_width = right_edge - current_x;
+                let needs_prefix_split =
+                    !line_has_text && current_x > line_start_x && word_width > available_width;
+
+                if word_width > max_line_width || needs_prefix_split {
+                    if word_width > max_line_width && line_has_text {
+                        builder.push_line(
+                            current_line_text,
+                            line_x,
+                            y,
+                            line_height,
+                            base_font_size,
+                        );
+                        y += line_height;
+                        current_line_text = String::new();
+                        current_x = line_start_x;
+                        line_x = line_start_x;
+                        line_has_text = false;
+                    }
+
+                    let mut remaining = word;
+                    let mut first_chunk = true;
+                    while !remaining.is_empty() {
+                        let width_for_chunk = if first_chunk && needs_prefix_split {
+                            (right_edge - current_x).max(char_width)
+                        } else {
+                            max_line_width.max(char_width)
+                        };
+                        let max_chars =
+                            (width_for_chunk / char_width).floor().max(1.0) as usize;
+                        let remaining_chars = remaining.chars().count();
+                        let end_ix = byte_offset_for_char_index(
+                            remaining,
+                            remaining_chars.min(max_chars),
+                        );
+                        let chunk = &remaining[..end_ix];
+                        let chunk_width =
+                            text_system.measure_styled_mono(chunk, span.style.font_size, font_style);
+
+                        if current_x + chunk_width > right_edge && line_has_text {
+                            builder.push_line(
+                                current_line_text,
+                                line_x,
+                                y,
+                                line_height,
+                                base_font_size,
+                            );
+                            y += line_height;
+                            current_line_text = String::new();
+                            current_x = line_start_x;
+                            line_x = line_start_x;
+                            line_has_text = false;
+                            first_chunk = false;
+                            continue;
+                        }
+
+                        current_line_text.push_str(chunk);
+                        current_x += chunk_width;
+                        line_has_text = true;
+                        remaining = &remaining[end_ix..];
+
+                        if !remaining.is_empty() {
+                            builder.push_line(
+                                current_line_text,
+                                line_x,
+                                y,
+                                line_height,
+                                base_font_size,
+                            );
+                            y += line_height;
+                            current_line_text = String::new();
+                            current_x = line_start_x;
+                            line_x = line_start_x;
+                            line_has_text = false;
+                        }
+                        first_chunk = false;
+                    }
+                    continue;
+                }
+
                 if current_x + word_width > right_edge && current_x > line_start_x {
                     builder.push_line(
                         current_line_text,
@@ -108,6 +191,7 @@ fn layout_styled_lines(
 
                 current_line_text.push_str(word);
                 current_x += word_width;
+                line_has_text = true;
             }
         }
 

@@ -9,6 +9,10 @@ fn render_dspy_stage_card(
     let small_font_size = 11.0;
     let line_height = font_size * 1.4;
     let small_line_height = small_font_size * 1.4;
+    let content_width = (bounds.size.width - padding * 2.0).max(0.0);
+    let wrap_chars_small =
+        ((content_width / (small_font_size * 0.6)).floor().max(16.0)) as usize;
+    let wrap_chars_large = ((content_width / (font_size * 0.6)).floor().max(12.0)) as usize;
 
     // Background with accent border based on stage type
     let (header_text, accent_color, icon) = match stage {
@@ -117,7 +121,7 @@ fn render_dspy_stage_card(
             }
             for (label, text) in items {
                 let line = format!("{}: {}", label, text);
-                for wrapped in wrap_text(&line, 80) {
+                for wrapped in wrap_text(&line, wrap_chars_small) {
                     let run = cx.text.layout_styled_mono(
                         &wrapped,
                         Point::new(content_x, y),
@@ -141,7 +145,7 @@ fn render_dspy_stage_card(
         } => {
             let clean_analysis = strip_markdown_markers(&truncate_preview(analysis, 160));
             let analysis_line = format!("Analysis: {}", clean_analysis);
-            for line in wrap_text(&analysis_line, 80) {
+            for line in wrap_text(&analysis_line, wrap_chars_small) {
                 let run = cx.text.layout_styled_mono(
                     &line,
                     Point::new(content_x, y),
@@ -168,7 +172,7 @@ fn render_dspy_stage_card(
 
             let clean_test = strip_markdown_markers(&truncate_preview(test_strategy, 160));
             let test_line = format!("Test: {}", clean_test);
-            for line in wrap_text(&test_line, 80) {
+            for line in wrap_text(&test_line, wrap_chars_small) {
                 let run = cx.text.layout_styled_mono(
                     &line,
                     Point::new(content_x, y),
@@ -185,15 +189,17 @@ fn render_dspy_stage_card(
                 // Steps are already numbered from LLM (e.g., "1. **Examine Current State**")
                 // Strip markdown markers and truncate
                 let clean_step = strip_markdown_markers(&truncate_preview(step, 80));
-                let run = cx.text.layout_styled_mono(
-                    &clean_step,
-                    Point::new(content_x, y),
-                    small_font_size,
-                    palette.text_primary,
-                    wgpui::text::FontStyle::default(),
-                );
-                cx.scene.draw_text(run);
-                y += small_line_height;
+                for line in wrap_text(&clean_step, wrap_chars_small) {
+                    let run = cx.text.layout_styled_mono(
+                        &line,
+                        Point::new(content_x, y),
+                        small_font_size,
+                        palette.text_primary,
+                        wgpui::text::FontStyle::default(),
+                    );
+                    cx.scene.draw_text(run);
+                    y += small_line_height;
+                }
             }
         }
         DspyStage::TodoList { tasks } => {
@@ -213,15 +219,17 @@ fn render_dspy_stage_card(
                 // Strip markdown from todo description
                 let clean_desc = strip_markdown_markers(&truncate_preview(&task.description, 80));
                 let line = format!("{} {}", status_symbol, clean_desc);
-                let run = cx.text.layout_styled_mono(
-                    &line,
-                    Point::new(content_x, y),
-                    small_font_size,
-                    color,
-                    wgpui::text::FontStyle::default(),
-                );
-                cx.scene.draw_text(run);
-                y += small_line_height;
+                for wrapped in wrap_text(&line, wrap_chars_small) {
+                    let run = cx.text.layout_styled_mono(
+                        &wrapped,
+                        Point::new(content_x, y),
+                        small_font_size,
+                        color,
+                        wgpui::text::FontStyle::default(),
+                    );
+                    cx.scene.draw_text(run);
+                    y += small_line_height;
+                }
             }
         }
         DspyStage::ExecutingTask {
@@ -233,14 +241,17 @@ fn render_dspy_stage_card(
             // Strip markdown from task description
             let clean_desc = strip_markdown_markers(&truncate_preview(task_description, 60));
             let status = format!("Task {}/{}: {}", task_index, total_tasks, clean_desc);
-            let run = cx.text.layout_styled_mono(
-                &status,
-                Point::new(content_x, y),
-                font_size,
-                accent_color,
-                wgpui::text::FontStyle::default(),
-            );
-            cx.scene.draw_text(run);
+            for line in wrap_text(&status, wrap_chars_large) {
+                let run = cx.text.layout_styled_mono(
+                    &line,
+                    Point::new(content_x, y),
+                    font_size,
+                    accent_color,
+                    wgpui::text::FontStyle::default(),
+                );
+                cx.scene.draw_text(run);
+                y += line_height;
+            }
         }
         DspyStage::TaskComplete {
             task_index,
@@ -257,14 +268,17 @@ fn render_dspy_stage_card(
             } else {
                 Hsla::new(0.0, 0.6, 0.5, 1.0)
             };
-            let run = cx.text.layout_styled_mono(
-                &status,
-                Point::new(content_x, y),
-                font_size,
-                color,
-                wgpui::text::FontStyle::default(),
-            );
-            cx.scene.draw_text(run);
+            for line in wrap_text(&status, wrap_chars_large) {
+                let run = cx.text.layout_styled_mono(
+                    &line,
+                    Point::new(content_x, y),
+                    font_size,
+                    color,
+                    wgpui::text::FontStyle::default(),
+                );
+                cx.scene.draw_text(run);
+                y += line_height;
+            }
         }
         DspyStage::Complete {
             total_tasks,
@@ -280,14 +294,17 @@ fn render_dspy_stage_card(
             } else {
                 Hsla::new(30.0 / 360.0, 0.7, 0.5, 1.0)
             };
-            let run = cx.text.layout_styled_mono(
-                &summary,
-                Point::new(content_x, y),
-                font_size,
-                color,
-                wgpui::text::FontStyle::default(),
-            );
-            cx.scene.draw_text(run);
+            for line in wrap_text(&summary, wrap_chars_large) {
+                let run = cx.text.layout_styled_mono(
+                    &line,
+                    Point::new(content_x, y),
+                    font_size,
+                    color,
+                    wgpui::text::FontStyle::default(),
+                );
+                cx.scene.draw_text(run);
+                y += line_height;
+            }
         }
         DspyStage::IssueSuggestions {
             suggestions,
@@ -298,15 +315,18 @@ fn render_dspy_stage_card(
             // Show confidence and selection status
             let status = if *await_selection { "Awaiting selection..." } else { "Auto-selecting..." };
             let status_line = format!("Confidence: {:.0}% · {}", confidence * 100.0, status);
-            let run = cx.text.layout_styled_mono(
-                &status_line,
-                Point::new(content_x, y),
-                small_font_size,
-                palette.text_dim,
-                wgpui::text::FontStyle::default(),
-            );
-            cx.scene.draw_text(run);
-            y += small_line_height + 4.0;
+            for line in wrap_text(&status_line, wrap_chars_small) {
+                let run = cx.text.layout_styled_mono(
+                    &line,
+                    Point::new(content_x, y),
+                    small_font_size,
+                    palette.text_dim,
+                    wgpui::text::FontStyle::default(),
+                );
+                cx.scene.draw_text(run);
+                y += small_line_height;
+            }
+            y += 4.0;
 
             // Show each suggestion
             for (i, suggestion) in suggestions.iter().enumerate() {
@@ -317,50 +337,60 @@ fn render_dspy_stage_card(
                     truncate_preview(&suggestion.title, 50),
                     suggestion.priority
                 );
-                let run = cx.text.layout_styled_mono(
-                    &title_line,
-                    Point::new(content_x, y),
-                    small_font_size,
-                    palette.text_primary,
-                    wgpui::text::FontStyle::default(),
-                );
-                cx.scene.draw_text(run);
-                y += small_line_height;
+                for line in wrap_text(&title_line, wrap_chars_small) {
+                    let run = cx.text.layout_styled_mono(
+                        &line,
+                        Point::new(content_x, y),
+                        small_font_size,
+                        palette.text_primary,
+                        wgpui::text::FontStyle::default(),
+                    );
+                    cx.scene.draw_text(run);
+                    y += small_line_height;
+                }
 
                 let rationale_line = format!("   \"{}\"", truncate_preview(&suggestion.rationale, 60));
-                let run = cx.text.layout_styled_mono(
-                    &rationale_line,
-                    Point::new(content_x, y),
-                    small_font_size,
-                    palette.text_dim,
-                    wgpui::text::FontStyle::default(),
-                );
-                cx.scene.draw_text(run);
-                y += small_line_height;
+                for line in wrap_text(&rationale_line, wrap_chars_small) {
+                    let run = cx.text.layout_styled_mono(
+                        &line,
+                        Point::new(content_x, y),
+                        small_font_size,
+                        palette.text_dim,
+                        wgpui::text::FontStyle::default(),
+                    );
+                    cx.scene.draw_text(run);
+                    y += small_line_height;
+                }
 
                 let complexity_line = format!("   Complexity: {}", suggestion.complexity);
-                let run = cx.text.layout_styled_mono(
-                    &complexity_line,
-                    Point::new(content_x, y),
-                    small_font_size,
-                    palette.text_dim,
-                    wgpui::text::FontStyle::default(),
-                );
-                cx.scene.draw_text(run);
-                y += small_line_height + 4.0;
+                for line in wrap_text(&complexity_line, wrap_chars_small) {
+                    let run = cx.text.layout_styled_mono(
+                        &line,
+                        Point::new(content_x, y),
+                        small_font_size,
+                        palette.text_dim,
+                        wgpui::text::FontStyle::default(),
+                    );
+                    cx.scene.draw_text(run);
+                    y += small_line_height;
+                }
+                y += 4.0;
             }
 
             // Show filtered count
             if *filtered_count > 0 {
                 let filtered_line = format!("[{} issues filtered as stale/blocked]", filtered_count);
-                let run = cx.text.layout_styled_mono(
-                    &filtered_line,
-                    Point::new(content_x, y),
-                    small_font_size,
-                    palette.text_dim,
-                    wgpui::text::FontStyle::default(),
-                );
-                cx.scene.draw_text(run);
+                for line in wrap_text(&filtered_line, wrap_chars_small) {
+                    let run = cx.text.layout_styled_mono(
+                        &line,
+                        Point::new(content_x, y),
+                        small_font_size,
+                        palette.text_dim,
+                        wgpui::text::FontStyle::default(),
+                    );
+                    cx.scene.draw_text(run);
+                    y += small_line_height;
+                }
             }
         }
         DspyStage::IssueSelected {
@@ -374,14 +404,17 @@ fn render_dspy_stage_card(
                 truncate_preview(title, 50),
                 selection_method
             );
-            let run = cx.text.layout_styled_mono(
-                &summary,
-                Point::new(content_x, y),
-                font_size,
-                accent_color,
-                wgpui::text::FontStyle::default(),
-            );
-            cx.scene.draw_text(run);
+            for line in wrap_text(&summary, wrap_chars_large) {
+                let run = cx.text.layout_styled_mono(
+                    &line,
+                    Point::new(content_x, y),
+                    font_size,
+                    accent_color,
+                    wgpui::text::FontStyle::default(),
+                );
+                cx.scene.draw_text(run);
+                y += line_height;
+            }
         }
         DspyStage::UnblockSuggestion {
             issue_number,
@@ -394,62 +427,75 @@ fn render_dspy_stage_card(
         } => {
             // Issue title
             let title_line = format!("#{} {}", issue_number, truncate_preview(title, 50));
-            let run = cx.text.layout_styled_mono(
-                &title_line,
-                Point::new(content_x, y),
-                font_size,
-                palette.text_primary,
-                wgpui::text::FontStyle::default(),
-            );
-            cx.scene.draw_text(run);
-            y += small_line_height + 4.0;
+            for line in wrap_text(&title_line, wrap_chars_large) {
+                let run = cx.text.layout_styled_mono(
+                    &line,
+                    Point::new(content_x, y),
+                    font_size,
+                    palette.text_primary,
+                    wgpui::text::FontStyle::default(),
+                );
+                cx.scene.draw_text(run);
+                y += line_height;
+            }
+            y += 4.0;
 
             // Blocked reason
             let blocked_line = format!("Blocked: \"{}\"", truncate_preview(blocked_reason, 60));
-            let run = cx.text.layout_styled_mono(
-                &blocked_line,
-                Point::new(content_x, y),
-                small_font_size,
-                Hsla::new(0.0, 0.5, 0.6, 1.0),
-                wgpui::text::FontStyle::default(),
-            );
-            cx.scene.draw_text(run);
-            y += small_line_height + 4.0;
+            for line in wrap_text(&blocked_line, wrap_chars_small) {
+                let run = cx.text.layout_styled_mono(
+                    &line,
+                    Point::new(content_x, y),
+                    small_font_size,
+                    Hsla::new(0.0, 0.5, 0.6, 1.0),
+                    wgpui::text::FontStyle::default(),
+                );
+                cx.scene.draw_text(run);
+                y += small_line_height;
+            }
+            y += 4.0;
 
             // Rationale
             let why_line = format!("Why: {}", truncate_preview(unblock_rationale, 60));
-            let run = cx.text.layout_styled_mono(
-                &why_line,
-                Point::new(content_x, y),
-                small_font_size,
-                palette.text_muted,
-                wgpui::text::FontStyle::default(),
-            );
-            cx.scene.draw_text(run);
-            y += small_line_height;
+            for line in wrap_text(&why_line, wrap_chars_small) {
+                let run = cx.text.layout_styled_mono(
+                    &line,
+                    Point::new(content_x, y),
+                    small_font_size,
+                    palette.text_muted,
+                    wgpui::text::FontStyle::default(),
+                );
+                cx.scene.draw_text(run);
+                y += small_line_height;
+            }
 
             // Strategy
             let strategy_line = format!("Strategy: {}", truncate_preview(unblock_strategy, 55));
-            let run = cx.text.layout_styled_mono(
-                &strategy_line,
-                Point::new(content_x, y),
-                small_font_size,
-                palette.text_muted,
-                wgpui::text::FontStyle::default(),
-            );
-            cx.scene.draw_text(run);
-            y += small_line_height;
+            for line in wrap_text(&strategy_line, wrap_chars_small) {
+                let run = cx.text.layout_styled_mono(
+                    &line,
+                    Point::new(content_x, y),
+                    small_font_size,
+                    palette.text_muted,
+                    wgpui::text::FontStyle::default(),
+                );
+                cx.scene.draw_text(run);
+                y += small_line_height;
+            }
 
             // Effort + other count
             let effort_line = format!("Effort: {} | {} other blocked", estimated_effort, other_blocked_count);
-            let run = cx.text.layout_styled_mono(
-                &effort_line,
-                Point::new(content_x, y),
-                small_font_size,
-                palette.text_dim,
-                wgpui::text::FontStyle::default(),
-            );
-            cx.scene.draw_text(run);
+            for line in wrap_text(&effort_line, wrap_chars_small) {
+                let run = cx.text.layout_styled_mono(
+                    &line,
+                    Point::new(content_x, y),
+                    small_font_size,
+                    palette.text_dim,
+                    wgpui::text::FontStyle::default(),
+                );
+                cx.scene.draw_text(run);
+                y += small_line_height;
+            }
         }
     }
 }

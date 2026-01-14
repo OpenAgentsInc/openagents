@@ -365,7 +365,7 @@ impl AppState {
         }
     }
 
-    fn measure_dspy_stage_height(&self, stage_idx: usize, _available_width: f32) -> f32 {
+    fn measure_dspy_stage_height(&self, stage_idx: usize, available_width: f32) -> f32 {
         let stage_viz = &self.tools.dspy_stages[stage_idx];
         let stage = &stage_viz.stage;
 
@@ -375,7 +375,11 @@ impl AppState {
         let small_font_size = 11.0;
         let line_height = font_size * 1.4;
         let small_line_height = small_font_size * 1.4;
-        let wrap_chars = 80;
+        let content_width = (available_width - padding * 2.0).max(0.0);
+        let wrap_chars_small =
+            ((content_width / (small_font_size * 0.6)).floor().max(16.0)) as usize;
+        let wrap_chars_large =
+            ((content_width / (font_size * 0.6)).floor().max(12.0)) as usize;
 
         let header_height = padding + line_height + 8.0;
 
@@ -407,7 +411,7 @@ impl AppState {
                         continue;
                     }
                     let line = format!("{}: {}", label, text);
-                    let wrapped = wrap_text(&line, wrap_chars);
+                    let wrapped = wrap_text(&line, wrap_chars_small);
                     h += wrapped.len() as f32 * small_line_height + 4.0;
                 }
                 h
@@ -418,32 +422,163 @@ impl AppState {
                 test_strategy,
                 ..
             } => {
-                let analysis_line = format!("Analysis: {}", truncate_preview(analysis, 160));
-                let wrapped_analysis = wrap_text(&analysis_line, wrap_chars);
-                let test_line = format!("Test: {}", truncate_preview(test_strategy, 160));
-                let wrapped_test = wrap_text(&test_line, wrap_chars);
+                let analysis_line = format!(
+                    "Analysis: {}",
+                    strip_markdown_markers(&truncate_preview(analysis, 160))
+                );
+                let wrapped_analysis = wrap_text(&analysis_line, wrap_chars_small);
+                let test_line = format!(
+                    "Test: {}",
+                    strip_markdown_markers(&truncate_preview(test_strategy, 160))
+                );
+                let wrapped_test = wrap_text(&test_line, wrap_chars_small);
+                let step_lines: usize = implementation_steps
+                    .iter()
+                    .map(|step| {
+                        let clean_step =
+                            strip_markdown_markers(&truncate_preview(step, 80));
+                        wrap_text(&clean_step, wrap_chars_small).len().max(1)
+                    })
+                    .sum();
 
                 wrapped_analysis.len() as f32 * small_line_height + 4.0
                     + small_line_height + 4.0  // complexity line
                     + wrapped_test.len() as f32 * small_line_height + 6.0
-                    + implementation_steps.len() as f32 * small_line_height
+                    + step_lines as f32 * small_line_height
             }
             DspyStage::TodoList { tasks } => {
-                tasks.len() as f32 * small_line_height
+                let task_lines: usize = tasks
+                    .iter()
+                    .map(|task| {
+                        let status_symbol = match task.status {
+                            crate::autopilot_loop::TodoStatus::Pending => "□",
+                            crate::autopilot_loop::TodoStatus::InProgress => "◐",
+                            crate::autopilot_loop::TodoStatus::Complete => "✓",
+                            crate::autopilot_loop::TodoStatus::Failed => "✗",
+                        };
+                        let clean_desc = strip_markdown_markers(&truncate_preview(&task.description, 80));
+                        let line = format!("{} {}", status_symbol, clean_desc);
+                        wrap_text(&line, wrap_chars_small).len().max(1)
+                    })
+                    .sum();
+                task_lines as f32 * small_line_height
             }
-            DspyStage::ExecutingTask { .. } => line_height,
-            DspyStage::TaskComplete { .. } => line_height,
-            DspyStage::Complete { .. } => line_height,
-            DspyStage::IssueSuggestions { suggestions, filtered_count, .. } => {
-                // Header line + each suggestion (3 lines each) + filtered count line
-                let suggestion_height = suggestions.len() as f32 * (small_line_height * 3.0 + 4.0);
-                let filtered_height = if *filtered_count > 0 { small_line_height + 4.0 } else { 0.0 };
-                suggestion_height + filtered_height + small_line_height
+            DspyStage::ExecutingTask {
+                task_index,
+                total_tasks,
+                task_description,
+            } => {
+                let clean_desc =
+                    strip_markdown_markers(&truncate_preview(task_description, 60));
+                let line = format!("Task {}/{}: {}", task_index, total_tasks, clean_desc);
+                wrap_text(&line, wrap_chars_large).len().max(1) as f32 * line_height
             }
-            DspyStage::IssueSelected { .. } => line_height,
-            DspyStage::UnblockSuggestion { .. } => {
-                // Header + title + blocked reason + rationale + strategy + effort + other count
-                small_line_height * 7.0 + 24.0
+            DspyStage::TaskComplete { task_index, success } => {
+                let line = if *success {
+                    format!("Task {} completed", task_index)
+                } else {
+                    format!("Task {} failed", task_index)
+                };
+                wrap_text(&line, wrap_chars_large).len().max(1) as f32 * line_height
+            }
+            DspyStage::Complete {
+                total_tasks,
+                successful,
+                failed,
+            } => {
+                let line = format!(
+                    "Completed {} tasks: {} successful, {} failed",
+                    total_tasks, successful, failed
+                );
+                wrap_text(&line, wrap_chars_large).len().max(1) as f32 * line_height
+            }
+            DspyStage::IssueSuggestions {
+                suggestions,
+                filtered_count,
+                confidence,
+                await_selection,
+            } => {
+                let status = if *await_selection {
+                    "Awaiting selection..."
+                } else {
+                    "Auto-selecting..."
+                };
+                let status_line = format!("Confidence: {:.0}% · {}", confidence * 100.0, status);
+                let status_lines = wrap_text(&status_line, wrap_chars_small).len().max(1);
+                let mut h = status_lines as f32 * small_line_height + 4.0;
+
+                for suggestion in suggestions {
+                    let title_line = format!(
+                        "[#{}] {} ({})",
+                        suggestion.number,
+                        truncate_preview(&suggestion.title, 50),
+                        suggestion.priority
+                    );
+                    let rationale_line =
+                        format!("\"{}\"", truncate_preview(&suggestion.rationale, 60));
+                    let complexity_line = format!("Complexity: {}", suggestion.complexity);
+
+                    h += wrap_text(&title_line, wrap_chars_small).len().max(1) as f32
+                        * small_line_height;
+                    h += wrap_text(&rationale_line, wrap_chars_small).len().max(1) as f32
+                        * small_line_height;
+                    h += wrap_text(&complexity_line, wrap_chars_small).len().max(1) as f32
+                        * small_line_height;
+                    h += 4.0;
+                }
+                if *filtered_count > 0 {
+                    let filtered_line =
+                        format!("[{} issues filtered as stale/blocked]", filtered_count);
+                    h += wrap_text(&filtered_line, wrap_chars_small).len().max(1) as f32
+                        * small_line_height;
+                }
+                h
+            }
+            DspyStage::IssueSelected {
+                number,
+                title,
+                selection_method,
+            } => {
+                let line = format!(
+                    "Selected issue #{}: {} ({})",
+                    number,
+                    truncate_preview(title, 50),
+                    selection_method
+                );
+                wrap_text(&line, wrap_chars_large).len().max(1) as f32 * line_height
+            }
+            DspyStage::UnblockSuggestion {
+                issue_number,
+                title,
+                blocked_reason,
+                unblock_rationale,
+                unblock_strategy,
+                estimated_effort,
+                other_blocked_count,
+            } => {
+                let title_line =
+                    format!("#{} {}", issue_number, truncate_preview(title, 50));
+                let blocked_line =
+                    format!("Blocked: \"{}\"", truncate_preview(blocked_reason, 60));
+                let why_line = format!("Why: {}", truncate_preview(unblock_rationale, 60));
+                let strategy_line =
+                    format!("Strategy: {}", truncate_preview(unblock_strategy, 55));
+                let effort_line =
+                    format!("Effort: {} | {} other blocked", estimated_effort, other_blocked_count);
+
+                let title_lines = wrap_text(&title_line, wrap_chars_large).len().max(1);
+                let blocked_lines = wrap_text(&blocked_line, wrap_chars_small).len().max(1);
+                let why_lines = wrap_text(&why_line, wrap_chars_small).len().max(1);
+                let strategy_lines = wrap_text(&strategy_line, wrap_chars_small).len().max(1);
+                let effort_lines = wrap_text(&effort_line, wrap_chars_small).len().max(1);
+
+                title_lines as f32 * line_height
+                    + 4.0
+                    + blocked_lines as f32 * small_line_height
+                    + 4.0
+                    + why_lines as f32 * small_line_height
+                    + strategy_lines as f32 * small_line_height
+                    + effort_lines as f32 * small_line_height
             }
         };
 

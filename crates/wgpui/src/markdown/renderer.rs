@@ -157,6 +157,7 @@ impl MarkdownRenderer {
             let indent = (base_indent + line.indent) as f32 * theme::spacing::LG;
             let line_start_x = indent;
             let right_edge = max_width;
+            let max_line_width = (right_edge - line_start_x).max(0.0);
 
             let base_font_size = line
                 .spans
@@ -183,6 +184,25 @@ impl MarkdownRenderer {
 
                     let word_width =
                         text_system.measure_styled_mono(word, span.style.font_size, font_style);
+
+                    if word_width > max_line_width && max_line_width > 0.0 {
+                        let char_width = (span.style.font_size * 0.6).max(1.0);
+                        let max_chars =
+                            (max_line_width / char_width).floor().max(1.0) as usize;
+                        for chunk in split_long_word(word, max_chars) {
+                            let chunk_width = text_system.measure_styled_mono(
+                                &chunk,
+                                span.style.font_size,
+                                font_style,
+                            );
+                            if current_x + chunk_width > right_edge && current_x > line_start_x {
+                                height += line_height;
+                                current_x = line_start_x;
+                            }
+                            current_x += chunk_width;
+                        }
+                        continue;
+                    }
 
                     // Check if word would wrap to next line
                     if current_x + word_width > right_edge && current_x > line_start_x {
@@ -394,6 +414,7 @@ impl MarkdownRenderer {
             let indent = (base_indent + line.indent) as f32 * theme::spacing::LG;
             let line_start_x = origin.x + indent;
             let right_edge = origin.x + max_width;
+            let max_line_width = (right_edge - line_start_x).max(0.0);
 
             let mut current_x = line_start_x;
 
@@ -422,6 +443,70 @@ impl MarkdownRenderer {
 
                     let word_width =
                         text_system.measure_styled_mono(word, span.style.font_size, font_style);
+
+                    if word_width > max_line_width && max_line_width > 0.0 {
+                        let char_width = (span.style.font_size * 0.6).max(1.0);
+                        let max_chars =
+                            (max_line_width / char_width).floor().max(1.0) as usize;
+                        for chunk in split_long_word(word, max_chars) {
+                            let chunk_width = text_system.measure_styled_mono(
+                                &chunk,
+                                span.style.font_size,
+                                font_style,
+                            );
+                            if current_x + chunk_width > right_edge && current_x > line_start_x {
+                                y += line_height;
+                                current_x = line_start_x;
+                            }
+
+                            // Draw background if needed
+                            if let Some(bg) = span.style.background {
+                                let text_size =
+                                    text_system.measure_size(&chunk, span.style.font_size, None);
+                                let padding = 2.0;
+                                let bg_with_opacity = bg.with_alpha(bg.a * opacity);
+                                scene.draw_quad(Quad {
+                                    bounds: Bounds::new(
+                                        current_x - padding,
+                                        y - padding,
+                                        text_size.width + padding * 2.0,
+                                        text_size.height + padding * 2.0,
+                                    ),
+                                    background: Some(bg_with_opacity),
+                                    border_color: Hsla::transparent(),
+                                    border_width: 0.0,
+                                    corner_radius: 0.0,
+                                });
+                            }
+
+                            // Render chunk
+                            let text_run = text_system.layout_styled_mono(
+                                &chunk,
+                                Point::new(current_x, y),
+                                span.style.font_size,
+                                color,
+                                font_style,
+                            );
+                            scene.draw_text(text_run);
+
+                            // Draw strikethrough if needed
+                            if span.style.strikethrough {
+                                let text_size =
+                                    text_system.measure_size(&chunk, span.style.font_size, None);
+                                let strike_y = y + text_size.height * 0.5;
+                                scene.draw_quad(Quad {
+                                    bounds: Bounds::new(current_x, strike_y, chunk_width, 1.0),
+                                    background: Some(color),
+                                    border_color: Hsla::transparent(),
+                                    border_width: 0.0,
+                                    corner_radius: 0.0,
+                                });
+                            }
+
+                            current_x += chunk_width;
+                        }
+                        continue;
+                    }
 
                     // Check if word fits on current line
                     if current_x + word_width > right_edge && current_x > line_start_x {
@@ -891,6 +976,39 @@ fn split_into_words(text: &str) -> Vec<String> {
     }
 
     words
+}
+
+fn byte_offset_for_char_index(text: &str, char_index: usize) -> usize {
+    if char_index == 0 {
+        return 0;
+    }
+    text.char_indices()
+        .nth(char_index)
+        .map(|(idx, _)| idx)
+        .unwrap_or_else(|| text.len())
+}
+
+fn split_long_word(word: &str, max_chars: usize) -> Vec<String> {
+    if max_chars == 0 || word.is_empty() {
+        return vec![word.to_string()];
+    }
+    let total_chars = word.chars().count();
+    if total_chars <= max_chars {
+        return vec![word.to_string()];
+    }
+    let mut chunks = Vec::new();
+    let mut start = 0;
+    while start < total_chars {
+        let end = (start + max_chars).min(total_chars);
+        let start_ix = byte_offset_for_char_index(word, start);
+        let end_ix = byte_offset_for_char_index(word, end);
+        chunks.push(word[start_ix..end_ix].to_string());
+        start = end;
+    }
+    if chunks.is_empty() {
+        chunks.push(word.to_string());
+    }
+    chunks
 }
 
 #[cfg(test)]
