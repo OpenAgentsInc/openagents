@@ -13,7 +13,7 @@ use dsrs::ir::{Complexity as PlanComplexity, PlanIR, PlanStep, StepIntent, Verif
 use dsrs::signatures::{
     ContextSelectionSignature, PlanningSignature, ToolCallSignature, ToolResultSignature,
 };
-use dsrs::{Example, LM, Predict, Prediction, example};
+use dsrs::{Example, LM, Predict, Prediction, Predictor, example};
 use protocol::hash::canonical_hash;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
