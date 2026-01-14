@@ -278,16 +278,25 @@ impl LM {
                 additional_params: None,
             };
 
-            let response = self
+            let client = self
                 .client
                 .as_ref()
-                .ok_or_else(|| anyhow::anyhow!("LM client not initialized"))?
-                .completion(request)
-                .await?;
+                .ok_or_else(|| anyhow::anyhow!("LM client not initialized"))?;
+            let (response, usage_details) = match client.as_ref() {
+                LMClient::OpenAIResponses(openai) => {
+                    let (response, usage_details) =
+                        openai.completion_with_usage_details(request).await?;
+                    (response, usage_details)
+                }
+                _ => (client.completion(request).await?, None),
+            };
 
             accumulated_usage.prompt_tokens += response.usage.input_tokens;
             accumulated_usage.completion_tokens += response.usage.output_tokens;
             accumulated_usage.total_tokens += response.usage.total_tokens;
+            if let Some(details) = usage_details {
+                accumulated_usage.provider_usage = Some(details);
+            }
 
             match response.choice.first() {
                 AssistantContent::Text(text) => {
@@ -440,14 +449,17 @@ impl LM {
                     let on_token = |token: &str| {
                         cb.on_lm_token(call_id, token);
                     };
-                    (
-                        openai
-                            .completion_streaming(request, Some(&on_token))
-                            .await?,
-                        None,
-                    )
+                    let (response, usage_details) = openai
+                        .completion_streaming_with_usage_details(request, Some(&on_token))
+                        .await?;
+                    let usage =
+                        LmUsage::from(response.usage).with_provider_usage(usage_details);
+                    (response, Some(usage))
                 } else {
-                    (openai.completion(request).await?, None)
+                    let (response, usage_details) =
+                        openai.completion_with_usage_details(request).await?;
+                    let usage = LmUsage::from(response.usage).with_provider_usage(usage_details);
+                    (response, Some(usage))
                 }
             }
             _ => (client.completion(request).await?, None),

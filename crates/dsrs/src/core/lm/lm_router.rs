@@ -220,5 +220,6 @@ fn router_usage_to_dsrs(response: &lm_router::LmResponse) -> LmUsage {
         completion_tokens: response.usage.completion_tokens as u64,
         total_tokens: response.usage.total_tokens as u64,
         cost_msats,
+        provider_usage: None,
     }
 }
