@@ -10,67 +10,93 @@
 
 ## Context
 
-OpenAgents emits telemetry and traces from multiple layers (dsrs callbacks, tool execution, replay events). Without a contract:
-- different components log inconsistently,
-- sensitive data leaks into traces,
-- downstream consumers (HUD, replay, training) receive incomplete data,
-- no clear distinction between required vs optional events.
+OpenAgents emits telemetry from two distinct systems:
+- **Callbacks** (`DspyCallback` trait): Module/LM execution observability
+- **Replay events** (`ReplayEvent` enum): Tool execution and session recording
 
-We need canonical rules for what MUST be traced, what MAY be traced, and what MUST be redacted.
+Without a contract:
+- the two systems are conflated,
+- sensitive data leaks into published traces,
+- no clear distinction between local storage vs external publication.
+
+We need canonical rules for what is traced where, and what must be redacted before publication.
 
 ## Decision
 
-**All execution layers MUST emit a minimum event set via the callback system. Sensitive fields MUST be redacted before external emission. Callbacks MUST be non-blocking.**
+**Telemetry has three layers with different privacy requirements. Callbacks and replay events are separate systems with different purposes.**
+
+### Implementation Status
+
+| Component | Status |
+|-----------|--------|
+| DspyCallback trait | Implemented (`crates/dsrs/src/callbacks.rs`) |
+| REPLAY.jsonl spec | Spec only (current impl uses `ReplayBundle`) |
+| Layer C export | Not yet implemented |
 
 ### Canonical owner
 
-- Callback trait: `crates/dsrs/src/callbacks.rs` (DspyCallback)
-- Replay events: [crates/dsrs/docs/REPLAY.md](../../crates/dsrs/docs/REPLAY.md)
-- Tool receipts: [crates/dsrs/docs/ARTIFACTS.md](../../crates/dsrs/docs/ARTIFACTS.md)
+- Callback trait: `crates/dsrs/src/callbacks.rs`
+- Callback docs: [crates/dsrs/docs/CALLBACKS.md](../../crates/dsrs/docs/CALLBACKS.md)
+- Replay format: [crates/dsrs/docs/REPLAY.md](../../crates/dsrs/docs/REPLAY.md)
 
-### Required events (Normative)
+### Trace layers (Normative)
 
-These events MUST be emitted by compliant implementations:
+| Layer | Scope | Privacy | Params/Output |
+|-------|-------|---------|---------------|
+| **A: Internal callbacks** | Same process | None required | Full data allowed |
+| **B: Local REPLAY.jsonl** | Stored under `${OPENAGENTS_HOME}` | User-controlled | Full `params` + hashes |
+| **C: Published/external** | Swarm, public logs | Strict | Hashes only, redacted |
 
-| Event | Trigger | Required Fields |
-|-------|---------|-----------------|
-| `ModuleStart` | Module begins execution | `call_id`, `module_name`, `timestamp` |
-| `ModuleEnd` | Module completes | `call_id`, `success`, `duration_ms` |
-| `LmStart` | LLM call begins | `call_id`, `model`, `prompt_tokens` |
-| `LmEnd` | LLM call completes | `call_id`, `success`, `usage` |
-| `ToolCall` | Tool invoked | `id`, `tool`, `params_hash`, `step_id` |
-| `ToolResult` | Tool returns | `id`, `output_hash`, `step_utility`, `latency_ms` |
+**Layer A (Internal callbacks):**
+- `DspyCallback` trait methods receive full data
+- Used for HUD streaming, debugging, cost tracking
+- Never leaves the process boundary
 
-### Optional events (Normative)
+**Layer B (Local REPLAY.jsonl):**
+- Stored at `${OPENAGENTS_HOME}/sessions/{session_id}/REPLAY.jsonl`
+- Includes full `params` field (for replay/debugging) AND `params_hash`
+- User-controlled; not published without explicit action
 
-These events MAY be emitted:
+**Layer C (Published/external):**
+- Produced by export/publish pipeline
+- MUST apply privacy policy redaction (see ADR-0016)
+- `params` and `output` fields replaced with hashes only
 
-| Event | Purpose |
-|-------|---------|
-| `OptimizerCandidate` | Optimizer generates candidate |
-| `TraceComplete` | Full execution graph available |
-| `Custom` | Application-specific events |
+### Callbacks vs Replay events (Normative)
 
-### Redaction rules (Normative)
+These are **separate systems** with different event types:
 
-Before external emission (logs, HUD, swarm), these fields MUST be redacted:
+**DspyCallback events** (internal observability):
 
-| Field | Redaction Rule |
-|-------|----------------|
-| `params` (full) | Hash only (`params_hash`), never raw params |
-| `output` (full) | Hash only (`output_hash`), never raw output |
-| File paths | Apply privacy policy redaction |
-| API keys/tokens | Never emit; strip from all fields |
-| User identifiers | Hash or omit unless explicitly allowed |
+| Event | Trigger | Fields |
+|-------|---------|--------|
+| `on_module_start` | Module begins | `call_id`, `module_name`, `inputs` |
+| `on_module_end` | Module completes | `call_id`, `result` |
+| `on_lm_start` | LLM call begins | `call_id`, `model`, `prompt_tokens` |
+| `on_lm_end` | LLM call completes | `call_id`, `result`, `usage` |
+| `on_optimizer_candidate` | Optimizer evaluates | `candidate_id`, `metrics` |
+| `on_trace_complete` | Execution graph done | `graph`, `manifest` |
 
-Internal callbacks (same process) MAY receive unredacted data.
+**ReplayEvent types** (session recording):
+
+| Event | Purpose | Defined in |
+|-------|---------|------------|
+| `SessionStart` | Session metadata | REPLAY.md |
+| `ToolCall` | Tool invocation | REPLAY.md |
+| `ToolResult` | Tool result | REPLAY.md |
+| `Verification` | Test/build results | REPLAY.md |
+| `SessionEnd` | Session summary | REPLAY.md |
+
+Callbacks do NOT emit ToolCall/ToolResult. Those are replay events emitted by the execution runtime.
 
 ### Callback behavior (Normative)
 
-1. Callbacks MUST be non-blocking (use channels for async work).
-2. Callback failures MUST NOT crash execution.
-3. Callbacks MUST be `Send + Sync`.
-4. Multiple callbacks are composed via `CompositeCallback`.
+Per `crates/dsrs/src/callbacks.rs`:
+
+1. Callbacks MUST be `Send + Sync`.
+2. Callbacks SHOULD be non-blocking (use channels for async work).
+3. Callback failures MUST NOT crash execution.
+4. Multiple callbacks compose via `CompositeCallback`.
 
 ### Built-in callbacks
 
@@ -81,86 +107,71 @@ Internal callbacks (same process) MAY receive unredacted data.
 | `CollectingCallback` | Collects events in memory |
 | `CompositeCallback` | Fans out to multiple callbacks |
 
-### LmUsage structure (Normative)
+### LmUsage structure
 
-```rust
-pub struct LmUsage {
-    pub input_tokens: u64,
-    pub output_tokens: u64,
-    pub total_tokens: u64,
-    pub cost_msats: Option<u64>,
-    pub model: String,
-    pub latency_ms: u64,
-}
-```
+Defined in `crates/dsrs/src/core/lm.rs` (canonical). This ADR does not redefine fields; see CALLBACKS.md for current shape.
 
-### Integration with REPLAY.jsonl
+### Layer C redaction rules (Normative)
 
-Callback events map to REPLAY.jsonl events:
+When producing Layer C (external) output:
 
-| Callback Event | REPLAY Event |
-|----------------|--------------|
-| `ModuleStart` | (internal only) |
-| `ModuleEnd` | (internal only) |
-| `LmStart` | (internal only) |
-| `LmEnd` | (internal only) |
-| `ToolCall` | `ToolCall` |
-| `ToolResult` | `ToolResult` |
-| `TraceComplete` | `SessionEnd` |
-
-REPLAY.jsonl is the external format; callbacks are the internal hook.
+| Field | Redaction Rule |
+|-------|----------------|
+| `params` | Remove entirely; keep only `params_hash` |
+| `output` | Remove entirely; keep only `output_hash` |
+| File paths | Apply active privacy policy (ADR-0016) |
+| API keys/tokens | Never emit; strip from all fields |
 
 ## Scope
 
 What this ADR covers:
-- Required vs optional telemetry events
-- Redaction requirements for external emission
-- Callback behavior constraints
-- LmUsage structure
+- Three-layer trace model (A/B/C)
+- Distinction between callbacks and replay events
+- Redaction requirements for Layer C
 
 What this ADR does NOT cover:
-- REPLAY.jsonl format (see REPLAY.md, ADR-0003)
-- Metrics aggregation and dashboards
-- Distributed tracing correlation
+- REPLAY.jsonl format details (see REPLAY.md)
+- Callback event field definitions (see CALLBACKS.md)
+- Privacy policy presets (see ADR-0016)
 
 ## Invariants / Compatibility
 
 | Invariant | Guarantee |
 |-----------|-----------|
-| Required events | Always emitted for compliant modules |
-| Redaction | Sensitive fields never in external traces |
-| Non-blocking | Callbacks never block execution |
-| LmUsage fields | Stable structure |
+| Layer separation | A/B/C have different privacy rules |
+| Callback trait | `DspyCallback` in `crates/dsrs/src/callbacks.rs` |
+| Layer B includes params | Local REPLAY.jsonl has full params |
+| Layer C excludes params | Published traces have hashes only |
 
 Backward compatibility:
-- New optional events may be added.
-- New fields may be added to existing events.
-- Removing required events requires superseding ADR.
+- New callback events may be added with default no-op implementations.
+- New replay event types may be added.
+- Removing callback methods requires superseding ADR.
 
 ## Consequences
 
 **Positive:**
-- Consistent observability across all execution
-- Safe-by-default for sensitive data
-- Enables HUD, replay, and training data extraction
+- Clear separation of internal vs local vs external
+- Local debugging retains full params
+- Published traces are privacy-safe
 
 **Negative:**
-- Some overhead from callback invocation
-- Redaction may lose debugging context
+- Layer C requires export pipeline (not yet implemented)
+- Two separate event systems to understand
 
 **Neutral:**
-- Internal vs external distinction requires care
+- Layer B files may be large (full params stored)
 
 ## Alternatives Considered
 
-1. **No required events** — rejected (inconsistent observability).
-2. **Full params/output in traces** — rejected (privacy risk).
-3. **Blocking callbacks** — rejected (execution latency).
+1. **Single trace format for all layers** — rejected (privacy risk for external).
+2. **Callbacks emit ToolCall/ToolResult** — rejected (conflates two systems).
+3. **Never store full params** — rejected (breaks local debugging/replay).
 
 ## References
 
-- [crates/dsrs/docs/CALLBACKS.md](../../crates/dsrs/docs/CALLBACKS.md) — callback system documentation
-- [crates/dsrs/docs/REPLAY.md](../../crates/dsrs/docs/REPLAY.md) — replay format
-- [ADR-0003](./ADR-0003-replay-formats.md) — replay formats
-- [ADR-0016](./ADR-0016-privacy-defaults-swarm-dispatch.md) — privacy defaults
-- `crates/dsrs/src/callbacks.rs` — implementation
+- [crates/dsrs/docs/CALLBACKS.md](../../crates/dsrs/docs/CALLBACKS.md) — callback trait docs
+- [crates/dsrs/docs/REPLAY.md](../../crates/dsrs/docs/REPLAY.md) — replay event format
+- [ADR-0003](./ADR-0003-replay-formats.md) — replay format migration
+- [ADR-0016](./ADR-0016-privacy-defaults-swarm-dispatch.md) — privacy policy for Layer C
+- `crates/dsrs/src/callbacks.rs` — callback implementation
