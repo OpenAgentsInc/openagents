@@ -175,10 +175,173 @@ fn render_chat(
         }
     }
 
+    // Render inline issue selector (if present and awaiting selection)
+    if let Some(selector) = &mut state.chat.inline_issue_selector {
+        if selector.await_selection && !selector.suggestions.is_empty() {
+            let selector_font_size = 13.0_f32;
+            let selector_line_height = selector_font_size * 1.6;
+            let button_padding_x = 12.0_f32;
+            let button_padding_y = 6.0_f32;
+            let button_gap = 8.0_f32;
+            let button_corner_radius = 4.0_f32;
+
+            // Calculate y position after boot sections
+            let mut selector_y = viewport_top - state.chat.scroll_offset;
+            for boot_section in &chat_layout.boot_sections {
+                selector_y += boot_section.height + 8.0;
+            }
+
+            // Header - minimal
+            let header_text = "Select:";
+            let header_run = state.text_system.layout_styled_mono(
+                header_text,
+                Point::new(content_x, selector_y),
+                selector_font_size,
+                palette.text_muted,
+                wgpui::text::FontStyle::default(),
+            );
+            scene.draw_text(header_run);
+            selector_y += selector_line_height;
+
+            // Clear previous bounds
+            selector.suggestion_bounds.clear();
+
+            // Render each suggestion as a button
+            for (idx, suggestion) in selector.suggestions.iter().enumerate() {
+                if idx >= 9 {
+                    break; // Max 9 suggestions (keys 1-9)
+                }
+
+                let button_text = format!(
+                    "{}. #{} {}",
+                    idx + 1,
+                    suggestion.number,
+                    suggestion.title
+                );
+
+                // Measure text width
+                let text_width = state
+                    .text_system
+                    .measure_styled_mono(
+                        &button_text,
+                        selector_font_size,
+                        wgpui::text::FontStyle::default(),
+                    )
+                    .max(100.0);
+
+                let button_width = text_width + button_padding_x * 2.0;
+                let button_height = selector_line_height + button_padding_y * 2.0;
+
+                let button_bounds = Bounds::new(content_x, selector_y, button_width, button_height);
+
+                // Store bounds for click detection
+                selector.suggestion_bounds.push(button_bounds);
+
+                // Hover highlighting
+                let is_hovered = selector.hovered_index == Some(idx);
+                let bg_color = if is_hovered {
+                    Hsla::new(0.0, 0.0, 0.3, 1.0)
+                } else {
+                    Hsla::new(0.0, 0.0, 0.15, 1.0)
+                };
+                let border_color = if is_hovered {
+                    Hsla::new(210.0 / 360.0, 0.6, 0.5, 1.0)
+                } else {
+                    Hsla::new(0.0, 0.0, 0.4, 1.0)
+                };
+
+                // Draw button background
+                scene.draw_quad(
+                    Quad::new(button_bounds)
+                        .with_background(bg_color)
+                        .with_border(border_color, 1.0)
+                        .with_corner_radius(button_corner_radius),
+                );
+
+                // Draw button text
+                let text_run = state.text_system.layout_styled_mono(
+                    &button_text,
+                    Point::new(content_x + button_padding_x, selector_y + button_padding_y),
+                    selector_font_size,
+                    palette.text_primary,
+                    wgpui::text::FontStyle::default(),
+                );
+                scene.draw_text(text_run);
+
+                selector_y += button_height + button_gap;
+            }
+
+            // Skip button
+            let skip_text = "S. Skip";
+            let skip_text_width = state
+                .text_system
+                .measure_styled_mono(
+                    skip_text,
+                    selector_font_size,
+                    wgpui::text::FontStyle::default(),
+                )
+                .max(100.0);
+            let skip_button_width = skip_text_width + button_padding_x * 2.0;
+            let skip_button_height = selector_line_height + button_padding_y * 2.0;
+            let skip_bounds = Bounds::new(content_x, selector_y, skip_button_width, skip_button_height);
+
+            selector.skip_button_bounds = Some(skip_bounds);
+
+            // Check if skip button is hovered
+            let skip_hovered = selector.hovered_index == Some(usize::MAX);
+            let skip_bg = if skip_hovered {
+                Hsla::new(0.0, 0.0, 0.3, 1.0)
+            } else {
+                Hsla::new(0.0, 0.0, 0.15, 1.0)
+            };
+            let skip_border = if skip_hovered {
+                Hsla::new(45.0 / 360.0, 0.6, 0.5, 1.0)
+            } else {
+                Hsla::new(0.0, 0.0, 0.4, 1.0)
+            };
+
+            scene.draw_quad(
+                Quad::new(skip_bounds)
+                    .with_background(skip_bg)
+                    .with_border(skip_border, 1.0)
+                    .with_corner_radius(button_corner_radius),
+            );
+
+            let skip_run = state.text_system.layout_styled_mono(
+                skip_text,
+                Point::new(content_x + button_padding_x, selector_y + button_padding_y),
+                selector_font_size,
+                palette.text_muted,
+                wgpui::text::FontStyle::default(),
+            );
+            scene.draw_text(skip_run);
+        }
+    }
+
     let mut y = viewport_top - state.chat.scroll_offset;
     // Advance y past boot sections
     for boot_section in &chat_layout.boot_sections {
         y += boot_section.height + 8.0; // boot_section_gap
+    }
+    // Advance y past inline issue selector (if present)
+    if let Some(selector) = &state.chat.inline_issue_selector {
+        if selector.await_selection && !selector.suggestions.is_empty() {
+            let selector_font_size = 13.0_f32;
+            let selector_line_height = selector_font_size * 1.6;
+            let button_padding_y = 6.0_f32;
+            let button_gap = 8.0_f32;
+            let button_height = selector_line_height + button_padding_y * 2.0;
+            // Header height (just one line now)
+            let header_height = selector_line_height;
+            // Button heights (one per suggestion, max 9)
+            let num_buttons = selector.suggestions.len().min(9);
+            let buttons_height = num_buttons as f32 * (button_height + button_gap);
+            // Skip button height + gap
+            let skip_height = button_height + button_gap;
+            // Total selector height
+            let total_selector_height = header_height + buttons_height + skip_height + 8.0;
+            y += total_selector_height;
+        }
     }
     let mut inline_tools_render_idx = 0;
     let mut dspy_stages_render_idx = 0;

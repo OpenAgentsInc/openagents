@@ -2,6 +2,7 @@ use tokio::sync::mpsc;
 use wgpui::ContextMenu;
 use wgpui::components::molecules::SectionStatus;
 use wgpui::markdown::{MarkdownRenderer as MdRenderer, StreamingMarkdown};
+use wgpui::Bounds;
 
 use super::{ChatMessage, ChatSelection, MessageRole};
 use crate::app::config::CoderSettings;
@@ -9,6 +10,7 @@ use crate::app::events::{QueryControl, ResponseEvent};
 use crate::app::session::SessionState;
 use crate::app::truncate_preview;
 use crate::app::ui::ThemeSetting;
+use crate::autopilot_loop::IssueSuggestionDisplay;
 
 /// State for a collapsible boot section displayed in chat
 pub(crate) struct BootSection {
@@ -41,22 +43,63 @@ impl BootSection {
 
 /// Boot sections displayed at top of chat during startup
 pub(crate) struct BootSections {
-    /// Environment check section (Hardware, Compute, Network, Identity, Workspace, Summary)
-    pub(crate) environment: BootSection,
-    /// Issue verification section
-    pub(crate) issues: BootSection,
+    /// Initialize section (Hardware, Compute, Network, Identity, Workspace, Summary)
+    pub(crate) initialize: BootSection,
+    /// Issue suggestion section
+    pub(crate) suggest_issues: BootSection,
 }
 
 impl BootSections {
     pub(crate) fn new() -> Self {
         tracing::info!("Creating BootSections for chat display");
         Self {
-            environment: BootSection::new(1, "Checking environment..."),
-            issues: {
-                let mut section = BootSection::new(2, "Evaluating blocked issues...");
-                section.active = false; // Will activate after environment completes
+            initialize: BootSection::new(1, "Initializing..."),
+            suggest_issues: {
+                let mut section = BootSection::new(2, "Analyzing issues...");
+                section.active = false; // Will activate after initialize completes
                 section
             },
+        }
+    }
+}
+
+/// State for inline issue selector displayed in chat.
+///
+/// This replaces the full-screen bootloader modal with an inline
+/// card that supports both clickable buttons and keyboard hotkeys.
+#[derive(Clone)]
+pub(crate) struct InlineIssueSelector {
+    /// Issue suggestions to display
+    pub(crate) suggestions: Vec<IssueSuggestionDisplay>,
+    /// Number of issues filtered out (stale/blocked)
+    pub(crate) filtered_count: usize,
+    /// Confidence score from the LLM
+    pub(crate) confidence: f32,
+    /// Whether awaiting user selection
+    pub(crate) await_selection: bool,
+    /// Index of currently hovered suggestion (for hover highlighting)
+    pub(crate) hovered_index: Option<usize>,
+    /// Computed bounds for each suggestion button (for click detection)
+    pub(crate) suggestion_bounds: Vec<Bounds>,
+    /// Computed bounds for the skip button
+    pub(crate) skip_button_bounds: Option<Bounds>,
+}
+
+impl InlineIssueSelector {
+    pub(crate) fn new(
+        suggestions: Vec<IssueSuggestionDisplay>,
+        filtered_count: usize,
+        confidence: f32,
+        await_selection: bool,
+    ) -> Self {
+        Self {
+            suggestions,
+            filtered_count,
+            confidence,
+            await_selection,
+            hovered_index: None,
+            suggestion_bounds: Vec::new(),
+            skip_button_bounds: None,
         }
     }
 }
@@ -76,6 +119,8 @@ pub(crate) struct ChatState {
     pub(crate) scroll_offset: f32,
     /// Boot sections displayed at top of chat during startup
     pub(crate) boot_sections: Option<BootSections>,
+    /// Inline issue selector (replaces full-screen bootloader modal)
+    pub(crate) inline_issue_selector: Option<InlineIssueSelector>,
 }
 
 impl ChatState {
@@ -100,6 +145,7 @@ impl ChatState {
             query_control_tx: None,
             scroll_offset: 0.0,
             boot_sections: Some(BootSections::new()),
+            inline_issue_selector: None,
         }
     }
 

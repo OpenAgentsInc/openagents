@@ -21,14 +21,13 @@ use crate::app::config::{
     app_server_model_entries,
 };
 use crate::app::events::{
-    CoderMode, CommandAction, ModalState, ResponseEvent, convert_key_for_binding, convert_modifiers,
+    CoderMode, CommandAction, InputFocus, ModalState, ResponseEvent, convert_key_for_binding, convert_modifiers,
 };
 use crate::app::permissions::{coder_mode_default_allow, coder_mode_label, parse_coder_mode};
 use crate::app::ui::ThemeSetting;
 use crate::app::{
     HookModalView, HookSetting, ModelOption, SettingsInputMode, SettingsSnapshot, settings_rows,
 };
-use crate::autopilot_loop::DspyStage;
 use crate::commands::Command;
 use crate::keybindings::{Keybinding, default_keybindings};
 
@@ -997,6 +996,64 @@ pub(super) fn handle_modal_input(state: &mut AppState, key: &WinitKey) -> bool {
         None
     };
     let settings_snapshot = SettingsSnapshot::from_state(state);
+
+    // Handle InputFocus::IssueSelector regardless of modal state
+    if state.input_focus == InputFocus::IssueSelector {
+        if let Some(ref selector) = state.chat.inline_issue_selector {
+            let suggestion_count = selector.suggestions.len();
+            match key {
+                WinitKey::Named(WinitNamedKey::Escape) => {
+                    // Skip/dismiss the selector
+                    state.chat.inline_issue_selector = None;
+                    state.input_focus = InputFocus::ChatInput;
+                    state.window.request_redraw();
+                    return true;
+                }
+                WinitKey::Character(c) => {
+                    let c_lower = c.to_lowercase().to_string();
+                    if c_lower == "s" {
+                        // Skip selection
+                        state.chat.inline_issue_selector = None;
+                        state.input_focus = InputFocus::ChatInput;
+                        state.window.request_redraw();
+                        return true;
+                    } else if let Ok(index) = c.parse::<usize>() {
+                        // Select issue by number (1-9)
+                        if index > 0 && index <= suggestion_count {
+                            if let Some(suggestion) = state
+                                .chat
+                                .inline_issue_selector
+                                .as_ref()
+                                .and_then(|s| s.suggestions.get(index - 1))
+                            {
+                                use crate::app::autopilot::PendingValidation;
+                                let issue_number = suggestion.number;
+                                let title = suggestion.title.clone();
+
+                                // Set up pending validation
+                                state.autopilot.pending_validation = Some(PendingValidation {
+                                    issue_number,
+                                    title: title.clone(),
+                                    description: None,
+                                    blocked_reason: None,
+                                });
+                                state.modal_state = ModalState::ValidatingIssue {
+                                    issue_number,
+                                    title,
+                                };
+                                state.chat.inline_issue_selector = None;
+                                state.input_focus = InputFocus::ChatInput;
+                                state.window.request_redraw();
+                                return true;
+                            }
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
     match &mut state.modal_state {
         ModalState::ModelPicker { selected } => {
             let selected = *selected;
@@ -2027,118 +2084,15 @@ pub(super) fn handle_modal_input(state: &mut AppState, key: &WinitKey) -> bool {
             true
         }
         ModalState::Bootloader => {
-            // Handle keyboard input for issue suggestions in bootloader
-            if let Some(stage) = state.autopilot.issue_suggestions.clone() {
-                let handled = match &stage {
-                    DspyStage::UnblockSuggestion {
-                        issue_number,
-                        title,
-                        blocked_reason,
-                        ..
-                    } => {
-                        match key {
-                            // Y or Enter = trigger validation before starting work
-                            WinitKey::Character(c) if c.eq_ignore_ascii_case("y") => {
-                                use crate::app::autopilot::PendingValidation;
-                                state.autopilot.pending_validation = Some(PendingValidation {
-                                    issue_number: *issue_number,
-                                    title: title.clone(),
-                                    description: None,
-                                    blocked_reason: Some(blocked_reason.clone()),
-                                });
-                                state.modal_state = ModalState::ValidatingIssue {
-                                    issue_number: *issue_number,
-                                    title: title.clone(),
-                                };
-                                state.window.request_redraw();
-                                true
-                            }
-                            WinitKey::Named(WinitNamedKey::Enter) => {
-                                use crate::app::autopilot::PendingValidation;
-                                state.autopilot.pending_validation = Some(PendingValidation {
-                                    issue_number: *issue_number,
-                                    title: title.clone(),
-                                    description: None,
-                                    blocked_reason: Some(blocked_reason.clone()),
-                                });
-                                state.modal_state = ModalState::ValidatingIssue {
-                                    issue_number: *issue_number,
-                                    title: title.clone(),
-                                };
-                                state.window.request_redraw();
-                                true
-                            }
-                            // N or Escape = skip, dismiss suggestions
-                            WinitKey::Character(c) if c.eq_ignore_ascii_case("n") => {
-                                state.autopilot.issue_suggestions = None;
-                                state.modal_state = ModalState::None;
-                                state.window.request_redraw();
-                                true
-                            }
-                            WinitKey::Named(WinitNamedKey::Escape) => {
-                                state.autopilot.issue_suggestions = None;
-                                state.modal_state = ModalState::None;
-                                state.window.request_redraw();
-                                true
-                            }
-                            _ => false,
-                        }
-                    }
-                    DspyStage::IssueSuggestions {
-                        suggestions,
-                        await_selection,
-                        ..
-                    } => {
-                        if !await_selection {
-                            return false;
-                        }
-                        match key {
-                            // 1-9 = select by number - triggers validation
-                            WinitKey::Character(c) if c.len() == 1 => {
-                                if let Some(digit) = c.chars().next().and_then(|ch| ch.to_digit(10))
-                                {
-                                    let idx = (digit as usize).saturating_sub(1);
-                                    if idx < suggestions.len() {
-                                        use crate::app::autopilot::PendingValidation;
-                                        let suggestion = &suggestions[idx];
-                                        state.autopilot.pending_validation = Some(PendingValidation {
-                                            issue_number: suggestion.number,
-                                            title: suggestion.title.clone(),
-                                            description: None,
-                                            blocked_reason: None,
-                                        });
-                                        state.modal_state = ModalState::ValidatingIssue {
-                                            issue_number: suggestion.number,
-                                            title: suggestion.title.clone(),
-                                        };
-                                        state.window.request_redraw();
-                                        return true;
-                                    }
-                                }
-                                // S = skip
-                                if c.eq_ignore_ascii_case("s") {
-                                    state.autopilot.issue_suggestions = None;
-                                    state.modal_state = ModalState::None;
-                                    state.window.request_redraw();
-                                    return true;
-                                }
-                                false
-                            }
-                            // Escape = skip
-                            WinitKey::Named(WinitNamedKey::Escape) => {
-                                state.autopilot.issue_suggestions = None;
-                                state.modal_state = ModalState::None;
-                                state.window.request_redraw();
-                                true
-                            }
-                            _ => false,
-                        }
-                    }
-                    _ => false,
-                };
-                handled
-            } else {
-                false
+            // Legacy bootloader modal - now using inline issue selector instead
+            // Just handle Escape to dismiss
+            match key {
+                WinitKey::Named(WinitNamedKey::Escape) => {
+                    state.modal_state = ModalState::None;
+                    state.window.request_redraw();
+                    true
+                }
+                _ => false,
             }
         }
         ModalState::ValidatingIssue { .. } => {

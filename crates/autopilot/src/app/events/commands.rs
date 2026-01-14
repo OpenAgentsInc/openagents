@@ -83,6 +83,18 @@ pub(crate) enum ModalState {
     },
 }
 
+/// Input focus state for keyboard capture.
+///
+/// Determines which component receives keyboard input.
+#[derive(Clone, Copy, PartialEq, Eq, Default)]
+pub(crate) enum InputFocus {
+    /// Default - input goes to chat prompt
+    #[default]
+    ChatInput,
+    /// Issue selector is active, capture 1-9 and S keys
+    IssueSelector,
+}
+
 /// Internal mode representation for Coder UI.
 /// Maps to app-server approval and sandbox policies.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default, Serialize, Deserialize)]

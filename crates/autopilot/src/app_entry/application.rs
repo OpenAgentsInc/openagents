@@ -32,7 +32,7 @@ use crate::app::config::{AgentSelection, SettingsState, mcp_project_file};
 use crate::app::dspy::DspyState;
 use crate::app::dvm::DvmState;
 use crate::app::events::{
-    CoderMode, ModalState, convert_key_for_binding, convert_key_for_input, convert_modifiers,
+    CoderMode, InputFocus, ModalState, convert_key_for_binding, convert_key_for_input, convert_modifiers,
     convert_mouse_button,
 };
 use crate::app::gateway::GatewayState;
@@ -228,6 +228,7 @@ impl ApplicationHandler for AutopilotApp {
                 modifiers: ModifiersState::default(),
                 last_tick: Instant::now(),
                 modal_state: ModalState::None, // Skip bootloader UI, stream to chat instead
+                input_focus: InputFocus::default(),
                 panel_layout: PanelLayout::Single,
                 left_sidebar_open: false,
                 right_sidebar_open: false,
@@ -606,6 +607,42 @@ impl ApplicationHandler for AutopilotApp {
 
                 let input_event = InputEvent::MouseMove { x, y };
                 let chat_layout = state.build_chat_layout(&sidebar_layout, logical_height);
+
+                // Handle hover for inline issue selector
+                if let Some(selector) = &mut state.chat.inline_issue_selector {
+                    let mouse_point = Point::new(x, y);
+                    let mut new_hovered: Option<usize> = None;
+
+                    // Check suggestion buttons
+                    for (idx, bounds) in selector.suggestion_bounds.iter().enumerate() {
+                        if bounds.contains(mouse_point) {
+                            new_hovered = Some(idx);
+                            break;
+                        }
+                    }
+
+                    // Check skip button
+                    if new_hovered.is_none() {
+                        if let Some(skip_bounds) = selector.skip_button_bounds {
+                            if skip_bounds.contains(mouse_point) {
+                                new_hovered = Some(usize::MAX);
+                            }
+                        }
+                    }
+
+                    if selector.hovered_index != new_hovered {
+                        selector.hovered_index = new_hovered;
+                        // Update cursor
+                        let cursor = if new_hovered.is_some() {
+                            CursorIcon::Pointer
+                        } else {
+                            CursorIcon::Default
+                        };
+                        state.window.set_cursor(cursor);
+                        state.window.request_redraw();
+                    }
+                }
+
                 if state.chat.chat_context_menu.is_open() {
                     if matches!(
                         state.chat.chat_context_menu.event(
@@ -880,6 +917,54 @@ impl ApplicationHandler for AutopilotApp {
                         state.window.request_redraw();
                     }
                     return;
+                }
+
+                // Handle click on inline issue selector
+                if button_state == ElementState::Released
+                    && matches!(button, winit::event::MouseButton::Left)
+                {
+                    if let Some(selector) = state.chat.inline_issue_selector.clone() {
+                        let mouse_point = Point::new(x, y);
+
+                        // Check suggestion buttons
+                        for (idx, bounds) in selector.suggestion_bounds.iter().enumerate() {
+                            if bounds.contains(mouse_point) {
+                                // Select this suggestion
+                                if let Some(suggestion) = selector.suggestions.get(idx) {
+                                    use crate::app::autopilot::PendingValidation;
+                                    let issue_number = suggestion.number;
+                                    let title = suggestion.title.clone();
+
+                                    state.autopilot.pending_validation = Some(PendingValidation {
+                                        issue_number,
+                                        title: title.clone(),
+                                        description: None,
+                                        blocked_reason: None,
+                                    });
+                                    state.modal_state = ModalState::ValidatingIssue {
+                                        issue_number,
+                                        title,
+                                    };
+                                    state.chat.inline_issue_selector = None;
+                                    state.input_focus = InputFocus::ChatInput;
+                                    state.window.set_cursor(CursorIcon::Default);
+                                    state.window.request_redraw();
+                                    return;
+                                }
+                            }
+                        }
+
+                        // Check skip button
+                        if let Some(skip_bounds) = selector.skip_button_bounds {
+                            if skip_bounds.contains(mouse_point) {
+                                state.chat.inline_issue_selector = None;
+                                state.input_focus = InputFocus::ChatInput;
+                                state.window.set_cursor(CursorIcon::Default);
+                                state.window.request_redraw();
+                                return;
+                            }
+                        }
+                    }
                 }
 
                 // Handle click on left sidebar "New Session" button
@@ -1226,9 +1311,9 @@ impl ApplicationHandler for AutopilotApp {
                             // Toggle expanded state in the actual state
                             if let Some(sections) = &mut state.chat.boot_sections {
                                 if idx == 0 {
-                                    sections.environment.expanded = !sections.environment.expanded;
+                                    sections.initialize.expanded = !sections.initialize.expanded;
                                 } else if idx == 1 {
-                                    sections.issues.expanded = !sections.issues.expanded;
+                                    sections.suggest_issues.expanded = !sections.suggest_issues.expanded;
                                 }
                             }
                             state.window.request_redraw();

@@ -14,12 +14,12 @@ use crate::app::CoderMode;
 use crate::app::agents::AgentBackendsEvent;
 use crate::app::autopilot::{PostCompletionEvent, PostCompletionHook};
 use crate::app::catalog::SkillUpdate;
-use crate::app::chat::{ChatMessage, MessageRole};
+use crate::app::chat::{ChatMessage, InlineIssueSelector, MessageRole};
 use crate::app::codex_app_server as app_server;
 use crate::app::codex_runtime::{CodexRuntime, CodexRuntimeConfig};
 use crate::app::config::{ModelOption, SettingsUpdate};
 use crate::app::dvm::{DvmEvent, DvmStatus};
-use crate::app::events::{CommandAction, ModalState, QueryControl, ResponseEvent};
+use crate::app::events::{CommandAction, InputFocus, ModalState, QueryControl, ResponseEvent};
 use crate::app::gateway::GatewayEvent;
 use crate::app::lm_router::LmRouterEvent;
 use crate::app::nexus::NexusEvent;
@@ -1613,44 +1613,25 @@ impl AutopilotApp {
                         });
                         state.bootloader.complete_issues(details.clone(), 0);
 
-                        // Also update the chat boot section for issues
+                        // Update boot section
                         if let Some(sections) = &mut state.chat.boot_sections {
-                            sections.issues.status = SectionStatus::Success;
-                            sections.issues.active = false;
-                            sections.issues.expanded = false;
-                            sections.issues.summary = format!(
-                                "Issues evaluated: {} suggestions found",
-                                suggestions.len()
-                            );
-                            sections.issues.details.push(format!(
-                                "✓ Evaluated {} issues",
-                                total_evaluated
-                            ));
+                            sections.suggest_issues.status = SectionStatus::Success;
+                            sections.suggest_issues.active = false;
+                            sections.suggest_issues.expanded = false;
+                            sections.suggest_issues.summary =
+                                format!("{} suggestions", suggestions.len());
                         }
 
-                        // Add issue suggestions as numbered chat messages
+                        // Create inline issue selector for the chat UI
                         if !suggestions.is_empty() {
-                            state.chat.push_system_message(format!(
-                                "Found {} actionable issue suggestions. Reply with a number to start:",
-                                suggestions.len()
+                            state.chat.inline_issue_selector = Some(InlineIssueSelector::new(
+                                suggestions.clone(),
+                                filtered_count,
+                                confidence,
+                                true, // await_selection
                             ));
-                            for (idx, suggestion) in suggestions.iter().enumerate() {
-                                let summary = {
-                                    let first_line = suggestion.rationale.lines().next().unwrap_or("");
-                                    if first_line.len() > 60 {
-                                        format!("{}...", &first_line[..60])
-                                    } else {
-                                        first_line.to_string()
-                                    }
-                                };
-                                state.chat.push_system_message(format!(
-                                    "{}. #{} {} - {}",
-                                    idx + 1,
-                                    suggestion.number,
-                                    suggestion.title,
-                                    summary
-                                ));
-                            }
+                            // Enable keyboard capture for issue selection
+                            state.input_focus = InputFocus::IssueSelector;
                         }
                     } else {
                         tracing::warn!("Autopilot: received non-suggestion stage: {:?}", stage);
@@ -1658,21 +1639,9 @@ impl AutopilotApp {
                     state.autopilot.issue_suggestions = Some(stage);
                     state.autopilot.issue_suggestions_rx = None;
                     state.autopilot.streaming_tokens_rx = None;
-                    // Activate bootloader modal to enable issue selection via keyboard
-                    state.modal_state = ModalState::Bootloader;
-                    // Complete the streaming markdown and convert to message
+                    // Clear the streaming markdown without pushing to chat
+                    // (the inline issue selector displays the suggestions instead)
                     state.chat.streaming_markdown.complete();
-                    let source = state.chat.streaming_markdown.source().to_string();
-                    if !source.is_empty() {
-                        let doc = state.chat.streaming_markdown.document().clone();
-                        state.chat.messages.push(crate::app::chat::ChatMessage {
-                            role: crate::app::chat::MessageRole::Assistant,
-                            content: source,
-                            document: Some(doc),
-                            uuid: None,
-                            metadata: None,
-                        });
-                    }
                     state.chat.streaming_markdown.reset();
                     needs_redraw = true;
                 }
@@ -1998,121 +1967,76 @@ impl AutopilotApp {
 
         match event {
             BootEvent::BootStarted { .. } => {
-                // Set environment section to in-progress
-                sections.environment.status = SectionStatus::InProgress;
-                sections.environment.summary = "Checking environment...".to_string();
-                sections.environment.active = true;
+                // Set initialize section to in-progress
+                sections.initialize.status = SectionStatus::InProgress;
+                sections.initialize.summary = "...".to_string();
+                sections.initialize.active = true;
             }
 
-            BootEvent::StageStarted { stage, description } => {
+            BootEvent::StageStarted { stage, description: _ } => {
                 if stage == BootStage::Issues {
-                    // Issues stage goes to its own section
-                    sections.issues.status = SectionStatus::InProgress;
-                    sections.issues.summary = "Evaluating blocked issues...".to_string();
-                    sections.issues.details.push(description.to_string());
-                    sections.issues.active = true;
-                } else {
-                    // All other stages go to environment section
-                    sections.environment.details.push(format!("→ {}", description));
+                    sections.suggest_issues.status = SectionStatus::InProgress;
+                    sections.suggest_issues.summary = "...".to_string();
+                    sections.suggest_issues.active = true;
                 }
+                // Skip details for other stages - keep it minimal
             }
 
-            BootEvent::StageProgress { stage, message } => {
-                if stage == BootStage::Issues {
-                    sections.issues.details.push(format!("  {}", message));
-                } else {
-                    // Update last detail or append
-                    if let Some(last) = sections.environment.details.last_mut() {
-                        if last.starts_with("→ ") || last.starts_with("  ") {
-                            *last = format!("  {}", message);
-                        } else {
-                            sections.environment.details.push(format!("  {}", message));
-                        }
-                    } else {
-                        sections.environment.details.push(format!("  {}", message));
-                    }
-                }
+            BootEvent::StageProgress { stage: _, message: _ } => {
+                // Skip progress details - keep it minimal
             }
 
             BootEvent::StageCompleted {
                 stage,
-                duration,
+                duration: _,
                 details,
             } => {
-                let ms = duration.as_millis();
                 if stage == BootStage::Issues {
-                    // Complete issues section
-                    sections.issues.status = SectionStatus::Success;
-                    sections.issues.active = false;
-                    sections.issues.expanded = false;
-
-                    // Extract suggestions count if available
+                    sections.suggest_issues.status = SectionStatus::Success;
+                    sections.suggest_issues.active = false;
+                    sections.suggest_issues.expanded = false;
                     if let StageDetails::Issues(issues) = details {
-                        sections.issues.summary = format!(
-                            "Issues evaluated: {} suggestions found",
-                            issues.suggestions_found
-                        );
-                        sections.issues.details.push(format!(
-                            "✓ Evaluated {} issues ({}ms)",
-                            issues.total_evaluated, ms
-                        ));
+                        sections.suggest_issues.summary =
+                            format!("{} suggestions", issues.suggestions_found);
                     }
-                } else {
-                    // Add completion line to environment section
-                    sections
-                        .environment
-                        .details
-                        .push(format!("✓ {} ({}ms)", stage.name(), ms));
                 }
+                // Skip details for initialize section - keep it minimal
             }
 
             BootEvent::StageFailed {
                 stage,
-                duration,
+                duration: _,
                 error,
             } => {
-                let ms = duration.as_millis();
                 if stage == BootStage::Issues {
-                    sections.issues.status = SectionStatus::Error;
-                    sections.issues.active = false;
-                    sections.issues.details.push(format!("✗ {} ({}ms)", error, ms));
+                    sections.suggest_issues.status = SectionStatus::Error;
+                    sections.suggest_issues.active = false;
+                    sections.suggest_issues.summary = format!("Error: {}", error);
                 } else {
-                    sections
-                        .environment
-                        .details
-                        .push(format!("✗ {} failed: {} ({}ms)", stage.name(), error, ms));
+                    sections.initialize.status = SectionStatus::Error;
+                    sections.initialize.summary = format!("Error: {}", error);
                 }
             }
 
-            BootEvent::StageSkipped { stage, reason } => {
+            BootEvent::StageSkipped { stage, reason: _ } => {
                 if stage == BootStage::Issues {
-                    sections.issues.summary = format!("Issues skipped: {}", reason);
-                    sections.issues.status = SectionStatus::Pending;
-                    sections.issues.active = false;
-                } else {
-                    sections
-                        .environment
-                        .details
-                        .push(format!("⊘ {} skipped: {}", stage.name(), reason));
+                    sections.suggest_issues.summary = "Skipped".to_string();
+                    sections.suggest_issues.status = SectionStatus::Pending;
+                    sections.suggest_issues.active = false;
                 }
             }
 
-            BootEvent::BootCompleted { summary, .. } => {
-                // Complete environment section
-                sections.environment.status = SectionStatus::Success;
-                sections.environment.active = false;
-                sections.environment.expanded = false;
-                if let Some(sum) = summary {
-                    sections.environment.summary = sum;
-                } else {
-                    sections.environment.summary = "Environment ready".to_string();
-                }
+            BootEvent::BootCompleted { summary: _, .. } => {
+                sections.initialize.status = SectionStatus::Success;
+                sections.initialize.active = false;
+                sections.initialize.expanded = false;
+                sections.initialize.summary = "Ready".to_string();
             }
 
             BootEvent::BootFailed { error } => {
-                sections.environment.status = SectionStatus::Error;
-                sections.environment.active = false;
-                sections.environment.details.push(format!("✗ Boot failed: {}", error));
+                sections.initialize.status = SectionStatus::Error;
+                sections.initialize.active = false;
+                sections.initialize.summary = format!("Failed: {}", error);
             }
         }
     }
