@@ -440,3 +440,4 @@ That’s the core loop. Everything else (skills, UI, multi-agent, marketplace jo
 - 2026-01-14: Updated LM provider priority to prefer OpenAI Responses for signature inference.
 - 2026-01-14: Fixed CODING_AGENT_LOOP compile errors (Predictor trait import, LM builder ordering).
 - 2026-01-14: Forced Autopilot to always route autonomous execution through Adjutant (Codex backend selection is chat-only).
+- 2026-01-14: Added .env.local loading in Autopilot to pick up OPENAI_API_KEY for DSPy signatures.

@@ -21,6 +21,9 @@ pub(crate) fn submit_autopilot_prompt(
 ) {
     tracing::info!("Autopilot mode: starting autonomous loop");
 
+    // Load .env.local for OPENAI_API_KEY and other local secrets if present.
+    load_env_local();
+
     // Autopilot always routes execution to Adjutant; backend selection is for chat only.
     let selected_backend = state.agent_selection.agent;
     let use_codex = false;
@@ -378,6 +381,38 @@ pub(crate) fn submit_autopilot_prompt(
     });
 
     state.window.request_redraw();
+}
+
+fn load_env_local() {
+    let path = std::path::Path::new(".env.local");
+    let Ok(contents) = std::fs::read_to_string(path) else {
+        return;
+    };
+
+    for line in contents.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+        let Some((key, value)) = trimmed.split_once('=') else {
+            continue;
+        };
+        let key = key.trim();
+        if key.is_empty() {
+            continue;
+        }
+        if std::env::var(key).is_ok() {
+            continue;
+        }
+        let mut value = value.trim().to_string();
+        if value.starts_with('"') && value.ends_with('"') && value.len() >= 2 {
+            value = value[1..value.len() - 1].to_string();
+        }
+        if value.starts_with('\'') && value.ends_with('\'') && value.len() >= 2 {
+            value = value[1..value.len() - 1].to_string();
+        }
+        std::env::set_var(key, value);
+    }
 }
 
 pub(crate) fn acp_notification_to_response(
