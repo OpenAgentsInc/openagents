@@ -443,3 +443,5 @@ That’s the core loop. Everything else (skills, UI, multi-agent, marketplace jo
 - 2026-01-14: Added .env.local loading in Autopilot to pick up OPENAI_API_KEY for DSPy signatures.
 - 2026-01-14: Shifted .env.local lookup into Adjutant LM config to avoid mutating env at runtime while keeping OPENAI_API_KEY available.
 - 2026-01-14: Improved DSPy stage UI and markdown layout wrapping to prevent long-token overflow in Autopilot rendering.
+- 2026-01-14: Defaulted CLI ad-hoc runs to the autopilot loop (with a --direct escape hatch) and added tool-call schema validation + directory-list fallback in the coding agent loop; verified via autopilot-cli runs.
+- 2026-01-14: Routed CLI ad-hoc runs through the coding agent loop (bypassing legacy todo planning), added simple read/list heuristics + configurable loop settings, and verified via `autopilot-cli` README summary run.

@@ -4,7 +4,7 @@
 
 use crate::autopilot_loop::{AcpEventSender, DspyStage, DSPY_META_KEY, SESSION_ID_META_KEY};
 use crate::planner::TaskPlan;
-use crate::tools::{SideEffect, ToolExecutionResult, ToolRegistry};
+use crate::tools::{SideEffect, ToolExecutionResult, ToolRegistry, ToolSchema};
 use crate::{AdjutantError, Task};
 use agent_client_protocol_schema as acp;
 use anyhow::Result;
@@ -276,7 +276,8 @@ pub async fn execute_coding_agent_loop(
     .await?;
 
     let per_step_mode = task.title.starts_with("Step ");
-    let mut plan_ir = if per_step_mode {
+    let fast_inspect = should_use_fallback_plan(&task.description);
+    let mut plan_ir = if per_step_mode || fast_inspect {
         fallback_plan_ir(task, plan, config.max_step_iterations)
     } else {
         plan_from_signature(task, plan, &context_summary, decision_lm.clone()).await
@@ -330,15 +331,20 @@ pub async fn execute_coding_agent_loop(
                 break;
             }
 
-            let decision = tool_call_decision(
-                step,
-                &tool_schema_json,
-                &context_summary,
-                &tool_history,
-                decision_lm.clone(),
-            )
-            .await
-            .unwrap_or_else(|_| fallback_tool_call(step, plan, &context_plan));
+            let mut decision = if let Some(decision) = heuristic_tool_call(step) {
+                decision
+            } else {
+                tool_call_decision(
+                    step,
+                    &tool_schema_json,
+                    &context_summary,
+                    &tool_history,
+                    decision_lm.clone(),
+                )
+                .await
+                .unwrap_or_else(|_| fallback_tool_call(step, plan, &context_plan))
+            };
+            maybe_override_path_from_hint(&mut decision, step, workspace_root);
 
             if decision.needs_user_input {
                 emit_user_input_request(&ui, &decision.user_question);
@@ -1033,7 +1039,17 @@ async fn tool_call_decision(
     let user_question = prediction_string(&prediction, "user_question");
     let confidence = prediction_f32(&prediction, "confidence", 0.5);
 
-    let params = serde_json::from_str::<Value>(&params_raw).unwrap_or_else(|_| json!({}));
+    let params = serde_json::from_str::<Value>(&params_raw)
+        .map_err(|e| anyhow::anyhow!("Invalid tool params JSON: {}", e))?;
+    if tool.trim().is_empty() {
+        return Err(anyhow::anyhow!("Tool name missing"));
+    }
+
+    let schemas: Vec<ToolSchema> =
+        serde_json::from_str(tool_schemas).unwrap_or_default();
+    if !validate_tool_call(&tool, &params, &schemas) {
+        return Err(anyhow::anyhow!("Tool call failed schema validation"));
+    }
 
     Ok(ToolCallDecision {
         tool,
@@ -1046,20 +1062,61 @@ async fn tool_call_decision(
     })
 }
 
+fn heuristic_tool_call(step: &PlanStep) -> Option<ToolCallDecision> {
+    let desc = step.description.to_lowercase();
+    if should_list_directories(&desc) {
+        return Some(ToolCallDecision {
+            tool: "bash".to_string(),
+            params: json!({"command": "ls -1d */"}),
+            expected_outcome: "List top-level directories".to_string(),
+            progress_estimate: 0.2,
+            needs_user_input: false,
+            user_question: String::new(),
+            confidence: 0.6,
+        });
+    }
+
+    let is_read_task = desc.contains("read")
+        || desc.contains("summarize")
+        || desc.contains("summarise")
+        || desc.contains("show")
+        || desc.contains("display")
+        || desc.contains("open");
+    if is_read_task {
+        let target = extract_target_hint(step)?;
+        return Some(ToolCallDecision {
+            tool: "read_file".to_string(),
+            params: json!({"path": target}),
+            expected_outcome: "Read requested file".to_string(),
+            progress_estimate: 0.2,
+            needs_user_input: false,
+            user_question: String::new(),
+            confidence: 0.6,
+        });
+    }
+
+    None
+}
+
 fn fallback_tool_call(step: &PlanStep, plan: &TaskPlan, _context_plan: &ContextPlan) -> ToolCallDecision {
-    let tool = match step.intent {
-        StepIntent::Verify => "bash".to_string(),
-        _ => "read_file".to_string(),
+    let desc = step.description.to_lowercase();
+    let tool = if step.intent == StepIntent::Verify {
+        "bash".to_string()
+    } else if should_list_directories(&desc) {
+        "bash".to_string()
+    } else {
+        "read_file".to_string()
     };
 
     let params = if tool == "bash" {
-        json!({"command": "cargo test --no-fail-fast"})
+        let command = if should_list_directories(&desc) {
+            "ls -1d */"
+        } else {
+            "cargo test --no-fail-fast"
+        };
+        json!({"command": command})
     } else {
-        let target = step
-            .target_files
-            .get(0)
-            .cloned()
-            .or_else(|| plan.files.get(0).map(|p| p.to_string_lossy().to_string()))
+        let target = select_target_path(step, plan)
             .unwrap_or_else(|| "README.md".to_string());
         json!({"path": target})
     };
@@ -1072,6 +1129,123 @@ fn fallback_tool_call(step: &PlanStep, plan: &TaskPlan, _context_plan: &ContextP
         needs_user_input: false,
         user_question: String::new(),
         confidence: 0.2,
+    }
+}
+
+fn validate_tool_call(tool: &str, params: &Value, schemas: &[ToolSchema]) -> bool {
+    let Some(schema) = schemas.iter().find(|schema| schema.name == tool) else {
+        return false;
+    };
+    let required = schema
+        .parameters
+        .get("required")
+        .and_then(|value| value.as_array())
+        .cloned()
+        .unwrap_or_default();
+    let params_obj = match params.as_object() {
+        Some(obj) => obj,
+        None => return false,
+    };
+    for req in required {
+        let Some(key) = req.as_str() else {
+            continue;
+        };
+        match params_obj.get(key) {
+            Some(Value::String(value)) if !value.trim().is_empty() => {}
+            Some(Value::Array(_)) | Some(Value::Object(_)) | Some(Value::Bool(_))
+            | Some(Value::Number(_)) => {}
+            _ => return false,
+        }
+    }
+    true
+}
+
+fn should_list_directories(desc: &str) -> bool {
+    let wants_list = desc.contains("list") || desc.contains("enumerate");
+    let target_dirs = desc.contains("directory")
+        || desc.contains("directories")
+        || desc.contains("folder")
+        || desc.contains("folders")
+        || desc.contains("top-level")
+        || desc.contains("root");
+    wants_list && target_dirs
+}
+
+fn should_use_fallback_plan(desc: &str) -> bool {
+    let lower = desc.to_lowercase();
+    let has_read_action = lower.contains("read")
+        || lower.contains("summarize")
+        || lower.contains("summarise")
+        || lower.contains("show")
+        || lower.contains("display")
+        || lower.contains("open")
+        || should_list_directories(&lower);
+    let has_mutation = lower.contains("edit")
+        || lower.contains("modify")
+        || lower.contains("update")
+        || lower.contains("add")
+        || lower.contains("remove")
+        || lower.contains("fix")
+        || lower.contains("implement")
+        || lower.contains("refactor");
+    let has_hint = extract_file_hint(desc).is_some() || should_list_directories(&lower);
+    has_read_action && !has_mutation && has_hint
+}
+
+fn extract_target_hint(step: &PlanStep) -> Option<String> {
+    extract_file_hint(&step.description)
+        .or_else(|| step.target_files.get(0).cloned())
+}
+
+fn select_target_path(step: &PlanStep, plan: &TaskPlan) -> Option<String> {
+    extract_target_hint(step)
+        .or_else(|| plan.files.get(0).map(|p| p.to_string_lossy().to_string()))
+}
+
+fn extract_file_hint(desc: &str) -> Option<String> {
+    for raw in desc.split_whitespace() {
+        let token = raw.trim_matches(|c: char| {
+            !(c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-' | '/'))
+        });
+        if token.is_empty() {
+            continue;
+        }
+        if token.contains('.') {
+            return Some(token.to_string());
+        }
+    }
+    None
+}
+
+fn maybe_override_path_from_hint(
+    decision: &mut ToolCallDecision,
+    step: &PlanStep,
+    workspace_root: &Path,
+) {
+    if !matches!(
+        decision.tool.as_str(),
+        "read_file" | "edit_file" | "write_file"
+    ) {
+        return;
+    }
+    let Some(path_hint) = extract_file_hint(&step.description) else {
+        return;
+    };
+    let full_path = workspace_root.join(&path_hint);
+    if !full_path.exists() {
+        return;
+    }
+    let current_path = decision
+        .params
+        .get("path")
+        .and_then(|value| value.as_str());
+    if current_path == Some(path_hint.as_str()) {
+        return;
+    }
+    if let Some(obj) = decision.params.as_object_mut() {
+        obj.insert("path".to_string(), Value::String(path_hint));
+    } else {
+        decision.params = json!({ "path": path_hint });
     }
 }
 

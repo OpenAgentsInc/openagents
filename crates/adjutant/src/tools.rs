@@ -36,7 +36,7 @@ pub struct ToolOutput {
 }
 
 /// Tool schema definition for LLM tool selection.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolSchema {
     pub name: String,
     pub description: String,

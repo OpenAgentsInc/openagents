@@ -5,13 +5,14 @@ use crate::app_server_executor::{
     ReviewDelivery, ReviewTarget, SandboxMode, SandboxPolicy,
 };
 use crate::autopilot_loop::{
-    AcpChannelOutput, AutopilotConfig, AutopilotLoop, AutopilotResult, CliOutput,
+    AcpChannelOutput, AutopilotConfig, AutopilotLoop, AutopilotOutput, AutopilotResult, CliOutput,
     generate_session_id,
 };
 use crate::cli::blocker::{analyze_blockers, print_blocker_summary};
 use crate::cli::boot::{boot_fast, boot_full, print_quick_checks};
 use crate::cli::directive::build_directive_task;
 use crate::cli::stream::CliAcpRenderer;
+use crate::coding_agent_loop::CodingAgentConfig;
 use crate::dspy_orchestrator::DspyOrchestrator;
 use crate::manifest::{OanixManifest, WorkspaceManifest};
 use crate::{Adjutant, ExecutionBackend, Task, ToolRegistry};
@@ -19,6 +20,7 @@ use agent_client_protocol_schema as acp;
 use clap::{Args, ValueEnum};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::Duration;
 use tokio::sync::mpsc;
 
 /// Run command arguments
@@ -35,9 +37,13 @@ pub struct RunArgs {
     /// Ad-hoc task description (instead of issue)
     pub task: Option<String>,
 
-    /// Use the Adjutant autopilot loop for ad-hoc prompts
+    /// (Deprecated) Use the Adjutant autopilot loop for ad-hoc prompts
     #[arg(long)]
     pub autopilot_loop: bool,
+
+    /// Run the prompt directly via the app-server (skip autopilot loop)
+    #[arg(long)]
+    pub direct: bool,
 
     /// Run full environment discovery (slower)
     #[arg(long)]
@@ -221,11 +227,21 @@ pub async fn run(args: RunArgs) -> anyhow::Result<()> {
         println!("Press Ctrl+C to interrupt");
         println!();
 
-        if args.autopilot_loop {
+        let use_autopilot_loop = !args.direct;
+        if args.autopilot_loop && args.direct {
+            eprintln!("Note: --direct overrides --autopilot-loop; running app-server mode.");
+        }
+
+        if use_autopilot_loop {
+            if !args.autopilot_loop {
+                println!("Using coding agent loop (default).");
+                println!("Use --direct to run via app-server instead.");
+            }
             let task = Task::new("adhoc", "Ad-hoc Task", task_desc);
             let adjutant = build_adjutant(&manifest, backend)?;
             let config = build_autopilot_config(&manifest, &args);
-            let result = run_autopilot_task(adjutant, task, config, interrupt_flag.clone()).await;
+            let result =
+                run_coding_agent_task(adjutant, task, config, interrupt_flag.clone()).await;
             print_autopilot_result(&result);
             return Ok(());
         }
@@ -519,6 +535,62 @@ async fn run_autopilot_task(
     renderer.finish();
 
     result
+}
+
+async fn run_coding_agent_task(
+    mut adjutant: Adjutant,
+    task: Task,
+    config: AutopilotConfig,
+    interrupt_flag: Arc<AtomicBool>,
+) -> AutopilotResult {
+    let (acp_tx, mut acp_rx) = mpsc::unbounded_channel::<acp::SessionNotification>();
+    let session_id = generate_session_id();
+    let output = AcpChannelOutput::new(session_id, acp_tx);
+    let mut renderer = CliAcpRenderer::new(std::io::stdout());
+
+    let mut loop_config = CodingAgentConfig::default();
+    loop_config.verify_completion = config.verify_completion;
+    adjutant.set_coding_agent_config(loop_config);
+
+    let Some(token_tx) = output.token_sender() else {
+        return AutopilotResult::Error("Failed to create token stream".to_string());
+    };
+    let acp_sender = output.acp_sender();
+
+    let mut exec_fut = Box::pin(adjutant.execute_streaming(&task, token_tx, acp_sender));
+    let result = loop {
+        tokio::select! {
+            res = &mut exec_fut => {
+                break res;
+            }
+            maybe = acp_rx.recv() => {
+                if let Some(notification) = maybe {
+                    renderer.handle_notification(notification);
+                }
+            }
+            _ = tokio::time::sleep(Duration::from_millis(200)) => {
+                if interrupt_flag.load(Ordering::Relaxed) {
+                    return AutopilotResult::UserInterrupted { iterations: 0 };
+                }
+            }
+        }
+    };
+
+    while let Ok(notification) = acp_rx.try_recv() {
+        renderer.handle_notification(notification);
+    }
+    renderer.finish();
+
+    match result {
+        Ok(task_result) => {
+            if task_result.success {
+                AutopilotResult::Success(task_result)
+            } else {
+                AutopilotResult::Failed(task_result)
+            }
+        }
+        Err(e) => AutopilotResult::Error(e.to_string()),
+    }
 }
 
 fn print_autopilot_result(result: &AutopilotResult) {
