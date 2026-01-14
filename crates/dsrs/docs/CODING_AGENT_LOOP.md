@@ -375,7 +375,7 @@ If you are making CODING_AGENT_LOOP real in the **Autopilot UI**, these are the 
 
 * **Loop entry + backend routing:** `crates/autopilot/src/app/autopilot/handler.rs`
   * `submit_autopilot_prompt()` builds OANIX context and chooses **Codex** vs **Adjutant**.
-  * The CODING_AGENT_LOOP spec only applies to the Adjutant path today; Codex uses app-server.
+  * The CODING_AGENT_LOOP spec only applies to the Adjutant path today; Autopilot now **forces Adjutant** for autonomous execution (backend selection is chat-only).
   * New plan/tool/verification events should be emitted through ACP and mapped here.
 
 * **Loop type re-exports:** `crates/autopilot/src/autopilot_loop.rs`
@@ -439,3 +439,4 @@ That’s the core loop. Everything else (skills, UI, multi-agent, marketplace jo
 - 2026-01-14: Wired coding loop into Adjutant execution paths and added OpenAgents paths helper for bundle storage.
 - 2026-01-14: Updated LM provider priority to prefer OpenAI Responses for signature inference.
 - 2026-01-14: Fixed CODING_AGENT_LOOP compile errors (Predictor trait import, LM builder ordering).
+- 2026-01-14: Forced Autopilot to always route autonomous execution through Adjutant (Codex backend selection is chat-only).
