@@ -48,19 +48,19 @@ We need canonical rules for what is traced where, and what must be redacted befo
 | **C: Published/external** | Swarm, public logs | Strict | Hashes only, redacted |
 
 **Layer A (Internal callbacks):**
-- `DspyCallback` trait methods receive full data
+- **ADR-0017.R3** — `DspyCallback` trait methods receive full data (no redaction required)
 - Used for HUD streaming, debugging, cost tracking
 - Never leaves the process boundary
 
 **Layer B (Local REPLAY.jsonl):**
 - Stored at `${OPENAGENTS_HOME}/sessions/{session_id}/REPLAY.jsonl`
-- Includes full `params` field (for replay/debugging) AND `params_hash`
+- **ADR-0017.R4** — Includes full `params` field (for replay/debugging) AND `params_hash`
 - User-controlled; not published without explicit action
 
 **Layer C (Published/external):**
 - Produced by export/publish pipeline
-- MUST apply privacy policy redaction (see ADR-0016)
-- `params` and `output` fields replaced with hashes only
+- **ADR-0017.R5** — `params` and `output` fields MUST be removed; keep only hashes
+- **ADR-0017.R7** — MUST apply privacy policy redaction (see ADR-0016)
 
 ### Callbacks vs Replay events (Normative)
 
@@ -93,9 +93,9 @@ Callbacks do NOT emit ToolCall/ToolResult. Those are replay events emitted by th
 
 Per `crates/dsrs/src/callbacks.rs`:
 
-1. Callbacks MUST be `Send + Sync`.
+1. **ADR-0017.R1** — Callbacks MUST be `Send + Sync`.
 2. Callbacks SHOULD be non-blocking (use channels for async work).
-3. Callback failures MUST NOT crash execution.
+3. **ADR-0017.R2** — Callback failures MUST NOT crash execution.
 4. Multiple callbacks compose via `CompositeCallback`.
 
 ### Built-in callbacks
@@ -115,12 +115,12 @@ Defined in `crates/dsrs/src/core/lm.rs` (canonical). This ADR does not redefine 
 
 When producing Layer C (external) output:
 
-| Field | Redaction Rule |
-|-------|----------------|
-| `params` | Remove entirely; keep only `params_hash` |
-| `output` | Remove entirely; keep only `output_hash` |
-| File paths | Apply active privacy policy (ADR-0016) |
-| API keys/tokens | Never emit; strip from all fields |
+| Field | Redaction Rule | Rule ID |
+|-------|----------------|---------|
+| `params` | Remove entirely; keep only `params_hash` | ADR-0017.R5 |
+| `output` | Remove entirely; keep only `output_hash` | ADR-0017.R5 |
+| File paths | Apply active privacy policy (ADR-0016) | ADR-0017.R7 |
+| API keys/tokens | Never emit; strip from all fields | **ADR-0017.R6** |
 
 ## Scope
 
@@ -167,6 +167,23 @@ Backward compatibility:
 1. **Single trace format for all layers** — rejected (privacy risk for external).
 2. **Callbacks emit ToolCall/ToolResult** — rejected (conflates two systems).
 3. **Never store full params** — rejected (breaks local debugging/replay).
+
+## Compliance
+
+| Rule ID | Enforced by test(s) | Status |
+|---------|---------------------|--------|
+| ADR-0017.R1 | `crates/dsrs/tests/adr_0017_telemetry.rs::test_adr_0017_r1_callbacks_send_sync` | ✅ Pass |
+| ADR-0017.R1 | `crates/dsrs/tests/adr_0017_telemetry.rs::test_adr_0017_r1_callbacks_across_threads` | ✅ Pass |
+| ADR-0017.R2 | `crates/dsrs/tests/adr_0017_telemetry.rs::test_adr_0017_r2_callback_failures_isolated` | ✅ Pass |
+| ADR-0017.R2 | `crates/dsrs/tests/adr_0017_telemetry.rs::test_adr_0017_r2_error_results_handled` | ✅ Pass |
+| ADR-0017.R3 | `crates/dsrs/tests/adr_0017_telemetry.rs::test_adr_0017_r3_layer_a_full_data_access` | ✅ Pass |
+| ADR-0017.R3 | `crates/dsrs/tests/adr_0017_telemetry.rs::test_adr_0017_r3_callback_event_rich_data` | ✅ Pass |
+| ADR-0017.R4 | `crates/dsrs/tests/adr_0017_telemetry.rs::test_adr_0017_r4_layer_b_includes_full_params` | ⏳ Ignored |
+| ADR-0017.R5 | `crates/dsrs/tests/adr_0017_telemetry.rs::test_adr_0017_r5_layer_c_hashes_only` | ⏳ Ignored |
+| ADR-0017.R6 | `crates/dsrs/tests/adr_0017_telemetry.rs::test_adr_0017_r6_no_api_keys_in_layer_c` | ⏳ Ignored |
+| ADR-0017.R7 | `crates/dsrs/tests/adr_0017_telemetry.rs::test_adr_0017_r7_layer_c_applies_privacy_policy` | ⏳ Ignored |
+
+**Note:** R4-R7 tests are ignored pending REPLAY.jsonl and Layer C export implementation.
 
 ## References
 

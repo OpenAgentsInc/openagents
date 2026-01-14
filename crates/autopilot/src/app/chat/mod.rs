@@ -9,4 +9,4 @@ pub(crate) use layout::{
 };
 pub(crate) use message::{ChatMessage, MessageMetadata, MessageRole};
 pub(crate) use selection::{ChatSelection, ChatSelectionPoint};
-pub(crate) use state::ChatState;
+pub(crate) use state::{ChatState, InlineIssueSelector};

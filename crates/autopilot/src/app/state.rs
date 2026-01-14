@@ -21,7 +21,7 @@ use crate::app::config::AgentSelection;
 use crate::app::config::SettingsState;
 use crate::app::dspy::DspyState;
 use crate::app::dvm::DvmState;
-use crate::app::events::ModalState;
+use crate::app::events::{InputFocus, ModalState};
 use crate::app::gateway::GatewayState;
 use crate::app::git::GitState;
 use crate::app::lm_router::LmRouterState;
@@ -62,6 +62,8 @@ pub(crate) struct AppState {
     #[allow(dead_code)]
     pub(crate) last_tick: Instant,
     pub(crate) modal_state: ModalState,
+    /// Input focus state - determines which component receives keyboard input
+    pub(crate) input_focus: InputFocus,
     #[allow(dead_code)]
     pub(crate) panel_layout: PanelLayout,
     pub(crate) left_sidebar_open: bool,

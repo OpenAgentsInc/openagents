@@ -31,49 +31,49 @@ impl AppState {
 
         let mut boot_section_layouts: Vec<BootSectionLayout> = Vec::new();
         if let Some(sections) = &self.chat.boot_sections {
-            // Environment section
-            let env = &sections.environment;
-            if env.active || !env.details.is_empty() || env.status != SectionStatus::Pending {
-                let env_height = if env.expanded && !env.details.is_empty() {
+            // Initialize section
+            let init = &sections.initialize;
+            if init.active || !init.details.is_empty() || init.status != SectionStatus::Pending {
+                let init_height = if init.expanded && !init.details.is_empty() {
                     boot_section_header_height
                         + 4.0
-                        + (env.details.len() as f32 * boot_section_line_height)
+                        + (init.details.len() as f32 * boot_section_line_height)
                 } else {
                     boot_section_header_height
                 };
                 boot_section_layouts.push(BootSectionLayout {
                     y_offset: total_content_height,
-                    height: env_height,
-                    summary: env.summary.clone(),
-                    details: env.details.clone(),
-                    status: env.status,
-                    expanded: env.expanded,
-                    section_id: env.id,
+                    height: init_height,
+                    summary: init.summary.clone(),
+                    details: init.details.clone(),
+                    status: init.status,
+                    expanded: init.expanded,
+                    section_id: init.id,
                 });
-                total_content_height += env_height + boot_section_gap;
+                total_content_height += init_height + boot_section_gap;
             }
 
-            // Issues section
-            let issues = &sections.issues;
-            if issues.active || !issues.details.is_empty() || issues.status != SectionStatus::Pending
+            // Suggest issues section
+            let suggest = &sections.suggest_issues;
+            if suggest.active || !suggest.details.is_empty() || suggest.status != SectionStatus::Pending
             {
-                let issues_height = if issues.expanded && !issues.details.is_empty() {
+                let suggest_height = if suggest.expanded && !suggest.details.is_empty() {
                     boot_section_header_height
                         + 4.0
-                        + (issues.details.len() as f32 * boot_section_line_height)
+                        + (suggest.details.len() as f32 * boot_section_line_height)
                 } else {
                     boot_section_header_height
                 };
                 boot_section_layouts.push(BootSectionLayout {
                     y_offset: total_content_height,
-                    height: issues_height,
-                    summary: issues.summary.clone(),
-                    details: issues.details.clone(),
-                    status: issues.status,
-                    expanded: issues.expanded,
-                    section_id: issues.id,
+                    height: suggest_height,
+                    summary: suggest.summary.clone(),
+                    details: suggest.details.clone(),
+                    status: suggest.status,
+                    expanded: suggest.expanded,
+                    section_id: suggest.id,
                 });
-                total_content_height += issues_height + boot_section_gap;
+                total_content_height += suggest_height + boot_section_gap;
             }
         }
 

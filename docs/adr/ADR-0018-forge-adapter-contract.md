@@ -68,7 +68,7 @@ pub trait ForgeAdapter: Send + Sync {
 
 ### Required operations (Normative)
 
-All Forge Adapters MUST implement:
+**ADR-0018.R1** — All Forge Adapters MUST implement these operations:
 
 | Operation | Description |
 |-----------|-------------|
@@ -82,10 +82,10 @@ All Forge Adapters MUST implement:
 
 When creating a PR, adapters MUST:
 
-1. Include `PR_SUMMARY.md` content in PR description (with truncation if needed)
-2. Reference `session_id` in PR metadata (where supported)
-3. Reference `policy_bundle_id` in PR metadata (where supported)
-4. Link to trajectory via `trajectory_hash` if forge supports it
+1. **ADR-0018.R2** — Include `PR_SUMMARY.md` content in PR description (with truncation if needed)
+2. **ADR-0018.R3** — Reference `session_id` in PR metadata (where supported)
+3. **ADR-0018.R4** — Reference `policy_bundle_id` in PR metadata (where supported)
+4. **ADR-0018.R5** — Link to trajectory via `trajectory_hash` if forge supports it
 5. Preserve verification results in PR description
 
 ### PR truncation rules (Normative)
@@ -93,12 +93,12 @@ When creating a PR, adapters MUST:
 If `PR_SUMMARY.md` exceeds forge max length (e.g., GitHub ~65536 chars):
 
 1. Truncate human-readable summary text
-2. ALWAYS preserve these fields (in metadata or footer):
+2. **ADR-0018.R6** — ALWAYS preserve these fields (in metadata or footer):
    - `session_id`
    - `policy_bundle_id`
    - `trajectory_hash`
    - `verification_passed`
-3. Add truncation notice: `[Summary truncated. Full summary in PR_SUMMARY.md]`
+3. **ADR-0018.R7** — Add truncation notice: `[Summary truncated. Full summary in PR_SUMMARY.md]`
 
 ### Forge capabilities (Illustrative)
 
@@ -126,9 +126,9 @@ pub struct ForgeCapabilities {
 | Bare git | No | No | No | Ad-hoc |
 | NIP-34 | Yes | Yes (npub) | Yes (NIP-57) | Partial |
 
-### Canonical hash field: `trajectory_hash`
+### Canonical hash field: `trajectory_hash` (Normative)
 
-The canonical field name is **`trajectory_hash`** (not `replay_hash`).
+**ADR-0018.R8** — The canonical field name is **`trajectory_hash`** (not `replay_hash`).
 
 This is consistent with:
 - [PROTOCOL_SURFACE.md](../PROTOCOL_SURFACE.md) receipt schema
@@ -228,6 +228,22 @@ Backward compatibility:
 2. **Single GitHub-only adapter** — rejected (limits future forges).
 3. **Generic "post to URL" interface** — rejected (loses structure).
 4. **Use `replay_hash` instead** — rejected (`trajectory_hash` is already canonical).
+
+## Compliance
+
+| Rule ID | Enforced by test(s) | Status |
+|---------|---------------------|--------|
+| ADR-0018.R1 | `crates/adjutant/tests/adr_0018_forge.rs::test_adr_0018_r1_required_operations` | ⏳ Ignored |
+| ADR-0018.R2 | `crates/adjutant/tests/adr_0018_forge.rs::test_adr_0018_r2_pr_includes_summary` | ⏳ Ignored |
+| ADR-0018.R3 | `crates/adjutant/tests/adr_0018_forge.rs::test_adr_0018_r3_session_id_in_metadata` | ⏳ Ignored |
+| ADR-0018.R4 | `crates/adjutant/tests/adr_0018_forge.rs::test_adr_0018_r4_policy_bundle_id_in_metadata` | ⏳ Ignored |
+| ADR-0018.R5 | `crates/adjutant/tests/adr_0018_forge.rs::test_adr_0018_r5_trajectory_hash_link` | ⏳ Ignored |
+| ADR-0018.R6 | `crates/adjutant/tests/adr_0018_forge.rs::test_adr_0018_r6_truncation_preserves_fields` | ✅ Pass |
+| ADR-0018.R7 | `crates/adjutant/tests/adr_0018_forge.rs::test_adr_0018_r7_truncation_adds_notice` | ✅ Pass |
+| ADR-0018.R8 | `crates/adjutant/tests/adr_0018_forge.rs::test_adr_0018_r8_canonical_hash_field_name` | ✅ Pass |
+| ADR-0018.R8 | `crates/adjutant/tests/adr_0018_forge.rs::test_adr_0018_r8_trajectory_hash_in_protocol` | ✅ Pass |
+
+**Note:** R1-R5 tests are ignored pending ForgeAdapter trait implementation.
 
 ## References
 

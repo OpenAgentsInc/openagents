@@ -53,12 +53,12 @@ For exact parameter values (max sizes, context lines, allowed job types), see PR
 
 ### Default behavior (Normative)
 
-1. **Swarm dispatch** MUST apply `private_repo` if no policy is explicitly provided.
-2. `SwarmDispatcher` MUST validate content against the active policy before dispatch.
-3. Policy violations MUST either:
+1. **ADR-0016.R1** — Swarm dispatch MUST apply `private_repo` if no policy is explicitly provided.
+2. **ADR-0016.R2** — `SwarmDispatcher` MUST validate content against the active policy before dispatch.
+3. **ADR-0016.R3** — Policy violations MUST either:
    - (a) Reject the job with an error, OR
    - (b) Auto-redact and proceed **only if** the preset explicitly permits automatic redaction
-4. Callers MUST explicitly opt into `open_source` to disable redaction.
+4. **ADR-0016.R4** — Callers MUST explicitly opt into `open_source` to disable redaction.
 
 ### Redaction modes
 
@@ -88,9 +88,9 @@ Trust tiers for providers are defined in:
 
 This ADR only specifies that **privacy policy MAY vary by trust tier** — the trust model itself is defined elsewhere.
 
-### Policy violations
+### Policy violations (Normative)
 
-Per `crates/dsrs/src/privacy/policy.rs`:
+**ADR-0016.R5** — The `PolicyViolation` enum variants are stable. Per `crates/dsrs/src/privacy/policy.rs`:
 
 ```rust
 pub enum PolicyViolation {
@@ -148,6 +148,20 @@ Backward compatibility:
 2. **Default to `open_source`** — rejected (unsafe for private repos).
 3. **Default to `paranoid`** — rejected (too restrictive for most use cases).
 4. **Make struct Default = private_repo** — rejected (breaks other use cases).
+
+## Compliance
+
+| Rule ID | Enforced by test(s) |
+|---------|---------------------|
+| ADR-0016.R1 | `crates/dsrs/tests/adr_0016_privacy.rs::test_adr_0016_r1_private_repo_preset_properties` |
+| ADR-0016.R1 | `crates/dsrs/tests/adr_0016_privacy.rs::test_adr_0016_r1_open_source_is_permissive` |
+| ADR-0016.R2 | `crates/dsrs/tests/adr_0016_privacy.rs::test_adr_0016_r2_content_validation_size_limit` |
+| ADR-0016.R2 | `crates/dsrs/tests/adr_0016_privacy.rs::test_adr_0016_r2_content_validation_file_paths` |
+| ADR-0016.R2 | `crates/dsrs/tests/adr_0016_privacy.rs::test_adr_0016_r2_job_type_allowlist` |
+| ADR-0016.R3 | `crates/dsrs/tests/adr_0016_privacy.rs::test_adr_0016_r3_violations_reject` |
+| ADR-0016.R4 | `crates/dsrs/tests/adr_0016_privacy.rs::test_adr_0016_r4_explicit_opt_in_for_no_redaction` |
+| ADR-0016.R5 | `crates/dsrs/tests/adr_0016_privacy.rs::test_adr_0016_r5_policy_violation_variants_stable` |
+| ADR-0016.R5 | `crates/dsrs/tests/adr_0016_privacy.rs::test_adr_0016_r5_policy_violation_display` |
 
 ## References
 
