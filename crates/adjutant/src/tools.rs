@@ -3,6 +3,8 @@
 //! These are the core tools Adjutant uses to do work.
 
 use crate::AdjutantError;
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use walkdir::WalkDir;
@@ -33,6 +35,29 @@ pub struct ToolOutput {
     pub error: Option<String>,
 }
 
+/// Tool schema definition for LLM tool selection.
+#[derive(Debug, Clone, Serialize)]
+pub struct ToolSchema {
+    pub name: String,
+    pub description: String,
+    pub parameters: Value,
+}
+
+/// Side effect record for receipts.
+#[derive(Debug, Clone, Serialize)]
+pub struct SideEffect {
+    pub effect_type: String,
+    pub path: Option<String>,
+}
+
+/// Tool execution result with side effects and optional exit code.
+#[derive(Debug, Clone)]
+pub struct ToolExecutionResult {
+    pub output: ToolOutput,
+    pub exit_code: Option<i32>,
+    pub side_effects: Vec<SideEffect>,
+}
+
 impl ToolOutput {
     pub fn success(content: impl Into<String>) -> Self {
         Self {
@@ -49,6 +74,40 @@ impl ToolOutput {
             error: Some(error.into()),
         }
     }
+}
+
+#[derive(Debug, Deserialize)]
+struct ReadParams {
+    path: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct EditParams {
+    path: String,
+    old_string: String,
+    new_string: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct WriteParams {
+    path: String,
+    content: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct BashParams {
+    command: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct GlobParams {
+    pattern: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct GrepParams {
+    pattern: String,
+    path: Option<String>,
 }
 
 /// Registry of available tools.
@@ -69,6 +128,213 @@ impl ToolRegistry {
     /// Get the workspace root path.
     pub fn workspace_root(&self) -> &Path {
         &self.workspace_root
+    }
+
+    /// Return tool schemas for LLM tool selection.
+    pub fn tool_schemas(&self) -> Vec<ToolSchema> {
+        vec![
+            ToolSchema {
+                name: "read_file".to_string(),
+                description: "Read the contents of a file".to_string(),
+                parameters: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "path": {
+                            "type": "string",
+                            "description": "Path to the file to read (relative to workspace root)"
+                        }
+                    },
+                    "required": ["path"]
+                }),
+            },
+            ToolSchema {
+                name: "edit_file".to_string(),
+                description: "Edit a file by replacing old_string with new_string. The old_string must be unique.".to_string(),
+                parameters: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "path": {
+                            "type": "string",
+                            "description": "Path to the file to edit"
+                        },
+                        "old_string": {
+                            "type": "string",
+                            "description": "The exact string to find and replace (must be unique)"
+                        },
+                        "new_string": {
+                            "type": "string",
+                            "description": "The string to replace it with"
+                        }
+                    },
+                    "required": ["path", "old_string", "new_string"]
+                }),
+            },
+            ToolSchema {
+                name: "write_file".to_string(),
+                description: "Write content to a new file (creates parent directories if needed)".to_string(),
+                parameters: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "path": {
+                            "type": "string",
+                            "description": "Path to the file to write"
+                        },
+                        "content": {
+                            "type": "string",
+                            "description": "The content to write to the file"
+                        }
+                    },
+                    "required": ["path", "content"]
+                }),
+            },
+            ToolSchema {
+                name: "bash".to_string(),
+                description: "Execute a bash command in the workspace directory".to_string(),
+                parameters: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "command": {
+                            "type": "string",
+                            "description": "The bash command to execute"
+                        }
+                    },
+                    "required": ["command"]
+                }),
+            },
+            ToolSchema {
+                name: "glob".to_string(),
+                description: "Find files matching a glob pattern".to_string(),
+                parameters: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "pattern": {
+                            "type": "string",
+                            "description": "The glob pattern to match files"
+                        }
+                    },
+                    "required": ["pattern"]
+                }),
+            },
+            ToolSchema {
+                name: "grep".to_string(),
+                description: "Search for a pattern in files using ripgrep".to_string(),
+                parameters: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "pattern": {
+                            "type": "string",
+                            "description": "The regex pattern to search for"
+                        },
+                        "path": {
+                            "type": "string",
+                            "description": "Optional path to search in (defaults to workspace root)"
+                        }
+                    },
+                    "required": ["pattern"]
+                }),
+            },
+        ]
+    }
+
+    /// Execute a tool by name with JSON params (validated by parsing).
+    pub async fn execute_named(
+        &self,
+        tool_name: &str,
+        params: &Value,
+    ) -> Result<ToolExecutionResult, AdjutantError> {
+        match tool_name {
+            "read_file" => {
+                let args: ReadParams = serde_json::from_value(params.clone()).map_err(|e| {
+                    AdjutantError::ToolError(format!("Invalid read_file params: {}", e))
+                })?;
+                let output = self.read(Path::new(&args.path)).await?;
+                Ok(ToolExecutionResult {
+                    output,
+                    exit_code: None,
+                    side_effects: Vec::new(),
+                })
+            }
+            "edit_file" => {
+                let args: EditParams = serde_json::from_value(params.clone()).map_err(|e| {
+                    AdjutantError::ToolError(format!("Invalid edit_file params: {}", e))
+                })?;
+                let output = self
+                    .edit(Path::new(&args.path), &args.old_string, &args.new_string)
+                    .await?;
+                let side_effects = if output.success {
+                    vec![SideEffect {
+                        effect_type: "file_modified".to_string(),
+                        path: Some(args.path),
+                    }]
+                } else {
+                    Vec::new()
+                };
+                Ok(ToolExecutionResult {
+                    output,
+                    exit_code: None,
+                    side_effects,
+                })
+            }
+            "write_file" => {
+                let args: WriteParams = serde_json::from_value(params.clone()).map_err(|e| {
+                    AdjutantError::ToolError(format!("Invalid write_file params: {}", e))
+                })?;
+                let output = self.write(Path::new(&args.path), &args.content).await?;
+                let side_effects = if output.success {
+                    vec![SideEffect {
+                        effect_type: "file_modified".to_string(),
+                        path: Some(args.path),
+                    }]
+                } else {
+                    Vec::new()
+                };
+                Ok(ToolExecutionResult {
+                    output,
+                    exit_code: None,
+                    side_effects,
+                })
+            }
+            "bash" => {
+                let args: BashParams = serde_json::from_value(params.clone()).map_err(|e| {
+                    AdjutantError::ToolError(format!("Invalid bash params: {}", e))
+                })?;
+                let output = self.bash(&args.command).await?;
+                let exit_code = if output.success { Some(0) } else { Some(1) };
+                Ok(ToolExecutionResult {
+                    output,
+                    exit_code,
+                    side_effects: Vec::new(),
+                })
+            }
+            "glob" => {
+                let args: GlobParams = serde_json::from_value(params.clone()).map_err(|e| {
+                    AdjutantError::ToolError(format!("Invalid glob params: {}", e))
+                })?;
+                let output = self.glob(&args.pattern).await?;
+                Ok(ToolExecutionResult {
+                    output,
+                    exit_code: None,
+                    side_effects: Vec::new(),
+                })
+            }
+            "grep" => {
+                let args: GrepParams = serde_json::from_value(params.clone()).map_err(|e| {
+                    AdjutantError::ToolError(format!("Invalid grep params: {}", e))
+                })?;
+                let output = self
+                    .grep(&args.pattern, args.path.as_deref().map(Path::new))
+                    .await?;
+                Ok(ToolExecutionResult {
+                    output,
+                    exit_code: None,
+                    side_effects: Vec::new(),
+                })
+            }
+            other => Err(AdjutantError::ToolError(format!(
+                "Unknown tool: {}",
+                other
+            ))),
+        }
     }
 
     /// Read a file's contents.

@@ -24,6 +24,7 @@ issues = { path = "../issues" }
 gateway = { path = "../gateway" }
 dsrs = { path = "../dsrs" }
 dsrs-macros = { path = "../dsrs-macros" }
+protocol = { path = "../protocol" }
 
 # Discovery dependencies (formerly in oanix)
 sysinfo = "0.33"

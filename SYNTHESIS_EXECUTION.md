@@ -104,6 +104,8 @@ Under the hood, Autopilot UI integrates the Codex app-server as its single backe
 
 Autopilot UI also integrates the Adjutant execution engine for autonomous "autopilot" mode. When you give it a task, Adjutant uses DSPy-optimized decision making to classify complexity, choose the right execution path (Codex app-server or RLM), and iterate until the task is complete. The UI provides real-time visibility into what the agent is doing, with the ability to interrupt, guide, or take over at any point.
 
+**Execution note:** DSPy issue selection + bootloading decide *what* to work on; the actual execution is handled by the CODING_AGENT_LOOP in Adjutant (typed signatures for context, planning, tool calls, and tool results plus runtime enforcement and replay/receipt emission). This loop is the core engine behind Autopilot’s autonomous work.
+
 ```bash
 cargo run -p autopilot
 ```
