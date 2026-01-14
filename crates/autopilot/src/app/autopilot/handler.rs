@@ -21,13 +21,12 @@ pub(crate) fn submit_autopilot_prompt(
 ) {
     tracing::info!("Autopilot mode: starting autonomous loop");
 
-    // Check user's selected backend (from /backend command)
+    // Autopilot always routes execution to Adjutant; backend selection is for chat only.
     let selected_backend = state.agent_selection.agent;
-    let use_codex = matches!(selected_backend, AgentKindConfig::Codex);
+    let use_codex = false;
     tracing::info!(
-        "Autopilot: user selected backend={:?}, use_codex={}",
-        selected_backend,
-        use_codex
+        "Autopilot: forcing Adjutant execution loop (selected backend={:?})",
+        selected_backend
     );
 
     // Check which LM provider will be used (for logging only)
