@@ -227,6 +227,8 @@ pub struct Adjutant {
     decision_lm: Option<Arc<LM>>,
     /// Training data collector for decision pipelines
     decision_training: Option<dspy::TrainingCollector>,
+    /// Configuration for the coding agent loop runtime
+    coding_agent_config: coding_agent_loop::CodingAgentConfig,
     /// Session store for decision recording (optional)
     session_store: Option<Arc<Mutex<dspy::SessionStore>>>,
 }
@@ -250,6 +252,7 @@ impl Adjutant {
             conversation_history: Vec::new(),
             decision_lm: None,
             decision_training: dspy::TrainingCollector::new(true).ok(),
+            coding_agent_config: coding_agent_loop::CodingAgentConfig::default(),
             execution_backend: ExecutionBackend::Auto,
             session_store: None,
         })
@@ -288,6 +291,14 @@ impl Adjutant {
     /// Set preferred execution backend.
     pub fn set_execution_backend(&mut self, backend: ExecutionBackend) {
         self.execution_backend = backend;
+    }
+
+    /// Set the coding agent loop configuration.
+    pub fn set_coding_agent_config(
+        &mut self,
+        config: coding_agent_loop::CodingAgentConfig,
+    ) {
+        self.coding_agent_config = config;
     }
 
     /// Attach a session store for decision recording.
@@ -700,7 +711,7 @@ impl Adjutant {
                 &plan,
                 decision_lm,
                 Some(ui),
-                crate::coding_agent_loop::CodingAgentConfig::default(),
+                self.coding_agent_config.clone(),
             )
             .await
             {
