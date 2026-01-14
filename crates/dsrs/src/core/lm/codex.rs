@@ -204,10 +204,11 @@ impl CodexCompletionModel {
             .ok_or_else(|| CompletionError::ProviderError("Codex client not initialized".to_string()))?;
 
         // Start a turn with the prompt
+        // TEMP: Force gpt-5.1-codex-mini model override
         let turn_params = TurnStartParams {
             thread_id: state.thread_id.clone(),
             input: vec![UserInput::Text { text: prompt }],
-            model: None,
+            model: Some("gpt-5.1-codex-mini".to_string()),
             effort: None,
             summary: None,
             approval_policy: None,
@@ -283,10 +284,11 @@ impl super::client_registry::CompletionProvider for CodexCompletionModel {
             .ok_or_else(|| CompletionError::ProviderError("Codex client not initialized".to_string()))?;
 
         // Start a turn with the prompt
+        // TEMP: Force gpt-5.1-codex-mini model override
         let turn_params = TurnStartParams {
             thread_id: state.thread_id.clone(),
             input: vec![UserInput::Text { text: prompt }],
-            model: None,
+            model: Some("gpt-5.1-codex-mini".to_string()),
             effort: None,
             summary: None,
             approval_policy: None,
