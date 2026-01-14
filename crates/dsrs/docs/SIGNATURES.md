@@ -332,6 +332,19 @@ pub enum Complexity {
 - Autopilot's `PlanningSignature.implementation_steps` → `PlanIR.steps`
 - Both emit the same IR, downstream doesn't care which planner ran
 
+### CODING_AGENT_LOOP Signatures (Additions)
+
+*Italicized items are CODING_AGENT_LOOP additions or wiring targets.*
+
+- *ContextSelectionSignature* — inputs: session summary, recent turns, budgets, privacy; outputs: context plan + confidence.
+- *PlanningSignature (PlanIR)* — emits PlanIR with stable step IDs + verification strategy; unify with existing planners.
+- *ToolCallSignature* — single decision point for tool + params + expected outcome; requires loop wiring.
+- *ToolResultSignature* — interprets tool output + emits `step_utility`; requires loop wiring.
+- *CompactionSummarySignature* — structured summaries for long sessions (compaction).
+- *BranchSummarySignature* — structured summaries when navigating session branches.
+- *ModelSelectionSignature* — lane/model selection under budget + privacy.
+- *SkillMatchSignature* — selects which skill files to load for current task.
+
 ### ToolCallSignature (Merged Execution)
 
 Replaces the redundant `ExecutionStrategySignature` + `ToolSelectionSignature` pair.
@@ -1136,14 +1149,16 @@ These signatures must be wired end-to-end for the MVP to function:
 
 | # | Signature | Why Critical | Status |
 |---|-----------|--------------|--------|
-| 1 | **ToolCallSignature** | Single decision point for tool selection + params | Spec only |
-| 2 | **ToolResultSignature** | Learning signal (step_utility) for MIPRO | Spec only |
-| 3 | **SubtaskPlanningSignature** | Emits PlanIR for all task execution | Implemented |
-| 4 | **SubtaskExecutionSignature** | Executes atomic plan steps | Implemented |
-| 5 | **ResultSynthesisSignature** | Produces final patch summary (PR_SUMMARY.md) | Implemented |
-| 6 | **IssueValidationSignature** | Gates stale/invalid work | Implemented |
-| 7 | **VerificationSignature** | Computes verification_delta metric | Spec only |
-| 8 | **ToolStepUtilitySignature** | Outcome-coupled scoring per tool call | Implemented |
+| 1 | *ContextSelectionSignature* | Selects context slice for each turn | Spec only |
+| 2 | *PlanningSignature (PlanIR)* | Emits plan with stable step IDs | Spec only |
+| 3 | **ToolCallSignature** | Single decision point for tool selection + params | Spec only |
+| 4 | **ToolResultSignature** | Learning signal (step_utility) for MIPRO | Spec only |
+| 5 | **SubtaskPlanningSignature** | Emits PlanIR for all task execution | Implemented |
+| 6 | **SubtaskExecutionSignature** | Executes atomic plan steps | Implemented |
+| 7 | **ResultSynthesisSignature** | Produces final patch summary (PR_SUMMARY.md) | Implemented |
+| 8 | **IssueValidationSignature** | Gates stale/invalid work | Implemented |
+| 9 | **VerificationSignature** | Computes verification_delta metric | Spec only |
+| 10 | **ToolStepUtilitySignature** | Outcome-coupled scoring per tool call | Implemented |
 
 **MVP Critical Path:** Issue → Plan → (ToolCall → Execute → ToolResult)* → Synthesis → Patch Summary + RECEIPT.json
 
@@ -1155,6 +1170,12 @@ Quick reference for all signatures by category:
 
 | Category | Signature | Location | Status |
 |----------|-----------|----------|--------|
+| **Coding Agent Loop** | *ContextSelectionSignature* | Spec in `crates/dsrs/docs/CODING_AGENT_LOOP.md` | Spec only |
+|  | *PlanningSignature (PlanIR)* | Spec in `crates/dsrs/docs/CODING_AGENT_LOOP.md` | Spec only |
+|  | *CompactionSummarySignature* | Spec in `crates/dsrs/docs/CODING_AGENT_LOOP.md` | Spec only |
+|  | *BranchSummarySignature* | Spec in `crates/dsrs/docs/CODING_AGENT_LOOP.md` | Spec only |
+|  | *ModelSelectionSignature* | Spec in `crates/dsrs/docs/CODING_AGENT_LOOP.md` | Spec only |
+|  | *SkillMatchSignature* | Spec in `crates/dsrs/docs/CODING_AGENT_LOOP.md` | Spec only |
 | **Retrieval** | QueryComposerSignature | Spec in this doc | Spec only |
 | | RetrievalRouterSignature | Spec in this doc | Spec only |
 | | CandidateRerankSignature | Spec in this doc | Spec only |

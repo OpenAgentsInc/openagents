@@ -25,6 +25,18 @@ DSPy treats tools as **first-class capabilities**, not hacks glued onto prompts.
 
 ---
 
+## CODING_AGENT_LOOP Tool Requirements (Additions)
+
+*Italicized items are CODING_AGENT_LOOP additions or wiring targets.*
+
+- *ToolCallSignature output is the single source of truth for tool name + params (no duplicate tool selection).*
+- *Runtime validates tool params against JSON schema before execution and records ToolParamsSchemaMetric.*
+- *Tool results are bounded for display, but hashes are computed over full output for receipts.*
+- *Tool events must carry step context (step_id) into REPLAY/RECEIPT emission for traceability.*
+- *Privacy defaults are enforced before any swarm dispatch or external emission.*
+
+---
+
 ## RLM Tools
 
 Tools for Recursive Language Model operations with provenance tracking.
@@ -541,6 +553,8 @@ User Request
 ```
 
 ---
+
+**CODING_AGENT_LOOP note:** Insert runtime validation + receipt emission between ToolCallSignature output and tool execution, and emit ToolCall/ToolResult replay events with hashes and step_id.
 
 ## Tool Schema Validation
 
