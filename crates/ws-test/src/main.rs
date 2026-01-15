@@ -149,9 +149,11 @@ async fn main() -> Result<()> {
         .context("invalid bind address")?;
     let listener = TcpListener::bind(addr).await.context("failed to bind")?;
 
-    let tls_acceptor = if let (Some(cert), Some(key)) = (&args.tls_cert, &args.tls_key) {
+    let (tls_cert, tls_key) = resolve_tls_paths(args.tls_cert, args.tls_key);
+    let tls_acceptor = if let (Some(cert), Some(key)) = (tls_cert.as_ref(), tls_key.as_ref()) {
         Some(load_tls_acceptor(cert, key).context("failed to load TLS config")?)
     } else {
+        warn!("tls disabled: no certificate/key configured");
         None
     };
 
@@ -592,6 +594,100 @@ fn generate_socket_id() -> String {
     let left: u32 = rng.random_range(100..=9_999);
     let right: u32 = rng.random_range(100..=9_999_999);
     format!("{}.{}", left, right)
+}
+
+fn resolve_tls_paths(
+    cert: Option<PathBuf>,
+    key: Option<PathBuf>,
+) -> (Option<PathBuf>, Option<PathBuf>) {
+    if cert.is_some() && key.is_some() {
+        return (cert, key);
+    }
+
+    if let Some((default_cert, default_key)) = default_tls_paths() {
+        info!(
+            "using default TLS cert/key at {} and {}",
+            default_cert.display(),
+            default_key.display()
+        );
+        return (Some(default_cert), Some(default_key));
+    }
+
+    if let Some((generated_cert, generated_key)) = generate_self_signed_paths() {
+        info!(
+            "using generated TLS cert/key at {} and {}",
+            generated_cert.display(),
+            generated_key.display()
+        );
+        return (Some(generated_cert), Some(generated_key));
+    }
+
+    (None, None)
+}
+
+fn default_tls_paths() -> Option<(PathBuf, PathBuf)> {
+    let home = std::env::var("HOME").ok()?;
+    let base = PathBuf::from(home)
+        .join("Library")
+        .join("Application Support")
+        .join("Herd")
+        .join("config")
+        .join("valet")
+        .join("Certificates");
+    let cert = base.join("hyperion.test.crt");
+    let key = base.join("hyperion.test.key");
+    if cert.exists() && key.exists() {
+        return Some((cert, key));
+    }
+
+    None
+}
+
+fn generate_self_signed_paths() -> Option<(PathBuf, PathBuf)> {
+    let home = std::env::var("HOME").ok()?;
+    let base = PathBuf::from(home).join(".openagents").join("ws-test").join("certs");
+    let cert = base.join("ws-test.local.crt");
+    let key = base.join("ws-test.local.key");
+
+    if cert.exists() && key.exists() {
+        return Some((cert, key));
+    }
+
+    if let Err(err) = std::fs::create_dir_all(&base) {
+        warn!(error = %err, "failed to create cert directory");
+        return None;
+    }
+
+    if let Err(err) = generate_self_signed_cert(&cert, &key) {
+        warn!(error = %err, "failed to generate self-signed cert");
+        return None;
+    }
+
+    warn!(
+        "generated self-signed cert; trust it to avoid TLS errors: {}",
+        cert.display()
+    );
+
+    Some((cert, key))
+}
+
+fn generate_self_signed_cert(cert_path: &PathBuf, key_path: &PathBuf) -> Result<()> {
+    let subject_alt_names = vec![
+        "hyperion.test".to_string(),
+        "localhost".to_string(),
+        "127.0.0.1".to_string(),
+        "::1".to_string(),
+    ];
+    let rcgen::CertifiedKey { cert, key_pair } =
+        rcgen::generate_simple_self_signed(subject_alt_names).context("create self-signed cert")?;
+
+    std::fs::write(cert_path, cert.pem()).with_context(|| {
+        format!("write cert {}", cert_path.display())
+    })?;
+    std::fs::write(key_path, key_pair.serialize_pem())
+        .with_context(|| format!("write key {}", key_path.display()))?;
+
+    Ok(())
 }
 
 fn load_tls_acceptor(cert_path: &PathBuf, key_path: &PathBuf) -> Result<TlsAcceptor> {
