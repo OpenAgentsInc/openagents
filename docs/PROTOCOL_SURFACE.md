@@ -47,6 +47,26 @@ OpenAgents uses Nostr event kinds for job coordination and agent lifecycle.
 
 ---
 
+## Local UI Bridge (Pylon)
+
+The Pylon UI bridge is **local-only** and is used by browser-based UIs to
+discover capabilities. It is not a Nostr protocol surface.
+
+**Endpoint:**
+- `wss://127.0.0.1:8081/app/{app_key}`
+- Default `app_key`: `local-key`
+
+**Channel:**
+- `pylon.system`
+
+**Events:**
+- `pylon.capabilities` — Capability snapshot (JSON payload)
+- `client-pylon.discover` — Request a capability refresh
+
+The bridge uses the Pusher protocol so standard Echo/Pusher clients can connect.
+
+---
+
 ## Job Schema Surface
 
 Every job has a typed schema specifying inputs, outputs, and verification mode.

@@ -21,6 +21,7 @@ pub mod daemon;
 pub mod db;
 pub mod host;
 pub mod jobs;
+pub mod local_bridge;
 pub mod provider;
 
 pub use config::PylonConfig;
