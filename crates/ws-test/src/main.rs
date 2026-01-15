@@ -104,6 +104,7 @@ impl AllowedOrigins {
 struct ClientMessage {
     event: String,
     data: Value,
+    channel: Option<String>,
 }
 
 #[derive(Serialize, Debug)]
@@ -428,7 +429,30 @@ where
             }
         }
         _ => {
-            info!(event = %message.event, "ignoring client event");
+            if message.event.starts_with("client-") {
+                if let Some(channel) = message.channel.clone() {
+                    if subscriptions.contains(&channel) {
+                        let payload = serde_json::json!({
+                            "socket_id": socket_id,
+                            "event": message.event,
+                            "data": message.data,
+                        });
+                        let outbound = OutboundMessage {
+                            event: "local.message".to_string(),
+                            data: payload.to_string(),
+                            channel: Some(channel.clone()),
+                        };
+                        send_outbound(writer, &outbound).await?;
+                        info!(%socket_id, channel = %channel, "client event forwarded");
+                    } else {
+                        warn!(%socket_id, channel = %channel, "client event ignored (not subscribed)");
+                    }
+                } else {
+                    warn!(%socket_id, "client event missing channel");
+                }
+            } else {
+                info!(event = %message.event, "ignoring client event");
+            }
         }
     }
 
