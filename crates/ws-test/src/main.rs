@@ -17,7 +17,7 @@ use tokio_rustls::TlsAcceptor;
 use tokio_tungstenite::tungstenite::handshake::server::{ErrorResponse, Request, Response};
 use tokio_tungstenite::tungstenite::Message;
 use tokio_tungstenite::{accept_hdr_async, WebSocketStream};
-use tracing::{error, info, warn};
+use tracing::{debug, error, info, warn};
 use tracing_subscriber::EnvFilter;
 
 #[derive(Parser, Debug)]
@@ -163,10 +163,14 @@ async fn main() -> Result<()> {
     };
 
     info!(
-        "ws-test listening on {} (tls: {}, app: {})",
+        "ws-test listening on {} (tls: {}, app_id: {}, app_key: {}, tick: {}s, activity_timeout: {}s, origins: {:?})",
         addr,
         tls_acceptor.is_some(),
-        app_config.app_id
+        app_config.app_id,
+        app_config.app_key,
+        args.tick_seconds,
+        app_config.activity_timeout,
+        allowed_origins
     );
 
     loop {
@@ -227,6 +231,7 @@ where
             .headers()
             .get("Origin")
             .and_then(|value| value.to_str().ok());
+        debug!(path = %request.uri(), origin = ?origin, "ws handshake");
         if !allowed_origins.allows(origin) {
             warn!(origin = ?origin, "rejecting websocket due to origin");
             return Err(error_response(403, "origin not allowed"));
@@ -285,6 +290,7 @@ where
         channel: None,
     };
     send_outbound(&mut writer, &established).await?;
+    info!(%socket_id, "pusher connection established");
 
     let mut ticker = interval(Duration::from_secs(tick_seconds));
 
@@ -308,9 +314,10 @@ where
                         channel: Some(channel.clone()),
                     };
                     if let Err(err) = send_outbound(&mut writer, &message).await {
-                        warn!(error = %err, "failed to send tick");
+                        warn!(error = %err, channel = %channel, "failed to send tick");
                         return Ok(());
                     }
+                    debug!(channel = %channel, "sent tick");
                 }
             }
             message = reader.next() => {
@@ -362,13 +369,14 @@ where
     let message: ClientMessage = match serde_json::from_str(payload) {
         Ok(message) => message,
         Err(err) => {
-            warn!(error = %err, "invalid client payload");
+            warn!(error = %err, len = payload.len(), "invalid client payload");
             return Ok(());
         }
     };
 
     match message.event.as_str() {
         "pusher:ping" => {
+            debug!(%socket_id, "received ping");
             let pong = OutboundMessage {
                 event: "pusher:pong".to_string(),
                 data: "{}".to_string(),
@@ -379,14 +387,17 @@ where
         "pusher:subscribe" => {
             if let Some(data) = parse_data_object(message.data) {
                 if let Some(channel) = extract_string(&data, "channel") {
+                    debug!(%socket_id, channel = %channel, "received subscribe");
                     if requires_auth(&channel) {
                         let auth = extract_string(&data, "auth");
                         let channel_data = extract_channel_data(&data);
                         let Some(secret) = app_config.app_secret.as_deref() else {
+                            warn!(%socket_id, channel = %channel, "missing app secret for auth");
                             send_auth_error(writer, "missing app secret").await?;
                             return Ok(());
                         };
                         if !validate_auth(socket_id, &channel, auth.as_deref(), channel_data.as_deref(), &app_config.app_key, secret) {
+                            warn!(%socket_id, channel = %channel, "invalid auth signature");
                             send_auth_error(writer, "invalid auth signature").await?;
                             return Ok(());
                         }
@@ -401,9 +412,10 @@ where
                     let reply = OutboundMessage {
                         event: "pusher_internal:subscription_succeeded".to_string(),
                         data,
-                        channel: Some(channel),
+                        channel: Some(channel.clone()),
                     };
                     send_outbound(writer, &reply).await?;
+                    info!(%socket_id, channel = %channel, "subscription succeeded");
                 }
             }
         }
@@ -411,6 +423,7 @@ where
             if let Some(data) = parse_data_object(message.data) {
                 if let Some(channel) = extract_string(&data, "channel") {
                     subscriptions.remove(&channel);
+                    info!(%socket_id, channel = %channel, "unsubscribed");
                 }
             }
         }
@@ -441,6 +454,7 @@ async fn send_auth_error<S>(
 where
     S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin,
 {
+    warn!(%message, "sending auth error");
     let error_payload = PusherError {
         code: 4009,
         message: message.to_string(),
