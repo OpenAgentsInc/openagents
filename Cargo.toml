@@ -32,6 +32,7 @@ members = [
     "crates/wgpui",
     "crates/protocol",
     "crates/testing",
+    "crates/ws-test",
 ]
 
 [workspace.lints.rust]
