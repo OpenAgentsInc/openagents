@@ -1,6 +1,6 @@
 //! Local WebSocket bridge for browser-based Pylon discovery.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -9,13 +9,17 @@ use std::time::{Duration, Instant};
 use anyhow::{Context, Result};
 use chrono::Utc;
 use codex_client::{
-    AppServerClient, AppServerConfig, ClientInfo, GetAccountParams, is_codex_available,
+    AppServerClient, AppServerConfig, AppServerRequestId, ClientInfo, CommandExecParams,
+    GetAccountParams, ModelListParams, ReviewStartParams, SkillsListParams,
+    ThreadArchiveParams, ThreadListParams, ThreadResumeParams, ThreadStartParams,
+    TurnInterruptParams, TurnStartParams, is_codex_available,
 };
 use futures_util::{SinkExt, StreamExt};
+use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use tokio::net::TcpListener;
-use tokio::sync::{Mutex, watch};
+use tokio::sync::{Mutex, broadcast, watch};
 use tokio::task::JoinHandle;
 use tokio_rustls::TlsAcceptor;
 use tokio_tungstenite::tungstenite::handshake::server::{ErrorResponse, Request, Response};
@@ -33,6 +37,7 @@ const DEFAULT_PORT: u16 = 8081;
 const DEFAULT_ACTIVITY_TIMEOUT: u64 = 120;
 const DEFAULT_CACHE_SECONDS: u64 = 30;
 const SYSTEM_CHANNEL: &str = "pylon.system";
+const CODEX_CHANNEL: &str = "pylon.codex";
 
 #[derive(Clone, Debug)]
 pub struct PylonBridgeInfo {
@@ -102,10 +107,21 @@ impl LocalBridgeHandle {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 struct BridgeState {
     config: LocalBridgeConfig,
     cached: Arc<Mutex<Option<CachedCapabilities>>>,
+    codex: Arc<Mutex<CodexBridgeState>>,
+    codex_tx: broadcast::Sender<OutboundMessage>,
+}
+
+#[derive(Default)]
+struct CodexBridgeState {
+    sessions: HashMap<String, CodexSession>,
+}
+
+struct CodexSession {
+    client: Arc<Mutex<Option<AppServerClient>>>,
 }
 
 #[derive(Clone, Debug)]
@@ -121,7 +137,7 @@ struct ClientMessage {
     channel: Option<String>,
 }
 
-#[derive(Serialize, Debug)]
+#[derive(Clone, Serialize, Debug)]
 struct OutboundMessage {
     event: String,
     data: String,
@@ -214,9 +230,12 @@ async fn serve_bridge(config: LocalBridgeConfig, mut shutdown_rx: watch::Receive
         None
     };
 
+    let (codex_tx, _) = broadcast::channel(256);
     let state = BridgeState {
         config,
         cached: Arc::new(Mutex::new(None)),
+        codex: Arc::new(Mutex::new(CodexBridgeState::default())),
+        codex_tx,
     };
 
     info!(
@@ -305,6 +324,7 @@ where
     let socket_id = generate_socket_id();
     let (mut writer, mut reader) = ws_stream.split();
     let mut subscriptions: HashSet<String> = HashSet::new();
+    let mut codex_rx = state.codex_tx.subscribe();
 
     let established = OutboundMessage {
         event: "pusher:connection_established".to_string(),
@@ -318,34 +338,55 @@ where
     send_outbound(&mut writer, &established).await?;
 
     loop {
-        let Some(message) = reader.next().await else {
-            break;
-        };
-        match message {
-            Ok(Message::Text(text)) => {
-                if let Err(err) = handle_client_message(
-                    &text,
-                    &socket_id,
-                    &state,
-                    &mut subscriptions,
-                    &mut writer,
-                )
-                .await
-                {
-                    warn!(error = %err, "bridge message handling failed");
+        tokio::select! {
+            message = reader.next() => {
+                let Some(message) = message else {
+                    break;
+                };
+                match message {
+                    Ok(Message::Text(text)) => {
+                        if let Err(err) = handle_client_message(
+                            &text,
+                            &socket_id,
+                            &state,
+                            &mut subscriptions,
+                            &mut writer,
+                        )
+                        .await
+                        {
+                            warn!(error = %err, "bridge message handling failed");
+                        }
+                    }
+                    Ok(Message::Ping(payload)) => {
+                        writer.send(Message::Pong(payload)).await?;
+                    }
+                    Ok(Message::Close(frame)) => {
+                        debug!(?frame, "bridge client closed websocket");
+                        break;
+                    }
+                    Ok(_) => {}
+                    Err(err) => {
+                        warn!(error = %err, "bridge websocket error");
+                        break;
+                    }
                 }
             }
-            Ok(Message::Ping(payload)) => {
-                writer.send(Message::Pong(payload)).await?;
-            }
-            Ok(Message::Close(frame)) => {
-                debug!(?frame, "bridge client closed websocket");
-                break;
-            }
-            Ok(_) => {}
-            Err(err) => {
-                warn!(error = %err, "bridge websocket error");
-                break;
+            message = codex_rx.recv() => {
+                let message = match message {
+                    Ok(message) => message,
+                    Err(broadcast::error::RecvError::Closed) => continue,
+                    Err(broadcast::error::RecvError::Lagged(_)) => continue,
+                };
+
+                if let Some(channel) = &message.channel {
+                    if !subscriptions.contains(channel) {
+                        continue;
+                    }
+                }
+
+                if let Err(err) = send_outbound(&mut writer, &message).await {
+                    warn!(error = %err, "bridge failed to forward codex event");
+                }
             }
         }
     }
@@ -407,20 +448,535 @@ where
                 }
             }
         }
-        _ => {
-            if message.event == "client-pylon.discover" {
-                let channel = message
-                    .channel
-                    .clone()
-                    .unwrap_or_else(|| SYSTEM_CHANNEL.to_string());
-                if subscriptions.contains(&channel) {
-                    send_capabilities(state, writer, &channel).await?;
-                }
+        "client-pylon.discover" => {
+            let channel = message
+                .channel
+                .clone()
+                .unwrap_or_else(|| SYSTEM_CHANNEL.to_string());
+            if subscriptions.contains(&channel) {
+                send_capabilities(state, writer, &channel).await?;
             }
+        }
+        "client-pylon.ping" => {
+            let channel = message
+                .channel
+                .clone()
+                .unwrap_or_else(|| SYSTEM_CHANNEL.to_string());
+            if subscriptions.contains(&channel) {
+                let reply = OutboundMessage {
+                    event: "pylon.system.pong".to_string(),
+                    data: serde_json::json!({
+                        "timestamp": Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true)
+                    })
+                    .to_string(),
+                    channel: Some(channel),
+                };
+                send_outbound(writer, &reply).await?;
+            }
+        }
+        "client-codex.connect" => {
+            let state = state.clone();
+            tokio::spawn(async move {
+                if let Err(err) = handle_codex_connect(&state, message.data).await {
+                    warn!(error = %err, "bridge codex connect failed");
+                }
+            });
+        }
+        "client-codex.disconnect" => {
+            let state = state.clone();
+            tokio::spawn(async move {
+                if let Err(err) = handle_codex_disconnect(&state, message.data).await {
+                    warn!(error = %err, "bridge codex disconnect failed");
+                }
+            });
+        }
+        "client-codex.request" => {
+            let state = state.clone();
+            tokio::spawn(async move {
+                if let Err(err) = handle_codex_request(&state, message.data).await {
+                    warn!(error = %err, "bridge codex request failed");
+                }
+            });
+        }
+        "client-codex.respond" => {
+            let state = state.clone();
+            tokio::spawn(async move {
+                if let Err(err) = handle_codex_response(&state, message.data).await {
+                    warn!(error = %err, "bridge codex respond failed");
+                }
+            });
+        }
+        _ => {}
+    }
+
+    Ok(())
+}
+
+fn emit_codex_payload(state: &BridgeState, event: &str, payload: Value) {
+    let message = OutboundMessage {
+        event: event.to_string(),
+        data: payload.to_string(),
+        channel: Some(CODEX_CHANNEL.to_string()),
+    };
+    let _ = state.codex_tx.send(message);
+}
+
+fn emit_codex_status(state: &BridgeState, workspace_id: &str, status: &str, detail: Option<String>) {
+    emit_codex_payload(
+        state,
+        "pylon.codex.status",
+        serde_json::json!({
+            "workspace_id": workspace_id,
+            "status": status,
+            "detail": detail,
+        }),
+    );
+}
+
+fn emit_codex_response(
+    state: &BridgeState,
+    workspace_id: &str,
+    request_id: &str,
+    result: Result<Value, String>,
+) {
+    match result {
+        Ok(payload) => emit_codex_payload(
+            state,
+            "pylon.codex.response",
+            serde_json::json!({
+                "workspace_id": workspace_id,
+                "request_id": request_id,
+                "ok": true,
+                "result": payload,
+            }),
+        ),
+        Err(error) => emit_codex_payload(
+            state,
+            "pylon.codex.response",
+            serde_json::json!({
+                "workspace_id": workspace_id,
+                "request_id": request_id,
+                "ok": false,
+                "error": error,
+            }),
+        ),
+    }
+}
+
+fn emit_codex_error(state: &BridgeState, workspace_id: Option<&str>, message: &str) {
+    emit_codex_payload(
+        state,
+        "pylon.codex.error",
+        serde_json::json!({
+            "workspace_id": workspace_id,
+            "message": message,
+        }),
+    );
+}
+
+async fn handle_codex_connect(state: &BridgeState, payload: Value) -> Result<()> {
+    let data = match parse_data_object(payload) {
+        Some(data) => data,
+        None => {
+            emit_codex_error(state, None, "Invalid connect payload");
+            return Ok(());
+        }
+    };
+
+    let workspace_id = extract_string(&data, "workspaceId")
+        .or_else(|| extract_string(&data, "workspace_id"))
+        .unwrap_or_default();
+    let cwd = extract_string(&data, "cwd").unwrap_or_default();
+
+    if workspace_id.is_empty() || cwd.is_empty() {
+        emit_codex_error(state, None, "Missing workspaceId or cwd");
+        return Ok(());
+    }
+
+    if !state.config.codex.enabled {
+        emit_codex_status(state, &workspace_id, "disabled", Some("Codex disabled".to_string()));
+        return Ok(());
+    }
+
+    if !is_codex_available() {
+        emit_codex_status(
+            state,
+            &workspace_id,
+            "unavailable",
+            Some("Codex CLI not found".to_string()),
+        );
+        return Ok(());
+    }
+
+    {
+        let codex = state.codex.lock().await;
+        if codex.sessions.contains_key(&workspace_id) {
+            emit_codex_status(state, &workspace_id, "connected", None);
+            return Ok(());
+        }
+    }
+
+    match spawn_codex_session(state, workspace_id.clone(), PathBuf::from(cwd)).await {
+        Ok(session) => {
+            let mut codex = state.codex.lock().await;
+            codex.sessions.insert(workspace_id.clone(), session);
+            emit_codex_status(state, &workspace_id, "connected", None);
+        }
+        Err(err) => {
+            emit_codex_status(
+                state,
+                &workspace_id,
+                "failed",
+                Some(err.to_string()),
+            );
         }
     }
 
     Ok(())
+}
+
+async fn handle_codex_disconnect(state: &BridgeState, payload: Value) -> Result<()> {
+    let data = match parse_data_object(payload) {
+        Some(data) => data,
+        None => {
+            emit_codex_error(state, None, "Invalid disconnect payload");
+            return Ok(());
+        }
+    };
+
+    let workspace_id = extract_string(&data, "workspaceId")
+        .or_else(|| extract_string(&data, "workspace_id"))
+        .unwrap_or_default();
+    if workspace_id.is_empty() {
+        emit_codex_error(state, None, "Missing workspaceId");
+        return Ok(());
+    }
+
+    let session = {
+        let mut codex = state.codex.lock().await;
+        codex.sessions.remove(&workspace_id)
+    };
+
+    if let Some(session) = session {
+        if let Some(client) = session.client.lock().await.take() {
+            let _ = client.shutdown().await;
+        }
+    }
+
+    emit_codex_status(state, &workspace_id, "disconnected", None);
+    Ok(())
+}
+
+async fn handle_codex_request(state: &BridgeState, payload: Value) -> Result<()> {
+    let data = match parse_data_object(payload) {
+        Some(data) => data,
+        None => {
+            emit_codex_error(state, None, "Invalid request payload");
+            return Ok(());
+        }
+    };
+
+    let workspace_id = extract_string(&data, "workspaceId")
+        .or_else(|| extract_string(&data, "workspace_id"))
+        .unwrap_or_default();
+    let request_id = extract_string(&data, "requestId")
+        .or_else(|| extract_string(&data, "request_id"))
+        .unwrap_or_default();
+    let method = extract_string(&data, "method").unwrap_or_default();
+    let params = data.get("params").cloned();
+
+    if workspace_id.is_empty() || request_id.is_empty() || method.is_empty() {
+        if !workspace_id.is_empty() && !request_id.is_empty() {
+            emit_codex_response(
+                state,
+                &workspace_id,
+                &request_id,
+                Err("Missing workspaceId, requestId, or method".to_string()),
+            );
+        } else {
+            emit_codex_error(state, None, "Missing workspaceId, requestId, or method");
+        }
+        return Ok(());
+    }
+
+    let client = {
+        let codex = state.codex.lock().await;
+        codex.sessions.get(&workspace_id).map(|session| session.client.clone())
+    };
+
+    let Some(client) = client else {
+        emit_codex_response(
+            state,
+            &workspace_id,
+            &request_id,
+            Err("Workspace is not connected".to_string()),
+        );
+        return Ok(());
+    };
+
+    let result = dispatch_codex_request(&client, &method, params).await;
+    emit_codex_response(state, &workspace_id, &request_id, result);
+    Ok(())
+}
+
+async fn handle_codex_response(state: &BridgeState, payload: Value) -> Result<()> {
+    let data = match parse_data_object(payload) {
+        Some(data) => data,
+        None => {
+            emit_codex_error(state, None, "Invalid response payload");
+            return Ok(());
+        }
+    };
+
+    let workspace_id = extract_string(&data, "workspaceId")
+        .or_else(|| extract_string(&data, "workspace_id"))
+        .unwrap_or_default();
+    let request_id = data
+        .get("requestId")
+        .or_else(|| data.get("request_id"))
+        .cloned();
+    let result = data.get("result").cloned().unwrap_or(Value::Null);
+
+    if workspace_id.is_empty() {
+        emit_codex_error(state, None, "Missing workspaceId");
+        return Ok(());
+    }
+
+    let request_id = match request_id {
+        Some(value) => match serde_json::from_value::<AppServerRequestId>(value) {
+            Ok(id) => id,
+            Err(err) => {
+                emit_codex_error(state, Some(&workspace_id), &err.to_string());
+                return Ok(());
+            }
+        },
+        None => {
+            emit_codex_error(state, Some(&workspace_id), "Missing requestId");
+            return Ok(());
+        }
+    };
+
+    let client = {
+        let codex = state.codex.lock().await;
+        codex.sessions.get(&workspace_id).map(|session| session.client.clone())
+    };
+
+    let Some(client) = client else {
+        emit_codex_error(state, Some(&workspace_id), "Workspace is not connected");
+        return Ok(());
+    };
+
+    let response_result = {
+        let guard = client.lock().await;
+        match guard.as_ref() {
+            Some(client) => client.respond(request_id, &result).await,
+            None => Err(anyhow::anyhow!("Codex session not available")),
+        }
+    };
+
+    if let Err(err) = response_result {
+        emit_codex_error(state, Some(&workspace_id), &err.to_string());
+    }
+
+    Ok(())
+}
+
+async fn spawn_codex_session(
+    state: &BridgeState,
+    workspace_id: String,
+    cwd: PathBuf,
+) -> Result<CodexSession> {
+    let (client, channels) = AppServerClient::spawn(AppServerConfig {
+        cwd: Some(cwd.clone()),
+        wire_log: None,
+    })
+    .await?;
+
+    if let Err(err) = client
+        .initialize(ClientInfo {
+            name: "pylon-bridge".to_string(),
+            title: Some("Pylon".to_string()),
+            version: env!("CARGO_PKG_VERSION").to_string(),
+        })
+        .await
+    {
+        let _ = client.shutdown().await;
+        return Err(err);
+    }
+
+    let mut notifications = channels.notifications;
+    let mut requests = channels.requests;
+    let codex_tx = state.codex_tx.clone();
+    let workspace_id_events = workspace_id.clone();
+    tokio::spawn(async move {
+        while let Some(notification) = notifications.recv().await {
+            let message = serde_json::json!({
+                "method": notification.method,
+                "params": notification.params,
+            });
+            let outbound = OutboundMessage {
+                event: "pylon.codex.event".to_string(),
+                data: serde_json::json!({
+                    "workspace_id": workspace_id_events,
+                    "message": message,
+                })
+                .to_string(),
+                channel: Some(CODEX_CHANNEL.to_string()),
+            };
+            let _ = codex_tx.send(outbound);
+        }
+    });
+
+    let codex_tx = state.codex_tx.clone();
+    let workspace_id_requests = workspace_id.clone();
+    tokio::spawn(async move {
+        while let Some(request) = requests.recv().await {
+            let id_value = serde_json::to_value(&request.id).unwrap_or(Value::Null);
+            let message = serde_json::json!({
+                "method": request.method,
+                "params": request.params,
+                "id": id_value,
+            });
+            let outbound = OutboundMessage {
+                event: "pylon.codex.event".to_string(),
+                data: serde_json::json!({
+                    "workspace_id": workspace_id_requests,
+                    "message": message,
+                })
+                .to_string(),
+                channel: Some(CODEX_CHANNEL.to_string()),
+            };
+            let _ = codex_tx.send(outbound);
+        }
+    });
+
+    Ok(CodexSession {
+        client: Arc::new(Mutex::new(Some(client))),
+    })
+}
+
+async fn dispatch_codex_request(
+    client: &Arc<Mutex<Option<AppServerClient>>>,
+    method: &str,
+    params: Option<Value>,
+) -> Result<Value, String> {
+    let result = {
+        let guard = client.lock().await;
+        let Some(client) = guard.as_ref() else {
+            return Err("Codex session not available".to_string());
+        };
+        match method {
+            "thread/list" => {
+                let params = parse_params::<ThreadListParams>(params)?;
+                client
+                    .thread_list(params)
+                    .await
+                    .map_err(|err| err.to_string())
+                    .and_then(|response| serde_json::to_value(response).map_err(|err| err.to_string()))
+            }
+            "thread/start" => {
+                let params = parse_params::<ThreadStartParams>(params)?;
+                client
+                    .thread_start(params)
+                    .await
+                    .map_err(|err| err.to_string())
+                    .and_then(|response| serde_json::to_value(response).map_err(|err| err.to_string()))
+            }
+            "thread/resume" => {
+                let params = parse_params::<ThreadResumeParams>(params)?;
+                client
+                    .thread_resume(params)
+                    .await
+                    .map_err(|err| err.to_string())
+                    .and_then(|response| serde_json::to_value(response).map_err(|err| err.to_string()))
+            }
+            "thread/archive" => {
+                let params = parse_params::<ThreadArchiveParams>(params)?;
+                client
+                    .thread_archive(params)
+                    .await
+                    .map_err(|err| err.to_string())
+                    .and_then(|response| serde_json::to_value(response).map_err(|err| err.to_string()))
+            }
+            "model/list" => {
+                let params = parse_params::<ModelListParams>(params)?;
+                client
+                    .model_list(params)
+                    .await
+                    .map_err(|err| err.to_string())
+                    .and_then(|response| serde_json::to_value(response).map_err(|err| err.to_string()))
+            }
+            "skills/list" => {
+                let params = parse_params::<SkillsListParams>(params)?;
+                client
+                    .skills_list(params)
+                    .await
+                    .map_err(|err| err.to_string())
+                    .and_then(|response| {
+                        let flattened = response
+                            .data
+                            .into_iter()
+                            .flat_map(|entry| entry.skills)
+                            .collect::<Vec<_>>();
+                        serde_json::to_value(serde_json::json!({ "data": flattened }))
+                            .map_err(|err| err.to_string())
+                    })
+            }
+            "turn/start" => {
+                let params = parse_params::<TurnStartParams>(params)?;
+                client
+                    .turn_start(params)
+                    .await
+                    .map_err(|err| err.to_string())
+                    .and_then(|response| serde_json::to_value(response).map_err(|err| err.to_string()))
+            }
+            "turn/interrupt" => {
+                let params = parse_params::<TurnInterruptParams>(params)?;
+                client
+                    .turn_interrupt(params)
+                    .await
+                    .map_err(|err| err.to_string())
+                    .and_then(|response| serde_json::to_value(response).map_err(|err| err.to_string()))
+            }
+            "review/start" => {
+                let params = parse_params::<ReviewStartParams>(params)?;
+                client
+                    .review_start(params)
+                    .await
+                    .map_err(|err| err.to_string())
+                    .and_then(|response| serde_json::to_value(response).map_err(|err| err.to_string()))
+            }
+            "command/exec" => {
+                let params = parse_params::<CommandExecParams>(params)?;
+                client
+                    .command_exec(params)
+                    .await
+                    .map_err(|err| err.to_string())
+                    .and_then(|response| serde_json::to_value(response).map_err(|err| err.to_string()))
+            }
+            "account/rateLimits/read" => client
+                .account_rate_limits_read()
+                .await
+                .map(|response| serde_json::to_value(response.rate_limits).unwrap_or(Value::Null))
+                .map_err(|err| err.to_string()),
+            "account/read" => {
+                let params = parse_params::<GetAccountParams>(params)?;
+                client
+                    .account_read(params)
+                    .await
+                    .map_err(|err| err.to_string())
+                    .and_then(|response| serde_json::to_value(response).map_err(|err| err.to_string()))
+            }
+            _ => Err(format!("Unsupported method: {method}")),
+        }?
+    };
+
+    Ok(result)
+}
+
+fn parse_params<T: DeserializeOwned>(params: Option<Value>) -> Result<T, String> {
+    let value = params.unwrap_or_else(|| serde_json::json!({}));
+    serde_json::from_value(value).map_err(|err| err.to_string())
 }
 
 async fn send_capabilities<S>(
