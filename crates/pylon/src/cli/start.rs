@@ -16,6 +16,7 @@ use crate::daemon::{
 use crate::db::PylonDb;
 use crate::db::jobs::{Job, JobStatus};
 use crate::host::AgentRunner;
+use crate::local_bridge::{LocalBridgeConfig, PylonBridgeInfo, start_local_bridge};
 use crate::provider::PylonProvider;
 use std::sync::Arc;
 
@@ -210,6 +211,25 @@ async fn run_daemon(
         None
     };
 
+    let npub = identity.npub().ok();
+    let bridge_config = LocalBridgeConfig::for_pylon(
+        PylonBridgeInfo {
+            version: env!("CARGO_PKG_VERSION").to_string(),
+            npub,
+            host_active,
+            provider_active,
+            network: config.network.clone(),
+        },
+        config.codex.clone(),
+    );
+    let bridge_handle = match start_local_bridge(bridge_config).await {
+        Ok(handle) => Some(handle),
+        Err(err) => {
+            tracing::warn!("Failed to start local bridge: {}", err);
+            None
+        }
+    };
+
     tracing::info!("Pylon daemon running");
 
     // Main event loop
@@ -378,6 +398,10 @@ async fn run_daemon(
     // Stop provider
     if let Some(mut p) = provider {
         p.stop().await?;
+    }
+
+    if let Some(handle) = bridge_handle {
+        handle.shutdown().await;
     }
 
     pid_file.remove()?;

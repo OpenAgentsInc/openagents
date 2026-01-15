@@ -23,7 +23,7 @@ use clap::{Parser, Subcommand};
 #[command(about = "Run sovereign agents and earn Bitcoin as a compute provider")]
 pub struct PylonCli {
     #[command(subcommand)]
-    pub command: Commands,
+    pub command: Option<Commands>,
 }
 
 /// Available commands
@@ -61,7 +61,15 @@ pub enum Commands {
 
 /// Execute a CLI command
 pub async fn execute(cli: PylonCli) -> anyhow::Result<()> {
-    match cli.command {
+    let command = cli.command.unwrap_or_else(|| {
+        Commands::Start(start::StartArgs {
+            foreground: true,
+            mode: start::PylonMode::Both,
+            config: None,
+        })
+    });
+
+    match command {
         Commands::Init(args) => init::run(args).await,
         Commands::Api(args) => api::run(args).await,
         Commands::Start(args) => start::run(args).await,

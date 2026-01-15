@@ -18,6 +18,7 @@ path = "src/lib.rs"
 # Internal crates
 agent = { path = "../agent" }
 compute = { path = "../compute" }
+codex-client = { path = "../codex-client" }
 gateway = { path = "../gateway" }
 frlm = { path = "../frlm", features = ["trace-db"] }
 nostr = { path = "../nostr/core", features = ["full"] }
@@ -33,6 +34,10 @@ tokio-stream = "0.1"
 tokio-tungstenite = "0.24"
 futures-util = "0.3"
 axum = "0.7"
+rustls = "0.23"
+rustls-pemfile = "2.1"
+tokio-rustls = "0.26"
+rcgen = "0.13"
 tower-http = { version = "0.6", features = ["cors"] }
 
 # CLI

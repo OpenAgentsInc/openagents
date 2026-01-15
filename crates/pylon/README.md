@@ -26,6 +26,7 @@ Sovereign agents need to run somewhere. Pylon is that somewhere.
 ```bash
 # From source (in openagents repo)
 cargo pylon init                  # Initialize identity + wallet
+cargo pylon                       # Start daemon in foreground (local bridge enabled)
 cargo pylon start                 # Start daemon in foreground
 cargo pylon status                # Check daemon status
 
