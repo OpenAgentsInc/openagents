@@ -27,6 +27,10 @@ daemon and have the browser connect directly to it over `wss://localhost`.
 We will also default `pylon` (no subcommand) to run `pylon start -f`, so users
 can run a single command (`cargo pylon`) to bring the bridge online.
 
+The bridge also forwards Codex app-server traffic on `pylon.codex` using
+`client-codex.connect` + `client-codex.request` + `client-codex.respond`, and
+emits `pylon.codex.event`/`pylon.codex.response`/`pylon.codex.status`.
+
 ### Schema / Spec Authority
 
 - [docs/PROTOCOL_SURFACE.md](../PROTOCOL_SURFACE.md) — Local UI bridge surface
@@ -36,6 +40,7 @@ can run a single command (`cargo pylon`) to bring the bridge online.
 This ADR covers:
 - The local Pylon WS bridge protocol and default port/key.
 - The discovery request/response event contract.
+- The Codex app-server request/response bridge (`pylon.codex`).
 - The default `pylon` CLI behavior (no-arg start).
 
 This ADR does NOT cover:
@@ -48,9 +53,10 @@ This ADR does NOT cover:
 |-----------|-----------|
 | Endpoint | Stable: `wss://127.0.0.1:8081/app/{app_key}` |
 | App key | Stable default: `local-key` |
-| Channel | Stable: `pylon.system` |
-| Event | Stable: `pylon.capabilities` |
-| Client request | Stable: `client-pylon.discover` |
+| Channels | Stable: `pylon.system`, `pylon.codex` |
+| System events | Stable: `pylon.capabilities`, `pylon.system.pong` |
+| Codex events | Stable: `pylon.codex.event`, `pylon.codex.response`, `pylon.codex.status` |
+| Client requests | Stable: `client-pylon.discover`, `client-pylon.ping`, `client-codex.connect`, `client-codex.request`, `client-codex.respond`, `client-codex.disconnect` |
 
 Backward compatibility expectations:
 - The bridge payload is additive only; fields may be added but not removed.

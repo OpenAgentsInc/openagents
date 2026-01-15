@@ -56,12 +56,36 @@ discover capabilities. It is not a Nostr protocol surface.
 - `wss://127.0.0.1:8081/app/{app_key}`
 - Default `app_key`: `local-key`
 
-**Channel:**
+**Channels:**
 - `pylon.system`
+- `pylon.codex`
 
-**Events:**
+**Events (system):**
 - `pylon.capabilities` — Capability snapshot (JSON payload)
+- `pylon.system.pong` — Ping response (JSON payload)
 - `client-pylon.discover` — Request a capability refresh
+- `client-pylon.ping` — Request a pong
+
+**Events (codex):**
+- `pylon.codex.event` — Codex app-server notifications (JSON-RPC envelope)
+- `pylon.codex.response` — Response to client requests (`request_id`, `ok`, `result`/`error`)
+- `pylon.codex.status` — Bridge/app-server status updates
+- `pylon.codex.error` — Bridge/app-server error
+- `client-codex.connect` — Register a workspace (requires `workspaceId` + `cwd`)
+- `client-codex.disconnect` — Disconnect a workspace
+- `client-codex.request` — JSON-RPC request envelope
+- `client-codex.respond` — Approval response envelope
+
+**Codex envelope example:**
+```json
+{
+  "workspace_id": "ws_123",
+  "message": {
+    "method": "turn/started",
+    "params": { "thread_id": "thread_1", "turn": { "id": "turn_1" } }
+  }
+}
+```
 
 The bridge uses the Pusher protocol so standard Echo/Pusher clients can connect.
 
