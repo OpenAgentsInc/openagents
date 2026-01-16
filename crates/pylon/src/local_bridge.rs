@@ -1121,6 +1121,8 @@ where
         channel = %channel,
         codex_available = payload.codex.available,
         codex_requires_auth = payload.codex.requires_auth,
+        codex_rate_limits = payload.codex.rate_limits.is_some(),
+        codex_plan = ?payload.codex.account.as_ref().and_then(|account| account.plan.as_deref()),
         "bridge sent capabilities"
     );
     let data = serde_json::to_string(&payload)?;
@@ -1144,6 +1146,8 @@ impl BridgeState {
         }
 
         let config = self.config.clone();
+        let codex_tx = self.codex_tx.clone();
+        let cached = self.cached.clone();
         let payload = match tokio::time::timeout(
             Duration::from_secs(CAPABILITIES_TIMEOUT_SECS),
             build_capabilities(&config),
@@ -1157,14 +1161,31 @@ impl BridgeState {
                     "bridge capabilities fetch timed out; using placeholder"
                 );
                 let fallback = build_placeholder_capabilities(&config).await;
-                let cached = self.cached.clone();
                 tokio::spawn(async move {
                     let payload = build_capabilities(&config).await;
-                    let mut cached = cached.lock().await;
-                    *cached = Some(CachedCapabilities {
-                        payload,
-                        fetched_at: Instant::now(),
-                    });
+                    {
+                        let mut cached = cached.lock().await;
+                        *cached = Some(CachedCapabilities {
+                            payload: payload.clone(),
+                            fetched_at: Instant::now(),
+                        });
+                    }
+
+                    if let Ok(data) = serde_json::to_string(&payload) {
+                        let message = OutboundMessage {
+                            event: "pylon.capabilities".to_string(),
+                            data,
+                            channel: Some(SYSTEM_CHANNEL.to_string()),
+                        };
+                        let _ = codex_tx.send(message);
+                        info!(
+                            codex_available = payload.codex.available,
+                            codex_requires_auth = payload.codex.requires_auth,
+                            codex_rate_limits = payload.codex.rate_limits.is_some(),
+                            codex_plan = ?payload.codex.account.as_ref().and_then(|account| account.plan.as_deref()),
+                            "bridge broadcasted capabilities"
+                        );
+                    }
                 });
                 fallback
             }
@@ -1320,7 +1341,13 @@ async fn fetch_codex_capabilities(config: &CodexConfig) -> CodexCapabilities {
     let account = client
         .account_read(GetAccountParams { refresh_token: false })
         .await;
-    let rate_limits = client.account_rate_limits_read().await;
+    let rate_limits = match client.account_rate_limits_read().await {
+        Ok(response) => Some(response.rate_limits),
+        Err(err) => {
+            warn!(error = %err, "bridge codex rate limits read failed");
+            None
+        }
+    };
     let _ = client.shutdown().await;
 
     match account {
@@ -1343,22 +1370,25 @@ async fn fetch_codex_capabilities(config: &CodexConfig) -> CodexCapabilities {
                 available: true,
                 requires_auth: response.requires_openai_auth,
                 account: account_info,
-                rate_limits: rate_limits.ok().map(|limits| limits.rate_limits),
+                rate_limits,
                 error: None,
                 model: Some(config.model.clone()),
                 autonomy: Some(format!("{:?}", config.autonomy)),
             }
         }
-        Err(err) => CodexCapabilities {
-            enabled: true,
-            available: true,
-            requires_auth: true,
-            account: None,
-            rate_limits: None,
-            error: Some(err.to_string()),
-            model: Some(config.model.clone()),
-            autonomy: Some(format!("{:?}", config.autonomy)),
-        },
+        Err(err) => {
+            warn!(error = %err, "bridge codex account read failed");
+            CodexCapabilities {
+                enabled: true,
+                available: true,
+                requires_auth: true,
+                account: None,
+                rate_limits: None,
+                error: Some(err.to_string()),
+                model: Some(config.model.clone()),
+                autonomy: Some(format!("{:?}", config.autonomy)),
+            }
+        }
     }
 }
 
