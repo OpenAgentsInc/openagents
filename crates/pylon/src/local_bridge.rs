@@ -2,7 +2,9 @@
 
 use std::collections::{HashMap, HashSet};
 use std::net::SocketAddr;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+#[cfg(target_os = "macos")]
+use std::process::Command;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -57,6 +59,7 @@ pub struct LocalBridgeConfig {
     pub allowed_origins: AllowedOrigins,
     pub tls_cert: Option<PathBuf>,
     pub tls_key: Option<PathBuf>,
+    pub trust_cert: bool,
     pub pylon: PylonBridgeInfo,
     pub codex: CodexConfig,
 }
@@ -71,6 +74,7 @@ impl LocalBridgeConfig {
             allowed_origins: AllowedOrigins::Any,
             tls_cert: None,
             tls_key: None,
+            trust_cert: false,
             pylon,
             codex,
         }
@@ -223,6 +227,11 @@ async fn serve_bridge(config: LocalBridgeConfig, mut shutdown_rx: watch::Receive
     let listener = TcpListener::bind(addr).await.context("bridge bind failed")?;
 
     let (tls_cert, tls_key) = resolve_tls_paths(config.tls_cert.clone(), config.tls_key.clone());
+    if config.trust_cert {
+        if let Some(cert_path) = tls_cert.as_ref() {
+            maybe_trust_local_cert(cert_path);
+        }
+    }
     let tls_acceptor = if let (Some(cert), Some(key)) = (tls_cert.as_ref(), tls_key.as_ref()) {
         Some(load_tls_acceptor(cert, key).context("bridge TLS config failed")?)
     } else {
@@ -1259,6 +1268,83 @@ fn resolve_tls_paths(
     }
 
     (None, None)
+}
+
+fn is_generated_cert(cert_path: &Path) -> bool {
+    cert_path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .map(|name| name == "pylon.local.crt")
+        .unwrap_or(false)
+}
+
+fn maybe_trust_local_cert(cert_path: &Path) {
+    if !is_generated_cert(cert_path) {
+        return;
+    }
+
+    let marker_path = cert_path.with_extension("trusted");
+    if marker_path.exists() {
+        if let (Ok(cert_meta), Ok(marker_meta)) =
+            (std::fs::metadata(cert_path), std::fs::metadata(&marker_path))
+        {
+            if let (Ok(cert_modified), Ok(marker_modified)) =
+                (cert_meta.modified(), marker_meta.modified())
+            {
+                if marker_modified >= cert_modified {
+                    return;
+                }
+            }
+        } else {
+            return;
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        match trust_cert_macos(cert_path) {
+            Ok(()) => {
+                if let Err(err) = std::fs::write(&marker_path, "trusted") {
+                    warn!(error = %err, "failed to write bridge cert trust marker");
+                }
+                info!("trusted local bridge TLS cert");
+            }
+            Err(err) => {
+                warn!(error = %err, "failed to trust local bridge TLS cert");
+            }
+        }
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        warn!("automatic trust not supported on this platform; trust the bridge cert manually");
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn trust_cert_macos(cert_path: &Path) -> Result<()> {
+    let home = dirs::home_dir().context("locate home directory for keychain")?;
+    let keychain = home.join("Library/Keychains/login.keychain-db");
+
+    let status = Command::new("security")
+        .arg("add-trusted-cert")
+        .arg("-d")
+        .arg("-r")
+        .arg("trustRoot")
+        .arg("-k")
+        .arg(&keychain)
+        .arg(cert_path)
+        .status()
+        .context("run security add-trusted-cert")?;
+
+    if !status.success() {
+        return Err(anyhow::anyhow!(
+            "security add-trusted-cert failed with status {}",
+            status
+        ));
+    }
+
+    Ok(())
 }
 
 fn generate_self_signed_paths() -> Option<(PathBuf, PathBuf)> {
