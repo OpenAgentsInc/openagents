@@ -58,6 +58,7 @@ const BRIDGE_IPS: [IpAddr; 2] = [
 ];
 const BRIDGE_CERT_VALIDITY_DAYS: i64 = 365;
 const BRIDGE_CERT_MAX_VALIDITY_DAYS: i64 = 400;
+const DEFAULT_HERD_HOST: &str = "hyperion.test";
 const ENV_TLS_CERT: &str = "PYLON_BRIDGE_TLS_CERT";
 const ENV_TLS_KEY: &str = "PYLON_BRIDGE_TLS_KEY";
 const ENV_TLS_HOST: &str = "PYLON_BRIDGE_TLS_HOST";
@@ -1430,11 +1431,8 @@ fn env_tls_paths() -> Option<(PathBuf, PathBuf)> {
 }
 
 fn herd_cert_paths() -> Option<(PathBuf, PathBuf)> {
-    let host = env::var(ENV_TLS_HOST).ok()?;
+    let host = env::var(ENV_TLS_HOST).unwrap_or_else(|_| DEFAULT_HERD_HOST.to_string());
     let host = host.trim();
-    if host.is_empty() {
-        return None;
-    }
     let home = env::var_os("HOME")?;
     let base = PathBuf::from(home)
         .join("Library/Application Support/Herd/config/valet/Certificates");
