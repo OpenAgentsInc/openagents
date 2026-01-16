@@ -2147,6 +2147,7 @@ async fn connect_workspace_session(
     let (client, channels) = app_server::AppServerClient::spawn(app_server::AppServerConfig {
         cwd: Some(PathBuf::from(&entry.path)),
         wire_log: None,
+        env: Vec::new(),
     })
     .await
     .map_err(|err| format!("Failed to spawn app-server: {}", err))?;

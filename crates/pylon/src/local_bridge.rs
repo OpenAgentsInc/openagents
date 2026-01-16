@@ -2,6 +2,7 @@
 
 use std::collections::{HashMap, HashSet};
 use std::env;
+use std::fs;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::path::{Path, PathBuf};
 #[cfg(target_os = "macos")]
@@ -12,17 +13,18 @@ use std::time::{Duration, Instant};
 use anyhow::{Context, Result};
 use chrono::{Datelike, Utc};
 use codex_client::{
-    AppServerClient, AppServerConfig, AppServerNotification, AppServerRequestId, ClientInfo,
-    CommandExecParams, GetAccountParams, ModelListParams, ReviewStartParams, SkillsListParams,
-    ThreadArchiveParams, ThreadListParams, ThreadResumeParams, ThreadStartParams,
-    TurnInterruptParams, TurnStartParams, is_codex_available,
+    AppServerClient, AppServerConfig, AppServerRequestId, ClientInfo, CommandExecParams,
+    GetAccountParams, ModelListParams, ReviewStartParams, SkillsListParams, ThreadArchiveParams,
+    ThreadListParams, ThreadResumeParams, ThreadStartParams, TurnInterruptParams, TurnStartParams,
+    is_codex_available,
 };
 use futures_util::{SinkExt, StreamExt};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
+use tempfile::TempDir;
 use tokio::net::TcpListener;
-use tokio::sync::{Mutex, broadcast, mpsc, watch};
+use tokio::sync::{Mutex, broadcast, watch};
 use tokio::task::JoinHandle;
 use tokio_rustls::TlsAcceptor;
 use tokio_tungstenite::tungstenite::handshake::server::{ErrorResponse, Request, Response};
@@ -43,7 +45,6 @@ const DEFAULT_HOST: &str = "127.0.0.1";
 const DEFAULT_PORT: u16 = 8081;
 const DEFAULT_ACTIVITY_TIMEOUT: u64 = 120;
 const DEFAULT_CACHE_SECONDS: u64 = 30;
-const CAPABILITIES_INIT_TIMEOUT_SECS: u64 = 2;
 const CAPABILITIES_ACCOUNT_TIMEOUT_SECS: u64 = 10;
 const SYSTEM_CHANNEL: &str = "pylon.system";
 const CODEX_CHANNEL: &str = "pylon.codex";
@@ -919,6 +920,7 @@ async fn spawn_codex_session(
     let (client, channels) = AppServerClient::spawn(AppServerConfig {
         cwd: Some(cwd.clone()),
         wire_log: None,
+        env: Vec::new(),
     })
     .await?;
 
@@ -1148,7 +1150,6 @@ impl BridgeState {
 
         let config = self.config.clone();
         let cached = self.cached.clone();
-        let codex_tx = self.codex_tx.clone();
 
         let fallback = build_placeholder_capabilities(&config).await;
 
@@ -1160,34 +1161,31 @@ impl BridgeState {
             });
         }
 
-        tokio::spawn(async move {
-            let payload = build_capabilities(&config).await;
-            {
-                let mut cached = cached.lock().await;
-                *cached = Some(CachedCapabilities {
-                    payload: payload.clone(),
-                    fetched_at: Instant::now(),
-                });
-            }
-
-            if let Ok(data) = serde_json::to_string(&payload) {
-                let message = OutboundMessage {
-                    event: "pylon.capabilities".to_string(),
-                    data,
-                    channel: Some(SYSTEM_CHANNEL.to_string()),
-                };
-                let _ = codex_tx.send(message);
-                info!(
-                    codex_available = payload.codex.available,
-                    codex_requires_auth = payload.codex.requires_auth,
-                    codex_rate_limits = payload.codex.rate_limits.is_some(),
-                    codex_plan = ?payload.codex.account.as_ref().and_then(|account| account.plan.as_deref()),
-                    "bridge broadcasted capabilities"
+        let payload = match tokio::time::timeout(
+            Duration::from_secs(CAPABILITIES_ACCOUNT_TIMEOUT_SECS * 2),
+            build_capabilities(&config),
+        )
+        .await
+        {
+            Ok(payload) => payload,
+            Err(_) => {
+                warn!(
+                    timeout_secs = CAPABILITIES_ACCOUNT_TIMEOUT_SECS * 2,
+                    "bridge capabilities fetch timed out"
                 );
+                fallback.clone()
             }
-        });
+        };
 
-        fallback
+        {
+            let mut cached = cached.lock().await;
+            *cached = Some(CachedCapabilities {
+                payload: payload.clone(),
+                fetched_at: Instant::now(),
+            });
+        }
+
+        payload
     }
 }
 
@@ -1220,7 +1218,7 @@ async fn build_placeholder_capabilities(config: &LocalBridgeConfig) -> BridgeCap
     };
 
     let model = config.codex.model.trim();
-    let model = if model.is_empty() || model == "codex-sonnet-4-20250514" {
+    let model = if model.is_empty() {
         None
     } else {
         Some(model.to_string())
@@ -1250,31 +1248,89 @@ async fn build_placeholder_capabilities(config: &LocalBridgeConfig) -> BridgeCap
     }
 }
 
-async fn wait_for_initialized(
-    notifications: &mut mpsc::Receiver<AppServerNotification>,
-) -> bool {
-    match tokio::time::timeout(
-        Duration::from_secs(CAPABILITIES_INIT_TIMEOUT_SECS),
-        async {
-            while let Some(notification) = notifications.recv().await {
-                if notification.method == "initialized" {
-                    return true;
-                }
-            }
-            false
-        },
-    )
-    .await
-    {
-        Ok(result) => result,
-        Err(_) => false,
+fn resolve_codex_home() -> Option<PathBuf> {
+    if let Ok(home_override) = env::var("CODEX_HOME") {
+        let trimmed = home_override.trim();
+        if !trimmed.is_empty() {
+            return Some(PathBuf::from(trimmed));
+        }
     }
+
+    dirs::home_dir().map(|home| home.join(".codex"))
+}
+
+fn build_codex_home_override() -> Result<(Vec<(String, String)>, Option<TempDir>)> {
+    let mut env_overrides = Vec::new();
+    let Some(codex_home) = resolve_codex_home() else {
+        return Ok((env_overrides, None));
+    };
+
+    let auth_path = codex_home.join("auth.json");
+    let auth_contents = match fs::read_to_string(&auth_path) {
+        Ok(contents) => contents,
+        Err(err) => {
+            debug!(error = %err, "bridge could not read codex auth.json");
+            return Ok((env_overrides, None));
+        }
+    };
+
+    let mut auth_json: Value = match serde_json::from_str(&auth_contents) {
+        Ok(value) => value,
+        Err(err) => {
+            warn!(error = %err, "bridge failed to parse codex auth.json");
+            return Ok((env_overrides, None));
+        }
+    };
+
+    let has_api_key = auth_json
+        .get("OPENAI_API_KEY")
+        .and_then(Value::as_str)
+        .map(|value| !value.trim().is_empty())
+        .unwrap_or(false);
+    let has_tokens = auth_json
+        .get("tokens")
+        .and_then(Value::as_object)
+        .map(|tokens| !tokens.is_empty())
+        .unwrap_or(false);
+
+    if !has_api_key || !has_tokens {
+        return Ok((env_overrides, None));
+    }
+
+    let temp_dir = tempfile::tempdir().context("create codex home override")?;
+    let temp_path = temp_dir.path();
+
+    for file_name in ["config.toml", "config.json"] {
+        let src_path = codex_home.join(file_name);
+        if src_path.exists() {
+            if let Err(err) = fs::copy(&src_path, temp_path.join(file_name)) {
+                warn!(error = %err, file = %src_path.display(), "bridge failed to copy codex config");
+            }
+        }
+    }
+
+    if let Some(object) = auth_json.as_object_mut() {
+        object.remove("OPENAI_API_KEY");
+    }
+    let sanitized = serde_json::to_string_pretty(&auth_json)?;
+    fs::write(temp_path.join("auth.json"), sanitized)?;
+
+    env_overrides.push((
+        "CODEX_HOME".to_string(),
+        temp_path.to_string_lossy().to_string(),
+    ));
+    info!(
+        codex_home = %temp_path.display(),
+        "bridge using codex home override without api key"
+    );
+
+    Ok((env_overrides, Some(temp_dir)))
 }
 
 async fn fetch_codex_capabilities(config: &CodexConfig) -> CodexCapabilities {
     let enabled = config.enabled;
     let model = config.model.trim();
-    let model = if model.is_empty() || model == "codex-sonnet-4-20250514" {
+    let model = if model.is_empty() {
         None
     } else {
         Some(model.to_string())
@@ -1305,9 +1361,19 @@ async fn fetch_codex_capabilities(config: &CodexConfig) -> CodexCapabilities {
         };
     }
 
+    let (env_overrides, codex_home_guard) = match build_codex_home_override() {
+        Ok(result) => result,
+        Err(err) => {
+            warn!(error = %err, "bridge failed to prepare codex home override");
+            (Vec::new(), None)
+        }
+    };
+
+    let spawn_started = Instant::now();
     let (client, channels) = match AppServerClient::spawn(AppServerConfig {
         cwd: config.cwd.clone(),
         wire_log: None,
+        env: env_overrides,
     })
     .await
     {
@@ -1329,6 +1395,24 @@ async fn fetch_codex_capabilities(config: &CodexConfig) -> CodexCapabilities {
     let mut notifications = channels.notifications;
     let mut requests = channels.requests;
 
+    info!(
+        elapsed_ms = spawn_started.elapsed().as_millis(),
+        "bridge codex app-server spawned"
+    );
+
+    tokio::spawn(async move {
+        while let Some(notification) = notifications.recv().await {
+            debug!(method = %notification.method, "bridge ignoring app-server notification");
+        }
+    });
+
+    tokio::spawn(async move {
+        while let Some(request) = requests.recv().await {
+            debug!(method = %request.method, "bridge ignoring app-server request");
+        }
+    });
+
+    let init_started = Instant::now();
     let init_result = client
         .initialize(ClientInfo {
             name: "pylon-bridge".to_string(),
@@ -1349,28 +1433,12 @@ async fn fetch_codex_capabilities(config: &CodexConfig) -> CodexCapabilities {
             autonomy: Some(format!("{:?}", config.autonomy)),
         };
     }
+    info!(
+        elapsed_ms = init_started.elapsed().as_millis(),
+        "bridge codex initialize complete"
+    );
 
-    let initialized = wait_for_initialized(&mut notifications).await;
-    if !initialized {
-        warn!(
-            timeout_secs = CAPABILITIES_INIT_TIMEOUT_SECS,
-            "bridge codex initialize notification timed out"
-        );
-    }
-
-    tokio::spawn(async move {
-        while let Some(notification) = notifications.recv().await {
-            debug!(method = %notification.method, "bridge ignoring app-server notification");
-        }
-    });
-
-    tokio::spawn(async move {
-        while let Some(request) = requests.recv().await {
-            debug!(method = %request.method, "bridge ignoring app-server request");
-            let _ = request;
-        }
-    });
-
+    let account_started = Instant::now();
     let account = match tokio::time::timeout(
         Duration::from_secs(CAPABILITIES_ACCOUNT_TIMEOUT_SECS),
         client.account_read(GetAccountParams { refresh_token: false }),
@@ -1380,6 +1448,11 @@ async fn fetch_codex_capabilities(config: &CodexConfig) -> CodexCapabilities {
         Ok(result) => result,
         Err(_) => Err(anyhow::anyhow!("account read timed out")),
     };
+    info!(
+        elapsed_ms = account_started.elapsed().as_millis(),
+        "bridge codex account read complete"
+    );
+    let limits_started = Instant::now();
     let rate_limits = match tokio::time::timeout(
         Duration::from_secs(CAPABILITIES_ACCOUNT_TIMEOUT_SECS),
         client.account_rate_limits_read(),
@@ -1398,9 +1471,11 @@ async fn fetch_codex_capabilities(config: &CodexConfig) -> CodexCapabilities {
             None
         }
     };
-    let _ = client.shutdown().await;
-
-    match account {
+    info!(
+        elapsed_ms = limits_started.elapsed().as_millis(),
+        "bridge codex rate limits read complete"
+    );
+    let capabilities = match account {
         Ok(response) => {
             let account_info = response.account.map(|info| match info {
                 codex_client::AccountInfo::ApiKey => CodexAccount {
@@ -1439,7 +1514,22 @@ async fn fetch_codex_capabilities(config: &CodexConfig) -> CodexCapabilities {
                 autonomy: Some(format!("{:?}", config.autonomy)),
             }
         }
-    }
+    };
+
+    let shutdown_started = Instant::now();
+    tokio::spawn(async move {
+        let _guard = codex_home_guard;
+        match tokio::time::timeout(Duration::from_secs(5), client.shutdown()).await {
+            Ok(Ok(())) => info!(
+                elapsed_ms = shutdown_started.elapsed().as_millis(),
+                "bridge codex shutdown complete"
+            ),
+            Ok(Err(err)) => warn!(error = %err, "bridge codex shutdown failed"),
+            Err(_) => warn!(timeout_secs = 5, "bridge codex shutdown timed out"),
+        }
+    });
+
+    capabilities
 }
 
 async fn send_outbound<S>(

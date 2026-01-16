@@ -41,7 +41,7 @@ Each session has a unique ID directory containing its checkpoint file.
   "phase": "execute",
   "phase_started_offset": 1800.0,
   "iteration": 0,
-  "model": "codex-sonnet-4-20250514",
+  "model": "gpt-5.2-codex",
 
   "codex_session_id": "sess_abc...",
   "exec_session_id": "sess_def...",

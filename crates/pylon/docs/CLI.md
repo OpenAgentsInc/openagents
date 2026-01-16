@@ -601,7 +601,7 @@ pylon connect [OPTIONS] --tunnel-url <URL>
 pylon connect --tunnel-url wss://openagents-web.openagents.workers.dev/api/tunnel/ws/tunnel?session_id=...&token=...
 
 # Override model and autonomy
-pylon connect --tunnel-url wss://... --model codex-sonnet-4-20250514 --autonomy supervised
+pylon connect --tunnel-url wss://... --model gpt-5.2-codex --autonomy supervised
 ```
 
 ---

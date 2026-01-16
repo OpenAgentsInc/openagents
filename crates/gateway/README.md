@@ -494,7 +494,7 @@ priority = 2
 [gateways.inference.openai]
 enabled = true
 api_key_env = "OPENAI_API_KEY"
-default_model = "codex-sonnet-4-20250514"
+default_model = "gpt-5.2-codex"
 priority = 3
 
 [gateways.inference.pylon]

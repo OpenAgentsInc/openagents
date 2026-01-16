@@ -686,9 +686,21 @@ pub struct RateLimitWindow {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct CreditsSnapshot {
+    pub has_credits: bool,
+    pub unlimited: bool,
+    pub balance: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct RateLimitSnapshot {
     pub primary: Option<RateLimitWindow>,
     pub secondary: Option<RateLimitWindow>,
+    #[serde(default)]
+    pub credits: Option<CreditsSnapshot>,
+    #[serde(default)]
+    pub plan_type: Option<PlanType>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

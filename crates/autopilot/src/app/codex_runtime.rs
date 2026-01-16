@@ -52,6 +52,7 @@ impl CodexRuntime {
         let (client, channels) = app_server::AppServerClient::spawn(app_server::AppServerConfig {
             cwd: config.cwd.clone(),
             wire_log: config.wire_log.clone(),
+            env: Vec::new(),
         })
         .await
         .context("Failed to spawn codex app-server")?;
