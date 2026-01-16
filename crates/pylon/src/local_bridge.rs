@@ -43,7 +43,6 @@ const DEFAULT_HOST: &str = "127.0.0.1";
 const DEFAULT_PORT: u16 = 8081;
 const DEFAULT_ACTIVITY_TIMEOUT: u64 = 120;
 const DEFAULT_CACHE_SECONDS: u64 = 30;
-const CAPABILITIES_TIMEOUT_SECS: u64 = 3;
 const CAPABILITIES_INIT_TIMEOUT_SECS: u64 = 2;
 const CAPABILITIES_ACCOUNT_TIMEOUT_SECS: u64 = 10;
 const SYSTEM_CHANNEL: &str = "pylon.system";
@@ -1148,57 +1147,47 @@ impl BridgeState {
         }
 
         let config = self.config.clone();
-        let codex_tx = self.codex_tx.clone();
         let cached = self.cached.clone();
-        let payload = match tokio::time::timeout(
-            Duration::from_secs(CAPABILITIES_TIMEOUT_SECS),
-            build_capabilities(&config),
-        )
-        .await
+        let codex_tx = self.codex_tx.clone();
+
+        let fallback = build_placeholder_capabilities(&config).await;
+
         {
-            Ok(payload) => payload,
-            Err(_) => {
-                warn!(
-                    timeout_secs = CAPABILITIES_TIMEOUT_SECS,
-                    "bridge capabilities fetch timed out; using placeholder"
-                );
-                let fallback = build_placeholder_capabilities(&config).await;
-                tokio::spawn(async move {
-                    let payload = build_capabilities(&config).await;
-                    {
-                        let mut cached = cached.lock().await;
-                        *cached = Some(CachedCapabilities {
-                            payload: payload.clone(),
-                            fetched_at: Instant::now(),
-                        });
-                    }
+            let mut cached = self.cached.lock().await;
+            *cached = Some(CachedCapabilities {
+                payload: fallback.clone(),
+                fetched_at: Instant::now(),
+            });
+        }
 
-                    if let Ok(data) = serde_json::to_string(&payload) {
-                        let message = OutboundMessage {
-                            event: "pylon.capabilities".to_string(),
-                            data,
-                            channel: Some(SYSTEM_CHANNEL.to_string()),
-                        };
-                        let _ = codex_tx.send(message);
-                        info!(
-                            codex_available = payload.codex.available,
-                            codex_requires_auth = payload.codex.requires_auth,
-                            codex_rate_limits = payload.codex.rate_limits.is_some(),
-                            codex_plan = ?payload.codex.account.as_ref().and_then(|account| account.plan.as_deref()),
-                            "bridge broadcasted capabilities"
-                        );
-                    }
+        tokio::spawn(async move {
+            let payload = build_capabilities(&config).await;
+            {
+                let mut cached = cached.lock().await;
+                *cached = Some(CachedCapabilities {
+                    payload: payload.clone(),
+                    fetched_at: Instant::now(),
                 });
-                fallback
             }
-        };
 
-        let mut cached = self.cached.lock().await;
-        *cached = Some(CachedCapabilities {
-            payload: payload.clone(),
-            fetched_at: Instant::now(),
+            if let Ok(data) = serde_json::to_string(&payload) {
+                let message = OutboundMessage {
+                    event: "pylon.capabilities".to_string(),
+                    data,
+                    channel: Some(SYSTEM_CHANNEL.to_string()),
+                };
+                let _ = codex_tx.send(message);
+                info!(
+                    codex_available = payload.codex.available,
+                    codex_requires_auth = payload.codex.requires_auth,
+                    codex_rate_limits = payload.codex.rate_limits.is_some(),
+                    codex_plan = ?payload.codex.account.as_ref().and_then(|account| account.plan.as_deref()),
+                    "bridge broadcasted capabilities"
+                );
+            }
         });
-        payload
+
+        fallback
     }
 }
 
@@ -1230,8 +1219,12 @@ async fn build_placeholder_capabilities(config: &LocalBridgeConfig) -> BridgeCap
         None
     };
 
-    let model = config.codex.model.trim().to_string();
-    let model = if model.is_empty() { None } else { Some(model) };
+    let model = config.codex.model.trim();
+    let model = if model.is_empty() || model == "codex-sonnet-4-20250514" {
+        None
+    } else {
+        Some(model.to_string())
+    };
 
     BridgeCapabilities {
         timestamp: Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
@@ -1281,7 +1274,11 @@ async fn wait_for_initialized(
 async fn fetch_codex_capabilities(config: &CodexConfig) -> CodexCapabilities {
     let enabled = config.enabled;
     let model = config.model.trim();
-    let model = if model.is_empty() { None } else { Some(model.to_string()) };
+    let model = if model.is_empty() || model == "codex-sonnet-4-20250514" {
+        None
+    } else {
+        Some(model.to_string())
+    };
     if !enabled {
         return CodexCapabilities {
             enabled: false,
@@ -1436,7 +1433,7 @@ async fn fetch_codex_capabilities(config: &CodexConfig) -> CodexCapabilities {
                 available: true,
                 requires_auth: true,
                 account: None,
-                rate_limits: None,
+                rate_limits,
                 error: Some(err.to_string()),
                 model,
                 autonomy: Some(format!("{:?}", config.autonomy)),
