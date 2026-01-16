@@ -43,6 +43,7 @@ const DEFAULT_HOST: &str = "127.0.0.1";
 const DEFAULT_PORT: u16 = 8081;
 const DEFAULT_ACTIVITY_TIMEOUT: u64 = 120;
 const DEFAULT_CACHE_SECONDS: u64 = 30;
+const CAPABILITIES_TIMEOUT_SECS: u64 = 3;
 const SYSTEM_CHANNEL: &str = "pylon.system";
 const CODEX_CHANNEL: &str = "pylon.codex";
 const BRIDGE_CERT_NAME: &str = "pylon.local.crt";
@@ -1133,14 +1134,43 @@ where
 
 impl BridgeState {
     async fn capabilities(&self) -> BridgeCapabilities {
-        let mut cached = self.cached.lock().await;
-        if let Some(existing) = cached.as_ref() {
-            if existing.fetched_at.elapsed() < Duration::from_secs(DEFAULT_CACHE_SECONDS) {
-                return existing.payload.clone();
+        {
+            let cached = self.cached.lock().await;
+            if let Some(existing) = cached.as_ref() {
+                if existing.fetched_at.elapsed() < Duration::from_secs(DEFAULT_CACHE_SECONDS) {
+                    return existing.payload.clone();
+                }
             }
         }
 
-        let payload = build_capabilities(&self.config).await;
+        let config = self.config.clone();
+        let payload = match tokio::time::timeout(
+            Duration::from_secs(CAPABILITIES_TIMEOUT_SECS),
+            build_capabilities(&config),
+        )
+        .await
+        {
+            Ok(payload) => payload,
+            Err(_) => {
+                warn!(
+                    timeout_secs = CAPABILITIES_TIMEOUT_SECS,
+                    "bridge capabilities fetch timed out; using placeholder"
+                );
+                let fallback = build_placeholder_capabilities(&config).await;
+                let cached = self.cached.clone();
+                tokio::spawn(async move {
+                    let payload = build_capabilities(&config).await;
+                    let mut cached = cached.lock().await;
+                    *cached = Some(CachedCapabilities {
+                        payload,
+                        fetched_at: Instant::now(),
+                    });
+                });
+                fallback
+            }
+        };
+
+        let mut cached = self.cached.lock().await;
         *cached = Some(CachedCapabilities {
             payload: payload.clone(),
             fetched_at: Instant::now(),
@@ -1163,6 +1193,41 @@ async fn build_capabilities(config: &LocalBridgeConfig) -> BridgeCapabilities {
             network: config.pylon.network.clone(),
         },
         codex,
+    }
+}
+
+async fn build_placeholder_capabilities(config: &LocalBridgeConfig) -> BridgeCapabilities {
+    let enabled = config.codex.enabled;
+    let available = enabled && is_codex_available();
+    let error = if !enabled {
+        Some("Codex disabled".to_string())
+    } else if !available {
+        Some("Codex CLI not found".to_string())
+    } else {
+        None
+    };
+
+    BridgeCapabilities {
+        timestamp: Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
+        pylon: PylonCapabilities {
+            version: config.pylon.version.clone(),
+            npub: config.pylon.npub.clone(),
+            mode: PylonMode {
+                host: config.pylon.host_active,
+                provider: config.pylon.provider_active,
+            },
+            network: config.pylon.network.clone(),
+        },
+        codex: CodexCapabilities {
+            enabled,
+            available,
+            requires_auth: false,
+            account: None,
+            rate_limits: None,
+            error,
+            model: Some(config.codex.model.clone()),
+            autonomy: Some(format!("{:?}", config.codex.autonomy)),
+        },
     }
 }
 
