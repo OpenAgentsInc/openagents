@@ -1,7 +1,7 @@
 //! Local WebSocket bridge for browser-based Pylon discovery.
 
 use std::collections::{HashMap, HashSet};
-use std::net::SocketAddr;
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::path::{Path, PathBuf};
 #[cfg(target_os = "macos")]
 use std::process::Command;
@@ -29,6 +29,9 @@ use tokio_tungstenite::tungstenite::Message;
 use tokio_tungstenite::{accept_hdr_async, WebSocketStream};
 use tracing::{debug, info, warn};
 use uuid::Uuid;
+use x509_parser::extensions::GeneralName;
+use x509_parser::pem::parse_x509_pem;
+use x509_parser::prelude::{FromDer, X509Certificate};
 
 use crate::config::CodexConfig;
 
@@ -40,6 +43,24 @@ const DEFAULT_ACTIVITY_TIMEOUT: u64 = 120;
 const DEFAULT_CACHE_SECONDS: u64 = 30;
 const SYSTEM_CHANNEL: &str = "pylon.system";
 const CODEX_CHANNEL: &str = "pylon.codex";
+const BRIDGE_CERT_NAME: &str = "pylon.local.crt";
+const BRIDGE_KEY_NAME: &str = "pylon.local.key";
+const BRIDGE_CA_CERT_NAME: &str = "pylon.local.ca.crt";
+const BRIDGE_CA_KEY_NAME: &str = "pylon.local.ca.key";
+const BRIDGE_DNS_NAMES: [&str; 3] = ["pylon.local", "localhost", "hyperion.test"];
+const BRIDGE_IPS: [IpAddr; 2] = [
+    IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)),
+    IpAddr::V6(Ipv6Addr::LOCALHOST),
+];
+
+fn bridge_san_strings() -> Vec<String> {
+    let mut names = BRIDGE_DNS_NAMES
+        .iter()
+        .map(|name| (*name).to_string())
+        .collect::<Vec<_>>();
+    names.extend(BRIDGE_IPS.iter().map(|ip| ip.to_string()));
+    names
+}
 
 #[derive(Clone, Debug)]
 pub struct PylonBridgeInfo {
@@ -1271,22 +1292,100 @@ fn resolve_tls_paths(
 }
 
 fn is_generated_cert(cert_path: &Path) -> bool {
-    cert_path
-        .file_name()
-        .and_then(|name| name.to_str())
-        .map(|name| name == "pylon.local.crt")
-        .unwrap_or(false)
+    matches!(
+        cert_path
+            .file_name()
+            .and_then(|name| name.to_str()),
+        Some(BRIDGE_CERT_NAME) | Some(BRIDGE_CA_CERT_NAME)
+    )
+}
+
+fn bridge_ca_path(cert_path: &Path) -> Option<PathBuf> {
+    let file_name = cert_path.file_name()?.to_str()?;
+    if file_name == BRIDGE_CA_CERT_NAME {
+        return Some(cert_path.to_path_buf());
+    }
+    if file_name == BRIDGE_CERT_NAME {
+        let ca_path = cert_path.with_file_name(BRIDGE_CA_CERT_NAME);
+        if ca_path.exists() {
+            return Some(ca_path);
+        }
+    }
+    None
+}
+
+fn ip_from_bytes(bytes: &[u8]) -> Option<IpAddr> {
+    match bytes.len() {
+        4 => Some(IpAddr::V4(Ipv4Addr::new(bytes[0], bytes[1], bytes[2], bytes[3]))),
+        16 => {
+            let mut segments = [0u16; 8];
+            for (index, segment) in segments.iter_mut().enumerate() {
+                let offset = index * 2;
+                *segment = u16::from_be_bytes([bytes[offset], bytes[offset + 1]]);
+            }
+            Some(IpAddr::V6(Ipv6Addr::new(
+                segments[0],
+                segments[1],
+                segments[2],
+                segments[3],
+                segments[4],
+                segments[5],
+                segments[6],
+                segments[7],
+            )))
+        }
+        _ => None,
+    }
+}
+
+fn cert_supports_hosts(cert_path: &Path) -> bool {
+    let contents = match std::fs::read(cert_path) {
+        Ok(contents) => contents,
+        Err(_) => return false,
+    };
+    let (_, pem) = match parse_x509_pem(&contents) {
+        Ok(parsed) => parsed,
+        Err(_) => return false,
+    };
+    let (_, cert) = match X509Certificate::from_der(pem.contents.as_slice()) {
+        Ok(parsed) => parsed,
+        Err(_) => return false,
+    };
+
+    let mut names = HashSet::new();
+    if let Ok(Some(san)) = cert.subject_alternative_name() {
+        for name in san.value.general_names.iter() {
+            match name {
+                GeneralName::DNSName(dns) => {
+                    names.insert(dns.to_string());
+                }
+                GeneralName::IPAddress(bytes) => {
+                    if let Some(ip) = ip_from_bytes(bytes) {
+                        names.insert(ip.to_string());
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
+    BRIDGE_DNS_NAMES.iter().all(|host| names.contains(*host))
+        && BRIDGE_IPS
+            .iter()
+            .map(|ip| ip.to_string())
+            .all(|ip| names.contains(&ip))
 }
 
 fn maybe_trust_local_cert(cert_path: &Path) {
-    if !is_generated_cert(cert_path) {
+    let trust_path = bridge_ca_path(cert_path).unwrap_or_else(|| cert_path.to_path_buf());
+    if !is_generated_cert(&trust_path) {
         return;
     }
 
-    let marker_path = cert_path.with_extension("trusted");
+    let marker_path = trust_path.with_extension("trusted");
     if marker_path.exists() {
         if let (Ok(cert_meta), Ok(marker_meta)) =
-            (std::fs::metadata(cert_path), std::fs::metadata(&marker_path))
+            (std::fs::metadata(&trust_path), std::fs::metadata(&marker_path))
         {
             if let (Ok(cert_modified), Ok(marker_modified)) =
                 (cert_meta.modified(), marker_meta.modified())
@@ -1302,7 +1401,7 @@ fn maybe_trust_local_cert(cert_path: &Path) {
 
     #[cfg(target_os = "macos")]
     {
-        match trust_cert_macos(cert_path) {
+        match trust_cert_macos(&trust_path) {
             Ok(()) => {
                 if let Err(err) = std::fs::write(&marker_path, "trusted") {
                     warn!(error = %err, "failed to write bridge cert trust marker");
@@ -1351,10 +1450,17 @@ fn generate_self_signed_paths() -> Option<(PathBuf, PathBuf)> {
     let base = crate::config::PylonConfig::pylon_dir()
         .ok()
         .map(|path| path.join("certs"))?;
-    let cert = base.join("pylon.local.crt");
-    let key = base.join("pylon.local.key");
+    let cert = base.join(BRIDGE_CERT_NAME);
+    let key = base.join(BRIDGE_KEY_NAME);
+    let ca_cert = base.join(BRIDGE_CA_CERT_NAME);
+    let ca_key = base.join(BRIDGE_CA_KEY_NAME);
+    let needs_regen = !cert.exists()
+        || !key.exists()
+        || !ca_cert.exists()
+        || !ca_key.exists()
+        || !cert_supports_hosts(&cert);
 
-    if cert.exists() && key.exists() {
+    if !needs_regen {
         return Some((cert, key));
     }
 
@@ -1363,30 +1469,59 @@ fn generate_self_signed_paths() -> Option<(PathBuf, PathBuf)> {
         return None;
     }
 
-    if let Err(err) = generate_self_signed_cert(&cert, &key) {
+    if let Err(err) = generate_self_signed_cert(&cert, &key, &ca_cert, &ca_key) {
         warn!(error = %err, "failed to generate bridge TLS cert");
         return None;
     }
 
     warn!(
-        "generated self-signed cert; trust it to avoid TLS errors: {}",
-        cert.display()
+        "generated local bridge TLS cert; trust it to avoid TLS errors: {}",
+        ca_cert.display()
     );
 
     Some((cert, key))
 }
 
-fn generate_self_signed_cert(cert_path: &PathBuf, key_path: &PathBuf) -> Result<()> {
-    let subject_alt_names = vec![
-        "pylon.local".to_string(),
-        "localhost".to_string(),
-        "127.0.0.1".to_string(),
-        "::1".to_string(),
-        "hyperion.test".to_string(),
-    ];
-    let rcgen::CertifiedKey { cert, key_pair } =
-        rcgen::generate_simple_self_signed(subject_alt_names).context("create self-signed cert")?;
+fn generate_self_signed_cert(
+    cert_path: &PathBuf,
+    key_path: &PathBuf,
+    ca_cert_path: &PathBuf,
+    ca_key_path: &PathBuf,
+) -> Result<()> {
+    let mut ca_params = rcgen::CertificateParams::new(vec![BRIDGE_DNS_NAMES[0].to_string()])
+        .context("create bridge CA params")?;
+    ca_params.is_ca = rcgen::IsCa::Ca(rcgen::BasicConstraints::Unconstrained);
+    ca_params
+        .key_usages
+        .push(rcgen::KeyUsagePurpose::KeyCertSign);
+    ca_params
+        .key_usages
+        .push(rcgen::KeyUsagePurpose::DigitalSignature);
+    let ca_key = rcgen::KeyPair::generate().context("create bridge CA key")?;
+    let ca = ca_params
+        .self_signed(&ca_key)
+        .context("create bridge CA certificate")?;
+    std::fs::write(ca_cert_path, ca.pem())
+        .with_context(|| format!("write ca cert {}", ca_cert_path.display()))?;
+    std::fs::write(ca_key_path, ca_key.serialize_pem())
+        .with_context(|| format!("write ca key {}", ca_key_path.display()))?;
 
+    let mut params = rcgen::CertificateParams::new(bridge_san_strings())
+        .context("create bridge cert params")?;
+    params.is_ca = rcgen::IsCa::NoCa;
+    params
+        .key_usages
+        .push(rcgen::KeyUsagePurpose::DigitalSignature);
+    params
+        .key_usages
+        .push(rcgen::KeyUsagePurpose::KeyEncipherment);
+    params
+        .extended_key_usages
+        .push(rcgen::ExtendedKeyUsagePurpose::ServerAuth);
+    let key_pair = rcgen::KeyPair::generate().context("create bridge key")?;
+    let cert = params
+        .signed_by(&key_pair, &ca, &ca_key)
+        .context("create bridge certificate")?;
     std::fs::write(cert_path, cert.pem())
         .with_context(|| format!("write cert {}", cert_path.display()))?;
     std::fs::write(key_path, key_pair.serialize_pem())

@@ -38,6 +38,7 @@ rustls = "0.23"
 rustls-pemfile = "2.1"
 tokio-rustls = "0.26"
 rcgen = "0.13"
+x509-parser = "0.16"
 tower-http = { version = "0.6", features = ["cors"] }
 
 # CLI
