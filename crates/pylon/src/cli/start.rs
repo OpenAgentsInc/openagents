@@ -155,26 +155,27 @@ async fn run_daemon(
     // Provider state
     let mut provider: Option<PylonProvider> = None;
     let mut provider_events: Option<broadcast::Receiver<DomainEvent>> = None;
-    let provider_active = matches!(mode, PylonMode::Provider | PylonMode::Both);
+    let provider_enabled = matches!(mode, PylonMode::Provider | PylonMode::Both);
     let host_active = matches!(mode, PylonMode::Host | PylonMode::Both);
+    let mut provider_active = provider_enabled;
 
     // Initialize provider if needed
-    if provider_active {
+    if provider_enabled {
         let mut p = PylonProvider::new(config.clone()).await?;
         p.init_with_identity(identity.clone()).await?;
 
         let status = p.status().await;
         if status.backends.is_empty() {
             tracing::warn!("No inference backends detected for provider mode");
+            tracing::info!("Provider mode disabled; continuing without provider backends");
+            provider_active = false;
         } else {
             tracing::info!("Provider backends: {}", status.backends.join(", "));
+            p.start().await?;
+            provider_events = Some(p.events());
+            provider = Some(p);
+            tracing::info!("Provider mode started");
         }
-
-        p.start().await?;
-        provider_events = Some(p.events());
-        provider = Some(p);
-
-        tracing::info!("Provider mode started");
     }
 
     // Initialize host mode if needed
