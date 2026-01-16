@@ -247,6 +247,29 @@ struct CodexAccount {
     plan: Option<String>,
 }
 
+fn secondary_bind_addr(host: &str, port: u16) -> Option<SocketAddr> {
+    let ip: IpAddr = host.parse().ok()?;
+    match ip {
+        IpAddr::V4(v4) if v4.is_loopback() => Some(SocketAddr::new(
+            IpAddr::V6(Ipv6Addr::LOCALHOST),
+            port,
+        )),
+        IpAddr::V4(v4) if v4.is_unspecified() => Some(SocketAddr::new(
+            IpAddr::V6(Ipv6Addr::UNSPECIFIED),
+            port,
+        )),
+        IpAddr::V6(v6) if v6.is_loopback() => Some(SocketAddr::new(
+            IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)),
+            port,
+        )),
+        IpAddr::V6(v6) if v6.is_unspecified() => Some(SocketAddr::new(
+            IpAddr::V4(Ipv4Addr::UNSPECIFIED),
+            port,
+        )),
+        _ => None,
+    }
+}
+
 pub async fn start_local_bridge(config: LocalBridgeConfig) -> Result<LocalBridgeHandle> {
     let (shutdown, shutdown_rx) = watch::channel(false);
     let join = tokio::spawn(async move {
@@ -263,6 +286,22 @@ async fn serve_bridge(config: LocalBridgeConfig, mut shutdown_rx: watch::Receive
         .parse()
         .context("invalid bridge bind address")?;
     let listener = TcpListener::bind(addr).await.context("bridge bind failed")?;
+    let secondary_addr = secondary_bind_addr(&config.host, config.port);
+    let secondary_listener = if let Some(secondary_addr) = secondary_addr {
+        match TcpListener::bind(secondary_addr).await {
+            Ok(listener) => Some((secondary_addr, listener)),
+            Err(err) => {
+                warn!(
+                    error = %err,
+                    addr = %secondary_addr,
+                    "bridge secondary bind failed"
+                );
+                None
+            }
+        }
+    } else {
+        None
+    };
 
     let (tls_cert, tls_key) = resolve_tls_paths(config.tls_cert.clone(), config.tls_key.clone());
     if config.trust_cert {
@@ -290,13 +329,38 @@ async fn serve_bridge(config: LocalBridgeConfig, mut shutdown_rx: watch::Receive
         addr,
         tls_acceptor.is_some()
     );
+    if let Some((secondary_addr, _)) = &secondary_listener {
+        info!(
+            "pylon bridge listening on {} (tls: {})",
+            secondary_addr,
+            tls_acceptor.is_some()
+        );
+    }
 
     loop {
+        let secondary_accept = async {
+            if let Some((_, listener)) = &secondary_listener {
+                listener.accept().await
+            } else {
+                std::future::pending::<std::io::Result<(tokio::net::TcpStream, SocketAddr)>>()
+                    .await
+            }
+        };
         tokio::select! {
             _ = shutdown_rx.changed() => {
                 break;
             }
             result = listener.accept() => {
+                let (stream, peer_addr) = result.context("bridge accept failed")?;
+                let tls_acceptor = tls_acceptor.clone();
+                let state = state.clone();
+                tokio::spawn(async move {
+                    if let Err(err) = handle_connection(stream, peer_addr, tls_acceptor, state).await {
+                        warn!(%peer_addr, error = %err, "bridge connection failed");
+                    }
+                });
+            }
+            result = secondary_accept => {
                 let (stream, peer_addr) = result.context("bridge accept failed")?;
                 let tls_acceptor = tls_acceptor.clone();
                 let state = state.clone();
