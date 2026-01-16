@@ -129,7 +129,7 @@ fn default_codex_enabled() -> bool {
 }
 
 fn default_codex_model() -> String {
-    "codex-sonnet-4-20250514".to_string()
+    String::new()
 }
 
 fn default_approval_tools() -> Vec<String> {

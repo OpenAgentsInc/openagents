@@ -12,8 +12,8 @@ use std::time::{Duration, Instant};
 use anyhow::{Context, Result};
 use chrono::{Datelike, Utc};
 use codex_client::{
-    AppServerClient, AppServerConfig, AppServerRequestId, ClientInfo, CommandExecParams,
-    GetAccountParams, ModelListParams, ReviewStartParams, SkillsListParams,
+    AppServerClient, AppServerConfig, AppServerNotification, AppServerRequestId, ClientInfo,
+    CommandExecParams, GetAccountParams, ModelListParams, ReviewStartParams, SkillsListParams,
     ThreadArchiveParams, ThreadListParams, ThreadResumeParams, ThreadStartParams,
     TurnInterruptParams, TurnStartParams, is_codex_available,
 };
@@ -22,7 +22,7 @@ use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use tokio::net::TcpListener;
-use tokio::sync::{Mutex, broadcast, watch};
+use tokio::sync::{Mutex, broadcast, mpsc, watch};
 use tokio::task::JoinHandle;
 use tokio_rustls::TlsAcceptor;
 use tokio_tungstenite::tungstenite::handshake::server::{ErrorResponse, Request, Response};
@@ -44,6 +44,8 @@ const DEFAULT_PORT: u16 = 8081;
 const DEFAULT_ACTIVITY_TIMEOUT: u64 = 120;
 const DEFAULT_CACHE_SECONDS: u64 = 30;
 const CAPABILITIES_TIMEOUT_SECS: u64 = 3;
+const CAPABILITIES_INIT_TIMEOUT_SECS: u64 = 2;
+const CAPABILITIES_ACCOUNT_TIMEOUT_SECS: u64 = 10;
 const SYSTEM_CHANNEL: &str = "pylon.system";
 const CODEX_CHANNEL: &str = "pylon.codex";
 const BRIDGE_CERT_NAME: &str = "pylon.local.crt";
@@ -1228,6 +1230,9 @@ async fn build_placeholder_capabilities(config: &LocalBridgeConfig) -> BridgeCap
         None
     };
 
+    let model = config.codex.model.trim().to_string();
+    let model = if model.is_empty() { None } else { Some(model) };
+
     BridgeCapabilities {
         timestamp: Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
         pylon: PylonCapabilities {
@@ -1246,14 +1251,37 @@ async fn build_placeholder_capabilities(config: &LocalBridgeConfig) -> BridgeCap
             account: None,
             rate_limits: None,
             error,
-            model: Some(config.codex.model.clone()),
+            model,
             autonomy: Some(format!("{:?}", config.codex.autonomy)),
         },
     }
 }
 
+async fn wait_for_initialized(
+    notifications: &mut mpsc::Receiver<AppServerNotification>,
+) -> bool {
+    match tokio::time::timeout(
+        Duration::from_secs(CAPABILITIES_INIT_TIMEOUT_SECS),
+        async {
+            while let Some(notification) = notifications.recv().await {
+                if notification.method == "initialized" {
+                    return true;
+                }
+            }
+            false
+        },
+    )
+    .await
+    {
+        Ok(result) => result,
+        Err(_) => false,
+    }
+}
+
 async fn fetch_codex_capabilities(config: &CodexConfig) -> CodexCapabilities {
     let enabled = config.enabled;
+    let model = config.model.trim();
+    let model = if model.is_empty() { None } else { Some(model.to_string()) };
     if !enabled {
         return CodexCapabilities {
             enabled: false,
@@ -1262,7 +1290,7 @@ async fn fetch_codex_capabilities(config: &CodexConfig) -> CodexCapabilities {
             account: None,
             rate_limits: None,
             error: None,
-            model: None,
+            model,
             autonomy: None,
         };
     }
@@ -1275,7 +1303,7 @@ async fn fetch_codex_capabilities(config: &CodexConfig) -> CodexCapabilities {
             account: None,
             rate_limits: None,
             error: Some("Codex CLI not found".to_string()),
-            model: Some(config.model.clone()),
+            model,
             autonomy: Some(format!("{:?}", config.autonomy)),
         };
     }
@@ -1295,7 +1323,7 @@ async fn fetch_codex_capabilities(config: &CodexConfig) -> CodexCapabilities {
                 account: None,
                 rate_limits: None,
                 error: Some(err.to_string()),
-                model: Some(config.model.clone()),
+                model,
                 autonomy: Some(format!("{:?}", config.autonomy)),
             };
         }
@@ -1303,19 +1331,6 @@ async fn fetch_codex_capabilities(config: &CodexConfig) -> CodexCapabilities {
 
     let mut notifications = channels.notifications;
     let mut requests = channels.requests;
-
-    tokio::spawn(async move {
-        while let Some(notification) = notifications.recv().await {
-            debug!(method = %notification.method, "bridge ignoring app-server notification");
-        }
-    });
-
-    tokio::spawn(async move {
-        while let Some(request) = requests.recv().await {
-            debug!(method = %request.method, "bridge ignoring app-server request");
-            let _ = request;
-        }
-    });
 
     let init_result = client
         .initialize(ClientInfo {
@@ -1333,18 +1348,56 @@ async fn fetch_codex_capabilities(config: &CodexConfig) -> CodexCapabilities {
             account: None,
             rate_limits: None,
             error: Some(err.to_string()),
-            model: Some(config.model.clone()),
+            model,
             autonomy: Some(format!("{:?}", config.autonomy)),
         };
     }
 
-    let account = client
-        .account_read(GetAccountParams { refresh_token: false })
-        .await;
-    let rate_limits = match client.account_rate_limits_read().await {
-        Ok(response) => Some(response.rate_limits),
-        Err(err) => {
-            warn!(error = %err, "bridge codex rate limits read failed");
+    let initialized = wait_for_initialized(&mut notifications).await;
+    if !initialized {
+        warn!(
+            timeout_secs = CAPABILITIES_INIT_TIMEOUT_SECS,
+            "bridge codex initialize notification timed out"
+        );
+    }
+
+    tokio::spawn(async move {
+        while let Some(notification) = notifications.recv().await {
+            debug!(method = %notification.method, "bridge ignoring app-server notification");
+        }
+    });
+
+    tokio::spawn(async move {
+        while let Some(request) = requests.recv().await {
+            debug!(method = %request.method, "bridge ignoring app-server request");
+            let _ = request;
+        }
+    });
+
+    let account = match tokio::time::timeout(
+        Duration::from_secs(CAPABILITIES_ACCOUNT_TIMEOUT_SECS),
+        client.account_read(GetAccountParams { refresh_token: false }),
+    )
+    .await
+    {
+        Ok(result) => result,
+        Err(_) => Err(anyhow::anyhow!("account read timed out")),
+    };
+    let rate_limits = match tokio::time::timeout(
+        Duration::from_secs(CAPABILITIES_ACCOUNT_TIMEOUT_SECS),
+        client.account_rate_limits_read(),
+    )
+    .await
+    {
+        Ok(result) => match result {
+            Ok(response) => Some(response.rate_limits),
+            Err(err) => {
+                warn!(error = %err, "bridge codex rate limits read failed");
+                None
+            }
+        },
+        Err(_) => {
+            warn!(timeout_secs = CAPABILITIES_ACCOUNT_TIMEOUT_SECS, "bridge codex rate limits read timed out");
             None
         }
     };
@@ -1372,7 +1425,7 @@ async fn fetch_codex_capabilities(config: &CodexConfig) -> CodexCapabilities {
                 account: account_info,
                 rate_limits,
                 error: None,
-                model: Some(config.model.clone()),
+                model,
                 autonomy: Some(format!("{:?}", config.autonomy)),
             }
         }
@@ -1385,7 +1438,7 @@ async fn fetch_codex_capabilities(config: &CodexConfig) -> CodexCapabilities {
                 account: None,
                 rate_limits: None,
                 error: Some(err.to_string()),
-                model: Some(config.model.clone()),
+                model,
                 autonomy: Some(format!("{:?}", config.autonomy)),
             }
         }
