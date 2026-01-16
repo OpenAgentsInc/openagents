@@ -88,6 +88,17 @@ fn bridge_san_strings() -> Vec<String> {
     names
 }
 
+fn normalize_codex_model(model: &str) -> Option<String> {
+    let trimmed = model.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    if trimmed.starts_with("codex-sonnet-") {
+        return None;
+    }
+    Some(trimmed.to_string())
+}
+
 fn cert_common_name(name: &X509Name<'_>) -> Option<String> {
     name.iter_common_name()
         .next()
@@ -1217,12 +1228,7 @@ async fn build_placeholder_capabilities(config: &LocalBridgeConfig) -> BridgeCap
         None
     };
 
-    let model = config.codex.model.trim();
-    let model = if model.is_empty() {
-        None
-    } else {
-        Some(model.to_string())
-    };
+    let model = normalize_codex_model(&config.codex.model);
 
     BridgeCapabilities {
         timestamp: Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
@@ -1329,12 +1335,7 @@ fn build_codex_home_override() -> Result<(Vec<(String, String)>, Option<TempDir>
 
 async fn fetch_codex_capabilities(config: &CodexConfig) -> CodexCapabilities {
     let enabled = config.enabled;
-    let model = config.model.trim();
-    let model = if model.is_empty() {
-        None
-    } else {
-        Some(model.to_string())
-    };
+    let model = normalize_codex_model(&config.model);
     if !enabled {
         return CodexCapabilities {
             enabled: false,
