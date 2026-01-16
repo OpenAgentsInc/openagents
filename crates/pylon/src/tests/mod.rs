@@ -6,7 +6,7 @@ use crate::config::PylonConfig;
 fn test_default_codex_config() {
     let config = PylonConfig::default();
     assert!(config.codex.enabled);
-    assert_eq!(config.codex.model, "codex-sonnet-4-20250514");
+    assert!(config.codex.model.is_empty());
     assert_eq!(config.codex.autonomy, CodexSessionAutonomy::Supervised);
     assert_eq!(
         config.codex.approval_required_tools,
