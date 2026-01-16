@@ -48,6 +48,17 @@ pub struct StartArgs {
     pub config: Option<String>,
 }
 
+fn env_truthy(key: &str) -> bool {
+    std::env::var(key)
+        .map(|value| {
+            matches!(
+                value.trim().to_lowercase().as_str(),
+                "1" | "true" | "yes" | "on"
+            )
+        })
+        .unwrap_or(false)
+}
+
 /// Run the start command
 pub async fn run(args: StartArgs) -> anyhow::Result<()> {
     // Check if daemon is already running
@@ -84,11 +95,13 @@ pub async fn run(args: StartArgs) -> anyhow::Result<()> {
         .npub()
         .map_err(|e| anyhow::anyhow!("Failed to get npub: {}", e))?;
 
+    let trust_bridge_cert = args.foreground || env_truthy("PYLON_TRUST_BRIDGE_CERT");
+
     if args.foreground {
         println!("Starting Pylon in foreground mode...");
         println!("Identity: {}", npub);
         println!("Mode: {:?}", args.mode);
-        run_daemon(config, identity, args.mode).await
+        run_daemon(config, identity, args.mode, trust_bridge_cert).await
     } else {
         // Daemonize
         println!("Starting Pylon daemon...");
@@ -113,7 +126,7 @@ pub async fn run(args: StartArgs) -> anyhow::Result<()> {
             }
             true => {
                 // Child process - we are the daemon
-                run_daemon(config, identity, args.mode).await
+                run_daemon(config, identity, args.mode, trust_bridge_cert).await
             }
         }
     }
@@ -124,6 +137,7 @@ async fn run_daemon(
     config: PylonConfig,
     identity: UnifiedIdentity,
     mode: PylonMode,
+    trust_bridge_cert: bool,
 ) -> anyhow::Result<()> {
     let start_time = Instant::now();
 
@@ -213,7 +227,7 @@ async fn run_daemon(
     };
 
     let npub = identity.npub().ok();
-    let bridge_config = LocalBridgeConfig::for_pylon(
+    let mut bridge_config = LocalBridgeConfig::for_pylon(
         PylonBridgeInfo {
             version: env!("CARGO_PKG_VERSION").to_string(),
             npub,
@@ -223,6 +237,7 @@ async fn run_daemon(
         },
         config.codex.clone(),
     );
+    bridge_config.trust_cert = trust_bridge_cert;
     let bridge_handle = match start_local_bridge(bridge_config).await {
         Ok(handle) => Some(handle),
         Err(err) => {
