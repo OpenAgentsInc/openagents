@@ -750,27 +750,39 @@ async fn handle_codex_connect(state: &BridgeState, payload: Value) -> Result<()>
         return Ok(());
     }
 
-    {
+    let already_connected = {
         let codex = state.codex.lock().await;
-        if codex.sessions.contains_key(&workspace_id) {
-            emit_codex_status(state, &workspace_id, "connected", None);
-            return Ok(());
+        codex.sessions.contains_key(&workspace_id)
+    };
+
+    let mut connected = false;
+
+    if already_connected {
+        emit_codex_status(state, &workspace_id, "connected", None);
+        connected = true;
+    } else {
+        match spawn_codex_session(state, workspace_id.clone(), PathBuf::from(cwd)).await {
+            Ok(session) => {
+                let mut codex = state.codex.lock().await;
+                codex.sessions.insert(workspace_id.clone(), session);
+                emit_codex_status(state, &workspace_id, "connected", None);
+                connected = true;
+            }
+            Err(err) => {
+                emit_codex_status(
+                    state,
+                    &workspace_id,
+                    "failed",
+                    Some(err.to_string()),
+                );
+            }
         }
     }
 
-    match spawn_codex_session(state, workspace_id.clone(), PathBuf::from(cwd)).await {
-        Ok(session) => {
-            let mut codex = state.codex.lock().await;
-            codex.sessions.insert(workspace_id.clone(), session);
-            emit_codex_status(state, &workspace_id, "connected", None);
-        }
-        Err(err) => {
-            emit_codex_status(
-                state,
-                &workspace_id,
-                "failed",
-                Some(err.to_string()),
-            );
+    if connected {
+        state.invalidate_capabilities_cache().await;
+        if let Err(err) = broadcast_capabilities(state, SYSTEM_CHANNEL).await {
+            warn!(error = %err, "bridge capabilities broadcast failed");
         }
     }
 
@@ -1148,6 +1160,26 @@ where
     send_outbound(writer, &message).await
 }
 
+async fn broadcast_capabilities(state: &BridgeState, channel: &str) -> Result<()> {
+    let payload = state.capabilities().await;
+    info!(
+        channel = %channel,
+        codex_available = payload.codex.available,
+        codex_requires_auth = payload.codex.requires_auth,
+        codex_rate_limits = payload.codex.rate_limits.is_some(),
+        codex_plan = ?payload.codex.account.as_ref().and_then(|account| account.plan.as_deref()),
+        "bridge broadcasted capabilities"
+    );
+    let data = serde_json::to_string(&payload)?;
+    let message = OutboundMessage {
+        event: "pylon.capabilities".to_string(),
+        data,
+        channel: Some(channel.to_string()),
+    };
+    let _ = state.codex_tx.send(message);
+    Ok(())
+}
+
 impl BridgeState {
     async fn capabilities(&self) -> BridgeCapabilities {
         {
@@ -1174,7 +1206,7 @@ impl BridgeState {
 
         let payload = match tokio::time::timeout(
             Duration::from_secs(CAPABILITIES_ACCOUNT_TIMEOUT_SECS * 2),
-            build_capabilities(&config),
+            build_capabilities(self),
         )
         .await
         {
@@ -1198,10 +1230,20 @@ impl BridgeState {
 
         payload
     }
+
+    async fn invalidate_capabilities_cache(&self) {
+        let mut cached = self.cached.lock().await;
+        *cached = None;
+    }
 }
 
-async fn build_capabilities(config: &LocalBridgeConfig) -> BridgeCapabilities {
-    let codex = fetch_codex_capabilities(&config.codex).await;
+async fn build_capabilities(state: &BridgeState) -> BridgeCapabilities {
+    let config = state.config.clone();
+    let session_client = {
+        let codex = state.codex.lock().await;
+        codex.sessions.values().next().map(|session| session.client.clone())
+    };
+    let codex = fetch_codex_capabilities_with_session(&config.codex, session_client).await;
     BridgeCapabilities {
         timestamp: Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
         pylon: PylonCapabilities {
@@ -1217,8 +1259,8 @@ async fn build_capabilities(config: &LocalBridgeConfig) -> BridgeCapabilities {
     }
 }
 
-async fn build_placeholder_capabilities(config: &LocalBridgeConfig) -> BridgeCapabilities {
-    let enabled = config.codex.enabled;
+fn build_placeholder_codex_capabilities(config: &CodexConfig) -> CodexCapabilities {
+    let enabled = config.enabled;
     let available = enabled && is_codex_available();
     let error = if !enabled {
         Some("Codex disabled".to_string())
@@ -1227,9 +1269,21 @@ async fn build_placeholder_capabilities(config: &LocalBridgeConfig) -> BridgeCap
     } else {
         None
     };
+    let model = normalize_codex_model(&config.model);
 
-    let model = normalize_codex_model(&config.codex.model);
+    CodexCapabilities {
+        enabled,
+        available,
+        requires_auth: false,
+        account: None,
+        rate_limits: None,
+        error,
+        model,
+        autonomy: Some(format!("{:?}", config.autonomy)),
+    }
+}
 
+async fn build_placeholder_capabilities(config: &LocalBridgeConfig) -> BridgeCapabilities {
     BridgeCapabilities {
         timestamp: Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
         pylon: PylonCapabilities {
@@ -1241,16 +1295,7 @@ async fn build_placeholder_capabilities(config: &LocalBridgeConfig) -> BridgeCap
             },
             network: config.pylon.network.clone(),
         },
-        codex: CodexCapabilities {
-            enabled,
-            available,
-            requires_auth: false,
-            account: None,
-            rate_limits: None,
-            error,
-            model,
-            autonomy: Some(format!("{:?}", config.codex.autonomy)),
-        },
+        codex: build_placeholder_codex_capabilities(&config.codex),
     }
 }
 
@@ -1331,6 +1376,104 @@ fn build_codex_home_override() -> Result<(Vec<(String, String)>, Option<TempDir>
     );
 
     Ok((env_overrides, Some(temp_dir)))
+}
+
+async fn fetch_codex_capabilities_with_session(
+    config: &CodexConfig,
+    session_client: Option<Arc<Mutex<Option<AppServerClient>>>>,
+) -> CodexCapabilities {
+    if !config.enabled {
+        return build_placeholder_codex_capabilities(config);
+    }
+
+    if let Some(client) = session_client {
+        if let Some(capabilities) = fetch_codex_capabilities_from_session(config, &client).await {
+            return capabilities;
+        }
+    }
+
+    build_placeholder_codex_capabilities(config)
+}
+
+async fn fetch_codex_capabilities_from_session(
+    config: &CodexConfig,
+    client: &Arc<Mutex<Option<AppServerClient>>>,
+) -> Option<CodexCapabilities> {
+    let model = normalize_codex_model(&config.model);
+    let mut guard = client.lock().await;
+    let client = guard.as_ref()?;
+
+    let account = match tokio::time::timeout(
+        Duration::from_secs(CAPABILITIES_ACCOUNT_TIMEOUT_SECS),
+        client.account_read(GetAccountParams { refresh_token: false }),
+    )
+    .await
+    {
+        Ok(result) => result,
+        Err(_) => Err(anyhow::anyhow!("account read timed out")),
+    };
+
+    let rate_limits = match tokio::time::timeout(
+        Duration::from_secs(CAPABILITIES_ACCOUNT_TIMEOUT_SECS),
+        client.account_rate_limits_read(),
+    )
+    .await
+    {
+        Ok(result) => match result {
+            Ok(response) => Some(response.rate_limits),
+            Err(err) => {
+                warn!(error = %err, "bridge codex rate limits read failed");
+                None
+            }
+        },
+        Err(_) => {
+            warn!(timeout_secs = CAPABILITIES_ACCOUNT_TIMEOUT_SECS, "bridge codex rate limits read timed out");
+            None
+        }
+    };
+
+    let capabilities = match account {
+        Ok(response) => {
+            let account_info = response.account.map(|info| match info {
+                codex_client::AccountInfo::ApiKey => CodexAccount {
+                    auth_mode: "apiKey".to_string(),
+                    email: None,
+                    plan: None,
+                },
+                codex_client::AccountInfo::Chatgpt { email, plan_type } => CodexAccount {
+                    auth_mode: "chatgpt".to_string(),
+                    email: Some(email),
+                    plan: Some(format!("{:?}", plan_type)),
+                },
+            });
+
+            CodexCapabilities {
+                enabled: true,
+                available: true,
+                requires_auth: response.requires_openai_auth,
+                account: account_info,
+                rate_limits,
+                error: None,
+                model,
+                autonomy: Some(format!("{:?}", config.autonomy)),
+            }
+        }
+        Err(err) => {
+            warn!(error = %err, "bridge codex account read failed");
+            CodexCapabilities {
+                enabled: true,
+                available: true,
+                requires_auth: true,
+                account: None,
+                rate_limits,
+                error: Some(err.to_string()),
+                model,
+                autonomy: Some(format!("{:?}", config.autonomy)),
+            }
+        }
+    };
+
+    Some(capabilities)
 }
 
 async fn fetch_codex_capabilities(config: &CodexConfig) -> CodexCapabilities {
