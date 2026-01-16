@@ -6,3 +6,4 @@
 
 ## 2025-01-16
 - Constrained the local bridge TLS cert validity window and added validity checks so stale long-lived certs are regenerated.
+- Prefer Herd TLS certs (or env-provided cert/key) for the local bridge to unblock Chrome TLS handshakes.
