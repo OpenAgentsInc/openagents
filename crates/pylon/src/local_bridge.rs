@@ -51,23 +51,35 @@ const BRIDGE_CA_CERT_NAME: &str = "pylon.local.ca.crt";
 const BRIDGE_CA_KEY_NAME: &str = "pylon.local.ca.key";
 const BRIDGE_CA_CN: &str = "Pylon Local CA";
 const BRIDGE_LEAF_CN: &str = "Pylon Local Bridge";
-const BRIDGE_DNS_NAMES: [&str; 3] = ["pylon.local", "localhost", "hyperion.test"];
+const BRIDGE_DNS_NAMES: [&str; 2] = ["pylon.local", "localhost"];
 const BRIDGE_IPS: [IpAddr; 2] = [
     IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)),
     IpAddr::V6(Ipv6Addr::LOCALHOST),
 ];
 const BRIDGE_CERT_VALIDITY_DAYS: i64 = 365;
 const BRIDGE_CERT_MAX_VALIDITY_DAYS: i64 = 400;
-const DEFAULT_HERD_HOST: &str = "hyperion.test";
 const ENV_TLS_CERT: &str = "PYLON_BRIDGE_TLS_CERT";
 const ENV_TLS_KEY: &str = "PYLON_BRIDGE_TLS_KEY";
 const ENV_TLS_HOST: &str = "PYLON_BRIDGE_TLS_HOST";
 
-fn bridge_san_strings() -> Vec<String> {
+fn bridge_dns_names() -> Vec<String> {
     let mut names = BRIDGE_DNS_NAMES
         .iter()
         .map(|name| (*name).to_string())
         .collect::<Vec<_>>();
+    if let Ok(host) = env::var(ENV_TLS_HOST) {
+        let trimmed = host.trim();
+        if !trimmed.is_empty()
+            && !names.iter().any(|name| name.eq_ignore_ascii_case(trimmed))
+        {
+            names.push(trimmed.to_string());
+        }
+    }
+    names
+}
+
+fn bridge_san_strings() -> Vec<String> {
+    let mut names = bridge_dns_names();
     names.extend(BRIDGE_IPS.iter().map(|ip| ip.to_string()));
     names
 }
@@ -408,7 +420,7 @@ where
             .headers()
             .get("Origin")
             .and_then(|value| value.to_str().ok());
-        debug!(path = %request.uri(), origin = ?origin, "bridge ws handshake");
+        info!(path = %request.uri(), origin = ?origin, "bridge ws handshake");
         if !allowed_origins.allows(origin) {
             warn!(origin = ?origin, "rejecting bridge connection due to origin");
             return Err(error_response(403, "origin not allowed"));
@@ -1418,7 +1430,11 @@ fn env_tls_paths() -> Option<(PathBuf, PathBuf)> {
 }
 
 fn herd_cert_paths() -> Option<(PathBuf, PathBuf)> {
-    let host = env::var(ENV_TLS_HOST).unwrap_or_else(|_| DEFAULT_HERD_HOST.to_string());
+    let host = env::var(ENV_TLS_HOST).ok()?;
+    let host = host.trim();
+    if host.is_empty() {
+        return None;
+    }
     let home = env::var_os("HOME")?;
     let base = PathBuf::from(home)
         .join("Library/Application Support/Herd/config/valet/Certificates");
@@ -1529,7 +1545,9 @@ fn cert_supports_hosts(cert_path: &Path) -> bool {
     let subject_cn = cert_common_name(cert.subject());
     let issuer_cn = cert_common_name(cert.issuer());
 
-    BRIDGE_DNS_NAMES.iter().all(|host| names.contains(*host))
+    bridge_dns_names()
+        .iter()
+        .all(|host| names.contains(host))
         && BRIDGE_IPS
             .iter()
             .map(|ip| ip.to_string())
