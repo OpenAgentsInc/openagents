@@ -459,6 +459,8 @@ where
         }
     };
 
+    debug!(event = %message.event, channel = ?message.channel, "bridge client event");
+
     match message.event.as_str() {
         "pusher:ping" => {
             let pong = OutboundMessage {
@@ -476,6 +478,7 @@ where
                         return Ok(());
                     }
                     subscriptions.insert(channel.clone());
+                    info!(channel = %channel, "bridge subscribed");
                     let reply = OutboundMessage {
                         event: "pusher_internal:subscription_succeeded".to_string(),
                         data: "{}".to_string(),
@@ -501,6 +504,7 @@ where
                 .clone()
                 .unwrap_or_else(|| SYSTEM_CHANNEL.to_string());
             if subscriptions.contains(&channel) {
+                info!(channel = %channel, "bridge discovery requested");
                 send_capabilities(state, writer, &channel).await?;
             }
         }
@@ -1035,6 +1039,12 @@ where
     S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin,
 {
     let payload = state.capabilities().await;
+    info!(
+        channel = %channel,
+        codex_available = payload.codex.available,
+        codex_requires_auth = payload.codex.requires_auth,
+        "bridge sent capabilities"
+    );
     let data = serde_json::to_string(&payload)?;
     let message = OutboundMessage {
         event: "pylon.capabilities".to_string(),
