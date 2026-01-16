@@ -32,6 +32,7 @@ use uuid::Uuid;
 use x509_parser::extensions::GeneralName;
 use x509_parser::pem::parse_x509_pem;
 use x509_parser::prelude::{FromDer, X509Certificate};
+use x509_parser::x509::X509Name;
 
 use crate::config::CodexConfig;
 
@@ -47,6 +48,8 @@ const BRIDGE_CERT_NAME: &str = "pylon.local.crt";
 const BRIDGE_KEY_NAME: &str = "pylon.local.key";
 const BRIDGE_CA_CERT_NAME: &str = "pylon.local.ca.crt";
 const BRIDGE_CA_KEY_NAME: &str = "pylon.local.ca.key";
+const BRIDGE_CA_CN: &str = "Pylon Local CA";
+const BRIDGE_LEAF_CN: &str = "Pylon Local Bridge";
 const BRIDGE_DNS_NAMES: [&str; 3] = ["pylon.local", "localhost", "hyperion.test"];
 const BRIDGE_IPS: [IpAddr; 2] = [
     IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)),
@@ -60,6 +63,13 @@ fn bridge_san_strings() -> Vec<String> {
         .collect::<Vec<_>>();
     names.extend(BRIDGE_IPS.iter().map(|ip| ip.to_string()));
     names
+}
+
+fn cert_common_name(name: &X509Name<'_>) -> Option<String> {
+    name.iter_common_name()
+        .next()
+        .and_then(|cn| cn.as_str().ok())
+        .map(|value| value.to_string())
 }
 
 #[derive(Clone, Debug)]
@@ -1369,11 +1379,16 @@ fn cert_supports_hosts(cert_path: &Path) -> bool {
         }
     }
 
+    let subject_cn = cert_common_name(cert.subject());
+    let issuer_cn = cert_common_name(cert.issuer());
+
     BRIDGE_DNS_NAMES.iter().all(|host| names.contains(*host))
         && BRIDGE_IPS
             .iter()
             .map(|ip| ip.to_string())
             .all(|ip| names.contains(&ip))
+        && subject_cn.as_deref() == Some(BRIDGE_LEAF_CN)
+        && issuer_cn.as_deref() == Some(BRIDGE_CA_CN)
 }
 
 fn maybe_trust_local_cert(cert_path: &Path) {
@@ -1490,6 +1505,9 @@ fn generate_self_signed_cert(
 ) -> Result<()> {
     let mut ca_params = rcgen::CertificateParams::new(vec![BRIDGE_DNS_NAMES[0].to_string()])
         .context("create bridge CA params")?;
+    let mut ca_dn = rcgen::DistinguishedName::new();
+    ca_dn.push(rcgen::DnType::CommonName, BRIDGE_CA_CN);
+    ca_params.distinguished_name = ca_dn;
     ca_params.is_ca = rcgen::IsCa::Ca(rcgen::BasicConstraints::Unconstrained);
     ca_params
         .key_usages
@@ -1508,6 +1526,9 @@ fn generate_self_signed_cert(
 
     let mut params = rcgen::CertificateParams::new(bridge_san_strings())
         .context("create bridge cert params")?;
+    let mut leaf_dn = rcgen::DistinguishedName::new();
+    leaf_dn.push(rcgen::DnType::CommonName, BRIDGE_LEAF_CN);
+    params.distinguished_name = leaf_dn;
     params.is_ca = rcgen::IsCa::NoCa;
     params
         .key_usages
