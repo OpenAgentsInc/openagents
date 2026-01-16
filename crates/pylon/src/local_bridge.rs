@@ -1,6 +1,7 @@
 //! Local WebSocket bridge for browser-based Pylon discovery.
 
 use std::collections::{HashMap, HashSet};
+use std::env;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::path::{Path, PathBuf};
 #[cfg(target_os = "macos")]
@@ -57,6 +58,10 @@ const BRIDGE_IPS: [IpAddr; 2] = [
 ];
 const BRIDGE_CERT_VALIDITY_DAYS: i64 = 365;
 const BRIDGE_CERT_MAX_VALIDITY_DAYS: i64 = 400;
+const DEFAULT_HERD_HOST: &str = "hyperion.test";
+const ENV_TLS_CERT: &str = "PYLON_BRIDGE_TLS_CERT";
+const ENV_TLS_KEY: &str = "PYLON_BRIDGE_TLS_KEY";
+const ENV_TLS_HOST: &str = "PYLON_BRIDGE_TLS_HOST";
 
 fn bridge_san_strings() -> Vec<String> {
     let mut names = BRIDGE_DNS_NAMES
@@ -1291,6 +1296,24 @@ fn resolve_tls_paths(
         return (cert, key);
     }
 
+    if let Some((env_cert, env_key)) = env_tls_paths() {
+        info!(
+            "using env TLS cert/key at {} and {}",
+            env_cert.display(),
+            env_key.display()
+        );
+        return (Some(env_cert), Some(env_key));
+    }
+
+    if let Some((herd_cert, herd_key)) = herd_cert_paths() {
+        info!(
+            "using Herd TLS cert/key at {} and {}",
+            herd_cert.display(),
+            herd_key.display()
+        );
+        return (Some(herd_cert), Some(herd_key));
+    }
+
     if let Some((generated_cert, generated_key)) = generate_self_signed_paths() {
         info!(
             "using generated TLS cert/key at {} and {}",
@@ -1301,6 +1324,37 @@ fn resolve_tls_paths(
     }
 
     (None, None)
+}
+
+fn env_tls_paths() -> Option<(PathBuf, PathBuf)> {
+    let cert = env::var_os(ENV_TLS_CERT)?;
+    let key = env::var_os(ENV_TLS_KEY)?;
+    let cert_path = PathBuf::from(cert);
+    let key_path = PathBuf::from(key);
+    if cert_path.exists() && key_path.exists() {
+        Some((cert_path, key_path))
+    } else {
+        warn!(
+            cert = %cert_path.display(),
+            key = %key_path.display(),
+            "bridge TLS env paths missing"
+        );
+        None
+    }
+}
+
+fn herd_cert_paths() -> Option<(PathBuf, PathBuf)> {
+    let host = env::var(ENV_TLS_HOST).unwrap_or_else(|_| DEFAULT_HERD_HOST.to_string());
+    let home = env::var_os("HOME")?;
+    let base = PathBuf::from(home)
+        .join("Library/Application Support/Herd/config/valet/Certificates");
+    let cert = base.join(format!("{host}.crt"));
+    let key = base.join(format!("{host}.key"));
+    if cert.exists() && key.exists() {
+        Some((cert, key))
+    } else {
+        None
+    }
 }
 
 fn is_generated_cert(cert_path: &Path) -> bool {
