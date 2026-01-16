@@ -148,7 +148,7 @@ impl AutopilotAgent {
             repo_url,
             issue_description,
             config: AutopilotConfig {
-                model: "codex-sonnet-4-20250514".to_string(),
+                model: "gpt-5.2-codex".to_string(),
                 max_cost_per_tick_usd: 5_000_000,  // $5
                 max_cost_per_day_usd: 100_000_000, // $100
             },

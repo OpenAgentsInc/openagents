@@ -262,7 +262,7 @@ backend_preference = ["ollama", "llamacpp", "apple_fm"]
 # Codex tunnel settings
 [codex]
 enabled = true
-model = "codex-sonnet-4-20250514"
+model = "gpt-5.2-codex"
 autonomy = "supervised"  # full | supervised | restricted | read_only
 approval_required_tools = ["Write", "Edit", "Bash"]
 

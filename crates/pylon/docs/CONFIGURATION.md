@@ -139,7 +139,7 @@ Codex tunnel settings for local Codex Agent SDK sessions.
 ```toml
 [codex]
 enabled = true
-model = "codex-sonnet-4-20250514"
+model = "gpt-5.2-codex"
 autonomy = "supervised"           # full | supervised | restricted | read_only
 approval_required_tools = ["Write", "Edit", "Bash"]
 allowed_tools = []                # empty = allow requested tools
@@ -182,7 +182,7 @@ backend_preference = ["ollama", "llamacpp", "apple_fm"]
 # Codex tunnel defaults
 [codex]
 enabled = true
-model = "codex-sonnet-4-20250514"
+model = "gpt-5.2-codex"
 autonomy = "supervised"
 approval_required_tools = ["Write", "Edit", "Bash"]
 

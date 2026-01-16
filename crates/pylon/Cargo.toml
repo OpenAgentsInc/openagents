@@ -77,6 +77,7 @@ bip39 = "2.1"
 uuid = { version = "1.11", features = ["v4"] }
 url = "2.5"
 dotenvy = "0.15"
+tempfile = "3.10"
 
 # HTTP client for compute detection
 reqwest = { version = "0.12", features = ["json", "blocking"] }
@@ -87,5 +88,4 @@ cli = []
 gui = []
 
 [dev-dependencies]
-tempfile = "3.10"
 tokio = { version = "1", features = ["rt", "macros"] }

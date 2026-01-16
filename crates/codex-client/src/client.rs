@@ -44,6 +44,7 @@ pub struct AppServerChannels {
 pub struct AppServerConfig {
     pub cwd: Option<PathBuf>,
     pub wire_log: Option<AppServerWireLog>,
+    pub env: Vec<(String, String)>,
 }
 
 impl Default for AppServerConfig {
@@ -51,6 +52,7 @@ impl Default for AppServerConfig {
         Self {
             cwd: None,
             wire_log: None,
+            env: Vec::new(),
         }
     }
 }
@@ -395,6 +397,10 @@ impl AppServerClient {
 
         if let Some(cwd) = config.cwd {
             cmd.current_dir(cwd);
+        }
+
+        for (key, value) in config.env {
+            cmd.env(key, value);
         }
 
         let mut child = cmd.spawn().context("Failed to spawn codex app-server")?;
