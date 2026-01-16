@@ -9,7 +9,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result};
-use chrono::Utc;
+use chrono::{Datelike, Utc};
 use codex_client::{
     AppServerClient, AppServerConfig, AppServerRequestId, ClientInfo, CommandExecParams,
     GetAccountParams, ModelListParams, ReviewStartParams, SkillsListParams,
@@ -55,6 +55,8 @@ const BRIDGE_IPS: [IpAddr; 2] = [
     IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)),
     IpAddr::V6(Ipv6Addr::LOCALHOST),
 ];
+const BRIDGE_CERT_VALIDITY_DAYS: i64 = 365;
+const BRIDGE_CERT_MAX_VALIDITY_DAYS: i64 = 400;
 
 fn bridge_san_strings() -> Vec<String> {
     let mut names = BRIDGE_DNS_NAMES
@@ -1348,6 +1350,23 @@ fn ip_from_bytes(bytes: &[u8]) -> Option<IpAddr> {
     }
 }
 
+fn cert_validity_ok(cert: &X509Certificate<'_>) -> bool {
+    let validity = cert.validity();
+    let not_before = validity.not_before.timestamp();
+    let not_after = validity.not_after.timestamp();
+    if not_after <= not_before {
+        return false;
+    }
+
+    let now = Utc::now().timestamp();
+    if not_before > now || not_after <= now {
+        return false;
+    }
+
+    let max_span = BRIDGE_CERT_MAX_VALIDITY_DAYS * 24 * 60 * 60;
+    (not_after - not_before) <= max_span
+}
+
 fn cert_supports_hosts(cert_path: &Path) -> bool {
     let contents = match std::fs::read(cert_path) {
         Ok(contents) => contents,
@@ -1389,6 +1408,7 @@ fn cert_supports_hosts(cert_path: &Path) -> bool {
             .all(|ip| names.contains(&ip))
         && subject_cn.as_deref() == Some(BRIDGE_LEAF_CN)
         && issuer_cn.as_deref() == Some(BRIDGE_CA_CN)
+        && cert_validity_ok(&cert)
 }
 
 fn maybe_trust_local_cert(cert_path: &Path) {
@@ -1503,12 +1523,27 @@ fn generate_self_signed_cert(
     ca_cert_path: &PathBuf,
     ca_key_path: &PathBuf,
 ) -> Result<()> {
+    let today = Utc::now().date_naive();
+    let not_before_date = today - chrono::Duration::days(1);
+    let not_after_date = today + chrono::Duration::days(BRIDGE_CERT_VALIDITY_DAYS);
+    let not_before = rcgen::date_time_ymd(
+        not_before_date.year(),
+        not_before_date.month() as u8,
+        not_before_date.day() as u8,
+    );
+    let not_after = rcgen::date_time_ymd(
+        not_after_date.year(),
+        not_after_date.month() as u8,
+        not_after_date.day() as u8,
+    );
     let mut ca_params = rcgen::CertificateParams::new(vec![BRIDGE_DNS_NAMES[0].to_string()])
         .context("create bridge CA params")?;
     let mut ca_dn = rcgen::DistinguishedName::new();
     ca_dn.push(rcgen::DnType::CommonName, BRIDGE_CA_CN);
     ca_params.distinguished_name = ca_dn;
     ca_params.is_ca = rcgen::IsCa::Ca(rcgen::BasicConstraints::Unconstrained);
+    ca_params.not_before = not_before;
+    ca_params.not_after = not_after;
     ca_params
         .key_usages
         .push(rcgen::KeyUsagePurpose::KeyCertSign);
@@ -1530,6 +1565,8 @@ fn generate_self_signed_cert(
     leaf_dn.push(rcgen::DnType::CommonName, BRIDGE_LEAF_CN);
     params.distinguished_name = leaf_dn;
     params.is_ca = rcgen::IsCa::NoCa;
+    params.not_before = not_before;
+    params.not_after = not_after;
     params
         .key_usages
         .push(rcgen::KeyUsagePurpose::DigitalSignature);
