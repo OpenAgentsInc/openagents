@@ -1,3 +1,38 @@
+@import "tailwindcss";
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-strong: var(--accent-strong);
+  --color-accent-foreground: var(--primary-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-destructive: var(--destructive);
+  --color-surface: var(--card);
+  --color-surface-strong: var(--secondary);
+  --color-surface-muted: var(--bg-accent);
+  --color-status-idle: var(--muted-foreground);
+  --color-status-connecting: var(--accent);
+  --color-status-connected: var(--ok);
+  --color-status-ready: var(--accent-strong);
+  --color-status-error: var(--error);
+  --shadow-sm: 0 12px 24px rgba(31, 27, 22, 0.15);
+  --shadow-md: 0 18px 40px rgba(31, 27, 22, 0.2);
+  --shadow-lg: 0 24px 56px rgba(31, 27, 22, 0.25);
+}
+
 :root {
   color-scheme: light;
   --bg: #f3efe6;
@@ -12,6 +47,18 @@
   --warn: #b3561f;
   --error: #b1362c;
   --shadow: 0 18px 50px rgba(31, 27, 22, 0.12);
+  --background: #f6f2ea;
+  --foreground: #1f1b16;
+  --card: #ffffff;
+  --popover: #ffffff;
+  --primary: #1f1b16;
+  --primary-foreground: #f6f2ea;
+  --secondary: #efe6d9;
+  --muted-foreground: #6b5f54;
+  --border: rgba(31, 27, 22, 0.14);
+  --input: rgba(31, 27, 22, 0.12);
+  --ring: rgba(15, 111, 98, 0.4);
+  --destructive: #b1362c;
   font-family: "Space Grotesk", "Avenir Next", "Segoe UI", sans-serif;
 }
 
