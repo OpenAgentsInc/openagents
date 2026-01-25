@@ -12,6 +12,22 @@ mod types;
 
 use tauri::Manager;
 
+fn load_app_env() {
+    let manifest_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    if let Some(app_root) = manifest_dir.parent() {
+        let env_path = app_root.join(".env");
+        if env_path.exists() {
+            if let Err(err) = dotenvy::from_path(&env_path) {
+                eprintln!(
+                    "Warning: failed to load {}: {}",
+                    env_path.display(),
+                    err
+                );
+            }
+        }
+    }
+}
+
 #[tauri::command]
 fn greet(name: &str) -> String {
     format!("Hello, {}! You've been greeted from Rust!", name)
@@ -19,6 +35,8 @@ fn greet(name: &str) -> String {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    load_app_env();
+
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
