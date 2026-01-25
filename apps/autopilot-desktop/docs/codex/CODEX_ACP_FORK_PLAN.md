@@ -174,7 +174,7 @@ fn main() {
 
 ### In autopilot:
 - `src-tauri/build.rs` - Add build step for codex-acp
-- `src-tauri/src/acp.rs` - Update `find_codex_acp()` to build from source
+- `crates/autopilot-desktop-backend/src/acp.rs` - Update `find_codex_acp()` to build from source
 - `.gitmodules` - Will be created when adding submodule
 
 ### In codex-acp (forked):

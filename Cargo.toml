@@ -5,6 +5,7 @@ members = [
     "crates/adjutant",
     "crates/agent",
     "crates/arrow",
+    "crates/autopilot-desktop-backend",
     "crates/autopilot-desktop-runner",
     "crates/autopilot",
     "crates/autopilot-core",

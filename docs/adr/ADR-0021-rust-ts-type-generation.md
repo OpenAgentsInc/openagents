@@ -1,4 +1,4 @@
-# ADR-0002: Rust-to-TypeScript Contract Generation for Tauri IPC
+# ADR-0021: Rust-to-TypeScript Contract Generation for Tauri IPC
 
 ## Status
 
@@ -10,10 +10,11 @@
 
 ## Context
 
-Autopilot is a Tauri application with a Rust backend (`src-tauri/`) and a TypeScript
+Autopilot is a Tauri application with a Rust backend (`crates/autopilot-desktop-backend/`)
+and a thin Tauri wrapper (`apps/autopilot-desktop/src-tauri/`) plus a TypeScript
 frontend that uses Effect. Frontend IPC calls previously routed through a generic
 `invokeEffect(command, payload)` wrapper, while backend commands in
-`src-tauri/src/codex.rs` and `src-tauri/src/agent/commands.rs` returned
+`crates/autopilot-desktop-backend/src/codex.rs` and `crates/autopilot-desktop-backend/src/agent/commands.rs` returned
 `serde_json::Value`. The IPC boundary had no compile-time contract between Rust
 and TypeScript, and drift was easy.
 
@@ -29,30 +30,30 @@ Adopt a **Rust-first DTO contract** using `ts-rs` for TypeScript type generation
 ### Contract Layout
 
 1. **Rust DTOs live in a dedicated module**:
-   - `src-tauri/src/contracts/ipc.rs`
+   - `crates/autopilot-desktop-backend/src/contracts/ipc.rs`
    - Only request/response types for Tauri commands (no business logic)
    - `serde::{Serialize, Deserialize}` + `ts_rs::TS` derives
    - `JsonValue` alias for opaque payloads (`unknown` in TS)
 
 2. **TypeScript types are generated into the frontend**:
-   - Output path: `src/gen/tauri-contracts.ts`
+   - Output path: `apps/autopilot-desktop/src/gen/tauri-contracts.ts`
    - Generated file is committed and updated in CI/dev scripts
 
 3. **Frontend IPC wrapper becomes typed**:
-   - `src/components/unified-stream/api.ts` (pattern for future IPC modules)
-   - Commands take typed args and return typed results from `src/gen/tauri-contracts.ts`
+   - `apps/autopilot-desktop/src/components/unified-stream/api.ts` (pattern for future IPC modules)
+   - Commands take typed args and return typed results from `apps/autopilot-desktop/src/gen/tauri-contracts.ts`
    - IPC responses are decoded through Effect Schema
 
 4. **Effect validation is implemented for core IPC**:
-   - Schemas live in `src/contracts/tauri.ts`
+   - Schemas live in `apps/autopilot-desktop/src/contracts/tauri.ts`
    - `UnifiedEvent` payloads are decoded before entering the queue
    - Typed responses are validated in `src/components/unified-stream/api.ts`
 
 ### Generation Mechanism
 
-- A small Rust binary at `src-tauri/src/bin/gen_types.rs` writes a single
-  `src/gen/tauri-contracts.ts` file by calling `export_ts` in
-  `src-tauri/src/contracts/ipc.rs`.
+- A small Rust binary at `apps/autopilot-desktop/src-tauri/src/bin/gen_types.rs` writes a single
+  `apps/autopilot-desktop/src/gen/tauri-contracts.ts` file by calling `export_ts` in
+  `crates/autopilot-desktop-backend/src/contracts/ipc.rs`.
 - Add a script `bun run types:gen` that runs the generator via Cargo.
 - Run `types:gen` in CI before TypeScript typecheck.
 
@@ -61,7 +62,7 @@ Adopt a **Rust-first DTO contract** using `ts-rs` for TypeScript type generation
 - `JsonValue` is emitted as `unknown` in TypeScript to preserve opaque payloads
   returned from Codex app-server (`StartThreadResponse`, `ListModelsResponse`, etc.).
 - `UnifiedEvent` numeric fields are mapped to `number` in TS (not `bigint`).
-- `src/components/unified-stream/types.ts` re-exports `UnifiedEvent` from
+- `apps/autopilot-desktop/src/components/unified-stream/types.ts` re-exports `UnifiedEvent` from
   the generated contracts.
 
 ## Consequences
@@ -93,8 +94,8 @@ Adopt a **Rust-first DTO contract** using `ts-rs` for TypeScript type generation
 ## References
 
 - `docs/adr/ADR-0001-adoption-of-adrs.md`
-- `src-tauri/src/contracts/ipc.rs`
-- `src-tauri/src/bin/gen_types.rs`
-- `src/gen/tauri-contracts.ts`
-- `src/contracts/tauri.ts`
-- `src/components/unified-stream/api.ts`
+- `crates/autopilot-desktop-backend/src/contracts/ipc.rs`
+- `apps/autopilot-desktop/src-tauri/src/bin/gen_types.rs`
+- `apps/autopilot-desktop/src/gen/tauri-contracts.ts`
+- `apps/autopilot-desktop/src/contracts/tauri.ts`
+- `apps/autopilot-desktop/src/components/unified-stream/api.ts`

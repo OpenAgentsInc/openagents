@@ -1,6 +1,8 @@
 # Autopilot Documentation
 
 This directory contains comprehensive documentation for the Autopilot project.
+The Rust backend now lives in `crates/autopilot-desktop-backend` with a thin
+Tauri wrapper in `apps/autopilot-desktop/src-tauri`.
 
 ## Main Documentation
 
@@ -82,3 +84,4 @@ When updating documentation:
 1. Update the relevant main doc (ARCHITECTURE, IMPLEMENTATION, or API)
 2. Keep historical docs for reference but mark as outdated if needed
 3. Update this README if adding new docs
+4. Add ADRs to the root `docs/adr/` directory

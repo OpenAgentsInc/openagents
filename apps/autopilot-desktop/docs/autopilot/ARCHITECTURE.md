@@ -2,16 +2,16 @@
 
 ## Overview
 
-Autopilot is a Tauri-based desktop application that provides a unified interface for multiple AI coding agents (Codex, Claude Code, Cursor) using the Agent Client Protocol (ACP) as the base protocol.
+Autopilot is a Tauri-based desktop application that provides a unified interface for multiple AI coding agents (Codex, Gemini, Adjutant) using the Agent Client Protocol (ACP) as the base protocol.
 
 ## Architecture Layers
 
 ```
 ┌─────────────────────────────────────────┐
-│         UI Layer (React/TypeScript)      │
-│  - ConversationItem (unified types)      │
-│  - Messages component                     │
-│  - Event listeners (unified-event)       │
+│       UI Layer (Effuse/TypeScript)       │
+│  - Unified stream components              │
+│  - Effuse state + templates               │
+│  - Unified event listeners                │
 └─────────────────┬───────────────────────┘
                   │
 ┌─────────────────▼───────────────────────┐
@@ -40,8 +40,9 @@ Autopilot is a Tauri-based desktop application that provides a unified interface
 ┌─────────────────▼───────────────────────┐
 │      Agent Adapters (External)          │
 │  - codex-acp (Codex adapter)            │
-│  - claude-code-acp (future)              │
-│  - cursor-acp (future)                   │
+│  - gemini (Gemini CLI ACP mode)         │
+│  - claude-code-acp (future)             │
+│  - cursor-acp (future)                  │
 └─────────────────────────────────────────┘
 ```
 
@@ -123,31 +124,29 @@ Low-level ACP connection management:
 - Emits raw ACP events for debugging
 - Manages process lifecycle
 
-### Frontend (React/TypeScript)
+### Frontend (Effuse/TypeScript)
 
-#### `App.tsx`
-Main application component:
-- Auto-connects to unified agent on mount
-- Listens for `unified-event` Tauri events
-- Maps `UnifiedEvent` → `ConversationItem` for UI
-- Manages conversation state
+#### `src/components/unified-stream/`
+Effuse-based unified conversation UI:
+- Normalizes `UnifiedEvent` into stream items
+- Handles streaming updates and tool output
+- Provides the main chat rendering pipeline
 
-#### `components/Messages.tsx`
-Renders conversation items:
-- Displays messages, reasoning, and tools
-- Handles streaming updates
-- Uses memo for performance
+#### `src/effuse/`
+Effuse runtime and primitives:
+- State cells, DOM adapters, and template utilities
+- Central EZ action registry
 
-#### `components/RawDataFeed.tsx`
-Debug view for raw events:
-- Displays all `UnifiedEvent` objects
-- Useful for debugging event flow
+#### `src/effuse-storybook/`
+In-app component storybook (toggle with F12)
 
-#### `types.ts`
-TypeScript type definitions:
-- `UnifiedEvent`: Matches Rust `UnifiedEvent`
-- `ConversationItem`: UI representation
-- `AgentId`: Agent identifiers
+#### `src/agent/`
+TypeScript agent adapters:
+- Codex, Gemini, and Adjutant client shims
+- Frontend agent registry
+
+#### `src/contracts/tauri.ts`
+Effect Schema decoders for IPC contracts
 
 ## Current Implementation Status
 
@@ -181,7 +180,7 @@ TypeScript type definitions:
 ## File Structure
 
 ```
-src-tauri/src/
+crates/autopilot-desktop-backend/src/
 ├── agent/
 │   ├── mod.rs              # Module exports
 │   ├── unified.rs          # Unified types (AgentId, UnifiedEvent, etc.)
@@ -190,19 +189,21 @@ src-tauri/src/
 │   ├── codex_agent.rs      # Codex-specific agent (deprecated)
 │   ├── manager.rs          # Multi-agent manager
 │   └── commands.rs         # Tauri commands
-├── acp.rs                   # ACP connection management
-├── codex.rs                 # Legacy codex app-server (deprecated)
-└── lib.rs                   # Main entry point
+├── acp.rs                  # ACP connection management
+├── ai_server/              # Local AI server config + lifecycle
+├── backend/                # Codex app-server bridge
+└── lib.rs                  # Backend entry point
 
-src/
-├── App.tsx                  # Main React component
+apps/autopilot-desktop/src/
+├── agent/                  # Frontend agent adapters
 ├── components/
-│   ├── Messages.tsx        # Conversation rendering
-│   ├── RawDataFeed.tsx     # Debug event feed
-│   └── Sidebar.tsx           # Sidebar UI
-├── types.ts                 # TypeScript types
-└── utils/
-    └── usageLabels.ts       # Rate limit labels
+│   └── unified-stream/     # Effuse unified conversation UI
+├── contracts/              # Effect schema decoders
+├── effuse/                 # Effuse runtime + templates
+├── effuse-storybook/       # In-app storybook
+├── gen/                    # Generated IPC contracts
+├── index.css               # Global styles
+└── main.ts                 # App entry point
 ```
 
 ## Event Types

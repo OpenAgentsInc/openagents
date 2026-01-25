@@ -15,6 +15,8 @@ use std::sync::OnceLock;
 /// Provider priority for LM selection.
 #[derive(Clone, Debug, PartialEq)]
 pub enum LmProvider {
+    /// Vercel AI Gateway (or local AI Gateway proxy)
+    AiGateway,
     /// OpenAI Responses API (preferred for DSPy signatures)
     OpenAiResponses,
     /// Codex: Uses Codex app-server (highest priority when available)
@@ -32,6 +34,7 @@ pub enum LmProvider {
 impl std::fmt::Display for LmProvider {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            LmProvider::AiGateway => write!(f, "AI Gateway"),
             LmProvider::Codex => write!(f, "Codex"),
             LmProvider::OpenAiResponses => write!(f, "OpenAI Responses"),
             LmProvider::LlamaCpp => write!(f, "llama.cpp/GPT-OSS (local)"),
@@ -46,6 +49,7 @@ impl LmProvider {
     /// Short name for status bar display.
     pub fn short_name(&self) -> &'static str {
         match self {
+            LmProvider::AiGateway => "gateway",
             LmProvider::Codex => "codex",
             LmProvider::OpenAiResponses => "openai",
             LmProvider::LlamaCpp => "gptoss",
@@ -104,38 +108,45 @@ fn load_env_local() -> HashMap<String, String> {
 /// Detect best available provider based on environment.
 ///
 /// Priority order:
-/// 0. Codex app-server available → Codex
-/// 1. llama.cpp/GPT-OSS running on localhost:8080 → LlamaCpp
-/// 2. PYLON_MNEMONIC set → PylonSwarm
-/// 3. CEREBRAS_API_KEY set → Cerebras
-/// 4. Ollama running on localhost:11434 → PylonLocal
+/// 0. AI Gateway configured → AiGateway
+/// 1. OpenAI Responses configured → OpenAiResponses
+/// 2. Codex app-server available → Codex
+/// 3. llama.cpp/GPT-OSS running on localhost:8080 → LlamaCpp
+/// 4. PYLON_MNEMONIC set → PylonSwarm
+/// 5. CEREBRAS_API_KEY set → Cerebras
+/// 6. Ollama running on localhost:11434 → PylonLocal
 pub fn detect_provider() -> Option<LmProvider> {
-    // Priority 0: OpenAI Responses (preferred for DSPy signatures)
+    // Priority 0: AI Gateway
+    if env_or_local("AI_GATEWAY_API_KEY").is_some() {
+        return Some(LmProvider::AiGateway);
+    }
+
+    // Priority 1: OpenAI Responses (preferred for DSPy signatures)
     if env_or_local("OPENAI_API_KEY").is_some() {
         return Some(LmProvider::OpenAiResponses);
     }
 
-    // Priority 1: Codex (when available)
+    // Priority 2: Codex (when available)
     if check_codex_available() {
         return Some(LmProvider::Codex);
     }
 
-    // Priority 2: llama.cpp/GPT-OSS (local inference fallback)
+    // Priority 3: llama.cpp/GPT-OSS (local inference fallback)
     if check_llamacpp_available() {
         return Some(LmProvider::LlamaCpp);
     }
 
-    // Priority 3: Pylon swarm (requires mnemonic)
+    // Priority 4: Pylon swarm (requires mnemonic)
     if env_or_local("PYLON_MNEMONIC").is_some() {
         return Some(LmProvider::PylonSwarm);
     }
 
-    // Priority 4: Cerebras
+    // Priority 5: Cerebras
     if env_or_local("CEREBRAS_API_KEY").is_some() {
         return Some(LmProvider::Cerebras);
     }
 
-    // Priority 5: Check for local Ollama
+    // Priority 6: Check for local Ollama
     if check_ollama_available() {
         return Some(LmProvider::PylonLocal);
     }
@@ -149,6 +160,9 @@ pub fn detect_provider() -> Option<LmProvider> {
 pub fn detect_all_providers() -> Vec<LmProvider> {
     let mut providers = Vec::new();
 
+    if env_or_local("AI_GATEWAY_API_KEY").is_some() {
+        providers.push(LmProvider::AiGateway);
+    }
     if env_or_local("OPENAI_API_KEY").is_some() {
         providers.push(LmProvider::OpenAiResponses);
     }
@@ -230,6 +244,30 @@ pub fn check_ollama_available() -> bool {
 /// Create LM for detected or specified provider.
 pub async fn create_lm(provider: &LmProvider) -> Result<LM> {
     match provider {
+        LmProvider::AiGateway => {
+            let api_key = env_or_local_required("AI_GATEWAY_API_KEY")?;
+            let base_url = resolve_ai_gateway_base_url();
+            let model = env_or_local("AI_GATEWAY_MODEL")
+                .or_else(|| env_or_local("DEFAULT_LLM_MODEL"))
+                .unwrap_or_else(|| "anthropic/claude-sonnet-4.5".to_string());
+            let max_tokens = env_or_local("AI_GATEWAY_MAX_TOKENS")
+                .or_else(|| env_or_local("DSPY_MAX_TOKENS"))
+                .and_then(|value| value.parse::<u32>().ok())
+                .unwrap_or(4000);
+            let temperature = env_or_local("AI_GATEWAY_TEMPERATURE")
+                .or_else(|| env_or_local("DSPY_TEMPERATURE"))
+                .and_then(|value| value.parse::<f32>().ok())
+                .unwrap_or(0.7);
+
+            LM::builder()
+                .base_url(base_url)
+                .api_key(api_key)
+                .model(model)
+                .max_tokens(max_tokens)
+                .temperature(temperature)
+                .build()
+                .await
+        }
         LmProvider::OpenAiResponses => {
             let api_key = env_or_local_required("OPENAI_API_KEY")?;
             let model = env_or_local("OPENAI_RESPONSES_MODEL")
@@ -332,6 +370,7 @@ pub async fn create_planning_lm() -> Result<LM> {
     let provider = detect_provider().ok_or_else(|| {
         anyhow::anyhow!(
             "No LM provider available. Options:\n\
+             - Set AI_GATEWAY_API_KEY for Vercel AI Gateway (or local proxy)\n\
              - Set OPENAI_API_KEY for OpenAI Responses\n\
              - Install Codex (npm install -g @anthropic-ai/claude-code)\n\
              - Run llama.cpp server (./llama-server -m model.gguf --port 8080)\n\
@@ -399,6 +438,7 @@ pub async fn configure_dsrs_with_preference(use_codex: bool) -> Result<()> {
     let provider = provider.ok_or_else(|| {
         anyhow::anyhow!(
             "No LM provider available. Options:\n\
+             - Set AI_GATEWAY_API_KEY for Vercel AI Gateway (or local proxy)\n\
              - Set OPENAI_API_KEY for OpenAI Responses\n\
              - Install Codex (npm install -g @anthropic-ai/claude-code)\n\
              - Run llama.cpp server (./llama-server -m model.gguf --port 8080)\n\
@@ -417,6 +457,9 @@ pub async fn configure_dsrs_with_preference(use_codex: bool) -> Result<()> {
 /// Detect provider without Codex - skips Codex even if available.
 pub fn detect_provider_skip_codex() -> Option<LmProvider> {
     // Skip Codex, check other providers in priority order
+    if env_or_local("AI_GATEWAY_API_KEY").is_some() {
+        return Some(LmProvider::AiGateway);
+    }
     if env_or_local("OPENAI_API_KEY").is_some() {
         return Some(LmProvider::OpenAiResponses);
     }
@@ -433,6 +476,17 @@ pub fn detect_provider_skip_codex() -> Option<LmProvider> {
         return Some(LmProvider::PylonLocal);
     }
     None
+}
+
+fn resolve_ai_gateway_base_url() -> String {
+    if let Some(host) = env_or_local("AI_SERVER_HOST") {
+        let port = env_or_local("AI_SERVER_PORT")
+            .and_then(|value| value.parse::<u16>().ok())
+            .unwrap_or(3001);
+        return format!("http://{}:{}/v1", host, port);
+    }
+    env_or_local("AI_GATEWAY_BASE_URL")
+        .unwrap_or_else(|| "https://ai-gateway.vercel.sh/v1".to_string())
 }
 
 // ============ Legacy compatibility ============

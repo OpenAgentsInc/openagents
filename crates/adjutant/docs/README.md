@@ -305,6 +305,11 @@ export CEREBRAS_API_KEY="csk-your-key-here"
 
 | Variable | Required | Description |
 |----------|----------|-------------|
+| `AI_GATEWAY_API_KEY` | No | Vercel AI Gateway key (or local proxy) for DSPy planning |
+| `AI_GATEWAY_BASE_URL` | No | Override AI Gateway base URL (defaults to Vercel) |
+| `AI_SERVER_HOST` | No | Local AI Gateway host override (defaults to localhost) |
+| `AI_SERVER_PORT` | No | Local AI Gateway port override (defaults to 3001) |
+| `OPENAI_API_KEY` | No | OpenAI Responses API key for DSPy planning |
 | `CEREBRAS_API_KEY` | No | Cerebras API key for tiered inference |
 | `PYLON_MNEMONIC` | No | BIP-39 mnemonic for Pylon Swarm inference |
 | `PYLON_LOCAL_MODEL` | No | Override Ollama model for Pylon Local (DSPy planning) |
@@ -319,11 +324,13 @@ Adjutant auto-detects available DSPy LM providers in this priority order:
 
 | Priority | Provider | Requirements | Use Case |
 |----------|----------|--------------|----------|
-| 1 | **LlamaCpp** | `llama-server` on :8080 | Local execution with GPT-OSS |
-| 2 | **Codex SDK** | `codex` CLI installed | Pro/Max subscription |
-| 3 | **Pylon Swarm** | `PYLON_MNEMONIC` env var | Distributed NIP-90 inference |
-| 4 | **Cerebras** | `CEREBRAS_API_KEY` env var | Fast cloud inference |
-| 5 | **Pylon Local** | Ollama on :11434 | Local Ollama fallback (auto-selects available model) |
+| 1 | **AI Gateway** | `AI_GATEWAY_API_KEY` env var | Vercel AI Gateway or local proxy |
+| 2 | **OpenAI Responses** | `OPENAI_API_KEY` env var | OpenAI Responses API |
+| 3 | **Codex SDK** | `codex` CLI installed | Pro/Max subscription |
+| 4 | **LlamaCpp** | `llama-server` on :8080 | Local execution with GPT-OSS |
+| 5 | **Pylon Swarm** | `PYLON_MNEMONIC` env var | Distributed NIP-90 inference |
+| 6 | **Cerebras** | `CEREBRAS_API_KEY` env var | Fast cloud inference |
+| 7 | **Pylon Local** | Ollama on :11434 | Local Ollama fallback (auto-selects available model) |
 
 *Without any provider, Adjutant falls back to analysis-only mode.
 

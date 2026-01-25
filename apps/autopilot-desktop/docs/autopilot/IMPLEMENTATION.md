@@ -8,7 +8,7 @@ This document describes the current implementation of the unified agent architec
 
 ### Agent Module Structure
 
-The agent module (`src-tauri/src/agent/`) provides a unified interface for all AI agents:
+The agent module (`crates/autopilot-desktop-backend/src/agent/`) provides a unified interface for all AI agents:
 
 ```
 agent/
@@ -17,6 +17,8 @@ agent/
 ├── trait_def.rs        # Agent trait - unified interface
 ├── acp_agent.rs        # ACP agent implementation (wraps codex-acp)
 ├── codex_agent.rs      # Legacy Codex agent (deprecated)
+├── gemini_agent.rs     # Gemini CLI ACP agent
+├── adjutant/           # DSPy-native Adjutant agent
 ├── manager.rs          # AgentManager - manages multiple agents
 └── commands.rs         # Tauri commands for frontend
 ```
@@ -29,6 +31,8 @@ pub enum AgentId {
     Codex,
     ClaudeCode,
     Cursor,
+    Gemini,
+    Adjutant,
 }
 ```
 
@@ -329,7 +333,7 @@ Debug view showing all unified events:
 ### Current Issues
 
 1. **UI Not Updating**: State updates work, but UI doesn't reflect changes
-   - Likely React rendering issue
+   - Likely Effuse rendering/state wiring issue
    - State updates are logged correctly
    - Need to investigate memo/rendering
 
