@@ -232,79 +232,57 @@ Low-level ACP connection management:
 
 ## Frontend Implementation
 
-### App.tsx
+### AutopilotCanvasComponent
 
-Main application component that orchestrates the unified agent system.
+Main Effuse component that renders the signature-driven canvas.
 
-#### Auto-Setup
+#### Startup
 
-On mount, automatically:
-1. Gets current working directory
-2. Generates workspace ID
-3. Connects unified agent (Codex)
-4. Starts unified session
-5. Waits for `SessionStarted` event to get actual session ID
+On mount, the component:
+1. Initializes a `DataModel` for workspace/task/session/status state
+2. Seeds a `UITree` via `createSetupTree`
+3. Prefills the workspace path via `get_current_directory`
 
-#### Event Handling
+#### Action Wiring
 
-Listens for `unified-event` Tauri events and maps to conversation items:
+Effuse EZ actions handle UI events:
 
-1. **SessionStarted**: Updates `unifiedSessionId` with actual ACP session ID
-2. **MessageChunk**: Creates/updates assistant message items
-3. **ThoughtChunk**: Creates/updates reasoning items
-4. **ToolCall**: Creates tool items
-5. **ToolCallUpdate**: Updates tool items
-6. **SessionCompleted**: Stops thinking indicator
+- `ui.set` updates the data model (inputs + text areas)
+- `ui.start` connects the unified agent, starts the session, and sends the prompt
 
-#### State Management
+#### UI Event Handling
 
-- `conversationItems`: Array of conversation items for UI
-- `unifiedSessionId`: Actual ACP session ID (from `SessionStarted` event)
-- `unifiedEvents`: Raw unified events for debug feed
-- `itemsByIdRef`: Ref for efficient item lookups
+Listens for `ui-event` Tauri events:
 
-### Messages Component
+1. **UiTreeReset**: Validate and replace the current UITree
+2. **UiPatch**: Apply incremental patches
+3. **UiDataUpdate**: Update the data model at a path
 
-Renders conversation items:
-- Messages (user/assistant)
-- Reasoning (collapsible)
-- Tools (with status)
+### Effuse UITree Runtime
 
-### RawDataFeed Component
+Effuse provides a lightweight UI runtime for signature-driven layouts:
+- UITree + UIElement model
+- Dynamic values resolved from the data model
+- Catalog validation (component whitelist + schemas)
+- Patch application for streamed UI changes
 
-Debug view showing all unified events:
-- Useful for debugging event flow
-- Shows event structure and content
+### Unified Event Stream (Chat)
+
+Unified events (`unified-event`) are still emitted by the backend but are not yet rendered in the canvas UI. The next step is to map these events into UITree components alongside the signature panels.
 
 ## Event Flow
 
-### Complete Flow Example
+### UI Patch Flow Example
 
-1. **User sends "Hello"**:
+1. **User clicks "Start Autopilot"**:
    ```
-   Frontend: sendMessage("Hello")
-   → Tauri: send_unified_message(sessionId, "Hello")
-   → AgentManager: routes to AcpAgent
-   → AcpAgent: sends session/prompt to codex-acp
-   → codex-acp: processes message
+   Frontend: ui.start → connect_unified_agent + start_unified_session
    ```
 
-2. **Agent responds**:
+2. **Adjutant emits UI tree**:
    ```
-   codex-acp: emits session/update with agent_message_chunk
-   → AcpConnection: captures event, calls callback
-   → AcpAgent: maps to UnifiedEvent::MessageChunk
-   → AgentManager: forwards to unified stream
-   → Tauri: emits unified-event
-   → Frontend: receives event, updates conversationItems
-   → UI: renders message
-   ```
-
-3. **Session completes**:
-   ```
-   codex-acp: emits response with stopReason: "end_turn"
-   → AcpAgent: maps to UnifiedEvent::SessionCompleted
-   → Frontend: stops thinking indicator
+   Backend: UiTreeReset + UiPatch → Tauri emits ui-event
+   Frontend: apply patch → render updated UITree
    ```
 
 ## Session ID Management
@@ -332,10 +310,9 @@ Debug view showing all unified events:
 
 ### Current Issues
 
-1. **UI Not Updating**: State updates work, but UI doesn't reflect changes
-   - Likely Effuse rendering/state wiring issue
-   - State updates are logged correctly
-   - Need to investigate memo/rendering
+1. **Unified events not rendered in canvas**:
+   - `unified-event` stream is emitted but not mapped into UITree components yet
+   - Planned to add a conversation panel driven by unified events
 
 2. **Event Deduplication**: Some events may be duplicated
    - Multiple event sources (raw ACP + mapped unified)

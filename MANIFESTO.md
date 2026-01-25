@@ -55,6 +55,7 @@ Autonomy becomes practical when it is built like a systems stack:
 - **Autopilot** as the wedge: autonomous repo work that is local-first and verifiable.
 - A shared substrate of **trajectories, artifacts, and policy bundles** so agents can improve systematically.
 - Open markets for **compute and skills** where buying is gated by budgets and verified by receipts.
+- A clear value loop: compute is transformed into verified software outcomes, those outcomes produce measurable value, and receipts make it possible to settle that value in sats when routed through the network.
 
 ## Non-goals
 

@@ -10,7 +10,7 @@ For canonical terminology, see **[GLOSSARY.md](./GLOSSARY.md)**.
 
 OpenAgents is organized as a layered stack:
 
-- **Products**: Autopilot, Onyx, GitAfter (user-facing surfaces)
+- **Products**: Autopilot (wgpui), Autopilot Desktop (Tauri/Effuse), Onyx, GitAfter
 - **Execution**: Adjutant + Autopilot loop (plan/act/verify)
 - **Compiler layer**: dsrs (DSPy-style signatures/modules/optimizers)
 - **Runtime + infra**: tools, sandboxes, logging, provider routing
@@ -33,7 +33,9 @@ OpenAgents is organized as a layered stack:
 ## Crate map (what lives where)
 
 ### Products
-- `crates/autopilot/` — user-facing app + CLI for autonomous coding runs
+- `crates/autopilot/` — user-facing app + CLI for autonomous coding runs (wgpui)
+- `apps/autopilot-desktop/` — Tauri desktop app + Effuse UI (signature-driven canvas)
+- `crates/autopilot-desktop-backend/` — Rust backend for Autopilot Desktop (agents, IPC, UI events)
 - `crates/autopilot-core/` — core execution loop, replay/session plumbing
 - `crates/onyx/` — local-first markdown editor
 - `crates/gitafter/` — Nostr-native git collaboration surface (NIP-34)
@@ -60,10 +62,12 @@ OpenAgents is organized as a layered stack:
 
 ### UI infra
 - `crates/wgpui/` — GPU UI primitives and component system
+- `apps/autopilot-desktop/src/effuse/` — Effect-native UI runtime used by Autopilot Desktop
 
 ## Where to start (common contributor paths)
 
 - "I want to improve Autopilot behavior" → `crates/autopilot/`, `crates/autopilot-core/`, `crates/adjutant/`
+- "I want to work on Autopilot Desktop UI" → `apps/autopilot-desktop/` + `crates/autopilot-desktop-backend/`
 - "I want to add/optimize DSPy signatures" → `crates/dsrs/` (+ decision pipelines in `crates/adjutant/`)
 - "I want better replay/artifacts" → `crates/autopilot-core/` + specs in `crates/dsrs/docs/REPLAY.md` and `crates/dsrs/docs/ARTIFACTS.md`
 - "I want marketplace job schemas / verification" → `crates/protocol/` (+ any dispatchers)

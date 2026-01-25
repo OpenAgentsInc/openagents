@@ -10,7 +10,7 @@ Tauri wrapper in `apps/autopilot-desktop/src-tauri`.
 High-level architecture overview:
 - System architecture and layers
 - Core concepts (unified agents, ACP protocol)
-- Event flow
+- Event flow (unified-event + ui-event)
 - Key components (backend and frontend)
 - Current implementation status
 - File structure
@@ -19,14 +19,14 @@ High-level architecture overview:
 Detailed implementation guide:
 - Backend implementation details
 - Frontend implementation details
-- Event flow examples
+- Event flow examples (UI tree + patches)
 - Session ID management
 - Known issues and future improvements
 
 ### [API.md](./autopilot/API.md)
 API reference:
 - Tauri commands (parameters, returns, examples)
-- Tauri events (unified-event types)
+- Tauri events (unified-event + ui-event types)
 - TypeScript types
 - Usage examples
 - Error handling
@@ -74,8 +74,8 @@ Plan for maintaining a fork of codex-acp:
 ## Documentation Status
 
 - ✅ **ARCHITECTURE.md**: Complete and up-to-date
-- ✅ **IMPLEMENTATION.md**: Complete and up-to-date
-- ✅ **API.md**: Complete and up-to-date
+- ✅ **IMPLEMENTATION.md**: Updated for Effuse UITree + signature-driven UI
+- ✅ **API.md**: Updated for UI patch events + signature registry
 - 📝 **Historical docs**: Reference only, may be outdated
 
 ## Contributing

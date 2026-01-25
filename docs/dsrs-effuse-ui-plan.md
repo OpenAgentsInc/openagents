@@ -33,7 +33,7 @@ Effuse gives us:
 - **DomService.swap** for targeted DOM updates (no VDOM).
 - **EZ runtime** (`data-ez` attributes) for hypermedia actions and event wiring.
 
-Current Effuse usage is static (e.g., `UnifiedStreamComponent`), and there is no UI tree/registry system yet.
+Current Effuse usage now includes a signature-driven UITree canvas (Effuse UI runtime + catalog); the legacy unified stream is archived for reference.
 
 ### dsrs (Signature metadata)
 

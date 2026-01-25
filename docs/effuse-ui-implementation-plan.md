@@ -5,10 +5,10 @@
 Implement the full Effuse UI plan in `apps/autopilot-desktop` by adding a
 signature-driven UI runtime (catalog + UITree + renderer + validation +
 actions), wiring DSRS signature metadata into a registry + Tauri IPC, and
-replacing the current unified-stream UI with a minimal canvas-based UI that
-streams updates from Autopilot signatures. The result is a deterministic,
-validated UI surface that can be incrementally enhanced by AI-generated layouts
-while retaining safe fallbacks.
+replacing the unified-stream UI with a minimal canvas-based UI that streams
+updates from Autopilot signatures. The result is a deterministic, validated UI
+surface that can be incrementally enhanced by AI-generated layouts while
+retaining safe fallbacks.
 
 ## Goals
 
@@ -26,13 +26,12 @@ while retaining safe fallbacks.
 - Complex canvas interactions (drag, zoom, layout engines) beyond basic layout.
 - Multi-user collaboration or remote sync of UI state.
 
-## Current State (baseline)
+## Current State (implemented)
 
-- Effuse exists with components + EZ runtime but no UI tree/catalog runtime.
-- Autopilot desktop renders `UnifiedStreamComponent` from `src/components/unified-stream`.
-- Adjutant plan pipeline uses local signatures in
-  `crates/autopilot-desktop-backend/src/agent/adjutant`.
-- DSRS signatures exist but are not exposed via Tauri IPC or used by the UI.
+- Effuse now includes a UITree runtime (catalog, patches, visibility, actions).
+- Autopilot Desktop renders the signature-driven canvas via `AutopilotCanvasComponent`.
+- Adjutant plan pipeline uses dsrs signatures; local duplicates are removed.
+- DSRS signatures are exposed via Tauri IPC and are available to the UI.
 
 ## Target Architecture (overview)
 
@@ -78,7 +77,7 @@ while retaining safe fallbacks.
 
 ### 6) Autopilot Desktop UI
 
-- Replace unified-stream UI with a minimal canvas UI.
+- Replace unified-stream UI with a minimal canvas UI. (done)
 - Canvas renders the current UITree (initially empty).
 - UI input lets user set working directory + start Autopilot session.
 - Autopilot emits UI patches via Tauri events; frontend applies them.
@@ -89,7 +88,7 @@ while retaining safe fallbacks.
 
 1) Move current UI to a backup location (no deletion):
    - `apps/autopilot-desktop/src/components/unified-stream`
-     -> `apps/autopilot-desktop/.reference/legacy-unified-stream`
+     -> `apps/autopilot-desktop/.reference/legacy-unified-stream` (done)
    - Preserve any other UI modules needed for comparison.
 2) Update `apps/autopilot-desktop/src/main.ts` to mount the new root component.
 
@@ -154,7 +153,7 @@ Backend (Rust):
 Frontend (TS):
 
 - Add Effect Schemas for the new IPC types.
-- Add a thin client module (similar to `unified-stream/api.ts`).
+- Add a thin client module (see `apps/autopilot-desktop/src/ipc/unified.ts`).
 
 ### Phase 4: Convert local signatures to dsrs crate
 
@@ -234,11 +233,11 @@ Backend:
 
 ## Delivery Checklist
 
-- [ ] UI tree runtime + tests in Effuse.
-- [ ] Effuse catalog + component registry.
-- [ ] Signature registry + Tauri IPC.
-- [ ] Local signature definitions migrated into dsrs crate.
-- [ ] UI streaming events emitted from backend.
-- [ ] Minimal canvas UI mounted in `main.ts`.
-- [ ] ADR(s) documenting the UI tree/IPC contract.
-- [ ] Tests/builds executed; no TODO placeholders in production paths.
+- [x] UI tree runtime + tests in Effuse.
+- [x] Effuse catalog + component registry.
+- [x] Signature registry + Tauri IPC.
+- [x] Local signature definitions migrated into dsrs crate.
+- [x] UI streaming events emitted from backend.
+- [x] Minimal canvas UI mounted in `main.ts`.
+- [x] ADR(s) documenting the UI tree/IPC contract.
+- [x] Tests/builds executed; no TODO placeholders in production paths.

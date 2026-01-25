@@ -9,9 +9,9 @@ Autopilot is a Tauri-based desktop application that provides a unified interface
 ```
 ┌─────────────────────────────────────────┐
 │       UI Layer (Effuse/TypeScript)       │
-│  - Unified stream components              │
-│  - Effuse state + templates               │
-│  - Unified event listeners                │
+│  - Autopilot canvas (UITree renderer)     │
+│  - Effuse UI runtime + catalog            │
+│  - Unified-event + ui-event listeners     │
 └─────────────────┬───────────────────────┘
                   │
 ┌─────────────────▼───────────────────────┐
@@ -19,7 +19,10 @@ Autopilot is a Tauri-based desktop application that provides a unified interface
 │  - connect_unified_agent                 │
 │  - start_unified_session                 │
 │  - send_unified_message                  │
-│  - unified-event emission                │
+│  - list_dsrs_signatures                   │
+│  - get_dsrs_signature                     │
+│  - unified-event emission                 │
+│  - ui-event emission                      │
 └─────────────────┬───────────────────────┘
                   │
 ┌─────────────────▼───────────────────────┐
@@ -77,6 +80,14 @@ ACP is a JSON-RPC based protocol that standardizes communication between code ed
 6. **Event emission** → Tauri emits `unified-event` to frontend
 7. **UI update** → Frontend maps `UnifiedEvent` to `ConversationItem`
 
+### UI Event Flow (Signature Canvas)
+
+1. **Session start** → Adjutant builds initial UITree (signature steps)
+2. **UI event emission** → Backend sends `UiTreeReset` + `UiPatch` updates
+3. **Frontend listener** → Effuse decodes `ui-event` payloads
+4. **Patch application** → UITree is patched and validated against the catalog
+5. **Render** → Autopilot canvas re-renders updated UI tree
+
 ## Key Components
 
 ### Backend (Rust)
@@ -126,16 +137,37 @@ Low-level ACP connection management:
 
 ### Frontend (Effuse/TypeScript)
 
-#### `src/components/unified-stream/`
-Effuse-based unified conversation UI:
-- Normalizes `UnifiedEvent` into stream items
-- Handles streaming updates and tool output
-- Provides the main chat rendering pipeline
+#### `src/components/autopilot-canvas/`
+Signature-driven Autopilot canvas UI:
+- Renders the current Effuse UITree
+- Hosts setup inputs (workspace path, task prompt)
+- Applies UI patch events from Adjutant
 
 #### `src/effuse/`
 Effuse runtime and primitives:
 - State cells, DOM adapters, and template utilities
 - Central EZ action registry
+
+#### `src/effuse/ui/`
+Effuse UITree runtime:
+- UITree + UIElement data model
+- Patch application, visibility, validation, actions
+- Renderer for component registry
+
+#### `src/components/ai-elements/`
+Effuse UI primitives:
+- Canvas, panels, nodes, text, inputs, buttons
+
+#### `src/components/catalog.ts`
+Effuse catalog + component registry:
+- Effect Schema validation for UITree props
+- Action schemas and component descriptions
+
+#### `src/ipc/`
+Typed IPC wrappers:
+- `unified.ts` for unified agent commands
+- `dsrs.ts` for signature registry commands
+- `invoke.ts` shared schema invocation
 
 #### `src/effuse-storybook/`
 In-app component storybook (toggle with F12)
@@ -156,15 +188,16 @@ Effect Schema decoders for IPC contracts
 - `Agent` trait definition
 - `AcpAgent` implementation for Codex
 - `AgentManager` for multi-agent support
-- Tauri commands for unified interface
+- Tauri commands for unified interface + DSRS signature registry
 - Event mapping from ACP to unified events
-- Frontend integration with unified events
-- Auto-setup on app start
+- Adjutant UI event stream (`UiTreeReset`, `UiPatch`, `UiDataUpdate`)
+- Effuse UITree runtime + catalog primitives
+- Autopilot canvas UI rendering UITree updates
 - Session ID management (ACP session IDs)
 
 ### ⏳ In Progress
 
-- Frontend UI rendering (state updates working, UI not reflecting changes)
+- Unified-event rendering inside the Effuse canvas
 - Event deduplication (some events may be duplicated)
 - Error handling improvements
 
@@ -197,10 +230,14 @@ crates/autopilot-desktop-backend/src/
 apps/autopilot-desktop/src/
 ├── agent/                  # Frontend agent adapters
 ├── components/
-│   └── unified-stream/     # Effuse unified conversation UI
+│   ├── ai-elements/        # Effuse UI primitives
+│   ├── autopilot-canvas/   # UITree-driven canvas UI
+│   └── catalog.ts          # Effuse catalog + component registry
 ├── contracts/              # Effect schema decoders
 ├── effuse/                 # Effuse runtime + templates
+│   └── ui/                 # UITree runtime (actions, patches, visibility)
 ├── effuse-storybook/       # In-app storybook
+├── ipc/                    # Typed IPC wrappers
 ├── gen/                    # Generated IPC contracts
 ├── index.css               # Global styles
 └── main.ts                 # App entry point
@@ -218,6 +255,12 @@ apps/autopilot-desktop/src/
 - `SessionCompleted`: Session lifecycle - completed
 - `TokenUsage`: Token usage statistics
 - `RateLimitUpdate`: Rate limit information
+
+### UiEvent Types
+
+- `UiTreeReset`: Replace the current UITree for a session
+- `UiPatch`: Apply a patch to the current UITree
+- `UiDataUpdate`: Update a data model path used by dynamic values
 
 ### ACP to UnifiedEvent Mapping
 

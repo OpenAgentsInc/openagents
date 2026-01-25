@@ -11,7 +11,7 @@ Connects an agent to a workspace.
 **Parameters**:
 ```typescript
 {
-  agentIdStr: "codex" | "claude_code" | "cursor",
+  agentIdStr: "Codex" | "ClaudeCode" | "Cursor" | "Gemini" | "Adjutant",
   workspacePath: string,
   workspaceId: string
 }
@@ -30,7 +30,7 @@ Connects an agent to a workspace.
 **Example**:
 ```typescript
 const result = await invoke("connect_unified_agent", {
-  agentIdStr: "codex",
+  agentIdStr: "Codex",
   workspacePath: "/path/to/workspace",
   workspaceId: "workspace-123"
 });
@@ -159,6 +159,56 @@ const result = await invoke("get_unified_conversation_items", {
 
 ---
 
+### `list_dsrs_signatures`
+
+Lists DSRS signatures exposed by the backend.
+
+**Parameters**:
+```typescript
+undefined
+```
+
+**Returns**:
+```typescript
+{
+  signatures: DsrsSignatureInfo[]
+}
+```
+
+**Example**:
+```typescript
+const result = await invoke("list_dsrs_signatures");
+```
+
+---
+
+### `get_dsrs_signature`
+
+Fetches a specific DSRS signature by name.
+
+**Parameters**:
+```typescript
+{
+  name: string
+}
+```
+
+**Returns**:
+```typescript
+{
+  signature: DsrsSignatureInfo
+}
+```
+
+**Example**:
+```typescript
+const result = await invoke("get_dsrs_signature", {
+  name: "TopicDecompositionSignature"
+});
+```
+
+---
+
 ## Tauri Events
 
 ### `unified-event`
@@ -219,7 +269,7 @@ UnifiedEvent
 {
   type: "SessionStarted",
   session_id: string,  // Actual ACP session ID
-  agent_id: "codex" | "claude_code" | "cursor"
+  agent_id: "Codex" | "ClaudeCode" | "Cursor" | "Gemini" | "Adjutant"
 }
 ```
 
@@ -247,7 +297,7 @@ UnifiedEvent
 ```typescript
 {
   type: "RateLimitUpdate",
-  agent_id: "codex" | "claude_code" | "cursor",
+  agent_id: "Codex" | "ClaudeCode" | "Cursor" | "Gemini" | "Adjutant",
   used_percent: number,
   resets_at?: number
 }
@@ -269,6 +319,61 @@ const unlisten = await listen<UnifiedEvent>("unified-event", (event) => {
       setUnifiedSessionId(unifiedEvent.session_id);
       break;
     // ... handle other event types
+  }
+});
+```
+
+---
+
+### `ui-event`
+
+Emitted for signature-driven UI updates.
+
+**Event Payload**:
+```typescript
+UiEvent
+```
+
+**UiEvent Types**:
+
+#### `UiTreeReset`
+```typescript
+{
+  type: "UiTreeReset",
+  session_id: string,
+  tree: JsonValue
+}
+```
+
+#### `UiPatch`
+```typescript
+{
+  type: "UiPatch",
+  session_id: string,
+  patch: {
+    op: "add" | "remove" | "replace" | "set",
+    path: string,
+    value?: JsonValue | null
+  }
+}
+```
+
+#### `UiDataUpdate`
+```typescript
+{
+  type: "UiDataUpdate",
+  session_id: string,
+  path: string,
+  value: JsonValue
+}
+```
+
+**Example**:
+```typescript
+const unlistenUi = await listen<UiEvent>("ui-event", (event) => {
+  const uiEvent = event.payload;
+  if (uiEvent.type === "UiPatch") {
+    console.log("UI patch:", uiEvent.patch);
   }
 });
 ```
@@ -310,7 +415,7 @@ export type UnifiedEvent =
   | {
       type: "SessionStarted";
       session_id: string;
-      agent_id: "codex" | "claude_code" | "cursor";
+      agent_id: "Codex" | "ClaudeCode" | "Cursor" | "Gemini" | "Adjutant";
     }
   | {
       type: "SessionCompleted";
@@ -326,10 +431,47 @@ export type UnifiedEvent =
     }
   | {
       type: "RateLimitUpdate";
-      agent_id: "codex" | "claude_code" | "cursor";
+      agent_id: "Codex" | "ClaudeCode" | "Cursor" | "Gemini" | "Adjutant";
       used_percent: number;
       resets_at?: number;
     };
+```
+
+### `UiEvent`
+
+```typescript
+export type UiEvent =
+  | {
+      type: "UiTreeReset";
+      session_id: string;
+      tree: JsonValue;
+    }
+  | {
+      type: "UiPatch";
+      session_id: string;
+      patch: {
+        op: "add" | "remove" | "replace" | "set";
+        path: string;
+        value?: JsonValue | null;
+      };
+    }
+  | {
+      type: "UiDataUpdate";
+      session_id: string;
+      path: string;
+      value: JsonValue;
+    };
+```
+
+### `DsrsSignatureInfo`
+
+```typescript
+export type DsrsSignatureInfo = {
+  name: string;
+  instruction: string;
+  inputFields: JsonValue;
+  outputFields: JsonValue;
+};
 ```
 
 ### `ConversationItem`
@@ -387,7 +529,7 @@ import type { UnifiedEvent } from "./types";
 
 // 1. Connect agent
 const connectResult = await invoke("connect_unified_agent", {
-  agentIdStr: "codex",
+  agentIdStr: "Codex",
   workspacePath: "/path/to/workspace",
   workspaceId: "workspace-123"
 });
@@ -438,7 +580,7 @@ All commands may throw errors. Handle them appropriately:
 ```typescript
 try {
   const result = await invoke("connect_unified_agent", {
-    agentIdStr: "codex",
+    agentIdStr: "Codex",
     workspacePath: "/path/to/workspace",
     workspaceId: "workspace-123"
   });
