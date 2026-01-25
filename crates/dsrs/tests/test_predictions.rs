@@ -30,6 +30,7 @@ fn test_prediction_get() {
         completion_tokens: 20,
         total_tokens: 30,
         cost_msats: 0,
+        provider_usage: None,
     };
     let prediction = Prediction::new(data, lm_usage.clone());
 
@@ -84,6 +85,7 @@ fn test_prediction_set_lm_usage() {
         completion_tokens: 20,
         total_tokens: 30,
         cost_msats: 0,
+        provider_usage: None,
     };
     prediction.set_lm_usage(lm_usage.clone());
     assert_eq!(prediction.lm_usage.prompt_tokens, lm_usage.prompt_tokens);

@@ -23,6 +23,7 @@ pub fn Signature(attr: TokenStream, item: TokenStream) -> TokenStream {
     let has_hint = attr_str.contains("hint");
 
     let struct_name = &input.ident;
+    let visibility = &input.vis;
 
     let mut signature_instruction = String::new();
     // Store everything as serde Values
@@ -165,7 +166,7 @@ pub fn Signature(attr: TokenStream, item: TokenStream) -> TokenStream {
 
     let generated = quote! {
         #[derive(Default, Debug, Clone, serde::Serialize, serde::Deserialize)]
-        struct #struct_name {
+        #visibility struct #struct_name {
             instruction: String,
             input_fields: serde_json::Value,
             output_fields: serde_json::Value,

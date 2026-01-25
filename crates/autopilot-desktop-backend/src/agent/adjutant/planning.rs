@@ -2,157 +2,19 @@
 //!
 //! Implements the core planning workflow: topic decomposition → parallel exploration → synthesis
 
-use super::signatures::{ExplorationTopic, PlanModeConfig, TopicsResponse};
+use super::config::PlanModeConfig;
 use crate::ai_server::AiServerConfig;
 use futures::future::join_all;
 use dsrs::{example, LM, Predict, Predictor};
-use dsrs_macros::Signature;
-use serde::{Deserialize, Serialize};
+use dsrs::signatures::{
+    ComplexityClassificationSignature, DeepPlanningSignature, ExplorationTopic,
+    ParallelExplorationSignature, PlanSynthesisSignature, ResultValidationSignature,
+    TopicDecompositionSignature, TopicsResponse,
+};
 use serde_json;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::process::Command;
-
-// ============================================================================
-// DSPy Signature Definitions (local to this module)
-// ============================================================================
-
-#[Signature]
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct TopicDecompositionSignature {
-    /// Software Planning: Analyze user request and repository structure
-    /// to decompose into 2-4 focused exploration topics with search patterns.
-    
-    #[input]
-    user_prompt: String,
-    
-    #[input]
-    file_tree: String,
-    
-    #[output]
-    topics: String,
-}
-
-#[Signature]
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct ParallelExplorationSignature {
-    /// Codebase Exploration: Use available tools to explore the assigned topic
-    /// and gather relevant information about code patterns and implementation details.
-    
-    #[input]
-    topic: String,
-    
-    #[input]
-    focus: String,
-    
-    #[input]
-    patterns: String, // JSON array of patterns
-    
-    #[input]
-    repo_path: String,
-
-    #[input]
-    file_context: String,
-    
-    #[output]
-    findings: String,
-    
-    #[output]
-    files_examined: String, // JSON array of file paths
-}
-
-#[Signature]
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct PlanSynthesisSignature {
-    /// Plan Synthesis: Based on exploration findings, create a comprehensive
-    /// implementation plan with specific steps, files to modify, and clear objectives.
-    
-    #[input]
-    user_prompt: String,
-    
-    #[input]
-    exploration_results: String,
-    
-    #[input]
-    repo_context: String,
-    
-    #[output]
-    implementation_plan: String,
-}
-
-#[Signature]
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct ComplexityClassificationSignature {
-    /// Complexity Analysis: Analyze the task and codebase to classify complexity
-    /// and determine the appropriate planning approach.
-    
-    #[input]
-    task_description: String,
-    
-    #[input]
-    repo_indicators: String,
-    
-    #[input]
-    domain_signals: String,
-    
-    #[output]
-    complexity: String,
-    
-    #[output]
-    routing_decision: String,
-    
-    #[output]
-    reasoning: String,
-}
-
-#[Signature(cot)]  // Enable chain-of-thought reasoning
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct DeepPlanningSignature {
-    /// Deep Planning: Perform complex multi-step reasoning to analyze sophisticated
-    /// tasks requiring coordination across multiple systems, files, or domains.
-    
-    #[input]
-    complex_request: String,
-    
-    #[input]
-    codebase_analysis: String,
-    
-    #[input]
-    constraints: String,
-    
-    #[output]
-    reasoning: String,
-    
-    #[output]
-    strategy: String,
-    
-    #[output]
-    implementation_plan: String,
-    
-    #[output]
-    risk_assessment: String,
-}
-
-#[Signature]
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct ResultValidationSignature {
-    /// Analysis: Evaluate the generated output against the original request
-    /// and criteria to ensure high quality and completeness.
-    
-    #[input]
-    pub original_request: String,
-    #[input]
-    pub generated_output: String,
-    #[input]
-    pub criteria: String,
-    
-    #[output]
-    pub quality_assessment: String,
-    #[output]
-    pub issues: String,
-    #[output]
-    pub confidence: String,
-}
 
 // ============================================================================
 // Pipeline Implementation

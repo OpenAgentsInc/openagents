@@ -4,7 +4,7 @@
 
 import { Effect } from "effect"
 import { mountComponent, EffuseLive } from "./effuse/index.js"
-import { UnifiedStreamComponent } from "./components/unified-stream/index.js"
+import { AutopilotCanvasComponent } from "./components/autopilot-canvas/index.js"
 import { setupStorybookListener } from "./effuse-storybook/index.js"
 
 const program = Effect.gen(function* () {
@@ -18,7 +18,7 @@ const program = Effect.gen(function* () {
     setupStorybookListener()
   }
 
-  yield* mountComponent(UnifiedStreamComponent, container)
+  yield* mountComponent(AutopilotCanvasComponent, container)
 
   // Keep the scoped fibers (event handlers, state watchers) alive.
   yield* Effect.never

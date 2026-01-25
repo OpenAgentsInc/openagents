@@ -142,6 +142,16 @@ Canonical definitions for OpenAgents terminology. All docs should use these term
 
 ---
 
+## UI Runtime
+
+| Term | Definition |
+|------|------------|
+| **UITree** | Flat UI tree representation with `root` and `elements` used for Effuse dynamic UI. |
+| **UiPatch** | JSON patch operation (`add/remove/replace/set`) applied to a UITree using JSON Pointer paths. |
+| **Effuse Catalog** | Whitelisted component/action definitions + schemas used to validate UITree output. |
+
+---
+
 ## Job Types
 
 | Term | Definition |

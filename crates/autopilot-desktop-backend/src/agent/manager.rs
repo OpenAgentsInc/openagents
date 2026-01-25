@@ -10,7 +10,7 @@ use crate::agent::unified::{AgentId, UnifiedEvent};
 use crate::agent::acp_agent::AcpAgent;
 use crate::agent::adjutant::AdjutantAgent;
 use crate::agent::resolver::{resolve_codex_config, resolve_gemini_config};
-use tauri::AppHandle;
+use tauri::{AppHandle, Emitter};
 
 /// Manages multiple agents and provides a unified interface
 pub struct AgentManager {
@@ -53,20 +53,30 @@ impl AgentManager {
         match agent_id {
             AgentId::Adjutant => {
                 // Native DSPy agent - no ACP needed
-                let agent = Arc::new(AdjutantAgent::new()) as Arc<dyn Agent>;
+                let agent = Arc::new(AdjutantAgent::new());
                 let session_id = agent.connect(workspace_path).await?;
+
+                let agent_dyn: Arc<dyn Agent> = agent.clone();
                 
                 // Store agent and session mapping
-                self.agents.lock().await.insert(agent_id, agent.clone());
+                self.agents.lock().await.insert(agent_id, agent_dyn.clone());
                 self.active_sessions.lock().await.insert(session_id.clone(), agent_id);
                 
                 // Set up event forwarding for Adjutant
                 let unified_tx = self.unified_events_tx.clone();
-                let mut agent_rx = agent.events_receiver();
+                let mut agent_rx = agent_dyn.events_receiver();
                 
                 tokio::spawn(async move {
                     while let Some(event) = agent_rx.recv().await {
                         let _ = unified_tx.send(event);
+                    }
+                });
+
+                let app_clone = app.clone();
+                let mut ui_rx = agent.ui_events_receiver().await;
+                tokio::spawn(async move {
+                    while let Some(event) = ui_rx.recv().await {
+                        let _ = app_clone.emit("ui-event", &event);
                     }
                 });
                 

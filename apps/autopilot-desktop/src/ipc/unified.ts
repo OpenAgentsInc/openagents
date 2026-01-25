@@ -1,5 +1,4 @@
-import { Effect, Schema } from "effect"
-import { invoke } from "@tauri-apps/api/core"
+import { Effect } from "effect"
 import type {
   ConnectUnifiedAgentRequest,
   ConnectUnifiedAgentResponse,
@@ -10,30 +9,15 @@ import type {
   SendUnifiedMessageResponse,
   StartUnifiedSessionRequest,
   StartUnifiedSessionResponse,
-} from "../../gen/tauri-contracts"
+} from "../gen/tauri-contracts"
 import {
   ConnectUnifiedAgentResponseSchema,
   CurrentDirectorySchema,
   DisconnectUnifiedAgentResponseSchema,
   SendUnifiedMessageResponseSchema,
   StartUnifiedSessionResponseSchema,
-} from "../../contracts/tauri"
-
-const invokeWithSchema = <A>(
-  command: string,
-  payload: any,
-  schema: Schema.Schema<A>
-): Effect.Effect<A, Error> =>
-  Effect.tryPromise({
-    try: () => invoke<unknown>(command, payload),
-    catch: (error) => new Error(String(error)),
-  }).pipe(
-    Effect.flatMap((result) =>
-      Schema.decodeUnknown(schema)(result).pipe(
-        Effect.mapError((error) => new Error(String(error)))
-      )
-    )
-  )
+} from "../contracts/tauri"
+import { invokeWithSchema } from "./invoke.js"
 
 export const getCurrentDirectory = Effect.fn("tauri.getCurrentDirectory")(() =>
   invokeWithSchema<CurrentDirectory>(
