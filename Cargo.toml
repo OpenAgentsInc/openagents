@@ -1,6 +1,7 @@
 [workspace]
 resolver = "2"
 members = [
+    "apps/autopilot-desktop/src-tauri",
     "crates/adjutant",
     "crates/agent",
     "crates/arrow",
@@ -65,6 +66,8 @@ publish = false
 codex-client = { path = "crates/codex-client" }
 issues = { path = "crates/issues" }
 nostr = { path = "crates/nostr/core" }
+dsrs = { path = "crates/dsrs" }
+dsrs-macros = { path = "crates/dsrs-macros" }
 
 # External crates
 anyhow = "1.0.86"
