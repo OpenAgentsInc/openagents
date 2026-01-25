@@ -94,15 +94,20 @@ cargo build --release -p pylon
 
 ---
 
-### Autopilot UI — AI Coding Terminal
+### Autopilot UI (wgpui) and Autopilot Desktop (Tauri/Effuse)
 
-GPU-accelerated terminal interface for Codex CLI and Codex. Built on wgpui for high-performance rendering.
+OpenAgents ships two user-facing Autopilot surfaces:
+
+- **Autopilot (wgpui)**: GPU-accelerated terminal interface for Codex CLI and Codex.
+- **Autopilot Desktop (Tauri/Effuse)**: signature-driven canvas UI that renders Effuse UITrees and streams UI patches from Adjutant.
 
 Autopilot UI reimagines the AI coding experience as a native desktop application rather than a web interface or CLI tool. The entire UI is GPU-rendered via wgpui, giving you buttery-smooth scrolling through long conversations, instant Markdown rendering, and the responsiveness you'd expect from a proper terminal emulator. It's designed for developers who live in their terminal and want AI coding assistants to feel like a natural extension of that workflow.
 
 Under the hood, Autopilot UI integrates the Codex app-server as its single backend, using the JSONL protocol over stdio to drive threads, turns, approvals, and tool output.
 
 Autopilot UI also integrates the Adjutant execution engine for autonomous "autopilot" mode. When you give it a task, Adjutant uses DSPy-optimized decision making to classify complexity, choose the right execution path (Codex app-server or RLM), and iterate until the task is complete. The UI provides real-time visibility into what the agent is doing, with the ability to interrupt, guide, or take over at any point.
+
+Autopilot Desktop exposes the same execution engine, but renders a signature-driven UI. Adjutant emits `UiTreeReset`, `UiPatch`, and `UiDataUpdate` events over the `ui-event` channel. The Effuse runtime validates UI trees against a catalog, applies patches, and renders the current signature steps (inputs, outputs, and status) on a canvas. This makes DSPy/dsrs execution visible in a structured, deterministic UI rather than an unstructured chat stream.
 
 **Execution note:** DSPy issue selection + bootloading decide *what* to work on; the actual execution is handled by the CODING_AGENT_LOOP in Adjutant (typed signatures for context, planning, tool calls, and tool results plus runtime enforcement and replay/receipt emission). This loop is the core engine behind Autopilot’s autonomous work.
 Autopilot’s autonomous loop always routes through Adjutant; the `/backend` selection only applies to chat mode.
@@ -177,6 +182,8 @@ cargo run -p gitafter
 The product layer for autonomous code tasks. Two deployment modes.
 
 Autopilot is the user-facing product that wraps the Adjutant execution engine into a complete autonomous coding experience. You give it a task ("Fix the failing tests", "Add dark mode", "Refactor this module"), and it works autonomously until the task is done or it needs human input. The system runs verification after each iteration—typically `cargo check` and `cargo test`—so it knows when it's actually finished versus when it just thinks it's finished.
+
+Autopilot's economic loop is explicit: it converts compute into verified software changes, those changes create value, and receipts allow that value to be priced and settled in sats when routed through the network.
 
 The architecture supports two deployment modes. Tunnel mode runs entirely on your machine: your compute, your API keys, free of charge. Container mode runs in sandboxed containers at the edge (Cloudflare Workers), useful for when you want to hand off work and not tie up your local machine. Both modes share the same Adjutant core, so behavior is consistent regardless of where execution happens.
 

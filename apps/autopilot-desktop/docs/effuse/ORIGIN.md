@@ -141,10 +141,10 @@ Effuse had comprehensive documentation in `docs/effuse/`:
 
 ## Why Rebuild for Autopilot?
 
-While the original Effuse was migrated to Rust/GPUI, Autopilot is a Tauri app with a React frontend. Rebuilding Effuse for Autopilot allows us to:
+While the original Effuse was migrated to Rust/GPUI, Autopilot Desktop now runs as a Tauri app with an Effuse frontend. Rebuilding Effuse for Autopilot enabled:
 
 1. **Leverage Effect TypeScript**: Use Effect's powerful type system and composition
-2. **Replace React**: Build a simpler, more type-safe UI layer
+2. **Replace the legacy UI**: Build a simpler, more type-safe UI layer
 3. **Better Integration**: Native integration with Tauri and Effect patterns
 4. **Type Safety**: Full type inference for components, state, and events
 5. **Testability**: Mockable services enable comprehensive testing

@@ -13,10 +13,14 @@ crates/autopilot-desktop-backend/src/agent/
 ├── adjutant/
 │   ├── mod.rs              # Main module
 │   ├── agent.rs            # Agent implementation
+│   ├── config.rs           # Plan mode configuration
 │   ├── lm_client.rs        # Local AI Gateway client
-│   ├── signatures.rs       # DSPy signatures
 │   └── planning.rs         # Planning pipeline
 ```
+
+**Signature sources**: plan-mode signatures live in `crates/dsrs/src/signatures/plan_mode.rs`
+and are exposed via `crates/dsrs/src/signature_registry.rs`. Autopilot Desktop
+imports these instead of defining local duplicates.
 
 ### Integration with ACP
 
@@ -28,6 +32,9 @@ Adjutant follows the same ACP integration pattern as Codex and Gemini:
 4. **Native implementation**: No external process spawning - pure Rust/dsrs
 
 ## DSPy Signatures
+
+The concrete plan-mode signatures are defined in `crates/dsrs/src/signatures/plan_mode.rs`.
+The examples below illustrate the shape and intent of the signature contracts.
 
 ### Core Planning Signatures
 
@@ -246,21 +253,21 @@ struct ComplexityClassificationSignature {
 ## Implementation Plan
 
 ### Phase 1: Core Infrastructure
-- [ ] Create `crates/autopilot-desktop-backend/src/agent/adjutant/` module structure
-- [ ] Implement basic Agent trait for Adjutant
-- [ ] Set up DSPy signatures module
-- [ ] Create planning pipeline foundation
+- [x] Create `crates/autopilot-desktop-backend/src/agent/adjutant/` module structure
+- [x] Implement basic Agent trait for Adjutant
+- [x] Wire dsrs signatures into the planning pipeline
+- [x] Create planning pipeline foundation
 
 ### Phase 2: DSPy Integration
-- [ ] Implement core planning signatures
-- [ ] Build execution engine with signature orchestration
-- [ ] Add tool selection and routing logic
-- [ ] Implement result synthesis
+- [x] Implement core planning signatures (in dsrs)
+- [x] Build execution engine with signature orchestration
+- [x] Add tool selection and routing logic
+- [x] Implement result synthesis
 
 ### Phase 3: ACP Integration
-- [ ] Integrate with unified event system
-- [ ] Add session management
-- [ ] Implement streaming responses via UnifiedEvent
+- [x] Integrate with unified event system
+- [x] Add session management
+- [x] Implement streaming responses via UnifiedEvent
 - [ ] Add capability advertisements
 
 ### Phase 4: Optimization & Learning
@@ -303,9 +310,9 @@ pub enum PlanningMode {
 Adjutant integrates seamlessly with the existing frontend through the same interfaces:
 
 - **TypeScript**: `src/agent/adjutant.ts` following same pattern as `codex.ts` and `gemini.ts`
-- **Event Handling**: Uses `UnifiedEvent` system for streaming responses
+- **Event Handling**: Emits `UnifiedEvent` (chat stream) plus `UiEvent` for signature-driven UI
 - **Session Management**: Standard ACP session lifecycle
-- **UI Components**: Reuses existing chat interface, no special UI required
+- **UI Components**: Effuse canvas renders UITree updates via `ui-event`
 
 ## Future Enhancements
 
@@ -346,7 +353,7 @@ The Adjutant Agent has been successfully implemented and integrated into the Aut
 #### **Frontend Integration**
 - ✅ Available in agent selector alongside Codex and Gemini
 - ✅ Uses unified streaming interface with chunked responses
-- ✅ Compatible with existing chat UI and event system
+- ✅ Emits signature-driven UI updates (`ui-event`) for the Effuse canvas
 
 ### ✅ **DSPy Integration Live**
 

@@ -1,6 +1,6 @@
 # OpenAgents
 
-OpenAgents is a local-first stack for autonomous agents that can **sign**, **run tools**, **verify work**, **account for cost**, and (optionally) **buy compute** in open markets. The wedge product in this repo is **Autopilot**: an autonomous coding agent that plans → executes → verifies → emits replayable artifacts.
+OpenAgents is a local-first stack for autonomous agents that can **sign**, **run tools**, **verify work**, **account for cost**, and (optionally) **buy compute** in open markets. The wedge product in this repo is **Autopilot**: an autonomous coding agent that plans → executes → verifies → emits replayable artifacts. Autopilot turns compute into verified software changes and produces receipts that can be priced and settled in sats when routed through the marketplace.
 
 If you're looking for the philosophy / "why open", start with **[MANIFESTO.md](./MANIFESTO.md)**.
 
@@ -24,6 +24,14 @@ cargo run -p autopilot -- run "Summarize @README.md and run !git status"
 Tip: this repo defines a Cargo alias in `.cargo/config.toml`, so `cargo autopilot ...`
 is shorthand for `cargo run -p autopilot -- ...`.
 
+## Quick Start (Autopilot Desktop)
+
+```bash
+cd apps/autopilot-desktop
+bun install
+bun run tauri dev
+```
+
 ## What you get
 
 Autopilot is designed to be:
@@ -32,6 +40,7 @@ Autopilot is designed to be:
 * **Verifiable**: uses deterministic checks (tests/builds) as the ground-truth loop
 * **Inspectable**: emits structured session logs and artifacts for replay/debug/audit
 * **Optimizable**: uses DSPy-style signatures/modules/optimizers to improve policies over time
+* **Signature-driven UI**: Effuse UITree + UI patch streaming for live, structured visibility
 
 ## Documentation map
 
@@ -49,6 +58,7 @@ Autopilot-specific docs:
 * [crates/autopilot/docs/MVP.md](crates/autopilot/docs/MVP.md)
 * [crates/autopilot/docs/ROADMAP.md](crates/autopilot/docs/ROADMAP.md)
 * [crates/autopilot-core/docs/EXECUTION_FLOW.md](crates/autopilot-core/docs/EXECUTION_FLOW.md)
+* [apps/autopilot-desktop/docs/README.md](apps/autopilot-desktop/docs/README.md)
 
 DSPy / dsrs docs:
 

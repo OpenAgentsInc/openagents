@@ -40,14 +40,15 @@ Adopt a **Rust-first DTO contract** using `ts-rs` for TypeScript type generation
    - Generated file is committed and updated in CI/dev scripts
 
 3. **Frontend IPC wrapper becomes typed**:
-   - `apps/autopilot-desktop/src/components/unified-stream/api.ts` (pattern for future IPC modules)
+   - `apps/autopilot-desktop/src/ipc/unified.ts` (pattern for IPC modules)
+   - `apps/autopilot-desktop/src/ipc/dsrs.ts` (signature registry IPC)
    - Commands take typed args and return typed results from `apps/autopilot-desktop/src/gen/tauri-contracts.ts`
    - IPC responses are decoded through Effect Schema
 
 4. **Effect validation is implemented for core IPC**:
    - Schemas live in `apps/autopilot-desktop/src/contracts/tauri.ts`
    - `UnifiedEvent` payloads are decoded before entering the queue
-   - Typed responses are validated in `src/components/unified-stream/api.ts`
+   - Typed responses are validated in `src/ipc/unified.ts`
 
 ### Generation Mechanism
 
@@ -62,8 +63,7 @@ Adopt a **Rust-first DTO contract** using `ts-rs` for TypeScript type generation
 - `JsonValue` is emitted as `unknown` in TypeScript to preserve opaque payloads
   returned from Codex app-server (`StartThreadResponse`, `ListModelsResponse`, etc.).
 - `UnifiedEvent` numeric fields are mapped to `number` in TS (not `bigint`).
-- `apps/autopilot-desktop/src/components/unified-stream/types.ts` re-exports `UnifiedEvent` from
-  the generated contracts.
+- Generated types are used directly in frontend IPC wrappers and schemas.
 
 ## Consequences
 
@@ -98,4 +98,4 @@ Adopt a **Rust-first DTO contract** using `ts-rs` for TypeScript type generation
 - `apps/autopilot-desktop/src-tauri/src/bin/gen_types.rs`
 - `apps/autopilot-desktop/src/gen/tauri-contracts.ts`
 - `apps/autopilot-desktop/src/contracts/tauri.ts`
-- `apps/autopilot-desktop/src/components/unified-stream/api.ts`
+- `apps/autopilot-desktop/src/ipc/unified.ts`
