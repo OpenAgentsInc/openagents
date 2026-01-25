@@ -1,0 +1,26 @@
+{
+  "name": "autopilot-ai-server",
+  "version": "1.0.0",
+  "description": "Local AI Gateway server for Adjutant agent using Vercel AI SDK",
+  "main": "server.ts",
+  "scripts": {
+    "dev": "bun run --watch server.ts",
+    "start": "bun run server.ts",
+    "build": "bun build server.ts --outdir dist",
+    "test": "bun test",
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "ai": "^6.0.0",
+    "hono": "^4.3.9",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.17",
+    "bun-types": "latest",
+    "typescript": "^5.0.0"
+  },
+  "engines": {
+    "bun": ">=1.0.0"
+  }
+}

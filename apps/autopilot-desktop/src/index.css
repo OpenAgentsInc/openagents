@@ -1,0 +1,136 @@
+@import "tailwindcss";
+
+@font-face {
+  font-family: "Inter";
+  src: url("/fonts/Inter-Variable.ttf") format("truetype");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Inter";
+  src: url("/fonts/Inter-Variable-Italic.ttf") format("truetype");
+  font-weight: 100 900;
+  font-style: italic;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "JetBrains Mono";
+  src: url("/fonts/JetBrainsMono-Regular.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "JetBrains Mono";
+  src: url("/fonts/JetBrainsMono-Regular.ttf") format("truetype");
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "JetBrains Mono";
+  src: url("/fonts/JetBrainsMono-Regular.ttf") format("truetype");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@theme inline {
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", "Monaco", "Inconsolata",
+    "Fira Code", "Droid Sans Mono", "Source Code Pro", monospace;
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--chart-2);
+  --color-accent-strong: var(--chart-3);
+  --color-accent-foreground: var(--primary-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-destructive: var(--destructive);
+  --color-surface: var(--card);
+  --color-surface-strong: var(--secondary);
+  --color-surface-muted: var(--container);
+  --color-status-idle: var(--muted-foreground);
+  --color-status-connecting: var(--chart-3);
+  --color-status-connected: var(--chart-4);
+  --color-status-ready: var(--chart-2);
+  --color-status-error: var(--destructive);
+  --shadow-sm: 0 12px 24px oklch(0 0 0 / 0.3);
+  --shadow-md: 0 18px 40px oklch(0 0 0 / 0.35);
+  --shadow-lg: 0 24px 56px oklch(0 0 0 / 0.45);
+}
+
+:root {
+  color-scheme: dark;
+  --radius: 0.625rem;
+
+  /* Cursor Dark High Contrast theme */
+  --background: oklch(0.12 0 0);
+  --foreground: oklch(0.88 0 0);
+  --card: oklch(0.218 0 0);
+  --popover: oklch(0.145 0 0);
+  --popover-foreground: oklch(1 0 0);
+  --primary: oklch(0.88 0 0);
+  --primary-foreground: oklch(0.145 0 0);
+  --secondary: oklch(0.285 0 0);
+  --muted: oklch(0.285 0 0);
+  --muted-foreground: oklch(0.627 0 0);
+  --accent: oklch(0.218 0 0);
+  --accent-foreground: oklch(1 0 0);
+  --destructive: oklch(0.606 0.121 15.342);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(0.285 0 0 / 33%);
+  --ring: oklch(0.627 0 0);
+  --chart-1: oklch(0.627 0 0);
+  --chart-2: oklch(0.696 0.17 162.48);
+  --chart-3: oklch(0.769 0.188 70.08);
+  --chart-4: oklch(0.627 0.265 303.9);
+  --chart-5: oklch(0.645 0.246 16.439);
+  --container: #080808;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+body {
+  @apply bg-background font-mono text-foreground text-[13px];
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-size: 13px !important;
+}
+
+body * {
+  font-size: 13px !important;
+}
+
+#root {
+  width: 100%;
+  height: 100%;
+  @apply p-6;
+}

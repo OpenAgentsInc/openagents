@@ -1,0 +1,746 @@
+//! Plan Mode Pipeline for Adjutant Agent
+//!
+//! Implements the core planning workflow: topic decomposition → parallel exploration → synthesis
+
+use super::signatures::{ExplorationTopic, PlanModeConfig, TopicsResponse};
+use crate::ai_server::AiServerConfig;
+use futures::future::join_all;
+use dsrs::{example, LM, Predict, Predictor};
+use dsrs_macros::Signature;
+use serde::{Deserialize, Serialize};
+use serde_json;
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use tokio::process::Command;
+
+// ============================================================================
+// DSPy Signature Definitions (local to this module)
+// ============================================================================
+
+#[Signature]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct TopicDecompositionSignature {
+    /// Software Planning: Analyze user request and repository structure
+    /// to decompose into 2-4 focused exploration topics with search patterns.
+    
+    #[input]
+    user_prompt: String,
+    
+    #[input]
+    file_tree: String,
+    
+    #[output]
+    topics: String,
+}
+
+#[Signature]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct ParallelExplorationSignature {
+    /// Codebase Exploration: Use available tools to explore the assigned topic
+    /// and gather relevant information about code patterns and implementation details.
+    
+    #[input]
+    topic: String,
+    
+    #[input]
+    focus: String,
+    
+    #[input]
+    patterns: String, // JSON array of patterns
+    
+    #[input]
+    repo_path: String,
+
+    #[input]
+    file_context: String,
+    
+    #[output]
+    findings: String,
+    
+    #[output]
+    files_examined: String, // JSON array of file paths
+}
+
+#[Signature]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct PlanSynthesisSignature {
+    /// Plan Synthesis: Based on exploration findings, create a comprehensive
+    /// implementation plan with specific steps, files to modify, and clear objectives.
+    
+    #[input]
+    user_prompt: String,
+    
+    #[input]
+    exploration_results: String,
+    
+    #[input]
+    repo_context: String,
+    
+    #[output]
+    implementation_plan: String,
+}
+
+#[Signature]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct ComplexityClassificationSignature {
+    /// Complexity Analysis: Analyze the task and codebase to classify complexity
+    /// and determine the appropriate planning approach.
+    
+    #[input]
+    task_description: String,
+    
+    #[input]
+    repo_indicators: String,
+    
+    #[input]
+    domain_signals: String,
+    
+    #[output]
+    complexity: String,
+    
+    #[output]
+    routing_decision: String,
+    
+    #[output]
+    reasoning: String,
+}
+
+#[Signature(cot)]  // Enable chain-of-thought reasoning
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct DeepPlanningSignature {
+    /// Deep Planning: Perform complex multi-step reasoning to analyze sophisticated
+    /// tasks requiring coordination across multiple systems, files, or domains.
+    
+    #[input]
+    complex_request: String,
+    
+    #[input]
+    codebase_analysis: String,
+    
+    #[input]
+    constraints: String,
+    
+    #[output]
+    reasoning: String,
+    
+    #[output]
+    strategy: String,
+    
+    #[output]
+    implementation_plan: String,
+    
+    #[output]
+    risk_assessment: String,
+}
+
+#[Signature]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct ResultValidationSignature {
+    /// Analysis: Evaluate the generated output against the original request
+    /// and criteria to ensure high quality and completeness.
+    
+    #[input]
+    pub original_request: String,
+    #[input]
+    pub generated_output: String,
+    #[input]
+    pub criteria: String,
+    
+    #[output]
+    pub quality_assessment: String,
+    #[output]
+    pub issues: String,
+    #[output]
+    pub confidence: String,
+}
+
+// ============================================================================
+// Pipeline Implementation
+// ============================================================================
+
+/// Result from a single exploration agent
+#[derive(Debug, Clone)]
+pub struct ExplorationResult {
+    pub topic: String,
+    pub focus: String,
+    pub files_examined: Vec<String>,
+    pub key_findings: String,
+}
+
+/// Final plan result
+#[derive(Debug, Clone)]
+pub struct PlanResult {
+    pub implementation_plan: String,
+    pub topics_explored: Vec<String>,
+    pub files_examined: Vec<String>,
+    pub confidence: f32,
+}
+
+/// Plan Mode Pipeline - orchestrates the full planning workflow
+pub struct PlanModePipeline {
+    config: PlanModeConfig,
+    repo_path: PathBuf,
+    // DSPy predictors for each signature
+    topic_decomposer: Predict,
+    synthesis_predictor: Predict,
+    complexity_classifier: Predict,
+    deep_planner: Option<Predict>,
+    validator: Predict,
+    // Language Model
+    lm: Option<Arc<LM>>,
+}
+
+impl PlanModePipeline {
+    pub fn new(repo_path: PathBuf, config: PlanModeConfig) -> Self {
+        // Initialize DSPy predictors with each signature
+        let topic_decomposer = Predict::new(TopicDecompositionSignature::new());
+        let synthesis_predictor = Predict::new(PlanSynthesisSignature::new());
+        let complexity_classifier = Predict::new(ComplexityClassificationSignature::new());
+        let validator = Predict::new(ResultValidationSignature::new());
+        
+        let deep_planner = if config.enable_deep_planning {
+            Some(Predict::new(DeepPlanningSignature::new()))
+        } else {
+            None
+        };
+
+        Self {
+            config,
+            repo_path,
+            topic_decomposer,
+            synthesis_predictor,
+            complexity_classifier,
+            deep_planner,
+            validator,
+            lm: None,
+        }
+    }
+
+    /// Set the language model for DSPy predictions
+    pub fn with_lm(mut self, lm: Arc<LM>) -> Self {
+        self.lm = Some(lm);
+        self
+    }
+
+    /// Create pipeline with automatic LM configuration
+    pub async fn with_auto_lm(mut self) -> Self {
+        if let Ok(api_key) = std::env::var("AI_GATEWAY_API_KEY") {
+            if !api_key.is_empty() {
+                let config = AiServerConfig::from_env().unwrap_or_else(|_| {
+                    AiServerConfig::new("localhost".to_string(), 3001, api_key.clone())
+                });
+                let server_url = config.server_url();
+                let base_url = format!("{}/v1", server_url);
+                let model = config.default_model.clone();
+
+                let lm = LM::builder()
+                    .base_url(base_url)
+                    .api_key(api_key)
+                    .model(model)
+                    .build()
+                    .await;
+                
+                if let Ok(lm) = lm {
+                    println!(
+                        "✅ AI Gateway LM initialized and connected to {}",
+                        server_url
+                    );
+                    self.lm = Some(Arc::new(lm));
+                }
+            }
+        }
+        self
+    }
+
+    /// Execute the full plan mode pipeline
+    pub async fn execute_plan_mode(&self, user_prompt: &str) -> Result<PlanResult, String> {
+        // 1. Get repository context
+        let file_tree = self.get_file_tree().await?;
+        
+        // 2. Classify complexity
+        let complexity = self.classify_complexity(user_prompt, &file_tree).await?;
+        
+        // 3. Topic decomposition
+        let topics = self.decompose_into_topics(user_prompt, &file_tree).await?;
+        
+        // 4. Parallel exploration
+        let exploration_results = self.run_parallel_exploration(topics).await?;
+        
+        // 5. Plan synthesis
+        let plan = if complexity > self.config.deep_planning_threshold {
+            self.deep_plan_synthesis(user_prompt, &exploration_results).await?
+        } else {
+            self.synthesize_plan(user_prompt, &exploration_results).await?
+        };
+
+        // 6. Validation (if enabled)
+        if self.config.enable_validation {
+            self.validate_plan(user_prompt, &plan).await?;
+        }
+        
+        Ok(plan)
+    }
+
+    /// Topic Decomposition - break user prompt into 2-4 exploration topics
+    async fn decompose_into_topics(
+        &self, 
+        user_prompt: &str, 
+        file_tree: &str
+    ) -> Result<Vec<ExplorationTopic>, String> {
+        println!("Decomposing prompt into exploration topics...");
+        
+        if let Some(lm) = &self.lm {
+            let inputs = example! {
+                "user_prompt": "input" => user_prompt.to_string(),
+                "file_tree": "input" => file_tree.to_string(),
+            };
+
+            let result = self.topic_decomposer
+                .forward_with_config(inputs, Arc::clone(lm))
+                .await
+                .map_err(|e| format!("DSPy decomposition failed: {}", e))?;
+
+            let topics_json = result.data.get("topics")
+                .and_then(|v| v.as_str())
+                .ok_or("Missing 'topics' output")?;
+
+            let topics_response: TopicsResponse = self.parse_json_from_output(topics_json)?;
+            return Ok(topics_response.topics);
+        }
+
+        // Mock decomposition as fallback
+        Ok(vec![
+            ExplorationTopic {
+                name: "Core Architecture".to_string(),
+                focus: "Understand the main application structure and patterns".to_string(),
+                patterns: vec!["main".to_string(), "app".to_string(), "mod".to_string()],
+            },
+            ExplorationTopic {
+                name: "Data Layer".to_string(),
+                focus: "Examine data models and database interactions".to_string(),
+                patterns: vec!["model".to_string(), "db".to_string(), "data".to_string()],
+            },
+        ])
+    }
+
+    /// Parallel Exploration
+    async fn run_parallel_exploration(
+        &self,
+        topics: Vec<ExplorationTopic>
+    ) -> Result<Vec<ExplorationResult>, String> {
+        println!("Launching {} explore agents...", topics.len());
+        
+        let mut exploration_tasks = Vec::new();
+        
+        for (i, topic) in topics.into_iter().enumerate() {
+            let agent_num = i + 1;
+            let lm = self.lm.clone();
+            let repo_path = self.repo_path.clone();
+            let max_files = self.config.max_tool_calls_per_agent.max(3);
+            
+            exploration_tasks.push(async move {
+                println!("[Agent {}] Starting: {}", agent_num, topic.name);
+
+                let (files_examined, file_context) =
+                    Self::gather_exploration_context(&repo_path, &topic.patterns, max_files)
+                        .await?;
+
+                if let Some(lm) = lm {
+                    let predictor = Predict::new(ParallelExplorationSignature::new());
+                    let inputs = example! {
+                        "topic": "input" => topic.name.clone(),
+                        "focus": "input" => topic.focus.clone(),
+                        "patterns": "input" => serde_json::to_string(&topic.patterns).unwrap_or_default(),
+                        "repo_path": "input" => repo_path.to_string_lossy().to_string(),
+                        "file_context": "input" => file_context,
+                    };
+
+                    let result = predictor.forward_with_config(inputs, lm).await;
+
+                    match result {
+                        Ok(prediction) => {
+                            let findings = prediction
+                                .data
+                                .get("findings")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("")
+                                .to_string();
+                            let files_from_model = prediction
+                                .data
+                                .get("files_examined")
+                                .and_then(|v| v.as_str())
+                                .and_then(|raw| serde_json::from_str::<Vec<String>>(raw).ok())
+                                .unwrap_or_default();
+
+                            Ok(ExplorationResult {
+                                topic: topic.name,
+                                focus: topic.focus,
+                                files_examined: if files_examined.is_empty() {
+                                    files_from_model
+                                } else {
+                                    files_examined
+                                },
+                                key_findings: findings,
+                            })
+                        }
+                        Err(e) => Err(e.to_string()),
+                    }
+                } else {
+                    let summary = Self::fallback_findings(&topic, &files_examined);
+                    Ok(ExplorationResult {
+                        topic: topic.name,
+                        focus: topic.focus,
+                        files_examined,
+                        key_findings: summary,
+                    })
+                }
+            });
+        }
+
+        let results = join_all(exploration_tasks).await;
+        let mut exploration_results = Vec::new();
+        for result in results {
+            if let Ok(r) = result {
+                exploration_results.push(r);
+            }
+        }
+
+        Ok(exploration_results)
+    }
+
+    /// Plan Synthesis
+    async fn synthesize_plan(
+        &self,
+        user_prompt: &str,
+        exploration_results: &[ExplorationResult]
+    ) -> Result<PlanResult, String> {
+        println!("Synthesizing plan from exploration...");
+        
+        let combined_findings = self.format_exploration_results(exploration_results);
+        let all_files: Vec<String> = exploration_results.iter()
+            .flat_map(|r| r.files_examined.clone())
+            .collect();
+
+        if let Some(lm) = &self.lm {
+            let inputs = example! {
+                "user_prompt": "input" => user_prompt.to_string(),
+                "exploration_results": "input" => combined_findings,
+                "repo_context": "input" => format!("Files examined: {}", all_files.join(", ")),
+            };
+
+            let result = self.synthesis_predictor
+                .forward_with_config(inputs, Arc::clone(lm))
+                .await
+                .map_err(|e| format!("Plan synthesis failed: {}", e))?;
+
+            let implementation_plan = result.data.get("implementation_plan")
+                .and_then(|v| v.as_str())
+                .unwrap_or("Failed to generate plan")
+                .to_string();
+
+            return Ok(PlanResult {
+                implementation_plan,
+                topics_explored: exploration_results.iter().map(|r| r.topic.clone()).collect(),
+                files_examined: all_files,
+                confidence: 0.9,
+            });
+        }
+
+        Ok(PlanResult {
+            implementation_plan: format!("Mock plan for: {}", user_prompt),
+            topics_explored: exploration_results.iter().map(|r| r.topic.clone()).collect(),
+            files_examined: all_files,
+            confidence: 0.5,
+        })
+    }
+
+    /// Deep Planning
+    async fn deep_plan_synthesis(
+        &self,
+        user_prompt: &str,
+        exploration_results: &[ExplorationResult]
+    ) -> Result<PlanResult, String> {
+        if let Some(lm) = &self.lm {
+            if let Some(planner) = &self.deep_planner {
+                let inputs = example! {
+                    "complex_request": "input" => user_prompt.to_string(),
+                    "codebase_analysis": "input" => self.format_exploration_results(exploration_results),
+                    "constraints": "input" => "Follow project conventions and ensure type safety.".to_string(),
+                };
+
+                let result = planner
+                    .forward_with_config(inputs, Arc::clone(lm))
+                    .await
+                    .map_err(|e| format!("Deep planning failed: {}", e))?;
+
+                let implementation_plan = result.data.get("implementation_plan")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("Failed to generate deep plan")
+                    .to_string();
+
+                return Ok(PlanResult {
+                    implementation_plan,
+                    topics_explored: exploration_results.iter().map(|r| r.topic.clone()).collect(),
+                    files_examined: Vec::new(),
+                    confidence: 0.95,
+                });
+            }
+        }
+        self.synthesize_plan(user_prompt, exploration_results).await
+    }
+
+    /// Complexity Classification
+    async fn classify_complexity(&self, user_prompt: &str, file_tree: &str) -> Result<f32, String> {
+        if let Some(lm) = &self.lm {
+            let inputs = example! {
+                "task_description": "input" => user_prompt.to_string(),
+                "repo_indicators": "input" => format!("File tree lines: {}", file_tree.lines().count()),
+                "domain_signals": "input" => "N/A".to_string(),
+            };
+
+            let result = self.complexity_classifier
+                .forward_with_config(inputs, Arc::clone(lm))
+                .await
+                .map_err(|e| format!("Complexity classification failed: {}", e))?;
+
+            let complexity_str = result.data.get("complexity").and_then(|v| v.as_str()).unwrap_or("Medium");
+            
+            match complexity_str.to_lowercase().as_str() {
+                "low" => Ok(0.2),
+                "medium" => Ok(0.5),
+                "high" => Ok(0.8),
+                "veryhigh" | "very high" => Ok(1.0),
+                _ => Ok(0.5),
+            }
+        } else {
+            Ok(0.5)
+        }
+    }
+
+    /// Get repository file tree
+    async fn get_file_tree(&self) -> Result<String, String> {
+        let mut tree = String::new();
+        tree.push_str(&format!("Repository: {}\n", self.repo_path.display()));
+        let mut entries = Vec::new();
+        self.collect_files(&self.repo_path, &mut entries, 0, 100).await?;
+        for (name, depth) in entries {
+            tree.push_str(&format!("{}• {}\n", "  ".repeat(depth), name));
+        }
+        Ok(tree)
+    }
+
+    #[async_recursion::async_recursion]
+    async fn collect_files(&self, path: &Path, entries: &mut Vec<(String, usize)>, depth: usize, max: usize) -> Result<(), String> {
+        if entries.len() >= max || depth > 3 { return Ok(()); }
+        let mut read_dir = tokio::fs::read_dir(path).await.map_err(|e| e.to_string())?;
+        while let Ok(Some(entry)) = read_dir.next_entry().await {
+            let name = entry.file_name().to_string_lossy().to_string();
+            if name.starts_with('.') || ["node_modules", "target", "dist", ".git"].contains(&name.as_str()) { continue; }
+            let rel = entry.path().strip_prefix(&self.repo_path).map(|p| p.to_string_lossy().to_string()).unwrap_or(name);
+            entries.push((rel, depth));
+            if entry.file_type().await.map(|t| t.is_dir()).unwrap_or(false) {
+                self.collect_files(&entry.path(), entries, depth + 1, max).await?;
+            }
+            if entries.len() >= max { break; }
+        }
+        Ok(())
+    }
+
+    /// Plan Validation
+    async fn validate_plan(&self, user_prompt: &str, plan: &PlanResult) -> Result<(), String> {
+        println!("Validating plan quality...");
+        
+        if let Some(lm) = &self.lm {
+            let inputs = example! {
+                "original_request": "input" => user_prompt.to_string(),
+                "generated_output": "input" => plan.implementation_plan.clone(),
+                "criteria": "input" => "Completeness, feasibility, and adherence to requirements.".to_string(),
+            };
+
+            let result = self.validator
+                .forward_with_config(inputs, Arc::clone(lm))
+                .await
+                .map_err(|e| format!("Validation failed: {}", e))?;
+
+            let issues = result.data.get("issues").and_then(|v| v.as_str()).unwrap_or("None");
+            let confidence_str = result.data.get("confidence").and_then(|v| v.as_str()).unwrap_or("0.8");
+            let confidence = confidence_str.parse::<f32>().unwrap_or(0.8);
+
+            println!("Validation result: issues={}, confidence={}", issues, confidence);
+            
+            if confidence < 0.5 {
+                return Err(format!("Plan validation failed: {}", issues));
+            }
+        }
+        
+        Ok(())
+    }
+
+    fn parse_json_from_output<T: serde::de::DeserializeOwned>(&self, output: &str) -> Result<T, String> {
+        let json_str = if let Some(start) = output.find("```json") {
+            let after_start = &output[start + 7..];
+            after_start.split("```").next().unwrap_or(after_start)
+        } else if let Some(start) = output.find('{') {
+            &output[start..output.rfind('}').map(|i| i + 1).unwrap_or(output.len())]
+        } else {
+            output
+        };
+        serde_json::from_str(json_str.trim()).map_err(|e| format!("JSON error: {}", e))
+    }
+
+    fn format_exploration_results(&self, results: &[ExplorationResult]) -> String {
+        results.iter().map(|r| format!("## Topic: {}\nFocus: {}\nFiles: {}\nFindings:\n{}\n\n", r.topic, r.focus, r.files_examined.join(", "), r.key_findings)).collect()
+    }
+
+    async fn gather_exploration_context(
+        repo_path: &Path,
+        patterns: &[String],
+        max_files: usize,
+    ) -> Result<(Vec<String>, String), String> {
+        let mut files = Vec::new();
+        for pattern in patterns {
+            if files.len() >= max_files {
+                break;
+            }
+            let mut matches = match Self::rg_files_for_pattern(repo_path, pattern).await {
+                Ok(matches) => matches,
+                Err(err) => {
+                    eprintln!("Pattern search failed for '{}': {}", pattern, err);
+                    Vec::new()
+                }
+            };
+            matches.retain(|path| !files.contains(path));
+            files.extend(matches);
+        }
+
+        if files.is_empty() {
+            files = match Self::rg_list_repo_files(repo_path, max_files).await {
+                Ok(list) => list,
+                Err(err) => {
+                    eprintln!("rg --files failed: {}, falling back to manual listing", err);
+                    Self::list_repo_files_fallback(repo_path, max_files).await?
+                }
+            };
+        }
+
+        let mut context = String::new();
+        for file in files.iter().take(max_files) {
+            let file_path = repo_path.join(file);
+            if let Ok(bytes) = tokio::fs::read(&file_path).await {
+                if bytes.iter().any(|b| *b == 0) {
+                    continue;
+                }
+                let text = String::from_utf8_lossy(&bytes);
+                context.push_str(&format!("FILE: {}\n", file));
+                context.push_str(&Self::truncate_text(&text, 4000));
+                context.push_str("\n\n");
+            }
+        }
+
+        Ok((files, context))
+    }
+
+    async fn rg_files_for_pattern(repo_path: &Path, pattern: &str) -> Result<Vec<String>, String> {
+        let output = Command::new("rg")
+            .arg("-l")
+            .arg("-i")
+            .arg("--no-messages")
+            .arg(pattern)
+            .current_dir(repo_path)
+            .output()
+            .await;
+
+        match output {
+            Ok(output) if output.status.success() || output.status.code() == Some(1) => {
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                Ok(stdout
+                    .lines()
+                    .map(|line| line.trim().to_string())
+                    .filter(|line| !line.is_empty())
+                    .collect())
+            }
+            Ok(output) => Err(format!("rg failed for pattern '{}': {}", pattern, String::from_utf8_lossy(&output.stderr))),
+            Err(e) => Err(format!("rg failed to run: {}", e)),
+        }
+    }
+
+    async fn rg_list_repo_files(repo_path: &Path, max_files: usize) -> Result<Vec<String>, String> {
+        let output = Command::new("rg")
+            .arg("--files")
+            .arg("--no-messages")
+            .current_dir(repo_path)
+            .output()
+            .await;
+
+        match output {
+            Ok(output) if output.status.success() => {
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                Ok(stdout
+                    .lines()
+                    .map(|line| line.trim().to_string())
+                    .filter(|line| !line.is_empty())
+                    .take(max_files)
+                    .collect())
+            }
+            Ok(output) => Err(format!("rg --files failed: {}", String::from_utf8_lossy(&output.stderr))),
+            Err(e) => Err(format!("rg --files failed to run: {}", e)),
+        }
+    }
+
+    async fn list_repo_files_fallback(repo_path: &Path, max_files: usize) -> Result<Vec<String>, String> {
+        let mut results = Vec::new();
+        let mut stack = vec![repo_path.to_path_buf()];
+
+        while let Some(dir) = stack.pop() {
+            if results.len() >= max_files {
+                break;
+            }
+            let mut read_dir = tokio::fs::read_dir(&dir).await.map_err(|e| e.to_string())?;
+            while let Ok(Some(entry)) = read_dir.next_entry().await {
+                let file_type = entry.file_type().await.map_err(|e| e.to_string())?;
+                let name = entry.file_name().to_string_lossy().to_string();
+                if name.starts_with('.')
+                    || ["node_modules", "target", "dist", ".git"].contains(&name.as_str())
+                {
+                    continue;
+                }
+
+                if file_type.is_dir() {
+                    stack.push(entry.path());
+                    continue;
+                }
+
+                let rel = entry
+                    .path()
+                    .strip_prefix(repo_path)
+                    .map(|p| p.to_string_lossy().to_string())
+                    .unwrap_or(name);
+                results.push(rel);
+                if results.len() >= max_files {
+                    break;
+                }
+            }
+        }
+
+        Ok(results)
+    }
+
+    fn truncate_text(text: &str, max_chars: usize) -> String {
+        text.chars().take(max_chars).collect()
+    }
+
+    fn fallback_findings(topic: &ExplorationTopic, files_examined: &[String]) -> String {
+        if files_examined.is_empty() {
+            format!(
+                "No matching files found for patterns: {}. Consider adjusting search terms.",
+                topic.patterns.join(", ")
+            )
+        } else {
+            format!(
+                "Examined {} files for patterns [{}]. Summarize key areas manually if needed.",
+                files_examined.len(),
+                topic.patterns.join(", ")
+            )
+        }
+    }
+}
