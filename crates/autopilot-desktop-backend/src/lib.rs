@@ -70,7 +70,7 @@ fn greet(name: &str) -> String {
     format!("Hello, {}! You've been greeted from Rust!", name)
 }
 
-pub fn build_app() -> tauri::Builder {
+pub fn build_app() -> tauri::Builder<tauri::Wry> {
     #[cfg(target_os = "linux")]
     configure_linux_display_backend();
 
