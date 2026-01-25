@@ -9,14 +9,13 @@ The **Adjutant Agent** is a DSPy-native agent designed for the Autopilot ACP (Ag
 ### Core Components
 
 ```
-src-tauri/src/agent/
+crates/autopilot-desktop-backend/src/agent/
 ├── adjutant/
 │   ├── mod.rs              # Main module
 │   ├── agent.rs            # Agent implementation
+│   ├── lm_client.rs        # Local AI Gateway client
 │   ├── signatures.rs       # DSPy signatures
-│   ├── planning.rs         # Planning pipeline
-│   ├── execution.rs        # Execution engine
-│   └── optimization.rs     # DSPy optimization
+│   └── planning.rs         # Planning pipeline
 ```
 
 ### Integration with ACP
@@ -247,7 +246,7 @@ struct ComplexityClassificationSignature {
 ## Implementation Plan
 
 ### Phase 1: Core Infrastructure
-- [ ] Create `src-tauri/src/agent/adjutant/` module structure
+- [ ] Create `crates/autopilot-desktop-backend/src/agent/adjutant/` module structure
 - [ ] Implement basic Agent trait for Adjutant
 - [ ] Set up DSPy signatures module
 - [ ] Create planning pipeline foundation
@@ -324,7 +323,7 @@ The Adjutant Agent has been successfully implemented and integrated into the Aut
 
 #### **Core Infrastructure**
 - ✅ Added `AgentId::Adjutant` to unified agent system
-- ✅ Created complete agent module at `src-tauri/src/agent/adjutant/`
+- ✅ Created complete agent module at `crates/autopilot-desktop-backend/src/agent/adjutant/`
 - ✅ Integrated with existing Agent trait and manager
 - ✅ Updated TypeScript types and agent registry
 
@@ -349,18 +348,16 @@ The Adjutant Agent has been successfully implemented and integrated into the Aut
 - ✅ Uses unified streaming interface with chunked responses
 - ✅ Compatible with existing chat UI and event system
 
-### 🚧 **Ready for DSPy Integration**
+### ✅ **DSPy Integration Live**
 
-The infrastructure is complete and ready to connect to real dsrs:
+Plan mode now runs real dsrs predictors with the local AI Gateway:
 
 ```rust
-// Current: Mock implementation
-let topics = mock_decompose_topics(prompt).await?;
+let pipeline = PlanModePipeline::new(workspace_path, config)
+    .with_auto_lm()
+    .await;
 
-// Next: Real DSPy integration
-let sig = TopicDecompositionSignature::new(prompt, file_tree);
-let predictor = Predict::new(sig).with_lm(lm);
-let topics = predictor.forward(example).await?;
+let plan = pipeline.execute_plan_mode(prompt).await?;
 ```
 
 ---

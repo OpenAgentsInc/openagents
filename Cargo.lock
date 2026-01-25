@@ -1099,6 +1099,16 @@ dependencies = [
 name = "autopilot-desktop"
 version = "0.1.0"
 dependencies = [
+ "autopilot-desktop-backend",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-opener",
+]
+
+[[package]]
+name = "autopilot-desktop-backend"
+version = "0.1.0"
+dependencies = [
  "agent-client-protocol",
  "anyhow",
  "async-recursion",
@@ -1115,7 +1125,6 @@ dependencies = [
  "serde_json",
  "tar",
  "tauri",
- "tauri-build",
  "tauri-plugin-opener",
  "tokio",
  "ts-rs",

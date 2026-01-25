@@ -82,33 +82,37 @@ DSPY_TEMPERATURE=0.7
 ### 3. Directory Structure
 
 ```
-autopilot/
-├── ai-server/                 # Local AI Gateway server
-│   ├── package.json          # Bun dependencies
-│   ├── server.ts             # Main server implementation
-│   ├── routes/               # API routes
-│   │   ├── chat.ts          # Chat completions endpoint
-│   │   ├── embeddings.ts    # Embeddings endpoint
-│   │   └── health.ts        # Health check endpoint
-│   ├── middleware/           # Server middleware
-│   │   ├── auth.ts          # API key validation
-│   │   ├── cors.ts          # CORS configuration
-│   │   └── logging.ts       # Request logging
-│   ├── services/            # Business logic
-│   │   ├── ai-gateway.ts    # Vercel AI SDK integration
-│   │   ├── model-config.ts  # Model routing configuration
-│   │   └── fallback.ts      # Provider fallback logic
-│   └── types/               # TypeScript type definitions
-│       ├── api.ts           # API request/response types
-│       └── config.ts        # Configuration types
-├── src-tauri/
-│   └── src/
-│       └── ai_server/       # Tauri server management
-│           ├── mod.rs       # Server lifecycle management
-│           ├── process.rs   # Bun process spawning
-│           └── config.rs    # Server configuration
-└── docs/
-    └── ai-gateway-setup.md  # This documentation
+openagents/
+├── apps/
+│   └── autopilot-desktop/
+│       ├── ai-server/                 # Local AI Gateway server
+│       │   ├── package.json          # Bun dependencies
+│       │   ├── server.ts             # Main server implementation
+│       │   ├── routes/               # API routes
+│       │   │   ├── chat.ts          # Chat completions endpoint
+│       │   │   ├── embeddings.ts    # Embeddings endpoint
+│       │   │   └── health.ts        # Health check endpoint
+│       │   ├── middleware/           # Server middleware
+│       │   │   ├── auth.ts          # API key validation
+│       │   │   ├── cors.ts          # CORS configuration
+│       │   │   └── logging.ts       # Request logging
+│       │   ├── services/            # Business logic
+│       │   │   ├── ai-gateway.ts    # Vercel AI SDK integration
+│       │   │   ├── model-config.ts  # Model routing configuration
+│       │   │   └── fallback.ts      # Provider fallback logic
+│       │   └── types/               # TypeScript type definitions
+│       │       ├── api.ts           # API request/response types
+│       │       └── config.ts        # Configuration types
+│       ├── src-tauri/                # Thin Tauri wrapper
+│       └── docs/
+│           └── ai-gateway-setup.md  # This documentation
+└── crates/
+    └── autopilot-desktop-backend/
+        └── src/
+            └── ai_server/           # Tauri server management
+                ├── mod.rs           # Server lifecycle management
+                ├── process.rs       # Bun process spawning
+                └── config.rs        # Server configuration
 ```
 
 ## API Endpoints
@@ -202,42 +206,29 @@ export const MODEL_ROUTING = {
 
 ### LM Configuration
 
-The DSPy system connects to the local AI server through a custom LM implementation:
+The DSPy system connects to the local AI server by configuring dsrs with the
+OpenAI-compatible endpoint exposed by the bun server:
 
 ```rust
-// src-tauri/src/agent/adjutant/lm_client.rs
-pub struct LocalAiLM {
-    base_url: String,
-    api_key: String,
-    client: reqwest::Client,
-}
+// crates/autopilot-desktop-backend/src/agent/adjutant/planning.rs
+let config = AiServerConfig::from_env()?;
+let base_url = format!("{}/v1", config.server_url());
 
-impl LM for LocalAiLM {
-    async fn generate(&self, request: &CompletionRequest) -> Result<String> {
-        let response = self.client
-            .post(&format!("{}/v1/chat/completions", self.base_url))
-            .header("Authorization", format!("Bearer {}", self.api_key))
-            .json(&ChatCompletionRequest::from(request))
-            .send()
-            .await?;
-            
-        let completion: ChatCompletionResponse = response.json().await?;
-        Ok(completion.choices[0].message.content.clone())
-    }
-}
+let lm = LM::builder()
+    .base_url(base_url)
+    .api_key(config.api_key.clone())
+    .model(config.default_model.clone())
+    .build()
+    .await?;
 ```
 
 ### Pipeline Configuration
 
 ```rust
-// Configure Adjutant with local LM
-let lm = Arc::new(LocalAiLM::new(
-    "http://localhost:3001".to_string(),
-    "local-api-key".to_string(),
-));
-
+// Configure Adjutant with the local AI Gateway automatically
 let pipeline = PlanModePipeline::new(workspace_path, config)
-    .with_lm(lm);
+    .with_auto_lm()
+    .await;
 ```
 
 ## Server Lifecycle Management
@@ -245,7 +236,7 @@ let pipeline = PlanModePipeline::new(workspace_path, config)
 ### Tauri Server Startup
 
 ```rust
-// src-tauri/src/ai_server/mod.rs
+// crates/autopilot-desktop-backend/src/ai_server/mod.rs
 pub struct AiServerManager {
     process: Option<Child>,
     port: u16,
@@ -287,18 +278,32 @@ impl AiServerManager {
 ### App Initialization Sequence
 
 ```rust
-// src-tauri/src/main.rs
-#[tauri::command]
-async fn app_ready(app: AppHandle) -> Result<(), String> {
-    let ai_server = app.state::<Mutex<AiServerManager>>();
-    let mut server = ai_server.lock().unwrap();
-    
-    // Start AI server on app ready
-    server.start().await?;
-    
-    println!("AI Gateway server started on http://localhost:3001");
-    Ok(())
-}
+// crates/autopilot-desktop-backend/src/lib.rs
+tauri::Builder::default()
+    .setup(|app| {
+        let state = AppState::load(&app.handle());
+        app.manage(state);
+
+        match AiServerConfig::from_env() {
+            Ok(config) => {
+                if let Err(err) = init_ai_server(config) {
+                    eprintln!("Warning: Failed to initialize AI server: {}", err);
+                }
+            }
+            Err(err) => {
+                eprintln!("Warning: AI server configuration error: {}", err);
+            }
+        }
+
+        Ok(())
+    })
+    .invoke_handler(tauri::generate_handler![
+        start_ai_server,
+        stop_ai_server,
+        restart_ai_server,
+        get_ai_server_status,
+        get_ai_server_analytics,
+    ]);
 ```
 
 ## Error Handling & Resilience
@@ -412,16 +417,20 @@ curl -X POST "http://localhost:3001/v1/chat/completions" \
 // tests/ai_server_integration.rs
 #[tokio::test]
 async fn test_adjutant_planning_with_local_lm() {
-    let server = AiServerManager::new("localhost".to_string(), 3001);
+    let config = AiServerConfig::new(
+        "localhost".to_string(),
+        3001,
+        "test-key".to_string(),
+    );
+    let server = AiServerManager::new(config);
     server.start().await.expect("Server should start");
     
     let pipeline = PlanModePipeline::new(
         test_repo_path(),
         PlanModeConfig::default()
-    ).with_lm(Arc::new(LocalAiLM::new(
-        "http://localhost:3001".to_string(),
-        "test-key".to_string(),
-    )));
+    )
+    .with_auto_lm()
+    .await;
     
     let result = pipeline.execute_plan_mode("Add user authentication").await;
     assert!(result.is_ok());

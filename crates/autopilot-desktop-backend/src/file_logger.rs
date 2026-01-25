@@ -334,20 +334,38 @@ impl FileLogger {
 
 /// Get the tmp directory path (project root / tmp)
 fn get_tmp_dir() -> Result<PathBuf> {
-    // Try to get project root from CARGO_MANIFEST_DIR or current working directory
-    let project_root = if let Ok(manifest_dir) = std::env::var("CARGO_MANIFEST_DIR") {
-        // CARGO_MANIFEST_DIR points to src-tauri, so go up one level to get project root
-        let mut path = PathBuf::from(manifest_dir);
-        path.pop(); // Remove src-tauri to get project root
-        eprintln!("Using CARGO_MANIFEST_DIR, project root: {}", path.display());
-        path
-    } else {
-        let cwd = std::env::current_dir().context("Failed to get current directory")?;
-        eprintln!("Using current directory as project root: {}", cwd.display());
-        cwd
-    };
+    let mut candidates = Vec::new();
 
-    let tmp_dir = project_root.join("tmp");
+    if let Ok(cwd) = std::env::current_dir() {
+        let cwd_name = cwd.file_name().and_then(|name| name.to_str());
+        if cwd_name == Some("src-tauri") {
+            if let Some(parent) = cwd.parent() {
+                candidates.push(parent.join("tmp"));
+            }
+            candidates.push(cwd.join("tmp"));
+        } else {
+            candidates.push(cwd.join("tmp"));
+            if let Some(parent) = cwd.parent() {
+                candidates.push(parent.join("tmp"));
+            }
+        }
+    }
+
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    if let Some(repo_root) = manifest_dir.parent().and_then(|path| path.parent()) {
+        candidates.push(
+            repo_root
+                .join("apps")
+                .join("autopilot-desktop")
+                .join("tmp"),
+        );
+    }
+
+    let tmp_dir = candidates
+        .into_iter()
+        .find(|path| path.parent().is_some())
+        .context("Failed to resolve tmp directory")?;
+
     eprintln!("Tmp directory will be: {}", tmp_dir.display());
     Ok(tmp_dir)
 }

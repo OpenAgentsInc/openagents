@@ -2,7 +2,7 @@
 
 Architecture Decision Records for the OpenAgents project.
 
-**Quick links:** [README.md](./README.md) (process) | [TEMPLATE.md](./TEMPLATE.md) | Next available: **ADR-0020**
+**Quick links:** [README.md](./README.md) (process) | [TEMPLATE.md](./TEMPLATE.md) | Next available: **ADR-0022**
 
 ---
 
@@ -29,6 +29,8 @@ Architecture Decision Records for the OpenAgents project.
 | [ADR-0017](./ADR-0017-telemetry-trace-contract.md) | Telemetry and Trace Contract | Accepted | 2026-01-13 | Execution | — | dsrs | 2026-01-13 |
 | [ADR-0018](./ADR-0018-forge-adapter-contract.md) | Forge Adapter Contract | Accepted | 2026-01-13 | Execution | — | adjutant | 2026-01-13 |
 | [ADR-0019](./ADR-0019-wgpui-hud-component-contract.md) | WGPUI HUD Component Contract | Accepted | 2026-01-13 | UX | — | autopilot | 2026-01-13 |
+| [ADR-0020](./ADR-0020-pylon-local-ui-bridge.md) | Pylon Local UI Bridge (Pusher-Compatible) | Accepted | 2026-01-13 | UX | — | pylon | 2026-01-13 |
+| [ADR-0021](./ADR-0021-rust-ts-type-generation.md) | Rust-to-TypeScript Contract Generation for Tauri IPC | Accepted | 2026-01-25 | UX | — | autopilot-desktop | 2026-01-25 |
 
 ---
 
@@ -63,6 +65,7 @@ Architecture Decision Records for the OpenAgents project.
 - [ADR-0014](./ADR-0014-cli-surface-ownership.md) — CLI Surface Ownership
 - [ADR-0019](./ADR-0019-wgpui-hud-component-contract.md) — WGPUI HUD Component Contract
 - [ADR-0020](./ADR-0020-pylon-local-ui-bridge.md) — Pylon Local UI Bridge (Pusher-Compatible)
+- [ADR-0021](./ADR-0021-rust-ts-type-generation.md) — Rust-to-TypeScript Contract Generation for Tauri IPC
 
 ### Security (privacy, redaction)
 - [ADR-0016](./ADR-0016-privacy-defaults-swarm-dispatch.md) — Privacy Defaults for Swarm Dispatch
@@ -75,7 +78,7 @@ Architecture Decision Records for the OpenAgents project.
 ## By Status
 
 ### Accepted
-- ADR-0001, ADR-0002, ADR-0003, ADR-0004, ADR-0005, ADR-0006, ADR-0007, ADR-0008, ADR-0009, ADR-0010, ADR-0011, ADR-0012, ADR-0013, ADR-0014, ADR-0015, ADR-0016, ADR-0017, ADR-0018, ADR-0019, ADR-0020
+- ADR-0001, ADR-0002, ADR-0003, ADR-0004, ADR-0005, ADR-0006, ADR-0007, ADR-0008, ADR-0009, ADR-0010, ADR-0011, ADR-0012, ADR-0013, ADR-0014, ADR-0015, ADR-0016, ADR-0017, ADR-0018, ADR-0019, ADR-0020, ADR-0021
 
 ### Proposed
 - (none)

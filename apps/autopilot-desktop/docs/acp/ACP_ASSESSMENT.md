@@ -271,7 +271,7 @@ tokio = { version = "1", features = ["full"] }
 
 **What was implemented**:
 - Added `agent-client-protocol` dependency (v0.9) to `Cargo.toml`
-- Created `src-tauri/src/acp.rs` module that:
+- Created `crates/autopilot-desktop-backend/src/acp.rs` module that:
   - Finds `codex-acp` binary in PATH or common installation locations
   - Spawns `codex-acp` process when workspace connects
   - Captures all stdout (JSON-RPC messages) and stderr (logs) from `codex-acp`
@@ -308,10 +308,10 @@ Workspace Connection
 
 **Files Modified**:
 - `src-tauri/Cargo.toml`: Added dependencies
-- `src-tauri/src/lib.rs`: Added `acp` module
-- `src-tauri/src/acp.rs`: New file with ACP connection logic
-- `src-tauri/src/state.rs`: Added `acp_connections` to `AppState`
-- `src-tauri/src/codex.rs`: Integrated ACP connection into workspace lifecycle
+- `crates/autopilot-desktop-backend/src/lib.rs`: Added `acp` module
+- `crates/autopilot-desktop-backend/src/acp.rs`: New file with ACP connection logic
+- `crates/autopilot-desktop-backend/src/state.rs`: Added `acp_connections` to `AppState`
+- `crates/autopilot-desktop-backend/src/codex.rs`: Integrated ACP connection into workspace lifecycle
 - `src/types.ts`: Added `AcpEvent` type
 - `src/App.tsx`: Added ACP event listener and state
 - `src/components/RawDataFeed.tsx`: Updated to accept both event types
