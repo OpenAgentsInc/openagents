@@ -1,6 +1,6 @@
 [alias]
 arrow = "run -p arrow@0.1.0 --"
-autopilot = "run -p autopilot-desktop --"
+autopilot = "run -p autopilot-desktop-runner --"
 manatap = "run -p manatap --"
 storybook = "run -p wgpui --example storybook --features desktop"
 pylon = "run -p pylon --release --"
