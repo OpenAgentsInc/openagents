@@ -7,6 +7,7 @@ mod codex;
 mod codex_home;
 pub mod contracts;
 mod event_sink;
+mod signature_registry;
 mod state;
 mod types;
 
@@ -118,6 +119,8 @@ pub fn build_app() -> tauri::Builder<tauri::Wry> {
             agent::commands::send_unified_message,
             agent::commands::get_unified_conversation_items,
             agent::commands::get_unified_agent_status,
+            signature_registry::list_dsrs_signatures,
+            signature_registry::get_dsrs_signature,
             // AI server commands
             start_ai_server,
             stop_ai_server,

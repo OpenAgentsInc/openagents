@@ -1,3 +1,5 @@
+extern crate self as dsrs;
+
 pub mod adapter;
 pub mod callbacks;
 pub mod compiler;
@@ -12,6 +14,7 @@ pub mod predictors;
 pub mod privacy;
 pub mod retrieval;
 pub mod signatures;
+pub mod signature_registry;
 pub mod trace;
 pub mod utils;
 
@@ -31,6 +34,7 @@ pub use pipelines::{
 pub use predictors::*;
 pub use privacy::*;
 pub use utils::*;
+pub use signature_registry::*;
 
 pub use dsrs_macros::*;
 

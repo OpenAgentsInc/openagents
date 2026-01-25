@@ -2,6 +2,11 @@ import { Schema } from "effect"
 import type {
   ConnectUnifiedAgentResponse,
   CurrentDirectory,
+  DsrsSignatureInfo,
+  GetDsrsSignatureResponse,
+  ListDsrsSignaturesResponse,
+  UiEvent,
+  UiPatch,
   DisconnectUnifiedAgentResponse,
   SendUnifiedMessageResponse,
   StartUnifiedSessionResponse,
@@ -103,4 +108,53 @@ export const UnifiedEventSchema: Schema.Schema<UnifiedEvent> = Schema.Union(
   SessionCompletedSchema,
   TokenUsageSchema,
   RateLimitUpdateSchema
+)
+
+export const DsrsSignatureInfoSchema: Schema.Schema<DsrsSignatureInfo> =
+  Schema.Struct({
+    name: Schema.String,
+    instruction: Schema.String,
+    inputFields: Schema.Unknown,
+    outputFields: Schema.Unknown,
+  })
+
+export const ListDsrsSignaturesResponseSchema: Schema.Schema<ListDsrsSignaturesResponse> =
+  Schema.Struct({
+    signatures: Schema.Array(DsrsSignatureInfoSchema),
+  })
+
+export const GetDsrsSignatureResponseSchema: Schema.Schema<GetDsrsSignatureResponse> =
+  Schema.Struct({
+    signature: DsrsSignatureInfoSchema,
+  })
+
+export const UiPatchSchema: Schema.Schema<UiPatch> = Schema.Struct({
+  op: Schema.String,
+  path: Schema.String,
+  value: Schema.Union(Schema.Unknown, Schema.Null),
+})
+
+const UiTreeResetSchema = Schema.Struct({
+  type: Schema.Literal("UiTreeReset"),
+  session_id: Schema.String,
+  tree: Schema.Unknown,
+})
+
+const UiPatchEventSchema = Schema.Struct({
+  type: Schema.Literal("UiPatch"),
+  session_id: Schema.String,
+  patch: UiPatchSchema,
+})
+
+const UiDataUpdateSchema = Schema.Struct({
+  type: Schema.Literal("UiDataUpdate"),
+  session_id: Schema.String,
+  path: Schema.String,
+  value: Schema.Unknown,
+})
+
+export const UiEventSchema: Schema.Schema<UiEvent> = Schema.Union(
+  UiTreeResetSchema,
+  UiPatchEventSchema,
+  UiDataUpdateSchema
 )

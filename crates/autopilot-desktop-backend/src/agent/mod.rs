@@ -12,6 +12,7 @@ pub mod adjutant;
 pub mod manager;
 pub mod commands;
 pub mod resolver;
+pub mod ui;
 
 #[allow(unused_imports)]
 pub use unified::{AgentId, UnifiedEvent, UnifiedConversationItem};

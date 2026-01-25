@@ -38,3 +38,6 @@ export { EffuseLive } from "./layers/live.js"
 export type { EzAction, EzSwapMode } from "./ez/types.js"
 export { EzRegistryTag, makeEzRegistry } from "./ez/registry.js"
 export { mountEzRuntime, mountEzRuntimeWith } from "./ez/runtime.js"
+
+// Signature-driven UI runtime
+export * from "./ui/index.js"

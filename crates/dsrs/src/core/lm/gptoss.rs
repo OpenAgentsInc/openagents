@@ -118,10 +118,11 @@ impl GptOssCompletionModel {
         // Look for "your objective is:" section
         if let Some(idx) = prompt.to_lowercase().find("your objective is:") {
             let after = &prompt[idx + 18..];
-            if let Some(end) = after.find('\n') {
-                return after[..end].trim().to_string();
+            let trimmed = after.trim_start();
+            if let Some(end) = trimmed.find('\n') {
+                return trimmed[..end].trim().to_string();
             }
-            return after.trim().to_string();
+            return trimmed.trim().to_string();
         }
 
         // Fallback: use first non-empty line after "Given the fields"

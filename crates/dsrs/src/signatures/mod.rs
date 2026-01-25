@@ -17,6 +17,7 @@ pub mod failure_triage;
 pub mod issue_suggestion;
 pub mod issue_validation;
 pub mod lane_budgeter;
+pub mod plan_mode;
 pub mod planning;
 pub mod query_composer;
 pub mod retrieval_router;
@@ -24,6 +25,7 @@ pub mod sandbox_profile;
 pub mod task_understanding;
 pub mod tool_call;
 pub mod tool_result;
+pub mod ui_composer;
 pub mod unblock_suggestion;
 pub mod verification;
 
@@ -38,6 +40,11 @@ pub use failure_triage::FailureTriageSignature;
 pub use issue_suggestion::IssueSuggestionSignature;
 pub use issue_validation::IssueValidationSignature;
 pub use lane_budgeter::LaneBudgeterSignature;
+pub use plan_mode::{
+    ComplexityClassificationSignature, DeepPlanningSignature, ExplorationTopic,
+    ParallelExplorationSignature, PlanSynthesisSignature, ResultValidationSignature,
+    TopicDecompositionSignature, ToolSelectionSignature, TopicsResponse,
+};
 pub use planning::PlanningSignature;
 pub use query_composer::QueryComposerSignature;
 pub use retrieval_router::RetrievalRouterSignature;
@@ -45,5 +52,6 @@ pub use sandbox_profile::SandboxProfileSelectionSignature;
 pub use task_understanding::TaskUnderstandingSignature;
 pub use tool_call::ToolCallSignature;
 pub use tool_result::ToolResultSignature;
+pub use ui_composer::UiComposerSignature;
 pub use unblock_suggestion::UnblockSuggestionSignature;
 pub use verification::VerificationSignature;

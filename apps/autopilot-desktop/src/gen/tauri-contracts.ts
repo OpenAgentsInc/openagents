@@ -60,6 +60,18 @@ export interface GetUnifiedAgentStatusRequest { sessionId: string, }
 
 export interface GetUnifiedAgentStatusResponse { sessionId: string, agentId: string | null, connected: boolean, }
 
+export interface DsrsSignatureInfo { name: string, instruction: string, inputFields: JsonValue, outputFields: JsonValue, }
+
+export interface ListDsrsSignaturesResponse { signatures: Array<DsrsSignatureInfo>, }
+
+export interface GetDsrsSignatureRequest { name: string, }
+
+export interface GetDsrsSignatureResponse { signature: DsrsSignatureInfo, }
+
+export interface UiPatch { op: string, path: string, value: JsonValue | null, }
+
+export type UiEvent = { "type": "UiTreeReset", session_id: string, tree: JsonValue, } | { "type": "UiPatch", session_id: string, patch: UiPatch, } | { "type": "UiDataUpdate", session_id: string, path: string, value: JsonValue, };
+
 export interface GreetRequest { name: string, }
 
 export type GreetResponse = string;

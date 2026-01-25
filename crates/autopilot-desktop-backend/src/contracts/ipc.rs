@@ -220,6 +220,64 @@ pub struct GetUnifiedAgentStatusResponse {
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
+pub struct DsrsSignatureInfo {
+    pub name: String,
+    pub instruction: String,
+    #[ts(type = "JsonValue")]
+    pub input_fields: serde_json::Value,
+    #[ts(type = "JsonValue")]
+    pub output_fields: serde_json::Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct ListDsrsSignaturesResponse {
+    pub signatures: Vec<DsrsSignatureInfo>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct GetDsrsSignatureRequest {
+    pub name: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct GetDsrsSignatureResponse {
+    pub signature: DsrsSignatureInfo,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct UiPatch {
+    pub op: String,
+    pub path: String,
+    #[ts(type = "JsonValue | null")]
+    pub value: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(tag = "type")]
+pub enum UiEvent {
+    UiTreeReset {
+        session_id: String,
+        #[ts(type = "JsonValue")]
+        tree: serde_json::Value,
+    },
+    UiPatch {
+        session_id: String,
+        patch: UiPatch,
+    },
+    UiDataUpdate {
+        session_id: String,
+        path: String,
+        #[ts(type = "JsonValue")]
+        value: serde_json::Value,
+    },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
 pub struct GreetRequest {
     pub name: String,
 }
@@ -263,6 +321,12 @@ pub fn export_ts(path: &std::path::Path) -> Result<(), std::io::Error> {
         GetUnifiedConversationItemsResponse::decl(),
         GetUnifiedAgentStatusRequest::decl(),
         GetUnifiedAgentStatusResponse::decl(),
+        DsrsSignatureInfo::decl(),
+        ListDsrsSignaturesResponse::decl(),
+        GetDsrsSignatureRequest::decl(),
+        GetDsrsSignatureResponse::decl(),
+        UiPatch::decl(),
+        UiEvent::decl(),
         GreetRequest::decl(),
         GreetResponse::decl(),
         AgentId::decl(),

@@ -1,5 +1,10 @@
 import type { AgentCapabilities, AgentId, AgentInfo } from "./types.js"
-import { connectUnifiedAgent, disconnectUnifiedAgent, sendUnifiedMessage, startUnifiedSession } from "../components/unified-stream/api.js"
+import {
+  connectUnifiedAgent,
+  disconnectUnifiedAgent,
+  sendUnifiedMessage,
+  startUnifiedSession,
+} from "../ipc/unified.js"
 
 export abstract class Agent {
   abstract readonly id: AgentId

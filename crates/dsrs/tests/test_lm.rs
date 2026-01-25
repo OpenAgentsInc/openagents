@@ -58,12 +58,14 @@ fn test_lm_usage_add() {
         completion_tokens: 20,
         total_tokens: 30,
         cost_msats: 0,
+        provider_usage: None,
     };
     let usage2 = LmUsage {
         prompt_tokens: 10,
         completion_tokens: 20,
         total_tokens: 30,
         cost_msats: 0,
+        provider_usage: None,
     };
 
     let usage3 = usage1.clone() + usage2.clone();
@@ -293,6 +295,7 @@ async fn test_cache_with_complex_inputs() {
             completion_tokens: 30,
             total_tokens: 80,
             cost_msats: 0,
+            provider_usage: None,
         },
     );
 
