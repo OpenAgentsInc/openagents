@@ -23,6 +23,15 @@ agent/
 └── commands.rs         # Tauri commands for frontend
 ```
 
+### Adjutant Plan Mode Pipeline (`agent/adjutant/`)
+
+Plan mode is implemented as a DSPy signature pipeline with an attached optimization loop:
+
+- `planning.rs`: `PlanModePipeline` orchestrates complexity classification → topic decomposition → parallel exploration → synthesis/deep planning → validation.
+- `plan_mode_training.rs`: persists plan-mode examples to `~/.openagents/autopilot-desktop/training/plan_mode.json`.
+- `plan_mode_optimizer.rs`: runs MIPROv2/COPRO/GEPA over collected examples and writes manifests to `~/.openagents/autopilot-desktop/manifests/plan_mode/`.
+- Optimization logs + state live under `~/.openagents/autopilot-desktop/optimization/`.
+
 ### Unified Types (`unified.rs`)
 
 #### AgentId

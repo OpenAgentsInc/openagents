@@ -109,6 +109,8 @@ Autopilot UI also integrates the Adjutant execution engine for autonomous "autop
 
 Autopilot Desktop exposes the same execution engine, but renders a signature-driven UI. Adjutant emits `UiTreeReset`, `UiPatch`, and `UiDataUpdate` events over the `ui-event` channel. The Effuse runtime validates UI trees against a catalog, applies patches, and renders the current signature steps (inputs, outputs, and status) on a canvas. This makes DSPy/dsrs execution visible in a structured, deterministic UI rather than an unstructured chat stream.
 
+Autopilot Desktop also runs a plan-mode optimization loop: it records training examples from plan runs, benchmarks signature quality, and writes optimized instructions to local manifests. Training data lives in `~/.openagents/autopilot-desktop/training/plan_mode.json`, optimization logs in `~/.openagents/autopilot-desktop/optimization/plan_mode.jsonl`, and manifests in `~/.openagents/autopilot-desktop/manifests/plan_mode/`.
+
 **Execution note:** DSPy issue selection + bootloading decide *what* to work on; the actual execution is handled by the CODING_AGENT_LOOP in Adjutant (typed signatures for context, planning, tool calls, and tool results plus runtime enforcement and replay/receipt emission). This loop is the core engine behind Autopilot’s autonomous work.
 Autopilot’s autonomous loop always routes through Adjutant; the `/backend` selection only applies to chat mode.
 
