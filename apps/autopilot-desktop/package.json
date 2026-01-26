@@ -24,6 +24,7 @@
     "@streamdown/mermaid": "^1.0.1",
     "@tailwindcss/vite": "^4.1.18",
     "@tauri-apps/api": "^2",
+    "@tauri-apps/plugin-dialog": "^2",
     "@tauri-apps/plugin-opener": "^2",
     "effect": "^3.19.15",
     "nanoid": "^5.1.6",

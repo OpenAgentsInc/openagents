@@ -24,6 +24,7 @@ tauri-build = { version = "2", features = [] }
 ai-server = { workspace = true }
 openagents-utils = { workspace = true }
 tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
 tauri-plugin-opener = "2"
 serde.workspace = true
 serde_json.workspace = true
