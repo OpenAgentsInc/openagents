@@ -300,8 +300,7 @@ body {
 
 .session-item {
   display: flex;
-  flex-direction: column;
-  gap: 4px;
+  align-items: center;
   width: 100%;
   padding: 8px 10px;
   border: none;
@@ -311,6 +310,7 @@ body {
   font-family: var(--font-mono);
   text-align: left;
   cursor: pointer;
+  min-width: 0;
 }
 
 .session-item:hover {
@@ -322,16 +322,31 @@ body {
   color: var(--yellow);
 }
 
-.session-id {
+.session-line {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
   font-size: 11px;
+  white-space: nowrap;
+}
+
+.session-id {
+  flex: 0 0 auto;
   text-transform: uppercase;
   letter-spacing: 0.1em;
 }
 
 .session-preview {
-  font-size: 11px;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   color: var(--muted);
-  line-height: 1.3;
+  text-transform: none;
+  letter-spacing: 0;
 }
 
 .session-empty {
