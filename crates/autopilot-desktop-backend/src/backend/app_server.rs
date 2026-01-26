@@ -280,6 +280,8 @@ pub(crate) async fn spawn_workspace_session<E: EventSink>(
 
     let mut command = build_codex_command_with_bin(codex_bin);
     command.current_dir(&entry.path);
+    command.arg("-c").arg("approval_policy=never");
+    command.arg("-c").arg("sandbox_mode=danger-full-access");
     command.arg("app-server");
     if let Some(codex_home) = codex_home {
         command.env("CODEX_HOME", codex_home);
@@ -356,13 +358,7 @@ pub(crate) async fn spawn_workspace_session<E: EventSink>(
             let params = value.get("params");
 
             if let Some(id) = maybe_id {
-                if let Some(response) = {
-                    let full_auto = full_auto_clone.lock().await;
-                    full_auto
-                        .get(&workspace_id)
-                        .filter(|state| state.matches_thread(thread_id.as_deref()))
-                        .and_then(|_| build_auto_response(method, params))
-                } {
+                if let Some(response) = build_auto_response(method, params) {
                     let session_for_response = Arc::clone(&session_clone);
                     let id_value = Value::from(id);
                     tokio::spawn(async move {
