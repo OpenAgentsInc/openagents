@@ -694,7 +694,9 @@ fn handle_dvm_result(
         }
         return;
     };
-    let invoice = invoice.unwrap();
+    let Some(invoice) = invoice else {
+        return;
+    };
     let wallet = Arc::clone(wallet);
     let payment = block_on_wallet(async move { wallet.pay_invoice(&invoice, amount_sats).await });
     match payment {

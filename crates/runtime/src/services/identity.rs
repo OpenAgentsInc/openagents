@@ -120,7 +120,9 @@ impl FileHandle for SignHandle {
             self.output = Some(sig.to_hex().into_bytes());
         }
 
-        let output = self.output.as_ref().expect("signature bytes");
+        let output = self.output.as_ref().ok_or_else(|| {
+            FsError::Other("signature bytes not available".to_string())
+        })?;
         if self.position >= output.len() {
             return Ok(0);
         }
@@ -200,7 +202,9 @@ impl FileHandle for VerifyHandle {
             self.output = Some(output.as_bytes().to_vec());
         }
 
-        let output = self.output.as_ref().expect("verify output");
+        let output = self.output.as_ref().ok_or_else(|| {
+            FsError::Other("verify output not available".to_string())
+        })?;
         if self.position >= output.len() {
             return Ok(0);
         }
@@ -277,7 +281,9 @@ impl FileHandle for EncryptHandle {
             self.output = Some(encrypted);
         }
 
-        let output = self.output.as_ref().expect("encrypt output");
+        let output = self.output.as_ref().ok_or_else(|| {
+            FsError::Other("encrypt output not available".to_string())
+        })?;
         if self.position >= output.len() {
             return Ok(0);
         }
@@ -356,7 +362,9 @@ impl FileHandle for DecryptHandle {
             self.output = Some(decrypted);
         }
 
-        let output = self.output.as_ref().expect("decrypt output");
+        let output = self.output.as_ref().ok_or_else(|| {
+            FsError::Other("decrypt output not available".to_string())
+        })?;
         if self.position >= output.len() {
             return Ok(0);
         }
