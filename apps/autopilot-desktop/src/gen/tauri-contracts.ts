@@ -22,6 +22,14 @@ export interface StartThreadRequest { workspaceId: string, }
 
 export type StartThreadResponse = JsonValue;
 
+export interface ListThreadsRequest { workspaceId: string, cursor: string | null, limit: number | null, sortKey: string | null, archived: boolean | null, }
+
+export type ListThreadsResponse = JsonValue;
+
+export interface ResumeThreadRequest { workspaceId: string, threadId: string, }
+
+export type ResumeThreadResponse = JsonValue;
+
 export interface SendUserMessageRequest { workspaceId: string, threadId: string, text: string, model: string | null, accessMode: string | null, }
 
 export type SendUserMessageResponse = JsonValue;
