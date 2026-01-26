@@ -1391,8 +1391,9 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
                     : ""
                 }
               </div>
-              <div class="border-t border-[color:var(--line)] px-2.5 py-2 text-[10px] uppercase tracking-[0.12em] text-[color:var(--yellow)]">
-                Version ${appVersion}
+              <div class="border-t border-[color:var(--line)] px-2.5 py-2 text-[10px] uppercase tracking-[0.12em] flex items-center gap-2">
+                <span class="text-[color:var(--yellow)]">Version</span>
+                <span class="text-[color:var(--ink)]">${appVersion}</span>
               </div>
             </aside>
           </div>
