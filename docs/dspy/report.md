@@ -176,6 +176,47 @@ All four sit in a coherent philosophy:
 
 **DSPy is the framework that turns LM applications into optimizable programs; MIPRO and GEPA are two different compilers/optimizers for those programs; RLMs are a powerful inference-time module/strategy for long context that DSPy now exposes as `dspy.RLM`, making it something you can compose and then optimize with MIPRO/GEPA.** ([DSPy][1])
 
+---
+
+## 7) OpenAgents: why we care and how we use this stack
+
+OpenAgents implements DSPy as the **`dsrs`** crate (Rust DSPy). We care because it
+turns agent behavior into **typed, auditable, optimizable programs** that can be
+compiled into **policy bundles** (target) and verified with real-world outcomes.
+
+### Why it matters here
+
+- **Policy vs execution split:** DSPy (`crates/dsrs/`) decides *what to do*; the
+  runtime enforces *how* to do it (schema validation, retries, receipts).
+- **Outcome-coupled learning:** decision labels target `step_utility` and
+  `verification_delta`, so optimizers improve behavior without retraining models.
+- **Portability:** signatures + adapters let us swap providers and lanes without
+  rewriting decision logic.
+- **Auditability:** compiled module manifests and replay/receipt artifacts are
+  the traceability target for decisions and outcomes.
+
+### Where it shows up today
+
+- **Adjutant decision pipelines** (complexity, delegation, RLM trigger) and
+  training data collection (`crates/adjutant/docs/DSPY-INTEGRATION.md`).
+- **Autopilot planning/execution/verification flow** (DSPy signatures drive the
+  loop; see `crates/autopilot-core/docs/EXECUTION_FLOW.md`).
+- **Effuse UI plan** for signature-driven rendering (`docs/dsrs-effuse-ui-plan.md`).
+- **Artifacts and replay targets**: Verified Patch Bundle specs in
+  `crates/dsrs/docs/ARTIFACTS.md` and `crates/dsrs/docs/REPLAY.md`.
+
+### Near-term integration targets
+
+- Merge per-step decisions into **ToolCallSignature** and add
+  **ToolResultSignature** for step-level learning signals (spec-only today; see
+  `crates/dsrs/docs/SIGNATURES.md` and `ROADMAP.md`).
+- Unify PlanIR across Adjutant and Autopilot to avoid split training data.
+- Finish REPLAY.jsonl emission and policy bundle pin/rollback paths.
+
+For a deeper OpenAgents-specific walkthrough, see
+`docs/dspy/openagents-usage.md` and the root docs:
+`GLOSSARY.md`, `SYNTHESIS_EXECUTION.md`, and `ROADMAP.md`.
+
 [1]: https://dspy.ai/ "DSPy"
 [2]: https://dspy.ai/learn/optimization/optimizers/ "Optimizers - DSPy"
 [3]: https://arxiv.org/abs/2512.24601 "[2512.24601] Recursive Language Models"
