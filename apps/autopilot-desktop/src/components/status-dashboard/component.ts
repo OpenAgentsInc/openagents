@@ -3,6 +3,16 @@ import { invoke } from "@tauri-apps/api/core"
 import { listen } from "@tauri-apps/api/event"
 import type { Component } from "../../effuse/index.js"
 import { html } from "../../effuse/index.js"
+import type { CodexConversationItem } from "../../types/codex.js"
+import {
+  Conversation,
+  ConversationContent,
+  ConversationEmptyState,
+  Diff,
+  Message,
+  Reasoning,
+  ToolCall,
+} from "../ai-elements/index.js"
 
 type CodexDoctorResponse = {
   ok: boolean
@@ -33,6 +43,14 @@ type AppServerEvent = {
   }
 }
 
+type SessionSummary = {
+  id: string
+  preview: string
+  updatedAt: number
+  createdAt: number
+  modelProvider: string
+}
+
 type DoctorState = {
   ok: boolean
   appServerOk: boolean
@@ -46,6 +64,8 @@ type BusyState = {
   connect: boolean
   disconnect: boolean
   send: boolean
+  sessions: boolean
+  resume: boolean
 }
 
 type StatusState = {
@@ -60,6 +80,10 @@ type StatusState = {
   commandInput: string
   messageInput: string
   threadId: string | null
+  sessions: SessionSummary[]
+  activeSessionId: string | null
+  sessionItems: Record<string, CodexConversationItem[]>
+  sessionMessage: string
   busy: BusyState
 }
 
@@ -73,12 +97,15 @@ type StatusEvent =
   | { type: "UpdateMessageInput"; value: string }
   | { type: "SubmitMessage"; value: string }
   | { type: "RefreshWorkspaceStatus" }
+  | { type: "RefreshSessions" }
+  | { type: "SelectSession"; threadId: string }
   | { type: "AppServerEvent"; payload: AppServerEvent }
 
 const workspaceIdKey = "autopilotWorkspaceId"
 const workspacePathKey = "autopilotWorkspacePath"
 
 const nowTime = () => new Date().toLocaleTimeString()
+const nowEpochSeconds = () => Math.floor(Date.now() / 1000)
 
 const loadWorkspaceId = (): string => {
   const stored = window.localStorage.getItem(workspaceIdKey)
@@ -102,6 +129,65 @@ const formatEvent = (payload: AppServerEvent) => {
     return { time, text: header }
   }
   return { time, text: `${header}\n${JSON.stringify(params, null, 2)}` }
+}
+
+const formatSessionId = (id: string) => {
+  const splitIndex = id.indexOf("-")
+  return splitIndex === -1 ? id : id.slice(0, splitIndex)
+}
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null
+
+const readString = (record: Record<string, unknown>, key: string) => {
+  const value = record[key]
+  return typeof value === "string" ? value : null
+}
+
+const readNumber = (record: Record<string, unknown>, key: string) => {
+  const value = record[key]
+  return typeof value === "number" ? value : null
+}
+
+const readRecord = (record: Record<string, unknown>, key: string) => {
+  const value = record[key]
+  return isRecord(value) ? value : null
+}
+
+const readArray = (record: Record<string, unknown>, key: string) => {
+  const value = record[key]
+  return Array.isArray(value) ? value : null
+}
+
+const normalizeStatus = (value: unknown) => {
+  if (typeof value !== "string") {
+    return undefined
+  }
+  return value.replace(/([a-z])([A-Z])/g, "$1 $2").toLowerCase()
+}
+
+const formatJson = (value: unknown) => {
+  if (value === undefined || value === null) {
+    return undefined
+  }
+  try {
+    return JSON.stringify(value, null, 2)
+  } catch {
+    return String(value)
+  }
+}
+
+const formatChangeKind = (value: unknown) => {
+  if (typeof value === "string") {
+    return value
+  }
+  if (isRecord(value)) {
+    const keys = Object.keys(value)
+    if (keys.length > 0) {
+      return keys[0]
+    }
+  }
+  return undefined
 }
 
 const extractThreadId = (value: unknown): string | null => {
@@ -144,6 +230,317 @@ const deriveStatus = (state: StatusState) => {
   return { level: "warn" as const, label: "READY" }
 }
 
+const toSessionSummary = (thread: Record<string, unknown>): SessionSummary | null => {
+  const id = readString(thread, "id")
+  if (!id) {
+    return null
+  }
+  const preview = readString(thread, "preview") ?? ""
+  const updatedAt =
+    readNumber(thread, "updatedAt") ?? readNumber(thread, "updated_at") ?? 0
+  const createdAt =
+    readNumber(thread, "createdAt") ?? readNumber(thread, "created_at") ?? 0
+  const modelProvider =
+    readString(thread, "modelProvider") ??
+    readString(thread, "model_provider") ??
+    ""
+  return { id, preview, updatedAt, createdAt, modelProvider }
+}
+
+const sortSessions = (sessions: SessionSummary[]) =>
+  [...sessions].sort(
+    (a, b) => b.updatedAt - a.updatedAt || b.createdAt - a.createdAt
+  )
+
+const upsertSession = (sessions: SessionSummary[], session: SessionSummary) =>
+  sortSessions([...sessions.filter((entry) => entry.id !== session.id), session])
+
+const touchSession = (
+  sessions: SessionSummary[],
+  threadId: string,
+  timestamp: number
+) => {
+  const existing = sessions.find((entry) => entry.id === threadId)
+  if (!existing) {
+    return sessions
+  }
+  const updated = { ...existing, updatedAt: timestamp }
+  return upsertSession(sessions, updated)
+}
+
+const extractThread = (value: unknown): Record<string, unknown> | null => {
+  if (!isRecord(value)) {
+    return null
+  }
+  const direct = readRecord(value, "thread")
+  if (direct) {
+    return direct
+  }
+  const result = readRecord(value, "result")
+  const resultThread = result ? readRecord(result, "thread") : null
+  if (resultThread) {
+    return resultThread
+  }
+  const params = readRecord(value, "params")
+  const paramsThread = params ? readRecord(params, "thread") : null
+  if (paramsThread) {
+    return paramsThread
+  }
+  return null
+}
+
+const extractThreadList = (value: unknown): SessionSummary[] => {
+  if (!isRecord(value)) {
+    return []
+  }
+  const container = readRecord(value, "result") ?? value
+  const data = container ? readArray(container, "data") : null
+  if (!data) {
+    return []
+  }
+  const sessions = data
+    .map((entry) => (isRecord(entry) ? toSessionSummary(entry) : null))
+    .filter((entry): entry is SessionSummary => Boolean(entry))
+  return sortSessions(sessions)
+}
+
+const formatUserContent = (content: unknown) => {
+  if (!Array.isArray(content)) {
+    return "[user input]"
+  }
+  const parts = content
+    .map((entry) => {
+      if (!isRecord(entry)) {
+        return null
+      }
+      const entryType = readString(entry, "type")
+      if (entryType === "text") {
+        return readString(entry, "text") ?? ""
+      }
+      if (entryType === "image") {
+        const url = readString(entry, "url")
+        return url ? `[image: ${url}]` : "[image]"
+      }
+      if (entryType === "localImage") {
+        const path = readString(entry, "path")
+        return path ? `[local image: ${path}]` : "[local image]"
+      }
+      if (entryType === "skill") {
+        const name = readString(entry, "name")
+        return name ? `[skill: ${name}]` : "[skill]"
+      }
+      return null
+    })
+    .filter((entry): entry is string => Boolean(entry))
+
+  const combined = parts.join("\n")
+  return combined || "[user input]"
+}
+
+const mapThreadItem = (item: unknown): CodexConversationItem | null => {
+  if (!isRecord(item)) {
+    return null
+  }
+  const itemType = readString(item, "type")
+  const id = readString(item, "id") ?? `item-${Date.now()}`
+
+  if (itemType === "userMessage") {
+    const content = formatUserContent(readArray(item, "content"))
+    return { kind: "message", id, role: "user", text: content }
+  }
+
+  if (itemType === "agentMessage") {
+    return {
+      kind: "message",
+      id,
+      role: "assistant",
+      text: readString(item, "text") ?? "",
+    }
+  }
+
+  if (itemType === "reasoning") {
+    const summaryValues = readArray(item, "summary") ?? []
+    const contentValues = readArray(item, "content") ?? []
+    const summary = summaryValues
+      .map((entry) => (typeof entry === "string" ? entry : null))
+      .filter((entry): entry is string => Boolean(entry))
+      .join(" · ")
+    const content = contentValues
+      .map((entry) => (typeof entry === "string" ? entry : null))
+      .filter((entry): entry is string => Boolean(entry))
+      .join("\n")
+
+    return {
+      kind: "reasoning",
+      id,
+      summary,
+      content,
+    }
+  }
+
+  if (itemType === "commandExecution") {
+    const command = readString(item, "command") ?? "command"
+    const cwd = readString(item, "cwd")
+    const exitCode = readNumber(item, "exitCode")
+    const commandActions = readArray(item, "commandActions")
+    const detailParts = [
+      cwd ? `cwd: ${cwd}` : null,
+      exitCode !== null ? `exit: ${exitCode}` : null,
+      commandActions && commandActions.length
+        ? `actions: ${commandActions.length}`
+        : null,
+    ].filter((entry): entry is string => Boolean(entry))
+
+    return {
+      kind: "tool",
+      id,
+      title: command,
+      detail: detailParts.length ? detailParts.join("\n") : undefined,
+      output: readString(item, "aggregatedOutput") ?? undefined,
+      status: normalizeStatus(item.status),
+      durationMs: readNumber(item, "durationMs"),
+    }
+  }
+
+  if (itemType === "fileChange") {
+    const changes = readArray(item, "changes") ?? []
+    const lines: string[] = []
+    const changeCount = changes.length
+    changes.forEach((change) => {
+      if (!isRecord(change)) {
+        return
+      }
+      const path = readString(change, "path") ?? "unknown"
+      const kind = formatChangeKind(change.kind)
+      const diff = readString(change, "diff") ?? ""
+      const header = kind ? `--- ${path} [${kind}]` : `--- ${path}`
+      lines.push([header, diff].filter(Boolean).join("\n"))
+    })
+    const diffText = lines.join("\n\n").trim() || "No diff recorded."
+
+    return {
+      kind: "diff",
+      id,
+      title: `File changes (${changeCount})`,
+      diff: diffText,
+      status: normalizeStatus(item.status),
+    }
+  }
+
+  if (itemType === "mcpToolCall") {
+    const server = readString(item, "server") ?? "mcp"
+    const tool = readString(item, "tool") ?? "tool"
+    const args = formatJson(item.arguments)
+    const result = readRecord(item, "result") ?? item.result
+    const error = readRecord(item, "error")
+    const errorText = error ? readString(error, "message") : null
+    const output = errorText ?? formatJson(result)
+
+    return {
+      kind: "tool",
+      id,
+      title: `${server}/${tool}`,
+      detail: args,
+      output,
+      status: normalizeStatus(item.status),
+      durationMs: readNumber(item, "durationMs"),
+    }
+  }
+
+  if (itemType === "collabAgentToolCall") {
+    const tool = readString(item, "tool") ?? "collab"
+    const prompt = readString(item, "prompt")
+    const sender = readString(item, "senderThreadId")
+    const receivers = readArray(item, "receiverThreadIds")
+      ?.map((entry) => (typeof entry === "string" ? entry : null))
+      .filter((entry): entry is string => Boolean(entry))
+    const detailParts = [
+      prompt,
+      sender ? `from: ${sender}` : null,
+      receivers && receivers.length ? `to: ${receivers.join(", ")}` : null,
+    ].filter((entry): entry is string => Boolean(entry))
+
+    return {
+      kind: "tool",
+      id,
+      title: `collab/${tool}`,
+      detail: detailParts.length ? detailParts.join("\n") : undefined,
+      status: normalizeStatus(item.status),
+    }
+  }
+
+  return null
+}
+
+const buildConversationItems = (thread: Record<string, unknown>) => {
+  const turns = readArray(thread, "turns") ?? []
+  const items: CodexConversationItem[] = []
+
+  turns.forEach((turn) => {
+    if (!isRecord(turn)) {
+      return
+    }
+    const turnItems = readArray(turn, "items") ?? []
+    turnItems.forEach((entry) => {
+      const mapped = mapThreadItem(entry)
+      if (mapped) {
+        items.push(mapped)
+      }
+    })
+
+    const error = readRecord(turn, "error")
+    const errorMessage = error ? readString(error, "message") : null
+    if (errorMessage) {
+      const turnId = readString(turn, "id") ?? `turn-${Date.now()}`
+      items.push({
+        kind: "message",
+        id: `error-${turnId}`,
+        role: "system",
+        text: `Turn failed: ${errorMessage}`,
+      })
+    }
+  })
+
+  return items
+}
+
+const upsertConversationItem = (
+  sessionItems: Record<string, CodexConversationItem[]>,
+  threadId: string,
+  item: CodexConversationItem
+) => {
+  const existing = sessionItems[threadId] ?? []
+  const index = existing.findIndex((entry) => entry.id === item.id)
+  const nextItems =
+    index === -1
+      ? [...existing, item]
+      : existing.map((entry, idx) => (idx === index ? item : entry))
+  return { ...sessionItems, [threadId]: nextItems }
+}
+
+const renderConversationItem = (item: CodexConversationItem) => {
+  switch (item.kind) {
+    case "message":
+      return Message({ role: item.role, text: item.text })
+    case "reasoning":
+      return Reasoning({ summary: item.summary, content: item.content })
+    case "diff":
+      return Diff({ title: item.title, diff: item.diff, status: item.status })
+    case "tool":
+      return ToolCall({
+        title: item.title,
+        detail: item.detail,
+        output: item.output,
+        status: item.status,
+        durationMs: item.durationMs,
+        changes: item.changes,
+        toolType: item.toolType,
+      })
+    case "review":
+      return Message({ role: "assistant", text: item.text })
+  }
+}
+
 const invokeCommand = <T>(command: string, payload?: Record<string, unknown>) =>
   Effect.tryPromise({
     try: () => invoke<T>(command, payload),
@@ -171,11 +568,17 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
     commandInput: "",
     messageInput: "",
     threadId: null,
+    sessions: [],
+    activeSessionId: null,
+    sessionItems: {},
+    sessionMessage: "",
     busy: {
       doctor: false,
       connect: false,
       disconnect: false,
       send: false,
+      sessions: false,
+      resume: false,
     },
   }),
 
@@ -193,6 +596,54 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
       const refreshDisabled = state.busy.doctor
       const sendDisabled = state.busy.send
       const threadLabel = state.threadId ?? "--"
+      const activeSessionId = state.activeSessionId ?? state.threadId
+      const activeSession = activeSessionId
+        ? state.sessions.find((entry) => entry.id === activeSessionId)
+        : null
+      const activeItems = activeSessionId
+        ? state.sessionItems[activeSessionId] ?? []
+        : []
+      const sessionLabel = activeSessionId
+        ? formatSessionId(activeSessionId)
+        : "--"
+      const sessionCount = state.sessions.length
+      const sessionBusy = state.busy.sessions || state.busy.resume
+
+      const sessionList = sessionCount
+        ? state.sessions.map((session) => {
+            const isActive = session.id === activeSessionId
+            return html`
+              <button
+                class="session-item ${isActive ? "active" : ""}"
+                data-action="select-session"
+                data-session-id="${session.id}"
+              >
+                <div class="session-id">${formatSessionId(session.id)}</div>
+                ${
+                  session.preview
+                    ? html`<div class="session-preview">${session.preview}</div>`
+                    : ""
+                }
+              </button>
+            `
+          })
+        : html`<div class="session-empty">No sessions found.</div>`
+
+      const conversationBody = activeSessionId
+        ? activeItems.length
+          ? Conversation({
+              children: ConversationContent({
+                children: activeItems.map(renderConversationItem),
+              }),
+            })
+          : ConversationEmptyState({
+              title: "No items yet",
+              description: "This session has no recorded output yet.",
+            })
+        : ConversationEmptyState({
+            title: "Select a session",
+            description: "Choose a session to view its timeline.",
+          })
 
       return html`
         <div class="terminal">
@@ -223,97 +674,109 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
             <div class="command-hints">F2 CONNECT | F3 DISCONNECT | F5 DOCTOR | F12 STORYBOOK</div>
           </div>
 
-          <div class="grid">
-            <section class="panel">
-              <div class="panel-title">System</div>
-              <div class="panel-body">
-                <div class="table">
-                  <div class="label">CLI</div>
-                  <div class="value ${state.doctor.ok ? "ok" : "error"}">${cliStatus}</div>
-                  <div class="label">App-Server</div>
-                  <div class="value ${state.doctor.appServerOk ? "ok" : "error"}">${appServerStatus}</div>
-                  <div class="label">Binary</div>
-                  <div class="value mono">${state.doctor.codexBin ?? "default"}</div>
-                </div>
-                <div class="note">${state.doctor.detail || "No diagnostics."}</div>
-                <div class="actions">
-                  <button
-                    class="btn"
-                    data-action="refresh-doctor"
-                    ${refreshDisabled ? "disabled" : ""}
-                  >
-                    DOCTOR
-                  </button>
-                </div>
+          <div class="workspace-shell">
+            <aside class="session-sidebar">
+              <div class="session-header">
+                <span>Sessions</span>
+                <span class="session-count">
+                  ${sessionBusy ? "SYNC" : String(sessionCount).padStart(2, "0")}
+                </span>
               </div>
-            </section>
+              <div class="session-list">${sessionList}</div>
+            </aside>
 
-            <section class="panel">
-              <div class="panel-title">Workspace</div>
-              <div class="panel-body">
-                <label class="field">
-                  <span class="label">Working Dir</span>
-                  <input
-                    id="workspace-path"
-                    class="input"
-                    type="text"
-                    placeholder="/path/to/workspace"
-                    value="${state.workspacePath}"
-                  />
-                </label>
-                <div class="actions">
-                  <button
-                    class="btn primary"
-                    data-action="connect"
-                    ${connectDisabled ? "disabled" : ""}
-                  >
-                    CONNECT
-                  </button>
-                  <button
-                    class="btn secondary"
-                    data-action="disconnect"
-                    ${disconnectDisabled ? "disabled" : ""}
-                  >
-                    DISCONNECT
-                  </button>
-                </div>
-                <div class="table">
-                  <div class="label">Connection</div>
-                  <div class="value ${state.workspaceConnected ? "ok" : "error"}">${connectionLabel}</div>
-                  <div class="label">Last Event</div>
-                  <div class="value">${state.lastEventTime}</div>
-                  <div class="label">Thread</div>
-                  <div class="value mono">${threadLabel}</div>
-                </div>
-                <div class="note">${state.workspaceMessage || ""}</div>
-              </div>
-            </section>
+            <main class="main-pane">
+              <div class="panel-row">
+                <section class="panel">
+                  <div class="panel-title">System</div>
+                  <div class="panel-body">
+                    <div class="table">
+                      <div class="label">CLI</div>
+                      <div class="value ${state.doctor.ok ? "ok" : "error"}">${cliStatus}</div>
+                      <div class="label">App-Server</div>
+                      <div class="value ${state.doctor.appServerOk ? "ok" : "error"}">${appServerStatus}</div>
+                      <div class="label">Binary</div>
+                      <div class="value mono">${state.doctor.codexBin ?? "default"}</div>
+                    </div>
+                    <div class="note">${state.doctor.detail || "No diagnostics."}</div>
+                    <div class="actions">
+                      <button
+                        class="btn"
+                        data-action="refresh-doctor"
+                        ${refreshDisabled ? "disabled" : ""}
+                      >
+                        DOCTOR
+                      </button>
+                    </div>
+                  </div>
+                </section>
 
-            <section class="panel">
-              <div class="panel-title">App-Server Feed</div>
-              <div class="panel-body">
-                <pre class="event-log">${state.lastEventText}</pre>
+                <section class="panel">
+                  <div class="panel-title">Workspace</div>
+                  <div class="panel-body">
+                    <label class="field">
+                      <span class="label">Working Dir</span>
+                      <input
+                        id="workspace-path"
+                        class="input"
+                        type="text"
+                        placeholder="/path/to/workspace"
+                        value="${state.workspacePath}"
+                      />
+                    </label>
+                    <div class="actions">
+                      <button
+                        class="btn primary"
+                        data-action="connect"
+                        ${connectDisabled ? "disabled" : ""}
+                      >
+                        CONNECT
+                      </button>
+                      <button
+                        class="btn secondary"
+                        data-action="disconnect"
+                        ${disconnectDisabled ? "disabled" : ""}
+                      >
+                        DISCONNECT
+                      </button>
+                    </div>
+                    <div class="table">
+                      <div class="label">Connection</div>
+                      <div class="value ${state.workspaceConnected ? "ok" : "error"}">${connectionLabel}</div>
+                      <div class="label">Last Event</div>
+                      <div class="value">${state.lastEventTime}</div>
+                      <div class="label">Thread</div>
+                      <div class="value mono">${threadLabel}</div>
+                    </div>
+                    <div class="note">${state.workspaceMessage || ""}</div>
+                  </div>
+                </section>
               </div>
-            </section>
 
-            <section class="panel">
-              <div class="panel-title">Summary</div>
-              <div class="panel-body">
-                <div class="table">
-                  <div class="label">Overall</div>
-                  <div class="value ${status.level}">${status.label}</div>
-                  <div class="label">Workspace</div>
-                  <div class="value ${state.workspaceConnected ? "ok" : "error"}">${connectionLabel}</div>
-                  <div class="label">Event Time</div>
-                  <div class="value">${state.lastEventTime}</div>
-                  <div class="label">Thread</div>
-                  <div class="value mono">${threadLabel}</div>
-                  <div class="label">Update</div>
-                  <div class="value">${state.lastUpdated}</div>
+              <section class="panel conversation-panel">
+                <div class="panel-title">Session ${sessionLabel}</div>
+                <div class="panel-body conversation-body">
+                  ${conversationBody}
                 </div>
-                <div class="note">${state.workspaceMessage || state.doctor.detail || ""}</div>
-              </div>
-            </section>
+                ${
+                  activeSession?.preview
+                    ? html`<div class="note">${activeSession.preview}</div>`
+                    : ""
+                }
+                ${
+                  state.sessionMessage
+                    ? html`<div class="note">${state.sessionMessage}</div>`
+                    : ""
+                }
+              </section>
+
+              <section class="panel feed-panel">
+                <div class="panel-title">App-Server Feed</div>
+                <div class="panel-body">
+                  <pre class="event-log">${state.lastEventText}</pre>
+                </div>
+              </section>
+            </main>
           </div>
 
           <div class="compose-bar">
@@ -347,8 +810,8 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
               <span class="status-value ${state.doctor.ok ? "ok" : "error"}">${cliStatus}</span>
             </div>
             <div class="status-item">
-              <span class="status-label">Last Event</span>
-              <span class="status-value">${state.lastEventTime}</span>
+              <span class="status-label">Active</span>
+              <span class="status-value mono">${sessionLabel}</span>
             </div>
           </div>
         </div>
@@ -378,6 +841,11 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
           if (head === "doctor" || head === "refresh") {
             yield* ctx.emit({ type: "RefreshDoctor" })
             yield* ctx.emit({ type: "RefreshWorkspaceStatus" })
+            yield* ctx.emit({ type: "RefreshSessions" })
+            return
+          }
+          if (head === "sessions" || head === "history") {
+            yield* ctx.emit({ type: "RefreshSessions" })
             return
           }
           if (head === "cd" || head === "cwd") {
@@ -520,6 +988,7 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
           yield* ctx.state.update((state) => ({
             ...state,
             threadId,
+            activeSessionId: threadId,
           }))
         }
 
@@ -608,11 +1077,122 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
               lastUpdated: nowTime(),
             }))
           ),
+          Effect.tap((response) =>
+            response.connected
+              ? ctx.emit({ type: "RefreshSessions" })
+              : Effect.sync(() => undefined)
+          ),
           Effect.catchAll((error) =>
             ctx.state.update((state) => ({
               ...state,
               workspaceConnected: false,
               workspaceMessage: `Status check failed: ${String(error)}`,
+              lastUpdated: nowTime(),
+            }))
+          ),
+          Effect.asVoid
+        )
+        return
+      }
+
+      if (event.type === "RefreshSessions") {
+        const current = yield* ctx.state.get
+        if (!current.workspaceConnected) {
+          yield* ctx.state.update((state) => ({
+            ...state,
+            sessions: [],
+            sessionMessage: "Connect a workspace to list sessions.",
+          }))
+          return
+        }
+
+        yield* ctx.state.update((state) => ({
+          ...state,
+          busy: { ...state.busy, sessions: true },
+          sessionMessage: "Loading sessions...",
+        }))
+
+        yield* invokeCommand<unknown>("list_threads", {
+          workspaceId: current.workspaceId,
+          cursor: null,
+          limit: 50,
+          sortKey: "updated_at",
+          archived: false,
+        }).pipe(
+          Effect.tap((response) =>
+            ctx.state.update((state) => ({
+              ...state,
+              sessions: extractThreadList(response),
+              busy: { ...state.busy, sessions: false },
+              sessionMessage: "",
+              lastUpdated: nowTime(),
+            }))
+          ),
+          Effect.catchAll((error) =>
+            ctx.state.update((state) => ({
+              ...state,
+              busy: { ...state.busy, sessions: false },
+              sessionMessage: `Failed to load sessions: ${String(error)}`,
+              lastUpdated: nowTime(),
+            }))
+          ),
+          Effect.asVoid
+        )
+        return
+      }
+
+      if (event.type === "SelectSession") {
+        const current = yield* ctx.state.get
+        if (!current.workspaceConnected) {
+          yield* ctx.state.update((state) => ({
+            ...state,
+            sessionMessage: "Connect the workspace before resuming sessions.",
+            lastUpdated: nowTime(),
+          }))
+          return
+        }
+
+        yield* ctx.state.update((state) => ({
+          ...state,
+          activeSessionId: event.threadId,
+          threadId: event.threadId,
+          busy: { ...state.busy, resume: true },
+          sessionMessage: "Resuming session...",
+        }))
+
+        yield* invokeCommand<unknown>("resume_thread", {
+          workspaceId: current.workspaceId,
+          threadId: event.threadId,
+        }).pipe(
+          Effect.tap((response) => {
+            const thread = extractThread(response)
+            if (!thread) {
+              return ctx.state.update((state) => ({
+                ...state,
+                busy: { ...state.busy, resume: false },
+                sessionMessage: "Failed to parse session response.",
+                lastUpdated: nowTime(),
+              }))
+            }
+            const summary = toSessionSummary(thread)
+            const items = buildConversationItems(thread)
+            return ctx.state.update((state) => ({
+              ...state,
+              sessions: summary ? upsertSession(state.sessions, summary) : state.sessions,
+              sessionItems: {
+                ...state.sessionItems,
+                [event.threadId]: items,
+              },
+              busy: { ...state.busy, resume: false },
+              sessionMessage: "",
+              lastUpdated: nowTime(),
+            }))
+          }),
+          Effect.catchAll((error) =>
+            ctx.state.update((state) => ({
+              ...state,
+              busy: { ...state.busy, resume: false },
+              sessionMessage: `Resume failed: ${String(error)}`,
               lastUpdated: nowTime(),
             }))
           ),
@@ -654,6 +1234,11 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
               lastUpdated: nowTime(),
             }))
           ),
+          Effect.tap((response) =>
+            response.success
+              ? ctx.emit({ type: "RefreshSessions" })
+              : Effect.sync(() => undefined)
+          ),
           Effect.catchAll((error) =>
             ctx.state.update((state) => ({
               ...state,
@@ -686,6 +1271,10 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
               workspaceMessage: response.message,
               busy: { ...state.busy, disconnect: false },
               threadId: null,
+              sessions: [],
+              activeSessionId: null,
+              sessionItems: {},
+              sessionMessage: "",
               lastUpdated: nowTime(),
             }))
           ),
@@ -709,6 +1298,45 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
         }
         const formatted = formatEvent(event.payload)
         const eventThreadId = extractThreadId(event.payload.message)
+        const method =
+          typeof event.payload.message?.method === "string"
+            ? event.payload.message.method
+            : ""
+        const params = isRecord(event.payload.message?.params)
+          ? event.payload.message.params
+          : null
+
+        let sessions = current.sessions
+        let sessionItems = current.sessionItems
+        let activeSessionId = current.activeSessionId
+
+        if (method === "thread/started") {
+          const thread = extractThread(event.payload.message)
+          if (thread) {
+            const summary = toSessionSummary(thread)
+            if (summary) {
+              sessions = upsertSession(sessions, summary)
+              if (!activeSessionId) {
+                activeSessionId = summary.id
+              }
+            }
+          }
+        }
+
+        if (method === "item/completed" && params && isRecord(params.item)) {
+          const mapped = mapThreadItem(params.item)
+          if (mapped && eventThreadId) {
+            sessionItems = upsertConversationItem(sessionItems, eventThreadId, mapped)
+            if (!activeSessionId) {
+              activeSessionId = eventThreadId
+            }
+          }
+        }
+
+        if (eventThreadId) {
+          sessions = touchSession(sessions, eventThreadId, nowEpochSeconds())
+        }
+
         const shouldUpdateThread =
           event.payload.message?.method === "thread/started" ||
           current.threadId === null
@@ -723,6 +1351,9 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
               : state.workspaceConnected,
           threadId:
             shouldUpdateThread && eventThreadId ? eventThreadId : state.threadId,
+          sessions,
+          sessionItems,
+          activeSessionId,
         }))
       }
     }),
@@ -752,6 +1383,18 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
         "[data-action=\"disconnect\"]",
         "click",
         () => emit({ type: "DisconnectWorkspace" })
+      )
+
+      yield* ctx.dom.delegate(
+        ctx.container,
+        "[data-action=\"select-session\"]",
+        "click",
+        (_event, target) => {
+          const threadId = target.getAttribute("data-session-id")
+          if (threadId) {
+            emit({ type: "SelectSession", threadId })
+          }
+        }
       )
 
       yield* ctx.dom.delegate(
@@ -848,6 +1491,7 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
           event.preventDefault()
           emit({ type: "RefreshDoctor" })
           emit({ type: "RefreshWorkspaceStatus" })
+          emit({ type: "RefreshSessions" })
         }
       }
 

@@ -18,6 +18,8 @@ use crate::contracts::ipc::{
     CodexDoctorResponse,
     CurrentDirectory,
     ListModelsResponse,
+    ListThreadsResponse,
+    ResumeThreadResponse,
     SendUserMessageResponse,
     StartThreadResponse,
     TestCodexConnectionResponse,
@@ -248,6 +250,54 @@ pub(crate) async fn start_thread(
         .send_request("thread/start", params)
         .await
         .map(StartThreadResponse)
+}
+
+#[tauri::command]
+pub(crate) async fn list_threads(
+    workspace_id: String,
+    cursor: Option<String>,
+    limit: Option<u32>,
+    sort_key: Option<String>,
+    archived: Option<bool>,
+    state: State<'_, AppState>,
+    _app: AppHandle,
+) -> Result<ListThreadsResponse, String> {
+    let sessions = state.sessions.lock().await;
+    let session = sessions
+        .get(&workspace_id)
+        .ok_or("workspace not connected")?;
+    let params = json!({
+        "cursor": cursor,
+        "limit": limit,
+        "sortKey": sort_key,
+        "archived": archived,
+    });
+
+    session
+        .send_request("thread/list", params)
+        .await
+        .map(ListThreadsResponse)
+}
+
+#[tauri::command]
+pub(crate) async fn resume_thread(
+    workspace_id: String,
+    thread_id: String,
+    state: State<'_, AppState>,
+    _app: AppHandle,
+) -> Result<ResumeThreadResponse, String> {
+    let sessions = state.sessions.lock().await;
+    let session = sessions
+        .get(&workspace_id)
+        .ok_or("workspace not connected")?;
+    let params = json!({
+        "threadId": thread_id,
+    });
+
+    session
+        .send_request("thread/resume", params)
+        .await
+        .map(ResumeThreadResponse)
 }
 
 #[tauri::command]

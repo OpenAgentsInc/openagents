@@ -108,6 +108,8 @@ pub fn build_app() -> tauri::Builder<tauri::Wry> {
             codex::disconnect_workspace,
             codex::get_workspace_connection_status,
             codex::start_thread,
+            codex::list_threads,
+            codex::resume_thread,
             codex::send_user_message,
             codex::get_current_directory,
             codex::account_rate_limits,

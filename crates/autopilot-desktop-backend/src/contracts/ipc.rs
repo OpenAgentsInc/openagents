@@ -100,6 +100,29 @@ pub struct StartThreadResponse(#[ts(type = "JsonValue")] pub serde_json::Value);
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
+pub struct ListThreadsRequest {
+    pub workspace_id: String,
+    pub cursor: Option<String>,
+    pub limit: Option<u32>,
+    pub sort_key: Option<String>,
+    pub archived: Option<bool>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+pub struct ListThreadsResponse(#[ts(type = "JsonValue")] pub serde_json::Value);
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct ResumeThreadRequest {
+    pub workspace_id: String,
+    pub thread_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+pub struct ResumeThreadResponse(#[ts(type = "JsonValue")] pub serde_json::Value);
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
 pub struct SendUserMessageRequest {
     pub workspace_id: String,
     pub thread_id: String,
@@ -302,6 +325,10 @@ pub fn export_ts(path: &std::path::Path) -> Result<(), std::io::Error> {
         DisconnectWorkspaceRequest::decl(),
         StartThreadRequest::decl(),
         StartThreadResponse::decl(),
+        ListThreadsRequest::decl(),
+        ListThreadsResponse::decl(),
+        ResumeThreadRequest::decl(),
+        ResumeThreadResponse::decl(),
         SendUserMessageRequest::decl(),
         SendUserMessageResponse::decl(),
         AccountRateLimitsRequest::decl(),
