@@ -39,9 +39,14 @@ export const ToolCall = ({
     }
     ${
       output
-        ? html`<div class="mt-2 whitespace-pre-wrap break-words text-foreground">
-            ${output}
-          </div>`
+        ? html`<details class="mt-2 border border-border bg-background px-2 py-1 text-[10px] text-muted-foreground">
+            <summary class="cursor-pointer list-none uppercase">
+              Output (click to expand)
+            </summary>
+            <div class="mt-2 whitespace-pre-wrap break-words text-foreground">
+              ${output}
+            </div>
+          </details>`
         : ""
     }
     ${
