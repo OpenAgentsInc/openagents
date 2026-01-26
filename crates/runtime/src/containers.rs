@@ -10,8 +10,8 @@ use crate::dvm::{
     bid_msats_for_max_cost, msats_to_sats, parse_feedback_event, sign_dvm_event,
 };
 use crate::fs::{
-    BytesHandle, DirEntry, FileHandle, FileService, FsError, FsResult, OpenFlags, Permissions,
-    SeekFrom, Stat, WatchEvent, WatchHandle,
+    BufferedFileState, BufferedRequestHandle, BytesHandle, DirEntry, FileHandle, FileService,
+    FsError, FsResult, OpenFlags, Permissions, SeekFrom, Stat, WatchEvent, WatchHandle,
 };
 #[cfg(not(target_arch = "wasm32"))]
 use crate::fx::{FxRateCache, FxRateProvider, FxSource};

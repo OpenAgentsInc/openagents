@@ -1,7 +1,8 @@
 //! Wallet filesystem service.
 
 use crate::fs::{
-    BytesHandle, DirEntry, FileHandle, FileService, FsError, FsResult, OpenFlags, SeekFrom, Stat,
+    BufferedFileState, BufferedRequestHandle, BytesHandle, DirEntry, FileHandle, FileService,
+    FsError, FsResult, OpenFlags, Stat,
 };
 use crate::fx::FxRateSnapshot;
 use crate::types::Timestamp;
@@ -124,23 +125,19 @@ impl FileService for WalletFs {
 
 struct WalletPayHandle {
     wallet: Arc<dyn WalletService>,
-    request_buf: Vec<u8>,
-    response: Option<Vec<u8>>,
-    position: usize,
+    buffer: BufferedFileState,
 }
 
 impl WalletPayHandle {
     fn new(wallet: Arc<dyn WalletService>) -> Self {
         Self {
             wallet,
-            request_buf: Vec::new(),
-            response: None,
-            position: 0,
+            buffer: BufferedFileState::new(),
         }
     }
 
     fn submit(&mut self) -> FsResult<()> {
-        let input = str::from_utf8(&self.request_buf)
+        let input = str::from_utf8(self.buffer.request_bytes())
             .map_err(|err| FsError::Other(err.to_string()))?
             .trim()
             .to_string();
@@ -159,59 +156,32 @@ impl WalletPayHandle {
             "amount_sats": payment.amount_sats,
             "paid_at": Timestamp::now().as_millis(),
         });
-        self.response =
-            Some(serde_json::to_vec(&json).map_err(|err| FsError::Other(err.to_string()))?);
+        let response =
+            serde_json::to_vec(&json).map_err(|err| FsError::Other(err.to_string()))?;
+        self.buffer.set_response(response);
         Ok(())
     }
 }
 
-impl FileHandle for WalletPayHandle {
-    fn read(&mut self, buf: &mut [u8]) -> FsResult<usize> {
-        if self.response.is_none() {
-            self.submit()?;
-        }
-        let response = self.response.as_ref().unwrap();
-        if self.position >= response.len() {
-            return Ok(0);
-        }
-        let len = std::cmp::min(buf.len(), response.len() - self.position);
-        buf[..len].copy_from_slice(&response[self.position..self.position + len]);
-        self.position += len;
-        Ok(len)
+impl BufferedRequestHandle for WalletPayHandle {
+    fn buffer_state(&mut self) -> &mut BufferedFileState {
+        &mut self.buffer
     }
 
-    fn write(&mut self, buf: &[u8]) -> FsResult<usize> {
-        self.request_buf.extend_from_slice(buf);
-        Ok(buf.len())
+    fn buffer_state_ref(&self) -> &BufferedFileState {
+        &self.buffer
     }
 
-    fn seek(&mut self, pos: SeekFrom) -> FsResult<u64> {
-        if self.response.is_none() {
-            return Err(FsError::InvalidPath);
-        }
-        let response = self.response.as_ref().unwrap();
-        let new_pos = match pos {
-            SeekFrom::Start(offset) => offset as i64,
-            SeekFrom::End(offset) => response.len() as i64 + offset,
-            SeekFrom::Current(offset) => self.position as i64 + offset,
-        };
-        if new_pos < 0 {
-            return Err(FsError::InvalidPath);
-        }
-        self.position = new_pos as usize;
-        Ok(self.position as u64)
+    fn submit_request(&mut self) -> FsResult<()> {
+        WalletPayHandle::submit(self)
     }
 
-    fn position(&self) -> u64 {
-        self.position as u64
+    fn submit_on_flush(&self) -> bool {
+        false
     }
 
-    fn flush(&mut self) -> FsResult<()> {
-        Ok(())
-    }
-
-    fn close(&mut self) -> FsResult<()> {
-        Ok(())
+    fn submit_on_close(&self) -> bool {
+        false
     }
 }
 
