@@ -5,6 +5,7 @@ export {
 } from "./conversation.js"
 export { Message } from "./message.js"
 export { Reasoning } from "./reasoning.js"
+export { Plan } from "./plan.js"
 export { ToolCall } from "./tool-call.js"
 export { Diff } from "./diff.js"
 export { Canvas } from "./canvas.js"
