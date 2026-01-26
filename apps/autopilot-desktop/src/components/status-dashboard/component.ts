@@ -164,6 +164,45 @@ const readArray = (record: Record<string, unknown>, key: string) => {
   return Array.isArray(value) ? value : null
 }
 
+const normalizeErrorMessage = (message: string) => {
+  const trimmed = message.trim()
+  if (!(trimmed.startsWith("{") && trimmed.endsWith("}"))) {
+    return message
+  }
+  try {
+    const parsed = JSON.parse(trimmed)
+    if (isRecord(parsed)) {
+      const nestedError = readRecord(parsed, "error")
+      const nestedMessage = nestedError ? readString(nestedError, "message") : null
+      if (nestedMessage) {
+        return nestedMessage
+      }
+    }
+  } catch {
+    return message
+  }
+  return message
+}
+
+const extractErrorMessage = (value: unknown) => {
+  if (typeof value === "string") {
+    return normalizeErrorMessage(value)
+  }
+  if (!isRecord(value)) {
+    return null
+  }
+  const direct =
+    readString(value, "message") ??
+    readString(value, "detail") ??
+    readString(value, "error")
+  if (direct) {
+    return normalizeErrorMessage(direct)
+  }
+  const nestedError = readRecord(value, "error")
+  const nestedMessage = nestedError ? readString(nestedError, "message") : null
+  return nestedMessage ? normalizeErrorMessage(nestedMessage) : null
+}
+
 const normalizeStatus = (value: unknown) => {
   if (typeof value !== "string") {
     return undefined
@@ -289,6 +328,32 @@ const extractThreadId = (value: unknown): string | null => {
     readContainer(record.result) ||
     readContainer(record.params)
   )
+}
+
+const extractTurnId = (params: Record<string, unknown>) => {
+  const direct = readString(params, "turnId") ?? readString(params, "turn_id")
+  if (direct) {
+    return direct
+  }
+  const turn = readRecord(params, "turn")
+  return turn ? readString(turn, "id") : null
+}
+
+const extractTurnErrorMessage = (params: Record<string, unknown>) => {
+  const directError = extractErrorMessage(params.error)
+  if (directError) {
+    return directError
+  }
+  const turn = readRecord(params, "turn")
+  if (!turn) {
+    return null
+  }
+  const turnError = extractErrorMessage(turn.error)
+  if (turnError) {
+    return turnError
+  }
+  const status = readString(turn, "status")
+  return status === "failed" ? "Turn failed." : null
 }
 
 const deriveStatus = (state: StatusState) => {
@@ -621,8 +686,7 @@ const buildConversationItems = (thread: Record<string, unknown>) => {
       }
     })
 
-    const error = readRecord(turn, "error")
-    const errorMessage = error ? readString(error, "message") : null
+    const errorMessage = extractErrorMessage(turn.error)
     if (errorMessage) {
       const turnId = readString(turn, "id") ?? `turn-${Date.now()}`
       items.push({
@@ -1861,6 +1925,26 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
           const mapped = mapThreadItem(params.item)
           if (mapped && eventThreadId) {
             sessionItems = upsertConversationItem(sessionItems, eventThreadId, mapped)
+            if (!activeSessionId) {
+              activeSessionId = eventThreadId
+            }
+          }
+        }
+
+        if (
+          eventThreadId &&
+          params &&
+          (method === "turn/completed" || method === "turn/error")
+        ) {
+          const errorMessage = extractTurnErrorMessage(params)
+          if (errorMessage) {
+            const turnId = extractTurnId(params) ?? `turn-${Date.now()}`
+            sessionItems = upsertConversationItem(sessionItems, eventThreadId, {
+              kind: "message",
+              id: `error-${turnId}`,
+              role: "system",
+              text: `Turn failed: ${errorMessage}`,
+            })
             if (!activeSessionId) {
               activeSessionId = eventThreadId
             }
