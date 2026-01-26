@@ -78,7 +78,6 @@ type StatusState = {
   lastEventText: string
   lastEventTime: string
   lastUpdated: string
-  commandInput: string
   messageInput: string
   threadId: string | null
   sessions: SessionSummary[]
@@ -94,8 +93,6 @@ type StatusEvent =
   | { type: "DisconnectWorkspace" }
   | { type: "StartNewSession" }
   | { type: "UpdateWorkspacePath"; path: string }
-  | { type: "UpdateCommandInput"; value: string }
-  | { type: "SubmitCommand"; value: string }
   | { type: "UpdateMessageInput"; value: string }
   | { type: "SubmitMessage"; value: string }
   | { type: "RefreshWorkspaceStatus" }
@@ -168,11 +165,22 @@ const normalizeStatus = (value: unknown) => {
   return value.replace(/([a-z])([A-Z])/g, "$1 $2").toLowerCase()
 }
 
+const resizeMessageInput = (container: Element) => {
+  const input = container.querySelector(
+    "#message-input"
+  ) as HTMLTextAreaElement | null
+  if (!input) {
+    return
+  }
+  input.style.height = "auto"
+  input.style.height = `${input.scrollHeight}px`
+}
+
 const focusMessageInput = (container: Element) =>
   Effect.sync(() => {
     const input = container.querySelector(
       "#message-input"
-    ) as HTMLInputElement | null
+    ) as HTMLTextAreaElement | null
     if (!input) {
       return
     }
@@ -181,6 +189,7 @@ const focusMessageInput = (container: Element) =>
     } catch {
       input.focus()
     }
+    resizeMessageInput(container)
   })
 
 const formatJson = (value: unknown) => {
@@ -271,6 +280,25 @@ const sortSessions = (sessions: SessionSummary[]) =>
 
 const upsertSession = (sessions: SessionSummary[], session: SessionSummary) =>
   sortSessions([...sessions.filter((entry) => entry.id !== session.id), session])
+
+const mergeSessionPreservingOrder = (
+  sessions: SessionSummary[],
+  session: SessionSummary
+) => {
+  const index = sessions.findIndex((entry) => entry.id === session.id)
+  if (index === -1) {
+    return [...sessions, session]
+  }
+  const existing = sessions[index]
+  const merged = {
+    ...existing,
+    preview: session.preview || existing.preview,
+    modelProvider: session.modelProvider || existing.modelProvider,
+  }
+  const next = [...sessions]
+  next[index] = merged
+  return next
+}
 
 const touchSession = (
   sessions: SessionSummary[],
@@ -582,7 +610,6 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
     lastEventText: "Waiting for app-server events...",
     lastEventTime: "--",
     lastUpdated: nowTime(),
-    commandInput: "",
     messageInput: "",
     threadId: null,
     sessions: [],
@@ -625,8 +652,7 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
         ? formatSessionId(activeSessionId)
         : "--"
       const sessionCount = state.sessions.length
-      const sessionBusy =
-        state.busy.sessions || state.busy.resume || state.busy.newSession
+      const sessionBusy = state.busy.sessions || state.busy.newSession
 
       const sessionList = sessionCount
         ? state.sessions.map((session) => {
@@ -669,20 +695,6 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
 
       return html`
         <div class="terminal">
-          <div class="command-bar">
-            <span class="command-label">Quick Cmd</span>
-            <input
-              id="command-input"
-              class="command-input"
-              type="text"
-              placeholder="connect | disconnect | doctor | cd /path"
-              value="${state.commandInput}"
-            />
-            <div class="command-hints">
-              LOCAL COMMANDS ONLY · USE INPUT BELOW FOR MESSAGES · F2 CONNECT · F3 DISCONNECT · F5 DOCTOR · F12 STORYBOOK
-            </div>
-          </div>
-
           <div class="workspace-shell">
             <aside class="session-sidebar">
               <div class="session-header">
@@ -729,6 +741,26 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
                     : ""
                 }
               </section>
+
+              <div class="compose-bar">
+                <div class="compose-inner">
+                  <span class="compose-label">Input</span>
+                  <textarea
+                    id="message-input"
+                    class="compose-input"
+                    rows="1"
+                    placeholder="Type a message or /command"
+                  >${state.messageInput}</textarea>
+                  <button
+                    class="compose-submit"
+                    data-action="send-message"
+                    ${sendDisabled ? "disabled" : ""}
+                  >
+                    SEND
+                  </button>
+                </div>
+                <div class="compose-hints">Enter to send | /connect /disconnect /doctor /cd /new /help</div>
+              </div>
             </main>
 
             <aside class="info-sidebar">
@@ -806,6 +838,16 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
                   </div>
                 </section>
 
+                <section class="sidebar-panel">
+                  <div class="panel-title">Shortcuts</div>
+                  <div class="panel-body">
+                    <div class="note">F2 Connect</div>
+                    <div class="note">F3 Disconnect</div>
+                    <div class="note">F5 Doctor/Refresh</div>
+                    <div class="note">F12 Storybook</div>
+                  </div>
+                </section>
+
                 <section class="sidebar-panel feed">
                   <div class="panel-title">App-Server Feed</div>
                   <div class="panel-body">
@@ -815,28 +857,6 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
               </div>
             </aside>
           </div>
-
-          <div class="compose-bar">
-            <div class="compose-inner">
-              <span class="compose-label">Input</span>
-              <input
-                id="message-input"
-                class="compose-input"
-                type="text"
-                placeholder="Type a message or /command"
-                value="${state.messageInput}"
-              />
-              <button
-                class="compose-submit"
-                data-action="send-message"
-                ${sendDisabled ? "disabled" : ""}
-              >
-                SEND
-              </button>
-            </div>
-            <div class="compose-hints">Enter to send | /connect /disconnect /doctor /cd /new /help</div>
-          </div>
-
         </div>
       `
     }),
@@ -918,38 +938,19 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
         return
       }
 
-      if (event.type === "UpdateCommandInput") {
-        yield* ctx.state.update((current) => ({
-          ...current,
-          commandInput: event.value,
-        }))
-        return
-      }
-
       if (event.type === "UpdateMessageInput") {
-        yield* ctx.state.update((current) => ({
-          ...current,
-          messageInput: event.value,
-        }))
-        return
-      }
-
-      if (event.type === "SubmitCommand") {
-        const command = event.value.trim()
-        if (!command) {
-          yield* ctx.state.update((state) => ({
-            ...state,
-            commandInput: "",
+        yield* ctx.state
+          .update((current) => ({
+            ...current,
+            messageInput: event.value,
           }))
-          return
-        }
-
-        yield* runCommand(command)
-
-        yield* ctx.state.update((state) => ({
-          ...state,
-          commandInput: "",
-        }))
+          .pipe(
+            Effect.tap(() =>
+              Effect.sync(() =>
+                requestAnimationFrame(() => resizeMessageInput(ctx.container))
+              )
+            )
+          )
         return
       }
 
@@ -982,10 +983,14 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
           return
         }
 
+        const existingThreadId = current.threadId
         yield* ctx.state.update((state) => ({
           ...state,
           busy: { ...state.busy, send: true },
           workspaceMessage: "Sending message...",
+          sessions: existingThreadId
+            ? touchSession(state.sessions, existingThreadId, nowEpochSeconds())
+            : state.sessions,
         }))
 
         let threadId = current.threadId
@@ -1227,7 +1232,7 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
               .update((state) => ({
                 ...state,
                 sessions: summary
-                  ? upsertSession(state.sessions, summary)
+                  ? mergeSessionPreservingOrder(state.sessions, summary)
                   : state.sessions,
                 sessionItems: {
                   ...state.sessionItems,
@@ -1455,7 +1460,7 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
           }
         }
 
-        if (eventThreadId) {
+        if (eventThreadId && method === "item/completed") {
           sessions = touchSession(sessions, eventThreadId, nowEpochSeconds())
         }
 
@@ -1540,53 +1545,30 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
 
       yield* ctx.dom.delegate(
         ctx.container,
-        "#command-input",
-        "input",
-        (event, target) => {
-          void event
-          const value = (target as HTMLInputElement).value
-          emit({ type: "UpdateCommandInput", value })
-        }
-      )
-
-      yield* ctx.dom.delegate(
-        ctx.container,
         "#message-input",
         "input",
         (event, target) => {
           void event
-          const value = (target as HTMLInputElement).value
+          const value = (target as HTMLTextAreaElement).value
+          resizeMessageInput(ctx.container)
           emit({ type: "UpdateMessageInput", value })
         }
       )
 
       yield* ctx.dom.delegate(
         ctx.container,
-        "#command-input",
-        "keydown",
-        (event, target) => {
-          const keyEvent = event as KeyboardEvent
-          if (keyEvent.key === "Enter") {
-            keyEvent.preventDefault()
-            emit({
-              type: "SubmitCommand",
-              value: (target as HTMLInputElement).value,
-            })
-          }
-        }
-      )
-
-      yield* ctx.dom.delegate(
-        ctx.container,
         "#message-input",
         "keydown",
         (event, target) => {
           const keyEvent = event as KeyboardEvent
           if (keyEvent.key === "Enter") {
+            if (keyEvent.shiftKey) {
+              return
+            }
             keyEvent.preventDefault()
             emit({
               type: "SubmitMessage",
-              value: (target as HTMLInputElement).value,
+              value: (target as HTMLTextAreaElement).value,
             })
           }
         }
@@ -1599,7 +1581,7 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
         () => {
           const input = ctx.container.querySelector(
             "#message-input"
-          ) as HTMLInputElement | null
+          ) as HTMLTextAreaElement | null
           emit({
             type: "SubmitMessage",
             value: input?.value ?? "",
@@ -1675,5 +1657,6 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
       yield* Effect.forkScoped(initialize)
 
       yield* focusMessageInput(ctx.container)
+      resizeMessageInput(ctx.container)
     }),
 }
