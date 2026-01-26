@@ -275,6 +275,142 @@ pub trait FileHandle: Send + Sync {
     fn close(&mut self) -> FsResult<()>;
 }
 
+/// Shared buffered state for request/response file handles.
+pub struct BufferedFileState {
+    request_buf: Vec<u8>,
+    response: Option<Vec<u8>>,
+    position: usize,
+}
+
+impl BufferedFileState {
+    /// Create an empty buffered state.
+    pub fn new() -> Self {
+        Self {
+            request_buf: Vec::new(),
+            response: None,
+            position: 0,
+        }
+    }
+
+    /// Request bytes accumulated from writes.
+    pub fn request_bytes(&self) -> &[u8] {
+        &self.request_buf
+    }
+
+    /// Mutable request buffer for appending input.
+    pub fn request_bytes_mut(&mut self) -> &mut Vec<u8> {
+        &mut self.request_buf
+    }
+
+    /// Set the response bytes to stream back to readers.
+    pub fn set_response(&mut self, response: Vec<u8>) {
+        self.response = Some(response);
+    }
+
+    fn has_response(&self) -> bool {
+        self.response.is_some()
+    }
+
+    fn has_request(&self) -> bool {
+        !self.request_buf.is_empty()
+    }
+}
+
+/// Trait for file handles that submit a buffered request to produce a response.
+pub trait BufferedRequestHandle: Send + Sync {
+    /// Access the buffered state.
+    fn buffer_state(&mut self) -> &mut BufferedFileState;
+
+    /// Access the buffered state immutably.
+    fn buffer_state_ref(&self) -> &BufferedFileState;
+
+    /// Submit the buffered request and populate the response.
+    fn submit_request(&mut self) -> FsResult<()>;
+
+    /// Whether flush should submit the request if needed.
+    fn submit_on_flush(&self) -> bool {
+        true
+    }
+
+    /// Whether close should submit the request if needed.
+    fn submit_on_close(&self) -> bool {
+        true
+    }
+}
+
+impl<T> FileHandle for T
+where
+    T: BufferedRequestHandle,
+{
+    fn read(&mut self, buf: &mut [u8]) -> FsResult<usize> {
+        let needs_submit = {
+            let state = self.buffer_state();
+            !state.has_response()
+        };
+        if needs_submit {
+            self.submit_request()?;
+        }
+        let state = self.buffer_state();
+        let response = state.response.as_ref().unwrap();
+        if state.position >= response.len() {
+            return Ok(0);
+        }
+        let len = std::cmp::min(buf.len(), response.len() - state.position);
+        buf[..len].copy_from_slice(&response[state.position..state.position + len]);
+        state.position += len;
+        Ok(len)
+    }
+
+    fn write(&mut self, buf: &[u8]) -> FsResult<usize> {
+        let state = self.buffer_state();
+        state.request_bytes_mut().extend_from_slice(buf);
+        Ok(buf.len())
+    }
+
+    fn seek(&mut self, pos: SeekFrom) -> FsResult<u64> {
+        let state = self.buffer_state();
+        if !state.has_response() {
+            return Err(FsError::InvalidPath);
+        }
+        let response = state.response.as_ref().unwrap();
+        let new_pos = match pos {
+            SeekFrom::Start(offset) => offset as i64,
+            SeekFrom::End(offset) => response.len() as i64 + offset,
+            SeekFrom::Current(offset) => state.position as i64 + offset,
+        };
+        if new_pos < 0 {
+            return Err(FsError::InvalidPath);
+        }
+        state.position = new_pos as usize;
+        Ok(state.position as u64)
+    }
+
+    fn position(&self) -> u64 {
+        self.buffer_state_ref().position as u64
+    }
+
+    fn flush(&mut self) -> FsResult<()> {
+        if self.submit_on_flush() {
+            let should_submit = {
+                let state = self.buffer_state();
+                !state.has_response() && state.has_request()
+            };
+            if should_submit {
+                self.submit_request()?;
+            }
+        }
+        Ok(())
+    }
+
+    fn close(&mut self) -> FsResult<()> {
+        if self.submit_on_close() {
+            self.flush()
+        } else {
+            Ok(())
+        }
+    }
+}
+
 /// A capability exposed as a filesystem.
 pub trait FileService: Send + Sync {
     /// Open a file or directory at the given path.

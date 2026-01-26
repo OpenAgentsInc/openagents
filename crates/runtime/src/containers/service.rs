@@ -619,9 +619,7 @@ struct ContainerNewHandle {
     budget: Arc<Mutex<BudgetTracker>>,
     sessions: Arc<RwLock<HashMap<String, SessionRecord>>>,
     journal: Arc<dyn IdempotencyJournal>,
-    request_buf: Vec<u8>,
-    response: Option<Vec<u8>>,
-    position: usize,
+    buffer: BufferedFileState,
 }
 
 impl ContainerNewHandle {
@@ -642,14 +640,12 @@ impl ContainerNewHandle {
             budget,
             sessions,
             journal,
-            request_buf: Vec::new(),
-            response: None,
-            position: 0,
+            buffer: BufferedFileState::new(),
         }
     }
 
     fn submit_request(&mut self) -> FsResult<()> {
-        let mut request: ContainerRequest = serde_json::from_slice(&self.request_buf)
+        let mut request: ContainerRequest = serde_json::from_slice(self.buffer.request_bytes())
             .map_err(|err| FsError::Other(err.to_string()))?;
         let policy = self
             .policy
@@ -744,7 +740,7 @@ impl ContainerNewHandle {
                             });
                     }
                 }
-                self.response = Some(cached);
+                self.buffer.set_response(cached);
                 return Ok(());
             }
         }
@@ -832,61 +828,22 @@ impl ContainerNewHandle {
                 .map_err(|err| FsError::Other(err.to_string()))?;
         }
 
-        self.response = Some(response_bytes);
+        self.buffer.set_response(response_bytes);
         Ok(())
     }
 }
 
-impl FileHandle for ContainerNewHandle {
-    fn read(&mut self, buf: &mut [u8]) -> FsResult<usize> {
-        if self.response.is_none() {
-            self.submit_request()?;
-        }
-        let response = self.response.as_ref().unwrap();
-        if self.position >= response.len() {
-            return Ok(0);
-        }
-        let len = std::cmp::min(buf.len(), response.len() - self.position);
-        buf[..len].copy_from_slice(&response[self.position..self.position + len]);
-        self.position += len;
-        Ok(len)
+impl BufferedRequestHandle for ContainerNewHandle {
+    fn buffer_state(&mut self) -> &mut BufferedFileState {
+        &mut self.buffer
     }
 
-    fn write(&mut self, buf: &[u8]) -> FsResult<usize> {
-        self.request_buf.extend_from_slice(buf);
-        Ok(buf.len())
+    fn buffer_state_ref(&self) -> &BufferedFileState {
+        &self.buffer
     }
 
-    fn seek(&mut self, pos: SeekFrom) -> FsResult<u64> {
-        if self.response.is_none() {
-            return Err(FsError::InvalidPath);
-        }
-        let response = self.response.as_ref().unwrap();
-        let new_pos = match pos {
-            SeekFrom::Start(offset) => offset as i64,
-            SeekFrom::End(offset) => response.len() as i64 + offset,
-            SeekFrom::Current(offset) => self.position as i64 + offset,
-        };
-        if new_pos < 0 {
-            return Err(FsError::InvalidPath);
-        }
-        self.position = new_pos as usize;
-        Ok(self.position as u64)
-    }
-
-    fn position(&self) -> u64 {
-        self.position as u64
-    }
-
-    fn flush(&mut self) -> FsResult<()> {
-        if self.response.is_none() && !self.request_buf.is_empty() {
-            self.submit_request()?;
-        }
-        Ok(())
-    }
-
-    fn close(&mut self) -> FsResult<()> {
-        self.flush()
+    fn submit_request(&mut self) -> FsResult<()> {
+        ContainerNewHandle::submit_request(self)
     }
 }
 
@@ -1603,4 +1560,3 @@ fn unavailable_provider_info(id: &str, name: &str, reason: String) -> ContainerP
 
 #[cfg(not(target_arch = "wasm32"))]
 const DVM_QUOTE_WINDOW: Duration = Duration::from_secs(5);
-
