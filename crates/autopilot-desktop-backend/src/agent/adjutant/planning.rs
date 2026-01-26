@@ -3,6 +3,7 @@
 //! Implements the core planning workflow: topic decomposition → parallel exploration → synthesis
 
 use super::config::{PlanModeConfig, PlanModeOptimizationConfig};
+use super::lm_config::{build_dsrs_lm, load_ai_gateway_config};
 use super::plan_mode_optimizer::{load_latest_instruction, run_plan_mode_optimization};
 use super::plan_mode_signatures::PlanModeSignatureKind;
 use super::plan_mode_training::{
@@ -10,7 +11,6 @@ use super::plan_mode_training::{
     PlanModeTrace, PlanModeTrainingStore, PlanSynthesisExample, ResultValidationExample,
     TopicDecompositionExample,
 };
-use crate::ai_server::AiServerConfig;
 use dsrs::core::MetaSignature;
 use dsrs::signatures::{
     ComplexityClassificationSignature, DeepPlanningSignature, ExplorationTopic,
@@ -133,28 +133,18 @@ impl PlanModePipeline {
 
     /// Create pipeline with automatic LM configuration
     pub async fn with_auto_lm(mut self) -> Self {
-        if let Ok(api_key) = std::env::var("AI_GATEWAY_API_KEY") {
-            if !api_key.is_empty() {
-                let config = AiServerConfig::from_env().unwrap_or_else(|_| {
-                    AiServerConfig::new("localhost".to_string(), 3001, api_key.clone())
-                });
-                let server_url = config.server_url();
-                let base_url = format!("{}/v1", server_url);
-                let model = config.default_model.clone();
-
-                let lm = LM::builder()
-                    .base_url(base_url)
-                    .api_key(api_key)
-                    .model(model)
-                    .build()
-                    .await;
-
-                if let Ok(lm) = lm {
+        if let Ok(config) = load_ai_gateway_config() {
+            let server_url = config.server_url();
+            match build_dsrs_lm(&config).await {
+                Ok(lm) => {
                     println!(
                         "✅ AI Gateway LM initialized and connected to {}",
                         server_url
                     );
                     self.lm = Some(Arc::new(lm));
+                }
+                Err(err) => {
+                    eprintln!("Failed to initialize AI Gateway LM: {}", err);
                 }
             }
         }

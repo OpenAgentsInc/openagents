@@ -4,6 +4,7 @@
 //! which proxies requests to Vercel AI Gateway.
 
 use crate::ai_server::AiServerConfig;
+use super::lm_config::load_ai_gateway_config;
 use anyhow::{Result, anyhow};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
@@ -193,15 +194,9 @@ impl Clone for LocalAiLM {
 
 /// Create a LocalAiLM from environment or default configuration
 pub fn create_local_ai_lm() -> Result<Arc<LocalAiLM>> {
-    match AiServerConfig::from_env() {
-        Ok(config) => {
-            config
-                .validate()
-                .map_err(|e| anyhow!("Invalid AI server config: {}", e))?;
-            Ok(Arc::new(LocalAiLM::from_config(&config)))
-        }
-        Err(e) => Err(anyhow!("Failed to create LocalAiLM: {}", e)),
-    }
+    let config = load_ai_gateway_config()
+        .map_err(|e| anyhow!("Failed to create LocalAiLM: {}", e))?;
+    Ok(Arc::new(LocalAiLM::from_config(&config)))
 }
 
 /// Create a LocalAiLM with specific configuration
