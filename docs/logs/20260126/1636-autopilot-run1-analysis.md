@@ -114,3 +114,60 @@ Either case triggers the low-confidence guardrail and pauses Full Auto.
 ## Update 3 (bundles + visibility)
 - Added `export_full_auto_trace_bundle` command to bundle logs + config snapshot + decision summary.
 - Added log path broadcast (`app/log_paths`) and a Logs section in the sidebar to surface effective log directories.
+
+## Update 4 (2026-01-26) Detailed implementation log
+### Files added
+- `apps/autopilot-desktop/src-tauri/src/full_auto_logging.rs`
+  - Full Auto log paths, run metadata writer, decision logs, raw logs, run events, and log path snapshot.
+  - Env overrides: `OPENAGENTS_FULL_AUTO_LOG_DIR`, `OPENAGENTS_TRACE_BUNDLE_DIR`.
+- `apps/autopilot-desktop/src-tauri/src/diagnostics.rs`
+  - `export_full_auto_trace_bundle` command to collect logs + run metadata + summaries.
+
+### Full Auto decision capture improvements
+- `apps/autopilot-desktop/src-tauri/src/full_auto.rs`
+  - Added decision diagnostics + guardrail audit structs.
+  - Return type is now `FullAutoDecisionResult` with parsed decision + parse diagnostics.
+  - Parsing now accepts numeric strings for `confidence` and reports parse errors.
+  - Guardrail decisions now include `rule`, `original_action`, and confidence deltas.
+  - Added run metadata creation (`run_id`, config snapshot) on Full Auto enable.
+  - Added `run_started` event, decision sequence IDs, and run event appends.
+
+### App-server decision event improvements
+- `apps/autopilot-desktop/src-tauri/src/backend/app_server.rs`
+  - Emits `fullauto/decision` with `runId`, `sequenceId`, `eventTs`, and `guardrail` payload.
+  - Emits `fullauto/decision_raw` with raw prediction + parse diagnostics + summary snapshot.
+  - Writes JSONL logs for decisions + raw decisions.
+  - Appends run events (`decision`, `run_paused`) to run event log.
+  - Emits `app/log_paths` on `codex/connected` so UI can show effective log dirs.
+
+### App-server event logging reliability
+- `apps/autopilot-desktop/src-tauri/src/file_logger.rs`
+  - App-server events are now streamed directly to disk (no completion-gated flush).
+  - Added `OPENAGENTS_EVENT_LOG_DIR` override.
+  - Added `OPENAGENTS_APP_SERVER_LOG_STREAMING` toggle (default on).
+
+### UI visibility
+- `apps/autopilot-desktop/src/components/status-dashboard/component.ts`
+  - Added a Logs section in the sidebar showing app-server, Full Auto, and trace bundle paths.
+  - Handles `app/log_paths` events to populate log directory fields.
+
+### Trace bundle tooling
+- `apps/autopilot-desktop/src-tauri/src/diagnostics.rs`
+  - `export_full_auto_trace_bundle` includes:
+    - latest app-server + ACP logs
+    - fullauto decision logs + raw logs
+    - run metadata files
+    - decision summary JSON + markdown
+    - config snapshot JSON
+
+### Runtime wiring
+- `apps/autopilot-desktop/src-tauri/src/lib.rs`
+  - Registered `export_full_auto_trace_bundle` command.
+  - Added module imports for logging and diagnostics.
+
+### Misc
+- `apps/autopilot-desktop/src-tauri/src/codex.rs`
+  - Full Auto disable now appends a `run_disabled` event before clearing state.
+
+### Commit reference
+- Commit: `feat: add full auto decision logging and trace bundles`
