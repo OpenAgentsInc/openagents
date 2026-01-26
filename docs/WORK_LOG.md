@@ -23,3 +23,6 @@
 ## 2026-01-29
 - Moved Autopilot Desktop backend modules into `apps/autopilot-desktop/src-tauri/src/` and removed the backend crate.
 - Extracted AI Gateway server management into the new `crates/ai-server/` crate and updated app wiring.
+
+## 2026-01-30
+- Moved DSPy planning/execution/review in Autopilot Core onto a dedicated runtime helper to avoid `block_in_place`.

@@ -266,6 +266,7 @@ pub struct RecoveryResult {
 // ============================================================================
 
 /// DSPy-powered execution pipeline.
+#[derive(Clone)]
 pub struct ExecutionPipeline {
     lm: Option<Arc<LM>>,
 }

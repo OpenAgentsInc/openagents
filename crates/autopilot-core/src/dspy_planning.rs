@@ -219,6 +219,7 @@ pub struct PlanningResult {
 // ============================================================================
 
 /// DSPy-powered planning pipeline.
+#[derive(Clone)]
 pub struct PlanningPipeline {
     lm: Option<Arc<LM>>,
 }
