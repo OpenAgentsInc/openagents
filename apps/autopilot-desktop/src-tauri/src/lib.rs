@@ -81,6 +81,7 @@ pub fn build_app() -> tauri::Builder<tauri::Wry> {
     load_app_env();
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
             let state = state::AppState::load(&app.handle());

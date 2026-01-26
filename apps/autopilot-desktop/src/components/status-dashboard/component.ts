@@ -1,6 +1,6 @@
 import { Effect } from "effect"
 import { invoke } from "@tauri-apps/api/core"
-import { open } from "@tauri-apps/api/dialog"
+import { open } from "@tauri-apps/plugin-dialog"
 import { listen } from "@tauri-apps/api/event"
 import type { Component } from "../../effuse/index.js"
 import { html } from "../../effuse/index.js"
