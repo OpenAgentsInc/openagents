@@ -182,6 +182,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "ai-server"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "once_cell",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "aligned"
 version = "0.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1099,17 +1111,8 @@ dependencies = [
 name = "autopilot-desktop"
 version = "0.1.0"
 dependencies = [
- "autopilot-desktop-backend",
- "tauri",
- "tauri-build",
- "tauri-plugin-opener",
-]
-
-[[package]]
-name = "autopilot-desktop-backend"
-version = "0.1.0"
-dependencies = [
  "agent-client-protocol",
+ "ai-server",
  "anyhow",
  "async-recursion",
  "async-trait",
@@ -1122,11 +1125,13 @@ dependencies = [
  "futures",
  "indexmap 2.13.0",
  "once_cell",
+ "openagents-utils",
  "reqwest",
  "serde",
  "serde_json",
  "tar",
  "tauri",
+ "tauri-build",
  "tauri-plugin-opener",
  "tokio",
  "ts-rs",
@@ -7721,6 +7726,7 @@ dependencies = [
  "objc2 0.5.2",
  "objc2-app-kit 0.2.2",
  "objc2-foundation 0.2.2",
+ "openagents-utils",
  "pollster 0.4.0",
  "raw-window-handle",
  "reqwest",
@@ -7826,6 +7832,10 @@ dependencies = [
  "thiserror 2.0.17",
  "tokio",
 ]
+
+[[package]]
+name = "openagents-utils"
+version = "0.1.0"
 
 [[package]]
 name = "openai-harmony"

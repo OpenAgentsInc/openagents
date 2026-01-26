@@ -107,12 +107,10 @@ openagents/
 │       └── docs/
 │           └── ai-gateway-setup.md  # This documentation
 └── crates/
-    └── autopilot-desktop-backend/
+    └── ai-server/
         └── src/
-            └── ai_server/           # Tauri server management
-                ├── mod.rs           # Server lifecycle management
-                ├── process.rs       # Bun process spawning
-                └── config.rs        # Server configuration
+            ├── lib.rs               # Server lifecycle management
+            └── config.rs            # Server configuration
 ```
 
 ## API Endpoints
@@ -210,7 +208,7 @@ The DSPy system connects to the local AI server by configuring dsrs with the
 OpenAI-compatible endpoint exposed by the bun server:
 
 ```rust
-// crates/autopilot-desktop-backend/src/agent/adjutant/planning.rs
+// apps/autopilot-desktop/src-tauri/src/agent/adjutant/planning.rs
 let config = AiServerConfig::from_env()?;
 let base_url = format!("{}/v1", config.server_url());
 
@@ -236,7 +234,7 @@ let pipeline = PlanModePipeline::new(workspace_path, config)
 ### Tauri Server Startup
 
 ```rust
-// crates/autopilot-desktop-backend/src/ai_server/mod.rs
+// crates/ai-server/src/lib.rs
 pub struct AiServerManager {
     process: Option<Child>,
     port: u16,
@@ -278,7 +276,7 @@ impl AiServerManager {
 ### App Initialization Sequence
 
 ```rust
-// crates/autopilot-desktop-backend/src/lib.rs
+// apps/autopilot-desktop/src-tauri/src/lib.rs
 tauri::Builder::default()
     .setup(|app| {
         let state = AppState::load(&app.handle());

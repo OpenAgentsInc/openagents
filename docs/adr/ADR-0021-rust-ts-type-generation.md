@@ -10,11 +10,12 @@
 
 ## Context
 
-Autopilot is a Tauri application with a Rust backend (`crates/autopilot-desktop-backend/`)
-and a thin Tauri wrapper (`apps/autopilot-desktop/src-tauri/`) plus a TypeScript
+Autopilot is a Tauri application with a Rust backend living in
+`apps/autopilot-desktop/src-tauri/src/` plus a TypeScript
 frontend that uses Effect. Frontend IPC calls previously routed through a generic
 `invokeEffect(command, payload)` wrapper, while backend commands in
-`crates/autopilot-desktop-backend/src/codex.rs` and `crates/autopilot-desktop-backend/src/agent/commands.rs` returned
+`apps/autopilot-desktop/src-tauri/src/codex.rs` and
+`apps/autopilot-desktop/src-tauri/src/agent/commands.rs` returned
 `serde_json::Value`. The IPC boundary had no compile-time contract between Rust
 and TypeScript, and drift was easy.
 
@@ -30,7 +31,7 @@ Adopt a **Rust-first DTO contract** using `ts-rs` for TypeScript type generation
 ### Contract Layout
 
 1. **Rust DTOs live in a dedicated module**:
-   - `crates/autopilot-desktop-backend/src/contracts/ipc.rs`
+   - `apps/autopilot-desktop/src-tauri/src/contracts/ipc.rs`
    - Only request/response types for Tauri commands (no business logic)
    - `serde::{Serialize, Deserialize}` + `ts_rs::TS` derives
    - `JsonValue` alias for opaque payloads (`unknown` in TS)
@@ -54,7 +55,7 @@ Adopt a **Rust-first DTO contract** using `ts-rs` for TypeScript type generation
 
 - A small Rust binary at `apps/autopilot-desktop/src-tauri/src/bin/gen_types.rs` writes a single
   `apps/autopilot-desktop/src/gen/tauri-contracts.ts` file by calling `export_ts` in
-  `crates/autopilot-desktop-backend/src/contracts/ipc.rs`.
+  `apps/autopilot-desktop/src-tauri/src/contracts/ipc.rs`.
 - Add a script `bun run types:gen` that runs the generator via Cargo.
 - Run `types:gen` in CI before TypeScript typecheck.
 
@@ -94,7 +95,7 @@ Adopt a **Rust-first DTO contract** using `ts-rs` for TypeScript type generation
 ## References
 
 - `docs/adr/ADR-0001-adoption-of-adrs.md`
-- `crates/autopilot-desktop-backend/src/contracts/ipc.rs`
+- `apps/autopilot-desktop/src-tauri/src/contracts/ipc.rs`
 - `apps/autopilot-desktop/src-tauri/src/bin/gen_types.rs`
 - `apps/autopilot-desktop/src/gen/tauri-contracts.ts`
 - `apps/autopilot-desktop/src/contracts/tauri.ts`

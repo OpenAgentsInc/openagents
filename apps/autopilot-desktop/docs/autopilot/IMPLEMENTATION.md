@@ -8,7 +8,7 @@ This document describes the current implementation of the unified agent architec
 
 ### Agent Module Structure
 
-The agent module (`crates/autopilot-desktop-backend/src/agent/`) provides a unified interface for all AI agents:
+The agent module (`apps/autopilot-desktop/src-tauri/src/agent/`) provides a unified interface for all AI agents:
 
 ```
 agent/
