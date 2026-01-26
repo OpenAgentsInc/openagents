@@ -9,14 +9,18 @@ use std::sync::Arc;
 use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
 use dsrs::core::MetaSignature;
-use dsrs::evaluate::FeedbackEvaluator;
+use dsrs::evaluate::{EvalRecord, FeedbackEvaluator, GateRequirement, PromotionGate, PromotionManager, PromotionResult, PromotionState, ScorecardResult};
 use dsrs::manifest::{CompiledModuleManifest, Scorecard};
 use dsrs::optimizer::{COPRO, GEPA, MIPROv2, Optimizer};
-use dsrs::{Evaluator, Example, LM, Module, Optimizable, Predict, Prediction, Predictor};
+use dsrs::{Example, LM, Module, Optimizable, Predict, Prediction, Predictor};
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 
 use super::config::{PlanModeOptimizationConfig, PlanModeOptimizerKind};
+use super::plan_mode_bench::{
+    build_eval_task_set, decode_goal_example, scorer_for_signature, split_examples_for_eval,
+    truth_metric_name, PlanModeBenchmarkEvent, PlanModeBenchmarkLogger, PLAN_MODE_PROXY_METRIC,
+};
 use super::plan_mode_metrics::{feedback_signature, score_signature};
 use super::plan_mode_signatures::PlanModeSignatureKind;
 use openagents_utils::filenames::sanitize_filename_simple;
@@ -87,28 +91,57 @@ pub async fn run_plan_mode_optimization(
     }
 
     let logger = PlanModeOptimizationLogger::new(config.log_benchmarks);
+    let benchmark_logger = PlanModeBenchmarkLogger::new(config.log_benchmarks);
 
     for signature in signatures {
         if store.example_count(signature) < config.min_examples {
             continue;
         }
         let examples = store.examples_for_signature(signature);
-        let minibatch = select_minibatch(&examples, config.minibatch_size);
-        if minibatch.is_empty() {
+        let (train_examples, eval_examples) =
+            split_examples_for_eval(&examples, config.eval_split_size);
+        if train_examples.is_empty() || eval_examples.is_empty() {
             continue;
         }
 
-        let baseline = benchmark_signature(signature, &minibatch, Arc::clone(&lm))
+        let eval_task_set = build_eval_task_set(signature, &eval_examples);
+        if eval_task_set.tasks.is_empty() {
+            continue;
+        }
+
+        let scorer = scorer_for_signature(signature, &config);
+        let baseline_module =
+            PlanModeSignatureModule::new(signature, Arc::clone(&lm), load_latest_instruction(signature))?;
+        let baseline_scorecard = scorer
+            .score(&baseline_module, &eval_task_set.tasks)
             .await
             .context("benchmark failed")?;
+        let baseline_score = baseline_scorecard.overall_score as f32;
+        let baseline_manifest_id = load_latest_manifest(signature)
+            .and_then(|manifest| manifest.compiled_id.clone());
 
         if config.benchmark_only {
+            benchmark_logger.log(PlanModeBenchmarkEvent {
+                timestamp: Utc::now(),
+                signature: signature.name().to_string(),
+                optimizer: optimizer_label(&config.optimizer).to_string(),
+                training_examples: train_examples.len(),
+                eval_examples: eval_examples.len(),
+                baseline_scorecard: Some(baseline_scorecard.clone()),
+                candidate_scorecard: None,
+                baseline_manifest_id,
+                candidate_manifest_id: None,
+                promotion_result: None,
+                promotion_state: None,
+                delta_over_baseline: None,
+                config: config.clone(),
+            })?;
             logger.log(PlanModeOptimizationEvent {
                 timestamp: Utc::now(),
                 signature: signature.name().to_string(),
                 optimizer: optimizer_label(&config.optimizer).to_string(),
                 examples: examples.len(),
-                baseline_score: Some(baseline),
+                baseline_score: Some(baseline_score),
                 optimized_score: None,
                 improvement: None,
                 status: "benchmark_only".to_string(),
@@ -119,35 +152,70 @@ pub async fn run_plan_mode_optimization(
 
         let result = optimize_signature(
             signature,
-            &examples,
-            &minibatch,
-            baseline,
+            &train_examples,
+            &eval_task_set,
+            &baseline_scorecard,
             &config,
             Arc::clone(&lm),
         )
         .await;
 
         match result {
-            Ok(optimized) => {
+            Ok(outcome) => {
+                benchmark_logger.log(PlanModeBenchmarkEvent {
+                    timestamp: Utc::now(),
+                    signature: signature.name().to_string(),
+                    optimizer: optimizer_label(&config.optimizer).to_string(),
+                    training_examples: train_examples.len(),
+                    eval_examples: eval_examples.len(),
+                    baseline_scorecard: Some(baseline_scorecard.clone()),
+                    candidate_scorecard: Some(outcome.optimized_scorecard.clone()),
+                    baseline_manifest_id,
+                    candidate_manifest_id: outcome
+                        .manifest
+                        .compiled_id
+                        .clone(),
+                    promotion_result: Some(outcome.promotion_result.clone()),
+                    promotion_state: Some(outcome.promotion_state),
+                    delta_over_baseline: Some(outcome.delta_over_baseline),
+                    config: config.clone(),
+                })?;
                 logger.log(PlanModeOptimizationEvent {
                     timestamp: Utc::now(),
                     signature: signature.name().to_string(),
                     optimizer: optimizer_label(&config.optimizer).to_string(),
                     examples: examples.len(),
-                    baseline_score: Some(baseline),
-                    optimized_score: Some(optimized),
-                    improvement: Some(optimized - baseline),
+                    baseline_score: Some(baseline_score),
+                    optimized_score: Some(outcome.optimized_scorecard.overall_score as f32),
+                    improvement: Some(
+                        outcome.optimized_scorecard.overall_score as f32 - baseline_score,
+                    ),
                     status: "optimized".to_string(),
                     notes: None,
                 })?;
             }
             Err(err) => {
+                benchmark_logger.log(PlanModeBenchmarkEvent {
+                    timestamp: Utc::now(),
+                    signature: signature.name().to_string(),
+                    optimizer: optimizer_label(&config.optimizer).to_string(),
+                    training_examples: train_examples.len(),
+                    eval_examples: eval_examples.len(),
+                    baseline_scorecard: Some(baseline_scorecard.clone()),
+                    candidate_scorecard: None,
+                    baseline_manifest_id,
+                    candidate_manifest_id: None,
+                    promotion_result: None,
+                    promotion_state: None,
+                    delta_over_baseline: None,
+                    config: config.clone(),
+                })?;
                 logger.log(PlanModeOptimizationEvent {
                     timestamp: Utc::now(),
                     signature: signature.name().to_string(),
                     optimizer: optimizer_label(&config.optimizer).to_string(),
                     examples: examples.len(),
-                    baseline_score: Some(baseline),
+                    baseline_score: Some(baseline_score),
                     optimized_score: None,
                     improvement: None,
                     status: "failed".to_string(),
@@ -167,6 +235,12 @@ pub fn load_latest_instruction(signature: PlanModeSignatureKind) -> Option<Strin
     let contents = fs::read_to_string(path).ok()?;
     let manifest: CompiledModuleManifest = serde_json::from_str(&contents).ok()?;
     manifest.instruction
+}
+
+fn load_latest_manifest(signature: PlanModeSignatureKind) -> Option<CompiledModuleManifest> {
+    let path = latest_manifest_path(signature);
+    let contents = fs::read_to_string(path).ok()?;
+    serde_json::from_str(&contents).ok()
 }
 
 fn should_run(config: &PlanModeOptimizationConfig, state: &PlanModeOptimizationState) -> bool {
@@ -210,24 +284,23 @@ fn select_signatures(
     ordered
 }
 
-async fn benchmark_signature(
-    signature: PlanModeSignatureKind,
-    examples: &[Example],
-    lm: Arc<LM>,
-) -> Result<f32> {
-    let instruction = load_latest_instruction(signature);
-    let module = PlanModeSignatureModule::new(signature, lm, instruction)?;
-    Ok(module.evaluate(examples.to_vec()).await)
+#[derive(Debug, Clone)]
+struct PlanModeOptimizationOutcome {
+    optimized_scorecard: ScorecardResult,
+    promotion_result: PromotionResult,
+    promotion_state: PromotionState,
+    manifest: CompiledModuleManifest,
+    delta_over_baseline: f64,
 }
 
 async fn optimize_signature(
     signature: PlanModeSignatureKind,
     examples: &[Example],
-    evaluation_set: &[Example],
-    baseline: f32,
+    eval_task_set: &dsrs::evaluate::EvalTaskSet,
+    baseline_scorecard: &ScorecardResult,
     config: &PlanModeOptimizationConfig,
     lm: Arc<LM>,
-) -> Result<f32> {
+) -> Result<PlanModeOptimizationOutcome> {
     let instruction = load_latest_instruction(signature);
     let mut module = PlanModeSignatureModule::new(signature, Arc::clone(&lm), instruction)?;
 
@@ -266,30 +339,63 @@ async fn optimize_signature(
     }
 
     let optimized_instruction = module.instruction();
-    let optimized_score = module.evaluate(evaluation_set.to_vec()).await;
+    let scorer = scorer_for_signature(signature, config);
+    let optimized_scorecard = scorer
+        .score(&module, &eval_task_set.tasks)
+        .await?;
 
-    if optimized_score >= baseline {
-        let manifest =
-            CompiledModuleManifest::new(signature.name(), optimizer_label(&config.optimizer))
-                .with_instruction(&optimized_instruction)
-                .with_scorecard(
-                    Scorecard::new(optimized_score)
-                        .with_proxy("baseline_score", baseline)
-                        .with_rollouts(config.num_trials),
-                )
-                .finalize()?;
-        save_manifest(signature, &manifest)?;
-    }
+    let delta_over_baseline =
+        optimized_scorecard.overall_score - baseline_scorecard.overall_score;
+    let delta_passed = delta_over_baseline >= config.min_promotion_delta as f64;
 
-    Ok(optimized_score)
-}
+    let mut manifest =
+        CompiledModuleManifest::new(signature.name(), optimizer_label(&config.optimizer))
+            .with_instruction(&optimized_instruction)
+            .with_scorecard(scorecard_from_result(
+                &optimized_scorecard,
+                signature,
+                config.num_trials,
+            ))
+            .with_promotion_state(PromotionState::Candidate);
 
-fn select_minibatch(examples: &[Example], minibatch_size: usize) -> Vec<Example> {
-    if examples.is_empty() {
-        return Vec::new();
-    }
-    let limit = minibatch_size.max(1).min(examples.len());
-    examples.iter().take(limit).cloned().collect()
+    let promotion_manager = promotion_manager_for_signature(signature, config);
+    let promotion_result = promotion_manager
+        .try_promote(&module, &manifest, PromotionState::Candidate, &eval_task_set.tasks)
+        .await?;
+
+    let promotion_allowed = promotion_result.success && delta_passed;
+    let promotion_reason = if promotion_result.success && !delta_passed {
+        format!(
+            "delta {:.3} < {:.3}",
+            delta_over_baseline, config.min_promotion_delta
+        )
+    } else {
+        promotion_result.reason.clone()
+    };
+
+    let promotion_state = if promotion_allowed {
+        PromotionState::Promoted
+    } else {
+        PromotionState::Candidate
+    };
+
+    let eval_record = EvalRecord::new(PromotionState::Candidate, optimized_scorecard.clone())
+        .with_promotion_result(promotion_allowed, promotion_reason);
+
+    manifest = manifest
+        .with_promotion_state(promotion_state)
+        .with_eval_record(eval_record)
+        .finalize()?;
+
+    save_manifest(signature, &manifest, promotion_allowed)?;
+
+    Ok(PlanModeOptimizationOutcome {
+        optimized_scorecard,
+        promotion_result,
+        promotion_state,
+        manifest,
+        delta_over_baseline,
+    })
 }
 
 fn optimizer_label(kind: &PlanModeOptimizerKind) -> &'static str {
@@ -300,9 +406,44 @@ fn optimizer_label(kind: &PlanModeOptimizerKind) -> &'static str {
     }
 }
 
+fn scorecard_from_result(
+    result: &ScorecardResult,
+    signature: PlanModeSignatureKind,
+    rollouts: usize,
+) -> Scorecard {
+    let proxy_score = result
+        .per_metric
+        .get(PLAN_MODE_PROXY_METRIC)
+        .copied()
+        .unwrap_or(0.0) as f32;
+    let truth_score = result
+        .per_metric
+        .get(&truth_metric_name(signature))
+        .copied()
+        .unwrap_or(0.0) as f32;
+
+    Scorecard::new(result.overall_score as f32)
+        .with_proxy(PLAN_MODE_PROXY_METRIC, proxy_score)
+        .with_truth(truth_metric_name(signature), truth_score)
+        .with_rollouts(rollouts)
+}
+
+fn promotion_manager_for_signature(
+    signature: PlanModeSignatureKind,
+    config: &PlanModeOptimizationConfig,
+) -> PromotionManager {
+    let gate = PromotionGate::new("plan_mode_gate", PromotionState::Candidate, PromotionState::Promoted)
+        .with_requirements(vec![
+            GateRequirement::min_score(PLAN_MODE_PROXY_METRIC, config.min_proxy_score as f64),
+            GateRequirement::min_score(truth_metric_name(signature), config.min_truth_score as f64),
+        ]);
+    PromotionManager::with_gates(vec![gate], scorer_for_signature(signature, config))
+}
+
 fn save_manifest(
     signature: PlanModeSignatureKind,
     manifest: &CompiledModuleManifest,
+    update_latest: bool,
 ) -> Result<()> {
     let dir = manifest_dir();
     fs::create_dir_all(&dir)?;
@@ -315,8 +456,10 @@ fn save_manifest(
     let manifest_path = dir.join(format!("{}.json", sanitize_filename_simple(compiled_id)));
     fs::write(&manifest_path, serde_json::to_string_pretty(manifest)?)?;
 
-    let latest_path = latest_manifest_path(signature);
-    fs::write(&latest_path, serde_json::to_string_pretty(manifest)?)?;
+    if update_latest {
+        let latest_path = latest_manifest_path(signature);
+        fs::write(&latest_path, serde_json::to_string_pretty(manifest)?)?;
+    }
 
     Ok(())
 }
@@ -400,7 +543,11 @@ impl PlanModeSignatureModule {
 
 impl Module for PlanModeSignatureModule {
     async fn forward(&self, inputs: Example) -> Result<Prediction> {
-        let filtered = input_only_example(&inputs);
+        let filtered = if inputs.input_keys.is_empty() {
+            decode_goal_example(&inputs).unwrap_or_else(|| input_only_example(&inputs))
+        } else {
+            input_only_example(&inputs)
+        };
         self.predictor
             .forward_with_config(filtered, Arc::clone(&self.lm))
             .await
