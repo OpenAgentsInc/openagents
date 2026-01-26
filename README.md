@@ -1,40 +1,26 @@
-# OpenAgents
+# OpenAgents (Autopilot Desktop)
 
-OpenAgents is a local-first stack for autonomous agents that can **sign**, **run tools**, **verify work**, **account for cost**, and (optionally) **buy compute** in open markets. The wedge product in this repo is **Autopilot**: an autonomous coding agent that plans → executes → verifies → emits replayable artifacts. Autopilot turns compute into verified software changes and produces receipts that can be priced and settled in sats when routed through the marketplace.
+**Autopilot Desktop** is the primary product in this repo: a local-first coding agent
+that plans → executes → verifies → produces replayable artifacts. It runs on your machine,
+works against your repo, and keeps the full trace of what happened.
 
+OpenAgents also contains the broader runtime/compiler/market stack used by Autopilot.
 If you're looking for the philosophy / "why open", start with **[MANIFESTO.md](./MANIFESTO.md)**.
 
-## Quick Start (Autopilot)
+## Quick Start (Desktop)
 
 ```bash
 git clone https://github.com/OpenAgentsInc/openagents.git
-cd openagents
-
-# build + run the Autopilot app
-cargo build -p autopilot
-cargo run -p autopilot
-```
-
-Run a one-off task via CLI mode:
-
-```bash
-cargo run -p autopilot -- run "Summarize @README.md and run !git status"
-```
-
-Tip: this repo defines a Cargo alias in `.cargo/config.toml`, so `cargo autopilot ...`
-is shorthand for `cargo run -p autopilot -- ...`.
-
-## Quick Start (Autopilot Desktop)
-
-```bash
-cd apps/autopilot-desktop
+cd openagents/apps/autopilot-desktop
 bun install
 bun run tauri dev
 ```
 
+For release builds, see **[apps/autopilot-desktop/docs/autopilot/DISTRIBUTION.md](apps/autopilot-desktop/docs/autopilot/DISTRIBUTION.md)**.
+
 ## What you get
 
-Autopilot is designed to be:
+Autopilot Desktop is designed to be:
 
 * **Local-first**: runs against your repo on your machine by default
 * **Verifiable**: uses deterministic checks (tests/builds) as the ground-truth loop
@@ -42,30 +28,16 @@ Autopilot is designed to be:
 * **Optimizable**: uses DSPy-style signatures/modules/optimizers to improve policies over time
 * **Signature-driven UI**: Effuse UITree + UI patch streaming for live, structured visibility
 
-## Documentation map
+## CLI / other surfaces
 
-Start here depending on what you're doing:
+The CLI and other agent surfaces live in the same repo but are not the primary path here.
+If you need them, use the docs index below to navigate the relevant crates and guides.
 
-* **Terms / vocabulary**: [GLOSSARY.md](./GLOSSARY.md)
-* **Run + ship priorities**: [ROADMAP.md](./ROADMAP.md)
-* **Architecture + strategy**: [SYNTHESIS.md](./SYNTHESIS.md)
-* **Current implementation reality**: [SYNTHESIS_EXECUTION.md](./SYNTHESIS_EXECUTION.md)
-* **Formal write-up**: [PAPER.md](./PAPER.md)
-* **Repo layout + crate map**: [PROJECT_OVERVIEW.md](./PROJECT_OVERVIEW.md)
+## Documentation
 
-Autopilot-specific docs:
+Start with:
 
-* [crates/autopilot/docs/MVP.md](crates/autopilot/docs/MVP.md)
-* [crates/autopilot/docs/ROADMAP.md](crates/autopilot/docs/ROADMAP.md)
-* [crates/autopilot-core/docs/EXECUTION_FLOW.md](crates/autopilot-core/docs/EXECUTION_FLOW.md)
-* [apps/autopilot-desktop/docs/README.md](apps/autopilot-desktop/docs/README.md)
-
-DSPy / dsrs docs:
-
-* [crates/dsrs/docs/README.md](crates/dsrs/docs/README.md)
-* [crates/dsrs/docs/DSPY_ROADMAP.md](crates/dsrs/docs/DSPY_ROADMAP.md)
-
-## Contributing / navigating the codebase
-
-If you're trying to find "where does X live?", use **[PROJECT_OVERVIEW.md](./PROJECT_OVERVIEW.md)**.
-It's the repo map (crates, responsibilities, data flows).
+* **Desktop docs**: [apps/autopilot-desktop/docs/README.md](apps/autopilot-desktop/docs/README.md)
+* **Docs index (everything else)**: [docs/README.md](docs/README.md)
+* **Repo map / ownership**: [PROJECT_OVERVIEW.md](./PROJECT_OVERVIEW.md)
+* **Agent contract / contribution norms**: [AGENTS.md](./AGENTS.md)
