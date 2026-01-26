@@ -3,7 +3,8 @@
 use crate::budget::{BudgetError, BudgetPolicy, BudgetReservation, BudgetTracker};
 #[cfg(not(target_arch = "wasm32"))]
 use crate::dvm::{
-    DvmFeedbackStatus, DvmTransport, RelayPoolTransport, msats_to_sats, parse_feedback_event,
+    DvmFeedbackStatus, DvmLifecycle, DvmQuote, DvmTransport, RelayPoolTransport,
+    bid_msats_for_max_cost, msats_to_sats, parse_feedback_event, sign_dvm_event,
 };
 use crate::fs::{
     BytesHandle, DirEntry, FileHandle, FileService, FsError, FsResult, OpenFlags, Permissions,
@@ -22,12 +23,12 @@ use crate::wasm_http;
 use nostr::{
     DELETION_REQUEST_KIND, HandlerInfo, HandlerType, JobInput, JobRequest, JobResult, JobStatus,
     KIND_HANDLER_INFO, KIND_JOB_FEEDBACK, KIND_JOB_IMAGE_GENERATION, KIND_JOB_SPEECH_TO_TEXT,
-    KIND_JOB_TEXT_GENERATION, UnsignedEvent, create_deletion_tags, get_event_hash, get_result_kind,
+    KIND_JOB_TEXT_GENERATION, create_deletion_tags, get_result_kind,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, Mutex, RwLock};
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant};
 #[cfg(not(target_arch = "wasm32"))]
 use tokio::sync::{RwLock as TokioRwLock, mpsc};
 #[cfg(all(

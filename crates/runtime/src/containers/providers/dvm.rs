@@ -13,49 +13,15 @@ pub struct DvmContainerProvider {
 
 #[cfg(not(target_arch = "wasm32"))]
 #[derive(Clone)]
-struct DvmContainerQuote {
-    provider_pubkey: String,
-    price_sats: u64,
-    price_usd: u64,
-    event_id: String,
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-#[derive(Clone)]
-#[allow(dead_code)]
-enum DvmContainerLifecycle {
-    AwaitingQuotes {
-        since: Timestamp,
-        timeout_at: Timestamp,
-    },
-    Processing {
-        accepted_at: Timestamp,
-        provider: String,
-    },
-    PendingSettlement {
-        result_at: Timestamp,
-        invoice: Option<String>,
-    },
-    Settled {
-        settled_at: Timestamp,
-    },
-    Failed {
-        error: String,
-        at: Timestamp,
-    },
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-#[derive(Clone)]
 #[allow(dead_code)]
 struct DvmContainerSession {
     session_id: String,
     request_event_id: String,
     request: ContainerRequest,
     submitted_at: Timestamp,
-    lifecycle: DvmContainerLifecycle,
-    quotes: Vec<DvmContainerQuote>,
-    accepted_quote: Option<DvmContainerQuote>,
+    lifecycle: DvmLifecycle,
+    quotes: Vec<DvmQuote>,
+    accepted_quote: Option<DvmQuote>,
     result: Option<ContainerResponse>,
     output: VecDeque<OutputChunk>,
     payment_made: bool,
@@ -156,13 +122,8 @@ impl DvmContainerProvider {
         }
 
         let max_cost_usd = request.max_cost_usd.unwrap_or(100_000);
-        let max_cost_sats = self
-            .fx
-            .usd_to_sats(max_cost_usd)
-            .map_err(|err| ContainerError::ProviderError(err.to_string()))?;
-        let bid_msats = u128::from(max_cost_sats) * 1000;
-        let bid_msats = u64::try_from(bid_msats)
-            .map_err(|_| ContainerError::ProviderError("bid overflow".to_string()))?;
+        let bid_msats = bid_msats_for_max_cost(&self.fx, max_cost_usd)
+            .map_err(ContainerError::ProviderError)?;
         job = job.with_bid(bid_msats);
         Ok(job)
     }
@@ -173,40 +134,8 @@ impl DvmContainerProvider {
         tags: Vec<Vec<String>>,
         content: String,
     ) -> Result<nostr::Event, ContainerError> {
-        let created_at = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs();
-        let pubkey = self
-            .signer
-            .pubkey(&self.agent_id)
-            .map_err(|err| ContainerError::ProviderError(err.to_string()))?;
-        let pubkey_hex = pubkey.to_hex();
-        let unsigned = UnsignedEvent {
-            pubkey: pubkey_hex.clone(),
-            created_at,
-            kind,
-            tags,
-            content,
-        };
-        let id = get_event_hash(&unsigned)
-            .map_err(|err| ContainerError::ProviderError(err.to_string()))?;
-        let id_bytes =
-            hex::decode(&id).map_err(|err| ContainerError::ProviderError(err.to_string()))?;
-        let sig = self
-            .signer
-            .sign(&self.agent_id, &id_bytes)
-            .map_err(|err| ContainerError::ProviderError(err.to_string()))?;
-
-        Ok(nostr::Event {
-            id,
-            pubkey: pubkey_hex,
-            created_at,
-            kind,
-            tags: unsigned.tags,
-            content: unsigned.content,
-            sig: sig.to_hex(),
-        })
+        sign_dvm_event(&*self.signer, &self.agent_id, kind, tags, content)
+            .map_err(ContainerError::ProviderError)
     }
 
     fn spawn_quote_manager(&self, session_id: String) {
@@ -227,7 +156,7 @@ impl DvmContainerProvider {
                 };
                 if !matches!(
                     session.lifecycle,
-                    DvmContainerLifecycle::AwaitingQuotes { .. }
+                    DvmLifecycle::AwaitingQuotes { .. }
                 ) {
                     return;
                 }
@@ -239,7 +168,7 @@ impl DvmContainerProvider {
                 {
                     Some(best) => best,
                     None => {
-                        session.lifecycle = DvmContainerLifecycle::Failed {
+                        session.lifecycle = DvmLifecycle::Failed {
                             error: "no quotes received".to_string(),
                             at: Timestamp::now(),
                         };
@@ -247,7 +176,7 @@ impl DvmContainerProvider {
                     }
                 };
                 session.accepted_quote = Some(best.clone());
-                session.lifecycle = DvmContainerLifecycle::Processing {
+                session.lifecycle = DvmLifecycle::Processing {
                     accepted_at: Timestamp::now(),
                     provider: best.provider_pubkey.clone(),
                 };
@@ -261,43 +190,12 @@ impl DvmContainerProvider {
                 vec!["status".to_string(), "processing".to_string()],
             ];
 
-            let created_at = SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_secs();
-            let pubkey = match signer.pubkey(&agent_id) {
-                Ok(pubkey) => pubkey,
-                Err(_) => return,
-            };
-            let pubkey_hex = pubkey.to_hex();
-            let unsigned = UnsignedEvent {
-                pubkey: pubkey_hex.clone(),
-                created_at,
-                kind: KIND_JOB_FEEDBACK,
-                tags,
-                content: String::new(),
-            };
-            let id = match get_event_hash(&unsigned) {
-                Ok(id) => id,
-                Err(_) => return,
-            };
-            let id_bytes = match hex::decode(&id) {
-                Ok(bytes) => bytes,
-                Err(_) => return,
-            };
-            let sig = match signer.sign(&agent_id, &id_bytes) {
-                Ok(sig) => sig,
-                Err(_) => return,
-            };
-            let event = nostr::Event {
-                id,
-                pubkey: pubkey_hex,
-                created_at,
-                kind: KIND_JOB_FEEDBACK,
-                tags: unsigned.tags,
-                content: unsigned.content,
-                sig: sig.to_hex(),
-            };
+            let event =
+                match sign_dvm_event(&*signer, &agent_id, KIND_JOB_FEEDBACK, tags, String::new())
+                {
+                    Ok(event) => event,
+                    Err(_) => return,
+                };
             let _ = transport.publish(event).await;
         });
     }
@@ -428,7 +326,7 @@ impl ContainerProvider for DvmContainerProvider {
                     request_event_id: event_id.clone(),
                     request: request.clone(),
                     submitted_at: now,
-                    lifecycle: DvmContainerLifecycle::AwaitingQuotes {
+                    lifecycle: DvmLifecycle::AwaitingQuotes {
                         since: now,
                         timeout_at: Timestamp::from_millis(
                             now.as_millis() + DVM_QUOTE_WINDOW.as_millis() as u64,
@@ -452,18 +350,18 @@ impl ContainerProvider for DvmContainerProvider {
         let guard = self.sessions.read().unwrap_or_else(|e| e.into_inner());
         let session = guard.get(session_id)?;
         Some(match &session.lifecycle {
-            DvmContainerLifecycle::AwaitingQuotes { .. } => SessionState::Provisioning {
+            DvmLifecycle::AwaitingQuotes { .. } => SessionState::Provisioning {
                 started_at: session.submitted_at,
             },
-            DvmContainerLifecycle::Processing { accepted_at, .. } => SessionState::Running {
+            DvmLifecycle::Processing { accepted_at, .. } => SessionState::Running {
                 started_at: *accepted_at,
                 commands_completed: 0,
             },
-            DvmContainerLifecycle::PendingSettlement { .. } => SessionState::Running {
+            DvmLifecycle::PendingSettlement { .. } => SessionState::Running {
                 started_at: session.submitted_at,
                 commands_completed: 0,
             },
-            DvmContainerLifecycle::Settled { .. } => session
+            DvmLifecycle::Settled { .. } => session
                 .result
                 .clone()
                 .map(SessionState::Complete)
@@ -471,7 +369,7 @@ impl ContainerProvider for DvmContainerProvider {
                     started_at: session.submitted_at,
                     commands_completed: 0,
                 }),
-            DvmContainerLifecycle::Failed { error, at } => SessionState::Failed {
+            DvmLifecycle::Failed { error, at } => SessionState::Failed {
                 error: error.clone(),
                 at: *at,
             },
@@ -539,7 +437,7 @@ impl ContainerProvider for DvmContainerProvider {
             let session = guard
                 .get_mut(session_id)
                 .ok_or(ContainerError::SessionNotFound)?;
-            session.lifecycle = DvmContainerLifecycle::Failed {
+            session.lifecycle = DvmLifecycle::Failed {
                 error: "cancelled".to_string(),
                 at: Timestamp::now(),
             };
@@ -580,7 +478,7 @@ fn handle_dvm_container_feedback(
         };
         if matches!(
             session.lifecycle,
-            DvmContainerLifecycle::Failed { .. } | DvmContainerLifecycle::Settled { .. }
+            DvmLifecycle::Failed { .. } | DvmLifecycle::Settled { .. }
         ) {
             return;
         }
@@ -592,14 +490,14 @@ fn handle_dvm_container_feedback(
                     let price_usd = match fx.sats_to_usd(price_sats) {
                         Ok(price_usd) => price_usd,
                         Err(err) => {
-                            session.lifecycle = DvmContainerLifecycle::Failed {
+                            session.lifecycle = DvmLifecycle::Failed {
                                 error: err.to_string(),
                                 at: Timestamp::now(),
                             };
                             return;
                         }
                     };
-                    let quote = DvmContainerQuote {
+                    let quote = DvmQuote {
                         provider_pubkey: feedback.provider_pubkey.clone(),
                         price_sats,
                         price_usd,
@@ -627,7 +525,7 @@ fn handle_dvm_container_feedback(
                 });
             }
             DvmFeedbackStatus::Job(JobStatus::Processing) => {
-                session.lifecycle = DvmContainerLifecycle::Processing {
+                session.lifecycle = DvmLifecycle::Processing {
                     accepted_at: Timestamp::now(),
                     provider: feedback.provider_pubkey.clone(),
                 };
@@ -648,14 +546,14 @@ fn handle_dvm_container_feedback(
                     payment_request =
                         Some((invoice, feedback.amount_msats, feedback.provider_pubkey));
                 } else {
-                    session.lifecycle = DvmContainerLifecycle::Failed {
+                    session.lifecycle = DvmLifecycle::Failed {
                         error: "payment required but invoice missing".to_string(),
                         at: Timestamp::now(),
                     };
                 }
             }
             DvmFeedbackStatus::Job(JobStatus::Error) => {
-                session.lifecycle = DvmContainerLifecycle::Failed {
+                session.lifecycle = DvmLifecycle::Failed {
                     error: feedback
                         .status_extra
                         .unwrap_or_else(|| "provider error".to_string()),
@@ -672,7 +570,7 @@ fn handle_dvm_container_feedback(
     let Some(wallet) = wallet.as_ref() else {
         let mut guard = sessions.write().unwrap_or_else(|e| e.into_inner());
         if let Some(session) = guard.get_mut(session_id) {
-            session.lifecycle = DvmContainerLifecycle::Failed {
+            session.lifecycle = DvmLifecycle::Failed {
                 error: "wallet not configured".to_string(),
                 at: Timestamp::now(),
             };
@@ -688,7 +586,7 @@ fn handle_dvm_container_feedback(
             if let Some(session) = guard.get_mut(session_id) {
                 session.payment_made = true;
                 session.paid_amount_sats = Some(payment.amount_sats);
-                session.lifecycle = DvmContainerLifecycle::Processing {
+                session.lifecycle = DvmLifecycle::Processing {
                     accepted_at: Timestamp::now(),
                     provider: provider_pubkey,
                 };
@@ -697,7 +595,7 @@ fn handle_dvm_container_feedback(
         Err(err) => {
             let mut guard = sessions.write().unwrap_or_else(|e| e.into_inner());
             if let Some(session) = guard.get_mut(session_id) {
-                session.lifecycle = DvmContainerLifecycle::Failed {
+                session.lifecycle = DvmLifecycle::Failed {
                     error: err.to_string(),
                     at: Timestamp::now(),
                 };
@@ -726,13 +624,13 @@ fn handle_dvm_container_result(
         let Some(session) = guard.get_mut(session_id) else {
             return;
         };
-        if matches!(session.lifecycle, DvmContainerLifecycle::Failed { .. }) {
+        if matches!(session.lifecycle, DvmLifecycle::Failed { .. }) {
             return;
         }
         let run = match SandboxRunResult::from_job_result(&result_event) {
             Ok(run) => run,
             Err(err) => {
-                session.lifecycle = DvmContainerLifecycle::Failed {
+                session.lifecycle = DvmLifecycle::Failed {
                     error: err.to_string(),
                     at: Timestamp::now(),
                 };
@@ -752,7 +650,7 @@ fn handle_dvm_container_result(
         let cost_usd = match fx.sats_to_usd(cost_sats) {
             Ok(cost_usd) => cost_usd,
             Err(err) => {
-                session.lifecycle = DvmContainerLifecycle::Failed {
+                session.lifecycle = DvmLifecycle::Failed {
                     error: err.to_string(),
                     at: Timestamp::now(),
                 };
@@ -805,12 +703,12 @@ fn handle_dvm_container_result(
         };
         session.result = Some(response.clone());
         if invoice.is_some() {
-            session.lifecycle = DvmContainerLifecycle::PendingSettlement {
+            session.lifecycle = DvmLifecycle::PendingSettlement {
                 result_at: Timestamp::now(),
                 invoice: invoice.clone(),
             };
         } else {
-            session.lifecycle = DvmContainerLifecycle::Settled {
+            session.lifecycle = DvmLifecycle::Settled {
                 settled_at: Timestamp::now(),
             };
         }
@@ -821,7 +719,7 @@ fn handle_dvm_container_result(
         if already_paid {
             let mut guard = sessions.write().unwrap_or_else(|e| e.into_inner());
             if let Some(session) = guard.get_mut(session_id) {
-                session.lifecycle = DvmContainerLifecycle::Settled {
+                session.lifecycle = DvmLifecycle::Settled {
                     settled_at: Timestamp::now(),
                 };
             }
@@ -832,7 +730,7 @@ fn handle_dvm_container_result(
     let Some(wallet) = wallet.as_ref() else {
         let mut guard = sessions.write().unwrap_or_else(|e| e.into_inner());
         if let Some(session) = guard.get_mut(session_id) {
-            session.lifecycle = DvmContainerLifecycle::Failed {
+            session.lifecycle = DvmLifecycle::Failed {
                 error: "wallet not configured".to_string(),
                 at: Timestamp::now(),
             };
@@ -849,7 +747,7 @@ fn handle_dvm_container_result(
                 session.payment_made = true;
                 session.paid_amount_sats = Some(payment.amount_sats);
                 session.result = Some(response);
-                session.lifecycle = DvmContainerLifecycle::Settled {
+                session.lifecycle = DvmLifecycle::Settled {
                     settled_at: Timestamp::now(),
                 };
             }
@@ -857,7 +755,7 @@ fn handle_dvm_container_result(
         Err(err) => {
             let mut guard = sessions.write().unwrap_or_else(|e| e.into_inner());
             if let Some(session) = guard.get_mut(session_id) {
-                session.lifecycle = DvmContainerLifecycle::Failed {
+                session.lifecycle = DvmLifecycle::Failed {
                     error: err.to_string(),
                     at: Timestamp::now(),
                 };
@@ -913,4 +811,3 @@ impl AsyncExecutor {
         self.runtime.spawn(fut);
     }
 }
-
