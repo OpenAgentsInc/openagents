@@ -45,6 +45,7 @@ type BusyState = {
   doctor: boolean
   connect: boolean
   disconnect: boolean
+  send: boolean
 }
 
 type StatusState = {
@@ -57,6 +58,8 @@ type StatusState = {
   lastEventTime: string
   lastUpdated: string
   commandInput: string
+  messageInput: string
+  threadId: string | null
   busy: BusyState
 }
 
@@ -67,6 +70,8 @@ type StatusEvent =
   | { type: "UpdateWorkspacePath"; path: string }
   | { type: "UpdateCommandInput"; value: string }
   | { type: "SubmitCommand"; value: string }
+  | { type: "UpdateMessageInput"; value: string }
+  | { type: "SubmitMessage"; value: string }
   | { type: "RefreshWorkspaceStatus" }
   | { type: "AppServerEvent"; payload: AppServerEvent }
 
@@ -97,6 +102,36 @@ const formatEvent = (payload: AppServerEvent) => {
     return { time, text: header }
   }
   return { time, text: `${header}\n${JSON.stringify(params, null, 2)}` }
+}
+
+const extractThreadId = (value: unknown): string | null => {
+  if (!value || typeof value !== "object") {
+    return null
+  }
+  const readContainer = (container: unknown): string | null => {
+    if (!container || typeof container !== "object") {
+      return null
+    }
+    const record = container as Record<string, unknown>
+    const direct = record.threadId ?? record.thread_id
+    if (typeof direct === "string") {
+      return direct
+    }
+    const thread = record.thread
+    if (thread && typeof thread === "object") {
+      const id = (thread as Record<string, unknown>).id
+      if (typeof id === "string") {
+        return id
+      }
+    }
+    return null
+  }
+  const record = value as Record<string, unknown>
+  return (
+    readContainer(record) ||
+    readContainer(record.result) ||
+    readContainer(record.params)
+  )
 }
 
 const deriveStatus = (state: StatusState) => {
@@ -134,10 +169,13 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
     lastEventTime: "--",
     lastUpdated: nowTime(),
     commandInput: "",
+    messageInput: "",
+    threadId: null,
     busy: {
       doctor: false,
       connect: false,
       disconnect: false,
+      send: false,
     },
   }),
 
@@ -153,6 +191,8 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
       const connectDisabled = state.busy.connect
       const disconnectDisabled = state.busy.disconnect || !state.workspaceConnected
       const refreshDisabled = state.busy.doctor
+      const sendDisabled = state.busy.send
+      const threadLabel = state.threadId ?? "--"
 
       return html`
         <div class="terminal">
@@ -242,6 +282,8 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
                   <div class="value ${state.workspaceConnected ? "ok" : "error"}">${connectionLabel}</div>
                   <div class="label">Last Event</div>
                   <div class="value">${state.lastEventTime}</div>
+                  <div class="label">Thread</div>
+                  <div class="value mono">${threadLabel}</div>
                 </div>
                 <div class="note">${state.workspaceMessage || ""}</div>
               </div>
@@ -264,12 +306,35 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
                   <div class="value ${state.workspaceConnected ? "ok" : "error"}">${connectionLabel}</div>
                   <div class="label">Event Time</div>
                   <div class="value">${state.lastEventTime}</div>
+                  <div class="label">Thread</div>
+                  <div class="value mono">${threadLabel}</div>
                   <div class="label">Update</div>
                   <div class="value">${state.lastUpdated}</div>
                 </div>
                 <div class="note">${state.workspaceMessage || state.doctor.detail || ""}</div>
               </div>
             </section>
+          </div>
+
+          <div class="compose-bar">
+            <div class="compose-inner">
+              <span class="compose-label">Input</span>
+              <input
+                id="message-input"
+                class="compose-input"
+                type="text"
+                placeholder="Type a message or /command"
+                value="${state.messageInput}"
+              />
+              <button
+                class="compose-submit"
+                data-action="send-message"
+                ${sendDisabled ? "disabled" : ""}
+              >
+                SEND
+              </button>
+            </div>
+            <div class="compose-hints">Enter to send | /connect /disconnect /doctor /cd /new /help</div>
           </div>
 
           <div class="status-strip bottom">
@@ -292,6 +357,73 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
 
   handleEvent: (event, ctx) =>
     Effect.gen(function* () {
+      const runCommand = (commandText: string) =>
+        Effect.gen(function* () {
+          const command = commandText.trim()
+          if (!command) {
+            return
+          }
+          const [rawHead, ...rest] = command.split(/\s+/)
+          const head = rawHead.toLowerCase()
+          const arg = rest.join(" ").trim()
+
+          if (head === "connect") {
+            yield* ctx.emit({ type: "ConnectWorkspace" })
+            return
+          }
+          if (head === "disconnect") {
+            yield* ctx.emit({ type: "DisconnectWorkspace" })
+            return
+          }
+          if (head === "doctor" || head === "refresh") {
+            yield* ctx.emit({ type: "RefreshDoctor" })
+            yield* ctx.emit({ type: "RefreshWorkspaceStatus" })
+            return
+          }
+          if (head === "cd" || head === "cwd") {
+            if (!arg) {
+              yield* ctx.state.update((state) => ({
+                ...state,
+                workspaceMessage: "Command requires a path.",
+                lastUpdated: nowTime(),
+              }))
+              return
+            }
+            window.localStorage.setItem(workspacePathKey, arg)
+            yield* ctx.state.update((state) => ({
+              ...state,
+              workspacePath: arg,
+              workspaceMessage: `Working dir set to ${arg}`,
+              lastUpdated: nowTime(),
+            }))
+            return
+          }
+          if (head === "new" || head === "thread") {
+            yield* ctx.state.update((state) => ({
+              ...state,
+              threadId: null,
+              workspaceMessage: "Next send will start a new thread.",
+              lastUpdated: nowTime(),
+            }))
+            return
+          }
+          if (head === "help" || head === "?") {
+            yield* ctx.state.update((state) => ({
+              ...state,
+              workspaceMessage:
+                "Commands: /connect /disconnect /doctor /cd <path> /new /help",
+              lastUpdated: nowTime(),
+            }))
+            return
+          }
+
+          yield* ctx.state.update((state) => ({
+            ...state,
+            workspaceMessage: `Unknown command: ${command}`,
+            lastUpdated: nowTime(),
+          }))
+        })
+
       if (event.type === "UpdateWorkspacePath") {
         yield* ctx.state.update((current) => ({
           ...current,
@@ -308,6 +440,14 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
         return
       }
 
+      if (event.type === "UpdateMessageInput") {
+        yield* ctx.state.update((current) => ({
+          ...current,
+          messageInput: event.value,
+        }))
+        return
+      }
+
       if (event.type === "SubmitCommand") {
         const command = event.value.trim()
         if (!command) {
@@ -318,44 +458,97 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
           return
         }
 
-        const [rawHead, ...rest] = command.split(/\s+/)
-        const head = rawHead.toLowerCase()
-        const arg = rest.join(" ").trim()
-
-        if (head === "connect") {
-          yield* ctx.emit({ type: "ConnectWorkspace" })
-        } else if (head === "disconnect") {
-          yield* ctx.emit({ type: "DisconnectWorkspace" })
-        } else if (head === "doctor" || head === "refresh") {
-          yield* ctx.emit({ type: "RefreshDoctor" })
-        } else if (head === "cd" || head === "cwd") {
-          if (!arg) {
-            yield* ctx.state.update((state) => ({
-              ...state,
-              workspaceMessage: "Command requires a path.",
-              lastUpdated: nowTime(),
-            }))
-          } else {
-            window.localStorage.setItem(workspacePathKey, arg)
-            yield* ctx.state.update((state) => ({
-              ...state,
-              workspacePath: arg,
-              workspaceMessage: `Working dir set to ${arg}`,
-              lastUpdated: nowTime(),
-            }))
-          }
-        } else {
-          yield* ctx.state.update((state) => ({
-            ...state,
-            workspaceMessage: `Unknown command: ${command}`,
-            lastUpdated: nowTime(),
-          }))
-        }
+        yield* runCommand(command)
 
         yield* ctx.state.update((state) => ({
           ...state,
           commandInput: "",
         }))
+        return
+      }
+
+      if (event.type === "SubmitMessage") {
+        const rawInput = event.value.trim()
+        if (!rawInput) {
+          yield* ctx.state.update((state) => ({
+            ...state,
+            messageInput: "",
+          }))
+          return
+        }
+
+        if (rawInput.startsWith("/")) {
+          yield* runCommand(rawInput.slice(1))
+          yield* ctx.state.update((state) => ({
+            ...state,
+            messageInput: "",
+          }))
+          return
+        }
+
+        const current = yield* ctx.state.get
+        if (!current.workspaceConnected) {
+          yield* ctx.state.update((state) => ({
+            ...state,
+            workspaceMessage: "Connect the workspace before sending a message.",
+            lastUpdated: nowTime(),
+          }))
+          return
+        }
+
+        yield* ctx.state.update((state) => ({
+          ...state,
+          busy: { ...state.busy, send: true },
+          workspaceMessage: "Sending message...",
+        }))
+
+        let threadId = current.threadId
+        if (!threadId) {
+          const response = yield* invokeCommand<unknown>("start_thread", {
+            workspaceId: current.workspaceId,
+          })
+          threadId = extractThreadId(response)
+          if (!threadId) {
+            yield* ctx.state.update((state) => ({
+              ...state,
+              busy: { ...state.busy, send: false },
+              workspaceMessage: "Failed to start a new thread.",
+              lastUpdated: nowTime(),
+            }))
+            return
+          }
+          yield* ctx.state.update((state) => ({
+            ...state,
+            threadId,
+          }))
+        }
+
+        yield* invokeCommand<unknown>("send_user_message", {
+          workspaceId: current.workspaceId,
+          threadId,
+          text: rawInput,
+          model: null,
+          accessMode: null,
+        }).pipe(
+          Effect.tap(() =>
+            ctx.state.update((state) => ({
+              ...state,
+              busy: { ...state.busy, send: false },
+              messageInput: "",
+              workspaceMessage: "Message sent.",
+              lastUpdated: nowTime(),
+            }))
+          ),
+          Effect.catchAll((error) =>
+            ctx.state.update((state) => ({
+              ...state,
+              busy: { ...state.busy, send: false },
+              workspaceMessage: `Send failed: ${String(error)}`,
+              lastUpdated: nowTime(),
+            }))
+          ),
+          Effect.asVoid
+        )
         return
       }
 
@@ -457,6 +650,7 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
               workspaceConnected: response.success,
               workspaceMessage: response.message,
               busy: { ...state.busy, connect: false },
+              threadId: response.success ? null : state.threadId,
               lastUpdated: nowTime(),
             }))
           ),
@@ -491,6 +685,7 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
               workspaceConnected: false,
               workspaceMessage: response.message,
               busy: { ...state.busy, disconnect: false },
+              threadId: null,
               lastUpdated: nowTime(),
             }))
           ),
@@ -513,6 +708,10 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
           return
         }
         const formatted = formatEvent(event.payload)
+        const eventThreadId = extractThreadId(event.payload.message)
+        const shouldUpdateThread =
+          event.payload.message?.method === "thread/started" ||
+          current.threadId === null
         yield* ctx.state.update((state) => ({
           ...state,
           lastEventText: formatted.text,
@@ -522,6 +721,8 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
             event.payload.message?.method === "codex/connected"
               ? true
               : state.workspaceConnected,
+          threadId:
+            shouldUpdateThread && eventThreadId ? eventThreadId : state.threadId,
         }))
       }
     }),
@@ -578,6 +779,17 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
 
       yield* ctx.dom.delegate(
         ctx.container,
+        "#message-input",
+        "input",
+        (event, target) => {
+          void event
+          const value = (target as HTMLInputElement).value
+          emit({ type: "UpdateMessageInput", value })
+        }
+      )
+
+      yield* ctx.dom.delegate(
+        ctx.container,
         "#command-input",
         "keydown",
         (event, target) => {
@@ -589,6 +801,37 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
               value: (target as HTMLInputElement).value,
             })
           }
+        }
+      )
+
+      yield* ctx.dom.delegate(
+        ctx.container,
+        "#message-input",
+        "keydown",
+        (event, target) => {
+          const keyEvent = event as KeyboardEvent
+          if (keyEvent.key === "Enter") {
+            keyEvent.preventDefault()
+            emit({
+              type: "SubmitMessage",
+              value: (target as HTMLInputElement).value,
+            })
+          }
+        }
+      )
+
+      yield* ctx.dom.delegate(
+        ctx.container,
+        "[data-action=\"send-message\"]",
+        "click",
+        () => {
+          const input = ctx.container.querySelector(
+            "#message-input"
+          ) as HTMLInputElement | null
+          emit({
+            type: "SubmitMessage",
+            value: input?.value ?? "",
+          })
         }
       )
 
