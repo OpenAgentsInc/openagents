@@ -10,6 +10,9 @@ use std::sync::Arc;
 use tokio::sync::{Mutex, mpsc};
 
 use super::PlanModeConfig;
+use super::config::PlanModeOptimizationConfig;
+use super::plan_mode_optimizer::load_latest_instruction;
+use super::plan_mode_signatures::PlanModeSignatureKind;
 use super::planning::{PlanModePipeline, PlanResult};
 use crate::agent::{
     trait_def::Agent,
@@ -17,6 +20,7 @@ use crate::agent::{
     unified::{AgentId, UnifiedConversationItem, UnifiedEvent},
 };
 use crate::contracts::ipc::UiEvent;
+use dsrs::core::MetaSignature;
 use dsrs::signature_registry::signature_info;
 use dsrs::signatures::{
     ParallelExplorationSignature, PlanSynthesisSignature, ResultValidationSignature,
@@ -118,18 +122,40 @@ impl AdjutantAgent {
 
             let mut tree = UiTreeState::new("Autopilot", "Ready");
 
-            let steps = [
-                ("topic", signature_info(TopicDecompositionSignature::new())),
-                (
-                    "exploration",
-                    signature_info(ParallelExplorationSignature::new()),
+        let steps = [
+            (
+                "topic",
+                signature_info_with_optimization(
+                    TopicDecompositionSignature::new(),
+                    PlanModeSignatureKind::TopicDecomposition,
+                    &self.config.optimization,
                 ),
-                ("synthesis", signature_info(PlanSynthesisSignature::new())),
-                (
-                    "validation",
-                    signature_info(ResultValidationSignature::new()),
+            ),
+            (
+                "exploration",
+                signature_info_with_optimization(
+                    ParallelExplorationSignature::new(),
+                    PlanModeSignatureKind::ParallelExploration,
+                    &self.config.optimization,
                 ),
-            ];
+            ),
+            (
+                "synthesis",
+                signature_info_with_optimization(
+                    PlanSynthesisSignature::new(),
+                    PlanModeSignatureKind::PlanSynthesis,
+                    &self.config.optimization,
+                ),
+            ),
+            (
+                "validation",
+                signature_info_with_optimization(
+                    ResultValidationSignature::new(),
+                    PlanModeSignatureKind::ResultValidation,
+                    &self.config.optimization,
+                ),
+            ),
+        ];
 
             let mut new_elements: Vec<(String, Value)> = Vec::new();
             let mut child_keys: Vec<String> = Vec::new();
@@ -757,4 +783,24 @@ fn short_signature_name(name: &str) -> String {
 
 fn first_line(text: &str) -> String {
     text.lines().next().unwrap_or(text).trim().to_string()
+}
+
+fn signature_info_with_optimization<S: MetaSignature>(
+    mut signature: S,
+    kind: PlanModeSignatureKind,
+    config: &PlanModeOptimizationConfig,
+) -> dsrs::signature_registry::DsrsSignatureInfo {
+    if config.apply_optimized_instructions {
+        if let Some(instruction) = load_latest_instruction(kind) {
+            if let Err(err) = signature.update_instruction(instruction) {
+                eprintln!(
+                    "Failed to apply optimized instruction for {}: {}",
+                    kind.name(),
+                    err
+                );
+            }
+        }
+    }
+
+    signature_info(signature)
 }

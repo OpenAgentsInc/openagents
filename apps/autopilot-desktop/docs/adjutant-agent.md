@@ -176,6 +176,7 @@ pub struct PlanModeOptimizationConfig {
 Plan mode now records training examples, benchmarks signature quality, and writes optimized
 instructions to per-signature manifests. Optimizations run on a cadence with configurable
 thresholds and can be backgrounded.
+Signature panels read optimized instructions when `apply_optimized_instructions` is enabled.
 
 Optimizers: `MIPROv2`, `COPRO`, `GEPA`.
 
