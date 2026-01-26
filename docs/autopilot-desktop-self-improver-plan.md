@@ -48,8 +48,36 @@ This plan adapts the crest self-improver concepts to the current OpenAgents code
 - A dataset pipeline that captures examples, filters for quality, and keeps a stable evaluation set.
 - A promotion system that only adopts optimized instructions when they beat baseline on benchmarks.
 - A clear, inspectable audit trail of optimization results and applied manifests.
+- A privacy-preserving “experience signals” layer that detects friction/delight and feeds the self-improvement loop.
 
 ## Implementation plan (OpenAgents-specific)
+
+### Phase 0.5: Experience signals (friction + delight) layer
+**Goal:** Go beyond traditional metrics by extracting privacy-preserving signals of user struggle and success, and feeding them into the optimizer and issue loop.
+
+1) **Session signal extraction (no raw content exposure)**
+- Build a batch job that consumes session events (and internal error logs) and emits *abstracted* signals only:
+  - `friction` events (rephrasing loops, error recovery failures, context churn, abandoned tool flows, escalation markers)
+  - `delight` events (first-attempt success, rapid approvals, explicit time-saved acknowledgements)
+- Output *citations* as structured, anonymized summaries (e.g., “user rephrased request 3 times after tool failure”) without raw quotes or code.
+
+2) **Facet schema + evolution**
+- Add a structured facet schema per session (intent, languages, frameworks, tool outcomes, completion/abandonment).
+- Use embedding clustering over session summaries to propose *new* facet categories when patterns don’t fit existing facets.
+- Track facet evolution over time (when new facet types are adopted).
+
+3) **Friction/delight thresholds → actions**
+- Define thresholds for “friction rate” spikes or new high-severity clusters.
+- When thresholds cross, open an issue and link it to the relevant signature/pipeline stage.
+- Feed high-friction clusters into training curation (e.g., include them in eval sets or add proxy metrics).
+
+4) **Correlation with system behavior**
+- Join friction/delight signals with internal errors and release versions to detect regressions (e.g., a new build increases context churn).
+- Use this data to drive targeted optimizer runs (signature-specific or pipeline step-specific).
+
+5) **Reporting**
+- Add a daily/weekly aggregated report with confidence bands and a drill-down view of individual sessions (signal-only, no raw content).
+- Keep only the abstracted signal artifacts in the repo/logs; never store raw user content.
 
 ### Phase 0: Inventory + guardrails (short)
 - Add a short “Self-improver status” doc section or command output that prints:
@@ -118,6 +146,7 @@ This plan adapts the crest self-improver concepts to the current OpenAgents code
   - proxy >= threshold
   - truth score >= threshold
   - delta over baseline >= `min_promotion_delta`
+- **Experience signals** (friction/delight) provide an orthogonal evaluation axis to catch regressions that look “successful” in raw metrics.
 
 ## Data management
 - Training data: `~/.openagents/autopilot-desktop/training/`
@@ -138,3 +167,4 @@ This plan adapts the crest self-improver concepts to the current OpenAgents code
 
 ## Agent Action Log
 - 2026-01-26: Added agent note requiring log review + append-only action entries. (doc update)
+- 2026-01-26: Integrated privacy-preserving friction/delight signals, facet evolution, and threshold-triggered self-improvement guidance. (doc update)
