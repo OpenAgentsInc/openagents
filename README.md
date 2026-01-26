@@ -1,8 +1,6 @@
-# OpenAgents (Autopilot Desktop)
+# OpenAgents: Autopilot
 
-**Autopilot Desktop** is the primary product in this repo: a local-first coding agent
-that plans → executes → verifies → produces replayable artifacts. It runs on your machine,
-works against your repo, and keeps the full trace of what happened.
+**Autopilot** is the primary product in this repo: a local-first desktop agent that plans → executes → verifies → produces replayable artifacts. It runs on your machine, works in your repo, and keeps the full trace of what happened.
 
 OpenAgents also contains the broader runtime/compiler/market stack used by Autopilot.
 If you're looking for the philosophy / "why open", start with **[MANIFESTO.md](./MANIFESTO.md)**.
@@ -20,7 +18,7 @@ For release builds, see **[apps/autopilot-desktop/docs/autopilot/DISTRIBUTION.md
 
 ## What you get
 
-Autopilot Desktop is designed to be:
+Autopilot is designed to be:
 
 * **Local-first**: runs against your repo on your machine by default
 * **Verifiable**: uses deterministic checks (tests/builds) as the ground-truth loop
