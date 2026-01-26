@@ -2024,6 +2024,9 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
 
       if (event.type === "StartNewSession") {
         const current = yield* ctx.state.get
+        if (current.busy.newSession) {
+          return
+        }
         if (!current.workspaceConnected) {
           yield* ctx.state.update((state) => ({
             ...state,
