@@ -12,40 +12,6 @@ pub struct DvmProvider {
 
 #[cfg(not(target_arch = "wasm32"))]
 #[derive(Clone)]
-struct DvmQuote {
-    provider_pubkey: String,
-    price_sats: u64,
-    price_usd: u64,
-    event_id: String,
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-#[derive(Clone)]
-#[allow(dead_code)]
-enum DvmLifecycle {
-    AwaitingQuotes {
-        since: Timestamp,
-        timeout_at: Timestamp,
-    },
-    Processing {
-        accepted_at: Timestamp,
-        provider: String,
-    },
-    PendingSettlement {
-        result_at: Timestamp,
-        invoice: Option<String>,
-    },
-    Settled {
-        settled_at: Timestamp,
-    },
-    Failed {
-        error: String,
-        at: Timestamp,
-    },
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-#[derive(Clone)]
 #[allow(dead_code)]
 struct DvmJobState {
     job_id: String,
@@ -170,13 +136,8 @@ impl DvmProvider {
         }
 
         let max_cost_usd = request.max_cost_usd.unwrap_or(100_000);
-        let max_cost_sats = self
-            .fx
-            .usd_to_sats(max_cost_usd)
-            .map_err(|err| ComputeError::ProviderError(err.to_string()))?;
-        let bid_msats = u128::from(max_cost_sats) * 1000;
-        let bid_msats = u64::try_from(bid_msats)
-            .map_err(|_| ComputeError::ProviderError("bid overflow".to_string()))?;
+        let bid_msats = bid_msats_for_max_cost(&self.fx, max_cost_usd)
+            .map_err(ComputeError::ProviderError)?;
         job = job.with_bid(bid_msats);
 
         Ok(job)
@@ -188,40 +149,8 @@ impl DvmProvider {
         tags: Vec<Vec<String>>,
         content: String,
     ) -> Result<nostr::Event, ComputeError> {
-        let created_at = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs();
-        let pubkey = self
-            .signer
-            .pubkey(&self.agent_id)
-            .map_err(|err| ComputeError::ProviderError(err.to_string()))?;
-        let pubkey_hex = pubkey.to_hex();
-        let unsigned = UnsignedEvent {
-            pubkey: pubkey_hex.clone(),
-            created_at,
-            kind,
-            tags,
-            content,
-        };
-        let id = get_event_hash(&unsigned)
-            .map_err(|err| ComputeError::ProviderError(err.to_string()))?;
-        let id_bytes =
-            hex::decode(&id).map_err(|err| ComputeError::ProviderError(err.to_string()))?;
-        let sig = self
-            .signer
-            .sign(&self.agent_id, &id_bytes)
-            .map_err(|err| ComputeError::ProviderError(err.to_string()))?;
-
-        Ok(nostr::Event {
-            id,
-            pubkey: pubkey_hex,
-            created_at,
-            kind,
-            tags: unsigned.tags,
-            content: unsigned.content,
-            sig: sig.to_hex(),
-        })
+        sign_dvm_event(&*self.signer, &self.agent_id, kind, tags, content)
+            .map_err(ComputeError::ProviderError)
     }
 
     fn spawn_quote_manager(&self, job_id: String) {
@@ -273,43 +202,12 @@ impl DvmProvider {
                 vec!["status".to_string(), "processing".to_string()],
             ];
 
-            let created_at = SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_secs();
-            let pubkey = match signer.pubkey(&agent_id) {
-                Ok(pubkey) => pubkey,
-                Err(_) => return,
-            };
-            let pubkey_hex = pubkey.to_hex();
-            let unsigned = UnsignedEvent {
-                pubkey: pubkey_hex.clone(),
-                created_at,
-                kind: KIND_JOB_FEEDBACK,
-                tags,
-                content: String::new(),
-            };
-            let id = match get_event_hash(&unsigned) {
-                Ok(id) => id,
-                Err(_) => return,
-            };
-            let id_bytes = match hex::decode(&id) {
-                Ok(bytes) => bytes,
-                Err(_) => return,
-            };
-            let sig = match signer.sign(&agent_id, &id_bytes) {
-                Ok(sig) => sig,
-                Err(_) => return,
-            };
-            let event = nostr::Event {
-                id,
-                pubkey: pubkey_hex,
-                created_at,
-                kind: KIND_JOB_FEEDBACK,
-                tags: unsigned.tags,
-                content: unsigned.content,
-                sig: sig.to_hex(),
-            };
+            let event =
+                match sign_dvm_event(&*signer, &agent_id, KIND_JOB_FEEDBACK, tags, String::new())
+                {
+                    Ok(event) => event,
+                    Err(_) => return,
+                };
             let _ = transport.publish(event).await;
         });
     }

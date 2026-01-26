@@ -1,14 +1,17 @@
 //! Shared helpers for NIP-90 DVM providers.
 
 use async_trait::async_trait;
-use nostr::{Event, JobStatus, KIND_JOB_FEEDBACK};
+use crate::fx::FxRateCache;
+use crate::identity::SigningService;
+use crate::types::{AgentId, Timestamp};
+use nostr::{Event, JobStatus, KIND_JOB_FEEDBACK, UnsignedEvent, get_event_hash};
 use nostr_client::{PoolConfig, RelayPool};
 use serde_json::Value;
 use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
 };
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tokio::sync::mpsc;
 
 /// Parsed DVM feedback status.
@@ -32,6 +35,38 @@ pub(crate) struct DvmFeedback {
     pub content: String,
     pub provider_pubkey: String,
     pub event_id: String,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct DvmQuote {
+    pub provider_pubkey: String,
+    pub price_sats: u64,
+    pub price_usd: u64,
+    pub event_id: String,
+}
+
+#[derive(Debug, Clone)]
+#[allow(dead_code)]
+pub(crate) enum DvmLifecycle {
+    AwaitingQuotes {
+        since: Timestamp,
+        timeout_at: Timestamp,
+    },
+    Processing {
+        accepted_at: Timestamp,
+        provider: String,
+    },
+    PendingSettlement {
+        result_at: Timestamp,
+        invoice: Option<String>,
+    },
+    Settled {
+        settled_at: Timestamp,
+    },
+    Failed {
+        error: String,
+        at: Timestamp,
+    },
 }
 
 pub(crate) fn parse_feedback_event(event: &Event) -> Option<DvmFeedback> {
@@ -92,6 +127,54 @@ pub(crate) fn parse_feedback_event(event: &Event) -> Option<DvmFeedback> {
 
 pub(crate) fn msats_to_sats(msats: u64) -> u64 {
     (msats + 999) / 1000
+}
+
+pub(crate) fn bid_msats_for_max_cost(
+    fx: &FxRateCache,
+    max_cost_usd: u64,
+) -> Result<u64, String> {
+    let max_cost_sats = fx
+        .usd_to_sats(max_cost_usd)
+        .map_err(|err| err.to_string())?;
+    let bid_msats = u128::from(max_cost_sats) * 1000;
+    u64::try_from(bid_msats).map_err(|_| "bid overflow".to_string())
+}
+
+pub(crate) fn sign_dvm_event(
+    signer: &dyn SigningService,
+    agent_id: &AgentId,
+    kind: u16,
+    tags: Vec<Vec<String>>,
+    content: String,
+) -> Result<Event, String> {
+    let created_at = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    let pubkey = signer.pubkey(agent_id).map_err(|err| err.to_string())?;
+    let pubkey_hex = pubkey.to_hex();
+    let unsigned = UnsignedEvent {
+        pubkey: pubkey_hex.clone(),
+        created_at,
+        kind,
+        tags,
+        content,
+    };
+    let id = get_event_hash(&unsigned).map_err(|err| err.to_string())?;
+    let id_bytes = hex::decode(&id).map_err(|err| err.to_string())?;
+    let sig = signer
+        .sign(agent_id, &id_bytes)
+        .map_err(|err| err.to_string())?;
+
+    Ok(Event {
+        id,
+        pubkey: pubkey_hex,
+        created_at,
+        kind,
+        tags: unsigned.tags,
+        content: unsigned.content,
+        sig: sig.to_hex(),
+    })
 }
 
 #[async_trait]
