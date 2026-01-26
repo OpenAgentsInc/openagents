@@ -1,5 +1,6 @@
 import { Effect } from "effect"
 import { invoke } from "@tauri-apps/api/core"
+import { open } from "@tauri-apps/api/dialog"
 import { listen } from "@tauri-apps/api/event"
 import type { Component } from "../../effuse/index.js"
 import { html } from "../../effuse/index.js"
@@ -95,6 +96,7 @@ type StatusEvent =
   | { type: "RefreshDoctor" }
   | { type: "ConnectWorkspace" }
   | { type: "DisconnectWorkspace" }
+  | { type: "BrowseWorkspace" }
   | { type: "StartNewSession" }
   | { type: "UpdateWorkspacePath"; path: string }
   | { type: "UpdateMessageInput"; value: string }
@@ -998,6 +1000,9 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
                       >
                         CONNECT
                       </button>
+                      <button class="btn" data-action="browse-workspace">
+                        BROWSE
+                      </button>
                       <button
                         class="btn secondary"
                         data-action="disconnect"
@@ -1772,6 +1777,44 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
         return
       }
 
+      if (event.type === "BrowseWorkspace") {
+        const selection = yield* Effect.tryPromise({
+          try: () =>
+            open({
+              directory: true,
+              multiple: false,
+              title: "Select working directory",
+            }),
+          catch: (error) => new Error(String(error)),
+        })
+
+        if (!selection) {
+          return
+        }
+
+        const selectedPath = Array.isArray(selection)
+          ? selection[0]
+          : selection
+
+        if (!selectedPath || isRootPath(selectedPath)) {
+          yield* ctx.state.update((state) => ({
+            ...state,
+            workspaceMessage: rootWorkspaceMessage,
+            lastUpdated: nowTime(),
+          }))
+          return
+        }
+
+        window.localStorage.setItem(workspacePathKey, selectedPath)
+        yield* ctx.state.update((state) => ({
+          ...state,
+          workspacePath: selectedPath,
+          workspaceMessage: `Working dir set to ${selectedPath}`,
+          lastUpdated: nowTime(),
+        }))
+        return
+      }
+
       if (event.type === "ConnectWorkspace") {
         const current = yield* ctx.state.get
         const workspacePath = current.workspacePath.trim()
@@ -2036,6 +2079,13 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
         "[data-action=\"connect\"]",
         "click",
         () => emit({ type: "ConnectWorkspace" })
+      )
+
+      yield* ctx.dom.delegate(
+        ctx.container,
+        "[data-action=\"browse-workspace\"]",
+        "click",
+        () => emit({ type: "BrowseWorkspace" })
       )
 
       yield* ctx.dom.delegate(
