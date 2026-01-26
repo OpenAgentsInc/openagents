@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, State};
 use tokio::time::timeout;
 
 pub(crate) use crate::backend::app_server::WorkspaceSession;
@@ -11,7 +11,6 @@ use crate::backend::app_server::{
     build_codex_command_with_bin, build_codex_path_env, check_codex_installation,
     spawn_workspace_session as spawn_workspace_session_inner,
 };
-use crate::acp::AcpConnection;
 use crate::codex_home::resolve_workspace_codex_home;
 use crate::event_sink::TauriEventSink;
 use crate::contracts::ipc::{
@@ -173,24 +172,7 @@ pub(crate) async fn connect_workspace(
     };
 
     let codex_home = resolve_workspace_codex_home(&entry, None);
-    let codex_home_for_acp = codex_home.clone();
-    
-    // Start ACP connection FIRST so we can mirror requests to it
-    let workspace_path = std::path::Path::new(&entry.path);
-    let app_for_acp = app.clone();
-    let workspace_id_for_acp = workspace_id.clone();
-    let (command, args, env) = crate::agent::resolver::resolve_codex_config(codex_home_for_acp).await
-        .map_err(|e| format!("Failed to resolve Codex for ACP: {}", e))?;
 
-    let acp_conn_result = AcpConnection::new(
-        workspace_id.clone(),
-        workspace_path,
-        command,
-        args,
-        env,
-        app.clone()
-    ).await;
-    
     let session = spawn_workspace_session(entry.clone(), default_bin, app.clone(), codex_home).await?;
 
     state
@@ -198,39 +180,6 @@ pub(crate) async fn connect_workspace(
         .lock()
         .await
         .insert(workspace_id.clone(), session);
-
-    // Store ACP connection if it succeeded
-    match acp_conn_result {
-        Ok(acp_conn) => {
-            let acp_conn_arc = Arc::new(acp_conn);
-            
-            // Send initialized notification to ACP (after codex app-server is initialized)
-            if let Err(e) = acp_conn_arc.send_notification("initialized", None).await {
-                eprintln!("Failed to send initialized to ACP: {}", e);
-            }
-            
-            state
-                .acp_connections
-                .lock()
-                .await
-                .insert(workspace_id.clone(), acp_conn_arc);
-            eprintln!("ACP connection started for workspace: {}", workspace_id);
-        }
-        Err(e) => {
-            eprintln!("Failed to start ACP connection (non-fatal): {}", e);
-            // Emit an error event so the user knows ACP isn't working
-            let error_event = crate::acp::AcpEvent {
-                workspace_id: workspace_id_for_acp.clone(),
-                message: serde_json::json!({
-                    "type": "acp/error",
-                    "error": e.to_string(),
-                    "message": "codex-acp not found or failed to start. Install from https://github.com/zed-industries/codex-acp",
-                }),
-            };
-            let _ = app_for_acp.emit("acp-event", error_event);
-            // Don't fail the whole connection if ACP fails
-        }
-    }
 
     Ok(WorkspaceConnectionResponse {
         success: true,
@@ -254,18 +203,6 @@ pub(crate) async fn disconnect_workspace(
         let _ = child.kill().await;
     }
     
-    // Also disconnect ACP connection
-    let acp_conn = {
-        let mut acp_connections = state.acp_connections.lock().await;
-        acp_connections.remove(&workspace_id)
-    };
-    
-    if let Some(acp_conn) = acp_conn {
-        if let Err(e) = acp_conn.kill().await {
-            eprintln!("Failed to kill ACP connection: {}", e);
-        }
-    }
-
     // Note: Events will be flushed when completion is detected (turn/completed event)
     // Buffered events will be written when the completion event is received
 
@@ -306,26 +243,6 @@ pub(crate) async fn start_thread(
         "cwd": session.entry.path,
         "approvalPolicy": "on-request"
     });
-    
-    // Also send to ACP (with proper ACP format)
-    // Note: We send session/new but don't wait for the response here
-    // The session ID will be extracted from the response in the stdout capture
-    let acp_conn = {
-        let acp_connections = state.acp_connections.lock().await;
-        acp_connections.get(&workspace_id).cloned()
-    };
-    if let Some(acp_conn) = acp_conn {
-        // ACP requires mcpServers field (can be empty)
-        let acp_params = json!({
-            "cwd": session.entry.path,
-            "mcpServers": [],
-        });
-        if let Err(e) = acp_conn.send_request("session/new", acp_params).await {
-            eprintln!("Failed to send session/new to ACP: {}", e);
-        }
-        // Give ACP a moment to respond with session ID
-        // (In a real implementation, we'd wait for the response, but for Phase 1 this is fine)
-    }
     
     session
         .send_request("thread/start", params)
@@ -383,39 +300,6 @@ pub(crate) async fn send_user_message(
         "sandboxPolicy": sandbox_policy,
         "model": model,
     });
-    
-    // Also send to ACP (convert to ACP format)
-    let acp_conn = {
-        let acp_connections = state.acp_connections.lock().await;
-        acp_connections.get(&workspace_id).cloned()
-    };
-    if let Some(acp_conn) = acp_conn {
-        // Get the ACP session ID (different from thread_id)
-        // Try a few times with a small delay in case the session/new response hasn't arrived yet
-        let mut acp_session_id = None;
-        for _ in 0..5 {
-            acp_session_id = acp_conn.get_session_id().await;
-            if acp_session_id.is_some() {
-                break;
-            }
-            // Wait a bit for the session/new response to arrive
-            tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
-        }
-        
-        if let Some(acp_session_id) = acp_session_id {
-            // Convert to ACP format: session/prompt
-            // ACP uses "prompt" not "input", and sessionId not threadId
-            let acp_params = json!({
-                "sessionId": acp_session_id,
-                "prompt": input,  // ACP uses "prompt" field
-            });
-            if let Err(e) = acp_conn.send_request("session/prompt", acp_params).await {
-                eprintln!("Failed to send session/prompt to ACP: {}", e);
-            }
-        } else {
-            eprintln!("ACP session ID not available after waiting, skipping prompt to ACP");
-        }
-    }
     
     session
         .send_request("turn/start", params)
