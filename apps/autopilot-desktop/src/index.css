@@ -75,6 +75,7 @@
 html,
 body {
   height: 100%;
+  overflow: hidden;
 }
 
 body {
@@ -87,6 +88,7 @@ body {
 
 #root {
   height: 100vh;
+  overflow: hidden;
 }
 
 .terminal {
@@ -94,6 +96,7 @@ body {
   flex-direction: column;
   height: 100vh;
   background: var(--bg);
+  overflow: hidden;
 }
 
 .status-strip {
@@ -262,6 +265,28 @@ body {
   text-transform: uppercase;
   letter-spacing: 0.12em;
   color: var(--yellow);
+}
+
+.session-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.session-new {
+  border: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--green);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  padding: 2px 6px;
+  cursor: pointer;
+}
+
+.session-new:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
 }
 
 .session-count {

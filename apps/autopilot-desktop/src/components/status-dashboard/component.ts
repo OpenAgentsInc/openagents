@@ -66,6 +66,7 @@ type BusyState = {
   send: boolean
   sessions: boolean
   resume: boolean
+  newSession: boolean
 }
 
 type StatusState = {
@@ -91,6 +92,7 @@ type StatusEvent =
   | { type: "RefreshDoctor" }
   | { type: "ConnectWorkspace" }
   | { type: "DisconnectWorkspace" }
+  | { type: "StartNewSession" }
   | { type: "UpdateWorkspacePath"; path: string }
   | { type: "UpdateCommandInput"; value: string }
   | { type: "SubmitCommand"; value: string }
@@ -579,6 +581,7 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
       send: false,
       sessions: false,
       resume: false,
+      newSession: false,
     },
   }),
 
@@ -607,7 +610,8 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
         ? formatSessionId(activeSessionId)
         : "--"
       const sessionCount = state.sessions.length
-      const sessionBusy = state.busy.sessions || state.busy.resume
+      const sessionBusy =
+        state.busy.sessions || state.busy.resume || state.busy.newSession
 
       const sessionList = sessionCount
         ? state.sessions.map((session) => {
@@ -678,9 +682,20 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
             <aside class="session-sidebar">
               <div class="session-header">
                 <span>Sessions</span>
-                <span class="session-count">
-                  ${sessionBusy ? "SYNC" : String(sessionCount).padStart(2, "0")}
-                </span>
+                <div class="session-controls">
+                  <button
+                    class="session-new"
+                    data-action="new-session"
+                    ${state.busy.newSession || !state.workspaceConnected
+                      ? "disabled"
+                      : ""}
+                  >
+                    NEW
+                  </button>
+                  <span class="session-count">
+                    ${sessionBusy ? "SYNC" : String(sessionCount).padStart(2, "0")}
+                  </span>
+                </div>
               </div>
               <div class="session-list">${sessionList}</div>
             </aside>
@@ -867,12 +882,7 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
             return
           }
           if (head === "new" || head === "thread") {
-            yield* ctx.state.update((state) => ({
-              ...state,
-              threadId: null,
-              workspaceMessage: "Next send will start a new thread.",
-              lastUpdated: nowTime(),
-            }))
+            yield* ctx.emit({ type: "StartNewSession" })
             return
           }
           if (head === "help" || head === "?") {
@@ -985,10 +995,31 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
             }))
             return
           }
+          const thread = extractThread(response)
+          const summary = thread ? toSessionSummary(thread) : null
+          const fallbackTimestamp = nowEpochSeconds()
+          const fallbackSummary: SessionSummary | null = threadId
+            ? {
+                id: threadId,
+                preview: "",
+                updatedAt: fallbackTimestamp,
+                createdAt: fallbackTimestamp,
+                modelProvider: "",
+              }
+            : null
           yield* ctx.state.update((state) => ({
             ...state,
             threadId,
             activeSessionId: threadId,
+            sessions: summary
+              ? upsertSession(state.sessions, summary)
+              : fallbackSummary
+                ? upsertSession(state.sessions, fallbackSummary)
+                : state.sessions,
+            sessionItems: {
+              ...state.sessionItems,
+              [threadId]: state.sessionItems[threadId] ?? [],
+            },
           }))
         }
 
@@ -1201,6 +1232,75 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
         return
       }
 
+      if (event.type === "StartNewSession") {
+        const current = yield* ctx.state.get
+        if (!current.workspaceConnected) {
+          yield* ctx.state.update((state) => ({
+            ...state,
+            sessionMessage: "Connect the workspace before starting a session.",
+            lastUpdated: nowTime(),
+          }))
+          return
+        }
+
+        yield* ctx.state.update((state) => ({
+          ...state,
+          busy: { ...state.busy, newSession: true },
+          sessionMessage: "Starting new session...",
+        }))
+
+        yield* invokeCommand<unknown>("start_thread", {
+          workspaceId: current.workspaceId,
+        }).pipe(
+          Effect.tap((response) => {
+            const threadId = extractThreadId(response)
+            if (!threadId) {
+              return ctx.state.update((state) => ({
+                ...state,
+                busy: { ...state.busy, newSession: false },
+                sessionMessage: "Failed to start a new session.",
+                lastUpdated: nowTime(),
+              }))
+            }
+            const thread = extractThread(response)
+            const summary = thread ? toSessionSummary(thread) : null
+            const timestamp = nowEpochSeconds()
+            const fallbackSummary: SessionSummary = {
+              id: threadId,
+              preview: "",
+              updatedAt: timestamp,
+              createdAt: timestamp,
+              modelProvider: "",
+            }
+            return ctx.state.update((state) => ({
+              ...state,
+              threadId,
+              activeSessionId: threadId,
+              sessions: summary
+                ? upsertSession(state.sessions, summary)
+                : upsertSession(state.sessions, fallbackSummary),
+              sessionItems: {
+                ...state.sessionItems,
+                [threadId]: [],
+              },
+              busy: { ...state.busy, newSession: false },
+              sessionMessage: "",
+              lastUpdated: nowTime(),
+            }))
+          }),
+          Effect.catchAll((error) =>
+            ctx.state.update((state) => ({
+              ...state,
+              busy: { ...state.busy, newSession: false },
+              sessionMessage: `Start session failed: ${String(error)}`,
+              lastUpdated: nowTime(),
+            }))
+          ),
+          Effect.asVoid
+        )
+        return
+      }
+
       if (event.type === "ConnectWorkspace") {
         const current = yield* ctx.state.get
         const workspacePath = current.workspacePath.trim()
@@ -1383,6 +1483,13 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
         "[data-action=\"disconnect\"]",
         "click",
         () => emit({ type: "DisconnectWorkspace" })
+      )
+
+      yield* ctx.dom.delegate(
+        ctx.container,
+        "[data-action=\"new-session\"]",
+        "click",
+        () => emit({ type: "StartNewSession" })
       )
 
       yield* ctx.dom.delegate(
