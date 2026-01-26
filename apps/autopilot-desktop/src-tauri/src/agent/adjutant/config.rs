@@ -66,6 +66,18 @@ pub struct PlanModeOptimizationConfig {
     pub num_trials: usize,
     /// Minibatch size for evaluation.
     pub minibatch_size: usize,
+    /// Number of examples reserved for evaluation per signature.
+    #[serde(default)]
+    pub eval_split_size: usize,
+    /// Minimum delta over baseline required for promotion.
+    #[serde(default)]
+    pub min_promotion_delta: f32,
+    /// Minimum proxy score required for promotion.
+    #[serde(default)]
+    pub min_proxy_score: f32,
+    /// Minimum truth score required for promotion.
+    #[serde(default)]
+    pub min_truth_score: f32,
     /// Temperature for prompt generation.
     pub temperature: f32,
     /// Run optimization in background task.
@@ -91,6 +103,10 @@ impl Default for PlanModeOptimizationConfig {
             num_candidates: 6,
             num_trials: 12,
             minibatch_size: 20,
+            eval_split_size: 10,
+            min_promotion_delta: 0.02,
+            min_proxy_score: 0.6,
+            min_truth_score: 0.5,
             temperature: 0.7,
             background_optimization: true,
             apply_optimized_instructions: true,
