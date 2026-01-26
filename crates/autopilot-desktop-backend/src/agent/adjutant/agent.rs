@@ -7,8 +7,10 @@ use async_trait::async_trait;
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Arc;
-use tokio::sync::{mpsc, Mutex};
+use tokio::sync::{Mutex, mpsc};
 
+use super::PlanModeConfig;
+use super::planning::{PlanModePipeline, PlanResult};
 use crate::agent::{
     trait_def::Agent,
     ui::UiTreeState,
@@ -20,9 +22,7 @@ use dsrs::signatures::{
     ParallelExplorationSignature, PlanSynthesisSignature, ResultValidationSignature,
     TopicDecompositionSignature,
 };
-use serde_json::{json, Value};
-use super::planning::{PlanModePipeline, PlanResult};
-use super::PlanModeConfig;
+use serde_json::{Value, json};
 
 /// Adjutant Agent - DSPy-native agent with plan mode capabilities
 pub struct AdjutantAgent {
@@ -33,13 +33,13 @@ pub struct AdjutantAgent {
     /// UI events channel for signature-driven UI updates
     ui_events_tx: mpsc::Sender<UiEvent>,
     ui_events_rx: Arc<Mutex<Option<mpsc::Receiver<UiEvent>>>>,
-    
+
     /// Active sessions and their conversation history
     sessions: Arc<Mutex<HashMap<String, SessionState>>>,
-    
+
     /// Plan mode pipeline
     plan_pipeline: Option<PlanModePipeline>,
-    
+
     /// Configuration
     config: PlanModeConfig,
 }
@@ -57,7 +57,7 @@ impl AdjutantAgent {
     pub fn new() -> Self {
         let (events_tx, events_rx) = mpsc::channel(100);
         let (ui_events_tx, ui_events_rx) = mpsc::channel(100);
-        
+
         Self {
             events_tx,
             events_rx: Arc::new(Mutex::new(Some(events_rx))),
@@ -123,9 +123,15 @@ impl AdjutantAgent {
 
         let steps = [
             ("topic", signature_info(TopicDecompositionSignature::new())),
-            ("exploration", signature_info(ParallelExplorationSignature::new())),
+            (
+                "exploration",
+                signature_info(ParallelExplorationSignature::new()),
+            ),
             ("synthesis", signature_info(PlanSynthesisSignature::new())),
-            ("validation", signature_info(ResultValidationSignature::new())),
+            (
+                "validation",
+                signature_info(ResultValidationSignature::new()),
+            ),
         ];
 
         let mut new_elements: Vec<(String, Value)> = Vec::new();
@@ -330,11 +336,9 @@ impl AdjutantAgent {
                     })
                     .await;
                 }
-            } else if let Some(patch) = tree.set_element_prop(
-                &output_key,
-                "/props/code",
-                json!(output_text),
-            ) {
+            } else if let Some(patch) =
+                tree.set_element_prop(&output_key, "/props/code", json!(output_text))
+            {
                 self.send_ui_event(UiEvent::UiPatch {
                     session_id: session_id.to_string(),
                     patch,
@@ -350,7 +354,8 @@ impl AdjutantAgent {
         self.send_event(UnifiedEvent::SessionStarted {
             session_id: session_id.to_string(),
             agent_id: AgentId::Adjutant,
-        }).await;
+        })
+        .await;
 
         self.initialize_ui_tree(session_id).await?;
         self.update_ui_data(session_id, "/status/phase", json!("Running"))
@@ -367,7 +372,8 @@ impl AdjutantAgent {
         self.send_event(UnifiedEvent::SessionCompleted {
             session_id: session_id.to_string(),
             stop_reason: "completed".to_string(),
-        }).await;
+        })
+        .await;
 
         Ok(())
     }
@@ -375,21 +381,34 @@ impl AdjutantAgent {
     /// Check if the message should trigger plan mode
     fn is_plan_mode_request(&self, message: &str) -> bool {
         let plan_keywords = [
-            "plan", "implement", "add", "create", "build", "design",
-            "refactor", "migrate", "upgrade", "integrate"
+            "plan",
+            "implement",
+            "add",
+            "create",
+            "build",
+            "design",
+            "refactor",
+            "migrate",
+            "upgrade",
+            "integrate",
         ];
-        
-        plan_keywords.iter().any(|keyword| {
-            message.to_lowercase().contains(keyword)
-        })
+
+        plan_keywords
+            .iter()
+            .any(|keyword| message.to_lowercase().contains(keyword))
     }
 
     /// Handle plan mode request using DSPy signatures
-    async fn handle_plan_mode_request(&self, session_id: &str, message: &str) -> Result<(), String> {
+    async fn handle_plan_mode_request(
+        &self,
+        session_id: &str,
+        message: &str,
+    ) -> Result<(), String> {
         // Get workspace path for this session
         let workspace_path = {
             let sessions = self.sessions.lock().await;
-            sessions.get(session_id)
+            sessions
+                .get(session_id)
                 .map(|s| s.workspace_path.clone())
                 .ok_or("Session not found".to_string())?
         };
@@ -399,39 +418,40 @@ impl AdjutantAgent {
             session_id: session_id.to_string(),
             content: "Analyzing request and initializing plan mode pipeline...".to_string(),
             is_complete: false,
-        }).await;
+        })
+        .await;
 
-        self.mark_ui_step(session_id, "topic", "running", None).await;
-        self.mark_ui_step(session_id, "exploration", "running", None).await;
+        self.mark_ui_step(session_id, "topic", "running", None)
+            .await;
+        self.mark_ui_step(session_id, "exploration", "running", None)
+            .await;
 
         // Initialize plan pipeline if not already done
         if self.plan_pipeline.is_none() {
-            let pipeline = PlanModePipeline::new(
-                workspace_path.clone().into(), 
-                self.config.clone()
-            ).with_auto_lm().await;
-            
+            let pipeline =
+                PlanModePipeline::new(workspace_path.clone().into(), self.config.clone())
+                    .with_auto_lm()
+                    .await;
+
             self.send_event(UnifiedEvent::ThoughtChunk {
                 session_id: session_id.to_string(),
-                content: "Plan mode pipeline initialized. Starting topic decomposition...".to_string(),
+                content: "Plan mode pipeline initialized. Starting topic decomposition..."
+                    .to_string(),
                 is_complete: false,
-            }).await;
+            })
+            .await;
 
             // Execute plan mode
             match pipeline.execute_plan_mode(message).await {
                 Ok(plan_result) => {
                     let topics_output = serde_json::to_string_pretty(&plan_result.topics_explored)
                         .unwrap_or_else(|_| "[]".to_string());
-                    let exploration_output = serde_json::to_string_pretty(&plan_result.files_examined)
-                        .unwrap_or_else(|_| "[]".to_string());
+                    let exploration_output =
+                        serde_json::to_string_pretty(&plan_result.files_examined)
+                            .unwrap_or_else(|_| "[]".to_string());
 
-                    self.mark_ui_step(
-                        session_id,
-                        "topic",
-                        "completed",
-                        Some(&topics_output),
-                    )
-                    .await;
+                    self.mark_ui_step(session_id, "topic", "completed", Some(&topics_output))
+                        .await;
                     self.mark_ui_step(
                         session_id,
                         "exploration",
@@ -462,12 +482,13 @@ impl AdjutantAgent {
                     self.send_event(UnifiedEvent::ThoughtChunk {
                         session_id: session_id.to_string(),
                         content: format!(
-                            "Plan completed. Explored {} topics, examined {} files.", 
-                            plan_result.topics_explored.len(), 
+                            "Plan completed. Explored {} topics, examined {} files.",
+                            plan_result.topics_explored.len(),
                             plan_result.files_examined.len()
                         ),
                         is_complete: true,
-                    }).await;
+                    })
+                    .await;
 
                     // Send the implementation plan as message chunks
                     self.stream_plan_response(session_id, &plan_result).await;
@@ -478,23 +499,38 @@ impl AdjutantAgent {
                     let mut sessions = self.sessions.lock().await;
                     if let Some(session) = sessions.get_mut(session_id) {
                         session.current_plan = Some(plan_result);
-                        
+
                         // Add conversation items
-                        session.conversation_items.push(UnifiedConversationItem::Message {
-                            id: uuid::Uuid::new_v4().to_string(),
-                            role: "user".to_string(),
-                            text: message.to_string(),
-                        });
-                        
-                        session.conversation_items.push(UnifiedConversationItem::Message {
-                            id: uuid::Uuid::new_v4().to_string(),
-                            role: "assistant".to_string(),
-                            text: session.current_plan.as_ref().unwrap().implementation_plan.clone(),
-                        });
+                        session
+                            .conversation_items
+                            .push(UnifiedConversationItem::Message {
+                                id: uuid::Uuid::new_v4().to_string(),
+                                role: "user".to_string(),
+                                text: message.to_string(),
+                            });
+
+                        session
+                            .conversation_items
+                            .push(UnifiedConversationItem::Message {
+                                id: uuid::Uuid::new_v4().to_string(),
+                                role: "assistant".to_string(),
+                                text: session
+                                    .current_plan
+                                    .as_ref()
+                                    .unwrap()
+                                    .implementation_plan
+                                    .clone(),
+                            });
                     }
                 }
                 Err(e) => {
-                    self.mark_ui_step(session_id, "synthesis", "error", Some(&format!("Plan mode failed: {}", e))).await;
+                    self.mark_ui_step(
+                        session_id,
+                        "synthesis",
+                        "error",
+                        Some(&format!("Plan mode failed: {}", e)),
+                    )
+                    .await;
                     self.update_ui_data(session_id, "/status/phase", json!("Error"))
                         .await;
 
@@ -502,13 +538,18 @@ impl AdjutantAgent {
                         session_id: session_id.to_string(),
                         content: format!("Plan mode failed: {}", e),
                         is_complete: true,
-                    }).await;
+                    })
+                    .await;
 
                     self.send_event(UnifiedEvent::MessageChunk {
                         session_id: session_id.to_string(),
-                        content: format!("I encountered an error while creating your implementation plan: {}", e),
+                        content: format!(
+                            "I encountered an error while creating your implementation plan: {}",
+                            e
+                        ),
                         is_complete: true,
-                    }).await;
+                    })
+                    .await;
                 }
             }
         }
@@ -538,7 +579,8 @@ Would you like me to create an implementation plan for this? I'll analyze your c
             session_id: session_id.to_string(),
             content: response.clone(),
             is_complete: true,
-        }).await;
+        })
+        .await;
 
         self.mark_ui_step(
             session_id,
@@ -551,17 +593,21 @@ Would you like me to create an implementation plan for this? I'll analyze your c
         // Add to conversation items
         let mut sessions = self.sessions.lock().await;
         if let Some(session) = sessions.get_mut(session_id) {
-            session.conversation_items.push(UnifiedConversationItem::Message {
-                id: uuid::Uuid::new_v4().to_string(),
-                role: "user".to_string(),
-                text: message.to_string(),
-            });
-            
-            session.conversation_items.push(UnifiedConversationItem::Message {
-                id: uuid::Uuid::new_v4().to_string(),
-                role: "assistant".to_string(),
-                text: response,
-            });
+            session
+                .conversation_items
+                .push(UnifiedConversationItem::Message {
+                    id: uuid::Uuid::new_v4().to_string(),
+                    role: "user".to_string(),
+                    text: message.to_string(),
+                });
+
+            session
+                .conversation_items
+                .push(UnifiedConversationItem::Message {
+                    id: uuid::Uuid::new_v4().to_string(),
+                    role: "assistant".to_string(),
+                    text: response,
+                });
         }
 
         self.update_ui_data(session_id, "/status/phase", json!("Awaiting Plan"))
@@ -575,9 +621,7 @@ Would you like me to create an implementation plan for this? I'll analyze your c
         let plan_text = &plan_result.implementation_plan;
         let chunk_size = 200; // Stream in chunks for better UX
 
-        let text_as_string = plan_text
-            .chars()
-            .collect::<String>();
+        let text_as_string = plan_text.chars().collect::<String>();
         let chunks: Vec<&str> = text_as_string
             .as_bytes()
             .chunks(chunk_size)
@@ -586,12 +630,13 @@ Would you like me to create an implementation plan for this? I'll analyze your c
 
         for (i, chunk) in chunks.iter().enumerate() {
             let is_complete = i == chunks.len() - 1;
-            
+
             self.send_event(UnifiedEvent::MessageChunk {
                 session_id: session_id.to_string(),
                 content: chunk.to_string(),
                 is_complete,
-            }).await;
+            })
+            .await;
 
             // Small delay to simulate streaming
             if !is_complete {
@@ -605,7 +650,8 @@ Would you like me to create an implementation plan for this? I'll analyze your c
             input_tokens: plan_text.len() as u64 / 4, // Rough estimate
             output_tokens: plan_text.len() as u64 / 4,
             total_tokens: plan_text.len() as u64 / 2,
-        }).await;
+        })
+        .await;
     }
 }
 
@@ -617,7 +663,7 @@ impl Agent for AdjutantAgent {
 
     async fn connect(&self, workspace_path: &Path) -> Result<String, String> {
         let session_id = uuid::Uuid::new_v4().to_string();
-        
+
         // Initialize session state
         let session_state = SessionState {
             session_id: session_id.clone(),
@@ -630,7 +676,10 @@ impl Agent for AdjutantAgent {
         let mut sessions = self.sessions.lock().await;
         sessions.insert(session_id.clone(), session_state);
 
-        println!("Adjutant agent connected to workspace: {}", workspace_path.display());
+        println!(
+            "Adjutant agent connected to workspace: {}",
+            workspace_path.display()
+        );
 
         Ok(session_id)
     }
@@ -638,7 +687,7 @@ impl Agent for AdjutantAgent {
     async fn disconnect(&self, session_id: &str) -> Result<(), String> {
         let mut sessions = self.sessions.lock().await;
         sessions.remove(session_id);
-        
+
         println!("Adjutant agent disconnected from session: {}", session_id);
         Ok(())
     }
@@ -674,7 +723,10 @@ impl Agent for AdjutantAgent {
         }
     }
 
-    async fn get_conversation_items(&self, session_id: &str) -> Result<Vec<UnifiedConversationItem>, String> {
+    async fn get_conversation_items(
+        &self,
+        session_id: &str,
+    ) -> Result<Vec<UnifiedConversationItem>, String> {
         let sessions = self.sessions.lock().await;
         match sessions.get(session_id) {
             Some(session) => Ok(session.conversation_items.clone()),

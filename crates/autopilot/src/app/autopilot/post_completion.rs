@@ -201,9 +201,7 @@ impl PostCompletionHook {
             // Look for bullet points or numbered items
             for line in desc.lines() {
                 let trimmed = line.trim();
-                if trimmed.starts_with('-')
-                    || trimmed.starts_with('*')
-                    || trimmed.starts_with("•")
+                if trimmed.starts_with('-') || trimmed.starts_with('*') || trimmed.starts_with("•")
                 {
                     let req = trimmed
                         .trim_start_matches('-')

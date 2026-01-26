@@ -11,8 +11,8 @@ Optional env:
 */
 
 use anyhow::Result;
-use dsrs::{LM, Predict, Predictor, Signature, example};
 use dsrs::callbacks::DspyCallback;
+use dsrs::{LM, Predict, Predictor, Signature, example};
 use std::io::{self, Write};
 use std::sync::Arc;
 use uuid::Uuid;

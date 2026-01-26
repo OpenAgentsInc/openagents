@@ -250,7 +250,8 @@ impl LMClient {
         match provider {
             "openai-responses" | "openai_responses" | "openairesponses" => {
                 let key = api_key.map(|value| value.to_string());
-                let model = OpenAiResponsesCompletionModel::from_env(model_id, key.as_deref(), None);
+                let model =
+                    OpenAiResponsesCompletionModel::from_env(model_id, key.as_deref(), None);
                 Ok(LMClient::OpenAIResponses(model))
             }
             "openai" => {

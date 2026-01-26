@@ -40,7 +40,5 @@ impl PlanModeSignatureKind {
 }
 
 pub fn sanitize_filename(name: &str) -> String {
-    name.replace("::", "_")
-        .replace(':', "_")
-        .replace('/', "_")
+    name.replace("::", "_").replace(':', "_").replace('/', "_")
 }

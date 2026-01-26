@@ -394,7 +394,12 @@ mod tests {
 
         // Generate 1000 fragments programmatically
         let fragments: Vec<(String, String)> = (0..1000)
-            .map(|i| (format!("frag-{}", i), format!("Content for fragment number {}", i)))
+            .map(|i| {
+                (
+                    format!("frag-{}", i),
+                    format!("Content for fragment number {}", i),
+                )
+            })
             .collect();
 
         // Build batch generates O(N) queries via CODE, not LLM verbalization
@@ -433,8 +438,14 @@ mod tests {
         let builder = SubQueryBuilder::new("Process: {fragment}");
 
         let fragments: Vec<(String, String)> = vec![
-            ("doc-1".to_string(), "Large document content...".repeat(1000)),
-            ("doc-2".to_string(), "Another large document...".repeat(1000)),
+            (
+                "doc-1".to_string(),
+                "Large document content...".repeat(1000),
+            ),
+            (
+                "doc-2".to_string(),
+                "Another large document...".repeat(1000),
+            ),
         ];
 
         let queries = builder.build_batch(&fragments);
@@ -460,10 +471,12 @@ mod tests {
         let builder = SubQueryBuilder::new("Query: {fragment}");
 
         // Test scaling from 100 to 1000 fragments
-        let small_fragments: Vec<(String, String)> =
-            (0..100).map(|i| (format!("s-{}", i), format!("{}", i))).collect();
-        let large_fragments: Vec<(String, String)> =
-            (0..1000).map(|i| (format!("l-{}", i), format!("{}", i))).collect();
+        let small_fragments: Vec<(String, String)> = (0..100)
+            .map(|i| (format!("s-{}", i), format!("{}", i)))
+            .collect();
+        let large_fragments: Vec<(String, String)> = (0..1000)
+            .map(|i| (format!("l-{}", i), format!("{}", i)))
+            .collect();
 
         let small_queries = builder.build_batch(&small_fragments);
         let large_queries = builder.build_batch(&large_fragments);

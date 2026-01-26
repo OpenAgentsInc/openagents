@@ -4,12 +4,12 @@
 
 pub mod agent;
 pub mod config;
+pub mod lm_client;
 pub mod plan_mode_metrics;
 pub mod plan_mode_optimizer;
 pub mod plan_mode_signatures;
 pub mod plan_mode_training;
 pub mod planning;
-pub mod lm_client;
 
 pub use agent::AdjutantAgent;
 pub use config::PlanModeConfig;

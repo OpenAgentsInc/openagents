@@ -1,13 +1,13 @@
 mod acp;
 mod agent;
 mod ai_server;
-mod file_logger;
 mod backend;
 mod codex;
 mod codex_home;
-mod full_auto;
 pub mod contracts;
 mod event_sink;
+mod file_logger;
+mod full_auto;
 mod signature_registry;
 mod state;
 mod types;
@@ -37,11 +37,7 @@ fn load_app_env() {
     for env_path in candidates {
         if env_path.exists() {
             if let Err(err) = dotenvy::from_path(&env_path) {
-                eprintln!(
-                    "Warning: failed to load {}: {}",
-                    env_path.display(),
-                    err
-                );
+                eprintln!("Warning: failed to load {}: {}", env_path.display(), err);
             }
             break;
         }
@@ -55,7 +51,10 @@ fn configure_linux_display_backend() {
     let wayland_display = std::env::var("WAYLAND_DISPLAY").ok();
 
     if session_type.as_deref() == Some("wayland")
-        && display.as_deref().map(|value| !value.is_empty()).unwrap_or(false)
+        && display
+            .as_deref()
+            .map(|value| !value.is_empty())
+            .unwrap_or(false)
         && wayland_display
             .as_deref()
             .map(|value| !value.is_empty())
@@ -83,7 +82,7 @@ pub fn build_app() -> tauri::Builder<tauri::Wry> {
         .setup(|app| {
             let state = state::AppState::load(&app.handle());
             app.manage(state);
-            
+
             // Initialize AI server configuration
             match ai_server::AiServerConfig::from_env() {
                 Ok(config) => {
@@ -98,7 +97,7 @@ pub fn build_app() -> tauri::Builder<tauri::Wry> {
                     eprintln!("AI server will not be available. Set AI_GATEWAY_API_KEY to enable.");
                 }
             }
-            
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -138,28 +137,36 @@ pub fn build_app() -> tauri::Builder<tauri::Wry> {
 
 #[tauri::command]
 async fn start_ai_server() -> Result<String, String> {
-    ai_server::start_ai_server().await.map_err(|e| e.to_string())?;
+    ai_server::start_ai_server()
+        .await
+        .map_err(|e| e.to_string())?;
     Ok("AI server started successfully".to_string())
 }
 
 #[tauri::command]
 async fn stop_ai_server() -> Result<String, String> {
-    ai_server::stop_ai_server().await.map_err(|e| e.to_string())?;
+    ai_server::stop_ai_server()
+        .await
+        .map_err(|e| e.to_string())?;
     Ok("AI server stopped successfully".to_string())
 }
 
 #[tauri::command]
 async fn restart_ai_server() -> Result<String, String> {
-    ai_server::stop_ai_server().await.map_err(|e| e.to_string())?;
+    ai_server::stop_ai_server()
+        .await
+        .map_err(|e| e.to_string())?;
     tokio::time::sleep(std::time::Duration::from_secs(2)).await;
-    ai_server::start_ai_server().await.map_err(|e| e.to_string())?;
+    ai_server::start_ai_server()
+        .await
+        .map_err(|e| e.to_string())?;
     Ok("AI server restarted successfully".to_string())
 }
 
 #[tauri::command]
 async fn get_ai_server_status() -> Result<serde_json::Value, String> {
     let is_running = ai_server::is_ai_server_running().await;
-    
+
     if is_running {
         match ai_server::get_ai_server_health().await {
             Ok(health) => Ok(serde_json::json!({
@@ -171,7 +178,7 @@ async fn get_ai_server_status() -> Result<serde_json::Value, String> {
                 "running": false,
                 "healthy": false,
                 "error": e.to_string()
-            }))
+            })),
         }
     } else {
         Ok(serde_json::json!({

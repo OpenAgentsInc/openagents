@@ -2,7 +2,7 @@
 //!
 //! This module executes a deterministic tool loop driven by DSPy signatures.
 
-use crate::autopilot_loop::{AcpEventSender, DspyStage, DSPY_META_KEY, SESSION_ID_META_KEY};
+use crate::autopilot_loop::{AcpEventSender, DSPY_META_KEY, DspyStage, SESSION_ID_META_KEY};
 use crate::planner::TaskPlan;
 use crate::tools::{SideEffect, ToolExecutionResult, ToolRegistry, ToolSchema};
 use crate::{AdjutantError, Task};
@@ -236,8 +236,7 @@ pub async fn execute_coding_agent_loop(
     let policy_bundle_id = resolve_policy_bundle_id();
     let started_at = Utc::now();
 
-    let session_dir = autopilot_core::paths::OpenAgentsPaths::default()
-        .session_dir(&session_id);
+    let session_dir = autopilot_core::paths::OpenAgentsPaths::default().session_dir(&session_id);
     create_dir_all(&session_dir).map_err(AdjutantError::IoError)?;
 
     let mut replay = ReplayWriter::new(&session_dir.join("REPLAY.jsonl"))
@@ -261,8 +260,8 @@ pub async fn execute_coding_agent_loop(
         .map_err(|e| AdjutantError::ExecutionFailed(e.to_string()))?;
 
     let tool_schemas = tools.tool_schemas();
-    let tool_schema_json = serde_json::to_string(&tool_schemas)
-        .unwrap_or_else(|_| "[]".to_string());
+    let tool_schema_json =
+        serde_json::to_string(&tool_schemas).unwrap_or_else(|_| "[]".to_string());
 
     let (context_plan, context_summary) = select_context(
         task,
@@ -317,7 +316,12 @@ pub async fn execute_coding_agent_loop(
         if !per_step_mode {
             emit_plan_update(&ui, &plan_ir, Some(step_index));
         }
-        emit_step_start(&ui, step_index + 1, plan_ir.steps.len(), step.description.clone());
+        emit_step_start(
+            &ui,
+            step_index + 1,
+            plan_ir.steps.len(),
+            step.description.clone(),
+        );
 
         let mut iterations: u8 = 0;
         let mut step_done = false;
@@ -390,18 +394,12 @@ pub async fn execute_coding_agent_loop(
             }
 
             let output_hash = hash_tool_output(&exec_result.output)?;
-            let step_utility = tool_result_interpretation(
-                step,
-                &decision,
-                &exec_result,
-                decision_lm.clone(),
-            )
-            .await
-            .unwrap_or_else(|| fallback_tool_result(step, &decision.tool, &exec_result));
+            let step_utility =
+                tool_result_interpretation(step, &decision, &exec_result, decision_lm.clone())
+                    .await
+                    .unwrap_or_else(|| fallback_tool_result(step, &decision.tool, &exec_result));
 
-            let step_utility_clamped = step_utility
-                .step_utility
-                .clamp(-1.0, 1.0);
+            let step_utility_clamped = step_utility.step_utility.clamp(-1.0, 1.0);
 
             receipts.push(ToolReceipt {
                 id: tool_id.clone(),
@@ -507,7 +505,13 @@ pub async fn execute_coding_agent_loop(
         })
         .map_err(|e| AdjutantError::ExecutionFailed(e.to_string()))?;
 
-    let summary = build_pr_summary(task, &plan_ir, &step_outcomes, &modified_files, &verification);
+    let summary = build_pr_summary(
+        task,
+        &plan_ir,
+        &step_outcomes,
+        &modified_files,
+        &verification,
+    );
     let summary_path = session_dir.join("PR_SUMMARY.md");
     std::fs::write(&summary_path, summary.clone()).map_err(AdjutantError::IoError)?;
 
@@ -642,7 +646,13 @@ fn emit_step_start(ui: &Option<CodingAgentUi>, idx: usize, total: usize, desc: S
 fn emit_step_complete(ui: &Option<CodingAgentUi>, idx: usize, success: bool) {
     let Some(ui) = ui else { return };
     if let Some(sender) = &ui.acp_sender {
-        emit_stage(sender, DspyStage::TaskComplete { task_index: idx, success });
+        emit_stage(
+            sender,
+            DspyStage::TaskComplete {
+                task_index: idx,
+                success,
+            },
+        );
     }
 }
 
@@ -747,7 +757,9 @@ async fn select_context(
         "lane_constraints": "input" => "default".to_string(),
     };
 
-    let prediction = run_signature(signature, inputs, decision_lm.clone()).await.ok();
+    let prediction = run_signature(signature, inputs, decision_lm.clone())
+        .await
+        .ok();
     let raw_plan = prediction
         .as_ref()
         .map(|pred| prediction_string(pred, "context_plan"))
@@ -760,16 +772,13 @@ async fn select_context(
         notes: None,
     });
 
-    let include_paths = context_plan
-        .include_paths
-        .clone()
-        .unwrap_or_else(|| {
-            plan.files
-                .iter()
-                .take(10)
-                .map(|path| path.to_string_lossy().to_string())
-                .collect()
-        });
+    let include_paths = context_plan.include_paths.clone().unwrap_or_else(|| {
+        plan.files
+            .iter()
+            .take(10)
+            .map(|path| path.to_string_lossy().to_string())
+            .collect()
+    });
     let exclude = context_plan
         .exclude_paths
         .clone()
@@ -830,17 +839,19 @@ async fn plan_from_signature(
 
     let prediction = match run_signature(signature, inputs, decision_lm).await {
         Ok(prediction) => prediction,
-        Err(_) => return PlanIR {
-            analysis: plan.summary.clone(),
-            steps: Vec::new(),
-            verification_strategy: VerificationStrategy {
-                commands: Vec::new(),
-                success_criteria: "No verification strategy provided".to_string(),
-                max_retries: 0,
-            },
-            complexity: map_complexity(plan.complexity),
-            confidence: 0.5,
-        },
+        Err(_) => {
+            return PlanIR {
+                analysis: plan.summary.clone(),
+                steps: Vec::new(),
+                verification_strategy: VerificationStrategy {
+                    commands: Vec::new(),
+                    success_criteria: "No verification strategy provided".to_string(),
+                    max_retries: 0,
+                },
+                complexity: map_complexity(plan.complexity),
+                confidence: 0.5,
+            };
+        }
     };
 
     parse_plan_ir(&prediction).unwrap_or_else(|| PlanIR {
@@ -864,14 +875,12 @@ fn parse_plan_ir(prediction: &Prediction) -> Option<PlanIR> {
     let confidence = prediction_f32(prediction, "confidence", 0.5);
 
     let steps = parse_steps(&steps_raw);
-    let verification_strategy =
-        serde_json::from_str::<VerificationStrategy>(&verification_raw).unwrap_or(
-            VerificationStrategy {
-                commands: Vec::new(),
-                success_criteria: "No verification strategy provided".to_string(),
-                max_retries: 0,
-            },
-        );
+    let verification_strategy = serde_json::from_str::<VerificationStrategy>(&verification_raw)
+        .unwrap_or(VerificationStrategy {
+            commands: Vec::new(),
+            success_criteria: "No verification strategy provided".to_string(),
+            max_retries: 0,
+        });
 
     Some(PlanIR {
         analysis,
@@ -1045,8 +1054,7 @@ async fn tool_call_decision(
         return Err(anyhow::anyhow!("Tool name missing"));
     }
 
-    let schemas: Vec<ToolSchema> =
-        serde_json::from_str(tool_schemas).unwrap_or_default();
+    let schemas: Vec<ToolSchema> = serde_json::from_str(tool_schemas).unwrap_or_default();
     if !validate_tool_call(&tool, &params, &schemas) {
         return Err(anyhow::anyhow!("Tool call failed schema validation"));
     }
@@ -1098,7 +1106,11 @@ fn heuristic_tool_call(step: &PlanStep) -> Option<ToolCallDecision> {
     None
 }
 
-fn fallback_tool_call(step: &PlanStep, plan: &TaskPlan, _context_plan: &ContextPlan) -> ToolCallDecision {
+fn fallback_tool_call(
+    step: &PlanStep,
+    plan: &TaskPlan,
+    _context_plan: &ContextPlan,
+) -> ToolCallDecision {
     let desc = step.description.to_lowercase();
     let tool = if step.intent == StepIntent::Verify {
         "bash".to_string()
@@ -1116,8 +1128,7 @@ fn fallback_tool_call(step: &PlanStep, plan: &TaskPlan, _context_plan: &ContextP
         };
         json!({"command": command})
     } else {
-        let target = select_target_path(step, plan)
-            .unwrap_or_else(|| "README.md".to_string());
+        let target = select_target_path(step, plan).unwrap_or_else(|| "README.md".to_string());
         json!({"path": target})
     };
 
@@ -1152,7 +1163,9 @@ fn validate_tool_call(tool: &str, params: &Value, schemas: &[ToolSchema]) -> boo
         };
         match params_obj.get(key) {
             Some(Value::String(value)) if !value.trim().is_empty() => {}
-            Some(Value::Array(_)) | Some(Value::Object(_)) | Some(Value::Bool(_))
+            Some(Value::Array(_))
+            | Some(Value::Object(_))
+            | Some(Value::Bool(_))
             | Some(Value::Number(_)) => {}
             _ => return false,
         }
@@ -1193,13 +1206,11 @@ fn should_use_fallback_plan(desc: &str) -> bool {
 }
 
 fn extract_target_hint(step: &PlanStep) -> Option<String> {
-    extract_file_hint(&step.description)
-        .or_else(|| step.target_files.get(0).cloned())
+    extract_file_hint(&step.description).or_else(|| step.target_files.get(0).cloned())
 }
 
 fn select_target_path(step: &PlanStep, plan: &TaskPlan) -> Option<String> {
-    extract_target_hint(step)
-        .or_else(|| plan.files.get(0).map(|p| p.to_string_lossy().to_string()))
+    extract_target_hint(step).or_else(|| plan.files.get(0).map(|p| p.to_string_lossy().to_string()))
 }
 
 fn extract_file_hint(desc: &str) -> Option<String> {
@@ -1235,10 +1246,7 @@ fn maybe_override_path_from_hint(
     if !full_path.exists() {
         return;
     }
-    let current_path = decision
-        .params
-        .get("path")
-        .and_then(|value| value.as_str());
+    let current_path = decision.params.get("path").and_then(|value| value.as_str());
     if current_path == Some(path_hint.as_str()) {
         return;
     }
@@ -1290,7 +1298,11 @@ fn fallback_tool_result(
     let should_continue = exec_result.output.success
         && matches!(step.intent, StepIntent::Investigate)
         && matches!(tool_name, "read_file" | "grep" | "glob");
-    let step_utility = if exec_result.output.success { 0.2 } else { -0.4 };
+    let step_utility = if exec_result.output.success {
+        0.2
+    } else {
+        -0.4
+    };
 
     ToolResultInterpretation {
         success,
@@ -1349,7 +1361,11 @@ fn build_pr_summary(
     if verification.commands_run.is_empty() {
         summary.push_str("- No verification commands run\n");
     } else {
-        for (cmd, code) in verification.commands_run.iter().zip(verification.exit_codes.iter()) {
+        for (cmd, code) in verification
+            .commands_run
+            .iter()
+            .zip(verification.exit_codes.iter())
+        {
             summary.push_str(&format!("- `{}` -> exit {}\n", cmd, code));
         }
     }

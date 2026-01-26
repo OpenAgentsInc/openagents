@@ -7,7 +7,7 @@
 //! 4. Pylon local (Ollama) - Fallback when nothing else available
 
 use anyhow::Result;
-use dsrs::{ChatAdapter, LM, configure, check_codex_available};
+use dsrs::{ChatAdapter, LM, check_codex_available, configure};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::OnceLock;
@@ -61,7 +61,9 @@ impl LmProvider {
 }
 
 fn env_or_local(key: &str) -> Option<String> {
-    std::env::var(key).ok().or_else(|| env_local_map().get(key).cloned())
+    std::env::var(key)
+        .ok()
+        .or_else(|| env_local_map().get(key).cloned())
 }
 
 fn env_or_local_required(key: &str) -> Result<String> {

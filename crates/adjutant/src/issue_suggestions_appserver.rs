@@ -5,8 +5,8 @@
 
 use anyhow::{Context, Result, anyhow};
 use codex_client::{
-    AppServerChannels, AppServerClient, AppServerConfig,
-    ClientInfo, ThreadStartParams, TurnStartParams, UserInput,
+    AppServerChannels, AppServerClient, AppServerConfig, ClientInfo, ThreadStartParams,
+    TurnStartParams, UserInput,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -64,12 +64,17 @@ pub async fn suggest_issues_streaming(
         // For testing: use all issues as candidates if filter removes everything
         let all_candidates: Vec<_> = issues
             .iter()
-            .map(|i| (i.clone(), crate::dspy::staleness::StalenessScore {
-                score: 0.0,
-                factors: crate::dspy::staleness::StalenessFactors::default(),
-                exclude_from_suggestions: false,
-                exclusion_reason: None,
-            }))
+            .map(|i| {
+                (
+                    i.clone(),
+                    crate::dspy::staleness::StalenessScore {
+                        score: 0.0,
+                        factors: crate::dspy::staleness::StalenessFactors::default(),
+                        exclude_from_suggestions: false,
+                        exclusion_reason: None,
+                    },
+                )
+            })
             .collect();
 
         if all_candidates.len() <= 3 {
@@ -105,7 +110,10 @@ pub async fn suggest_issues_streaming(
                 number: issue.number,
                 title: issue.title.clone(),
                 priority: issue.priority.clone(),
-                rationale: format!("One of {} available issues", candidate_count + filtered_count),
+                rationale: format!(
+                    "One of {} available issues",
+                    candidate_count + filtered_count
+                ),
                 complexity: "medium".to_string(),
             })
             .collect();
@@ -156,7 +164,10 @@ pub async fn suggest_issues_streaming(
 
     // Collect response while streaming tokens
     let response = collect_response_streaming(&mut channels, &token_tx).await?;
-    tracing::info!("Issue suggestion response collected ({} chars)", response.len());
+    tracing::info!(
+        "Issue suggestion response collected ({} chars)",
+        response.len()
+    );
 
     // Parse suggestions from response
     let suggestions = parse_suggestions(&response, &candidates);
@@ -199,7 +210,9 @@ async fn run_llm_suggestion(
     // TEMP: Force gpt-5.1-codex-mini model override
     let turn_params = TurnStartParams {
         thread_id: thread_id.clone(),
-        input: vec![UserInput::Text { text: prompt.to_string() }],
+        input: vec![UserInput::Text {
+            text: prompt.to_string(),
+        }],
         model: Some("gpt-5.1-codex-mini".to_string()),
         effort: None,
         summary: None,
@@ -211,7 +224,10 @@ async fn run_llm_suggestion(
 
     // Collect response while streaming tokens
     let response = collect_response_streaming(&mut channels, &token_tx).await?;
-    tracing::info!("Issue suggestion response collected ({} chars)", response.len());
+    tracing::info!(
+        "Issue suggestion response collected ({} chars)",
+        response.len()
+    );
 
     // Parse suggestions from response
     let suggestions = parse_suggestions(&response, candidates);
@@ -314,7 +330,9 @@ async fn collect_response_streaming(
                     "turn/error" => {
                         let error_msg = notif
                             .params
-                            .and_then(|p| p.get("message").and_then(|v| v.as_str().map(String::from)))
+                            .and_then(|p| {
+                                p.get("message").and_then(|v| v.as_str().map(String::from))
+                            })
                             .unwrap_or_else(|| "Unknown turn error".to_string());
                         return Err(anyhow!("Turn error: {}", error_msg));
                     }
@@ -354,15 +372,16 @@ fn parse_suggestions(
                     .into_iter()
                     .filter_map(|s| {
                         // Find the matching candidate
-                        candidates.iter().find(|(c, _)| c.number == s.number).map(|(c, _)| {
-                            IssueSuggestionDisplay {
+                        candidates
+                            .iter()
+                            .find(|(c, _)| c.number == s.number)
+                            .map(|(c, _)| IssueSuggestionDisplay {
                                 number: s.number,
                                 title: s.title,
                                 priority: c.priority.clone(),
                                 rationale: s.rationale,
                                 complexity: s.complexity,
-                            }
-                        })
+                            })
                     })
                     .collect();
             }

@@ -52,11 +52,7 @@ impl AiServerConfig {
     }
 
     /// Create a configuration with custom values
-    pub fn new(
-        host: String,
-        port: u16,
-        api_key: String,
-    ) -> Self {
+    pub fn new(host: String, port: u16, api_key: String) -> Self {
         Self {
             host,
             port,

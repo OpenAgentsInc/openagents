@@ -308,7 +308,9 @@ impl IssueSuggestionPipeline {
             "user_preferences": "input" => input.user_preferences.clone().map(|v| v.to_string()).unwrap_or_default(),
         };
 
-        let prediction = predictor.forward_with_streaming(example, lm, callback).await?;
+        let prediction = predictor
+            .forward_with_streaming(example, lm, callback)
+            .await?;
 
         // Step 4: Parse suggestions from prediction
         let suggestions = parse_suggestions(&prediction, &candidates)?;
@@ -395,117 +397,119 @@ impl IssueSuggestionPipeline {
         workspace_context: &'a str,
         workspace_root: Option<&'a Path>,
         excluded: &'a mut Vec<u32>,
-    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<Option<UnblockSuggestionResult>>> + Send + 'a>> {
+    ) -> std::pin::Pin<
+        Box<dyn std::future::Future<Output = Result<Option<UnblockSuggestionResult>>> + Send + 'a>,
+    > {
         Box::pin(async move {
-        // Get blocked issues, excluding already-validated-as-stale ones
-        let blocked: Vec<_> = issues
-            .iter()
-            .filter(|i| i.is_blocked && i.status == "open" && !excluded.contains(&i.number))
-            .collect();
+            // Get blocked issues, excluding already-validated-as-stale ones
+            let blocked: Vec<_> = issues
+                .iter()
+                .filter(|i| i.is_blocked && i.status == "open" && !excluded.contains(&i.number))
+                .collect();
 
-        if blocked.is_empty() {
-            tracing::info!("No more blocked issues to consider (all excluded or none exist)");
-            return Ok(None);
-        }
-
-        // Get recent commits for context
-        let recent_commits = workspace_root
-            .map(|root| get_recent_commits(root, 20))
-            .transpose()?
-            .unwrap_or_else(|| "No commit history available".to_string());
-
-        // Prepare blocked issues JSON
-        let blocked_json: Vec<serde_json::Value> = blocked
-            .iter()
-            .map(|issue| {
-                json!({
-                    "number": issue.number,
-                    "title": issue.title,
-                    "blocked_reason": issue.blocked_reason.as_deref().unwrap_or("Unknown"),
-                    "priority": issue.priority,
-                    "issue_type": issue.issue_type,
-                })
-            })
-            .collect();
-
-        // Try LLM prediction, fallback to heuristic if no LLM available
-        let prediction_result = self
-            .try_lm_unblock_prediction(&blocked_json, workspace_context, &recent_commits)
-            .await;
-
-        let unblock_result = match prediction_result {
-            Ok(prediction) => self.parse_unblock_result(&prediction, &blocked)?,
-            Err(_) => {
-                // Fallback to heuristic selection when LLM is unavailable
-                Some(self.heuristic_unblock_selection(&blocked))
+            if blocked.is_empty() {
+                tracing::info!("No more blocked issues to consider (all excluded or none exist)");
+                return Ok(None);
             }
-        };
 
-        // Validate the result before returning
-        if let Some(ref result) = unblock_result {
-            if let Some(root) = workspace_root {
-                tracing::info!(
-                    "Validating issue #{} blocked_reason: '{}' against recent commits at {:?}",
-                    result.issue_number,
-                    result.blocked_reason,
-                    root
-                );
+            // Get recent commits for context
+            let recent_commits = workspace_root
+                .map(|root| get_recent_commits(root, 20))
+                .transpose()?
+                .unwrap_or_else(|| "No commit history available".to_string());
 
-                // Validate that the blocked_reason is still accurate
-                let validation = validate_blocked_issue(
-                    result.issue_number,
-                    &result.title,
-                    &result.blocked_reason,
-                    root,
-                )
+            // Prepare blocked issues JSON
+            let blocked_json: Vec<serde_json::Value> = blocked
+                .iter()
+                .map(|issue| {
+                    json!({
+                        "number": issue.number,
+                        "title": issue.title,
+                        "blocked_reason": issue.blocked_reason.as_deref().unwrap_or("Unknown"),
+                        "priority": issue.priority,
+                        "issue_type": issue.issue_type,
+                    })
+                })
+                .collect();
+
+            // Try LLM prediction, fallback to heuristic if no LLM available
+            let prediction_result = self
+                .try_lm_unblock_prediction(&blocked_json, workspace_context, &recent_commits)
                 .await;
 
-                match validation {
-                    Ok(v) => {
-                        tracing::info!(
-                            "Validation result for #{}: is_valid={}, status={:?}, reason='{}', confidence={}",
-                            result.issue_number,
-                            v.is_valid,
-                            v.status,
-                            v.reason,
-                            v.confidence
-                        );
+            let unblock_result = match prediction_result {
+                Ok(prediction) => self.parse_unblock_result(&prediction, &blocked)?,
+                Err(_) => {
+                    // Fallback to heuristic selection when LLM is unavailable
+                    Some(self.heuristic_unblock_selection(&blocked))
+                }
+            };
 
-                        if !v.is_valid {
+            // Validate the result before returning
+            if let Some(ref result) = unblock_result {
+                if let Some(root) = workspace_root {
+                    tracing::info!(
+                        "Validating issue #{} blocked_reason: '{}' against recent commits at {:?}",
+                        result.issue_number,
+                        result.blocked_reason,
+                        root
+                    );
+
+                    // Validate that the blocked_reason is still accurate
+                    let validation = validate_blocked_issue(
+                        result.issue_number,
+                        &result.title,
+                        &result.blocked_reason,
+                        root,
+                    )
+                    .await;
+
+                    match validation {
+                        Ok(v) => {
                             tracing::info!(
-                                "Issue #{} blocked_reason is stale - trying next candidate",
-                                result.issue_number
+                                "Validation result for #{}: is_valid={}, status={:?}, reason='{}', confidence={}",
+                                result.issue_number,
+                                v.is_valid,
+                                v.status,
+                                v.reason,
+                                v.confidence
                             );
-                            // Exclude this issue and try next candidate
-                            excluded.push(result.issue_number);
-                            return self
-                                .suggest_unblock_internal(
-                                    issues,
-                                    workspace_context,
-                                    workspace_root,
-                                    excluded,
-                                )
-                                .await;
+
+                            if !v.is_valid {
+                                tracing::info!(
+                                    "Issue #{} blocked_reason is stale - trying next candidate",
+                                    result.issue_number
+                                );
+                                // Exclude this issue and try next candidate
+                                excluded.push(result.issue_number);
+                                return self
+                                    .suggest_unblock_internal(
+                                        issues,
+                                        workspace_context,
+                                        workspace_root,
+                                        excluded,
+                                    )
+                                    .await;
+                            }
+                        }
+                        Err(e) => {
+                            // Validation failed (e.g., no LLM available), proceed anyway
+                            tracing::warn!(
+                                "Could not validate issue #{}: {}. Proceeding anyway.",
+                                result.issue_number,
+                                e
+                            );
                         }
                     }
-                    Err(e) => {
-                        // Validation failed (e.g., no LLM available), proceed anyway
-                        tracing::warn!(
-                            "Could not validate issue #{}: {}. Proceeding anyway.",
-                            result.issue_number,
-                            e
-                        );
-                    }
+                } else {
+                    tracing::warn!(
+                        "No workspace_root provided - skipping validation for issue #{}",
+                        result.issue_number
+                    );
                 }
-            } else {
-                tracing::warn!(
-                    "No workspace_root provided - skipping validation for issue #{}",
-                    result.issue_number
-                );
             }
-        }
 
-        Ok(unblock_result)
+            Ok(unblock_result)
         })
     }
 

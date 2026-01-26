@@ -12,22 +12,14 @@ use crate::backend::app_server::{
     spawn_workspace_session as spawn_workspace_session_inner,
 };
 use crate::codex_home::resolve_workspace_codex_home;
-use crate::event_sink::TauriEventSink;
 use crate::contracts::ipc::{
-    AccountRateLimitsResponse,
-    CodexDoctorResponse,
-    CurrentDirectory,
-    ListModelsResponse,
-    ListThreadsResponse,
-    ResumeThreadResponse,
-    SendUserMessageResponse,
-    StartThreadResponse,
-    TestCodexConnectionResponse,
-    WorkspaceConnectionResponse,
+    AccountRateLimitsResponse, CodexDoctorResponse, CurrentDirectory, ListModelsResponse,
+    ListThreadsResponse, ResumeThreadResponse, SendUserMessageResponse, SetFullAutoResponse,
+    StartThreadResponse, TestCodexConnectionResponse, WorkspaceConnectionResponse,
     WorkspaceConnectionStatusResponse,
-    SetFullAutoResponse,
 };
-use crate::full_auto::{FullAutoMap, FullAutoState, DEFAULT_CONTINUE_PROMPT};
+use crate::event_sink::TauriEventSink;
+use crate::full_auto::{DEFAULT_CONTINUE_PROMPT, FullAutoMap, FullAutoState};
 use crate::state::AppState;
 use crate::types::WorkspaceEntry;
 
@@ -155,7 +147,6 @@ pub(crate) async fn connect_workspace(
     state: State<'_, AppState>,
     app: AppHandle,
 ) -> Result<WorkspaceConnectionResponse, String> {
-
     // Check if already connected
     {
         let sessions = state.sessions.lock().await;
@@ -236,7 +227,7 @@ pub(crate) async fn disconnect_workspace(
         let mut full_auto = state.full_auto.lock().await;
         full_auto.remove(&workspace_id);
     }
-    
+
     // Note: Events will be flushed when completion is detected (turn/completed event)
     // Buffered events will be written when the completion event is received
 
@@ -278,7 +269,7 @@ pub(crate) async fn start_thread(
         "approvalPolicy": "never",
         "sandbox": "danger-full-access"
     });
-    
+
     session
         .send_request("thread/start", params)
         .await
@@ -370,7 +361,7 @@ pub(crate) async fn send_user_message(
         "sandboxPolicy": sandbox_policy,
         "model": model,
     });
-    
+
     session
         .send_request("turn/start", params)
         .await
@@ -431,10 +422,10 @@ pub(crate) async fn account_rate_limits(
     let session = sessions
         .get(&workspace_id)
         .ok_or("workspace not connected")?;
-    
+
     // Don't send to ACP - this method doesn't exist in ACP protocol
     // ACP doesn't have account/rateLimits/read
-    
+
     session
         .send_request("account/rateLimits/read", json!(null))
         .await
@@ -451,10 +442,10 @@ pub(crate) async fn list_models(
     let session = sessions
         .get(&workspace_id)
         .ok_or("workspace not connected")?;
-    
+
     // Don't send to ACP - model/list doesn't exist in ACP protocol
     // Models are returned in session/new response or via other ACP methods
-    
+
     session
         .send_request("model/list", json!({}))
         .await

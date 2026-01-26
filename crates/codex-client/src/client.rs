@@ -462,17 +462,11 @@ impl AppServerClient {
         }
     }
 
-    pub async fn thread_start(
-        &self,
-        params: ThreadStartParams,
-    ) -> Result<ThreadStartResponse> {
+    pub async fn thread_start(&self, params: ThreadStartParams) -> Result<ThreadStartResponse> {
         self.transport.request("thread/start", Some(&params)).await
     }
 
-    pub async fn thread_resume(
-        &self,
-        params: ThreadResumeParams,
-    ) -> Result<ThreadResumeResponse> {
+    pub async fn thread_resume(&self, params: ThreadResumeParams) -> Result<ThreadResumeResponse> {
         self.transport.request("thread/resume", Some(&params)).await
     }
 
@@ -516,10 +510,7 @@ impl AppServerClient {
             .await
     }
 
-    pub async fn account_read(
-        &self,
-        params: GetAccountParams,
-    ) -> Result<GetAccountResponse> {
+    pub async fn account_read(&self, params: GetAccountParams) -> Result<GetAccountResponse> {
         self.transport.request("account/read", Some(&params)).await
     }
 
@@ -588,17 +579,11 @@ impl AppServerClient {
             .await
     }
 
-    pub async fn review_start(
-        &self,
-        params: ReviewStartParams,
-    ) -> Result<ReviewStartResponse> {
+    pub async fn review_start(&self, params: ReviewStartParams) -> Result<ReviewStartResponse> {
         self.transport.request("review/start", Some(&params)).await
     }
 
-    pub async fn command_exec(
-        &self,
-        params: CommandExecParams,
-    ) -> Result<CommandExecResponse> {
+    pub async fn command_exec(&self, params: CommandExecParams) -> Result<CommandExecResponse> {
         self.transport.request("command/exec", Some(&params)).await
     }
 

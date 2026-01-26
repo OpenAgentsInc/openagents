@@ -16,7 +16,6 @@
 //! NOTE: ForgeAdapter trait is not yet implemented. These tests document
 //! the expected behavior and provide specification tests where possible.
 
-
 /// ADR-0018.R1: All adapters MUST implement required operations.
 ///
 /// NOTE: ForgeAdapter trait not yet implemented.

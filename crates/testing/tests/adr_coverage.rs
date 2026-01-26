@@ -237,10 +237,7 @@ fn lint_no_hardcoded_nip90_kinds_in_docs() {
 
     let mut violations = Vec::new();
 
-    for entry in WalkDir::new(&docs_dir)
-        .into_iter()
-        .filter_map(|e| e.ok())
-    {
+    for entry in WalkDir::new(&docs_dir).into_iter().filter_map(|e| e.ok()) {
         let path = entry.path();
         if !path.extension().map(|e| e == "md").unwrap_or(false) {
             continue;

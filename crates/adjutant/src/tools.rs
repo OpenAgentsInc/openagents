@@ -295,9 +295,8 @@ impl ToolRegistry {
                 })
             }
             "bash" => {
-                let args: BashParams = serde_json::from_value(params.clone()).map_err(|e| {
-                    AdjutantError::ToolError(format!("Invalid bash params: {}", e))
-                })?;
+                let args: BashParams = serde_json::from_value(params.clone())
+                    .map_err(|e| AdjutantError::ToolError(format!("Invalid bash params: {}", e)))?;
                 let output = self.bash(&args.command).await?;
                 let exit_code = if output.success { Some(0) } else { Some(1) };
                 Ok(ToolExecutionResult {
@@ -307,9 +306,8 @@ impl ToolRegistry {
                 })
             }
             "glob" => {
-                let args: GlobParams = serde_json::from_value(params.clone()).map_err(|e| {
-                    AdjutantError::ToolError(format!("Invalid glob params: {}", e))
-                })?;
+                let args: GlobParams = serde_json::from_value(params.clone())
+                    .map_err(|e| AdjutantError::ToolError(format!("Invalid glob params: {}", e)))?;
                 let output = self.glob(&args.pattern).await?;
                 Ok(ToolExecutionResult {
                     output,
@@ -318,9 +316,8 @@ impl ToolRegistry {
                 })
             }
             "grep" => {
-                let args: GrepParams = serde_json::from_value(params.clone()).map_err(|e| {
-                    AdjutantError::ToolError(format!("Invalid grep params: {}", e))
-                })?;
+                let args: GrepParams = serde_json::from_value(params.clone())
+                    .map_err(|e| AdjutantError::ToolError(format!("Invalid grep params: {}", e)))?;
                 let output = self
                     .grep(&args.pattern, args.path.as_deref().map(Path::new))
                     .await?;
@@ -330,10 +327,7 @@ impl ToolRegistry {
                     side_effects: Vec::new(),
                 })
             }
-            other => Err(AdjutantError::ToolError(format!(
-                "Unknown tool: {}",
-                other
-            ))),
+            other => Err(AdjutantError::ToolError(format!("Unknown tool: {}", other))),
         }
     }
 

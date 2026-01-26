@@ -3,13 +3,13 @@
 //! Manages the lifecycle of the local bun server that provides LM backend
 //! for the Adjutant agent's DSPy pipeline.
 
-use std::process::{Child, Command, Stdio};
-use std::path::PathBuf;
-use std::time::{Duration, Instant};
-use tokio::time::sleep;
+use anyhow::Result;
 use reqwest;
 use serde::{Deserialize, Serialize};
-use anyhow::Result;
+use std::path::PathBuf;
+use std::process::{Child, Command, Stdio};
+use std::time::{Duration, Instant};
+use tokio::time::sleep;
 
 pub mod config;
 
@@ -44,7 +44,10 @@ impl AiServerManager {
     pub async fn start(&mut self) -> Result<()> {
         // Check if server is already running
         if self.is_running().await {
-            println!("AI Gateway server already running on port {}", self.config.port);
+            println!(
+                "AI Gateway server already running on port {}",
+                self.config.port
+            );
             return Ok(());
         }
 
@@ -53,8 +56,11 @@ impl AiServerManager {
 
         // Find ai-server directory
         let ai_server_path = self.find_ai_server_path()?;
-        
-        println!("Starting AI Gateway server on {}:{}", self.config.host, self.config.port);
+
+        println!(
+            "Starting AI Gateway server on {}:{}",
+            self.config.host, self.config.port
+        );
 
         // Install dependencies if needed
         self.install_dependencies(&ai_server_path).await?;
@@ -74,9 +80,9 @@ impl AiServerManager {
 
         // Wait for server to be ready
         self.wait_for_ready().await?;
-        
+
         self.process = Some(cmd);
-        
+
         println!("✅ AI Gateway server started successfully");
         Ok(())
     }
@@ -85,17 +91,17 @@ impl AiServerManager {
     pub async fn stop(&mut self) -> Result<()> {
         if let Some(mut process) = self.process.take() {
             println!("Stopping AI Gateway server...");
-            
+
             // Try graceful shutdown first
             if let Err(e) = process.kill() {
                 eprintln!("Warning: Failed to kill server process: {}", e);
             }
-            
+
             // Wait for process to exit
             if let Err(e) = process.wait() {
                 eprintln!("Warning: Failed to wait for process: {}", e);
             }
-            
+
             println!("✅ AI Gateway server stopped");
         }
         Ok(())
@@ -109,8 +115,9 @@ impl AiServerManager {
     /// Get server health status
     pub async fn health_check(&self) -> Result<HealthResponse> {
         let url = format!("http://{}:{}/health", self.config.host, self.config.port);
-        
-        let response = self.client
+
+        let response = self
+            .client
             .get(&url)
             .timeout(Duration::from_secs(5))
             .send()
@@ -124,15 +131,19 @@ impl AiServerManager {
                 .map_err(|e| anyhow::anyhow!("Failed to parse health response: {}", e))?;
             Ok(health)
         } else {
-            Err(anyhow::anyhow!("Server returned status: {}", response.status()))
+            Err(anyhow::anyhow!(
+                "Server returned status: {}",
+                response.status()
+            ))
         }
     }
 
     /// Get server usage analytics
     pub async fn get_analytics(&self) -> Result<serde_json::Value> {
         let url = format!("http://{}:{}/analytics", self.config.host, self.config.port);
-        
-        let response = self.client
+
+        let response = self
+            .client
             .get(&url)
             .timeout(Duration::from_secs(5))
             .send()
@@ -146,7 +157,10 @@ impl AiServerManager {
                 .map_err(|e| anyhow::anyhow!("Failed to parse analytics response: {}", e))?;
             Ok(analytics)
         } else {
-            Err(anyhow::anyhow!("Analytics request failed with status: {}", response.status()))
+            Err(anyhow::anyhow!(
+                "Analytics request failed with status: {}",
+                response.status()
+            ))
         }
     }
 
@@ -182,10 +196,10 @@ impl AiServerManager {
     /// Install Node.js dependencies if needed
     async fn install_dependencies(&self, ai_server_path: &PathBuf) -> Result<()> {
         let node_modules = ai_server_path.join("node_modules");
-        
+
         if !node_modules.exists() {
             println!("Installing AI server dependencies...");
-            
+
             let output = Command::new("bun")
                 .args(&["install"])
                 .current_dir(ai_server_path)
@@ -194,12 +208,15 @@ impl AiServerManager {
 
             if !output.status.success() {
                 let stderr = String::from_utf8_lossy(&output.stderr);
-                return Err(anyhow::anyhow!("Dependency installation failed: {}", stderr));
+                return Err(anyhow::anyhow!(
+                    "Dependency installation failed: {}",
+                    stderr
+                ));
             }
-            
+
             println!("✅ Dependencies installed successfully");
         }
-        
+
         Ok(())
     }
 
@@ -208,8 +225,8 @@ impl AiServerManager {
         match std::net::TcpListener::bind(format!("{}:{}", self.config.host, self.config.port)) {
             Ok(_) => Ok(()),
             Err(e) => Err(anyhow::anyhow!(
-                "Port {} is not available: {}. Please change AI_SERVER_PORT in your environment", 
-                self.config.port, 
+                "Port {} is not available: {}. Please change AI_SERVER_PORT in your environment",
+                self.config.port,
                 e
             )),
         }
@@ -228,12 +245,12 @@ impl AiServerManager {
                 println!("✅ AI Gateway server is ready");
                 return Ok(());
             }
-            
+
             sleep(check_interval).await;
         }
 
         Err(anyhow::anyhow!(
-            "AI Gateway server failed to start within {} seconds", 
+            "AI Gateway server failed to start within {} seconds",
             timeout.as_secs()
         ))
     }
@@ -247,9 +264,9 @@ impl Drop for AiServerManager {
     }
 }
 
+use once_cell::sync::Lazy;
 /// Global server manager instance
 use std::sync::Mutex;
-use once_cell::sync::Lazy;
 
 static GLOBAL_AI_SERVER: Lazy<Mutex<Option<AiServerManager>>> = Lazy::new(|| Mutex::new(None));
 
@@ -266,7 +283,7 @@ pub async fn start_ai_server() -> Result<()> {
         let mut server_guard = GLOBAL_AI_SERVER.lock().unwrap();
         server_guard.take()
     };
-    
+
     if let Some(mut server) = server {
         let result = server.start().await;
         // Put the server back
@@ -276,7 +293,9 @@ pub async fn start_ai_server() -> Result<()> {
         }
         result
     } else {
-        Err(anyhow::anyhow!("AI server not initialized. Call init_ai_server() first"))
+        Err(anyhow::anyhow!(
+            "AI server not initialized. Call init_ai_server() first"
+        ))
     }
 }
 
@@ -286,7 +305,7 @@ pub async fn stop_ai_server() -> Result<()> {
         let mut server_guard = GLOBAL_AI_SERVER.lock().unwrap();
         server_guard.take()
     };
-    
+
     if let Some(mut server) = server {
         let result = server.stop().await;
         // Put the server back
@@ -311,7 +330,7 @@ pub async fn is_ai_server_running() -> bool {
             None
         }
     };
-    
+
     if let Some(server) = server {
         server.is_running().await
     } else {
@@ -339,7 +358,7 @@ pub async fn get_ai_server_health() -> Result<HealthResponse> {
             None
         }
     };
-    
+
     if let Some(server) = server {
         server.health_check().await
     } else {

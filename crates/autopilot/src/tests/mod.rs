@@ -14,6 +14,6 @@ mod oanix_tests;
 mod pylon_earnings_tests;
 mod pylon_jobs_tests;
 mod rlm_tests;
-mod spark_wallet_tests;
 mod skill_installation_tests;
+mod spark_wallet_tests;
 mod wallet_tests;

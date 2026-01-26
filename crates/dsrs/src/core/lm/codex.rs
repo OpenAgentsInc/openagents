@@ -5,12 +5,12 @@
 
 use anyhow::Result;
 use codex_client::{
-    AppServerChannels, AppServerClient, AppServerConfig, ClientInfo,
-    ThreadStartParams, TurnStartParams, UserInput, is_codex_available,
+    AppServerChannels, AppServerClient, AppServerConfig, ClientInfo, ThreadStartParams,
+    TurnStartParams, UserInput, is_codex_available,
 };
+use rig::OneOrMany;
 use rig::completion::{CompletionError, CompletionRequest, CompletionResponse, Usage};
 use rig::message::AssistantContent;
-use rig::OneOrMany;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
@@ -114,9 +114,7 @@ impl CodexCompletionModel {
     }
 
     /// Collect response from Codex notifications until turn completes.
-    async fn collect_response(
-        channels: &mut AppServerChannels,
-    ) -> Result<String, CompletionError> {
+    async fn collect_response(channels: &mut AppServerChannels) -> Result<String, CompletionError> {
         Self::collect_response_streaming(channels, None::<fn(&str)>).await
     }
 
@@ -199,9 +197,9 @@ impl CodexCompletionModel {
 
         // Get access to client state
         let mut guard = self.client.lock().await;
-        let state = guard
-            .as_mut()
-            .ok_or_else(|| CompletionError::ProviderError("Codex client not initialized".to_string()))?;
+        let state = guard.as_mut().ok_or_else(|| {
+            CompletionError::ProviderError("Codex client not initialized".to_string())
+        })?;
 
         // Start a turn with the prompt
         // TEMP: Force gpt-5.1-codex-mini model override
@@ -242,11 +240,19 @@ impl CodexCompletionModel {
 fn format_message(msg: &rig::message::Message) -> String {
     match msg {
         rig::message::Message::User { content } => {
-            let text = content.iter().map(extract_user_content_text).collect::<Vec<_>>().join(" ");
+            let text = content
+                .iter()
+                .map(extract_user_content_text)
+                .collect::<Vec<_>>()
+                .join(" ");
             format!("User: {}\n\n", text)
         }
         rig::message::Message::Assistant { content, .. } => {
-            let text = content.iter().map(extract_assistant_content_text).collect::<Vec<_>>().join(" ");
+            let text = content
+                .iter()
+                .map(extract_assistant_content_text)
+                .collect::<Vec<_>>()
+                .join(" ");
             format!("Assistant: {}\n\n", text)
         }
     }
@@ -279,9 +285,9 @@ impl super::client_registry::CompletionProvider for CodexCompletionModel {
 
         // Get access to client state
         let mut guard = self.client.lock().await;
-        let state = guard
-            .as_mut()
-            .ok_or_else(|| CompletionError::ProviderError("Codex client not initialized".to_string()))?;
+        let state = guard.as_mut().ok_or_else(|| {
+            CompletionError::ProviderError("Codex client not initialized".to_string())
+        })?;
 
         // Start a turn with the prompt
         // TEMP: Force gpt-5.1-codex-mini model override
@@ -310,7 +316,7 @@ impl super::client_registry::CompletionProvider for CodexCompletionModel {
                 text: response_text,
             })),
             usage: Usage {
-                input_tokens: 0,  // Codex doesn't report token usage
+                input_tokens: 0, // Codex doesn't report token usage
                 output_tokens: 0,
                 total_tokens: 0,
             },

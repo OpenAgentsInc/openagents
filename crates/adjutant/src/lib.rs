@@ -42,8 +42,8 @@ pub mod auth;
 pub mod autopilot_loop;
 pub mod boot;
 pub mod cli;
-pub mod coding_agent_loop;
 pub mod codex_executor;
+pub mod coding_agent_loop;
 pub mod delegate;
 pub mod discovery;
 pub mod display;
@@ -294,10 +294,7 @@ impl Adjutant {
     }
 
     /// Set the coding agent loop configuration.
-    pub fn set_coding_agent_config(
-        &mut self,
-        config: coding_agent_loop::CodingAgentConfig,
-    ) {
+    pub fn set_coding_agent_config(&mut self, config: coding_agent_loop::CodingAgentConfig) {
         self.coding_agent_config = config;
     }
 

@@ -3,12 +3,12 @@
 //! Provides a dsrs::LM implementation that talks to the local bun server
 //! which proxies requests to Vercel AI Gateway.
 
-use std::sync::Arc;
-use std::collections::HashMap;
-use reqwest::Client;
-use serde::{Serialize, Deserialize};
-use anyhow::{Result, anyhow};
 use crate::ai_server::AiServerConfig;
+use anyhow::{Result, anyhow};
+use reqwest::Client;
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::sync::Arc;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChatMessage {
@@ -91,10 +91,14 @@ impl LocalAiLM {
     }
 
     /// Send a chat completion request to the local AI server
-    pub async fn chat_completion(&self, request: ChatCompletionRequest) -> Result<ChatCompletionResponse> {
+    pub async fn chat_completion(
+        &self,
+        request: ChatCompletionRequest,
+    ) -> Result<ChatCompletionResponse> {
         let url = format!("{}/v1/chat/completions", self.base_url);
-        
-        let response = self.client
+
+        let response = self
+            .client
             .post(&url)
             .header("Content-Type", "application/json")
             .header("Authorization", format!("Bearer {}", self.api_key))
@@ -111,7 +115,10 @@ impl LocalAiLM {
             Ok(completion)
         } else {
             let status = response.status();
-            let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+            let error_text = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Unknown error".to_string());
             Err(anyhow!("AI server error {}: {}", status, error_text))
         }
     }
@@ -119,8 +126,9 @@ impl LocalAiLM {
     /// Send a DSPy prediction request to the local AI server
     pub async fn dspy_predict(&self, request: DspyPredictRequest) -> Result<DspyPredictResponse> {
         let url = format!("{}/dspy/predict", self.base_url);
-        
-        let response = self.client
+
+        let response = self
+            .client
             .post(&url)
             .header("Content-Type", "application/json")
             .header("Authorization", format!("Bearer {}", self.api_key))
@@ -137,7 +145,10 @@ impl LocalAiLM {
             Ok(prediction)
         } else {
             let status = response.status();
-            let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+            let error_text = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Unknown error".to_string());
             Err(anyhow!("DSPy prediction error {}: {}", status, error_text))
         }
     }
@@ -145,19 +156,19 @@ impl LocalAiLM {
     /// Convert a generic prompt to chat messages
     fn prompt_to_messages(&self, prompt: &str, system_prompt: Option<&str>) -> Vec<ChatMessage> {
         let mut messages = Vec::new();
-        
+
         if let Some(system) = system_prompt {
             messages.push(ChatMessage {
                 role: "system".to_string(),
                 content: system.to_string(),
             });
         }
-        
+
         messages.push(ChatMessage {
             role: "user".to_string(),
             content: prompt.to_string(),
         });
-        
+
         messages
     }
 }
@@ -166,7 +177,7 @@ impl LocalAiLM {
 // In a full integration, we'd either:
 // 1. Use the dsrs LM struct directly with proper configuration, or
 // 2. Create a custom LM client that wraps our local server
-// 
+//
 // For now, LocalAiLM serves as a client to our local AI Gateway
 
 impl Clone for LocalAiLM {
@@ -184,21 +195,17 @@ impl Clone for LocalAiLM {
 pub fn create_local_ai_lm() -> Result<Arc<LocalAiLM>> {
     match AiServerConfig::from_env() {
         Ok(config) => {
-            config.validate()
+            config
+                .validate()
                 .map_err(|e| anyhow!("Invalid AI server config: {}", e))?;
             Ok(Arc::new(LocalAiLM::from_config(&config)))
         }
-        Err(e) => {
-            Err(anyhow!("Failed to create LocalAiLM: {}", e))
-        }
+        Err(e) => Err(anyhow!("Failed to create LocalAiLM: {}", e)),
     }
 }
 
 /// Create a LocalAiLM with specific configuration
-pub fn create_local_ai_lm_with_config(
-    base_url: &str,
-    model: &str,
-) -> Arc<LocalAiLM> {
+pub fn create_local_ai_lm_with_config(base_url: &str, model: &str) -> Arc<LocalAiLM> {
     Arc::new(LocalAiLM::new(
         base_url.to_string(),
         "local-api-key".to_string(),

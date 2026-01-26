@@ -32,8 +32,8 @@ use crate::app::config::{AgentSelection, SettingsState, mcp_project_file};
 use crate::app::dspy::DspyState;
 use crate::app::dvm::DvmState;
 use crate::app::events::{
-    CoderMode, InputFocus, ModalState, convert_key_for_binding, convert_key_for_input, convert_modifiers,
-    convert_mouse_button,
+    CoderMode, InputFocus, ModalState, convert_key_for_binding, convert_key_for_input,
+    convert_modifiers, convert_mouse_button,
 };
 use crate::app::gateway::GatewayState;
 use crate::app::git::GitState;

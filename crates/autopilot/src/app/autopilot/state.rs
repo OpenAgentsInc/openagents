@@ -37,7 +37,8 @@ pub(crate) struct AutopilotState {
     /// Issue pending validation (after user selects but before work starts)
     pub(crate) pending_validation: Option<PendingValidation>,
     /// Channel for receiving validation results from async task
-    pub(crate) validation_result_rx: Option<mpsc::UnboundedReceiver<adjutant::dspy::IssueValidationResult>>,
+    pub(crate) validation_result_rx:
+        Option<mpsc::UnboundedReceiver<adjutant::dspy::IssueValidationResult>>,
 
     // === Post-completion hook state ===
     /// Issue currently being worked on (UUID)
