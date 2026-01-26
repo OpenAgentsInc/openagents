@@ -2,6 +2,7 @@ import { Effect } from "effect"
 import { invoke } from "@tauri-apps/api/core"
 import { open } from "@tauri-apps/plugin-dialog"
 import { listen } from "@tauri-apps/api/event"
+import packageInfo from "../../../package.json"
 import type { Component } from "../../effuse/index.js"
 import { html } from "../../effuse/index.js"
 import type { CodexConversationItem, CodexPlanStep } from "../../types/codex.js"
@@ -131,6 +132,8 @@ type StatusEvent =
 const workspaceIdKey = "autopilotWorkspaceId"
 const workspacePathKey = "autopilotWorkspacePath"
 const rootWorkspaceMessage = "Select a working directory to connect."
+const appVersion =
+  typeof packageInfo.version === "string" ? packageInfo.version : "0.0.0"
 
 const nowTime = () => new Date().toLocaleTimeString()
 const nowEpochSeconds = () => Math.floor(Date.now() / 1000)
@@ -1370,6 +1373,9 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
                     >${state.lastEventText}</pre>
                   </div>
                 </section>
+              </div>
+              <div class="border-t border-[color:var(--line)] px-2.5 py-2 text-[10px] uppercase tracking-[0.12em] text-[color:var(--muted)]">
+                Version v${appVersion}
               </div>
             </aside>
           </div>
