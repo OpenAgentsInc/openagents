@@ -45,6 +45,25 @@ type AppServerEvent = {
   }
 }
 
+type RateLimitWindow = {
+  usedPercent: number
+  windowDurationMins: number | null
+  resetsAt: number | null
+}
+
+type CreditsSnapshot = {
+  hasCredits: boolean
+  unlimited: boolean
+  balance: string | null
+}
+
+type RateLimitSnapshot = {
+  primary: RateLimitWindow | null
+  secondary: RateLimitWindow | null
+  credits: CreditsSnapshot | null
+  planType: string | null
+}
+
 type SessionSummary = {
   id: string
   preview: string
@@ -89,6 +108,7 @@ type StatusState = {
   fullAutoEnabled: boolean
   fullAutoThreadId: string | null
   fullAutoMessage: string
+  rateLimits: RateLimitSnapshot | null
   busy: BusyState
 }
 
@@ -114,6 +134,40 @@ const rootWorkspaceMessage = "Select a working directory to connect."
 
 const nowTime = () => new Date().toLocaleTimeString()
 const nowEpochSeconds = () => Math.floor(Date.now() / 1000)
+const formatRelativeTime = (timestamp: number) => {
+  const now = Date.now()
+  const diffSeconds = Math.round((timestamp - now) / 1000)
+  const absSeconds = Math.abs(diffSeconds)
+  if (absSeconds < 5) {
+    return "now"
+  }
+  if (absSeconds < 60) {
+    const value = Math.max(1, Math.round(absSeconds))
+    return diffSeconds < 0 ? `${value}s ago` : `in ${value}s`
+  }
+  if (absSeconds < 60 * 60) {
+    const value = Math.max(1, Math.round(absSeconds / 60))
+    return diffSeconds < 0 ? `${value}m ago` : `in ${value}m`
+  }
+  const ranges: { unit: Intl.RelativeTimeFormatUnit; seconds: number }[] = [
+    { unit: "year", seconds: 60 * 60 * 24 * 365 },
+    { unit: "month", seconds: 60 * 60 * 24 * 30 },
+    { unit: "week", seconds: 60 * 60 * 24 * 7 },
+    { unit: "day", seconds: 60 * 60 * 24 },
+    { unit: "hour", seconds: 60 * 60 },
+    { unit: "minute", seconds: 60 },
+    { unit: "second", seconds: 1 },
+  ]
+  const range =
+    ranges.find((entry) => absSeconds >= entry.seconds) ||
+    ranges[ranges.length - 1]
+  if (!range) {
+    return "now"
+  }
+  const value = Math.round(diffSeconds / range.seconds)
+  const formatter = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" })
+  return formatter.format(value, range.unit)
+}
 const isRootPath = (path: string) => {
   const trimmed = path.trim()
   if (!trimmed) {
@@ -175,6 +229,176 @@ const readRecord = (record: Record<string, unknown>, key: string) => {
 const readArray = (record: Record<string, unknown>, key: string) => {
   const value = record[key]
   return Array.isArray(value) ? value : null
+}
+
+const asNumber = (value: unknown): number => {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value
+  }
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Number(value)
+    if (Number.isFinite(parsed)) {
+      return parsed
+    }
+  }
+  return 0
+}
+
+const normalizeRateLimits = (raw: Record<string, unknown>): RateLimitSnapshot => {
+  const primary = readRecord(raw, "primary")
+  const secondary = readRecord(raw, "secondary")
+  const credits = readRecord(raw, "credits")
+  return {
+    primary: primary
+      ? {
+          usedPercent: asNumber(
+            primary.usedPercent ?? primary.used_percent ?? primary.usedPercent,
+          ),
+          windowDurationMins: (() => {
+            const value =
+              primary.windowDurationMins ?? primary.window_duration_mins
+            if (typeof value === "number") {
+              return value
+            }
+            if (typeof value === "string") {
+              const parsed = Number(value)
+              return Number.isFinite(parsed) ? parsed : null
+            }
+            return null
+          })(),
+          resetsAt: (() => {
+            const value = primary.resetsAt ?? primary.resets_at
+            if (typeof value === "number") {
+              return value
+            }
+            if (typeof value === "string") {
+              const parsed = Number(value)
+              return Number.isFinite(parsed) ? parsed : null
+            }
+            return null
+          })(),
+        }
+      : null,
+    secondary: secondary
+      ? {
+          usedPercent: asNumber(
+            secondary.usedPercent ?? secondary.used_percent ?? secondary.usedPercent,
+          ),
+          windowDurationMins: (() => {
+            const value =
+              secondary.windowDurationMins ?? secondary.window_duration_mins
+            if (typeof value === "number") {
+              return value
+            }
+            if (typeof value === "string") {
+              const parsed = Number(value)
+              return Number.isFinite(parsed) ? parsed : null
+            }
+            return null
+          })(),
+          resetsAt: (() => {
+            const value = secondary.resetsAt ?? secondary.resets_at
+            if (typeof value === "number") {
+              return value
+            }
+            if (typeof value === "string") {
+              const parsed = Number(value)
+              return Number.isFinite(parsed) ? parsed : null
+            }
+            return null
+          })(),
+        }
+      : null,
+    credits: credits
+      ? {
+          hasCredits: Boolean(credits.hasCredits ?? credits.has_credits),
+          unlimited: Boolean(credits.unlimited),
+          balance: typeof credits.balance === "string" ? credits.balance : null,
+        }
+      : null,
+    planType:
+      typeof raw.planType === "string"
+        ? raw.planType
+        : typeof raw.plan_type === "string"
+          ? raw.plan_type
+          : null,
+  }
+}
+
+const extractRateLimitsPayload = (
+  value: unknown,
+): Record<string, unknown> | null => {
+  if (!isRecord(value)) {
+    return null
+  }
+  const direct =
+    readRecord(value, "rateLimits") ??
+    readRecord(value, "rate_limits") ??
+    null
+  if (direct) {
+    return direct
+  }
+  if ("primary" in value || "secondary" in value || "credits" in value) {
+    return value
+  }
+  const result = readRecord(value, "result")
+  return result ? extractRateLimitsPayload(result) : null
+}
+
+const clampPercent = (value: number) =>
+  Math.min(Math.max(Math.round(value), 0), 100)
+
+const formatResetLabel = (resetsAt?: number | null) => {
+  if (typeof resetsAt !== "number" || !Number.isFinite(resetsAt)) {
+    return null
+  }
+  const resetMs = resetsAt > 1_000_000_000_000 ? resetsAt : resetsAt * 1000
+  const relative = formatRelativeTime(resetMs).replace(/^in\s+/i, "")
+  return `Resets ${relative}`
+}
+
+const formatCreditsLabel = (accountRateLimits: RateLimitSnapshot | null) => {
+  const credits = accountRateLimits?.credits ?? null
+  if (!credits?.hasCredits) {
+    return null
+  }
+  if (credits.unlimited) {
+    return "Credits: Unlimited"
+  }
+  const balance = credits.balance?.trim() ?? ""
+  if (!balance) {
+    return null
+  }
+  const intValue = Number.parseInt(balance, 10)
+  if (Number.isFinite(intValue) && intValue > 0) {
+    return `Credits: ${intValue} credits`
+  }
+  const floatValue = Number.parseFloat(balance)
+  if (Number.isFinite(floatValue) && floatValue > 0) {
+    const rounded = Math.round(floatValue)
+    return rounded > 0 ? `Credits: ${rounded} credits` : null
+  }
+  return null
+}
+
+const getUsageLabels = (accountRateLimits: RateLimitSnapshot | null) => {
+  const usagePercent = accountRateLimits?.primary?.usedPercent
+  const globalUsagePercent = accountRateLimits?.secondary?.usedPercent
+  const sessionPercent =
+    typeof usagePercent === "number" ? clampPercent(usagePercent) : null
+  const weeklyPercent =
+    typeof globalUsagePercent === "number"
+      ? clampPercent(globalUsagePercent)
+      : null
+
+  return {
+    sessionPercent,
+    weeklyPercent,
+    sessionResetLabel: formatResetLabel(accountRateLimits?.primary?.resetsAt),
+    weeklyResetLabel: formatResetLabel(accountRateLimits?.secondary?.resetsAt),
+    creditsLabel: formatCreditsLabel(accountRateLimits),
+    showWeekly: Boolean(accountRateLimits?.secondary),
+  }
 }
 
 const normalizeErrorMessage = (message: string) => {
@@ -794,6 +1018,7 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
     fullAutoEnabled: false,
     fullAutoThreadId: null,
     fullAutoMessage: "",
+    rateLimits: null,
     busy: {
       doctor: false,
       connect: false,
@@ -857,6 +1082,7 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
       const fullAutoThread = state.fullAutoThreadId ?? "--"
       const fullAutoEnableDisabled = state.fullAutoEnabled
       const fullAutoDisableDisabled = !state.fullAutoEnabled
+      const usageLabels = getUsageLabels(state.rateLimits)
 
       const sessionList = sessionCount
         ? state.sessions.map((session) => {
@@ -1078,6 +1304,61 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
                       ${state.fullAutoMessage || "Runs with full access and no prompts."}
                     </div>
                   </div>
+                </section>
+
+                <section class="flex flex-col gap-2 border-b border-[color:var(--line)] px-2.5 py-2 min-h-0">
+                  <div class="text-[11px] uppercase tracking-[0.12em] text-[color:var(--yellow)]">Usage</div>
+                  <div class="flex flex-col gap-2 min-h-0">
+                    <div class="flex flex-col gap-1">
+                      <div class="flex items-center justify-between text-[10px]">
+                        <span class="uppercase tracking-[0.08em] text-[color:var(--muted)]">
+                          Session
+                          ${usageLabels.sessionResetLabel
+                            ? html`<span class="text-[color:var(--muted)]"> · ${usageLabels.sessionResetLabel}</span>`
+                            : ""}
+                        </span>
+                        <span class="text-[color:var(--muted)]">
+                          ${usageLabels.sessionPercent === null
+                            ? "--"
+                            : `${usageLabels.sessionPercent}%`}
+                        </span>
+                      </div>
+                      <div class="h-1.5 w-full bg-[color:var(--bg)] border border-[color:var(--line)]">
+                        <span
+                          class="block h-full bg-[color:var(--accent-strong)]"
+                          style="width: ${usageLabels.sessionPercent ?? 0}%"
+                        ></span>
+                      </div>
+                    </div>
+                    ${usageLabels.showWeekly
+                      ? html`
+                          <div class="flex flex-col gap-1">
+                            <div class="flex items-center justify-between text-[10px]">
+                              <span class="uppercase tracking-[0.08em] text-[color:var(--muted)]">
+                                Weekly
+                                ${usageLabels.weeklyResetLabel
+                                  ? html`<span class="text-[color:var(--muted)]"> · ${usageLabels.weeklyResetLabel}</span>`
+                                  : ""}
+                              </span>
+                              <span class="text-[color:var(--muted)]">
+                                ${usageLabels.weeklyPercent === null
+                                  ? "--"
+                                  : `${usageLabels.weeklyPercent}%`}
+                              </span>
+                            </div>
+                            <div class="h-1.5 w-full bg-[color:var(--bg)] border border-[color:var(--line)]">
+                              <span
+                                class="block h-full bg-[color:var(--accent-strong)]"
+                                style="width: ${usageLabels.weeklyPercent ?? 0}%"
+                              ></span>
+                            </div>
+                          </div>
+                        `
+                      : ""}
+                  </div>
+                  ${usageLabels.creditsLabel
+                    ? html`<div class="text-[11px] text-[color:var(--muted)]">${usageLabels.creditsLabel}</div>`
+                    : ""}
                 </section>
 
                 <section class="flex flex-col gap-2 border-b border-[color:var(--line)] px-2.5 py-2 min-h-[160px] max-h-[240px] flex-none">
@@ -1833,11 +2114,11 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
       if (event.type === "ConnectWorkspace") {
         const current = yield* ctx.state.get
         const workspacePath = current.workspacePath.trim()
-        if (!workspacePath) {
-          yield* ctx.state.update((state) => ({
-            ...state,
-            workspaceMessage: "Enter a working directory first.",
-            lastUpdated: nowTime(),
+          if (!workspacePath) {
+            yield* ctx.state.update((state) => ({
+              ...state,
+              workspaceMessage: "Enter a working directory first.",
+              lastUpdated: nowTime(),
           }))
           return
         }
@@ -1862,6 +2143,26 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
               threadId: response.success ? null : state.threadId,
               lastUpdated: nowTime(),
             }))
+          ),
+          Effect.tap((response) =>
+            response.success
+              ? invokeCommand<unknown>("account_rate_limits", {
+                  workspaceId: current.workspaceId,
+                }).pipe(
+                  Effect.tap((rateResponse) => {
+                    const payload = extractRateLimitsPayload(rateResponse)
+                    if (!payload) {
+                      return Effect.sync(() => undefined)
+                    }
+                    return ctx.state.update((state) => ({
+                      ...state,
+                      rateLimits: normalizeRateLimits(payload),
+                    }))
+                  }),
+                  Effect.catchAll(() => Effect.sync(() => undefined)),
+                  Effect.asVoid,
+                )
+              : Effect.sync(() => undefined),
           ),
           Effect.tap((response) =>
             response.success
@@ -1907,6 +2208,7 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
               fullAutoEnabled: false,
               fullAutoThreadId: null,
               fullAutoMessage: "",
+              rateLimits: null,
               lastUpdated: nowTime(),
             }))
           ),
@@ -1977,6 +2279,16 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
             lastUpdated: nowTime(),
           }))
           return
+        }
+
+        if (method === "account/rateLimits/updated" && params) {
+          const payload = extractRateLimitsPayload(params)
+          if (payload) {
+            yield* ctx.state.update((state) => ({
+              ...state,
+              rateLimits: normalizeRateLimits(payload),
+            }))
+          }
         }
 
         if (
