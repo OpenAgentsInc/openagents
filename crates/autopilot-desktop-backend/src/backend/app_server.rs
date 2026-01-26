@@ -13,7 +13,10 @@ use tokio::sync::{mpsc, oneshot, Mutex};
 use tokio::time::timeout;
 
 use crate::backend::events::{AppServerEvent, EventSink};
-use crate::full_auto::{FullAutoMap, DEFAULT_CONTINUE_PROMPT};
+use crate::full_auto::{
+    decision_model, ensure_codex_lm, run_full_auto_decision, FullAutoAction,
+    FullAutoDecisionRequest, FullAutoMap, DEFAULT_CONTINUE_PROMPT,
+};
 use crate::types::WorkspaceEntry;
 
 fn extract_thread_id(value: &Value) -> Option<String> {
@@ -325,7 +328,6 @@ pub(crate) async fn spawn_workspace_session<E: EventSink>(
             };
 
             let maybe_id = value.get("id").and_then(|id| id.as_u64());
-            let has_method = value.get("method").is_some();
             let has_result_or_error = value.get("result").is_some() || value.get("error").is_some();
 
             // Check if this event is for a background thread
@@ -336,120 +338,215 @@ pub(crate) async fn spawn_workspace_session<E: EventSink>(
                     if let Some(tx) = session_clone.pending.lock().await.remove(&id) {
                         let _ = tx.send(value);
                     }
-                } else if has_method {
-                    let method = value.get("method").and_then(|m| m.as_str()).unwrap_or("");
-                    let params = value.get("params");
-
-                    if let Some(response) = {
-                        let full_auto = full_auto_clone.lock().await;
-                        full_auto
-                            .get(&workspace_id)
-                            .filter(|state| state.matches_thread(thread_id.as_deref()))
-                            .and_then(|_| build_auto_response(method, params))
-                    } {
-                        let session_for_response = Arc::clone(&session_clone);
-                        let id_value = Value::from(id);
-                        tokio::spawn(async move {
-                            let _ = session_for_response.send_response(id_value, response).await;
-                        });
-                    }
-
-                    // Check for background thread callback
-                    let mut sent_to_background = false;
-                    if let Some(ref tid) = thread_id {
-                        let callbacks = session_clone.background_thread_callbacks.lock().await;
-                        if let Some(tx) = callbacks.get(tid) {
-                            let _ = tx.send(value.clone());
-                            sent_to_background = true;
-                        }
-                    }
-                    // Don't emit to frontend if this is a background thread event
-                    if !sent_to_background {
-                        let payload = AppServerEvent {
-                            workspace_id: workspace_id.clone(),
-                            message: value,
-                        };
-                        event_sink_clone.emit_app_server_event(payload);
-                    }
-                } else if let Some(tx) = session_clone.pending.lock().await.remove(&id) {
-                    let _ = tx.send(value);
+                    continue;
                 }
-                } else if has_method {
-                    let method = value.get("method").and_then(|m| m.as_str()).unwrap_or("");
-                    let request_id = value.get("id").cloned();
-                    let params = value.get("params");
+            }
 
-                    if let Some(response) = {
-                        let full_auto = full_auto_clone.lock().await;
-                        full_auto
-                            .get(&workspace_id)
-                            .filter(|state| state.matches_thread(thread_id.as_deref()))
-                            .and_then(|_| build_auto_response(method, params))
-                    } {
-                        if let Some(request_id) = request_id {
-                            let session_for_response = Arc::clone(&session_clone);
-                            tokio::spawn(async move {
-                                let _ = session_for_response.send_response(request_id, response).await;
-                            });
+            let method = match value.get("method").and_then(|m| m.as_str()) {
+                Some(method) => method,
+                None => {
+                    if let Some(id) = maybe_id {
+                        if let Some(tx) = session_clone.pending.lock().await.remove(&id) {
+                            let _ = tx.send(value);
                         }
                     }
-
-                    if method == "turn/completed" {
-                        let turn_id = extract_turn_id(&value);
-                        let auto_params = {
-                            let mut full_auto = full_auto_clone.lock().await;
-                            if let Some(state) = full_auto.get_mut(&workspace_id) {
-                                if state.should_continue(thread_id.as_deref(), turn_id.as_deref()) {
-                                let thread_id = state
-                                    .thread_id
-                                    .clone()
-                                    .or_else(|| thread_id.clone());
-                                let prompt = state.continue_prompt.clone();
-                                thread_id.map(|thread_id| (thread_id, prompt))
-                            } else {
-                                None
-                            }
-                        } else {
-                            None
-                        }
-                    };
-
-                    if let Some((thread_id, prompt)) = auto_params {
-                        let session_for_turn = Arc::clone(&session_clone);
-                        let cwd = session_for_turn.entry.path.clone();
-                        tokio::spawn(async move {
-                            let params = build_full_auto_turn_params(&thread_id, &cwd, &prompt);
-                            let _ = session_for_turn.send_request("turn/start", params).await;
-                        });
-                    }
+                    continue;
                 }
+            };
+            let params = value.get("params");
 
-                if method == "thread/started" {
-                    if let Some(thread_id) = thread_id.as_deref() {
-                        let mut full_auto = full_auto_clone.lock().await;
-                        if let Some(state) = full_auto.get_mut(&workspace_id) {
+            if let Some(id) = maybe_id {
+                if let Some(response) = {
+                    let full_auto = full_auto_clone.lock().await;
+                    full_auto
+                        .get(&workspace_id)
+                        .filter(|state| state.matches_thread(thread_id.as_deref()))
+                        .and_then(|_| build_auto_response(method, params))
+                } {
+                    let session_for_response = Arc::clone(&session_clone);
+                    let id_value = Value::from(id);
+                    tokio::spawn(async move {
+                        let _ = session_for_response.send_response(id_value, response).await;
+                    });
+                }
+            }
+
+            let turn_id = extract_turn_id(&value);
+            let decision_request: Option<FullAutoDecisionRequest> = {
+                let mut full_auto = full_auto_clone.lock().await;
+                if let Some(state) = full_auto.get_mut(&workspace_id) {
+                    state.record_event(method, params, thread_id.as_deref(), turn_id.as_deref());
+                    if method == "thread/started" {
+                        if let Some(thread_id) = thread_id.as_deref() {
                             state.adopt_thread(thread_id);
                         }
                     }
-                }
-
-                // Check for background thread callback
-                let mut sent_to_background = false;
-                if let Some(ref tid) = thread_id {
-                    let callbacks = session_clone.background_thread_callbacks.lock().await;
-                    if let Some(tx) = callbacks.get(tid) {
-                        let _ = tx.send(value.clone());
-                        sent_to_background = true;
+                    if method == "turn/completed" {
+                        state.prepare_decision(thread_id.as_deref(), turn_id.as_deref())
+                    } else {
+                        None
                     }
+                } else {
+                    None
                 }
-                // Don't emit to frontend if this is a background thread event
-                if !sent_to_background {
+            };
+
+            if let Some(request) = decision_request {
+                let session_for_turn = Arc::clone(&session_clone);
+                let full_auto_clone = full_auto_clone.clone();
+                let event_sink_clone = event_sink_clone.clone();
+                let workspace_id = workspace_id.clone();
+                tokio::spawn(async move {
+                    let mut lm = {
+                        let full_auto = full_auto_clone.lock().await;
+                        full_auto
+                            .get(&workspace_id)
+                            .and_then(|state| state.decision_lm())
+                    };
+
+                    if lm.is_none() {
+                        let model = decision_model();
+                        match ensure_codex_lm(&model).await {
+                            Ok(built) => {
+                                lm = Some(built.clone());
+                                let mut full_auto = full_auto_clone.lock().await;
+                                if let Some(state) = full_auto.get_mut(&workspace_id) {
+                                    state.set_decision_lm(built);
+                                }
+                            }
+                            Err(error) => {
+                                let payload = AppServerEvent {
+                                    workspace_id: workspace_id.clone(),
+                                    message: json!({
+                                        "method": "fullauto/decision",
+                                        "params": {
+                                            "threadId": request.thread_id,
+                                            "turnId": request.turn_id,
+                                            "action": "pause",
+                                            "reason": error,
+                                            "confidence": 0.0,
+                                            "state": "paused"
+                                        }
+                                    }),
+                                };
+                                event_sink_clone.emit_app_server_event(payload);
+                                let mut full_auto = full_auto_clone.lock().await;
+                                full_auto.remove(&workspace_id);
+                                return;
+                            }
+                        }
+                    }
+
+                    let lm = match lm {
+                        Some(lm) => lm,
+                        None => {
+                            return;
+                        }
+                    };
+
+                    let decision = match run_full_auto_decision(&request.summary, &lm).await {
+                        Ok(decision) => decision,
+                        Err(error) => {
+                            let payload = AppServerEvent {
+                                workspace_id: workspace_id.clone(),
+                                message: json!({
+                                    "method": "fullauto/decision",
+                                    "params": {
+                                        "threadId": request.thread_id,
+                                        "turnId": request.turn_id,
+                                        "action": "pause",
+                                        "reason": error,
+                                        "confidence": 0.0,
+                                        "state": "paused"
+                                    }
+                                }),
+                            };
+                            event_sink_clone.emit_app_server_event(payload);
+                            let mut full_auto = full_auto_clone.lock().await;
+                            full_auto.remove(&workspace_id);
+                            return;
+                        }
+                    };
+
+                    let decision = {
+                        let mut full_auto = full_auto_clone.lock().await;
+                        if let Some(state) = full_auto.get_mut(&workspace_id) {
+                            let decision = state.enforce_guardrails(
+                                &request.thread_id,
+                                &request.summary,
+                                decision,
+                            );
+                            state.apply_decision(&request.thread_id, &decision);
+                            decision
+                        } else {
+                            decision
+                        }
+                    };
+
+                    let decision_state = if decision.action == FullAutoAction::Continue {
+                        "running"
+                    } else {
+                        "paused"
+                    };
+                    let next_input_preview = decision
+                        .next_input
+                        .as_deref()
+                        .unwrap_or_default()
+                        .chars()
+                        .take(140)
+                        .collect::<String>();
+
                     let payload = AppServerEvent {
                         workspace_id: workspace_id.clone(),
-                        message: value,
+                        message: json!({
+                            "method": "fullauto/decision",
+                            "params": {
+                                "threadId": request.thread_id,
+                                "turnId": request.turn_id,
+                                "action": decision.action.as_str(),
+                                "reason": decision.reason,
+                                "confidence": decision.confidence,
+                                "state": decision_state,
+                                "nextInput": next_input_preview
+                            }
+                        }),
                     };
                     event_sink_clone.emit_app_server_event(payload);
+
+                    match decision.action {
+                        FullAutoAction::Continue => {
+                            let next_input = decision
+                                .next_input
+                                .unwrap_or_else(|| request.fallback_prompt.clone());
+                            let cwd = session_for_turn.entry.path.clone();
+                            let params =
+                                build_full_auto_turn_params(&request.thread_id, &cwd, &next_input);
+                            let _ = session_for_turn.send_request("turn/start", params).await;
+                        }
+                        FullAutoAction::Pause | FullAutoAction::Stop | FullAutoAction::Review => {
+                            let mut full_auto = full_auto_clone.lock().await;
+                            full_auto.remove(&workspace_id);
+                        }
+                    }
+                });
+            }
+
+            // Check for background thread callback
+            let mut sent_to_background = false;
+            if let Some(ref tid) = thread_id {
+                let callbacks = session_clone.background_thread_callbacks.lock().await;
+                if let Some(tx) = callbacks.get(tid) {
+                    let _ = tx.send(value.clone());
+                    sent_to_background = true;
                 }
+            }
+            // Don't emit to frontend if this is a background thread event
+            if !sent_to_background {
+                let payload = AppServerEvent {
+                    workspace_id: workspace_id.clone(),
+                    message: value,
+                };
+                event_sink_clone.emit_app_server_event(payload);
             }
         }
     });

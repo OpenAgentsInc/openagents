@@ -426,7 +426,6 @@ pub(crate) async fn set_full_auto(
             entry.thread_id = Some(thread_id);
         }
         entry.set_continue_prompt(continue_prompt);
-        entry.last_turn_id = None;
         return Ok(SetFullAutoResponse {
             workspace_id,
             enabled: true,
