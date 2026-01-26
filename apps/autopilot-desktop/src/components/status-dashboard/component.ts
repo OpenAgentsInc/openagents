@@ -360,6 +360,27 @@ const formatResetLabel = (resetsAt?: number | null) => {
   return `Resets ${relative}`
 }
 
+const compactDurationLabel = (label: string | null) => {
+  if (!label) {
+    return null
+  }
+  return label
+    .replace(/\bhours\b/gi, "h")
+    .replace(/\bhour\b/gi, "h")
+    .replace(/\bminutes\b/gi, "m")
+    .replace(/\bminute\b/gi, "m")
+    .replace(/\bseconds\b/gi, "s")
+    .replace(/\bsecond\b/gi, "s")
+    .replace(/\bdays\b/gi, "d")
+    .replace(/\bday\b/gi, "d")
+    .replace(/\bweeks\b/gi, "w")
+    .replace(/\bweek\b/gi, "w")
+    .replace(/\bmonths\b/gi, "mo")
+    .replace(/\bmonth\b/gi, "mo")
+    .replace(/\byears\b/gi, "y")
+    .replace(/\byear\b/gi, "y")
+}
+
 const formatCreditsLabel = (accountRateLimits: RateLimitSnapshot | null) => {
   const credits = accountRateLimits?.credits ?? null
   if (!credits?.hasCredits) {
@@ -397,8 +418,12 @@ const getUsageLabels = (accountRateLimits: RateLimitSnapshot | null) => {
   return {
     sessionPercent,
     weeklyPercent,
-    sessionResetLabel: formatResetLabel(accountRateLimits?.primary?.resetsAt),
-    weeklyResetLabel: formatResetLabel(accountRateLimits?.secondary?.resetsAt),
+    sessionResetLabel: compactDurationLabel(
+      formatResetLabel(accountRateLimits?.primary?.resetsAt),
+    ),
+    weeklyResetLabel: compactDurationLabel(
+      formatResetLabel(accountRateLimits?.secondary?.resetsAt),
+    ),
     creditsLabel: formatCreditsLabel(accountRateLimits),
     showWeekly: Boolean(accountRateLimits?.secondary),
   }
@@ -1328,7 +1353,7 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
                         <span class="text-[color:var(--muted)]">
                           ${usageLabels.sessionPercent === null
                             ? "--"
-                            : `${usageLabels.sessionPercent}%`}
+                            : `${usageLabels.sessionPercent}% USED`}
                         </span>
                       </div>
                       <div class="h-1.5 w-full bg-[color:var(--bg)] border border-[color:var(--line)]">
@@ -1336,9 +1361,6 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
                           class="block h-full bg-[color:var(--accent-strong)]"
                           style="width: ${usageLabels.sessionPercent ?? 0}%"
                         ></span>
-                      </div>
-                      <div class="text-[9px] uppercase tracking-[0.08em] text-[color:var(--muted)]">
-                        Used
                       </div>
                     </div>
                     ${usageLabels.showWeekly
@@ -1354,7 +1376,7 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
                               <span class="text-[color:var(--muted)]">
                                 ${usageLabels.weeklyPercent === null
                                   ? "--"
-                                  : `${usageLabels.weeklyPercent}%`}
+                                  : `${usageLabels.weeklyPercent}% USED`}
                               </span>
                             </div>
                             <div class="h-1.5 w-full bg-[color:var(--bg)] border border-[color:var(--line)]">
@@ -1362,9 +1384,6 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
                                 class="block h-full bg-[color:var(--accent-strong)]"
                                 style="width: ${usageLabels.weeklyPercent ?? 0}%"
                               ></span>
-                            </div>
-                            <div class="text-[9px] uppercase tracking-[0.08em] text-[color:var(--muted)]">
-                              Used
                             </div>
                           </div>
                         `
