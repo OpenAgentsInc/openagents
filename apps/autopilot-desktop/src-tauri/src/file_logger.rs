@@ -73,23 +73,25 @@ impl FileLogger {
     }
 
     /// Buffer an app-server event (will be flushed when message completes)
-    pub async fn buffer_app_server_event(&self, event: Value, thread_id: Option<String>) {
+    pub async fn buffer_app_server_event(
+        &self,
+        event: Value,
+        thread_id: Option<String>,
+    ) -> usize {
         let key = thread_id.unwrap_or_else(|| "default".to_string());
         let mut buffer = self.app_server_buffer.lock().await;
-        let count = buffer.entry(key.clone()).or_insert_with(Vec::new).len();
-        buffer.get_mut(&key).unwrap().push(event);
-        eprintln!(
-            "Buffered app-server event for thread '{}' (total: {})",
-            key,
-            count + 1
-        );
+        let events = buffer.entry(key).or_insert_with(Vec::new);
+        events.push(event);
+        events.len()
     }
 
     /// Buffer an ACP event (will be flushed when message completes)
-    pub async fn buffer_acp_event(&self, event: Value, session_id: Option<String>) {
+    pub async fn buffer_acp_event(&self, event: Value, session_id: Option<String>) -> usize {
         let key = session_id.unwrap_or_else(|| "default".to_string());
         let mut buffer = self.acp_buffer.lock().await;
-        buffer.entry(key).or_insert_with(Vec::new).push(event);
+        let events = buffer.entry(key).or_insert_with(Vec::new);
+        events.push(event);
+        events.len()
     }
 
     /// Flush buffered events for a thread (called when message completes)
@@ -101,11 +103,8 @@ impl FileLogger {
         };
 
         if events.is_empty() {
-            eprintln!("No events to flush for thread: {}", key);
             return Ok(());
         }
-
-        eprintln!("FLUSHING {} events for thread: {}", events.len(), key);
         let mut writer = self.app_server_writer.lock().await;
         for event in events {
             let json = serde_json::to_string(&event)?;
@@ -113,7 +112,6 @@ impl FileLogger {
             writer.write_all(b"\n").await?;
         }
         writer.flush().await?;
-        eprintln!("Successfully flushed events for thread: {}", key);
         Ok(())
     }
 
@@ -129,10 +127,8 @@ impl FileLogger {
             return Ok(());
         }
 
-        eprintln!("Flushing all {} thread buffers", all_events.len());
         let mut writer = self.app_server_writer.lock().await;
         for (thread_id, events) in all_events {
-            eprintln!("Flushing {} events for thread: {}", events.len(), thread_id);
             for event in events {
                 let json = serde_json::to_string(&event)?;
                 writer.write_all(json.as_bytes()).await?;
@@ -140,7 +136,6 @@ impl FileLogger {
             }
         }
         writer.flush().await?;
-        eprintln!("Successfully flushed all app-server events");
         Ok(())
     }
 
@@ -177,14 +172,8 @@ impl FileLogger {
             return Ok(());
         }
 
-        eprintln!("Flushing all {} ACP session buffers", all_events.len());
         let mut writer = self.acp_writer.lock().await;
         for (session_id, events) in all_events {
-            eprintln!(
-                "Flushing {} events for ACP session: {}",
-                events.len(),
-                session_id
-            );
             for event in events {
                 let json = serde_json::to_string(&event)?;
                 writer.write_all(json.as_bytes()).await?;
@@ -192,7 +181,6 @@ impl FileLogger {
             }
         }
         writer.flush().await?;
-        eprintln!("Successfully flushed all ACP events");
         Ok(())
     }
 
@@ -202,9 +190,12 @@ impl FileLogger {
         let message = event.get("message").or_else(|| Some(event)); // Fallback to event itself if no message wrapper
 
         // Check for completion indicators
+        let method = message
+            .and_then(|msg| msg.get("method").and_then(|m| m.as_str()))
+            .unwrap_or("unknown");
+
         let should_flush = if let Some(msg) = message {
-            if let Some(method) = msg.get("method").and_then(|m| m.as_str()) {
-                eprintln!("Checking completion for method: {}", method);
+            if !method.is_empty() && method != "unknown" {
                 // Common completion methods - FIXED: use turn/completed (not turn/complete)
                 let is_complete = method == "turn/completed"
                     || method.contains("completed")
@@ -219,9 +210,6 @@ impl FileLogger {
                             .and_then(|s| s.as_str())
                             .map(|s| s == "complete" || s == "finished")
                             .unwrap_or(false));
-                if is_complete {
-                    eprintln!("COMPLETION DETECTED for method: {}", method);
-                }
                 is_complete
             } else {
                 false
@@ -256,14 +244,17 @@ impl FileLogger {
                     .and_then(|p| p.get("threadId").or_else(|| p.get("thread_id")))
             })
             .and_then(|t| t.as_str())
-            .map(|s| {
-                eprintln!("Extracted thread_id: {}", s);
-                s.to_string()
-            });
+            .map(|s| s.to_string());
 
         // Always buffer the event first
-        self.buffer_app_server_event(event.clone(), thread_id.clone())
+        let buffered = self
+            .buffer_app_server_event(event.clone(), thread_id.clone())
             .await;
+        let thread_label = thread_id.clone().unwrap_or_else(|| "default".to_string());
+        eprintln!(
+            "app-server event thread={} method={} buffered={} complete={}",
+            thread_label, method, buffered, should_flush
+        );
 
         if should_flush {
             // Flush all events for this thread when completion detected
@@ -298,23 +289,28 @@ impl FileLogger {
             .and_then(|s| s.as_str())
             .map(|s| s.to_string());
 
-        // Always buffer the event first
-        self.buffer_acp_event(event.clone(), session_id.clone())
+        let buffered = self
+            .buffer_acp_event(event.clone(), session_id.clone())
             .await;
 
         // Check for completion indicators in ACP events
         // NOTE: session/update is NOT a completion event - it's just a status update
+        let mut flush_mode = "false";
         if let Some(msg) = inner_msg {
             // Check for stopReason: "end_turn" at top level (ACP completion indicator in responses)
             // This appears in responses to session/prompt requests (id: 4 in your console)
             if let Some(stop_reason) = msg.get("stopReason").and_then(|s| s.as_str()) {
                 if stop_reason == "end_turn" {
-                    eprintln!(
-                        "ACP COMPLETION DETECTED: stopReason=end_turn (response to session/prompt)"
-                    );
+                    flush_mode = "all";
                     // Extract session_id from the request context or use default
                     // For responses, we need to track which session the request was for
                     // For now, flush all buffered events (we'll improve session tracking later)
+                    eprintln!(
+                        "acp event session={} method=response buffered={} complete={}",
+                        session_id.clone().unwrap_or_else(|| "default".to_string()),
+                        buffered,
+                        flush_mode
+                    );
                     return self.flush_all_acp_events().await;
                 }
             }
@@ -323,7 +319,13 @@ impl FileLogger {
             if msg.get("id").is_some() && msg.get("method").is_none() {
                 if let Some(stop_reason) = msg.get("stopReason").and_then(|s| s.as_str()) {
                     if stop_reason == "end_turn" {
-                        eprintln!("ACP COMPLETION DETECTED: stopReason=end_turn in response");
+                        flush_mode = "all";
+                        eprintln!(
+                            "acp event session={} method=response buffered={} complete={}",
+                            session_id.clone().unwrap_or_else(|| "default".to_string()),
+                            buffered,
+                            flush_mode
+                        );
                         return self.flush_all_acp_events().await;
                     }
                 }
@@ -332,6 +334,13 @@ impl FileLogger {
             if let Some(method) = msg.get("method").and_then(|m| m.as_str()) {
                 // session/update is never a completion event, just buffer it (already done above)
                 if method == "session/update" {
+                    eprintln!(
+                        "acp event session={} method={} buffered={} complete={}",
+                        session_id.clone().unwrap_or_else(|| "default".to_string()),
+                        method,
+                        buffered,
+                        flush_mode
+                    );
                     return Ok(()); // Don't flush on session/update
                 }
 
@@ -342,12 +351,34 @@ impl FileLogger {
                     || method == "turn/complete";
 
                 if is_complete {
-                    eprintln!("ACP COMPLETION DETECTED for method: {}", method);
+                    flush_mode = "true";
+                    eprintln!(
+                        "acp event session={} method={} buffered={} complete={}",
+                        session_id.clone().unwrap_or_else(|| "default".to_string()),
+                        method,
+                        buffered,
+                        flush_mode
+                    );
                     return self.flush_acp_events(session_id).await;
                 }
+
+                eprintln!(
+                    "acp event session={} method={} buffered={} complete={}",
+                    session_id.clone().unwrap_or_else(|| "default".to_string()),
+                    method,
+                    buffered,
+                    flush_mode
+                );
+                return Ok(());
             }
         }
 
+        eprintln!(
+            "acp event session={} method=unknown buffered={} complete={}",
+            session_id.unwrap_or_else(|| "default".to_string()),
+            buffered,
+            flush_mode
+        );
         Ok(())
     }
 }
