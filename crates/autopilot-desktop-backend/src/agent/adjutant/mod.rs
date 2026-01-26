@@ -4,6 +4,10 @@
 
 pub mod agent;
 pub mod config;
+pub mod plan_mode_metrics;
+pub mod plan_mode_optimizer;
+pub mod plan_mode_signatures;
+pub mod plan_mode_training;
 pub mod planning;
 pub mod lm_client;
 
