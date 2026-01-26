@@ -404,6 +404,7 @@ pub struct ExecutionReviewResult {
 // ============================================================================
 
 /// DSPy-powered verification pipeline.
+#[derive(Clone)]
 pub struct VerificationPipeline {
     lm: Option<Arc<LM>>,
 }

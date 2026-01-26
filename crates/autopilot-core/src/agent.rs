@@ -182,6 +182,23 @@ impl AutopilotAgent {
         }
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
+    fn run_dspy_blocking<F, T>(&self, future: F) -> anyhow::Result<T>
+    where
+        F: std::future::Future<Output = anyhow::Result<T>> + Send + 'static,
+        T: Send + 'static,
+    {
+        std::thread::spawn(move || {
+            let runtime = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .map_err(|err| anyhow::anyhow!("Failed to build DSPy runtime: {}", err))?;
+            runtime.block_on(future)
+        })
+        .join()
+        .map_err(|_| anyhow::anyhow!("DSPy runtime thread panicked"))?
+    }
+
     /// Run the planning phase.
     ///
     /// On native platforms, this uses the DSPy-powered PlanningPipeline for
@@ -248,12 +265,10 @@ impl AutopilotAgent {
 
         self.write_hud_status("Planning", "Running DSPy planning pipeline...");
 
-        // Run DSPy pipeline synchronously (block on async)
-        // Note: In a real async runtime, this would be properly awaited
-        let result = tokio::task::block_in_place(|| {
-            tokio::runtime::Handle::current().block_on(self.planning_pipeline.plan(&input))
-        })
-        .context("DSPy planning pipeline failed")?;
+        let pipeline = self.planning_pipeline.clone();
+        let result = self
+            .run_dspy_blocking(async move { pipeline.plan(&input).await })
+            .context("DSPy planning pipeline failed")?;
 
         // Store structured result as JSON
         let plan_json =
@@ -336,11 +351,10 @@ impl AutopilotAgent {
             ),
         );
 
-        // Get decision from DSPy
-        let decision = tokio::task::block_in_place(|| {
-            tokio::runtime::Handle::current().block_on(self.execution_pipeline.decide(&input))
-        })
-        .context("DSPy execution decision failed")?;
+        let pipeline = self.execution_pipeline.clone();
+        let decision = self
+            .run_dspy_blocking(async move { pipeline.decide(&input).await })
+            .context("DSPy execution decision failed")?;
 
         // Update execution history
         let history_entry = serde_json::json!({
@@ -600,11 +614,10 @@ impl AutopilotAgent {
 
         self.write_hud_status("Reviewing", "Running DSPy verification pipeline...");
 
-        // Run verification
-        let result = tokio::task::block_in_place(|| {
-            tokio::runtime::Handle::current().block_on(self.verification_pipeline.verify(&input))
-        })
-        .context("DSPy verification failed")?;
+        let pipeline = self.verification_pipeline.clone();
+        let result = self
+            .run_dspy_blocking(async move { pipeline.verify(&input).await })
+            .context("DSPy verification failed")?;
 
         // Store result as JSON
         let result_json = serde_json::to_string_pretty(&result)
