@@ -17,7 +17,7 @@ use crate::fs::{
 use crate::fx::{FxRateCache, FxRateProvider, FxSource};
 use crate::idempotency::{IdempotencyJournal, JournalError};
 use crate::identity::{PublicKey, Signature, SigningService};
-use crate::storage::AgentStorage;
+use crate::storage::{AgentStorage, block_on_storage};
 use crate::types::{AgentId, Timestamp};
 #[cfg(not(target_arch = "wasm32"))]
 use crate::wallet::{WalletFxProvider, WalletService, block_on_wallet};

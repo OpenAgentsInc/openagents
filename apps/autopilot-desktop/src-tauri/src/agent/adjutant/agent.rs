@@ -750,7 +750,7 @@ impl Agent for AdjutantAgent {
 
     fn events_receiver(&self) -> mpsc::Receiver<UnifiedEvent> {
         // Return the receiver if available, otherwise create a new channel
-        let mut rx_opt = futures::executor::block_on(self.events_rx.lock());
+        let mut rx_opt = self.events_rx.blocking_lock();
         match rx_opt.take() {
             Some(rx) => rx,
             None => {

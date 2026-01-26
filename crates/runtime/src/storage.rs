@@ -6,6 +6,7 @@ use crate::types::AgentId;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::future::Future;
 use std::sync::{Arc, Mutex};
 #[cfg(feature = "cloudflare")]
 use worker::sql::{SqlStorage, SqlStorageValue};
@@ -60,6 +61,19 @@ pub trait AgentStorage: Send + Sync {
 
     /// Execute transactional operations.
     async fn transaction(&self, agent_id: &AgentId, ops: Vec<StorageOp>) -> StorageResult<()>;
+}
+
+pub(crate) fn block_on_storage<F, T>(future: F) -> StorageResult<T>
+where
+    F: Future<Output = StorageResult<T>>,
+{
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        if let Ok(handle) = tokio::runtime::Handle::try_current() {
+            return tokio::task::block_in_place(|| handle.block_on(future));
+        }
+    }
+    futures::executor::block_on(future)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
