@@ -9,6 +9,7 @@ use wgpui::markdown::{
 
 use super::catalog::AgentEntry;
 use super::chat::{ChatMessage, ChatSelectionPoint, MessageRole};
+use super::codex_app_server as app_server;
 use super::config::CoderSettings;
 use super::session::CheckpointEntry;
 use super::ui::{ThemeSetting, palette_for};
@@ -142,6 +143,20 @@ pub(crate) fn build_input(settings: &CoderSettings, theme: ThemeSetting) -> Text
         .mono(true);
     input.focus();
     input
+}
+
+pub(crate) fn normalize_reasoning_effort_for_model(
+    model_name: &str,
+    effort: Option<app_server::ReasoningEffort>,
+) -> Option<app_server::ReasoningEffort> {
+    if model_name == "gpt-5.2-codex" {
+        return match effort {
+            Some(app_server::ReasoningEffort::Medium) => effort,
+            Some(_) => Some(app_server::ReasoningEffort::Medium),
+            None => None,
+        };
+    }
+    effort
 }
 
 pub(crate) fn format_relative_time(timestamp: u64) -> String {

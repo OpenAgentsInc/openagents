@@ -34,7 +34,7 @@ use crate::app::permissions::{PermissionPending, coder_mode_default_allow, parse
 use crate::app::session::{SessionInfo, SessionUpdate};
 use crate::app::spark_wallet::SparkWalletEvent;
 use crate::app::ui::render_app;
-use crate::app::utils::truncate_bytes;
+use crate::app::utils::{normalize_reasoning_effort_for_model, truncate_bytes};
 use crate::app::workspaces::{
     ConversationItem, ConversationRole, ReviewState, WorkspaceAccessMode, WorkspaceApprovalRequest,
     WorkspaceEvent, conversation_item_from_value, turn_diff_item,
@@ -545,13 +545,14 @@ impl AutopilotApp {
                 });
             }
 
+            let effort = normalize_reasoning_effort_for_model(&model_name, reasoning_effort);
             let turn_params = app_server::TurnStartParams {
                 thread_id: thread_id.clone(),
                 input: vec![app_server::UserInput::Text {
                     text: expanded_prompt,
                 }],
                 model: model_override.clone(),
-                effort: reasoning_effort,
+                effort,
                 summary: None,
                 approval_policy: Some(approval_policy_for_mode(coder_mode)),
                 sandbox_policy: Some(sandbox_policy_for_mode(coder_mode)),
