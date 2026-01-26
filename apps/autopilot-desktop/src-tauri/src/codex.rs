@@ -1,4 +1,5 @@
 use serde_json::json;
+use chrono::Utc;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
@@ -20,6 +21,7 @@ use crate::contracts::ipc::{
 };
 use crate::event_sink::TauriEventSink;
 use crate::full_auto::{DEFAULT_CONTINUE_PROMPT, FullAutoMap, FullAutoState};
+use crate::full_auto_logging::{append_run_event, FullAutoRunEvent};
 use crate::state::AppState;
 use crate::types::WorkspaceEntry;
 
@@ -381,7 +383,7 @@ pub(crate) async fn set_full_auto(
     if enabled {
         let entry = map
             .entry(workspace_id.clone())
-            .or_insert_with(|| FullAutoState::new(thread_id.clone(), continue_prompt.clone()));
+            .or_insert_with(|| FullAutoState::new(&workspace_id, thread_id.clone(), continue_prompt.clone()));
         entry.enabled = true;
         if let Some(thread_id) = thread_id {
             entry.thread_id = Some(thread_id);
@@ -395,6 +397,17 @@ pub(crate) async fn set_full_auto(
         });
     }
 
+    if let Some(state) = map.get(&workspace_id) {
+        let _ = append_run_event(
+            &state.run_id,
+            &FullAutoRunEvent {
+                timestamp: Utc::now(),
+                sequence_id: state.decision_seq,
+                event_type: "run_disabled".to_string(),
+                data: serde_json::json!({ "workspace_id": workspace_id }),
+            },
+        );
+    }
     map.remove(&workspace_id);
 
     Ok(SetFullAutoResponse {

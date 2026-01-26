@@ -1,13 +1,16 @@
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::env;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::sync::Mutex;
+use chrono::{DateTime, Utc};
 
 use dsrs::signatures::FullAutoDecisionSignature;
 use dsrs::{LM, Predict, Predictor, example};
+
+use crate::full_auto_logging::{append_run_event, new_run_id, update_run_thread, write_run_metadata, FullAutoRunEvent, FullAutoRunMetadata};
 
 pub const DEFAULT_CONTINUE_PROMPT: &str = "Continue immediately. Do not ask for confirmation or pause. If errors occur, recover and keep going.";
 
@@ -82,7 +85,7 @@ impl Default for FullAutoThreadState {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct FullAutoTurnSummary {
     pub thread_id: String,
     pub turn_id: String,
@@ -123,6 +126,37 @@ pub struct FullAutoDecision {
     pub next_input: Option<String>,
     pub reason: String,
     pub confidence: f32,
+    pub guardrail: Option<GuardrailAudit>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct GuardrailAudit {
+    pub triggered: bool,
+    pub rule: Option<String>,
+    pub original_action: String,
+    pub original_confidence: f32,
+    pub enforced_action: String,
+    pub enforced_confidence: f32,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct FullAutoDecisionDiagnostics {
+    pub raw_prediction: Value,
+    pub action_raw: Option<String>,
+    pub next_input_raw: Option<String>,
+    pub reason_raw: Option<String>,
+    pub confidence_raw: Option<Value>,
+    pub action_parsed: String,
+    pub next_input_parsed: String,
+    pub reason_parsed: String,
+    pub confidence_parsed: f32,
+    pub parse_errors: Vec<String>,
+}
+
+#[derive(Clone, Debug)]
+pub struct FullAutoDecisionResult {
+    pub decision: FullAutoDecision,
+    pub diagnostics: FullAutoDecisionDiagnostics,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -170,19 +204,49 @@ pub struct FullAutoState {
     pub config: FullAutoConfig,
     decision_lm: Option<LM>,
     threads: HashMap<String, FullAutoThreadState>,
+    pub run_id: String,
+    pub started_at: DateTime<Utc>,
+    pub decision_seq: u64,
 }
 
 pub type FullAutoMap = Arc<Mutex<HashMap<String, FullAutoState>>>;
 
 impl FullAutoState {
-    pub fn new(thread_id: Option<String>, continue_prompt: Option<String>) -> Self {
+    pub fn new(workspace_id: &str, thread_id: Option<String>, continue_prompt: Option<String>) -> Self {
+        let config = FullAutoConfig::default();
+        let run_id = new_run_id();
+        let started_at = Utc::now();
+        let metadata = FullAutoRunMetadata {
+            run_id: run_id.clone(),
+            workspace_id: workspace_id.to_string(),
+            thread_id: thread_id.clone(),
+            started_at,
+            decision_model: decision_model(),
+            min_confidence: config.min_confidence,
+            max_turns: config.max_turns,
+            no_progress_limit: config.no_progress_limit,
+            max_tokens: config.max_tokens,
+        };
+        let _ = write_run_metadata(&metadata);
+        let _ = append_run_event(
+            &run_id,
+            &FullAutoRunEvent {
+                timestamp: started_at,
+                sequence_id: 0,
+                event_type: "run_started".to_string(),
+                data: json!({ "thread_id": thread_id }),
+            },
+        );
         Self {
             enabled: true,
             thread_id,
             continue_prompt: normalize_prompt(continue_prompt),
-            config: FullAutoConfig::default(),
+            config,
             decision_lm: None,
             threads: HashMap::new(),
+            run_id,
+            started_at,
+            decision_seq: 0,
         }
     }
 
@@ -202,6 +266,12 @@ impl FullAutoState {
             self.thread_id = Some(thread_id.to_string());
         }
         self.threads.entry(thread_id.to_string()).or_default();
+        let _ = update_run_thread(&self.run_id, thread_id);
+    }
+
+    pub fn next_decision_sequence(&mut self) -> u64 {
+        self.decision_seq = self.decision_seq.saturating_add(1);
+        self.decision_seq
     }
 
     pub fn set_continue_prompt(&mut self, prompt: Option<String>) {
@@ -360,6 +430,9 @@ impl FullAutoState {
         let no_progress = state
             .map(|s| s.no_progress_count)
             .unwrap_or(summary.no_progress_count);
+        let original_action = decision.action.as_str().to_string();
+        let original_confidence = decision.confidence;
+        let mut guardrail: Option<GuardrailAudit> = None;
 
         if summary.last_turn_status == "failed" {
             return FullAutoDecision {
@@ -367,6 +440,14 @@ impl FullAutoState {
                 next_input: None,
                 reason: "Turn failed; stopping Full Auto.".to_string(),
                 confidence: 1.0,
+                guardrail: Some(GuardrailAudit {
+                    triggered: true,
+                    rule: Some("turn_failed".to_string()),
+                    original_action,
+                    original_confidence,
+                    enforced_action: "stop".to_string(),
+                    enforced_confidence: 1.0,
+                }),
             };
         }
 
@@ -376,6 +457,14 @@ impl FullAutoState {
                 next_input: None,
                 reason: "Turn interrupted; pausing Full Auto.".to_string(),
                 confidence: 1.0,
+                guardrail: Some(GuardrailAudit {
+                    triggered: true,
+                    rule: Some("turn_interrupted".to_string()),
+                    original_action,
+                    original_confidence,
+                    enforced_action: "pause".to_string(),
+                    enforced_confidence: 1.0,
+                }),
             };
         }
 
@@ -385,6 +474,14 @@ impl FullAutoState {
                 next_input: None,
                 reason: "Reached Full Auto turn limit.".to_string(),
                 confidence: 1.0,
+                guardrail: Some(GuardrailAudit {
+                    triggered: true,
+                    rule: Some("max_turns".to_string()),
+                    original_action,
+                    original_confidence,
+                    enforced_action: "stop".to_string(),
+                    enforced_confidence: 1.0,
+                }),
             };
         }
 
@@ -394,6 +491,14 @@ impl FullAutoState {
                 next_input: None,
                 reason: "No progress detected across multiple turns.".to_string(),
                 confidence: 1.0,
+                guardrail: Some(GuardrailAudit {
+                    triggered: true,
+                    rule: Some("no_progress".to_string()),
+                    original_action,
+                    original_confidence,
+                    enforced_action: "stop".to_string(),
+                    enforced_confidence: 1.0,
+                }),
             };
         }
 
@@ -405,6 +510,14 @@ impl FullAutoState {
                         next_input: None,
                         reason: "Token budget exceeded; stopping Full Auto.".to_string(),
                         confidence: 1.0,
+                        guardrail: Some(GuardrailAudit {
+                            triggered: true,
+                            rule: Some("max_tokens".to_string()),
+                            original_action,
+                            original_confidence,
+                            enforced_action: "stop".to_string(),
+                            enforced_confidence: 1.0,
+                        }),
                     };
                 }
             }
@@ -416,11 +529,40 @@ impl FullAutoState {
                 "Low confidence ({:.2}) decision; pausing Full Auto.",
                 decision.confidence
             );
+            guardrail = Some(GuardrailAudit {
+                triggered: true,
+                rule: Some("low_confidence".to_string()),
+                original_action: original_action.clone(),
+                original_confidence,
+                enforced_action: "pause".to_string(),
+                enforced_confidence: decision.confidence,
+            });
         }
 
         if decision.action == FullAutoAction::Review {
             decision.action = FullAutoAction::Pause;
             decision.reason = "Review requested; pausing Full Auto.".to_string();
+            guardrail = Some(GuardrailAudit {
+                triggered: true,
+                rule: Some("review_requested".to_string()),
+                original_action,
+                original_confidence,
+                enforced_action: "pause".to_string(),
+                enforced_confidence: decision.confidence,
+            });
+        }
+
+        if guardrail.is_none() {
+            decision.guardrail = Some(GuardrailAudit {
+                triggered: false,
+                rule: None,
+                original_action,
+                original_confidence,
+                enforced_action: decision.action.as_str().to_string(),
+                enforced_confidence: decision.confidence,
+            });
+        } else {
+            decision.guardrail = guardrail;
         }
 
         decision
@@ -430,7 +572,7 @@ impl FullAutoState {
 pub async fn run_full_auto_decision(
     summary: &FullAutoTurnSummary,
     lm: &LM,
-) -> Result<FullAutoDecision, String> {
+) -> Result<FullAutoDecisionResult, String> {
     let predictor = Predict::new(FullAutoDecisionSignature::new());
     let inputs = summary.to_example();
     let lm = Arc::new(lm.clone());
@@ -439,20 +581,55 @@ pub async fn run_full_auto_decision(
         .await
         .map_err(|e| format!("Full Auto decision failed: {}", e))?;
 
-    let action = read_prediction_string(&prediction, "action");
-    let next_input = read_prediction_string(&prediction, "next_input");
-    let reason = read_prediction_string(&prediction, "reason");
-    let confidence = read_prediction_f32(&prediction, "confidence");
+    let raw_prediction = serde_json::to_value(&prediction).unwrap_or(Value::Null);
+    let mut parse_errors = Vec::new();
 
-    Ok(FullAutoDecision {
-        action: FullAutoAction::from_str(&action),
-        next_input: if next_input.trim().is_empty() {
+    let (action_parsed, action_raw) = read_prediction_string_value(&prediction, "action");
+    if action_raw.is_none() {
+        parse_errors.push("action missing or not a string".to_string());
+    }
+
+    let (next_input_parsed, next_input_raw) =
+        read_prediction_string_value(&prediction, "next_input");
+    let (reason_parsed, reason_raw) = read_prediction_string_value(&prediction, "reason");
+    if reason_raw.is_none() {
+        parse_errors.push("reason missing or not a string".to_string());
+    }
+
+    let (confidence_parsed, confidence_raw, confidence_error) =
+        read_prediction_confidence(&prediction);
+    if let Some(error) = confidence_error {
+        parse_errors.push(error);
+    }
+
+    let decision = FullAutoDecision {
+        action: FullAutoAction::from_str(&action_parsed),
+        next_input: if next_input_parsed.trim().is_empty() {
             None
         } else {
-            Some(next_input)
+            Some(next_input_parsed.clone())
         },
-        reason,
-        confidence,
+        reason: reason_parsed.clone(),
+        confidence: confidence_parsed,
+        guardrail: None,
+    };
+
+    let diagnostics = FullAutoDecisionDiagnostics {
+        raw_prediction,
+        action_raw,
+        next_input_raw,
+        reason_raw,
+        confidence_raw,
+        action_parsed,
+        next_input_parsed,
+        reason_parsed,
+        confidence_parsed,
+        parse_errors,
+    };
+
+    Ok(FullAutoDecisionResult {
+        decision,
+        diagnostics,
     })
 }
 
@@ -488,16 +665,50 @@ fn value_to_string(value: Option<&Value>) -> String {
     }
 }
 
-fn read_prediction_string(prediction: &dsrs::Prediction, key: &str) -> String {
-    prediction
-        .get(key, None)
-        .as_str()
-        .unwrap_or_default()
-        .to_string()
+fn read_prediction_string_value(
+    prediction: &dsrs::Prediction,
+    key: &str,
+) -> (String, Option<String>) {
+    let value = prediction.get(key, None);
+    match value {
+        Value::String(text) => (text.clone(), Some(text)),
+        Value::Number(number) => {
+            let text = number.to_string();
+            (text.clone(), Some(text))
+        }
+        Value::Bool(value) => {
+            let text = value.to_string();
+            (text.clone(), Some(text))
+        }
+        Value::Null => ("".to_string(), None),
+        other => (other.to_string(), None),
+    }
 }
 
-fn read_prediction_f32(prediction: &dsrs::Prediction, key: &str) -> f32 {
-    prediction.get(key, None).as_f64().unwrap_or(0.0) as f32
+fn read_prediction_confidence(
+    prediction: &dsrs::Prediction,
+) -> (f32, Option<Value>, Option<String>) {
+    let value = prediction.get("confidence", None);
+    match value {
+        Value::Number(number) => {
+            let parsed = number.as_f64().unwrap_or(0.0) as f32;
+            (parsed, Some(Value::Number(number)), None)
+        }
+        Value::String(text) => match text.parse::<f32>() {
+            Ok(parsed) => (parsed, Some(Value::String(text)), None),
+            Err(_) => (
+                0.0,
+                Some(Value::String(text)),
+                Some("confidence not parseable".to_string()),
+            ),
+        },
+        Value::Null => (0.0, None, Some("confidence missing".to_string())),
+        other => (
+            0.0,
+            Some(other),
+            Some("confidence not numeric".to_string()),
+        ),
+    }
 }
 
 fn build_progress_signature(state: &FullAutoThreadState) -> Option<String> {

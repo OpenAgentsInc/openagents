@@ -1,4 +1,5 @@
 use serde_json::{Value, json};
+use chrono::Utc;
 use std::collections::HashMap;
 use std::env;
 use std::io::ErrorKind;
@@ -14,8 +15,12 @@ use tokio::time::timeout;
 
 use crate::backend::events::{AppServerEvent, EventSink};
 use crate::full_auto::{
-    DEFAULT_CONTINUE_PROMPT, FullAutoAction, FullAutoDecisionRequest, FullAutoMap, decision_model,
-    ensure_codex_lm, run_full_auto_decision,
+    DEFAULT_CONTINUE_PROMPT, FullAutoAction, FullAutoDecisionRequest, FullAutoDecisionResult,
+    FullAutoMap, decision_model, ensure_codex_lm, run_full_auto_decision,
+};
+use crate::full_auto_logging::{
+    append_run_event, log_paths_snapshot, write_decision_log, write_raw_decision_log,
+    FullAutoDecisionLog, FullAutoDecisionRawLog, FullAutoRunEvent,
 };
 use crate::types::WorkspaceEntry;
 
@@ -444,7 +449,7 @@ pub(crate) async fn spawn_workspace_session<E: EventSink>(
                         }
                     };
 
-                    let decision = match run_full_auto_decision(&request.summary, &lm).await {
+                    let decision_result = match run_full_auto_decision(&request.summary, &lm).await {
                         Ok(decision) => decision,
                         Err(error) => {
                             let payload = AppServerEvent {
@@ -468,18 +473,24 @@ pub(crate) async fn spawn_workspace_session<E: EventSink>(
                         }
                     };
 
-                    let decision = {
+                    let FullAutoDecisionResult {
+                        decision: raw_decision,
+                        diagnostics,
+                    } = decision_result;
+
+                    let (decision, run_id, sequence_id) = {
                         let mut full_auto = full_auto_clone.lock().await;
                         if let Some(state) = full_auto.get_mut(&workspace_id) {
-                            let decision = state.enforce_guardrails(
+                            let mut decision = state.enforce_guardrails(
                                 &request.thread_id,
                                 &request.summary,
-                                decision,
+                                raw_decision,
                             );
                             state.apply_decision(&request.thread_id, &decision);
-                            decision
+                            let sequence_id = state.next_decision_sequence();
+                            (decision, state.run_id.clone(), sequence_id)
                         } else {
-                            decision
+                            (raw_decision, "unknown".to_string(), 0)
                         }
                     };
 
@@ -496,6 +507,74 @@ pub(crate) async fn spawn_workspace_session<E: EventSink>(
                         .take(140)
                         .collect::<String>();
 
+                    let now = Utc::now();
+                    let guardrail_value = decision
+                        .guardrail
+                        .as_ref()
+                        .and_then(|g| serde_json::to_value(g).ok());
+                    let summary_value =
+                        serde_json::to_value(&request.summary).unwrap_or(Value::Null);
+                    let diagnostics_value = serde_json::to_value(&diagnostics).unwrap_or(Value::Null);
+
+                    let decision_log = FullAutoDecisionLog {
+                        timestamp: now,
+                        sequence_id,
+                        run_id: run_id.clone(),
+                        workspace_id: workspace_id.clone(),
+                        thread_id: request.thread_id.clone(),
+                        turn_id: request.turn_id.clone(),
+                        action: decision.action.as_str().to_string(),
+                        confidence: decision.confidence,
+                        reason: decision.reason.clone(),
+                        next_input_preview: next_input_preview.clone(),
+                        state: decision_state.to_string(),
+                        model: decision_model(),
+                        guardrail: guardrail_value.clone(),
+                        summary: summary_value.clone(),
+                    };
+                    if let Err(err) = write_decision_log(&decision_log) {
+                        eprintln!("Failed to write Full Auto decision log: {}", err);
+                    }
+
+                    let raw_log = FullAutoDecisionRawLog {
+                        timestamp: now,
+                        sequence_id,
+                        run_id: run_id.clone(),
+                        workspace_id: workspace_id.clone(),
+                        thread_id: request.thread_id.clone(),
+                        turn_id: request.turn_id.clone(),
+                        raw_prediction: diagnostics.raw_prediction.clone(),
+                        parse_diagnostics: diagnostics_value.clone(),
+                    };
+                    if let Err(err) = write_raw_decision_log(&raw_log) {
+                        eprintln!("Failed to write Full Auto raw decision log: {}", err);
+                    }
+
+                    let _ = append_run_event(
+                        &run_id,
+                        &FullAutoRunEvent {
+                            timestamp: now,
+                            sequence_id,
+                            event_type: "decision".to_string(),
+                            data: serde_json::to_value(&decision_log).unwrap_or(Value::Null),
+                        },
+                    );
+
+                    if decision.action != FullAutoAction::Continue {
+                        let _ = append_run_event(
+                            &run_id,
+                            &FullAutoRunEvent {
+                                timestamp: now,
+                                sequence_id,
+                                event_type: "run_paused".to_string(),
+                                data: json!({
+                                    "action": decision.action.as_str(),
+                                    "reason": decision.reason,
+                                }),
+                            },
+                        );
+                    }
+
                     let payload = AppServerEvent {
                         workspace_id: workspace_id.clone(),
                         message: json!({
@@ -507,11 +586,33 @@ pub(crate) async fn spawn_workspace_session<E: EventSink>(
                                 "reason": decision.reason,
                                 "confidence": decision.confidence,
                                 "state": decision_state,
-                                "nextInput": next_input_preview
+                                "nextInput": next_input_preview,
+                                "eventTs": now.to_rfc3339(),
+                                "sequenceId": sequence_id,
+                                "runId": run_id,
+                                "guardrail": guardrail_value
                             }
                         }),
                     };
                     event_sink_clone.emit_app_server_event(payload);
+
+                    let raw_payload = AppServerEvent {
+                        workspace_id: workspace_id.clone(),
+                        message: json!({
+                            "method": "fullauto/decision_raw",
+                            "params": {
+                                "threadId": request.thread_id,
+                                "turnId": request.turn_id,
+                                "eventTs": now.to_rfc3339(),
+                                "sequenceId": sequence_id,
+                                "runId": run_id,
+                                "rawPrediction": decision_result.diagnostics.raw_prediction,
+                                "parseDiagnostics": diagnostics_value,
+                                "summary": summary_value,
+                            }
+                        }),
+                    };
+                    event_sink_clone.emit_app_server_event(raw_payload);
 
                     match decision.action {
                         FullAutoAction::Continue => {
@@ -601,6 +702,21 @@ pub(crate) async fn spawn_workspace_session<E: EventSink>(
         message: json!({
             "method": "codex/connected",
             "params": { "workspaceId": entry.id.clone() }
+        }),
+    };
+    event_sink.emit_app_server_event(payload);
+
+    let log_paths = log_paths_snapshot();
+    let payload = AppServerEvent {
+        workspace_id: entry.id.clone(),
+        message: json!({
+            "method": "app/log_paths",
+            "params": {
+                "workspaceId": entry.id.clone(),
+                "appServerLogDir": log_paths.app_server_log_dir,
+                "fullAutoLogDir": log_paths.full_auto_log_dir,
+                "traceBundleDir": log_paths.trace_bundle_dir,
+            }
         }),
     };
     event_sink.emit_app_server_event(payload);
