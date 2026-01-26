@@ -75,8 +75,14 @@ fn score_topic_decomposition(prediction: &Prediction) -> MetricReport {
         let mut valid_patterns = 0usize;
 
         for item in &items {
-            let name_ok = item.get("name").and_then(Value::as_str).map_or(false, is_substantive);
-            let focus_ok = item.get("focus").and_then(Value::as_str).map_or(false, is_substantive);
+            let name_ok = item
+                .get("name")
+                .and_then(Value::as_str)
+                .map_or(false, is_substantive);
+            let focus_ok = item
+                .get("focus")
+                .and_then(Value::as_str)
+                .map_or(false, is_substantive);
             if name_ok && focus_ok {
                 valid_topics += 1;
             }
@@ -84,7 +90,11 @@ fn score_topic_decomposition(prediction: &Prediction) -> MetricReport {
             let patterns_ok = item
                 .get("patterns")
                 .and_then(Value::as_array)
-                .map(|patterns| patterns.iter().any(|p| p.as_str().map_or(false, is_substantive)))
+                .map(|patterns| {
+                    patterns
+                        .iter()
+                        .any(|p| p.as_str().map_or(false, is_substantive))
+                })
                 .unwrap_or(false);
             if patterns_ok {
                 valid_patterns += 1;
@@ -299,11 +309,11 @@ mod tests {
     #[test]
     fn topic_decomposition_scores_valid_output() {
         let topics = serde_json::json!([
-            {\"name\": \"Core\", \"focus\": \"Check core flow\", \"patterns\": [\"core\"]},
-            {\"name\": \"UI\", \"focus\": \"Inspect UI\", \"patterns\": [\"ui\"]}
+            {"name": "Core", "focus": "Check core flow", "patterns": ["core"]},
+            {"name": "UI", "focus": "Inspect UI", "patterns": ["ui"]}
         ]);
         let mut data = HashMap::new();
-        data.insert(\"topics\".to_string(), Value::String(topics.to_string()));
+        data.insert("topics".to_string(), Value::String(topics.to_string()));
         let prediction = Prediction::new(data, LmUsage::default());
         let report = super::score_topic_decomposition(&prediction);
         assert!(report.score >= 0.8);
@@ -312,9 +322,12 @@ mod tests {
     #[test]
     fn result_validation_scores_confidence() {
         let mut data = HashMap::new();
-        data.insert(\"quality_assessment\".to_string(), Value::String(\"Looks solid.\".to_string()));
-        data.insert(\"issues\".to_string(), Value::String(\"None\".to_string()));
-        data.insert(\"confidence\".to_string(), Value::String(\"0.72\".to_string()));
+        data.insert(
+            "quality_assessment".to_string(),
+            Value::String("Looks solid.".to_string()),
+        );
+        data.insert("issues".to_string(), Value::String("None".to_string()));
+        data.insert("confidence".to_string(), Value::String("0.72".to_string()));
         let prediction = Prediction::new(data, LmUsage::default());
         let report = super::score_result_validation(&prediction);
         assert!(report.score >= 0.6);
@@ -323,21 +336,17 @@ mod tests {
     #[test]
     fn parallel_exploration_scores_topic_hint() {
         let mut example_data = HashMap::new();
-        example_data.insert(\"topic\".to_string(), Value::String(\"Routing\".to_string()));
-        let example = Example::new(
-            example_data,
-            vec![\"topic\".to_string()],
-            Vec::new(),
-        );
+        example_data.insert("topic".to_string(), Value::String("Routing".to_string()));
+        let example = Example::new(example_data, vec!["topic".to_string()], Vec::new());
 
         let mut prediction_data = HashMap::new();
         prediction_data.insert(
-            \"findings\".to_string(),
-            Value::String(\"Routing logic lives in planner.rs\".to_string()),
+            "findings".to_string(),
+            Value::String("Routing logic lives in planner.rs".to_string()),
         );
         prediction_data.insert(
-            \"files_examined\".to_string(),
-            Value::String(\"[\\\"planner.rs\\\"]\".to_string()),
+            "files_examined".to_string(),
+            Value::String("[\"planner.rs\"]".to_string()),
         );
         let prediction = Prediction::new(prediction_data, LmUsage::default());
 

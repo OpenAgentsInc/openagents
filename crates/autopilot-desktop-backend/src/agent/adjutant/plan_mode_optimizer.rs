@@ -17,7 +17,7 @@ use serde::{Deserialize, Serialize};
 
 use super::config::{PlanModeOptimizationConfig, PlanModeOptimizerKind};
 use super::plan_mode_metrics::{feedback_signature, score_signature};
-use super::plan_mode_signatures::{sanitize_filename, PlanModeSignatureKind};
+use super::plan_mode_signatures::{PlanModeSignatureKind, sanitize_filename};
 use super::plan_mode_training::PlanModeTrainingStore;
 use dsrs::signatures::{
     ComplexityClassificationSignature, DeepPlanningSignature, ParallelExplorationSignature,
@@ -267,14 +267,15 @@ async fn optimize_signature(
     let optimized_score = module.evaluate(evaluation_set.to_vec()).await;
 
     if optimized_score >= baseline {
-        let manifest = CompiledModuleManifest::new(signature.name(), optimizer_label(&config.optimizer))
-            .with_instruction(&optimized_instruction)
-            .with_scorecard(
-                Scorecard::new(optimized_score)
-                    .with_proxy("baseline_score", baseline)
-                    .with_rollouts(config.num_trials),
-            )
-            .finalize()?;
+        let manifest =
+            CompiledModuleManifest::new(signature.name(), optimizer_label(&config.optimizer))
+                .with_instruction(&optimized_instruction)
+                .with_scorecard(
+                    Scorecard::new(optimized_score)
+                        .with_proxy("baseline_score", baseline)
+                        .with_rollouts(config.num_trials),
+                )
+                .finalize()?;
         save_manifest(signature, &manifest)?;
     }
 
@@ -297,7 +298,10 @@ fn optimizer_label(kind: &PlanModeOptimizerKind) -> &'static str {
     }
 }
 
-fn save_manifest(signature: PlanModeSignatureKind, manifest: &CompiledModuleManifest) -> Result<()> {
+fn save_manifest(
+    signature: PlanModeSignatureKind,
+    manifest: &CompiledModuleManifest,
+) -> Result<()> {
     let dir = manifest_dir();
     fs::create_dir_all(&dir)?;
 
@@ -360,10 +364,7 @@ impl PlanModeOptimizationLogger {
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent)?;
         }
-        let mut file = OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(path)?;
+        let mut file = OpenOptions::new().create(true).append(true).open(path)?;
         let line = serde_json::to_string(&event)?;
         writeln!(file, "{}", line)?;
         Ok(())
@@ -412,7 +413,11 @@ impl dsrs::Evaluator for PlanModeSignatureModule {
 }
 
 impl FeedbackEvaluator for PlanModeSignatureModule {
-    async fn feedback_metric(&self, example: &Example, prediction: &Prediction) -> dsrs::evaluate::FeedbackMetric {
+    async fn feedback_metric(
+        &self,
+        example: &Example,
+        prediction: &Prediction,
+    ) -> dsrs::evaluate::FeedbackMetric {
         feedback_signature(self.signature, example, prediction)
     }
 }
