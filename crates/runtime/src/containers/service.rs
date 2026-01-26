@@ -1066,7 +1066,9 @@ impl FileHandle for ExecNewHandle {
         if self.response.is_none() {
             self.submit()?;
         }
-        let response = self.response.as_ref().unwrap();
+        let response = self.response.as_ref().ok_or_else(|| {
+            FsError::Other("exec response not available".to_string())
+        })?;
         if self.position >= response.len() {
             return Ok(0);
         }
@@ -1085,7 +1087,9 @@ impl FileHandle for ExecNewHandle {
         if self.response.is_none() {
             return Err(FsError::InvalidPath);
         }
-        let response = self.response.as_ref().unwrap();
+        let response = self.response.as_ref().ok_or_else(|| {
+            FsError::Other("exec response not available".to_string())
+        })?;
         let new_pos = match pos {
             SeekFrom::Start(offset) => offset as i64,
             SeekFrom::End(offset) => response.len() as i64 + offset,

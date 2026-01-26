@@ -1134,6 +1134,7 @@ dependencies = [
  "tauri-build",
  "tauri-plugin-opener",
  "tokio",
+ "tracing",
  "ts-rs",
  "uuid",
  "which 6.0.3",

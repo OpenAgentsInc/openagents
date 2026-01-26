@@ -20,6 +20,7 @@ use anyhow::{Context, Result};
 use bon::Builder;
 use dsrs_macros::Signature;
 use std::sync::Arc;
+use tracing::{debug, info};
 
 // ============================================================================
 // Signature Definitions for LLM-based Prompt Generation
@@ -231,14 +232,14 @@ impl MIPROv2 {
     {
         let mut traces = Vec::with_capacity(examples.len());
 
-        println!(
-            "Stage 1: Generating traces from {} examples",
+        info!(
+            "Stage 1: generating traces from {} examples",
             examples.len()
         );
 
         for (idx, example) in examples.iter().enumerate() {
             if idx % 10 == 0 {
-                println!("  Processing example {}/{}", idx + 1, examples.len());
+                debug!("Processing example {}/{}", idx + 1, examples.len());
             }
 
             // Run forward pass
@@ -253,7 +254,7 @@ impl MIPROv2 {
             traces.push(Trace::new(example.clone(), prediction, Some(score)));
         }
 
-        println!("Generated {} traces", traces.len());
+        info!("Generated {} traces", traces.len());
         Ok(traces)
     }
 
@@ -336,8 +337,8 @@ impl MIPROv2 {
             .collect::<Vec<_>>()
             .join("\n---\n");
 
-        println!(
-            "Stage 2: Generating {} candidate instructions",
+        info!(
+            "Stage 2: generating {} candidate instructions",
             num_candidates
         );
 
@@ -368,15 +369,15 @@ impl MIPROv2 {
             }
 
             if (i + 1) % 3 == 0 || i == num_candidates - 1 {
-                println!(
-                    "  Generated {}/{} candidates",
+                debug!(
+                    "Generated {}/{} candidates",
                     candidates.len(),
                     num_candidates
                 );
             }
         }
 
-        println!(
+        info!(
             "Generated {} total candidate instructions",
             candidates.len()
         );
@@ -446,8 +447,8 @@ impl MIPROv2 {
     where
         M: Module + Optimizable + Evaluator,
     {
-        println!(
-            "Stage 3: Evaluating {} candidates on minibatch of {} examples",
+        info!(
+            "Stage 3: evaluating {} candidates on minibatch of {} examples",
             candidates.len(),
             self.minibatch_size.min(eval_examples.len())
         );
@@ -455,7 +456,7 @@ impl MIPROv2 {
         let mut evaluated_candidates = Vec::new();
 
         for (idx, candidate) in candidates.into_iter().enumerate() {
-            println!("  Evaluating candidate {}/{}", idx + 1, self.num_candidates);
+            debug!("Evaluating candidate {}/{}", idx + 1, self.num_candidates);
 
             let score = self
                 .evaluate_candidate(module, &candidate, eval_examples, predictor_name)
@@ -464,7 +465,7 @@ impl MIPROv2 {
             evaluated_candidates.push(candidate.with_score(score));
 
             if self.track_stats {
-                println!("    Score: {:.3}", score);
+                debug!("Score: {:.3}", score);
             }
         }
 
@@ -478,7 +479,7 @@ impl MIPROv2 {
             })
             .context("No candidates to evaluate")?;
 
-        println!("Best candidate score: {:.3}", best.score);
+        info!("Best candidate score: {:.3}", best.score);
         Ok(best)
     }
 
@@ -525,12 +526,12 @@ impl Optimizer for MIPROv2 {
     where
         M: Module + Optimizable + Evaluator,
     {
-        println!("\n=== MIPROv2 Optimization Started ===");
-        println!("Configuration:");
-        println!("  Candidates: {}", self.num_candidates);
-        println!("  Trials: {}", self.num_trials);
-        println!("  Minibatch size: {}", self.minibatch_size);
-        println!("  Training examples: {}", trainset.len());
+        info!("MIPROv2 optimization started");
+        info!("Configuration:");
+        info!("  Candidates: {}", self.num_candidates);
+        info!("  Trials: {}", self.num_trials);
+        info!("  Minibatch size: {}", self.minibatch_size);
+        info!("  Training examples: {}", trainset.len());
 
         // Get predictor information
         let predictor_names: Vec<String> = module.parameters().keys().cloned().collect();
@@ -539,15 +540,15 @@ impl Optimizer for MIPROv2 {
             return Err(anyhow::anyhow!("No optimizable parameters found in module"));
         }
 
-        println!(
-            "  Optimizing {} predictor(s): {:?}\n",
+        info!(
+            "  Optimizing {} predictor(s): {:?}",
             predictor_names.len(),
             predictor_names
         );
 
         // Optimize each predictor
         for predictor_name in predictor_names {
-            println!("--- Optimizing predictor: {} ---", predictor_name);
+            info!("Optimizing predictor: {}", predictor_name);
 
             // Get signature for this predictor
             let signature_desc = {
@@ -567,7 +568,7 @@ impl Optimizer for MIPROv2 {
                 .generate_program_description(&signature_desc, &traces)
                 .await?;
 
-            println!("Generated program description: {}", program_description);
+            debug!("Generated program description: {}", program_description);
 
             let instructions = self
                 .generate_candidate_instructions(&program_description, &traces, self.num_candidates)
@@ -590,14 +591,14 @@ impl Optimizer for MIPROv2 {
                 }
             }
 
-            println!(
-                "✓ Optimized {} with score {:.3}",
+            info!(
+                "Optimized {} with score {:.3}",
                 predictor_name, best_candidate.score
             );
-            println!("  Instruction: {}\n", best_candidate.instruction);
+            debug!("Instruction: {}", best_candidate.instruction);
         }
 
-        println!("=== MIPROv2 Optimization Complete ===\n");
+        info!("MIPROv2 optimization complete");
         Ok(())
     }
 }

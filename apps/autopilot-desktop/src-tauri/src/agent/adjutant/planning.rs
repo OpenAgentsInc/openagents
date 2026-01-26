@@ -23,6 +23,7 @@ use serde_json;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::process::Command;
+use tracing::{debug, error, info, warn};
 
 // ============================================================================
 // Pipeline Implementation
@@ -45,7 +46,7 @@ fn apply_optimized_instruction<S: MetaSignature>(
     if config.apply_optimized_instructions {
         if let Some(instruction) = load_latest_instruction(kind) {
             if let Err(err) = signature.update_instruction(instruction) {
-                eprintln!(
+                warn!(
                     "Failed to apply optimized instruction for {}: {}",
                     kind.name(),
                     err
@@ -139,14 +140,14 @@ impl PlanModePipeline {
             let server_url = config.server_url();
             match build_dsrs_lm(&config).await {
                 Ok(lm) => {
-                    println!(
+                    info!(
                         "✅ AI Gateway LM initialized and connected to {}",
                         server_url
                     );
                     self.lm = Some(Arc::new(lm));
                 }
                 Err(err) => {
-                    eprintln!("Failed to initialize AI Gateway LM: {}", err);
+                    warn!("Failed to initialize AI Gateway LM: {}", err);
                 }
             }
         }
@@ -199,7 +200,7 @@ impl PlanModePipeline {
         file_tree: &str,
         trace: &mut PlanModeTrace,
     ) -> Result<Vec<ExplorationTopic>, String> {
-        println!("Decomposing prompt into exploration topics...");
+        info!("Decomposing prompt into exploration topics...");
 
         if let Some(lm) = &self.lm {
             let inputs = example! {
@@ -257,7 +258,7 @@ impl PlanModePipeline {
         topics: Vec<ExplorationTopic>,
         trace: &mut PlanModeTrace,
     ) -> Result<Vec<ExplorationResult>, String> {
-        println!("Launching {} explore agents...", topics.len());
+        info!("Launching {} explore agents...", topics.len());
         struct ExplorationRun {
             result: ExplorationResult,
             training: Option<ParallelExplorationExample>,
@@ -272,7 +273,7 @@ impl PlanModePipeline {
             let max_files = self.config.max_tool_calls_per_agent.max(3);
 
             exploration_tasks.push(async move {
-                println!("[Agent {}] Starting: {}", agent_num, topic.name);
+                debug!("[Agent {}] Starting: {}", agent_num, topic.name);
 
                 let (files_examined, file_context) =
                     Self::gather_exploration_context(&repo_path, &topic.patterns, max_files)
@@ -379,7 +380,7 @@ impl PlanModePipeline {
         exploration_results: &[ExplorationResult],
         trace: &mut PlanModeTrace,
     ) -> Result<PlanResult, String> {
-        println!("Synthesizing plan from exploration...");
+        info!("Synthesizing plan from exploration...");
 
         let combined_findings = self.format_exploration_results(exploration_results);
         let all_files: Vec<String> = exploration_results
@@ -635,7 +636,7 @@ impl PlanModePipeline {
         plan: &PlanResult,
         trace: &mut PlanModeTrace,
     ) -> Result<(), String> {
-        println!("Validating plan quality...");
+        info!("Validating plan quality...");
 
         if let Some(lm) = &self.lm {
             let inputs = example! {
@@ -681,7 +682,7 @@ impl PlanModePipeline {
                 });
             }
 
-            println!(
+            info!(
                 "Validation result: issues={}, confidence={}",
                 issues, confidence
             );
@@ -705,14 +706,14 @@ impl PlanModePipeline {
         let mut store = match PlanModeTrainingStore::load() {
             Ok(store) => store,
             Err(err) => {
-                eprintln!("Failed to load plan mode training store: {}", err);
+                warn!("Failed to load plan mode training store: {}", err);
                 return;
             }
         };
 
         store.append_trace(trace, self.config.optimization.max_examples);
         if let Err(err) = store.save() {
-            eprintln!("Failed to save plan mode training store: {}", err);
+            warn!("Failed to save plan mode training store: {}", err);
         }
 
         if !self.config.optimization.enabled {
@@ -720,7 +721,7 @@ impl PlanModePipeline {
         }
 
         let Some(lm) = self.lm.clone() else {
-            eprintln!("Optimization skipped: no LM available");
+            warn!("Optimization skipped: no LM available");
             return;
         };
 
@@ -729,11 +730,11 @@ impl PlanModePipeline {
             let handle = tokio::runtime::Handle::current();
             tokio::task::spawn_blocking(move || {
                 if let Err(err) = handle.block_on(run_plan_mode_optimization(config, lm)) {
-                    eprintln!("Plan mode optimization failed: {}", err);
+                    error!("Plan mode optimization failed: {}", err);
                 }
             });
         } else if let Err(err) = run_plan_mode_optimization(config, lm).await {
-            eprintln!("Plan mode optimization failed: {}", err);
+            error!("Plan mode optimization failed: {}", err);
         }
     }
 
@@ -780,7 +781,7 @@ impl PlanModePipeline {
             let mut matches = match Self::rg_files_for_pattern(repo_path, pattern).await {
                 Ok(matches) => matches,
                 Err(err) => {
-                    eprintln!("Pattern search failed for '{}': {}", pattern, err);
+                    warn!("Pattern search failed for '{}': {}", pattern, err);
                     Vec::new()
                 }
             };
@@ -792,7 +793,7 @@ impl PlanModePipeline {
             files = match Self::rg_list_repo_files(repo_path, max_files).await {
                 Ok(list) => list,
                 Err(err) => {
-                    eprintln!("rg --files failed: {}, falling back to manual listing", err);
+                    warn!("rg --files failed: {}, falling back to manual listing", err);
                     Self::list_repo_files_fallback(repo_path, max_files).await?
                 }
             };

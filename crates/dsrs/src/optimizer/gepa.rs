@@ -12,6 +12,7 @@ use anyhow::{Context, Result};
 use bon::Builder;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+use tracing::{debug, info, warn};
 
 use crate as dsrs;
 use crate::{
@@ -390,16 +391,16 @@ impl GEPA {
     where
         M: Module + Optimizable + FeedbackEvaluator,
     {
-        println!("GEPA: Starting reflective prompt optimization");
-        println!("  Iterations: {}", self.num_iterations);
-        println!("  Minibatch size: {}", self.minibatch_size);
+        info!("GEPA: starting reflective prompt optimization");
+        info!("  Iterations: {}", self.num_iterations);
+        info!("  Minibatch size: {}", self.minibatch_size);
 
         // Use valset if provided, otherwise use trainset for Pareto evaluation
         let eval_set = self.valset.as_ref().unwrap_or(&trainset);
 
         // Initialize frontier with seed program
         let mut frontier = self.initialize_frontier(&mut *module, eval_set).await?;
-        println!("  Initialized frontier with {} candidates", frontier.len());
+        info!("  Initialized frontier with {} candidates", frontier.len());
 
         // Track statistics
         let mut all_candidates = Vec::new();
@@ -410,13 +411,13 @@ impl GEPA {
 
         // Main evolutionary loop
         for generation in 0..self.num_iterations {
-            println!("\nGeneration {}/{}", generation + 1, self.num_iterations);
+            info!("Generation {}/{}", generation + 1, self.num_iterations);
 
             // Check budget constraints
             if let Some(max_rollouts) = self.max_rollouts
                 && total_rollouts >= max_rollouts
             {
-                println!("  Budget limit reached: max rollouts");
+                warn!("Budget limit reached: max rollouts");
                 break;
             }
 
@@ -426,7 +427,7 @@ impl GEPA {
                 .context("Failed to sample from frontier")?
                 .clone();
 
-            println!(
+            info!(
                 "  Sampled parent (ID {}): avg score {:.3}",
                 parent.id,
                 parent.average_score()
@@ -456,7 +457,7 @@ impl GEPA {
 
             total_lm_calls += 2; // Reflection + proposal
 
-            println!("  Generated new instruction through reflection");
+            debug!("Generated new instruction through reflection");
 
             // Create child candidate
             let child = parent.mutate(new_instruction.clone(), generation + 1);
@@ -473,14 +474,14 @@ impl GEPA {
             total_rollouts += child_scores.len();
 
             let child_avg = child_scores.iter().sum::<f32>() / child_scores.len() as f32;
-            println!("  Child avg score: {:.3}", child_avg);
+            debug!("Child avg score: {:.3}", child_avg);
 
             // Add to frontier
             let added = frontier.add_candidate(child.clone(), &child_scores);
             if added {
-                println!("  Added to Pareto frontier");
+                debug!("Added to Pareto frontier");
             } else {
-                println!("  Dominated, not added");
+                debug!("Dominated, not added");
             }
 
             // Track statistics
@@ -494,7 +495,7 @@ impl GEPA {
                 frontier_history.push(frontier.statistics());
             }
 
-            println!("  Frontier size: {}", frontier.len());
+            debug!("Frontier size: {}", frontier.len());
         }
 
         // Get best candidate
@@ -503,13 +504,13 @@ impl GEPA {
             .context("No candidates on frontier")?
             .clone();
 
-        println!("\nGEPA optimization complete");
-        println!(
+        info!("GEPA optimization complete");
+        info!(
             "  Best average score: {:.3}",
             best_candidate.average_score()
         );
-        println!("  Total rollouts: {}", total_rollouts);
-        println!("  Total LM calls: {}", total_lm_calls);
+        info!("  Total rollouts: {}", total_rollouts);
+        info!("  Total LM calls: {}", total_lm_calls);
 
         // Apply best instruction to module
         {
