@@ -133,6 +133,11 @@ Certificate types:
 - **Developer ID Application**: distribute outside the App Store (requires notarization).
 - **Apple Distribution**: App Store distribution.
 
+OpenAgents team:
+- Team name: **OpenAgents, Inc.**
+- Team ID: **HQWSG26L43**
+- Default signing identity (Developer ID): `Developer ID Application: OpenAgents, Inc. (HQWSG26L43)`
+
 Local signing:
 
 1. Create a CSR, then create and download a certificate in Apple Developer.
@@ -142,8 +147,8 @@ Local signing:
    security find-identity -v -p codesigning
    ```
 4. Set the signing identity:
-   - `bundle.macOS.signingIdentity` in `tauri.conf.json`, or
-   - `APPLE_SIGNING_IDENTITY` environment variable.
+   - `bundle.macOS.signingIdentity` in `tauri.conf.json` (defaults to OpenAgents Developer ID), or
+   - `APPLE_SIGNING_IDENTITY` environment variable (overrides config).
 
 CI signing (p12 export):
 
@@ -171,11 +176,12 @@ App Store Connect API:
 - `APPLE_API_ISSUER`
 - `APPLE_API_KEY`
 - `APPLE_API_KEY_PATH` (path to the downloaded private key)
+ - `APPLE_TEAM_ID` (OpenAgents: `HQWSG26L43`)
 
 Apple ID:
 - `APPLE_ID`
 - `APPLE_PASSWORD` (app-specific password)
-- `APPLE_TEAM_ID`
+- `APPLE_TEAM_ID` (OpenAgents: `HQWSG26L43`)
 
 ### App Store distribution
 
