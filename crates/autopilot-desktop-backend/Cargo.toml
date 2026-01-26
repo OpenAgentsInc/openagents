@@ -28,6 +28,8 @@ once_cell = "1.19"
 async-recursion = "1.1"
 dotenvy = "0.15"
 ts-rs = "7"
+dirs = "5"
+indexmap = "2"
 
 # DSPy/dsrs dependencies
 dsrs = { workspace = true }
