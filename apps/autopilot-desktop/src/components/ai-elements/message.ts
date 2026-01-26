@@ -1,6 +1,7 @@
 import { html } from "../../effuse/template/html.js"
 import type { TemplateResult } from "../../effuse/template/types.js"
 import type { CodexMessage, CodexMessageRole } from "../../types/codex.js"
+import { renderMarkdown } from "./markdown.js"
 
 export type MessageRole = CodexMessageRole
 
@@ -30,7 +31,7 @@ export const Message = ({
 }: MessageProps): TemplateResult => html`
   <article class="flex w-full max-w-[90%] flex-col gap-2 ${roleWrapperClasses[role] ?? roleWrapperClasses.assistant}">
     <div class="flex flex-col gap-2 px-3 py-2 text-sm leading-relaxed ${roleBubbleClasses[role] ?? roleBubbleClasses.assistant}">
-      <div class="whitespace-pre-wrap break-words">${text}</div>
+      <div class="break-words">${renderMarkdown(text)}</div>
       ${
         isStreaming
           ? html`<span class="text-[10px] uppercase text-white/30">Streaming</span>`

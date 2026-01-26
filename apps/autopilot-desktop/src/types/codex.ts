@@ -12,6 +12,17 @@ export type CodexReasoning = {
   content: string
 }
 
+export type CodexPlanStep = {
+  step: string
+  status: string
+}
+
+export type CodexPlan = {
+  id: string
+  explanation?: string
+  steps: CodexPlanStep[]
+}
+
 export type CodexDiff = {
   id: string
   title: string
@@ -45,6 +56,7 @@ export type CodexToolCall = {
 export type CodexConversationItem =
   | { kind: "message" } & CodexMessage
   | { kind: "reasoning" } & CodexReasoning
+  | { kind: "plan" } & CodexPlan
   | { kind: "diff" } & CodexDiff
   | { kind: "review" } & CodexReview
   | { kind: "tool" } & CodexToolCall

@@ -22,6 +22,7 @@ import {
   NodeHeader,
   NodeTitle,
   Panel,
+  Plan,
   Reasoning,
   Row,
   Select,
@@ -260,6 +261,19 @@ export const effuseCatalog = createCatalog({
       }),
       description: "Reasoning summary block.",
     },
+    plan: {
+      props: Schema.Struct({
+        explanation: Schema.optional(DynamicStringSchema),
+        steps: Schema.Array(
+          Schema.Struct({
+            step: DynamicStringSchema,
+            status: DynamicStringSchema,
+          })
+        ),
+        isStreaming: Schema.optional(DynamicBooleanSchema),
+      }),
+      description: "Structured plan block.",
+    },
     tool_call: {
       props: Schema.Struct({
         title: DynamicStringSchema,
@@ -327,6 +341,7 @@ export const componentRegistry: ComponentRegistry = {
   conversation_empty_state: ({ props }) => ConversationEmptyState(props),
   message: ({ props }) => Message(props),
   reasoning: ({ props }) => Reasoning(props),
+  plan: ({ props }) => Plan(props),
   tool_call: ({ props }) => ToolCall(props),
   diff: ({ props }) => Diff(props),
 }

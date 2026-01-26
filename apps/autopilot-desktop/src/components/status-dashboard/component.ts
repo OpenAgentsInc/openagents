@@ -3,13 +3,14 @@ import { invoke } from "@tauri-apps/api/core"
 import { listen } from "@tauri-apps/api/event"
 import type { Component } from "../../effuse/index.js"
 import { html } from "../../effuse/index.js"
-import type { CodexConversationItem } from "../../types/codex.js"
+import type { CodexConversationItem, CodexPlanStep } from "../../types/codex.js"
 import {
   Conversation,
   ConversationContent,
   ConversationEmptyState,
   Diff,
   Message,
+  Plan,
   Reasoning,
   ToolCall,
 } from "../ai-elements/index.js"
@@ -216,6 +217,41 @@ const formatChangeKind = (value: unknown) => {
   return undefined
 }
 
+const readPlanSteps = (value: unknown): CodexPlanStep[] => {
+  if (!Array.isArray(value)) {
+    return []
+  }
+  return value
+    .map((entry) => {
+      if (!isRecord(entry)) {
+        return null
+      }
+      const step = readString(entry, "step")
+      if (!step) {
+        return null
+      }
+      const status = readString(entry, "status") ?? "pending"
+      return { step, status }
+    })
+    .filter((entry): entry is CodexPlanStep => Boolean(entry))
+}
+
+const buildPlanItem = (
+  threadId: string,
+  explanation: string | null,
+  steps: CodexPlanStep[]
+): CodexConversationItem | null => {
+  if (!explanation && steps.length === 0) {
+    return null
+  }
+  return {
+    kind: "plan",
+    id: `plan-${threadId}`,
+    explanation: explanation ?? undefined,
+    steps,
+  }
+}
+
 const extractThreadId = (value: unknown): string | null => {
   if (!value || typeof value !== "object") {
     return null
@@ -225,7 +261,11 @@ const extractThreadId = (value: unknown): string | null => {
       return null
     }
     const record = container as Record<string, unknown>
-    const direct = record.threadId ?? record.thread_id
+    const direct =
+      record.threadId ??
+      record.thread_id ??
+      record.conversationId ??
+      record.conversation_id
     if (typeof direct === "string") {
       return direct
     }
@@ -382,6 +422,27 @@ const formatUserContent = (content: unknown) => {
   return combined || "[user input]"
 }
 
+const joinFragments = (values: readonly unknown[], separator: string) => {
+  const fragments = values
+    .map((entry) => (typeof entry === "string" ? entry : null))
+    .filter((entry): entry is string => Boolean(entry))
+  if (!fragments.length) {
+    return ""
+  }
+  if (fragments.length === 1) {
+    return fragments[0]
+  }
+  const avgLength =
+    fragments.reduce((sum, part) => sum + part.length, 0) / fragments.length
+  const hasWhitespaceEdges = fragments.some(
+    (part) => /^\s/.test(part) || /\s$/.test(part)
+  )
+  const hasNewlines = fragments.some((part) => part.includes("\n"))
+  const looksLikeDelta =
+    fragments.length > 4 && (avgLength < 12 || hasWhitespaceEdges || hasNewlines)
+  return looksLikeDelta ? fragments.join("") : fragments.join(separator)
+}
+
 const mapThreadItem = (item: unknown): CodexConversationItem | null => {
   if (!isRecord(item)) {
     return null
@@ -406,20 +467,42 @@ const mapThreadItem = (item: unknown): CodexConversationItem | null => {
   if (itemType === "reasoning") {
     const summaryValues = readArray(item, "summary") ?? []
     const contentValues = readArray(item, "content") ?? []
-    const summary = summaryValues
-      .map((entry) => (typeof entry === "string" ? entry : null))
-      .filter((entry): entry is string => Boolean(entry))
-      .join(" · ")
-    const content = contentValues
-      .map((entry) => (typeof entry === "string" ? entry : null))
-      .filter((entry): entry is string => Boolean(entry))
-      .join("\n")
+    let summary = joinFragments(summaryValues, " · ").trim()
+    let content = joinFragments(contentValues, "\n")
+    if (!content && summary.includes("\n")) {
+      const lines = summary.split(/\r?\n/)
+      const firstIndex = lines.findIndex((line) => line.trim() !== "")
+      if (firstIndex !== -1) {
+        const summaryLine = lines[firstIndex].trim()
+        const remaining = lines.slice(firstIndex + 1).join("\n")
+        summary = summaryLine || summary
+        if (remaining.trim()) {
+          content = remaining.replace(/^\n+/, "")
+        }
+      }
+    }
+    if (!summary && content) {
+      const firstLine =
+        content.split(/\r?\n/).find((line) => line.trim() !== "") ?? "Reasoning"
+      summary = firstLine.trim() || "Reasoning"
+    }
 
     return {
       kind: "reasoning",
       id,
       summary,
       content,
+    }
+  }
+
+  if (itemType === "plan") {
+    const explanation = readString(item, "explanation")
+    const steps = readPlanSteps(readArray(item, "steps") ?? readArray(item, "plan"))
+    return {
+      kind: "plan",
+      id,
+      explanation: explanation ?? undefined,
+      steps,
     }
   }
 
@@ -568,7 +651,17 @@ const renderConversationItem = (item: CodexConversationItem) => {
     case "message":
       return Message({ role: item.role, text: item.text })
     case "reasoning":
-      return Reasoning({ summary: item.summary, content: item.content })
+      return Reasoning({
+        summary: item.summary,
+        content: item.content,
+        open: Boolean(item.content),
+      })
+    case "plan":
+      return Plan({
+        explanation: item.explanation,
+        steps: item.steps,
+        open: true,
+      })
     case "diff":
       return Diff({ title: item.title, diff: item.diff, status: item.status })
     case "tool":
@@ -730,11 +823,6 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
                 >
                   ${conversationBody}
                 </div>
-                ${
-                  activeSession?.preview
-                    ? html`<div class="note">${activeSession.preview}</div>`
-                    : ""
-                }
                 ${
                   state.sessionMessage
                     ? html`<div class="note">${state.sessionMessage}</div>`
@@ -1282,12 +1370,14 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
           Effect.tap((response) => {
             const threadId = extractThreadId(response)
             if (!threadId) {
-              return ctx.state.update((state) => ({
-                ...state,
-                busy: { ...state.busy, newSession: false },
-                sessionMessage: "Failed to start a new session.",
-                lastUpdated: nowTime(),
-              }))
+              return ctx.state
+                .update((state) => ({
+                  ...state,
+                  busy: { ...state.busy, newSession: false },
+                  sessionMessage: "Failed to start a new session.",
+                  lastUpdated: nowTime(),
+                }))
+                .pipe(Effect.tap(() => focusMessageInput(ctx.container)))
             }
             const thread = extractThread(response)
             const summary = thread ? toSessionSummary(thread) : null
@@ -1299,29 +1389,33 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
               createdAt: timestamp,
               modelProvider: "",
             }
-            return ctx.state.update((state) => ({
-              ...state,
-              threadId,
-              activeSessionId: threadId,
-              sessions: summary
-                ? upsertSession(state.sessions, summary)
-                : upsertSession(state.sessions, fallbackSummary),
-              sessionItems: {
-                ...state.sessionItems,
-                [threadId]: [],
-              },
-              busy: { ...state.busy, newSession: false },
-              sessionMessage: "",
-              lastUpdated: nowTime(),
-            }))
+            return ctx.state
+              .update((state) => ({
+                ...state,
+                threadId,
+                activeSessionId: threadId,
+                sessions: summary
+                  ? upsertSession(state.sessions, summary)
+                  : upsertSession(state.sessions, fallbackSummary),
+                sessionItems: {
+                  ...state.sessionItems,
+                  [threadId]: [],
+                },
+                busy: { ...state.busy, newSession: false },
+                sessionMessage: "",
+                lastUpdated: nowTime(),
+              }))
+              .pipe(Effect.tap(() => focusMessageInput(ctx.container)))
           }),
           Effect.catchAll((error) =>
-            ctx.state.update((state) => ({
-              ...state,
-              busy: { ...state.busy, newSession: false },
-              sessionMessage: `Start session failed: ${String(error)}`,
-              lastUpdated: nowTime(),
-            }))
+            ctx.state
+              .update((state) => ({
+                ...state,
+                busy: { ...state.busy, newSession: false },
+                sessionMessage: `Start session failed: ${String(error)}`,
+                lastUpdated: nowTime(),
+              }))
+              .pipe(Effect.tap(() => focusMessageInput(ctx.container)))
           ),
           Effect.asVoid
         )
@@ -1456,6 +1550,36 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
             sessionItems = upsertConversationItem(sessionItems, eventThreadId, mapped)
             if (!activeSessionId) {
               activeSessionId = eventThreadId
+            }
+          }
+        }
+
+        if (params && (method === "turn/plan/updated" || method === "codex/event/plan_update")) {
+          let planThreadId = eventThreadId
+          let explanation: string | null = null
+          let steps: CodexPlanStep[] = []
+
+          if (method === "turn/plan/updated") {
+            planThreadId = readString(params, "threadId") ?? planThreadId
+            explanation = readString(params, "explanation")
+            steps = readPlanSteps(readArray(params, "plan"))
+          } else {
+            const msg = readRecord(params, "msg")
+            planThreadId =
+              readString(params, "conversationId") ??
+              (msg ? readString(msg, "thread_id") : null) ??
+              planThreadId
+            explanation = msg ? readString(msg, "explanation") : null
+            steps = readPlanSteps(msg ? readArray(msg, "plan") : null)
+          }
+
+          if (planThreadId) {
+            const planItem = buildPlanItem(planThreadId, explanation, steps)
+            if (planItem) {
+              sessionItems = upsertConversationItem(sessionItems, planThreadId, planItem)
+              if (!activeSessionId) {
+                activeSessionId = planThreadId
+              }
             }
           }
         }
