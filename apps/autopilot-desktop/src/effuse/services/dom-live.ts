@@ -31,6 +31,14 @@ type FocusSnapshot = {
   } | null
 }
 
+type ScrollSnapshot = {
+  readonly id: string
+  readonly top: number
+  readonly left: number
+}
+
+const scrollMemory = new Map<string, ScrollSnapshot>()
+
 const escapeSelector = (value: string): string => {
   if (typeof CSS !== "undefined" && typeof CSS.escape === "function") {
     return CSS.escape(value)
@@ -110,6 +118,38 @@ const restoreFocus = (snapshot: FocusSnapshot | null) => {
   }
 }
 
+const captureScroll = (target: Element) => {
+  const nodes = target.querySelectorAll<HTMLElement>("[data-scroll-id]")
+  nodes.forEach((node) => {
+    const id = node.getAttribute("data-scroll-id")
+    if (!id) {
+      return
+    }
+    scrollMemory.set(id, {
+      id,
+      top: node.scrollTop,
+      left: node.scrollLeft,
+    })
+  })
+}
+
+const restoreScroll = (target: Element | Document) => {
+  const root = target instanceof Document ? target : target
+  const nodes = root.querySelectorAll<HTMLElement>("[data-scroll-id]")
+  nodes.forEach((node) => {
+    const id = node.getAttribute("data-scroll-id")
+    if (!id) {
+      return
+    }
+    const snapshot = scrollMemory.get(id)
+    if (!snapshot) {
+      return
+    }
+    node.scrollTop = snapshot.top
+    node.scrollLeft = snapshot.left
+  })
+}
+
 const swapImpl = (
   target: Element,
   content: TemplateResult,
@@ -118,6 +158,7 @@ const swapImpl = (
   Effect.gen(function* () {
     try {
       const focusSnapshot = captureFocus(target)
+      captureScroll(target)
       const html = templateToString(content)
       switch (mode) {
         case "inner":
@@ -140,6 +181,8 @@ const swapImpl = (
 
       if (mode === "inner" || mode === "outer" || mode === "replace") {
         restoreFocus(focusSnapshot)
+        const restoreRoot = target.parentElement ?? document
+        restoreScroll(mode === "inner" ? target : restoreRoot)
       }
     } catch (error) {
       return yield* Effect.fail(

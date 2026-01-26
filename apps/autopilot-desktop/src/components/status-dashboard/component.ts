@@ -616,18 +616,21 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
       const sessionList = sessionCount
         ? state.sessions.map((session) => {
             const isActive = session.id === activeSessionId
+            const preview = session.preview.trim()
             return html`
               <button
                 class="session-item ${isActive ? "active" : ""}"
                 data-action="select-session"
                 data-session-id="${session.id}"
               >
-                <div class="session-id">${formatSessionId(session.id)}</div>
-                ${
-                  session.preview
-                    ? html`<div class="session-preview">${session.preview}</div>`
-                    : ""
-                }
+                <div class="session-line">
+                  <span class="session-id">${formatSessionId(session.id)}</span>
+                  ${
+                    preview
+                      ? html`<span class="session-preview">${preview}</span>`
+                      : ""
+                  }
+                </div>
               </button>
             `
           })
@@ -697,7 +700,9 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
                   </span>
                 </div>
               </div>
-              <div class="session-list">${sessionList}</div>
+              <div class="session-list" data-scroll-id="session-list">
+                ${sessionList}
+              </div>
             </aside>
 
             <main class="main-pane">
@@ -770,7 +775,12 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
 
               <section class="panel conversation-panel">
                 <div class="panel-title">Session ${sessionLabel}</div>
-                <div class="panel-body conversation-body">
+                <div
+                  class="panel-body conversation-body"
+                  data-scroll-id="${activeSessionId
+                    ? `session-${activeSessionId}`
+                    : "session-none"}"
+                >
                   ${conversationBody}
                 </div>
                 ${
@@ -788,7 +798,7 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
               <section class="panel feed-panel">
                 <div class="panel-title">App-Server Feed</div>
                 <div class="panel-body">
-                  <pre class="event-log">${state.lastEventText}</pre>
+                  <pre class="event-log" data-scroll-id="event-log">${state.lastEventText}</pre>
                 </div>
               </section>
             </main>
