@@ -284,6 +284,8 @@ pub(crate) async fn spawn_workspace_session<E: EventSink>(
     command.current_dir(&entry.path);
     command.arg("-c").arg("approval_policy=never");
     command.arg("-c").arg("sandbox_mode=danger-full-access");
+    // Avoid unsupported verbosity defaults for gpt-5.2-codex.
+    command.arg("-c").arg("model_verbosity=medium");
     command.arg("app-server");
     if let Some(codex_home) = codex_home {
         command.env("CODEX_HOME", codex_home);
