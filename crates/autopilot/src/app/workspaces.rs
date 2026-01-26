@@ -9,6 +9,7 @@ use web_time::Instant;
 
 use crate::app::codex_app_server as app_server;
 use crate::app::config::workspaces_file;
+use crate::app::utils::normalize_reasoning_effort_for_model;
 
 const THREAD_NAME_MAX_LEN: usize = 38;
 const FOCUS_REFRESH_COOLDOWN_SECS: u64 = 2;
@@ -1944,6 +1945,10 @@ async fn run_workspace_loop(
                     })
                     .await;
 
+                let effort = model
+                    .as_deref()
+                    .map(|model_name| normalize_reasoning_effort_for_model(model_name, effort))
+                    .unwrap_or(effort);
                 let turn_params = app_server::TurnStartParams {
                     thread_id: thread_id.clone(),
                     input: vec![app_server::UserInput::Text { text }],
