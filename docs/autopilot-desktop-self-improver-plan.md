@@ -168,3 +168,4 @@ This plan adapts the crest self-improver concepts to the current OpenAgents code
 ## Agent Action Log
 - 2026-01-26: Added agent note requiring log review + append-only action entries. (doc update)
 - 2026-01-26: Integrated privacy-preserving friction/delight signals, facet evolution, and threshold-triggered self-improvement guidance. (doc update)
+- 2026-01-26: Added plan mode benchmark harness, eval split handling, scorecard logging, and promotion gating for plan-mode optimization. (implementation)
