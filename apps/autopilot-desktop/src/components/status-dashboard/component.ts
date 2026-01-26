@@ -168,6 +168,21 @@ const normalizeStatus = (value: unknown) => {
   return value.replace(/([a-z])([A-Z])/g, "$1 $2").toLowerCase()
 }
 
+const focusMessageInput = (container: Element) =>
+  Effect.sync(() => {
+    const input = container.querySelector(
+      "#message-input"
+    ) as HTMLInputElement | null
+    if (!input) {
+      return
+    }
+    try {
+      input.focus({ preventScroll: true })
+    } catch {
+      input.focus()
+    }
+  })
+
 const formatJson = (value: unknown) => {
   if (value === undefined || value === null) {
     return undefined
@@ -654,23 +669,8 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
 
       return html`
         <div class="terminal">
-          <div class="status-strip">
-            <div class="status-item">
-              <span class="status-label">Status</span>
-              <span class="status-value ${status.level}">${status.label}</span>
-            </div>
-            <div class="status-item">
-              <span class="status-label">Workspace</span>
-              <span class="status-value mono">${state.workspaceId}</span>
-            </div>
-            <div class="status-item">
-              <span class="status-label">Updated</span>
-              <span class="status-value">${state.lastUpdated}</span>
-            </div>
-          </div>
-
           <div class="command-bar">
-            <span class="command-label">Command</span>
+            <span class="command-label">Quick Cmd</span>
             <input
               id="command-input"
               class="command-input"
@@ -678,7 +678,9 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
               placeholder="connect | disconnect | doctor | cd /path"
               value="${state.commandInput}"
             />
-            <div class="command-hints">F2 CONNECT | F3 DISCONNECT | F5 DOCTOR | F12 STORYBOOK</div>
+            <div class="command-hints">
+              LOCAL COMMANDS ONLY · USE INPUT BELOW FOR MESSAGES · F2 CONNECT · F3 DISCONNECT · F5 DOCTOR · F12 STORYBOOK
+            </div>
           </div>
 
           <div class="workspace-shell">
@@ -706,8 +708,36 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
             </aside>
 
             <main class="main-pane">
-              <div class="panel-row">
-                <section class="panel">
+              <section class="panel conversation-panel">
+                <div class="panel-title">Session ${sessionLabel}</div>
+                <div
+                  class="panel-body conversation-body"
+                  data-scroll-id="${activeSessionId
+                    ? `session-${activeSessionId}`
+                    : "session-none"}"
+                >
+                  ${conversationBody}
+                </div>
+                ${
+                  activeSession?.preview
+                    ? html`<div class="note">${activeSession.preview}</div>`
+                    : ""
+                }
+                ${
+                  state.sessionMessage
+                    ? html`<div class="note">${state.sessionMessage}</div>`
+                    : ""
+                }
+              </section>
+            </main>
+
+            <aside class="info-sidebar">
+              <div class="session-header">
+                <span>Status</span>
+                <span class="status-value ${status.level}">${status.label}</span>
+              </div>
+              <div class="info-list">
+                <section class="sidebar-panel">
                   <div class="panel-title">System</div>
                   <div class="panel-body">
                     <div class="table">
@@ -731,7 +761,7 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
                   </div>
                 </section>
 
-                <section class="panel">
+                <section class="sidebar-panel">
                   <div class="panel-title">Workspace</div>
                   <div class="panel-body">
                     <label class="field">
@@ -761,47 +791,29 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
                       </button>
                     </div>
                     <div class="table">
+                      <div class="label">Workspace</div>
+                      <div class="value mono">${state.workspaceId}</div>
                       <div class="label">Connection</div>
                       <div class="value ${state.workspaceConnected ? "ok" : "error"}">${connectionLabel}</div>
                       <div class="label">Last Event</div>
                       <div class="value">${state.lastEventTime}</div>
                       <div class="label">Thread</div>
                       <div class="value mono">${threadLabel}</div>
+                      <div class="label">Updated</div>
+                      <div class="value">${state.lastUpdated}</div>
                     </div>
                     <div class="note">${state.workspaceMessage || ""}</div>
                   </div>
                 </section>
+
+                <section class="sidebar-panel feed">
+                  <div class="panel-title">App-Server Feed</div>
+                  <div class="panel-body">
+                    <pre class="event-log" data-scroll-id="event-log">${state.lastEventText}</pre>
+                  </div>
+                </section>
               </div>
-
-              <section class="panel conversation-panel">
-                <div class="panel-title">Session ${sessionLabel}</div>
-                <div
-                  class="panel-body conversation-body"
-                  data-scroll-id="${activeSessionId
-                    ? `session-${activeSessionId}`
-                    : "session-none"}"
-                >
-                  ${conversationBody}
-                </div>
-                ${
-                  activeSession?.preview
-                    ? html`<div class="note">${activeSession.preview}</div>`
-                    : ""
-                }
-                ${
-                  state.sessionMessage
-                    ? html`<div class="note">${state.sessionMessage}</div>`
-                    : ""
-                }
-              </section>
-
-              <section class="panel feed-panel">
-                <div class="panel-title">App-Server Feed</div>
-                <div class="panel-body">
-                  <pre class="event-log" data-scroll-id="event-log">${state.lastEventText}</pre>
-                </div>
-              </section>
-            </main>
+            </aside>
           </div>
 
           <div class="compose-bar">
@@ -825,20 +837,6 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
             <div class="compose-hints">Enter to send | /connect /disconnect /doctor /cd /new /help</div>
           </div>
 
-          <div class="status-strip bottom">
-            <div class="status-item">
-              <span class="status-label">App-Server</span>
-              <span class="status-value ${state.doctor.appServerOk ? "ok" : "error"}">${appServerStatus}</span>
-            </div>
-            <div class="status-item">
-              <span class="status-label">CLI</span>
-              <span class="status-value ${state.doctor.ok ? "ok" : "error"}">${cliStatus}</span>
-            </div>
-            <div class="status-item">
-              <span class="status-label">Active</span>
-              <span class="status-value mono">${sessionLabel}</span>
-            </div>
-          </div>
         </div>
       `
     }),
@@ -997,12 +995,14 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
           })
           threadId = extractThreadId(response)
           if (!threadId) {
-            yield* ctx.state.update((state) => ({
-              ...state,
-              busy: { ...state.busy, send: false },
-              workspaceMessage: "Failed to start a new thread.",
-              lastUpdated: nowTime(),
-            }))
+            yield* ctx.state
+              .update((state) => ({
+                ...state,
+                busy: { ...state.busy, send: false },
+                workspaceMessage: "Failed to start a new thread.",
+                lastUpdated: nowTime(),
+              }))
+              .pipe(Effect.tap(() => focusMessageInput(ctx.container)))
             return
           }
           const thread = extractThread(response)
@@ -1041,21 +1041,25 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
           accessMode: null,
         }).pipe(
           Effect.tap(() =>
-            ctx.state.update((state) => ({
-              ...state,
-              busy: { ...state.busy, send: false },
-              messageInput: "",
-              workspaceMessage: "Message sent.",
-              lastUpdated: nowTime(),
-            }))
+            ctx.state
+              .update((state) => ({
+                ...state,
+                busy: { ...state.busy, send: false },
+                messageInput: "",
+                workspaceMessage: "Message sent.",
+                lastUpdated: nowTime(),
+              }))
+              .pipe(Effect.tap(() => focusMessageInput(ctx.container)))
           ),
           Effect.catchAll((error) =>
-            ctx.state.update((state) => ({
-              ...state,
-              busy: { ...state.busy, send: false },
-              workspaceMessage: `Send failed: ${String(error)}`,
-              lastUpdated: nowTime(),
-            }))
+            ctx.state
+              .update((state) => ({
+                ...state,
+                busy: { ...state.busy, send: false },
+                workspaceMessage: `Send failed: ${String(error)}`,
+                lastUpdated: nowTime(),
+              }))
+              .pipe(Effect.tap(() => focusMessageInput(ctx.container)))
           ),
           Effect.asVoid
         )
@@ -1208,34 +1212,42 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
           Effect.tap((response) => {
             const thread = extractThread(response)
             if (!thread) {
-              return ctx.state.update((state) => ({
-                ...state,
-                busy: { ...state.busy, resume: false },
-                sessionMessage: "Failed to parse session response.",
-                lastUpdated: nowTime(),
-              }))
+              return ctx.state
+                .update((state) => ({
+                  ...state,
+                  busy: { ...state.busy, resume: false },
+                  sessionMessage: "Failed to parse session response.",
+                  lastUpdated: nowTime(),
+                }))
+                .pipe(Effect.tap(() => focusMessageInput(ctx.container)))
             }
             const summary = toSessionSummary(thread)
             const items = buildConversationItems(thread)
-            return ctx.state.update((state) => ({
-              ...state,
-              sessions: summary ? upsertSession(state.sessions, summary) : state.sessions,
-              sessionItems: {
-                ...state.sessionItems,
-                [event.threadId]: items,
-              },
-              busy: { ...state.busy, resume: false },
-              sessionMessage: "",
-              lastUpdated: nowTime(),
-            }))
+            return ctx.state
+              .update((state) => ({
+                ...state,
+                sessions: summary
+                  ? upsertSession(state.sessions, summary)
+                  : state.sessions,
+                sessionItems: {
+                  ...state.sessionItems,
+                  [event.threadId]: items,
+                },
+                busy: { ...state.busy, resume: false },
+                sessionMessage: "",
+                lastUpdated: nowTime(),
+              }))
+              .pipe(Effect.tap(() => focusMessageInput(ctx.container)))
           }),
           Effect.catchAll((error) =>
-            ctx.state.update((state) => ({
-              ...state,
-              busy: { ...state.busy, resume: false },
-              sessionMessage: `Resume failed: ${String(error)}`,
-              lastUpdated: nowTime(),
-            }))
+            ctx.state
+              .update((state) => ({
+                ...state,
+                busy: { ...state.busy, resume: false },
+                sessionMessage: `Resume failed: ${String(error)}`,
+                lastUpdated: nowTime(),
+              }))
+              .pipe(Effect.tap(() => focusMessageInput(ctx.container)))
           ),
           Effect.asVoid
         )
@@ -1661,5 +1673,7 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
       })
 
       yield* Effect.forkScoped(initialize)
+
+      yield* focusMessageInput(ctx.container)
     }),
 }
