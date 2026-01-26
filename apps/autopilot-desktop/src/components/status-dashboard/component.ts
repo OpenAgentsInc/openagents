@@ -809,11 +809,24 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
     Effect.gen(function* () {
       const state = yield* ctx.state.get
       const status = deriveStatus(state)
+      const toneOk = "text-[color:var(--green)]"
+      const toneWarn = "text-[color:var(--orange)]"
+      const toneError = "text-[color:var(--red)]"
+      const toneMuted = "text-[color:var(--muted)]"
+      const statusClass =
+        status.level === "ok"
+          ? toneOk
+          : status.level === "warn"
+          ? toneWarn
+          : toneError
       const cliStatus = state.doctor.version
         ? `OK ${state.doctor.version}`
         : "MISSING"
       const appServerStatus = state.doctor.appServerOk ? "READY" : "DOWN"
+      const cliStatusClass = state.doctor.ok ? toneOk : toneError
+      const appServerStatusClass = state.doctor.appServerOk ? toneOk : toneError
       const connectionLabel = state.workspaceConnected ? "CONNECTED" : "DISCONNECTED"
+      const connectionClass = state.workspaceConnected ? toneOk : toneError
       const connectDisabled = state.busy.connect
       const disconnectDisabled = state.busy.disconnect || !state.workspaceConnected
       const refreshDisabled = state.busy.doctor
@@ -838,9 +851,9 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
         : "OFF"
       const fullAutoClass = state.fullAutoEnabled
         ? state.fullAutoThreadId
-          ? "ok"
-          : "warn"
-        : ""
+          ? toneOk
+          : toneWarn
+        : toneMuted
       const fullAutoThread = state.fullAutoThreadId ?? "--"
       const fullAutoEnableDisabled = state.fullAutoEnabled
       const fullAutoDisableDisabled = !state.fullAutoEnabled
@@ -851,22 +864,28 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
             const preview = session.preview.trim()
             return html`
               <button
-                class="session-item ${isActive ? "active" : ""}"
+                class="w-full flex items-center gap-2 px-2.5 py-2 border-b border-[color:var(--line)] text-left font-[var(--font-mono)] text-[11px] min-w-0 ${
+                  isActive
+                    ? "bg-[color:var(--bg-accent)] text-[color:var(--yellow)]"
+                    : "text-[color:var(--ink)] hover:bg-[color:var(--panel)]"
+                }"
                 data-action="select-session"
                 data-session-id="${session.id}"
               >
-                <div class="session-line">
-                  <span class="session-id">${formatSessionId(session.id)}</span>
+                <div class="flex items-baseline gap-2 w-full min-w-0 text-[11px] whitespace-nowrap">
+                  <span class="flex-none uppercase tracking-[0.1em]">
+                    ${formatSessionId(session.id)}
+                  </span>
                   ${
                     preview
-                      ? html`<span class="session-preview">${preview}</span>`
+                      ? html`<span class="flex-1 min-w-0 truncate text-[color:var(--muted)]">${preview}</span>`
                       : ""
                   }
                 </div>
               </button>
             `
           })
-        : html`<div class="session-empty">No sessions found.</div>`
+        : html`<div class="px-2.5 py-3 text-[11px] text-[color:var(--muted)]">No sessions found.</div>`
 
       const conversationBody = activeSessionId
         ? activeItems.length
@@ -886,13 +905,13 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
 
       return html`
         <div class="terminal">
-          <div class="workspace-shell">
-            <aside class="session-sidebar">
-              <div class="session-header">
+          <div class="flex min-h-0 flex-1 max-[900px]:flex-col">
+            <aside class="w-[240px] min-h-0 shrink-0 flex flex-col border-r border-[color:var(--line)] bg-[color:var(--panel-alt)] max-[900px]:w-full max-[900px]:max-h-[200px]">
+              <div class="flex items-center justify-between gap-2 border-b border-[color:var(--line)] px-2.5 py-2 text-[11px] uppercase tracking-[0.12em] text-[color:var(--yellow)]">
                 <span>Sessions</span>
-                <div class="session-controls">
+                <div class="flex items-center gap-2">
                   <button
-                    class="session-new"
+                    class="border border-[color:var(--line)] bg-[color:var(--panel)] text-[color:var(--green)] text-[10px] uppercase tracking-[0.12em] px-1.5 py-0.5 disabled:opacity-60 disabled:cursor-not-allowed"
                     data-action="new-session"
                     ${state.busy.newSession || !state.workspaceConnected
                       ? "disabled"
@@ -900,12 +919,12 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
                   >
                     NEW
                   </button>
-                  <span class="session-count">
+                  <span class="text-[10px] text-[color:var(--muted)]">
                     ${sessionBusy ? "SYNC" : String(sessionCount).padStart(2, "0")}
                   </span>
                 </div>
               </div>
-              <div class="session-list" data-scroll-id="session-list">
+              <div class="flex-1 overflow-auto" data-scroll-id="session-list">
                 ${sessionList}
               </div>
             </aside>
@@ -949,27 +968,27 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
               </div>
             </main>
 
-            <aside class="info-sidebar">
-              <div class="session-header">
+            <aside class="w-[240px] min-h-0 shrink-0 flex flex-col border-l border-[color:var(--line)] bg-[color:var(--panel-alt)] max-[900px]:w-full max-[900px]:max-h-[240px] max-[900px]:border-l-0 max-[900px]:border-t max-[900px]:border-[color:var(--line)]">
+              <div class="flex items-center justify-between gap-2 border-b border-[color:var(--line)] px-2.5 py-2 text-[11px] uppercase tracking-[0.12em] text-[color:var(--yellow)]">
                 <span>Status</span>
-                <span class="status-value ${status.level}">${status.label}</span>
+                <span class="${statusClass}">${status.label}</span>
               </div>
-              <div class="info-list">
-                <section class="sidebar-panel">
-                  <div class="panel-title">System</div>
-                  <div class="panel-body">
-                    <div class="table">
-                      <div class="label">CLI</div>
-                      <div class="value ${state.doctor.ok ? "ok" : "error"}">${cliStatus}</div>
-                      <div class="label">App-Server</div>
-                      <div class="value ${state.doctor.appServerOk ? "ok" : "error"}">${appServerStatus}</div>
-                      <div class="label">Binary</div>
-                      <div class="value mono">${state.doctor.codexBin ?? "default"}</div>
+              <div class="flex-1 min-h-0 overflow-auto flex flex-col">
+                <section class="flex flex-col gap-2 border-b border-[color:var(--line)] px-2.5 py-2 min-h-0">
+                  <div class="text-[11px] uppercase tracking-[0.12em] text-[color:var(--yellow)]">System</div>
+                  <div class="flex flex-col gap-2 min-h-0">
+                    <div class="grid grid-cols-[minmax(90px,120px)_minmax(0,1fr)] gap-x-2.5 gap-y-1.5 text-[12px]">
+                      <div class="text-[10px] uppercase tracking-[0.08em] text-[color:var(--muted)] min-w-0">CLI</div>
+                      <div class="min-w-0 break-words ${cliStatusClass}">${cliStatus}</div>
+                      <div class="text-[10px] uppercase tracking-[0.08em] text-[color:var(--muted)] min-w-0">App-Server</div>
+                      <div class="min-w-0 break-words ${appServerStatusClass}">${appServerStatus}</div>
+                      <div class="text-[10px] uppercase tracking-[0.08em] text-[color:var(--muted)] min-w-0">Binary</div>
+                      <div class="min-w-0 break-words font-[var(--font-mono)] text-[color:var(--ink)]">${state.doctor.codexBin ?? "default"}</div>
                     </div>
-                    <div class="note">${state.doctor.detail || "No diagnostics."}</div>
-                    <div class="actions">
+                    <div class="text-[11px] text-[color:var(--muted)]">${state.doctor.detail || "No diagnostics."}</div>
+                    <div class="flex flex-wrap gap-1.5">
                       <button
-                        class="btn"
+                        class="border border-[color:var(--line)] bg-[color:var(--panel-alt)] text-[color:var(--ink)] px-2 py-1 text-[10px] uppercase tracking-[0.1em] disabled:opacity-60 disabled:cursor-not-allowed"
                         data-action="refresh-doctor"
                         ${refreshDisabled ? "disabled" : ""}
                       >
@@ -979,99 +998,105 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
                   </div>
                 </section>
 
-                <section class="sidebar-panel">
-                  <div class="panel-title">Workspace</div>
-                  <div class="panel-body">
-                    <label class="field">
-                      <span class="label">Working Dir</span>
+                <section class="flex flex-col gap-2 border-b border-[color:var(--line)] px-2.5 py-2 min-h-0">
+                  <div class="text-[11px] uppercase tracking-[0.12em] text-[color:var(--yellow)]">Workspace</div>
+                  <div class="flex flex-col gap-2 min-h-0">
+                    <label class="flex flex-col gap-1">
+                      <span class="text-[10px] uppercase tracking-[0.08em] text-[color:var(--muted)] min-w-0">Working Dir</span>
                       <input
                         id="workspace-path"
-                        class="input"
+                        class="border border-[color:var(--line)] bg-[color:var(--bg)] text-[color:var(--ink)] px-1.5 py-1 font-[var(--font-mono)] text-[12px] focus:outline focus:outline-1 focus:outline-[color:var(--ring)]"
                         type="text"
                         placeholder="/path/to/workspace"
                         value="${state.workspacePath}"
                       />
                     </label>
-                    <div class="actions">
+                    <div class="flex flex-wrap gap-1.5">
                       <button
-                        class="btn primary"
+                        class="border border-[color:rgba(32,195,116,0.4)] bg-[color:var(--panel-alt)] text-[color:var(--green)] px-2 py-1 text-[10px] uppercase tracking-[0.1em] disabled:opacity-60 disabled:cursor-not-allowed"
                         data-action="connect"
                         ${connectDisabled ? "disabled" : ""}
                       >
                         CONNECT
                       </button>
-                      <button class="btn" data-action="browse-workspace">
+                      <button
+                        class="border border-[color:var(--line)] bg-[color:var(--panel-alt)] text-[color:var(--ink)] px-2 py-1 text-[10px] uppercase tracking-[0.1em] disabled:opacity-60 disabled:cursor-not-allowed"
+                        data-action="browse-workspace"
+                      >
                         BROWSE
                       </button>
                       <button
-                        class="btn secondary"
+                        class="border border-[color:rgba(245,158,11,0.4)] bg-[color:var(--panel-alt)] text-[color:var(--orange)] px-2 py-1 text-[10px] uppercase tracking-[0.1em] disabled:opacity-60 disabled:cursor-not-allowed"
                         data-action="disconnect"
                         ${disconnectDisabled ? "disabled" : ""}
                       >
                         DISCONNECT
                       </button>
                     </div>
-                    <div class="table">
-                      <div class="label">Workspace</div>
-                      <div class="value mono">${state.workspaceId}</div>
-                      <div class="label">Connection</div>
-                      <div class="value ${state.workspaceConnected ? "ok" : "error"}">${connectionLabel}</div>
-                      <div class="label">Last Event</div>
-                      <div class="value">${state.lastEventTime}</div>
-                      <div class="label">Thread</div>
-                      <div class="value mono">${threadLabel}</div>
-                      <div class="label">Updated</div>
-                      <div class="value">${state.lastUpdated}</div>
+                    <div class="grid grid-cols-[minmax(90px,120px)_minmax(0,1fr)] gap-x-2.5 gap-y-1.5 text-[12px]">
+                      <div class="text-[10px] uppercase tracking-[0.08em] text-[color:var(--muted)] min-w-0">Workspace</div>
+                      <div class="min-w-0 break-words font-[var(--font-mono)] text-[color:var(--ink)]">${state.workspaceId}</div>
+                      <div class="text-[10px] uppercase tracking-[0.08em] text-[color:var(--muted)] min-w-0">Connection</div>
+                      <div class="min-w-0 break-words ${connectionClass}">${connectionLabel}</div>
+                      <div class="text-[10px] uppercase tracking-[0.08em] text-[color:var(--muted)] min-w-0">Last Event</div>
+                      <div class="min-w-0 break-words text-[color:var(--ink)]">${state.lastEventTime}</div>
+                      <div class="text-[10px] uppercase tracking-[0.08em] text-[color:var(--muted)] min-w-0">Thread</div>
+                      <div class="min-w-0 break-words font-[var(--font-mono)] text-[color:var(--ink)]">${threadLabel}</div>
+                      <div class="text-[10px] uppercase tracking-[0.08em] text-[color:var(--muted)] min-w-0">Updated</div>
+                      <div class="min-w-0 break-words text-[color:var(--ink)]">${state.lastUpdated}</div>
                     </div>
-                    <div class="note">${state.workspaceMessage || ""}</div>
+                    <div class="text-[11px] text-[color:var(--muted)]">${state.workspaceMessage || ""}</div>
                   </div>
                 </section>
 
-                <section class="sidebar-panel">
-                  <div class="panel-title">Full Auto</div>
-                  <div class="panel-body">
-                    <div class="table">
-                      <div class="label">State</div>
-                      <div class="value ${fullAutoClass}">${fullAutoLabel}</div>
-                      <div class="label">Thread</div>
-                      <div class="value mono">${fullAutoThread}</div>
+                <section class="flex flex-col gap-2 border-b border-[color:var(--line)] px-2.5 py-2 min-h-0">
+                  <div class="text-[11px] uppercase tracking-[0.12em] text-[color:var(--yellow)]">Full Auto</div>
+                  <div class="flex flex-col gap-2 min-h-0">
+                    <div class="grid grid-cols-[minmax(90px,120px)_minmax(0,1fr)] gap-x-2.5 gap-y-1.5 text-[12px]">
+                      <div class="text-[10px] uppercase tracking-[0.08em] text-[color:var(--muted)] min-w-0">State</div>
+                      <div class="min-w-0 break-words ${fullAutoClass}">${fullAutoLabel}</div>
+                      <div class="text-[10px] uppercase tracking-[0.08em] text-[color:var(--muted)] min-w-0">Thread</div>
+                      <div class="min-w-0 break-words font-[var(--font-mono)] text-[color:var(--ink)]">${fullAutoThread}</div>
                     </div>
-                    <div class="actions">
+                    <div class="flex flex-wrap gap-1.5">
                       <button
-                        class="btn primary"
+                        class="border border-[color:rgba(32,195,116,0.4)] bg-[color:var(--panel-alt)] text-[color:var(--green)] px-2 py-1 text-[10px] uppercase tracking-[0.1em] disabled:opacity-60 disabled:cursor-not-allowed"
                         data-action="full-auto-enable"
                         ${fullAutoEnableDisabled ? "disabled" : ""}
                       >
                         ENABLE
                       </button>
                       <button
-                        class="btn secondary"
+                        class="border border-[color:rgba(245,158,11,0.4)] bg-[color:var(--panel-alt)] text-[color:var(--orange)] px-2 py-1 text-[10px] uppercase tracking-[0.1em] disabled:opacity-60 disabled:cursor-not-allowed"
                         data-action="full-auto-disable"
                         ${fullAutoDisableDisabled ? "disabled" : ""}
                       >
                         DISABLE
                       </button>
                     </div>
-                    <div class="note">
+                    <div class="text-[11px] text-[color:var(--muted)]">
                       ${state.fullAutoMessage || "Runs with full access and no prompts."}
                     </div>
                   </div>
                 </section>
 
-                <section class="sidebar-panel">
-                  <div class="panel-title">Shortcuts</div>
-                  <div class="panel-body">
-                    <div class="note">F2 Connect</div>
-                    <div class="note">F3 Disconnect</div>
-                    <div class="note">F5 Doctor/Refresh</div>
-                    <div class="note">F12 Storybook</div>
+                <section class="flex flex-col gap-2 border-b border-[color:var(--line)] px-2.5 py-2 min-h-0">
+                  <div class="text-[11px] uppercase tracking-[0.12em] text-[color:var(--yellow)]">Shortcuts</div>
+                  <div class="flex flex-col gap-2 min-h-0">
+                    <div class="text-[11px] text-[color:var(--muted)]">F2 Connect</div>
+                    <div class="text-[11px] text-[color:var(--muted)]">F3 Disconnect</div>
+                    <div class="text-[11px] text-[color:var(--muted)]">F5 Doctor/Refresh</div>
+                    <div class="text-[11px] text-[color:var(--muted)]">F12 Storybook</div>
                   </div>
                 </section>
 
-                <section class="sidebar-panel feed">
-                  <div class="panel-title">App-Server Feed</div>
-                  <div class="panel-body">
-                    <pre class="event-log" data-scroll-id="event-log">${state.lastEventText}</pre>
+                <section class="flex flex-col gap-2 border-b border-[color:var(--line)] px-2.5 py-2 min-h-[160px] max-h-[240px] flex-none">
+                  <div class="text-[11px] uppercase tracking-[0.12em] text-[color:var(--yellow)]">App-Server Feed</div>
+                  <div class="flex flex-col gap-2 min-h-0 flex-1">
+                    <pre
+                      class="flex-1 min-h-0 bg-[color:var(--bg)] border border-[color:var(--line)] p-1.5 text-[11px] leading-[1.35] overflow-auto whitespace-pre-wrap"
+                      data-scroll-id="event-log"
+                    >${state.lastEventText}</pre>
                   </div>
                 </section>
               </div>
