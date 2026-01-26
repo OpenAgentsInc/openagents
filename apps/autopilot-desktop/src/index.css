@@ -35,29 +35,29 @@
 
 :root {
   color-scheme: dark;
-  --bg: #08090a;
-  --bg-accent: #0c1116;
-  --panel: #0d1116;
-  --panel-alt: #0b0f14;
+  --bg: #0a0a0a;
+  --bg-accent: #0d0d0d;
+  --panel: #121212;
+  --panel-alt: #0d0d0d;
   --ink: #d6dde6;
   --muted: #8b96a5;
-  --line: #1e2630;
+  --line: #1a1a1a;
   --yellow: #f5d14f;
   --green: #20c374;
   --red: #e34b4b;
   --orange: #f59e0b;
   --blue: #4aa3ff;
-  --background: #08090a;
+  --background: #0a0a0a;
   --foreground: #d6dde6;
-  --card: #0d1116;
-  --popover: #0d1116;
+  --card: #1a1a1a;
+  --popover: #0a0a0a;
   --primary: #d6dde6;
-  --primary-foreground: #0b0f14;
-  --secondary: #0f141a;
+  --primary-foreground: #0a0a0a;
+  --secondary: #2a2a2a;
   --muted-foreground: #8b96a5;
-  --border: #1e2630;
-  --input: #131a23;
-  --ring: #4aa3ff;
+  --border: #1a1a1a;
+  --input: #1a1a1a;
+  --ring: #ffffff;
   --destructive: #e34b4b;
   --accent: #f5d14f;
   --accent-strong: #f59e0b;
@@ -169,7 +169,7 @@ body {
 }
 
 .command-input:focus {
-  outline: 1px solid var(--blue);
+  outline: 1px solid var(--ring);
 }
 
 .command-hints {
@@ -213,7 +213,7 @@ body {
 }
 
 .compose-input:focus {
-  outline: 1px solid var(--blue);
+  outline: 1px solid var(--ring);
 }
 
 .compose-submit {
@@ -445,7 +445,7 @@ body {
 }
 
 .input:focus {
-  outline: 1px solid var(--blue);
+  outline: 1px solid var(--ring);
 }
 
 .actions {
