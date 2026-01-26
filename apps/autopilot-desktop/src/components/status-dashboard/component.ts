@@ -1652,6 +1652,10 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
 
         yield* ctx.emit({ type: "RefreshDoctor" })
         yield* ctx.emit({ type: "RefreshWorkspaceStatus" })
+        const current = yield* ctx.state.get
+        if (current.workspacePath.trim()) {
+          yield* ctx.emit({ type: "ConnectWorkspace" })
+        }
       })
 
       yield* Effect.forkScoped(initialize)

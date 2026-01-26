@@ -157,9 +157,18 @@ pub(crate) async fn connect_workspace(
         }
     }
 
+    let path = PathBuf::from(&workspace_path);
+    if !path.exists() || !path.is_dir() {
+        return Ok(WorkspaceConnectionResponse {
+            success: false,
+            message: format!("Working directory not found: {}", workspace_path),
+            workspace_id,
+        });
+    }
+
     let entry = WorkspaceEntry {
         id: workspace_id.clone(),
-        name: PathBuf::from(&workspace_path)
+        name: path
             .file_name()
             .and_then(|s| s.to_str())
             .unwrap_or("Workspace")
