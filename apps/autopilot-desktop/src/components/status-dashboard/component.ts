@@ -81,6 +81,12 @@ type DoctorState = {
   detail: string
 }
 
+type LogPathsState = {
+  appServerLogDir: string
+  fullAutoLogDir: string
+  traceBundleDir: string
+}
+
 type BusyState = {
   doctor: boolean
   connect: boolean
@@ -110,6 +116,7 @@ type StatusState = {
   fullAutoThreadId: string | null
   fullAutoMessage: string
   rateLimits: RateLimitSnapshot | null
+  logPaths: LogPathsState
   busy: BusyState
 }
 
@@ -1047,6 +1054,11 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
     fullAutoThreadId: null,
     fullAutoMessage: "",
     rateLimits: null,
+    logPaths: {
+      appServerLogDir: "",
+      fullAutoLogDir: "",
+      traceBundleDir: "",
+    },
     busy: {
       doctor: false,
       connect: false,
@@ -1335,6 +1347,24 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
                     </div>
                     <div class="text-[11px] text-[color:var(--muted)]">
                       ${state.fullAutoMessage || "Runs with full access and no prompts."}
+                    </div>
+                  </div>
+                </section>
+
+                <section class="flex flex-col gap-2 border-b border-[color:var(--line)] px-2.5 py-2 min-h-0">
+                  <div class="text-[11px] uppercase tracking-[0.12em] text-[color:var(--yellow)]">Logs</div>
+                  <div class="grid grid-cols-[minmax(90px,120px)_minmax(0,1fr)] gap-x-2.5 gap-y-1.5 text-[12px]">
+                    <div class="text-[10px] uppercase tracking-[0.08em] text-[color:var(--muted)] min-w-0">App-Server</div>
+                    <div class="min-w-0 break-words font-[var(--font-mono)] text-[color:var(--ink)]">
+                      ${state.logPaths.appServerLogDir || "--"}
+                    </div>
+                    <div class="text-[10px] uppercase tracking-[0.08em] text-[color:var(--muted)] min-w-0">Full Auto</div>
+                    <div class="min-w-0 break-words font-[var(--font-mono)] text-[color:var(--ink)]">
+                      ${state.logPaths.fullAutoLogDir || "--"}
+                    </div>
+                    <div class="text-[10px] uppercase tracking-[0.08em] text-[color:var(--muted)] min-w-0">Bundles</div>
+                    <div class="min-w-0 break-words font-[var(--font-mono)] text-[color:var(--ink)]">
+                      ${state.logPaths.traceBundleDir || "--"}
                     </div>
                   </div>
                 </section>
@@ -2302,6 +2332,19 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
               }
             }
           }
+        }
+
+        if (params && method === "app/log_paths") {
+          yield* ctx.state.update((state) => ({
+            ...state,
+            logPaths: {
+              appServerLogDir: readString(params, "appServerLogDir") ?? "",
+              fullAutoLogDir: readString(params, "fullAutoLogDir") ?? "",
+              traceBundleDir: readString(params, "traceBundleDir") ?? "",
+            },
+            lastUpdated: nowTime(),
+          }))
+          return
         }
 
         if (params && method === "fullauto/decision") {

@@ -14,13 +14,14 @@ pub struct FileLogger {
     acp_writer: Arc<Mutex<BufWriter<File>>>,
     app_server_buffer: Arc<Mutex<HashMap<String, Vec<Value>>>>, // thread_id -> events
     acp_buffer: Arc<Mutex<HashMap<String, Vec<Value>>>>,        // session_id -> events
+    app_server_streaming: bool,
 }
 
 impl FileLogger {
     /// Create a new file logger, creating tmp directory if needed
     pub async fn new() -> Result<Self> {
         // Create tmp directory in project root
-        let tmp_dir = get_tmp_dir()?;
+        let tmp_dir = event_log_dir()?;
         std::fs::create_dir_all(&tmp_dir).context("Failed to create tmp directory")?;
 
         // Create file paths with timestamps
@@ -71,6 +72,7 @@ impl FileLogger {
             acp_writer,
             app_server_buffer: Arc::new(Mutex::new(HashMap::new())),
             acp_buffer: Arc::new(Mutex::new(HashMap::new())),
+            app_server_streaming: app_server_streaming_enabled(),
         })
     }
 
@@ -219,6 +221,22 @@ impl FileLogger {
         } else {
             false
         };
+
+        if self.app_server_streaming {
+            if should_log_app_server_event(method, should_flush) {
+                let thread_label = message
+                    .and_then(|m| m.get("params"))
+                    .and_then(|p| p.get("threadId").or_else(|| p.get("thread_id")))
+                    .and_then(|t| t.as_str())
+                    .unwrap_or("default");
+                eprintln!(
+                    "app-server event thread={} method={} buffered=0 complete={}",
+                    thread_label, method, should_flush
+                );
+            }
+            self.write_app_server_event(event).await?;
+            return Ok(());
+        }
 
         // Extract thread_id from event (check both message.params and event.params)
         // Also check for threadId in nested structures (like turn/started, turn/completed)
@@ -399,9 +417,26 @@ impl FileLogger {
     }
 }
 
+impl FileLogger {
+    async fn write_app_server_event(&self, event: &Value) -> Result<()> {
+        let mut writer = self.app_server_writer.lock().await;
+        let json = serde_json::to_string(event)?;
+        writer.write_all(json.as_bytes()).await?;
+        writer.write_all(b"\n").await?;
+        writer.flush().await?;
+        Ok(())
+    }
+}
+
 /// Get the tmp directory path (project root / tmp)
-fn get_tmp_dir() -> Result<PathBuf> {
+pub(crate) fn event_log_dir() -> Result<PathBuf> {
     let mut candidates = Vec::new();
+
+    if let Ok(env_path) = std::env::var("OPENAGENTS_EVENT_LOG_DIR") {
+        if !env_path.trim().is_empty() {
+            candidates.push(PathBuf::from(env_path));
+        }
+    }
 
     if let Ok(cwd) = std::env::current_dir() {
         let cwd_name = cwd.file_name().and_then(|name| name.to_str());
@@ -437,6 +472,13 @@ fn get_tmp_dir() -> Result<PathBuf> {
 
 fn file_logger_verbose() -> bool {
     std::env::var_os("OA_FILE_LOGGER_VERBOSE").is_some()
+}
+
+fn app_server_streaming_enabled() -> bool {
+    std::env::var("OPENAGENTS_APP_SERVER_LOG_STREAMING")
+        .ok()
+        .map(|value| value != "0")
+        .unwrap_or(true)
 }
 
 fn should_log_app_server_event(method: &str, is_complete: bool) -> bool {

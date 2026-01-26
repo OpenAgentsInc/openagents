@@ -4,9 +4,11 @@ mod backend;
 mod codex;
 mod codex_home;
 pub mod contracts;
+mod diagnostics;
 mod event_sink;
 mod file_logger;
 mod full_auto;
+mod full_auto_logging;
 mod signature_registry;
 mod state;
 mod types;
@@ -126,6 +128,7 @@ pub fn build_app() -> tauri::Builder<tauri::Wry> {
             agent::commands::get_unified_agent_status,
             signature_registry::list_dsrs_signatures,
             signature_registry::get_dsrs_signature,
+            diagnostics::export_full_auto_trace_bundle,
             // AI server commands
             start_ai_server,
             stop_ai_server,

@@ -100,3 +100,17 @@ Either case triggers the low-confidence guardrail and pauses Full Auto.
   - ACP logs
   - config snapshot
 - Store under `docs/logs/<date>/` for durable analysis.
+
+## Update 1 (implementation)
+- Added Full Auto decision diagnostics, guardrail audit fields, and raw prediction parsing to `full_auto.rs`.
+- Added run metadata creation + run events (`run_started`, decision events, pause/stop) and decision sequence IDs.
+- Emitted `fullauto/decision_raw` alongside `fullauto/decision` with raw prediction + parse diagnostics.
+- Added dedicated Full Auto decision logs (`fullauto-decisions.jsonl`, `fullauto-decisions-raw.jsonl`) and run metadata files.
+
+## Update 2 (logging reliability)
+- Switched app-server event logging to stream events directly to disk (no completion-gated flush).
+- Added `OPENAGENTS_EVENT_LOG_DIR` override and `OPENAGENTS_APP_SERVER_LOG_STREAMING` toggle.
+
+## Update 3 (bundles + visibility)
+- Added `export_full_auto_trace_bundle` command to bundle logs + config snapshot + decision summary.
+- Added log path broadcast (`app/log_paths`) and a Logs section in the sidebar to surface effective log directories.
