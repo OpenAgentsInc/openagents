@@ -111,7 +111,6 @@ body {
 .status-strip.bottom {
   border-top: 1px solid var(--line);
   border-bottom: none;
-  margin-top: auto;
 }
 
 .status-item {
@@ -176,6 +175,67 @@ body {
   text-transform: uppercase;
   letter-spacing: 0.08em;
   white-space: nowrap;
+}
+
+.compose-bar {
+  border-top: 1px solid var(--line);
+  background: var(--panel);
+  padding: 6px 10px;
+}
+
+.compose-inner {
+  max-width: 768px;
+  margin: 0 auto;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.compose-label {
+  color: var(--yellow);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+.compose-input {
+  flex: 1;
+  border: 1px solid var(--line);
+  background: var(--bg);
+  color: var(--ink);
+  padding: 4px 6px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.compose-input:focus {
+  outline: 1px solid var(--blue);
+}
+
+.compose-submit {
+  border: 1px solid var(--line);
+  background: var(--panel-alt);
+  color: var(--green);
+  padding: 4px 10px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  cursor: pointer;
+}
+
+.compose-submit:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.compose-hints {
+  margin-top: 4px;
+  text-align: center;
+  font-size: 10px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
 }
 
 .grid {
@@ -326,5 +386,10 @@ body {
 
   .panel {
     border-right: none;
+  }
+
+  .command-bar,
+  .status-strip {
+    flex-wrap: wrap;
   }
 }
