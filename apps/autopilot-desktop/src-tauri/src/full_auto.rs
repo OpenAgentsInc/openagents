@@ -443,7 +443,7 @@ impl FullAutoState {
                 guardrail: Some(GuardrailAudit {
                     triggered: true,
                     rule: Some("turn_failed".to_string()),
-                    original_action,
+                    original_action: original_action.clone(),
                     original_confidence,
                     enforced_action: "stop".to_string(),
                     enforced_confidence: 1.0,
@@ -460,7 +460,7 @@ impl FullAutoState {
                 guardrail: Some(GuardrailAudit {
                     triggered: true,
                     rule: Some("turn_interrupted".to_string()),
-                    original_action,
+                    original_action: original_action.clone(),
                     original_confidence,
                     enforced_action: "pause".to_string(),
                     enforced_confidence: 1.0,
@@ -477,7 +477,7 @@ impl FullAutoState {
                 guardrail: Some(GuardrailAudit {
                     triggered: true,
                     rule: Some("max_turns".to_string()),
-                    original_action,
+                    original_action: original_action.clone(),
                     original_confidence,
                     enforced_action: "stop".to_string(),
                     enforced_confidence: 1.0,
@@ -494,7 +494,7 @@ impl FullAutoState {
                 guardrail: Some(GuardrailAudit {
                     triggered: true,
                     rule: Some("no_progress".to_string()),
-                    original_action,
+                    original_action: original_action.clone(),
                     original_confidence,
                     enforced_action: "stop".to_string(),
                     enforced_confidence: 1.0,
@@ -513,7 +513,7 @@ impl FullAutoState {
                         guardrail: Some(GuardrailAudit {
                             triggered: true,
                             rule: Some("max_tokens".to_string()),
-                            original_action,
+                            original_action: original_action.clone(),
                             original_confidence,
                             enforced_action: "stop".to_string(),
                             enforced_confidence: 1.0,
@@ -545,7 +545,7 @@ impl FullAutoState {
             guardrail = Some(GuardrailAudit {
                 triggered: true,
                 rule: Some("review_requested".to_string()),
-                original_action,
+                original_action: original_action.clone(),
                 original_confidence,
                 enforced_action: "pause".to_string(),
                 enforced_confidence: decision.confidence,
