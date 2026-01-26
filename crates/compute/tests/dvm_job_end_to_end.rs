@@ -151,8 +151,12 @@ async fn dvm_executes_job_from_relay_and_publishes_result() {
             let published = relay.published_events().await;
             if published.iter().any(|e| {
                 e.kind == expected_result_kind
-                    && e.tags.iter().any(|t| t.len() >= 2 && t[0] == expected_e_tag[0] && t[1] == expected_e_tag[1])
-                    && e.tags.iter().any(|t| t.len() >= 2 && t[0] == expected_p_tag[0] && t[1] == expected_p_tag[1])
+                    && e.tags.iter().any(|t| {
+                        t.len() >= 2 && t[0] == expected_e_tag[0] && t[1] == expected_e_tag[1]
+                    })
+                    && e.tags.iter().any(|t| {
+                        t.len() >= 2 && t[0] == expected_p_tag[0] && t[1] == expected_p_tag[1]
+                    })
                     && e.content.contains("ping -> ok")
             }) {
                 break;

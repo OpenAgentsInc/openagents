@@ -13,6 +13,7 @@ use crate::app::AppState;
 use crate::app::CoderMode;
 use crate::app::agents::AgentBackendsEvent;
 use crate::app::autopilot::{PostCompletionEvent, PostCompletionHook};
+use crate::app::bootloader::{BootEvent, BootStage, IssuesDetails, StageDetails};
 use crate::app::catalog::SkillUpdate;
 use crate::app::chat::{ChatMessage, InlineIssueSelector, MessageRole};
 use crate::app::codex_app_server as app_server;
@@ -38,11 +39,10 @@ use crate::app::workspaces::{
     ConversationItem, ConversationRole, ReviewState, WorkspaceAccessMode, WorkspaceApprovalRequest,
     WorkspaceEvent, conversation_item_from_value, turn_diff_item,
 };
-use crate::app::bootloader::{BootEvent, BootStage, IssuesDetails, StageDetails};
-use wgpui::components::molecules::SectionStatus;
 use crate::autopilot_loop::{DspyStage, TodoStatus, TodoTask};
-use adjutant::issue_suggestions_appserver::suggest_issues_streaming;
 use crate::commands::{Command, ReviewCommand, ReviewDelivery, ReviewTarget, parse_command};
+use adjutant::issue_suggestions_appserver::suggest_issues_streaming;
+use wgpui::components::molecules::SectionStatus;
 
 use super::AutopilotApp;
 use super::COMMAND_PALETTE_ENABLED;
@@ -1555,7 +1555,13 @@ impl AutopilotApp {
                                 workspace.issues.len()
                             );
                             tokio::spawn(async move {
-                                match suggest_issues_streaming(&issues, &workspace_context, token_tx).await {
+                                match suggest_issues_streaming(
+                                    &issues,
+                                    &workspace_context,
+                                    token_tx,
+                                )
+                                .await
+                                {
                                     Ok(stage) => {
                                         let _ = issue_tx.send(stage);
                                     }
@@ -1782,8 +1788,7 @@ impl AutopilotApp {
                     .and_then(|m| m.workspace.as_ref())
                 {
                     let workspace_root = workspace.root.clone();
-                    let (validation_tx, validation_rx) =
-                        tokio::sync::mpsc::unbounded_channel();
+                    let (validation_tx, validation_rx) = tokio::sync::mpsc::unbounded_channel();
                     state.autopilot.validation_result_rx = Some(validation_rx);
 
                     // Store pending info for when result arrives (reusing current_issue_* fields)
@@ -1863,11 +1868,7 @@ impl AutopilotApp {
                                 title,
                                 reason: result.reason,
                             };
-                            tracing::warn!(
-                                "Issue #{} validation failed: {:?}",
-                                num,
-                                result.status
-                            );
+                            tracing::warn!("Issue #{} validation failed: {:?}", num, result.status);
                         }
                         needs_redraw = true;
                     }
@@ -1970,10 +1971,7 @@ impl AutopilotApp {
     }
 
     /// Handle a boot event and update chat boot sections.
-    fn handle_boot_event_to_chat(
-        chat: &mut crate::app::chat::ChatState,
-        event: BootEvent,
-    ) {
+    fn handle_boot_event_to_chat(chat: &mut crate::app::chat::ChatState, event: BootEvent) {
         let Some(sections) = &mut chat.boot_sections else {
             return;
         };
@@ -1986,7 +1984,10 @@ impl AutopilotApp {
                 sections.initialize.active = true;
             }
 
-            BootEvent::StageStarted { stage, description: _ } => {
+            BootEvent::StageStarted {
+                stage,
+                description: _,
+            } => {
                 if stage == BootStage::Issues {
                     sections.suggest_issues.status = SectionStatus::InProgress;
                     sections.suggest_issues.summary = "...".to_string();
@@ -1995,7 +1996,10 @@ impl AutopilotApp {
                 // Skip details for other stages - keep it minimal
             }
 
-            BootEvent::StageProgress { stage: _, message: _ } => {
+            BootEvent::StageProgress {
+                stage: _,
+                message: _,
+            } => {
                 // Skip progress details - keep it minimal
             }
 
@@ -2016,32 +2020,42 @@ impl AutopilotApp {
                     // Store details for initialize section
                     match &details {
                         StageDetails::Hardware(hw) => {
-                            sections.initialize.details.push(format!(
-                                "CPU: {} ({} cores)",
-                                hw.cpu_model, hw.cpu_cores
-                            ));
+                            sections
+                                .initialize
+                                .details
+                                .push(format!("CPU: {} ({} cores)", hw.cpu_model, hw.cpu_cores));
                             sections.initialize.details.push(format!(
                                 "RAM: {:.0} GB{}",
                                 hw.ram_gb,
-                                if hw.apple_silicon { " (Apple Silicon)" } else { "" }
+                                if hw.apple_silicon {
+                                    " (Apple Silicon)"
+                                } else {
+                                    ""
+                                }
                             ));
                         }
                         StageDetails::Compute(comp) => {
-                            let ready_backends: Vec<_> = comp.backends.iter()
+                            let ready_backends: Vec<_> = comp
+                                .backends
+                                .iter()
                                 .filter(|b| b.ready)
                                 .map(|b| b.name.as_str())
                                 .collect();
                             if !ready_backends.is_empty() {
-                                sections.initialize.details.push(format!(
-                                    "Compute: {}",
-                                    ready_backends.join(", ")
-                                ));
+                                sections
+                                    .initialize
+                                    .details
+                                    .push(format!("Compute: {}", ready_backends.join(", ")));
                             }
                         }
                         StageDetails::Network(net) => {
                             sections.initialize.details.push(format!(
                                 "Network: {} ({}/{} relays)",
-                                if net.has_internet { "online" } else { "offline" },
+                                if net.has_internet {
+                                    "online"
+                                } else {
+                                    "offline"
+                                },
                                 net.relays_connected,
                                 net.relays_total
                             ));
@@ -2050,11 +2064,14 @@ impl AutopilotApp {
                             if id.initialized {
                                 if let Some(npub) = &id.npub {
                                     let short = if npub.len() > 16 {
-                                        format!("{}...{}", &npub[..8], &npub[npub.len()-4..])
+                                        format!("{}...{}", &npub[..8], &npub[npub.len() - 4..])
                                     } else {
                                         npub.clone()
                                     };
-                                    sections.initialize.details.push(format!("Identity: {}", short));
+                                    sections
+                                        .initialize
+                                        .details
+                                        .push(format!("Identity: {}", short));
                                 }
                             }
                         }
@@ -2065,16 +2082,16 @@ impl AutopilotApp {
                                 } else {
                                     String::new()
                                 };
-                                sections.initialize.details.push(format!(
-                                    "Workspace: {}{}",
-                                    name, lang
-                                ));
+                                sections
+                                    .initialize
+                                    .details
+                                    .push(format!("Workspace: {}{}", name, lang));
                             }
                             if ws.open_issues > 0 {
-                                sections.initialize.details.push(format!(
-                                    "Issues: {} open",
-                                    ws.open_issues
-                                ));
+                                sections
+                                    .initialize
+                                    .details
+                                    .push(format!("Issues: {} open", ws.open_issues));
                             }
                         }
                         StageDetails::Summary(_) => {

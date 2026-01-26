@@ -1,8 +1,8 @@
 use tokio::sync::mpsc;
+use wgpui::Bounds;
 use wgpui::ContextMenu;
 use wgpui::components::molecules::SectionStatus;
 use wgpui::markdown::{MarkdownRenderer as MdRenderer, StreamingMarkdown};
-use wgpui::Bounds;
 
 use super::{ChatMessage, ChatSelection, MessageRole};
 use crate::app::config::CoderSettings;

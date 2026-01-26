@@ -5,10 +5,10 @@ use std::sync::atomic::AtomicBool;
 use tauri::AppHandle;
 use tokio::sync::Mutex;
 
-use crate::types::AppSettings;
-use crate::backend::app_server::WorkspaceSession;
 use crate::agent::manager::AgentManager;
+use crate::backend::app_server::WorkspaceSession;
 use crate::full_auto::FullAutoMap;
+use crate::types::AppSettings;
 
 pub(crate) struct AppState {
     pub(crate) sessions: Mutex<HashMap<String, Arc<WorkspaceSession>>>,

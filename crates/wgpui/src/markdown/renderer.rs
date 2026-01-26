@@ -60,9 +60,7 @@ impl MarkdownRenderer {
         text_system: &mut TextSystem,
     ) -> f32 {
         match block {
-            MarkdownBlock::Paragraph(lines) => {
-                self.measure_lines(lines, max_width, 0, text_system)
-            }
+            MarkdownBlock::Paragraph(lines) => self.measure_lines(lines, max_width, 0, text_system),
 
             MarkdownBlock::Header { level, lines } => {
                 let margin_top = match level {
@@ -187,8 +185,7 @@ impl MarkdownRenderer {
 
                     if word_width > max_line_width && max_line_width > 0.0 {
                         let char_width = (span.style.font_size * 0.6).max(1.0);
-                        let max_chars =
-                            (max_line_width / char_width).floor().max(1.0) as usize;
+                        let max_chars = (max_line_width / char_width).floor().max(1.0) as usize;
                         for chunk in split_long_word(word, max_chars) {
                             let chunk_width = text_system.measure_styled_mono(
                                 &chunk,
@@ -446,8 +443,7 @@ impl MarkdownRenderer {
 
                     if word_width > max_line_width && max_line_width > 0.0 {
                         let char_width = (span.style.font_size * 0.6).max(1.0);
-                        let max_chars =
-                            (max_line_width / char_width).floor().max(1.0) as usize;
+                        let max_chars = (max_line_width / char_width).floor().max(1.0) as usize;
                         for chunk in split_long_word(word, max_chars) {
                             let chunk_width = text_system.measure_styled_mono(
                                 &chunk,

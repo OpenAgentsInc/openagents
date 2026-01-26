@@ -11,10 +11,10 @@ use async_openai::{
     },
 };
 use futures::StreamExt;
+use rig::OneOrMany;
 use rig::completion::{CompletionError, CompletionRequest, CompletionResponse, Usage};
 use rig::message::{AssistantContent, Message as RigMessage, Text, ToolCall, ToolFunction};
 use rig::message::{ToolResultContent, UserContent};
-use rig::OneOrMany;
 use serde_json::{Value, json};
 use std::collections::HashSet;
 
@@ -119,10 +119,7 @@ impl OpenAiResponsesCompletionModel {
                         }
                         ResponseStreamEvent::ResponseIncomplete(incomplete) => {
                             if let Some(details) = &incomplete.response.incomplete_details {
-                                eprintln!(
-                                    "[openai-responses] incomplete: {}",
-                                    details.reason
-                                );
+                                eprintln!("[openai-responses] incomplete: {}", details.reason);
                             }
                             last_usage = incomplete.response.usage.clone();
                             final_response = Some(incomplete.response);
@@ -229,9 +226,7 @@ impl OpenAiResponsesCompletionModel {
             let usage_details = response.usage.as_ref().and_then(usage_to_value);
             match response_to_completion(response) {
                 Ok(result) => return Ok((result, usage_details)),
-                Err(err)
-                    if streamed_text.is_empty() && output_items.is_empty() =>
-                {
+                Err(err) if streamed_text.is_empty() && output_items.is_empty() => {
                     let (fallback, fallback_usage) =
                         self.completion_with_usage_details(fallback_request).await?;
                     if let Some(cb) = on_token {
@@ -456,7 +451,11 @@ fn temperature_supported(model: &str) -> bool {
     }
 
     if name.starts_with('o') {
-        let digits = name[1..].chars().next().map(|c| c.is_ascii_digit()).unwrap_or(false);
+        let digits = name[1..]
+            .chars()
+            .next()
+            .map(|c| c.is_ascii_digit())
+            .unwrap_or(false);
         if digits {
             return false;
         }
@@ -488,15 +487,9 @@ fn build_tools(request: &CompletionRequest) -> Option<Vec<Tool>> {
 
 fn map_tool_choice(choice: &rig::message::ToolChoice) -> ToolChoiceParam {
     match choice {
-        rig::message::ToolChoice::Auto => {
-            ToolChoiceParam::Mode(ToolChoiceOptions::Auto)
-        }
-        rig::message::ToolChoice::None => {
-            ToolChoiceParam::Mode(ToolChoiceOptions::None)
-        }
-        rig::message::ToolChoice::Required => {
-            ToolChoiceParam::Mode(ToolChoiceOptions::Required)
-        }
+        rig::message::ToolChoice::Auto => ToolChoiceParam::Mode(ToolChoiceOptions::Auto),
+        rig::message::ToolChoice::None => ToolChoiceParam::Mode(ToolChoiceOptions::None),
+        rig::message::ToolChoice::Required => ToolChoiceParam::Mode(ToolChoiceOptions::Required),
         rig::message::ToolChoice::Specific { function_names } => {
             if function_names.len() == 1 {
                 ToolChoiceParam::Function(ToolChoiceFunction {
@@ -586,13 +579,17 @@ fn completion_from_output_and_usage(
                             content.push(AssistantContent::Text(Text { text: text.text }));
                         }
                         OutputMessageContent::Refusal(refusal) => {
-                            content.push(AssistantContent::Text(Text { text: refusal.refusal }));
+                            content.push(AssistantContent::Text(Text {
+                                text: refusal.refusal,
+                            }));
                         }
                     }
                 }
             }
             OutputItem::FunctionCall(call) => {
-                content.push(AssistantContent::ToolCall(function_call_to_tool_call(&call)));
+                content.push(AssistantContent::ToolCall(function_call_to_tool_call(
+                    &call,
+                )));
             }
             OutputItem::CustomToolCall(call) => {
                 content.push(AssistantContent::ToolCall(custom_call_to_tool_call(&call)));
@@ -710,11 +707,7 @@ fn append_output_content(text: &mut String, part: &async_openai::types::response
     }
 }
 
-fn push_output_item(
-    items: &mut Vec<OutputItem>,
-    seen: &mut HashSet<String>,
-    item: OutputItem,
-) {
+fn push_output_item(items: &mut Vec<OutputItem>, seen: &mut HashSet<String>, item: OutputItem) {
     if let Some(id) = output_item_id(&item) {
         if seen.insert(id) {
             items.push(item);

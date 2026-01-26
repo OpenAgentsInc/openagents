@@ -4,8 +4,8 @@
 //! This prevents wasting time on stale or already-addressed issues.
 
 use anyhow::Result;
-use dsrs::{GLOBAL_SETTINGS, Predict, Prediction, Predictor, example};
 use dsrs::signatures::IssueValidationSignature;
+use dsrs::{GLOBAL_SETTINGS, Predict, Prediction, Predictor, example};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -151,10 +151,16 @@ impl IssueValidationPipeline {
         // If reason is empty but status indicates invalid, derive reason from status
         let reason = if reason.is_empty() && !is_valid {
             match status {
-                ValidationStatus::AlreadyAddressed => "Issue appears to have been addressed by recent commits.".to_string(),
+                ValidationStatus::AlreadyAddressed => {
+                    "Issue appears to have been addressed by recent commits.".to_string()
+                }
                 ValidationStatus::Stale => "Issue description appears outdated.".to_string(),
-                ValidationStatus::NeedsUpdate => "Issue needs description update before work can begin.".to_string(),
-                ValidationStatus::Valid => "Validation returned invalid but no reason provided.".to_string(),
+                ValidationStatus::NeedsUpdate => {
+                    "Issue needs description update before work can begin.".to_string()
+                }
+                ValidationStatus::Valid => {
+                    "Validation returned invalid but no reason provided.".to_string()
+                }
             }
         } else {
             reason
@@ -163,12 +169,16 @@ impl IssueValidationPipeline {
         // Derive is_valid from status if they conflict (status is more reliable)
         let is_valid = match status {
             ValidationStatus::Valid => true,
-            ValidationStatus::AlreadyAddressed | ValidationStatus::Stale | ValidationStatus::NeedsUpdate => false,
+            ValidationStatus::AlreadyAddressed
+            | ValidationStatus::Stale
+            | ValidationStatus::NeedsUpdate => false,
         };
 
         tracing::debug!(
             "Parsed validation: is_valid={}, status={:?}, reason={}",
-            is_valid, status, reason
+            is_valid,
+            status,
+            reason
         );
 
         Ok(IssueValidationResult {

@@ -1,17 +1,17 @@
-use std::path::{Path, PathBuf};
 use anyhow::{Context, Result};
 use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 
 /// Resolve Codex agent configuration
 pub async fn resolve_codex_config(
     codex_home: Option<PathBuf>,
 ) -> Result<(String, Vec<String>, HashMap<String, String>)> {
-    let codex_acp_path = find_codex_acp()
-        .await
-        .context("codex-acp not found. Install it from https://github.com/zed-industries/codex-acp")?;
+    let codex_acp_path = find_codex_acp().await.context(
+        "codex-acp not found. Install it from https://github.com/zed-industries/codex-acp",
+    )?;
 
     let mut env = HashMap::new();
-    
+
     // Pass through authentication environment variables
     if let Some(ref path) = codex_home {
         env.insert("CODEX_HOME".to_string(), path.to_string_lossy().to_string());
@@ -20,10 +20,13 @@ pub async fn resolve_codex_config(
     } else if let Ok(home) = std::env::var("HOME") {
         let default_codex_home = Path::new(&home).join(".codex");
         if default_codex_home.exists() {
-            env.insert("CODEX_HOME".to_string(), default_codex_home.to_string_lossy().to_string());
+            env.insert(
+                "CODEX_HOME".to_string(),
+                default_codex_home.to_string_lossy().to_string(),
+            );
         }
     }
-    
+
     // Pass through API keys
     if let Ok(val) = std::env::var("CODEX_API_KEY") {
         env.insert("CODEX_API_KEY".to_string(), val);

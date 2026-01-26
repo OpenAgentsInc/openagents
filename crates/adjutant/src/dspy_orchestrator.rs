@@ -18,8 +18,8 @@ use crate::manifest::{IssueSummary, OanixManifest};
 use crate::{Task, TaskPlan, ToolRegistry};
 use anyhow::Result;
 use autopilot_core::{PlanningInput, PlanningPipeline, PlanningResult};
-pub use dsrs::callbacks::DspyCallback;
 use dsrs::LM;
+pub use dsrs::callbacks::DspyCallback;
 use serde_json::json;
 use std::sync::Arc;
 

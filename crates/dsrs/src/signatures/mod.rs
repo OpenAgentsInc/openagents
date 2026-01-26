@@ -45,7 +45,7 @@ pub use lane_budgeter::LaneBudgeterSignature;
 pub use plan_mode::{
     ComplexityClassificationSignature, DeepPlanningSignature, ExplorationTopic,
     ParallelExplorationSignature, PlanSynthesisSignature, ResultValidationSignature,
-    TopicDecompositionSignature, ToolSelectionSignature, TopicsResponse,
+    ToolSelectionSignature, TopicDecompositionSignature, TopicsResponse,
 };
 pub use planning::PlanningSignature;
 pub use query_composer::QueryComposerSignature;

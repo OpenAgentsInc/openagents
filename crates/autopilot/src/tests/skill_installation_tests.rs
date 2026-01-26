@@ -49,10 +49,7 @@ fn skill_install_workflow_discovers_project_and_user_skills() {
     let _home_guard = EnvVarGuard::set("HOME", home.path());
 
     let project_skills_root = workspace.path().join(".openagents").join("skills");
-    let user_skills_root = home
-        .path()
-        .join(".openagents")
-        .join("skills");
+    let user_skills_root = home.path().join(".openagents").join("skills");
 
     write_skill_dir(
         &project_skills_root,

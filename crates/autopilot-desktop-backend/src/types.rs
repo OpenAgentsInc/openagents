@@ -16,8 +16,6 @@ pub(crate) struct AppSettings {
 
 impl Default for AppSettings {
     fn default() -> Self {
-        Self {
-            codex_bin: None,
-        }
+        Self { codex_bin: None }
     }
 }

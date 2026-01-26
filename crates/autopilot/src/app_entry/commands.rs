@@ -21,7 +21,8 @@ use crate::app::config::{
     app_server_model_entries,
 };
 use crate::app::events::{
-    CoderMode, CommandAction, InputFocus, ModalState, ResponseEvent, convert_key_for_binding, convert_modifiers,
+    CoderMode, CommandAction, InputFocus, ModalState, ResponseEvent, convert_key_for_binding,
+    convert_modifiers,
 };
 use crate::app::permissions::{coder_mode_default_allow, coder_mode_label, parse_coder_mode};
 use crate::app::ui::ThemeSetting;
@@ -2470,37 +2471,35 @@ pub(super) fn track_selected_issue(state: &mut AppState, issue_number: i32, titl
     // Look up issue in database to get full details
     let db_path = workspace_root.join(".openagents").join("autopilot.db");
     match issues::db::init_db(&db_path) {
-        Ok(conn) => {
-            match issues::issue::get_issue_by_number(&conn, issue_number) {
-                Ok(Some(issue)) => {
-                    tracing::info!(
-                        issue_id = %issue.id,
-                        issue_number = issue.number,
-                        "Tracking issue for post-completion hook"
-                    );
-                    state.autopilot.current_issue_id = Some(issue.id);
-                    state.autopilot.current_issue_number = Some(issue.number);
-                    state.autopilot.current_issue_title = Some(issue.title);
-                    state.autopilot.current_issue_description = issue.description;
-                    state.autopilot.current_issue_retry_count = 0;
-                }
-                Ok(None) => {
-                    tracing::warn!(
-                        issue_number = issue_number,
-                        "Issue not found in database, tracking basic info only"
-                    );
-                    state.autopilot.current_issue_number = Some(issue_number);
-                    state.autopilot.current_issue_title = Some(title.to_string());
-                    state.autopilot.current_issue_retry_count = 0;
-                }
-                Err(e) => {
-                    tracing::error!(error = %e, "Failed to look up issue in database");
-                    state.autopilot.current_issue_number = Some(issue_number);
-                    state.autopilot.current_issue_title = Some(title.to_string());
-                    state.autopilot.current_issue_retry_count = 0;
-                }
+        Ok(conn) => match issues::issue::get_issue_by_number(&conn, issue_number) {
+            Ok(Some(issue)) => {
+                tracing::info!(
+                    issue_id = %issue.id,
+                    issue_number = issue.number,
+                    "Tracking issue for post-completion hook"
+                );
+                state.autopilot.current_issue_id = Some(issue.id);
+                state.autopilot.current_issue_number = Some(issue.number);
+                state.autopilot.current_issue_title = Some(issue.title);
+                state.autopilot.current_issue_description = issue.description;
+                state.autopilot.current_issue_retry_count = 0;
             }
-        }
+            Ok(None) => {
+                tracing::warn!(
+                    issue_number = issue_number,
+                    "Issue not found in database, tracking basic info only"
+                );
+                state.autopilot.current_issue_number = Some(issue_number);
+                state.autopilot.current_issue_title = Some(title.to_string());
+                state.autopilot.current_issue_retry_count = 0;
+            }
+            Err(e) => {
+                tracing::error!(error = %e, "Failed to look up issue in database");
+                state.autopilot.current_issue_number = Some(issue_number);
+                state.autopilot.current_issue_title = Some(title.to_string());
+                state.autopilot.current_issue_retry_count = 0;
+            }
+        },
         Err(e) => {
             tracing::error!(error = %e, "Failed to open database for issue lookup");
             state.autopilot.current_issue_number = Some(issue_number);

@@ -27,9 +27,9 @@ use tokio::net::TcpListener;
 use tokio::sync::{Mutex, broadcast, watch};
 use tokio::task::JoinHandle;
 use tokio_rustls::TlsAcceptor;
-use tokio_tungstenite::tungstenite::handshake::server::{ErrorResponse, Request, Response};
 use tokio_tungstenite::tungstenite::Message;
-use tokio_tungstenite::{accept_hdr_async, WebSocketStream};
+use tokio_tungstenite::tungstenite::handshake::server::{ErrorResponse, Request, Response};
+use tokio_tungstenite::{WebSocketStream, accept_hdr_async};
 use tracing::{debug, info, warn};
 use uuid::Uuid;
 use x509_parser::extensions::GeneralName;
@@ -73,9 +73,7 @@ fn bridge_dns_names() -> Vec<String> {
         .collect::<Vec<_>>();
     if let Ok(host) = env::var(ENV_TLS_HOST) {
         let trimmed = host.trim();
-        if !trimmed.is_empty()
-            && !names.iter().any(|name| name.eq_ignore_ascii_case(trimmed))
-        {
+        if !trimmed.is_empty() && !names.iter().any(|name| name.eq_ignore_ascii_case(trimmed)) {
             names.push(trimmed.to_string());
         }
     }
@@ -277,22 +275,19 @@ struct CodexAccount {
 fn secondary_bind_addr(host: &str, port: u16) -> Option<SocketAddr> {
     let ip: IpAddr = host.parse().ok()?;
     match ip {
-        IpAddr::V4(v4) if v4.is_loopback() => Some(SocketAddr::new(
-            IpAddr::V6(Ipv6Addr::LOCALHOST),
-            port,
-        )),
-        IpAddr::V4(v4) if v4.is_unspecified() => Some(SocketAddr::new(
-            IpAddr::V6(Ipv6Addr::UNSPECIFIED),
-            port,
-        )),
+        IpAddr::V4(v4) if v4.is_loopback() => {
+            Some(SocketAddr::new(IpAddr::V6(Ipv6Addr::LOCALHOST), port))
+        }
+        IpAddr::V4(v4) if v4.is_unspecified() => {
+            Some(SocketAddr::new(IpAddr::V6(Ipv6Addr::UNSPECIFIED), port))
+        }
         IpAddr::V6(v6) if v6.is_loopback() => Some(SocketAddr::new(
             IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)),
             port,
         )),
-        IpAddr::V6(v6) if v6.is_unspecified() => Some(SocketAddr::new(
-            IpAddr::V4(Ipv4Addr::UNSPECIFIED),
-            port,
-        )),
+        IpAddr::V6(v6) if v6.is_unspecified() => {
+            Some(SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), port))
+        }
         _ => None,
     }
 }
@@ -308,11 +303,16 @@ pub async fn start_local_bridge(config: LocalBridgeConfig) -> Result<LocalBridge
     Ok(LocalBridgeHandle { shutdown, join })
 }
 
-async fn serve_bridge(config: LocalBridgeConfig, mut shutdown_rx: watch::Receiver<bool>) -> Result<()> {
+async fn serve_bridge(
+    config: LocalBridgeConfig,
+    mut shutdown_rx: watch::Receiver<bool>,
+) -> Result<()> {
     let addr: SocketAddr = format!("{}:{}", config.host, config.port)
         .parse()
         .context("invalid bridge bind address")?;
-    let listener = TcpListener::bind(addr).await.context("bridge bind failed")?;
+    let listener = TcpListener::bind(addr)
+        .await
+        .context("bridge bind failed")?;
     let secondary_addr = secondary_bind_addr(&config.host, config.port);
     let secondary_listener = if let Some(secondary_addr) = secondary_addr {
         match TcpListener::bind(secondary_addr).await {
@@ -369,8 +369,7 @@ async fn serve_bridge(config: LocalBridgeConfig, mut shutdown_rx: watch::Receive
             if let Some((_, listener)) = &secondary_listener {
                 listener.accept().await
             } else {
-                std::future::pending::<std::io::Result<(tokio::net::TcpStream, SocketAddr)>>()
-                    .await
+                std::future::pending::<std::io::Result<(tokio::net::TcpStream, SocketAddr)>>().await
             }
         };
         tokio::select! {
@@ -410,7 +409,10 @@ async fn handle_connection(
     state: BridgeState,
 ) -> Result<()> {
     if let Some(acceptor) = tls_acceptor {
-        let tls_stream = acceptor.accept(stream).await.context("TLS handshake failed")?;
+        let tls_stream = acceptor
+            .accept(stream)
+            .await
+            .context("TLS handshake failed")?;
         let ws_stream = accept_with_checks(tls_stream, &state.config).await?;
         info!(%peer_addr, "bridge websocket connected (tls)");
         return serve_socket(ws_stream, state).await;
@@ -421,10 +423,7 @@ async fn handle_connection(
     serve_socket(ws_stream, state).await
 }
 
-async fn accept_with_checks<S>(
-    stream: S,
-    config: &LocalBridgeConfig,
-) -> Result<WebSocketStream<S>>
+async fn accept_with_checks<S>(stream: S, config: &LocalBridgeConfig) -> Result<WebSocketStream<S>>
 where
     S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin,
 {
@@ -663,7 +662,12 @@ fn emit_codex_payload(state: &BridgeState, event: &str, payload: Value) {
     let _ = state.codex_tx.send(message);
 }
 
-fn emit_codex_status(state: &BridgeState, workspace_id: &str, status: &str, detail: Option<String>) {
+fn emit_codex_status(
+    state: &BridgeState,
+    workspace_id: &str,
+    status: &str,
+    detail: Option<String>,
+) {
     emit_codex_payload(
         state,
         "pylon.codex.status",
@@ -736,7 +740,12 @@ async fn handle_codex_connect(state: &BridgeState, payload: Value) -> Result<()>
     }
 
     if !state.config.codex.enabled {
-        emit_codex_status(state, &workspace_id, "disabled", Some("Codex disabled".to_string()));
+        emit_codex_status(
+            state,
+            &workspace_id,
+            "disabled",
+            Some("Codex disabled".to_string()),
+        );
         return Ok(());
     }
 
@@ -769,12 +778,7 @@ async fn handle_codex_connect(state: &BridgeState, payload: Value) -> Result<()>
                 connected = true;
             }
             Err(err) => {
-                emit_codex_status(
-                    state,
-                    &workspace_id,
-                    "failed",
-                    Some(err.to_string()),
-                );
+                emit_codex_status(state, &workspace_id, "failed", Some(err.to_string()));
             }
         }
     }
@@ -855,7 +859,10 @@ async fn handle_codex_request(state: &BridgeState, payload: Value) -> Result<()>
 
     let client = {
         let codex = state.codex.lock().await;
-        codex.sessions.get(&workspace_id).map(|session| session.client.clone())
+        codex
+            .sessions
+            .get(&workspace_id)
+            .map(|session| session.client.clone())
     };
 
     let Some(client) = client else {
@@ -912,7 +919,10 @@ async fn handle_codex_response(state: &BridgeState, payload: Value) -> Result<()
 
     let client = {
         let codex = state.codex.lock().await;
-        codex.sessions.get(&workspace_id).map(|session| session.client.clone())
+        codex
+            .sessions
+            .get(&workspace_id)
+            .map(|session| session.client.clone())
     };
 
     let Some(client) = client else {
@@ -1027,7 +1037,9 @@ async fn dispatch_codex_request(
                     .thread_list(params)
                     .await
                     .map_err(|err| err.to_string())
-                    .and_then(|response| serde_json::to_value(response).map_err(|err| err.to_string()))
+                    .and_then(|response| {
+                        serde_json::to_value(response).map_err(|err| err.to_string())
+                    })
             }
             "thread/start" => {
                 let params = parse_params::<ThreadStartParams>(params)?;
@@ -1035,7 +1047,9 @@ async fn dispatch_codex_request(
                     .thread_start(params)
                     .await
                     .map_err(|err| err.to_string())
-                    .and_then(|response| serde_json::to_value(response).map_err(|err| err.to_string()))
+                    .and_then(|response| {
+                        serde_json::to_value(response).map_err(|err| err.to_string())
+                    })
             }
             "thread/resume" => {
                 let params = parse_params::<ThreadResumeParams>(params)?;
@@ -1043,7 +1057,9 @@ async fn dispatch_codex_request(
                     .thread_resume(params)
                     .await
                     .map_err(|err| err.to_string())
-                    .and_then(|response| serde_json::to_value(response).map_err(|err| err.to_string()))
+                    .and_then(|response| {
+                        serde_json::to_value(response).map_err(|err| err.to_string())
+                    })
             }
             "thread/archive" => {
                 let params = parse_params::<ThreadArchiveParams>(params)?;
@@ -1051,7 +1067,9 @@ async fn dispatch_codex_request(
                     .thread_archive(params)
                     .await
                     .map_err(|err| err.to_string())
-                    .and_then(|response| serde_json::to_value(response).map_err(|err| err.to_string()))
+                    .and_then(|response| {
+                        serde_json::to_value(response).map_err(|err| err.to_string())
+                    })
             }
             "model/list" => {
                 let params = parse_params::<ModelListParams>(params)?;
@@ -1059,7 +1077,9 @@ async fn dispatch_codex_request(
                     .model_list(params)
                     .await
                     .map_err(|err| err.to_string())
-                    .and_then(|response| serde_json::to_value(response).map_err(|err| err.to_string()))
+                    .and_then(|response| {
+                        serde_json::to_value(response).map_err(|err| err.to_string())
+                    })
             }
             "skills/list" => {
                 let params = parse_params::<SkillsListParams>(params)?;
@@ -1083,7 +1103,9 @@ async fn dispatch_codex_request(
                     .turn_start(params)
                     .await
                     .map_err(|err| err.to_string())
-                    .and_then(|response| serde_json::to_value(response).map_err(|err| err.to_string()))
+                    .and_then(|response| {
+                        serde_json::to_value(response).map_err(|err| err.to_string())
+                    })
             }
             "turn/interrupt" => {
                 let params = parse_params::<TurnInterruptParams>(params)?;
@@ -1091,7 +1113,9 @@ async fn dispatch_codex_request(
                     .turn_interrupt(params)
                     .await
                     .map_err(|err| err.to_string())
-                    .and_then(|response| serde_json::to_value(response).map_err(|err| err.to_string()))
+                    .and_then(|response| {
+                        serde_json::to_value(response).map_err(|err| err.to_string())
+                    })
             }
             "review/start" => {
                 let params = parse_params::<ReviewStartParams>(params)?;
@@ -1099,7 +1123,9 @@ async fn dispatch_codex_request(
                     .review_start(params)
                     .await
                     .map_err(|err| err.to_string())
-                    .and_then(|response| serde_json::to_value(response).map_err(|err| err.to_string()))
+                    .and_then(|response| {
+                        serde_json::to_value(response).map_err(|err| err.to_string())
+                    })
             }
             "command/exec" => {
                 let params = parse_params::<CommandExecParams>(params)?;
@@ -1107,7 +1133,9 @@ async fn dispatch_codex_request(
                     .command_exec(params)
                     .await
                     .map_err(|err| err.to_string())
-                    .and_then(|response| serde_json::to_value(response).map_err(|err| err.to_string()))
+                    .and_then(|response| {
+                        serde_json::to_value(response).map_err(|err| err.to_string())
+                    })
             }
             "account/rateLimits/read" => client
                 .account_rate_limits_read()
@@ -1120,7 +1148,9 @@ async fn dispatch_codex_request(
                     .account_read(params)
                     .await
                     .map_err(|err| err.to_string())
-                    .and_then(|response| serde_json::to_value(response).map_err(|err| err.to_string()))
+                    .and_then(|response| {
+                        serde_json::to_value(response).map_err(|err| err.to_string())
+                    })
             }
             _ => Err(format!("Unsupported method: {method}")),
         }?
@@ -1241,7 +1271,11 @@ async fn build_capabilities(state: &BridgeState) -> BridgeCapabilities {
     let config = state.config.clone();
     let session_client = {
         let codex = state.codex.lock().await;
-        codex.sessions.values().next().map(|session| session.client.clone())
+        codex
+            .sessions
+            .values()
+            .next()
+            .map(|session| session.client.clone())
     };
     let codex = fetch_codex_capabilities_with_session(&config.codex, session_client).await;
     BridgeCapabilities {
@@ -1405,7 +1439,9 @@ async fn fetch_codex_capabilities_from_session(
 
     let account = match tokio::time::timeout(
         Duration::from_secs(CAPABILITIES_ACCOUNT_TIMEOUT_SECS),
-        client.account_read(GetAccountParams { refresh_token: false }),
+        client.account_read(GetAccountParams {
+            refresh_token: false,
+        }),
     )
     .await
     {
@@ -1427,7 +1463,10 @@ async fn fetch_codex_capabilities_from_session(
             }
         },
         Err(_) => {
-            warn!(timeout_secs = CAPABILITIES_ACCOUNT_TIMEOUT_SECS, "bridge codex rate limits read timed out");
+            warn!(
+                timeout_secs = CAPABILITIES_ACCOUNT_TIMEOUT_SECS,
+                "bridge codex rate limits read timed out"
+            );
             None
         }
     };
@@ -1585,7 +1624,9 @@ async fn fetch_codex_capabilities(config: &CodexConfig) -> CodexCapabilities {
     let account_started = Instant::now();
     let account = match tokio::time::timeout(
         Duration::from_secs(CAPABILITIES_ACCOUNT_TIMEOUT_SECS),
-        client.account_read(GetAccountParams { refresh_token: false }),
+        client.account_read(GetAccountParams {
+            refresh_token: false,
+        }),
     )
     .await
     {
@@ -1611,7 +1652,10 @@ async fn fetch_codex_capabilities(config: &CodexConfig) -> CodexCapabilities {
             }
         },
         Err(_) => {
-            warn!(timeout_secs = CAPABILITIES_ACCOUNT_TIMEOUT_SECS, "bridge codex rate limits read timed out");
+            warn!(
+                timeout_secs = CAPABILITIES_ACCOUNT_TIMEOUT_SECS,
+                "bridge codex rate limits read timed out"
+            );
             None
         }
     };
@@ -1710,12 +1754,14 @@ where
 fn parse_data_object(data: Value) -> Option<Map<String, Value>> {
     match data {
         Value::Object(map) => Some(map),
-        Value::String(text) => serde_json::from_str::<Value>(&text)
-            .ok()
-            .and_then(|value| match value {
-                Value::Object(map) => Some(map),
-                _ => None,
-            }),
+        Value::String(text) => {
+            serde_json::from_str::<Value>(&text)
+                .ok()
+                .and_then(|value| match value {
+                    Value::Object(map) => Some(map),
+                    _ => None,
+                })
+        }
         _ => None,
     }
 }
@@ -1730,7 +1776,12 @@ fn error_response(status: u16, message: &str) -> ErrorResponse {
     Response::builder()
         .status(status)
         .body(Some(message.to_string()))
-        .unwrap_or_else(|_| Response::builder().status(status).body(None).expect("response"))
+        .unwrap_or_else(|_| {
+            Response::builder()
+                .status(status)
+                .body(None)
+                .expect("response")
+        })
 }
 
 fn extract_app_key(path: &str) -> Option<String> {
@@ -1813,8 +1864,8 @@ fn herd_cert_paths() -> Option<(PathBuf, PathBuf)> {
     let host = env::var(ENV_TLS_HOST).unwrap_or_else(|_| DEFAULT_HERD_HOST.to_string());
     let host = host.trim();
     let home = env::var_os("HOME")?;
-    let base = PathBuf::from(home)
-        .join("Library/Application Support/Herd/config/valet/Certificates");
+    let base =
+        PathBuf::from(home).join("Library/Application Support/Herd/config/valet/Certificates");
     let cert = base.join(format!("{host}.crt"));
     let key = base.join(format!("{host}.key"));
     if cert.exists() && key.exists() {
@@ -1826,9 +1877,7 @@ fn herd_cert_paths() -> Option<(PathBuf, PathBuf)> {
 
 fn is_generated_cert(cert_path: &Path) -> bool {
     matches!(
-        cert_path
-            .file_name()
-            .and_then(|name| name.to_str()),
+        cert_path.file_name().and_then(|name| name.to_str()),
         Some(BRIDGE_CERT_NAME) | Some(BRIDGE_CA_CERT_NAME)
     )
 }
@@ -1849,7 +1898,9 @@ fn bridge_ca_path(cert_path: &Path) -> Option<PathBuf> {
 
 fn ip_from_bytes(bytes: &[u8]) -> Option<IpAddr> {
     match bytes.len() {
-        4 => Some(IpAddr::V4(Ipv4Addr::new(bytes[0], bytes[1], bytes[2], bytes[3]))),
+        4 => Some(IpAddr::V4(Ipv4Addr::new(
+            bytes[0], bytes[1], bytes[2], bytes[3],
+        ))),
         16 => {
             let mut segments = [0u16; 8];
             for (index, segment) in segments.iter_mut().enumerate() {
@@ -1922,9 +1973,7 @@ fn cert_supports_hosts(cert_path: &Path) -> bool {
     let subject_cn = cert_common_name(cert.subject());
     let issuer_cn = cert_common_name(cert.issuer());
 
-    bridge_dns_names()
-        .iter()
-        .all(|host| names.contains(host))
+    bridge_dns_names().iter().all(|host| names.contains(host))
         && BRIDGE_IPS
             .iter()
             .map(|ip| ip.to_string())
@@ -1942,9 +1991,10 @@ fn maybe_trust_local_cert(cert_path: &Path) {
 
     let marker_path = trust_path.with_extension("trusted");
     if marker_path.exists() {
-        if let (Ok(cert_meta), Ok(marker_meta)) =
-            (std::fs::metadata(&trust_path), std::fs::metadata(&marker_path))
-        {
+        if let (Ok(cert_meta), Ok(marker_meta)) = (
+            std::fs::metadata(&trust_path),
+            std::fs::metadata(&marker_path),
+        ) {
             if let (Ok(cert_modified), Ok(marker_modified)) =
                 (cert_meta.modified(), marker_meta.modified())
             {
@@ -2082,8 +2132,8 @@ fn generate_self_signed_cert(
     std::fs::write(ca_key_path, ca_key.serialize_pem())
         .with_context(|| format!("write ca key {}", ca_key_path.display()))?;
 
-    let mut params = rcgen::CertificateParams::new(bridge_san_strings())
-        .context("create bridge cert params")?;
+    let mut params =
+        rcgen::CertificateParams::new(bridge_san_strings()).context("create bridge cert params")?;
     let mut leaf_dn = rcgen::DistinguishedName::new();
     leaf_dn.push(rcgen::DnType::CommonName, BRIDGE_LEAF_CN);
     params.distinguished_name = leaf_dn;
@@ -2112,10 +2162,10 @@ fn generate_self_signed_cert(
 }
 
 fn load_tls_acceptor(cert_path: &PathBuf, key_path: &PathBuf) -> Result<TlsAcceptor> {
-    let cert_file =
-        std::fs::File::open(cert_path).with_context(|| format!("open cert {}", cert_path.display()))?;
-    let key_file =
-        std::fs::File::open(key_path).with_context(|| format!("open key {}", key_path.display()))?;
+    let cert_file = std::fs::File::open(cert_path)
+        .with_context(|| format!("open cert {}", cert_path.display()))?;
+    let key_file = std::fs::File::open(key_path)
+        .with_context(|| format!("open key {}", key_path.display()))?;
 
     let mut cert_reader = std::io::BufReader::new(cert_file);
     let mut key_reader = std::io::BufReader::new(key_file);

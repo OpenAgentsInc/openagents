@@ -42,7 +42,7 @@ impl EventSink for TauriEventSink {
     fn emit_app_server_event(&self, event: AppServerEvent) {
         // Emit to frontend
         let _ = self.app.emit("app-server-event", &event);
-        
+
         // Buffer event and flush when message completes (spawn async task to avoid blocking)
         let logger = self.file_logger.clone();
         let event_value = serde_json::to_value(&event).unwrap_or_default();

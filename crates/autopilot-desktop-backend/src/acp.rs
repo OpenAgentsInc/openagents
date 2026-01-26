@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::path::Path;
 use std::process::Stdio;
 use std::sync::Arc;
@@ -48,7 +48,7 @@ impl AcpConnection {
     ) -> Result<Self> {
         // Create file logger for ACP events
         let file_logger = Arc::new(FileLogger::new().await?);
-        
+
         eprintln!("Spawning ACP agent: {} with args {:?}", command, args);
 
         let mut child = Command::new(&command);
@@ -58,18 +58,19 @@ impl AcpConnection {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .current_dir(workspace_path);
-        
+
         // Pass through environment variables
         for (key, value) in env {
             child.env(key, value);
         }
-        
+
         // Ensure path is inherited
         if let Ok(path) = std::env::var("PATH") {
             child.env("PATH", path);
         }
-        
-        let mut child = child.spawn()
+
+        let mut child = child
+            .spawn()
             .context(format!("Failed to spawn ACP agent: {}", command))?;
 
         let stdin = child.stdin.take().context("Failed to take stdin")?;
@@ -77,13 +78,15 @@ impl AcpConnection {
         let stderr = child.stderr.take().context("Failed to take stderr")?;
 
         // Track request IDs to session IDs
-        let request_to_session: Arc<Mutex<std::collections::HashMap<u64, String>>> = Arc::new(Mutex::new(std::collections::HashMap::new()));
+        let request_to_session: Arc<Mutex<std::collections::HashMap<u64, String>>> =
+            Arc::new(Mutex::new(std::collections::HashMap::new()));
         let request_to_session_for_capture = request_to_session.clone();
-        
+
         // Event callback for forwarding to unified stream
-        let event_callback_for_stdout: Arc<Mutex<Option<AcpEventCallback>>> = Arc::new(Mutex::new(None));
+        let event_callback_for_stdout: Arc<Mutex<Option<AcpEventCallback>>> =
+            Arc::new(Mutex::new(None));
         let event_callback_for_stdout_clone = event_callback_for_stdout.clone();
-        
+
         // Capture stdout (JSON-RPC messages) and extract session ID from responses
         let app_clone = app.clone();
         let workspace_id_clone = workspace_id.clone();
@@ -93,57 +96,76 @@ impl AcpConnection {
         tokio::spawn(async move {
             let mut reader = BufReader::new(stdout);
             let mut line = String::new();
-            
+
             while let Ok(n) = reader.read_line(&mut line).await {
                 if n == 0 {
                     break;
                 }
-                
+
                 let trimmed = line.trim();
                 if trimmed.is_empty() {
                     line.clear();
                     continue;
                 }
-                
+
                 // Try to parse as JSON-RPC message
                 match serde_json::from_str::<Value>(trimmed) {
                     Ok(value) => {
                         // Extract session ID from session/new response
                         if let Some(result) = value.get("result") {
-                            if let Some(session_id) = result.get("sessionId").and_then(|s| s.as_str()) {
+                            if let Some(session_id) =
+                                result.get("sessionId").and_then(|s| s.as_str())
+                            {
                                 let mut stored = session_id_for_capture.lock().await;
                                 *stored = Some(session_id.to_string());
                                 eprintln!("Stored ACP session ID: {}", session_id);
                             }
                         }
-                        
+
                         // Track responses: if this is a response (has id, no method), check if we have a session for this request
                         if let Some(response_id) = value.get("id").and_then(|id| id.as_u64()) {
                             // Check if this response has stopReason (completion indicator)
-                            if let Some(stop_reason) = value.get("stopReason").and_then(|s| s.as_str()) {
+                            if let Some(stop_reason) =
+                                value.get("stopReason").and_then(|s| s.as_str())
+                            {
                                 if stop_reason == "end_turn" {
                                     // Look up which session this request was for
                                     let session_id = {
-                                        let mut req_map = request_to_session_for_capture.lock().await;
+                                        let mut req_map =
+                                            request_to_session_for_capture.lock().await;
                                         req_map.remove(&response_id)
                                     };
                                     if let Some(sid) = session_id {
-                                        eprintln!("ACP COMPLETION: stopReason=end_turn for request id {}, session {}", response_id, sid);
+                                        eprintln!(
+                                            "ACP COMPLETION: stopReason=end_turn for request id {}, session {}",
+                                            response_id, sid
+                                        );
                                         // Trigger flush for this specific session
-                                        if let Err(e) = file_logger_clone.flush_acp_events(Some(sid.clone())).await {
-                                            eprintln!("Failed to flush ACP events for session {}: {}", sid, e);
+                                        if let Err(e) = file_logger_clone
+                                            .flush_acp_events(Some(sid.clone()))
+                                            .await
+                                        {
+                                            eprintln!(
+                                                "Failed to flush ACP events for session {}: {}",
+                                                sid, e
+                                            );
                                         }
                                     } else {
-                                        eprintln!("ACP COMPLETION: stopReason=end_turn for request id {}, but no session tracked - flushing all", response_id);
+                                        eprintln!(
+                                            "ACP COMPLETION: stopReason=end_turn for request id {}, but no session tracked - flushing all",
+                                            response_id
+                                        );
                                         // Fallback: flush all if we can't find the session
-                                        if let Err(e) = file_logger_clone.flush_all_acp_events().await {
+                                        if let Err(e) =
+                                            file_logger_clone.flush_all_acp_events().await
+                                        {
                                             eprintln!("Failed to flush all ACP events: {}", e);
                                         }
                                     }
                                 }
                             }
                         }
-                        
+
                         let event = AcpEvent {
                             workspace_id: workspace_id_clone.clone(),
                             message: json!({
@@ -153,7 +175,7 @@ impl AcpConnection {
                             }),
                         };
                         let _ = app_clone.emit("acp-event", &event);
-                        
+
                         // Forward to unified event stream if callback is set
                         {
                             let callback_guard = event_callback_for_stdout.lock().await;
@@ -161,7 +183,7 @@ impl AcpConnection {
                                 callback(&event);
                             }
                         }
-                        
+
                         // Buffer event and flush when message completes
                         let event_value = serde_json::to_value(&event).unwrap_or_default();
                         if let Err(e) = file_logger_clone.check_and_flush_acp(&event_value).await {
@@ -179,7 +201,7 @@ impl AcpConnection {
                             }),
                         };
                         let _ = app_clone.emit("acp-event", &event);
-                        
+
                         // Buffer event and flush when message completes
                         let event_value = serde_json::to_value(&event).unwrap_or_default();
                         if let Err(e) = file_logger_clone.check_and_flush_acp(&event_value).await {
@@ -187,7 +209,7 @@ impl AcpConnection {
                         }
                     }
                 }
-                
+
                 line.clear();
             }
         });
@@ -199,18 +221,18 @@ impl AcpConnection {
         tokio::spawn(async move {
             let mut reader = BufReader::new(stderr);
             let mut line = String::new();
-            
+
             while let Ok(n) = reader.read_line(&mut line).await {
                 if n == 0 {
                     break;
                 }
-                
+
                 let trimmed = line.trim();
                 if trimmed.is_empty() {
                     line.clear();
                     continue;
                 }
-                
+
                 let event = AcpEvent {
                     workspace_id: workspace_id_clone2.clone(),
                     message: json!({
@@ -219,13 +241,16 @@ impl AcpConnection {
                     }),
                 };
                 let _ = app_clone2.emit("acp-event", &event);
-                
+
                 // Buffer stderr events (they don't indicate completion, so just buffer)
                 let event_value = serde_json::to_value(&event).unwrap_or_default();
-                if let Err(e) = file_logger_for_stderr.check_and_flush_acp(&event_value).await {
+                if let Err(e) = file_logger_for_stderr
+                    .check_and_flush_acp(&event_value)
+                    .await
+                {
                     eprintln!("Failed to buffer ACP event: {}", e);
                 }
-                
+
                 line.clear();
             }
         });
@@ -250,7 +275,7 @@ impl AcpConnection {
                 }
             }
         });
-        
+
         // Write initialization
         use tokio::io::AsyncWriteExt;
         let stdin_arc = Arc::new(Mutex::new(stdin));
@@ -262,7 +287,7 @@ impl AcpConnection {
             stdin_handle.write_all(b"\n").await?;
             stdin_handle.flush().await?;
         }
-        
+
         // Emit the initialization message we sent
         let event = AcpEvent {
             workspace_id: workspace_id.clone(),
@@ -273,7 +298,7 @@ impl AcpConnection {
             }),
         };
         let _ = app.emit("acp-event", &event);
-        
+
         // Buffer initialization event (not part of message streaming)
         let event_value = serde_json::to_value(&event).unwrap_or_default();
         if let Err(e) = file_logger.check_and_flush_acp(&event_value).await {
@@ -290,7 +315,7 @@ impl AcpConnection {
             }),
         };
         let _ = app.emit("acp-event", &status_event);
-        
+
         // Buffer status event (not part of message streaming)
         let event_value = serde_json::to_value(&status_event).unwrap_or_default();
         if let Err(e) = file_logger.check_and_flush_acp(&event_value).await {
@@ -316,24 +341,26 @@ impl AcpConnection {
     pub async fn get_session_id(&self) -> Option<String> {
         self.session_id.lock().await.clone()
     }
-    
+
     /// Set callback for forwarding events to unified stream
     pub async fn set_event_callback(&self, callback: AcpEventCallback) {
         *self.event_callback.lock().await = Some(callback);
     }
-    
+
     /// Send a JSON-RPC request to codex-acp
     pub async fn send_request(&self, method: &str, params: Value) -> Result<()> {
         use tokio::io::AsyncWriteExt;
-        let id = self.next_id.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-        
+        let id = self
+            .next_id
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+
         // Handle null params - convert to empty object or omit
         let params_value = if params.is_null() {
             json!({})
         } else {
             params.clone()
         };
-        
+
         // Track session ID for this request (if it's session/prompt)
         if method == "session/prompt" {
             if let Some(session_id) = params_value.get("sessionId").and_then(|s| s.as_str()) {
@@ -342,16 +369,16 @@ impl AcpConnection {
                 eprintln!("Tracking request id {} for session {}", id, session_id);
             }
         }
-        
+
         let message = json!({
             "jsonrpc": "2.0",
             "id": id,
             "method": method,
             "params": params_value,
         });
-        
+
         let message_json = serde_json::to_string(&message)?;
-        
+
         // Write to stdin
         {
             let mut stdin = self.stdin.lock().await;
@@ -359,7 +386,7 @@ impl AcpConnection {
             stdin.write_all(b"\n").await?;
             stdin.flush().await?;
         }
-        
+
         // Emit the outgoing message
         let event = AcpEvent {
             workspace_id: self.workspace_id.clone(),
@@ -370,20 +397,20 @@ impl AcpConnection {
             }),
         };
         let _ = self.app.emit("acp-event", &event);
-        
+
         // Buffer outgoing event
         let event_value = serde_json::to_value(&event).unwrap_or_default();
         if let Err(e) = self.file_logger.check_and_flush_acp(&event_value).await {
             eprintln!("Failed to buffer ACP event: {}", e);
         }
-        
+
         Ok(())
     }
-    
+
     /// Send a JSON-RPC notification to codex-acp
     pub async fn send_notification(&self, method: &str, params: Option<Value>) -> Result<()> {
         use tokio::io::AsyncWriteExt;
-        
+
         let message = if let Some(params) = params {
             json!({
                 "jsonrpc": "2.0",
@@ -396,9 +423,9 @@ impl AcpConnection {
                 "method": method,
             })
         };
-        
+
         let message_json = serde_json::to_string(&message)?;
-        
+
         // Write to stdin
         {
             let mut stdin = self.stdin.lock().await;
@@ -406,7 +433,7 @@ impl AcpConnection {
             stdin.write_all(b"\n").await?;
             stdin.flush().await?;
         }
-        
+
         // Emit the outgoing message
         let event = AcpEvent {
             workspace_id: self.workspace_id.clone(),
@@ -417,13 +444,13 @@ impl AcpConnection {
             }),
         };
         let _ = self.app.emit("acp-event", &event);
-        
+
         // Buffer outgoing event
         let event_value = serde_json::to_value(&event).unwrap_or_default();
         if let Err(e) = self.file_logger.check_and_flush_acp(&event_value).await {
             eprintln!("Failed to buffer ACP event: {}", e);
         }
-        
+
         Ok(())
     }
 

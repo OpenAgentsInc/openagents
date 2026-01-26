@@ -12,16 +12,19 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use sha2::Sha256;
 use tokio::net::TcpListener;
-use tokio::time::{interval, Duration};
+use tokio::time::{Duration, interval};
 use tokio_rustls::TlsAcceptor;
-use tokio_tungstenite::tungstenite::handshake::server::{ErrorResponse, Request, Response};
 use tokio_tungstenite::tungstenite::Message;
-use tokio_tungstenite::{accept_hdr_async, WebSocketStream};
+use tokio_tungstenite::tungstenite::handshake::server::{ErrorResponse, Request, Response};
+use tokio_tungstenite::{WebSocketStream, accept_hdr_async};
 use tracing::{debug, error, info, warn};
 use tracing_subscriber::EnvFilter;
 
 #[derive(Parser, Debug)]
-#[command(name = "ws-test", about = "Local Pusher-compatible WebSocket server for Hyperion")]
+#[command(
+    name = "ws-test",
+    about = "Local Pusher-compatible WebSocket server for Hyperion"
+)]
 struct Args {
     /// Interface to bind to (e.g. 127.0.0.1)
     #[arg(long, default_value = "127.0.0.1")]
@@ -209,8 +212,12 @@ async fn handle_connection(
     tick_seconds: u64,
 ) -> Result<()> {
     if let Some(acceptor) = tls_acceptor {
-        let tls_stream = acceptor.accept(stream).await.context("TLS handshake failed")?;
-        let ws_stream = accept_with_checks(tls_stream, allowed_origins, &app_config.app_key).await?;
+        let tls_stream = acceptor
+            .accept(stream)
+            .await
+            .context("TLS handshake failed")?;
+        let ws_stream =
+            accept_with_checks(tls_stream, allowed_origins, &app_config.app_key).await?;
         info!(%peer_addr, "websocket connected (tls)");
         return serve_socket(ws_stream, app_config, tick_seconds).await;
     }
@@ -258,7 +265,12 @@ fn error_response(status: u16, message: &str) -> ErrorResponse {
     Response::builder()
         .status(status)
         .body(Some(message.to_string()))
-        .unwrap_or_else(|_| Response::builder().status(status).body(None).expect("valid response"))
+        .unwrap_or_else(|_| {
+            Response::builder()
+                .status(status)
+                .body(None)
+                .expect("valid response")
+        })
 }
 
 fn extract_app_key(path: &str) -> Option<String> {
@@ -399,7 +411,14 @@ where
                             send_auth_error(writer, "missing app secret").await?;
                             return Ok(());
                         };
-                        if !validate_auth(socket_id, &channel, auth.as_deref(), channel_data.as_deref(), &app_config.app_key, secret) {
+                        if !validate_auth(
+                            socket_id,
+                            &channel,
+                            auth.as_deref(),
+                            channel_data.as_deref(),
+                            &app_config.app_key,
+                            secret,
+                        ) {
                             warn!(%socket_id, channel = %channel, "invalid auth signature");
                             send_auth_error(writer, "invalid auth signature").await?;
                             return Ok(());
@@ -496,24 +515,30 @@ where
 fn parse_data_object(data: Value) -> Option<Map<String, Value>> {
     match data {
         Value::Object(map) => Some(map),
-        Value::String(text) => serde_json::from_str::<Value>(&text)
-            .ok()
-            .and_then(|value| match value {
-                Value::Object(map) => Some(map),
-                _ => None,
-            }),
+        Value::String(text) => {
+            serde_json::from_str::<Value>(&text)
+                .ok()
+                .and_then(|value| match value {
+                    Value::Object(map) => Some(map),
+                    _ => None,
+                })
+        }
         _ => None,
     }
 }
 
 fn extract_string(map: &Map<String, Value>, key: &str) -> Option<String> {
-    map.get(key).and_then(|value| value.as_str()).map(|value| value.to_string())
+    map.get(key)
+        .and_then(|value| value.as_str())
+        .map(|value| value.to_string())
 }
 
 fn extract_channel_data(map: &Map<String, Value>) -> Option<String> {
     match map.get("channel_data") {
         Some(Value::String(text)) => Some(text.clone()),
-        Some(Value::Object(_)) | Some(Value::Array(_)) => serde_json::to_string(map.get("channel_data")?).ok(),
+        Some(Value::Object(_)) | Some(Value::Array(_)) => {
+            serde_json::to_string(map.get("channel_data")?).ok()
+        }
         _ => None,
     }
 }
@@ -645,7 +670,10 @@ fn default_tls_paths() -> Option<(PathBuf, PathBuf)> {
 
 fn generate_self_signed_paths() -> Option<(PathBuf, PathBuf)> {
     let home = std::env::var("HOME").ok()?;
-    let base = PathBuf::from(home).join(".openagents").join("ws-test").join("certs");
+    let base = PathBuf::from(home)
+        .join(".openagents")
+        .join("ws-test")
+        .join("certs");
     let cert = base.join("ws-test.local.crt");
     let key = base.join("ws-test.local.key");
 
@@ -681,9 +709,8 @@ fn generate_self_signed_cert(cert_path: &PathBuf, key_path: &PathBuf) -> Result<
     let rcgen::CertifiedKey { cert, key_pair } =
         rcgen::generate_simple_self_signed(subject_alt_names).context("create self-signed cert")?;
 
-    std::fs::write(cert_path, cert.pem()).with_context(|| {
-        format!("write cert {}", cert_path.display())
-    })?;
+    std::fs::write(cert_path, cert.pem())
+        .with_context(|| format!("write cert {}", cert_path.display()))?;
     std::fs::write(key_path, key_pair.serialize_pem())
         .with_context(|| format!("write key {}", key_path.display()))?;
 
@@ -691,10 +718,10 @@ fn generate_self_signed_cert(cert_path: &PathBuf, key_path: &PathBuf) -> Result<
 }
 
 fn load_tls_acceptor(cert_path: &PathBuf, key_path: &PathBuf) -> Result<TlsAcceptor> {
-    let cert_file =
-        std::fs::File::open(cert_path).with_context(|| format!("open cert {}", cert_path.display()))?;
-    let key_file =
-        std::fs::File::open(key_path).with_context(|| format!("open key {}", key_path.display()))?;
+    let cert_file = std::fs::File::open(cert_path)
+        .with_context(|| format!("open cert {}", cert_path.display()))?;
+    let key_file = std::fs::File::open(key_path)
+        .with_context(|| format!("open key {}", key_path.display()))?;
 
     let mut cert_reader = std::io::BufReader::new(cert_file);
     let mut key_reader = std::io::BufReader::new(key_file);

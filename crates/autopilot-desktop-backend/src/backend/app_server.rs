@@ -1,21 +1,21 @@
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::env;
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{Child, ChildStdin, Command};
-use tokio::sync::{mpsc, oneshot, Mutex};
+use tokio::sync::{Mutex, mpsc, oneshot};
 use tokio::time::timeout;
 
 use crate::backend::events::{AppServerEvent, EventSink};
 use crate::full_auto::{
-    decision_model, ensure_codex_lm, run_full_auto_decision, FullAutoAction,
-    FullAutoDecisionRequest, FullAutoMap, DEFAULT_CONTINUE_PROMPT,
+    DEFAULT_CONTINUE_PROMPT, FullAutoAction, FullAutoDecisionRequest, FullAutoMap, decision_model,
+    ensure_codex_lm, run_full_auto_decision,
 };
 use crate::types::WorkspaceEntry;
 
@@ -226,8 +226,7 @@ pub(crate) async fn check_codex_installation(
     let output = match timeout(Duration::from_secs(5), command.output()).await {
         Ok(result) => result.map_err(|e| {
             if e.kind() == ErrorKind::NotFound {
-                "Codex CLI not found. Install Codex and ensure `codex` is on your PATH."
-                    .to_string()
+                "Codex CLI not found. Install Codex and ensure `codex` is on your PATH.".to_string()
             } else {
                 e.to_string()
             }
@@ -250,8 +249,7 @@ pub(crate) async fn check_codex_installation(
         };
         if detail.is_empty() {
             return Err(
-                "Codex CLI failed to start. Try running `codex --version` in Terminal."
-                    .to_string(),
+                "Codex CLI failed to start. Try running `codex --version` in Terminal.".to_string(),
             );
         }
         return Err(format!(
@@ -260,7 +258,11 @@ pub(crate) async fn check_codex_installation(
     }
 
     let version = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    Ok(if version.is_empty() { None } else { Some(version) })
+    Ok(if version.is_empty() {
+        None
+    } else {
+        Some(version)
+    })
 }
 
 pub(crate) async fn spawn_workspace_session<E: EventSink>(

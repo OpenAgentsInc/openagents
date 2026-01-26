@@ -123,10 +123,7 @@ impl LM {
                     || model.starts_with("openai_responses:")
                     || model.starts_with("openairesponses:") =>
             {
-                let model_id = model
-                    .split_once(':')
-                    .map(|(_, id)| id)
-                    .unwrap_or(model);
+                let model_id = model.split_once(':').map(|(_, id)| id).unwrap_or(model);
                 Arc::new(LMClient::OpenAIResponses(
                     OpenAiResponsesCompletionModel::from_env(
                         model_id,
@@ -452,8 +449,7 @@ impl LM {
                     let (response, usage_details) = openai
                         .completion_streaming_with_usage_details(request, Some(&on_token))
                         .await?;
-                    let usage =
-                        LmUsage::from(response.usage).with_provider_usage(usage_details);
+                    let usage = LmUsage::from(response.usage).with_provider_usage(usage_details);
                     (response, Some(usage))
                 } else {
                     let (response, usage_details) =

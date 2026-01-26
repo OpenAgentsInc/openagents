@@ -7,12 +7,10 @@ use crate::signatures::{
     ChunkTaskSelectorSignature, CodeEditSignature, ComplexityClassificationSignature,
     ContextSelectionSignature, DeepPlanningSignature, FailureTriageSignature,
     FullAutoDecisionSignature, IssueSuggestionSignature, IssueValidationSignature,
-    LaneBudgeterSignature, ParallelExplorationSignature, PlanSynthesisSignature,
-    PlanningSignature, QueryComposerSignature, RetrievalRouterSignature,
-    ResultValidationSignature, SandboxProfileSelectionSignature,
-    TaskUnderstandingSignature, ToolCallSignature, ToolResultSignature,
-    TopicDecompositionSignature, ToolSelectionSignature,
-    UiComposerSignature,
+    LaneBudgeterSignature, ParallelExplorationSignature, PlanSynthesisSignature, PlanningSignature,
+    QueryComposerSignature, ResultValidationSignature, RetrievalRouterSignature,
+    SandboxProfileSelectionSignature, TaskUnderstandingSignature, ToolCallSignature,
+    ToolResultSignature, ToolSelectionSignature, TopicDecompositionSignature, UiComposerSignature,
     UnblockSuggestionSignature, VerificationSignature,
 };
 

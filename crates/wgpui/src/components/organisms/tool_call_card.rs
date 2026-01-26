@@ -284,14 +284,10 @@ impl Component for ToolCallCard {
             if let Some(output) = &self.output {
                 // Format as "└ Read 25 lines" or similar
                 let output_display = format!("└ {}", output);
-                let output_available = (bounds.size.width - (x + indent - bounds.origin.x) - 12.0)
-                    .max(0.0);
+                let output_available =
+                    (bounds.size.width - (x + indent - bounds.origin.x) - 12.0).max(0.0);
                 let output_display = if output_available > 0.0 {
-                    Self::truncate_text(
-                        &output_display,
-                        output_available,
-                        Self::DETAIL_FONT_SIZE,
-                    )
+                    Self::truncate_text(&output_display, output_available, Self::DETAIL_FONT_SIZE)
                 } else {
                     output_display
                 };

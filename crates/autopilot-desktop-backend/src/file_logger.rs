@@ -13,7 +13,7 @@ pub struct FileLogger {
     app_server_writer: Arc<Mutex<BufWriter<File>>>,
     acp_writer: Arc<Mutex<BufWriter<File>>>,
     app_server_buffer: Arc<Mutex<HashMap<String, Vec<Value>>>>, // thread_id -> events
-    acp_buffer: Arc<Mutex<HashMap<String, Vec<Value>>>>, // session_id -> events
+    acp_buffer: Arc<Mutex<HashMap<String, Vec<Value>>>>,        // session_id -> events
 }
 
 impl FileLogger {
@@ -21,15 +21,17 @@ impl FileLogger {
     pub async fn new() -> Result<Self> {
         // Create tmp directory in project root
         let tmp_dir = get_tmp_dir()?;
-        std::fs::create_dir_all(&tmp_dir)
-            .context("Failed to create tmp directory")?;
+        std::fs::create_dir_all(&tmp_dir).context("Failed to create tmp directory")?;
 
         // Create file paths with timestamps
         let timestamp = chrono::Utc::now().format("%Y%m%d_%H%M%S");
         let app_server_path = tmp_dir.join(format!("app-server-events_{}.jsonl", timestamp));
         let acp_path = tmp_dir.join(format!("acp-events_{}.jsonl", timestamp));
 
-        eprintln!("Logging app-server events to: {}", app_server_path.display());
+        eprintln!(
+            "Logging app-server events to: {}",
+            app_server_path.display()
+        );
         eprintln!("Logging ACP events to: {}", acp_path.display());
 
         // Open files for writing
@@ -49,7 +51,7 @@ impl FileLogger {
 
         let app_server_writer = Arc::new(Mutex::new(BufWriter::new(app_server_file)));
         let acp_writer = Arc::new(Mutex::new(BufWriter::new(acp_file)));
-        
+
         // Write header lines to ensure files are created immediately
         {
             let mut writer = app_server_writer.lock().await;
@@ -76,7 +78,11 @@ impl FileLogger {
         let mut buffer = self.app_server_buffer.lock().await;
         let count = buffer.entry(key.clone()).or_insert_with(Vec::new).len();
         buffer.get_mut(&key).unwrap().push(event);
-        eprintln!("Buffered app-server event for thread '{}' (total: {})", key, count + 1);
+        eprintln!(
+            "Buffered app-server event for thread '{}' (total: {})",
+            key,
+            count + 1
+        );
     }
 
     /// Buffer an ACP event (will be flushed when message completes)
@@ -174,7 +180,11 @@ impl FileLogger {
         eprintln!("Flushing all {} ACP session buffers", all_events.len());
         let mut writer = self.acp_writer.lock().await;
         for (session_id, events) in all_events {
-            eprintln!("Flushing {} events for ACP session: {}", events.len(), session_id);
+            eprintln!(
+                "Flushing {} events for ACP session: {}",
+                events.len(),
+                session_id
+            );
             for event in events {
                 let json = serde_json::to_string(&event)?;
                 writer.write_all(json.as_bytes()).await?;
@@ -190,23 +200,25 @@ impl FileLogger {
     pub async fn check_and_flush_app_server(&self, event: &Value) -> Result<()> {
         // AppServerEvent has structure: { workspace_id, message: { method, params, ... } }
         let message = event.get("message").or_else(|| Some(event)); // Fallback to event itself if no message wrapper
-        
+
         // Check for completion indicators
         let should_flush = if let Some(msg) = message {
             if let Some(method) = msg.get("method").and_then(|m| m.as_str()) {
                 eprintln!("Checking completion for method: {}", method);
                 // Common completion methods - FIXED: use turn/completed (not turn/complete)
-                let is_complete = method == "turn/completed" ||
-                method.contains("completed") || 
-                method.contains("finished") ||
-                method == "turn/end" ||
-                method == "turn/complete" ||
-                (method == "session/update" && msg.get("params")
-                    .and_then(|p| p.get("update"))
-                    .and_then(|u| u.get("status"))
-                    .and_then(|s| s.as_str())
-                    .map(|s| s == "complete" || s == "finished")
-                    .unwrap_or(false));
+                let is_complete = method == "turn/completed"
+                    || method.contains("completed")
+                    || method.contains("finished")
+                    || method == "turn/end"
+                    || method == "turn/complete"
+                    || (method == "session/update"
+                        && msg
+                            .get("params")
+                            .and_then(|p| p.get("update"))
+                            .and_then(|u| u.get("status"))
+                            .and_then(|s| s.as_str())
+                            .map(|s| s == "complete" || s == "finished")
+                            .unwrap_or(false));
                 if is_complete {
                     eprintln!("COMPLETION DETECTED for method: {}", method);
                 }
@@ -238,8 +250,11 @@ impl FileLogger {
                             .and_then(|t| t.get("id"))
                     })
             })
-            .or_else(|| event.get("params")
-                .and_then(|p| p.get("threadId").or_else(|| p.get("thread_id"))))
+            .or_else(|| {
+                event
+                    .get("params")
+                    .and_then(|p| p.get("threadId").or_else(|| p.get("thread_id")))
+            })
             .and_then(|t| t.as_str())
             .map(|s| {
                 eprintln!("Extracted thread_id: {}", s);
@@ -247,12 +262,16 @@ impl FileLogger {
             });
 
         // Always buffer the event first
-        self.buffer_app_server_event(event.clone(), thread_id.clone()).await;
+        self.buffer_app_server_event(event.clone(), thread_id.clone())
+            .await;
 
         if should_flush {
             // Flush all events for this thread when completion detected
             if let Err(e) = self.flush_app_server_events(thread_id.clone()).await {
-                eprintln!("Failed to flush app-server events for thread {:?}: {}", thread_id, e);
+                eprintln!(
+                    "Failed to flush app-server events for thread {:?}: {}",
+                    thread_id, e
+                );
             }
         }
 
@@ -262,9 +281,8 @@ impl FileLogger {
     /// Check if an ACP event indicates message completion and flush if so
     pub async fn check_and_flush_acp(&self, event: &Value) -> Result<()> {
         // AcpEvent has structure: { workspace_id, message: { type, direction, message: {...} } }
-        let inner_msg = event.get("message")
-            .and_then(|m| m.get("message")); // The actual JSON-RPC message inside
-        
+        let inner_msg = event.get("message").and_then(|m| m.get("message")); // The actual JSON-RPC message inside
+
         // Extract session_id first (needed for buffering)
         // Try multiple locations: params.sessionId, result.sessionId, or from previous session/new response
         let session_id = inner_msg
@@ -274,15 +292,15 @@ impl FileLogger {
                     .and_then(|p| p.get("sessionId"))
                     .or_else(|| {
                         // Check result.sessionId for responses
-                        m.get("result")
-                            .and_then(|r| r.get("sessionId"))
+                        m.get("result").and_then(|r| r.get("sessionId"))
                     })
             })
             .and_then(|s| s.as_str())
             .map(|s| s.to_string());
 
         // Always buffer the event first
-        self.buffer_acp_event(event.clone(), session_id.clone()).await;
+        self.buffer_acp_event(event.clone(), session_id.clone())
+            .await;
 
         // Check for completion indicators in ACP events
         // NOTE: session/update is NOT a completion event - it's just a status update
@@ -291,14 +309,16 @@ impl FileLogger {
             // This appears in responses to session/prompt requests (id: 4 in your console)
             if let Some(stop_reason) = msg.get("stopReason").and_then(|s| s.as_str()) {
                 if stop_reason == "end_turn" {
-                    eprintln!("ACP COMPLETION DETECTED: stopReason=end_turn (response to session/prompt)");
+                    eprintln!(
+                        "ACP COMPLETION DETECTED: stopReason=end_turn (response to session/prompt)"
+                    );
                     // Extract session_id from the request context or use default
                     // For responses, we need to track which session the request was for
                     // For now, flush all buffered events (we'll improve session tracking later)
                     return self.flush_all_acp_events().await;
                 }
             }
-            
+
             // Check if this is a response (has "id" but no "method") - might have stopReason
             if msg.get("id").is_some() && msg.get("method").is_none() {
                 if let Some(stop_reason) = msg.get("stopReason").and_then(|s| s.as_str()) {
@@ -308,19 +328,19 @@ impl FileLogger {
                     }
                 }
             }
-            
+
             if let Some(method) = msg.get("method").and_then(|m| m.as_str()) {
                 // session/update is never a completion event, just buffer it (already done above)
                 if method == "session/update" {
                     return Ok(()); // Don't flush on session/update
                 }
-                
+
                 // Only flush on actual completion methods
-                let is_complete = method.contains("completed") || 
-                method.contains("finished") ||
-                method == "turn/end" ||
-                method == "turn/complete";
-                
+                let is_complete = method.contains("completed")
+                    || method.contains("finished")
+                    || method == "turn/end"
+                    || method == "turn/complete";
+
                 if is_complete {
                     eprintln!("ACP COMPLETION DETECTED for method: {}", method);
                     return self.flush_acp_events(session_id).await;
@@ -353,12 +373,7 @@ fn get_tmp_dir() -> Result<PathBuf> {
 
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     if let Some(repo_root) = manifest_dir.parent().and_then(|path| path.parent()) {
-        candidates.push(
-            repo_root
-                .join("apps")
-                .join("autopilot-desktop")
-                .join("tmp"),
-        );
+        candidates.push(repo_root.join("apps").join("autopilot-desktop").join("tmp"));
     }
 
     let tmp_dir = candidates

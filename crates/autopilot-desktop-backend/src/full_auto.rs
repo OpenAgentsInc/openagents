@@ -6,11 +6,10 @@ use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::sync::Mutex;
 
-use dsrs::{example, LM, Predict, Predictor};
 use dsrs::signatures::FullAutoDecisionSignature;
+use dsrs::{LM, Predict, Predictor, example};
 
-pub const DEFAULT_CONTINUE_PROMPT: &str =
-    "Continue immediately. Do not ask for confirmation or pause. If errors occur, recover and keep going.";
+pub const DEFAULT_CONTINUE_PROMPT: &str = "Continue immediately. Do not ask for confirmation or pause. If errors occur, recover and keep going.";
 
 const ENV_DECISION_MODEL: &str = "OPENAGENTS_FULL_AUTO_DECISION_MODEL";
 const ENV_MAX_TOKENS: &str = "OPENAGENTS_FULL_AUTO_MAX_TOKENS";
@@ -223,10 +222,7 @@ impl FullAutoState {
             None => return,
         };
         self.adopt_thread(thread_id);
-        let state = self
-            .threads
-            .entry(thread_id.to_string())
-            .or_default();
+        let state = self.threads.entry(thread_id.to_string()).or_default();
 
         match method {
             "thread/compacted" => {
@@ -252,9 +248,9 @@ impl FullAutoState {
                 }
             }
             "turn/error" => {
-                state.last_turn_error = params.and_then(read_error).or_else(|| {
-                    Some("turn error".to_string())
-                });
+                state.last_turn_error = params
+                    .and_then(read_error)
+                    .or_else(|| Some("turn error".to_string()));
             }
             "turn/completed" => {
                 state.last_turn_status = params.and_then(read_turn_status);
@@ -308,10 +304,7 @@ impl FullAutoState {
                 .last_turn_status
                 .clone()
                 .unwrap_or_else(|| "completed".to_string()),
-            turn_error: state
-                .last_turn_error
-                .clone()
-                .unwrap_or_else(String::new),
+            turn_error: state.last_turn_error.clone().unwrap_or_else(String::new),
             turn_plan: value_to_string(state.plan_snapshot.as_ref()),
             diff_summary: value_to_string(state.diff_snapshot.as_ref()),
             token_usage: value_to_string(state.token_usage.as_ref()),
@@ -490,8 +483,7 @@ fn serialize_recent_actions(actions: &[FullAutoDecisionRecord]) -> String {
 
 fn value_to_string(value: Option<&Value>) -> String {
     match value {
-        Some(value) => serde_json::to_string_pretty(value)
-            .unwrap_or_else(|_| value.to_string()),
+        Some(value) => serde_json::to_string_pretty(value).unwrap_or_else(|_| value.to_string()),
         None => "".to_string(),
     }
 }
@@ -505,10 +497,7 @@ fn read_prediction_string(prediction: &dsrs::Prediction, key: &str) -> String {
 }
 
 fn read_prediction_f32(prediction: &dsrs::Prediction, key: &str) -> f32 {
-    prediction
-        .get(key, None)
-        .as_f64()
-        .unwrap_or(0.0) as f32
+    prediction.get(key, None).as_f64().unwrap_or(0.0) as f32
 }
 
 fn build_progress_signature(state: &FullAutoThreadState) -> Option<String> {

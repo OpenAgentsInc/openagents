@@ -193,9 +193,8 @@ fn test_adr_0016_r5_policy_violation_variants_stable() {
                 assert!(size > max);
             }
             PolicyViolation::FilePathsNotAllowed => {}
-            PolicyViolation::VerificationRequired => {}
-            // If a new variant is added, this match will be non-exhaustive
-            // and the test will fail to compile
+            PolicyViolation::VerificationRequired => {} // If a new variant is added, this match will be non-exhaustive
+                                                        // and the test will fail to compile
         }
     }
 }
@@ -218,11 +217,7 @@ fn test_adr_0016_r5_policy_violation_display() {
     for v in violations {
         let msg = format!("{}", v);
         assert!(!msg.is_empty(), "Display should not be empty");
-        assert!(
-            msg.len() > 10,
-            "Display should be descriptive: {}",
-            msg
-        );
+        assert!(msg.len() > 10, "Display should be descriptive: {}", msg);
     }
 }
 
