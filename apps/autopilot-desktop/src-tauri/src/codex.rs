@@ -153,7 +153,7 @@ pub(crate) async fn connect_workspace(
         if sessions.contains_key(&workspace_id) {
             return Ok(WorkspaceConnectionResponse {
                 success: true,
-                message: "Workspace already connected".to_string(),
+                message: String::new(),
                 workspace_id,
             });
         }
