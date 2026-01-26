@@ -8,10 +8,11 @@ use std::sync::Arc;
 
 use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
+use dsrs::core::MetaSignature;
 use dsrs::evaluate::FeedbackEvaluator;
 use dsrs::manifest::{CompiledModuleManifest, Scorecard};
 use dsrs::optimizer::{COPRO, GEPA, MIPROv2, Optimizer};
-use dsrs::{Evaluator, Example, LM, Module, Optimizable, Predict, Prediction};
+use dsrs::{Evaluator, Example, LM, Module, Optimizable, Predict, Prediction, Predictor};
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 
@@ -236,7 +237,7 @@ async fn optimize_signature(
                 .num_trials(config.num_trials)
                 .minibatch_size(config.minibatch_size.min(examples.len()))
                 .temperature(config.temperature)
-                .prompt_model(Some((*lm).clone()))
+                .prompt_model((*lm).clone())
                 .build();
             optimizer.compile(&mut module, examples.to_vec()).await?;
         }
@@ -245,7 +246,7 @@ async fn optimize_signature(
                 .breadth(config.num_candidates.max(2))
                 .depth(config.num_trials.max(1))
                 .init_temperature(config.temperature)
-                .prompt_model(Some((*lm).clone()))
+                .prompt_model((*lm).clone())
                 .build();
             optimizer.compile(&mut module, examples.to_vec()).await?;
         }
@@ -255,7 +256,7 @@ async fn optimize_signature(
                 .minibatch_size(config.minibatch_size.min(examples.len()))
                 .num_trials(config.num_trials.max(1))
                 .temperature(config.temperature)
-                .prompt_model(Some((*lm).clone()))
+                .prompt_model((*lm).clone())
                 .build();
             optimizer
                 .compile_with_feedback(&mut module, examples.to_vec())

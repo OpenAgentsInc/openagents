@@ -398,7 +398,7 @@ impl PlanModePipeline {
         if let Some(lm) = &self.lm {
             let inputs = example! {
                 "user_prompt": "input" => user_prompt.to_string(),
-                "exploration_results": "input" => combined_findings,
+                "exploration_results": "input" => combined_findings.clone(),
                 "repo_context": "input" => format!("Files examined: {}", all_files.join(", ")),
             };
 
@@ -734,8 +734,9 @@ impl PlanModePipeline {
 
         let config = self.config.optimization.clone();
         if config.background_optimization {
-            tokio::spawn(async move {
-                if let Err(err) = run_plan_mode_optimization(config, lm).await {
+            let handle = tokio::runtime::Handle::current();
+            tokio::task::spawn_blocking(move || {
+                if let Err(err) = handle.block_on(run_plan_mode_optimization(config, lm)) {
                     eprintln!("Plan mode optimization failed: {}", err);
                 }
             });
