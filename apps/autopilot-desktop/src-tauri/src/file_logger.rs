@@ -443,17 +443,18 @@ fn should_log_app_server_event(method: &str, is_complete: bool) -> bool {
     if is_complete {
         return true;
     }
+    if method.contains("delta") {
+        return false;
+    }
     matches!(
         method,
         "codex/connected"
             | "thread/started"
             | "turn/started"
             | "turn/completed"
-            | "item/started"
             | "item/completed"
             | "codex/event/task_started"
             | "codex/event/task_complete"
-            | "codex/event/item_started"
             | "codex/event/item_completed"
             | "codex/event/user_message"
             | "codex/event/agent_message"
