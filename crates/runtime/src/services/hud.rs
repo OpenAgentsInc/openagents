@@ -5,7 +5,7 @@ use crate::fs::{
     BytesHandle, DirEntry, FileHandle, FileService, FsError, FsResult, OpenFlags, Stat,
     StreamHandle, WatchEvent, WatchHandle,
 };
-use crate::storage::AgentStorage;
+use crate::storage::{AgentStorage, block_on_storage};
 use crate::types::AgentId;
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, RwLock};
@@ -57,14 +57,14 @@ impl HudFs {
     }
 
     fn load_settings(storage: &Arc<dyn AgentStorage>, agent_id: &AgentId) -> Option<HudSettings> {
-        let data = futures::executor::block_on(storage.get(agent_id, HUD_SETTINGS_KEY)).ok()??;
+        let data = block_on_storage(storage.get(agent_id, HUD_SETTINGS_KEY)).ok()??;
         serde_json::from_slice(&data).ok()
     }
 
     fn save_settings(&self, settings: &HudSettings) -> FsResult<()> {
         let data =
             serde_json::to_vec_pretty(settings).map_err(|err| FsError::Other(err.to_string()))?;
-        futures::executor::block_on(self.storage.set(&self.agent_id, HUD_SETTINGS_KEY, &data))
+        block_on_storage(self.storage.set(&self.agent_id, HUD_SETTINGS_KEY, &data))
             .map_err(|err| FsError::Other(err.to_string()))
     }
 

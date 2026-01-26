@@ -487,7 +487,7 @@ impl OpenAgentsAuth {
     }
 
     fn load_state(storage: &Arc<dyn AgentStorage>, agent_id: &AgentId) -> ApiAuthState {
-        let data = futures::executor::block_on(storage.get(agent_id, AUTH_STATE_KEY))
+        let data = block_on_storage(storage.get(agent_id, AUTH_STATE_KEY))
             .ok()
             .flatten();
         data.and_then(|bytes| serde_json::from_slice(&bytes).ok())
@@ -497,7 +497,7 @@ impl OpenAgentsAuth {
     fn save_state(&self, state: &ApiAuthState) -> Result<(), ContainerError> {
         let data = serde_json::to_vec_pretty(state)
             .map_err(|err| ContainerError::ProviderError(err.to_string()))?;
-        futures::executor::block_on(self.storage.set(&self.agent_id, AUTH_STATE_KEY, &data))
+        block_on_storage(self.storage.set(&self.agent_id, AUTH_STATE_KEY, &data))
             .map_err(|err| ContainerError::ProviderError(err.to_string()))?;
         let mut guard = self.state.write().unwrap_or_else(|e| e.into_inner());
         *guard = state.clone();
@@ -505,7 +505,7 @@ impl OpenAgentsAuth {
     }
 
     fn load_token(storage: &Arc<dyn AgentStorage>, agent_id: &AgentId) -> Option<String> {
-        let data = futures::executor::block_on(storage.get(agent_id, AUTH_TOKEN_KEY))
+        let data = block_on_storage(storage.get(agent_id, AUTH_TOKEN_KEY))
             .ok()
             .flatten()?;
         String::from_utf8(data).ok()
@@ -516,7 +516,7 @@ impl OpenAgentsAuth {
         agent_id: &AgentId,
         token: &str,
     ) -> Result<(), ContainerError> {
-        futures::executor::block_on(storage.set(agent_id, AUTH_TOKEN_KEY, token.as_bytes()))
+        block_on_storage(storage.set(agent_id, AUTH_TOKEN_KEY, token.as_bytes()))
             .map_err(|err| ContainerError::ProviderError(err.to_string()))
     }
 
@@ -524,7 +524,7 @@ impl OpenAgentsAuth {
         storage: &Arc<dyn AgentStorage>,
         agent_id: &AgentId,
     ) -> Option<NostrAuthChallenge> {
-        let data = futures::executor::block_on(storage.get(agent_id, AUTH_CHALLENGE_KEY))
+        let data = block_on_storage(storage.get(agent_id, AUTH_CHALLENGE_KEY))
             .ok()
             .flatten()?;
         serde_json::from_slice(&data).ok()
@@ -537,7 +537,7 @@ impl OpenAgentsAuth {
     ) -> Result<(), ContainerError> {
         let data = serde_json::to_vec(challenge)
             .map_err(|err| ContainerError::ProviderError(err.to_string()))?;
-        futures::executor::block_on(storage.set(agent_id, AUTH_CHALLENGE_KEY, &data))
+        block_on_storage(storage.set(agent_id, AUTH_CHALLENGE_KEY, &data))
             .map_err(|err| ContainerError::ProviderError(err.to_string()))
     }
 
@@ -545,7 +545,7 @@ impl OpenAgentsAuth {
         storage: &Arc<dyn AgentStorage>,
         agent_id: &AgentId,
     ) -> Result<(), ContainerError> {
-        futures::executor::block_on(storage.delete(agent_id, AUTH_CHALLENGE_KEY))
+        block_on_storage(storage.delete(agent_id, AUTH_CHALLENGE_KEY))
             .map_err(|err| ContainerError::ProviderError(err.to_string()))
     }
 
@@ -945,4 +945,3 @@ struct ExecRecord {
     provider_id: String,
     session_id: String,
 }
-

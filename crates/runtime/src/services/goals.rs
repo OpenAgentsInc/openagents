@@ -3,7 +3,7 @@
 use crate::fs::{
     BytesHandle, DirEntry, FileHandle, FileService, FsError, FsResult, OpenFlags, Stat,
 };
-use crate::storage::AgentStorage;
+use crate::storage::{AgentStorage, block_on_storage};
 use crate::types::AgentId;
 use std::sync::Arc;
 
@@ -27,7 +27,7 @@ impl GoalsFs {
     }
 
     fn list_goal_ids(&self) -> FsResult<Vec<String>> {
-        let keys = futures::executor::block_on(self.storage.list(&self.agent_id, GOAL_PREFIX))
+        let keys = block_on_storage(self.storage.list(&self.agent_id, GOAL_PREFIX))
             .map_err(|err| FsError::Other(err.to_string()))?;
         Ok(keys
             .into_iter()
@@ -37,20 +37,20 @@ impl GoalsFs {
 
     fn get_goal(&self, goal_id: &str) -> FsResult<Vec<u8>> {
         let key = Self::storage_key(goal_id);
-        let value = futures::executor::block_on(self.storage.get(&self.agent_id, &key))
+        let value = block_on_storage(self.storage.get(&self.agent_id, &key))
             .map_err(|err| FsError::Other(err.to_string()))?;
         value.ok_or(FsError::NotFound)
     }
 
     fn set_goal(&self, goal_id: &str, value: &[u8]) -> FsResult<()> {
         let key = Self::storage_key(goal_id);
-        futures::executor::block_on(self.storage.set(&self.agent_id, &key, value))
+        block_on_storage(self.storage.set(&self.agent_id, &key, value))
             .map_err(|err| FsError::Other(err.to_string()))
     }
 
     fn delete_goal(&self, goal_id: &str) -> FsResult<()> {
         let key = Self::storage_key(goal_id);
-        futures::executor::block_on(self.storage.delete(&self.agent_id, &key))
+        block_on_storage(self.storage.delete(&self.agent_id, &key))
             .map_err(|err| FsError::Other(err.to_string()))
     }
 }
