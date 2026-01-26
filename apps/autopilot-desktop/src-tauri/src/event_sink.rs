@@ -14,7 +14,6 @@ impl TauriEventSink {
     pub(crate) async fn new(app: AppHandle) -> anyhow::Result<Self> {
         let file_logger = match FileLogger::new().await {
             Ok(logger) => {
-                eprintln!("FileLogger created successfully");
                 Arc::new(logger)
             }
             Err(e) => {

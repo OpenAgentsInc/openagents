@@ -28,11 +28,13 @@ impl FileLogger {
         let app_server_path = tmp_dir.join(format!("app-server-events_{}.jsonl", timestamp));
         let acp_path = tmp_dir.join(format!("acp-events_{}.jsonl", timestamp));
 
-        eprintln!(
-            "Logging app-server events to: {}",
-            app_server_path.display()
-        );
-        eprintln!("Logging ACP events to: {}", acp_path.display());
+        if file_logger_verbose() {
+            eprintln!(
+                "Event logs: app_server={}, acp={}",
+                app_server_path.display(),
+                acp_path.display()
+            );
+        }
 
         // Open files for writing
         let app_server_file = OpenOptions::new()
@@ -128,7 +130,7 @@ impl FileLogger {
         }
 
         let mut writer = self.app_server_writer.lock().await;
-        for (thread_id, events) in all_events {
+        for (_thread_id, events) in all_events {
             for event in events {
                 let json = serde_json::to_string(&event)?;
                 writer.write_all(json.as_bytes()).await?;
@@ -173,7 +175,7 @@ impl FileLogger {
         }
 
         let mut writer = self.acp_writer.lock().await;
-        for (session_id, events) in all_events {
+        for (_session_id, events) in all_events {
             for event in events {
                 let json = serde_json::to_string(&event)?;
                 writer.write_all(json.as_bytes()).await?;
@@ -250,11 +252,13 @@ impl FileLogger {
         let buffered = self
             .buffer_app_server_event(event.clone(), thread_id.clone())
             .await;
-        let thread_label = thread_id.clone().unwrap_or_else(|| "default".to_string());
-        eprintln!(
-            "app-server event thread={} method={} buffered={} complete={}",
-            thread_label, method, buffered, should_flush
-        );
+        if should_log_app_server_event(method, should_flush) {
+            let thread_label = thread_id.clone().unwrap_or_else(|| "default".to_string());
+            eprintln!(
+                "app-server event thread={} method={} buffered={} complete={}",
+                thread_label, method, buffered, should_flush
+            );
+        }
 
         if should_flush {
             // Flush all events for this thread when completion detected
@@ -305,12 +309,14 @@ impl FileLogger {
                     // Extract session_id from the request context or use default
                     // For responses, we need to track which session the request was for
                     // For now, flush all buffered events (we'll improve session tracking later)
-                    eprintln!(
-                        "acp event session={} method=response buffered={} complete={}",
-                        session_id.clone().unwrap_or_else(|| "default".to_string()),
-                        buffered,
-                        flush_mode
-                    );
+                    if should_log_acp_event("response", flush_mode) {
+                        eprintln!(
+                            "acp event session={} method=response buffered={} complete={}",
+                            session_id.clone().unwrap_or_else(|| "default".to_string()),
+                            buffered,
+                            flush_mode
+                        );
+                    }
                     return self.flush_all_acp_events().await;
                 }
             }
@@ -320,12 +326,14 @@ impl FileLogger {
                 if let Some(stop_reason) = msg.get("stopReason").and_then(|s| s.as_str()) {
                     if stop_reason == "end_turn" {
                         flush_mode = "all";
-                        eprintln!(
-                            "acp event session={} method=response buffered={} complete={}",
-                            session_id.clone().unwrap_or_else(|| "default".to_string()),
-                            buffered,
-                            flush_mode
-                        );
+                        if should_log_acp_event("response", flush_mode) {
+                            eprintln!(
+                                "acp event session={} method=response buffered={} complete={}",
+                                session_id.clone().unwrap_or_else(|| "default".to_string()),
+                                buffered,
+                                flush_mode
+                            );
+                        }
                         return self.flush_all_acp_events().await;
                     }
                 }
@@ -334,13 +342,15 @@ impl FileLogger {
             if let Some(method) = msg.get("method").and_then(|m| m.as_str()) {
                 // session/update is never a completion event, just buffer it (already done above)
                 if method == "session/update" {
-                    eprintln!(
-                        "acp event session={} method={} buffered={} complete={}",
-                        session_id.clone().unwrap_or_else(|| "default".to_string()),
-                        method,
-                        buffered,
-                        flush_mode
-                    );
+                    if should_log_acp_event(method, flush_mode) {
+                        eprintln!(
+                            "acp event session={} method={} buffered={} complete={}",
+                            session_id.clone().unwrap_or_else(|| "default".to_string()),
+                            method,
+                            buffered,
+                            flush_mode
+                        );
+                    }
                     return Ok(()); // Don't flush on session/update
                 }
 
@@ -352,6 +362,19 @@ impl FileLogger {
 
                 if is_complete {
                     flush_mode = "true";
+                    if should_log_acp_event(method, flush_mode) {
+                        eprintln!(
+                            "acp event session={} method={} buffered={} complete={}",
+                            session_id.clone().unwrap_or_else(|| "default".to_string()),
+                            method,
+                            buffered,
+                            flush_mode
+                        );
+                    }
+                    return self.flush_acp_events(session_id).await;
+                }
+
+                if should_log_acp_event(method, flush_mode) {
                     eprintln!(
                         "acp event session={} method={} buffered={} complete={}",
                         session_id.clone().unwrap_or_else(|| "default".to_string()),
@@ -359,26 +382,19 @@ impl FileLogger {
                         buffered,
                         flush_mode
                     );
-                    return self.flush_acp_events(session_id).await;
                 }
-
-                eprintln!(
-                    "acp event session={} method={} buffered={} complete={}",
-                    session_id.clone().unwrap_or_else(|| "default".to_string()),
-                    method,
-                    buffered,
-                    flush_mode
-                );
                 return Ok(());
             }
         }
 
-        eprintln!(
-            "acp event session={} method=unknown buffered={} complete={}",
-            session_id.unwrap_or_else(|| "default".to_string()),
-            buffered,
-            flush_mode
-        );
+        if should_log_acp_event("unknown", flush_mode) {
+            eprintln!(
+                "acp event session={} method=unknown buffered={} complete={}",
+                session_id.unwrap_or_else(|| "default".to_string()),
+                buffered,
+                flush_mode
+            );
+        }
         Ok(())
     }
 }
@@ -416,6 +432,37 @@ fn get_tmp_dir() -> Result<PathBuf> {
         .find(|path| path.parent().is_some())
         .context("Failed to resolve tmp directory")?;
 
-    eprintln!("Tmp directory will be: {}", tmp_dir.display());
     Ok(tmp_dir)
+}
+
+fn file_logger_verbose() -> bool {
+    std::env::var_os("OA_FILE_LOGGER_VERBOSE").is_some()
+}
+
+fn should_log_app_server_event(method: &str, is_complete: bool) -> bool {
+    if is_complete {
+        return true;
+    }
+    matches!(
+        method,
+        "codex/connected"
+            | "thread/started"
+            | "turn/started"
+            | "turn/completed"
+            | "item/started"
+            | "item/completed"
+            | "codex/event/task_started"
+            | "codex/event/task_complete"
+            | "codex/event/item_started"
+            | "codex/event/item_completed"
+            | "codex/event/user_message"
+            | "codex/event/agent_message"
+    )
+}
+
+fn should_log_acp_event(method: &str, flush_mode: &str) -> bool {
+    if flush_mode != "false" {
+        return true;
+    }
+    matches!(method, "session/prompt" | "turn/started" | "turn/completed")
 }
