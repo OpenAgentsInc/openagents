@@ -1336,6 +1336,9 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
                           style="width: ${usageLabels.sessionPercent ?? 0}%"
                         ></span>
                       </div>
+                      <div class="text-[9px] uppercase tracking-[0.08em] text-[color:var(--muted)]">
+                        Used
+                      </div>
                     </div>
                     ${usageLabels.showWeekly
                       ? html`
@@ -1358,6 +1361,9 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
                                 class="block h-full bg-[color:var(--accent-strong)]"
                                 style="width: ${usageLabels.weeklyPercent ?? 0}%"
                               ></span>
+                            </div>
+                            <div class="text-[9px] uppercase tracking-[0.08em] text-[color:var(--muted)]">
+                              Used
                             </div>
                           </div>
                         `
