@@ -2,6 +2,9 @@
 
 Date: 2026-01-26
 
+## Agent note (read before changes)
+Before making any implementation related to this plan, review the **Agent Action Log** at the bottom of this document. After you complete relevant work, append a brief entry describing what you did.
+
 ## Purpose
 Define a concrete, codebase-specific plan to keep Autopilot Desktop improving its DSPy signatures over time, with measured benchmarks and safe promotion of optimized instructions.
 
@@ -132,3 +135,6 @@ This plan adapts the crest self-improver concepts to the current OpenAgents code
 2) Add promotion gates to plan-mode optimizer.
 3) Add full-auto training capture + metrics + optimizer.
 4) Surface summary status in UI.
+
+## Agent Action Log
+- 2026-01-26: Added agent note requiring log review + append-only action entries. (doc update)
