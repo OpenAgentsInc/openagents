@@ -248,8 +248,14 @@ fn trim_examples<T>(examples: &mut Vec<T>, max_examples: usize) {
 
 fn topic_decomposition_example(example: &TopicDecompositionExample) -> Example {
     let mut data = HashMap::new();
-    data.insert("user_prompt".to_string(), serde_json::json!(example.user_prompt));
-    data.insert("file_tree".to_string(), serde_json::json!(example.file_tree));
+    data.insert(
+        "user_prompt".to_string(),
+        serde_json::json!(example.user_prompt),
+    );
+    data.insert(
+        "file_tree".to_string(),
+        serde_json::json!(example.file_tree),
+    );
     data.insert("topics".to_string(), serde_json::json!(example.topics));
 
     Example::new(
@@ -264,7 +270,10 @@ fn parallel_exploration_example(example: &ParallelExplorationExample) -> Example
     data.insert("topic".to_string(), serde_json::json!(example.topic));
     data.insert("focus".to_string(), serde_json::json!(example.focus));
     data.insert("patterns".to_string(), serde_json::json!(example.patterns));
-    data.insert("repo_path".to_string(), serde_json::json!(example.repo_path));
+    data.insert(
+        "repo_path".to_string(),
+        serde_json::json!(example.repo_path),
+    );
     data.insert(
         "file_context".to_string(),
         serde_json::json!(example.file_context),
@@ -290,12 +299,18 @@ fn parallel_exploration_example(example: &ParallelExplorationExample) -> Example
 
 fn plan_synthesis_example(example: &PlanSynthesisExample) -> Example {
     let mut data = HashMap::new();
-    data.insert("user_prompt".to_string(), serde_json::json!(example.user_prompt));
+    data.insert(
+        "user_prompt".to_string(),
+        serde_json::json!(example.user_prompt),
+    );
     data.insert(
         "exploration_results".to_string(),
         serde_json::json!(example.exploration_results),
     );
-    data.insert("repo_context".to_string(), serde_json::json!(example.repo_context));
+    data.insert(
+        "repo_context".to_string(),
+        serde_json::json!(example.repo_context),
+    );
     data.insert(
         "implementation_plan".to_string(),
         serde_json::json!(example.implementation_plan),
@@ -326,12 +341,18 @@ fn complexity_classification_example(example: &ComplexityClassificationExample) 
         "domain_signals".to_string(),
         serde_json::json!(example.domain_signals),
     );
-    data.insert("complexity".to_string(), serde_json::json!(example.complexity));
+    data.insert(
+        "complexity".to_string(),
+        serde_json::json!(example.complexity),
+    );
     data.insert(
         "routing_decision".to_string(),
         serde_json::json!(example.routing_decision),
     );
-    data.insert("reasoning".to_string(), serde_json::json!(example.reasoning));
+    data.insert(
+        "reasoning".to_string(),
+        serde_json::json!(example.reasoning),
+    );
 
     Example::new(
         data,
@@ -358,8 +379,14 @@ fn deep_planning_example(example: &DeepPlanningExample) -> Example {
         "codebase_analysis".to_string(),
         serde_json::json!(example.codebase_analysis),
     );
-    data.insert("constraints".to_string(), serde_json::json!(example.constraints));
-    data.insert("reasoning".to_string(), serde_json::json!(example.reasoning));
+    data.insert(
+        "constraints".to_string(),
+        serde_json::json!(example.constraints),
+    );
+    data.insert(
+        "reasoning".to_string(),
+        serde_json::json!(example.reasoning),
+    );
     data.insert("strategy".to_string(), serde_json::json!(example.strategy));
     data.insert(
         "implementation_plan".to_string(),

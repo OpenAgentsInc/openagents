@@ -271,7 +271,7 @@ struct ComplexityClassificationSignature {
 - [ ] Add capability advertisements
 
 ### Phase 4: Optimization & Learning
-- [ ] Implement MIPROv2 optimization pipeline
+- [x] Implement plan mode optimization pipeline (MIPROv2/COPRO/GEPA)
 - [ ] Add counterfactual recording vs other agents
 - [ ] Build policy bundle system
 - [ ] Add shadow mode deployment
@@ -305,6 +305,17 @@ pub enum PlanningMode {
 }
 ```
 
+### Plan Mode Optimization
+
+Plan mode now records training examples, benchmarks signature quality, and writes optimized
+instructions to per-signature manifests. Optimizations run on a cadence with configurable
+thresholds and can be backgrounded.
+
+Key files (local machine):
+- `~/.openagents/autopilot-desktop/training/plan_mode.json`
+- `~/.openagents/autopilot-desktop/optimization/plan_mode.jsonl`
+- `~/.openagents/autopilot-desktop/manifests/plan_mode/*.json`
+
 ## Integration with Frontend
 
 Adjutant integrates seamlessly with the existing frontend through the same interfaces:
@@ -318,7 +329,7 @@ Adjutant integrates seamlessly with the existing frontend through the same inter
 
 1. **Multi-Modal Planning**: Integration with FRLM signatures for file/image analysis
 2. **Collaborative Planning**: Multi-agent coordination signatures
-3. **Learning Pipeline**: Automated signature optimization from user feedback
+3. **Learning Pipeline**: Counterfactual labels + policy bundle promotion
 4. **Custom Signatures**: User-defined planning signatures for domain-specific tasks
 5. **Performance Analytics**: DSPy execution metrics and optimization insights
 
@@ -349,6 +360,7 @@ The Adjutant Agent has been successfully implemented and integrated into the Aut
 - ✅ Parallel exploration with isolated agent contexts
 - ✅ Plan synthesis and complexity routing
 - ✅ Quality validation and confidence scoring
+- ✅ Training data capture + benchmarked optimization loop
 
 #### **Frontend Integration**
 - ✅ Available in agent selector alongside Codex and Gemini
