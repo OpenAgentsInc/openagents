@@ -27,8 +27,17 @@ fn parse_mode() -> RunMode {
     }
 }
 
-fn release_bundle_path(app_dir: &Path) -> Option<PathBuf> {
+fn release_bundle_path(repo_root: &Path, app_dir: &Path) -> Option<PathBuf> {
     if cfg!(target_os = "macos") {
+        let root_bundle = repo_root
+            .join("target")
+            .join("release")
+            .join("bundle")
+            .join("macos")
+            .join("Autopilot.app");
+        if root_bundle.exists() {
+            return Some(root_bundle);
+        }
         Some(
             app_dir
                 .join("src-tauri")
@@ -94,7 +103,7 @@ fn main() -> anyhow::Result<()> {
         .status()?;
 
     if status.success() && matches!(mode, RunMode::Release) {
-        if let Some(path) = release_bundle_path(&app_dir) {
+        if let Some(path) = release_bundle_path(&repo_root, &app_dir) {
             if let Err(err) = open_release_bundle(&path) {
                 eprintln!(
                     "Release build completed but failed to open app: {err}\nOpen manually: {}",
