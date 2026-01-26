@@ -15,3 +15,7 @@
 ## 2026-01-27
 - Fixed Adjutant plan mode Send issues by releasing session locks before awaits and running the plan pipeline in a blocking task.
 - Updated plan mode metric test data to satisfy substantive-topic scoring.
+
+## 2026-01-28
+- Surface optimized plan-mode instructions in the Adjutant signature UI panels.
+- Refined plan-mode documentation to match the current pipeline and optimization artifacts.
