@@ -21,6 +21,7 @@ test = false
 # OpenAgents crates
 wgpui = { path = "../wgpui", default-features = false, features = ["desktop"] }
 editor = { path = "../editor" }
+openagents-utils = { workspace = true }
 # document = { path = "../document" }  # TODO: Add when document crate is created (Milestone 3)
 
 # GPU

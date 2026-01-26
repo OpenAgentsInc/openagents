@@ -1,0 +1,13 @@
+[package]
+name = "openagents-utils"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Shared utility helpers for OpenAgents"
+
+[dependencies]
+
+[lints]
+workspace = true
