@@ -5,6 +5,7 @@ mod file_logger;
 mod backend;
 mod codex;
 mod codex_home;
+mod full_auto;
 pub mod contracts;
 mod event_sink;
 mod signature_registry;
@@ -111,6 +112,7 @@ pub fn build_app() -> tauri::Builder<tauri::Wry> {
             codex::list_threads,
             codex::resume_thread,
             codex::send_user_message,
+            codex::set_full_auto,
             codex::get_current_directory,
             codex::account_rate_limits,
             codex::list_models,

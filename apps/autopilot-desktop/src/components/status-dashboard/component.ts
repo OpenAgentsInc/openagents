@@ -85,6 +85,9 @@ type StatusState = {
   activeSessionId: string | null
   sessionItems: Record<string, CodexConversationItem[]>
   sessionMessage: string
+  fullAutoEnabled: boolean
+  fullAutoThreadId: string | null
+  fullAutoMessage: string
   busy: BusyState
 }
 
@@ -99,6 +102,8 @@ type StatusEvent =
   | { type: "RefreshWorkspaceStatus" }
   | { type: "RefreshSessions" }
   | { type: "SelectSession"; threadId: string }
+  | { type: "SetFullAuto"; enabled: boolean; continuePrompt?: string | null }
+  | { type: "StartFullAuto"; prompt: string }
   | { type: "AppServerEvent"; payload: AppServerEvent }
 
 const workspaceIdKey = "autopilotWorkspaceId"
@@ -709,6 +714,9 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
     activeSessionId: null,
     sessionItems: {},
     sessionMessage: "",
+    fullAutoEnabled: false,
+    fullAutoThreadId: null,
+    fullAutoMessage: "",
     busy: {
       doctor: false,
       connect: false,
@@ -746,6 +754,19 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
         : "--"
       const sessionCount = state.sessions.length
       const sessionBusy = state.busy.sessions || state.busy.newSession
+      const fullAutoLabel = state.fullAutoEnabled
+        ? state.fullAutoThreadId
+          ? "RUNNING"
+          : "ARMED"
+        : "OFF"
+      const fullAutoClass = state.fullAutoEnabled
+        ? state.fullAutoThreadId
+          ? "ok"
+          : "warn"
+        : ""
+      const fullAutoThread = state.fullAutoThreadId ?? "--"
+      const fullAutoEnableDisabled = state.fullAutoEnabled
+      const fullAutoDisableDisabled = !state.fullAutoEnabled
 
       const sessionList = sessionCount
         ? state.sessions.map((session) => {
@@ -847,7 +868,7 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
                     SEND
                   </button>
                 </div>
-                <div class="compose-hints">Enter to send | /connect /disconnect /doctor /cd /new /help</div>
+                <div class="compose-hints">Enter to send | /connect /disconnect /doctor /cd /new /auto /help</div>
               </div>
             </main>
 
@@ -927,6 +948,37 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
                 </section>
 
                 <section class="sidebar-panel">
+                  <div class="panel-title">Full Auto</div>
+                  <div class="panel-body">
+                    <div class="table">
+                      <div class="label">State</div>
+                      <div class="value ${fullAutoClass}">${fullAutoLabel}</div>
+                      <div class="label">Thread</div>
+                      <div class="value mono">${fullAutoThread}</div>
+                    </div>
+                    <div class="actions">
+                      <button
+                        class="btn primary"
+                        data-action="full-auto-enable"
+                        ${fullAutoEnableDisabled ? "disabled" : ""}
+                      >
+                        ENABLE
+                      </button>
+                      <button
+                        class="btn secondary"
+                        data-action="full-auto-disable"
+                        ${fullAutoDisableDisabled ? "disabled" : ""}
+                      >
+                        DISABLE
+                      </button>
+                    </div>
+                    <div class="note">
+                      ${state.fullAutoMessage || "Runs with full access and no prompts."}
+                    </div>
+                  </div>
+                </section>
+
+                <section class="sidebar-panel">
                   <div class="panel-title">Shortcuts</div>
                   <div class="panel-body">
                     <div class="note">F2 Connect</div>
@@ -1001,11 +1053,28 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
             yield* ctx.emit({ type: "StartNewSession" })
             return
           }
+          if (head === "auto" || head === "full-auto") {
+            const normalized = arg.toLowerCase()
+            if (
+              normalized === "off" ||
+              normalized === "stop" ||
+              normalized === "disable"
+            ) {
+              yield* ctx.emit({ type: "SetFullAuto", enabled: false })
+              return
+            }
+            if (!normalized || normalized === "on" || normalized === "enable") {
+              yield* ctx.emit({ type: "SetFullAuto", enabled: true })
+              return
+            }
+            yield* ctx.emit({ type: "StartFullAuto", prompt: arg })
+            return
+          }
           if (head === "help" || head === "?") {
             yield* ctx.state.update((state) => ({
               ...state,
               workspaceMessage:
-                "Commands: /connect /disconnect /doctor /cd <path> /new /help",
+                "Commands: /connect /disconnect /doctor /cd <path> /new /auto /help",
               lastUpdated: nowTime(),
             }))
             return
@@ -1039,6 +1108,186 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
               )
             )
           )
+        return
+      }
+
+      if (event.type === "SetFullAuto") {
+        const current = yield* ctx.state.get
+        const threadId =
+          current.activeSessionId ?? current.threadId ?? current.fullAutoThreadId
+        const enabled = event.enabled
+        const continuePrompt = event.continuePrompt ?? null
+
+        yield* invokeCommand<unknown>("set_full_auto", {
+          workspaceId: current.workspaceId,
+          enabled,
+          threadId: enabled ? threadId : null,
+          continuePrompt,
+        }).pipe(
+          Effect.tap(() =>
+            ctx.state.update((state) => ({
+              ...state,
+              fullAutoEnabled: enabled,
+              fullAutoThreadId: enabled ? threadId ?? null : null,
+              fullAutoMessage: enabled
+                ? threadId
+                  ? "Full Auto enabled."
+                  : "Full Auto armed. Send a message to start."
+                : "Full Auto disabled.",
+              workspaceMessage: enabled
+                ? "Full Auto enabled."
+                : "Full Auto disabled.",
+              lastUpdated: nowTime(),
+            }))
+          ),
+          Effect.catchAll((error) =>
+            ctx.state.update((state) => ({
+              ...state,
+              fullAutoMessage: `Full Auto update failed: ${String(error)}`,
+              workspaceMessage: `Full Auto update failed: ${String(error)}`,
+              lastUpdated: nowTime(),
+            }))
+          ),
+          Effect.asVoid
+        )
+        return
+      }
+
+      if (event.type === "StartFullAuto") {
+        const rawInput = event.prompt.trim()
+        if (!rawInput) {
+          yield* ctx.state.update((state) => ({
+            ...state,
+            workspaceMessage: "Full Auto needs a prompt to start.",
+            lastUpdated: nowTime(),
+          }))
+          return
+        }
+
+        const current = yield* ctx.state.get
+        if (!current.workspaceConnected) {
+          yield* ctx.state.update((state) => ({
+            ...state,
+            workspaceMessage: "Connect the workspace before starting Full Auto.",
+            lastUpdated: nowTime(),
+          }))
+          return
+        }
+
+        const existingThreadId = current.threadId
+        yield* ctx.state.update((state) => ({
+          ...state,
+          busy: { ...state.busy, send: true },
+          workspaceMessage: "Starting Full Auto...",
+          sessions: existingThreadId
+            ? touchSession(state.sessions, existingThreadId, nowEpochSeconds())
+            : state.sessions,
+        }))
+
+        let threadId = current.threadId
+        if (!threadId) {
+          const response = yield* invokeCommand<unknown>("start_thread", {
+            workspaceId: current.workspaceId,
+          })
+          threadId = extractThreadId(response)
+          if (!threadId) {
+            yield* ctx.state
+              .update((state) => ({
+                ...state,
+                busy: { ...state.busy, send: false },
+                workspaceMessage: "Failed to start a new thread for Full Auto.",
+                lastUpdated: nowTime(),
+              }))
+              .pipe(Effect.tap(() => focusMessageInput(ctx.container)))
+            return
+          }
+          const thread = extractThread(response)
+          const summary = thread ? toSessionSummary(thread) : null
+          const fallbackTimestamp = nowEpochSeconds()
+          const fallbackSummary: SessionSummary = {
+            id: threadId,
+            preview: "",
+            updatedAt: fallbackTimestamp,
+            createdAt: fallbackTimestamp,
+            modelProvider: "",
+          }
+          yield* ctx.state.update((state) => ({
+            ...state,
+            threadId,
+            activeSessionId: threadId,
+            sessions: summary
+              ? upsertSession(state.sessions, summary)
+              : upsertSession(state.sessions, fallbackSummary),
+            sessionItems: {
+              ...state.sessionItems,
+              [threadId]: state.sessionItems[threadId] ?? [],
+            },
+          }))
+        }
+
+        const enabled = yield* invokeCommand<unknown>("set_full_auto", {
+          workspaceId: current.workspaceId,
+          enabled: true,
+          threadId,
+          continuePrompt: null,
+        }).pipe(
+          Effect.as(true),
+          Effect.catchAll((error) =>
+            ctx.state
+              .update((state) => ({
+                ...state,
+                busy: { ...state.busy, send: false },
+                workspaceMessage: `Full Auto enable failed: ${String(error)}`,
+                fullAutoMessage: `Full Auto enable failed: ${String(error)}`,
+                lastUpdated: nowTime(),
+              }))
+              .pipe(Effect.tap(() => focusMessageInput(ctx.container)))
+              .pipe(Effect.as(false))
+          )
+        )
+
+        if (!enabled) {
+          return
+        }
+
+        yield* ctx.state.update((state) => ({
+          ...state,
+          fullAutoEnabled: true,
+          fullAutoThreadId: threadId ?? null,
+          fullAutoMessage: "Full Auto running.",
+        }))
+
+        yield* invokeCommand<unknown>("send_user_message", {
+          workspaceId: current.workspaceId,
+          threadId,
+          text: rawInput,
+          model: null,
+          accessMode: "full-access",
+        }).pipe(
+          Effect.tap(() =>
+            ctx.state
+              .update((state) => ({
+                ...state,
+                busy: { ...state.busy, send: false },
+                messageInput: "",
+                workspaceMessage: "Full Auto started.",
+                lastUpdated: nowTime(),
+              }))
+              .pipe(Effect.tap(() => focusMessageInput(ctx.container)))
+          ),
+          Effect.catchAll((error) =>
+            ctx.state
+              .update((state) => ({
+                ...state,
+                busy: { ...state.busy, send: false },
+                workspaceMessage: `Full Auto send failed: ${String(error)}`,
+                lastUpdated: nowTime(),
+              }))
+              .pipe(Effect.tap(() => focusMessageInput(ctx.container)))
+          ),
+          Effect.asVoid
+        )
+
         return
       }
 
@@ -1126,12 +1375,38 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
           }))
         }
 
+        if (current.fullAutoEnabled && threadId) {
+          yield* invokeCommand<unknown>("set_full_auto", {
+            workspaceId: current.workspaceId,
+            enabled: true,
+            threadId,
+            continuePrompt: null,
+          }).pipe(
+            Effect.tap(() =>
+              ctx.state.update((state) => ({
+                ...state,
+                fullAutoThreadId: threadId,
+                fullAutoMessage: "Full Auto armed for this thread.",
+                lastUpdated: nowTime(),
+              }))
+            ),
+            Effect.catchAll((error) =>
+              ctx.state.update((state) => ({
+                ...state,
+                fullAutoMessage: `Full Auto update failed: ${String(error)}`,
+                lastUpdated: nowTime(),
+              }))
+            ),
+            Effect.asVoid
+          )
+        }
+
         yield* invokeCommand<unknown>("send_user_message", {
           workspaceId: current.workspaceId,
           threadId,
           text: rawInput,
           model: null,
-          accessMode: null,
+          accessMode: current.fullAutoEnabled ? "full-access" : null,
         }).pipe(
           Effect.tap(() =>
             ctx.state
@@ -1496,6 +1771,9 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
               activeSessionId: null,
               sessionItems: {},
               sessionMessage: "",
+              fullAutoEnabled: false,
+              fullAutoThreadId: null,
+              fullAutoMessage: "",
               lastUpdated: nowTime(),
             }))
           ),
@@ -1530,6 +1808,7 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
         let sessions = current.sessions
         let sessionItems = current.sessionItems
         let activeSessionId = current.activeSessionId
+        let fullAutoThreadId = current.fullAutoThreadId
 
         if (method === "thread/started") {
           const thread = extractThread(event.payload.message)
@@ -1542,6 +1821,17 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
               }
             }
           }
+        }
+
+        if (
+          current.fullAutoEnabled &&
+          !fullAutoThreadId &&
+          eventThreadId &&
+          (method === "thread/started" ||
+            method === "turn/started" ||
+            method === "turn/completed")
+        ) {
+          fullAutoThreadId = eventThreadId
         }
 
         if (method === "item/completed" && params && isRecord(params.item)) {
@@ -1605,6 +1895,7 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
           sessions,
           sessionItems,
           activeSessionId,
+          fullAutoThreadId,
         }))
       }
     }),
@@ -1641,6 +1932,20 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
         "[data-action=\"new-session\"]",
         "click",
         () => emit({ type: "StartNewSession" })
+      )
+
+      yield* ctx.dom.delegate(
+        ctx.container,
+        "[data-action=\"full-auto-enable\"]",
+        "click",
+        () => emit({ type: "SetFullAuto", enabled: true })
+      )
+
+      yield* ctx.dom.delegate(
+        ctx.container,
+        "[data-action=\"full-auto-disable\"]",
+        "click",
+        () => emit({ type: "SetFullAuto", enabled: false })
       )
 
       yield* ctx.dom.delegate(

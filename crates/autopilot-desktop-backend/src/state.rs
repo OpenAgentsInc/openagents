@@ -8,12 +8,14 @@ use tokio::sync::Mutex;
 use crate::types::AppSettings;
 use crate::backend::app_server::WorkspaceSession;
 use crate::agent::manager::AgentManager;
+use crate::full_auto::FullAutoMap;
 
 pub(crate) struct AppState {
     pub(crate) sessions: Mutex<HashMap<String, Arc<WorkspaceSession>>>,
     pub(crate) app_settings: Mutex<AppSettings>,
     pub(crate) agent_manager: Arc<Mutex<AgentManager>>,
     pub(crate) unified_forwarder_started: AtomicBool,
+    pub(crate) full_auto: FullAutoMap,
 }
 
 impl AppState {
@@ -23,6 +25,7 @@ impl AppState {
             app_settings: Mutex::new(AppSettings::default()),
             agent_manager: Arc::new(Mutex::new(AgentManager::new())),
             unified_forwarder_started: AtomicBool::new(false),
+            full_auto: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 }

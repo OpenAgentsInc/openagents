@@ -153,6 +153,24 @@ pub struct ListModelsRequest {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct SetFullAutoRequest {
+    pub workspace_id: String,
+    pub enabled: bool,
+    pub thread_id: Option<String>,
+    pub continue_prompt: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct SetFullAutoResponse {
+    pub workspace_id: String,
+    pub enabled: bool,
+    pub thread_id: Option<String>,
+    pub continue_prompt: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
 pub struct CurrentDirectory(pub String);
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
@@ -335,6 +353,8 @@ pub fn export_ts(path: &std::path::Path) -> Result<(), std::io::Error> {
         AccountRateLimitsResponse::decl(),
         ListModelsRequest::decl(),
         ListModelsResponse::decl(),
+        SetFullAutoRequest::decl(),
+        SetFullAutoResponse::decl(),
         CurrentDirectory::decl(),
         ConnectUnifiedAgentRequest::decl(),
         ConnectUnifiedAgentResponse::decl(),
