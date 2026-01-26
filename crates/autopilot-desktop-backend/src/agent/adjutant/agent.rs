@@ -37,9 +37,6 @@ pub struct AdjutantAgent {
     /// Active sessions and their conversation history
     sessions: Arc<Mutex<HashMap<String, SessionState>>>,
 
-    /// Plan mode pipeline
-    plan_pipeline: Option<PlanModePipeline>,
-
     /// Configuration
     config: PlanModeConfig,
 }
@@ -64,7 +61,6 @@ impl AdjutantAgent {
             ui_events_tx,
             ui_events_rx: Arc::new(Mutex::new(Some(ui_events_rx))),
             sessions: Arc::new(Mutex::new(HashMap::new())),
-            plan_pipeline: None,
             config: PlanModeConfig::default(),
         }
     }
@@ -110,170 +106,173 @@ impl AdjutantAgent {
     }
 
     async fn initialize_ui_tree(&self, session_id: &str) -> Result<(), String> {
-        let mut sessions = self.sessions.lock().await;
-        let session = sessions
-            .get_mut(session_id)
-            .ok_or_else(|| format!("Session {} not found", session_id))?;
+        let ui_event = {
+            let mut sessions = self.sessions.lock().await;
+            let session = sessions
+                .get_mut(session_id)
+                .ok_or_else(|| format!("Session {} not found", session_id))?;
 
-        if session.ui_tree.is_some() {
-            return Ok(());
-        }
-
-        let mut tree = UiTreeState::new("Autopilot", "Ready");
-
-        let steps = [
-            ("topic", signature_info(TopicDecompositionSignature::new())),
-            (
-                "exploration",
-                signature_info(ParallelExplorationSignature::new()),
-            ),
-            ("synthesis", signature_info(PlanSynthesisSignature::new())),
-            (
-                "validation",
-                signature_info(ResultValidationSignature::new()),
-            ),
-        ];
-
-        let mut new_elements: Vec<(String, Value)> = Vec::new();
-        let mut child_keys: Vec<String> = Vec::new();
-
-        for (step_id, info) in steps.iter() {
-            let panel_key = format!("panel-{}", step_id);
-            let detail_key = format!("detail-{}", step_id);
-            let status_key = format!("status-{}", step_id);
-            let inputs_label_key = format!("inputs-label-{}", step_id);
-            let inputs_key = format!("inputs-{}", step_id);
-            let outputs_label_key = format!("outputs-label-{}", step_id);
-            let outputs_key = format!("outputs-{}", step_id);
-
-            let display_name = short_signature_name(&info.name);
-            let instruction = first_line(&info.instruction);
-            let inputs = serde_json::to_string_pretty(&info.input_fields)
-                .unwrap_or_else(|_| "{}".to_string());
-            let outputs = serde_json::to_string_pretty(&info.output_fields)
-                .unwrap_or_else(|_| "{}".to_string());
-
-            new_elements.push((
-                panel_key.clone(),
-                json!({
-                    "key": panel_key,
-                    "type": "panel",
-                    "props": {
-                        "title": display_name,
-                        "subtitle": "Signature"
-                    },
-                    "children": [
-                        detail_key,
-                        status_key,
-                        inputs_label_key,
-                        inputs_key,
-                        outputs_label_key,
-                        outputs_key
-                    ],
-                }),
-            ));
-
-            new_elements.push((
-                detail_key.clone(),
-                json!({
-                    "key": detail_key,
-                    "type": "text",
-                    "props": {
-                        "text": instruction,
-                        "tone": "muted",
-                        "size": "sm"
-                    }
-                }),
-            ));
-
-            new_elements.push((
-                status_key.clone(),
-                json!({
-                    "key": status_key,
-                    "type": "text",
-                    "props": {
-                        "text": "Status: pending",
-                        "tone": "default",
-                        "size": "sm"
-                    }
-                }),
-            ));
-
-            new_elements.push((
-                inputs_label_key.clone(),
-                json!({
-                    "key": inputs_label_key,
-                    "type": "text",
-                    "props": {
-                        "text": "Inputs",
-                        "tone": "muted",
-                        "size": "xs"
-                    }
-                }),
-            ));
-
-            new_elements.push((
-                inputs_key.clone(),
-                json!({
-                    "key": inputs_key,
-                    "type": "code_block",
-                    "props": {
-                        "code": inputs,
-                        "language": "json"
-                    }
-                }),
-            ));
-
-            new_elements.push((
-                outputs_label_key.clone(),
-                json!({
-                    "key": outputs_label_key,
-                    "type": "text",
-                    "props": {
-                        "text": "Outputs",
-                        "tone": "muted",
-                        "size": "xs"
-                    }
-                }),
-            ));
-
-            new_elements.push((
-                outputs_key.clone(),
-                json!({
-                    "key": outputs_key,
-                    "type": "code_block",
-                    "props": {
-                        "code": outputs,
-                        "language": "json"
-                    }
-                }),
-            ));
-
-            child_keys.push(panel_key);
-        }
-
-        for (key, element) in new_elements {
-            tree.elements.insert(key, element);
-        }
-
-        if let Some(stack) = tree.elements.get_mut(&tree.stack_key) {
-            if let Some(children) = stack
-                .get_mut("children")
-                .and_then(|value| value.as_array_mut())
-            {
-                children.clear();
-                children.extend(child_keys.into_iter().map(Value::String));
+            if session.ui_tree.is_some() {
+                return Ok(());
             }
-        }
 
-        let tree_value = tree.to_value();
-        session.ui_tree = Some(tree);
+            let mut tree = UiTreeState::new("Autopilot", "Ready");
 
-        self.send_ui_event(UiEvent::UiTreeReset {
-            session_id: session_id.to_string(),
-            tree: tree_value,
-        })
-        .await;
+            let steps = [
+                ("topic", signature_info(TopicDecompositionSignature::new())),
+                (
+                    "exploration",
+                    signature_info(ParallelExplorationSignature::new()),
+                ),
+                ("synthesis", signature_info(PlanSynthesisSignature::new())),
+                (
+                    "validation",
+                    signature_info(ResultValidationSignature::new()),
+                ),
+            ];
+
+            let mut new_elements: Vec<(String, Value)> = Vec::new();
+            let mut child_keys: Vec<String> = Vec::new();
+
+            for (step_id, info) in steps.iter() {
+                let panel_key = format!("panel-{}", step_id);
+                let detail_key = format!("detail-{}", step_id);
+                let status_key = format!("status-{}", step_id);
+                let inputs_label_key = format!("inputs-label-{}", step_id);
+                let inputs_key = format!("inputs-{}", step_id);
+                let outputs_label_key = format!("outputs-label-{}", step_id);
+                let outputs_key = format!("outputs-{}", step_id);
+
+                let display_name = short_signature_name(&info.name);
+                let instruction = first_line(&info.instruction);
+                let inputs = serde_json::to_string_pretty(&info.input_fields)
+                    .unwrap_or_else(|_| "{}".to_string());
+                let outputs = serde_json::to_string_pretty(&info.output_fields)
+                    .unwrap_or_else(|_| "{}".to_string());
+
+                new_elements.push((
+                    panel_key.clone(),
+                    json!({
+                        "key": panel_key,
+                        "type": "panel",
+                        "props": {
+                            "title": display_name,
+                            "subtitle": "Signature"
+                        },
+                        "children": [
+                            detail_key,
+                            status_key,
+                            inputs_label_key,
+                            inputs_key,
+                            outputs_label_key,
+                            outputs_key
+                        ],
+                    }),
+                ));
+
+                new_elements.push((
+                    detail_key.clone(),
+                    json!({
+                        "key": detail_key,
+                        "type": "text",
+                        "props": {
+                            "text": instruction,
+                            "tone": "muted",
+                            "size": "sm"
+                        }
+                    }),
+                ));
+
+                new_elements.push((
+                    status_key.clone(),
+                    json!({
+                        "key": status_key,
+                        "type": "text",
+                        "props": {
+                            "text": "Status: pending",
+                            "tone": "default",
+                            "size": "sm"
+                        }
+                    }),
+                ));
+
+                new_elements.push((
+                    inputs_label_key.clone(),
+                    json!({
+                        "key": inputs_label_key,
+                        "type": "text",
+                        "props": {
+                            "text": "Inputs",
+                            "tone": "muted",
+                            "size": "xs"
+                        }
+                    }),
+                ));
+
+                new_elements.push((
+                    inputs_key.clone(),
+                    json!({
+                        "key": inputs_key,
+                        "type": "code_block",
+                        "props": {
+                            "code": inputs,
+                            "language": "json"
+                        }
+                    }),
+                ));
+
+                new_elements.push((
+                    outputs_label_key.clone(),
+                    json!({
+                        "key": outputs_label_key,
+                        "type": "text",
+                        "props": {
+                            "text": "Outputs",
+                            "tone": "muted",
+                            "size": "xs"
+                        }
+                    }),
+                ));
+
+                new_elements.push((
+                    outputs_key.clone(),
+                    json!({
+                        "key": outputs_key,
+                        "type": "code_block",
+                        "props": {
+                            "code": outputs,
+                            "language": "json"
+                        }
+                    }),
+                ));
+
+                child_keys.push(panel_key);
+            }
+
+            for (key, element) in new_elements {
+                tree.elements.insert(key, element);
+            }
+
+            if let Some(stack) = tree.elements.get_mut(&tree.stack_key) {
+                if let Some(children) = stack
+                    .get_mut("children")
+                    .and_then(|value| value.as_array_mut())
+                {
+                    children.clear();
+                    children.extend(child_keys.into_iter().map(Value::String));
+                }
+            }
+
+            let tree_value = tree.to_value();
+            session.ui_tree = Some(tree);
+
+            UiEvent::UiTreeReset {
+                session_id: session_id.to_string(),
+                tree: tree_value,
+            }
+        };
+
+        self.send_ui_event(ui_event).await;
 
         Ok(())
     }
@@ -285,66 +284,70 @@ impl AdjutantAgent {
         status: &str,
         output: Option<&str>,
     ) {
-        let mut sessions = self.sessions.lock().await;
-        let session = match sessions.get_mut(session_id) {
-            Some(session) => session,
-            None => return,
-        };
+        let mut events = Vec::new();
 
-        let tree = match session.ui_tree.as_mut() {
-            Some(tree) => tree,
-            None => return,
-        };
+        {
+            let mut sessions = self.sessions.lock().await;
+            let session = match sessions.get_mut(session_id) {
+                Some(session) => session,
+                None => return,
+            };
 
-        let status_key = format!("status-{}", step_id);
-        let panel_key = format!("panel-{}", step_id);
+            let tree = match session.ui_tree.as_mut() {
+                Some(tree) => tree,
+                None => return,
+            };
 
-        if let Some(patch) = tree.set_element_prop(
-            &status_key,
-            "/props/text",
-            json!(format!("Status: {}", status)),
-        ) {
-            self.send_ui_event(UiEvent::UiPatch {
-                session_id: session_id.to_string(),
-                patch,
-            })
-            .await;
-        }
+            let status_key = format!("status-{}", step_id);
+            let panel_key = format!("panel-{}", step_id);
 
-        if let Some(output_text) = output {
-            let output_key = format!("output-{}", step_id);
-            if !tree.elements.contains_key(&output_key) {
-                let element = json!({
-                    "key": output_key,
-                    "type": "code_block",
-                    "props": {
-                        "code": output_text,
-                        "language": "text"
-                    }
-                });
-                if let Some(patch) = tree.add_element(element) {
-                    self.send_ui_event(UiEvent::UiPatch {
-                        session_id: session_id.to_string(),
-                        patch,
-                    })
-                    .await;
-                }
-                if let Some(patch) = tree.append_child(&panel_key, output_key) {
-                    self.send_ui_event(UiEvent::UiPatch {
-                        session_id: session_id.to_string(),
-                        patch,
-                    })
-                    .await;
-                }
-            } else if let Some(patch) =
-                tree.set_element_prop(&output_key, "/props/code", json!(output_text))
-            {
-                self.send_ui_event(UiEvent::UiPatch {
+            if let Some(patch) = tree.set_element_prop(
+                &status_key,
+                "/props/text",
+                json!(format!("Status: {}", status)),
+            ) {
+                events.push(UiEvent::UiPatch {
                     session_id: session_id.to_string(),
                     patch,
-                })
-                .await;
+                });
             }
+
+            if let Some(output_text) = output {
+                let output_key = format!("output-{}", step_id);
+                if !tree.elements.contains_key(&output_key) {
+                    let element = json!({
+                        "key": output_key,
+                        "type": "code_block",
+                        "props": {
+                            "code": output_text,
+                            "language": "text"
+                        }
+                    });
+                    if let Some(patch) = tree.add_element(element) {
+                        events.push(UiEvent::UiPatch {
+                            session_id: session_id.to_string(),
+                            patch,
+                        });
+                    }
+                    if let Some(patch) = tree.append_child(&panel_key, output_key) {
+                        events.push(UiEvent::UiPatch {
+                            session_id: session_id.to_string(),
+                            patch,
+                        });
+                    }
+                } else if let Some(patch) =
+                    tree.set_element_prop(&output_key, "/props/code", json!(output_text))
+                {
+                    events.push(UiEvent::UiPatch {
+                        session_id: session_id.to_string(),
+                        patch,
+                    });
+                }
+            }
+        }
+
+        for event in events {
+            self.send_ui_event(event).await;
         }
     }
 
@@ -426,131 +429,136 @@ impl AdjutantAgent {
         self.mark_ui_step(session_id, "exploration", "running", None)
             .await;
 
-        // Initialize plan pipeline if not already done
-        if self.plan_pipeline.is_none() {
-            let pipeline =
-                PlanModePipeline::new(workspace_path.clone().into(), self.config.clone())
-                    .with_auto_lm()
-                    .await;
+        let pipeline =
+            PlanModePipeline::new(workspace_path.clone().into(), self.config.clone())
+                .with_auto_lm()
+                .await;
 
-            self.send_event(UnifiedEvent::ThoughtChunk {
-                session_id: session_id.to_string(),
-                content: "Plan mode pipeline initialized. Starting topic decomposition..."
-                    .to_string(),
-                is_complete: false,
-            })
-            .await;
+        self.send_event(UnifiedEvent::ThoughtChunk {
+            session_id: session_id.to_string(),
+            content: "Plan mode pipeline initialized. Starting topic decomposition..."
+                .to_string(),
+            is_complete: false,
+        })
+        .await;
 
-            // Execute plan mode
-            match pipeline.execute_plan_mode(message).await {
-                Ok(plan_result) => {
-                    let topics_output = serde_json::to_string_pretty(&plan_result.topics_explored)
+        let message_text = message.to_string();
+        let handle = tokio::runtime::Handle::current();
+        // Run the pipeline on a blocking thread to keep this future Send.
+        let plan_result = tokio::task::spawn_blocking(move || {
+            handle.block_on(pipeline.execute_plan_mode(&message_text))
+        })
+        .await
+        .map_err(|err| format!("Plan mode pipeline task failed: {}", err))?;
+
+        match plan_result {
+            Ok(plan_result) => {
+                let topics_output = serde_json::to_string_pretty(&plan_result.topics_explored)
+                    .unwrap_or_else(|_| "[]".to_string());
+                let exploration_output =
+                    serde_json::to_string_pretty(&plan_result.files_examined)
                         .unwrap_or_else(|_| "[]".to_string());
-                    let exploration_output =
-                        serde_json::to_string_pretty(&plan_result.files_examined)
-                            .unwrap_or_else(|_| "[]".to_string());
 
-                    self.mark_ui_step(session_id, "topic", "completed", Some(&topics_output))
-                        .await;
-                    self.mark_ui_step(
-                        session_id,
-                        "exploration",
-                        "completed",
-                        Some(&exploration_output),
-                    )
+                self.mark_ui_step(session_id, "topic", "completed", Some(&topics_output))
                     .await;
-                    self.mark_ui_step(
-                        session_id,
-                        "synthesis",
-                        "completed",
-                        Some(&plan_result.implementation_plan),
-                    )
+                self.mark_ui_step(
+                    session_id,
+                    "exploration",
+                    "completed",
+                    Some(&exploration_output),
+                )
+                .await;
+                self.mark_ui_step(
+                    session_id,
+                    "synthesis",
+                    "completed",
+                    Some(&plan_result.implementation_plan),
+                )
+                .await;
+                self.mark_ui_step(
+                    session_id,
+                    "validation",
+                    if self.config.enable_validation {
+                        "completed"
+                    } else {
+                        "skipped"
+                    },
+                    None,
+                )
+                .await;
+
+                // Send final thinking chunk
+                self.send_event(UnifiedEvent::ThoughtChunk {
+                    session_id: session_id.to_string(),
+                    content: format!(
+                        "Plan completed. Explored {} topics, examined {} files.",
+                        plan_result.topics_explored.len(),
+                        plan_result.files_examined.len()
+                    ),
+                    is_complete: true,
+                })
+                .await;
+
+                // Send the implementation plan as message chunks
+                self.stream_plan_response(session_id, &plan_result).await;
+                self.update_ui_data(session_id, "/status/phase", json!("Complete"))
                     .await;
-                    self.mark_ui_step(
-                        session_id,
-                        "validation",
-                        if self.config.enable_validation {
-                            "completed"
-                        } else {
-                            "skipped"
-                        },
-                        None,
-                    )
-                    .await;
 
-                    // Send final thinking chunk
-                    self.send_event(UnifiedEvent::ThoughtChunk {
-                        session_id: session_id.to_string(),
-                        content: format!(
-                            "Plan completed. Explored {} topics, examined {} files.",
-                            plan_result.topics_explored.len(),
-                            plan_result.files_examined.len()
-                        ),
-                        is_complete: true,
-                    })
-                    .await;
+                // Update session state
+                let mut sessions = self.sessions.lock().await;
+                if let Some(session) = sessions.get_mut(session_id) {
+                    session.current_plan = Some(plan_result);
 
-                    // Send the implementation plan as message chunks
-                    self.stream_plan_response(session_id, &plan_result).await;
-                    self.update_ui_data(session_id, "/status/phase", json!("Complete"))
-                        .await;
+                    // Add conversation items
+                    session
+                        .conversation_items
+                        .push(UnifiedConversationItem::Message {
+                            id: uuid::Uuid::new_v4().to_string(),
+                            role: "user".to_string(),
+                            text: message.to_string(),
+                        });
 
-                    // Update session state
-                    let mut sessions = self.sessions.lock().await;
-                    if let Some(session) = sessions.get_mut(session_id) {
-                        session.current_plan = Some(plan_result);
-
-                        // Add conversation items
-                        session
-                            .conversation_items
-                            .push(UnifiedConversationItem::Message {
-                                id: uuid::Uuid::new_v4().to_string(),
-                                role: "user".to_string(),
-                                text: message.to_string(),
-                            });
-
-                        session
-                            .conversation_items
-                            .push(UnifiedConversationItem::Message {
-                                id: uuid::Uuid::new_v4().to_string(),
-                                role: "assistant".to_string(),
-                                text: session
-                                    .current_plan
-                                    .as_ref()
-                                    .unwrap()
-                                    .implementation_plan
-                                    .clone(),
-                            });
-                    }
+                    session
+                        .conversation_items
+                        .push(UnifiedConversationItem::Message {
+                            id: uuid::Uuid::new_v4().to_string(),
+                            role: "assistant".to_string(),
+                            text: session
+                                .current_plan
+                                .as_ref()
+                                .unwrap()
+                                .implementation_plan
+                                .clone(),
+                        });
                 }
-                Err(e) => {
-                    self.mark_ui_step(
-                        session_id,
-                        "synthesis",
-                        "error",
-                        Some(&format!("Plan mode failed: {}", e)),
-                    )
-                    .await;
-                    self.update_ui_data(session_id, "/status/phase", json!("Error"))
-                        .await;
-
-                    self.send_event(UnifiedEvent::ThoughtChunk {
-                        session_id: session_id.to_string(),
-                        content: format!("Plan mode failed: {}", e),
-                        is_complete: true,
-                    })
+            }
+            Err(e) => {
+                self.mark_ui_step(
+                    session_id,
+                    "synthesis",
+                    "error",
+                    Some(&format!("Plan mode failed: {}", e)),
+                )
+                .await;
+                self.update_ui_data(session_id, "/status/phase", json!("Error"))
                     .await;
 
-                    self.send_event(UnifiedEvent::MessageChunk {
-                        session_id: session_id.to_string(),
-                        content: format!(
-                            "I encountered an error while creating your implementation plan: {}",
-                            e
-                        ),
-                        is_complete: true,
-                    })
-                    .await;
-                }
+                self.send_event(UnifiedEvent::ThoughtChunk {
+                    session_id: session_id.to_string(),
+                    content: format!("Plan mode failed: {}", e),
+                    is_complete: true,
+                })
+                .await;
+
+                self.send_event(UnifiedEvent::MessageChunk {
+                    session_id: session_id.to_string(),
+                    content: format!(
+                        "I encountered an error while creating your implementation plan: {}",
+                        e
+                    ),
+                    is_complete: true,
+                })
+                .await;
             }
         }
 
@@ -591,23 +599,25 @@ Would you like me to create an implementation plan for this? I'll analyze your c
         .await;
 
         // Add to conversation items
-        let mut sessions = self.sessions.lock().await;
-        if let Some(session) = sessions.get_mut(session_id) {
-            session
-                .conversation_items
-                .push(UnifiedConversationItem::Message {
-                    id: uuid::Uuid::new_v4().to_string(),
-                    role: "user".to_string(),
-                    text: message.to_string(),
-                });
+        {
+            let mut sessions = self.sessions.lock().await;
+            if let Some(session) = sessions.get_mut(session_id) {
+                session
+                    .conversation_items
+                    .push(UnifiedConversationItem::Message {
+                        id: uuid::Uuid::new_v4().to_string(),
+                        role: "user".to_string(),
+                        text: message.to_string(),
+                    });
 
-            session
-                .conversation_items
-                .push(UnifiedConversationItem::Message {
-                    id: uuid::Uuid::new_v4().to_string(),
-                    role: "assistant".to_string(),
-                    text: response,
-                });
+                session
+                    .conversation_items
+                    .push(UnifiedConversationItem::Message {
+                        id: uuid::Uuid::new_v4().to_string(),
+                        role: "assistant".to_string(),
+                        text: response,
+                    });
+            }
         }
 
         self.update_ui_data(session_id, "/status/phase", json!("Awaiting Plan"))

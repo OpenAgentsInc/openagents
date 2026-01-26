@@ -143,7 +143,8 @@ fn score_parallel_exploration(example: &Example, prediction: &Prediction) -> Met
         notes.push("files_examined empty or invalid".to_string());
     }
 
-    let topic = example.get("topic", None).as_str().unwrap_or("");
+    let topic_value = example.get("topic", None);
+    let topic = topic_value.as_str().unwrap_or("");
     if !topic.is_empty() && findings.to_lowercase().contains(&topic.to_lowercase()) {
         score += 0.3;
     } else {
@@ -309,8 +310,8 @@ mod tests {
     #[test]
     fn topic_decomposition_scores_valid_output() {
         let topics = serde_json::json!([
-            {"name": "Core", "focus": "Check core flow", "patterns": ["core"]},
-            {"name": "UI", "focus": "Inspect UI", "patterns": ["ui"]}
+            {"name": "Core Systems", "focus": "Check core flow", "patterns": ["core_flow"]},
+            {"name": "User Interface", "focus": "Inspect UI", "patterns": ["interface_layer"]}
         ]);
         let mut data = HashMap::new();
         data.insert("topics".to_string(), Value::String(topics.to_string()));

@@ -11,3 +11,7 @@
 ## 2026-01-26
 - Added plan mode training storage and optimization loop for Autopilot Desktop signatures, including benchmark logging and manifest persistence.
 - Wired plan mode pipeline to record valid signature outputs, apply optimized instructions, and trigger background optimization runs.
+
+## 2026-01-27
+- Fixed Adjutant plan mode Send issues by releasing session locks before awaits and running the plan pipeline in a blocking task.
+- Updated plan mode metric test data to satisfy substantive-topic scoring.
