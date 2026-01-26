@@ -481,7 +481,7 @@ pub(crate) async fn spawn_workspace_session<E: EventSink>(
                     let (decision, run_id, sequence_id) = {
                         let mut full_auto = full_auto_clone.lock().await;
                         if let Some(state) = full_auto.get_mut(&workspace_id) {
-                            let mut decision = state.enforce_guardrails(
+                            let decision = state.enforce_guardrails(
                                 &request.thread_id,
                                 &request.summary,
                                 raw_decision,
@@ -514,7 +514,9 @@ pub(crate) async fn spawn_workspace_session<E: EventSink>(
                         .and_then(|g| serde_json::to_value(g).ok());
                     let summary_value =
                         serde_json::to_value(&request.summary).unwrap_or(Value::Null);
-                    let diagnostics_value = serde_json::to_value(&diagnostics).unwrap_or(Value::Null);
+                    let diagnostics_value =
+                        serde_json::to_value(&diagnostics).unwrap_or(Value::Null);
+                    let raw_prediction = diagnostics.raw_prediction.clone();
 
                     let decision_log = FullAutoDecisionLog {
                         timestamp: now,
@@ -543,7 +545,7 @@ pub(crate) async fn spawn_workspace_session<E: EventSink>(
                         workspace_id: workspace_id.clone(),
                         thread_id: request.thread_id.clone(),
                         turn_id: request.turn_id.clone(),
-                        raw_prediction: diagnostics.raw_prediction.clone(),
+                        raw_prediction: raw_prediction.clone(),
                         parse_diagnostics: diagnostics_value.clone(),
                     };
                     if let Err(err) = write_raw_decision_log(&raw_log) {
@@ -606,7 +608,7 @@ pub(crate) async fn spawn_workspace_session<E: EventSink>(
                                 "eventTs": now.to_rfc3339(),
                                 "sequenceId": sequence_id,
                                 "runId": run_id,
-                                "rawPrediction": decision_result.diagnostics.raw_prediction,
+                                "rawPrediction": raw_prediction,
                                 "parseDiagnostics": diagnostics_value,
                                 "summary": summary_value,
                             }
