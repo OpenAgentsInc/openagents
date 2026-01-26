@@ -443,7 +443,10 @@ fn should_log_app_server_event(method: &str, is_complete: bool) -> bool {
     if is_complete {
         return true;
     }
-    if method.contains("delta") {
+    if file_logger_verbose() {
+        return true;
+    }
+    if method.contains("delta") || method.contains("mcp_") {
         return false;
     }
     matches!(
@@ -452,17 +455,17 @@ fn should_log_app_server_event(method: &str, is_complete: bool) -> bool {
             | "thread/started"
             | "turn/started"
             | "turn/completed"
-            | "item/completed"
             | "codex/event/task_started"
             | "codex/event/task_complete"
-            | "codex/event/item_completed"
             | "codex/event/user_message"
-            | "codex/event/agent_message"
     )
 }
 
 fn should_log_acp_event(method: &str, flush_mode: &str) -> bool {
     if flush_mode != "false" {
+        return true;
+    }
+    if file_logger_verbose() {
         return true;
     }
     matches!(method, "session/prompt" | "turn/started" | "turn/completed")

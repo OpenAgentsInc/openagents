@@ -91,8 +91,6 @@ pub fn build_app() -> tauri::Builder<tauri::Wry> {
                 Ok(config) => {
                     if let Err(e) = ai_server::init_ai_server(config) {
                         eprintln!("Warning: Failed to initialize AI server: {}", e);
-                    } else {
-                        tracing::debug!("AI server initialized");
                     }
                 }
                 Err(e) => {
