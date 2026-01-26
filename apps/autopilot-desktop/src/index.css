@@ -455,7 +455,7 @@ body {
 
 .table {
   display: grid;
-  grid-template-columns: 120px 1fr;
+  grid-template-columns: minmax(90px, 120px) minmax(0, 1fr);
   column-gap: 10px;
   row-gap: 6px;
   font-size: 12px;
@@ -466,10 +466,14 @@ body {
   text-transform: uppercase;
   letter-spacing: 0.08em;
   font-size: 10px;
+  min-width: 0;
 }
 
 .value {
   color: var(--ink);
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .value.ok {
@@ -486,6 +490,8 @@ body {
 
 .mono {
   font-family: var(--font-mono);
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .field {
