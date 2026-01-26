@@ -213,7 +213,7 @@ Effect Schema decoders for IPC contracts
 ## File Structure
 
 ```
-crates/autopilot-desktop-backend/src/
+apps/autopilot-desktop/src-tauri/src/
 ├── agent/
 │   ├── mod.rs              # Module exports
 │   ├── unified.rs          # Unified types (AgentId, UnifiedEvent, etc.)
@@ -223,9 +223,11 @@ crates/autopilot-desktop-backend/src/
 │   ├── manager.rs          # Multi-agent manager
 │   └── commands.rs         # Tauri commands
 ├── acp.rs                  # ACP connection management
-├── ai_server/              # Local AI server config + lifecycle
 ├── backend/                # Codex app-server bridge
 └── lib.rs                  # Backend entry point
+
+crates/ai-server/
+└── src/                    # Local AI server config + lifecycle
 
 apps/autopilot-desktop/src/
 ├── agent/                  # Frontend agent adapters

@@ -372,7 +372,11 @@ fn get_tmp_dir() -> Result<PathBuf> {
     }
 
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    if let Some(repo_root) = manifest_dir.parent().and_then(|path| path.parent()) {
+    if let Some(repo_root) = manifest_dir
+        .parent()
+        .and_then(|path| path.parent())
+        .and_then(|path| path.parent())
+    {
         candidates.push(repo_root.join("apps").join("autopilot-desktop").join("tmp"));
     }
 

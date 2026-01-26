@@ -47,6 +47,7 @@ pub struct AdjutantAgent {
 
 #[derive(Debug, Clone)]
 struct SessionState {
+    #[allow(dead_code)]
     session_id: String,
     workspace_path: String,
     conversation_items: Vec<UnifiedConversationItem>,
@@ -69,6 +70,7 @@ impl AdjutantAgent {
         }
     }
 
+    #[allow(dead_code)]
     pub fn with_config(mut self, config: PlanModeConfig) -> Self {
         self.config = config;
         self

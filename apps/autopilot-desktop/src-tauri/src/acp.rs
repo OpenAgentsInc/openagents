@@ -408,6 +408,7 @@ impl AcpConnection {
     }
 
     /// Send a JSON-RPC notification to codex-acp
+    #[allow(dead_code)]
     pub async fn send_notification(&self, method: &str, params: Option<Value>) -> Result<()> {
         use tokio::io::AsyncWriteExt;
 

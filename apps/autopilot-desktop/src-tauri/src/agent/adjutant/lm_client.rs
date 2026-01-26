@@ -3,7 +3,9 @@
 //! Provides a dsrs::LM implementation that talks to the local bun server
 //! which proxies requests to Vercel AI Gateway.
 
-use crate::ai_server::AiServerConfig;
+#![allow(dead_code)]
+
+use ai_server::AiServerConfig;
 use super::lm_config::load_ai_gateway_config;
 use anyhow::{Result, anyhow};
 use reqwest::Client;

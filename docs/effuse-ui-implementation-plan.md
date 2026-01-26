@@ -145,7 +145,7 @@ Backend (Rust):
 - Create data structs:
   - `DsrsSignatureInfo { name, instruction, input_fields, output_fields }`
   - `DsrsSignatureList { signatures: Vec<DsrsSignatureInfo> }`
-- Add Tauri commands in `crates/autopilot-desktop-backend`:
+- Add Tauri commands in `apps/autopilot-desktop/src-tauri/src/`:
   - `list_dsrs_signatures`
   - `get_dsrs_signature`
 - Update `contracts/ipc.rs` and regenerate TS types.
@@ -162,7 +162,7 @@ Frontend (TS):
   `DeepPlanningSignature`, and `ResultValidationSignature` into
   `crates/dsrs/src/signatures/`.
 - Ensure non-primitive types derive `schemars::JsonSchema` for schema emission.
-- Update `crates/autopilot-desktop-backend` to import from dsrs crate.
+- Update `apps/autopilot-desktop/src-tauri/src/` to import from dsrs crate.
 - Remove local signature duplicates and clean up old modules.
 
 ### Phase 5: Signature-driven UI generation
@@ -225,8 +225,8 @@ Backend:
 - `apps/autopilot-desktop/src/components/catalog.ts`
 - `apps/autopilot-desktop/src/main.ts`
 - `crates/dsrs/src/signatures/*`
-- `crates/autopilot-desktop-backend/src/agent/adjutant/*`
-- `crates/autopilot-desktop-backend/src/contracts/ipc.rs`
+- `apps/autopilot-desktop/src-tauri/src/agent/adjutant/*`
+- `apps/autopilot-desktop/src-tauri/src/contracts/ipc.rs`
 - `apps/autopilot-desktop/src/contracts/tauri.ts`
 - `apps/autopilot-desktop/src/gen/tauri-contracts.ts`
 - `docs/adr/*` (new ADRs for UI tree + IPC contract)

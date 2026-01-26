@@ -22,7 +22,7 @@ const ADJUTANT_PATHS = [
   "src-tauri/src/agent/manager.rs",
   "src-tauri/src/agent/commands.rs",
   "src-tauri/src/agent/resolver.rs",
-  "src-tauri/src/ai_server",
+  "../../crates/ai-server",
   "src-tauri/Cargo.toml",
 
   // Sidecar (AI Server)

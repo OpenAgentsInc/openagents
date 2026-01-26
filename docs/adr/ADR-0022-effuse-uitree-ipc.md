@@ -87,5 +87,5 @@ Versioning rules:
 
 - `apps/autopilot-desktop/src/effuse/ui`
 - `apps/autopilot-desktop/src/components/catalog.ts`
-- `crates/autopilot-desktop-backend/src/contracts/ipc.rs`
+- `apps/autopilot-desktop/src-tauri/src/contracts/ipc.rs`
 - [GLOSSARY.md](../../GLOSSARY.md) — Canonical terminology

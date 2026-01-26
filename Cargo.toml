@@ -4,8 +4,8 @@ members = [
     "apps/autopilot-desktop/src-tauri",
     "crates/adjutant",
     "crates/agent",
+    "crates/ai-server",
     "crates/arrow",
-    "crates/autopilot-desktop-backend",
     "crates/autopilot-desktop-runner",
     "crates/autopilot",
     "crates/autopilot-core",
@@ -72,6 +72,7 @@ nostr = { path = "crates/nostr/core" }
 dsrs = { path = "crates/dsrs" }
 dsrs-macros = { path = "crates/dsrs-macros" }
 openagents-utils = { path = "crates/openagents-utils" }
+ai-server = { path = "crates/ai-server" }
 
 # External crates
 anyhow = "1.0.86"
@@ -102,6 +103,7 @@ walkdir = "2.5"
 wgpu = "24.0"
 winit = "0.30"
 pollster = "0.4"
+once_cell = "1.19"
 
 [profile.dev]
 opt-level = 1

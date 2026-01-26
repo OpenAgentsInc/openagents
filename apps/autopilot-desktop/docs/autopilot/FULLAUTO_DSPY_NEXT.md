@@ -43,7 +43,7 @@ summaries. We must enrich and consume app-server `turn/*` signals directly.
 
 ### 1) Full Auto controller + state (app-server driven)
 
-Add a controller under `crates/autopilot-desktop-backend/src/agent/`:
+Add a controller under `apps/autopilot-desktop/src-tauri/src/agent/`:
 
 - `full_auto/mod.rs`: `FullAutoController`, `FullAutoSessionState`.
 - `full_auto/aggregator.rs`: builds `TurnSummary` from events.

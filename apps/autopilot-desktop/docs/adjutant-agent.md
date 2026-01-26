@@ -9,7 +9,7 @@ The **Adjutant Agent** is a DSPy-native agent designed for the Autopilot ACP (Ag
 ### Core Components
 
 ```
-crates/autopilot-desktop-backend/src/agent/
+apps/autopilot-desktop/src-tauri/src/agent/
 ├── adjutant/
 │   ├── mod.rs              # Main module
 │   ├── agent.rs            # Agent implementation
@@ -106,7 +106,7 @@ struct ComplexityClassificationSignature {
 ## Implementation Plan
 
 ### Phase 1: Core Infrastructure
-- [x] Create `crates/autopilot-desktop-backend/src/agent/adjutant/` module structure
+- [x] Create `apps/autopilot-desktop/src-tauri/src/agent/adjutant/` module structure
 - [x] Implement basic Agent trait for Adjutant
 - [x] Wire dsrs signatures into the planning pipeline
 - [x] Create planning pipeline foundation
@@ -212,7 +212,7 @@ The Adjutant Agent has been successfully implemented and integrated into the Aut
 
 #### **Core Infrastructure**
 - ✅ Added `AgentId::Adjutant` to unified agent system
-- ✅ Created complete agent module at `crates/autopilot-desktop-backend/src/agent/adjutant/`
+- ✅ Created complete agent module at `apps/autopilot-desktop/src-tauri/src/agent/adjutant/`
 - ✅ Integrated with existing Agent trait and manager
 - ✅ Updated TypeScript types and agent registry
 

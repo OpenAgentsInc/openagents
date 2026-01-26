@@ -1,6 +1,6 @@
 //! Shared LM configuration helpers for the Adjutant agent.
 
-use crate::ai_server::AiServerConfig;
+use ai_server::AiServerConfig;
 use dsrs::LM;
 
 pub fn load_ai_gateway_config() -> Result<AiServerConfig, String> {
@@ -9,6 +9,7 @@ pub fn load_ai_gateway_config() -> Result<AiServerConfig, String> {
     Ok(config)
 }
 
+#[allow(dead_code)]
 pub async fn build_dsrs_lm_from_env() -> Result<LM, String> {
     let config = load_ai_gateway_config()?;
     build_dsrs_lm(&config).await

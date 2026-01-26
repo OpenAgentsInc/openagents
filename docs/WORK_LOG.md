@@ -19,3 +19,7 @@
 ## 2026-01-28
 - Surface optimized plan-mode instructions in the Adjutant signature UI panels.
 - Refined plan-mode documentation to match the current pipeline and optimization artifacts.
+
+## 2026-01-29
+- Moved Autopilot Desktop backend modules into `apps/autopilot-desktop/src-tauri/src/` and removed the backend crate.
+- Extracted AI Gateway server management into the new `crates/ai-server/` crate and updated app wiring.

@@ -62,6 +62,7 @@ pub struct PlanResult {
     pub implementation_plan: String,
     pub topics_explored: Vec<String>,
     pub files_examined: Vec<String>,
+    #[allow(dead_code)]
     pub confidence: f32,
 }
 
@@ -126,6 +127,7 @@ impl PlanModePipeline {
     }
 
     /// Set the language model for DSPy predictions
+    #[allow(dead_code)]
     pub fn with_lm(mut self, lm: Arc<LM>) -> Self {
         self.lm = Some(lm);
         self

@@ -21,7 +21,7 @@
   and runs with `tauri::generate_context!()`.
 - `apps/autopilot-desktop/src-tauri/src/main.rs` is now a minimal entrypoint.
 - `apps/autopilot-desktop/src-tauri/src/bin/gen_types.rs` now calls
-  `autopilot_desktop_backend::contracts::export_ts`.
+  `autopilot_desktop_lib::contracts::export_ts`.
 - Environment loading and tmp path resolution were updated to locate
   `apps/autopilot-desktop/.env` and `apps/autopilot-desktop/tmp` reliably.
 
@@ -56,3 +56,9 @@
    initialization works with `apps/autopilot-desktop/.env`.
 3. Consider removing the duplicate ADR-0001 copy in
    `apps/autopilot-desktop/docs/adr/` if not needed.
+
+## Update
+
+- The desktop backend has since moved back into
+  `apps/autopilot-desktop/src-tauri/src/`, and AI server management is now
+  provided by `crates/ai-server/`.
