@@ -13,6 +13,7 @@ use tokio::sync::{mpsc, oneshot, Mutex};
 use tokio::time::timeout;
 
 use crate::backend::events::{AppServerEvent, EventSink};
+use crate::full_auto::{FullAutoMap, DEFAULT_CONTINUE_PROMPT};
 use crate::types::WorkspaceEntry;
 
 fn extract_thread_id(value: &Value) -> Option<String> {
@@ -136,6 +137,81 @@ pub(crate) fn build_codex_command_with_bin(codex_bin: Option<String>) -> Command
     command
 }
 
+fn extract_turn_id(value: &Value) -> Option<String> {
+    let params = value.get("params")?;
+    if let Some(turn_id) = params
+        .get("turnId")
+        .or_else(|| params.get("turn_id"))
+        .and_then(|id| id.as_str())
+    {
+        return Some(turn_id.to_string());
+    }
+    params
+        .get("turn")
+        .and_then(|turn| turn.get("id"))
+        .and_then(|id| id.as_str())
+        .map(|id| id.to_string())
+}
+
+fn build_tool_input_response(params: &Value) -> Value {
+    let mut answers = serde_json::Map::new();
+    let questions = params
+        .get("questions")
+        .and_then(|value| value.as_array())
+        .cloned()
+        .unwrap_or_default();
+
+    for question in questions {
+        let id = question
+            .get("id")
+            .and_then(|value| value.as_str())
+            .map(|value| value.to_string());
+        let answer = question
+            .get("options")
+            .and_then(|value| value.as_array())
+            .and_then(|options| options.first())
+            .and_then(|option| option.get("id"))
+            .and_then(|value| value.as_str())
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| "yes".to_string());
+
+        if let Some(id) = id {
+            answers.insert(
+                id,
+                json!({
+                    "answers": [answer],
+                }),
+            );
+        }
+    }
+
+    json!({ "answers": answers })
+}
+
+fn build_auto_response(method: &str, params: Option<&Value>) -> Option<Value> {
+    match method {
+        "item/commandExecution/requestApproval" => Some(json!({ "decision": "accept" })),
+        "item/fileChange/requestApproval" => Some(json!({ "decision": "accept" })),
+        "item/tool/requestUserInput" => params.map(build_tool_input_response),
+        _ => None,
+    }
+}
+
+fn build_full_auto_turn_params(thread_id: &str, cwd: &str, prompt: &str) -> Value {
+    let message = if prompt.trim().is_empty() {
+        DEFAULT_CONTINUE_PROMPT
+    } else {
+        prompt.trim()
+    };
+    json!({
+        "threadId": thread_id,
+        "input": [{ "type": "text", "text": message }],
+        "cwd": cwd,
+        "approvalPolicy": "never",
+        "sandboxPolicy": { "type": "dangerFullAccess" }
+    })
+}
+
 pub(crate) async fn check_codex_installation(
     codex_bin: Option<String>,
 ) -> Result<Option<String>, String> {
@@ -190,6 +266,7 @@ pub(crate) async fn spawn_workspace_session<E: EventSink>(
     client_version: String,
     event_sink: E,
     codex_home: Option<PathBuf>,
+    full_auto: FullAutoMap,
 ) -> Result<Arc<WorkspaceSession>, String> {
     let codex_bin = entry
         .codex_bin
@@ -225,6 +302,7 @@ pub(crate) async fn spawn_workspace_session<E: EventSink>(
     let session_clone = Arc::clone(&session);
     let workspace_id = entry.id.clone();
     let event_sink_clone = event_sink.clone();
+    let full_auto_clone = full_auto.clone();
     tokio::spawn(async move {
         let mut lines = BufReader::new(stdout).lines();
         while let Ok(Some(line)) = lines.next_line().await {
@@ -259,6 +337,23 @@ pub(crate) async fn spawn_workspace_session<E: EventSink>(
                         let _ = tx.send(value);
                     }
                 } else if has_method {
+                    let method = value.get("method").and_then(|m| m.as_str()).unwrap_or("");
+                    let params = value.get("params");
+
+                    if let Some(response) = {
+                        let full_auto = full_auto_clone.lock().await;
+                        full_auto
+                            .get(&workspace_id)
+                            .filter(|state| state.matches_thread(thread_id.as_deref()))
+                            .and_then(|_| build_auto_response(method, params))
+                    } {
+                        let session_for_response = Arc::clone(&session_clone);
+                        let id_value = Value::from(id);
+                        tokio::spawn(async move {
+                            let _ = session_for_response.send_response(id_value, response).await;
+                        });
+                    }
+
                     // Check for background thread callback
                     let mut sent_to_background = false;
                     if let Some(ref tid) = thread_id {
@@ -279,7 +374,65 @@ pub(crate) async fn spawn_workspace_session<E: EventSink>(
                 } else if let Some(tx) = session_clone.pending.lock().await.remove(&id) {
                     let _ = tx.send(value);
                 }
-            } else if has_method {
+                } else if has_method {
+                    let method = value.get("method").and_then(|m| m.as_str()).unwrap_or("");
+                    let request_id = value.get("id").cloned();
+                    let params = value.get("params");
+
+                    if let Some(response) = {
+                        let full_auto = full_auto_clone.lock().await;
+                        full_auto
+                            .get(&workspace_id)
+                            .filter(|state| state.matches_thread(thread_id.as_deref()))
+                            .and_then(|_| build_auto_response(method, params))
+                    } {
+                        if let Some(request_id) = request_id {
+                            let session_for_response = Arc::clone(&session_clone);
+                            tokio::spawn(async move {
+                                let _ = session_for_response.send_response(request_id, response).await;
+                            });
+                        }
+                    }
+
+                    if method == "turn/completed" {
+                        let turn_id = extract_turn_id(&value);
+                        let auto_params = {
+                            let mut full_auto = full_auto_clone.lock().await;
+                            if let Some(state) = full_auto.get_mut(&workspace_id) {
+                                if state.should_continue(thread_id.as_deref(), turn_id.as_deref()) {
+                                let thread_id = state
+                                    .thread_id
+                                    .clone()
+                                    .or_else(|| thread_id.clone());
+                                let prompt = state.continue_prompt.clone();
+                                thread_id.map(|thread_id| (thread_id, prompt))
+                            } else {
+                                None
+                            }
+                        } else {
+                            None
+                        }
+                    };
+
+                    if let Some((thread_id, prompt)) = auto_params {
+                        let session_for_turn = Arc::clone(&session_clone);
+                        let cwd = session_for_turn.entry.path.clone();
+                        tokio::spawn(async move {
+                            let params = build_full_auto_turn_params(&thread_id, &cwd, &prompt);
+                            let _ = session_for_turn.send_request("turn/start", params).await;
+                        });
+                    }
+                }
+
+                if method == "thread/started" {
+                    if let Some(thread_id) = thread_id.as_deref() {
+                        let mut full_auto = full_auto_clone.lock().await;
+                        if let Some(state) = full_auto.get_mut(&workspace_id) {
+                            state.adopt_thread(thread_id);
+                        }
+                    }
+                }
+
                 // Check for background thread callback
                 let mut sent_to_background = false;
                 if let Some(ref tid) = thread_id {

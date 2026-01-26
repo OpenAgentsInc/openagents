@@ -25,7 +25,9 @@ use crate::contracts::ipc::{
     TestCodexConnectionResponse,
     WorkspaceConnectionResponse,
     WorkspaceConnectionStatusResponse,
+    SetFullAutoResponse,
 };
+use crate::full_auto::{FullAutoMap, FullAutoState, DEFAULT_CONTINUE_PROMPT};
 use crate::state::AppState;
 use crate::types::WorkspaceEntry;
 
@@ -34,6 +36,7 @@ pub(crate) async fn spawn_workspace_session(
     default_codex_bin: Option<String>,
     app_handle: AppHandle,
     codex_home: Option<PathBuf>,
+    full_auto: FullAutoMap,
 ) -> Result<Arc<WorkspaceSession>, String> {
     let client_version = app_handle.package_info().version.to_string();
     let event_sink = TauriEventSink::new(app_handle)
@@ -45,6 +48,7 @@ pub(crate) async fn spawn_workspace_session(
         client_version,
         event_sink,
         codex_home,
+        full_auto,
     )
     .await
 }
@@ -111,7 +115,14 @@ pub(crate) async fn test_codex_connection(
         settings.codex_bin.clone()
     };
 
-    let session = spawn_workspace_session(entry.clone(), default_bin, app, None).await?;
+    let session = spawn_workspace_session(
+        entry.clone(),
+        default_bin,
+        app,
+        None,
+        state.full_auto.clone(),
+    )
+    .await?;
 
     // Test by calling model/list
     let result = session.send_request("model/list", json!({})).await;
@@ -184,7 +195,14 @@ pub(crate) async fn connect_workspace(
 
     let codex_home = resolve_workspace_codex_home(&entry, None);
 
-    let session = spawn_workspace_session(entry.clone(), default_bin, app.clone(), codex_home).await?;
+    let session = spawn_workspace_session(
+        entry.clone(),
+        default_bin,
+        app.clone(),
+        codex_home,
+        state.full_auto.clone(),
+    )
+    .await?;
 
     state
         .sessions
@@ -212,6 +230,11 @@ pub(crate) async fn disconnect_workspace(
     if let Some(session) = session {
         let mut child = session.child.lock().await;
         let _ = child.kill().await;
+    }
+
+    {
+        let mut full_auto = state.full_auto.lock().await;
+        full_auto.remove(&workspace_id);
     }
     
     // Note: Events will be flushed when completion is detected (turn/completed event)
@@ -250,9 +273,16 @@ pub(crate) async fn start_thread(
     let session = sessions
         .get(&workspace_id)
         .ok_or("workspace not connected")?;
+    let full_auto_enabled = {
+        let full_auto = state.full_auto.lock().await;
+        full_auto
+            .get(&workspace_id)
+            .map(|config| config.enabled)
+            .unwrap_or(false)
+    };
     let params = json!({
         "cwd": session.entry.path,
-        "approvalPolicy": "on-request"
+        "approvalPolicy": if full_auto_enabled { "never" } else { "on-request" }
     });
     
     session
@@ -323,7 +353,18 @@ pub(crate) async fn send_user_message(
     let session = sessions
         .get(&workspace_id)
         .ok_or("workspace not connected")?;
-    let access_mode = access_mode.unwrap_or_else(|| "current".to_string());
+    let full_auto_enabled = {
+        let full_auto = state.full_auto.lock().await;
+        full_auto
+            .get(&workspace_id)
+            .map(|config| config.enabled)
+            .unwrap_or(false)
+    };
+    let access_mode = if full_auto_enabled {
+        "full-access".to_string()
+    } else {
+        access_mode.unwrap_or_else(|| "current".to_string())
+    };
     let sandbox_policy = match access_mode.as_str() {
         "full-access" => json!({
             "type": "dangerFullAccess"
@@ -364,6 +405,44 @@ pub(crate) async fn send_user_message(
         .send_request("turn/start", params)
         .await
         .map(SendUserMessageResponse)
+}
+
+#[tauri::command]
+pub(crate) async fn set_full_auto(
+    workspace_id: String,
+    enabled: bool,
+    thread_id: Option<String>,
+    continue_prompt: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<SetFullAutoResponse, String> {
+    let mut map = state.full_auto.lock().await;
+
+    if enabled {
+        let entry = map
+            .entry(workspace_id.clone())
+            .or_insert_with(|| FullAutoState::new(thread_id.clone(), continue_prompt.clone()));
+        entry.enabled = true;
+        if let Some(thread_id) = thread_id {
+            entry.thread_id = Some(thread_id);
+        }
+        entry.set_continue_prompt(continue_prompt);
+        entry.last_turn_id = None;
+        return Ok(SetFullAutoResponse {
+            workspace_id,
+            enabled: true,
+            thread_id: entry.thread_id.clone(),
+            continue_prompt: entry.continue_prompt.clone(),
+        });
+    }
+
+    map.remove(&workspace_id);
+
+    Ok(SetFullAutoResponse {
+        workspace_id,
+        enabled: false,
+        thread_id: None,
+        continue_prompt: DEFAULT_CONTINUE_PROMPT.to_string(),
+    })
 }
 
 #[tauri::command]

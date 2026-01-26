@@ -42,6 +42,10 @@ export interface ListModelsRequest { workspaceId: string, }
 
 export type ListModelsResponse = JsonValue;
 
+export interface SetFullAutoRequest { workspaceId: string, enabled: boolean, threadId: string | null, continuePrompt: string | null, }
+
+export interface SetFullAutoResponse { workspaceId: string, enabled: boolean, threadId: string | null, continuePrompt: string, }
+
 export type CurrentDirectory = string;
 
 export interface ConnectUnifiedAgentRequest { agentIdStr: string, workspacePath: string, workspaceId: string, }
