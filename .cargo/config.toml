@@ -1,6 +1,7 @@
 [alias]
 arrow = "run -p arrow@0.1.0 --"
 autopilot = "run -p autopilot-desktop-runner --"
+"autopilot:release" = "!cd apps/autopilot-desktop && bun run tauri build && open src-tauri/target/release/bundle/macos/Autopilot.app"
 manatap = "run -p manatap --"
 storybook = "run -p wgpui --example storybook --features desktop"
 pylon = "run -p pylon --release --"
