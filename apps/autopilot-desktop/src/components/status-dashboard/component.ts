@@ -55,6 +55,8 @@ type StatusState = {
   doctor: DoctorState
   lastEventText: string
   lastEventTime: string
+  lastUpdated: string
+  commandInput: string
   busy: BusyState
 }
 
@@ -63,11 +65,15 @@ type StatusEvent =
   | { type: "ConnectWorkspace" }
   | { type: "DisconnectWorkspace" }
   | { type: "UpdateWorkspacePath"; path: string }
+  | { type: "UpdateCommandInput"; value: string }
+  | { type: "SubmitCommand"; value: string }
   | { type: "RefreshWorkspaceStatus" }
   | { type: "AppServerEvent"; payload: AppServerEvent }
 
 const workspaceIdKey = "autopilotWorkspaceId"
 const workspacePathKey = "autopilotWorkspacePath"
+
+const nowTime = () => new Date().toLocaleTimeString()
 
 const loadWorkspaceId = (): string => {
   const stored = window.localStorage.getItem(workspaceIdKey)
@@ -85,7 +91,7 @@ const loadWorkspaceId = (): string => {
 const formatEvent = (payload: AppServerEvent) => {
   const method = payload.message?.method ?? "unknown"
   const params = payload.message?.params
-  const time = new Date().toLocaleTimeString()
+  const time = nowTime()
   const header = `[${time}] ${method}`
   if (params === undefined) {
     return { time, text: header }
@@ -95,12 +101,12 @@ const formatEvent = (payload: AppServerEvent) => {
 
 const deriveStatus = (state: StatusState) => {
   if (!state.doctor.ok || !state.doctor.appServerOk) {
-    return { level: "error" as const, label: "Codex not ready" }
+    return { level: "error" as const, label: "NOT READY" }
   }
   if (state.workspaceConnected) {
-    return { level: "ok" as const, label: "App-server connected" }
+    return { level: "ok" as const, label: "CONNECTED" }
   }
-  return { level: "warn" as const, label: "Ready to connect" }
+  return { level: "warn" as const, label: "READY" }
 }
 
 const invokeCommand = <T>(command: string, payload?: Record<string, unknown>) =>
@@ -125,7 +131,9 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
       detail: "",
     },
     lastEventText: "Waiting for app-server events...",
-    lastEventTime: "Waiting",
+    lastEventTime: "--",
+    lastUpdated: nowTime(),
+    commandInput: "",
     busy: {
       doctor: false,
       connect: false,
@@ -138,73 +146,146 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
       const state = yield* ctx.state.get
       const status = deriveStatus(state)
       const cliStatus = state.doctor.version
-        ? `ok (${state.doctor.version})`
-        : "not found"
-      const appServerStatus = state.doctor.appServerOk ? "ready" : "unavailable"
+        ? `OK ${state.doctor.version}`
+        : "MISSING"
+      const appServerStatus = state.doctor.appServerOk ? "READY" : "DOWN"
+      const connectionLabel = state.workspaceConnected ? "CONNECTED" : "DISCONNECTED"
       const connectDisabled = state.busy.connect
       const disconnectDisabled = state.busy.disconnect || !state.workspaceConnected
       const refreshDisabled = state.busy.doctor
 
       return html`
-        <div class="app">
-          <header class="header">
-            <div class="title">Autopilot</div>
-            <div class="status-pill" data-state="${status.level}">${status.label}</div>
-          </header>
-          <main class="main">
+        <div class="terminal">
+          <div class="status-strip">
+            <div class="status-item">
+              <span class="status-label">Status</span>
+              <span class="status-value ${status.level}">${status.label}</span>
+            </div>
+            <div class="status-item">
+              <span class="status-label">Workspace</span>
+              <span class="status-value mono">${state.workspaceId}</span>
+            </div>
+            <div class="status-item">
+              <span class="status-label">Updated</span>
+              <span class="status-value">${state.lastUpdated}</span>
+            </div>
+          </div>
+
+          <div class="command-bar">
+            <span class="command-label">Command</span>
+            <input
+              id="command-input"
+              class="command-input"
+              type="text"
+              placeholder="connect | disconnect | doctor | cd /path"
+              value="${state.commandInput}"
+            />
+            <div class="command-hints">F2 CONNECT | F3 DISCONNECT | F5 DOCTOR | F12 STORYBOOK</div>
+          </div>
+
+          <div class="grid">
             <section class="panel">
-              <div class="panel-head">
-                <h1>Codex App-Server</h1>
-                <button data-action="refresh-doctor" ${refreshDisabled ? "disabled" : ""}>Refresh</button>
-              </div>
-              <div class="grid">
-                <div class="stat">
-                  <span class="label">CLI</span>
-                  <span class="value">${cliStatus}</span>
+              <div class="panel-title">System</div>
+              <div class="panel-body">
+                <div class="table">
+                  <div class="label">CLI</div>
+                  <div class="value ${state.doctor.ok ? "ok" : "error"}">${cliStatus}</div>
+                  <div class="label">App-Server</div>
+                  <div class="value ${state.doctor.appServerOk ? "ok" : "error"}">${appServerStatus}</div>
+                  <div class="label">Binary</div>
+                  <div class="value mono">${state.doctor.codexBin ?? "default"}</div>
                 </div>
-                <div class="stat">
-                  <span class="label">App-Server</span>
-                  <span class="value">${appServerStatus}</span>
-                </div>
-                <div class="stat">
-                  <span class="label">Binary</span>
-                  <span class="value mono">${state.doctor.codexBin ?? "default"}</span>
-                </div>
-              </div>
-              <div class="hint">${state.doctor.detail}</div>
-            </section>
-            <section class="panel">
-              <div class="panel-head">
-                <h2>Workspace</h2>
+                <div class="note">${state.doctor.detail || "No diagnostics."}</div>
                 <div class="actions">
-                  <button data-action="connect" ${connectDisabled ? "disabled" : ""}>Connect</button>
-                  <button data-action="disconnect" class="secondary" ${disconnectDisabled ? "disabled" : ""}>Disconnect</button>
+                  <button
+                    class="btn"
+                    data-action="refresh-doctor"
+                    ${refreshDisabled ? "disabled" : ""}
+                  >
+                    DOCTOR
+                  </button>
                 </div>
               </div>
-              <label class="field">
-                <span>Working directory</span>
-                <input id="workspace-path" type="text" value="${state.workspacePath}" placeholder="/path/to/workspace" />
-              </label>
-              <div class="grid">
-                <div class="stat">
-                  <span class="label">Connection</span>
-                  <span class="value">${state.workspaceConnected ? "Connected" : "Disconnected"}</span>
-                </div>
-                <div class="stat">
-                  <span class="label">Workspace ID</span>
-                  <span class="value mono">${state.workspaceId}</span>
-                </div>
-              </div>
-              <div class="hint">${state.workspaceMessage}</div>
             </section>
+
             <section class="panel">
-              <div class="panel-head">
-                <h2>Last App-Server Event</h2>
-                <span class="subtle">${state.lastEventTime}</span>
+              <div class="panel-title">Workspace</div>
+              <div class="panel-body">
+                <label class="field">
+                  <span class="label">Working Dir</span>
+                  <input
+                    id="workspace-path"
+                    class="input"
+                    type="text"
+                    placeholder="/path/to/workspace"
+                    value="${state.workspacePath}"
+                  />
+                </label>
+                <div class="actions">
+                  <button
+                    class="btn primary"
+                    data-action="connect"
+                    ${connectDisabled ? "disabled" : ""}
+                  >
+                    CONNECT
+                  </button>
+                  <button
+                    class="btn secondary"
+                    data-action="disconnect"
+                    ${disconnectDisabled ? "disabled" : ""}
+                  >
+                    DISCONNECT
+                  </button>
+                </div>
+                <div class="table">
+                  <div class="label">Connection</div>
+                  <div class="value ${state.workspaceConnected ? "ok" : "error"}">${connectionLabel}</div>
+                  <div class="label">Last Event</div>
+                  <div class="value">${state.lastEventTime}</div>
+                </div>
+                <div class="note">${state.workspaceMessage || ""}</div>
               </div>
-              <pre class="event-log">${state.lastEventText}</pre>
             </section>
-          </main>
+
+            <section class="panel">
+              <div class="panel-title">App-Server Feed</div>
+              <div class="panel-body">
+                <pre class="event-log">${state.lastEventText}</pre>
+              </div>
+            </section>
+
+            <section class="panel">
+              <div class="panel-title">Summary</div>
+              <div class="panel-body">
+                <div class="table">
+                  <div class="label">Overall</div>
+                  <div class="value ${status.level}">${status.label}</div>
+                  <div class="label">Workspace</div>
+                  <div class="value ${state.workspaceConnected ? "ok" : "error"}">${connectionLabel}</div>
+                  <div class="label">Event Time</div>
+                  <div class="value">${state.lastEventTime}</div>
+                  <div class="label">Update</div>
+                  <div class="value">${state.lastUpdated}</div>
+                </div>
+                <div class="note">${state.workspaceMessage || state.doctor.detail || ""}</div>
+              </div>
+            </section>
+          </div>
+
+          <div class="status-strip bottom">
+            <div class="status-item">
+              <span class="status-label">App-Server</span>
+              <span class="status-value ${state.doctor.appServerOk ? "ok" : "error"}">${appServerStatus}</span>
+            </div>
+            <div class="status-item">
+              <span class="status-label">CLI</span>
+              <span class="status-value ${state.doctor.ok ? "ok" : "error"}">${cliStatus}</span>
+            </div>
+            <div class="status-item">
+              <span class="status-label">Last Event</span>
+              <span class="status-value">${state.lastEventTime}</span>
+            </div>
+          </div>
         </div>
       `
     }),
@@ -215,6 +296,65 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
         yield* ctx.state.update((current) => ({
           ...current,
           workspacePath: event.path,
+        }))
+        return
+      }
+
+      if (event.type === "UpdateCommandInput") {
+        yield* ctx.state.update((current) => ({
+          ...current,
+          commandInput: event.value,
+        }))
+        return
+      }
+
+      if (event.type === "SubmitCommand") {
+        const command = event.value.trim()
+        if (!command) {
+          yield* ctx.state.update((state) => ({
+            ...state,
+            commandInput: "",
+          }))
+          return
+        }
+
+        const [rawHead, ...rest] = command.split(/\s+/)
+        const head = rawHead.toLowerCase()
+        const arg = rest.join(" ").trim()
+
+        if (head === "connect") {
+          yield* ctx.emit({ type: "ConnectWorkspace" })
+        } else if (head === "disconnect") {
+          yield* ctx.emit({ type: "DisconnectWorkspace" })
+        } else if (head === "doctor" || head === "refresh") {
+          yield* ctx.emit({ type: "RefreshDoctor" })
+        } else if (head === "cd" || head === "cwd") {
+          if (!arg) {
+            yield* ctx.state.update((state) => ({
+              ...state,
+              workspaceMessage: "Command requires a path.",
+              lastUpdated: nowTime(),
+            }))
+          } else {
+            window.localStorage.setItem(workspacePathKey, arg)
+            yield* ctx.state.update((state) => ({
+              ...state,
+              workspacePath: arg,
+              workspaceMessage: `Working dir set to ${arg}`,
+              lastUpdated: nowTime(),
+            }))
+          }
+        } else {
+          yield* ctx.state.update((state) => ({
+            ...state,
+            workspaceMessage: `Unknown command: ${command}`,
+            lastUpdated: nowTime(),
+          }))
+        }
+
+        yield* ctx.state.update((state) => ({
+          ...state,
+          commandInput: "",
         }))
         return
       }
@@ -240,6 +380,7 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
                 detail: response.details ?? "",
               },
               busy: { ...current.busy, doctor: false },
+              lastUpdated: nowTime(),
             }))
           ),
           Effect.catchAll((error) =>
@@ -253,6 +394,7 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
                 detail: String(error),
               },
               busy: { ...current.busy, doctor: false },
+              lastUpdated: nowTime(),
             }))
           ),
           Effect.asVoid
@@ -270,6 +412,7 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
             ctx.state.update((state) => ({
               ...state,
               workspaceConnected: response.connected,
+              lastUpdated: nowTime(),
             }))
           ),
           Effect.catchAll((error) =>
@@ -277,6 +420,7 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
               ...state,
               workspaceConnected: false,
               workspaceMessage: `Status check failed: ${String(error)}`,
+              lastUpdated: nowTime(),
             }))
           ),
           Effect.asVoid
@@ -291,6 +435,7 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
           yield* ctx.state.update((state) => ({
             ...state,
             workspaceMessage: "Enter a working directory first.",
+            lastUpdated: nowTime(),
           }))
           return
         }
@@ -312,6 +457,7 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
               workspaceConnected: response.success,
               workspaceMessage: response.message,
               busy: { ...state.busy, connect: false },
+              lastUpdated: nowTime(),
             }))
           ),
           Effect.catchAll((error) =>
@@ -320,6 +466,7 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
               workspaceConnected: false,
               workspaceMessage: `Connection failed: ${String(error)}`,
               busy: { ...state.busy, connect: false },
+              lastUpdated: nowTime(),
             }))
           ),
           Effect.asVoid
@@ -344,6 +491,7 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
               workspaceConnected: false,
               workspaceMessage: response.message,
               busy: { ...state.busy, disconnect: false },
+              lastUpdated: nowTime(),
             }))
           ),
           Effect.catchAll((error) =>
@@ -351,6 +499,7 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
               ...state,
               workspaceMessage: `Disconnect failed: ${String(error)}`,
               busy: { ...state.busy, disconnect: false },
+              lastUpdated: nowTime(),
             }))
           ),
           Effect.asVoid
@@ -368,6 +517,7 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
           ...state,
           lastEventText: formatted.text,
           lastEventTime: formatted.time,
+          lastUpdated: formatted.time,
           workspaceConnected:
             event.payload.message?.method === "codex/connected"
               ? true
@@ -408,10 +558,60 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
         "#workspace-path",
         "input",
         (event, target) => {
+          void event
           const value = (target as HTMLInputElement).value
           window.localStorage.setItem(workspacePathKey, value)
           emit({ type: "UpdateWorkspacePath", path: value })
         }
+      )
+
+      yield* ctx.dom.delegate(
+        ctx.container,
+        "#command-input",
+        "input",
+        (event, target) => {
+          void event
+          const value = (target as HTMLInputElement).value
+          emit({ type: "UpdateCommandInput", value })
+        }
+      )
+
+      yield* ctx.dom.delegate(
+        ctx.container,
+        "#command-input",
+        "keydown",
+        (event, target) => {
+          const keyEvent = event as KeyboardEvent
+          if (keyEvent.key === "Enter") {
+            keyEvent.preventDefault()
+            emit({
+              type: "SubmitCommand",
+              value: (target as HTMLInputElement).value,
+            })
+          }
+        }
+      )
+
+      const handleKeydown = (event: KeyboardEvent) => {
+        if (event.key === "F2") {
+          event.preventDefault()
+          emit({ type: "ConnectWorkspace" })
+        }
+        if (event.key === "F3") {
+          event.preventDefault()
+          emit({ type: "DisconnectWorkspace" })
+        }
+        if (event.key === "F5") {
+          event.preventDefault()
+          emit({ type: "RefreshDoctor" })
+          emit({ type: "RefreshWorkspaceStatus" })
+        }
+      }
+
+      window.addEventListener("keydown", handleKeydown)
+
+      yield* Effect.addFinalizer(() =>
+        Effect.sync(() => window.removeEventListener("keydown", handleKeydown))
       )
 
       const unlisten = yield* Effect.tryPromise({
