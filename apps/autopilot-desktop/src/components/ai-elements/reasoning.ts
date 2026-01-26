@@ -15,10 +15,10 @@ export const Reasoning = ({
   open,
 }: ReasoningProps): TemplateResult => html`
   <details
-    class="border border-border bg-background px-3 py-2 text-xs text-foreground"
+    class="block w-full border border-border bg-background px-3 py-2 text-xs text-foreground"
     ${open || isStreaming ? "open" : ""}
   >
-  <summary class="flex cursor-pointer list-none items-center justify-between text-[10px] text-muted-foreground">
+  <summary class="flex w-full cursor-pointer list-none items-center justify-between text-[10px] text-muted-foreground">
     <span class="flex items-center gap-2">
       <span
         class="inline-flex h-2 w-2 rounded-full ${
