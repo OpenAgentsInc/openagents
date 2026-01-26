@@ -1230,8 +1230,18 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
                 <section class="flex flex-col gap-2 border-b border-[color:var(--line)] px-2.5 py-2 min-h-0">
                   <div class="text-[11px] uppercase tracking-[0.12em] text-[color:var(--yellow)]">Workspace</div>
                   <div class="flex flex-col gap-2 min-h-0">
-                    <label class="flex flex-col gap-1">
-                      <span class="text-[10px] uppercase tracking-[0.08em] text-[color:var(--muted)] min-w-0">Working Dir</span>
+                    <div class="flex flex-col gap-1">
+                      <div class="flex items-center justify-between gap-2">
+                        <span class="text-[10px] uppercase tracking-[0.08em] text-[color:var(--muted)] min-w-0">
+                          Working Dir
+                        </span>
+                        <button
+                          class="text-[10px] uppercase tracking-[0.1em] text-[color:var(--accent-strong)] hover:text-[color:var(--accent)]"
+                          data-action="browse-workspace"
+                        >
+                          Browse
+                        </button>
+                      </div>
                       <input
                         id="workspace-path"
                         class="border border-[color:var(--line)] bg-[color:var(--bg)] text-[color:var(--ink)] px-1.5 py-1 font-[var(--font-mono)] text-[12px] focus:outline focus:outline-1 focus:outline-[color:var(--ring)]"
@@ -1239,7 +1249,7 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
                         placeholder="/path/to/workspace"
                         value="${state.workspacePath}"
                       />
-                    </label>
+                    </div>
                     <div class="flex flex-wrap gap-1.5">
                       <button
                         class="border border-[color:rgba(32,195,116,0.4)] bg-[color:var(--panel-alt)] text-[color:var(--green)] px-2 py-1 text-[10px] uppercase tracking-[0.1em] disabled:opacity-60 disabled:cursor-not-allowed"
@@ -1247,12 +1257,6 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
                         ${connectDisabled ? "disabled" : ""}
                       >
                         CONNECT
-                      </button>
-                      <button
-                        class="border border-[color:var(--line)] bg-[color:var(--panel-alt)] text-[color:var(--ink)] px-2 py-1 text-[10px] uppercase tracking-[0.1em] disabled:opacity-60 disabled:cursor-not-allowed"
-                        data-action="browse-workspace"
-                      >
-                        BROWSE
                       </button>
                       <button
                         class="border border-[color:rgba(245,158,11,0.4)] bg-[color:var(--panel-alt)] text-[color:var(--orange)] px-2 py-1 text-[10px] uppercase tracking-[0.1em] disabled:opacity-60 disabled:cursor-not-allowed"
