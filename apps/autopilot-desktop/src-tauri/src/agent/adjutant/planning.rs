@@ -727,10 +727,19 @@ impl PlanModePipeline {
 
         let config = self.config.optimization.clone();
         if config.background_optimization {
-            let handle = tokio::runtime::Handle::current();
             tokio::task::spawn_blocking(move || {
-                if let Err(err) = handle.block_on(run_plan_mode_optimization(config, lm)) {
-                    error!("Plan mode optimization failed: {}", err);
+                let runtime = tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build();
+                match runtime {
+                    Ok(runtime) => {
+                        if let Err(err) = runtime.block_on(run_plan_mode_optimization(config, lm)) {
+                            error!("Plan mode optimization failed: {}", err);
+                        }
+                    }
+                    Err(err) => {
+                        error!("Plan mode optimization runtime init failed: {}", err);
+                    }
                 }
             });
         } else if let Err(err) = run_plan_mode_optimization(config, lm).await {
