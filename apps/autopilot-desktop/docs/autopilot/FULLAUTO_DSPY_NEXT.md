@@ -12,25 +12,23 @@ Desktop work items. This is focused on what must happen next to make DSPy
 
 ## Current Desktop Reality (constraints to respect)
 
-- Autopilot Desktop uses the **Unified Agent** abstraction and ACP connections
-  (`crates/autopilot-desktop-backend/src/agent/*`).
-- **Codex ACP** is not the Codex app-server stream (see
-  `apps/autopilot-desktop/docs/codex/CODEX_ACP_ARCHITECTURE.md`).
-- **Adjutant** is DSPy-native and already emits UI events (UITree + patches).
-- Frontend listens to `unified-event` and `ui-event` for rendering.
+- Autopilot Desktop already runs the **Codex app-server** process and streams
+  its events to the frontend (`app-server-event`).
+- Full Auto today is tied to app-server `turn/completed` and auto-continues with
+  a fixed prompt.
+- **Adjutant** is DSPy-native and emits UI events (UITree + patches), but Full
+  Auto must be codex app-server only for now.
 
 Implication: Full Auto needs an event source that can drive turn-level
-summaries. Today ACP does not expose all `turn/*` signals from the app-server,
-so we must add an app-server event source explicitly.
+summaries. We must enrich and consume app-server `turn/*` signals directly.
 
 ## Decision to lock first
 
-1. **Event source for Full Auto (app-server first)**
+1. **Event source for Full Auto (codex app-server only)**
    - Add a new app-server connection and map `turn/completed`,
      `turn/plan/updated`, `turn/diff/updated`, and approval/tool-input requests
      into the backend event stream used by Full Auto.
-   - ACP stays in place for chat and non-Full Auto paths, but Full Auto uses
-     app-server signals as the authoritative turn boundary.
+   - Full Auto uses app-server signals as the authoritative turn boundary.
 
 2. **Decision signature placement**
    - Add `FullAutoDecisionSignature` to `crates/dsrs/src/signatures/` (not
@@ -61,8 +59,8 @@ Required behaviors:
 
 ### 2) App-server event plumbing
 
-- Add a dedicated app-server agent/connection and map its `turn/*` events into
-  the backend event stream used by Full Auto.
+- Use the existing app-server session and map its `turn/*` events into the
+  backend event stream used by Full Auto.
 - Ensure the event stream provides the fields needed for `TurnSummary` (plan,
   diff snapshots, approvals, token usage).
 - Ensure only one active turn per session at a time (guard against overlap).

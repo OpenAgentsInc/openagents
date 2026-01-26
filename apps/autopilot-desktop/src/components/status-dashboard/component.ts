@@ -1823,6 +1823,29 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
           }
         }
 
+        if (params && method === "fullauto/decision") {
+          const action = readString(params, "action") ?? "pause"
+          const reason = readString(params, "reason") ?? ""
+          const confidenceValue = readNumber(params, "confidence")
+          const decisionState = readString(params, "state") ?? "paused"
+          const nextInput = readString(params, "nextInput") ?? ""
+          const decisionThreadId = readString(params, "threadId") ?? eventThreadId
+          const confidenceText =
+            confidenceValue !== null ? ` (${confidenceValue.toFixed(2)})` : ""
+          const nextInputText = nextInput ? ` Next: ${nextInput}` : ""
+          const message = `${action.toUpperCase()}${confidenceText} — ${reason}${nextInputText}`.trim()
+
+          yield* ctx.state.update((state) => ({
+            ...state,
+            fullAutoEnabled: decisionState === "running",
+            fullAutoThreadId: decisionThreadId ?? state.fullAutoThreadId,
+            fullAutoMessage: message,
+            workspaceMessage: message,
+            lastUpdated: nowTime(),
+          }))
+          return
+        }
+
         if (
           current.fullAutoEnabled &&
           !fullAutoThreadId &&
