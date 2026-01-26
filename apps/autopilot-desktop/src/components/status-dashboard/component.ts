@@ -1080,16 +1080,6 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
                   </div>
                 </section>
 
-                <section class="flex flex-col gap-2 border-b border-[color:var(--line)] px-2.5 py-2 min-h-0">
-                  <div class="text-[11px] uppercase tracking-[0.12em] text-[color:var(--yellow)]">Shortcuts</div>
-                  <div class="flex flex-col gap-2 min-h-0">
-                    <div class="text-[11px] text-[color:var(--muted)]">F2 Connect</div>
-                    <div class="text-[11px] text-[color:var(--muted)]">F3 Disconnect</div>
-                    <div class="text-[11px] text-[color:var(--muted)]">F5 Doctor/Refresh</div>
-                    <div class="text-[11px] text-[color:var(--muted)]">F12 Storybook</div>
-                  </div>
-                </section>
-
                 <section class="flex flex-col gap-2 border-b border-[color:var(--line)] px-2.5 py-2 min-h-[160px] max-h-[240px] flex-none">
                   <div class="text-[11px] uppercase tracking-[0.12em] text-[color:var(--yellow)]">App-Server Feed</div>
                   <div class="flex flex-col gap-2 min-h-0 flex-1">
