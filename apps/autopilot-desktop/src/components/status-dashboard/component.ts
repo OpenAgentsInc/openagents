@@ -1086,6 +1086,7 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
       const fullAutoEnableDisabled = state.fullAutoEnabled
       const fullAutoDisableDisabled = !state.fullAutoEnabled
       const usageLabels = getUsageLabels(state.rateLimits)
+      const showAppServerFeed = false
 
       const sessionList = sessionCount
         ? state.sessions.map((session) => {
@@ -1374,15 +1375,21 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
                     : ""}
                 </section>
 
-                <section class="flex flex-col gap-2 border-b border-[color:var(--line)] px-2.5 py-2 min-h-[160px] max-h-[240px] flex-none">
-                  <div class="text-[11px] uppercase tracking-[0.12em] text-[color:var(--yellow)]">App-Server Feed</div>
-                  <div class="flex flex-col gap-2 min-h-0 flex-1">
-                    <pre
-                      class="flex-1 min-h-0 bg-[color:var(--bg)] border border-[color:var(--line)] p-1.5 text-[11px] leading-[1.35] overflow-auto whitespace-pre-wrap"
-                      data-scroll-id="event-log"
-                    >${state.lastEventText}</pre>
-                  </div>
-                </section>
+                ${
+                  showAppServerFeed
+                    ? html`
+                        <section class="flex flex-col gap-2 border-b border-[color:var(--line)] px-2.5 py-2 min-h-[160px] max-h-[240px] flex-none">
+                          <div class="text-[11px] uppercase tracking-[0.12em] text-[color:var(--yellow)]">App-Server Feed</div>
+                          <div class="flex flex-col gap-2 min-h-0 flex-1">
+                            <pre
+                              class="flex-1 min-h-0 bg-[color:var(--bg)] border border-[color:var(--line)] p-1.5 text-[11px] leading-[1.35] overflow-auto whitespace-pre-wrap"
+                              data-scroll-id="event-log"
+                            >${state.lastEventText}</pre>
+                          </div>
+                        </section>
+                      `
+                    : ""
+                }
               </div>
               <div class="border-t border-[color:var(--line)] px-2.5 py-2 text-[10px] uppercase tracking-[0.12em] text-[color:var(--yellow)]">
                 Version ${appVersion}
