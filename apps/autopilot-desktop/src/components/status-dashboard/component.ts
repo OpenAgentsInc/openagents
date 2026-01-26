@@ -108,9 +108,20 @@ type StatusEvent =
 
 const workspaceIdKey = "autopilotWorkspaceId"
 const workspacePathKey = "autopilotWorkspacePath"
+const rootWorkspaceMessage = "Select a working directory to connect."
 
 const nowTime = () => new Date().toLocaleTimeString()
 const nowEpochSeconds = () => Math.floor(Date.now() / 1000)
+const isRootPath = (path: string) => {
+  const trimmed = path.trim()
+  if (!trimmed) {
+    return false
+  }
+  if (trimmed === "/") {
+    return true
+  }
+  return /^[a-zA-Z]:[\\/]*$/.test(trimmed)
+}
 
 const loadWorkspaceId = (): string => {
   const stored = window.localStorage.getItem(workspaceIdKey)
@@ -2161,21 +2172,44 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
       const initialize = Effect.gen(function* () {
         const storedPath = window.localStorage.getItem(workspacePathKey)
         if (storedPath && storedPath.trim()) {
-          yield* ctx.state.update((state) => ({
-            ...state,
-            workspacePath: storedPath,
-          }))
+          if (isRootPath(storedPath)) {
+            yield* ctx.state.update((state) => ({
+              ...state,
+              workspacePath: "",
+              workspaceMessage: rootWorkspaceMessage,
+            }))
+            window.localStorage.removeItem(workspacePathKey)
+          } else {
+            yield* ctx.state.update((state) => ({
+              ...state,
+              workspacePath: storedPath,
+            }))
+          }
         } else {
           yield* invokeCommand<string>("get_current_directory").pipe(
-            Effect.tap((cwd) =>
-              ctx.state.update((state) => ({
+            Effect.tap((cwd) => {
+              if (isRootPath(cwd)) {
+                return ctx.state.update((state) => ({
+                  ...state,
+                  workspacePath: "",
+                  workspaceMessage: rootWorkspaceMessage,
+                }))
+              }
+              return ctx.state.update((state) => ({
                 ...state,
                 workspacePath: cwd,
               }))
-            ),
-            Effect.tap((cwd) =>
-              Effect.sync(() => window.localStorage.setItem(workspacePathKey, cwd))
-            ),
+            }),
+            Effect.tap((cwd) => {
+              if (isRootPath(cwd)) {
+                return Effect.sync(() =>
+                  window.localStorage.removeItem(workspacePathKey)
+                )
+              }
+              return Effect.sync(() =>
+                window.localStorage.setItem(workspacePathKey, cwd)
+              )
+            }),
             Effect.catchAll((error) =>
               ctx.state.update((state) => ({
                 ...state,
