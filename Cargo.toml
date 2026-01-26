@@ -24,6 +24,7 @@ members = [
     "crates/manatap",
     "crates/nostr/core",
     "crates/nostr/client",
+    "crates/openagents-utils",
     "crates/onyx",
     "crates/pylon",
     "crates/relay",
@@ -70,6 +71,7 @@ issues = { path = "crates/issues" }
 nostr = { path = "crates/nostr/core" }
 dsrs = { path = "crates/dsrs" }
 dsrs-macros = { path = "crates/dsrs-macros" }
+openagents-utils = { path = "crates/openagents-utils" }
 
 # External crates
 anyhow = "1.0.86"

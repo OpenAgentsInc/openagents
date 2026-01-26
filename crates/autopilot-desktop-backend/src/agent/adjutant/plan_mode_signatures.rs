@@ -1,5 +1,6 @@
 //! Plan mode signature catalog and helpers.
 
+use openagents_utils::filenames::sanitize_filename_simple;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -35,10 +36,6 @@ impl PlanModeSignatureKind {
     }
 
     pub fn filename_stem(self) -> String {
-        sanitize_filename(self.name())
+        sanitize_filename_simple(self.name())
     }
-}
-
-pub fn sanitize_filename(name: &str) -> String {
-    name.replace("::", "_").replace(':', "_").replace('/', "_")
 }

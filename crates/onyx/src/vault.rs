@@ -1,40 +1,10 @@
 //! Vault management - flat folder of markdown notes
 
+use openagents_utils::filenames::sanitize_filename;
 use std::fs;
 use std::io;
 use std::path::PathBuf;
 use std::time::SystemTime;
-
-/// Sanitize a title string into a valid filename
-/// - Replaces path separators and invalid chars with spaces
-/// - Trims whitespace
-/// - Limits length to 100 chars
-/// - Returns None if the result is empty
-pub fn sanitize_filename(title: &str) -> Option<String> {
-    // Characters that are invalid in filenames on various platforms
-    const INVALID_CHARS: &[char] = &['/', '\\', ':', '*', '?', '"', '<', '>', '|', '\0'];
-
-    let sanitized: String = title
-        .chars()
-        .map(|c| if INVALID_CHARS.contains(&c) { ' ' } else { c })
-        .collect::<String>()
-        .split_whitespace()
-        .collect::<Vec<_>>()
-        .join(" ");
-
-    // Limit length and trim
-    let trimmed = if sanitized.len() > 100 {
-        sanitized[..100].trim_end().to_string()
-    } else {
-        sanitized
-    };
-
-    if trimmed.is_empty() {
-        None
-    } else {
-        Some(trimmed)
-    }
-}
 
 /// A file entry in the vault
 #[derive(Debug, Clone)]

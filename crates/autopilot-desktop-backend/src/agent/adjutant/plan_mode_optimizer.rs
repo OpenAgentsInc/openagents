@@ -18,7 +18,8 @@ use serde::{Deserialize, Serialize};
 
 use super::config::{PlanModeOptimizationConfig, PlanModeOptimizerKind};
 use super::plan_mode_metrics::{feedback_signature, score_signature};
-use super::plan_mode_signatures::{PlanModeSignatureKind, sanitize_filename};
+use super::plan_mode_signatures::PlanModeSignatureKind;
+use openagents_utils::filenames::sanitize_filename_simple;
 use super::plan_mode_training::PlanModeTrainingStore;
 use dsrs::signatures::{
     ComplexityClassificationSignature, DeepPlanningSignature, ParallelExplorationSignature,
@@ -311,7 +312,7 @@ fn save_manifest(
         .as_ref()
         .ok_or_else(|| anyhow::anyhow!("manifest missing compiled_id"))?;
 
-    let manifest_path = dir.join(format!("{}.json", sanitize_filename(compiled_id)));
+    let manifest_path = dir.join(format!("{}.json", sanitize_filename_simple(compiled_id)));
     fs::write(&manifest_path, serde_json::to_string_pretty(manifest)?)?;
 
     let latest_path = latest_manifest_path(signature);

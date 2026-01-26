@@ -30,6 +30,7 @@ dotenvy = "0.15"
 ts-rs = "7"
 dirs = "5"
 indexmap = "2"
+openagents-utils = { workspace = true }
 
 # DSPy/dsrs dependencies
 dsrs = { workspace = true }
