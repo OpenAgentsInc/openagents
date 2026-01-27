@@ -4,6 +4,8 @@ import { cx, type UIChildren } from "./utils.js"
 
 export type AccordionProps = {
   readonly className?: string
+  readonly type?: "single" | "multiple"
+  readonly collapsible?: boolean
   readonly children?: UIChildren
 }
 
@@ -23,9 +25,19 @@ export type AccordionContentProps = {
   readonly state?: "open" | "closed"
 }
 
-export const Accordion = ({ className, children }: AccordionProps): TemplateResult => {
+export const Accordion = ({
+  className,
+  type = "multiple",
+  collapsible = true,
+  children,
+}: AccordionProps): TemplateResult => {
   return html`
-    <div data-slot="accordion" class="${cx(className)}">
+    <div
+      data-slot="accordion"
+      data-type="${type}"
+      data-collapsible="${collapsible ? "true" : "false"}"
+      class="${cx(className)}"
+    >
       ${children ?? ""}
     </div>
   `

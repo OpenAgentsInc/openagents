@@ -10,6 +10,7 @@ import { makeEzRegistry } from "../../effuse/ez/registry"
 import { mountEzRuntimeWith } from "../../effuse/ez/runtime"
 import { getAllStories } from "../story-index"
 import { CanvasHost } from "./canvas/host"
+import { mountUiRuntime } from "../../components/ui/runtime"
 
 // Helper to get raw HTML string from template (simplistic render for v1)
 const templateToString = (template: TemplateResult): string =>
@@ -146,6 +147,7 @@ export const StorybookOverlay = {
       ])
 
       yield* mountEzRuntimeWith(shell, registry)
+      yield* mountUiRuntime(shell)
 
       // Initial Render
       yield* renderSidebar

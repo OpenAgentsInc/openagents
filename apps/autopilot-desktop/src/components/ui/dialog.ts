@@ -9,7 +9,7 @@ export type DialogProps = {
   readonly state?: "open" | "closed"
 }
 
-export const Dialog = ({ className, children, state = "open" }: DialogProps): TemplateResult => {
+export const Dialog = ({ className, children, state = "closed" }: DialogProps): TemplateResult => {
   return html`
     <div data-slot="dialog" data-state="${state}" class="${cx(className)}">
       ${children ?? ""}
@@ -49,7 +49,7 @@ export type DialogOverlayProps = {
 
 export const DialogOverlay = ({
   className,
-  state = "open",
+  state = "closed",
 }: DialogOverlayProps): TemplateResult => {
   return html`
     <div
@@ -74,7 +74,7 @@ export const DialogContent = ({
   className,
   children,
   showCloseButton = true,
-  state = "open",
+  state = "closed",
 }: DialogContentProps): TemplateResult => {
   return DialogPortal({
     children: html`

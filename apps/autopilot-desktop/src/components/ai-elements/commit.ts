@@ -11,7 +11,7 @@ export type CommitProps = {
 }
 
 export const Commit = ({ className, children }: CommitProps): TemplateResult =>
-  Collapsible({ className: cx("rounded-lg border bg-background", className), children })
+  Collapsible({ className: cx("rounded-lg border bg-background", className), children, dataRole: "commit" })
 
 export type CommitHeaderProps = {
   readonly className?: string
@@ -120,20 +120,25 @@ export type CommitActionsProps = {
 }
 
 export const CommitActions = ({ className, children }: CommitActionsProps): TemplateResult => html`
-  <div class="${cx("flex items-center gap-1", className)}" role="group">${children ?? ""}</div>
+  <div data-ui-stop="true" class="${cx("flex items-center gap-1", className)}" role="group">${children ?? ""}</div>
 `
 
 export type CommitCopyButtonProps = {
   readonly className?: string
+  readonly hash?: string
   readonly children?: AIChildren
 }
 
-export const CommitCopyButton = ({ className, children }: CommitCopyButtonProps): TemplateResult =>
+export const CommitCopyButton = ({ className, hash, children }: CommitCopyButtonProps): TemplateResult =>
   Button({
     className: cx("size-7 shrink-0", className),
     size: "icon",
     type: "button",
     variant: "ghost",
+    dataUi: "copy",
+    dataCopyValue: hash ?? "",
+    ariaLabel: "Copy",
+    title: "Copy",
     children: children ?? "copy",
   })
 

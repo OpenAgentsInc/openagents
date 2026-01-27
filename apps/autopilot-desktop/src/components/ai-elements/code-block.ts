@@ -8,17 +8,21 @@ export type CodeBlockContainerProps = {
   readonly className?: string
   readonly language: string
   readonly style?: string
+  readonly copyValue?: string
   readonly children?: AIChildren
 }
 
 export const CodeBlockContainer = ({
   className,
   language,
+  copyValue,
   children,
 }: CodeBlockContainerProps): TemplateResult => html`
   <div
+    data-slot="code-block"
     class="${cx("group relative w-full overflow-hidden rounded-md border bg-background text-foreground", className)}"
     data-language="${language}"
+    data-copy-value="${copyValue ?? ""}"
   >
     ${children ?? ""}
   </div>
@@ -106,7 +110,7 @@ export const CodeBlock = ({
   className,
   children,
 }: CodeBlockProps): TemplateResult => html`
-  ${CodeBlockContainer({ className, language, children: html`
+  ${CodeBlockContainer({ className, language, copyValue: code, children: html`
     ${children ?? ""}
     ${CodeBlockContent({ code, language, showLineNumbers })}
   ` })}
@@ -123,6 +127,8 @@ export const CodeBlockCopyButton = ({ className, children }: CodeBlockCopyButton
     size: "icon",
     type: "button",
     variant: "ghost",
+    dataUi: "copy",
+    dataCopyTarget: "closest([data-slot='code-block'])",
     children: children ?? "copy",
   })
 

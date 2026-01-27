@@ -7,7 +7,7 @@ export type HoverCardProps = {
 }
 
 export const HoverCard = ({ children }: HoverCardProps): TemplateResult => {
-  return html`<div data-slot="hover-card">${children ?? ""}</div>`
+  return html`<div data-slot="hover-card" data-state="closed">${children ?? ""}</div>`
 }
 
 export type HoverCardTriggerProps = {
@@ -37,7 +37,7 @@ export const HoverCardContent = ({
   children,
   align = "center",
   side = "bottom",
-  state = "open",
+  state = "closed",
 }: HoverCardContentProps): TemplateResult => {
   return html`
     <div data-slot="hover-card-portal">

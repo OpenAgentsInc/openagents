@@ -7,7 +7,7 @@ export type PopoverProps = {
 }
 
 export const Popover = ({ children }: PopoverProps): TemplateResult => {
-  return html`<div data-slot="popover">${children ?? ""}</div>`
+  return html`<div data-slot="popover" data-state="closed">${children ?? ""}</div>`
 }
 
 export type PopoverTriggerProps = {
@@ -39,7 +39,7 @@ export const PopoverContent = ({
   children,
   align = "center",
   side = "bottom",
-  state = "open",
+  state = "closed",
 }: PopoverContentProps): TemplateResult => {
   return html`
     <div data-slot="popover-portal">

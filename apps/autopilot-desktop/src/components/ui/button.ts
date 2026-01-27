@@ -26,6 +26,14 @@ export type ButtonProps = {
   readonly size?: ButtonSize
   readonly disabled?: boolean
   readonly type?: "button" | "submit" | "reset"
+  readonly dataSlot?: string
+  readonly dataRole?: string
+  readonly dataUi?: string
+  readonly dataUiStop?: boolean
+  readonly dataCopyTarget?: string
+  readonly dataCopyValue?: string
+  readonly ariaLabel?: string
+  readonly title?: string
   readonly children?: UIChildren
 }
 
@@ -60,13 +68,28 @@ export const Button = ({
   size = "default",
   disabled = false,
   type = "button",
+  dataSlot,
+  dataRole,
+  dataUi,
+  dataUiStop = false,
+  dataCopyTarget,
+  dataCopyValue,
+  ariaLabel,
+  title,
   children,
 }: ButtonProps): TemplateResult => {
   return html`
     <button
-      data-slot="button"
+      data-slot="${dataSlot ?? "button"}"
       data-variant="${variant}"
       data-size="${size}"
+      data-role="${dataRole ?? ""}"
+      data-ui="${dataUi ?? ""}"
+      data-ui-stop="${dataUiStop ? "true" : ""}"
+      data-copy-target="${dataCopyTarget ?? ""}"
+      data-copy-value="${dataCopyValue ?? ""}"
+      aria-label="${ariaLabel ?? ""}"
+      title="${title ?? ""}"
       type="${type}"
       class="${cx(baseClasses, variantClasses[variant], sizeClasses[size], className)}"
       ${disabled ? "disabled" : ""}

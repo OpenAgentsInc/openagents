@@ -7,13 +7,22 @@ import { cx, type UIChildren } from "./utils.js"
 
 export type InputGroupProps = {
   readonly className?: string
+  readonly dataRole?: string
+  readonly dataCopyValue?: string
   readonly children?: UIChildren
 }
 
-export const InputGroup = ({ className, children }: InputGroupProps): TemplateResult => {
+export const InputGroup = ({
+  className,
+  dataRole,
+  dataCopyValue,
+  children,
+}: InputGroupProps): TemplateResult => {
   return html`
     <div
       data-slot="input-group"
+      data-role="${dataRole ?? ""}"
+      data-copy-value="${dataCopyValue ?? ""}"
       role="group"
       class="${cx(
         "group/input-group border-input dark:bg-input/30 relative flex w-full items-center rounded-md border shadow-xs transition-[color,box-shadow] outline-none",
@@ -85,6 +94,13 @@ export type InputGroupButtonProps = {
   readonly type?: "button" | "submit" | "reset"
   readonly variant?: ButtonVariant
   readonly size?: InputGroupButtonSize
+  readonly dataRole?: string
+  readonly dataUi?: string
+  readonly dataUiStop?: boolean
+  readonly dataCopyTarget?: string
+  readonly dataCopyValue?: string
+  readonly ariaLabel?: string
+  readonly title?: string
   readonly children?: UIChildren
 }
 
@@ -93,12 +109,26 @@ export const InputGroupButton = ({
   type = "button",
   variant = "ghost",
   size = "xs",
+  dataRole,
+  dataUi,
+  dataUiStop = false,
+  dataCopyTarget,
+  dataCopyValue,
+  ariaLabel,
+  title,
   children,
 }: InputGroupButtonProps): TemplateResult => {
   return Button({
     type,
     variant,
     size: "default",
+    dataRole,
+    dataUi,
+    dataUiStop,
+    dataCopyTarget,
+    dataCopyValue,
+    ariaLabel,
+    title,
     className: cx("text-sm shadow-none flex gap-2 items-center", buttonSizeClasses[size], className),
     children,
   })

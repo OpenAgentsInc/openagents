@@ -43,6 +43,7 @@ export const Carousel = ({
       aria-roledescription="carousel"
       data-slot="carousel"
       data-orientation="${orientation}"
+      data-index="0"
       class="${cx("relative", className)}"
     >
       ${children ?? ""}
@@ -58,7 +59,7 @@ export const CarouselContent = ({
   const layoutClass = orientation === "horizontal" ? "-ml-4" : "-mt-4 flex-col"
   return html`
     <div data-slot="carousel-content" class="overflow-hidden">
-      <div class="${cx("flex", layoutClass, className)}">${children ?? ""}</div>
+      <div data-slot="carousel-track" class="${cx("flex", layoutClass, className)}">${children ?? ""}</div>
     </div>
   `
 }
@@ -97,6 +98,8 @@ export const CarouselPrevious = ({
     variant,
     size,
     disabled,
+    dataRole: "carousel-prev",
+    ariaLabel: label,
     className: cx("absolute size-8 rounded-full", positionClass, className),
     children: html`<span aria-hidden="true">←</span><span class="sr-only">${label}</span>`,
   })
@@ -118,6 +121,8 @@ export const CarouselNext = ({
     variant,
     size,
     disabled,
+    dataRole: "carousel-next",
+    ariaLabel: label,
     className: cx("absolute size-8 rounded-full", positionClass, className),
     children: html`<span aria-hidden="true">→</span><span class="sr-only">${label}</span>`,
   })

@@ -11,7 +11,11 @@ export type StackTraceProps = {
 }
 
 export const StackTrace = ({ trace, className, children }: StackTraceProps): TemplateResult => html`
-  <div class="${cx("not-prose w-full overflow-hidden rounded-lg border bg-background font-mono text-sm", className)}">
+  <div
+    data-slot="stack-trace"
+    data-copy-value="${trace}"
+    class="${cx("not-prose w-full overflow-hidden rounded-lg border bg-background font-mono text-sm", className)}"
+  >
     ${children ?? html`
       ${StackTraceHeader({ children: html`${StackTraceError({ children: html`<span class="font-semibold text-destructive">Error</span><span class="truncate">${trace.split("\n")[0] ?? ""}</span>` })}${StackTraceActions({})}` })}
       ${StackTraceContent({ children: html`${StackTraceFrames({ children: html`<pre class="whitespace-pre-wrap p-3 text-xs text-muted-foreground">${trace}</pre>` })}` })}
@@ -73,7 +77,18 @@ export type StackTraceCopyButtonProps = {
 }
 
 export const StackTraceCopyButton = ({ className, children }: StackTraceCopyButtonProps): TemplateResult =>
-  Button({ className: cx("size-7", className), size: "icon", type: "button", variant: "ghost", children: children ?? "copy" })
+  Button({
+    className: cx("size-7", className),
+    size: "icon",
+    type: "button",
+    variant: "ghost",
+    dataUi: "copy",
+    dataUiStop: true,
+    dataCopyTarget: "closest([data-slot='stack-trace'])",
+    ariaLabel: "Copy",
+    title: "Copy",
+    children: children ?? "copy",
+  })
 
 export type StackTraceExpandButtonProps = {
   readonly className?: string

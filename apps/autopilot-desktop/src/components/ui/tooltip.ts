@@ -7,8 +7,12 @@ export type TooltipProviderProps = {
   readonly children?: UIChildren
 }
 
-export const TooltipProvider = ({ children }: TooltipProviderProps): TemplateResult => {
-  return html`<div data-slot="tooltip-provider">${children ?? ""}</div>`
+export const TooltipProvider = ({ delayDuration, children }: TooltipProviderProps): TemplateResult => {
+  return html`
+    <div data-slot="tooltip-provider" data-delay-duration="${delayDuration ?? ""}">
+      ${children ?? ""}
+    </div>
+  `
 }
 
 export type TooltipProps = {
@@ -16,7 +20,7 @@ export type TooltipProps = {
 }
 
 export const Tooltip = ({ children }: TooltipProps): TemplateResult => {
-  return TooltipProvider({ children: html`<div data-slot="tooltip">${children ?? ""}</div>` })
+  return TooltipProvider({ children: html`<div data-slot="tooltip" data-state="closed">${children ?? ""}</div>` })
 }
 
 export type TooltipTriggerProps = {
@@ -41,7 +45,7 @@ export const TooltipContent = ({
   className,
   children,
   side = "top",
-  state = "open",
+  state = "closed",
 }: TooltipContentProps): TemplateResult => {
   return html`
     <div data-slot="tooltip-portal">

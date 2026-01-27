@@ -11,8 +11,18 @@ export type EnvironmentVariablesProps = {
   readonly children?: AIChildren
 }
 
-export const EnvironmentVariables = ({ className, children }: EnvironmentVariablesProps): TemplateResult => html`
-  <div class="${cx("rounded-lg border bg-background", className)}">${children ?? ""}</div>
+export const EnvironmentVariables = ({
+  className,
+  showValues = false,
+  children,
+}: EnvironmentVariablesProps): TemplateResult => html`
+  <div
+    data-slot="environment-variables"
+    data-show-values="${showValues ? "true" : "false"}"
+    class="${cx("rounded-lg border bg-background", className)}"
+  >
+    ${children ?? ""}
+  </div>
 `
 
 export type EnvironmentVariablesHeaderProps = {
@@ -39,8 +49,8 @@ export type EnvironmentVariablesToggleProps = {
 }
 
 export const EnvironmentVariablesToggle = ({ className, showValues = false }: EnvironmentVariablesToggleProps): TemplateResult => html`
-  <div class="${cx("flex items-center gap-2", className)}">
-    <span class="text-muted-foreground text-xs">${showValues ? "show" : "hide"}</span>
+  <div data-slot="environment-variables-toggle" class="${cx("flex items-center gap-2", className)}">
+    <span data-slot="environment-variables-toggle-label" class="text-muted-foreground text-xs">${showValues ? "show" : "hide"}</span>
     ${Switch({ checked: showValues })}
   </div>
 `
@@ -69,7 +79,11 @@ export const EnvironmentVariable = ({
   children,
   showValues = false,
 }: EnvironmentVariableProps): TemplateResult => html`
-  <div class="${cx("flex items-center justify-between gap-4 px-4 py-3", className)}">
+  <div
+    data-slot="environment-variable"
+    data-copy-value="${value}"
+    class="${cx("flex items-center justify-between gap-4 px-4 py-3", className)}"
+  >
     ${children ?? html`
       <div class="flex items-center gap-2">
         ${EnvironmentVariableName({ name })}
@@ -108,7 +122,11 @@ export type EnvironmentVariableValueProps = {
 export const EnvironmentVariableValue = ({ className, children, value = "", showValues = false }: EnvironmentVariableValueProps): TemplateResult => {
   const displayValue = showValues ? value : "*".repeat(Math.min(value.length, 20))
   return html`
-    <span class="${cx("font-mono text-muted-foreground text-sm", !showValues ? "select-none" : "", className)}">
+    <span
+      data-slot="environment-variable-value"
+      data-value="${value}"
+      class="${cx("font-mono text-muted-foreground text-sm", !showValues ? "select-none" : "", className)}"
+    >
       ${children ?? displayValue}
     </span>
   `
@@ -120,7 +138,17 @@ export type EnvironmentVariableCopyButtonProps = {
 }
 
 export const EnvironmentVariableCopyButton = ({ className, children }: EnvironmentVariableCopyButtonProps): TemplateResult =>
-  Button({ className: cx("size-7", className), size: "icon", type: "button", variant: "ghost", children: children ?? "copy" })
+  Button({
+    className: cx("size-7", className),
+    size: "icon",
+    type: "button",
+    variant: "ghost",
+    dataUi: "copy",
+    dataCopyTarget: "closest([data-slot='environment-variable'])",
+    ariaLabel: "Copy",
+    title: "Copy",
+    children: children ?? "copy",
+  })
 
 export type EnvironmentVariableRequiredProps = {
   readonly className?: string
