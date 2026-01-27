@@ -156,6 +156,85 @@ const MAX_ITEMS_PER_THREAD = 200
 const MAX_TEXT_LENGTH = 8000
 const MAX_DIFF_LENGTH = 12000
 const MAX_TOOL_OUTPUT_LENGTH = 8000
+const CANVAS_SCALE_MIN = 0.4
+const CANVAS_SCALE_MAX = 2.5
+const CANVAS_PADDING = 48
+
+const FULL_AUTO_NODES = {
+  summary: { x: 80, y: 80, width: 240, height: 180 },
+  decision: { x: 420, y: 80, width: 240, height: 180 },
+  guardrail: { x: 80, y: 360, width: 240, height: 200 },
+  action: { x: 420, y: 360, width: 240, height: 170 },
+} as const
+
+const FULL_AUTO_BOUNDS = (() => {
+  const nodes = Object.values(FULL_AUTO_NODES)
+  const minX = Math.min(...nodes.map((node) => node.x))
+  const minY = Math.min(...nodes.map((node) => node.y))
+  const maxX = Math.max(...nodes.map((node) => node.x + node.width))
+  const maxY = Math.max(...nodes.map((node) => node.y + node.height))
+  return {
+    minX,
+    minY,
+    maxX,
+    maxY,
+    width: maxX - minX,
+    height: maxY - minY,
+  }
+})()
+
+type CanvasTransform = {
+  scale: number
+  tx: number
+  ty: number
+}
+
+const clampNumber = (value: number, min: number, max: number) =>
+  Math.min(max, Math.max(min, value))
+
+const readCanvasTransform = (canvas: HTMLElement): CanvasTransform => {
+  const scale = Number.parseFloat(canvas.dataset.canvasScale ?? "1")
+  const tx = Number.parseFloat(canvas.dataset.canvasTx ?? "0")
+  const ty = Number.parseFloat(canvas.dataset.canvasTy ?? "0")
+  return {
+    scale: Number.isFinite(scale) ? scale : 1,
+    tx: Number.isFinite(tx) ? tx : 0,
+    ty: Number.isFinite(ty) ? ty : 0,
+  }
+}
+
+const writeCanvasTransform = (
+  canvas: HTMLElement,
+  transform: CanvasTransform
+) => {
+  const scale = clampNumber(transform.scale, CANVAS_SCALE_MIN, CANVAS_SCALE_MAX)
+  canvas.dataset.canvasScale = scale.toString()
+  canvas.dataset.canvasTx = transform.tx.toString()
+  canvas.dataset.canvasTy = transform.ty.toString()
+  canvas.style.setProperty("--canvas-scale", scale.toString())
+  canvas.style.setProperty("--canvas-translate-x", `${transform.tx}px`)
+  canvas.style.setProperty("--canvas-translate-y", `${transform.ty}px`)
+}
+
+const centerCanvasInContainer = (container: HTMLElement) => {
+  const canvas = container.querySelector(".ai-canvas") as HTMLElement | null
+  if (!canvas) {
+    return
+  }
+  const rect = canvas.getBoundingClientRect()
+  if (rect.width <= 0 || rect.height <= 0) {
+    return
+  }
+  const scaleFit = Math.min(
+    1,
+    (rect.width - CANVAS_PADDING * 2) / FULL_AUTO_BOUNDS.width,
+    (rect.height - CANVAS_PADDING * 2) / FULL_AUTO_BOUNDS.height
+  )
+  const scale = clampNumber(scaleFit, CANVAS_SCALE_MIN, CANVAS_SCALE_MAX)
+  const tx = (rect.width - FULL_AUTO_BOUNDS.width * scale) / 2 - FULL_AUTO_BOUNDS.minX * scale
+  const ty = (rect.height - FULL_AUTO_BOUNDS.height * scale) / 2 - FULL_AUTO_BOUNDS.minY * scale
+  writeCanvasTransform(canvas, { scale, tx, ty })
+}
 
 const nowTime = () => new Date().toLocaleTimeString()
 const nowEpochSeconds = () => Math.floor(Date.now() / 1000)
@@ -1213,60 +1292,157 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
             description: "Choose a session to view its timeline.",
           })
 
-      const leftNode = { x: 24, y: 32, width: 220, height: 130 }
-      const rightNode = { x: 320, y: 170, width: 220, height: 130 }
-      const startX = leftNode.x + leftNode.width
-      const startY = leftNode.y + leftNode.height / 2
-      const endX = rightNode.x
-      const endY = rightNode.y + rightNode.height / 2
-      const controlOffset = 70
-      const edgePath = `M ${startX} ${startY} C ${startX + controlOffset} ${startY} ${endX - controlOffset} ${endY} ${endX} ${endY}`
+      const summaryNode = FULL_AUTO_NODES.summary
+      const decisionNode = FULL_AUTO_NODES.decision
+      const guardrailNode = FULL_AUTO_NODES.guardrail
+      const actionNode = FULL_AUTO_NODES.action
+
+      const bezierHorizontal = (
+        sx: number,
+        sy: number,
+        ex: number,
+        ey: number,
+        offset = 60
+      ) => {
+        const direction = ex === sx ? 1 : Math.sign(ex - sx)
+        const curve = direction * offset
+        return `M ${sx} ${sy} C ${sx + curve} ${sy} ${ex - curve} ${ey} ${ex} ${ey}`
+      }
+
+      const edgeSummaryDecision = bezierHorizontal(
+        summaryNode.x + summaryNode.width,
+        summaryNode.y + summaryNode.height / 2,
+        decisionNode.x,
+        decisionNode.y + decisionNode.height / 2
+      )
+
+      const edgeDecisionGuardrails = bezierHorizontal(
+        decisionNode.x + decisionNode.width,
+        decisionNode.y + decisionNode.height / 2,
+        guardrailNode.x,
+        guardrailNode.y + guardrailNode.height / 2
+      )
+
+      const edgeGuardrailsAction = bezierHorizontal(
+        guardrailNode.x + guardrailNode.width,
+        guardrailNode.y + guardrailNode.height / 2,
+        actionNode.x,
+        actionNode.y + actionNode.height / 2
+      )
 
       const canvasDemo = Canvas({
+        title: "Full Auto Decision",
+        subtitle: "Runs after each Codex turn completes",
+        status: "DSPy",
         children: html`
-          ${Edge({ path: edgePath, animated: true })}
-          <div class="canvas-flow-node" style="left: ${leftNode.x}px; top: ${leftNode.y}px;">
+          ${Edge({ path: edgeSummaryDecision })}
+          ${Edge({ path: edgeDecisionGuardrails, dashed: true })}
+          ${Edge({ path: edgeGuardrailsAction, animated: true })}
+
+          <div
+            class="canvas-flow-node"
+            style="left: ${summaryNode.x}px; top: ${summaryNode.y}px; width: ${summaryNode.width}px;"
+          >
             ${Node({
               handles: { source: true },
               children: html`
                 ${NodeHeader({
                   children: html`
-                    ${NodeTitle({ text: "Plan" })}
-                    ${NodeDescription({ text: "Draft response steps." })}
-                    ${NodeAction({ children: html`<span class="text-xs text-muted-foreground">v1</span>` })}
+                    ${NodeTitle({ text: "Turn Summary" })}
+                    ${NodeDescription({ text: "After turn/completed" })}
+                    ${NodeAction({
+                      children: html`<span class="text-xs text-muted-foreground">FullAutoTurnSummary</span>`,
+                    })}
                   `,
                 })}
                 ${NodeContent({
                   children: html`
-                    <div class="text-sm text-foreground">Gather context</div>
-                    <div class="text-sm text-muted-foreground">Outline approach</div>
+                    <div class="text-[11px] text-muted-foreground">last_turn_status, turn_error</div>
+                    <div class="text-[11px] text-muted-foreground">turn_plan, diff_summary</div>
+                    <div class="text-[11px] text-muted-foreground">token_usage</div>
+                    <div class="text-[11px] text-muted-foreground">pending_approvals, pending_tool_inputs</div>
+                    <div class="text-[11px] text-muted-foreground">compaction_events, recent_actions</div>
+                    <div class="text-[11px] text-muted-foreground">turn_count, no_progress_count</div>
                   `,
-                })}
-                ${NodeFooter({
-                  children: html`<span class="text-xs text-muted-foreground">Ready</span>`,
                 })}
               `,
             })}
           </div>
-          <div class="canvas-flow-node" style="left: ${rightNode.x}px; top: ${rightNode.y}px;">
+
+          <div
+            class="canvas-flow-node"
+            style="left: ${decisionNode.x}px; top: ${decisionNode.y}px; width: ${decisionNode.width}px;"
+          >
+            ${Node({
+              handles: { target: true, source: true },
+              children: html`
+                ${NodeHeader({
+                  children: html`
+                    ${NodeTitle({ text: "DSPy Decision" })}
+                    ${NodeDescription({ text: "FullAutoDecisionSignature" })}
+                    ${NodeAction({ children: html`<span class="text-xs text-muted-foreground">Predict</span>` })}
+                  `,
+                })}
+                ${NodeContent({
+                  children: html`
+                    <div class="text-[11px] text-muted-foreground">action, next_input</div>
+                    <div class="text-[11px] text-muted-foreground">reason, confidence</div>
+                  `,
+                })}
+                ${NodeFooter({
+                  children: html`<span class="text-[10px] text-muted-foreground">model: OPENAGENTS_FULL_AUTO_DECISION_MODEL</span>`,
+                })}
+              `,
+            })}
+          </div>
+
+          <div
+            class="canvas-flow-node"
+            style="left: ${guardrailNode.x}px; top: ${guardrailNode.y}px; width: ${guardrailNode.width}px;"
+          >
+            ${Node({
+              handles: { target: true, source: true },
+              children: html`
+                ${NodeHeader({
+                  children: html`
+                    ${NodeTitle({ text: "Guardrails" })}
+                    ${NodeDescription({ text: "enforce_guardrails()" })}
+                    ${NodeAction({ children: html`<span class="text-xs text-muted-foreground">FullAutoConfig</span>` })}
+                  `,
+                })}
+                ${NodeContent({
+                  children: html`
+                    <div class="text-[11px] text-muted-foreground">turn_failed → stop</div>
+                    <div class="text-[11px] text-muted-foreground">turn_interrupted → pause</div>
+                    <div class="text-[11px] text-muted-foreground">max_turns / max_tokens → stop</div>
+                    <div class="text-[11px] text-muted-foreground">no_progress_limit → stop</div>
+                    <div class="text-[11px] text-muted-foreground">low_confidence / review → pause</div>
+                  `,
+                })}
+              `,
+            })}
+          </div>
+
+          <div
+            class="canvas-flow-node"
+            style="left: ${actionNode.x}px; top: ${actionNode.y}px; width: ${actionNode.width}px;"
+          >
             ${Node({
               handles: { target: true },
               children: html`
                 ${NodeHeader({
                   children: html`
-                    ${NodeTitle({ text: "Deliver" })}
-                    ${NodeDescription({ text: "Execute on the plan." })}
-                    ${NodeAction({ children: html`<span class="text-xs text-muted-foreground">v1</span>` })}
+                    ${NodeTitle({ text: "Dispatch" })}
+                    ${NodeDescription({ text: "FullAutoAction" })}
+                    ${NodeAction({ children: html`<span class="text-xs text-muted-foreground">continue / pause / stop</span>` })}
                   `,
                 })}
                 ${NodeContent({
                   children: html`
-                    <div class="text-sm text-foreground">Apply edits</div>
-                    <div class="text-sm text-muted-foreground">Verify output</div>
+                    <div class="text-[11px] text-muted-foreground">continue → send next_input or fallback prompt</div>
+                    <div class="text-[11px] text-muted-foreground">pause → wait for user</div>
+                    <div class="text-[11px] text-muted-foreground">stop → end run</div>
                   `,
-                })}
-                ${NodeFooter({
-                  children: html`<span class="text-xs text-muted-foreground">Queued</span>`,
                 })}
               `,
             })}
@@ -1602,10 +1778,17 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
       }
 
       if (event.type === "ToggleExtraPane") {
-        yield* ctx.state.update((current) => ({
-          ...current,
-          extraPaneOpen: !current.extraPaneOpen,
+        const current = yield* ctx.state.get
+        const willOpen = !current.extraPaneOpen
+        yield* ctx.state.update((state) => ({
+          ...state,
+          extraPaneOpen: willOpen,
         }))
+        if (willOpen) {
+          yield* Effect.sync(() =>
+            requestAnimationFrame(() => centerCanvasInContainer(ctx.container))
+          )
+        }
         return
       }
 
@@ -2672,6 +2855,131 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
 
       yield* Effect.addFinalizer(() =>
         Effect.sync(() => window.removeEventListener("keydown", handleKeydown))
+      )
+
+      let panState: {
+        active: boolean
+        pointerId: number | null
+        startX: number
+        startY: number
+        startTx: number
+        startTy: number
+        scale: number
+        canvas: HTMLElement | null
+      } = {
+        active: false,
+        pointerId: null,
+        startX: 0,
+        startY: 0,
+        startTx: 0,
+        startTy: 0,
+        scale: 1,
+        canvas: null,
+      }
+
+      const handlePointerDown = (event: PointerEvent) => {
+        const target = event.target as HTMLElement | null
+        const canvas = target?.closest(".ai-canvas") as HTMLElement | null
+        if (!canvas || event.button !== 0) {
+          return
+        }
+        if (target?.closest("input, textarea, button, select, a")) {
+          return
+        }
+        event.preventDefault()
+        const transform = readCanvasTransform(canvas)
+        panState = {
+          active: true,
+          pointerId: event.pointerId,
+          startX: event.clientX,
+          startY: event.clientY,
+          startTx: transform.tx,
+          startTy: transform.ty,
+          scale: transform.scale,
+          canvas,
+        }
+        canvas.classList.add("ai-canvas--panning")
+        canvas.setPointerCapture(event.pointerId)
+      }
+
+      const handlePointerMove = (event: PointerEvent) => {
+        if (!panState.active || !panState.canvas) {
+          return
+        }
+        const dx = event.clientX - panState.startX
+        const dy = event.clientY - panState.startY
+        writeCanvasTransform(panState.canvas, {
+          scale: panState.scale,
+          tx: panState.startTx + dx,
+          ty: panState.startTy + dy,
+        })
+      }
+
+      const handlePointerUp = (event: PointerEvent) => {
+        if (!panState.active) {
+          return
+        }
+        const canvas = panState.canvas
+        if (canvas) {
+          canvas.classList.remove("ai-canvas--panning")
+          if (panState.pointerId !== null) {
+            canvas.releasePointerCapture(panState.pointerId)
+          }
+        }
+        panState = {
+          active: false,
+          pointerId: null,
+          startX: 0,
+          startY: 0,
+          startTx: 0,
+          startTy: 0,
+          scale: panState.scale,
+          canvas: null,
+        }
+        void event
+      }
+
+      const handleWheel = (event: WheelEvent) => {
+        const target = event.target as HTMLElement | null
+        const canvas = target?.closest(".ai-canvas") as HTMLElement | null
+        if (!canvas) {
+          return
+        }
+        event.preventDefault()
+        const rect = canvas.getBoundingClientRect()
+        const transform = readCanvasTransform(canvas)
+        const zoomFactor = Math.exp(-event.deltaY * 0.0012)
+        const nextScale = clampNumber(
+          transform.scale * zoomFactor,
+          CANVAS_SCALE_MIN,
+          CANVAS_SCALE_MAX
+        )
+        if (nextScale === transform.scale) {
+          return
+        }
+        const pointerX = event.clientX - rect.left
+        const pointerY = event.clientY - rect.top
+        const contentX = (pointerX - transform.tx) / transform.scale
+        const contentY = (pointerY - transform.ty) / transform.scale
+        const nextTx = pointerX - contentX * nextScale
+        const nextTy = pointerY - contentY * nextScale
+        writeCanvasTransform(canvas, { scale: nextScale, tx: nextTx, ty: nextTy })
+      }
+
+      ctx.container.addEventListener("pointerdown", handlePointerDown)
+      window.addEventListener("pointermove", handlePointerMove)
+      window.addEventListener("pointerup", handlePointerUp)
+      window.addEventListener("pointercancel", handlePointerUp)
+      ctx.container.addEventListener("wheel", handleWheel, { passive: false })
+
+      yield* Effect.addFinalizer(() =>
+        Effect.sync(() => {
+          ctx.container.removeEventListener("pointerdown", handlePointerDown)
+          window.removeEventListener("pointermove", handlePointerMove)
+          window.removeEventListener("pointerup", handlePointerUp)
+          window.removeEventListener("pointercancel", handlePointerUp)
+          ctx.container.removeEventListener("wheel", handleWheel)
+        })
       )
 
       const unlisten = yield* Effect.tryPromise({

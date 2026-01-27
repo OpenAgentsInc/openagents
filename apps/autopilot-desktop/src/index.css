@@ -491,18 +491,17 @@ body {
   border: 1px solid var(--line);
   border-radius: 6px;
   background: var(--bg);
-}
-
-.ai-canvas__grid {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
+  --canvas-scale: 1;
+  --canvas-translate-x: 0px;
+  --canvas-translate-y: 0px;
   background-image: radial-gradient(
     circle at center,
     rgba(255, 255, 255, 0.08) 1px,
     transparent 1px
   );
-  background-size: 20px 20px;
+  background-size: calc(20px * var(--canvas-scale))
+    calc(20px * var(--canvas-scale));
+  background-position: var(--canvas-translate-x) var(--canvas-translate-y);
 }
 
 .ai-canvas__content {
@@ -510,6 +509,31 @@ body {
   z-index: 1;
   width: 100%;
   height: 100%;
+  overflow: hidden;
+  cursor: grab;
+  touch-action: none;
+}
+
+.ai-canvas--panning .ai-canvas__content {
+  cursor: grabbing;
+}
+
+.ai-canvas__pan {
+  position: absolute;
+  inset: 0;
+  transform: translate(var(--canvas-translate-x), var(--canvas-translate-y));
+  will-change: transform;
+}
+
+.ai-canvas__zoom {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  transform: scale(var(--canvas-scale));
+  transform-origin: 0 0;
+  will-change: transform;
 }
 
 .ai-canvas__meta {
