@@ -1152,6 +1152,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "autopilot-desktop-wgpu"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "pollster 0.4.0",
+ "tracing",
+ "tracing-subscriber",
+ "wgpu",
+ "wgpui",
+ "winit",
+]
+
+[[package]]
 name = "av-scenechange"
 version = "0.14.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
