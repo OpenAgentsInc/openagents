@@ -149,14 +149,15 @@ pub(crate) fn normalize_reasoning_effort_for_model(
     model_name: &str,
     effort: Option<app_server::ReasoningEffort>,
 ) -> Option<app_server::ReasoningEffort> {
-    if model_name == "gpt-5.2-codex" {
-        return match effort {
-            Some(app_server::ReasoningEffort::Medium) => effort,
-            Some(_) => Some(app_server::ReasoningEffort::Medium),
-            None => None,
-        };
+    if is_gpt_5_2_codex_model(model_name) {
+        return Some(app_server::ReasoningEffort::Medium);
     }
     effort
+}
+
+fn is_gpt_5_2_codex_model(model_name: &str) -> bool {
+    let normalized = model_name.trim().to_ascii_lowercase();
+    normalized == "gpt-5.2-codex" || normalized.contains("gpt-5.2-codex")
 }
 
 pub(crate) fn format_relative_time(timestamp: u64) -> String {
