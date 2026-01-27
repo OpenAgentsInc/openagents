@@ -1,45 +1,55 @@
-# Clippy Analysis (autopilot-desktop focus)
+# Clippy Status (workspace)
 
-Run: `cargo clippy -p autopilot-desktop --all-targets` (log captured at `/tmp/clippy_autopilot_desktop.log`).
+Latest run (2026-01-27): `cargo clippy` (full workspace). The run completes with warnings only; no hard errors.
 
-## Update (2026-01-27)
-Several items listed below were already addressed in-tree after this log was captured:
-- `apps/autopilot-desktop/src-tauri/build.rs` now uses `tauri_build::try_build` with a codegen context.
-- `crates/ai-server/src/lib.rs` uses `tracing` (no `println!`/`eprintln!`) and handles `Mutex::lock` errors.
-- `crates/codex-client/src/client.rs` derives `Default` for `AppServerConfig`.
-- `crates/openagents-utils/src/filenames.rs` already uses the collapsible replace form for char sets.
+Previous run context: `cargo clippy -p autopilot-desktop --all-targets` (log captured at `/tmp/clippy_autopilot_desktop.log`). That log is still useful for historical line references.
 
-Re-run clippy to refresh the exact remaining warnings before large cleanup passes.
+## What changed since the last log
+### Unblocked hard errors (now fixed)
+- `crates/issues/src/cache.rs`: removed `RwLock` unwraps via safe lock helpers.
+- `crates/issues/src/directive.rs`: replaced `eprintln!` with `tracing::warn`.
+- `crates/ws-test/src/main.rs`: removed `expect` usages; added non-panicking fallback response and HMAC init guard.
+- `crates/autopilot-desktop-runner/src/main.rs`: replaced `println!/eprintln!` with `tracing::warn`; added tracing init.
+- `crates/autopilot-desktop-runner/Cargo.toml`: added `tracing` + `tracing-subscriber`.
+- `crates/compute/src/domain/job.rs`: imported `FromStr` for `InputType`.
+- `crates/runtime/src/dvm.rs`: imported `FromStr`; replaced `#[allow(dead_code)]` with `#[expect(dead_code)]`.
+- `crates/runtime/src/containers/providers/dvm.rs` + `crates/runtime/src/compute/providers/dvm.rs`: replaced `#[allow(dead_code)]` with `#[expect(dead_code)]`.
+- `crates/pylon/src/db/jobs.rs`: fixed `JobStatus::from_str` handling.
+- `crates/autopilot-core`:
+  - Removed `unwrap()` in hot paths (`dspy_optimization.rs`, `logger.rs`, `startup.rs`, `replay.rs`).
+  - Replaced `#[allow(dead_code)]` with `#[expect(dead_code)]`.
+  - Marked test modules with `#[expect(clippy::unwrap_used)]`.
 
-## Previously blocking errors (now addressed in-tree)
-### `crates/ai-server/src/lib.rs`
-The original failures were from `println!`/`eprintln!` and `lock().unwrap()`. Those have since been replaced with tracing + explicit error handling.
+Note: `Cargo.lock` updated because of the new `tracing-subscriber` dependency.
 
-## Secondary warnings (non-blocking, likely still present)
-### `crates/nostr/core/*` (large volume)
-Common lint categories:
-- `clippy::collapsible_if`
-- `clippy::should_implement_trait` for custom `from_str`
-- `clippy::inherent_to_string`
-- `clippy::get_first`
-- `clippy::map_clone`
-- `clippy::needless_borrows_for_generic_args`
-- `clippy::len_zero`
+## Current status (warnings only)
+Clippy now finishes without errors, but there is still a large warning surface. Key buckets from the latest run:
+- `crates/rlm`: `manual_strip`, `double_ended_iterator_last`, `too_many_arguments`.
+- `crates/frlm`: `collapsible_if`.
+- `crates/spark`: `single_match_else`, `assigning_clones`, `cast_lossless`, `implicit_clone`, plus **unfulfilled** `#[expect(dead_code)]` on `SparkWallet::sdk`.
+- `crates/compute`: `collapsible_if`, `should_implement_trait` (custom `from_str`), `derivable_impls`, `redundant_closure`, `manual_contains`, `unnecessary_lazy_evaluations`, `needless_borrows_for_generic_args`.
+- `crates/autopilot-core`: `collapsible_if`, `map_unwrap_or`, `manual_range_contains`, `manual_string_new`, `unused_self`, plus **unfulfilled** `#[expect(dead_code)]` on `StartupPhase` + `LogLine.timestamp`.
+- `crates/autopilot`: large volume of `collapsible_if`, `single_match`, `implicit_saturating_sub`, `single_char_add_str`, etc.
+- `crates/wgpui`, `crates/vim`, `crates/gateway`, `crates/relay`: mostly style warnings (`collapsible_if`, `derivable_impls`, etc.).
 
-Given volume, recommend deferring until blocking errors are resolved.
+## Cleanup plan (recommended order)
+1) **Remove unfulfilled `#[expect(dead_code)]`**  
+   - These were added to satisfy `clippy::allow_attributes`, but the lint no longer fires, so `expect` itself becomes noisy.  
+   - Targets: `crates/autopilot-core/src/startup.rs`, `crates/autopilot-core/src/startup/types.rs`, `crates/spark/src/wallet.rs`.
 
-### `crates/lm-router` / `crates/gpt-oss`
-- Mostly `collapsible_if`, `explicit_auto_deref`, `needless_borrows_for_generic_args`.
+2) **Low-risk auto-fix passes by crate**  
+   - `cargo clippy --fix --lib -p rlm`  
+   - `cargo clippy --fix --lib -p frlm`  
+   - `cargo clippy --fix --lib -p compute`  
+   - `cargo clippy --fix --lib -p autopilot-core`  
+   These will address most `collapsible_if`, `map_unwrap_or`, `manual_range_contains`, etc.
 
-## Recommended cleanup order
-1) **Re-run clippy** to confirm current error surface.
-2) **lm-router/gpt-oss**: small style fixes.
-3) **nostr/core**: large batch cleanups (optionally defer or apply `clippy::allow` if not urgent).
+3) **Trait/constructor normalization**  
+   - Convert custom `from_str` helpers to `impl FromStr` or rename to `parse_*` in `compute`, `issues`, and related crates.
+
+4) **Large warning surfaces (defer or batch)**  
+   - `autopilot`, `wgpui`, `vim`, and `nostr` are mostly stylistic. Consider batching, or selectively allowing noisy lints if they do not impact correctness.
 
 ## Notes
-- The clippy run is scoped to `autopilot-desktop` but still checks dependent crates, so dependency lint errors block the run.
-- Full log is in `/tmp/clippy_autopilot_desktop.log` for exact line references.
-
-## Work log (2026-01-27)
-- This log predates several fixes; see the 2026-01-27 update note above.
-- Clippy has not been re-run as part of this doc update; re-run to refresh the exact warnings list.
+- The workspace denies `allow_attributes`, so suppression should use `#[expect(...)]` and only where the lint actually fires.
+- The latest `cargo clippy` run completed successfully; remaining work is cleanup/consistency, not blocking.
