@@ -8,6 +8,10 @@ use tokio::sync::broadcast;
 use tokio_stream::wrappers::BroadcastStream;
 use uuid::Uuid;
 
+mod replay;
+
+pub use replay::{EventRecorder, ReplayKind, ReplayReader, ReplayRecord};
+
 const DEFAULT_EVENT_BUFFER: usize = 256;
 
 #[derive(Debug, Clone)]
@@ -152,13 +156,13 @@ impl SessionId {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum UserAction {
     Message { session_id: SessionId, text: String },
     Command { session_id: SessionId, name: String, args: Vec<String> },
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum AppEvent {
     WorkspaceOpened { workspace_id: WorkspaceId, path: PathBuf },
     SessionStarted {

@@ -664,9 +664,9 @@ Use JSON Lines (`.jsonl`) for simplicity:
 
 ### Replay APIs
 
-* `Replay::from_file(path)`
-* `Replay::events() -> impl Iterator<Item = AppEvent>`
-* `Replay::actions()` optionally
+* `ReplayReader::open(path)` (autopilot_app)
+* `ReplayReader::read_all() -> Vec<ReplayRecord>`
+* `EventRecorder::record_event(&AppEvent)` for JSONL output
 
 ### Uses
 

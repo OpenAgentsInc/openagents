@@ -450,3 +450,5 @@ Effuse catalog -> WGPUI target
 - 2026-01-27: Removed legacy crates `autopilot_ui_contract` and `autopilot-desktop-runner` from the workspace (sources deleted; references cleaned up).
 - 2026-01-27: Added view model reducer tests and layout sanity tests in `crates/autopilot_ui`, plus pointer docs under `apps/autopilot-desktop/docs/migration/`.
 - 2026-01-27: Verified `cargo test -p autopilot_ui`.
+- 2026-01-27: Added JSONL replay recorder/reader utilities to `crates/autopilot_app` and updated testability docs with the new APIs.
+- 2026-01-27: Verified `cargo test -p autopilot_app`.
