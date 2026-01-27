@@ -1179,6 +1179,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "autopilot_ui_contract"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "av-scenechange"
 version = "0.14.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
