@@ -25,21 +25,19 @@ The existing autopilot-desktop codebase provides a strong foundation for testabi
 ### Existing Architecture
 - **UI Framework**: Effuse (Effect-native) with 90+ TypeScript components in [`apps/autopilot-desktop/src/components/`](file:///Users/christopherdavid/code/openagents/apps/autopilot-desktop/src/components/)
 - **Backend**: Tauri-based with Rust services in [`apps/autopilot-desktop/src-tauri/`](file:///Users/christopherdavid/code/openagents/apps/autopilot-desktop/src-tauri/)
-- **UI Contract**: Already uses `UITree` + `UiPatch` system (ADR-0022) with structured event emission
 - **Core Agent Logic**: Lives in [`crates/autopilot-core/src/agent.rs`](file:///Users/christopherdavid/code/openagents/crates/autopilot-core/src/agent.rs) with DSPy-powered planning
 - **Target UI Stack**: WGPUI immediate-mode UI in `crates/autopilot_ui/` and native host in
   `apps/autopilot-desktop-wgpu/`, moving toward Zed/GPUI-style layout and test harnesses.
 
 ### Current UI Event Flow
 ```
-Backend (Adjutant) → UiEvent (UiTreeReset|UiPatch) → Effuse UITree Runtime → Component Rendering
+Backend (Adjutant) → AppEvent stream → Typed ViewModel → WGPUI Render tree
 ```
 
 **Key Files:**
-- UI Contract Types: [`apps/autopilot-desktop/src/contracts/tauri.ts`](file:///Users/christopherdavid/code/openagents/apps/autopilot-desktop/src/contracts/tauri.ts)
-- UI Tree State: [`apps/autopilot-desktop/src-tauri/src/agent/ui.rs`](file:///Users/christopherdavid/code/openagents/apps/autopilot-desktop/src-tauri/src/agent/ui.rs)  
-- Patch Logic: [`apps/autopilot-desktop/src/effuse/ui/patch.ts`](file:///Users/christopherdavid/code/openagents/apps/autopilot-desktop/src/effuse/ui/patch.ts)
-- Canvas Renderer: [`apps/autopilot-desktop/src/components/autopilot-canvas/component.ts`](file:///Users/christopherdavid/code/openagents/apps/autopilot-desktop/src/components/autopilot-canvas/component.ts)
+- App core: `crates/autopilot_app/`
+- Desktop host: `apps/autopilot-desktop-wgpu/`
+- Shared UI: `crates/autopilot_ui/`
 
 ### Current UI Components Structure
 The codebase has extensive component catalog:
@@ -84,9 +82,9 @@ Any test should be runnable:
 
 ### 3) “Log + Replay” as a first-class tool
 
-If the app works by applying `UiPatch` and producing `AppEvent`s, then:
+The canonical replay stream is **`AppEvent` + `UserAction`**:
 
-* **record those streams**
+* record those streams
 * make replay easy
 * build tests that assert on logs rather than fragile UI queries
 
@@ -371,8 +369,8 @@ impl ModelReplay {
 pub trait Store: Send + Sync {
     async fn save_session(&self, session: &Session) -> Result<SessionId>; 
     async fn load_session(&self, id: &SessionId) -> Result<Option<Session>>;
-    async fn save_ui_snapshot(&self, session_id: &SessionId, tree: &UITree) -> Result<()>;
-    async fn load_ui_snapshot(&self, session_id: &SessionId) -> Result<Option<UITree>>;
+    async fn save_app_snapshot(&self, session_id: &SessionId, snap: &AppSnapshot) -> Result<()>;
+    async fn load_app_snapshot(&self, session_id: &SessionId) -> Result<Option<AppSnapshot>>;
 }
 
 // Based on existing session management in apps/autopilot-desktop/src-tauri/
@@ -392,7 +390,7 @@ impl StoreLive {
 
 pub struct StoreMemory { 
     sessions: Arc<Mutex<HashMap<SessionId, Session>>>,
-    ui_snapshots: Arc<Mutex<HashMap<SessionId, UITree>>>,
+    app_snapshots: Arc<Mutex<HashMap<SessionId, AppSnapshot>>>,
 }
 ```
 
@@ -400,33 +398,27 @@ pub struct StoreMemory {
 
 ## Contracts to Stabilize for Testing
 
-### App events (`AppEvent`) - Grounded in existing UiEvent system
+### App events (`AppEvent`) - Grounded in existing runtime event flow
 
 Must be **serializable**, **loggable**, and stable enough to replay.
 
-Based on existing [`apps/autopilot-desktop/src/contracts/tauri.ts`](file:///Users/christopherdavid/code/openagents/apps/autopilot-desktop/src/contracts/tauri.ts):
-
 ```rust
-// crates/autopilot_ui_contract/src/events.rs
+// crates/autopilot_app/src/events.rs
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum AppEvent {
-    // Existing UI events from current system
-    UiPatch { 
-        session_id: SessionId, 
-        patch: UiPatch 
+    // Core lifecycle + UI-relevant events
+    WorkspaceOpened {
+        workspace_id: WorkspaceId,
+        path: PathBuf,
     },
-    UiTreeReset { 
-        session_id: SessionId, 
-        tree: UITree 
+    SessionStarted {
+        session_id: SessionId,
+        label: Option<String>,
     },
-    UiDataUpdate { 
-        session_id: SessionId, 
-        path: String, 
-        value: JsonValue 
+    UserActionDispatched {
+        session_id: SessionId,
+        action: UserAction,
     },
-    
-    // New events for comprehensive testing
-    UiTreeSnapshot(SessionId, UITree),  // Periodic checkpoints
     RunStateChanged {
         session_id: SessionId,
         old_state: RunState,
@@ -464,7 +456,7 @@ pub enum AppEvent {
 Also serializable for replay, derived from current UI patterns:
 
 ```rust
-// crates/autopilot_ui_contract/src/actions.rs
+// crates/autopilot_app/src/actions.rs
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum UserAction {
     // Workspace management
@@ -504,59 +496,36 @@ pub enum UserAction {
 }
 ```
 
-### UI contract (`UITree` + `UiPatch`) - Leveraging existing implementation
+### View model contract (typed state)
 
-Even if we migrate to a typed view model for rendering, we **still emit**
-`UiPatch`/`UITree` as a replay artifact for testability and regression
-reproduction. The canonical patch logic lives in
-`crates/autopilot_ui_contract`.
-
-For testability, building on [`apps/autopilot-desktop/src/effuse/ui/patch.ts`](file:///Users/christopherdavid/code/openagents/apps/autopilot-desktop/src/effuse/ui/patch.ts):
+The UI contract is a **typed Rust view model**. UI state is derived from
+`AppEvent` streams and rendered immediately each frame via `Render` /
+`RenderOnce` components. There is no UI patch protocol in the new system.
 
 ```rust
-// crates/autopilot_ui_contract/src/patch.rs
-use serde::{Deserialize, Serialize};
-use serde_json::Value as JsonValue;
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct UiPatch {
-    pub op: String,      // "add", "remove", "replace"
-    pub path: String,    // JSON pointer path
-    pub value: Option<JsonValue>,
+// crates/autopilot_ui/src/view_model.rs
+#[derive(Default, Clone)]
+pub struct AppViewModel {
+    workspace: Option<WorkspaceState>,
+    session: Option<SessionState>,
+    timeline: Vec<TimelineEntry>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct UITree {
-    pub root: String,
-    pub elements: HashMap<String, UIElement>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)] 
-pub struct UIElement {
-    pub component: String,
-    pub props: HashMap<String, JsonValue>,
-    pub children: Vec<String>,
-    pub actions: Vec<Action>,
-}
-
-// Pure, deterministic patch application
-pub fn apply_patch(tree: &mut UITree, patch: UiPatch) -> Result<(), PatchError> {
-    // Implementation mirrors existing TypeScript logic in patch.ts
-    match patch.op.as_str() {
-        "add" => apply_add_patch(tree, &patch.path, patch.value),
-        "remove" => apply_remove_patch(tree, &patch.path),
-        "replace" => apply_replace_patch(tree, &patch.path, patch.value),
-        _ => Err(PatchError::InvalidOp(patch.op)),
+impl AppViewModel {
+    pub fn apply_event(&mut self, event: &AppEvent) {
+        match event {
+            AppEvent::WorkspaceOpened { path, .. } => {
+                self.workspace = Some(WorkspaceState::from(path));
+            }
+            AppEvent::SessionStarted { session_id, .. } => {
+                self.session = Some(SessionState::new(*session_id));
+            }
+            AppEvent::UserActionDispatched { action, .. } => {
+                self.timeline.push(TimelineEntry::from(action));
+            }
+            _ => {}
+        }
     }
-}
-
-// Validation based on existing catalog system
-pub fn validate_tree(tree: &UITree) -> Result<(), ValidationError> {
-    // Port logic from apps/autopilot-desktop/src/effuse/ui/catalog.ts
-    for (id, element) in &tree.elements {
-        validate_element(id, element)?;
-    }
-    Ok(())
 }
 ```
 
@@ -564,70 +533,16 @@ pub fn validate_tree(tree: &UITree) -> Result<(), ValidationError> {
 
 ## Test Harnesses (What we will build)
 
-### Harness 1: Reducer tests (fastest) - Based on existing patch system
+### Harness 1: View model reducer tests (fastest)
 
-**Scope:** `autopilot_ui_contract` + reducer logic
+**Scope:** `autopilot_ui` view model reducers
 
-* Given initial `UITree`, apply patch sequence, assert final `UITree`.
-* Snapshot tests on `UITree` JSON are acceptable if stable.
-* Leverage existing patch logic from [`apps/autopilot-desktop/src/effuse/ui/patch.ts`](file:///Users/christopherdavid/code/openagents/apps/autopilot-desktop/src/effuse/ui/patch.ts)
-
-```rust
-// crates/autopilot_ui_contract/tests/patch_apply.rs
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use serde_json::json;
-
-    #[test]
-    fn test_patch_sequence_conversation_flow() {
-        // Based on real conversation components from ai-elements
-        let mut tree = UITree {
-            root: "root".to_string(),
-            elements: HashMap::from([
-                ("root".to_string(), UIElement {
-                    component: "conversation".to_string(),
-                    props: HashMap::new(),
-                    children: vec![],
-                    actions: vec![],
-                }),
-            ]),
-        };
-
-        // Simulate adding a message (based on existing UI flow)
-        let patch1 = UiPatch {
-            op: "add".to_string(),
-            path: "/elements/msg_1".to_string(),
-            value: Some(json!({
-                "component": "message",
-                "props": {
-                    "role": "user",
-                    "content": "Hello"
-                },
-                "children": [],
-                "actions": []
-            })),
-        };
-
-        apply_patch(&mut tree, patch1).unwrap();
-        assert_eq!(tree.elements.len(), 2);
-        assert!(tree.elements.contains_key("msg_1"));
-    }
-
-    #[test]
-    fn test_tool_call_patch_sequence() {
-        // Test tool call card creation (matches existing tool components)
-        // Load from fixtures/ui_patches/tool_call_sequence.jsonl
-    }
-}
-```
+* Given initial `AppViewModel`, apply event sequences, assert final state.
+* Snapshot tests on view model JSON are acceptable if stable.
 
 **Deliverables:**
-* `crates/autopilot_ui_contract/tests/patch_apply.rs`
-* `fixtures/ui_patches/` - Real patch sequences from existing components
-  * `conversation_flow.jsonl` 
-  * `tool_call_sequence.jsonl`
-  * `canvas_interaction.jsonl`
+* `crates/autopilot_ui/tests/view_model.rs`
+* `fixtures/view_model_events/*.jsonl`
 
 ### Harness 2: Headless App simulation (integration)
 
@@ -652,14 +567,14 @@ Deliverables:
 * `crates/autopilot_app/tests/headless_e2e.rs`
 * “scenario runner” DSL (see below)
 
-### Harness 3: UI contract replay tests (golden)
+### Harness 3: Replay tests (golden)
 
-**Scope:** WGPUI runtime mapping correctness
+**Scope:** AppEvent/UserAction replay correctness
 
-Record a real run’s `AppEvent` stream (or just UI events) and replay into:
+Record a real run’s `AppEvent` + `UserAction` streams and replay into:
 
-* the UITree reducer
-* the `UITreeRenderer` (if you keep it)
+* the `AppViewModel` reducer
+* the WGPUI render tree (no panics)
 
 Assertions:
 
@@ -669,7 +584,7 @@ Assertions:
 
 Deliverables:
 
-* `crates/autopilot_ui_runtime/tests/replay.rs`
+* `crates/autopilot_ui/tests/replay.rs`
 * `fixtures/replays/*.jsonl`
 
 ### Harness 3b: Layout Snapshot Tests (Zed parity)
@@ -714,7 +629,7 @@ Scenario::new("send_message_emits_tool_card")
   .step(OpenWorkspace("fixtures/repos/tiny"))
   .step(StartSession(Default::default()))
   .step(SendMessage("refactor foo"))
-  .expect_ui(|tree| tree.contains_text("Tool Call"))
+  .expect_ui(|vm| vm.contains_tool_call("Tool Call"))
   .expect_event(|ev| matches!(ev, AppEvent::ToolStarted(_)))
   .run();
 ```
@@ -725,7 +640,7 @@ Scenario::new("send_message_emits_tool_card")
 * Assertions can match:
 
   * events (stream-level)
-  * derived UI state (via applied patches)
+  * derived UI state (via view model reducers)
   * tool outcomes
 * Runner can:
 
@@ -768,7 +683,7 @@ Add CI test:
 * assert:
 
   * decode works
-  * patch apply works
+  * view model apply works
   * invariants hold
 
 This is your “protocol compatibility suite.”
@@ -781,11 +696,10 @@ Introduce explicit invariants that are cheap to validate and catch drift:
 
 ### UI invariants
 
-* unique element ids
-* actions reference existing element ids
-* patch paths resolve
+* no duplicate view IDs in the rendered tree
+* action targets reference valid view model state
 * no invalid enum variants
-* required props present for each component type
+* required fields present for each UI component state
 
 ### App invariants
 
@@ -796,7 +710,7 @@ Introduce explicit invariants that are cheap to validate and catch drift:
 
 Add:
 
-* `validate_tree(&UITree) -> Result<()>`
+* `validate_view_model(&AppViewModel) -> Result<()>`
 * `validate_event(&AppEvent) -> Result<()>`
 
 Run these validators:
@@ -851,18 +765,11 @@ crates/
     src/
     tests/
       headless_scenarios.rs
-  autopilot_ui_contract/
-    src/
-    tests/
-      patch_apply.rs
-      invariants.rs
   autopilot_ui/
     src/
     tests/
+      view_model.rs
       layout_snapshots.rs
-  autopilot_ui_runtime/
-    src/
-    tests/
       replay.rs
 
 fixtures/
@@ -870,7 +777,7 @@ fixtures/
     tiny/
   replays/
     send_message_tool_call.jsonl
-  ui_patches/
+  view_model_events/
     dashboard_boot.jsonl
   layout_snapshots/
     desktop_panels.json
@@ -882,7 +789,7 @@ fixtures/
 
 ### Gate A — Contract correctness
 
-* Patch apply tests pass
+* View model reducer tests pass
 * Invariant tests pass
 * Replay suite loads and validates
 
@@ -919,10 +826,10 @@ fixtures/
 * implement `EventRecorder` service (file sink)
 * implement `EventCapture` for tests
 
-### 3) UI contract crate
+### 3) View model + invariants
 
-* types + patch apply + validators
-* JSON serde stable
+* typed view model state + reducers
+* JSON serde stable (if snapshots are stored)
 * fixture-driven tests
 
 ### 4) Scenario runner
@@ -941,8 +848,7 @@ fixtures/
 
 ## Open Questions (decide, but don’t block)
 
-* Do we want periodic `UiTreeSnapshot` checkpoints? (recommended)
-* Do we keep UITree as runtime intermediate (3A) or move to typed ViewModel (3B)?
+* Do we want periodic `AppSnapshot` checkpoints in addition to event logs?
 
   * Either way, record/replay remains valuable.
 

@@ -12,7 +12,11 @@ use wgpui::components::organisms::{
 use wgpui::components::sections::{MessageEditor, ThreadView};
 use wgpui::components::Text;
 use wgpui::input::InputEvent;
-use wgpui::{Bounds, Component, EventResult, PaintContext, Point, Quad, theme};
+use taffy::prelude::{FlexDirection, LengthPercentage};
+use wgpui::{
+    Bounds, Component, EventResult, LayoutEngine, LayoutStyle, PaintContext, Point, Quad, Size,
+    theme, px,
+};
 
 const PANEL_PADDING: f32 = 12.0;
 const PANEL_GAP: f32 = 12.0;
@@ -578,11 +582,15 @@ fn paint_badge(cx: &mut PaintContext, label: &str, bounds: Bounds, filled: bool)
 }
 
 fn paint_session_list(cx: &mut PaintContext, rows: &[SessionRow], bounds: Bounds) {
-    let mut y = bounds.origin.y;
     let id_column_width = 78.0;
+    let heights: Vec<f32> = rows.iter().map(|_| SESSION_ROW_HEIGHT).collect();
+    let row_bounds = stack_bounds(bounds, &heights, 0.0);
 
-    for row in rows {
-        let row_bounds = Bounds::new(bounds.origin.x, y, bounds.size.width, SESSION_ROW_HEIGHT);
+    for (row, row_bounds) in rows.iter().zip(row_bounds) {
+        if row_bounds.origin.y > bounds.origin.y + bounds.size.height {
+            break;
+        }
+
         if row.active {
             cx.scene.draw_quad(
                 Quad::new(row_bounds)
@@ -624,11 +632,6 @@ fn paint_session_list(cx: &mut PaintContext, rows: &[SessionRow], bounds: Bounds
             .color(theme::text::SECONDARY)
             .no_wrap();
         detail_text.paint(detail_bounds, cx);
-
-        y += SESSION_ROW_HEIGHT;
-        if y > bounds.origin.y + bounds.size.height {
-            break;
-        }
     }
 }
 
@@ -705,63 +708,108 @@ struct StatusSectionData {
     actions: Vec<StatusActionData>,
 }
 
-fn paint_status_sections(cx: &mut PaintContext, bounds: Bounds, sections: Vec<StatusSectionData>) {
-    let mut y = bounds.origin.y;
-    let label_width = 110.0;
+#[derive(Clone, Debug)]
+enum StatusRow {
+    Header { title: &'static str },
+    Line { line: StatusLineData },
+    Actions { actions: Vec<StatusActionData> },
+    Spacer { height: f32 },
+}
 
+fn build_status_rows(sections: Vec<StatusSectionData>) -> Vec<StatusRow> {
+    let mut rows = Vec::new();
     for section in sections {
-        let mut header = Text::new(section.title)
-            .font_size(theme::font_size::BASE)
-            .bold()
-            .color(theme::accent::PRIMARY)
-            .no_wrap();
-        header.paint(
-            Bounds::new(bounds.origin.x, y, bounds.size.width, STATUS_LINE_HEIGHT),
-            cx,
-        );
-        y += STATUS_LINE_HEIGHT + 2.0;
+        rows.push(StatusRow::Header { title: section.title });
+        rows.push(StatusRow::Spacer { height: 2.0 });
 
         for line in section.lines {
-            let label_bounds = Bounds::new(bounds.origin.x, y, label_width, STATUS_LINE_HEIGHT);
-            let value_bounds = Bounds::new(
-                bounds.origin.x + label_width + 6.0,
-                y,
-                bounds.size.width - label_width - 6.0,
-                STATUS_LINE_HEIGHT,
-            );
-
-            let mut label_text = Text::new(line.label)
-                .font_size(theme::font_size::BASE)
-                .color(theme::text::SECONDARY)
-                .no_wrap();
-            label_text.paint(label_bounds, cx);
-
-            let mut value_text = Text::new(line.value)
-                .font_size(theme::font_size::BASE)
-                .color(line.value_color)
-                .no_wrap();
-            value_text.paint(value_bounds, cx);
-
-            y += STATUS_LINE_HEIGHT;
+            rows.push(StatusRow::Line { line });
         }
 
         if !section.actions.is_empty() {
-            y += 4.0;
-            let mut x = bounds.origin.x;
-            for action in section.actions {
-                let width = badge_width(action.label);
-                paint_badge(
-                    cx,
-                    action.label,
-                    Bounds::new(x, y, width, 16.0),
-                    action.active,
-                );
-                x += width + 6.0;
-            }
-            y += 18.0;
+            rows.push(StatusRow::Spacer { height: 4.0 });
+            rows.push(StatusRow::Actions {
+                actions: section.actions,
+            });
+            rows.push(StatusRow::Spacer { height: 2.0 });
         }
 
-        y += STATUS_SECTION_GAP;
+        rows.push(StatusRow::Spacer {
+            height: STATUS_SECTION_GAP,
+        });
+    }
+    rows
+}
+
+fn paint_status_sections(cx: &mut PaintContext, bounds: Bounds, sections: Vec<StatusSectionData>) {
+    let label_width = 110.0;
+    let rows = build_status_rows(sections);
+    let heights: Vec<f32> = rows
+        .iter()
+        .map(|row| match row {
+            StatusRow::Header { .. } => STATUS_LINE_HEIGHT,
+            StatusRow::Line { .. } => STATUS_LINE_HEIGHT,
+            StatusRow::Actions { .. } => 18.0,
+            StatusRow::Spacer { height } => *height,
+        })
+        .collect();
+    let row_bounds = stack_bounds(bounds, &heights, 0.0);
+
+    for (row, row_bounds) in rows.into_iter().zip(row_bounds) {
+        if row_bounds.origin.y > bounds.origin.y + bounds.size.height {
+            break;
+        }
+
+        match row {
+            StatusRow::Header { title } => {
+                let mut header = Text::new(title)
+                    .font_size(theme::font_size::BASE)
+                    .bold()
+                    .color(theme::accent::PRIMARY)
+                    .no_wrap();
+                header.paint(row_bounds, cx);
+            }
+            StatusRow::Line { line } => {
+                let label_bounds = Bounds::new(
+                    row_bounds.origin.x,
+                    row_bounds.origin.y,
+                    label_width,
+                    row_bounds.size.height,
+                );
+                let value_bounds = Bounds::new(
+                    row_bounds.origin.x + label_width + 6.0,
+                    row_bounds.origin.y,
+                    row_bounds.size.width - label_width - 6.0,
+                    row_bounds.size.height,
+                );
+
+                let mut label_text = Text::new(line.label)
+                    .font_size(theme::font_size::BASE)
+                    .color(theme::text::SECONDARY)
+                    .no_wrap();
+                label_text.paint(label_bounds, cx);
+
+                let mut value_text = Text::new(line.value)
+                    .font_size(theme::font_size::BASE)
+                    .color(line.value_color)
+                    .no_wrap();
+                value_text.paint(value_bounds, cx);
+            }
+            StatusRow::Actions { actions } => {
+                let mut x = row_bounds.origin.x;
+                for action in actions {
+                    let width = badge_width(action.label);
+                    paint_badge(
+                        cx,
+                        action.label,
+                        Bounds::new(x, row_bounds.origin.y, width, 16.0),
+                        action.active,
+                    );
+                    x += width + 6.0;
+                }
+            }
+            StatusRow::Spacer { .. } => {}
+        }
     }
 }
 
@@ -853,96 +901,74 @@ struct Layout {
 
 impl Layout {
     fn new(bounds: Bounds) -> Self {
-        let command_bar_bounds = Bounds::new(
-            bounds.origin.x,
-            bounds.origin.y + bounds.size.height - COMMAND_BAR_HEIGHT,
-            bounds.size.width,
-            COMMAND_BAR_HEIGHT,
+        let mut engine = LayoutEngine::new();
+        let panel_gap = LengthPercentage::length(PANEL_GAP);
+        let inner_gap = LengthPercentage::length(6.0);
+        let padding = LengthPercentage::length(PANEL_PADDING);
+
+        let left_header = engine.request_leaf(&LayoutStyle::new().height(px(PANEL_HEADER_HEIGHT)));
+        let left_list = engine.request_layout(&LayoutStyle::new().flex_grow(1.0), &[]);
+        let left_panel_style = LayoutStyle::new()
+            .flex_direction(FlexDirection::Column)
+            .width(px(LEFT_PANEL_WIDTH))
+            .flex_shrink(0.0)
+            .gap(inner_gap)
+            .padding(padding);
+        let left_panel = engine.request_layout(&left_panel_style, &[left_header, left_list]);
+
+        let center_header = engine.request_leaf(&LayoutStyle::new().height(px(PANEL_HEADER_HEIGHT)));
+        let thread_body = engine.request_layout(&LayoutStyle::new().flex_grow(1.0), &[]);
+        let composer = engine.request_leaf(&LayoutStyle::new().height(px(COMPOSER_HEIGHT)));
+        let center_panel_style = LayoutStyle::new()
+            .flex_direction(FlexDirection::Column)
+            .flex_grow(1.0)
+            .gap(inner_gap)
+            .padding(padding);
+        let center_panel =
+            engine.request_layout(&center_panel_style, &[center_header, thread_body, composer]);
+
+        let right_header = engine.request_leaf(&LayoutStyle::new().height(px(PANEL_HEADER_HEIGHT)));
+        let right_body = engine.request_layout(&LayoutStyle::new().flex_grow(1.0), &[]);
+        let right_panel_style = LayoutStyle::new()
+            .flex_direction(FlexDirection::Column)
+            .width(px(RIGHT_PANEL_WIDTH))
+            .flex_shrink(0.0)
+            .gap(inner_gap)
+            .padding(padding);
+        let right_panel = engine.request_layout(&right_panel_style, &[right_header, right_body]);
+
+        let content_row_style = LayoutStyle::new()
+            .flex_direction(FlexDirection::Row)
+            .gap(panel_gap)
+            .flex_grow(1.0);
+        let content_row = engine.request_layout(
+            &content_row_style,
+            &[left_panel, center_panel, right_panel],
         );
 
-        let content_bounds = Bounds::new(
-            bounds.origin.x,
-            bounds.origin.y,
-            bounds.size.width,
-            bounds.size.height - COMMAND_BAR_HEIGHT,
-        );
+        let command_bar = engine.request_leaf(&LayoutStyle::new().height(px(COMMAND_BAR_HEIGHT)));
 
-        let left_panel_bounds = Bounds::new(
-            content_bounds.origin.x,
-            content_bounds.origin.y,
-            LEFT_PANEL_WIDTH.min(content_bounds.size.width),
-            content_bounds.size.height,
-        );
+        let root_style = LayoutStyle::new()
+            .flex_direction(FlexDirection::Column)
+            .width(px(bounds.size.width))
+            .height(px(bounds.size.height));
+        let root = engine.request_layout(&root_style, &[content_row, command_bar]);
 
-        let right_panel_bounds = Bounds::new(
-            content_bounds.origin.x + content_bounds.size.width - RIGHT_PANEL_WIDTH,
-            content_bounds.origin.y,
-            RIGHT_PANEL_WIDTH.min(content_bounds.size.width),
-            content_bounds.size.height,
-        );
+        engine.compute_layout(root, Size::new(bounds.size.width, bounds.size.height));
+        let origin = bounds.origin;
 
-        let center_panel_bounds = Bounds::new(
-            left_panel_bounds.origin.x + left_panel_bounds.size.width + PANEL_GAP,
-            content_bounds.origin.y,
-            (content_bounds.size.width
-                - left_panel_bounds.size.width
-                - right_panel_bounds.size.width
-                - PANEL_GAP * 2.0)
-                .max(0.0),
-            content_bounds.size.height,
-        );
+        let left_panel_bounds = offset_bounds(engine.layout(left_panel), origin);
+        let center_panel_bounds = offset_bounds(engine.layout(center_panel), origin);
+        let right_panel_bounds = offset_bounds(engine.layout(right_panel), origin);
+        let command_bar_bounds = offset_bounds(engine.layout(command_bar), origin);
 
-        let left_inner = inset(left_panel_bounds, PANEL_PADDING);
-        let center_inner = inset(center_panel_bounds, PANEL_PADDING);
-        let right_inner = inset(right_panel_bounds, PANEL_PADDING);
-
-        let left_header_bounds = Bounds::new(
-            left_inner.origin.x,
-            left_inner.origin.y,
-            left_inner.size.width,
-            PANEL_HEADER_HEIGHT,
-        );
-        let left_list_bounds = Bounds::new(
-            left_inner.origin.x,
-            left_inner.origin.y + PANEL_HEADER_HEIGHT + 6.0,
-            left_inner.size.width,
-            (left_inner.size.height - PANEL_HEADER_HEIGHT - 6.0).max(0.0),
-        );
-
-        let center_header_bounds = Bounds::new(
-            center_inner.origin.x,
-            center_inner.origin.y,
-            center_inner.size.width,
-            PANEL_HEADER_HEIGHT,
-        );
-
-        let editor_bounds = Bounds::new(
-            center_inner.origin.x,
-            center_inner.origin.y + center_inner.size.height - COMPOSER_HEIGHT,
-            center_inner.size.width,
-            COMPOSER_HEIGHT,
-        );
-
-        let thread_bounds = Bounds::new(
-            center_inner.origin.x,
-            center_inner.origin.y + PANEL_HEADER_HEIGHT + 6.0,
-            center_inner.size.width,
-            (editor_bounds.origin.y - center_inner.origin.y - PANEL_HEADER_HEIGHT - 12.0).max(0.0),
-        );
-
-        let right_header_bounds = Bounds::new(
-            right_inner.origin.x,
-            right_inner.origin.y,
-            right_inner.size.width,
-            PANEL_HEADER_HEIGHT,
-        );
-
-        let right_body_bounds = Bounds::new(
-            right_inner.origin.x,
-            right_inner.origin.y + PANEL_HEADER_HEIGHT + 6.0,
-            right_inner.size.width,
-            (right_inner.size.height - PANEL_HEADER_HEIGHT - 6.0).max(0.0),
-        );
+        let left_header_bounds = offset_bounds(engine.layout(left_header), origin);
+        let left_list_bounds = offset_bounds(engine.layout(left_list), origin);
+        let center_header_bounds = offset_bounds(engine.layout(center_header), origin);
+        let thread_bounds = offset_bounds(engine.layout(thread_body), origin);
+        let editor_bounds = offset_bounds(engine.layout(composer), origin);
+        let right_header_bounds = offset_bounds(engine.layout(right_header), origin);
+        let right_body_bounds = offset_bounds(engine.layout(right_body), origin);
 
         Self {
             left_panel_bounds,
@@ -960,13 +986,42 @@ impl Layout {
     }
 }
 
-fn inset(bounds: Bounds, padding: f32) -> Bounds {
+fn offset_bounds(bounds: Bounds, origin: Point) -> Bounds {
     Bounds::new(
-        bounds.origin.x + padding,
-        bounds.origin.y + padding,
-        (bounds.size.width - padding * 2.0).max(0.0),
-        (bounds.size.height - padding * 2.0).max(0.0),
+        bounds.origin.x + origin.x,
+        bounds.origin.y + origin.y,
+        bounds.size.width,
+        bounds.size.height,
     )
+}
+
+fn stack_bounds(bounds: Bounds, heights: &[f32], gap: f32) -> Vec<Bounds> {
+    if heights.is_empty() {
+        return Vec::new();
+    }
+
+    let mut engine = LayoutEngine::new();
+    let gap = LengthPercentage::length(gap);
+    let mut nodes = Vec::with_capacity(heights.len());
+
+    for height in heights {
+        let style = LayoutStyle::new().height(px(*height));
+        nodes.push(engine.request_leaf(&style));
+    }
+
+    let stack_style = LayoutStyle::new()
+        .flex_direction(FlexDirection::Column)
+        .gap(gap)
+        .width(px(bounds.size.width))
+        .height(px(bounds.size.height));
+    let stack = engine.request_layout(&stack_style, &nodes);
+
+    engine.compute_layout(stack, Size::new(bounds.size.width, bounds.size.height));
+
+    nodes
+        .into_iter()
+        .map(|node| offset_bounds(engine.layout(node), bounds.origin))
+        .collect()
 }
 
 fn paint_panel(cx: &mut PaintContext, bounds: Bounds) {
