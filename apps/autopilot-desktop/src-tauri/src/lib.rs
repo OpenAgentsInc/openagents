@@ -64,8 +64,12 @@ fn configure_linux_display_backend() {
             .unwrap_or(false)
         && std::env::var_os("AUTOPILOT_FORCE_WAYLAND").is_none()
     {
-        std::env::set_var("GDK_BACKEND", "x11");
-        std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+        // Safety: Called at startup to control the display backend before any UI
+        // threads are spawned; we accept the process-wide env change here.
+        unsafe {
+            std::env::set_var("GDK_BACKEND", "x11");
+            std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+        }
     }
 }
 
