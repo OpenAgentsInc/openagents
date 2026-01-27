@@ -1381,78 +1381,7 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
                   </div>
                 </section>
 
-                <section class="flex flex-col gap-2 border-b border-[color:var(--line)] px-2.5 py-2 min-h-0">
-                  <div class="text-[11px] uppercase tracking-[0.12em] text-[color:var(--yellow)]">Logs</div>
-                  <div class="grid grid-cols-[minmax(90px,120px)_minmax(0,1fr)] gap-x-2.5 gap-y-1.5 text-[12px]">
-                    <div class="text-[10px] uppercase tracking-[0.08em] text-[color:var(--muted)] min-w-0">App-Server</div>
-                    <div class="min-w-0 break-words font-[var(--font-mono)] text-[color:var(--ink)]">
-                      ${state.logPaths.appServerLogDir || "--"}
-                    </div>
-                    <div class="text-[10px] uppercase tracking-[0.08em] text-[color:var(--muted)] min-w-0">Full Auto</div>
-                    <div class="min-w-0 break-words font-[var(--font-mono)] text-[color:var(--ink)]">
-                      ${state.logPaths.fullAutoLogDir || "--"}
-                    </div>
-                    <div class="text-[10px] uppercase tracking-[0.08em] text-[color:var(--muted)] min-w-0">Bundles</div>
-                    <div class="min-w-0 break-words font-[var(--font-mono)] text-[color:var(--ink)]">
-                      ${state.logPaths.traceBundleDir || "--"}
-                    </div>
-                  </div>
-                </section>
-
-                <section class="flex flex-col gap-2 border-b border-[color:var(--line)] px-2.5 py-2 min-h-0">
-                  <div class="text-[11px] uppercase tracking-[0.12em] text-[color:var(--yellow)]">Usage</div>
-                  <div class="flex flex-col gap-2 min-h-0">
-                    <div class="flex flex-col gap-1">
-                      <div class="flex items-center justify-between text-[10px]">
-                        <span class="uppercase tracking-[0.08em] text-[color:var(--muted)]">
-                          Session
-                          ${usageLabels.sessionResetLabel
-                            ? html`<span class="text-[color:var(--muted)]"> · ${usageLabels.sessionResetLabel}</span>`
-                            : ""}
-                        </span>
-                        <span class="text-[color:var(--muted)]">
-                          ${usageLabels.sessionPercent === null
-                            ? "--"
-                            : `${usageLabels.sessionPercent}% USED`}
-                        </span>
-                      </div>
-                      <div class="h-1.5 w-full bg-[color:var(--bg)] border border-[color:var(--line)]">
-                        <span
-                          class="block h-full bg-[color:var(--accent-strong)]"
-                          style="width: ${usageLabels.sessionPercent ?? 0}%"
-                        ></span>
-                      </div>
-                    </div>
-                    ${usageLabels.showWeekly
-                      ? html`
-                          <div class="flex flex-col gap-1">
-                            <div class="flex items-center justify-between text-[10px]">
-                              <span class="uppercase tracking-[0.08em] text-[color:var(--muted)]">
-                                Weekly
-                                ${usageLabels.weeklyResetLabel
-                                  ? html`<span class="text-[color:var(--muted)]"> · ${usageLabels.weeklyResetLabel}</span>`
-                                  : ""}
-                              </span>
-                              <span class="text-[color:var(--muted)]">
-                                ${usageLabels.weeklyPercent === null
-                                  ? "--"
-                                  : `${usageLabels.weeklyPercent}% USED`}
-                              </span>
-                            </div>
-                            <div class="h-1.5 w-full bg-[color:var(--bg)] border border-[color:var(--line)]">
-                              <span
-                                class="block h-full bg-[color:var(--accent-strong)]"
-                                style="width: ${usageLabels.weeklyPercent ?? 0}%"
-                              ></span>
-                            </div>
-                          </div>
-                        `
-                      : ""}
-                  </div>
-                  ${usageLabels.creditsLabel
-                    ? html`<div class="text-[11px] text-[color:var(--muted)]">${usageLabels.creditsLabel}</div>`
-                    : ""}
-                </section>
+                ${"" /* Logs + Usage hidden per request. */}
 
                 ${
                   showAppServerFeed
