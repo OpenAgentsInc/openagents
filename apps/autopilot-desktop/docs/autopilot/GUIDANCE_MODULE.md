@@ -159,6 +159,29 @@ This is a module stack, not a single module.
 
 ## Open source vs forkable (the marketplace story)
 
+Once the decision layer is expressed as declarative signatures (clear input/output
+contracts), it stops being a one-off blob of prompts and becomes a package
+surface. This is the same move JavaScript made with NPM:
+
+- Before NPM: teams hand-wrote ad-hoc utilities inside each repo; improvements
+  stayed trapped in-house.
+- After NPM: small modules with stable APIs became reusable, searchable, and
+  composable—an ecosystem flourished because anyone could improve one piece and
+  everyone could adopt it.
+
+The parallel here:
+
+- Today (hardcoded / prompt-harness): scheduler logic is bespoke, tangled with
+  project state, and hard to compare or swap.
+- With signatures: each capability becomes a drop-in package—BudgetPolicy,
+  StopDecider, NextActionSelector, Verifier—independently discoverable,
+  evaluated, and upgradeable.
+
+Signatures turn agent intelligence into an API. Once intelligence has an API,
+it can have packages—like NPM—so the ecosystem can flourish: small, composable
+modules, discoverable by anyone, improved by anyone, and monetizable by the
+people who ship real gains.
+
 We want a system that is not just open source, but extensible and packaged:
 
 - Each policy or selector can be shipped as a package.
@@ -167,6 +190,42 @@ We want a system that is not just open source, but extensible and packaged:
 - Contributors can improve a single piece and get credited or rewarded.
 
 Think NPM, but for agent intelligence (signatures, modules, and policies).
+
+## Big picture: Guidance as market interface
+
+The Guidance Module is the bridge between autonomy and the OpenAgents market:
+it turns between-turn decisions into typed, auditable work units that can be
+routed, verified, and paid for.
+
+Why this matters (from the compute fracking story):
+
+- Stranded compute exists but lacks discovery, packaging, trust, settlement,
+  and operability.
+- Guidance provides packaging (signatures), trust (verification + receipts),
+  settlement (micropayments + budgets), and routing (policy-driven selection).
+- This is how idle devices become a routable market of micro-jobs.
+
+In practice, Guidance can decide when to mint NIP-90 job requests using the
+protocol surface (examples of schema IDs already defined):
+
+- Objective: `oa.sandbox_run.v1`, `oa.embedding.v1`
+- Subjective: `oa.code_chunk_analysis.v1`, `oa.retrieval_rerank.v1`
+
+That turns Autopilot into a steady buyer of verifiable jobs (tests, indexing,
+analysis), which helps bootstrap early providers and reputation signals in the
+market.
+
+Guidance also anchors the self-improvement loop:
+
+- Each turn yields a `FullAutoTurnSummary`, a `GuidanceDecision`, and an outcome
+  label (tests passed, budget exceeded, stuck vs progressed).
+- DSRS optimizers (MIPROv2/COPRO/GEPA) can compile better guidance policies into
+  versioned manifests and scorecards.
+- Those manifests become bundleable, roll-forward / roll-backable guidance
+  configurations with replayable decision records.
+
+In short: Guidance turns autonomy into a market interface and into compilable,
+optimizable intelligence.
 
 ## Guidance package format (conceptual)
 
