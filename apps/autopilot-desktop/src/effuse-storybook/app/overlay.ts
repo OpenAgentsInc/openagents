@@ -121,6 +121,9 @@ export const StorybookOverlay = {
           }
           mainPane?.classList.remove("main-pane--storybook")
         }
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new CustomEvent("storybook:toggle", { detail: { isOpen: state.isOpen } }))
+        }
       })
 
       const refresh = Effect.all([renderSidebar, updateVisibility]).pipe(

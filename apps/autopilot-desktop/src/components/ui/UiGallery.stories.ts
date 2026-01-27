@@ -94,6 +94,7 @@ import {
   HoverCardContent,
   HoverCardTrigger,
 } from "./hover-card"
+import { Hotbar, HotbarItem } from "./hotbar"
 import {
   InputGroup,
   InputGroupAddon,
@@ -577,17 +578,35 @@ export const Extras = {
           })}
         </div>
 
-        <div class="space-y-2">
-          <div class="text-xs uppercase text-muted-foreground">Tooltip Provider</div>
-          ${TooltipProvider({
-            children: Tooltip({
-              children: html`
-                ${TooltipTrigger({ children: Button({ variant: "ghost", children: "Hover me" }) })}
-                ${TooltipContent({ state: "open", children: "Tooltip inside provider" })}
-              `,
-            }),
-          })}
-        </div>
+      <div class="space-y-2">
+        <div class="text-xs uppercase text-muted-foreground">Tooltip Provider</div>
+        ${TooltipProvider({
+          children: Tooltip({
+            children: html`
+              ${TooltipTrigger({ children: Button({ variant: "ghost", children: "Hover me" }) })}
+              ${TooltipContent({ state: "open", children: "Tooltip inside provider" })}
+            `,
+          }),
+        })}
+      </div>
+
+      <div class="space-y-2">
+        <div class="text-xs uppercase text-muted-foreground">Hotbar</div>
+        ${Hotbar({
+          className: "hotbar--inline",
+          children: html`
+            ${HotbarItem({ slot: 1, label: "Sessions", icon: "SESS", shortcut: "Cmd+1", active: true })}
+            ${HotbarItem({ slot: 2, label: "New", icon: "NEW", shortcut: "Cmd+2" })}
+            ${HotbarItem({ slot: 3, label: "Guidance", icon: "GRID", shortcut: "Cmd+3" })}
+            ${HotbarItem({ slot: 4, label: "Storybook", icon: "SB", shortcut: "Cmd+4" })}
+            ${HotbarItem({ slot: 5, label: "—", icon: "--", shortcut: "Cmd+5", ghost: true, disabled: true })}
+            ${HotbarItem({ slot: 6, label: "—", icon: "--", shortcut: "Cmd+6", ghost: true, disabled: true })}
+            ${HotbarItem({ slot: 7, label: "—", icon: "--", shortcut: "Cmd+7", ghost: true, disabled: true })}
+            ${HotbarItem({ slot: 8, label: "Settings", icon: "SET", shortcut: "Cmd+8", ghost: true, disabled: true })}
+            ${HotbarItem({ slot: 9, label: "Help", icon: "HELP", shortcut: "Cmd+9", ghost: true, disabled: true })}
+          `,
+        })}
+      </div>
 
         <div class="space-y-2">
           <div class="text-xs uppercase text-muted-foreground">Runtime Helpers</div>
