@@ -80,7 +80,7 @@ impl Component for AssistantMessage {
                 .with_border(theme::border::DEFAULT, 1.0),
         );
 
-        let header_height = 24.0;
+        let header_height = 28.0;
         let mut header = MessageHeader::assistant(self.model);
         if let Some(ts) = &self.timestamp {
             header = header.timestamp(ts.clone());
@@ -104,7 +104,7 @@ impl Component for AssistantMessage {
         }
 
         let mut text = Text::new(&self.content)
-            .font_size(theme::font_size::BASE)
+            .font_size(theme::font_size::LG)
             .color(theme::text::PRIMARY);
         text.paint(
             Bounds::new(

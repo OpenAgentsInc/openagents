@@ -10,11 +10,13 @@ distinct from shared platform, core, and UI code. The UI group should live under
 
 Proposed grouping (adjust as needed):
 - `crates/products/`: autopilot, pylon, onyx
+- `crates/app-core/`: autopilot_app, autopilot_ui, autopilot_ui_contract
 - `crates/core/`: adjutant, autopilot-core, dsrs, dsrs-macros, rlm, frlm
-- `crates/platform/`: agent, protocol, runtime, compute, gateway, lm-router, local-inference, relay, issues
-- `crates/ui/`: wgpui, vim, editor
-- `crates/integrations/`: gpt-oss, nostr, spark, voice
-- `crates/tools/`: arrow (Autopilot testing utilities)
+- `crates/platform/`: agent, protocol, runtime, compute, gateway, lm-router, local-inference,
+  openagents-relay, nostr-core, nostr-client, issues
+- `crates/ui/`: wgpui, editor, vim
+- `crates/integrations/`: gpt-oss, codex-client, codex-mcp, ai-server, openagents-spark, voice
+- `crates/tools/`: arrow, testing, ws-test, manatap, autopilot-desktop-runner
 
 Proposed steps:
 1. Create the group folders under `crates/` and move the crate directories.
@@ -33,8 +35,16 @@ The agent crate defines the core data model for sovereign agents: configs, lifec
 requests, and registry persistence. It owns identity and wallet metadata but does not execute
 agents itself.
 
+## ai-server
+The ai-server crate manages the local AI Gateway sidecar (Bun/JS), including dependency install,
+process lifecycle, port checks, and health/analytics helpers used by desktop flows.
+
+## arrow
+The arrow crate provides happy-path testing utilities for Autopilot, including scenario-driven
+test helpers and structured assertions for end-to-end flows.
+
 ## autopilot
-The autopilot crate is the WGPUI desktop UI for local-first agent sessions. It renders streaming
+The autopilot crate is the GPU-accelerated terminal UI for Autopilot. It renders streaming
 Markdown, tool cards, panels, and command palettes, manages workspace/session history, and drives
 Codex app-server runs and Adjutant autopilot loops.
 
@@ -42,11 +52,29 @@ Codex app-server runs and Adjutant autopilot loops.
 The autopilot-core crate provides shared execution logic for Autopilot, including DSPy workflows,
 checkpointing, preflight checks, session logging, and streaming event normalization.
 
+## autopilot-desktop-runner
+The autopilot-desktop-runner crate is a dev runner for the legacy Tauri desktop app. It shells out
+to Bun/Tauri for dev/build workflows and opens release bundles on macOS.
+
+## autopilot_app
+The autopilot_app crate is the shared app core for Autopilot CLI and desktop surfaces: it owns
+workspace/session handles, dispatches user actions, and emits a stream of app events for UI layers.
+
+## autopilot_ui
+The autopilot_ui crate hosts shared WGPUI surfaces for Autopilot, including immediate-mode views,
+thread panels, and desktop scaffolding used by the native desktop host.
+
+## autopilot_ui_contract
+The autopilot_ui_contract crate defines canonical UITree/UiPatch contract types, patch application,
+and validation helpers for replayable UI diffs.
+
+## codex-client
+The codex-client crate is a Rust client for the Codex app-server JSON-RPC API, with streaming
+support and typed request/response helpers.
+
 ## codex-mcp
-The codex-mcp crate provides minimal Rust helpers for implementing MCP (Model Context Protocol)
-JSON-RPC servers over stdio in the style expected by Codex integrations. It focuses on the core
-tool flow (`tools/list`, `tools/call`) with small protocol types and a server loop. See
-`crates/codex-mcp/README.md` for usage and protocol details.
+The codex-mcp crate provides minimal MCP (Model Context Protocol) JSON-RPC helpers for Codex-style
+stdio servers, focused on the `tools/list` and `tools/call` flow.
 
 ## compute
 The compute crate implements a NIP-90 DVM provider that sells compute on Nostr. It bids on jobs,
@@ -60,6 +88,10 @@ agent programming.
 ## dsrs-macros
 The dsrs-macros crate provides procedural macros for declaring DSPy signatures and optimizable
 modules in Rust.
+
+## editor
+The editor crate is a WGPUI-based text editor component built on Ropey and Tree-sitter, providing
+editable buffers, caret/selection logic, and syntax highlighting.
 
 ## frlm
 The frlm crate implements Federated Recursive Language Models, orchestrating distributed subqueries
@@ -77,16 +109,41 @@ prompt helpers.
 The issues crate provides the SQLite-backed issue tracking core with migrations and lifecycle
 transitions used by Autopilot and CLI tooling.
 
+## local-inference
+The local-inference crate defines the `LocalModelBackend` trait and shared request/response types
+for local inference engines, enabling OpenAgents to swap GPT-OSS, fm-bridge, or custom backends via
+a consistent API.
+
 ## lm-router
 The lm-router crate routes LLM calls across multiple backends with usage tracking and model routing.
 
-## local-inference
-The local-inference crate defines shared request/response types and traits for local inference
-engines.
+## manatap
+The manatap crate is a minimal GPU window demo showcasing WGPUI and rendering primitives.
 
-## nostr (core/client/relay/tests)
-The nostr workspace provides core Nostr protocol types, relay client APIs, a relay server, and
-integration tests.
+## nostr-core
+The nostr-core crate provides the foundational Nostr protocol types and serialization used by
+OpenAgents.
+
+## nostr-client
+The nostr-client crate provides relay client APIs built on top of nostr-core.
+
+## onyx
+The onyx crate is a local-first Markdown note editor with live inline formatting.
+
+## openagents-relay
+The openagents-relay crate defines the relay protocol message types shared by browser/worker/tunnel
+clients.
+
+## openagents-runtime
+The openagents-runtime crate provides a pluggable execution environment for agents, including
+filesystem-like mounts, containers, identity, and telemetry hooks.
+
+## openagents-spark
+The openagents-spark crate integrates Breez Spark payments for OpenAgents wallets and compute
+flows.
+
+## openagents-utils
+The openagents-utils crate provides shared utility helpers used across the workspace.
 
 ## protocol
 The protocol crate provides typed job schemas with deterministic hashing, provenance, and
@@ -96,24 +153,23 @@ verification strategies for the OpenAgents swarm.
 The pylon crate is the local runtime for sovereign agents. It supports host mode for running agents
 and provider mode for selling NIP-90 compute, with relay and wallet integration.
 
-## relay
-The relay crate defines the WebSocket protocol shared by tunnel clients and UI surfaces for session
-control and streaming.
-
 ## rlm
-The rlm crate is the Recursive Language Model execution engine, with tools for long-context analysis
-and optional DSPy integration.
+The rlm crate is the Recursive Language Model execution engine, with tools for long-context
+analysis and optional DSPy integration.
 
-## runtime
-The runtime crate provides a pluggable execution environment for agents, including filesystem-like
-mounts for compute, containers, identity, and telemetry.
-
-## spark
-The spark crate integrates Breez Spark payments for OpenAgents wallets and compute flows.
+## testing
+The testing crate provides ADR compliance checks and meta-coverage tests for the OpenAgents
+workspace.
 
 ## vim
 The vim crate is an editor-agnostic Vim emulation layer with mode, motion, and operator handling.
 
+## voice
+The voice crate provides Whisper-based speech-to-text transcription utilities.
+
 ## wgpui
 The wgpui crate is the GPU-accelerated UI library used across desktop and web, providing layout,
 text/Markdown rendering, and input handling.
+
+## ws-test
+The ws-test crate is a local WebSocket test server for Hyperion integration work.

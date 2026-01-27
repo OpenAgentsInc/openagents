@@ -20,7 +20,7 @@ use winit::window::{Window, WindowId};
 const WINDOW_TITLE: &str = "Autopilot Desktop (WGPUI)";
 const WINDOW_WIDTH: f64 = 1280.0;
 const WINDOW_HEIGHT: f64 = 800.0;
-const PADDING: f32 = 48.0;
+const PADDING: f32 = 16.0;
 const EVENT_BUFFER: usize = 256;
 
 fn main() -> Result<()> {

@@ -49,7 +49,7 @@ impl Component for UserMessage {
                 .with_border(theme::border::DEFAULT, 1.0),
         );
 
-        let header_height = 24.0;
+        let header_height = 28.0;
         let mut header = MessageHeader::user();
         if let Some(ts) = &self.timestamp {
             header = header.timestamp(ts.clone());
@@ -69,7 +69,7 @@ impl Component for UserMessage {
             bounds.size.height - padding * 2.0 - header_height - theme::spacing::SM;
 
         let mut text = Text::new(&self.content)
-            .font_size(theme::font_size::BASE)
+            .font_size(theme::font_size::LG)
             .color(theme::text::PRIMARY);
         text.paint(
             Bounds::new(

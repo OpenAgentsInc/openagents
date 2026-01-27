@@ -114,6 +114,135 @@ In OpenAgents, we align WGPUI with this pattern:
 - UITree/UiPatch remains as a **log + replay** artifact, not the primary
   in-memory view state, unless we later decide otherwise via ADR.
 
+## Zed Layout System Adoption Plan (Full App)
+
+The current desktop UI still uses manual bounds math for layout, which breaks as
+soon as font sizes, DPI, or content length change (as seen in the sidebar overlap).
+Zed avoids this by building a **layout tree** (flex rows/columns + sizing rules)
+and letting the layout engine compute bounds each frame. We will adopt the same
+approach across the *entire* desktop UI.
+
+### Goals
+
+- All layout is expressed declaratively (flex rows/columns, gaps, fixed sizes).
+- No hand-positioned y-offsets for rows or sections.
+- Text size changes or DPI scaling never cause overlap.
+- UI can be reflowed by theme/token changes alone.
+
+### Option A: Use Zed’s GPUI crate directly
+
+This is the “exact code” path:
+
+- Add Zed’s `gpui` as a workspace dependency (either via git subtree or path).
+- Render Autopilot UI as GPUI `Render`/`RenderOnce` views.
+- Use GPUI’s `div()` + `Styled` flex helpers and element tree for layout.
+- Bind WGPU window + renderer from GPUI’s platform layer.
+
+**Pros**
+- Proven layout engine + element tree used in production.
+- Eliminates manual layout math immediately.
+
+**Cons**
+- License/compliance check (Zed is AGPL; ensure compatibility).
+- Large dependency surface + platform abstractions may conflict with current WGPUI host.
+- Requires bridging or replacing WGPUI components.
+
+### Option B: Adapt WGPUI to the GPUI layout model (preferred if licensing conflicts)
+
+WGPUI already includes the same primitives:
+
+- `crates/wgpui/src/layout.rs` → Taffy layout engine
+- `crates/wgpui/src/element/*` → element tree + layout requests
+- `crates/wgpui/src/styled/*` → flex helpers (`div().flex().flex_col()`)
+
+This path keeps our WGPU host and uses the Zed/GPUI layout model as the
+blueprint. The work is to align the WGPUI API and Autopilot UI with GPUI
+patterns rather than hand positioning.
+
+#### Zed Layout API Parity Map
+
+Mirror the ergonomics of Zed's `ui` crate:
+
+- `h_flex()` / `v_flex()` helpers like `crates/ui/src/components/stack.rs` in Zed.
+- `StyledExt` helpers like `crates/ui/src/traits/styled_ext.rs` (flex_1, min_w_0,
+  overflow_* helpers, elevation helpers, debug backgrounds).
+- `when()` style conditional chaining (Zed uses it heavily for readability).
+- `rems()` / spacing tokens to avoid raw pixel math (Zed uses dynamic spacing
+  and rem-based sizing in `ui`).
+- `group()` and `inspectable` style tags for debugging layout trees.
+
+In practice, this means adding a small "WGPUI UI prelude" (or
+`autopilot_ui::prelude`) that exposes the same fluent builder API so Autopilot
+layouts can be ported 1:1 from Zed-style code.
+
+#### Layout Engine Alignment (Taffy)
+
+Zed's layout tree is driven by Taffy. WGPUI already uses Taffy in
+`LayoutEngine`, but our Autopilot desktop still uses manual bounds math.
+The plan is to move all layout into the element tree:
+
+- Every container that currently uses manual `Bounds` math becomes a `Div`
+  (or a small WGPUI element) with a layout style.
+- Panel headers, rows, and sidebar sections become flex children with fixed
+  heights or `flex_grow` where appropriate.
+- Scrollable regions use a single scroll container (no per-row y offsets).
+- The root view becomes one flex row: left panel, center panel, right panel.
+- The center panel is a flex column: header, thread body (flex_1), composer.
+
+No manual `y += row_height` math remains in the steady state.
+
+#### View + Entity Model Alignment
+
+Zed uses `Entity<T>` + `Render` / `RenderOnce` to rebuild the element tree each
+frame (see `crates/gpui/src/element.rs` in Zed). WGPUI already has
+`Render` / `RenderOnce`, but Autopilot UI is still treating views like manual
+paintable widgets. We will:
+
+- Make `DesktopRoot` a `Render` view and build the tree every frame.
+- Keep view state in entities and use `Context<T>` to mutate and notify.
+- Use component-level `RenderOnce` for reusable pieces (badges, headers,
+  status rows, tool call cards, etc).
+- Adopt Zed-style action dispatch: events dispatch `Action` types through the
+  context instead of directly calling handlers.
+
+#### Autopilot UI Conversion Steps
+
+1. Add Zed-style layout helpers to WGPUI or `autopilot_ui`:
+   - `h_flex` / `v_flex`
+   - `flex_1`, `min_w_0`, `overflow_x_hidden`, `overflow_y_auto`
+   - `gap_*`, `px_*`, `py_*`, `rounded_*`, `border_*`, `shadow_*`
+2. Replace the manual `Layout` struct in `crates/autopilot_ui` with a pure
+   element tree (flex rows/columns) using those helpers.
+3. Convert left sidebar to a `VirtualList` or scrollable flex column.
+4. Convert status sidebar into a flex column with `gap` sections, no manual
+   y-positioning.
+5. Convert the thread view to a flex column with a scrollable body and a
+   pinned composer.
+6. Convert tool cards to flex layouts, eliminate hard-coded widths.
+7. Convert command bar to a flex row with fixed-height cells and `justify_between`.
+8. Remove all manual `Bounds` math and any render-time `y` offsets.
+
+#### Testability Alignment (from TESTABILITY.md)
+
+The layout rewrite should be testable by design:
+
+- Use WGPUI's test harness (`crates/wgpui/src/testing`) to build UI in a
+  deterministic `TestContext`.
+- Add "layout snapshot" tests that assert element bounds for key surfaces
+  (left list, right status, thread body, composer).
+- Keep UiPatch/UITree logging as a replay artifact so UI regressions can be
+  reproduced without manual interaction.
+- Ensure services are mocked via `autopilot_app` service traits so UI tests
+  remain deterministic and offline.
+
+#### Acceptance Gates
+
+- No manual layout math remains in desktop UI code.
+- Resizing or changing DPI never causes overlap (right sidebar stays readable).
+- All major panels are flex-based and use Taffy layout each frame.
+- UI is renderable in WGPUI test context with stable snapshots.
+
+
 ## Packaging Without Tauri: Shipping the Bun Server
 
 If we drop Tauri packaging but still want the JS/Bun server, we can ship it as
@@ -195,6 +324,17 @@ Adopt the Zed/GPUI component model:
 
 Gate: Status dashboard + conversation + tool-call cards working in WGPUI.
 
+### Phase 3b: Zed-Style Layout Conversion
+
+- Introduce Zed-style layout helpers (`h_flex`, `v_flex`, `flex_1`, `min_w_0`,
+  `overflow_*`, `gap_*`, `rems`) in WGPUI or `crates/autopilot_ui`.
+- Replace all manual bounds math in the desktop UI with flex layout trees.
+- Convert left list, center thread, and right status panels to flex-based
+  containers with scrollable regions.
+
+Gate: No manual layout math remains in `crates/autopilot_ui`, and resizing/DPI
+changes do not cause overlap.
+
 ### Phase 4: Core Surfaces (Immediate-Mode Scaffolding)
 
 - Build out the first typed surfaces in WGPUI (status + session list + event log).
@@ -249,6 +389,8 @@ Effuse catalog -> WGPUI target
 
 - Feature parity gaps (text input, selection, accessibility).
   - Mitigation: prioritize UX-critical components; reuse WGPUI components already built.
+- GPUI license or dependency constraints (if Option A is chosen).
+  - Mitigation: default to Option B (WGPUI adaptation) unless license is cleared.
 - Contract drift from ADR-0022 (UITree + UiPatch).
   - Mitigation: keep contract stable; if change required, add ADR + compatibility layer.
 - Duplicate UI logic between Autopilot Desktop and `crates/autopilot`.
@@ -258,6 +400,7 @@ Effuse catalog -> WGPUI target
 
 - WGPUI UI renders all primary Autopilot Desktop flows with functional parity.
 - UI updates continue to be driven by `UiPatch` (or a superseding contract with ADR).
+- All desktop layout is expressed via flex layout trees (no manual bounds math).
 - End-to-end flows verified:
   - Connect workspace, start session, send message, view tool calls/diffs.
   - Adjutant UI patches render correctly in the WGPUI canvas.
@@ -290,3 +433,5 @@ Effuse catalog -> WGPUI target
 - 2026-01-27: Phase 4c completed: added ThreadView + MessageEditor conversation panel with tool call cards (read/search/terminal/diff/edit), added plan/trajectory sidebar view, session search bar, and thread controls (mode/model/run state) in `crates/autopilot_ui`, plus scroll routing + input handling via Winit in `apps/autopilot-desktop-wgpu`.
 - 2026-01-27: Wired UI send actions to `autopilot_app` via an action channel so Enter/send dispatches `UserAction::Message` back into the app core.
 - 2026-01-27: Verified `cargo build -p autopilot-desktop-wgpu` after Phase 4c UI + input wiring.
+- 2026-01-27: Reviewed Zed GPUI layout approach (element tree + Taffy, `h_flex`/`v_flex`, `StyledExt`) and expanded the migration plan with a Zed-style layout adoption path, including WGPUI parity helpers and layout conversion gates.
+- 2026-01-27: Re-read `apps/autopilot-desktop/docs/migration/TESTABILITY.md` and aligned the plan with testability requirements (service traits, deterministic UI tests, log/replay).

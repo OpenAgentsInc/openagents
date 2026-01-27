@@ -82,7 +82,7 @@ impl Component for SearchToolCall {
                 .with_border(theme::border::DEFAULT, 1.0),
         );
 
-        let header_height = 28.0;
+        let header_height = 32.0;
         let tool_name = format!("grep \"{}\"", self.query);
         let mut header = ToolHeader::new(ToolType::Search, &tool_name).status(self.status);
         header.paint(
@@ -98,7 +98,7 @@ impl Component for SearchToolCall {
         let summary_y = bounds.origin.y + padding + header_height + 4.0;
         let summary = format!("{} matches found", self.matches.len());
         let mut summary_text = Text::new(&summary)
-            .font_size(theme::font_size::XS)
+            .font_size(theme::font_size::SM)
             .color(theme::text::MUTED);
         summary_text.paint(
             Bounds::new(
@@ -116,7 +116,7 @@ impl Component for SearchToolCall {
 
         let content_y = summary_y + 20.0;
         let content_width = bounds.size.width - padding * 2.0;
-        let match_height = 36.0;
+        let match_height = 42.0;
 
         for (i, m) in self.matches.iter().take(10).enumerate() {
             let y = content_y + i as f32 * match_height;
