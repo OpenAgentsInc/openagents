@@ -1165,6 +1165,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "autopilot_app"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "futures",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tokio-stream",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
 name = "av-scenechange"
 version = "0.14.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -11848,6 +11862,7 @@ dependencies = [
  "futures-core",
  "pin-project-lite",
  "tokio",
+ "tokio-util",
 ]
 
 [[package]]
