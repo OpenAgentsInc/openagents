@@ -1,0 +1,27 @@
+[package]
+name = "openagents-cli"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "OpenAgents umbrella CLI"
+
+[[bin]]
+name = "openagents"
+path = "src/main.rs"
+
+[[bin]]
+name = "oa"
+path = "src/oa.rs"
+
+[dependencies]
+anyhow = { workspace = true }
+clap = { workspace = true }
+nostr = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+hex = { workspace = true }
+rand = { workspace = true }
+bip39 = "2.1"
+
