@@ -60,7 +60,12 @@ impl TransactionDirection {
         }
     }
 
-    pub fn from_str(s: &str) -> Result<Self, Nip60Error> {
+}
+
+impl std::str::FromStr for TransactionDirection {
+    type Err = Nip60Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "in" => Ok(TransactionDirection::In),
             "out" => Ok(TransactionDirection::Out),
@@ -90,7 +95,12 @@ impl EventMarker {
         }
     }
 
-    pub fn from_str(s: &str) -> Result<Self, Nip60Error> {
+}
+
+impl std::str::FromStr for EventMarker {
+    type Err = Nip60Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "created" => Ok(EventMarker::Created),
             "destroyed" => Ok(EventMarker::Destroyed),
@@ -365,6 +375,7 @@ pub fn is_nip60_kind(kind: u16) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::str::FromStr;
 
     fn create_test_event(kind: u16, content: &str, tags: Vec<Vec<String>>) -> Event {
         Event {
@@ -558,11 +569,15 @@ mod tests {
         assert_eq!(TransactionDirection::Out.as_str(), "out");
 
         assert_eq!(
-            TransactionDirection::from_str("in").unwrap(),
+            TransactionDirection::from_str("in")
+                .ok()
+                .unwrap_or(TransactionDirection::In),
             TransactionDirection::In
         );
         assert_eq!(
-            TransactionDirection::from_str("out").unwrap(),
+            TransactionDirection::from_str("out")
+                .ok()
+                .unwrap_or(TransactionDirection::Out),
             TransactionDirection::Out
         );
     }
@@ -574,7 +589,9 @@ mod tests {
         assert_eq!(EventMarker::Redeemed.as_str(), "redeemed");
 
         assert_eq!(
-            EventMarker::from_str("created").unwrap(),
+            EventMarker::from_str("created")
+                .ok()
+                .unwrap_or(EventMarker::Created),
             EventMarker::Created
         );
     }

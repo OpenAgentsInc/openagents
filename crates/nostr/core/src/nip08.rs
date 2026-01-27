@@ -159,37 +159,38 @@ pub fn extract_mentions_detailed(content: &str) -> Vec<Mention> {
     let mut chars = content.char_indices().peekable();
 
     while let Some((pos, ch)) = chars.next() {
-        if ch == '#' {
-            if let Some(&(_, '[')) = chars.peek() {
-                chars.next(); // consume '['
+        if ch == '#'
+            && let Some(&(_, '[')) = chars.peek()
+        {
+            chars.next(); // consume '['
 
-                // Collect digits
-                let mut index_str = String::new();
-                let mut found_close = false;
+            // Collect digits
+            let mut index_str = String::new();
+            let mut found_close = false;
 
-                while let Some(&(_, ch)) = chars.peek() {
-                    if ch.is_ascii_digit() {
-                        index_str.push(ch);
-                        chars.next();
-                    } else if ch == ']' {
-                        found_close = true;
-                        chars.next();
-                        break;
-                    } else {
-                        break;
-                    }
+            while let Some(&(_, ch)) = chars.peek() {
+                if ch.is_ascii_digit() {
+                    index_str.push(ch);
+                    chars.next();
+                } else if ch == ']' {
+                    found_close = true;
+                    chars.next();
+                    break;
+                } else {
+                    break;
                 }
+            }
 
-                if found_close && !index_str.is_empty() {
-                    if let Ok(index) = index_str.parse::<usize>() {
-                        let original = format!("#[{}]", index);
-                        mentions.push(Mention {
-                            index,
-                            original,
-                            position: pos,
-                        });
-                    }
-                }
+            if found_close
+                && !index_str.is_empty()
+                && let Ok(index) = index_str.parse::<usize>()
+            {
+                let original = format!("#[{}]", index);
+                mentions.push(Mention {
+                    index,
+                    original,
+                    position: pos,
+                });
             }
         }
     }

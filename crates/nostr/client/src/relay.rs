@@ -443,7 +443,7 @@ impl RelayConnection {
                             info!("Received AUTH challenge from {}", url);
 
                             // Check if we have an auth key configured
-                            let key_opt = auth_key.read().await.clone();
+                            let key_opt = *auth_key.read().await;
                             if let Some(key) = key_opt {
                                 // Create and sign auth event
                                 let template =
@@ -517,7 +517,7 @@ impl RelayConnection {
                 // Send text "ping" message (for Cloudflare auto-response)
                 let mut ws_guard = ws.lock().await;
                 if let Some(stream) = ws_guard.as_mut() {
-                    if let Err(e) = stream.send(Message::Text("ping".to_string().into())).await {
+                    if let Err(e) = stream.send(Message::Text("ping".to_string())).await {
                         info!("Failed to send ping to {}: {}", url, e);
                         // Don't break - the recv loop will handle disconnect
                     } else {

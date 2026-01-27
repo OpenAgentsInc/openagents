@@ -201,8 +201,10 @@ impl NostrWalletConnectUrl {
         })
     }
 
-    /// Convert to nostr+walletconnect:// URL string.
-    pub fn to_string(&self) -> String {
+}
+
+impl std::fmt::Display for NostrWalletConnectUrl {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut url = format!("nostr+walletconnect://{}", self.wallet_pubkey);
 
         let mut params = Vec::new();
@@ -216,7 +218,7 @@ impl NostrWalletConnectUrl {
 
         url.push('?');
         url.push_str(&params.join("&"));
-        url
+        write!(f, "{}", url)
     }
 }
 

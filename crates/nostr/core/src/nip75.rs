@@ -89,8 +89,8 @@ impl ZapGoal {
         for tag in &event.tags {
             if !tag.is_empty() && tag[0] == RELAYS_TAG {
                 // Skip the first element (tag name) and collect the rest as relay URLs
-                for i in 1..tag.len() {
-                    relays.push(tag[i].clone());
+                for relay in tag.iter().skip(1) {
+                    relays.push(relay.clone());
                 }
                 break;
             }

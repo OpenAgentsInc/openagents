@@ -131,7 +131,7 @@ pub fn derive_key(
     let normalized = normalize_password(password);
 
     // Validate log_n (reasonable range: 16-22)
-    if log_n < 10 || log_n > 30 {
+    if !(10..=30).contains(&log_n) {
         return Err(Nip49Error::InvalidLogN(format!(
             "log_n should be between 10 and 30, got {}",
             log_n

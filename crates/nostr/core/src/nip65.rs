@@ -8,6 +8,7 @@
 
 use crate::Event;
 use serde::{Deserialize, Serialize};
+use std::str::FromStr;
 use thiserror::Error;
 
 /// Event kind for relay list metadata
@@ -48,15 +49,6 @@ pub enum RelayMarker {
 }
 
 impl RelayMarker {
-    /// Parse from string
-    pub fn from_str(s: &str) -> Self {
-        match s {
-            "read" => RelayMarker::Read,
-            "write" => RelayMarker::Write,
-            _ => RelayMarker::ReadWrite,
-        }
-    }
-
     /// Convert to string (returns None for ReadWrite as it's implicit)
     pub fn to_str(&self) -> Option<&str> {
         match self {
@@ -74,6 +66,18 @@ impl RelayMarker {
     /// Check if this relay supports writing
     pub fn can_write(&self) -> bool {
         matches!(self, RelayMarker::Write | RelayMarker::ReadWrite)
+    }
+}
+
+impl std::str::FromStr for RelayMarker {
+    type Err = std::convert::Infallible;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(match s {
+            "read" => RelayMarker::Read,
+            "write" => RelayMarker::Write,
+            _ => RelayMarker::ReadWrite,
+        })
     }
 }
 
@@ -187,7 +191,7 @@ pub fn get_relay_entries(event: &Event) -> Result<Vec<RelayEntry>, Nip65Error> {
 
         let url = tag[1].clone();
         let marker = if tag.len() >= 3 {
-            RelayMarker::from_str(&tag[2])
+            RelayMarker::from_str(&tag[2]).unwrap_or(RelayMarker::ReadWrite)
         } else {
             RelayMarker::ReadWrite
         };
@@ -203,10 +207,10 @@ pub fn get_relay_entries(event: &Event) -> Result<Vec<RelayEntry>, Nip65Error> {
 pub fn create_relay_tag(url: String, marker: Option<RelayMarker>) -> Vec<String> {
     let mut tag = vec![RELAY_TAG.to_string(), url];
 
-    if let Some(m) = marker {
-        if let Some(marker_str) = m.to_str() {
-            tag.push(marker_str.to_string());
-        }
+    if let Some(m) = marker
+        && let Some(marker_str) = m.to_str()
+    {
+        tag.push(marker_str.to_string());
     }
 
     tag
@@ -243,10 +247,22 @@ mod tests {
 
     #[test]
     fn test_relay_marker_from_str() {
-        assert_eq!(RelayMarker::from_str("read"), RelayMarker::Read);
-        assert_eq!(RelayMarker::from_str("write"), RelayMarker::Write);
-        assert_eq!(RelayMarker::from_str(""), RelayMarker::ReadWrite);
-        assert_eq!(RelayMarker::from_str("invalid"), RelayMarker::ReadWrite);
+        assert!(matches!(
+            RelayMarker::from_str("read"),
+            Ok(RelayMarker::Read)
+        ));
+        assert!(matches!(
+            RelayMarker::from_str("write"),
+            Ok(RelayMarker::Write)
+        ));
+        assert!(matches!(
+            RelayMarker::from_str(""),
+            Ok(RelayMarker::ReadWrite)
+        ));
+        assert!(matches!(
+            RelayMarker::from_str("invalid"),
+            Ok(RelayMarker::ReadWrite)
+        ));
     }
 
     #[test]

@@ -125,7 +125,7 @@ impl SkillLicenseContent {
 
     /// Check if license is expired
     pub fn is_expired(&self, current_time: u64) -> bool {
-        self.expires_at.map_or(false, |exp| current_time >= exp)
+        self.expires_at.is_some_and(|exp| current_time >= exp)
     }
 
     /// Check if license has a specific capability

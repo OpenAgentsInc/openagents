@@ -337,7 +337,7 @@ pub fn get_public_items(event: &Event) -> Vec<Vec<String>> {
         .tags
         .iter()
         .filter(|tag| {
-            let tag_name = tag.get(0).map(|s| s.as_str());
+            let tag_name = tag.first().map(|s| s.as_str());
             !matches!(
                 tag_name,
                 Some("title") | Some("description") | Some("image") | Some("d")
@@ -352,7 +352,7 @@ pub fn get_title(event: &Event) -> Option<String> {
     event
         .tags
         .iter()
-        .find(|tag| tag.get(0).map(|s| s.as_str()) == Some("title"))
+        .find(|tag| tag.first().map(|s| s.as_str()) == Some("title"))
         .and_then(|tag| tag.get(1))
         .map(|s| s.to_string())
 }
@@ -362,7 +362,7 @@ pub fn get_description(event: &Event) -> Option<String> {
     event
         .tags
         .iter()
-        .find(|tag| tag.get(0).map(|s| s.as_str()) == Some("description"))
+        .find(|tag| tag.first().map(|s| s.as_str()) == Some("description"))
         .and_then(|tag| tag.get(1))
         .map(|s| s.to_string())
 }
@@ -372,7 +372,7 @@ pub fn get_image(event: &Event) -> Option<String> {
     event
         .tags
         .iter()
-        .find(|tag| tag.get(0).map(|s| s.as_str()) == Some("image"))
+        .find(|tag| tag.first().map(|s| s.as_str()) == Some("image"))
         .and_then(|tag| tag.get(1))
         .map(|s| s.to_string())
 }
@@ -382,7 +382,7 @@ pub fn get_set_identifier(event: &Event) -> Option<String> {
     event
         .tags
         .iter()
-        .find(|tag| tag.get(0).map(|s| s.as_str()) == Some("d"))
+        .find(|tag| tag.first().map(|s| s.as_str()) == Some("d"))
         .and_then(|tag| tag.get(1))
         .map(|s| s.to_string())
 }

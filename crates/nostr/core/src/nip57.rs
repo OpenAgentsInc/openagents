@@ -347,24 +347,22 @@ impl ZapReceipt {
         zap_request.validate()?;
 
         // If amount is expected, validate it matches
-        if let Some(expected) = expected_amount_msats {
-            if let Some(actual) = zap_request.amount_msats {
-                if expected != actual {
-                    return Err(Nip57Error::AmountMismatch { expected, actual });
-                }
-            }
+        if let Some(expected) = expected_amount_msats
+            && let Some(actual) = zap_request.amount_msats
+            && expected != actual
+        {
+            return Err(Nip57Error::AmountMismatch { expected, actual });
         }
 
         // If lnurl is expected, validate it matches
-        if let Some(expected) = expected_lnurl {
-            if let Some(actual) = &zap_request.lnurl {
-                if expected != actual {
-                    return Err(Nip57Error::Validation(format!(
-                        "lnurl mismatch: expected {}, got {}",
-                        expected, actual
-                    )));
-                }
-            }
+        if let Some(expected) = expected_lnurl
+            && let Some(actual) = &zap_request.lnurl
+            && expected != actual
+        {
+            return Err(Nip57Error::Validation(format!(
+                "lnurl mismatch: expected {}, got {}",
+                expected, actual
+            )));
         }
 
         Ok(())

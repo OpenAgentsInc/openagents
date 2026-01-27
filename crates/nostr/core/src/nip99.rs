@@ -78,20 +78,23 @@ pub enum ListingStatus {
 }
 
 impl ListingStatus {
-    /// Parse a status from a string.
-    pub fn from_str(s: &str) -> Result<Self, Nip99Error> {
-        match s.to_lowercase().as_str() {
-            "active" => Ok(Self::Active),
-            "sold" => Ok(Self::Sold),
-            _ => Err(Nip99Error::InvalidStatus(s.to_string())),
-        }
-    }
-
     /// Convert status to string.
     pub fn as_str(&self) -> &str {
         match self {
             Self::Active => "active",
             Self::Sold => "sold",
+        }
+    }
+}
+
+impl std::str::FromStr for ListingStatus {
+    type Err = Nip99Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "active" => Ok(Self::Active),
+            "sold" => Ok(Self::Sold),
+            _ => Err(Nip99Error::InvalidStatus(s.to_string())),
         }
     }
 }
@@ -437,6 +440,7 @@ impl DraftListing {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::str::FromStr;
 
     #[test]
     fn test_is_nip99_kind() {
@@ -463,14 +467,14 @@ mod tests {
         assert_eq!(ListingStatus::Active.as_str(), "active");
         assert_eq!(ListingStatus::Sold.as_str(), "sold");
 
-        assert_eq!(
-            ListingStatus::from_str("active").unwrap(),
-            ListingStatus::Active
-        );
-        assert_eq!(
-            ListingStatus::from_str("SOLD").unwrap(),
-            ListingStatus::Sold
-        );
+        assert!(matches!(
+            ListingStatus::from_str("active"),
+            Ok(ListingStatus::Active)
+        ));
+        assert!(matches!(
+            ListingStatus::from_str("SOLD"),
+            Ok(ListingStatus::Sold)
+        ));
         assert!(ListingStatus::from_str("invalid").is_err());
     }
 

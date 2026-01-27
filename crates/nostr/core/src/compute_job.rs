@@ -167,24 +167,24 @@ impl JobRequirements {
     /// Check if a provider meets these requirements
     pub fn meets_requirements(&self, provider: &ComputeProvider) -> bool {
         // Check region
-        if let Some(required_region) = self.region {
-            if provider.region != required_region {
-                return false;
-            }
+        if let Some(required_region) = self.region
+            && provider.region != required_region
+        {
+            return false;
         }
 
         // Check reputation
-        if let Some(min_rep) = self.min_reputation {
-            if provider.reputation.success_rate < min_rep {
-                return false;
-            }
+        if let Some(min_rep) = self.min_reputation
+            && provider.reputation.success_rate < min_rep
+        {
+            return false;
         }
 
         // Check latency
-        if let Some(max_latency) = self.max_latency_ms {
-            if provider.reputation.avg_latency_ms > max_latency {
-                return false;
-            }
+        if let Some(max_latency) = self.max_latency_ms
+            && provider.reputation.avg_latency_ms > max_latency
+        {
+            return false;
         }
 
         true

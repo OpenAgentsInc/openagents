@@ -116,16 +116,16 @@ impl Birthday {
 
     /// Validate the birthday.
     pub fn validate(&self) -> Result<(), Nip24Error> {
-        if let Some(month) = self.month {
-            if !(1..=12).contains(&month) {
-                return Err(Nip24Error::InvalidBirthday);
-            }
+        if let Some(month) = self.month
+            && !(1..=12).contains(&month)
+        {
+            return Err(Nip24Error::InvalidBirthday);
         }
 
-        if let Some(day) = self.day {
-            if !(1..=31).contains(&day) {
-                return Err(Nip24Error::InvalidBirthday);
-            }
+        if let Some(day) = self.day
+            && !(1..=31).contains(&day)
+        {
+            return Err(Nip24Error::InvalidBirthday);
         }
 
         Ok(())

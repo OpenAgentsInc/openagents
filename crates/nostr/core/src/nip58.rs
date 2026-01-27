@@ -80,9 +80,11 @@ impl ImageDimensions {
         Ok(Self { width, height })
     }
 
-    /// Convert to "widthxheight" string
-    pub fn to_string(&self) -> String {
-        format!("{}x{}", self.width, self.height)
+}
+
+impl std::fmt::Display for ImageDimensions {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}x{}", self.width, self.height)
     }
 }
 
@@ -485,18 +487,18 @@ impl ProfileBadges {
                     }
                 }
                 "e" => {
-                    if tag.len() >= 2 {
-                        if let Some(a_tag) = current_a.take() {
-                            let award_event_id = tag[1].clone();
-                            let relay_hint = tag.get(2).cloned();
-                            let mut pair = ProfileBadgePair::new(a_tag, award_event_id);
-                            if let Some(relay) = relay_hint {
-                                pair = pair.with_relay(relay);
-                            }
-                            badges.push(pair);
+                    if tag.len() >= 2
+                        && let Some(a_tag) = current_a.take()
+                    {
+                        let award_event_id = tag[1].clone();
+                        let relay_hint = tag.get(2).cloned();
+                        let mut pair = ProfileBadgePair::new(a_tag, award_event_id);
+                        if let Some(relay) = relay_hint {
+                            pair = pair.with_relay(relay);
                         }
-                        // else: unpaired 'e' tag - ignore per spec
+                        badges.push(pair);
                     }
+                    // else: unpaired 'e' tag - ignore per spec
                 }
                 _ => {}
             }

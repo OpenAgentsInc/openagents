@@ -7,6 +7,7 @@
 
 use crate::Event;
 use std::collections::HashMap;
+use std::str::FromStr;
 use thiserror::Error;
 
 /// Event kind for chess games
@@ -42,16 +43,6 @@ pub enum GameResult {
 }
 
 impl GameResult {
-    pub fn from_str(s: &str) -> Self {
-        match s.trim() {
-            "1-0" => GameResult::WhiteWins,
-            "0-1" => GameResult::BlackWins,
-            "1/2-1/2" => GameResult::Draw,
-            "*" => GameResult::Unknown,
-            _ => GameResult::Unknown,
-        }
-    }
-
     pub fn as_str(&self) -> &str {
         match self {
             GameResult::WhiteWins => "1-0",
@@ -59,6 +50,20 @@ impl GameResult {
             GameResult::Draw => "1/2-1/2",
             GameResult::Unknown => "*",
         }
+    }
+}
+
+impl std::str::FromStr for GameResult {
+    type Err = std::convert::Infallible;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(match s.trim() {
+            "1-0" => GameResult::WhiteWins,
+            "0-1" => GameResult::BlackWins,
+            "1/2-1/2" => GameResult::Draw,
+            "*" => GameResult::Unknown,
+            _ => GameResult::Unknown,
+        })
     }
 }
 
@@ -126,7 +131,7 @@ impl ChessGame {
     /// Get the game result
     pub fn get_result(&self) -> GameResult {
         self.get_tag("Result")
-            .map(GameResult::from_str)
+            .and_then(|value| GameResult::from_str(value).ok())
             .unwrap_or(GameResult::Unknown)
     }
 
@@ -152,7 +157,7 @@ impl ChessGame {
             }
         }
 
-        &content[start_index..].trim()
+        content[start_index..].trim()
     }
 
     /// Get the author's public key
@@ -194,11 +199,11 @@ fn parse_pgn_tags(pgn: &str) -> HashMap<String, String> {
             let inner = &trimmed[1..trimmed.len() - 1];
             if let Some(quote_start) = inner.find('"') {
                 let tag_name = inner[..quote_start].trim().to_string();
-                if let Some(quote_end) = inner.rfind('"') {
-                    if quote_end > quote_start {
-                        let tag_value = inner[quote_start + 1..quote_end].to_string();
-                        tags.insert(tag_name, tag_value);
-                    }
+                if let Some(quote_end) = inner.rfind('"')
+                    && quote_end > quote_start
+                {
+                    let tag_value = inner[quote_start + 1..quote_end].to_string();
+                    tags.insert(tag_name, tag_value);
                 }
             }
         }
@@ -343,11 +348,26 @@ mod tests {
 
     #[test]
     fn test_game_result_from_str() {
-        assert_eq!(GameResult::from_str("1-0"), GameResult::WhiteWins);
-        assert_eq!(GameResult::from_str("0-1"), GameResult::BlackWins);
-        assert_eq!(GameResult::from_str("1/2-1/2"), GameResult::Draw);
-        assert_eq!(GameResult::from_str("*"), GameResult::Unknown);
-        assert_eq!(GameResult::from_str("invalid"), GameResult::Unknown);
+        assert!(matches!(
+            GameResult::from_str("1-0"),
+            Ok(GameResult::WhiteWins)
+        ));
+        assert!(matches!(
+            GameResult::from_str("0-1"),
+            Ok(GameResult::BlackWins)
+        ));
+        assert!(matches!(
+            GameResult::from_str("1/2-1/2"),
+            Ok(GameResult::Draw)
+        ));
+        assert!(matches!(
+            GameResult::from_str("*"),
+            Ok(GameResult::Unknown)
+        ));
+        assert!(matches!(
+            GameResult::from_str("invalid"),
+            Ok(GameResult::Unknown)
+        ));
     }
 
     #[test]

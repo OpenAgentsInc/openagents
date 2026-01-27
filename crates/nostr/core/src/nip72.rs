@@ -306,14 +306,14 @@ impl CommunityPost {
         tags.push(vec!["K".to_string(), self.community_kind.clone()]);
 
         // Lowercase tags for parent
-        if let Some(parent_ref) = &self.parent_ref {
-            if let Some(ref_type) = &self.parent_ref_type {
-                let mut parent_tag = vec![ref_type.clone(), parent_ref.clone()];
-                if let Some(relay) = &self.parent_relay {
-                    parent_tag.push(relay.clone());
-                }
-                tags.push(parent_tag);
+        if let Some(parent_ref) = &self.parent_ref
+            && let Some(ref_type) = &self.parent_ref_type
+        {
+            let mut parent_tag = vec![ref_type.clone(), parent_ref.clone()];
+            if let Some(relay) = &self.parent_relay {
+                parent_tag.push(relay.clone());
             }
+            tags.push(parent_tag);
         }
 
         if let Some(parent_author) = &self.parent_author {

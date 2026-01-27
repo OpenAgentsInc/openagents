@@ -7,6 +7,7 @@
 
 use crate::Event;
 use std::collections::HashMap;
+use std::str::FromStr;
 use thiserror::Error;
 
 /// Event kind for picture posts
@@ -58,8 +59,13 @@ impl UserAnnotation {
         }
     }
 
+}
+
+impl std::str::FromStr for UserAnnotation {
+    type Err = Nip68Error;
+
     /// Parse from annotate-user tag value: `<pubkey>:<posX>:<posY>`
-    pub fn from_str(s: &str) -> Result<Self, Nip68Error> {
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         let parts: Vec<&str> = s.split(':').collect();
         if parts.len() != 3 {
             return Err(Nip68Error::InvalidAnnotation(format!(
@@ -82,10 +88,11 @@ impl UserAnnotation {
             pos_y,
         })
     }
+}
 
-    /// Convert to annotate-user tag value
-    pub fn to_string(&self) -> String {
-        format!("{}:{}:{}", self.pubkey, self.pos_x, self.pos_y)
+impl std::fmt::Display for UserAnnotation {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}:{}:{}", self.pubkey, self.pos_x, self.pos_y)
     }
 }
 
@@ -128,12 +135,11 @@ impl PictureEvent {
                     for item in &tag[1..] {
                         if let Some((key, value)) = item.split_once(' ') {
                             image_data.insert(key.to_string(), value.to_string());
-                        } else if item.starts_with("annotate-user ") {
-                            if let Some(annotation_str) = item.strip_prefix("annotate-user ") {
-                                if let Ok(annotation) = UserAnnotation::from_str(annotation_str) {
-                                    annotations.push(annotation);
-                                }
-                            }
+                        } else if item.starts_with("annotate-user ")
+                            && let Some(annotation_str) = item.strip_prefix("annotate-user ")
+                            && let Ok(annotation) = UserAnnotation::from_str(annotation_str)
+                        {
+                            annotations.push(annotation);
                         }
                     }
                     if !image_data.is_empty() {
@@ -349,10 +355,13 @@ mod tests {
 
     #[test]
     fn test_user_annotation_from_str() {
-        let annotation = UserAnnotation::from_str("pubkey123:100.5:200.75").unwrap();
-        assert_eq!(annotation.pubkey, "pubkey123");
-        assert_eq!(annotation.pos_x, 100.5);
-        assert_eq!(annotation.pos_y, 200.75);
+        assert!(matches!(
+            UserAnnotation::from_str("pubkey123:100.5:200.75"),
+            Ok(annotation)
+                if annotation.pubkey == "pubkey123"
+                    && annotation.pos_x == 100.5
+                    && annotation.pos_y == 200.75
+        ));
     }
 
     #[test]

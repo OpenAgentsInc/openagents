@@ -12,6 +12,7 @@ use crate::nip90::{
     InputType, JobInput, JobParam, JobRequest, JobResult, JobStatus, KIND_JOB_TEXT_GENERATION,
     is_job_request_kind, is_job_result_kind,
 };
+use std::str::FromStr;
 
 #[test]
 fn test_job_request_creation() {
@@ -330,17 +331,23 @@ fn test_job_status_conversion() {
     assert_eq!(JobStatus::Partial.as_str(), "partial");
 
     // Test parsing
-    assert_eq!(
-        JobStatus::from_str("payment-required").unwrap(),
-        JobStatus::PaymentRequired
-    );
-    assert_eq!(
-        JobStatus::from_str("processing").unwrap(),
-        JobStatus::Processing
-    );
-    assert_eq!(JobStatus::from_str("success").unwrap(), JobStatus::Success);
-    assert_eq!(JobStatus::from_str("error").unwrap(), JobStatus::Error);
-    assert_eq!(JobStatus::from_str("partial").unwrap(), JobStatus::Partial);
+    assert!(matches!(
+        JobStatus::from_str("payment-required"),
+        Ok(JobStatus::PaymentRequired)
+    ));
+    assert!(matches!(
+        JobStatus::from_str("processing"),
+        Ok(JobStatus::Processing)
+    ));
+    assert!(matches!(
+        JobStatus::from_str("success"),
+        Ok(JobStatus::Success)
+    ));
+    assert!(matches!(JobStatus::from_str("error"), Ok(JobStatus::Error)));
+    assert!(matches!(
+        JobStatus::from_str("partial"),
+        Ok(JobStatus::Partial)
+    ));
 }
 
 #[test]

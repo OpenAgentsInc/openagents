@@ -133,7 +133,7 @@ pub fn get_relay_url(event: &Event) -> Option<String> {
     event
         .tags
         .iter()
-        .find(|tag| tag.get(0).map(|s| s.as_str()) == Some(RELAY_TAG))
+        .find(|tag| tag.first().map(|s| s.as_str()) == Some(RELAY_TAG))
         .and_then(|tag| tag.get(1))
         .map(|s| s.to_string())
 }
@@ -157,7 +157,7 @@ pub fn get_challenge(event: &Event) -> Option<String> {
     event
         .tags
         .iter()
-        .find(|tag| tag.get(0).map(|s| s.as_str()) == Some(CHALLENGE_TAG))
+        .find(|tag| tag.first().map(|s| s.as_str()) == Some(CHALLENGE_TAG))
         .and_then(|tag| tag.get(1))
         .map(|s| s.to_string())
 }

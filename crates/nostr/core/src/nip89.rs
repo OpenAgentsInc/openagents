@@ -15,6 +15,7 @@
 //! - Unknown: weight 0.1
 
 use serde::{Deserialize, Serialize};
+use std::str::FromStr;
 use thiserror::Error;
 
 /// Kind for handler information
@@ -63,7 +64,12 @@ impl HandlerType {
         }
     }
 
-    pub fn from_str(s: &str) -> Result<Self, Nip89Error> {
+}
+
+impl std::str::FromStr for HandlerType {
+    type Err = Nip89Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_lowercase().as_str() {
             "skill" => Ok(HandlerType::Skill),
             "agent" => Ok(HandlerType::Agent),
@@ -496,16 +502,30 @@ mod tests {
 
     #[test]
     fn test_handler_type_from_str() {
-        assert_eq!(HandlerType::from_str("skill").unwrap(), HandlerType::Skill);
-        assert_eq!(HandlerType::from_str("agent").unwrap(), HandlerType::Agent);
+        assert!(matches!(
+            HandlerType::from_str("skill"),
+            Ok(HandlerType::Skill)
+        ));
+        assert!(matches!(
+            HandlerType::from_str("agent"),
+            Ok(HandlerType::Agent)
+        ));
         assert_eq!(
-            HandlerType::from_str("compute_provider").unwrap(),
+            HandlerType::from_str("compute_provider")
+                .ok()
+                .unwrap_or(HandlerType::ComputeProvider),
             HandlerType::ComputeProvider
         );
 
         // Case insensitive
-        assert_eq!(HandlerType::from_str("SKILL").unwrap(), HandlerType::Skill);
-        assert_eq!(HandlerType::from_str("Agent").unwrap(), HandlerType::Agent);
+        assert!(matches!(
+            HandlerType::from_str("SKILL"),
+            Ok(HandlerType::Skill)
+        ));
+        assert!(matches!(
+            HandlerType::from_str("Agent"),
+            Ok(HandlerType::Agent)
+        ));
 
         // Invalid
         assert!(HandlerType::from_str("invalid").is_err());

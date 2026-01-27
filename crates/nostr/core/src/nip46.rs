@@ -89,7 +89,12 @@ impl NostrConnectMethod {
         }
     }
 
-    pub fn from_str(s: &str) -> Result<Self, Nip46Error> {
+}
+
+impl std::str::FromStr for NostrConnectMethod {
+    type Err = Nip46Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "connect" => Ok(NostrConnectMethod::Connect),
             "sign_event" => Ok(NostrConnectMethod::SignEvent),
@@ -335,8 +340,10 @@ impl BunkerUrl {
         })
     }
 
-    /// Convert to bunker:// URL string.
-    pub fn to_string(&self) -> String {
+}
+
+impl std::fmt::Display for BunkerUrl {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut url = format!("bunker://{}", self.remote_signer_pubkey);
 
         let mut params = Vec::new();
@@ -352,7 +359,7 @@ impl BunkerUrl {
             url.push_str(&params.join("&"));
         }
 
-        url
+        write!(f, "{}", url)
     }
 }
 
@@ -489,8 +496,10 @@ impl NostrConnectUrl {
         })
     }
 
-    /// Convert to nostrconnect:// URL string.
-    pub fn to_string(&self) -> String {
+}
+
+impl std::fmt::Display for NostrConnectUrl {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut url = format!("nostrconnect://{}", self.client_pubkey);
 
         let mut params = Vec::new();
@@ -516,7 +525,7 @@ impl NostrConnectUrl {
 
         url.push('?');
         url.push_str(&params.join("&"));
-        url
+        write!(f, "{}", url)
     }
 }
 
@@ -536,6 +545,7 @@ pub fn is_nostr_connect_event(event: &Event) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::str::FromStr;
 
     #[test]
     fn test_nostr_connect_method_conversion() {
@@ -544,14 +554,14 @@ mod tests {
         assert_eq!(NostrConnectMethod::Ping.as_str(), "ping");
         assert_eq!(NostrConnectMethod::GetPublicKey.as_str(), "get_public_key");
 
-        assert_eq!(
-            NostrConnectMethod::from_str("connect").unwrap(),
-            NostrConnectMethod::Connect
-        );
-        assert_eq!(
-            NostrConnectMethod::from_str("sign_event").unwrap(),
-            NostrConnectMethod::SignEvent
-        );
+        assert!(matches!(
+            NostrConnectMethod::from_str("connect"),
+            Ok(NostrConnectMethod::Connect)
+        ));
+        assert!(matches!(
+            NostrConnectMethod::from_str("sign_event"),
+            Ok(NostrConnectMethod::SignEvent)
+        ));
         assert!(NostrConnectMethod::from_str("invalid").is_err());
     }
 

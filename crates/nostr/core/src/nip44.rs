@@ -149,6 +149,8 @@ fn get_conversation_key(secret_key: &[u8; 32], public_key: &[u8]) -> Result<[u8;
     Ok(conversation_key)
 }
 
+type MessageKeys = ([u8; 32], [u8; 12], [u8; 32]);
+
 /// Derive message keys from the conversation key and nonce.
 ///
 /// Uses HKDF-expand to derive 76 bytes:
@@ -158,7 +160,7 @@ fn get_conversation_key(secret_key: &[u8; 32], public_key: &[u8]) -> Result<[u8;
 fn derive_message_keys(
     conversation_key: &[u8; 32],
     nonce: &[u8; 32],
-) -> Result<([u8; 32], [u8; 12], [u8; 32]), Nip44Error> {
+) -> Result<MessageKeys, Nip44Error> {
     let hkdf = Hkdf::<Sha256>::new(Some(conversation_key), &[]);
 
     let mut output = [0u8; 76];
@@ -237,7 +239,7 @@ fn unpad(padded: &[u8]) -> Result<String, Nip44Error> {
     // Read length as big-endian u16
     let plaintext_len = ((padded[0] as usize) << 8) | (padded[1] as usize);
 
-    if plaintext_len < MIN_PLAINTEXT_LEN || plaintext_len > MAX_PLAINTEXT_LEN {
+    if !(MIN_PLAINTEXT_LEN..=MAX_PLAINTEXT_LEN).contains(&plaintext_len) {
         return Err(Nip44Error::InvalidPadding);
     }
 

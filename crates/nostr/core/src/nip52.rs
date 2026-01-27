@@ -297,10 +297,10 @@ impl TimeBasedCalendarEvent {
         }
 
         // Check that start < end
-        if let Some(end) = self.end {
-            if self.start >= end {
-                return Err(Nip52Error::StartAfterEnd);
-            }
+        if let Some(end) = self.end
+            && self.start >= end
+        {
+            return Err(Nip52Error::StartAfterEnd);
         }
 
         Ok(())
@@ -479,8 +479,12 @@ impl RsvpStatus {
         }
     }
 
-    /// Parse from string
-    pub fn from_str(s: &str) -> Result<Self, Nip52Error> {
+}
+
+impl std::str::FromStr for RsvpStatus {
+    type Err = Nip52Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "accepted" => Ok(RsvpStatus::Accepted),
             "declined" => Ok(RsvpStatus::Declined),
@@ -509,8 +513,12 @@ impl FreeBusyStatus {
         }
     }
 
-    /// Parse from string
-    pub fn from_str(s: &str) -> Result<Self, Nip52Error> {
+}
+
+impl std::str::FromStr for FreeBusyStatus {
+    type Err = Nip52Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "free" => Ok(FreeBusyStatus::Free),
             "busy" => Ok(FreeBusyStatus::Busy),
@@ -685,6 +693,7 @@ pub fn is_nip52_kind(kind: u16) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::str::FromStr;
 
     #[test]
     fn test_date_format_validation() {
@@ -830,18 +839,18 @@ mod tests {
         assert_eq!(RsvpStatus::Declined.as_str(), "declined");
         assert_eq!(RsvpStatus::Tentative.as_str(), "tentative");
 
-        assert_eq!(
-            RsvpStatus::from_str("accepted").unwrap(),
-            RsvpStatus::Accepted
-        );
-        assert_eq!(
-            RsvpStatus::from_str("declined").unwrap(),
-            RsvpStatus::Declined
-        );
-        assert_eq!(
-            RsvpStatus::from_str("tentative").unwrap(),
-            RsvpStatus::Tentative
-        );
+        assert!(matches!(
+            RsvpStatus::from_str("accepted"),
+            Ok(RsvpStatus::Accepted)
+        ));
+        assert!(matches!(
+            RsvpStatus::from_str("declined"),
+            Ok(RsvpStatus::Declined)
+        ));
+        assert!(matches!(
+            RsvpStatus::from_str("tentative"),
+            Ok(RsvpStatus::Tentative)
+        ));
         assert!(RsvpStatus::from_str("invalid").is_err());
     }
 
@@ -850,14 +859,14 @@ mod tests {
         assert_eq!(FreeBusyStatus::Free.as_str(), "free");
         assert_eq!(FreeBusyStatus::Busy.as_str(), "busy");
 
-        assert_eq!(
-            FreeBusyStatus::from_str("free").unwrap(),
-            FreeBusyStatus::Free
-        );
-        assert_eq!(
-            FreeBusyStatus::from_str("busy").unwrap(),
-            FreeBusyStatus::Busy
-        );
+        assert!(matches!(
+            FreeBusyStatus::from_str("free"),
+            Ok(FreeBusyStatus::Free)
+        ));
+        assert!(matches!(
+            FreeBusyStatus::from_str("busy"),
+            Ok(FreeBusyStatus::Busy)
+        ));
         assert!(FreeBusyStatus::from_str("invalid").is_err());
     }
 

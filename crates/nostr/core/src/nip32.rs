@@ -123,10 +123,10 @@ impl Label {
         if self.value.is_empty() {
             return Err(Nip32Error::MissingLabelValue);
         }
-        if let Some(ns) = &self.namespace {
-            if ns.is_empty() {
-                return Err(Nip32Error::EmptyNamespace);
-            }
+        if let Some(ns) = &self.namespace
+            && ns.is_empty()
+        {
+            return Err(Nip32Error::EmptyNamespace);
         }
         Ok(())
     }
@@ -313,10 +313,10 @@ impl LabelEvent {
             .collect();
 
         for label in &self.labels {
-            if let Some(ns) = &label.namespace {
-                if !namespaces.contains(&ns.as_str()) {
-                    return Err(Nip32Error::MissingNamespaceMark);
-                }
+            if let Some(ns) = &label.namespace
+                && !namespaces.contains(&ns.as_str())
+            {
+                return Err(Nip32Error::MissingNamespaceMark);
             }
         }
 

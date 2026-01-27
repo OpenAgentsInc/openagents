@@ -73,7 +73,7 @@ pub fn has_tag(event: &Event, tag_name: &str) -> bool {
     event
         .tags
         .iter()
-        .any(|tag| tag.get(0).map(|s| s.as_str()) == Some(tag_name))
+        .any(|tag| tag.first().map(|s| s.as_str()) == Some(tag_name))
 }
 
 /// Get all values for a specific tag type.
@@ -101,7 +101,7 @@ pub fn get_tag_values(event: &Event, tag_name: &str) -> Vec<String> {
     event
         .tags
         .iter()
-        .filter(|tag| tag.get(0).map(|s| s.as_str()) == Some(tag_name))
+        .filter(|tag| tag.first().map(|s| s.as_str()) == Some(tag_name))
         .filter_map(|tag| tag.get(1))
         .map(|s| s.to_string())
         .collect()
@@ -133,7 +133,7 @@ pub fn get_tag_values_with_params(event: &Event, tag_name: &str) -> Vec<(String,
     event
         .tags
         .iter()
-        .filter(|tag| tag.get(0).map(|s| s.as_str()) == Some(tag_name))
+        .filter(|tag| tag.first().map(|s| s.as_str()) == Some(tag_name))
         .filter_map(|tag| {
             let value = tag.get(1)?;
             let params: Vec<String> = tag.iter().skip(2).cloned().collect();
@@ -192,7 +192,7 @@ pub fn add_generic_tag(
 /// // Only the "p" tag remains
 /// ```
 pub fn remove_tags(tags: &mut Vec<Vec<String>>, tag_name: &str) {
-    tags.retain(|tag| tag.get(0).map(|s| s.as_str()) != Some(tag_name));
+    tags.retain(|tag| tag.first().map(|s| s.as_str()) != Some(tag_name));
 }
 
 /// Check if an event matches a tag filter.

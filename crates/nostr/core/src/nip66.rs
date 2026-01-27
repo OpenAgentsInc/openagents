@@ -33,6 +33,7 @@
 //! ```
 
 use crate::nip01::Event;
+use std::str::FromStr;
 use thiserror::Error;
 
 /// Event kind for relay discovery (addressable)
@@ -69,16 +70,6 @@ pub enum NetworkType {
 }
 
 impl NetworkType {
-    pub fn from_str(s: &str) -> Self {
-        match s {
-            "clearnet" => NetworkType::Clearnet,
-            "tor" => NetworkType::Tor,
-            "i2p" => NetworkType::I2P,
-            "loki" => NetworkType::Loki,
-            _ => NetworkType::Other(s.to_string()),
-        }
-    }
-
     pub fn as_str(&self) -> &str {
         match self {
             NetworkType::Clearnet => "clearnet",
@@ -87,6 +78,20 @@ impl NetworkType {
             NetworkType::Loki => "loki",
             NetworkType::Other(s) => s,
         }
+    }
+}
+
+impl std::str::FromStr for NetworkType {
+    type Err = std::convert::Infallible;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(match s {
+            "clearnet" => NetworkType::Clearnet,
+            "tor" => NetworkType::Tor,
+            "i2p" => NetworkType::I2P,
+            "loki" => NetworkType::Loki,
+            _ => NetworkType::Other(s.to_string()),
+        })
     }
 }
 
@@ -112,11 +117,14 @@ impl Requirement {
         }
     }
 
-    pub fn to_string(&self) -> String {
+}
+
+impl std::fmt::Display for Requirement {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if self.required {
-            self.name.clone()
+            write!(f, "{}", self.name)
         } else {
-            format!("!{}", self.name)
+            write!(f, "!{}", self.name)
         }
     }
 }
@@ -147,11 +155,14 @@ impl KindPolicy {
         }
     }
 
-    pub fn to_string(&self) -> String {
+}
+
+impl std::fmt::Display for KindPolicy {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if self.accepted {
-            self.kind.to_string()
+            write!(f, "{}", self.kind)
         } else {
-            format!("!{}", self.kind)
+            write!(f, "!{}", self.kind)
         }
     }
 }
@@ -272,7 +283,7 @@ impl RelayDiscovery {
             .tags
             .iter()
             .find(|tag| tag.len() >= 2 && tag[0] == NETWORK_TYPE_TAG)
-            .map(|tag| NetworkType::from_str(&tag[1]));
+            .and_then(|tag| NetworkType::from_str(&tag[1]).ok());
 
         // Extract relay type
         let relay_type = event
@@ -527,16 +538,17 @@ mod tests {
 
     #[test]
     fn test_network_type_parse() {
-        assert_eq!(NetworkType::from_str("clearnet"), NetworkType::Clearnet);
-        assert_eq!(NetworkType::from_str("tor"), NetworkType::Tor);
-        assert_eq!(NetworkType::from_str("i2p"), NetworkType::I2P);
-        assert_eq!(NetworkType::from_str("loki"), NetworkType::Loki);
-
-        if let NetworkType::Other(s) = NetworkType::from_str("custom") {
-            assert_eq!(s, "custom");
-        } else {
-            panic!("Expected Other variant");
-        }
+        assert!(matches!(
+            NetworkType::from_str("clearnet"),
+            Ok(NetworkType::Clearnet)
+        ));
+        assert!(matches!(NetworkType::from_str("tor"), Ok(NetworkType::Tor)));
+        assert!(matches!(NetworkType::from_str("i2p"), Ok(NetworkType::I2P)));
+        assert!(matches!(NetworkType::from_str("loki"), Ok(NetworkType::Loki)));
+        assert!(matches!(
+            NetworkType::from_str("custom"),
+            Ok(NetworkType::Other(s)) if s == "custom"
+        ));
     }
 
     #[test]

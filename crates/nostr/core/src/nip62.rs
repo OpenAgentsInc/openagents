@@ -79,7 +79,7 @@ pub struct RequestToVanish {
 
 impl RequestToVanish {
     /// Create a new request to vanish for specific relays.
-    pub fn new(user_pubkey: String, relay_urls: Vec<String>, reason: Option<String>) -> Event {
+    pub fn new_event(user_pubkey: String, relay_urls: Vec<String>, reason: Option<String>) -> Event {
         let mut tags = Vec::new();
 
         for url in relay_urls {
@@ -247,7 +247,7 @@ mod tests {
         ];
         let reason = Some("GDPR right to be forgotten request".to_string());
 
-        let event = RequestToVanish::new(user_pubkey.clone(), relays.clone(), reason.clone());
+        let event = RequestToVanish::new_event(user_pubkey.clone(), relays.clone(), reason.clone());
 
         assert_eq!(event.kind, REQUEST_TO_VANISH_KIND);
         assert_eq!(event.pubkey, user_pubkey);
@@ -283,7 +283,7 @@ mod tests {
         let user_pubkey = "user789".to_string();
         let relays = vec!["wss://relay.example.com".to_string()];
 
-        let event = RequestToVanish::new(user_pubkey.clone(), relays, None);
+        let event = RequestToVanish::new_event(user_pubkey.clone(), relays, None);
 
         assert_eq!(event.content, "");
 
