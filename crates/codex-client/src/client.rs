@@ -1,6 +1,7 @@
 //! Codex app-server JSON-RPC client.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+use std::env;
 use std::path::PathBuf;
 use std::process::Stdio;
 use std::sync::Arc;
@@ -607,16 +608,116 @@ struct AppServerCommand {
     args: Vec<String>,
 }
 
-const CODEX_PATHS: &[&str] = &[
-    ".npm-global/bin/codex",
-    ".local/bin/codex",
-    "node_modules/.bin/codex",
-    "/usr/local/bin/codex",
-    "/opt/homebrew/bin/codex",
-];
+fn common_bin_dirs() -> Vec<PathBuf> {
+    let mut dirs = Vec::new();
+    let mut seen = HashSet::new();
+    let mut push = |path: PathBuf| {
+        if seen.insert(path.clone()) {
+            dirs.push(path);
+        }
+    };
+
+    if let Ok(home_override) = env::var("CODEX_HOME") {
+        let trimmed = home_override.trim();
+        if !trimmed.is_empty() {
+            let root = PathBuf::from(trimmed);
+            push(root.join("bin"));
+            push(root);
+        }
+    }
+
+    if let Some(home) = dirs::home_dir() {
+        push(home.join(".codex/bin"));
+        push(home.join(".codex"));
+        push(home.join(".npm-global/bin"));
+        push(home.join(".local/bin"));
+        push(home.join(".local/share/mise/shims"));
+        push(home.join(".cargo/bin"));
+        push(home.join(".bun/bin"));
+        push(home.join("node_modules/.bin"));
+
+        let nvm_root = home.join(".nvm/versions/node");
+        if let Ok(entries) = std::fs::read_dir(nvm_root) {
+            for entry in entries.flatten() {
+                let bin_path = entry.path().join("bin");
+                if bin_path.is_dir() {
+                    push(bin_path);
+                }
+            }
+        }
+    }
+
+    for path in [
+        "/opt/homebrew/bin",
+        "/usr/local/bin",
+        "/usr/bin",
+        "/bin",
+        "/usr/sbin",
+        "/sbin",
+    ] {
+        push(PathBuf::from(path));
+    }
+
+    dirs
+}
+
+fn find_in_common_bins(binary: &str) -> Option<PathBuf> {
+    for dir in common_bin_dirs() {
+        let candidate = dir.join(binary);
+        if candidate.exists() && candidate.is_file() {
+            return Some(candidate);
+        }
+    }
+    None
+}
+
+fn resolve_codex_bin_from_env() -> Option<PathBuf> {
+    let value = env::var("CODEX_BIN").ok()?;
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    if trimmed.ends_with("codex-app-server") {
+        return None;
+    }
+    let candidate = PathBuf::from(trimmed);
+    if candidate.exists() && candidate.is_file() {
+        return Some(candidate);
+    }
+    which::which(trimmed).ok()
+}
+
+fn resolve_codex_app_server_override() -> Option<PathBuf> {
+    if let Ok(value) = env::var("CODEX_APP_SERVER") {
+        let trimmed = value.trim();
+        if !trimmed.is_empty() {
+            let candidate = PathBuf::from(trimmed);
+            if candidate.exists() && candidate.is_file() {
+                return Some(candidate);
+            }
+        }
+    }
+    if let Ok(value) = env::var("CODEX_BIN") {
+        let trimmed = value.trim();
+        if trimmed.ends_with("codex-app-server") {
+            let candidate = PathBuf::from(trimmed);
+            if candidate.exists() && candidate.is_file() {
+                return Some(candidate);
+            }
+        }
+    }
+    find_in_common_bins("codex-app-server")
+}
 
 fn resolve_app_server_command() -> Result<AppServerCommand> {
     if let Ok(program) = which::which("codex-app-server") {
+        return Ok(AppServerCommand {
+            program,
+            args: Vec::new(),
+        });
+    }
+
+    if let Some(program) = resolve_codex_app_server_override() {
         return Ok(AppServerCommand {
             program,
             args: Vec::new(),
@@ -632,21 +733,16 @@ fn resolve_app_server_command() -> Result<AppServerCommand> {
 }
 
 fn find_codex_executable() -> Result<PathBuf> {
+    if let Some(path) = resolve_codex_bin_from_env() {
+        return Ok(path);
+    }
+
     if let Ok(path) = which::which("codex") {
         return Ok(path);
     }
 
-    if let Some(home) = dirs::home_dir() {
-        for path in CODEX_PATHS {
-            let full_path = if path.starts_with('/') {
-                PathBuf::from(path)
-            } else {
-                home.join(path)
-            };
-            if full_path.exists() && full_path.is_file() {
-                return Ok(full_path);
-            }
-        }
+    if let Some(path) = find_in_common_bins("codex") {
+        return Ok(path);
     }
 
     Err(anyhow::anyhow!("codex executable not found"))
@@ -654,18 +750,9 @@ fn find_codex_executable() -> Result<PathBuf> {
 
 /// Check if Codex app-server is available on this system.
 pub fn is_codex_available() -> bool {
-    which::which("codex-app-server").is_ok() || which::which("codex").is_ok() || {
-        if let Some(home) = dirs::home_dir() {
-            CODEX_PATHS.iter().any(|path| {
-                let full_path = if path.starts_with('/') {
-                    PathBuf::from(path)
-                } else {
-                    home.join(path)
-                };
-                full_path.exists() && full_path.is_file()
-            })
-        } else {
-            false
-        }
-    }
+    which::which("codex-app-server").is_ok()
+        || resolve_codex_app_server_override().is_some()
+        || resolve_codex_bin_from_env().is_some()
+        || which::which("codex").is_ok()
+        || find_in_common_bins("codex").is_some()
 }

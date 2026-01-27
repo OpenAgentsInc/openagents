@@ -283,6 +283,30 @@ pub(crate) async fn spawn_workspace_session<E: EventSink>(
         .clone()
         .filter(|value| !value.trim().is_empty())
         .or(default_codex_bin);
+    if let Some(ref codex_bin) = codex_bin {
+        if env::var("CODEX_BIN")
+            .ok()
+            .map(|value| value.trim().is_empty())
+            .unwrap_or(true)
+        {
+            // Safety: process-level env update ensures Codex helpers can locate the binary.
+            unsafe {
+                env::set_var("CODEX_BIN", codex_bin);
+            }
+        }
+    }
+    if let Some(ref codex_home) = codex_home {
+        if env::var("CODEX_HOME")
+            .ok()
+            .map(|value| value.trim().is_empty())
+            .unwrap_or(true)
+        {
+            // Safety: process-level env update ensures shared Codex helpers see the same home.
+            unsafe {
+                env::set_var("CODEX_HOME", codex_home);
+            }
+        }
+    }
     let _ = check_codex_installation(codex_bin.clone()).await?;
 
     let mut command = build_codex_command_with_bin(codex_bin);

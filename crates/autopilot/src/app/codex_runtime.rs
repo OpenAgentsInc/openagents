@@ -4,14 +4,6 @@ use anyhow::{Context, Result};
 
 use crate::app::codex_app_server as app_server;
 
-const CODEX_PATHS: &[&str] = &[
-    ".npm-global/bin/codex",
-    ".local/bin/codex",
-    "node_modules/.bin/codex",
-    "/usr/local/bin/codex",
-    "/opt/homebrew/bin/codex",
-];
-
 #[derive(Clone, Default)]
 pub(crate) struct CodexRuntimeConfig {
     pub(crate) cwd: Option<PathBuf>,
@@ -27,25 +19,7 @@ pub(crate) struct CodexRuntime {
 
 impl CodexRuntime {
     pub(crate) fn is_available() -> bool {
-        if which::which("codex-app-server").is_ok() {
-            return true;
-        }
-        if which::which("codex").is_ok() {
-            return true;
-        }
-        if let Some(home) = dirs::home_dir() {
-            for path in CODEX_PATHS {
-                let full_path = if path.starts_with('/') {
-                    PathBuf::from(path)
-                } else {
-                    home.join(path)
-                };
-                if full_path.exists() && full_path.is_file() {
-                    return true;
-                }
-            }
-        }
-        false
+        app_server::is_codex_available()
     }
 
     pub(crate) async fn spawn(config: CodexRuntimeConfig) -> Result<Self> {

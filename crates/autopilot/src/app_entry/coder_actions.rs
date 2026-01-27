@@ -545,7 +545,8 @@ impl AutopilotApp {
                 });
             }
 
-            let effort = normalize_reasoning_effort_for_model(&model_name, reasoning_effort);
+            let model_for_effort = model_override.as_deref().unwrap_or(&model_name);
+            let effort = normalize_reasoning_effort_for_model(model_for_effort, reasoning_effort);
             let turn_params = app_server::TurnStartParams {
                 thread_id: thread_id.clone(),
                 input: vec![app_server::UserInput::Text {
