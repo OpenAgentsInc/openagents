@@ -37,9 +37,16 @@ between turns that can:
 
 Before:
 - The human is the scheduler ("continue, continue").
+- The "Ralph" loop: a deterministic while-loop that repeatedly feeds a fixed harness prompt
+  (often `PROMPT.md`) to a coding agent, where the prompt instructs the agent to maintain/update
+  a TODO/plan and keep iterating until done.
 
 After:
 - The Guidance Module is the scheduler (it decides what happens next).
+
+This improves autonomy vs manual "continue", but the "state + scheduler" is still mostly
+encoded in a text prompt and repo files rather than a typed, inspectable decision system with
+explicit budgets, policies, and replayable decision records.
 
 Concrete examples:
 - Turn ends with failing tests and low remaining budget -> Guidance returns
@@ -324,4 +331,3 @@ Module in Full Auto today.
 - DSPy provides the signatures and modules used inside it.
 - Guardrails are deterministic and enforce safe execution.
 - The system is designed to be extensible and package-friendly.
-
