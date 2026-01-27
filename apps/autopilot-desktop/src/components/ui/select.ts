@@ -4,10 +4,13 @@ import { cx, type UIChildren } from "./utils.js"
 
 export type SelectProps = {
   readonly children?: UIChildren
+  readonly value?: string
 }
 
-export const Select = ({ children }: SelectProps): TemplateResult => {
-  return html`<div data-slot="select">${children ?? ""}</div>`
+export const Select = ({ children, value }: SelectProps): TemplateResult => {
+  return html`
+    <div data-slot="select" data-state="closed" data-value="${value ?? ""}">${children ?? ""}</div>
+  `
 }
 
 export type SelectGroupProps = {
@@ -71,7 +74,7 @@ export const SelectContent = ({
   position = "item-aligned",
   align = "center",
   side = "bottom",
-  state = "open",
+  state = "closed",
 }: SelectContentProps): TemplateResult => {
   const popperClass =
     position === "popper"
@@ -125,6 +128,7 @@ export const SelectLabel = ({ className, children }: SelectLabelProps): Template
 export type SelectItemProps = {
   readonly className?: string
   readonly children?: UIChildren
+  readonly value?: string
   readonly selected?: boolean
   readonly disabled?: boolean
 }
@@ -132,12 +136,15 @@ export type SelectItemProps = {
 export const SelectItem = ({
   className,
   children,
+  value,
   selected = false,
   disabled = false,
 }: SelectItemProps): TemplateResult => {
   return html`
     <div
       data-slot="select-item"
+      data-value="${value ?? ""}"
+      data-selected="${selected ? "true" : "false"}"
       data-disabled="${disabled ? "true" : "false"}"
       class="${cx(
         "focus:bg-accent focus:text-accent-foreground [&_svg:not([class*='text-'])]:text-muted-foreground relative flex w-full cursor-default items-center gap-2 rounded-sm py-1.5 pr-8 pl-2 text-sm outline-hidden select-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 *:[span]:last:flex *:[span]:last:items-center *:[span]:last:gap-2",
@@ -145,7 +152,7 @@ export const SelectItem = ({
       )}"
     >
       <span data-slot="select-item-indicator" class="absolute right-2 flex size-3.5 items-center justify-center">
-        ${selected ? "✓" : ""}
+        ${selected ? "x" : ""}
       </span>
       <span data-slot="select-item-text">${children ?? ""}</span>
     </div>

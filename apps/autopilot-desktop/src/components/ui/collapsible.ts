@@ -6,15 +6,25 @@ export type CollapsibleProps = {
   readonly className?: string
   readonly children?: UIChildren
   readonly state?: "open" | "closed"
+  readonly dataRole?: string
+  readonly dataCopyValue?: string
 }
 
 export const Collapsible = ({
   className,
   children,
   state = "closed",
+  dataRole,
+  dataCopyValue,
 }: CollapsibleProps): TemplateResult => {
   return html`
-    <div data-slot="collapsible" data-state="${state}" class="${cx(className)}">
+    <div
+      data-slot="collapsible"
+      data-state="${state}"
+      data-role="${dataRole ?? ""}"
+      data-copy-value="${dataCopyValue ?? ""}"
+      class="${cx(className)}"
+    >
       ${children ?? ""}
     </div>
   `

@@ -12,6 +12,8 @@ export type SnippetProps = {
 export const Snippet = ({ code, className, children }: SnippetProps): TemplateResult =>
   InputGroup({
     className: cx("font-mono", className),
+    dataRole: "snippet",
+    dataCopyValue: code,
     children: children ?? html`
       ${SnippetText({ children: code })}
       ${SnippetInput({ code })}
@@ -52,5 +54,9 @@ export const SnippetCopyButton = ({ className, children }: SnippetCopyButtonProp
   InputGroupButton({
     className,
     size: "icon-sm",
+    dataUi: "copy",
+    dataCopyTarget: "closest([data-role='snippet'])",
+    ariaLabel: "Copy",
+    title: "Copy",
     children: children ?? "copy",
   })

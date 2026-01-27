@@ -25,6 +25,7 @@ import {
 } from "../../ipc/unified.js"
 import { effuseCatalog, componentRegistry } from "../catalog.js"
 import { createSetupTree } from "./setup-tree.js"
+import { mountUiRuntime } from "../ui/runtime.js"
 
 type AutopilotCanvasState = {
   tree: UITree
@@ -201,6 +202,7 @@ export const AutopilotCanvasComponent: Component<AutopilotCanvasState, never> = 
       ])
 
       yield* mountEzRuntimeWith(ctx.container, registry)
+      yield* mountUiRuntime(ctx.container)
 
       yield* getCurrentDirectory().pipe(
         Effect.tap((cwd) => {

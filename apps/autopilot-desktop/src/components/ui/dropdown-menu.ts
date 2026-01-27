@@ -5,7 +5,7 @@ import { cx, type UIChildren } from "./utils.js"
 export type DropdownMenuProps = { readonly children?: UIChildren }
 
 export const DropdownMenu = ({ children }: DropdownMenuProps): TemplateResult => {
-  return html`<div data-slot="dropdown-menu">${children ?? ""}</div>`
+  return html`<div data-slot="dropdown-menu" data-state="closed">${children ?? ""}</div>`
 }
 
 export const DropdownMenuPortal = ({ children }: DropdownMenuProps): TemplateResult => {
@@ -40,7 +40,7 @@ export const DropdownMenuContent = ({
   className,
   sideOffset = 4,
   side = "bottom",
-  state = "open",
+  state = "closed",
   children,
 }: DropdownMenuContentProps): TemplateResult => {
   return DropdownMenuPortal({
@@ -110,13 +110,14 @@ export const DropdownMenuCheckboxItem = ({
   return html`
     <div
       data-slot="dropdown-menu-checkbox-item"
+      data-checked="${checked ? "true" : "false"}"
       class="${cx(
         "focus:bg-accent focus:text-accent-foreground relative flex cursor-default items-center gap-2 rounded-sm py-1.5 pr-2 pl-8 text-sm outline-hidden select-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
         className
       )}"
     >
-      <span class="pointer-events-none absolute left-2 flex size-3.5 items-center justify-center">
-        ${checked ? "✓" : ""}
+      <span data-slot="dropdown-menu-checkbox-indicator" class="pointer-events-none absolute left-2 flex size-3.5 items-center justify-center">
+        ${checked ? "x" : ""}
       </span>
       ${children ?? ""}
     </div>
@@ -129,6 +130,7 @@ export const DropdownMenuRadioGroup = ({ children }: DropdownMenuProps): Templat
 
 export type DropdownMenuRadioItemProps = {
   readonly className?: string
+  readonly value?: string
   readonly checked?: boolean
   readonly children?: UIChildren
 }
@@ -136,18 +138,21 @@ export type DropdownMenuRadioItemProps = {
 export const DropdownMenuRadioItem = ({
   className,
   checked = false,
+  value,
   children,
 }: DropdownMenuRadioItemProps): TemplateResult => {
   return html`
     <div
       data-slot="dropdown-menu-radio-item"
+      data-value="${value ?? ""}"
+      data-checked="${checked ? "true" : "false"}"
       class="${cx(
         "focus:bg-accent focus:text-accent-foreground relative flex cursor-default items-center gap-2 rounded-sm py-1.5 pr-2 pl-8 text-sm outline-hidden select-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
         className
       )}"
     >
-      <span class="pointer-events-none absolute left-2 flex size-3.5 items-center justify-center">
-        ${checked ? "●" : ""}
+      <span data-slot="dropdown-menu-radio-indicator" class="pointer-events-none absolute left-2 flex size-3.5 items-center justify-center">
+        ${checked ? "o" : ""}
       </span>
       ${children ?? ""}
     </div>
@@ -221,6 +226,7 @@ export const DropdownMenuSubTrigger = ({
     <div
       data-slot="dropdown-menu-sub-trigger"
       data-inset="${inset ? "true" : "false"}"
+      data-state="closed"
       class="${cx(
         "focus:bg-accent focus:text-accent-foreground data-[state=open]:bg-accent data-[state=open]:text-accent-foreground [&_svg:not([class*='text-'])]:text-muted-foreground flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-hidden select-none data-[inset]:pl-8 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
         className
@@ -244,6 +250,7 @@ export const DropdownMenuSubContent = ({
   return html`
     <div
       data-slot="dropdown-menu-sub-content"
+      data-state="closed"
       class="${cx(
         "bg-popover text-popover-foreground data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 z-50 min-w-[8rem] origin-(--radix-dropdown-menu-content-transform-origin) overflow-hidden rounded-md border p-1 shadow-lg",
         className
