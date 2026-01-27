@@ -94,12 +94,12 @@ cargo build --release -p pylon
 
 ---
 
-### Autopilot UI (wgpui) and Autopilot Desktop (Tauri/Effuse)
+### Autopilot UI (wgpui) and Autopilot Desktop (WGPUI)
 
 OpenAgents ships two user-facing Autopilot surfaces:
 
 - **Autopilot (wgpui)**: GPU-accelerated terminal interface for Codex CLI and Codex.
-- **Autopilot Desktop (Tauri/Effuse)**: signature-driven canvas UI that renders Effuse UITrees and streams UI patches from Adjutant.
+- **Autopilot Desktop (WGPUI)**: native desktop host running shared WGPUI components driven by `autopilot_app` events.
 
 Autopilot UI reimagines the AI coding experience as a native desktop application rather than a web interface or CLI tool. The entire UI is GPU-rendered via wgpui, giving you buttery-smooth scrolling through long conversations, instant Markdown rendering, and the responsiveness you'd expect from a proper terminal emulator. It's designed for developers who live in their terminal and want AI coding assistants to feel like a natural extension of that workflow.
 
@@ -107,9 +107,7 @@ Under the hood, Autopilot UI integrates the Codex app-server as its single backe
 
 Autopilot UI also integrates the Adjutant execution engine for autonomous "autopilot" mode. When you give it a task, Adjutant uses DSPy-optimized decision making to classify complexity, choose the right execution path (Codex app-server or RLM), and iterate until the task is complete. The UI provides real-time visibility into what the agent is doing, with the ability to interrupt, guide, or take over at any point.
 
-Autopilot Desktop exposes the same execution engine, but renders a signature-driven UI. Adjutant emits `UiTreeReset`, `UiPatch`, and `UiDataUpdate` events over the `ui-event` channel. The Effuse runtime validates UI trees against a catalog, applies patches, and renders the current signature steps (inputs, outputs, and status) on a canvas. This makes DSPy/dsrs execution visible in a structured, deterministic UI rather than an unstructured chat stream.
-
-Autopilot Desktop also runs a plan-mode optimization loop: it records training examples from plan runs, benchmarks signature quality, and writes optimized instructions to local manifests. Training data lives in `~/.openagents/autopilot-desktop/training/plan_mode.json`, optimization logs in `~/.openagents/autopilot-desktop/optimization/plan_mode.jsonl`, and manifests in `~/.openagents/autopilot-desktop/manifests/plan_mode/`.
+Autopilot Desktop exposes the same execution engine, but renders a typed view model via WGPUI’s immediate-mode layout system. The desktop host consumes `AppEvent` streams and dispatches `UserAction` back into the app core for replayable UI state and testability.
 
 **Execution note:** DSPy issue selection + bootloading decide *what* to work on; the actual execution is handled by the CODING_AGENT_LOOP in Adjutant (typed signatures for context, planning, tool calls, and tool results plus runtime enforcement and replay/receipt emission). This loop is the core engine behind Autopilot’s autonomous work.
 Autopilot’s autonomous loop always routes through Adjutant; the `/backend` selection only applies to chat mode.
