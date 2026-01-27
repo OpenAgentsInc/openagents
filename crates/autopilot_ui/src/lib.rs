@@ -103,6 +103,108 @@ pub struct DesktopRoot {
     cursor_position: Point,
 }
 
+pub struct MinimalRoot {
+    title: &'static str,
+    subtitle: &'static str,
+    button_label: &'static str,
+}
+
+impl MinimalRoot {
+    pub fn new() -> Self {
+        Self {
+            title: "Autopilot Desktop",
+            subtitle: "WGPUI minimal shell is live.",
+            button_label: "Continue",
+        }
+    }
+
+    pub fn apply_event(&mut self, _event: AppEvent) {}
+
+    pub fn set_send_handler<F>(&mut self, _handler: F)
+    where
+        F: FnMut(UserAction) + 'static,
+    {
+    }
+
+    pub fn handle_input(&mut self, _event: &InputEvent, _bounds: Bounds) -> bool {
+        false
+    }
+}
+
+impl Default for MinimalRoot {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Component for MinimalRoot {
+    fn paint(&mut self, bounds: Bounds, cx: &mut PaintContext) {
+        paint_background(cx, bounds);
+
+        let padding = 24.0;
+        let max_width = (bounds.size.width - padding * 2.0).max(160.0);
+        let max_height = (bounds.size.height - padding * 2.0).max(120.0);
+        let card_width = max_width.min(520.0);
+        let card_height = max_height.min(220.0);
+
+        let card_x = bounds.origin.x + (bounds.size.width - card_width) / 2.0;
+        let card_y = bounds.origin.y + (bounds.size.height - card_height) / 2.0;
+        let card_bounds = Bounds::new(card_x, card_y, card_width, card_height);
+
+        cx.scene.draw_quad(
+            Quad::new(card_bounds)
+                .with_background(theme::bg::SURFACE)
+                .with_border(theme::border::DEFAULT, 1.0)
+                .with_corner_radius(12.0),
+        );
+
+        let title_bounds = Bounds::new(
+            card_bounds.origin.x + 20.0,
+            card_bounds.origin.y + 18.0,
+            card_bounds.size.width - 40.0,
+            30.0,
+        );
+        Text::new(self.title)
+            .font_size(theme::font_size::XL)
+            .bold()
+            .color(theme::text::PRIMARY)
+            .paint(title_bounds, cx);
+
+        let subtitle_bounds = Bounds::new(
+            card_bounds.origin.x + 20.0,
+            card_bounds.origin.y + 52.0,
+            card_bounds.size.width - 40.0,
+            24.0,
+        );
+        Text::new(self.subtitle)
+            .font_size(theme::font_size::BASE)
+            .color(theme::text::SECONDARY)
+            .paint(subtitle_bounds, cx);
+
+        let label_width = cx.text.measure(self.button_label, theme::font_size::SM);
+        let button_width = (label_width + 36.0).max(120.0);
+        let button_height = 36.0;
+        let button_bounds = Bounds::new(
+            card_bounds.origin.x + 20.0,
+            card_bounds.origin.y + card_bounds.size.height - button_height - 18.0,
+            button_width,
+            button_height,
+        );
+
+        cx.scene.draw_quad(
+            Quad::new(button_bounds)
+                .with_background(theme::accent::PRIMARY)
+                .with_corner_radius(8.0),
+        );
+
+        Text::new(self.button_label)
+            .font_size(theme::font_size::SM)
+            .bold()
+            .color(theme::bg::APP)
+            .paint(button_bounds, cx);
+    }
+}
+
 impl DesktopRoot {
     pub fn new() -> Self {
         let pending_actions: Rc<RefCell<Vec<UiAction>>> = Rc::new(RefCell::new(Vec::new()));

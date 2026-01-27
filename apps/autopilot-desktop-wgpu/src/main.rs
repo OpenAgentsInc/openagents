@@ -3,7 +3,7 @@ use std::sync::{mpsc, Arc};
 
 use anyhow::{Context, Result};
 use autopilot_app::{AppEvent, App as AutopilotApp, AppConfig, EventRecorder, UserAction};
-use autopilot_ui::DesktopRoot;
+use autopilot_ui::MinimalRoot;
 use futures::StreamExt;
 use tracing_subscriber::EnvFilter;
 use wgpui::renderer::Renderer;
@@ -71,7 +71,7 @@ struct RenderState {
     renderer: Renderer,
     text_system: TextSystem,
     scale_factor: f32,
-    root: DesktopRoot,
+    root: MinimalRoot,
 }
 
 impl ApplicationHandler<AppEvent> for App {
@@ -223,7 +223,7 @@ fn init_state(
             .context("failed to create window")?,
     );
 
-    let mut root = DesktopRoot::new();
+    let mut root = MinimalRoot::new();
     root.set_send_handler(move |action| {
         let _ = action_tx.send(action);
     });
