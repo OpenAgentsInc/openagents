@@ -10,8 +10,17 @@ import {
   Conversation,
   ConversationContent,
   ConversationEmptyState,
+  Canvas,
   Diff,
+  Edge,
   Message,
+  Node,
+  NodeAction,
+  NodeContent,
+  NodeDescription,
+  NodeFooter,
+  NodeHeader,
+  NodeTitle,
   Plan,
   Reasoning,
   ToolCall,
@@ -1204,6 +1213,67 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
             description: "Choose a session to view its timeline.",
           })
 
+      const leftNode = { x: 24, y: 32, width: 220, height: 130 }
+      const rightNode = { x: 320, y: 170, width: 220, height: 130 }
+      const startX = leftNode.x + leftNode.width
+      const startY = leftNode.y + leftNode.height / 2
+      const endX = rightNode.x
+      const endY = rightNode.y + rightNode.height / 2
+      const controlOffset = 70
+      const edgePath = `M ${startX} ${startY} C ${startX + controlOffset} ${startY} ${endX - controlOffset} ${endY} ${endX} ${endY}`
+
+      const canvasDemo = Canvas({
+        children: html`
+          ${Edge({ path: edgePath, animated: true })}
+          <div class="canvas-flow-node" style="left: ${leftNode.x}px; top: ${leftNode.y}px;">
+            ${Node({
+              handles: { source: true },
+              children: html`
+                ${NodeHeader({
+                  children: html`
+                    ${NodeTitle({ text: "Plan" })}
+                    ${NodeDescription({ text: "Draft response steps." })}
+                    ${NodeAction({ children: html`<span class="text-xs text-muted-foreground">v1</span>` })}
+                  `,
+                })}
+                ${NodeContent({
+                  children: html`
+                    <div class="text-sm text-foreground">Gather context</div>
+                    <div class="text-sm text-muted-foreground">Outline approach</div>
+                  `,
+                })}
+                ${NodeFooter({
+                  children: html`<span class="text-xs text-muted-foreground">Ready</span>`,
+                })}
+              `,
+            })}
+          </div>
+          <div class="canvas-flow-node" style="left: ${rightNode.x}px; top: ${rightNode.y}px;">
+            ${Node({
+              handles: { target: true },
+              children: html`
+                ${NodeHeader({
+                  children: html`
+                    ${NodeTitle({ text: "Deliver" })}
+                    ${NodeDescription({ text: "Execute on the plan." })}
+                    ${NodeAction({ children: html`<span class="text-xs text-muted-foreground">v1</span>` })}
+                  `,
+                })}
+                ${NodeContent({
+                  children: html`
+                    <div class="text-sm text-foreground">Apply edits</div>
+                    <div class="text-sm text-muted-foreground">Verify output</div>
+                  `,
+                })}
+                ${NodeFooter({
+                  children: html`<span class="text-xs text-muted-foreground">Queued</span>`,
+                })}
+              `,
+            })}
+          </div>
+        `,
+      })
+
       const conversationPanel = html`
         <section class="panel conversation-panel">
           <div class="panel-title">Session ${sessionLabel}</div>
@@ -1219,18 +1289,35 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
         </section>
       `
 
-      const extraPane = extraPaneOpen
-        ? html`
-            <section class="panel aux-pane">
-              <div class="panel-title">Pane</div>
-              <div class="panel-body pane-body"></div>
-            </section>
-          `
-        : ""
+      const composeBar = html`
+        <div class="compose-bar">
+          <div class="compose-inner">
+            <span class="compose-label">Input</span>
+            <textarea
+              id="message-input"
+              class="compose-input"
+              rows="1"
+              placeholder="Type a message or /command"
+            >${state.messageInput}</textarea>
+            <button
+              class="compose-submit"
+              data-action="send-message"
+              ${sendDisabled ? "disabled" : ""}
+            >
+              SEND
+            </button>
+          </div>
+          <div class="compose-hints">Enter to send | /connect /disconnect /doctor /cd /new /auto /help</div>
+        </div>
+      `
 
-      const mainPanels = extraPaneOpen
-        ? html`<div class="panel-row panel-row--split">${conversationPanel}${extraPane}</div>`
-        : conversationPanel
+      const mainContent = extraPaneOpen
+        ? html`<div class="canvas-fullscreen">${canvasDemo}</div>`
+        : html`${conversationPanel}${composeBar}`
+
+      const mainPaneClass = extraPaneOpen
+        ? "main-pane main-pane--fullscreen"
+        : "main-pane"
 
       return html`
         <div class="terminal">
@@ -1258,29 +1345,7 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
               </div>
             </aside>
 
-            <main class="main-pane">
-              ${mainPanels}
-
-              <div class="compose-bar">
-                <div class="compose-inner">
-                  <span class="compose-label">Input</span>
-                  <textarea
-                    id="message-input"
-                    class="compose-input"
-                    rows="1"
-                    placeholder="Type a message or /command"
-                  >${state.messageInput}</textarea>
-                  <button
-                    class="compose-submit"
-                    data-action="send-message"
-                    ${sendDisabled ? "disabled" : ""}
-                  >
-                    SEND
-                  </button>
-                </div>
-                <div class="compose-hints">Enter to send | /connect /disconnect /doctor /cd /new /auto /help</div>
-              </div>
-            </main>
+            <main class="${mainPaneClass}">${mainContent}</main>
 
             <aside class="w-[240px] min-h-0 shrink-0 flex flex-col border-l border-[color:var(--line)] bg-[color:var(--panel-alt)] max-[900px]:w-full max-[900px]:max-h-[240px] max-[900px]:border-l-0 max-[900px]:border-t max-[900px]:border-[color:var(--line)]">
               <div class="flex items-center justify-between gap-2 border-b border-[color:var(--line)] px-2.5 py-2 text-[11px] uppercase tracking-[0.12em] text-[color:var(--yellow)]">
@@ -2589,7 +2654,7 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
       const handleKeydown = (event: KeyboardEvent) => {
         if (event.key === "F2") {
           event.preventDefault()
-          emit({ type: "ConnectWorkspace" })
+          emit({ type: "ToggleExtraPane" })
         }
         if (event.key === "F3") {
           event.preventDefault()
@@ -2600,10 +2665,6 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
           emit({ type: "RefreshDoctor" })
           emit({ type: "RefreshWorkspaceStatus" })
           emit({ type: "RefreshSessions" })
-        }
-        if (event.key === "F11") {
-          event.preventDefault()
-          emit({ type: "ToggleExtraPane" })
         }
       }
 
