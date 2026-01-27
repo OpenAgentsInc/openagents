@@ -442,3 +442,4 @@ Effuse catalog -> WGPUI target
 - 2026-01-27: Phase 3b started: replaced manual panel layout math with Taffy-powered flex layout in `crates/autopilot_ui`.
 - 2026-01-27: Phase 3b continued: converted session list + status section stacking to Taffy-based layout so rows are computed structurally instead of manual y offsets.
 - 2026-01-27: Phase 3b continued: added Zed-style flex helpers (`h_flex`/`v_flex`, flex/overflow conveniences) to WGPUI styled API.
+- 2026-01-27: Phase 4 continued: switched desktop host layout + input to logical sizes (scale-factor aware) so UI scales correctly on high-DPI displays.

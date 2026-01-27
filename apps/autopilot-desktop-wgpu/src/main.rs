@@ -118,12 +118,14 @@ impl ApplicationHandler<AppEvent> for App {
                 self.modifiers = modifiers.state();
             }
             WindowEvent::CursorMoved { position, .. } => {
-                self.cursor_position = Point::new(position.x as f32, position.y as f32);
+                let scale = state.scale_factor.max(0.1);
+                self.cursor_position =
+                    Point::new(position.x as f32 / scale, position.y as f32 / scale);
                 let input_event = InputEvent::MouseMove {
                     x: self.cursor_position.x,
                     y: self.cursor_position.y,
                 };
-                let bounds = content_bounds(&state.config);
+                let bounds = content_bounds(logical_size(&state.config, state.scale_factor));
                 if state.root.handle_input(&input_event, bounds) {
                     state.window.request_redraw();
                 }
@@ -155,7 +157,7 @@ impl ApplicationHandler<AppEvent> for App {
                     },
                 };
 
-                let bounds = content_bounds(&state.config);
+                let bounds = content_bounds(logical_size(&state.config, state.scale_factor));
                 if state.root.handle_input(&input_event, bounds) {
                     state.window.request_redraw();
                 }
@@ -164,11 +166,12 @@ impl ApplicationHandler<AppEvent> for App {
                 let (dx, dy) = match delta {
                     winit::event::MouseScrollDelta::LineDelta(x, y) => (-x * 24.0, -y * 24.0),
                     winit::event::MouseScrollDelta::PixelDelta(pos) => {
-                        (-pos.x as f32, -pos.y as f32)
+                        let scale = state.scale_factor.max(0.1);
+                        (-pos.x as f32 / scale, -pos.y as f32 / scale)
                     }
                 };
                 let input_event = InputEvent::Scroll { dx, dy };
-                let bounds = content_bounds(&state.config);
+                let bounds = content_bounds(logical_size(&state.config, state.scale_factor));
                 if state.root.handle_input(&input_event, bounds) {
                     state.window.request_redraw();
                 }
@@ -182,7 +185,7 @@ impl ApplicationHandler<AppEvent> for App {
                     ElementState::Pressed => InputEvent::KeyDown { key, modifiers },
                     ElementState::Released => InputEvent::KeyUp { key, modifiers },
                 };
-                let bounds = content_bounds(&state.config);
+                let bounds = content_bounds(logical_size(&state.config, state.scale_factor));
                 if state.root.handle_input(&input_event, bounds) {
                     state.window.request_redraw();
                 }
@@ -294,8 +297,9 @@ fn init_state(
 }
 
 fn render_frame(state: &mut RenderState) -> Result<()> {
-    let bounds = window_bounds(&state.config);
-    let content_bounds = content_bounds(&state.config);
+    let logical = logical_size(&state.config, state.scale_factor);
+    let bounds = window_bounds(logical);
+    let content_bounds = content_bounds(logical);
 
     let mut scene = Scene::new();
     let mut paint = PaintContext::new(&mut scene, &mut state.text_system, state.scale_factor);
@@ -303,7 +307,7 @@ fn render_frame(state: &mut RenderState) -> Result<()> {
 
     state.renderer.resize(
         &state.queue,
-        Size::new(bounds.size.width, bounds.size.height),
+        logical,
         state.scale_factor,
     );
 
@@ -348,12 +352,17 @@ fn render_frame(state: &mut RenderState) -> Result<()> {
     Ok(())
 }
 
-fn window_bounds(config: &wgpu::SurfaceConfiguration) -> Bounds {
-    Bounds::new(0.0, 0.0, config.width as f32, config.height as f32)
+fn window_bounds(size: Size) -> Bounds {
+    Bounds::new(0.0, 0.0, size.width, size.height)
 }
 
-fn content_bounds(config: &wgpu::SurfaceConfiguration) -> Bounds {
-    inset_bounds(window_bounds(config), PADDING)
+fn content_bounds(size: Size) -> Bounds {
+    inset_bounds(window_bounds(size), PADDING)
+}
+
+fn logical_size(config: &wgpu::SurfaceConfiguration, scale_factor: f32) -> Size {
+    let scale = scale_factor.max(0.1);
+    Size::new(config.width as f32 / scale, config.height as f32 / scale)
 }
 
 fn inset_bounds(bounds: Bounds, padding: f32) -> Bounds {
