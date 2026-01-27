@@ -662,6 +662,9 @@ Use JSON Lines (`.jsonl`) for simplicity:
   * version/build hash
   * scenario name
 
+Desktop host support:
+* Set `AUTOPILOT_REPLAY_PATH` to capture AppEvent JSONL from `autopilot-desktop-wgpu`.
+
 ### Replay APIs
 
 * `ReplayReader::open(path)` (autopilot_app)

@@ -454,3 +454,4 @@ Effuse catalog -> WGPUI target
 - 2026-01-27: Verified `cargo test -p autopilot_app`.
 - 2026-01-27: Added a headless scenario test in `crates/autopilot_app/tests/headless_scenarios.rs`.
 - 2026-01-27: Verified `cargo test -p autopilot_app` after adding headless scenarios.
+- 2026-01-27: Added optional JSONL event recording in the desktop host via `AUTOPILOT_REPLAY_PATH`.
