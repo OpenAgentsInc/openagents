@@ -226,7 +226,7 @@ impl OpenAiResponsesCompletionModel {
             let usage_details = response.usage.as_ref().and_then(usage_to_value);
             match response_to_completion(response) {
                 Ok(result) => return Ok((result, usage_details)),
-                Err(err) if streamed_text.is_empty() && output_items.is_empty() => {
+                Err(_err) if streamed_text.is_empty() && output_items.is_empty() => {
                     let (fallback, fallback_usage) =
                         self.completion_with_usage_details(fallback_request).await?;
                     if let Some(cb) = on_token {
