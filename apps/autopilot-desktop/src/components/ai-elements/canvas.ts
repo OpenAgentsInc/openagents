@@ -17,7 +17,6 @@ export const Canvas = ({
   children,
 }: CanvasProps): TemplateResult => html`
   <div class="ai-canvas ${className}">
-    <div class="ai-canvas__grid" aria-hidden="true"></div>
     ${(title ?? subtitle ?? status)
       ? html`
           <div class="ai-canvas__meta">
@@ -27,6 +26,10 @@ export const Canvas = ({
           </div>
         `
       : ""}
-    <div class="ai-canvas__content">${children ?? ""}</div>
+    <div class="ai-canvas__content">
+      <div class="ai-canvas__pan">
+        <div class="ai-canvas__zoom">${children ?? ""}</div>
+      </div>
+    </div>
   </div>
 `
