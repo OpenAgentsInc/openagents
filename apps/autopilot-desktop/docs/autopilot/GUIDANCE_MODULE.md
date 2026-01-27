@@ -37,16 +37,15 @@ between turns that can:
 
 Before:
 - The human is the scheduler ("continue, continue").
-- The "Ralph" loop: a deterministic while-loop that repeatedly feeds a fixed harness prompt
-  (often `PROMPT.md`) to a coding agent, where the prompt instructs the agent to maintain/update
-  a TODO/plan and keep iterating until done.
+- The "Ralph" loop: a deterministic prompt-harness loop that spawns fresh agent instances
+  with clean context and relies on repo files (`prd.json`, `progress.txt`, git history) for memory.
 
 After:
 - The Guidance Module is the scheduler (it decides what happens next).
 
 This improves autonomy vs manual "continue", but the "state + scheduler" is still mostly
-encoded in a text prompt and repo files rather than a typed, inspectable decision system with
-explicit budgets, policies, and replayable decision records.
+encoded in a text prompt and repo files (`prd.json`, `progress.txt`) rather than a typed,
+inspectable decision system with explicit budgets, policies, and replayable decision records.
 
 Concrete examples:
 - Turn ends with failing tests and low remaining budget -> Guidance returns
