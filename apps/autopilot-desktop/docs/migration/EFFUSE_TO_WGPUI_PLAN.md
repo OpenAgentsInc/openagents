@@ -287,3 +287,6 @@ Effuse catalog -> WGPUI target
 - 2026-01-27: Verified `cargo build -p autopilot-desktop-wgpu` after Phase 4 UI scaffolding.
 - 2026-01-27: Phase 4b completed: created `crates/autopilot_ui`, moved the desktop root view + view model into it, and updated the WGPUI host to consume shared UI components.
 - 2026-01-27: Verified `cargo build -p autopilot-desktop-wgpu` after moving shared UI into `crates/autopilot_ui`.
+- 2026-01-27: Phase 4c completed: added ThreadView + MessageEditor conversation panel with tool call cards (read/search/terminal/diff/edit), added plan/trajectory sidebar view, session search bar, and thread controls (mode/model/run state) in `crates/autopilot_ui`, plus scroll routing + input handling via Winit in `apps/autopilot-desktop-wgpu`.
+- 2026-01-27: Wired UI send actions to `autopilot_app` via an action channel so Enter/send dispatches `UserAction::Message` back into the app core.
+- 2026-01-27: Verified `cargo build -p autopilot-desktop-wgpu` after Phase 4c UI + input wiring.
