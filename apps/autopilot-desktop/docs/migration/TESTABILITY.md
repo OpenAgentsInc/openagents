@@ -13,6 +13,8 @@ Make the Effuse ➜ WGPUI native Rust app **fully testable end-to-end** while ke
   * deterministic integration tests
   * full E2E tests that exercise UI + runtime + tools
 * We can reproduce and debug failures via **event logs + replay**.
+* We match **Zed/GPUI test ergonomics**: immediate-mode rendering with context-driven state,
+  layout derived from Taffy each frame, and deterministic test contexts for UI assertions.
 
 This doc defines the architecture, contracts, and test harnesses to accomplish that.
 
@@ -25,6 +27,8 @@ The existing autopilot-desktop codebase provides a strong foundation for testabi
 - **Backend**: Tauri-based with Rust services in [`apps/autopilot-desktop/src-tauri/`](file:///Users/christopherdavid/code/openagents/apps/autopilot-desktop/src-tauri/)
 - **UI Contract**: Already uses `UITree` + `UiPatch` system (ADR-0022) with structured event emission
 - **Core Agent Logic**: Lives in [`crates/autopilot-core/src/agent.rs`](file:///Users/christopherdavid/code/openagents/crates/autopilot-core/src/agent.rs) with DSPy-powered planning
+- **Target UI Stack**: WGPUI immediate-mode UI in `crates/autopilot_ui/` and native host in
+  `apps/autopilot-desktop-wgpu/`, moving toward Zed/GPUI-style layout and test harnesses.
 
 ### Current UI Event Flow
 ```
@@ -97,6 +101,23 @@ If the app works by applying `UiPatch` and producing `AppEvent`s, then:
 
 ---
 
+## Zed/GPUI Parity Testing Model
+
+Zed’s GPUI approach is immediate-mode: each frame rebuilds the element tree
+via `Render` / `RenderOnce`, layout is computed by Taffy, and views are backed
+by `Entity<T>` with `Context<T>` for state updates. We mirror this in WGPUI:
+
+- **Render each frame**: tests assert on element tree output, not side effects.
+- **Context-driven state**: tests mutate entities through context APIs.
+- **Layout snapshots**: assert bounds from the Taffy layout results (no pixel diffs).
+- **Deterministic contexts**: emulate Zed’s `TestAppContext` and
+  `VisualTestContext` using WGPUI’s testing harness (`crates/wgpui/src/testing`)
+  and component registry for selectors.
+
+This keeps UI tests stable and aligns directly with Zed’s testing ergonomics.
+
+---
+
 ## System Decomposition
 
 ### The three layers
@@ -126,7 +147,7 @@ WGPUI renderer + OS integration:
 
 * subscribes to `AppEvent` stream
 * dispatches `UserAction`
-* renders using WGPUI
+* renders using WGPUI (`Render` / `RenderOnce` element tree, Taffy layout)
 * no business logic
 
 ---
@@ -485,6 +506,11 @@ pub enum UserAction {
 
 ### UI contract (`UITree` + `UiPatch`) - Leveraging existing implementation
 
+Even if we migrate to a typed view model for rendering, we **still emit**
+`UiPatch`/`UITree` as a replay artifact for testability and regression
+reproduction. The canonical patch logic lives in
+`crates/autopilot_ui_contract`.
+
 For testability, building on [`apps/autopilot-desktop/src/effuse/ui/patch.ts`](file:///Users/christopherdavid/code/openagents/apps/autopilot-desktop/src/effuse/ui/patch.ts):
 
 ```rust
@@ -646,6 +672,26 @@ Deliverables:
 * `crates/autopilot_ui_runtime/tests/replay.rs`
 * `fixtures/replays/*.jsonl`
 
+### Harness 3b: Layout Snapshot Tests (Zed parity)
+
+**Scope:** WGPUI layout correctness without pixel diffs.
+
+Use the WGPUI test harness and component registry
+(`crates/wgpui/src/testing`) to render a view, capture element bounds, and
+assert structural layout:
+
+* left sidebar width, header heights, and row spacing
+* right status sections do not overlap under DPI/scale changes
+* center thread area and composer preserve minimum sizes
+
+This mirrors Zed’s `TestAppContext` / `VisualTestContext` approach: assert on
+layout metadata instead of pixel-perfect rendering.
+
+Deliverables:
+
+* `crates/autopilot_ui/tests/layout_snapshots.rs`
+* `fixtures/layout_snapshots/*.json` (optional bound snapshots)
+
 ### Harness 4: Full Desktop smoke E2E (optional but valuable)
 
 **Scope:** compiled `autopilot-desktop-wgpu` in CI
@@ -774,6 +820,16 @@ All core tests use `ClockManual`:
 
 All tests use seeded `IdGenDeterministic`.
 
+### Layout / Rendering
+
+Avoid pixel-level golden snapshots by default. Prefer:
+
+* element tree assertions
+* Taffy-derived bounds checks
+* component registry queries (IDs + text)
+
+This mirrors Zed’s layout test style and keeps tests stable across platforms.
+
 ### LLM / Model calls
 
 Two implementations:
@@ -800,6 +856,10 @@ crates/
     tests/
       patch_apply.rs
       invariants.rs
+  autopilot_ui/
+    src/
+    tests/
+      layout_snapshots.rs
   autopilot_ui_runtime/
     src/
     tests/
@@ -812,6 +872,8 @@ fixtures/
     send_message_tool_call.jsonl
   ui_patches/
     dashboard_boot.jsonl
+  layout_snapshots/
+    desktop_panels.json
 ```
 
 ---
@@ -834,6 +896,7 @@ fixtures/
 
 * Replaying known runs into UI runtime never panics
 * Optional structural assertions hold
+* Layout snapshot tests pass (bounds, gaps, and panel sizing)
 
 ### Gate D — Desktop smoke
 
@@ -893,6 +956,7 @@ We can confidently say “fully testable end-to-end” when:
 2. The same run produces an event log that can be replayed to reproduce the UI state.
 3. All unstable external deps (LLM, FS, proc, time, ids) are replaceable via services.
 4. CI catches contract drift via replay + invariants.
+5. Layout snapshot tests validate Zed-style flex layouts without pixel diffs.
 
 ---
 
