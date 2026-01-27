@@ -176,8 +176,9 @@ fn truth_metric_for_signature(signature: PlanModeSignatureKind) -> LlmJudgeMetri
 }
 
 fn benchmark_log_path() -> PathBuf {
-    let home = dirs::home_dir().expect("No home directory");
-    home.join(".openagents")
+    dirs::home_dir()
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join(".openagents")
         .join("autopilot-desktop")
         .join("benchmarks")
         .join("plan_mode.jsonl")
@@ -230,10 +231,10 @@ mod tests {
             vec!["user_prompt".to_string(), "file_tree".to_string()],
             Vec::new(),
         );
-        let encoded = encode_goal_from_example(&example).expect("encode");
+        let encoded = encode_goal_from_example(&example).unwrap_or_default();
         let mut input = Example::default();
         input.data.insert("goal".to_string(), Value::String(encoded));
-        let decoded = decode_goal_example(&input).expect("decode");
+        let decoded = decode_goal_example(&input).unwrap_or_default();
         assert_eq!(
             decoded.data.get("user_prompt").and_then(Value::as_str),
             Some("Test")

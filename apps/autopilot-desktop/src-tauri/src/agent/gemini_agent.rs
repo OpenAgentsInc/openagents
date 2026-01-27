@@ -9,13 +9,13 @@ use crate::agent::acp_agent::AcpAgent;
 use crate::agent::trait_def::Agent;
 use crate::agent::unified::{AgentId, UnifiedConversationItem, UnifiedEvent};
 
-#[allow(dead_code)]
+#[expect(dead_code)]
 pub struct GeminiAgent {
     acp_agent: Arc<AcpAgent>,
 }
 
 impl GeminiAgent {
-    #[allow(dead_code)]
+    #[expect(dead_code)]
     pub fn new(
         workspace_id: String,
         app: AppHandle,

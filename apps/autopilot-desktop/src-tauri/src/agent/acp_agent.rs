@@ -54,7 +54,7 @@ impl AcpAgent {
     }
 
     /// Forward ACP events to unified event stream
-    #[allow(dead_code)]
+    #[expect(dead_code)]
     pub async fn forward_acp_event(&self, event: &AcpEvent) {
         if let Some(unified_event) = self.map_acp_event_to_unified(event).await {
             let _ = self.events_tx.send(unified_event);
@@ -63,7 +63,7 @@ impl AcpAgent {
 
     /// Map ACP raw events to UnifiedEvent
     /// This will be called when we receive events from the ACP connection
-    #[allow(dead_code)]
+    #[expect(dead_code)]
     async fn map_acp_event_to_unified(&self, event: &AcpEvent) -> Option<UnifiedEvent> {
         let message = event.message.as_object()?;
         let inner_msg = message.get("message")?.as_object()?;
@@ -134,7 +134,7 @@ impl AcpAgent {
     }
 
     /// Map ACP SessionNotification to UnifiedEvent
-    #[allow(dead_code)]
+    #[expect(dead_code)]
     async fn map_session_notification(
         &self,
         notification: &serde_json::Map<String, serde_json::Value>,
@@ -250,7 +250,7 @@ impl AcpAgent {
     }
 
     /// Map Codex-specific extensions to UnifiedEvent
-    #[allow(dead_code)]
+    #[expect(dead_code)]
     async fn map_codex_extension(
         &self,
         notification: &serde_json::Map<String, serde_json::Value>,
@@ -324,7 +324,7 @@ impl Agent for AcpAgent {
 
         tokio::spawn(async move {
             while let Some(event_clone) = event_rx.recv().await {
-                eprintln!("AcpAgent callback: Received ACP event");
+                tracing::debug!("AcpAgent callback: Received ACP event");
 
                 // Extract and store session ID from session/new response
                 if let Some(message) = event_clone
@@ -338,9 +338,9 @@ impl Agent for AcpAgent {
                             let mut session_id_guard = session_id_clone.lock().await;
                             if session_id_guard.is_none() {
                                 *session_id_guard = Some(session_id.to_string());
-                                eprintln!(
-                                    "AcpAgent: Stored session ID from session/new: {}",
-                                    session_id
+                                tracing::debug!(
+                                    session_id = %session_id,
+                                    "AcpAgent: Stored session ID from session/new"
                                 );
                             }
                         }
@@ -351,11 +351,11 @@ impl Agent for AcpAgent {
                 if let Some(message_obj) = event_clone.message.as_object() {
                     if let Some(inner_msg) = message_obj.get("message").and_then(|m| m.as_object())
                     {
-                        eprintln!(
-                            "AcpAgent callback: Event structure - has_id: {}, has_method: {}, method: {:?}",
-                            inner_msg.contains_key("id"),
-                            inner_msg.contains_key("method"),
-                            inner_msg.get("method").and_then(|m| m.as_str())
+                        tracing::debug!(
+                            has_id = inner_msg.contains_key("id"),
+                            has_method = inner_msg.contains_key("method"),
+                            method = inner_msg.get("method").and_then(|m| m.as_str()),
+                            "AcpAgent callback: Event structure"
                         );
                         // Log a snippet of the event for debugging
                         if let Ok(json_str) = serde_json::to_string(&inner_msg) {
@@ -364,7 +364,7 @@ impl Agent for AcpAgent {
                             } else {
                                 json_str
                             };
-                            eprintln!("AcpAgent callback: Event snippet: {}", snippet);
+                            tracing::debug!(snippet = %snippet, "AcpAgent callback: Event snippet");
                         }
                     }
                 }
@@ -373,11 +373,14 @@ impl Agent for AcpAgent {
                 if let Some(unified_event) =
                     AcpAgent::map_acp_event_static(&event_clone, &session_id_clone, agent_id).await
                 {
-                    eprintln!("AcpAgent: Mapped to unified event: {:?}", unified_event);
+                    tracing::debug!(
+                        unified_event = ?unified_event,
+                        "AcpAgent: Mapped to unified event"
+                    );
                     let _ = events_tx.send(unified_event);
                 } else {
-                    eprintln!(
-                        "AcpAgent callback: Event did not map to unified event (might be non-notification or unmapped type)"
+                    tracing::debug!(
+                        "AcpAgent callback: Event did not map to unified event (non-notification or unmapped type)"
                     );
                 }
             }
@@ -441,22 +444,22 @@ impl Agent for AcpAgent {
                 agent_id: self.agent_id,
             });
 
-            eprintln!(
-                "AcpAgent: Emitted SessionStarted with actual session ID: {}",
-                actual_session_id
+            tracing::info!(
+                session_id = %actual_session_id,
+                "AcpAgent: Emitted SessionStarted with actual session ID"
             );
         } else {
-            eprintln!("Warning: session/new response didn't contain sessionId");
+            tracing::warn!("session/new response didn't contain sessionId");
         }
 
         Ok(())
     }
 
     async fn send_message(&self, session_id: &str, text: String) -> Result<(), String> {
-        eprintln!(
-            "AcpAgent::send_message called: session_id={}, text_len={}",
-            session_id,
-            text.len()
+        tracing::debug!(
+            session_id = %session_id,
+            text_len = text.len(),
+            "AcpAgent::send_message called"
         );
 
         let conn_guard = self.connection.lock().await;
@@ -468,7 +471,7 @@ impl Agent for AcpAgent {
             .await
             .ok_or("Session ID not available")?;
 
-        eprintln!("AcpAgent: Using ACP session ID: {}", acp_session_id);
+        tracing::debug!(session_id = %acp_session_id, "AcpAgent: Using ACP session ID");
 
         // Send session/prompt
         let params = serde_json::json!({
@@ -479,16 +482,16 @@ impl Agent for AcpAgent {
             })],
         });
 
-        eprintln!("AcpAgent: Sending session/prompt request...");
+        tracing::debug!("AcpAgent: Sending session/prompt request");
 
         conn.send_request("session/prompt", params)
             .await
             .map_err(|e| {
-                eprintln!("AcpAgent: Failed to send request: {}", e);
+                tracing::warn!(error = %e, "AcpAgent: Failed to send request");
                 format!("Failed to send message: {}", e)
             })?;
 
-        eprintln!("AcpAgent: session/prompt request sent successfully");
+        tracing::debug!("AcpAgent: session/prompt request sent successfully");
 
         Ok(())
     }

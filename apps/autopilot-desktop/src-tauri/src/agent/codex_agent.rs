@@ -19,13 +19,13 @@ use std::collections::HashMap;
 ///
 /// Currently uses ACP (codex-acp) for unified protocol support.
 /// In the future, this will be the primary interface for Codex.
-#[allow(dead_code)]
+#[expect(dead_code)]
 pub struct CodexAgent {
     acp_agent: Arc<AcpAgent>,
 }
 
 impl CodexAgent {
-    #[allow(dead_code)]
+    #[expect(dead_code)]
     pub fn new(
         workspace_id: String,
         app: AppHandle,

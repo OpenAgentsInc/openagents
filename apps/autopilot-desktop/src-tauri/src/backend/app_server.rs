@@ -75,7 +75,7 @@ impl WorkspaceSession {
         self.write_message(value).await
     }
 
-    #[allow(dead_code)]
+    #[expect(dead_code)]
     pub(crate) async fn send_response(&self, id: Value, result: Value) -> Result<(), String> {
         self.write_message(json!({ "id": id, "result": result }))
             .await
@@ -291,6 +291,8 @@ pub(crate) async fn spawn_workspace_session<E: EventSink>(
     command.arg("-c").arg("sandbox_mode=danger-full-access");
     // Avoid unsupported verbosity defaults for gpt-5.2-codex.
     command.arg("-c").arg("model_verbosity=medium");
+    // Avoid unsupported reasoning effort defaults for gpt-5.2-codex.
+    command.arg("-c").arg("model_reasoning_effort=medium");
     command.arg("app-server");
     if let Some(codex_home) = codex_home {
         command.env("CODEX_HOME", codex_home);
@@ -535,7 +537,10 @@ pub(crate) async fn spawn_workspace_session<E: EventSink>(
                         summary: summary_value.clone(),
                     };
                     if let Err(err) = write_decision_log(&decision_log) {
-                        eprintln!("Failed to write Full Auto decision log: {}", err);
+                        tracing::warn!(
+                            error = %err,
+                            "Failed to write Full Auto decision log"
+                        );
                     }
 
                     let raw_log = FullAutoDecisionRawLog {
@@ -549,7 +554,10 @@ pub(crate) async fn spawn_workspace_session<E: EventSink>(
                         parse_diagnostics: diagnostics_value.clone(),
                     };
                     if let Err(err) = write_raw_decision_log(&raw_log) {
-                        eprintln!("Failed to write Full Auto raw decision log: {}", err);
+                        tracing::warn!(
+                            error = %err,
+                            "Failed to write Full Auto raw decision log"
+                        );
                     }
 
                     let _ = append_run_event(

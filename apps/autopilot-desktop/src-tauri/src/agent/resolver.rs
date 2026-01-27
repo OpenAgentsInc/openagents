@@ -53,7 +53,7 @@ pub async fn resolve_gemini_config() -> Result<(String, Vec<String>, HashMap<Str
     Ok((gemini_path, vec!["--experimental-acp".to_string()], env))
 }
 
-#[allow(dead_code)]
+#[expect(dead_code)]
 const CODEX_ACP_REPO: &str = "zed-industries/codex-acp";
 
 async fn find_codex_acp() -> Option<String> {

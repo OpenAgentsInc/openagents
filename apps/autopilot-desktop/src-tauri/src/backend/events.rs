@@ -8,7 +8,7 @@ pub(crate) struct AppServerEvent {
 }
 
 #[derive(Debug, Serialize, Clone)]
-#[allow(dead_code)]
+#[expect(dead_code)]
 pub(crate) struct TerminalOutput {
     #[serde(rename = "workspaceId")]
     pub(crate) workspace_id: String,
@@ -19,6 +19,6 @@ pub(crate) struct TerminalOutput {
 
 pub(crate) trait EventSink: Clone + Send + Sync + 'static {
     fn emit_app_server_event(&self, event: AppServerEvent);
-    #[allow(dead_code)]
+    #[expect(dead_code)]
     fn emit_terminal_output(&self, event: TerminalOutput);
 }

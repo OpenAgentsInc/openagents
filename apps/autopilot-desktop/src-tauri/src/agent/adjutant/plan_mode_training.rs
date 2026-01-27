@@ -12,8 +12,9 @@ use super::plan_mode_signatures::PlanModeSignatureKind;
 const TRAINING_FILE: &str = "plan_mode.json";
 
 pub fn training_data_dir() -> PathBuf {
-    let home = dirs::home_dir().expect("No home directory");
-    home.join(".openagents/autopilot-desktop/training")
+    dirs::home_dir()
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join(".openagents/autopilot-desktop/training")
 }
 
 fn training_data_path() -> PathBuf {

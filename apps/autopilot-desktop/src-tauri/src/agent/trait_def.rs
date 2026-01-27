@@ -7,7 +7,7 @@ use tokio::sync::mpsc;
 use crate::agent::unified::{UnifiedConversationItem, UnifiedEvent};
 
 /// Unified interface for all AI agents
-#[allow(dead_code)]
+#[expect(dead_code)]
 #[async_trait]
 pub trait Agent: Send + Sync {
     /// Get the agent identifier

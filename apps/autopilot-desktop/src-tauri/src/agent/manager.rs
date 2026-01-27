@@ -31,7 +31,7 @@ impl AgentManager {
     }
 
     /// Register an agent
-    #[allow(dead_code)]
+    #[expect(dead_code)]
     pub async fn register_agent(&self, agent_id: AgentId, agent: Arc<dyn Agent>) {
         self.agents.lock().await.insert(agent_id, agent);
     }
@@ -129,11 +129,11 @@ impl AgentManager {
                                 let _ = unified_tx.send(event);
                             }
                             Err(broadcast::error::RecvError::Closed) => {
-                                eprintln!("Agent event channel closed");
+                                tracing::warn!("Agent event channel closed");
                                 break;
                             }
                             Err(broadcast::error::RecvError::Lagged(n)) => {
-                                eprintln!("Agent event channel lagged by {} messages", n);
+                                tracing::warn!(lagged = n, "Agent event channel lagged");
                             }
                         }
                     }
@@ -151,14 +151,16 @@ impl AgentManager {
     }
 
     /// Update session mapping (e.g., when actual ACP session ID is received)
-    #[allow(dead_code)]
+    #[expect(dead_code)]
     pub async fn update_session_mapping(&self, old_session_id: &str, new_session_id: &str) {
         let mut sessions = self.active_sessions.lock().await;
         if let Some(agent_id) = sessions.remove(old_session_id) {
             sessions.insert(new_session_id.to_string(), agent_id);
-            eprintln!(
-                "Updated session mapping: {} -> {} (agent: {:?})",
-                old_session_id, new_session_id, agent_id
+            tracing::debug!(
+                old_session_id = %old_session_id,
+                new_session_id = %new_session_id,
+                agent_id = ?agent_id,
+                "Updated session mapping"
             );
         }
     }

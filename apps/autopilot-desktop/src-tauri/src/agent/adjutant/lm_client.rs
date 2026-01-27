@@ -3,7 +3,7 @@
 //! Provides a dsrs::LM implementation that talks to the local bun server
 //! which proxies requests to Vercel AI Gateway.
 
-#![allow(dead_code)]
+#![expect(dead_code)]
 
 use ai_server::AiServerConfig;
 use super::lm_config::load_ai_gateway_config;
