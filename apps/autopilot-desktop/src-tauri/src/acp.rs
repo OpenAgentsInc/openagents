@@ -49,7 +49,7 @@ impl AcpConnection {
         // Create file logger for ACP events
         let file_logger = Arc::new(FileLogger::new().await?);
 
-        eprintln!("Spawning ACP agent: {} with args {:?}", command, args);
+        tracing::info!(command = %command, args = ?args, "Spawning ACP agent");
 
         let mut child = Command::new(&command);
         child
@@ -118,7 +118,10 @@ impl AcpConnection {
                             {
                                 let mut stored = session_id_for_capture.lock().await;
                                 *stored = Some(session_id.to_string());
-                                eprintln!("Stored ACP session ID: {}", session_id);
+                                tracing::debug!(
+                                    session_id = %session_id,
+                                    "Stored ACP session ID"
+                                );
                             }
                         }
 
@@ -136,30 +139,35 @@ impl AcpConnection {
                                         req_map.remove(&response_id)
                                     };
                                     if let Some(sid) = session_id {
-                                        eprintln!(
-                                            "ACP COMPLETION: stopReason=end_turn for request id {}, session {}",
-                                            response_id, sid
+                                        tracing::info!(
+                                            request_id = response_id,
+                                            session_id = %sid,
+                                            "ACP completion: stopReason=end_turn"
                                         );
                                         // Trigger flush for this specific session
                                         if let Err(e) = file_logger_clone
                                             .flush_acp_events(Some(sid.clone()))
                                             .await
                                         {
-                                            eprintln!(
-                                                "Failed to flush ACP events for session {}: {}",
-                                                sid, e
+                                            tracing::warn!(
+                                                session_id = %sid,
+                                                error = %e,
+                                                "Failed to flush ACP events for session"
                                             );
                                         }
                                     } else {
-                                        eprintln!(
-                                            "ACP COMPLETION: stopReason=end_turn for request id {}, but no session tracked - flushing all",
-                                            response_id
+                                        tracing::info!(
+                                            request_id = response_id,
+                                            "ACP completion: stopReason=end_turn without session, flushing all"
                                         );
                                         // Fallback: flush all if we can't find the session
                                         if let Err(e) =
                                             file_logger_clone.flush_all_acp_events().await
                                         {
-                                            eprintln!("Failed to flush all ACP events: {}", e);
+                                            tracing::warn!(
+                                                error = %e,
+                                                "Failed to flush all ACP events"
+                                            );
                                         }
                                     }
                                 }
@@ -187,7 +195,7 @@ impl AcpConnection {
                         // Buffer event and flush when message completes
                         let event_value = serde_json::to_value(&event).unwrap_or_default();
                         if let Err(e) = file_logger_clone.check_and_flush_acp(&event_value).await {
-                            eprintln!("Failed to buffer/flush ACP event: {}", e);
+                            tracing::warn!(error = %e, "Failed to buffer/flush ACP event");
                         }
                     }
                     Err(_) => {
@@ -205,7 +213,7 @@ impl AcpConnection {
                         // Buffer event and flush when message completes
                         let event_value = serde_json::to_value(&event).unwrap_or_default();
                         if let Err(e) = file_logger_clone.check_and_flush_acp(&event_value).await {
-                            eprintln!("Failed to buffer/flush ACP event: {}", e);
+                            tracing::warn!(error = %e, "Failed to buffer/flush ACP event");
                         }
                     }
                 }
@@ -248,7 +256,7 @@ impl AcpConnection {
                     .check_and_flush_acp(&event_value)
                     .await
                 {
-                    eprintln!("Failed to buffer ACP event: {}", e);
+                    tracing::warn!(error = %e, "Failed to buffer ACP event");
                 }
 
                 line.clear();
@@ -302,7 +310,7 @@ impl AcpConnection {
         // Buffer initialization event (not part of message streaming)
         let event_value = serde_json::to_value(&event).unwrap_or_default();
         if let Err(e) = file_logger.check_and_flush_acp(&event_value).await {
-            eprintln!("Failed to buffer ACP event: {}", e);
+            tracing::warn!(error = %e, "Failed to buffer ACP event");
         }
 
         // Emit a connection status event
@@ -319,10 +327,13 @@ impl AcpConnection {
         // Buffer status event (not part of message streaming)
         let event_value = serde_json::to_value(&status_event).unwrap_or_default();
         if let Err(e) = file_logger.check_and_flush_acp(&event_value).await {
-            eprintln!("Failed to buffer ACP event: {}", e);
+            tracing::warn!(error = %e, "Failed to buffer ACP event");
         }
 
-        eprintln!("ACP connection initialized for workspace: {}", workspace_id);
+        tracing::info!(
+            workspace_id = %workspace_id,
+            "ACP connection initialized"
+        );
 
         Ok(Self {
             workspace_id,
@@ -366,7 +377,11 @@ impl AcpConnection {
             if let Some(session_id) = params_value.get("sessionId").and_then(|s| s.as_str()) {
                 let mut req_map = self.request_to_session.lock().await;
                 req_map.insert(id, session_id.to_string());
-                eprintln!("Tracking request id {} for session {}", id, session_id);
+                tracing::debug!(
+                    request_id = %id,
+                    session_id = %session_id,
+                    "Tracking request id for session"
+                );
             }
         }
 
@@ -401,14 +416,14 @@ impl AcpConnection {
         // Buffer outgoing event
         let event_value = serde_json::to_value(&event).unwrap_or_default();
         if let Err(e) = self.file_logger.check_and_flush_acp(&event_value).await {
-            eprintln!("Failed to buffer ACP event: {}", e);
+            tracing::warn!(error = %e, "Failed to buffer ACP event");
         }
 
         Ok(())
     }
 
     /// Send a JSON-RPC notification to codex-acp
-    #[allow(dead_code)]
+    #[expect(dead_code)]
     pub async fn send_notification(&self, method: &str, params: Option<Value>) -> Result<()> {
         use tokio::io::AsyncWriteExt;
 
@@ -449,7 +464,7 @@ impl AcpConnection {
         // Buffer outgoing event
         let event_value = serde_json::to_value(&event).unwrap_or_default();
         if let Err(e) = self.file_logger.check_and_flush_acp(&event_value).await {
-            eprintln!("Failed to buffer ACP event: {}", e);
+            tracing::warn!(error = %e, "Failed to buffer ACP event");
         }
 
         Ok(())

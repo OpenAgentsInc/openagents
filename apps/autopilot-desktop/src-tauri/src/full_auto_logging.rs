@@ -77,7 +77,7 @@ pub fn full_auto_log_dir() -> PathBuf {
             return PathBuf::from(path);
         }
     }
-    let home = dirs::home_dir().expect("No home directory");
+    let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("."));
     home.join(".openagents")
         .join("autopilot-desktop")
         .join("logs")

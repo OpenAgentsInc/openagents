@@ -1,3 +1,12 @@
+#![expect(
+    clippy::expect_used,
+    clippy::exit,
+    clippy::manual_string_new,
+    clippy::print_stderr,
+    clippy::single_match_else,
+    clippy::unwrap_used
+)]
+
 mod acp;
 mod agent;
 mod backend;
@@ -42,7 +51,11 @@ fn load_app_env() {
     for env_path in candidates {
         if env_path.exists() {
             if let Err(err) = dotenvy::from_path(&env_path) {
-                eprintln!("Warning: failed to load {}: {}", env_path.display(), err);
+                tracing::warn!(
+                    path = %env_path.display(),
+                    error = %err,
+                    "failed to load env file"
+                );
             }
             break;
         }
@@ -86,19 +99,21 @@ pub fn build_app() -> tauri::Builder<tauri::Wry> {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
-            let state = state::AppState::load(&app.handle());
+            let state = state::AppState::load(app.handle());
             app.manage(state);
 
             // Initialize AI server configuration
             match ai_server::AiServerConfig::from_env() {
                 Ok(config) => {
                     if let Err(e) = ai_server::init_ai_server(config) {
-                        eprintln!("Warning: Failed to initialize AI server: {}", e);
+                        tracing::warn!(error = %e, "Failed to initialize AI server");
                     }
                 }
                 Err(e) => {
-                    eprintln!("Warning: AI server configuration error: {}", e);
-                    eprintln!("AI server will not be available. Set AI_GATEWAY_API_KEY to enable.");
+                    tracing::warn!(error = %e, "AI server configuration error");
+                    tracing::warn!(
+                        "AI server will not be available. Set AI_GATEWAY_API_KEY to enable."
+                    );
                 }
             }
 
@@ -208,7 +223,14 @@ async fn get_ai_server_analytics() -> Result<serde_json::Value, String> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    build_app()
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+    #[expect(
+        clippy::exit,
+        clippy::print_stderr,
+        clippy::single_match_else,
+        clippy::unwrap_used
+    )]
+    let context = tauri::tauri_build_context!();
+    if let Err(err) = build_app().run(context) {
+        tracing::error!(error = %err, "error while running tauri application");
+    }
 }

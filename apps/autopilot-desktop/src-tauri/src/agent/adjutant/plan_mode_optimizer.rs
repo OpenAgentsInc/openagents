@@ -465,8 +465,9 @@ fn save_manifest(
 }
 
 fn manifest_dir() -> PathBuf {
-    let home = dirs::home_dir().expect("No home directory");
-    home.join(".openagents")
+    dirs::home_dir()
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join(".openagents")
         .join("autopilot-desktop")
         .join("manifests")
         .join("plan_mode")
@@ -477,16 +478,18 @@ fn latest_manifest_path(signature: PlanModeSignatureKind) -> PathBuf {
 }
 
 fn state_path() -> PathBuf {
-    let home = dirs::home_dir().expect("No home directory");
-    home.join(".openagents")
+    dirs::home_dir()
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join(".openagents")
         .join("autopilot-desktop")
         .join("optimization")
         .join("plan_mode_state.json")
 }
 
 fn log_path() -> PathBuf {
-    let home = dirs::home_dir().expect("No home directory");
-    home.join(".openagents")
+    dirs::home_dir()
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join(".openagents")
         .join("autopilot-desktop")
         .join("optimization")
         .join("plan_mode.jsonl")

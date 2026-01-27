@@ -141,6 +141,10 @@ const workspacePathKey = "autopilotWorkspacePath"
 const rootWorkspaceMessage = "Select a working directory to connect."
 const appVersion =
   typeof packageInfo.version === "string" ? packageInfo.version : "0.0.0"
+const MAX_ITEMS_PER_THREAD = 200
+const MAX_TEXT_LENGTH = 8000
+const MAX_DIFF_LENGTH = 12000
+const MAX_TOOL_OUTPUT_LENGTH = 8000
 
 const nowTime = () => new Date().toLocaleTimeString()
 const nowEpochSeconds = () => Math.floor(Date.now() / 1000)
@@ -764,6 +768,14 @@ const formatUserContent = (content: unknown) => {
   return combined || "[user input]"
 }
 
+const clampText = (value: string, limit: number) => {
+  if (value.length <= limit) {
+    return value
+  }
+  const trimmed = value.slice(0, limit)
+  return `${trimmed}\n… (${value.length - limit} more chars)`
+}
+
 const joinFragments = (values: readonly unknown[], separator: string) => {
   const fragments = values
     .map((entry) => (typeof entry === "string" ? entry : null))
@@ -793,7 +805,10 @@ const mapThreadItem = (item: unknown): CodexConversationItem | null => {
   const id = readString(item, "id") ?? `item-${Date.now()}`
 
   if (itemType === "userMessage") {
-    const content = formatUserContent(readArray(item, "content"))
+    const content = clampText(
+      formatUserContent(readArray(item, "content")),
+      MAX_TEXT_LENGTH
+    )
     return { kind: "message", id, role: "user", text: content }
   }
 
@@ -802,7 +817,7 @@ const mapThreadItem = (item: unknown): CodexConversationItem | null => {
       kind: "message",
       id,
       role: "assistant",
-      text: readString(item, "text") ?? "",
+      text: clampText(readString(item, "text") ?? "", MAX_TEXT_LENGTH),
     }
   }
 
@@ -832,8 +847,8 @@ const mapThreadItem = (item: unknown): CodexConversationItem | null => {
     return {
       kind: "reasoning",
       id,
-      summary,
-      content,
+      summary: clampText(summary, MAX_TEXT_LENGTH),
+      content: clampText(content, MAX_TEXT_LENGTH),
     }
   }
 
@@ -843,7 +858,9 @@ const mapThreadItem = (item: unknown): CodexConversationItem | null => {
     return {
       kind: "plan",
       id,
-      explanation: explanation ?? undefined,
+      explanation: explanation
+        ? clampText(explanation, MAX_TEXT_LENGTH)
+        : undefined,
       steps,
     }
   }
@@ -866,7 +883,9 @@ const mapThreadItem = (item: unknown): CodexConversationItem | null => {
       id,
       title: command,
       detail: detailParts.length ? detailParts.join("\n") : undefined,
-      output: readString(item, "aggregatedOutput") ?? undefined,
+      output: readString(item, "aggregatedOutput")
+        ? clampText(readString(item, "aggregatedOutput") ?? "", MAX_TOOL_OUTPUT_LENGTH)
+        : undefined,
       status: normalizeStatus(item.status),
       durationMs: readNumber(item, "durationMs"),
     }
@@ -886,7 +905,10 @@ const mapThreadItem = (item: unknown): CodexConversationItem | null => {
       const header = kind ? `--- ${path} [${kind}]` : `--- ${path}`
       lines.push([header, diff].filter(Boolean).join("\n"))
     })
-    const diffText = lines.join("\n\n").trim() || "No diff recorded."
+    const diffText = clampText(
+      lines.join("\n\n").trim() || "No diff recorded.",
+      MAX_DIFF_LENGTH
+    )
 
     return {
       kind: "diff",
@@ -910,8 +932,8 @@ const mapThreadItem = (item: unknown): CodexConversationItem | null => {
       kind: "tool",
       id,
       title: `${server}/${tool}`,
-      detail: args,
-      output,
+      detail: args ? clampText(args, MAX_TEXT_LENGTH) : args,
+      output: output ? clampText(output, MAX_TOOL_OUTPUT_LENGTH) : output,
       status: normalizeStatus(item.status),
       durationMs: readNumber(item, "durationMs"),
     }
@@ -934,7 +956,9 @@ const mapThreadItem = (item: unknown): CodexConversationItem | null => {
       kind: "tool",
       id,
       title: `collab/${tool}`,
-      detail: detailParts.length ? detailParts.join("\n") : undefined,
+      detail: detailParts.length
+        ? clampText(detailParts.join("\n"), MAX_TEXT_LENGTH)
+        : undefined,
       status: normalizeStatus(item.status),
     }
   }
@@ -970,7 +994,9 @@ const buildConversationItems = (thread: Record<string, unknown>) => {
     }
   })
 
-  return items
+  return items.length > MAX_ITEMS_PER_THREAD
+    ? items.slice(items.length - MAX_ITEMS_PER_THREAD)
+    : items
 }
 
 const upsertConversationItem = (
@@ -984,7 +1010,11 @@ const upsertConversationItem = (
     index === -1
       ? [...existing, item]
       : existing.map((entry, idx) => (idx === index ? item : entry))
-  return { ...sessionItems, [threadId]: nextItems }
+  const clamped =
+    nextItems.length > MAX_ITEMS_PER_THREAD
+      ? nextItems.slice(nextItems.length - MAX_ITEMS_PER_THREAD)
+      : nextItems
+  return { ...sessionItems, [threadId]: clamped }
 }
 
 const renderConversationItem = (item: CodexConversationItem) => {

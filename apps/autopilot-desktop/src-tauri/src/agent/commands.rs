@@ -54,11 +54,11 @@ pub(crate) async fn connect_unified_agent(
                         let _ = app_clone.emit("unified-event", &event);
                     }
                     Err(broadcast::error::RecvError::Closed) => {
-                        eprintln!("Unified event channel closed");
+                        tracing::warn!("Unified event channel closed");
                         break;
                     }
                     Err(broadcast::error::RecvError::Lagged(n)) => {
-                        eprintln!("Unified event channel lagged by {} messages", n);
+                        tracing::warn!(lagged = n, "Unified event channel lagged");
                         // Continue receiving
                     }
                 }
@@ -133,10 +133,10 @@ pub(crate) async fn send_unified_message(
     text: String,
     state: State<'_, AppState>,
 ) -> Result<SendUnifiedMessageResponse, String> {
-    eprintln!(
-        "send_unified_message called: session_id={}, text_len={}",
-        session_id,
-        text.len()
+    tracing::debug!(
+        session_id = %session_id,
+        text_len = text.len(),
+        "send_unified_message called"
     );
 
     let agent_manager = state.agent_manager.lock().await;
@@ -144,24 +144,24 @@ pub(crate) async fn send_unified_message(
     // Try to find agent by session_id (could be workspace_id or actual ACP session ID)
     let agent_id = agent_manager.get_agent_for_session(&session_id).await;
 
-    eprintln!("Agent lookup result: {:?}", agent_id);
+    tracing::debug!(agent_id = ?agent_id, "Agent lookup result");
 
     // If not found by session_id, try to find by agent_id directly (for Codex, there's only one)
     let agent_id = agent_id.unwrap_or(crate::agent::unified::AgentId::Codex);
 
-    eprintln!("Using agent_id: {:?}", agent_id);
+    tracing::debug!(agent_id = ?agent_id, "Using agent_id");
 
     let agent = agent_manager
         .get_agent(agent_id)
         .await
         .ok_or("Agent not found")?;
 
-    eprintln!("Agent found, calling send_message...");
+    tracing::debug!("Agent found, calling send_message");
 
     // The agent's send_message will use the actual ACP session ID from the connection
     agent.send_message(&session_id, text).await?;
 
-    eprintln!("Message sent successfully");
+    tracing::debug!("Message sent successfully");
 
     Ok(SendUnifiedMessageResponse {
         success: true,

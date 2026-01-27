@@ -47,7 +47,7 @@ pub struct AdjutantAgent {
 
 #[derive(Debug, Clone)]
 struct SessionState {
-    #[allow(dead_code)]
+    #[expect(dead_code)]
     session_id: String,
     workspace_path: String,
     conversation_items: Vec<UnifiedConversationItem>,
@@ -70,7 +70,7 @@ impl AdjutantAgent {
         }
     }
 
-    #[allow(dead_code)]
+    #[expect(dead_code)]
     pub fn with_config(mut self, config: PlanModeConfig) -> Self {
         self.config = config;
         self
@@ -79,14 +79,14 @@ impl AdjutantAgent {
     /// Send a unified event
     async fn send_event(&self, event: UnifiedEvent) {
         if let Err(_) = self.events_tx.send(event).await {
-            eprintln!("Failed to send event - receiver dropped");
+            tracing::warn!("Failed to send event - receiver dropped");
         }
     }
 
     /// Send a UI event
     async fn send_ui_event(&self, event: UiEvent) {
         if let Err(_) = self.ui_events_tx.send(event).await {
-            eprintln!("Failed to send UI event - receiver dropped");
+            tracing::warn!("Failed to send UI event - receiver dropped");
         }
     }
 
@@ -714,9 +714,9 @@ impl Agent for AdjutantAgent {
         let mut sessions = self.sessions.lock().await;
         sessions.insert(session_id.clone(), session_state);
 
-        println!(
-            "Adjutant agent connected to workspace: {}",
-            workspace_path.display()
+        tracing::info!(
+            workspace = %workspace_path.display(),
+            "adjutant agent connected to workspace"
         );
 
         Ok(session_id)
@@ -726,7 +726,10 @@ impl Agent for AdjutantAgent {
         let mut sessions = self.sessions.lock().await;
         sessions.remove(session_id);
 
-        println!("Adjutant agent disconnected from session: {}", session_id);
+        tracing::info!(
+            session_id = %session_id,
+            "adjutant agent disconnected from session"
+        );
         Ok(())
     }
 
@@ -737,7 +740,10 @@ impl Agent for AdjutantAgent {
             return Err(format!("Session {} not found", session_id));
         }
 
-        println!("Started new Adjutant session: {}", session_id);
+        tracing::info!(
+            session_id = %session_id,
+            "started new adjutant session"
+        );
         Ok(())
     }
 
@@ -795,10 +801,10 @@ fn signature_info_with_optimization<S: MetaSignature>(
     if config.apply_optimized_instructions {
         if let Some(instruction) = load_latest_instruction(kind) {
             if let Err(err) = signature.update_instruction(instruction) {
-                eprintln!(
-                    "Failed to apply optimized instruction for {}: {}",
-                    kind.name(),
-                    err
+                tracing::warn!(
+                    kind = %kind.name(),
+                    error = %err,
+                    "Failed to apply optimized instruction"
                 );
             }
         }

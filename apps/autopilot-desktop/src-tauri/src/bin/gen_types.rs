@@ -7,6 +7,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let out_file = out_dir.join("tauri-contracts.ts");
 
     autopilot_desktop_lib::contracts::export_ts(&out_file)?;
-    println!("Generated {}", out_file.display());
+    tracing::info!(path = %out_file.display(), "generated tauri contracts");
     Ok(())
 }
