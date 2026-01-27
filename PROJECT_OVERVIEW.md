@@ -10,7 +10,7 @@ For canonical terminology, see **[GLOSSARY.md](./GLOSSARY.md)**.
 
 OpenAgents is organized as a layered stack:
 
-- **Products**: Autopilot (wgpui), Autopilot Desktop (Tauri/Effuse), Onyx, GitAfter
+- **Products**: Autopilot (wgpui), Autopilot Desktop (WGPUI), Onyx, GitAfter
 - **Execution**: Adjutant + Autopilot loop (plan/act/verify)
 - **Compiler layer**: dsrs (DSPy-style signatures/modules/optimizers)
 - **Runtime + infra**: tools, sandboxes, logging, provider routing
@@ -62,7 +62,6 @@ OpenAgents is organized as a layered stack:
 
 ### UI infra
 - `crates/wgpui/` — GPU UI primitives and component system
-- `apps/autopilot-desktop/` — legacy Tauri + Effuse sources (deprecated; pending removal)
 
 ## Where to start (common contributor paths)
 

@@ -20,11 +20,13 @@ This doc defines the architecture, contracts, and test harnesses to accomplish t
 
 ## Current State Context (Grounded in Repo)
 
-The existing autopilot-desktop codebase provides a strong foundation for testability:
+The legacy autopilot-desktop codebase (Tauri + Effuse) has been removed from the
+repo, but it informs the testability requirements we are keeping for the new
+WGPUI native host.
 
 ### Existing Architecture
-- **UI Framework**: Effuse (Effect-native) with 90+ TypeScript components in [`apps/autopilot-desktop/src/components/`](file:///Users/christopherdavid/code/openagents/apps/autopilot-desktop/src/components/)
-- **Backend**: Tauri-based with Rust services in [`apps/autopilot-desktop/src-tauri/`](file:///Users/christopherdavid/code/openagents/apps/autopilot-desktop/src-tauri/)
+- **UI Framework (legacy)**: Effuse (Effect-native), removed with the Tauri app.
+- **Backend (legacy)**: Tauri-based Rust services, removed with the Tauri app.
 - **Core Agent Logic**: Lives in [`crates/autopilot-core/src/agent.rs`](file:///Users/christopherdavid/code/openagents/crates/autopilot-core/src/agent.rs) with DSPy-powered planning
 - **Target UI Stack**: WGPUI immediate-mode UI in `crates/autopilot_ui/` and native host in
   `apps/autopilot-desktop-wgpu/`, moving toward Zed/GPUI-style layout and test harnesses.
@@ -40,10 +42,10 @@ Backend (Adjutant) → AppEvent stream → Typed ViewModel → WGPUI Render tree
 - Shared UI: `crates/autopilot_ui/`
 
 ### Current UI Components Structure
-The codebase has extensive component catalog:
-- **90+ AI Elements**: [`apps/autopilot-desktop/src/components/ai-elements/`](file:///Users/christopherdavid/code/openagents/apps/autopilot-desktop/src/components/ai-elements/) (conversation, tools, code, planning)
-- **30+ Base UI**: [`apps/autopilot-desktop/src/components/ui/`](file:///Users/christopherdavid/code/openagents/apps/autopilot-desktop/src/components/ui/) (forms, layout, navigation)
-- **Component Catalog**: [`apps/autopilot-desktop/src/components/catalog.ts`](file:///Users/christopherdavid/code/openagents/apps/autopilot-desktop/src/components/catalog.ts) with validation
+The legacy Effuse catalog was extensive but has been removed; WGPUI parity is now
+rebuilt directly in Rust:
+- **WGPUI components**: `crates/wgpui/src/components/` (atoms, molecules, organisms, sections)
+- **Autopilot UI**: `crates/autopilot_ui/` (desktop scaffolding + app-specific views)
 
 ---
 
