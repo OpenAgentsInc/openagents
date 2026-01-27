@@ -578,7 +578,7 @@ fn paint_session_badges(cx: &mut PaintContext, header_bounds: Bounds, session_co
     let mut x = header_bounds.origin.x + header_bounds.size.width - 6.0;
 
     let count_label = session_count.to_string();
-    let count_width = badge_width(&count_label);
+    let count_width = badge_width(cx, &count_label);
     x -= count_width;
     paint_badge(
         cx,
@@ -592,24 +592,24 @@ fn paint_session_badges(cx: &mut PaintContext, header_bounds: Bounds, session_co
         true,
     );
 
-    x -= badge_gap + badge_width("NEW");
+    x -= badge_gap + badge_width(cx, "NEW");
     paint_badge(
         cx,
         "NEW",
         Bounds::new(
             x,
             header_bounds.origin.y + (header_bounds.size.height - badge_height) / 2.0,
-            badge_width("NEW"),
+            badge_width(cx, "NEW"),
             badge_height,
         ),
         false,
     );
 }
 
-fn badge_width(label: &str) -> f32 {
+fn badge_width(cx: &mut PaintContext, label: &str) -> f32 {
     let padding = 10.0;
-    let char_width = theme::font_size::SM * 0.6;
-    (label.len() as f32 * char_width + padding * 2.0).max(28.0)
+    let text_width = cx.text.measure(label, theme::font_size::SM);
+    (text_width + padding * 2.0).max(28.0)
 }
 
 fn paint_badge(cx: &mut PaintContext, label: &str, bounds: Bounds, filled: bool) {
@@ -744,7 +744,7 @@ fn paint_status_pills(cx: &mut PaintContext, header_bounds: Bounds) {
     let mut x = header_bounds.origin.x + header_bounds.size.width - 6.0;
 
     for label in labels.iter() {
-        let width = badge_width(label);
+        let width = badge_width(cx, label);
         x -= width;
         let bounds = Bounds::new(
             x,
@@ -942,7 +942,8 @@ fn paint_command_bar(cx: &mut PaintContext, bounds: Bounds) {
     let y = bounds.origin.y + (bounds.size.height - 18.0) / 2.0;
     for (key, tag, label, shortcut) in hints {
         let text = format!("{key} {tag} {label} {shortcut}");
-        let width = text.len() as f32 * theme::font_size::SM * 0.55 + 18.0;
+        let text_width = cx.text.measure(&text, theme::font_size::SM);
+        let width = text_width + 18.0;
         let box_bounds = Bounds::new(x, y, width, 18.0);
         cx.scene.draw_quad(
             Quad::new(box_bounds)
