@@ -469,3 +469,4 @@ Effuse catalog -> WGPUI target
 - 2026-01-27: Updated migration/testability docs to reflect removal of legacy Tauri/Effuse sources.
 - 2026-01-27: Updated `SYNTHESIS_EXECUTION.md` to reflect the WGPUI desktop host and remove legacy Effuse UI patch references.
 - 2026-01-27: Updated plan current-state + Bun sidecar notes to remove references to deleted `apps/autopilot-desktop`.
+- 2026-01-27: Marked legacy Effuse planning docs as historical (`docs/effuse-ui-implementation-plan.md`, `docs/dsrs-effuse-ui-plan.md`, `docs/autopilot-desktop-self-improver-plan.md`).

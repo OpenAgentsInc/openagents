@@ -1,5 +1,9 @@
 # Autopilot Desktop Self-Improver Plan (DSPy/DSRS)
 
+**Legacy note (2026-01-27):** The Tauri/Effuse `apps/autopilot-desktop` tree has been removed.
+This document is kept for historical context. New desktop work targets
+`apps/autopilot-desktop-wgpu` and `crates/autopilot_ui`.
+
 Date: 2026-01-26
 
 ## Agent note (read before changes)
