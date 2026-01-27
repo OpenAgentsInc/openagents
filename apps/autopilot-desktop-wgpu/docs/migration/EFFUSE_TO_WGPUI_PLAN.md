@@ -452,3 +452,5 @@ Effuse catalog -> WGPUI target
 - 2026-01-27: Verified `cargo test -p autopilot_ui`.
 - 2026-01-27: Added JSONL replay recorder/reader utilities to `crates/autopilot_app` and updated testability docs with the new APIs.
 - 2026-01-27: Verified `cargo test -p autopilot_app`.
+- 2026-01-27: Added a headless scenario test in `crates/autopilot_app/tests/headless_scenarios.rs`.
+- 2026-01-27: Verified `cargo test -p autopilot_app` after adding headless scenarios.
