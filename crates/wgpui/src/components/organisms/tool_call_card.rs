@@ -36,10 +36,10 @@ pub struct ToolCallCard {
 }
 
 impl ToolCallCard {
-    const HEADER_HEIGHT: f32 = 22.0;
-    const LINE_HEIGHT: f32 = 18.0;
-    const FONT_SIZE: f32 = 12.0;
-    const DETAIL_FONT_SIZE: f32 = 11.0;
+    const HEADER_HEIGHT: f32 = 26.0;
+    const LINE_HEIGHT: f32 = 20.0;
+    const FONT_SIZE: f32 = 14.0;
+    const DETAIL_FONT_SIZE: f32 = 13.0;
 
     /// Max visible child tools (height = 5 * HEADER_HEIGHT)
     const MAX_VISIBLE_CHILDREN: usize = 5;

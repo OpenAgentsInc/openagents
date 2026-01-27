@@ -96,7 +96,7 @@ impl Component for TerminalToolCall {
                 .with_border(theme::border::DEFAULT, 1.0),
         );
 
-        let header_height = 28.0;
+        let header_height = 32.0;
         let mut header = TerminalHeader::new(&self.command).status(self.status);
         if let Some(code) = self.exit_code {
             header = header.exit_code(code);
@@ -129,7 +129,7 @@ impl Component for TerminalToolCall {
         );
 
         let mut output_text = Text::new(&self.output)
-            .font_size(theme::font_size::SM)
+            .font_size(theme::font_size::BASE)
             .color(theme::text::SECONDARY);
         output_text.paint(
             Bounds::new(

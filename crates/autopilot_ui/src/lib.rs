@@ -3,32 +3,28 @@ use std::path::PathBuf;
 use std::rc::Rc;
 
 use autopilot_app::{AppEvent, SessionId, UserAction, WorkspaceId};
-use wgpui::components::atoms::{Mode, Model, ToolStatus, ToolType, TrajectoryStatus};
+use wgpui::components::atoms::{ToolStatus, ToolType};
 use wgpui::components::EventContext;
-use wgpui::components::molecules::SessionSearchBar;
 use wgpui::components::organisms::{
     AssistantMessage, DiffLine, DiffLineKind, DiffToolCall, SearchMatch, SearchToolCall,
-    TerminalToolCall, ThreadControls, ThreadEntry, ThreadEntryType, ToolCallCard, UserMessage,
+    TerminalToolCall, ThreadEntry, ThreadEntryType, ToolCallCard, UserMessage,
 };
-use wgpui::components::sections::{MessageEditor, ThreadView, TrajectoryEntry, TrajectoryView};
+use wgpui::components::sections::{MessageEditor, ThreadView};
 use wgpui::components::Text;
 use wgpui::input::InputEvent;
 use wgpui::{Bounds, Component, EventResult, PaintContext, Point, Quad, theme};
 
-const STATUS_HEIGHT: f32 = 120.0;
-const HEADER_HEIGHT: f32 = 48.0;
-const LIST_HEADER_HEIGHT: f32 = 24.0;
-const LIST_ROW_HEIGHT: f32 = 28.0;
-const LIST_ROW_HEIGHT_LARGE: f32 = 32.0;
-const PANEL_INSET: f32 = 24.0;
-const COLUMN_GAP: f32 = 32.0;
-const PANEL_GAP: f32 = 24.0;
-const SEARCH_HEIGHT: f32 = 44.0;
-const CONTROL_HEIGHT: f32 = 44.0;
-const COMPOSER_HEIGHT: f32 = 90.0;
-const CONVERSATION_HEADER_HEIGHT: f32 = 28.0;
-const TRAJECTORY_HEADER_HEIGHT: f32 = 24.0;
-const SECTION_GAP: f32 = 12.0;
+const PANEL_PADDING: f32 = 12.0;
+const PANEL_GAP: f32 = 12.0;
+const LEFT_PANEL_WIDTH: f32 = 250.0;
+const RIGHT_PANEL_WIDTH: f32 = 260.0;
+const PANEL_HEADER_HEIGHT: f32 = 26.0;
+const SESSION_ROW_HEIGHT: f32 = 30.0;
+const COMMAND_BAR_HEIGHT: f32 = 42.0;
+const COMPOSER_HEIGHT: f32 = 56.0;
+const STATUS_LINE_HEIGHT: f32 = 22.0;
+const STATUS_SECTION_GAP: f32 = 10.0;
+const ACCENT_BAR_WIDTH: f32 = 3.0;
 
 #[derive(Default, Clone)]
 pub struct AppViewModel {
@@ -86,84 +82,48 @@ impl AppViewModel {
 #[derive(Clone, Debug)]
 enum UiAction {
     SendMessage(String),
-    Run,
-    Stop,
-    ModeChanged(Mode),
-    ModelChanged(Model),
-    SearchUpdated,
 }
 
 pub struct DesktopRoot {
     view_model: AppViewModel,
     event_context: EventContext,
-    header: Text,
-    status: Text,
-    session_search: SessionSearchBar,
-    session_title: Text,
-    event_title: Text,
-    session_items: Vec<Text>,
-    event_items: Vec<Text>,
-    conversation_title: Text,
-    trajectory_title: Text,
-    thread_controls: ThreadControls,
+    left_header: Text,
+    center_header: Text,
+    right_header: Text,
+    session_rows: Vec<SessionRow>,
     thread_view: ThreadView,
     message_editor: MessageEditor,
-    trajectory_view: TrajectoryView,
     pending_actions: Rc<RefCell<Vec<UiAction>>>,
     send_handler: Option<Box<dyn FnMut(UserAction)>>,
     cursor_position: Point,
-    run_state: bool,
-    current_mode: Mode,
-    current_model: Model,
 }
 
 impl DesktopRoot {
     pub fn new() -> Self {
         let pending_actions: Rc<RefCell<Vec<UiAction>>> = Rc::new(RefCell::new(Vec::new()));
         let message_editor = build_message_editor(pending_actions.clone());
-        let session_search = build_session_search(pending_actions.clone());
-        let thread_controls =
-            build_thread_controls(pending_actions.clone(), Mode::Normal, Model::CodexSonnet, false);
 
         let mut root = Self {
             view_model: AppViewModel::default(),
             event_context: EventContext::new(),
-            header: Text::new("Autopilot Desktop (WGPUI)")
-                .font_size(30.0)
+            left_header: Text::new("SESSIONS")
+                .font_size(theme::font_size::BASE)
                 .bold()
-                .color(theme::text::PRIMARY),
-            status: Text::new("Waiting for events...")
-                .font_size(16.0)
-                .color(theme::text::MUTED),
-            session_search,
-            session_title: Text::new("Sessions")
-                .font_size(18.0)
+                .color(theme::accent::PRIMARY),
+            center_header: Text::new("SESSION --")
+                .font_size(theme::font_size::BASE)
                 .bold()
-                .color(theme::text::PRIMARY),
-            event_title: Text::new("Event Log")
-                .font_size(18.0)
+                .color(theme::accent::PRIMARY),
+            right_header: Text::new("STATUS")
+                .font_size(theme::font_size::BASE)
                 .bold()
-                .color(theme::text::PRIMARY),
-            session_items: Vec::new(),
-            event_items: Vec::new(),
-            conversation_title: Text::new("Conversation")
-                .font_size(18.0)
-                .bold()
-                .color(theme::text::PRIMARY),
-            trajectory_title: Text::new("Plan / Trajectory")
-                .font_size(18.0)
-                .bold()
-                .color(theme::text::PRIMARY),
-            thread_controls,
-            thread_view: ThreadView::new().auto_scroll(true),
+                .color(theme::accent::PRIMARY),
+            session_rows: Vec::new(),
+            thread_view: ThreadView::new().auto_scroll(true).item_spacing(12.0),
             message_editor,
-            trajectory_view: TrajectoryView::new().auto_scroll(true),
             pending_actions,
             send_handler: None,
             cursor_position: Point::ZERO,
-            run_state: false,
-            current_mode: Mode::Normal,
-            current_model: Model::CodexSonnet,
         };
         root.refresh_text();
         root
@@ -172,7 +132,6 @@ impl DesktopRoot {
     pub fn apply_event(&mut self, event: AppEvent) {
         self.view_model.apply_event(&event);
         self.update_thread_view(&event);
-        self.update_trajectory_view(&event);
         self.refresh_text();
     }
 
@@ -196,22 +155,16 @@ impl DesktopRoot {
         let mut handled = false;
 
         if let InputEvent::Scroll { .. } = event {
-            handled |= self.route_scroll(event, &layout);
+            if layout.thread_bounds.contains(self.cursor_position) {
+                handled |= matches!(
+                    self.thread_view
+                        .event(event, layout.thread_bounds, &mut self.event_context),
+                    EventResult::Handled
+                );
+            }
             self.flush_ui_actions();
             return handled;
         }
-
-        handled |= matches!(
-            self.session_search
-                .event(event, layout.search_bounds, &mut self.event_context),
-            EventResult::Handled
-        );
-
-        handled |= matches!(
-            self.thread_controls
-                .event(event, layout.controls_bounds, &mut self.event_context),
-            EventResult::Handled
-        );
 
         handled |= matches!(
             self.thread_view
@@ -225,108 +178,141 @@ impl DesktopRoot {
             EventResult::Handled
         );
 
-        handled |= matches!(
-            self.trajectory_view
-                .event(event, layout.trajectory_bounds, &mut self.event_context),
-            EventResult::Handled
-        );
-
         self.flush_ui_actions();
         handled
     }
 
     fn refresh_text(&mut self) {
-        let workspace_line = self
+        let session_label = self
             .view_model
-            .workspace_path
-            .as_ref()
-            .map(|path| format!("Workspace: {}", path.display()))
-            .unwrap_or_else(|| "Workspace: --".to_string());
+            .session_id
+            .map(format_session_id)
+            .map(|id| format!("SESSION {id}"))
+            .unwrap_or_else(|| "SESSION --".to_string());
+        self.center_header.set_content(session_label);
 
-        let session_line = match (self.view_model.session_id, &self.view_model.session_label) {
-            (Some(id), Some(label)) => format!("Session: {:?} ({})", id, label),
-            (Some(id), None) => format!("Session: {:?}", id),
-            _ => "Session: --".to_string(),
-        };
-
-        let last_event_line = self
-            .view_model
-            .last_event
-            .clone()
-            .unwrap_or_else(|| "Last event: --".to_string());
-
-        let count_line = format!("Event count: {}", self.view_model.event_count);
-        let run_line = if self.run_state {
-            "Run state: Running".to_string()
-        } else {
-            "Run state: Idle".to_string()
-        };
-        let mode_line = format!(
-            "Mode: {:?} | Model: {:?}",
-            self.current_mode, self.current_model
-        );
-
-        let body = format!(
-            "Immediate-mode view model (Zed/GPUI-style)\n{workspace}\n{session}\n{last_event}\n{count}\n{run}\n{mode}",
-            workspace = workspace_line,
-            session = session_line,
-            last_event = last_event_line,
-            count = count_line,
-            run = run_line,
-            mode = mode_line
-        );
-
-        self.status.set_content(body);
-
-        let filter = self
-            .session_search
-            .search_value()
-            .trim()
-            .to_lowercase();
-
-        self.session_items = self
+        self.session_rows = self
             .view_model
             .sessions
             .iter()
-            .enumerate()
-            .filter(|(_, session)| {
-                if filter.is_empty() {
-                    true
-                } else {
-                    let label = session
-                        .label
-                        .as_deref()
-                        .unwrap_or("Session")
-                        .to_lowercase();
-                    label.contains(&filter)
-                        || format!("{:?}", session.session_id)
-                            .to_lowercase()
-                            .contains(&filter)
-                }
-            })
-            .map(|(index, session)| {
-                let label = session
+            .map(|session| SessionRow {
+                id: format_session_id(session.session_id),
+                detail: session
                     .label
-                    .as_ref()
-                    .map(|label| format!("{label} ({:?})", session.session_id))
-                    .unwrap_or_else(|| format!("Session {:?}", session.session_id));
-                Text::new(format!("{}. {}", index + 1, label))
-                    .font_size(14.0)
-                    .color(theme::text::PRIMARY)
+                    .clone()
+                    .unwrap_or_else(|| "Session ready".to_string()),
+                active: Some(session.session_id) == self.view_model.session_id,
             })
             .collect();
+    }
 
-        self.event_items = self
+    fn status_sections(&self) -> Vec<StatusSectionData> {
+        let workspace_path = self
             .view_model
-            .event_log
-            .iter()
-            .enumerate()
-            .map(|(index, entry)| {
-                Text::new(format!("{}. {}", index + 1, entry))
-                    .font_size(13.0)
-                    .color(theme::text::MUTED)
-            })
-            .collect();
+            .workspace_path()
+            .map(|path| path.display().to_string())
+            .unwrap_or_else(|| "--".to_string());
+
+        let workspace_id = self
+            .view_model
+            .workspace_id
+            .map(|id| format!("{id:?}"))
+            .unwrap_or_else(|| "--".to_string());
+
+        let session_id = self
+            .view_model
+            .session_id
+            .map(format_session_id)
+            .unwrap_or_else(|| "--".to_string());
+
+        let last_event = self
+            .view_model
+            .last_event
+            .clone()
+            .unwrap_or_else(|| "--".to_string());
+
+        vec![
+            StatusSectionData {
+                title: "SYSTEM",
+                lines: vec![
+                    StatusLineData {
+                        label: "CLI",
+                        value: "OK codex-cli".to_string(),
+                        value_color: theme::status::SUCCESS,
+                    },
+                    StatusLineData {
+                        label: "APP-SERVER",
+                        value: "READY".to_string(),
+                        value_color: theme::status::SUCCESS,
+                    },
+                ],
+                actions: vec![],
+            },
+            StatusSectionData {
+                title: "WORKSPACE",
+                lines: vec![
+                    StatusLineData {
+                        label: "WORKING DIR",
+                        value: workspace_path,
+                        value_color: theme::text::PRIMARY,
+                    },
+                    StatusLineData {
+                        label: "WORKSPACE ID",
+                        value: workspace_id,
+                        value_color: theme::text::MUTED,
+                    },
+                ],
+                actions: vec![
+                    StatusActionData {
+                        label: "CONNECT",
+                        active: true,
+                    },
+                    StatusActionData {
+                        label: "DISCONNECT",
+                        active: false,
+                    },
+                ],
+            },
+            StatusSectionData {
+                title: "CONNECTION",
+                lines: vec![
+                    StatusLineData {
+                        label: "STATUS",
+                        value: "CONNECTED".to_string(),
+                        value_color: theme::status::SUCCESS,
+                    },
+                    StatusLineData {
+                        label: "LAST EVENT",
+                        value: last_event,
+                        value_color: theme::text::MUTED,
+                    },
+                    StatusLineData {
+                        label: "SESSION",
+                        value: session_id,
+                        value_color: theme::text::SECONDARY,
+                    },
+                ],
+                actions: vec![],
+            },
+            StatusSectionData {
+                title: "FULL AUTO",
+                lines: vec![StatusLineData {
+                    label: "STATE",
+                    value: "OFF".to_string(),
+                    value_color: theme::text::MUTED,
+                }],
+                actions: vec![
+                    StatusActionData {
+                        label: "ENABLE",
+                        active: false,
+                    },
+                    StatusActionData {
+                        label: "DISABLE",
+                        active: true,
+                    },
+                ],
+            },
+        ]
     }
 
     fn update_thread_view(&mut self, event: &AppEvent) {
@@ -366,42 +352,6 @@ impl DesktopRoot {
                     ));
                 }
             }
-        }
-    }
-
-    fn update_trajectory_view(&mut self, event: &AppEvent) {
-        match event {
-            AppEvent::WorkspaceOpened { path, .. } => {
-                self.trajectory_view.push_entry(
-                    TrajectoryEntry::new("Open workspace")
-                        .detail(path.display().to_string())
-                        .status(TrajectoryStatus::Verified),
-                );
-            }
-            AppEvent::SessionStarted { label, .. } => {
-                let detail = label.clone().unwrap_or_else(|| "Bootstrap".to_string());
-                self.trajectory_view.push_entry(
-                    TrajectoryEntry::new("Start session")
-                        .detail(detail)
-                        .status(TrajectoryStatus::Partial),
-                );
-            }
-            AppEvent::UserActionDispatched { action, .. } => match action {
-                UserAction::Message { text, .. } => {
-                    self.trajectory_view.push_entry(
-                        TrajectoryEntry::new("Dispatch message")
-                            .detail(text.clone())
-                            .status(TrajectoryStatus::Verified),
-                    );
-                }
-                UserAction::Command { name, .. } => {
-                    self.trajectory_view.push_entry(
-                        TrajectoryEntry::new("Dispatch command")
-                            .detail(name.clone())
-                            .status(TrajectoryStatus::Verified),
-                    );
-                }
-            },
         }
     }
 
@@ -475,27 +425,6 @@ impl DesktopRoot {
             .push_entry(ThreadEntry::new(ThreadEntryType::Tool, edit_card));
     }
 
-    fn route_scroll(&mut self, event: &InputEvent, layout: &Layout) -> bool {
-        let cursor = self.cursor_position;
-        if layout.thread_bounds.contains(cursor) {
-            return matches!(
-                self.thread_view
-                    .event(event, layout.thread_bounds, &mut self.event_context),
-                EventResult::Handled
-            );
-        }
-
-        if layout.trajectory_bounds.contains(cursor) {
-            return matches!(
-                self.trajectory_view
-                    .event(event, layout.trajectory_bounds, &mut self.event_context),
-                EventResult::Handled
-            );
-        }
-
-        false
-    }
-
     fn flush_ui_actions(&mut self) {
         let actions = {
             let mut pending = self.pending_actions.borrow_mut();
@@ -525,37 +454,8 @@ impl DesktopRoot {
                         ));
                     }
                 }
-                UiAction::Run => {
-                    self.run_state = true;
-                    self.rebuild_thread_controls();
-                    self.refresh_text();
-                }
-                UiAction::Stop => {
-                    self.run_state = false;
-                    self.rebuild_thread_controls();
-                    self.refresh_text();
-                }
-                UiAction::ModeChanged(mode) => {
-                    self.current_mode = mode;
-                    self.refresh_text();
-                }
-                UiAction::ModelChanged(model) => {
-                    self.current_model = model;
-                    self.refresh_text();
-                }
-                UiAction::SearchUpdated => {
-                    self.refresh_text();
-                }
             }
         }
-    }
-
-    fn rebuild_thread_controls(&mut self) {
-        let mode = self.thread_controls.current_mode();
-        let model = self.thread_controls.current_model();
-        let running = self.run_state;
-        self.thread_controls =
-            build_thread_controls(self.pending_actions.clone(), mode, model, running);
     }
 }
 
@@ -569,34 +469,37 @@ impl Component for DesktopRoot {
     fn paint(&mut self, bounds: Bounds, cx: &mut PaintContext) {
         let layout = Layout::new(bounds);
 
-        self.header.paint(layout.header_bounds, cx);
+        paint_background(cx, bounds);
         paint_panel(cx, layout.left_panel_bounds);
+        paint_panel(cx, layout.center_panel_bounds);
         paint_panel(cx, layout.right_panel_bounds);
 
-        self.status.paint(layout.status_bounds, cx);
-        self.session_search.paint(layout.search_bounds, cx);
-        self.session_title.paint(layout.sessions_header_bounds, cx);
-        self.event_title.paint(layout.events_header_bounds, cx);
-        paint_list(cx, &mut self.session_items, layout.sessions_bounds, LIST_ROW_HEIGHT_LARGE);
-        paint_list(cx, &mut self.event_items, layout.events_bounds, LIST_ROW_HEIGHT);
-        self.trajectory_title
-            .paint(layout.trajectory_header_bounds, cx);
-        self.trajectory_view.paint(layout.trajectory_bounds, cx);
+        self.left_header.paint(layout.left_header_bounds, cx);
+        paint_session_badges(cx, layout.left_header_bounds, self.session_rows.len());
+        paint_divider(cx, layout.left_header_bounds);
+        paint_session_list(cx, &self.session_rows, layout.left_list_bounds);
 
-        self.thread_controls.paint(layout.controls_bounds, cx);
-        self.conversation_title
-            .paint(layout.conversation_header_bounds, cx);
+        self.center_header.paint(layout.center_header_bounds, cx);
+        paint_divider(cx, layout.center_header_bounds);
+        paint_panel_inset(cx, layout.thread_bounds);
         self.thread_view.paint(layout.thread_bounds, cx);
+        paint_composer_backdrop(cx, layout.editor_bounds);
         self.message_editor.paint(layout.editor_bounds, cx);
+
+        self.right_header.paint(layout.right_header_bounds, cx);
+        paint_status_pills(cx, layout.right_header_bounds);
+        paint_divider(cx, layout.right_header_bounds);
+        paint_status_sections(cx, layout.right_body_bounds, self.status_sections());
+
+        paint_command_bar(cx, layout.command_bar_bounds);
     }
 }
 
 fn build_message_editor(pending: Rc<RefCell<Vec<UiAction>>>) -> MessageEditor {
     let pending_send = pending.clone();
     MessageEditor::new()
-        .mode(Mode::Normal)
         .show_mode_badge(false)
-        .show_keybinding_hint(true)
+        .show_keybinding_hint(false)
         .on_send(move |value| {
             pending_send
                 .borrow_mut()
@@ -604,43 +507,297 @@ fn build_message_editor(pending: Rc<RefCell<Vec<UiAction>>>) -> MessageEditor {
         })
 }
 
-fn build_session_search(pending: Rc<RefCell<Vec<UiAction>>>) -> SessionSearchBar {
-    let pending_search = pending.clone();
-    SessionSearchBar::new().on_search(move |_value| {
-        pending_search.borrow_mut().push(UiAction::SearchUpdated);
-    })
+fn paint_background(cx: &mut PaintContext, bounds: Bounds) {
+    cx.scene.draw_quad(
+        Quad::new(bounds)
+            .with_background(theme::bg::APP)
+            .with_border(theme::border::SUBTLE, 1.0),
+    );
 }
 
-fn build_thread_controls(
-    pending: Rc<RefCell<Vec<UiAction>>>,
-    mode: Mode,
-    model: Model,
-    running: bool,
-) -> ThreadControls {
-    let pending_run = pending.clone();
-    let pending_stop = pending.clone();
-    let pending_mode = pending.clone();
-    let pending_model = pending.clone();
+fn paint_session_badges(cx: &mut PaintContext, header_bounds: Bounds, session_count: usize) {
+    let badge_gap = 6.0;
+    let badge_height = 16.0;
+    let mut x = header_bounds.origin.x + header_bounds.size.width - 6.0;
 
-    ThreadControls::new()
-        .mode(mode)
-        .model(model)
-        .running(running)
-        .on_run(move || pending_run.borrow_mut().push(UiAction::Run))
-        .on_stop(move || pending_stop.borrow_mut().push(UiAction::Stop))
-        .on_mode_change(move |mode| pending_mode.borrow_mut().push(UiAction::ModeChanged(mode)))
-        .on_model_change(move |model| pending_model.borrow_mut().push(UiAction::ModelChanged(model)))
+    let count_label = session_count.to_string();
+    let count_width = badge_width(&count_label);
+    x -= count_width;
+    paint_badge(
+        cx,
+        &count_label,
+        Bounds::new(
+            x,
+            header_bounds.origin.y + (header_bounds.size.height - badge_height) / 2.0,
+            count_width,
+            badge_height,
+        ),
+        true,
+    );
+
+    x -= badge_gap + badge_width("NEW");
+    paint_badge(
+        cx,
+        "NEW",
+        Bounds::new(
+            x,
+            header_bounds.origin.y + (header_bounds.size.height - badge_height) / 2.0,
+            badge_width("NEW"),
+            badge_height,
+        ),
+        false,
+    );
 }
 
-fn paint_list(cx: &mut PaintContext, items: &mut [Text], bounds: Bounds, row_height: f32) {
+fn badge_width(label: &str) -> f32 {
+    let padding = 10.0;
+    let char_width = theme::font_size::SM * 0.6;
+    (label.len() as f32 * char_width + padding * 2.0).max(28.0)
+}
+
+fn paint_badge(cx: &mut PaintContext, label: &str, bounds: Bounds, filled: bool) {
+    let border = theme::accent::PRIMARY;
+    let bg = if filled {
+        theme::accent::PRIMARY.with_alpha(0.2)
+    } else {
+        theme::bg::ELEVATED
+    };
+    cx.scene.draw_quad(
+        Quad::new(bounds)
+            .with_background(bg)
+            .with_border(border, 1.0),
+    );
+
+    let text_color = theme::accent::PRIMARY;
+    let mut text = Text::new(label)
+        .font_size(theme::font_size::SM)
+        .bold()
+        .color(text_color)
+        .no_wrap();
+    text.paint(bounds, cx);
+}
+
+fn paint_session_list(cx: &mut PaintContext, rows: &[SessionRow], bounds: Bounds) {
     let mut y = bounds.origin.y;
-    for item in items {
-        let row_bounds = Bounds::new(bounds.origin.x, y, bounds.size.width, row_height);
-        item.paint(row_bounds, cx);
-        y += row_height;
+    let id_column_width = 78.0;
+
+    for row in rows {
+        let row_bounds = Bounds::new(bounds.origin.x, y, bounds.size.width, SESSION_ROW_HEIGHT);
+        if row.active {
+            cx.scene.draw_quad(
+                Quad::new(row_bounds)
+                    .with_background(theme::bg::ELEVATED)
+                    .with_border(theme::border::DEFAULT, 1.0),
+            );
+            cx.scene.draw_quad(
+                Quad::new(Bounds::new(
+                    row_bounds.origin.x,
+                    row_bounds.origin.y,
+                    ACCENT_BAR_WIDTH,
+                    row_bounds.size.height,
+                ))
+                .with_background(theme::accent::PRIMARY),
+            );
+        }
+
+        let id_bounds = Bounds::new(row_bounds.origin.x + 6.0, row_bounds.origin.y, id_column_width, row_bounds.size.height);
+        let detail_bounds = Bounds::new(
+            row_bounds.origin.x + id_column_width + 10.0,
+            row_bounds.origin.y,
+            row_bounds.size.width - id_column_width - 12.0,
+            row_bounds.size.height,
+        );
+
+        let mut id_text = Text::new(&row.id)
+            .font_size(theme::font_size::BASE)
+            .bold()
+            .color(if row.active {
+                theme::accent::PRIMARY
+            } else {
+                theme::text::PRIMARY
+            })
+            .no_wrap();
+        id_text.paint(id_bounds, cx);
+
+        let mut detail_text = Text::new(&row.detail)
+            .font_size(theme::font_size::BASE)
+            .color(theme::text::SECONDARY)
+            .no_wrap();
+        detail_text.paint(detail_bounds, cx);
+
+        y += SESSION_ROW_HEIGHT;
         if y > bounds.origin.y + bounds.size.height {
             break;
         }
+    }
+}
+
+fn paint_divider(cx: &mut PaintContext, bounds: Bounds) {
+    let y = bounds.origin.y + bounds.size.height + 4.0;
+    cx.scene.draw_quad(
+        Quad::new(Bounds::new(
+            bounds.origin.x,
+            y,
+            bounds.size.width,
+            1.0,
+        ))
+        .with_background(theme::border::SUBTLE),
+    );
+}
+
+fn paint_panel_inset(cx: &mut PaintContext, bounds: Bounds) {
+    cx.scene.draw_quad(
+        Quad::new(bounds)
+            .with_background(theme::bg::CODE)
+            .with_border(theme::border::DEFAULT, 1.0),
+    );
+}
+
+fn paint_composer_backdrop(cx: &mut PaintContext, bounds: Bounds) {
+    cx.scene.draw_quad(
+        Quad::new(bounds)
+            .with_background(theme::bg::SURFACE)
+            .with_border(theme::border::DEFAULT, 1.0),
+    );
+}
+
+fn paint_status_pills(cx: &mut PaintContext, header_bounds: Bounds) {
+    let pill_height = 16.0;
+    let gap = 6.0;
+    let labels = ["SHOW CANVAS", "CONNECTED"];
+    let mut x = header_bounds.origin.x + header_bounds.size.width - 6.0;
+
+    for label in labels.iter() {
+        let width = badge_width(label);
+        x -= width;
+        let bounds = Bounds::new(
+            x,
+            header_bounds.origin.y + (header_bounds.size.height - pill_height) / 2.0,
+            width,
+            pill_height,
+        );
+        if *label == "CONNECTED" {
+            paint_badge(cx, label, bounds, true);
+        } else {
+            paint_badge(cx, label, bounds, false);
+        }
+        x -= gap;
+    }
+}
+
+#[derive(Clone, Debug)]
+struct StatusLineData {
+    label: &'static str,
+    value: String,
+    value_color: wgpui::color::Hsla,
+}
+
+#[derive(Clone, Debug)]
+struct StatusActionData {
+    label: &'static str,
+    active: bool,
+}
+
+#[derive(Clone, Debug)]
+struct StatusSectionData {
+    title: &'static str,
+    lines: Vec<StatusLineData>,
+    actions: Vec<StatusActionData>,
+}
+
+fn paint_status_sections(cx: &mut PaintContext, bounds: Bounds, sections: Vec<StatusSectionData>) {
+    let mut y = bounds.origin.y;
+    let label_width = 110.0;
+
+    for section in sections {
+        let mut header = Text::new(section.title)
+            .font_size(theme::font_size::BASE)
+            .bold()
+            .color(theme::accent::PRIMARY)
+            .no_wrap();
+        header.paint(
+            Bounds::new(bounds.origin.x, y, bounds.size.width, STATUS_LINE_HEIGHT),
+            cx,
+        );
+        y += STATUS_LINE_HEIGHT + 2.0;
+
+        for line in section.lines {
+            let label_bounds = Bounds::new(bounds.origin.x, y, label_width, STATUS_LINE_HEIGHT);
+            let value_bounds = Bounds::new(
+                bounds.origin.x + label_width + 6.0,
+                y,
+                bounds.size.width - label_width - 6.0,
+                STATUS_LINE_HEIGHT,
+            );
+
+            let mut label_text = Text::new(line.label)
+                .font_size(theme::font_size::BASE)
+                .color(theme::text::SECONDARY)
+                .no_wrap();
+            label_text.paint(label_bounds, cx);
+
+            let mut value_text = Text::new(line.value)
+                .font_size(theme::font_size::BASE)
+                .color(line.value_color)
+                .no_wrap();
+            value_text.paint(value_bounds, cx);
+
+            y += STATUS_LINE_HEIGHT;
+        }
+
+        if !section.actions.is_empty() {
+            y += 4.0;
+            let mut x = bounds.origin.x;
+            for action in section.actions {
+                let width = badge_width(action.label);
+                paint_badge(
+                    cx,
+                    action.label,
+                    Bounds::new(x, y, width, 16.0),
+                    action.active,
+                );
+                x += width + 6.0;
+            }
+            y += 18.0;
+        }
+
+        y += STATUS_SECTION_GAP;
+    }
+}
+
+fn paint_command_bar(cx: &mut PaintContext, bounds: Bounds) {
+    cx.scene.draw_quad(
+        Quad::new(bounds)
+            .with_background(theme::bg::SURFACE)
+            .with_border(theme::border::SUBTLE, 1.0),
+    );
+
+    let hints = [
+        ("1", "SESS", "SESSIONS", "CMD+1"),
+        ("2", "NEW", "NEW", "CMD+2"),
+        ("3", "GRID", "GUIDANCE", "CMD+3"),
+        ("4", "SB", "STORYBOOK", "CMD+4"),
+        ("8", "SET", "SETTINGS", "CMD+8"),
+        ("9", "HELP", "HELP", "CMD+9"),
+    ];
+
+    let mut x = bounds.origin.x + 8.0;
+    let y = bounds.origin.y + (bounds.size.height - 18.0) / 2.0;
+    for (key, tag, label, shortcut) in hints {
+        let text = format!("{key} {tag} {label} {shortcut}");
+        let width = text.len() as f32 * theme::font_size::SM * 0.55 + 18.0;
+        let box_bounds = Bounds::new(x, y, width, 18.0);
+        cx.scene.draw_quad(
+            Quad::new(box_bounds)
+                .with_background(theme::bg::MUTED)
+                .with_border(theme::border::DEFAULT, 1.0),
+        );
+        let mut hint = Text::new(text)
+            .font_size(theme::font_size::SM)
+            .color(theme::text::SECONDARY)
+            .no_wrap();
+        hint.paint(box_bounds, cx);
+        x += width + 6.0;
     }
 }
 
@@ -650,184 +807,155 @@ struct SessionSummary {
     label: Option<String>,
 }
 
+#[derive(Clone, Debug)]
+struct SessionRow {
+    id: String,
+    detail: String,
+    active: bool,
+}
+
 fn format_event(event: &AppEvent) -> String {
     match event {
         AppEvent::WorkspaceOpened { path, .. } => {
-            format!("Last event: WorkspaceOpened ({})", path.display())
+            format!("WorkspaceOpened ({})", path.display())
         }
         AppEvent::SessionStarted { session_id, .. } => {
-            format!("Last event: SessionStarted ({:?})", session_id)
+            format!("SessionStarted ({:?})", session_id)
         }
         AppEvent::UserActionDispatched { action, .. } => match action {
-            UserAction::Message { text, .. } => format!("Last event: Message ({})", text),
-            UserAction::Command { name, .. } => format!("Last event: Command ({})", name),
+            UserAction::Message { text, .. } => format!("Message ({})", text),
+            UserAction::Command { name, .. } => format!("Command ({})", name),
         },
     }
 }
 
+fn format_session_id(session_id: SessionId) -> String {
+    let raw = format!("{:?}", session_id);
+    let trimmed = raw
+        .trim_start_matches("SessionId(")
+        .trim_end_matches(')');
+    trimmed.chars().take(6).collect()
+}
+
 struct Layout {
-    header_bounds: Bounds,
     left_panel_bounds: Bounds,
+    center_panel_bounds: Bounds,
     right_panel_bounds: Bounds,
-    status_bounds: Bounds,
-    search_bounds: Bounds,
-    sessions_bounds: Bounds,
-    events_bounds: Bounds,
-    sessions_header_bounds: Bounds,
-    events_header_bounds: Bounds,
-    trajectory_header_bounds: Bounds,
-    trajectory_bounds: Bounds,
-    controls_bounds: Bounds,
-    conversation_header_bounds: Bounds,
+    command_bar_bounds: Bounds,
+    left_header_bounds: Bounds,
+    left_list_bounds: Bounds,
+    center_header_bounds: Bounds,
     thread_bounds: Bounds,
     editor_bounds: Bounds,
+    right_header_bounds: Bounds,
+    right_body_bounds: Bounds,
 }
 
 impl Layout {
     fn new(bounds: Bounds) -> Self {
-        let header_bounds = Bounds::new(
+        let command_bar_bounds = Bounds::new(
+            bounds.origin.x,
+            bounds.origin.y + bounds.size.height - COMMAND_BAR_HEIGHT,
+            bounds.size.width,
+            COMMAND_BAR_HEIGHT,
+        );
+
+        let content_bounds = Bounds::new(
             bounds.origin.x,
             bounds.origin.y,
             bounds.size.width,
-            HEADER_HEIGHT,
+            bounds.size.height - COMMAND_BAR_HEIGHT,
         );
-
-        let body_bounds = Bounds::new(
-            bounds.origin.x,
-            bounds.origin.y + HEADER_HEIGHT + 16.0,
-            bounds.size.width,
-            bounds.size.height - HEADER_HEIGHT - 16.0,
-        );
-
-        let left_width = (body_bounds.size.width * 0.48).max(0.0);
-        let right_width = (body_bounds.size.width - left_width - PANEL_GAP).max(0.0);
 
         let left_panel_bounds = Bounds::new(
-            body_bounds.origin.x,
-            body_bounds.origin.y,
-            left_width,
-            body_bounds.size.height,
+            content_bounds.origin.x,
+            content_bounds.origin.y,
+            LEFT_PANEL_WIDTH.min(content_bounds.size.width),
+            content_bounds.size.height,
         );
 
         let right_panel_bounds = Bounds::new(
-            body_bounds.origin.x + left_width + PANEL_GAP,
-            body_bounds.origin.y,
-            right_width,
-            body_bounds.size.height,
+            content_bounds.origin.x + content_bounds.size.width - RIGHT_PANEL_WIDTH,
+            content_bounds.origin.y,
+            RIGHT_PANEL_WIDTH.min(content_bounds.size.width),
+            content_bounds.size.height,
         );
 
-        let left_inner = inset(left_panel_bounds, PANEL_INSET);
-        let right_inner = inset(right_panel_bounds, PANEL_INSET);
+        let center_panel_bounds = Bounds::new(
+            left_panel_bounds.origin.x + left_panel_bounds.size.width + PANEL_GAP,
+            content_bounds.origin.y,
+            (content_bounds.size.width
+                - left_panel_bounds.size.width
+                - right_panel_bounds.size.width
+                - PANEL_GAP * 2.0)
+                .max(0.0),
+            content_bounds.size.height,
+        );
 
-        let status_bounds = Bounds::new(
+        let left_inner = inset(left_panel_bounds, PANEL_PADDING);
+        let center_inner = inset(center_panel_bounds, PANEL_PADDING);
+        let right_inner = inset(right_panel_bounds, PANEL_PADDING);
+
+        let left_header_bounds = Bounds::new(
             left_inner.origin.x,
             left_inner.origin.y,
             left_inner.size.width,
-            STATUS_HEIGHT,
+            PANEL_HEADER_HEIGHT,
         );
-
-        let search_bounds = Bounds::new(
+        let left_list_bounds = Bounds::new(
             left_inner.origin.x,
-            status_bounds.origin.y + STATUS_HEIGHT + SECTION_GAP,
+            left_inner.origin.y + PANEL_HEADER_HEIGHT + 6.0,
             left_inner.size.width,
-            SEARCH_HEIGHT,
+            (left_inner.size.height - PANEL_HEADER_HEIGHT - 6.0).max(0.0),
         );
 
-        let remaining_height = left_inner.size.height
-            - STATUS_HEIGHT
-            - SEARCH_HEIGHT
-            - SECTION_GAP * 2.0;
-        let list_height = (remaining_height * 0.55).max(140.0).min(remaining_height.max(0.0));
-        let trajectory_height = (remaining_height - list_height - SECTION_GAP).max(0.0);
-
-        let list_top = search_bounds.origin.y + SEARCH_HEIGHT + SECTION_GAP;
-        let column_width = (left_inner.size.width - COLUMN_GAP) * 0.5;
-
-        let sessions_header_bounds = Bounds::new(
-            left_inner.origin.x,
-            list_top,
-            column_width.max(0.0),
-            LIST_HEADER_HEIGHT,
-        );
-        let events_header_bounds = Bounds::new(
-            left_inner.origin.x + column_width + COLUMN_GAP,
-            list_top,
-            column_width.max(0.0),
-            LIST_HEADER_HEIGHT,
-        );
-
-        let sessions_bounds = Bounds::new(
-            sessions_header_bounds.origin.x,
-            sessions_header_bounds.origin.y + LIST_HEADER_HEIGHT,
-            sessions_header_bounds.size.width,
-            (list_height - LIST_HEADER_HEIGHT).max(0.0),
-        );
-        let events_bounds = Bounds::new(
-            events_header_bounds.origin.x,
-            events_header_bounds.origin.y + LIST_HEADER_HEIGHT,
-            events_header_bounds.size.width,
-            (list_height - LIST_HEADER_HEIGHT).max(0.0),
-        );
-
-        let trajectory_header_bounds = Bounds::new(
-            left_inner.origin.x,
-            list_top + list_height + SECTION_GAP,
-            left_inner.size.width,
-            TRAJECTORY_HEADER_HEIGHT,
-        );
-        let trajectory_bounds = Bounds::new(
-            left_inner.origin.x,
-            trajectory_header_bounds.origin.y + TRAJECTORY_HEADER_HEIGHT,
-            left_inner.size.width,
-            (trajectory_height - TRAJECTORY_HEADER_HEIGHT).max(0.0),
-        );
-
-        let controls_bounds = Bounds::new(
-            right_inner.origin.x,
-            right_inner.origin.y,
-            right_inner.size.width,
-            CONTROL_HEIGHT,
-        );
-
-        let conversation_header_bounds = Bounds::new(
-            right_inner.origin.x,
-            controls_bounds.origin.y + CONTROL_HEIGHT + SECTION_GAP,
-            right_inner.size.width,
-            CONVERSATION_HEADER_HEIGHT,
+        let center_header_bounds = Bounds::new(
+            center_inner.origin.x,
+            center_inner.origin.y,
+            center_inner.size.width,
+            PANEL_HEADER_HEIGHT,
         );
 
         let editor_bounds = Bounds::new(
-            right_inner.origin.x,
-            right_inner.origin.y + right_inner.size.height - COMPOSER_HEIGHT,
-            right_inner.size.width,
+            center_inner.origin.x,
+            center_inner.origin.y + center_inner.size.height - COMPOSER_HEIGHT,
+            center_inner.size.width,
             COMPOSER_HEIGHT,
         );
 
-        let thread_top =
-            conversation_header_bounds.origin.y + CONVERSATION_HEADER_HEIGHT + SECTION_GAP;
         let thread_bounds = Bounds::new(
+            center_inner.origin.x,
+            center_inner.origin.y + PANEL_HEADER_HEIGHT + 6.0,
+            center_inner.size.width,
+            (editor_bounds.origin.y - center_inner.origin.y - PANEL_HEADER_HEIGHT - 12.0).max(0.0),
+        );
+
+        let right_header_bounds = Bounds::new(
             right_inner.origin.x,
-            thread_top,
+            right_inner.origin.y,
             right_inner.size.width,
-            (editor_bounds.origin.y - thread_top - SECTION_GAP).max(0.0),
+            PANEL_HEADER_HEIGHT,
+        );
+
+        let right_body_bounds = Bounds::new(
+            right_inner.origin.x,
+            right_inner.origin.y + PANEL_HEADER_HEIGHT + 6.0,
+            right_inner.size.width,
+            (right_inner.size.height - PANEL_HEADER_HEIGHT - 6.0).max(0.0),
         );
 
         Self {
-            header_bounds,
             left_panel_bounds,
+            center_panel_bounds,
             right_panel_bounds,
-            status_bounds,
-            search_bounds,
-            sessions_bounds,
-            events_bounds,
-            sessions_header_bounds,
-            events_header_bounds,
-            trajectory_header_bounds,
-            trajectory_bounds,
-            controls_bounds,
-            conversation_header_bounds,
+            command_bar_bounds,
+            left_header_bounds,
+            left_list_bounds,
+            center_header_bounds,
             thread_bounds,
             editor_bounds,
+            right_header_bounds,
+            right_body_bounds,
         }
     }
 }
@@ -843,7 +971,8 @@ fn inset(bounds: Bounds, padding: f32) -> Bounds {
 
 fn paint_panel(cx: &mut PaintContext, bounds: Bounds) {
     let panel = Quad::new(bounds)
-        .with_background(theme::bg::SURFACE)
-        .with_corner_radius(14.0);
+        .with_background(theme::bg::MUTED)
+        .with_border(theme::border::DEFAULT, 1.0)
+        .with_corner_radius(6.0);
     cx.scene.draw_quad(panel);
 }

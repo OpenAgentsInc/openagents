@@ -114,7 +114,7 @@ impl Component for DiffToolCall {
                 .with_border(theme::border::DEFAULT, 1.0),
         );
 
-        let header_height = 28.0;
+        let header_height = 32.0;
         let mut header = DiffHeader::new(&self.file_path)
             .additions(self.additions)
             .deletions(self.deletions)
@@ -135,7 +135,7 @@ impl Component for DiffToolCall {
 
         let content_y = bounds.origin.y + padding + header_height + theme::spacing::XS;
         let content_width = bounds.size.width - padding * 2.0;
-        let line_height = 18.0;
+        let line_height = 20.0;
         let (old_width, new_width) = diff_line_number_widths(&self.lines);
         let show_numbers = old_width > 0 || new_width > 0;
         let old_width = old_width.max(1);
@@ -178,7 +178,7 @@ impl Component for DiffToolCall {
                 format!("{} {}", prefix, line.content)
             };
             let mut text = Text::new(&display)
-                .font_size(theme::font_size::SM)
+                .font_size(theme::font_size::BASE)
                 .color(color);
             text.paint(
                 Bounds::new(

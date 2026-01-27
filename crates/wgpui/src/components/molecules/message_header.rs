@@ -64,7 +64,7 @@ impl Default for MessageHeader {
 impl Component for MessageHeader {
     fn paint(&mut self, bounds: Bounds, cx: &mut PaintContext) {
         let mut x = bounds.origin.x;
-        let marker_size = 20.0;
+        let marker_size = 24.0;
 
         let mut marker = EntryMarker::new(self.entry_type).size(marker_size);
         marker.paint(
@@ -74,7 +74,7 @@ impl Component for MessageHeader {
         x += marker_size + theme::spacing::SM;
 
         if let Some(author) = &self.author {
-            let font_size = theme::font_size::SM;
+            let font_size = theme::font_size::BASE;
             let text_y = bounds.origin.y + bounds.size.height * 0.5 - font_size * 0.55;
             let text_run = cx.text.layout_mono(
                 author,
@@ -102,7 +102,7 @@ impl Component for MessageHeader {
         }
 
         if let Some(ts) = &self.timestamp {
-            let font_size = theme::font_size::XS;
+            let font_size = theme::font_size::SM;
             let text_y = bounds.origin.y + bounds.size.height * 0.5 - font_size * 0.55;
             let text_run = cx
                 .text
@@ -125,7 +125,7 @@ impl Component for MessageHeader {
     }
 
     fn size_hint(&self) -> (Option<f32>, Option<f32>) {
-        (None, Some(24.0))
+        (None, Some(28.0))
     }
 }
 
