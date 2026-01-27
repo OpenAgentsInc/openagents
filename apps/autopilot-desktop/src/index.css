@@ -413,6 +413,17 @@ body {
   gap: 8px;
 }
 
+.panel-row--split {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.panel-row--split > .panel {
+  flex: 1;
+  min-height: 0;
+}
+
 .panel {
   padding: 8px 10px;
   border: 1px solid var(--line);
@@ -451,6 +462,10 @@ body {
   flex-direction: column;
   gap: 8px;
   min-height: 0;
+}
+
+.pane-body {
+  flex: 1;
 }
 
 .table {
@@ -579,6 +594,10 @@ body {
 
   .panel-row {
     grid-template-columns: 1fr;
+  }
+
+  .panel-row--split {
+    flex-direction: column;
   }
 
   .command-bar,
