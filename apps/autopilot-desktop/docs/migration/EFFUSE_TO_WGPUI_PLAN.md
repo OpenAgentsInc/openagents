@@ -193,7 +193,15 @@ Adopt the Zed/GPUI component model:
 
 Gate: Status dashboard + conversation + tool-call cards working in WGPUI.
 
-### Phase 4: Parity & Consolidation with `crates/autopilot` UI
+### Phase 4: Core Surfaces (Immediate-Mode Scaffolding)
+
+- Build out the first typed surfaces in WGPUI (status + session list + event log).
+- Keep the UI state in the `AppViewModel` entity graph and render directly each frame.
+- Use simple layout + panel primitives, without trying to match Effuse parity.
+
+Gate: desktop renders status, session list, and event log from live `autopilot_app` events.
+
+### Phase 4b: Parity & Consolidation with `crates/autopilot` UI
 
 - Move shared desktop surfaces into `crates/wgpui` or a shared UI crate.
 - Desktop binary becomes a thin host + theming + routing layer.
@@ -269,3 +277,5 @@ Effuse catalog -> WGPUI target
 - 2026-01-27: Reviewed Zed GPUI architecture (entities + Render/RenderOnce + contexts) and updated Phase 3 to follow that immediate-mode component model; clarified UITree/UiPatch as log + replay artifacts.
 - 2026-01-27: Phase 3 started: wired `apps/autopilot-desktop-wgpu` to `crates/autopilot_app`, added an immediate-mode `AppViewModel` + `DesktopRoot` component, and bridged app events into the Winit user-event loop for rendering.
 - 2026-01-27: Verified `cargo build -p autopilot-desktop-wgpu` after Phase 3 wiring.
+- 2026-01-27: Phase 4 completed (core surfaces): added session list + event log panels driven by the typed `AppViewModel`, with two-column layout and immediate-mode rendering.
+- 2026-01-27: Verified `cargo build -p autopilot-desktop-wgpu` after Phase 4 UI scaffolding.
