@@ -79,15 +79,15 @@ impl LlamaServerManager {
     /// Find llama-server binary in PATH or common locations
     pub fn find_binary() -> Option<PathBuf> {
         // First try `which llama-server`
-        if let Ok(output) = Command::new("which").arg("llama-server").output() {
-            if output.status.success() {
-                let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
-                if !path.is_empty() {
-                    let p = PathBuf::from(&path);
-                    if p.exists() {
-                        debug!("Found llama-server via PATH: {}", path);
-                        return Some(p);
-                    }
+        if let Ok(output) = Command::new("which").arg("llama-server").output()
+            && output.status.success()
+        {
+            let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if !path.is_empty() {
+                let p = PathBuf::from(&path);
+                if p.exists() {
+                    debug!("Found llama-server via PATH: {}", path);
+                    return Some(p);
                 }
             }
         }
@@ -183,11 +183,11 @@ impl LlamaServerManager {
 
         // Prefer 20b model over larger ones
         for p in &paths {
-            if let Some(name) = p.file_name().and_then(|n| n.to_str()) {
-                if name.contains("20b") {
-                    debug!("Discovered model (preferred 20b): {:?}", p);
-                    return Some(p.clone());
-                }
+            if let Some(name) = p.file_name().and_then(|n| n.to_str())
+                && name.contains("20b")
+            {
+                debug!("Discovered model (preferred 20b): {:?}", p);
+                return Some(p.clone());
             }
         }
 
@@ -253,7 +253,7 @@ impl LlamaServerManager {
             timeout
         );
 
-        let client = GptOssClient::with_base_url(&self.url())
+        let client = GptOssClient::with_base_url(self.url())
             .map_err(|e| ServerError::HealthCheckFailed(e.to_string()))?;
 
         loop {

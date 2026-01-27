@@ -101,10 +101,10 @@ impl LmRouter {
     /// Get the backend for a specific model.
     fn get_backend_for_model(&self, model: &str) -> Result<&Arc<dyn LmBackend>> {
         // Check explicit routing first
-        if let Some(backend_name) = self.model_routing.get(model) {
-            if let Some(backend) = self.backends.get(backend_name) {
-                return Ok(backend);
-            }
+        if let Some(backend_name) = self.model_routing.get(model)
+            && let Some(backend) = self.backends.get(backend_name)
+        {
+            return Ok(backend);
         }
 
         // Check if any backend supports this model
@@ -115,10 +115,10 @@ impl LmRouter {
         }
 
         // Fall back to default backend
-        if let Some(default_name) = &self.default_backend {
-            if let Some(backend) = self.backends.get(default_name) {
-                return Ok(backend);
-            }
+        if let Some(default_name) = &self.default_backend
+            && let Some(backend) = self.backends.get(default_name)
+        {
+            return Ok(backend);
         }
 
         Err(Error::BackendNotFound(model.to_string()))

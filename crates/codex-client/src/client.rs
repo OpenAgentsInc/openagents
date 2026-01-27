@@ -41,20 +41,11 @@ pub struct AppServerChannels {
     pub requests: mpsc::Receiver<AppServerRequest>,
 }
 
+#[derive(Default)]
 pub struct AppServerConfig {
     pub cwd: Option<PathBuf>,
     pub wire_log: Option<AppServerWireLog>,
     pub env: Vec<(String, String)>,
-}
-
-impl Default for AppServerConfig {
-    fn default() -> Self {
-        Self {
-            cwd: None,
-            wire_log: None,
-            env: Vec::new(),
-        }
-    }
 }
 
 #[derive(Clone)]
