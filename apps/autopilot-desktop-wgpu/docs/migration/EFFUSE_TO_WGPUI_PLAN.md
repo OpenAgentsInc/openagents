@@ -18,19 +18,19 @@ dropping the legacy UI contract entirely.
 
 ## Current State (grounded in repo)
 
-Effuse + Autopilot Desktop
-- UI entrypoint mounts `StatusDashboardComponent` via Effuse in
-  `apps/autopilot-desktop/src/main.ts`.
-- Effuse runtime lives in `apps/autopilot-desktop/src/effuse/` and includes:
-  - Component system (`StateCell`, `html`` templates)
-  - Hypermedia actions (`data-ez`)
-- UI catalog + component registry is in
-  `apps/autopilot-desktop/src/components/catalog.ts`.
-- Large set of HTML/CSS components in
-  `apps/autopilot-desktop/src/components/ai-elements/`.
-- Backend emits UI events over `ui-event` (see
+Legacy Effuse + Autopilot Desktop (removed)
+- The former UI entrypoint mounted `StatusDashboardComponent` via Effuse in
+  `apps/autopilot-desktop/src/main.ts` (deleted).
+- The Effuse runtime lived in `apps/autopilot-desktop/src/effuse/` (deleted),
+  including a component system (`StateCell`, `html`` templates) and hypermedia
+  actions (`data-ez`).
+- The UI catalog + component registry lived in
+  `apps/autopilot-desktop/src/components/catalog.ts` (deleted).
+- The HTML/CSS component set lived in
+  `apps/autopilot-desktop/src/components/ai-elements/` (deleted).
+- The backend emitted UI events over `ui-event` (see
   `apps/autopilot-desktop/src-tauri/src/agent/ui.rs` and
-  `apps/autopilot-desktop/src-tauri/src/contracts/ipc.rs`).
+  `apps/autopilot-desktop/src-tauri/src/contracts/ipc.rs`, both deleted).
 
 WGPUI elsewhere in repo
 - `crates/wgpui/` provides GPU UI primitives, layout, text rendering, a
@@ -236,7 +236,9 @@ If we drop Tauri packaging but still want the JS/Bun server, we can ship it as
 an interim sidecar or replace it outright. Viable paths:
 
 1) Bundle Bun + JS assets as a sidecar (fastest)
-   - Ship the `bun` binary and `apps/autopilot-desktop/ai-server/` with the app.
+   - Ship the `bun` binary and JS assets alongside the WGPUI host (for example
+     under `apps/autopilot-desktop-wgpu/sidecar/`), or reuse `crates/ai-server`
+     helpers to manage the bundle.
    - On first run, copy to app data dir and spawn `bun run server.ts`.
    - Manage ports, logs, lifecycle (start/stop with app), and codesigning.
 
@@ -466,3 +468,4 @@ Effuse catalog -> WGPUI target
 - 2026-01-27: Phase 3b continued: switched badge + command bar sizing to live text measurements for DPI-safe widths.
 - 2026-01-27: Updated migration/testability docs to reflect removal of legacy Tauri/Effuse sources.
 - 2026-01-27: Updated `SYNTHESIS_EXECUTION.md` to reflect the WGPUI desktop host and remove legacy Effuse UI patch references.
+- 2026-01-27: Updated plan current-state + Bun sidecar notes to remove references to deleted `apps/autopilot-desktop`.
