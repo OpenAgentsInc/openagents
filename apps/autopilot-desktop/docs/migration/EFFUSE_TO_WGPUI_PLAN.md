@@ -443,3 +443,6 @@ Effuse catalog -> WGPUI target
 - 2026-01-27: Phase 3b continued: converted session list + status section stacking to Taffy-based layout so rows are computed structurally instead of manual y offsets.
 - 2026-01-27: Phase 3b continued: added Zed-style flex helpers (`h_flex`/`v_flex`, flex/overflow conveniences) to WGPUI styled API.
 - 2026-01-27: Phase 4 continued: switched desktop host layout + input to logical sizes (scale-factor aware) so UI scales correctly on high-DPI displays.
+- 2026-01-27: Phase 5 started: removed legacy Tauri workspace members and updated repo docs to point to the WGPUI desktop host.
+- 2026-01-27: Added LayoutStyle `flex_row`/`flex_col` helpers and switched autopilot UI layout to use WGPUI layout helpers instead of direct Taffy imports.
+- 2026-01-27: Verified `cargo build -p autopilot-desktop-wgpu` after layout + DPI fixes.

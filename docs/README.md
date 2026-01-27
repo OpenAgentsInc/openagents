@@ -3,10 +3,10 @@
 This repo is centered on **Autopilot Desktop**. The links below organize the rest of
 the documentation so the root README can stay focused on the app.
 
-## Autopilot Desktop
+## Autopilot Desktop (WGPUI)
 
-* Desktop overview: `apps/autopilot-desktop/docs/README.md`
-* Distribution/build/signing: `apps/autopilot-desktop/docs/autopilot/DISTRIBUTION.md`
+* Desktop migration plan: `apps/autopilot-desktop/docs/migration/EFFUSE_TO_WGPUI_PLAN.md`
+* Testability spec: `apps/autopilot-desktop/docs/migration/TESTABILITY.md`
 
 ## Core references
 
