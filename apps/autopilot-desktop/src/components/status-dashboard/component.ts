@@ -25,6 +25,7 @@ import {
   Reasoning,
   ToolCall,
 } from "../ai-elements/index.js"
+import { Hotbar, HotbarItem } from "../ui/hotbar.js"
 
 type CodexDoctorResponse = {
   ok: boolean
@@ -124,6 +125,7 @@ type StatusState = {
   extraPaneOpen: boolean
   leftSidebarCollapsed: boolean
   rightSidebarCollapsed: boolean
+  storybookOpen: boolean
   fullAutoEnabled: boolean
   fullAutoThreadId: string | null
   fullAutoMessage: string
@@ -144,6 +146,7 @@ type StatusEvent =
   | { type: "ToggleLeftSidebar" }
   | { type: "ToggleRightSidebar" }
   | { type: "ToggleSidebars" }
+  | { type: "StorybookToggle"; isOpen: boolean }
   | { type: "SubmitMessage"; value: string }
   | { type: "RefreshWorkspaceStatus" }
   | { type: "RefreshSessions" }
@@ -1185,6 +1188,7 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
     extraPaneOpen: false,
     leftSidebarCollapsed: false,
     rightSidebarCollapsed: false,
+    storybookOpen: false,
     fullAutoEnabled: false,
     fullAutoThreadId: null,
     fullAutoMessage: "",
@@ -1247,6 +1251,11 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
       const extraPaneOpen = state.extraPaneOpen
       const leftSidebarCollapsed = state.leftSidebarCollapsed
       const rightSidebarCollapsed = state.rightSidebarCollapsed
+      const isMac =
+        typeof navigator !== "undefined" &&
+        /Mac|iPhone|iPad/.test(navigator.platform)
+      const modifierLabel = isMac ? "Cmd+" : "Ctrl+"
+      const storybookOpen = state.storybookOpen
       const canvasToggleLabel = extraPaneOpen ? "HIDE CANVAS" : "SHOW CANVAS"
       const fullAutoLabel = state.fullAutoEnabled
         ? state.fullAutoThreadId
@@ -1748,6 +1757,82 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
 
       const storybookHost = html`<div id="effuse-storybook-host" class="storybook-pane"></div>`
 
+      const hotbar = Hotbar({
+        children: html`
+          ${HotbarItem({
+            slot: 1,
+            label: "Sessions",
+            icon: "SESS",
+            shortcut: `${modifierLabel}1`,
+            active: !leftSidebarCollapsed,
+            dataAction: "hotbar-slot",
+          })}
+          ${HotbarItem({
+            slot: 2,
+            label: "New",
+            icon: "NEW",
+            shortcut: `${modifierLabel}2`,
+            dataAction: "hotbar-slot",
+          })}
+          ${HotbarItem({
+            slot: 3,
+            label: "Guidance",
+            icon: "GRID",
+            shortcut: `${modifierLabel}3`,
+            active: extraPaneOpen,
+            dataAction: "hotbar-slot",
+          })}
+          ${HotbarItem({
+            slot: 4,
+            label: "Storybook",
+            icon: "SB",
+            shortcut: `${modifierLabel}4`,
+            active: storybookOpen,
+            dataAction: "hotbar-slot",
+          })}
+          ${HotbarItem({
+            slot: 5,
+            label: "—",
+            icon: "--",
+            shortcut: `${modifierLabel}5`,
+            ghost: true,
+            disabled: true,
+          })}
+          ${HotbarItem({
+            slot: 6,
+            label: "—",
+            icon: "--",
+            shortcut: `${modifierLabel}6`,
+            ghost: true,
+            disabled: true,
+          })}
+          ${HotbarItem({
+            slot: 7,
+            label: "—",
+            icon: "--",
+            shortcut: `${modifierLabel}7`,
+            ghost: true,
+            disabled: true,
+          })}
+          ${HotbarItem({
+            slot: 8,
+            label: "Settings",
+            icon: "SET",
+            shortcut: `${modifierLabel}8`,
+            ghost: true,
+            disabled: true,
+          })}
+          ${HotbarItem({
+            slot: 9,
+            label: "Help",
+            icon: "HELP",
+            shortcut: `${modifierLabel}9`,
+            ghost: true,
+            disabled: true,
+          })}
+        `,
+      })
+
       const leftSidebar = leftSidebarCollapsed
         ? ""
         : html`
@@ -1939,6 +2024,7 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
 
             ${rightSidebar}
           </div>
+          ${hotbar}
         </div>
       `
     }),
@@ -2091,6 +2177,14 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
           ...state,
           leftSidebarCollapsed: shouldCollapse,
           rightSidebarCollapsed: shouldCollapse,
+        }))
+        return
+      }
+
+      if (event.type === "StorybookToggle") {
+        yield* ctx.state.update((state) => ({
+          ...state,
+          storybookOpen: event.isOpen,
         }))
         return
       }
@@ -3144,7 +3238,77 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
         }
       )
 
+      yield* ctx.dom.delegate(
+        ctx.container,
+        "[data-action=\"hotbar-slot\"]",
+        "click",
+        (_event, target) => {
+          const button = target.closest("[data-action=\"hotbar-slot\"]") as HTMLElement | null
+          const slot = Number(button?.getAttribute("data-hotbar-slot") ?? "")
+          if (!Number.isFinite(slot)) {
+            return
+          }
+          if (slot === 1) {
+            emit({ type: "ToggleLeftSidebar" })
+            return
+          }
+          if (slot === 2) {
+            emit({ type: "StartNewSession" })
+            return
+          }
+          if (slot === 3) {
+            emit({ type: "ToggleExtraPane" })
+            return
+          }
+          if (slot === 4) {
+            const isMac =
+              typeof navigator !== "undefined" &&
+              /Mac|iPhone|iPad/.test(navigator.platform)
+            window.dispatchEvent(
+              new KeyboardEvent("keydown", {
+                key: "4",
+                code: "Digit4",
+                metaKey: isMac,
+                ctrlKey: !isMac,
+                bubbles: true,
+              })
+            )
+          }
+        }
+      )
+
+      const handleStorybookToggle = (event: Event) => {
+        const detail = (event as CustomEvent<{ isOpen?: boolean }>).detail
+        if (typeof detail?.isOpen === "boolean") {
+          emit({ type: "StorybookToggle", isOpen: detail.isOpen })
+        }
+      }
+
+      window.addEventListener("storybook:toggle", handleStorybookToggle as EventListener)
+
       const handleKeydown = (event: KeyboardEvent) => {
+        if ((event.metaKey || event.ctrlKey) && event.code.startsWith("Digit")) {
+          const digit = Number(event.code.replace("Digit", ""))
+          if (Number.isFinite(digit) && digit >= 1 && digit <= 9) {
+            if (digit === 4) {
+              return
+            }
+            event.preventDefault()
+            if (digit === 1) {
+              emit({ type: "ToggleLeftSidebar" })
+              return
+            }
+            if (digit === 2) {
+              emit({ type: "StartNewSession" })
+              return
+            }
+            if (digit === 3) {
+              emit({ type: "ToggleExtraPane" })
+              return
+            }
+            return
+          }
+        }
         if (event.metaKey && event.code === "BracketLeft") {
           event.preventDefault()
           emit({ type: "ToggleLeftSidebar" })
@@ -3159,10 +3323,6 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
           event.preventDefault()
           emit({ type: "ToggleSidebars" })
           return
-        }
-        if (event.metaKey && event.code === "Digit3") {
-          event.preventDefault()
-          emit({ type: "ToggleExtraPane" })
         }
         if (event.key === "F3") {
           event.preventDefault()
@@ -3179,7 +3339,10 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
       window.addEventListener("keydown", handleKeydown)
 
       yield* Effect.addFinalizer(() =>
-        Effect.sync(() => window.removeEventListener("keydown", handleKeydown))
+        Effect.sync(() => {
+          window.removeEventListener("keydown", handleKeydown)
+          window.removeEventListener("storybook:toggle", handleStorybookToggle as EventListener)
+        })
       )
 
       let panState: {
