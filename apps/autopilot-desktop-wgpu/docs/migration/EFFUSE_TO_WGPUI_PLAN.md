@@ -462,3 +462,4 @@ Effuse catalog -> WGPUI target
 - 2026-01-27: Routed input events to scrollable left/right panels and verified `cargo test -p autopilot_ui`.
 - 2026-01-27: Phase 3b continued: sized status label/value columns from live text measurements to avoid overlap.
 - 2026-01-27: Verified `cargo test -p autopilot_ui` after status label sizing update.
+- 2026-01-27: Phase 5 completed: removed the legacy `apps/autopilot-desktop` (Tauri + Effuse) tree from the repo.
