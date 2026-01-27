@@ -815,7 +815,15 @@ fn build_status_rows(sections: Vec<StatusSectionData>) -> Vec<StatusRow> {
 }
 
 fn paint_status_sections(cx: &mut PaintContext, bounds: Bounds, sections: &[StatusSectionData]) {
-    let label_width = 110.0;
+    let mut label_width: f32 = 0.0;
+    for section in sections {
+        for line in &section.lines {
+            label_width = label_width.max(cx.text.measure(line.label, theme::font_size::BASE));
+        }
+    }
+    if label_width < 90.0 {
+        label_width = 90.0;
+    }
     let rows = build_status_rows(sections.to_vec());
     let heights: Vec<f32> = rows
         .iter()

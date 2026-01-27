@@ -460,3 +460,5 @@ Effuse catalog -> WGPUI target
 - 2026-01-27: Phase 3b continued: added scrollable session list + status panel using `ScrollView` with stable content sizing.
 - 2026-01-27: Added `ScrollView` setters to update content + content size without resetting scroll state.
 - 2026-01-27: Routed input events to scrollable left/right panels and verified `cargo test -p autopilot_ui`.
+- 2026-01-27: Phase 3b continued: sized status label/value columns from live text measurements to avoid overlap.
+- 2026-01-27: Verified `cargo test -p autopilot_ui` after status label sizing update.
