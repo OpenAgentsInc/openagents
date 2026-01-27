@@ -20,3 +20,5 @@ wgpui = { path = "../../crates/wgpui", default-features = false, features = ["de
 wgpu = { workspace = true }
 winit = { workspace = true }
 pollster = { workspace = true }
+futures = { workspace = true }
+autopilot_app = { path = "../../crates/autopilot_app" }

@@ -1156,6 +1156,8 @@ name = "autopilot-desktop-wgpu"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "autopilot_app",
+ "futures",
  "pollster 0.4.0",
  "tracing",
  "tracing-subscriber",
