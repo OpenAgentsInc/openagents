@@ -1030,3 +1030,44 @@ fn paint_panel(cx: &mut PaintContext, bounds: Bounds) {
         .with_corner_radius(6.0);
     cx.scene.draw_quad(panel);
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn approx_eq(a: f32, b: f32) {
+        assert!(
+            (a - b).abs() < 0.5,
+            "expected {a} ~= {b} (diff {})",
+            (a - b).abs()
+        );
+    }
+
+    #[test]
+    fn layout_panels_are_consistent() {
+        let bounds = Bounds::new(0.0, 0.0, 1200.0, 800.0);
+        let layout = Layout::new(bounds);
+
+        approx_eq(layout.left_panel_bounds.size.width, LEFT_PANEL_WIDTH);
+        approx_eq(layout.right_panel_bounds.size.width, RIGHT_PANEL_WIDTH);
+
+        let expected_center_width =
+            bounds.size.width - LEFT_PANEL_WIDTH - RIGHT_PANEL_WIDTH - PANEL_GAP * 2.0;
+        approx_eq(layout.center_panel_bounds.size.width, expected_center_width);
+
+        approx_eq(layout.command_bar_bounds.size.height, COMMAND_BAR_HEIGHT);
+        approx_eq(
+            layout.command_bar_bounds.origin.y,
+            bounds.size.height - COMMAND_BAR_HEIGHT,
+        );
+
+        assert!(
+            layout.right_body_bounds.origin.y
+                >= layout.right_header_bounds.origin.y + layout.right_header_bounds.size.height
+        );
+        assert!(
+            layout.left_header_bounds.origin.x
+                >= layout.left_panel_bounds.origin.x + PANEL_PADDING - 0.5
+        );
+    }
+}
