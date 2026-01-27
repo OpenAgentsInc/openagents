@@ -5710,6 +5710,7 @@ dependencies = [
  "anyhow",
  "chrono",
  "criterion 0.8.1",
+ "openagents-utils",
  "proptest",
  "rusqlite",
  "serde",
@@ -6983,6 +6984,7 @@ dependencies = [
  "hex",
  "nostr 0.1.0",
  "openagents-spark",
+ "openagents-utils",
  "rand 0.8.5",
  "rusqlite",
  "serde",
@@ -7838,6 +7840,9 @@ dependencies = [
 [[package]]
 name = "openagents-utils"
 version = "0.1.0"
+dependencies = [
+ "rand 0.8.5",
+]
 
 [[package]]
 name = "openai-harmony"

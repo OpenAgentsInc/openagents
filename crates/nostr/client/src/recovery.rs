@@ -3,7 +3,6 @@
 //! Provides circuit breaker pattern, exponential backoff with jitter, health checks,
 //! and graceful degradation for robust production deployments.
 
-use rand::Rng;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
@@ -167,75 +166,7 @@ impl CircuitBreaker {
     }
 }
 
-/// Exponential backoff calculator with jitter
-pub struct ExponentialBackoff {
-    /// Base delay for first retry
-    base_delay: Duration,
-    /// Maximum delay cap
-    max_delay: Duration,
-    /// Current attempt number (0-indexed)
-    attempt: u32,
-    /// Maximum attempts (0 = infinite)
-    max_attempts: u32,
-}
-
-impl Default for ExponentialBackoff {
-    fn default() -> Self {
-        Self::new(
-            Duration::from_secs(1),
-            Duration::from_secs(60),
-            0, // Infinite
-        )
-    }
-}
-
-impl ExponentialBackoff {
-    /// Create a new exponential backoff calculator
-    pub fn new(base_delay: Duration, max_delay: Duration, max_attempts: u32) -> Self {
-        Self {
-            base_delay,
-            max_delay,
-            attempt: 0,
-            max_attempts,
-        }
-    }
-
-    /// Get next delay with exponential backoff and jitter
-    ///
-    /// Uses full jitter: delay = random(0, min(max_delay, base * 2^attempt))
-    pub fn next_delay(&mut self) -> Option<Duration> {
-        // Check if max attempts exceeded
-        if self.max_attempts > 0 && self.attempt >= self.max_attempts {
-            return None;
-        }
-
-        // Calculate exponential delay: base * 2^attempt
-        let exp_delay = self.base_delay.as_millis() as u64 * 2_u64.pow(self.attempt);
-        let capped_delay = exp_delay.min(self.max_delay.as_millis() as u64);
-
-        // Add full jitter: random(0, delay)
-        let mut rng = rand::thread_rng();
-        let jittered = rng.gen_range(0..=capped_delay);
-
-        self.attempt += 1;
-        Some(Duration::from_millis(jittered))
-    }
-
-    /// Reset backoff to initial state
-    pub fn reset(&mut self) {
-        self.attempt = 0;
-    }
-
-    /// Get current attempt number
-    pub fn attempt(&self) -> u32 {
-        self.attempt
-    }
-
-    /// Check if max attempts reached
-    pub fn is_exhausted(&self) -> bool {
-        self.max_attempts > 0 && self.attempt >= self.max_attempts
-    }
-}
+pub use openagents_utils::backoff::ExponentialBackoff;
 
 /// Health check metrics for a relay connection
 #[derive(Debug, Clone)]

@@ -1768,7 +1768,15 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
             <aside class="w-[240px] min-h-0 shrink-0 flex flex-col border-l border-[color:var(--line)] bg-[color:var(--panel-alt)] max-[900px]:w-full max-[900px]:max-h-[240px] max-[900px]:border-l-0 max-[900px]:border-t max-[900px]:border-[color:var(--line)]">
               <div class="flex items-center justify-between gap-2 border-b border-[color:var(--line)] px-2.5 py-2 text-[11px] uppercase tracking-[0.12em] text-[color:var(--yellow)]">
                 <span>Status</span>
-                <span class="${statusClass}">${status.label}</span>
+                <div class="flex items-center gap-2">
+                  <button
+                    class="border border-[color:var(--line)] bg-[color:var(--panel)] text-[color:var(--ink)] px-2 py-0.5 text-[10px] uppercase tracking-[0.12em] whitespace-nowrap"
+                    data-action="toggle-canvas"
+                  >
+                    ${canvasToggleLabel}
+                  </button>
+                  <span class="${statusClass}">${status.label}</span>
+                </div>
               </div>
               <div class="flex-1 min-h-0 overflow-auto flex flex-col">
                 <section class="flex flex-col gap-2 border-b border-[color:var(--line)] px-2.5 py-2 min-h-0">
@@ -1873,12 +1881,6 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
                         ${fullAutoDisableDisabled ? "disabled" : ""}
                       >
                         DISABLE
-                      </button>
-                      <button
-                        class="border border-[color:var(--line)] bg-[color:var(--panel-alt)] text-[color:var(--ink)] px-2 py-1 text-[10px] uppercase tracking-[0.1em]"
-                        data-action="toggle-canvas"
-                      >
-                        ${canvasToggleLabel}
                       </button>
                     </div>
                     <div class="text-[11px] text-[color:var(--muted)]">

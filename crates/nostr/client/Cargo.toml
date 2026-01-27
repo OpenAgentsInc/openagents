@@ -34,6 +34,7 @@ rusqlite = { version = "0.31", features = ["bundled"] }
 
 # Random (for tests)
 rand = "0.8"
+openagents-utils = { path = "../../openagents-utils" }
 hex.workspace = true
 
 [dev-dependencies]
