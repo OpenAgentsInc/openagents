@@ -14,7 +14,7 @@ use wgpui::components::Text;
 use wgpui::input::InputEvent;
 use wgpui::{
     Bounds, Component, EventResult, LayoutEngine, LayoutStyle, PaintContext, Point, Quad, ScrollView,
-    Size, theme, length, px,
+    Size, text::FontStyle, theme, length, px,
 };
 
 const PANEL_PADDING: f32 = 12.0;
@@ -182,7 +182,9 @@ impl Component for MinimalRoot {
             .paint(subtitle_bounds, cx);
 
         let button_font = theme::font_size::SM;
-        let label_width = cx.text.measure(self.button_label, button_font);
+        let label_width =
+            cx.text
+                .measure_styled_mono(self.button_label, button_font, FontStyle::bold());
         let button_padding_x = 16.0;
         let button_width = (label_width + button_padding_x * 2.0).max(96.0);
         let button_height = 36.0;
@@ -200,9 +202,12 @@ impl Component for MinimalRoot {
         );
 
         let label_height = button_font * 1.4;
+        let baseline_y = button_bounds.origin.y
+            + (button_bounds.size.height - label_height) / 2.0
+            + button_font;
         let label_bounds = Bounds::new(
             button_bounds.origin.x + (button_bounds.size.width - label_width) / 2.0,
-            button_bounds.origin.y + (button_bounds.size.height - label_height) / 2.0,
+            baseline_y - button_font,
             label_width,
             label_height,
         );
