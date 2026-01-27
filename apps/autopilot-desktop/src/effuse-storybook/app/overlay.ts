@@ -44,10 +44,10 @@ export const StorybookOverlay = {
       const shell = document.createElement("div")
       shell.id = "sb-overlay"
       shell.className =
-        "fixed inset-0 z-[99999] hidden items-center justify-center bg-background/90"
+        "absolute inset-0 z-[20] hidden bg-background"
       
       const layoutHtml = renderTemplate(html`
-          <div class="grid h-[95vh] w-[95vw] grid-cols-[260px_1fr_300px] grid-rows-[44px_1fr] overflow-hidden border border-border bg-background text-foreground">
+          <div class="grid h-full w-full grid-cols-[260px_1fr_300px] grid-rows-[44px_minmax(0,1fr)] overflow-hidden border border-border bg-background text-foreground">
             <header class="col-span-3 flex items-center justify-between border-b border-border bg-background px-3">
               <div class="text-xs font-semibold uppercase text-accent">Effuse Storybook</div>
               <button class="text-xs text-muted-foreground hover:text-foreground" data-ez="sb.close" type="button">✕</button>
@@ -58,9 +58,7 @@ export const StorybookOverlay = {
             <main class="relative flex flex-col overflow-hidden bg-background">
               <div id="sb-canvas-root" class="h-full w-full overflow-auto bg-background p-3"></div>
             </main>
-            <aside class="border-l border-border bg-background">
-              <div class="p-2 text-[11px] text-muted-foreground">Panels (Controls/Actions) coming soon</div>
-            </aside>
+            <aside class="border-l border-border bg-background"></aside>
           </div>
         `)
       
@@ -98,12 +96,19 @@ export const StorybookOverlay = {
 
       const updateVisibility = Effect.gen(function* () {
         const state = yield* service.get
+        const host = container.parentElement
+        const shouldToggleHost = host?.id === "effuse-storybook-host"
+        const mainPane = shouldToggleHost ? host?.parentElement : null
         if (state.isOpen) {
           shell.classList.remove("hidden")
           shell.classList.add("flex")
           shell.removeAttribute("inert")
           shell.style.pointerEvents = ""
           shell.setAttribute("aria-hidden", "false")
+          if (shouldToggleHost) {
+            host?.classList.add("storybook-pane--active")
+          }
+          mainPane?.classList.add("main-pane--storybook")
         } else {
           closeUiOverlays(shell)
           shell.classList.add("hidden")
@@ -111,6 +116,10 @@ export const StorybookOverlay = {
           shell.setAttribute("inert", "")
           shell.style.pointerEvents = "none"
           shell.setAttribute("aria-hidden", "true")
+          if (shouldToggleHost) {
+            host?.classList.remove("storybook-pane--active")
+          }
+          mainPane?.classList.remove("main-pane--storybook")
         }
       })
 

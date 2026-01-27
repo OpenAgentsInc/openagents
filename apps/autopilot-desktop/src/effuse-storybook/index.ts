@@ -19,22 +19,44 @@ export const setupStorybookListener = () => {
     // Create Mount Point
     const container = document.createElement("div")
     container.id = "effuse-storybook-root"
-    document.body.appendChild(container)
+    container.className = "storybook-root"
+
+    const ensureContainer = () => {
+      const host = document.getElementById("effuse-storybook-host")
+      if (host) {
+        if (container.parentElement !== host) {
+          host.appendChild(container)
+        }
+        return
+      }
+      if (!document.body.contains(container)) {
+        document.body.appendChild(container)
+      }
+    }
+
+    ensureContainer()
+
+    const observer = new MutationObserver(() => {
+      ensureContainer()
+    })
+
+    observer.observe(document.body, { childList: true, subtree: true })
 
     // Mount Overlay
     const overlay = yield* StorybookOverlay.mount(container)
 
-    // Listen for F3, Escape, or Ctrl+Shift+S
+    // Listen for Cmd+4, Escape, or Ctrl+Shift+S
     const handleKeydown = (e: KeyboardEvent) => {
       // DEBUG: Log ALL keydowns
       // console.log("[Storybook] Keydown:", e.key, e.code, e.ctrlKey, e.shiftKey)
 
-      if (e.key === "F3" || (e.ctrlKey && e.shiftKey && e.code === "KeyS")) {
+      if ((e.metaKey && e.code === "Digit4") || (e.ctrlKey && e.shiftKey && e.code === "KeyS")) {
         console.log("[Storybook] Toggle triggered")
         e.preventDefault()
         e.stopPropagation() // Stop other listeners
         Effect.runFork(
           service.toggle.pipe(
+            Effect.tap(() => Effect.sync(() => ensureContainer())),
             Effect.flatMap(() => overlay.refresh),
             Effect.catchAll(err => Effect.sync(() => console.error("[Storybook] Toggle failed:", err)))
           )
@@ -66,6 +88,7 @@ export const setupStorybookListener = () => {
     yield* Effect.addFinalizer(() =>
       Effect.sync(() => {
         window.removeEventListener("keydown", handleKeydown, true)
+        observer.disconnect()
         container.remove()
       })
     )
@@ -82,5 +105,5 @@ export const setupStorybookListener = () => {
   )
 
   Effect.runFork(runnable)
-  console.log("[Storybook] Listener active. Press F3 to toggle.")
+  console.log("[Storybook] Listener active. Press Cmd+4 to toggle.")
 }
