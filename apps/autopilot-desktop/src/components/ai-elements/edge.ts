@@ -6,6 +6,7 @@ export type EdgeProps = {
   readonly dashed?: boolean
   readonly animated?: boolean
   readonly stroke?: string
+  readonly className?: string
 }
 
 export const Edge = ({
@@ -13,13 +14,14 @@ export const Edge = ({
   dashed = false,
   animated = false,
   stroke = "var(--ring)",
+  className = "",
 }: EdgeProps): TemplateResult => html`
-  <svg class="pointer-events-none absolute inset-0 h-full w-full">
+  <svg class="pointer-events-none absolute inset-0 h-full w-full ${className}">
     <path
       d="${path}"
       fill="none"
       stroke="${stroke}"
-      stroke-width="1.5"
+      stroke-width="1"
       ${dashed ? "stroke-dasharray=\"5 5\"" : ""}
     ></path>
     ${animated
