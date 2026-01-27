@@ -1,9 +1,14 @@
 import { html } from "../../effuse/template/html.js"
 import type { TemplateResult } from "../../effuse/template/types.js"
 import type { CodexPlan, CodexPlanStep } from "../../types/codex.js"
-import { renderMarkdown, renderInlineMarkdown } from "./markdown.js"
+import { Button } from "../ui/button.js"
+import { Card, CardAction, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "../ui/card.js"
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "../ui/collapsible.js"
+import { Shimmer } from "./shimmer.js"
+import { renderInlineMarkdown, renderMarkdown } from "./markdown.js"
+import { cx, type AIChildren } from "./utils.js"
 
-export type PlanProps = Pick<CodexPlan, "explanation" | "steps"> & {
+export type PlanLegacyProps = Pick<CodexPlan, "explanation" | "steps"> & {
   readonly isStreaming?: boolean
   readonly open?: boolean
 }
@@ -38,12 +43,7 @@ const getHeaderStatus = (steps: CodexPlanStep[]) => {
   return "Pending"
 }
 
-export const Plan = ({
-  explanation,
-  steps,
-  isStreaming = false,
-  open,
-}: PlanProps): TemplateResult => {
+const PlanSummary = ({ explanation, steps, isStreaming = false, open }: PlanLegacyProps): TemplateResult => {
   const headerStatus = getHeaderStatus(steps)
   return html`
     <details
@@ -53,21 +53,15 @@ export const Plan = ({
       <summary class="flex cursor-pointer list-none items-center justify-between text-[10px] text-muted-foreground">
         <span class="flex items-center gap-2">
           <span
-            class="inline-flex h-2 w-2 rounded-full ${
-              isStreaming ? "bg-accent" : "bg-muted-foreground"
-            }"
+            class="inline-flex h-2 w-2 rounded-full ${isStreaming ? "bg-accent" : "bg-muted-foreground"}"
           ></span>
           ${renderInlineMarkdown(`Plan (${steps.length})`)}
         </span>
-        <span class="text-[10px] font-semibold text-muted-foreground">
-          ${headerStatus}
-        </span>
+        <span class="text-[10px] font-semibold text-muted-foreground">${headerStatus}</span>
       </summary>
       ${
         explanation
-          ? html`<div class="mt-2 text-xs text-muted-foreground">
-              ${renderMarkdown(explanation)}
-            </div>`
+          ? html`<div class="mt-2 text-xs text-muted-foreground">${renderMarkdown(explanation)}</div>`
           : ""
       }
       ${
@@ -75,26 +69,104 @@ export const Plan = ({
           ? html`<ol class="mt-3 space-y-2">
               ${steps.map(
                 (step, index) => html`<li class="flex items-start gap-3">
-                  <span class="mt-[2px] w-5 text-[10px] text-muted-foreground"
-                    >${index + 1}.</span
-                  >
+                  <span class="mt-[2px] w-5 text-[10px] text-muted-foreground">${index + 1}.</span>
                   <div class="flex flex-1 items-start gap-2">
-                    <span
-                      class="rounded border px-1.5 py-[2px] text-[10px] ${statusTone(step.status)}"
-                    >
+                    <span class="rounded border px-1.5 py-[2px] text-[10px] ${statusTone(step.status)}">
                       ${formatStatus(step.status)}
                     </span>
-                    <div class="flex-1 text-foreground">
-                      ${renderMarkdown(step.step)}
-                    </div>
+                    <div class="flex-1 text-foreground">${renderMarkdown(step.step)}</div>
                   </div>
                 </li>`
               )}
             </ol>`
-          : html`<div class="mt-2 text-xs text-muted-foreground">
-              No plan steps yet.
-            </div>`
+          : html`<div class="mt-2 text-xs text-muted-foreground">No plan steps yet.</div>`
       }
     </details>
   `
 }
+
+export type PlanProps = (PlanLegacyProps & { readonly children?: never }) | {
+  readonly className?: string
+  readonly isStreaming?: boolean
+  readonly children?: AIChildren
+}
+
+export const Plan = (props: PlanProps): TemplateResult => {
+  if ("steps" in props) {
+    return PlanSummary(props)
+  }
+
+  const { className, children } = props
+  return Collapsible({
+    children: Card({ className: cx("shadow-none", className), children })
+  })
+}
+
+export type PlanHeaderProps = {
+  readonly className?: string
+  readonly children?: AIChildren
+}
+
+export const PlanHeader = ({ className, children }: PlanHeaderProps): TemplateResult =>
+  CardHeader({ className: cx("flex items-start justify-between", className), children })
+
+export type PlanTitleProps = {
+  readonly className?: string
+  readonly children: string
+  readonly isStreaming?: boolean
+}
+
+export const PlanTitle = ({ className, children, isStreaming = false }: PlanTitleProps): TemplateResult =>
+  CardTitle({ className, children: isStreaming ? Shimmer({ children }) : children })
+
+export type PlanDescriptionProps = {
+  readonly className?: string
+  readonly children: string
+  readonly isStreaming?: boolean
+}
+
+export const PlanDescription = ({ className, children, isStreaming = false }: PlanDescriptionProps): TemplateResult =>
+  CardDescription({
+    className: cx("text-balance", className),
+    children: isStreaming ? Shimmer({ children }) : children,
+  })
+
+export type PlanActionProps = {
+  readonly className?: string
+  readonly children?: AIChildren
+}
+
+export const PlanAction = ({ className, children }: PlanActionProps): TemplateResult =>
+  CardAction({ className, children })
+
+export type PlanContentProps = {
+  readonly className?: string
+  readonly children?: AIChildren
+}
+
+export const PlanContent = ({ className, children }: PlanContentProps): TemplateResult =>
+  CollapsibleContent({ children: CardContent({ className, children }) })
+
+export type PlanFooterProps = {
+  readonly className?: string
+  readonly children?: AIChildren
+}
+
+export const PlanFooter = ({ className, children }: PlanFooterProps): TemplateResult =>
+  CardFooter({ className, children })
+
+export type PlanTriggerProps = {
+  readonly className?: string
+  readonly children?: AIChildren
+}
+
+export const PlanTrigger = ({ className, children }: PlanTriggerProps): TemplateResult =>
+  CollapsibleTrigger({
+    children: Button({
+      className: cx("size-8", className),
+      size: "icon",
+      type: "button",
+      variant: "ghost",
+      children: children ?? html`<span class="size-4">toggle</span><span class="sr-only">Toggle plan</span>`,
+    }),
+  })

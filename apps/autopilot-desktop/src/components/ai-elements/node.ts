@@ -1,101 +1,79 @@
 import { html } from "../../effuse/template/html.js"
 import type { TemplateResult } from "../../effuse/template/types.js"
-
-export type NodeTone = "default" | "accent" | "muted"
+import { Card, CardAction, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "../ui/card.js"
+import { cx, type AIChildren } from "./utils.js"
 
 export type NodeProps = {
-  readonly children: TemplateResult | readonly TemplateResult[]
-  readonly className?: string
-  readonly tone?: NodeTone
-  readonly handles?: {
+  readonly handles: {
     readonly target?: boolean
     readonly source?: boolean
     readonly top?: boolean
     readonly bottom?: boolean
   }
+  readonly className?: string
+  readonly children?: AIChildren
 }
 
-const toneClasses: Record<NodeTone, string> = {
-  default: "border-border bg-card text-card-foreground",
-  accent: "border-accent/60 bg-card text-card-foreground",
-  muted: "border-border/60 bg-card text-card-foreground",
-}
+export const Node = ({ handles, className, children }: NodeProps): TemplateResult => {
+  const handleMarkup = html`
+    ${handles?.target ? html`<span class="node-handle node-handle--target" aria-hidden="true"></span>` : ""}
+    ${handles?.source ? html`<span class="node-handle node-handle--source" aria-hidden="true"></span>` : ""}
+    ${handles?.top ? html`<span class="node-handle node-handle--top" aria-hidden="true"></span>` : ""}
+    ${handles?.bottom ? html`<span class="node-handle node-handle--bottom" aria-hidden="true"></span>` : ""}
+  `
 
-export const Node = ({
-  children,
-  className = "",
-  tone = "default",
-  handles,
-}: NodeProps): TemplateResult => html`
-  <article
-    class="node-container relative size-full h-auto w-sm flex flex-col gap-0 rounded-md border p-0 shadow-sm ${toneClasses[tone]} ${className}"
-  >
-    ${handles?.target
-      ? html`<span class="node-handle node-handle--target" aria-hidden="true"></span>`
-      : ""}
-    ${handles?.source
-      ? html`<span class="node-handle node-handle--source" aria-hidden="true"></span>`
-      : ""}
-    ${handles?.top
-      ? html`<span class="node-handle node-handle--top" aria-hidden="true"></span>`
-      : ""}
-    ${handles?.bottom
-      ? html`<span class="node-handle node-handle--bottom" aria-hidden="true"></span>`
-      : ""}
-    ${children}
-  </article>
-`
+  return Card({
+    className: cx("node-container relative size-full h-auto w-sm gap-0 rounded-md p-0", className),
+    children: html`${handleMarkup}${children ?? ""}`,
+  })
+}
 
 export type NodeHeaderProps = {
-  readonly children: TemplateResult | readonly TemplateResult[]
+  readonly className?: string
+  readonly children?: AIChildren
 }
 
-export const NodeHeader = ({ children }: NodeHeaderProps): TemplateResult => html`
-  <header class="grid auto-rows-min grid-rows-[auto_auto] grid-cols-[1fr_auto] items-start gap-0.5 rounded-t-md border-b border-border bg-secondary p-3">
-    ${children}
-  </header>
-`
+export const NodeHeader = ({ className, children }: NodeHeaderProps): TemplateResult =>
+  CardHeader({ className: cx("gap-0.5 rounded-t-md border-b bg-secondary p-3!", className), children })
 
 export type NodeTitleProps = {
-  readonly text: string
+  readonly className?: string
+  readonly children?: AIChildren
+  readonly text?: string
 }
 
-export const NodeTitle = ({ text }: NodeTitleProps): TemplateResult => html`
-  <div class="leading-none font-semibold">${text}</div>
-`
+export const NodeTitle = ({ className, children, text }: NodeTitleProps): TemplateResult =>
+  CardTitle({ className, children: children ?? text ?? "" })
 
 export type NodeDescriptionProps = {
-  readonly text: string
+  readonly className?: string
+  readonly children?: AIChildren
+  readonly text?: string
 }
 
-export const NodeDescription = ({ text }: NodeDescriptionProps): TemplateResult => html`
-  <div class="text-sm text-muted-foreground">${text}</div>
-`
+export const NodeDescription = ({ className, children, text }: NodeDescriptionProps): TemplateResult =>
+  CardDescription({ className, children: children ?? text ?? "" })
 
 export type NodeActionProps = {
-  readonly children: TemplateResult | readonly TemplateResult[]
+  readonly className?: string
+  readonly children?: AIChildren
 }
 
-export const NodeAction = ({ children }: NodeActionProps): TemplateResult => html`
-  <div class="col-start-2 row-span-2 row-start-1 self-start justify-self-end">
-    ${children}
-  </div>
-`
+export const NodeAction = ({ className, children }: NodeActionProps): TemplateResult =>
+  CardAction({ className, children })
 
 export type NodeContentProps = {
-  readonly children: TemplateResult | readonly TemplateResult[]
+  readonly className?: string
+  readonly children?: AIChildren
 }
 
-export const NodeContent = ({ children }: NodeContentProps): TemplateResult => html`
-  <div class="p-3">${children}</div>
-`
+export const NodeContent = ({ className, children }: NodeContentProps): TemplateResult =>
+  CardContent({ className: cx("p-3", className), children })
 
 export type NodeFooterProps = {
-  readonly children: TemplateResult | readonly TemplateResult[]
+  readonly className?: string
+  readonly children?: AIChildren
 }
 
-export const NodeFooter = ({ children }: NodeFooterProps): TemplateResult => html`
-  <footer class="flex items-center rounded-b-md border-t border-border bg-secondary p-3">
-    ${children}
-  </footer>
-`
+export const NodeFooter = ({ className, children }: NodeFooterProps): TemplateResult =>
+  CardFooter({ className: cx("rounded-b-md border-t bg-secondary p-3!", className), children })
