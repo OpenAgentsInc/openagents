@@ -6,6 +6,14 @@ pub fn div() -> Div {
     Div::new()
 }
 
+pub fn h_flex() -> Div {
+    div().flex().flex_row().items_center()
+}
+
+pub fn v_flex() -> Div {
+    div().flex().flex_col()
+}
+
 pub fn text(content: impl Into<String>) -> Text {
     Text::new(content)
 }

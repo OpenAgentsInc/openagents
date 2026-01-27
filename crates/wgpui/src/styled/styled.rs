@@ -1,6 +1,6 @@
 use taffy::prelude::{
     AlignItems, Dimension, Display, FlexDirection, JustifyContent, LengthPercentage,
-    LengthPercentageAuto, Rect,
+    LengthPercentageAuto, Overflow, Rect,
 };
 
 use crate::Hsla;
@@ -53,6 +53,28 @@ pub trait Styled: Sized {
 
     fn flex_col(mut self) -> Self {
         self.style().layout.flex_direction = FlexDirection::Column;
+        self
+    }
+
+    fn flex_grow(mut self, value: f32) -> Self {
+        self.style().layout.flex_grow = value;
+        self
+    }
+
+    fn flex_shrink(mut self, value: f32) -> Self {
+        self.style().layout.flex_shrink = value;
+        self
+    }
+
+    fn flex_1(mut self) -> Self {
+        self.style().layout.flex_grow = 1.0;
+        self.style().layout.flex_shrink = 1.0;
+        self
+    }
+
+    fn flex_none(mut self) -> Self {
+        self.style().layout.flex_grow = 0.0;
+        self.style().layout.flex_shrink = 0.0;
         self
     }
 
@@ -120,6 +142,16 @@ pub trait Styled: Sized {
         self
     }
 
+    fn min_w_0(mut self) -> Self {
+        self.style().layout.min_width = Dimension::length(0.0);
+        self
+    }
+
+    fn min_h_0(mut self) -> Self {
+        self.style().layout.min_height = Dimension::length(0.0);
+        self
+    }
+
     fn p(mut self, value: f32) -> Self {
         let pad = LengthPercentage::length(value);
         self.style().layout.padding = Rect {
@@ -171,6 +203,34 @@ pub trait Styled: Sized {
         let margin_ref = &mut self.style().layout.margin;
         margin_ref.top = margin;
         margin_ref.bottom = margin;
+        self
+    }
+
+    fn overflow_hidden(mut self) -> Self {
+        self.style().layout.overflow = taffy::Point {
+            x: Overflow::Hidden,
+            y: Overflow::Hidden,
+        };
+        self
+    }
+
+    fn overflow_x_hidden(mut self) -> Self {
+        self.style().layout.overflow.x = Overflow::Hidden;
+        self
+    }
+
+    fn overflow_y_hidden(mut self) -> Self {
+        self.style().layout.overflow.y = Overflow::Hidden;
+        self
+    }
+
+    fn overflow_x_auto(mut self) -> Self {
+        self.style().layout.overflow.x = Overflow::Scroll;
+        self
+    }
+
+    fn overflow_y_auto(mut self) -> Self {
+        self.style().layout.overflow.y = Overflow::Scroll;
         self
     }
 }
