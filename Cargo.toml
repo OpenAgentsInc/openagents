@@ -25,6 +25,7 @@ members = [
     "crates/manatap",
     "crates/nostr/core",
     "crates/nostr/client",
+    "crates/openagents-cli",
     "crates/openagents-utils",
     "crates/onyx",
     "crates/pylon",
