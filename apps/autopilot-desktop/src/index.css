@@ -571,21 +571,35 @@ body {
 
 .node-handle {
   position: absolute;
-  top: 50%;
   width: 10px;
   height: 10px;
   border-radius: 9999px;
   border: 1px solid var(--ring);
   background: var(--bg);
-  transform: translateY(-50%);
 }
 
 .node-handle--target {
-  left: -6px;
+  top: 50%;
+  left: -5px;
+  transform: translateY(-50%);
 }
 
 .node-handle--source {
-  right: -6px;
+  top: 50%;
+  right: -5px;
+  transform: translateY(-50%);
+}
+
+.node-handle--top {
+  top: -5px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.node-handle--bottom {
+  bottom: -5px;
+  left: 50%;
+  transform: translateX(-50%);
 }
 
 .canvas-flow-node {

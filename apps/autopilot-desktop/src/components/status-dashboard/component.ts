@@ -159,20 +159,27 @@ const MAX_TOOL_OUTPUT_LENGTH = 8000
 const CANVAS_SCALE_MIN = 0.4
 const CANVAS_SCALE_MAX = 2.5
 const CANVAS_PADDING = 48
+const HANDLE_OFFSET = 5
 
-const FULL_AUTO_NODES = {
+const CANVAS_NODES = {
   summary: { x: 80, y: 80, width: 240, height: 180 },
   decision: { x: 420, y: 80, width: 240, height: 180 },
   guardrail: { x: 80, y: 360, width: 240, height: 200 },
   action: { x: 420, y: 360, width: 240, height: 170 },
+  context: { x: 820, y: 60, width: 260, height: 190 },
+  guidance: { x: 820, y: 280, width: 260, height: 190 },
+  policy: { x: 820, y: 500, width: 260, height: 190 },
+  dispatch: { x: 820, y: 720, width: 260, height: 170 },
+  market: { x: 1140, y: 280, width: 260, height: 190 },
+  optimizer: { x: 1140, y: 500, width: 260, height: 190 },
 } as const
 
-const FULL_AUTO_BOUNDS = (() => {
-  const nodes = Object.values(FULL_AUTO_NODES)
-  const minX = Math.min(...nodes.map((node) => node.x))
-  const minY = Math.min(...nodes.map((node) => node.y))
-  const maxX = Math.max(...nodes.map((node) => node.x + node.width))
-  const maxY = Math.max(...nodes.map((node) => node.y + node.height))
+const CANVAS_BOUNDS = (() => {
+  const nodes = Object.values(CANVAS_NODES)
+  const minX = Math.min(...nodes.map((node) => node.x - HANDLE_OFFSET))
+  const minY = Math.min(...nodes.map((node) => node.y - HANDLE_OFFSET))
+  const maxX = Math.max(...nodes.map((node) => node.x + node.width + HANDLE_OFFSET))
+  const maxY = Math.max(...nodes.map((node) => node.y + node.height + HANDLE_OFFSET))
   return {
     minX,
     minY,
@@ -227,12 +234,12 @@ const centerCanvasInContainer = (container: HTMLElement) => {
   }
   const scaleFit = Math.min(
     1,
-    (rect.width - CANVAS_PADDING * 2) / FULL_AUTO_BOUNDS.width,
-    (rect.height - CANVAS_PADDING * 2) / FULL_AUTO_BOUNDS.height
+    (rect.width - CANVAS_PADDING * 2) / CANVAS_BOUNDS.width,
+    (rect.height - CANVAS_PADDING * 2) / CANVAS_BOUNDS.height
   )
   const scale = clampNumber(scaleFit, CANVAS_SCALE_MIN, CANVAS_SCALE_MAX)
-  const tx = (rect.width - FULL_AUTO_BOUNDS.width * scale) / 2 - FULL_AUTO_BOUNDS.minX * scale
-  const ty = (rect.height - FULL_AUTO_BOUNDS.height * scale) / 2 - FULL_AUTO_BOUNDS.minY * scale
+  const tx = (rect.width - CANVAS_BOUNDS.width * scale) / 2 - CANVAS_BOUNDS.minX * scale
+  const ty = (rect.height - CANVAS_BOUNDS.height * scale) / 2 - CANVAS_BOUNDS.minY * scale
   writeCanvasTransform(canvas, { scale, tx, ty })
 }
 
@@ -1292,10 +1299,16 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
             description: "Choose a session to view its timeline.",
           })
 
-      const summaryNode = FULL_AUTO_NODES.summary
-      const decisionNode = FULL_AUTO_NODES.decision
-      const guardrailNode = FULL_AUTO_NODES.guardrail
-      const actionNode = FULL_AUTO_NODES.action
+      const summaryNode = CANVAS_NODES.summary
+      const decisionNode = CANVAS_NODES.decision
+      const guardrailNode = CANVAS_NODES.guardrail
+      const actionNode = CANVAS_NODES.action
+      const contextNode = CANVAS_NODES.context
+      const guidanceNode = CANVAS_NODES.guidance
+      const policyNode = CANVAS_NODES.policy
+      const dispatchNode = CANVAS_NODES.dispatch
+      const marketNode = CANVAS_NODES.market
+      const optimizerNode = CANVAS_NODES.optimizer
 
       const bezierHorizontal = (
         sx: number,
@@ -1309,25 +1322,86 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
         return `M ${sx} ${sy} C ${sx + curve} ${sy} ${ex - curve} ${ey} ${ex} ${ey}`
       }
 
+      const bezierVertical = (
+        sx: number,
+        sy: number,
+        ex: number,
+        ey: number,
+        offset = 60
+      ) => {
+        const direction = ey === sy ? 1 : Math.sign(ey - sy)
+        const curve = direction * offset
+        return `M ${sx} ${sy} C ${sx} ${sy + curve} ${ex} ${ey - curve} ${ex} ${ey}`
+      }
+
+      const leftX = (node: typeof summaryNode) => node.x
+      const rightX = (node: typeof summaryNode) => node.x + node.width
+      const topY = (node: typeof summaryNode) => node.y
+      const bottomY = (node: typeof summaryNode) => node.y + node.height
+      const midX = (node: typeof summaryNode) => node.x + node.width / 2
+      const midY = (node: typeof summaryNode) => node.y + node.height / 2
+
       const edgeSummaryDecision = bezierHorizontal(
-        summaryNode.x + summaryNode.width,
-        summaryNode.y + summaryNode.height / 2,
-        decisionNode.x,
-        decisionNode.y + decisionNode.height / 2
+        rightX(summaryNode),
+        midY(summaryNode),
+        leftX(decisionNode),
+        midY(decisionNode)
       )
 
       const edgeDecisionGuardrails = bezierHorizontal(
-        decisionNode.x + decisionNode.width,
-        decisionNode.y + decisionNode.height / 2,
-        guardrailNode.x,
-        guardrailNode.y + guardrailNode.height / 2
+        rightX(decisionNode),
+        midY(decisionNode),
+        leftX(guardrailNode),
+        midY(guardrailNode)
       )
 
       const edgeGuardrailsAction = bezierHorizontal(
-        guardrailNode.x + guardrailNode.width,
-        guardrailNode.y + guardrailNode.height / 2,
-        actionNode.x,
-        actionNode.y + actionNode.height / 2
+        rightX(guardrailNode),
+        midY(guardrailNode),
+        leftX(actionNode),
+        midY(actionNode)
+      )
+
+      const edgeContextGuidance = bezierVertical(
+        midX(contextNode),
+        bottomY(contextNode),
+        midX(guidanceNode),
+        topY(guidanceNode)
+      )
+
+      const edgeGuidancePolicy = bezierVertical(
+        midX(guidanceNode),
+        bottomY(guidanceNode),
+        midX(policyNode),
+        topY(policyNode)
+      )
+
+      const edgePolicyDispatch = bezierVertical(
+        midX(policyNode),
+        bottomY(policyNode),
+        midX(dispatchNode),
+        topY(dispatchNode)
+      )
+
+      const edgeGuidanceMarket = bezierHorizontal(
+        rightX(guidanceNode),
+        midY(guidanceNode),
+        leftX(marketNode),
+        midY(marketNode)
+      )
+
+      const edgeDispatchOptimizer = bezierHorizontal(
+        rightX(dispatchNode),
+        midY(dispatchNode),
+        leftX(optimizerNode),
+        midY(optimizerNode)
+      )
+
+      const edgeOptimizerGuidance = bezierVertical(
+        midX(optimizerNode),
+        topY(optimizerNode),
+        midX(guidanceNode),
+        bottomY(guidanceNode)
       )
 
       const canvasDemo = Canvas({
@@ -1338,6 +1412,25 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
           ${Edge({ path: edgeSummaryDecision })}
           ${Edge({ path: edgeDecisionGuardrails, dashed: true })}
           ${Edge({ path: edgeGuardrailsAction, animated: true })}
+          ${Edge({ path: edgeContextGuidance })}
+          ${Edge({ path: edgeGuidancePolicy })}
+          ${Edge({ path: edgePolicyDispatch })}
+          ${Edge({ path: edgeGuidanceMarket, dashed: true })}
+          ${Edge({ path: edgeDispatchOptimizer, dashed: true })}
+          ${Edge({ path: edgeOptimizerGuidance, dashed: true })}
+
+          <div
+            class="text-[10px] uppercase tracking-[0.2em] text-[color:var(--muted)]"
+            style="position: absolute; left: 80px; top: 32px;"
+          >
+            Current (v1)
+          </div>
+          <div
+            class="text-[10px] uppercase tracking-[0.2em] text-[color:var(--muted)]"
+            style="position: absolute; left: 820px; top: 24px;"
+          >
+            Full System
+          </div>
 
           <div
             class="canvas-flow-node"
@@ -1357,6 +1450,7 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
                 })}
                 ${NodeContent({
                   children: html`
+                    <div class="text-[11px] text-muted-foreground">Condense turn events into structured state snapshot.</div>
                     <div class="text-[11px] text-muted-foreground">last_turn_status, turn_error</div>
                     <div class="text-[11px] text-muted-foreground">turn_plan, diff_summary</div>
                     <div class="text-[11px] text-muted-foreground">token_usage</div>
@@ -1385,6 +1479,7 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
                 })}
                 ${NodeContent({
                   children: html`
+                    <div class="text-[11px] text-muted-foreground">Predict next action from typed turn summary.</div>
                     <div class="text-[11px] text-muted-foreground">action, next_input</div>
                     <div class="text-[11px] text-muted-foreground">reason, confidence</div>
                   `,
@@ -1412,6 +1507,7 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
                 })}
                 ${NodeContent({
                   children: html`
+                    <div class="text-[11px] text-muted-foreground">Enforce hard limits, override unsafe decisions.</div>
                     <div class="text-[11px] text-muted-foreground">turn_failed → stop</div>
                     <div class="text-[11px] text-muted-foreground">turn_interrupted → pause</div>
                     <div class="text-[11px] text-muted-foreground">max_turns / max_tokens → stop</div>
@@ -1439,9 +1535,154 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
                 })}
                 ${NodeContent({
                   children: html`
+                    <div class="text-[11px] text-muted-foreground">Start next turn or pause/stop loop.</div>
                     <div class="text-[11px] text-muted-foreground">continue → send next_input or fallback prompt</div>
                     <div class="text-[11px] text-muted-foreground">pause → wait for user</div>
                     <div class="text-[11px] text-muted-foreground">stop → end run</div>
+                  `,
+                })}
+              `,
+            })}
+          </div>
+
+          <div
+            class="canvas-flow-node"
+            style="left: ${contextNode.x}px; top: ${contextNode.y}px; width: ${contextNode.width}px;"
+          >
+            ${Node({
+              handles: { bottom: true },
+              children: html`
+                ${NodeHeader({
+                  children: html`
+                    ${NodeTitle({ text: "Context + Goals" })}
+                    ${NodeDescription({ text: "Run state + intent" })}
+                    ${NodeAction({ children: html`<span class="text-xs text-muted-foreground">Inputs</span>` })}
+                  `,
+                })}
+                ${NodeContent({
+                  children: html`
+                    <div class="text-[11px] text-muted-foreground">Aggregate goal, environment, budgets, permissions.</div>
+                    <div class="text-[11px] text-muted-foreground">turn summary + constraints + history</div>
+                  `,
+                })}
+              `,
+            })}
+          </div>
+
+          <div
+            class="canvas-flow-node"
+            style="left: ${guidanceNode.x}px; top: ${guidanceNode.y}px; width: ${guidanceNode.width}px;"
+          >
+            ${Node({
+              handles: { top: true, bottom: true, source: true },
+              children: html`
+                ${NodeHeader({
+                  children: html`
+                    ${NodeTitle({ text: "Guidance Root" })}
+                    ${NodeDescription({ text: "Module stack" })}
+                    ${NodeAction({ children: html`<span class="text-xs text-muted-foreground">DSPy</span>` })}
+                  `,
+                })}
+                ${NodeContent({
+                  children: html`
+                    <div class="text-[11px] text-muted-foreground">Compose policies into a single guidance decision.</div>
+                    <div class="text-[11px] text-muted-foreground">BudgetPolicy, StopDecider, NextActionSelector</div>
+                  `,
+                })}
+              `,
+            })}
+          </div>
+
+          <div
+            class="canvas-flow-node"
+            style="left: ${policyNode.x}px; top: ${policyNode.y}px; width: ${policyNode.width}px;"
+          >
+            ${Node({
+              handles: { top: true, bottom: true },
+              children: html`
+                ${NodeHeader({
+                  children: html`
+                    ${NodeTitle({ text: "Policy Gates" })}
+                    ${NodeDescription({ text: "Hard constraints" })}
+                    ${NodeAction({ children: html`<span class="text-xs text-muted-foreground">Deterministic</span>` })}
+                  `,
+                })}
+                ${NodeContent({
+                  children: html`
+                    <div class="text-[11px] text-muted-foreground">Apply deterministic safety and budget constraints.</div>
+                    <div class="text-[11px] text-muted-foreground">override unsafe or low-confidence outputs</div>
+                  `,
+                })}
+              `,
+            })}
+          </div>
+
+          <div
+            class="canvas-flow-node"
+            style="left: ${dispatchNode.x}px; top: ${dispatchNode.y}px; width: ${dispatchNode.width}px;"
+          >
+            ${Node({
+              handles: { top: true, source: true },
+              children: html`
+                ${NodeHeader({
+                  children: html`
+                    ${NodeTitle({ text: "Dispatch + Record" })}
+                    ${NodeDescription({ text: "Next turn" })}
+                    ${NodeAction({ children: html`<span class="text-xs text-muted-foreground">Effects</span>` })}
+                  `,
+                })}
+                ${NodeContent({
+                  children: html`
+                    <div class="text-[11px] text-muted-foreground">Trigger next turn and emit decision record.</div>
+                    <div class="text-[11px] text-muted-foreground">continue | pause | stop | review</div>
+                  `,
+                })}
+              `,
+            })}
+          </div>
+
+          <div
+            class="canvas-flow-node"
+            style="left: ${marketNode.x}px; top: ${marketNode.y}px; width: ${marketNode.width}px;"
+          >
+            ${Node({
+              handles: { target: true },
+              children: html`
+                ${NodeHeader({
+                  children: html`
+                    ${NodeTitle({ text: "Market Jobs" })}
+                    ${NodeDescription({ text: "NIP-90" })}
+                    ${NodeAction({ children: html`<span class="text-xs text-muted-foreground">Procure</span>` })}
+                  `,
+                })}
+                ${NodeContent({
+                  children: html`
+                    <div class="text-[11px] text-muted-foreground">Purchase verifiable micro-jobs when needed.</div>
+                    <div class="text-[11px] text-muted-foreground">sandbox runs, indexing, analysis</div>
+                  `,
+                })}
+              `,
+            })}
+          </div>
+
+          <div
+            class="canvas-flow-node"
+            style="left: ${optimizerNode.x}px; top: ${optimizerNode.y}px; width: ${optimizerNode.width}px;"
+          >
+            ${Node({
+              handles: { target: true, top: true },
+              children: html`
+                ${NodeHeader({
+                  children: html`
+                    ${NodeTitle({ text: "Optimizer + Bundles" })}
+                    ${NodeDescription({ text: "DSPy + DSRS" })}
+                    ${NodeAction({ children: html`<span class="text-xs text-muted-foreground">Compile</span>` })}
+                  `,
+                })}
+                ${NodeContent({
+                  children: html`
+                    <div class="text-[11px] text-muted-foreground">Compile better modules from eval outcomes.</div>
+                    <div class="text-[11px] text-muted-foreground">scorecards, manifests, promotion gates</div>
                   `,
                 })}
               `,
