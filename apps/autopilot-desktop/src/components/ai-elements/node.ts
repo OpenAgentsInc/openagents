@@ -10,6 +10,8 @@ export type NodeProps = {
   readonly handles?: {
     readonly target?: boolean
     readonly source?: boolean
+    readonly top?: boolean
+    readonly bottom?: boolean
   }
 }
 
@@ -33,6 +35,12 @@ export const Node = ({
       : ""}
     ${handles?.source
       ? html`<span class="node-handle node-handle--source" aria-hidden="true"></span>`
+      : ""}
+    ${handles?.top
+      ? html`<span class="node-handle node-handle--top" aria-hidden="true"></span>`
+      : ""}
+    ${handles?.bottom
+      ? html`<span class="node-handle node-handle--bottom" aria-hidden="true"></span>`
       : ""}
     ${children}
   </article>

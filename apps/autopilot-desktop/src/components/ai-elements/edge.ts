@@ -22,6 +22,7 @@ export const Edge = ({
       fill="none"
       stroke="${stroke}"
       stroke-width="1"
+      stroke-linecap="round"
       ${dashed ? "stroke-dasharray=\"5 5\"" : ""}
     ></path>
     ${animated
