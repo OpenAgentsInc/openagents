@@ -9,7 +9,12 @@ export type EdgeProps = {
   readonly className?: string
 }
 
-export const Edge = ({
+type EdgeComponent = ((props: EdgeProps) => TemplateResult) & {
+  Temporary: (props: EdgeProps) => TemplateResult
+  Animated: (props: EdgeProps) => TemplateResult
+}
+
+const renderEdge = ({
   path,
   dashed = false,
   animated = false,
@@ -34,3 +39,8 @@ export const Edge = ({
       : ""}
   </svg>
 `
+
+export const Edge = ((props: EdgeProps) => renderEdge(props)) as EdgeComponent
+
+Edge.Temporary = (props: EdgeProps) => renderEdge({ ...props, dashed: true })
+Edge.Animated = (props: EdgeProps) => renderEdge({ ...props, animated: true })
