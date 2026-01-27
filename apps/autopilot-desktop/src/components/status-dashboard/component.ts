@@ -1238,6 +1238,7 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
       const sessionCount = state.sessions.length
       const sessionBusy = state.busy.sessions || state.busy.newSession
       const extraPaneOpen = state.extraPaneOpen
+      const canvasToggleLabel = extraPaneOpen ? "HIDE CANVAS" : "SHOW CANVAS"
       const fullAutoLabel = state.fullAutoEnabled
         ? state.fullAutoThreadId
           ? "RUNNING"
@@ -1872,6 +1873,12 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
                         ${fullAutoDisableDisabled ? "disabled" : ""}
                       >
                         DISABLE
+                      </button>
+                      <button
+                        class="border border-[color:var(--line)] bg-[color:var(--panel-alt)] text-[color:var(--ink)] px-2 py-1 text-[10px] uppercase tracking-[0.1em]"
+                        data-action="toggle-canvas"
+                      >
+                        ${canvasToggleLabel}
                       </button>
                     </div>
                     <div class="text-[11px] text-[color:var(--muted)]">
@@ -3003,6 +3010,13 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
         "[data-action=\"full-auto-disable\"]",
         "click",
         () => emit({ type: "SetFullAuto", enabled: false })
+      )
+
+      yield* ctx.dom.delegate(
+        ctx.container,
+        "[data-action=\"toggle-canvas\"]",
+        "click",
+        () => emit({ type: "ToggleExtraPane" })
       )
 
       yield* ctx.dom.delegate(
