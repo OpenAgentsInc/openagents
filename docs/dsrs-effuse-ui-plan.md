@@ -1,5 +1,9 @@
 # Plan: Signature-Driven Dynamic UI for Effuse
 
+**Legacy note (2026-01-27):** The Effuse/Tauri `apps/autopilot-desktop` tree has been removed.
+This plan is retained for historical context only; new UI work targets WGPUI
+(`apps/autopilot-desktop-wgpu` + `crates/autopilot_ui`).
+
 ## Goals
 
 - Dynamically generate UI from DSPy/dsrs signatures.
