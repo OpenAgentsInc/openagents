@@ -28,6 +28,7 @@ anyhow.workspace = true
 
 # Logging
 tracing.workspace = true
+openagents-utils = { path = "../openagents-utils" }
 
 [dev-dependencies]
 criterion = "0.8.1"

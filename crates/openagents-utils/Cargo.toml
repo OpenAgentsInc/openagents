@@ -8,6 +8,7 @@ publish.workspace = true
 description = "Shared utility helpers for OpenAgents"
 
 [dependencies]
+rand = { version = "0.8", default-features = false, features = ["std", "std_rng"] }
 
 [lints]
 workspace = true

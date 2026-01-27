@@ -3,6 +3,7 @@
 //! Provides retry mechanisms for transient database errors like lock contention.
 
 use rusqlite::{Error as SqliteError, ErrorCode};
+use openagents_utils::backoff::{ExponentialBackoff, Jitter};
 use std::thread;
 use std::time::Duration;
 use tracing::{debug, warn};
@@ -12,9 +13,6 @@ const MAX_RETRIES: u32 = 3;
 
 /// Initial retry delay in milliseconds
 const INITIAL_DELAY_MS: u64 = 100;
-
-/// Backoff multiplier for exponential backoff
-const BACKOFF_MULTIPLIER: u64 = 2;
 
 /// Maximum backoff delay in milliseconds
 const MAX_BACKOFF_MS: u64 = 5000;
@@ -51,7 +49,12 @@ pub fn with_retry<F, T>(mut operation: F) -> rusqlite::Result<T>
 where
     F: FnMut() -> rusqlite::Result<T>,
 {
-    let mut delay_ms = INITIAL_DELAY_MS;
+    let mut backoff = ExponentialBackoff::new(
+        Duration::from_millis(INITIAL_DELAY_MS),
+        Duration::from_millis(MAX_BACKOFF_MS),
+        MAX_RETRIES.saturating_sub(1),
+    )
+    .with_jitter(Jitter::None);
 
     for attempt in 0..MAX_RETRIES {
         match operation() {
@@ -62,26 +65,23 @@ where
                 return Ok(result);
             }
             Err(e) if is_transient_error(&e) => {
-                if attempt < MAX_RETRIES - 1 {
-                    warn!(
-                        "Transient database error (attempt {}/{}): {}. Retrying in {}ms",
-                        attempt + 1,
-                        MAX_RETRIES,
-                        e,
-                        delay_ms
-                    );
-
-                    thread::sleep(Duration::from_millis(delay_ms));
-
-                    // Exponential backoff with cap
-                    delay_ms = (delay_ms * BACKOFF_MULTIPLIER).min(MAX_BACKOFF_MS);
-                } else {
+                let Some(delay) = backoff.next_delay() else {
                     warn!(
                         "Max retries ({}) exceeded for transient error: {}",
                         MAX_RETRIES, e
                     );
                     return Err(e);
-                }
+                };
+
+                warn!(
+                    "Transient database error (attempt {}/{}): {}. Retrying in {}ms",
+                    attempt + 1,
+                    MAX_RETRIES,
+                    e,
+                    delay.as_millis()
+                );
+
+                thread::sleep(delay);
             }
             Err(e) => {
                 // Permanent error - don't retry
