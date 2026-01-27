@@ -242,3 +242,5 @@ Effuse catalog -> WGPUI target
 - 2026-01-27: Updated `.cargo/config.toml` so `cargo autopilot` runs the new native WGPUI desktop binary.
 - 2026-01-27: Phase 1 started: added `crates/autopilot_app` with core app/event types, workspace/session handles, and broadcast-based event streaming; added a unit test for initial workspace events; registered the crate in the workspace.
 - 2026-01-27: Verified `cargo build -p autopilot_app`.
+- 2026-01-27: Phase 2 started: added `crates/autopilot_ui_contract` with UITree/UiElement/UiPatch types, dynamic value + visibility expressions, JSON patch parsing, and patch apply helpers plus unit tests; registered the crate in the workspace.
+- 2026-01-27: Verified `cargo build -p autopilot_ui_contract`.
