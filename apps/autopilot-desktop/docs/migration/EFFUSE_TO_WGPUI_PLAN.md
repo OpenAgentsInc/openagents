@@ -310,6 +310,22 @@ Then `autopilot_app` emits:
 
 Gate: reducer unit tests apply patch sequences -> expected UITree.
 
+### Phase 2b: Testability Spine (Zed Parity)
+
+Establish the test harnesses and services before layout conversion so the UI
+rewrite is safe and replayable:
+
+- Define service traits + `Services::test_defaults()` in `autopilot_app`
+  (Clock, IdGen, Fs, Proc, Git, Http, Model, Store, UiSink).
+- Add headless scenario runner for `autopilot_app` (UserAction -> AppEvent).
+- Implement event recorder + replay loader (JSONL).
+- Add UITree/UiPatch reducer tests + invariants for contract stability.
+- Add WGPUI layout snapshot tests using `crates/wgpui/src/testing` and the
+  component registry to assert bounds for key panels.
+
+Gate: contract tests + headless scenarios + layout snapshots run in CI without
+network access.
+
 ### Phase 3: WGPUI UI Runtime
 
 Adopt the Zed/GPUI component model:
@@ -405,6 +421,10 @@ Effuse catalog -> WGPUI target
   - Connect workspace, start session, send message, view tool calls/diffs.
   - Adjutant UI patches render correctly in the WGPUI canvas.
 - Legacy Effuse UI removed or gated behind a feature flag.
+- Testability gates met (from `TESTABILITY.md`):
+  - Contract correctness (patch apply + invariants + replay load).
+  - App core determinism (headless scenarios offline).
+  - UI mapping regression (replay -> UI runtime without panics).
 
 ## Next Steps
 
@@ -435,3 +455,4 @@ Effuse catalog -> WGPUI target
 - 2026-01-27: Verified `cargo build -p autopilot-desktop-wgpu` after Phase 4c UI + input wiring.
 - 2026-01-27: Reviewed Zed GPUI layout approach (element tree + Taffy, `h_flex`/`v_flex`, `StyledExt`) and expanded the migration plan with a Zed-style layout adoption path, including WGPUI parity helpers and layout conversion gates.
 - 2026-01-27: Re-read `apps/autopilot-desktop/docs/migration/TESTABILITY.md` and aligned the plan with testability requirements (service traits, deterministic UI tests, log/replay).
+- 2026-01-27: Added a dedicated Phase 2b testability spine (headless scenarios, replay, layout snapshots) and expanded acceptance gates for contract correctness + determinism.
