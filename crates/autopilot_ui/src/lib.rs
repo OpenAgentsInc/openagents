@@ -13,8 +13,8 @@ use wgpui::components::sections::{MessageEditor, ThreadView};
 use wgpui::components::Text;
 use wgpui::input::InputEvent;
 use wgpui::{
-    Bounds, Component, EventResult, LayoutEngine, LayoutStyle, PaintContext, Point, Quad, Size,
-    theme, length, px,
+    Bounds, Component, EventResult, LayoutEngine, LayoutStyle, PaintContext, Point, Quad, ScrollView,
+    Size, theme, length, px,
 };
 
 const PANEL_PADDING: f32 = 12.0;
@@ -94,8 +94,10 @@ pub struct DesktopRoot {
     center_header: Text,
     right_header: Text,
     session_rows: Vec<SessionRow>,
+    session_scroll: ScrollView,
     thread_view: ThreadView,
     message_editor: MessageEditor,
+    status_scroll: ScrollView,
     pending_actions: Rc<RefCell<Vec<UiAction>>>,
     send_handler: Option<Box<dyn FnMut(UserAction)>>,
     cursor_position: Point,
@@ -122,8 +124,10 @@ impl DesktopRoot {
                 .bold()
                 .color(theme::accent::PRIMARY),
             session_rows: Vec::new(),
+            session_scroll: ScrollView::new().show_scrollbar(true).scrollbar_width(6.0),
             thread_view: ThreadView::new().auto_scroll(true).item_spacing(12.0),
             message_editor,
+            status_scroll: ScrollView::new().show_scrollbar(true).scrollbar_width(6.0),
             pending_actions,
             send_handler: None,
             cursor_position: Point::ZERO,
@@ -158,6 +162,20 @@ impl DesktopRoot {
         let mut handled = false;
 
         if let InputEvent::Scroll { .. } = event {
+            if layout.left_list_bounds.contains(self.cursor_position) {
+                handled |= matches!(
+                    self.session_scroll
+                        .event(event, layout.left_list_bounds, &mut self.event_context),
+                    EventResult::Handled
+                );
+            }
+            if layout.right_body_bounds.contains(self.cursor_position) {
+                handled |= matches!(
+                    self.status_scroll
+                        .event(event, layout.right_body_bounds, &mut self.event_context),
+                    EventResult::Handled
+                );
+            }
             if layout.thread_bounds.contains(self.cursor_position) {
                 handled |= matches!(
                     self.thread_view
@@ -165,10 +183,31 @@ impl DesktopRoot {
                     EventResult::Handled
                 );
             }
+            if layout.editor_bounds.contains(self.cursor_position) {
+                handled |= matches!(
+                    self.message_editor
+                        .event(event, layout.editor_bounds, &mut self.event_context),
+                    EventResult::Handled
+                );
+            }
             self.flush_ui_actions();
             return handled;
         }
 
+        if layout.left_list_bounds.contains(self.cursor_position) {
+            handled |= matches!(
+                self.session_scroll
+                    .event(event, layout.left_list_bounds, &mut self.event_context),
+                EventResult::Handled
+            );
+        }
+        if layout.right_body_bounds.contains(self.cursor_position) {
+            handled |= matches!(
+                self.status_scroll
+                    .event(event, layout.right_body_bounds, &mut self.event_context),
+                EventResult::Handled
+            );
+        }
         handled |= matches!(
             self.thread_view
                 .event(event, layout.thread_bounds, &mut self.event_context),
@@ -480,7 +519,14 @@ impl Component for DesktopRoot {
         self.left_header.paint(layout.left_header_bounds, cx);
         paint_session_badges(cx, layout.left_header_bounds, self.session_rows.len());
         paint_divider(cx, layout.left_header_bounds);
-        paint_session_list(cx, &self.session_rows, layout.left_list_bounds);
+        let session_height = session_list_height(&self.session_rows);
+        self.session_scroll
+            .set_content(SessionListView::new(self.session_rows.clone()));
+        self.session_scroll.set_content_size(Size::new(
+            layout.left_list_bounds.size.width,
+            session_height.max(layout.left_list_bounds.size.height),
+        ));
+        self.session_scroll.paint(layout.left_list_bounds, cx);
 
         self.center_header.paint(layout.center_header_bounds, cx);
         paint_divider(cx, layout.center_header_bounds);
@@ -492,7 +538,15 @@ impl Component for DesktopRoot {
         self.right_header.paint(layout.right_header_bounds, cx);
         paint_status_pills(cx, layout.right_header_bounds);
         paint_divider(cx, layout.right_header_bounds);
-        paint_status_sections(cx, layout.right_body_bounds, self.status_sections());
+        let status_sections = self.status_sections();
+        let status_height = status_sections_height(&status_sections);
+        self.status_scroll
+            .set_content(StatusPanelView::new(status_sections));
+        self.status_scroll.set_content_size(Size::new(
+            layout.right_body_bounds.size.width,
+            status_height.max(layout.right_body_bounds.size.height),
+        ));
+        self.status_scroll.paint(layout.right_body_bounds, cx);
 
         paint_command_bar(cx, layout.command_bar_bounds);
     }
@@ -634,6 +688,26 @@ fn paint_session_list(cx: &mut PaintContext, rows: &[SessionRow], bounds: Bounds
     }
 }
 
+fn session_list_height(rows: &[SessionRow]) -> f32 {
+    rows.len() as f32 * SESSION_ROW_HEIGHT
+}
+
+struct SessionListView {
+    rows: Vec<SessionRow>,
+}
+
+impl SessionListView {
+    fn new(rows: Vec<SessionRow>) -> Self {
+        Self { rows }
+    }
+}
+
+impl Component for SessionListView {
+    fn paint(&mut self, bounds: Bounds, cx: &mut PaintContext) {
+        paint_session_list(cx, &self.rows, bounds);
+    }
+}
+
 fn paint_divider(cx: &mut PaintContext, bounds: Bounds) {
     let y = bounds.origin.y + bounds.size.height + 4.0;
     cx.scene.draw_quad(
@@ -740,9 +814,9 @@ fn build_status_rows(sections: Vec<StatusSectionData>) -> Vec<StatusRow> {
     rows
 }
 
-fn paint_status_sections(cx: &mut PaintContext, bounds: Bounds, sections: Vec<StatusSectionData>) {
+fn paint_status_sections(cx: &mut PaintContext, bounds: Bounds, sections: &[StatusSectionData]) {
     let label_width = 110.0;
-    let rows = build_status_rows(sections);
+    let rows = build_status_rows(sections.to_vec());
     let heights: Vec<f32> = rows
         .iter()
         .map(|row| match row {
@@ -809,6 +883,34 @@ fn paint_status_sections(cx: &mut PaintContext, bounds: Bounds, sections: Vec<St
             }
             StatusRow::Spacer { .. } => {}
         }
+    }
+}
+
+fn status_sections_height(sections: &[StatusSectionData]) -> f32 {
+    let rows = build_status_rows(sections.to_vec());
+    rows.iter()
+        .map(|row| match row {
+            StatusRow::Header { .. } => STATUS_LINE_HEIGHT,
+            StatusRow::Line { .. } => STATUS_LINE_HEIGHT,
+            StatusRow::Actions { .. } => 18.0,
+            StatusRow::Spacer { height } => *height,
+        })
+        .sum()
+}
+
+struct StatusPanelView {
+    sections: Vec<StatusSectionData>,
+}
+
+impl StatusPanelView {
+    fn new(sections: Vec<StatusSectionData>) -> Self {
+        Self { sections }
+    }
+}
+
+impl Component for StatusPanelView {
+    fn paint(&mut self, bounds: Bounds, cx: &mut PaintContext) {
+        paint_status_sections(cx, bounds, &self.sections);
     }
 }
 

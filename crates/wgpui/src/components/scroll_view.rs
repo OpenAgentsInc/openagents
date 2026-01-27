@@ -54,9 +54,17 @@ impl ScrollView {
         self
     }
 
+    pub fn set_content<C: Component + 'static>(&mut self, component: C) {
+        self.content = Some(AnyComponent::new(component));
+    }
+
     pub fn content_size(mut self, size: Size) -> Self {
         self.content_size = size;
         self
+    }
+
+    pub fn set_content_size(&mut self, size: Size) {
+        self.content_size = size;
     }
 
     pub fn show_scrollbar(mut self, show: bool) -> Self {

@@ -457,3 +457,6 @@ Effuse catalog -> WGPUI target
 - 2026-01-27: Added optional JSONL event recording in the desktop host via `AUTOPILOT_REPLAY_PATH`.
 - 2026-01-27: Phase 3b continued: prevented flex-shrink in stacked row layout to stop right-sidebar rows from collapsing under overflow.
 - 2026-01-27: Verified `cargo test -p autopilot_ui` after layout adjustments.
+- 2026-01-27: Phase 3b continued: added scrollable session list + status panel using `ScrollView` with stable content sizing.
+- 2026-01-27: Added `ScrollView` setters to update content + content size without resetting scroll state.
+- 2026-01-27: Routed input events to scrollable left/right panels and verified `cargo test -p autopilot_ui`.
