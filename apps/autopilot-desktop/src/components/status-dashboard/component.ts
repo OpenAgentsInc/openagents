@@ -122,6 +122,8 @@ type StatusState = {
   sessionItems: Record<string, CodexConversationItem[]>
   sessionMessage: string
   extraPaneOpen: boolean
+  leftSidebarCollapsed: boolean
+  rightSidebarCollapsed: boolean
   fullAutoEnabled: boolean
   fullAutoThreadId: string | null
   fullAutoMessage: string
@@ -139,6 +141,9 @@ type StatusEvent =
   | { type: "UpdateWorkspacePath"; path: string }
   | { type: "UpdateMessageInput"; value: string }
   | { type: "ToggleExtraPane" }
+  | { type: "ToggleLeftSidebar" }
+  | { type: "ToggleRightSidebar" }
+  | { type: "ToggleSidebars" }
   | { type: "SubmitMessage"; value: string }
   | { type: "RefreshWorkspaceStatus" }
   | { type: "RefreshSessions" }
@@ -1178,6 +1183,8 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
     sessionItems: {},
     sessionMessage: "",
     extraPaneOpen: false,
+    leftSidebarCollapsed: false,
+    rightSidebarCollapsed: false,
     fullAutoEnabled: false,
     fullAutoThreadId: null,
     fullAutoMessage: "",
@@ -1238,6 +1245,8 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
       const sessionCount = state.sessions.length
       const sessionBusy = state.busy.sessions || state.busy.newSession
       const extraPaneOpen = state.extraPaneOpen
+      const leftSidebarCollapsed = state.leftSidebarCollapsed
+      const rightSidebarCollapsed = state.rightSidebarCollapsed
       const canvasToggleLabel = extraPaneOpen ? "HIDE CANVAS" : "SHOW CANVAS"
       const fullAutoLabel = state.fullAutoEnabled
         ? state.fullAutoThreadId
@@ -1737,9 +1746,11 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
         ? "main-pane main-pane--fullscreen"
         : "main-pane"
 
-      return html`
-        <div class="terminal">
-          <div class="flex min-h-0 flex-1 max-[900px]:flex-col">
+      const storybookHost = html`<div id="effuse-storybook-host" class="storybook-pane"></div>`
+
+      const leftSidebar = leftSidebarCollapsed
+        ? ""
+        : html`
             <aside class="w-[240px] min-h-0 shrink-0 flex flex-col border-r border-[color:var(--line)] bg-[color:var(--panel-alt)] max-[900px]:w-full max-[900px]:max-h-[200px]">
               <div class="flex items-center justify-between gap-2 border-b border-[color:var(--line)] px-2.5 py-2 text-[11px] uppercase tracking-[0.12em] text-[color:var(--yellow)]">
                 <span>Sessions</span>
@@ -1762,9 +1773,11 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
                 ${sessionList}
               </div>
             </aside>
+          `
 
-            <main class="${mainPaneClass}">${mainContent}</main>
-
+      const rightSidebar = rightSidebarCollapsed
+        ? ""
+        : html`
             <aside class="w-[240px] min-h-0 shrink-0 flex flex-col border-l border-[color:var(--line)] bg-[color:var(--panel-alt)] max-[900px]:w-full max-[900px]:max-h-[240px] max-[900px]:border-l-0 max-[900px]:border-t max-[900px]:border-[color:var(--line)]">
               <div class="flex items-center justify-between gap-2 border-b border-[color:var(--line)] px-2.5 py-2 text-[11px] uppercase tracking-[0.12em] text-[color:var(--yellow)]">
                 <span>Status</span>
@@ -1912,6 +1925,19 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
                 <span class="text-[color:var(--ink)]">${appVersion}</span>
               </div>
             </aside>
+          `
+
+      return html`
+        <div class="terminal">
+          <div class="flex min-h-0 flex-1 max-[900px]:flex-col">
+            ${leftSidebar}
+
+            <main class="${mainPaneClass}">
+              ${mainContent}
+              ${storybookHost}
+            </main>
+
+            ${rightSidebar}
           </div>
         </div>
       `
@@ -2039,6 +2065,33 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
             requestAnimationFrame(() => centerCanvasInContainer(ctx.container))
           )
         }
+        return
+      }
+
+      if (event.type === "ToggleLeftSidebar") {
+        yield* ctx.state.update((state) => ({
+          ...state,
+          leftSidebarCollapsed: !state.leftSidebarCollapsed,
+        }))
+        return
+      }
+
+      if (event.type === "ToggleRightSidebar") {
+        yield* ctx.state.update((state) => ({
+          ...state,
+          rightSidebarCollapsed: !state.rightSidebarCollapsed,
+        }))
+        return
+      }
+
+      if (event.type === "ToggleSidebars") {
+        const current = yield* ctx.state.get
+        const shouldCollapse = !(current.leftSidebarCollapsed && current.rightSidebarCollapsed)
+        yield* ctx.state.update((state) => ({
+          ...state,
+          leftSidebarCollapsed: shouldCollapse,
+          rightSidebarCollapsed: shouldCollapse,
+        }))
         return
       }
 
@@ -3092,7 +3145,22 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
       )
 
       const handleKeydown = (event: KeyboardEvent) => {
-        if (event.key === "F2") {
+        if (event.metaKey && event.code === "BracketLeft") {
+          event.preventDefault()
+          emit({ type: "ToggleLeftSidebar" })
+          return
+        }
+        if (event.metaKey && event.code === "BracketRight") {
+          event.preventDefault()
+          emit({ type: "ToggleRightSidebar" })
+          return
+        }
+        if (event.metaKey && event.code === "Backslash") {
+          event.preventDefault()
+          emit({ type: "ToggleSidebars" })
+          return
+        }
+        if (event.metaKey && event.code === "Digit3") {
           event.preventDefault()
           emit({ type: "ToggleExtraPane" })
         }

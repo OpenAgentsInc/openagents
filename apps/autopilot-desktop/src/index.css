@@ -405,11 +405,36 @@ body {
   gap: 8px;
   padding: 8px 10px;
   min-height: 0;
+  position: relative;
 }
 
 .main-pane--fullscreen {
   gap: 0;
   padding: 0;
+}
+
+.main-pane--storybook {
+  gap: 0;
+  padding: 0;
+}
+
+.storybook-pane {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  min-height: 0;
+  pointer-events: none;
+}
+
+.storybook-pane--active {
+  pointer-events: auto;
+}
+
+.storybook-root {
+  flex: 1;
+  min-height: 0;
+  display: flex;
 }
 
 .canvas-fullscreen {
