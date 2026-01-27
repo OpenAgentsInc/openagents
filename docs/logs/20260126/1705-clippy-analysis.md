@@ -76,3 +76,10 @@ Given volume, recommend deferring until blocking errors are resolved.
 ## Notes
 - The clippy run is scoped to `autopilot-desktop` but still checks dependent crates, so dependency lint errors block the run.
 - Full log is in `/tmp/clippy_autopilot_desktop.log` for exact line references.
+
+## Work log (2026-01-27)
+- Fixed clippy errors across `autopilot-desktop`, `ai-server`, `lm-router`, `gpt-oss`, `openagents-utils`, and `codex-client` (eprintln/println removal, `LazyLock` usage, `derivable_impls`, and related nits).
+- Removed `#[allow(...)]` usage in `autopilot-desktop` (clippy deny) and replaced with `#[expect(...)]` where needed.
+- Updated `tauri` build flow to use `tauri_build::try_build` with codegen context and added scoped lint expectations for generated context.
+- Applied large batch of `nostr` clippy fixes (`collapsible_if`, `get_first`, `inherent_to_string`, `FromStr`, and range helpers) plus test updates.
+- Verified with `cargo clippy -p autopilot-desktop --all-targets` (exit 0; warnings remain but no clippy errors).
