@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
 use thiserror::Error;
+use tracing::warn;
 
 /// Errors that can occur when working with directives
 #[derive(Debug, Error)]
@@ -244,7 +245,7 @@ pub fn load_directives(dir: &Path) -> Result<Vec<Directive>> {
                 Ok(directive) => directives.push(directive),
                 Err(e) => {
                     // Log but don't fail on individual parse errors
-                    eprintln!("Warning: Failed to parse directive {:?}: {}", path, e);
+                    warn!(path = %path.display(), error = %e, "Failed to parse directive");
                 }
             }
         }

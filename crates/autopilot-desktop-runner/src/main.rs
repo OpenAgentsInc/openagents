@@ -1,5 +1,6 @@
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use tracing::warn;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum RunMode {
@@ -72,6 +73,8 @@ fn open_release_bundle(path: &Path) -> Result<(), String> {
 }
 
 fn main() -> anyhow::Result<()> {
+    tracing_subscriber::fmt::init();
+
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let repo_root = manifest_dir
         .parent()
@@ -105,13 +108,13 @@ fn main() -> anyhow::Result<()> {
     if status.success() && matches!(mode, RunMode::Release) {
         if let Some(path) = release_bundle_path(&repo_root, &app_dir) {
             if let Err(err) = open_release_bundle(&path) {
-                eprintln!(
+                warn!(
                     "Release build completed but failed to open app: {err}\nOpen manually: {}",
                     path.display()
                 );
             }
         } else {
-            eprintln!("Release build completed. Open the app bundle manually.");
+            warn!("Release build completed. Open the app bundle manually.");
         }
     }
 

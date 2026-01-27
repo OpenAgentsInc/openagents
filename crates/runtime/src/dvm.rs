@@ -7,6 +7,7 @@ use crate::types::{AgentId, Timestamp};
 use nostr::{Event, JobStatus, KIND_JOB_FEEDBACK, UnsignedEvent, get_event_hash};
 use nostr_client::{PoolConfig, RelayPool};
 use serde_json::Value;
+use std::str::FromStr;
 use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
@@ -16,7 +17,7 @@ use tokio::sync::mpsc;
 
 /// Parsed DVM feedback status.
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
+#[expect(dead_code)]
 pub(crate) enum DvmFeedbackStatus {
     Quote,
     Job(JobStatus),
@@ -25,7 +26,7 @@ pub(crate) enum DvmFeedbackStatus {
 
 /// Parsed feedback event.
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
+#[expect(dead_code)]
 pub(crate) struct DvmFeedback {
     pub status: DvmFeedbackStatus,
     pub status_extra: Option<String>,
@@ -46,7 +47,7 @@ pub(crate) struct DvmQuote {
 }
 
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
+#[expect(dead_code)]
 pub(crate) enum DvmLifecycle {
     AwaitingQuotes {
         since: Timestamp,

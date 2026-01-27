@@ -295,6 +295,7 @@ pub fn detect_test_command(repo_path: &std::path::Path) -> Option<String> {
 }
 
 #[cfg(test)]
+#[expect(clippy::unwrap_used)]
 mod tests {
     use super::*;
 

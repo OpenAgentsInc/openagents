@@ -343,15 +343,18 @@ fn is_secret_field(key: &str) -> bool {
 
 /// Redact secrets from a string
 fn redact_string(s: &str) -> String {
+    fn apply_regex(s: &str, pattern: &str, replacement: &str) -> String {
+        match regex::Regex::new(pattern) {
+            Ok(regex) => regex.replace_all(s, replacement).into_owned(),
+            Err(_) => s.to_string(),
+        }
+    }
+
     // API keys
-    let s = regex::Regex::new(r"sk-[a-zA-Z0-9]{48}")
-        .unwrap()
-        .replace_all(s, "sk-[REDACTED]");
+    let s = apply_regex(s, r"sk-[a-zA-Z0-9]{48}", "sk-[REDACTED]");
 
     // GitHub tokens
-    let s = regex::Regex::new(r"gh[ps]_[a-zA-Z0-9]{36}")
-        .unwrap()
-        .replace_all(&s, "gh_[REDACTED]");
+    let s = apply_regex(&s, r"gh[ps]_[a-zA-Z0-9]{36}", "gh_[REDACTED]");
 
     // Replace home directories
     let s = if let Ok(home) = std::env::var("HOME") {

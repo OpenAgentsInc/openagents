@@ -13,7 +13,7 @@ pub struct DvmContainerProvider {
 
 #[cfg(not(target_arch = "wasm32"))]
 #[derive(Clone)]
-#[allow(dead_code)]
+#[expect(dead_code)]
 struct DvmContainerSession {
     session_id: String,
     request_event_id: String,
