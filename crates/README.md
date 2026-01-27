@@ -5,17 +5,17 @@ single-paragraph overview of a crate to explain its role in the workspace.
 
 ## Workspace Layout Plan (Draft)
 This plan keeps a single Cargo workspace but groups crates by purpose so product code stays
-distinct from shared platform, core, and UI code. The UI group should live under `crates/ui/`
-(not `crates/ux/`).
+separate from shared platform, core, and UI code. The UI group should live under `crates/ui/`
+(not `crates/ux/`). The Nostr crates are already nested under `crates/nostr/`.
 
 Proposed grouping (adjust as needed):
 - `crates/products/`: autopilot, pylon, onyx
 - `crates/app-core/`: autopilot_app, autopilot_ui
 - `crates/core/`: adjutant, autopilot-core, dsrs, dsrs-macros, rlm, frlm
-- `crates/platform/`: agent, protocol, runtime, compute, gateway, lm-router, local-inference,
-  openagents-relay, nostr-core, nostr-client, issues
+- `crates/platform/`: agent, protocol, runtime, relay, compute, gateway, lm-router,
+  local-inference, nostr (core + client), issues, openagents-utils
 - `crates/ui/`: wgpui, editor, vim
-- `crates/integrations/`: gpt-oss, codex-client, codex-mcp, ai-server, openagents-spark, voice
+- `crates/integrations/`: gpt-oss, codex-client, codex-mcp, ai-server, spark, voice
 - `crates/tools/`: arrow, testing, ws-test, manatap
 
 Proposed steps:
@@ -101,38 +101,37 @@ prompt helpers.
 The issues crate provides the SQLite-backed issue tracking core with migrations and lifecycle
 transitions used by Autopilot and CLI tooling.
 
+## lm-router
+The lm-router crate routes LLM calls across multiple backends with usage tracking and model routing.
+
 ## local-inference
 The local-inference crate defines the `LocalModelBackend` trait and shared request/response types
 for local inference engines, enabling OpenAgents to swap GPT-OSS, fm-bridge, or custom backends via
 a consistent API.
 
-## lm-router
-The lm-router crate routes LLM calls across multiple backends with usage tracking and model routing.
-
 ## manatap
 The manatap crate is a minimal GPU window demo showcasing WGPUI and rendering primitives.
 
-## nostr-core
-The nostr-core crate provides the foundational Nostr protocol types and serialization used by
-OpenAgents.
+## nostr (core)
+The nostr core crate (`crates/nostr/core`) provides the foundational Nostr protocol types,
+serialization, and crypto helpers used across OpenAgents.
 
 ## nostr-client
-The nostr-client crate provides relay client APIs built on top of nostr-core.
+The nostr-client crate (`crates/nostr/client`) provides relay client APIs built on top of the Nostr
+core crate.
 
 ## onyx
 The onyx crate is a local-first Markdown note editor with live inline formatting.
 
-## openagents-relay
-The openagents-relay crate defines the relay protocol message types shared by browser/worker/tunnel
-clients.
+## openagents-relay (relay)
+The relay crate defines the relay protocol message types shared by browser/worker/tunnel clients.
 
-## openagents-runtime
-The openagents-runtime crate provides a pluggable execution environment for agents, including
-filesystem-like mounts, containers, identity, and telemetry hooks.
+## openagents-runtime (runtime)
+The runtime crate provides a pluggable execution environment for agents, including filesystem-like
+mounts, containers, identity, and telemetry hooks.
 
-## openagents-spark
-The openagents-spark crate integrates Breez Spark payments for OpenAgents wallets and compute
-flows.
+## openagents-spark (spark)
+The spark crate integrates Breez Spark payments for OpenAgents wallets and compute flows.
 
 ## openagents-utils
 The openagents-utils crate provides shared utility helpers used across the workspace.

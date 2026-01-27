@@ -1004,7 +1004,9 @@ fn stack_bounds(bounds: Bounds, heights: &[f32], gap: f32) -> Vec<Bounds> {
     let mut nodes = Vec::with_capacity(heights.len());
 
     for height in heights {
-        let style = LayoutStyle::new().height(px(*height));
+        let style = LayoutStyle::new()
+            .height(px(*height))
+            .flex_shrink(0.0);
         nodes.push(engine.request_leaf(&style));
     }
 
