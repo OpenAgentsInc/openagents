@@ -299,12 +299,19 @@ struct AppViewModel {
     session_label: Option<String>,
     last_event: Option<String>,
     event_count: usize,
+    sessions: Vec<SessionSummary>,
+    event_log: Vec<String>,
 }
 
 impl AppViewModel {
     fn apply_event(&mut self, event: &AppEvent) {
         self.event_count += 1;
-        self.last_event = Some(format_event(event));
+        let formatted = format_event(event);
+        self.last_event = Some(formatted.clone());
+        self.event_log.push(formatted);
+        if self.event_log.len() > 8 {
+            let _ = self.event_log.drain(0..self.event_log.len().saturating_sub(8));
+        }
 
         match event {
             AppEvent::WorkspaceOpened { workspace_id, path } => {
@@ -314,6 +321,10 @@ impl AppViewModel {
             AppEvent::SessionStarted { session_id, label, .. } => {
                 self.session_id = Some(*session_id);
                 self.session_label = label.clone();
+                self.sessions.push(SessionSummary {
+                    session_id: *session_id,
+                    label: label.clone(),
+                });
             }
             AppEvent::UserActionDispatched { .. } => {}
         }
@@ -323,7 +334,11 @@ impl AppViewModel {
 struct DesktopRoot {
     view_model: AppViewModel,
     header: Text,
-    body: Text,
+    status: Text,
+    session_title: Text,
+    event_title: Text,
+    session_items: Vec<Text>,
+    event_items: Vec<Text>,
 }
 
 impl DesktopRoot {
@@ -334,9 +349,19 @@ impl DesktopRoot {
                 .font_size(30.0)
                 .bold()
                 .color(theme::text::PRIMARY),
-            body: Text::new("Waiting for events...")
+            status: Text::new("Waiting for events...")
                 .font_size(16.0)
                 .color(theme::text::MUTED),
+            session_title: Text::new("Sessions")
+                .font_size(18.0)
+                .bold()
+                .color(theme::text::PRIMARY),
+            event_title: Text::new("Event Log")
+                .font_size(18.0)
+                .bold()
+                .color(theme::text::PRIMARY),
+            session_items: Vec::new(),
+            event_items: Vec::new(),
         };
         root.refresh_text();
         root
@@ -377,7 +402,36 @@ impl DesktopRoot {
             count = count_line
         );
 
-        self.body.set_content(body);
+        self.status.set_content(body);
+
+        self.session_items = self
+            .view_model
+            .sessions
+            .iter()
+            .enumerate()
+            .map(|(index, session)| {
+                let label = session
+                    .label
+                    .as_ref()
+                    .map(|label| format!("{label} ({:?})", session.session_id))
+                    .unwrap_or_else(|| format!("Session {:?}", session.session_id));
+                Text::new(format!("{}. {}", index + 1, label))
+                    .font_size(14.0)
+                    .color(theme::text::PRIMARY)
+            })
+            .collect();
+
+        self.event_items = self
+            .view_model
+            .event_log
+            .iter()
+            .enumerate()
+            .map(|(index, entry)| {
+                Text::new(format!("{}. {}", index + 1, entry))
+                    .font_size(13.0)
+                    .color(theme::text::MUTED)
+            })
+            .collect();
     }
 }
 
@@ -403,13 +457,59 @@ impl Component for DesktopRoot {
         cx.scene.draw_quad(card);
 
         let inset = 24.0;
-        let text_bounds = Bounds::new(
+        let inner = Bounds::new(
             body_bounds.origin.x + inset,
             body_bounds.origin.y + inset,
             (body_bounds.size.width - inset * 2.0).max(0.0),
             (body_bounds.size.height - inset * 2.0).max(0.0),
         );
-        self.body.paint(text_bounds, cx);
+
+        let status_bounds = Bounds::new(
+            inner.origin.x,
+            inner.origin.y,
+            inner.size.width,
+            120.0,
+        );
+        self.status.paint(status_bounds, cx);
+
+        let column_gap = 32.0;
+        let column_width = (inner.size.width - column_gap) * 0.5;
+        let list_top = inner.origin.y + 140.0;
+
+        let sessions_bounds = Bounds::new(
+            inner.origin.x,
+            list_top,
+            column_width.max(0.0),
+            inner.size.height - 140.0,
+        );
+        let events_bounds = Bounds::new(
+            inner.origin.x + column_width + column_gap,
+            list_top,
+            column_width.max(0.0),
+            inner.size.height - 140.0,
+        );
+
+        self.session_title.paint(
+            Bounds::new(
+                sessions_bounds.origin.x,
+                sessions_bounds.origin.y,
+                sessions_bounds.size.width,
+                24.0,
+            ),
+            cx,
+        );
+        self.event_title.paint(
+            Bounds::new(
+                events_bounds.origin.x,
+                events_bounds.origin.y,
+                events_bounds.size.width,
+                24.0,
+            ),
+            cx,
+        );
+
+        paint_list(cx, &mut self.session_items, sessions_bounds, 32.0);
+        paint_list(cx, &mut self.event_items, events_bounds, 28.0);
     }
 }
 
@@ -426,4 +526,22 @@ fn format_event(event: &AppEvent) -> String {
             UserAction::Command { name, .. } => format!("Last event: Command ({})", name),
         },
     }
+}
+
+fn paint_list(cx: &mut PaintContext, items: &mut [Text], bounds: Bounds, row_height: f32) {
+    let mut y = bounds.origin.y + 32.0;
+    for item in items {
+        let row_bounds = Bounds::new(bounds.origin.x, y, bounds.size.width, row_height);
+        item.paint(row_bounds, cx);
+        y += row_height;
+        if y > bounds.origin.y + bounds.size.height {
+            break;
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+struct SessionSummary {
+    session_id: SessionId,
+    label: Option<String>,
 }
