@@ -436,7 +436,7 @@ Effuse catalog -> WGPUI target
 - 2026-01-27: Wired UI send actions to `autopilot_app` via an action channel so Enter/send dispatches `UserAction::Message` back into the app core.
 - 2026-01-27: Verified `cargo build -p autopilot-desktop-wgpu` after Phase 4c UI + input wiring.
 - 2026-01-27: Reviewed Zed GPUI layout approach (element tree + Taffy, `h_flex`/`v_flex`, `StyledExt`) and expanded the migration plan with a Zed-style layout adoption path, including WGPUI parity helpers and layout conversion gates.
-- 2026-01-27: Re-read `apps/autopilot-desktop/docs/migration/TESTABILITY.md` and aligned the plan with testability requirements (service traits, deterministic UI tests, log/replay).
+- 2026-01-27: Re-read `apps/autopilot-desktop-wgpu/docs/migration/TESTABILITY.md` and aligned the plan with testability requirements (service traits, deterministic UI tests, log/replay).
 - 2026-01-27: Added a dedicated Phase 2b testability spine (headless scenarios, replay, layout snapshots) and expanded acceptance gates for contract correctness + determinism.
 - 2026-01-27: Removed legacy UI protocol references from the plan and testability alignment; moved to typed view model + AppEvent/UserAction replay.
 - 2026-01-27: Phase 3b started: replaced manual panel layout math with Taffy-powered flex layout in `crates/autopilot_ui`.
@@ -446,3 +446,4 @@ Effuse catalog -> WGPUI target
 - 2026-01-27: Phase 5 started: removed legacy Tauri workspace members and updated repo docs to point to the WGPUI desktop host.
 - 2026-01-27: Added LayoutStyle `flex_row`/`flex_col` helpers and switched autopilot UI layout to use WGPUI layout helpers instead of direct Taffy imports.
 - 2026-01-27: Verified `cargo build -p autopilot-desktop-wgpu` after layout + DPI fixes.
+- 2026-01-27: Moved migration docs under `apps/autopilot-desktop-wgpu/docs/migration` and updated repo documentation links.
