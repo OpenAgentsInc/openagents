@@ -115,7 +115,6 @@ impl DataLoader {
                 example
                     .data
                     .values()
-                    .cloned()
                     .map(|value| value.to_string())
                     .collect::<Vec<String>>(),
             )?;

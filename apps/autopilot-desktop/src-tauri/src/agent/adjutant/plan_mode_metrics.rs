@@ -78,11 +78,11 @@ fn score_topic_decomposition(prediction: &Prediction) -> MetricReport {
             let name_ok = item
                 .get("name")
                 .and_then(Value::as_str)
-                .map_or(false, is_substantive);
+                .is_some_and(is_substantive);
             let focus_ok = item
                 .get("focus")
                 .and_then(Value::as_str)
-                .map_or(false, is_substantive);
+                .is_some_and(is_substantive);
             if name_ok && focus_ok {
                 valid_topics += 1;
             }
@@ -90,12 +90,11 @@ fn score_topic_decomposition(prediction: &Prediction) -> MetricReport {
             let patterns_ok = item
                 .get("patterns")
                 .and_then(Value::as_array)
-                .map(|patterns| {
+                .is_some_and(|patterns| {
                     patterns
                         .iter()
-                        .any(|p| p.as_str().map_or(false, is_substantive))
-                })
-                .unwrap_or(false);
+                        .any(|p| p.as_str().is_some_and(is_substantive))
+                });
             if patterns_ok {
                 valid_patterns += 1;
             }
@@ -137,10 +136,10 @@ fn score_parallel_exploration(example: &Example, prediction: &Prediction) -> Met
         .filter_map(|item| item.as_str().map(|s| s.to_string()))
         .collect::<Vec<_>>();
 
-    if !files.is_empty() {
-        score += 0.3;
-    } else {
+    if files.is_empty() {
         notes.push("files_examined empty or invalid".to_string());
+    } else {
+        score += 0.3;
     }
 
     let topic_value = example.get("topic", None);
@@ -168,7 +167,7 @@ fn score_plan_synthesis(prediction: &Prediction) -> MetricReport {
         notes.push("implementation_plan too short".to_string());
     }
 
-    if plan.contains("\n") || plan.contains("-") || plan.contains("1.") {
+    if plan.contains('\n') || plan.contains('-') || plan.contains("1.") {
         score += 0.4;
     } else {
         notes.push("implementation_plan lacks step structure".to_string());

@@ -35,6 +35,7 @@ pub struct SemanticIndex {
 
 /// Embedding provider configuration.
 #[derive(Debug, Clone)]
+#[derive(Default)]
 pub enum EmbeddingProvider {
     /// Local Ollama embeddings.
     Ollama { model: String, base_url: String },
@@ -46,14 +47,10 @@ pub enum EmbeddingProvider {
     Swarm { relay_url: String },
 
     /// No embeddings (disabled).
+    #[default]
     None,
 }
 
-impl Default for EmbeddingProvider {
-    fn default() -> Self {
-        Self::None
-    }
-}
 
 /// A chunk of code with its embedding.
 #[derive(Debug, Clone, Serialize, Deserialize)]

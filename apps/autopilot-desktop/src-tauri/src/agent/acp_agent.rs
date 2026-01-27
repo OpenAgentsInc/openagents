@@ -53,256 +53,7 @@ impl AcpAgent {
         }
     }
 
-    /// Forward ACP events to unified event stream
-    #[expect(dead_code)]
-    pub async fn forward_acp_event(&self, event: &AcpEvent) {
-        if let Some(unified_event) = self.map_acp_event_to_unified(event).await {
-            let _ = self.events_tx.send(unified_event);
-        }
-    }
-
-    /// Map ACP raw events to UnifiedEvent
-    /// This will be called when we receive events from the ACP connection
-    #[expect(dead_code)]
-    async fn map_acp_event_to_unified(&self, event: &AcpEvent) -> Option<UnifiedEvent> {
-        let message = event.message.as_object()?;
-        let inner_msg = message.get("message")?.as_object()?;
-
-        // Extract session ID (try to get from event or stored session_id)
-        let session_id = if let Some(params) = inner_msg.get("params").and_then(|p| p.as_object()) {
-            params
-                .get("sessionId")
-                .and_then(|s| s.as_str())
-                .map(|s| s.to_string())
-        } else {
-            self.session_id.lock().await.clone()
-        }?;
-
-        // ACP notifications don't have an "id" field - they're notifications
-        // ACP responses have an "id" field but no "method" field
-        // ACP requests have both "id" and "method" fields
-
-        // Check for notifications (SessionNotification types)
-        if !inner_msg.contains_key("id") && inner_msg.contains_key("method") {
-            if let Some(method) = inner_msg.get("method").and_then(|m| m.as_str()) {
-                // ACP SessionNotification comes as a notification with method "session/notification"
-                // The actual notification type is in params.notification
-                if method == "session/notification" {
-                    if let Some(params) = inner_msg.get("params").and_then(|p| p.as_object()) {
-                        if let Some(notification) =
-                            params.get("notification").and_then(|n| n.as_object())
-                        {
-                            return self
-                                .map_session_notification(notification, &session_id)
-                                .await;
-                        }
-                    }
-                } else if method == "session/update" {
-                    // Session started or updated
-                    if let Some(params) = inner_msg.get("params").and_then(|p| p.as_object()) {
-                        if let Some(update) = params.get("update").and_then(|u| u.as_object()) {
-                            // Check if this is a session start
-                            if update.contains_key("availableCommands") {
-                                return Some(UnifiedEvent::SessionStarted {
-                                    session_id: session_id.clone(),
-                                    agent_id: self.agent_id,
-                                });
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // Check for response with stopReason (completion)
-        // Responses have an "id" field and a "result" field (not "method")
-        if inner_msg.contains_key("id") && !inner_msg.contains_key("method") {
-            // Check for stopReason in result
-            if let Some(result) = inner_msg.get("result").and_then(|r| r.as_object()) {
-                if let Some(stop_reason) = result.get("stopReason").and_then(|s| s.as_str()) {
-                    if stop_reason == "end_turn" {
-                        return Some(UnifiedEvent::SessionCompleted {
-                            session_id: session_id.clone(),
-                            stop_reason: "end_turn".to_string(),
-                        });
-                    }
-                }
-            }
-        }
-
-        None
-    }
-
-    /// Map ACP SessionNotification to UnifiedEvent
-    #[expect(dead_code)]
-    async fn map_session_notification(
-        &self,
-        notification: &serde_json::Map<String, serde_json::Value>,
-        session_id: &str,
-    ) -> Option<UnifiedEvent> {
-        // ACP SessionNotification is a tagged enum with a "kind" field
-        let kind = notification.get("kind")?.as_str()?;
-
-        match kind {
-            "AgentMessageChunk" => {
-                // Streaming message chunk
-                let content = notification
-                    .get("content")
-                    .and_then(|c| c.as_str())
-                    .unwrap_or("")
-                    .to_string();
-                let is_complete = notification
-                    .get("isComplete")
-                    .and_then(|b| b.as_bool())
-                    .unwrap_or(false);
-
-                Some(UnifiedEvent::MessageChunk {
-                    session_id: session_id.to_string(),
-                    content,
-                    is_complete,
-                })
-            }
-            "AgentThoughtChunk" => {
-                // Streaming reasoning/thinking chunk
-                let content = notification
-                    .get("content")
-                    .and_then(|c| c.as_str())
-                    .unwrap_or("")
-                    .to_string();
-                let is_complete = notification
-                    .get("isComplete")
-                    .and_then(|b| b.as_bool())
-                    .unwrap_or(false);
-
-                Some(UnifiedEvent::ThoughtChunk {
-                    session_id: session_id.to_string(),
-                    content,
-                    is_complete,
-                })
-            }
-            "ToolCall" => {
-                // Tool execution started
-                let tool_id = notification
-                    .get("toolCallId")
-                    .and_then(|id| id.as_str())
-                    .unwrap_or("")
-                    .to_string();
-                let tool_name = notification
-                    .get("toolName")
-                    .and_then(|n| n.as_str())
-                    .unwrap_or("")
-                    .to_string();
-                let arguments = notification
-                    .get("arguments")
-                    .cloned()
-                    .unwrap_or(serde_json::json!({}));
-
-                Some(UnifiedEvent::ToolCall {
-                    session_id: session_id.to_string(),
-                    tool_id,
-                    tool_name,
-                    arguments,
-                })
-            }
-            "ToolCallUpdate" => {
-                // Tool execution update
-                let tool_id = notification
-                    .get("toolCallId")
-                    .and_then(|id| id.as_str())
-                    .unwrap_or("")
-                    .to_string();
-                let output = notification
-                    .get("output")
-                    .and_then(|o| o.as_str())
-                    .unwrap_or("")
-                    .to_string();
-                let is_complete = notification
-                    .get("isComplete")
-                    .and_then(|b| b.as_bool())
-                    .unwrap_or(false);
-
-                Some(UnifiedEvent::ToolCallUpdate {
-                    session_id: session_id.to_string(),
-                    tool_id,
-                    output,
-                    is_complete,
-                })
-            }
-            "UserMessageChunk" => {
-                // User message echo - we can ignore this or map it if needed
-                None
-            }
-            "Plan" => {
-                // Agent's execution plan - not currently in UnifiedEvent, skip for now
-                None
-            }
-            _ => {
-                // Unknown notification type - could be an extension
-                // Check for custom extensions (codex/tokenUsage, etc.)
-                if kind.starts_with("codex/") {
-                    self.map_codex_extension(notification, session_id, kind)
-                        .await
-                } else {
-                    None
-                }
-            }
-        }
-    }
-
-    /// Map Codex-specific extensions to UnifiedEvent
-    #[expect(dead_code)]
-    async fn map_codex_extension(
-        &self,
-        notification: &serde_json::Map<String, serde_json::Value>,
-        session_id: &str,
-        kind: &str,
-    ) -> Option<UnifiedEvent> {
-        match kind {
-            "codex/tokenUsage" => {
-                // Token usage update
-                let input_tokens = notification
-                    .get("inputTokens")
-                    .and_then(|t| t.as_u64())
-                    .unwrap_or(0);
-                let output_tokens = notification
-                    .get("outputTokens")
-                    .and_then(|t| t.as_u64())
-                    .unwrap_or(0);
-                let total_tokens = input_tokens + output_tokens;
-
-                Some(UnifiedEvent::TokenUsage {
-                    session_id: session_id.to_string(),
-                    input_tokens,
-                    output_tokens,
-                    total_tokens,
-                })
-            }
-            "codex/rateLimits" => {
-                // Rate limit update
-                let used_percent = notification
-                    .get("usedPercent")
-                    .and_then(|p| p.as_f64())
-                    .unwrap_or(0.0);
-                let resets_at = notification.get("resetsAt").and_then(|r| r.as_u64());
-
-                Some(UnifiedEvent::RateLimitUpdate {
-                    agent_id: self.agent_id,
-                    used_percent,
-                    resets_at,
-                })
-            }
-            _ => None,
-        }
-    }
-}
-
-#[async_trait]
-impl Agent for AcpAgent {
-    fn agent_id(&self) -> AgentId {
-        self.agent_id
-    }
-
-    async fn connect(&self, workspace_path: &Path) -> Result<String, String> {
+    async fn connect_inner(&self, workspace_path: &Path) -> Result<String, String> {
         // Create ACP connection
         let acp_conn = AcpConnection::new(
             self.workspace_id.clone(),
@@ -333,8 +84,8 @@ impl Agent for AcpAgent {
                     .and_then(|m| m.as_object())
                 {
                     // Check if this is a response to session/new
-                    if let Some(result) = message.get("result").and_then(|r| r.as_object()) {
-                        if let Some(session_id) = result.get("sessionId").and_then(|s| s.as_str()) {
+                    if let Some(result) = message.get("result").and_then(|r| r.as_object())
+                        && let Some(session_id) = result.get("sessionId").and_then(|s| s.as_str()) {
                             let mut session_id_guard = session_id_clone.lock().await;
                             if session_id_guard.is_none() {
                                 *session_id_guard = Some(session_id.to_string());
@@ -344,12 +95,11 @@ impl Agent for AcpAgent {
                                 );
                             }
                         }
-                    }
                 }
 
                 // Log the raw event structure for debugging
-                if let Some(message_obj) = event_clone.message.as_object() {
-                    if let Some(inner_msg) = message_obj.get("message").and_then(|m| m.as_object())
+                if let Some(message_obj) = event_clone.message.as_object()
+                    && let Some(inner_msg) = message_obj.get("message").and_then(|m| m.as_object())
                     {
                         tracing::debug!(
                             has_id = inner_msg.contains_key("id"),
@@ -367,7 +117,6 @@ impl Agent for AcpAgent {
                             tracing::debug!(snippet = %snippet, "AcpAgent callback: Event snippet");
                         }
                     }
-                }
 
                 // Map ACP event to unified event
                 if let Some(unified_event) =
@@ -401,7 +150,7 @@ impl Agent for AcpAgent {
         Ok(self.workspace_id.clone())
     }
 
-    async fn disconnect(&self, _session_id: &str) -> Result<(), String> {
+    async fn disconnect_inner(&self, _session_id: &str) -> Result<(), String> {
         let mut conn_guard = self.connection.lock().await;
         if let Some(conn) = conn_guard.take() {
             conn.kill()
@@ -411,7 +160,7 @@ impl Agent for AcpAgent {
         Ok(())
     }
 
-    async fn start_session(&self, _session_id: &str, cwd: &Path) -> Result<(), String> {
+    async fn start_session_inner(&self, _session_id: &str, cwd: &Path) -> Result<(), String> {
         let conn_guard = self.connection.lock().await;
         let conn = conn_guard.as_ref().ok_or("Not connected")?;
 
@@ -455,7 +204,7 @@ impl Agent for AcpAgent {
         Ok(())
     }
 
-    async fn send_message(&self, session_id: &str, text: String) -> Result<(), String> {
+    async fn send_message_inner(&self, session_id: &str, text: String) -> Result<(), String> {
         tracing::debug!(
             session_id = %session_id,
             text_len = text.len(),
@@ -496,7 +245,7 @@ impl Agent for AcpAgent {
         Ok(())
     }
 
-    fn events_receiver(&self) -> mpsc::Receiver<UnifiedEvent> {
+    fn events_receiver_inner(&self) -> mpsc::Receiver<UnifiedEvent> {
         // Subscribe to broadcast channel and convert to mpsc
         // This is a workaround - ideally we'd use broadcast everywhere
         let mut broadcast_rx = self.events_tx.subscribe();
@@ -514,13 +263,47 @@ impl Agent for AcpAgent {
         rx
     }
 
-    async fn get_conversation_items(
+    async fn get_conversation_items_inner(
         &self,
         _session_id: &str,
     ) -> Result<Vec<UnifiedConversationItem>, String> {
         // TODO: Implement conversation item retrieval
         // This would need to query the ACP connection or maintain state
         Ok(vec![])
+    }
+}
+
+#[async_trait]
+impl Agent for AcpAgent {
+    fn agent_id(&self) -> AgentId {
+        self.agent_id
+    }
+
+    async fn connect(&self, workspace_path: &Path) -> Result<String, String> {
+        self.connect_inner(workspace_path).await
+    }
+
+    async fn disconnect(&self, session_id: &str) -> Result<(), String> {
+        self.disconnect_inner(session_id).await
+    }
+
+    async fn start_session(&self, session_id: &str, cwd: &Path) -> Result<(), String> {
+        self.start_session_inner(session_id, cwd).await
+    }
+
+    async fn send_message(&self, session_id: &str, text: String) -> Result<(), String> {
+        self.send_message_inner(session_id, text).await
+    }
+
+    fn events_receiver(&self) -> mpsc::Receiver<UnifiedEvent> {
+        self.events_receiver_inner()
+    }
+
+    async fn get_conversation_items(
+        &self,
+        session_id: &str,
+    ) -> Result<Vec<UnifiedConversationItem>, String> {
+        self.get_conversation_items_inner(session_id).await
     }
 }
 
@@ -563,13 +346,13 @@ impl AcpAgent {
         // ACP requests have both "id" and "method" fields
 
         // Check for notifications (SessionNotification types)
-        if !inner_msg.contains_key("id") && inner_msg.contains_key("method") {
-            if let Some(method) = inner_msg.get("method").and_then(|m| m.as_str()) {
+        if !inner_msg.contains_key("id") && inner_msg.contains_key("method")
+            && let Some(method) = inner_msg.get("method").and_then(|m| m.as_str()) {
                 // ACP SessionNotification comes as a notification with method "session/notification"
                 // The actual notification type is in params.notification
                 if method == "session/notification" {
-                    if let Some(params) = inner_msg.get("params").and_then(|p| p.as_object()) {
-                        if let Some(notification) =
+                    if let Some(params) = inner_msg.get("params").and_then(|p| p.as_object())
+                        && let Some(notification) =
                             params.get("notification").and_then(|n| n.as_object())
                         {
                             return Self::map_session_notification_static(
@@ -579,11 +362,10 @@ impl AcpAgent {
                             )
                             .await;
                         }
-                    }
                 } else if method == "session/update" {
                     // Session started or updated
-                    if let Some(params) = inner_msg.get("params").and_then(|p| p.as_object()) {
-                        if let Some(update) = params.get("update").and_then(|u| u.as_object()) {
+                    if let Some(params) = inner_msg.get("params").and_then(|p| p.as_object())
+                        && let Some(update) = params.get("update").and_then(|u| u.as_object()) {
                             // Check if this is a session start (has availableCommands)
                             if update.contains_key("availableCommands") {
                                 return Some(UnifiedEvent::SessionStarted {
@@ -600,8 +382,7 @@ impl AcpAgent {
                                     // Extract content from update.content.text
                                     if let Some(content_obj) =
                                         update.get("content").and_then(|c| c.as_object())
-                                    {
-                                        if let Some(text) =
+                                        && let Some(text) =
                                             content_obj.get("text").and_then(|t| t.as_str())
                                         {
                                             // Check if this is the last chunk (we'll mark complete when we see stopReason)
@@ -611,13 +392,11 @@ impl AcpAgent {
                                                 is_complete: false, // Will be set to true when we see stopReason
                                             });
                                         }
-                                    }
                                 } else if session_update_type == "agent_thought_chunk" {
                                     // Extract content from update.content.text
                                     if let Some(content_obj) =
                                         update.get("content").and_then(|c| c.as_object())
-                                    {
-                                        if let Some(text) =
+                                        && let Some(text) =
                                             content_obj.get("text").and_then(|t| t.as_str())
                                         {
                                             return Some(UnifiedEvent::ThoughtChunk {
@@ -626,7 +405,6 @@ impl AcpAgent {
                                                 is_complete: false,
                                             });
                                         }
-                                    }
                                 }
                             }
 
@@ -705,10 +483,9 @@ impl AcpAgent {
                                 .and_then(|v| v.as_bool())
                                 .unwrap_or(false);
 
-                            if update.get("rawInput").is_some()
-                                || update.get("kind").and_then(|k| k.as_str()) == Some("execute")
-                            {
-                                if let Some(tool_id) = extract_tool_id() {
+                            if (update.get("rawInput").is_some()
+                                || update.get("kind").and_then(|k| k.as_str()) == Some("execute"))
+                                && let Some(tool_id) = extract_tool_id() {
                                     let tool_name =
                                         extract_tool_name().unwrap_or_else(|| "tool".to_string());
                                     let arguments = update
@@ -722,10 +499,9 @@ impl AcpAgent {
                                         arguments,
                                     });
                                 }
-                            }
 
-                            if update.get("rawOutput").is_some() {
-                                if let Some(tool_id) = extract_tool_id() {
+                            if update.get("rawOutput").is_some()
+                                && let Some(tool_id) = extract_tool_id() {
                                     let output = extract_output().unwrap_or_default();
                                     return Some(UnifiedEvent::ToolCallUpdate {
                                         session_id: session_id.clone(),
@@ -734,27 +510,22 @@ impl AcpAgent {
                                         is_complete,
                                     });
                                 }
-                            }
                         }
-                    }
                 }
             }
-        }
 
         // Check for response with stopReason (completion)
         // Responses have an "id" field and a "result" field (not "method")
         if inner_msg.contains_key("id") && !inner_msg.contains_key("method") {
             // Check for stopReason in result
-            if let Some(result) = inner_msg.get("result").and_then(|r| r.as_object()) {
-                if let Some(stop_reason) = result.get("stopReason").and_then(|s| s.as_str()) {
-                    if stop_reason == "end_turn" {
+            if let Some(result) = inner_msg.get("result").and_then(|r| r.as_object())
+                && let Some(stop_reason) = result.get("stopReason").and_then(|s| s.as_str())
+                    && stop_reason == "end_turn" {
                         return Some(UnifiedEvent::SessionCompleted {
                             session_id: session_id.clone(),
                             stop_reason: "end_turn".to_string(),
                         });
                     }
-                }
-            }
         }
 
         None

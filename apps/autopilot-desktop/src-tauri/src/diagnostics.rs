@@ -153,13 +153,9 @@ fn write_markdown_summary(path: &Path, summary: &FullAutoDecisionSummary) {
         "# Full Auto Decision Summary\n\n- Decisions: {}\n- Last action: {}\n- Last confidence: {}\n- Last run id: {}\n- Avg confidence: {}\n",
         summary.decision_count,
         summary.last_action.clone().unwrap_or_else(|| "--".to_string()),
-        summary.last_confidence
-            .map(|v| format!("{:.2}", v))
-            .unwrap_or_else(|| "--".to_string()),
+        summary.last_confidence.map_or_else(|| "--".to_string(), |v| format!("{:.2}", v)),
         summary.last_run_id.clone().unwrap_or_else(|| "--".to_string()),
-        summary.average_confidence
-            .map(|v| format!("{:.2}", v))
-            .unwrap_or_else(|| "--".to_string())
+        summary.average_confidence.map_or_else(|| "--".to_string(), |v| format!("{:.2}", v))
     );
     let _ = fs::write(path, content);
 }

@@ -299,11 +299,10 @@ fn build_create_request(
         builder.instructions(preamble.clone());
     }
 
-    if let Some(temperature) = request.temperature {
-        if temperature_supported(model) {
+    if let Some(temperature) = request.temperature
+        && temperature_supported(model) {
             builder.temperature(temperature as f32);
         }
-    }
 
     if let Some(max_tokens) = request.max_tokens {
         builder.max_output_tokens(max_tokens as u32);
@@ -450,8 +449,8 @@ fn temperature_supported(model: &str) -> bool {
         return false;
     }
 
-    if name.starts_with('o') {
-        let digits = name[1..]
+    if let Some(stripped) = name.strip_prefix('o') {
+        let digits = stripped
             .chars()
             .next()
             .map(|c| c.is_ascii_digit())
@@ -509,11 +508,10 @@ fn map_tool_choice(choice: &rig::message::ToolChoice) -> ToolChoiceParam {
 }
 
 fn extract_store(additional_params: Option<&Value>) -> Option<bool> {
-    if let Some(Value::Object(map)) = additional_params {
-        if let Some(value) = map.get("store").and_then(Value::as_bool) {
+    if let Some(Value::Object(map)) = additional_params
+        && let Some(value) = map.get("store").and_then(Value::as_bool) {
             return Some(value);
         }
-    }
 
     std::env::var("OPENAI_RESPONSES_STORE")
         .ok()

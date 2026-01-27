@@ -60,13 +60,16 @@ impl ExponentialBackoff {
     ///
     /// Returns `None` if the backoff is exhausted.
     pub fn next_delay(&mut self) -> Option<Duration> {
-        if self.max_attempts.map_or(false, |max| self.attempt >= max) {
+        if self
+            .max_attempts
+            .is_some_and(|max| self.attempt >= max)
+        {
             return None;
         }
 
         // capped_delay_ms = min(base * 2^attempt, max_delay)
-        let base_ms = self.base_delay.as_millis() as u128;
-        let max_ms = self.max_delay.as_millis() as u128;
+        let base_ms = self.base_delay.as_millis();
+        let max_ms = self.max_delay.as_millis();
         let shift = self.attempt.min(63);
         let multiplier = 1u128
             .checked_shl(shift)
@@ -77,14 +80,14 @@ impl ExponentialBackoff {
         let jitter_ms = match self.jitter {
             Jitter::None => capped_ms,
             Jitter::Full => {
-                let capped_u64 = capped_ms.min(u64::MAX as u128) as u64;
-                rand::thread_rng().gen_range(0..=capped_u64) as u128
+                let capped_u64 = capped_ms.min(u128::from(u64::MAX)) as u64;
+                u128::from(rand::thread_rng().gen_range(0..=capped_u64))
             }
         };
 
         self.attempt = self.attempt.saturating_add(1);
         Some(Duration::from_millis(
-            jitter_ms.min(u64::MAX as u128) as u64,
+            jitter_ms.min(u128::from(u64::MAX)) as u64,
         ))
     }
 
@@ -101,7 +104,7 @@ impl ExponentialBackoff {
     /// Whether the backoff has reached its maximum attempts.
     pub fn is_exhausted(&self) -> bool {
         self.max_attempts
-            .map_or(false, |max| self.attempt >= max)
+            .is_some_and(|max| self.attempt >= max)
     }
 }
 

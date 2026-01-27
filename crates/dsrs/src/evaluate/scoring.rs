@@ -17,8 +17,10 @@ use std::collections::HashMap;
 /// Method for aggregating scores across rollouts.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum AggregationMethod {
     /// Median of rollouts (robust to outliers). Recommended.
+    #[default]
     Median,
     /// Mean of rollouts.
     Mean,
@@ -30,11 +32,6 @@ pub enum AggregationMethod {
     TrimmedMean(f64),
 }
 
-impl Default for AggregationMethod {
-    fn default() -> Self {
-        Self::Median
-    }
-}
 
 impl AggregationMethod {
     /// Aggregate a list of scores using this method.
@@ -48,7 +45,7 @@ impl AggregationMethod {
                 let mut sorted = scores.to_vec();
                 sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
                 let mid = sorted.len() / 2;
-                if sorted.len() % 2 == 0 {
+                if sorted.len().is_multiple_of(2) {
                     (sorted[mid - 1] + sorted[mid]) / 2.0
                 } else {
                     sorted[mid]
@@ -419,8 +416,8 @@ impl Scorer {
         }
 
         // Add expected output if available (for truth metrics to compare against)
-        if let Some(ref expected) = task.expected {
-            if !expected.pass_commands.is_empty() {
+        if let Some(ref expected) = task.expected
+            && !expected.pass_commands.is_empty() {
                 ex.data.insert(
                     "expected_commands".to_string(),
                     serde_json::Value::Array(
@@ -432,16 +429,14 @@ impl Scorer {
                     ),
                 );
             }
-        }
 
-        if let Some(ref gold_files) = task.gold_files {
-            if let Some(first_gold) = gold_files.first() {
+        if let Some(ref gold_files) = task.gold_files
+            && let Some(first_gold) = gold_files.first() {
                 ex.data.insert(
                     "expected".to_string(),
                     serde_json::Value::String(first_gold.content.clone()),
                 );
             }
-        }
 
         ex
     }

@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter};
 
-use crate::backend::events::{AppServerEvent, EventSink, TerminalOutput};
+use crate::backend::events::{AppServerEvent, EventSink};
 use crate::file_logger::FileLogger;
 
 #[derive(Clone)]
@@ -52,7 +52,4 @@ impl EventSink for TauriEventSink {
         });
     }
 
-    fn emit_terminal_output(&self, event: TerminalOutput) {
-        let _ = self.app.emit("terminal-output", event);
-    }
 }

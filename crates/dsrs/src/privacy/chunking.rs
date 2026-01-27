@@ -7,8 +7,10 @@ use std::ops::Range;
 
 /// Policy for chunking content before sending to providers.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Default)]
 pub enum ChunkingPolicy {
     /// Send full context (default, no chunking).
+    #[default]
     Full,
 
     /// Send minimal spans only (changed lines + limited context).
@@ -32,11 +34,6 @@ pub enum ChunkingPolicy {
     },
 }
 
-impl Default for ChunkingPolicy {
-    fn default() -> Self {
-        Self::Full
-    }
-}
 
 impl ChunkingPolicy {
     /// Create minimal spans policy with default context.

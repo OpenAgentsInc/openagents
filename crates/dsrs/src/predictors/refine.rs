@@ -178,13 +178,12 @@ impl<M: Module> Module for Refine<M> {
         }
 
         // Return best prediction if we have one
-        if let Some((pred, score)) = best_pred {
-            if self.config.best_of_n || score >= self.config.threshold * 0.5 {
+        if let Some((pred, score)) = best_pred
+            && (self.config.best_of_n || score >= self.config.threshold * 0.5) {
                 // In best-of-n mode, always return best
                 // Otherwise, return if score is at least half threshold
                 return Ok(pred);
             }
-        }
 
         // All attempts failed
         Err(last_error.unwrap_or_else(|| {

@@ -346,7 +346,7 @@ async fn optimize_signature(
 
     let delta_over_baseline =
         optimized_scorecard.overall_score - baseline_scorecard.overall_score;
-    let delta_passed = delta_over_baseline >= config.min_promotion_delta as f64;
+    let delta_passed = delta_over_baseline >= f64::from(config.min_promotion_delta);
 
     let mut manifest =
         CompiledModuleManifest::new(signature.name(), optimizer_label(&config.optimizer))
@@ -434,8 +434,8 @@ fn promotion_manager_for_signature(
 ) -> PromotionManager {
     let gate = PromotionGate::new("plan_mode_gate", PromotionState::Candidate, PromotionState::Promoted)
         .with_requirements(vec![
-            GateRequirement::min_score(PLAN_MODE_PROXY_METRIC, config.min_proxy_score as f64),
-            GateRequirement::min_score(truth_metric_name(signature), config.min_truth_score as f64),
+            GateRequirement::min_score(PLAN_MODE_PROXY_METRIC, f64::from(config.min_proxy_score)),
+            GateRequirement::min_score(truth_metric_name(signature), f64::from(config.min_truth_score)),
         ]);
     PromotionManager::with_gates(vec![gate], scorer_for_signature(signature, config))
 }

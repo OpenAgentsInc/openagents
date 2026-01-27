@@ -274,7 +274,7 @@ impl PylonCompletionModel {
             None
         } else {
             let spent = *self.spent_msats.read().await;
-            let spent_sats = (spent + 999) / 1000;
+            let spent_sats = spent.div_ceil(1000);
             Some(self.config.budget_sats.saturating_sub(spent_sats))
         }
     }
@@ -316,7 +316,7 @@ impl PylonCompletionModel {
         // Check budget before submitting
         if self.config.budget_sats > 0 {
             let spent = *self.spent_msats.read().await;
-            let spent_sats = (spent + 999) / 1000;
+            let spent_sats = spent.div_ceil(1000);
             if spent_sats >= self.config.budget_sats {
                 return Err(CompletionError::ProviderError(format!(
                     "Budget exhausted: spent {} sats, limit is {} sats",
@@ -403,10 +403,10 @@ impl PylonCompletionModel {
                             if self.config.budget_sats > 0 {
                                 let current = *self.spent_msats.read().await;
                                 let would_spend = current + amount_msats;
-                                if (would_spend + 999) / 1000 > self.config.budget_sats {
+                                if would_spend.div_ceil(1000) > self.config.budget_sats {
                                     return Err(anyhow::anyhow!(
                                         "Budget exceeded: would spend {} sats, limit is {} sats",
-                                        (would_spend + 999) / 1000,
+                                        would_spend.div_ceil(1000),
                                         self.config.budget_sats
                                     ));
                                 }

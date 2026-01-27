@@ -36,6 +36,7 @@ pub struct ChatCompletionChoice {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[expect(clippy::struct_field_names)]
 pub struct TokenUsage {
     pub prompt_tokens: u32,
     pub completion_tokens: u32,
@@ -157,7 +158,7 @@ impl LocalAiLM {
     }
 
     /// Convert a generic prompt to chat messages
-    fn prompt_to_messages(&self, prompt: &str, system_prompt: Option<&str>) -> Vec<ChatMessage> {
+    fn prompt_to_messages(prompt: &str, system_prompt: Option<&str>) -> Vec<ChatMessage> {
         let mut messages = Vec::new();
 
         if let Some(system) = system_prompt {
@@ -216,13 +217,7 @@ mod tests {
 
     #[test]
     fn test_prompt_to_messages() {
-        let lm = LocalAiLM::new(
-            "http://localhost:3001".to_string(),
-            "test-key".to_string(),
-            "test-model".to_string(),
-        );
-
-        let messages = lm.prompt_to_messages("Hello", Some("You are helpful"));
+        let messages = LocalAiLM::prompt_to_messages("Hello", Some("You are helpful"));
         assert_eq!(messages.len(), 2);
         assert_eq!(messages[0].role, "system");
         assert_eq!(messages[0].content, "You are helpful");
@@ -232,13 +227,7 @@ mod tests {
 
     #[test]
     fn test_prompt_to_messages_no_system() {
-        let lm = LocalAiLM::new(
-            "http://localhost:3001".to_string(),
-            "test-key".to_string(),
-            "test-model".to_string(),
-        );
-
-        let messages = lm.prompt_to_messages("Hello", None);
+        let messages = LocalAiLM::prompt_to_messages("Hello", None);
         assert_eq!(messages.len(), 1);
         assert_eq!(messages[0].role, "user");
         assert_eq!(messages[0].content, "Hello");

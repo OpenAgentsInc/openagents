@@ -26,10 +26,12 @@ use std::time::Duration;
 
 /// Resource profile for sandbox execution.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Default)]
 pub enum SandboxProfile {
     /// Small: 1 vCPU, 1GB RAM, 5GB disk
     Small,
     /// Medium: 2 vCPU, 4GB RAM, 8GB disk
+    #[default]
     Medium,
     /// Large: 4 vCPU, 8GB RAM, 10GB disk
     Large,
@@ -61,11 +63,6 @@ impl SandboxProfile {
     }
 }
 
-impl Default for SandboxProfile {
-    fn default() -> Self {
-        Self::Medium
-    }
-}
 
 /// Configuration for the Pylon sandbox provider.
 #[derive(Debug, Clone)]
@@ -232,7 +229,7 @@ impl PylonSandboxProvider {
             repo: RepoMount::default(),
             commands: commands
                 .into_iter()
-                .map(|cmd| SandboxCommand::new(cmd))
+                .map(SandboxCommand::new)
                 .collect(),
             env: std::collections::HashMap::new(),
             verification: protocol::verification::Verification::objective(),
@@ -362,7 +359,7 @@ impl PylonSandboxProvider {
             status: SandboxStatus::Success,
             error: None,
             provenance: Provenance::new("sandbox-executor-mock")
-                .with_provider(&self.keypair.public_key_hex()),
+                .with_provider(self.keypair.public_key_hex()),
         }
     }
 

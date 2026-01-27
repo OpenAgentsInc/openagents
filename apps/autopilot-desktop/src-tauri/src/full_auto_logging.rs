@@ -65,6 +65,7 @@ pub struct FullAutoDecisionRawLog {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[expect(clippy::struct_field_names)]
 pub struct FullAutoLogPaths {
     pub app_server_log_dir: String,
     pub full_auto_log_dir: String,
@@ -72,11 +73,10 @@ pub struct FullAutoLogPaths {
 }
 
 pub fn full_auto_log_dir() -> PathBuf {
-    if let Ok(path) = std::env::var(ENV_FULL_AUTO_LOG_DIR) {
-        if !path.trim().is_empty() {
+    if let Ok(path) = std::env::var(ENV_FULL_AUTO_LOG_DIR)
+        && !path.trim().is_empty() {
             return PathBuf::from(path);
         }
-    }
     let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("."));
     home.join(".openagents")
         .join("autopilot-desktop")
@@ -85,11 +85,10 @@ pub fn full_auto_log_dir() -> PathBuf {
 }
 
 pub fn trace_bundle_dir() -> PathBuf {
-    if let Ok(path) = std::env::var(ENV_TRACE_BUNDLE_DIR) {
-        if !path.trim().is_empty() {
+    if let Ok(path) = std::env::var(ENV_TRACE_BUNDLE_DIR)
+        && !path.trim().is_empty() {
             return PathBuf::from(path);
         }
-    }
     if let Ok(cwd) = std::env::current_dir() {
         return cwd.join("docs").join("logs").join(Utc::now().format("%Y%m%d").to_string());
     }

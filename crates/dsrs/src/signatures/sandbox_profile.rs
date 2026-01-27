@@ -10,11 +10,13 @@ use serde_json::{Value, json};
 
 /// Sandbox resource profiles.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Default)]
 pub enum SandboxProfile {
     /// 1 vCPU, 1GB RAM, 5GB disk, 60s timeout.
     Small,
 
     /// 2 vCPUs, 4GB RAM, 8GB disk, 120s timeout.
+    #[default]
     Medium,
 
     /// 4 vCPUs, 8GB RAM, 10GB disk, 300s timeout.
@@ -29,11 +31,6 @@ pub enum SandboxProfile {
     },
 }
 
-impl Default for SandboxProfile {
-    fn default() -> Self {
-        Self::Medium
-    }
-}
 
 impl std::fmt::Display for SandboxProfile {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

@@ -112,8 +112,8 @@ impl AcpConnection {
                 match serde_json::from_str::<Value>(trimmed) {
                     Ok(value) => {
                         // Extract session ID from session/new response
-                        if let Some(result) = value.get("result") {
-                            if let Some(session_id) =
+                        if let Some(result) = value.get("result")
+                            && let Some(session_id) =
                                 result.get("sessionId").and_then(|s| s.as_str())
                             {
                                 let mut stored = session_id_for_capture.lock().await;
@@ -123,15 +123,13 @@ impl AcpConnection {
                                     "Stored ACP session ID"
                                 );
                             }
-                        }
 
                         // Track responses: if this is a response (has id, no method), check if we have a session for this request
                         if let Some(response_id) = value.get("id").and_then(|id| id.as_u64()) {
                             // Check if this response has stopReason (completion indicator)
                             if let Some(stop_reason) =
                                 value.get("stopReason").and_then(|s| s.as_str())
-                            {
-                                if stop_reason == "end_turn" {
+                                && stop_reason == "end_turn" {
                                     // Look up which session this request was for
                                     let session_id = {
                                         let mut req_map =
@@ -171,7 +169,6 @@ impl AcpConnection {
                                         }
                                     }
                                 }
-                            }
                         }
 
                         let event = AcpEvent {
@@ -373,8 +370,8 @@ impl AcpConnection {
         };
 
         // Track session ID for this request (if it's session/prompt)
-        if method == "session/prompt" {
-            if let Some(session_id) = params_value.get("sessionId").and_then(|s| s.as_str()) {
+        if method == "session/prompt"
+            && let Some(session_id) = params_value.get("sessionId").and_then(|s| s.as_str()) {
                 let mut req_map = self.request_to_session.lock().await;
                 req_map.insert(id, session_id.to_string());
                 tracing::debug!(
@@ -383,7 +380,6 @@ impl AcpConnection {
                     "Tracking request id for session"
                 );
             }
-        }
 
         let message = json!({
             "jsonrpc": "2.0",
