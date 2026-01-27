@@ -448,3 +448,5 @@ Effuse catalog -> WGPUI target
 - 2026-01-27: Verified `cargo build -p autopilot-desktop-wgpu` after layout + DPI fixes.
 - 2026-01-27: Moved migration docs under `apps/autopilot-desktop-wgpu/docs/migration` and updated repo documentation links.
 - 2026-01-27: Removed legacy crates `autopilot_ui_contract` and `autopilot-desktop-runner` from the workspace (sources deleted; references cleaned up).
+- 2026-01-27: Added view model reducer tests and layout sanity tests in `crates/autopilot_ui`, plus pointer docs under `apps/autopilot-desktop/docs/migration/`.
+- 2026-01-27: Verified `cargo test -p autopilot_ui`.
