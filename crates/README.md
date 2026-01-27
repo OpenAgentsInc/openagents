@@ -10,13 +10,13 @@ distinct from shared platform, core, and UI code. The UI group should live under
 
 Proposed grouping (adjust as needed):
 - `crates/products/`: autopilot, pylon, onyx
-- `crates/app-core/`: autopilot_app, autopilot_ui, autopilot_ui_contract
+- `crates/app-core/`: autopilot_app, autopilot_ui
 - `crates/core/`: adjutant, autopilot-core, dsrs, dsrs-macros, rlm, frlm
 - `crates/platform/`: agent, protocol, runtime, compute, gateway, lm-router, local-inference,
   openagents-relay, nostr-core, nostr-client, issues
 - `crates/ui/`: wgpui, editor, vim
 - `crates/integrations/`: gpt-oss, codex-client, codex-mcp, ai-server, openagents-spark, voice
-- `crates/tools/`: arrow, testing, ws-test, manatap, autopilot-desktop-runner
+- `crates/tools/`: arrow, testing, ws-test, manatap
 
 Proposed steps:
 1. Create the group folders under `crates/` and move the crate directories.
@@ -52,10 +52,6 @@ Codex app-server runs and Adjutant autopilot loops.
 The autopilot-core crate provides shared execution logic for Autopilot, including DSPy workflows,
 checkpointing, preflight checks, session logging, and streaming event normalization.
 
-## autopilot-desktop-runner
-The autopilot-desktop-runner crate is a dev runner for the legacy Tauri desktop app. It shells out
-to Bun/Tauri for dev/build workflows and opens release bundles on macOS.
-
 ## autopilot_app
 The autopilot_app crate is the shared app core for Autopilot CLI and desktop surfaces: it owns
 workspace/session handles, dispatches user actions, and emits a stream of app events for UI layers.
@@ -63,10 +59,6 @@ workspace/session handles, dispatches user actions, and emits a stream of app ev
 ## autopilot_ui
 The autopilot_ui crate hosts shared WGPUI surfaces for Autopilot, including immediate-mode views,
 thread panels, and desktop scaffolding used by the native desktop host.
-
-## autopilot_ui_contract
-The autopilot_ui_contract crate defines canonical UITree/UiPatch contract types, patch application,
-and validation helpers for replayable UI diffs.
 
 ## codex-client
 The codex-client crate is a Rust client for the Codex app-server JSON-RPC API, with streaming

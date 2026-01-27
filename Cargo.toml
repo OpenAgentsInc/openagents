@@ -1,16 +1,13 @@
 [workspace]
 resolver = "2"
 members = [
-    "apps/autopilot-desktop/src-tauri",
     "apps/autopilot-desktop-wgpu",
     "crates/adjutant",
     "crates/agent",
     "crates/ai-server",
     "crates/arrow",
-    "crates/autopilot-desktop-runner",
     "crates/autopilot_app",
     "crates/autopilot_ui",
-    "crates/autopilot_ui_contract",
     "crates/autopilot",
     "crates/autopilot-core",
     "crates/codex-client",

@@ -9,12 +9,11 @@ If you're looking for the philosophy / "why open", start with **[MANIFESTO.md](.
 
 ```bash
 git clone https://github.com/OpenAgentsInc/openagents.git
-cd openagents/apps/autopilot-desktop
-bun install
-bun run tauri dev
+cd openagents
+cargo run -p autopilot-desktop-wgpu
 ```
 
-For release builds, see **[apps/autopilot-desktop/docs/autopilot/DISTRIBUTION.md](apps/autopilot-desktop/docs/autopilot/DISTRIBUTION.md)**.
+For release builds, see **[apps/autopilot-desktop/docs/migration/EFFUSE_TO_WGPUI_PLAN.md](apps/autopilot-desktop/docs/migration/EFFUSE_TO_WGPUI_PLAN.md)**.
 
 ## What you get
 
@@ -24,7 +23,7 @@ Autopilot is designed to be:
 * **Verifiable**: uses deterministic checks (tests/builds) as the ground-truth loop
 * **Inspectable**: emits structured session logs and artifacts for replay/debug/audit
 * **Optimizable**: uses DSPy-style signatures/modules/optimizers to improve policies over time
-* **Signature-driven UI**: Effuse UITree + UI patch streaming for live, structured visibility
+* **Immediate-mode UI**: WGPUI render tree with Zed-inspired layout patterns
 
 ## CLI / other surfaces
 
@@ -35,7 +34,7 @@ If you need them, use the docs index below to navigate the relevant crates and g
 
 Start with:
 
-* **Desktop docs**: [apps/autopilot-desktop/docs/README.md](apps/autopilot-desktop/docs/README.md)
+* **Desktop docs**: [apps/autopilot-desktop/docs/migration/EFFUSE_TO_WGPUI_PLAN.md](apps/autopilot-desktop/docs/migration/EFFUSE_TO_WGPUI_PLAN.md)
 * **Docs index (everything else)**: [docs/README.md](docs/README.md)
 * **Repo map / ownership**: [PROJECT_OVERVIEW.md](./PROJECT_OVERVIEW.md)
 * **Agent contract / contribution norms**: [AGENTS.md](./AGENTS.md)

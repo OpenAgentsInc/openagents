@@ -298,7 +298,6 @@ fn init_state(
 
 fn render_frame(state: &mut RenderState) -> Result<()> {
     let logical = logical_size(&state.config, state.scale_factor);
-    let bounds = window_bounds(logical);
     let content_bounds = content_bounds(logical);
 
     let mut scene = Scene::new();

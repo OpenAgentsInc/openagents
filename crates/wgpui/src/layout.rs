@@ -129,6 +129,18 @@ impl LayoutStyle {
         self
     }
 
+    /// Set flex direction to row.
+    pub fn flex_row(mut self) -> Self {
+        self.flex_direction = FlexDirection::Row;
+        self
+    }
+
+    /// Set flex direction to column.
+    pub fn flex_col(mut self) -> Self {
+        self.flex_direction = FlexDirection::Column;
+        self
+    }
+
     /// Set flex grow
     pub fn flex_grow(mut self, value: f32) -> Self {
         self.flex_grow = value;

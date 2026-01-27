@@ -12,10 +12,9 @@ use wgpui::components::organisms::{
 use wgpui::components::sections::{MessageEditor, ThreadView};
 use wgpui::components::Text;
 use wgpui::input::InputEvent;
-use taffy::prelude::{FlexDirection, LengthPercentage};
 use wgpui::{
     Bounds, Component, EventResult, LayoutEngine, LayoutStyle, PaintContext, Point, Quad, Size,
-    theme, px,
+    theme, length, px,
 };
 
 const PANEL_PADDING: f32 = 12.0;
@@ -902,14 +901,14 @@ struct Layout {
 impl Layout {
     fn new(bounds: Bounds) -> Self {
         let mut engine = LayoutEngine::new();
-        let panel_gap = LengthPercentage::length(PANEL_GAP);
-        let inner_gap = LengthPercentage::length(6.0);
-        let padding = LengthPercentage::length(PANEL_PADDING);
+        let panel_gap = length(PANEL_GAP);
+        let inner_gap = length(6.0);
+        let padding = length(PANEL_PADDING);
 
         let left_header = engine.request_leaf(&LayoutStyle::new().height(px(PANEL_HEADER_HEIGHT)));
         let left_list = engine.request_layout(&LayoutStyle::new().flex_grow(1.0), &[]);
         let left_panel_style = LayoutStyle::new()
-            .flex_direction(FlexDirection::Column)
+            .flex_col()
             .width(px(LEFT_PANEL_WIDTH))
             .flex_shrink(0.0)
             .gap(inner_gap)
@@ -920,7 +919,7 @@ impl Layout {
         let thread_body = engine.request_layout(&LayoutStyle::new().flex_grow(1.0), &[]);
         let composer = engine.request_leaf(&LayoutStyle::new().height(px(COMPOSER_HEIGHT)));
         let center_panel_style = LayoutStyle::new()
-            .flex_direction(FlexDirection::Column)
+            .flex_col()
             .flex_grow(1.0)
             .gap(inner_gap)
             .padding(padding);
@@ -930,7 +929,7 @@ impl Layout {
         let right_header = engine.request_leaf(&LayoutStyle::new().height(px(PANEL_HEADER_HEIGHT)));
         let right_body = engine.request_layout(&LayoutStyle::new().flex_grow(1.0), &[]);
         let right_panel_style = LayoutStyle::new()
-            .flex_direction(FlexDirection::Column)
+            .flex_col()
             .width(px(RIGHT_PANEL_WIDTH))
             .flex_shrink(0.0)
             .gap(inner_gap)
@@ -938,7 +937,7 @@ impl Layout {
         let right_panel = engine.request_layout(&right_panel_style, &[right_header, right_body]);
 
         let content_row_style = LayoutStyle::new()
-            .flex_direction(FlexDirection::Row)
+            .flex_row()
             .gap(panel_gap)
             .flex_grow(1.0);
         let content_row = engine.request_layout(
@@ -949,7 +948,7 @@ impl Layout {
         let command_bar = engine.request_leaf(&LayoutStyle::new().height(px(COMMAND_BAR_HEIGHT)));
 
         let root_style = LayoutStyle::new()
-            .flex_direction(FlexDirection::Column)
+            .flex_col()
             .width(px(bounds.size.width))
             .height(px(bounds.size.height));
         let root = engine.request_layout(&root_style, &[content_row, command_bar]);
@@ -1001,7 +1000,7 @@ fn stack_bounds(bounds: Bounds, heights: &[f32], gap: f32) -> Vec<Bounds> {
     }
 
     let mut engine = LayoutEngine::new();
-    let gap = LengthPercentage::length(gap);
+    let gap = length(gap);
     let mut nodes = Vec::with_capacity(heights.len());
 
     for height in heights {
@@ -1010,7 +1009,7 @@ fn stack_bounds(bounds: Bounds, heights: &[f32], gap: f32) -> Vec<Bounds> {
     }
 
     let stack_style = LayoutStyle::new()
-        .flex_direction(FlexDirection::Column)
+        .flex_col()
         .gap(gap)
         .width(px(bounds.size.width))
         .height(px(bounds.size.height));
