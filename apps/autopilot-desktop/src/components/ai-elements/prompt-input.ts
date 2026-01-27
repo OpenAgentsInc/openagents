@@ -91,7 +91,7 @@ export type PromptInputButtonProps = {
   readonly size?: "xs" | "sm" | "icon-xs" | "icon-sm"
 }
 
-export const PromptInputButton = ({ className, children, variant = "ghost", size = "icon-sm" }: PromptInputButtonProps): TemplateResult =>
+export const PromptInputButton = ({ className, children, variant = "ghost", size = "sm" }: PromptInputButtonProps): TemplateResult =>
   InputGroupButton({ className, size, type: "button", variant, children })
 
 export type PromptInputActionMenuProps = { readonly children?: AIChildren }
@@ -99,7 +99,7 @@ export const PromptInputActionMenu = ({ children }: PromptInputActionMenuProps):
 
 export type PromptInputActionMenuTriggerProps = PromptInputButtonProps
 export const PromptInputActionMenuTrigger = ({ className, children }: PromptInputActionMenuTriggerProps): TemplateResult =>
-  DropdownMenuTrigger({ children: PromptInputButton({ className, children: children ?? "+" }) })
+  DropdownMenuTrigger({ children: PromptInputButton({ className, size: "icon-sm", children: children ?? "+" }) })
 
 export type PromptInputActionMenuContentProps = { readonly className?: string; readonly children?: AIChildren }
 export const PromptInputActionMenuContent = ({ className, children }: PromptInputActionMenuContentProps): TemplateResult =>

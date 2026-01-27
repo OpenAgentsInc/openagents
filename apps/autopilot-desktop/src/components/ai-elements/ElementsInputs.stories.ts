@@ -290,5 +290,39 @@ export const SpeechAndSuggestions = {
 
 export const PromptTabsAndCommand = {
   render: () => html`
-    <div class=\"flex flex-col gap-4\">\n      ${Heading({ text: \"Prompt Tabs + Command\" })}\n      ${PromptInputTab({\n        children: html`\n          ${PromptInputTabsList({\n            children: html`\n              ${PromptInputTabItem({ children: PromptInputTabLabel({ children: \"Draft\" }) })}\n              ${PromptInputTabItem({ children: PromptInputTabLabel({ children: \"History\" }) })}\n            `,\n          })}\n          ${PromptInputTabBody({\n            children: html`\n              ${PromptInputCommand({\n                children: html`\n                  ${PromptInputCommandInput({})}\n                  ${PromptInputCommandList({\n                    children: html`\n                      ${PromptInputCommandEmpty({ children: \"No results\" })}\n                      ${PromptInputCommandGroup({\n                        children: html`\n                          ${PromptInputCommandItem({ children: \"Fix tests\" })}\n                          ${PromptInputCommandSeparator({})}\n                          ${PromptInputCommandItem({ children: \"Update docs\" })}\n                        `,\n                      })}\n                    `,\n                  })}\n                `,\n              })}\n            `,\n          })}\n        `,\n      })}\n    </div>\n  `,
+    <div class="flex flex-col gap-4">
+      ${Heading({ text: "Prompt Tabs + Command" })}
+      ${PromptInputTab({
+        children: html`
+          ${PromptInputTabsList({
+            children: html`
+              ${PromptInputTabItem({ children: PromptInputTabLabel({ children: "Draft" }) })}
+              ${PromptInputTabItem({ children: PromptInputTabLabel({ children: "History" }) })}
+            `,
+          })}
+          ${PromptInputTabBody({
+            children: html`
+              ${PromptInputCommand({
+                children: html`
+                  ${PromptInputCommandInput({})}
+                  ${PromptInputCommandList({
+                    children: html`
+                      ${PromptInputCommandEmpty({ children: "No results" })}
+                      ${PromptInputCommandGroup({
+                        children: html`
+                          ${PromptInputCommandItem({ children: "Fix tests" })}
+                          ${PromptInputCommandSeparator({})}
+                          ${PromptInputCommandItem({ children: "Update docs" })}
+                        `,
+                      })}
+                    `,
+                  })}
+                `,
+              })}
+            `,
+          })}
+        `,
+      })}
+    </div>
+  `,
 }

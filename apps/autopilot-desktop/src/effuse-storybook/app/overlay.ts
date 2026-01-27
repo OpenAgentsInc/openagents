@@ -10,7 +10,7 @@ import { makeEzRegistry } from "../../effuse/ez/registry"
 import { mountEzRuntimeWith } from "../../effuse/ez/runtime"
 import { getAllStories } from "../story-index"
 import { CanvasHost } from "./canvas/host"
-import { mountUiRuntime } from "../../components/ui/runtime"
+import { closeUiOverlays, mountUiRuntime, syncUiRuntime } from "../../components/ui/runtime"
 
 // Helper to get raw HTML string from template (simplistic render for v1)
 const templateToString = (template: TemplateResult): string =>
@@ -101,9 +101,16 @@ export const StorybookOverlay = {
         if (state.isOpen) {
           shell.classList.remove("hidden")
           shell.classList.add("flex")
+          shell.removeAttribute("inert")
+          shell.style.pointerEvents = ""
+          shell.setAttribute("aria-hidden", "false")
         } else {
+          closeUiOverlays(shell)
           shell.classList.add("hidden")
           shell.classList.remove("flex")
+          shell.setAttribute("inert", "")
+          shell.style.pointerEvents = "none"
+          shell.setAttribute("aria-hidden", "true")
         }
       })
 
@@ -140,6 +147,7 @@ export const StorybookOverlay = {
                       Effect.logError(error).pipe(Effect.asVoid)
                     )
                   )
+                  syncUiRuntime(shell)
                 }
               }
             }).pipe(Effect.asVoid),
@@ -152,6 +160,7 @@ export const StorybookOverlay = {
       // Initial Render
       yield* renderSidebar
       yield* updateVisibility
+      syncUiRuntime(shell)
 
       // Return a "refresh" effect if needed, or setup subscription
       // For v1 manual refresh on toggle is fine

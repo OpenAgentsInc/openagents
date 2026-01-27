@@ -24,12 +24,12 @@ export const setupStorybookListener = () => {
     // Mount Overlay
     const overlay = yield* StorybookOverlay.mount(container)
 
-    // Listen for F12, Escape, or Ctrl+Shift+S
+    // Listen for F3, Escape, or Ctrl+Shift+S
     const handleKeydown = (e: KeyboardEvent) => {
       // DEBUG: Log ALL keydowns
       // console.log("[Storybook] Keydown:", e.key, e.code, e.ctrlKey, e.shiftKey)
 
-      if (e.key === "F12" || (e.ctrlKey && e.shiftKey && e.code === "KeyS")) {
+      if (e.key === "F3" || (e.ctrlKey && e.shiftKey && e.code === "KeyS")) {
         console.log("[Storybook] Toggle triggered")
         e.preventDefault()
         e.stopPropagation() // Stop other listeners
@@ -82,5 +82,5 @@ export const setupStorybookListener = () => {
   )
 
   Effect.runFork(runnable)
-  console.log("[Storybook] Listener active. Press F12 to toggle.")
+  console.log("[Storybook] Listener active. Press F3 to toggle.")
 }
