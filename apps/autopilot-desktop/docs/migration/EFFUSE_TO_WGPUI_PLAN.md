@@ -3,11 +3,11 @@
 ## Summary
 
 Autopilot Desktop currently ships a Tauri + TypeScript/Effuse UI with a
-signature-driven UITree runtime and a large catalog of HTML/CSS components.
+large catalog of HTML/CSS components.
 WGPUI is already the GPU UI stack for `crates/autopilot` and includes a mature
 component system plus a full desktop and wasm platform layer. This plan
 migrates Autopilot Desktop from Effuse to WGPUI as a **native Rust app** while
-preserving the existing UI contract unless explicitly superseded.
+dropping the legacy UI contract entirely.
 
 ## North Star (Full Rustiness)
 
@@ -24,8 +24,6 @@ Effuse + Autopilot Desktop
 - Effuse runtime lives in `apps/autopilot-desktop/src/effuse/` and includes:
   - Component system (`StateCell`, `html`` templates)
   - Hypermedia actions (`data-ez`)
-  - Signature-driven UITree runtime in `apps/autopilot-desktop/src/effuse/ui/`
-- UITree + UiPatch contract is defined and enforced (ADR-0022).
 - UI catalog + component registry is in
   `apps/autopilot-desktop/src/components/catalog.ts`.
 - Large set of HTML/CSS components in
@@ -67,12 +65,6 @@ into reusable Rust libraries. This means:
   tool execution orchestration, event stream.
 - `crates/autopilot_ui/`
   Shared WGPUI surfaces (immediate-mode views + components).
-- `crates/autopilot_ui_contract/`
-  Canonical UI contract types: `UITree`, `UiPatch`, validation, patch apply,
-  action envelope.
-- `crates/autopilot_ui_runtime/` (optional)
-  If we keep UITree as the UI intermediate, this is the reducer + registry
-  glue that turns UITree into WGPUI components.
 - `crates/autopilot_desktop_shell/`
   Desktop-only: window management, menus, file dialogs, OS integration.
 
@@ -85,13 +77,10 @@ into reusable Rust libraries. This means:
 
 ## Contract Decision
 
-Preserve UITree + UiPatch as the backend-to-UI contract **unless superseded**.
-For full Rustiness:
-
-- Move canonical UITree types + patching logic into `crates/autopilot_ui_contract`.
-- Treat the contract as a Rust API (not IPC) for native desktop.
-- If a new contract is needed, write a superseding ADR and keep a compatibility
-  adapter during deprecation.
+We are **not** supporting the legacy UI protocol at all. The desktop UI
+is rendered from typed view model state and WGPUI’s immediate-mode element
+tree. If we ever need structured logs or replays, they are derived from
+`AppEvent` + `UserAction` streams, not a legacy UI protocol.
 
 ## Component Model (Zed/GPUI-Inspired)
 
@@ -110,9 +99,7 @@ We will mirror the GPUI patterns from Zed:
 In OpenAgents, we align WGPUI with this pattern:
 - WGPUI views will be entities implementing `Render`.
 - Shared UI state lives in entities; UI is reconstructed each frame.
-- Event dispatch uses actions and context, not a serialized UITree.
-- UITree/UiPatch remains as a **log + replay** artifact, not the primary
-  in-memory view state, unless we later decide otherwise via ADR.
+- Event dispatch uses actions and context; no legacy UI protocol is retained.
 
 ## Zed Layout System Adoption Plan (Full App)
 
@@ -230,7 +217,7 @@ The layout rewrite should be testable by design:
   deterministic `TestContext`.
 - Add "layout snapshot" tests that assert element bounds for key surfaces
   (left list, right status, thread body, composer).
-- Keep UiPatch/UITree logging as a replay artifact so UI regressions can be
+ - Keep AppEvent + UserAction logs for replay so UI regressions can be
   reproduced without manual interaction.
 - Ensure services are mocked via `autopilot_app` service traits so UI tests
   remain deterministic and offline.
@@ -296,19 +283,16 @@ Create `crates/autopilot_app` with:
 
 Gate: CLI and desktop both compile against `autopilot_app` APIs.
 
-### Phase 2: Canonicalize UITree + Patching in Rust
+### Phase 2: Typed View Model + App Events
 
-Move or implement in `crates/autopilot_ui_contract`:
-- `UITree` / `UIElement`
-- `UiPatch` / patch apply
-- Catalog validation (if still needed)
-- Action envelopes: `UIAction`, `ActionResult` (confirm/success/error)
+Define the canonical app-to-UI contract as **typed Rust state + events**:
 
-Then `autopilot_app` emits:
-- `AppEvent::UiPatch(UiPatch)`
-- `AppEvent::UiTreeSnapshot(UITree)` (optional for resync)
+- `AppEvent` captures lifecycle + tool execution + UI-relevant changes.
+- The desktop UI derives a typed `AppViewModel` directly from events.
+- No legacy UI reducer exists; UI state is owned by the view model.
 
-Gate: reducer unit tests apply patch sequences -> expected UITree.
+Gate: view model reducer tests cover core workflows (open workspace, start
+session, send message, tool calls).
 
 ### Phase 2b: Testability Spine (Zed Parity)
 
@@ -319,7 +303,7 @@ rewrite is safe and replayable:
   (Clock, IdGen, Fs, Proc, Git, Http, Model, Store, UiSink).
 - Add headless scenario runner for `autopilot_app` (UserAction -> AppEvent).
 - Implement event recorder + replay loader (JSONL).
-- Add UITree/UiPatch reducer tests + invariants for contract stability.
+- Add view model reducer tests + invariants for contract stability.
 - Add WGPUI layout snapshot tests using `crates/wgpui/src/testing` and the
   component registry to assert bounds for key panels.
 
@@ -334,9 +318,8 @@ Adopt the Zed/GPUI component model:
   primary state holders.
 - Introduce a typed `AppViewModel` (or entity graph) and render directly to
   WGPUI elements each frame (immediate-mode view construction).
-- Keep UITree/UiPatch as **recorded output** (log + replay), not the primary
-  rendering input. If we still need external UI automation, add a reducer that
-  emits UITree snapshots from the typed view model.
+- Keep AppEvent + UserAction streams as the recorded output (log + replay), not
+  a legacy UI protocol.
 
 Gate: Status dashboard + conversation + tool-call cards working in WGPUI.
 
@@ -407,22 +390,22 @@ Effuse catalog -> WGPUI target
   - Mitigation: prioritize UX-critical components; reuse WGPUI components already built.
 - GPUI license or dependency constraints (if Option A is chosen).
   - Mitigation: default to Option B (WGPUI adaptation) unless license is cleared.
-- Contract drift from ADR-0022 (UITree + UiPatch).
-  - Mitigation: keep contract stable; if change required, add ADR + compatibility layer.
+- Event schema drift for `AppEvent` / `UserAction`.
+  - Mitigation: version events, validate replays, and gate changes via ADR.
 - Duplicate UI logic between Autopilot Desktop and `crates/autopilot`.
   - Mitigation: consolidate shared components in `crates/wgpui` and shared state in `crates/autopilot_app`.
 
 ## Acceptance Criteria
 
 - WGPUI UI renders all primary Autopilot Desktop flows with functional parity.
-- UI updates continue to be driven by `UiPatch` (or a superseding contract with ADR).
+- UI updates are driven by typed view model state derived from `AppEvent`s.
 - All desktop layout is expressed via flex layout trees (no manual bounds math).
 - End-to-end flows verified:
   - Connect workspace, start session, send message, view tool calls/diffs.
-  - Adjutant UI patches render correctly in the WGPUI canvas.
+  - Adjutant events render correctly in the WGPUI canvas.
 - Legacy Effuse UI removed or gated behind a feature flag.
 - Testability gates met (from `TESTABILITY.md`):
-  - Contract correctness (patch apply + invariants + replay load).
+  - Contract correctness (view model reducer + invariants + replay load).
   - App core determinism (headless scenarios offline).
   - UI mapping regression (replay -> UI runtime without panics).
 
@@ -430,7 +413,7 @@ Effuse catalog -> WGPUI target
 
 1. Create the new native WGPUI desktop binary.
 2. Define the backend extraction boundary (`crates/autopilot_app`).
-3. Establish UITree contract crate (`crates/autopilot_ui_contract`).
+3. Establish typed view model reducers + AppEvent schema tests.
 4. Start porting the first WGPUI surface (status + session list).
 
 ## Work Log
@@ -441,9 +424,8 @@ Effuse catalog -> WGPUI target
 - 2026-01-27: Updated `.cargo/config.toml` so `cargo autopilot` runs the new native WGPUI desktop binary.
 - 2026-01-27: Phase 1 started: added `crates/autopilot_app` with core app/event types, workspace/session handles, and broadcast-based event streaming; added a unit test for initial workspace events; registered the crate in the workspace.
 - 2026-01-27: Verified `cargo build -p autopilot_app`.
-- 2026-01-27: Phase 2 started: added `crates/autopilot_ui_contract` with UITree/UiElement/UiPatch types, dynamic value + visibility expressions, JSON patch parsing, and patch apply helpers plus unit tests; registered the crate in the workspace.
-- 2026-01-27: Verified `cargo build -p autopilot_ui_contract`.
-- 2026-01-27: Reviewed Zed GPUI architecture (entities + Render/RenderOnce + contexts) and updated Phase 3 to follow that immediate-mode component model; clarified UITree/UiPatch as log + replay artifacts.
+- 2026-01-27: Reviewed Zed GPUI architecture (entities + Render/RenderOnce + contexts) and updated Phase 3 to follow that immediate-mode component model.
+- 2026-01-27: Dropped legacy UI protocol compatibility from the migration plan; moved to typed view model + AppEvent/UserAction replay.
 - 2026-01-27: Phase 3 started: wired `apps/autopilot-desktop-wgpu` to `crates/autopilot_app`, added an immediate-mode `AppViewModel` + `DesktopRoot` component, and bridged app events into the Winit user-event loop for rendering.
 - 2026-01-27: Verified `cargo build -p autopilot-desktop-wgpu` after Phase 3 wiring.
 - 2026-01-27: Phase 4 completed (core surfaces): added session list + event log panels driven by the typed `AppViewModel`, with two-column layout and immediate-mode rendering.
@@ -456,3 +438,6 @@ Effuse catalog -> WGPUI target
 - 2026-01-27: Reviewed Zed GPUI layout approach (element tree + Taffy, `h_flex`/`v_flex`, `StyledExt`) and expanded the migration plan with a Zed-style layout adoption path, including WGPUI parity helpers and layout conversion gates.
 - 2026-01-27: Re-read `apps/autopilot-desktop/docs/migration/TESTABILITY.md` and aligned the plan with testability requirements (service traits, deterministic UI tests, log/replay).
 - 2026-01-27: Added a dedicated Phase 2b testability spine (headless scenarios, replay, layout snapshots) and expanded acceptance gates for contract correctness + determinism.
+- 2026-01-27: Removed legacy UI protocol references from the plan and testability alignment; moved to typed view model + AppEvent/UserAction replay.
+- 2026-01-27: Phase 3b started: replaced manual panel layout math with Taffy-powered flex layout in `crates/autopilot_ui`.
+- 2026-01-27: Phase 3b continued: converted session list + status section stacking to Taffy-based layout so rows are computed structurally instead of manual y offsets.
