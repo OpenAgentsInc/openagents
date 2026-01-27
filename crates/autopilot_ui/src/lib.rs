@@ -181,8 +181,10 @@ impl Component for MinimalRoot {
             .color(theme::text::SECONDARY)
             .paint(subtitle_bounds, cx);
 
-        let label_width = cx.text.measure(self.button_label, theme::font_size::SM);
-        let button_width = (label_width + 36.0).max(120.0);
+        let button_font = theme::font_size::SM;
+        let label_width = cx.text.measure(self.button_label, button_font);
+        let button_padding_x = 16.0;
+        let button_width = (label_width + button_padding_x * 2.0).max(96.0);
         let button_height = 36.0;
         let button_bounds = Bounds::new(
             card_bounds.origin.x + 20.0,
@@ -197,11 +199,20 @@ impl Component for MinimalRoot {
                 .with_corner_radius(8.0),
         );
 
+        let label_height = button_font * 1.4;
+        let label_bounds = Bounds::new(
+            button_bounds.origin.x + (button_bounds.size.width - label_width) / 2.0,
+            button_bounds.origin.y + (button_bounds.size.height - label_height) / 2.0,
+            label_width,
+            label_height,
+        );
+
         Text::new(self.button_label)
-            .font_size(theme::font_size::SM)
+            .font_size(button_font)
             .bold()
             .color(theme::bg::APP)
-            .paint(button_bounds, cx);
+            .no_wrap()
+            .paint(label_bounds, cx);
     }
 }
 

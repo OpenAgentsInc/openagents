@@ -473,3 +473,4 @@ Effuse catalog -> WGPUI target
 - 2026-01-27: Phase 3b continued: sized session id column widths using live text measurement to avoid truncation.
 - 2026-01-27: Verified `cargo test -p autopilot_ui` after session column sizing update.
 - 2026-01-27: Switched desktop host to a minimal WGPUI card view (single button + text) to validate basic rendering before continuing layout work.
+- 2026-01-27: Refined the minimal card button layout to match the reference sizing and alignment.
