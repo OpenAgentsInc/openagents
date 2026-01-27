@@ -193,6 +193,76 @@ const updateEnvValues = (root: Element, showValues: boolean) => {
   }
 }
 
+export const syncUiRuntime = (root: Element) => {
+  syncOpenables(root, "[data-slot='select-content']")
+  syncOpenables(root, "[data-slot='dropdown-menu-content']")
+  syncOpenables(root, "[data-slot='dropdown-menu-sub-content']")
+  syncOpenables(root, "[data-slot='popover-content']")
+  syncOpenables(root, "[data-slot='tooltip-content']")
+  syncOpenables(root, "[data-slot='hover-card-content']")
+  syncOpenables(root, "[data-slot='dialog-overlay']")
+  syncOpenables(root, "[data-slot='dialog-content']")
+  syncCollapsibles(root)
+  syncAccordions(root)
+  syncTabs(root)
+  syncSelects(root)
+  syncCarousel(root)
+
+  const envRoots = toArray(root.querySelectorAll<HTMLElement>("[data-slot='environment-variables']"))
+  envRoots.forEach((envRoot) => {
+    const showValues = envRoot.getAttribute("data-show-values") === "true"
+    updateEnvValues(envRoot, showValues)
+  })
+}
+
+export const closeUiOverlays = (root: Element) => {
+  const dialogs = toArray(root.querySelectorAll<HTMLElement>("[data-slot='dialog']"))
+  dialogs.forEach((dialog) => {
+    const overlay = dialog.querySelector<HTMLElement>("[data-slot='dialog-overlay']")
+    const content = dialog.querySelector<HTMLElement>("[data-slot='dialog-content']")
+    dialog.setAttribute("data-state", "closed")
+    setState(overlay, "closed", true)
+    setState(content, "closed", true)
+  })
+
+  const selects = toArray(root.querySelectorAll<HTMLElement>("[data-slot='select']"))
+  selects.forEach((select) => {
+    const content = select.querySelector<HTMLElement>("[data-slot='select-content']")
+    setState(content, "closed", true)
+    select.setAttribute("data-state", "closed")
+  })
+
+  const dropdowns = toArray(root.querySelectorAll<HTMLElement>("[data-slot='dropdown-menu']"))
+  dropdowns.forEach((dropdown) => {
+    const content = dropdown.querySelector<HTMLElement>("[data-slot='dropdown-menu-content']")
+    const subContent = dropdown.querySelector<HTMLElement>("[data-slot='dropdown-menu-sub-content']")
+    setState(content, "closed", true)
+    setState(subContent, "closed", true)
+    dropdown.setAttribute("data-state", "closed")
+  })
+
+  const popovers = toArray(root.querySelectorAll<HTMLElement>("[data-slot='popover']"))
+  popovers.forEach((popover) => {
+    const content = popover.querySelector<HTMLElement>("[data-slot='popover-content']")
+    setState(content, "closed", true)
+    popover.setAttribute("data-state", "closed")
+  })
+
+  const tooltips = toArray(root.querySelectorAll<HTMLElement>("[data-slot='tooltip']"))
+  tooltips.forEach((tooltip) => {
+    const content = tooltip.querySelector<HTMLElement>("[data-slot='tooltip-content']")
+    setState(content, "closed", true)
+    tooltip.setAttribute("data-state", "closed")
+  })
+
+  const hoverCards = toArray(root.querySelectorAll<HTMLElement>("[data-slot='hover-card']"))
+  hoverCards.forEach((hoverCard) => {
+    const content = hoverCard.querySelector<HTMLElement>("[data-slot='hover-card-content']")
+    setState(content, "closed", true)
+    hoverCard.setAttribute("data-state", "closed")
+  })
+}
+
 export const mountUiRuntime = (root: Element) =>
   Effect.gen(function* () {
     const tooltipTimers = new WeakMap<Element, number>()
@@ -765,25 +835,7 @@ export const mountUiRuntime = (root: Element) =>
     document.addEventListener("click", handleDocumentClick)
     document.addEventListener("keydown", handleKeydown)
 
-    syncOpenables(root, "[data-slot='select-content']")
-    syncOpenables(root, "[data-slot='dropdown-menu-content']")
-    syncOpenables(root, "[data-slot='dropdown-menu-sub-content']")
-    syncOpenables(root, "[data-slot='popover-content']")
-    syncOpenables(root, "[data-slot='tooltip-content']")
-    syncOpenables(root, "[data-slot='hover-card-content']")
-    syncOpenables(root, "[data-slot='dialog-overlay']")
-    syncOpenables(root, "[data-slot='dialog-content']")
-    syncCollapsibles(root)
-    syncAccordions(root)
-    syncTabs(root)
-    syncSelects(root)
-    syncCarousel(root)
-
-    const envRoots = toArray(root.querySelectorAll<HTMLElement>("[data-slot='environment-variables']"))
-    envRoots.forEach((envRoot) => {
-      const showValues = envRoot.getAttribute("data-show-values") === "true"
-      updateEnvValues(envRoot, showValues)
-    })
+    syncUiRuntime(root)
 
     yield* Effect.addFinalizer(() =>
       Effect.sync(() => {
