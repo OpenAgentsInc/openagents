@@ -5,7 +5,7 @@ use std::env;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::sync::Mutex;
-use chrono::{DateTime, Utc};
+use chrono::Utc;
 
 use dsrs::signatures::FullAutoDecisionSignature;
 use dsrs::{LM, Predict, Predictor, example};
@@ -49,6 +49,7 @@ pub struct FullAutoDecisionRecord {
 }
 
 #[derive(Clone, Debug)]
+#[derive(Default)]
 pub struct FullAutoThreadState {
     pub last_turn_id: Option<String>,
     pub last_turn_status: Option<String>,
@@ -65,25 +66,6 @@ pub struct FullAutoThreadState {
     pub recent_actions: Vec<FullAutoDecisionRecord>,
 }
 
-impl Default for FullAutoThreadState {
-    fn default() -> Self {
-        Self {
-            last_turn_id: None,
-            last_turn_status: None,
-            last_turn_error: None,
-            plan_snapshot: None,
-            diff_snapshot: None,
-            token_usage: None,
-            pending_approvals: 0,
-            pending_tool_inputs: 0,
-            compaction_events: 0,
-            no_progress_count: 0,
-            last_progress_signature: None,
-            turn_count: 0,
-            recent_actions: Vec::new(),
-        }
-    }
-}
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct FullAutoTurnSummary {
@@ -205,7 +187,6 @@ pub struct FullAutoState {
     decision_lm: Option<LM>,
     threads: HashMap<String, FullAutoThreadState>,
     pub run_id: String,
-    pub started_at: DateTime<Utc>,
     pub decision_seq: u64,
 }
 
@@ -245,7 +226,6 @@ impl FullAutoState {
             decision_lm: None,
             threads: HashMap::new(),
             run_id,
-            started_at,
             decision_seq: 0,
         }
     }
@@ -374,7 +354,7 @@ impl FullAutoState {
                 .last_turn_status
                 .clone()
                 .unwrap_or_else(|| "completed".to_string()),
-            turn_error: state.last_turn_error.clone().unwrap_or_else(String::new),
+            turn_error: state.last_turn_error.clone().unwrap_or_default(),
             turn_plan: value_to_string(state.plan_snapshot.as_ref()),
             diff_summary: value_to_string(state.diff_snapshot.as_ref()),
             token_usage: value_to_string(state.token_usage.as_ref()),
@@ -426,10 +406,9 @@ impl FullAutoState {
         mut decision: FullAutoDecision,
     ) -> FullAutoDecision {
         let state = self.threads.get(thread_id);
-        let turn_count = state.map(|s| s.turn_count).unwrap_or(summary.turn_count);
+        let turn_count = state.map_or(summary.turn_count, |s| s.turn_count);
         let no_progress = state
-            .map(|s| s.no_progress_count)
-            .unwrap_or(summary.no_progress_count);
+            .map_or(summary.no_progress_count, |s| s.no_progress_count);
         let original_action = decision.action.as_str().to_string();
         let original_confidence = decision.confidence;
         let mut guardrail: Option<GuardrailAudit> = None;
@@ -502,9 +481,9 @@ impl FullAutoState {
             };
         }
 
-        if let Some(max_tokens) = self.config.max_tokens {
-            if let Some(total_tokens) = parse_total_tokens(&summary.token_usage) {
-                if total_tokens >= max_tokens {
+        if let Some(max_tokens) = self.config.max_tokens
+            && let Some(total_tokens) = parse_total_tokens(&summary.token_usage)
+                && total_tokens >= max_tokens {
                     return FullAutoDecision {
                         action: FullAutoAction::Stop,
                         next_input: None,
@@ -520,8 +499,6 @@ impl FullAutoState {
                         }),
                     };
                 }
-            }
-        }
 
         if decision.confidence < self.config.min_confidence {
             decision.action = FullAutoAction::Pause;
@@ -721,11 +698,10 @@ fn build_progress_signature(state: &FullAutoThreadState) -> Option<String> {
 }
 
 fn read_turn_status(params: &Value) -> Option<String> {
-    if let Some(turn) = params.get("turn") {
-        if let Some(status) = turn.get("status").and_then(|v| v.as_str()) {
+    if let Some(turn) = params.get("turn")
+        && let Some(status) = turn.get("status").and_then(|v| v.as_str()) {
             return Some(status.to_string());
         }
-    }
     params
         .get("status")
         .and_then(|value| value.as_str())
@@ -773,9 +749,7 @@ fn normalize_prompt(prompt: Option<String>) -> String {
         .as_deref()
         .map(str::trim)
         .filter(|value| !value.is_empty());
-    trimmed
-        .map(|value| value.to_string())
-        .unwrap_or_else(|| DEFAULT_CONTINUE_PROMPT.to_string())
+    trimmed.map_or_else(|| DEFAULT_CONTINUE_PROMPT.to_string(), |value| value.to_string())
 }
 
 fn read_env_u64(key: &str) -> Option<u64> {

@@ -19,7 +19,7 @@ pub struct LmUsage {
 impl LmUsage {
     /// Get cost in satoshis (rounded up from millisatoshis)
     pub fn cost_sats(&self) -> u64 {
-        (self.cost_msats + 999) / 1000
+        self.cost_msats.div_ceil(1000)
     }
 
     /// Create usage from Pylon result (no token counts, just cost)

@@ -15,8 +15,10 @@ use std::collections::HashMap;
 /// Privacy mode requirements for a compiled module.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum PrivacyMode {
     /// Public data is acceptable.
+    #[default]
     PublicOk,
     /// No personally identifiable information.
     NoPii,
@@ -26,11 +28,6 @@ pub enum PrivacyMode {
     PrivateRepoAllowed,
 }
 
-impl Default for PrivacyMode {
-    fn default() -> Self {
-        Self::PublicOk
-    }
-}
 
 /// Compatibility requirements for running a compiled module.
 ///

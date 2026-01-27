@@ -78,14 +78,14 @@ impl AdjutantAgent {
 
     /// Send a unified event
     async fn send_event(&self, event: UnifiedEvent) {
-        if let Err(_) = self.events_tx.send(event).await {
+        if self.events_tx.send(event).await.is_err() {
             tracing::warn!("Failed to send event - receiver dropped");
         }
     }
 
     /// Send a UI event
     async fn send_ui_event(&self, event: UiEvent) {
-        if let Err(_) = self.ui_events_tx.send(event).await {
+        if self.ui_events_tx.send(event).await.is_err() {
             tracing::warn!("Failed to send UI event - receiver dropped");
         }
     }
@@ -162,7 +162,7 @@ impl AdjutantAgent {
             let mut new_elements: Vec<(String, Value)> = Vec::new();
             let mut child_keys: Vec<String> = Vec::new();
 
-            for (step_id, info) in steps.iter() {
+            for (step_id, info) in &steps {
                 let panel_key = format!("panel-{}", step_id);
                 let detail_key = format!("detail-{}", step_id);
                 let status_key = format!("status-{}", step_id);
@@ -281,15 +281,14 @@ impl AdjutantAgent {
                 tree.elements.insert(key, element);
             }
 
-            if let Some(stack) = tree.elements.get_mut(&tree.stack_key) {
-                if let Some(children) = stack
+            if let Some(stack) = tree.elements.get_mut(&tree.stack_key)
+                && let Some(children) = stack
                     .get_mut("children")
                     .and_then(|value| value.as_array_mut())
                 {
                     children.clear();
                     children.extend(child_keys.into_iter().map(Value::String));
                 }
-            }
 
             let tree_value = tree.to_value();
             session.ui_tree = Some(tree);
@@ -393,7 +392,7 @@ impl AdjutantAgent {
             .await;
 
         // Check if this is a plan mode request
-        if self.is_plan_mode_request(&message) {
+        if Self::is_plan_mode_request(&message) {
             self.handle_plan_mode_request(session_id, &message).await?;
         } else {
             self.handle_regular_request(session_id, &message).await?;
@@ -410,7 +409,7 @@ impl AdjutantAgent {
     }
 
     /// Check if the message should trigger plan mode
-    fn is_plan_mode_request(&self, message: &str) -> bool {
+    fn is_plan_mode_request(message: &str) -> bool {
         let plan_keywords = [
             "plan",
             "implement",
@@ -798,17 +797,15 @@ fn signature_info_with_optimization<S: MetaSignature>(
     kind: PlanModeSignatureKind,
     config: &PlanModeOptimizationConfig,
 ) -> dsrs::signature_registry::DsrsSignatureInfo {
-    if config.apply_optimized_instructions {
-        if let Some(instruction) = load_latest_instruction(kind) {
-            if let Err(err) = signature.update_instruction(instruction) {
+    if config.apply_optimized_instructions
+        && let Some(instruction) = load_latest_instruction(kind)
+            && let Err(err) = signature.update_instruction(instruction) {
                 tracing::warn!(
                     kind = %kind.name(),
                     error = %err,
                     "Failed to apply optimized instruction"
                 );
             }
-        }
-    }
 
     signature_info(signature)
 }

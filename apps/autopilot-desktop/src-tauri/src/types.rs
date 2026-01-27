@@ -9,13 +9,9 @@ pub(crate) struct WorkspaceEntry {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Default)]
 pub(crate) struct AppSettings {
     #[serde(default, rename = "codexBin")]
     pub(crate) codex_bin: Option<String>,
 }
 
-impl Default for AppSettings {
-    fn default() -> Self {
-        Self { codex_bin: None }
-    }
-}

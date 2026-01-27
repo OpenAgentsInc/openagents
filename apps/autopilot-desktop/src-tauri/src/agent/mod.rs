@@ -5,9 +5,7 @@
 
 pub mod acp_agent;
 pub mod adjutant;
-pub mod codex_agent;
 pub mod commands;
-pub mod gemini_agent;
 pub mod manager;
 pub mod resolver;
 pub mod trait_def;
@@ -18,8 +16,6 @@ pub mod unified;
 pub use acp_agent::AcpAgent;
 #[expect(unused_imports)]
 pub use adjutant::AdjutantAgent;
-#[expect(unused_imports)]
-pub use codex_agent::CodexAgent;
 #[expect(unused_imports)]
 pub use manager::AgentManager;
 #[expect(unused_imports)]

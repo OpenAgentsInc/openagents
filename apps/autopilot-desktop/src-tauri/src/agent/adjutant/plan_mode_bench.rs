@@ -94,11 +94,11 @@ pub fn build_eval_task_set(
 }
 
 pub fn scorer_for_signature(signature: PlanModeSignatureKind, config: &PlanModeOptimizationConfig) -> Scorer {
-    let rollouts = config.num_trials.max(1).min(3);
+    let rollouts = config.num_trials.clamp(1, 3);
     ScorerBuilder::new()
         .metric(PlanModeProxyMetric::new(signature))
         .metric(truth_metric_for_signature(signature))
-        .proxy_threshold(config.min_proxy_score as f64)
+        .proxy_threshold(f64::from(config.min_proxy_score))
         .rollouts(rollouts)
         .build()
 }
@@ -211,7 +211,7 @@ impl Metric for PlanModeProxyMetric {
     async fn evaluate(&self, input: &Example, output: &Example) -> Result<MetricScore> {
         let input_example = decode_goal_example(input).unwrap_or_default();
         let prediction = Prediction::new(output.data.clone(), LmUsage::default());
-        let score = score_signature(self.signature, &input_example, &prediction) as f64;
+        let score = f64::from(score_signature(self.signature, &input_example, &prediction));
         Ok(MetricScore::new(score))
     }
 }

@@ -136,15 +136,14 @@ impl CodexCompletionModel {
                             match notif.method.as_str() {
                                 "item/agentMessage/delta" => {
                                     // Parse delta notification
-                                    if let Some(params) = notif.params {
-                                        if let Some(delta) = params.get("delta").and_then(|v| v.as_str()) {
+                                    if let Some(params) = notif.params
+                                        && let Some(delta) = params.get("delta").and_then(|v| v.as_str()) {
                                             // Stream token via callback
                                             if let Some(ref cb) = on_token {
                                                 cb(delta);
                                             }
                                             response.push_str(delta);
                                         }
-                                    }
                                 }
                                 "turn/completed" => {
                                     // Turn finished

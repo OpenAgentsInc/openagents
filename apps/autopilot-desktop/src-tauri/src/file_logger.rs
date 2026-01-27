@@ -120,7 +120,6 @@ impl FileLogger {
     }
 
     /// Flush all buffered app-server events (called on disconnect or shutdown)
-    #[expect(dead_code)]
     pub async fn flush_all_app_server_events(&self) -> Result<()> {
         let all_events: Vec<(String, Vec<Value>)> = {
             let mut buffer = self.app_server_buffer.lock().await;
@@ -191,7 +190,7 @@ impl FileLogger {
     /// Check if an event indicates message completion and flush if so
     pub async fn check_and_flush_app_server(&self, event: &Value) -> Result<()> {
         // AppServerEvent has structure: { workspace_id, message: { method, params, ... } }
-        let message = event.get("message").or_else(|| Some(event)); // Fallback to event itself if no message wrapper
+        let message = event.get("message").or(Some(event)); // Fallback to event itself if no message wrapper
 
         // Check for completion indicators
         let method = message
@@ -201,7 +200,8 @@ impl FileLogger {
         let should_flush = if let Some(msg) = message {
             if !method.is_empty() && method != "unknown" {
                 // Common completion methods - FIXED: use turn/completed (not turn/complete)
-                let is_complete = method == "turn/completed"
+                
+                method == "turn/completed"
                     || method.contains("completed")
                     || method.contains("finished")
                     || method == "turn/end"
@@ -212,9 +212,7 @@ impl FileLogger {
                             .and_then(|p| p.get("update"))
                             .and_then(|u| u.get("status"))
                             .and_then(|s| s.as_str())
-                            .map(|s| s == "complete" || s == "finished")
-                            .unwrap_or(false));
-                is_complete
+                            .is_some_and(|s| s == "complete" || s == "finished"))
             } else {
                 false
             }
@@ -331,8 +329,8 @@ impl FileLogger {
         if let Some(msg) = inner_msg {
             // Check for stopReason: "end_turn" at top level (ACP completion indicator in responses)
             // This appears in responses to session/prompt requests (id: 4 in your console)
-            if let Some(stop_reason) = msg.get("stopReason").and_then(|s| s.as_str()) {
-                if stop_reason == "end_turn" {
+            if let Some(stop_reason) = msg.get("stopReason").and_then(|s| s.as_str())
+                && stop_reason == "end_turn" {
                     flush_mode = "all";
                     // Extract session_id from the request context or use default
                     // For responses, we need to track which session the request was for
@@ -348,12 +346,11 @@ impl FileLogger {
                     }
                     return self.flush_all_acp_events().await;
                 }
-            }
 
             // Check if this is a response (has "id" but no "method") - might have stopReason
-            if msg.get("id").is_some() && msg.get("method").is_none() {
-                if let Some(stop_reason) = msg.get("stopReason").and_then(|s| s.as_str()) {
-                    if stop_reason == "end_turn" {
+            if msg.get("id").is_some() && msg.get("method").is_none()
+                && let Some(stop_reason) = msg.get("stopReason").and_then(|s| s.as_str())
+                    && stop_reason == "end_turn" {
                         flush_mode = "all";
                         if should_log_acp_event("response", flush_mode) {
                             tracing::debug!(
@@ -366,8 +363,6 @@ impl FileLogger {
                         }
                         return self.flush_all_acp_events().await;
                     }
-                }
-            }
 
             if let Some(method) = msg.get("method").and_then(|m| m.as_str()) {
                 // session/update is never a completion event, just buffer it (already done above)
@@ -445,11 +440,10 @@ impl FileLogger {
 pub(crate) fn event_log_dir() -> Result<PathBuf> {
     let mut candidates = Vec::new();
 
-    if let Ok(env_path) = std::env::var("OPENAGENTS_EVENT_LOG_DIR") {
-        if !env_path.trim().is_empty() {
+    if let Ok(env_path) = std::env::var("OPENAGENTS_EVENT_LOG_DIR")
+        && !env_path.trim().is_empty() {
             candidates.push(PathBuf::from(env_path));
         }
-    }
 
     if let Ok(cwd) = std::env::current_dir() {
         let cwd_name = cwd.file_name().and_then(|name| name.to_str());
@@ -490,8 +484,7 @@ fn file_logger_verbose() -> bool {
 fn app_server_streaming_enabled() -> bool {
     std::env::var("OPENAGENTS_APP_SERVER_LOG_STREAMING")
         .ok()
-        .map(|value| value != "0")
-        .unwrap_or(true)
+        .is_none_or(|value| value != "0")
 }
 
 fn should_log_app_server_event(method: &str, is_complete: bool) -> bool {

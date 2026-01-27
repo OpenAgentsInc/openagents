@@ -265,7 +265,7 @@ impl SwarmCompiler {
                         std::collections::HashMap::new(),
                         Default::default(),
                     ),
-                    &format!("{}/MIPROv2", self.bootstrap_lm.name()),
+                    format!("{}/MIPROv2", self.bootstrap_lm.name()),
                 )
                 .with_cost(estimated_cost)
                 .with_phase("bootstrap")
@@ -499,12 +499,6 @@ impl Default for SwarmCompilerBuilder {
 mod tests {
     use super::*;
     use crate::compiler::MockLM;
-
-    fn make_eval_tasks(count: usize) -> Vec<EvalTask> {
-        (0..count)
-            .map(|i| EvalTask::new(format!("task-{}", i), format!("Test task {}", i)))
-            .collect()
-    }
 
     #[tokio::test]
     async fn test_swarm_compile_config() {

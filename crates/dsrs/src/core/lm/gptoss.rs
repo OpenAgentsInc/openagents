@@ -73,8 +73,8 @@ impl GptOssCompletionModel {
             }
 
             // Match pattern like "1. `field_name` (Type): description"
-            if let Some(backtick_start) = line.find('`') {
-                if let Some(backtick_end) = line[backtick_start + 1..].find('`') {
+            if let Some(backtick_start) = line.find('`')
+                && let Some(backtick_end) = line[backtick_start + 1..].find('`') {
                     let field_name = &line[backtick_start + 1..backtick_start + 1 + backtick_end];
 
                     if field_name == "completed" {
@@ -97,7 +97,6 @@ impl GptOssCompletionModel {
                     properties.insert(field_name.to_string(), json_type);
                     required.push(Value::String(field_name.to_string()));
                 }
-            }
         }
 
         if properties.is_empty() {

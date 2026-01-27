@@ -185,8 +185,8 @@ impl LspIndex {
 
         for line in stdout.lines() {
             let parts: Vec<&str> = line.splitn(3, ':').collect();
-            if parts.len() >= 3 {
-                if let Ok(line_num) = parts[1].parse::<usize>() {
+            if parts.len() >= 3
+                && let Ok(line_num) = parts[1].parse::<usize>() {
                     let content = parts[2].trim();
                     let kind = self.infer_symbol_kind(content);
 
@@ -198,7 +198,6 @@ impl LspIndex {
                             .with_metadata("symbol", query.to_string()),
                     );
                 }
-            }
         }
 
         results.truncate(config.k);

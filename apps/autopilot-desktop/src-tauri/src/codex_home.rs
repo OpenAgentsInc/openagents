@@ -11,24 +11,21 @@ pub(crate) fn resolve_workspace_codex_home(
 }
 
 pub(crate) fn resolve_default_codex_home() -> Option<PathBuf> {
-    if let Ok(value) = env::var("CODEX_HOME") {
-        if !value.trim().is_empty() {
+    if let Ok(value) = env::var("CODEX_HOME")
+        && !value.trim().is_empty() {
             return Some(PathBuf::from(value.trim()));
         }
-    }
     resolve_home_dir().map(|home| home.join(".codex"))
 }
 
 fn resolve_home_dir() -> Option<PathBuf> {
-    if let Ok(value) = env::var("HOME") {
-        if !value.trim().is_empty() {
+    if let Ok(value) = env::var("HOME")
+        && !value.trim().is_empty() {
             return Some(PathBuf::from(value));
         }
-    }
-    if let Ok(value) = env::var("USERPROFILE") {
-        if !value.trim().is_empty() {
+    if let Ok(value) = env::var("USERPROFILE")
+        && !value.trim().is_empty() {
             return Some(PathBuf::from(value));
         }
-    }
     None
 }

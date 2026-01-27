@@ -1,8 +1,6 @@
 #![expect(
     clippy::expect_used,
-    clippy::exit,
     clippy::manual_string_new,
-    clippy::print_stderr,
     clippy::single_match_else,
     clippy::unwrap_used
 )]

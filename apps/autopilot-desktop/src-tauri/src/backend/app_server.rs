@@ -75,7 +75,6 @@ impl WorkspaceSession {
         self.write_message(value).await
     }
 
-    #[expect(dead_code)]
     pub(crate) async fn send_response(&self, id: Value, result: Value) -> Result<(), String> {
         self.write_message(json!({ "id": id, "result": result }))
             .await
@@ -179,9 +178,7 @@ fn build_tool_input_response(params: &Value) -> Value {
             .and_then(|value| value.as_array())
             .and_then(|options| options.first())
             .and_then(|option| option.get("id"))
-            .and_then(|value| value.as_str())
-            .map(|value| value.to_string())
-            .unwrap_or_else(|| "yes".to_string());
+            .and_then(|value| value.as_str()).map_or_else(|| "yes".to_string(), |value| value.to_string());
 
         if let Some(id) = id {
             answers.insert(
@@ -283,30 +280,26 @@ pub(crate) async fn spawn_workspace_session<E: EventSink>(
         .clone()
         .filter(|value| !value.trim().is_empty())
         .or(default_codex_bin);
-    if let Some(ref codex_bin) = codex_bin {
-        if env::var("CODEX_BIN")
+    if let Some(ref codex_bin) = codex_bin
+        && env::var("CODEX_BIN")
             .ok()
-            .map(|value| value.trim().is_empty())
-            .unwrap_or(true)
+            .is_none_or(|value| value.trim().is_empty())
         {
             // Safety: process-level env update ensures Codex helpers can locate the binary.
             unsafe {
                 env::set_var("CODEX_BIN", codex_bin);
             }
         }
-    }
-    if let Some(ref codex_home) = codex_home {
-        if env::var("CODEX_HOME")
+    if let Some(ref codex_home) = codex_home
+        && env::var("CODEX_HOME")
             .ok()
-            .map(|value| value.trim().is_empty())
-            .unwrap_or(true)
+            .is_none_or(|value| value.trim().is_empty())
         {
             // Safety: process-level env update ensures shared Codex helpers see the same home.
             unsafe {
                 env::set_var("CODEX_HOME", codex_home);
             }
         }
-    }
     let _ = check_codex_installation(codex_bin.clone()).await?;
 
     let mut command = build_codex_command_with_bin(codex_bin);
@@ -370,48 +363,44 @@ pub(crate) async fn spawn_workspace_session<E: EventSink>(
             // Check if this event is for a background thread
             let thread_id = extract_thread_id(&value);
 
-            if let Some(id) = maybe_id {
-                if has_result_or_error {
+            if let Some(id) = maybe_id
+                && has_result_or_error {
                     if let Some(tx) = session_clone.pending.lock().await.remove(&id) {
                         let _ = tx.send(value);
                     }
                     continue;
                 }
-            }
 
             let method = match value.get("method").and_then(|m| m.as_str()) {
                 Some(method) => method,
                 None => {
-                    if let Some(id) = maybe_id {
-                        if let Some(tx) = session_clone.pending.lock().await.remove(&id) {
+                    if let Some(id) = maybe_id
+                        && let Some(tx) = session_clone.pending.lock().await.remove(&id) {
                             let _ = tx.send(value);
                         }
-                    }
                     continue;
                 }
             };
             let params = value.get("params");
 
-            if let Some(id) = maybe_id {
-                if let Some(response) = build_auto_response(method, params) {
+            if let Some(id) = maybe_id
+                && let Some(response) = build_auto_response(method, params) {
                     let session_for_response = Arc::clone(&session_clone);
                     let id_value = Value::from(id);
                     tokio::spawn(async move {
                         let _ = session_for_response.send_response(id_value, response).await;
                     });
                 }
-            }
 
             let turn_id = extract_turn_id(&value);
             let decision_request: Option<FullAutoDecisionRequest> = {
                 let mut full_auto = full_auto_clone.lock().await;
                 if let Some(state) = full_auto.get_mut(&workspace_id) {
                     state.record_event(method, params, thread_id.as_deref(), turn_id.as_deref());
-                    if method == "thread/started" {
-                        if let Some(thread_id) = thread_id.as_deref() {
+                    if method == "thread/started"
+                        && let Some(thread_id) = thread_id.as_deref() {
                             state.adopt_thread(thread_id);
                         }
-                    }
                     if method == "turn/completed" {
                         state.prepare_decision(thread_id.as_deref(), turn_id.as_deref())
                     } else {

@@ -454,6 +454,7 @@ impl CompositeRedactor {
     }
 
     /// Add a redactor to the chain.
+    #[expect(clippy::should_implement_trait)]
     pub fn add<R: Redactor + 'static>(mut self, redactor: R) -> Self {
         self.redactors.push(Box::new(redactor));
         self
@@ -464,6 +465,15 @@ impl CompositeRedactor {
         Self::new()
             .add(PathRedactor::new())
             .add(IdentifierRedactor::new())
+    }
+}
+
+impl std::ops::Add<Box<dyn Redactor>> for CompositeRedactor {
+    type Output = Self;
+
+    fn add(mut self, rhs: Box<dyn Redactor>) -> Self::Output {
+        self.redactors.push(rhs);
+        self
     }
 }
 

@@ -100,15 +100,14 @@ impl RipgrepIndex {
             for line in output.lines() {
                 // Format: path:line:content
                 let parts: Vec<&str> = line.splitn(3, ':').collect();
-                if parts.len() >= 3 {
-                    if let Ok(line_num) = parts[1].parse::<usize>() {
+                if parts.len() >= 3
+                    && let Ok(line_num) = parts[1].parse::<usize>() {
                         results.push(
                             RetrievalResult::new(parts[0], line_num, line_num, parts[2])
                                 .with_lane("ripgrep")
                                 .with_score(1.0),
                         );
                     }
-                }
             }
         }
 
@@ -136,7 +135,7 @@ impl RipgrepIndex {
         for (line_num, content) in matches {
             let can_merge = groups
                 .last()
-                .map_or(false, |(_, end, _)| *line_num <= *end + context + 1);
+                .is_some_and(|(_, end, _)| *line_num <= *end + context + 1);
 
             if can_merge {
                 let last = groups.last_mut().unwrap();

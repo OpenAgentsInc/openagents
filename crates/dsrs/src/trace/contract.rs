@@ -14,8 +14,10 @@ use std::collections::HashMap;
 /// OpenTelemetry-compatible span kind.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+#[derive(Default)]
 pub enum SpanKind {
     /// Internal operation (default).
+    #[default]
     Internal,
     /// Outgoing request (LM calls).
     Client,
@@ -27,17 +29,14 @@ pub enum SpanKind {
     Consumer,
 }
 
-impl Default for SpanKind {
-    fn default() -> Self {
-        Self::Internal
-    }
-}
 
 /// OpenTelemetry-compatible span status.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+#[derive(Default)]
 pub enum SpanStatus {
     /// Status not set.
+    #[default]
     Unset,
     /// Operation succeeded.
     Ok,
@@ -45,11 +44,6 @@ pub enum SpanStatus {
     Error,
 }
 
-impl Default for SpanStatus {
-    fn default() -> Self {
-        Self::Unset
-    }
-}
 
 /// An OpenTelemetry-compatible trace span.
 ///
@@ -341,16 +335,14 @@ impl TraceContract {
         for span in spans {
             if span.kind == SpanKind::Client {
                 predict_count += 1;
-                if let Some(tokens) = span.attributes.get("lm.total_tokens") {
-                    if let Some(t) = tokens.as_u64() {
+                if let Some(tokens) = span.attributes.get("lm.total_tokens")
+                    && let Some(t) = tokens.as_u64() {
                         total_tokens += t;
                     }
-                }
-                if let Some(cost) = span.attributes.get("lm.cost_msats") {
-                    if let Some(c) = cost.as_u64() {
+                if let Some(cost) = span.attributes.get("lm.cost_msats")
+                    && let Some(c) = cost.as_u64() {
                         total_cost_msats += c;
                     }
-                }
             }
         }
 

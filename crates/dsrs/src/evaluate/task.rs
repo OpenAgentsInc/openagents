@@ -271,6 +271,7 @@ pub enum ComparisonMode {
 
 /// Expected output for verification.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Default)]
 pub struct ExpectedOutput {
     /// Expected fields in the output.
     #[serde(default)]
@@ -289,16 +290,6 @@ pub struct ExpectedOutput {
     pub forbidden_patterns: Vec<String>,
 }
 
-impl Default for ExpectedOutput {
-    fn default() -> Self {
-        Self {
-            fields: HashMap::new(),
-            pass_commands: Vec::new(),
-            required_patterns: Vec::new(),
-            forbidden_patterns: Vec::new(),
-        }
-    }
-}
 
 impl ExpectedOutput {
     /// Create a new expected output.

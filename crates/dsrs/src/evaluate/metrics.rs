@@ -223,11 +223,10 @@ impl MetricResults {
     /// Check if all proxy metrics passed a threshold.
     pub fn check_proxy_threshold(&self, threshold: f64, proxy_names: &[&str]) -> bool {
         for name in proxy_names {
-            if let Some(score) = self.scores.get(*name) {
-                if !score.passes(threshold) {
+            if let Some(score) = self.scores.get(*name)
+                && !score.passes(threshold) {
                     return false;
                 }
-            }
         }
         true
     }

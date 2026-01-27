@@ -434,9 +434,9 @@ impl LM {
             LMClient::Codex(codex) => {
                 // Use streaming completion for Codex to get token-by-token output
                 let cb_clone = callback.map(|cb| {
-                    let call_id = call_id;
+                    let call_id_copy = call_id;
                     move |token: &str| {
-                        cb.on_lm_token(call_id, token);
+                        cb.on_lm_token(call_id_copy, token);
                     }
                 });
                 (codex.completion_streaming(request, cb_clone).await?, None)

@@ -274,6 +274,7 @@ impl CompositeCallback {
     }
 
     /// Add a callback to the chain.
+    #[expect(clippy::should_implement_trait)]
     pub fn add(mut self, callback: impl DspyCallback + 'static) -> Self {
         self.callbacks.push(Arc::new(callback));
         self
@@ -282,6 +283,15 @@ impl CompositeCallback {
     /// Add an already-arc'd callback.
     pub fn add_arc(mut self, callback: Arc<dyn DspyCallback>) -> Self {
         self.callbacks.push(callback);
+        self
+    }
+}
+
+impl std::ops::Add<Arc<dyn DspyCallback>> for CompositeCallback {
+    type Output = Self;
+
+    fn add(mut self, rhs: Arc<dyn DspyCallback>) -> Self::Output {
+        self.callbacks.push(rhs);
         self
     }
 }

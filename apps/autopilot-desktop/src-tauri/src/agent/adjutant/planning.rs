@@ -43,17 +43,15 @@ fn apply_optimized_instruction<S: MetaSignature>(
     kind: PlanModeSignatureKind,
     config: &PlanModeOptimizationConfig,
 ) -> S {
-    if config.apply_optimized_instructions {
-        if let Some(instruction) = load_latest_instruction(kind) {
-            if let Err(err) = signature.update_instruction(instruction) {
+    if config.apply_optimized_instructions
+        && let Some(instruction) = load_latest_instruction(kind)
+            && let Err(err) = signature.update_instruction(instruction) {
                 warn!(
                     "Failed to apply optimized instruction for {}: {}",
                     kind.name(),
                     err
                 );
             }
-        }
-    }
     signature
 }
 
@@ -220,7 +218,7 @@ impl PlanModePipeline {
                 .and_then(|v| v.as_str())
                 .ok_or("Missing 'topics' output")?;
 
-            let topics_response: TopicsResponse = self.parse_json_from_output(topics_json)?;
+            let topics_response: TopicsResponse = Self::parse_json_from_output(topics_json)?;
 
             if self.config.optimization.record_training {
                 let serialized_topics = serde_json::to_string(&topics_response.topics)
@@ -359,15 +357,12 @@ impl PlanModePipeline {
 
         let results = join_all(exploration_tasks).await;
         let mut exploration_results = Vec::new();
-        for result in results {
-            if let Ok(run) = result {
-                exploration_results.push(run.result);
-                if self.config.optimization.record_training {
-                    if let Some(example) = run.training {
-                        trace.parallel_exploration.push(example);
-                    }
+        for run in results.into_iter().flatten() {
+            exploration_results.push(run.result);
+            if self.config.optimization.record_training
+                && let Some(example) = run.training {
+                    trace.parallel_exploration.push(example);
                 }
-            }
         }
 
         Ok(exploration_results)
@@ -382,7 +377,7 @@ impl PlanModePipeline {
     ) -> Result<PlanResult, String> {
         info!("Synthesizing plan from exploration...");
 
-        let combined_findings = self.format_exploration_results(exploration_results);
+        let combined_findings = Self::format_exploration_results(exploration_results);
         let all_files: Vec<String> = exploration_results
             .iter()
             .flat_map(|r| r.files_examined.clone())
@@ -446,11 +441,11 @@ impl PlanModePipeline {
         exploration_results: &[ExplorationResult],
         trace: &mut PlanModeTrace,
     ) -> Result<PlanResult, String> {
-        if let Some(lm) = &self.lm {
-            if let Some(planner) = &self.deep_planner {
+        if let Some(lm) = &self.lm
+            && let Some(planner) = &self.deep_planner {
                 let inputs = example! {
                     "complex_request": "input" => user_prompt.to_string(),
-                    "codebase_analysis": "input" => self.format_exploration_results(exploration_results),
+                    "codebase_analysis": "input" => Self::format_exploration_results(exploration_results),
                     "constraints": "input" => "Follow project conventions and ensure type safety.".to_string(),
                 };
 
@@ -488,7 +483,7 @@ impl PlanModePipeline {
 
                     trace.deep_planning = Some(DeepPlanningExample {
                         complex_request: user_prompt.to_string(),
-                        codebase_analysis: self.format_exploration_results(exploration_results),
+                        codebase_analysis: Self::format_exploration_results(exploration_results),
                         constraints: "Follow project conventions and ensure type safety."
                             .to_string(),
                         reasoning,
@@ -508,7 +503,6 @@ impl PlanModePipeline {
                     confidence: 0.95,
                 });
             }
-        }
         self.synthesize_plan(user_prompt, exploration_results, trace)
             .await
     }
@@ -747,34 +741,33 @@ impl PlanModePipeline {
         }
     }
 
-    fn parse_json_from_output<T: serde::de::DeserializeOwned>(
-        &self,
-        output: &str,
-    ) -> Result<T, String> {
+    fn parse_json_from_output<T: serde::de::DeserializeOwned>(output: &str) -> Result<T, String> {
         let json_str = if let Some(start) = output.find("```json") {
             let after_start = &output[start + 7..];
             after_start.split("```").next().unwrap_or(after_start)
         } else if let Some(start) = output.find('{') {
-            &output[start..output.rfind('}').map(|i| i + 1).unwrap_or(output.len())]
+            &output[start..output.rfind('}').map_or(output.len(), |i| i + 1)]
         } else {
             output
         };
         serde_json::from_str(json_str.trim()).map_err(|e| format!("JSON error: {}", e))
     }
 
-    fn format_exploration_results(&self, results: &[ExplorationResult]) -> String {
-        results
-            .iter()
-            .map(|r| {
-                format!(
-                    "## Topic: {}\nFocus: {}\nFiles: {}\nFindings:\n{}\n\n",
-                    r.topic,
-                    r.focus,
-                    r.files_examined.join(", "),
-                    r.key_findings
-                )
-            })
-            .collect()
+    fn format_exploration_results(results: &[ExplorationResult]) -> String {
+        let mut output = String::new();
+        for result in results {
+            use std::fmt::Write;
+            let _ = writeln!(
+                output,
+                "## Topic: {}\nFocus: {}\nFiles: {}\nFindings:\n{}\n",
+                result.topic,
+                result.focus,
+                result.files_examined.join(", "),
+                result.key_findings
+            );
+            output.push('\n');
+        }
+        output
     }
 
     async fn gather_exploration_context(
@@ -812,7 +805,7 @@ impl PlanModePipeline {
         for file in files.iter().take(max_files) {
             let file_path = repo_path.join(file);
             if let Ok(bytes) = tokio::fs::read(&file_path).await {
-                if bytes.iter().any(|b| *b == 0) {
+                if bytes.contains(&0) {
                     continue;
                 }
                 let text = String::from_utf8_lossy(&bytes);
