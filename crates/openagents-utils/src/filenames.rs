@@ -28,5 +28,5 @@ pub fn sanitize_filename(title: &str) -> Option<String> {
 
 /// Sanitize identifiers used as filename stems, preserving simple tokens.
 pub fn sanitize_filename_simple(name: &str) -> String {
-    name.replace("::", "_").replace(':', "_").replace('/', "_")
+    name.replace("::", "_").replace([':', '/'], "_")
 }

@@ -245,7 +245,7 @@ impl SwarmSimulator {
         }
 
         // Sample latency
-        let latency_ms = self.config.latency.sample(&mut *rng);
+        let latency_ms = self.config.latency.sample(&mut rng);
 
         // Check for timeout
         let timeout_roll: f64 = Standard.sample(&mut *rng);

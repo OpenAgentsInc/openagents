@@ -4,12 +4,13 @@
 //! for the Adjutant agent's DSPy pipeline.
 
 use anyhow::Result;
-use reqwest;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
+use std::sync::{LazyLock, Mutex};
 use std::time::{Duration, Instant};
 use tokio::time::sleep;
+use tracing::{info, warn};
 
 pub mod config;
 
@@ -44,9 +45,9 @@ impl AiServerManager {
     pub async fn start(&mut self) -> Result<()> {
         // Check if server is already running
         if self.is_running().await {
-            println!(
-                "AI Gateway server already running on port {}",
-                self.config.port
+            info!(
+                port = self.config.port,
+                "AI Gateway server already running"
             );
             return Ok(());
         }
@@ -55,11 +56,12 @@ impl AiServerManager {
         self.ensure_port_available().await?;
 
         // Find ai-server directory
-        let ai_server_path = self.find_ai_server_path()?;
+        let ai_server_path = Self::find_ai_server_path()?;
 
-        println!(
-            "Starting AI Gateway server on {}:{}",
-            self.config.host, self.config.port
+        info!(
+            host = %self.config.host,
+            port = self.config.port,
+            "Starting AI Gateway server"
         );
 
         // Install dependencies if needed
@@ -67,7 +69,7 @@ impl AiServerManager {
 
         // Spawn bun server process
         let cmd = Command::new("bun")
-            .args(&["run", "server.ts"])
+            .args(["run", "server.ts"])
             .current_dir(&ai_server_path)
             .env("AI_SERVER_PORT", self.config.port.to_string())
             .env("AI_SERVER_HOST", &self.config.host)
@@ -83,26 +85,26 @@ impl AiServerManager {
 
         self.process = Some(cmd);
 
-        println!("✅ AI Gateway server started successfully");
+        info!("AI Gateway server started successfully");
         Ok(())
     }
 
     /// Stop the AI Gateway server
     pub async fn stop(&mut self) -> Result<()> {
         if let Some(mut process) = self.process.take() {
-            println!("Stopping AI Gateway server...");
+            info!("Stopping AI Gateway server...");
 
             // Try graceful shutdown first
             if let Err(e) = process.kill() {
-                eprintln!("Warning: Failed to kill server process: {}", e);
+                warn!(error = %e, "Failed to kill server process");
             }
 
             // Wait for process to exit
             if let Err(e) = process.wait() {
-                eprintln!("Warning: Failed to wait for process: {}", e);
+                warn!(error = %e, "Failed to wait for server process");
             }
 
-            println!("✅ AI Gateway server stopped");
+            info!("AI Gateway server stopped");
         }
         Ok(())
     }
@@ -166,7 +168,7 @@ impl AiServerManager {
 
     /// Restart the server
     pub async fn restart(&mut self) -> Result<()> {
-        println!("Restarting AI Gateway server...");
+        info!("Restarting AI Gateway server...");
         self.stop().await?;
         sleep(Duration::from_secs(2)).await;
         self.start().await?;
@@ -174,7 +176,7 @@ impl AiServerManager {
     }
 
     /// Find the ai-server directory relative to the binary
-    fn find_ai_server_path(&self) -> Result<PathBuf> {
+    fn find_ai_server_path() -> Result<PathBuf> {
         // Try different possible locations
         let possible_paths = vec![
             PathBuf::from("./ai-server"),
@@ -198,10 +200,10 @@ impl AiServerManager {
         let node_modules = ai_server_path.join("node_modules");
 
         if !node_modules.exists() {
-            println!("Installing AI server dependencies...");
+            info!("Installing AI server dependencies...");
 
             let output = Command::new("bun")
-                .args(&["install"])
+                .args(["install"])
                 .current_dir(ai_server_path)
                 .output()
                 .map_err(|e| anyhow::anyhow!("Failed to install dependencies: {}", e))?;
@@ -214,7 +216,7 @@ impl AiServerManager {
                 ));
             }
 
-            println!("✅ Dependencies installed successfully");
+            info!("Dependencies installed successfully");
         }
 
         Ok(())
@@ -238,11 +240,11 @@ impl AiServerManager {
         let timeout = Duration::from_secs(30);
         let check_interval = Duration::from_millis(500);
 
-        println!("Waiting for AI Gateway server to be ready...");
+        info!("Waiting for AI Gateway server to be ready...");
 
         while start_time.elapsed() < timeout {
             if self.health_check().await.is_ok() {
-                println!("✅ AI Gateway server is ready");
+                info!("AI Gateway server is ready");
                 return Ok(());
             }
 
@@ -264,15 +266,15 @@ impl Drop for AiServerManager {
     }
 }
 
-use once_cell::sync::Lazy;
 /// Global server manager instance
-use std::sync::Mutex;
-
-static GLOBAL_AI_SERVER: Lazy<Mutex<Option<AiServerManager>>> = Lazy::new(|| Mutex::new(None));
+static GLOBAL_AI_SERVER: LazyLock<Mutex<Option<AiServerManager>>> =
+    LazyLock::new(|| Mutex::new(None));
 
 /// Initialize the global AI server manager
 pub fn init_ai_server(config: AiServerConfig) -> Result<()> {
-    let mut server = GLOBAL_AI_SERVER.lock().unwrap();
+    let mut server = GLOBAL_AI_SERVER
+        .lock()
+        .map_err(|e| anyhow::anyhow!("AI server lock poisoned: {}", e))?;
     *server = Some(AiServerManager::new(config));
     Ok(())
 }
@@ -280,7 +282,9 @@ pub fn init_ai_server(config: AiServerConfig) -> Result<()> {
 /// Start the global AI server
 pub async fn start_ai_server() -> Result<()> {
     let server = {
-        let mut server_guard = GLOBAL_AI_SERVER.lock().unwrap();
+        let mut server_guard = GLOBAL_AI_SERVER
+            .lock()
+            .map_err(|e| anyhow::anyhow!("AI server lock poisoned: {}", e))?;
         server_guard.take()
     };
 
@@ -288,7 +292,9 @@ pub async fn start_ai_server() -> Result<()> {
         let result = server.start().await;
         // Put the server back
         {
-            let mut server_guard = GLOBAL_AI_SERVER.lock().unwrap();
+            let mut server_guard = GLOBAL_AI_SERVER
+                .lock()
+                .map_err(|e| anyhow::anyhow!("AI server lock poisoned: {}", e))?;
             *server_guard = Some(server);
         }
         result
@@ -302,7 +308,9 @@ pub async fn start_ai_server() -> Result<()> {
 /// Stop the global AI server
 pub async fn stop_ai_server() -> Result<()> {
     let server = {
-        let mut server_guard = GLOBAL_AI_SERVER.lock().unwrap();
+        let mut server_guard = GLOBAL_AI_SERVER
+            .lock()
+            .map_err(|e| anyhow::anyhow!("AI server lock poisoned: {}", e))?;
         server_guard.take()
     };
 
@@ -310,7 +318,9 @@ pub async fn stop_ai_server() -> Result<()> {
         let result = server.stop().await;
         // Put the server back
         {
-            let mut server_guard = GLOBAL_AI_SERVER.lock().unwrap();
+            let mut server_guard = GLOBAL_AI_SERVER
+                .lock()
+                .map_err(|e| anyhow::anyhow!("AI server lock poisoned: {}", e))?;
             *server_guard = Some(server);
         }
         result
@@ -322,13 +332,14 @@ pub async fn stop_ai_server() -> Result<()> {
 /// Check if the global AI server is running
 pub async fn is_ai_server_running() -> bool {
     let server = {
-        let server_guard = GLOBAL_AI_SERVER.lock().unwrap();
-        if let Some(ref server) = *server_guard {
-            // Clone server to use outside the lock
-            Some(server.clone())
-        } else {
-            None
-        }
+        let server_guard = match GLOBAL_AI_SERVER.lock() {
+            Ok(server_guard) => server_guard,
+            Err(err) => {
+                warn!(error = %err, "AI server lock poisoned");
+                return false;
+            }
+        };
+        (*server_guard).clone()
     };
 
     if let Some(server) = server {
@@ -351,12 +362,10 @@ impl Clone for AiServerManager {
 /// Get the AI server health status
 pub async fn get_ai_server_health() -> Result<HealthResponse> {
     let server = {
-        let server_guard = GLOBAL_AI_SERVER.lock().unwrap();
-        if let Some(ref server) = *server_guard {
-            Some(server.clone())
-        } else {
-            None
-        }
+        let server_guard = GLOBAL_AI_SERVER
+            .lock()
+            .map_err(|e| anyhow::anyhow!("AI server lock poisoned: {}", e))?;
+        (*server_guard).clone()
     };
 
     if let Some(server) = server {
