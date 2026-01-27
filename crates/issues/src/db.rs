@@ -5,7 +5,7 @@ use std::path::Path;
 use tracing::{debug, error, info};
 
 /// Current schema version
-#[allow(dead_code)]
+#[expect(dead_code)]
 const SCHEMA_VERSION: i32 = 11;
 
 /// Initialize the database with migrations

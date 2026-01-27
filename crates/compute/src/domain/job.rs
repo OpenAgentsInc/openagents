@@ -4,6 +4,7 @@ use chrono::{DateTime, Utc};
 use nostr::{InputType, JobInput};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::str::FromStr;
 
 /// A NIP-90 job request being processed
 #[derive(Debug, Clone, Serialize, Deserialize)]

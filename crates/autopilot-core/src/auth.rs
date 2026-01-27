@@ -201,6 +201,7 @@ pub fn get_provider_auth(provider: &str) -> Result<Option<AuthEntry>> {
 }
 
 #[cfg(test)]
+#[expect(clippy::unwrap_used)]
 mod tests {
     use super::*;
 

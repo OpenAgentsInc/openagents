@@ -424,7 +424,7 @@ fn seed_from_signer(signer: &SparkSigner) -> Result<Seed, SparkError> {
 pub struct SparkWallet {
     signer: SparkSigner,
     config: WalletConfig,
-    #[allow(dead_code)]
+    #[expect(dead_code)]
     sdk: Arc<BreezSdk>,
 }
 
@@ -507,7 +507,7 @@ impl SparkWallet {
     /// Get the Breez SDK instance
     ///
     /// This provides direct access to the underlying Breez SDK for advanced operations.
-    #[allow(dead_code)]
+    #[expect(dead_code)]
     pub(crate) fn sdk(&self) -> &Arc<BreezSdk> {
         &self.sdk
     }

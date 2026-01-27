@@ -330,6 +330,7 @@ impl Default for DspyHub {
 }
 
 #[cfg(test)]
+#[expect(clippy::unwrap_used)]
 mod tests {
     use super::*;
     use dsrs::manifest::Scorecard;

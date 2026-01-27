@@ -151,8 +151,8 @@ mod rand {
         use std::time::{SystemTime, UNIX_EPOCH};
         let nanos = SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .subsec_nanos();
+            .map(|duration| duration.subsec_nanos())
+            .unwrap_or(0);
         T::from(nanos)
     }
 }

@@ -701,6 +701,7 @@ pub struct SavedTrainingPaths {
 }
 
 #[cfg(test)]
+#[expect(clippy::unwrap_used)]
 mod tests {
     use super::*;
     use tempfile::TempDir;

@@ -74,7 +74,7 @@ use crate::verification::{
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
-#[allow(dead_code)]
+#[expect(dead_code)]
 pub enum StartupPhase {
     /// Idle - waiting for user to provide a prompt or select an issue
     Idle,
@@ -1596,7 +1596,13 @@ impl StartupState {
                     self.verification_runner = Some(VerificationRunner::new(&cwd));
                 }
 
-                let mut runner = self.verification_runner.take().unwrap();
+                let mut runner = match self.verification_runner.take() {
+                    Some(runner) => runner,
+                    None => {
+                        let cwd = std::env::current_dir().unwrap_or_default();
+                        VerificationRunner::new(&cwd)
+                    }
+                };
 
                 let default_checklist = TerminationChecklist {
                     build_clean: crate::verification::CheckResult::pass(""),

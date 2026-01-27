@@ -16,6 +16,7 @@ use tokio::time::{Duration, interval};
 use tokio_rustls::TlsAcceptor;
 use tokio_tungstenite::tungstenite::Message;
 use tokio_tungstenite::tungstenite::handshake::server::{ErrorResponse, Request, Response};
+use tokio_tungstenite::tungstenite::http::{Response as HttpResponse, StatusCode};
 use tokio_tungstenite::{WebSocketStream, accept_hdr_async};
 use tracing::{debug, error, info, warn};
 use tracing_subscriber::EnvFilter;
@@ -262,14 +263,15 @@ where
 }
 
 fn error_response(status: u16, message: &str) -> ErrorResponse {
-    Response::builder()
+    HttpResponse::builder()
         .status(status)
         .body(Some(message.to_string()))
         .unwrap_or_else(|_| {
-            Response::builder()
-                .status(status)
-                .body(None)
-                .expect("valid response")
+            let mut response = HttpResponse::new(None::<String>);
+            let fallback_status =
+                StatusCode::from_u16(status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
+            *response.status_mut() = fallback_status;
+            response
         })
 }
 
@@ -572,8 +574,10 @@ fn validate_auth(
         }
     }
 
-    let mut mac = Hmac::<Sha256>::new_from_slice(app_secret.as_bytes())
-        .expect("HMAC can take key of any size");
+    let Ok(mut mac) = Hmac::<Sha256>::new_from_slice(app_secret.as_bytes()) else {
+        error!("Failed to initialize HMAC; invalid app secret");
+        return false;
+    };
     mac.update(sign_data.as_bytes());
     let expected = hex::encode(mac.finalize().into_bytes());
     expected.eq_ignore_ascii_case(signature)

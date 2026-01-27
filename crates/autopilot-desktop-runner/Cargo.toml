@@ -9,6 +9,8 @@ description = "Dev runner for the Autopilot desktop app"
 
 [dependencies]
 anyhow.workspace = true
+tracing.workspace = true
+tracing-subscriber = "0.3"
 
 [lints]
 workspace = true

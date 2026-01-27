@@ -12,7 +12,7 @@ pub struct DvmProvider {
 
 #[cfg(not(target_arch = "wasm32"))]
 #[derive(Clone)]
-#[allow(dead_code)]
+#[expect(dead_code)]
 struct DvmJobState {
     job_id: String,
     request_event_id: String,

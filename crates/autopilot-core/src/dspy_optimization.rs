@@ -189,7 +189,10 @@ fn valid_json_array(val: &serde_json::Value) -> bool {
 
 /// Check if DSPy is configured.
 fn dspy_ready() -> bool {
-    GLOBAL_SETTINGS.read().unwrap().is_some()
+    GLOBAL_SETTINGS
+        .read()
+        .map(|guard| guard.is_some())
+        .unwrap_or_else(|poisoned| poisoned.into_inner().is_some())
 }
 
 /// Run an async prediction from a sync context.
@@ -750,6 +753,7 @@ pub enum OptimizerType {
 // ============================================================================
 
 #[cfg(test)]
+#[expect(clippy::unwrap_used)]
 mod tests {
     use super::*;
 

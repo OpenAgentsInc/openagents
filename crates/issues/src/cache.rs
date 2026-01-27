@@ -7,15 +7,23 @@ use crate::{Issue, Status};
 use anyhow::{Context, Result};
 use std::collections::HashMap;
 use std::process::Command;
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard};
 use std::time::{Duration, Instant};
+
+fn read_lock<T>(lock: &RwLock<T>) -> RwLockReadGuard<'_, T> {
+    lock.read().unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+fn write_lock<T>(lock: &RwLock<T>) -> RwLockWriteGuard<'_, T> {
+    lock.write().unwrap_or_else(|poisoned| poisoned.into_inner())
+}
 
 /// Cache entry for an issue
 #[derive(Debug, Clone)]
 struct CachedIssue {
     issue: Issue,
     cached_at: Instant,
-    #[allow(dead_code)]
+    #[expect(dead_code)]
     git_head: Option<String>,
 }
 
@@ -92,7 +100,7 @@ impl IssueCache {
             return false;
         };
 
-        let mut last_head = self.last_git_head.write().unwrap();
+        let mut last_head = write_lock(&self.last_git_head);
         if let Some(ref last) = *last_head {
             if last != &current_head {
                 *last_head = Some(current_head);
@@ -113,7 +121,7 @@ impl IssueCache {
             return None;
         }
 
-        let cache = self.cache.read().unwrap();
+        let cache = read_lock(&self.cache);
         if let Some(entry) = cache.get(issue_id) {
             // Check if entry is still valid (not expired)
             if entry.cached_at.elapsed() < self.config.ttl {
@@ -126,7 +134,7 @@ impl IssueCache {
 
     /// Put an issue into the cache
     pub fn put(&self, issue: Issue) {
-        let mut cache = self.cache.write().unwrap();
+        let mut cache = write_lock(&self.cache);
 
         // Enforce max size by removing oldest entries
         if cache.len() >= self.config.max_size {
@@ -158,29 +166,29 @@ impl IssueCache {
 
     /// Invalidate a specific issue
     pub fn invalidate(&self, issue_id: &str) {
-        let mut cache = self.cache.write().unwrap();
+        let mut cache = write_lock(&self.cache);
         cache.remove(issue_id);
     }
 
     /// Invalidate issues by status
     pub fn invalidate_by_status(&self, status: Status) {
-        let mut cache = self.cache.write().unwrap();
+        let mut cache = write_lock(&self.cache);
         cache.retain(|_, entry| entry.issue.status != status);
     }
 
     /// Clear all cache entries
     pub fn clear(&self) {
-        let mut cache = self.cache.write().unwrap();
+        let mut cache = write_lock(&self.cache);
         cache.clear();
     }
 
     /// Get cache statistics
     pub fn stats(&self) -> CacheStats {
-        let cache = self.cache.read().unwrap();
+        let cache = read_lock(&self.cache);
         CacheStats {
             size: cache.len(),
             max_size: self.config.max_size,
-            git_head: self.last_git_head.read().unwrap().clone(),
+            git_head: read_lock(&self.last_git_head).clone(),
         }
     }
 }

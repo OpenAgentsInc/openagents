@@ -692,6 +692,7 @@ pub fn run_preflight(working_dir: &Path) -> Result<PreflightConfig> {
 }
 
 #[cfg(test)]
+#[expect(clippy::unwrap_used)]
 mod tests {
     use super::*;
     use std::env;

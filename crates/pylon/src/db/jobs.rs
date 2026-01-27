@@ -211,7 +211,7 @@ impl PylonDb {
 
         for row in rows {
             let (status_str, count) = row?;
-            if let Ok(status) = JobStatus::from_str(&status_str) {
+            if let Some(status) = JobStatus::from_str(&status_str) {
                 counts.insert(status, count as u64);
             }
         }
