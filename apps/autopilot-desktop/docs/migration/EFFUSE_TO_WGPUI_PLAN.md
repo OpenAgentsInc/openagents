@@ -237,3 +237,6 @@ Effuse catalog -> WGPUI target
 ## Work Log
 
 - 2026-01-27: Rewrote plan for full Rustiness (native WGPUI app, new crate layout, no Tauri), removed time estimates, and defined phased migration + deletion gates.
+- 2026-01-27: Phase 0 bootstrap started: added `apps/autopilot-desktop-wgpu` native WGPUI binary with a minimal render loop + text root, and registered it in the workspace.
+- 2026-01-27: Verified `cargo build -p autopilot-desktop-wgpu`.
+- 2026-01-27: Updated `.cargo/config.toml` so `cargo autopilot` runs the new native WGPUI desktop binary.

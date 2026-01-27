@@ -2,6 +2,7 @@
 resolver = "2"
 members = [
     "apps/autopilot-desktop/src-tauri",
+    "apps/autopilot-desktop-wgpu",
     "crates/adjutant",
     "crates/agent",
     "crates/ai-server",
