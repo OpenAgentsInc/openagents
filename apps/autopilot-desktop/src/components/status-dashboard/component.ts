@@ -112,6 +112,7 @@ type StatusState = {
   activeSessionId: string | null
   sessionItems: Record<string, CodexConversationItem[]>
   sessionMessage: string
+  extraPaneOpen: boolean
   fullAutoEnabled: boolean
   fullAutoThreadId: string | null
   fullAutoMessage: string
@@ -128,6 +129,7 @@ type StatusEvent =
   | { type: "StartNewSession" }
   | { type: "UpdateWorkspacePath"; path: string }
   | { type: "UpdateMessageInput"; value: string }
+  | { type: "ToggleExtraPane" }
   | { type: "SubmitMessage"; value: string }
   | { type: "RefreshWorkspaceStatus" }
   | { type: "RefreshSessions" }
@@ -1080,6 +1082,7 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
     activeSessionId: null,
     sessionItems: {},
     sessionMessage: "",
+    extraPaneOpen: false,
     fullAutoEnabled: false,
     fullAutoThreadId: null,
     fullAutoMessage: "",
@@ -1139,6 +1142,7 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
         : "--"
       const sessionCount = state.sessions.length
       const sessionBusy = state.busy.sessions || state.busy.newSession
+      const extraPaneOpen = state.extraPaneOpen
       const fullAutoLabel = state.fullAutoEnabled
         ? state.fullAutoThreadId
           ? "RUNNING"
@@ -1200,6 +1204,34 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
             description: "Choose a session to view its timeline.",
           })
 
+      const conversationPanel = html`
+        <section class="panel conversation-panel">
+          <div class="panel-title">Session ${sessionLabel}</div>
+          <div
+            class="panel-body conversation-body"
+            data-scroll-id="${activeSessionId
+              ? `session-${activeSessionId}`
+              : "session-none"}"
+          >
+            ${conversationBody}
+          </div>
+          ${state.sessionMessage ? html`<div class="note">${state.sessionMessage}</div>` : ""}
+        </section>
+      `
+
+      const extraPane = extraPaneOpen
+        ? html`
+            <section class="panel aux-pane">
+              <div class="panel-title">Pane</div>
+              <div class="panel-body pane-body"></div>
+            </section>
+          `
+        : ""
+
+      const mainPanels = extraPaneOpen
+        ? html`<div class="panel-row panel-row--split">${conversationPanel}${extraPane}</div>`
+        : conversationPanel
+
       return html`
         <div class="terminal">
           <div class="flex min-h-0 flex-1 max-[900px]:flex-col">
@@ -1227,22 +1259,7 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
             </aside>
 
             <main class="main-pane">
-              <section class="panel conversation-panel">
-                <div class="panel-title">Session ${sessionLabel}</div>
-                <div
-                  class="panel-body conversation-body"
-                  data-scroll-id="${activeSessionId
-                    ? `session-${activeSessionId}`
-                    : "session-none"}"
-                >
-                  ${conversationBody}
-                </div>
-                ${
-                  state.sessionMessage
-                    ? html`<div class="note">${state.sessionMessage}</div>`
-                    : ""
-                }
-              </section>
+              ${mainPanels}
 
               <div class="compose-bar">
                 <div class="compose-inner">
@@ -1516,6 +1533,14 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
               )
             )
           )
+        return
+      }
+
+      if (event.type === "ToggleExtraPane") {
+        yield* ctx.state.update((current) => ({
+          ...current,
+          extraPaneOpen: !current.extraPaneOpen,
+        }))
         return
       }
 
@@ -2575,6 +2600,10 @@ export const StatusDashboardComponent: Component<StatusState, StatusEvent> = {
           emit({ type: "RefreshDoctor" })
           emit({ type: "RefreshWorkspaceStatus" })
           emit({ type: "RefreshSessions" })
+        }
+        if (event.key === "F11") {
+          event.preventDefault()
+          emit({ type: "ToggleExtraPane" })
         }
       }
 
