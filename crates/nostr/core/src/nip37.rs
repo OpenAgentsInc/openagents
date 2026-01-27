@@ -6,7 +6,6 @@
 //! See: <https://github.com/nostr-protocol/nips/blob/master/37.md>
 
 use crate::Event;
-use serde_json;
 use thiserror::Error;
 
 /// Event kind for draft wraps (encrypted storage for draft events)

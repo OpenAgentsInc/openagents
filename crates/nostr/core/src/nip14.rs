@@ -50,7 +50,7 @@ pub fn add_subject(event: &mut Event, subject: impl Into<String>) {
     // Remove existing subject tag if present
     event
         .tags
-        .retain(|tag| !(tag.len() >= 1 && tag[0] == SUBJECT_TAG));
+        .retain(|tag| tag.first().is_none_or(|value| value != SUBJECT_TAG));
 
     // Add new subject tag
     event.tags.push(vec![SUBJECT_TAG.to_string(), subject]);

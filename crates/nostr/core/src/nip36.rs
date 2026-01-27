@@ -96,7 +96,7 @@ pub fn has_content_warning(event: &Event) -> bool {
     event
         .tags
         .iter()
-        .any(|tag| tag.get(0).map(|s| s.as_str()) == Some(CONTENT_WARNING_TAG))
+        .any(|tag| tag.first().map(|s| s.as_str()) == Some(CONTENT_WARNING_TAG))
 }
 
 /// Get the content warning reason from an event.
@@ -126,7 +126,7 @@ pub fn get_content_warning(event: &Event) -> Option<String> {
     event
         .tags
         .iter()
-        .find(|tag| tag.get(0).map(|s| s.as_str()) == Some(CONTENT_WARNING_TAG))
+        .find(|tag| tag.first().map(|s| s.as_str()) == Some(CONTENT_WARNING_TAG))
         .and_then(|tag| tag.get(1))
         .map(|s| s.to_string())
 }
@@ -176,7 +176,7 @@ pub fn add_content_warning(tags: &mut Vec<Vec<String>>, reason: Option<&str>) {
 /// // Only the "p" tag remains
 /// ```
 pub fn remove_content_warning(tags: &mut Vec<Vec<String>>) {
-    tags.retain(|tag| tag.get(0).map(|s| s.as_str()) != Some(CONTENT_WARNING_TAG));
+    tags.retain(|tag| tag.first().map(|s| s.as_str()) != Some(CONTENT_WARNING_TAG));
 }
 
 /// Common content warning reasons.

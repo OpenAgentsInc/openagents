@@ -135,10 +135,10 @@ impl MediaAttachment {
             .fields
             .iter()
             .filter_map(|(k, v)| {
-                if let Some(idx_str) = k.strip_prefix("fallback_") {
-                    if let Ok(idx) = idx_str.parse::<usize>() {
-                        return Some((idx, v.as_str()));
-                    }
+                if let Some(idx_str) = k.strip_prefix("fallback_")
+                    && let Ok(idx) = idx_str.parse::<usize>()
+                {
+                    return Some((idx, v.as_str()));
                 }
                 None
             })
@@ -223,10 +223,10 @@ pub fn get_media_attachments(event: &Event) -> Vec<MediaAttachment> {
     let mut attachments = Vec::new();
 
     for tag in &event.tags {
-        if !tag.is_empty() && tag[0] == IMETA_TAG {
-            if let Ok(attachment) = MediaAttachment::from_tag(tag) {
-                attachments.push(attachment);
-            }
+        if !tag.is_empty() && tag[0] == IMETA_TAG
+            && let Ok(attachment) = MediaAttachment::from_tag(tag)
+        {
+            attachments.push(attachment);
         }
     }
 

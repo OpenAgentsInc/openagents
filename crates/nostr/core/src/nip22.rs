@@ -99,7 +99,7 @@ pub fn get_root_kind(event: &Event) -> Option<u16> {
     event
         .tags
         .iter()
-        .find(|tag| tag.get(0).map(|s| s.as_str()) == Some("K"))
+        .find(|tag| tag.first().map(|s| s.as_str()) == Some("K"))
         .and_then(|tag| tag.get(1))
         .and_then(|s| s.parse::<u16>().ok())
 }
@@ -123,7 +123,7 @@ pub fn get_parent_kind(event: &Event) -> Option<u16> {
     event
         .tags
         .iter()
-        .find(|tag| tag.get(0).map(|s| s.as_str()) == Some("k"))
+        .find(|tag| tag.first().map(|s| s.as_str()) == Some("k"))
         .and_then(|tag| tag.get(1))
         .and_then(|s| s.parse::<u16>().ok())
 }
@@ -145,7 +145,7 @@ pub fn get_root_event_id(event: &Event) -> Option<String> {
     event
         .tags
         .iter()
-        .find(|tag| tag.get(0).map(|s| s.as_str()) == Some("E"))
+        .find(|tag| tag.first().map(|s| s.as_str()) == Some("E"))
         .and_then(|tag| tag.get(1))
         .map(|s| s.to_string())
 }
@@ -167,7 +167,7 @@ pub fn get_parent_event_id(event: &Event) -> Option<String> {
     event
         .tags
         .iter()
-        .find(|tag| tag.get(0).map(|s| s.as_str()) == Some("e"))
+        .find(|tag| tag.first().map(|s| s.as_str()) == Some("e"))
         .and_then(|tag| tag.get(1))
         .map(|s| s.to_string())
 }
@@ -191,7 +191,7 @@ pub fn get_root_address(event: &Event) -> Option<String> {
     event
         .tags
         .iter()
-        .find(|tag| tag.get(0).map(|s| s.as_str()) == Some("A"))
+        .find(|tag| tag.first().map(|s| s.as_str()) == Some("A"))
         .and_then(|tag| tag.get(1))
         .map(|s| s.to_string())
 }
@@ -213,7 +213,7 @@ pub fn get_parent_address(event: &Event) -> Option<String> {
     event
         .tags
         .iter()
-        .find(|tag| tag.get(0).map(|s| s.as_str()) == Some("a"))
+        .find(|tag| tag.first().map(|s| s.as_str()) == Some("a"))
         .and_then(|tag| tag.get(1))
         .map(|s| s.to_string())
 }

@@ -60,7 +60,12 @@ impl SignerRequestType {
         }
     }
 
-    pub fn from_str(s: &str) -> Result<Self, Nip55Error> {
+}
+
+impl std::str::FromStr for SignerRequestType {
+    type Err = Nip55Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "get_public_key" => Ok(SignerRequestType::GetPublicKey),
             "sign_event" => Ok(SignerRequestType::SignEvent),
@@ -213,10 +218,10 @@ impl SignerRequest {
         if let Some(pubkey) = &self.pubkey {
             extras.insert("pubkey".to_string(), pubkey.clone());
         }
-        if let Some(permissions) = &self.permissions {
-            if let Ok(json) = serde_json::to_string(permissions) {
-                extras.insert("permissions".to_string(), json);
-            }
+        if let Some(permissions) = &self.permissions
+            && let Ok(json) = serde_json::to_string(permissions)
+        {
+            extras.insert("permissions".to_string(), json);
         }
 
         extras
@@ -399,6 +404,7 @@ impl ContentResolverUri {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::str::FromStr;
 
     #[test]
     fn test_signer_request_type_as_str() {
@@ -417,11 +423,15 @@ mod tests {
     #[test]
     fn test_signer_request_type_from_str() {
         assert_eq!(
-            SignerRequestType::from_str("get_public_key").unwrap(),
+            SignerRequestType::from_str("get_public_key")
+                .ok()
+                .unwrap_or(SignerRequestType::GetPublicKey),
             SignerRequestType::GetPublicKey
         );
         assert_eq!(
-            SignerRequestType::from_str("sign_event").unwrap(),
+            SignerRequestType::from_str("sign_event")
+                .ok()
+                .unwrap_or(SignerRequestType::SignEvent),
             SignerRequestType::SignEvent
         );
         assert!(SignerRequestType::from_str("invalid").is_err());

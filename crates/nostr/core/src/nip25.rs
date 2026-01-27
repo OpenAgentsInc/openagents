@@ -102,10 +102,10 @@ impl Reaction {
         // Find the e-tag (required)
         let mut reacted_event_id = None;
         for tag in &event.tags {
-            if !tag.is_empty() && tag[0] == "e" {
-                if tag.len() > 1 {
-                    reacted_event_id = Some(tag[1].clone());
-                }
+            if !tag.is_empty() && tag[0] == "e"
+                && tag.len() > 1
+            {
+                reacted_event_id = Some(tag[1].clone());
             }
         }
 
@@ -114,32 +114,31 @@ impl Reaction {
         // Find the p-tag (recommended)
         let mut reacted_event_author = None;
         for tag in &event.tags {
-            if !tag.is_empty() && tag[0] == "p" {
-                if tag.len() > 1 {
-                    reacted_event_author = Some(tag[1].clone());
-                }
+            if !tag.is_empty() && tag[0] == "p"
+                && tag.len() > 1
+            {
+                reacted_event_author = Some(tag[1].clone());
             }
         }
 
         // Find the k-tag (optional)
         let mut reacted_event_kind = None;
         for tag in &event.tags {
-            if !tag.is_empty() && tag[0] == "k" {
-                if tag.len() > 1 {
-                    if let Ok(kind) = tag[1].parse::<u16>() {
-                        reacted_event_kind = Some(kind);
-                    }
-                }
+            if !tag.is_empty() && tag[0] == "k"
+                && tag.len() > 1
+                && let Ok(kind) = tag[1].parse::<u16>()
+            {
+                reacted_event_kind = Some(kind);
             }
         }
 
         // Find the a-tag (optional, for addressable events)
         let mut addressable_event_coords = None;
         for tag in &event.tags {
-            if !tag.is_empty() && tag[0] == "a" {
-                if tag.len() > 1 {
-                    addressable_event_coords = Some(tag[1].clone());
-                }
+            if !tag.is_empty() && tag[0] == "a"
+                && tag.len() > 1
+            {
+                addressable_event_coords = Some(tag[1].clone());
             }
         }
 

@@ -105,7 +105,7 @@ pub fn encrypt(
 
     // Encode to base64
     let encrypted_b64 = base64::engine::general_purpose::STANDARD.encode(&ciphertext);
-    let iv_b64 = base64::engine::general_purpose::STANDARD.encode(&iv);
+    let iv_b64 = base64::engine::general_purpose::STANDARD.encode(iv);
 
     Ok(format!("{}?iv={}", encrypted_b64, iv_b64))
 }

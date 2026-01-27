@@ -233,15 +233,16 @@ impl SearchQuery {
         }
     }
 
-    /// Convert to full query string
-    pub fn to_string(&self) -> String {
-        self.extensions.to_query_string(&self.query)
-    }
-
     /// Set extensions
     pub fn with_extensions(mut self, extensions: SearchExtensions) -> Self {
         self.extensions = extensions;
         self
+    }
+}
+
+impl std::fmt::Display for SearchQuery {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.extensions.to_query_string(&self.query))
     }
 }
 

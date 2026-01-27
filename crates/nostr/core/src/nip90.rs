@@ -131,6 +131,7 @@
 
 use crate::nip01::Event;
 use serde::{Deserialize, Serialize};
+use std::str::FromStr;
 use thiserror::Error;
 
 /// Kind range for job requests
@@ -218,7 +219,12 @@ impl InputType {
         }
     }
 
-    pub fn from_str(s: &str) -> Result<Self, Nip90Error> {
+}
+
+impl std::str::FromStr for InputType {
+    type Err = Nip90Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_lowercase().as_str() {
             "url" => Ok(InputType::Url),
             "event" => Ok(InputType::Event),
@@ -256,7 +262,12 @@ impl JobStatus {
         }
     }
 
-    pub fn from_str(s: &str) -> Result<Self, Nip90Error> {
+}
+
+impl std::str::FromStr for JobStatus {
+    type Err = Nip90Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "payment-required" => Ok(JobStatus::PaymentRequired),
             "processing" => Ok(JobStatus::Processing),
@@ -1255,14 +1266,17 @@ mod tests {
 
     #[test]
     fn test_input_type_from_str() {
-        assert_eq!(InputType::from_str("url").unwrap(), InputType::Url);
-        assert_eq!(InputType::from_str("event").unwrap(), InputType::Event);
-        assert_eq!(InputType::from_str("job").unwrap(), InputType::Job);
-        assert_eq!(InputType::from_str("text").unwrap(), InputType::Text);
+        assert!(matches!(InputType::from_str("url"), Ok(InputType::Url)));
+        assert!(matches!(
+            InputType::from_str("event"),
+            Ok(InputType::Event)
+        ));
+        assert!(matches!(InputType::from_str("job"), Ok(InputType::Job)));
+        assert!(matches!(InputType::from_str("text"), Ok(InputType::Text)));
 
         // Case insensitive
-        assert_eq!(InputType::from_str("URL").unwrap(), InputType::Url);
-        assert_eq!(InputType::from_str("Text").unwrap(), InputType::Text);
+        assert!(matches!(InputType::from_str("URL"), Ok(InputType::Url)));
+        assert!(matches!(InputType::from_str("Text"), Ok(InputType::Text)));
 
         // Invalid
         assert!(InputType::from_str("invalid").is_err());
@@ -1283,17 +1297,23 @@ mod tests {
 
     #[test]
     fn test_job_status_from_str() {
-        assert_eq!(
-            JobStatus::from_str("payment-required").unwrap(),
-            JobStatus::PaymentRequired
-        );
-        assert_eq!(
-            JobStatus::from_str("processing").unwrap(),
-            JobStatus::Processing
-        );
-        assert_eq!(JobStatus::from_str("error").unwrap(), JobStatus::Error);
-        assert_eq!(JobStatus::from_str("success").unwrap(), JobStatus::Success);
-        assert_eq!(JobStatus::from_str("partial").unwrap(), JobStatus::Partial);
+        assert!(matches!(
+            JobStatus::from_str("payment-required"),
+            Ok(JobStatus::PaymentRequired)
+        ));
+        assert!(matches!(
+            JobStatus::from_str("processing"),
+            Ok(JobStatus::Processing)
+        ));
+        assert!(matches!(JobStatus::from_str("error"), Ok(JobStatus::Error)));
+        assert!(matches!(
+            JobStatus::from_str("success"),
+            Ok(JobStatus::Success)
+        ));
+        assert!(matches!(
+            JobStatus::from_str("partial"),
+            Ok(JobStatus::Partial)
+        ));
 
         // Invalid
         assert!(JobStatus::from_str("invalid").is_err());

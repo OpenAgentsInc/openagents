@@ -361,10 +361,10 @@ impl Product {
         if self.price < 0.0 {
             return Err(Nip15Error::NegativePrice);
         }
-        if let Some(qty) = self.quantity {
-            if qty < 0 {
-                return Err(Nip15Error::NegativeQuantity);
-            }
+        if let Some(qty) = self.quantity
+            && qty < 0
+        {
+            return Err(Nip15Error::NegativeQuantity);
         }
         Ok(())
     }

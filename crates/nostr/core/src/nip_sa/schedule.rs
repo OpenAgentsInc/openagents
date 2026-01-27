@@ -323,12 +323,12 @@ impl AgentSchedule {
 
     /// Validate the schedule
     pub fn validate(&self) -> Result<(), ScheduleError> {
-        if let Some(seconds) = self.heartbeat_seconds {
-            if seconds == 0 {
-                return Err(ScheduleError::InvalidHeartbeat(
-                    "heartbeat must be > 0".to_string(),
-                ));
-            }
+        if let Some(seconds) = self.heartbeat_seconds
+            && seconds == 0
+        {
+            return Err(ScheduleError::InvalidHeartbeat(
+                "heartbeat must be > 0".to_string(),
+            ));
         }
         if let Some(hours) = &self.business_hours {
             hours.validate()?;

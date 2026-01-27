@@ -87,7 +87,7 @@ pub fn get_expiration(event: &Event) -> Option<i64> {
     event
         .tags
         .iter()
-        .find(|tag| tag.get(0).map(|s| s.as_str()) == Some(EXPIRATION_TAG))
+        .find(|tag| tag.first().map(|s| s.as_str()) == Some(EXPIRATION_TAG))
         .and_then(|tag| tag.get(1))
         .and_then(|ts| ts.parse::<i64>().ok())
 }
@@ -149,7 +149,7 @@ pub fn is_expired(event: &Event, current_time: Option<i64>) -> bool {
 /// ```
 pub fn set_expiration(tags: &mut Vec<Vec<String>>, timestamp: i64) {
     // Remove any existing expiration tags
-    tags.retain(|tag| tag.get(0).map(|s| s.as_str()) != Some(EXPIRATION_TAG));
+    tags.retain(|tag| tag.first().map(|s| s.as_str()) != Some(EXPIRATION_TAG));
 
     // Add the new expiration tag
     tags.push(vec![EXPIRATION_TAG.to_string(), timestamp.to_string()]);
@@ -209,7 +209,7 @@ pub fn has_expiration(event: &Event) -> bool {
     event
         .tags
         .iter()
-        .any(|tag| tag.get(0).map(|s| s.as_str()) == Some(EXPIRATION_TAG))
+        .any(|tag| tag.first().map(|s| s.as_str()) == Some(EXPIRATION_TAG))
 }
 
 /// Get the time remaining until expiration (in seconds).

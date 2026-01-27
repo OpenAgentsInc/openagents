@@ -290,13 +290,13 @@ impl Nutzap {
         }
 
         // Check that mint supports the unit
-        if let Some(mint_info) = recipient_info.get_mint(&self.mint_url) {
-            if !mint_info.supports_unit(&self.unit) {
-                return Err(Nip61Error::Parse(format!(
-                    "mint {} does not support unit {}",
-                    self.mint_url, self.unit
-                )));
-            }
+        if let Some(mint_info) = recipient_info.get_mint(&self.mint_url)
+            && !mint_info.supports_unit(&self.unit)
+        {
+            return Err(Nip61Error::Parse(format!(
+                "mint {} does not support unit {}",
+                self.mint_url, self.unit
+            )));
         }
 
         Ok(())

@@ -155,11 +155,11 @@ pub fn remove_all_emoji_tags(tags: &mut Vec<Vec<String>>) {
 /// Extract all :shortcode: patterns from text
 pub fn extract_shortcodes(text: &str) -> Vec<String> {
     let mut shortcodes = Vec::new();
-    let mut chars = text.chars().peekable();
+    let chars = text.chars().peekable();
     let mut in_shortcode = false;
     let mut current_shortcode = String::new();
 
-    while let Some(c) = chars.next() {
+    for c in chars {
         if c == ':' {
             if in_shortcode {
                 // End of shortcode

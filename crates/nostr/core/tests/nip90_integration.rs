@@ -5,6 +5,7 @@ use nostr::{
     KIND_JOB_IMAGE_GENERATION, KIND_JOB_SPEECH_TO_TEXT, KIND_JOB_SUMMARIZATION,
     KIND_JOB_TEXT_EXTRACTION, KIND_JOB_TEXT_GENERATION, KIND_JOB_TRANSLATION,
 };
+use std::str::FromStr;
 
 // =========================================================================
 // InputType tests
@@ -20,10 +21,16 @@ fn test_input_type_serialization() {
 
 #[test]
 fn test_input_type_case_insensitive_parsing() {
-    assert_eq!(InputType::from_str("TEXT").unwrap(), InputType::Text);
-    assert_eq!(InputType::from_str("Text").unwrap(), InputType::Text);
-    assert_eq!(InputType::from_str("url").unwrap(), InputType::Url);
-    assert_eq!(InputType::from_str("URL").unwrap(), InputType::Url);
+    assert!(matches!(
+        InputType::from_str("TEXT"),
+        Ok(InputType::Text)
+    ));
+    assert!(matches!(
+        InputType::from_str("Text"),
+        Ok(InputType::Text)
+    ));
+    assert!(matches!(InputType::from_str("url"), Ok(InputType::Url)));
+    assert!(matches!(InputType::from_str("URL"), Ok(InputType::Url)));
 }
 
 #[test]
@@ -48,17 +55,23 @@ fn test_job_status_serialization() {
 
 #[test]
 fn test_job_status_parsing() {
-    assert_eq!(
-        JobStatus::from_str("payment-required").unwrap(),
-        JobStatus::PaymentRequired
-    );
-    assert_eq!(
-        JobStatus::from_str("processing").unwrap(),
-        JobStatus::Processing
-    );
-    assert_eq!(JobStatus::from_str("error").unwrap(), JobStatus::Error);
-    assert_eq!(JobStatus::from_str("success").unwrap(), JobStatus::Success);
-    assert_eq!(JobStatus::from_str("partial").unwrap(), JobStatus::Partial);
+    assert!(matches!(
+        JobStatus::from_str("payment-required"),
+        Ok(JobStatus::PaymentRequired)
+    ));
+    assert!(matches!(
+        JobStatus::from_str("processing"),
+        Ok(JobStatus::Processing)
+    ));
+    assert!(matches!(JobStatus::from_str("error"), Ok(JobStatus::Error)));
+    assert!(matches!(
+        JobStatus::from_str("success"),
+        Ok(JobStatus::Success)
+    ));
+    assert!(matches!(
+        JobStatus::from_str("partial"),
+        Ok(JobStatus::Partial)
+    ));
 }
 
 #[test]

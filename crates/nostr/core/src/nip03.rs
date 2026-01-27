@@ -160,7 +160,7 @@ pub fn create_attestation_tags(
 pub fn get_target_event_id(tags: &[Vec<String>]) -> Result<String, Nip03Error> {
     tags.iter()
         .find(|tag| tag.first().map(|s| s.as_str()) == Some(TARGET_EVENT_TAG))
-        .and_then(|tag| tag.get(1).map(|s| s.clone()))
+        .and_then(|tag| tag.get(1).cloned())
         .ok_or(Nip03Error::MissingEventTag)
 }
 
@@ -208,7 +208,7 @@ pub fn get_target_relay_url(tags: &[Vec<String>]) -> Result<Option<String>, Nip0
     Ok(tags
         .iter()
         .find(|tag| tag.first().map(|s| s.as_str()) == Some(TARGET_EVENT_TAG))
-        .and_then(|tag| tag.get(2).map(|s| s.clone())))
+        .and_then(|tag| tag.get(2).cloned()))
 }
 
 /// Decode base64-encoded OTS data from content

@@ -106,7 +106,7 @@ pub fn get_deleted_event_ids(event: &Event) -> Vec<String> {
     event
         .tags
         .iter()
-        .filter(|tag| tag.get(0).map(|s| s.as_str()) == Some("e"))
+        .filter(|tag| tag.first().map(|s| s.as_str()) == Some("e"))
         .filter_map(|tag| tag.get(1))
         .map(|s| s.to_string())
         .collect()
@@ -133,7 +133,7 @@ pub fn get_deleted_addresses(event: &Event) -> Vec<String> {
     event
         .tags
         .iter()
-        .filter(|tag| tag.get(0).map(|s| s.as_str()) == Some("a"))
+        .filter(|tag| tag.first().map(|s| s.as_str()) == Some("a"))
         .filter_map(|tag| tag.get(1))
         .map(|s| s.to_string())
         .collect()
@@ -157,7 +157,7 @@ pub fn get_deleted_kinds(event: &Event) -> Vec<u16> {
     event
         .tags
         .iter()
-        .filter(|tag| tag.get(0).map(|s| s.as_str()) == Some("k"))
+        .filter(|tag| tag.first().map(|s| s.as_str()) == Some("k"))
         .filter_map(|tag| tag.get(1))
         .filter_map(|s| s.parse::<u16>().ok())
         .collect()

@@ -55,6 +55,7 @@
 //! ```
 
 use serde::{Deserialize, Serialize};
+use std::str::FromStr;
 use thiserror::Error;
 
 /// Event kind for Cashu mint announcements
@@ -139,8 +140,12 @@ impl MintNetwork {
         }
     }
 
-    /// Parse network from string
-    pub fn from_str(s: &str) -> Result<Self, Nip87Error> {
+}
+
+impl std::str::FromStr for MintNetwork {
+    type Err = Nip87Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_lowercase().as_str() {
             "mainnet" => Ok(MintNetwork::Mainnet),
             "testnet" => Ok(MintNetwork::Testnet),
@@ -564,14 +569,14 @@ mod tests {
         assert_eq!(MintNetwork::Signet.as_str(), "signet");
         assert_eq!(MintNetwork::Regtest.as_str(), "regtest");
 
-        assert_eq!(
-            MintNetwork::from_str("mainnet").unwrap(),
-            MintNetwork::Mainnet
-        );
-        assert_eq!(
-            MintNetwork::from_str("TESTNET").unwrap(),
-            MintNetwork::Testnet
-        );
+        assert!(matches!(
+            MintNetwork::from_str("mainnet"),
+            Ok(MintNetwork::Mainnet)
+        ));
+        assert!(matches!(
+            MintNetwork::from_str("TESTNET"),
+            Ok(MintNetwork::Testnet)
+        ));
         assert!(MintNetwork::from_str("invalid").is_err());
     }
 

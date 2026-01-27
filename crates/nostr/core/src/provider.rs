@@ -251,19 +251,17 @@ impl ProviderReputation {
             } else {
                 ReputationTier::New
             }
-        } else {
-            if self.success_rate >= 0.99 && self.uptime_pct >= 0.99 {
-                // Top 10% criteria - simplified to high success + uptime
-                if self.avg_latency_ms < 500 {
-                    ReputationTier::Premium
-                } else {
-                    ReputationTier::Trusted
-                }
-            } else if self.success_rate >= 0.99 {
-                ReputationTier::Trusted
+        } else if self.success_rate >= 0.99 && self.uptime_pct >= 0.99 {
+            // Top 10% criteria - simplified to high success + uptime
+            if self.avg_latency_ms < 500 {
+                ReputationTier::Premium
             } else {
-                ReputationTier::Established
+                ReputationTier::Trusted
             }
+        } else if self.success_rate >= 0.99 {
+            ReputationTier::Trusted
+        } else {
+            ReputationTier::Established
         }
     }
 

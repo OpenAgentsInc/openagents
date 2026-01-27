@@ -81,15 +81,6 @@ impl Condition {
         }
     }
 
-    /// Convert condition back to string format
-    pub fn to_string(&self) -> String {
-        match self {
-            Condition::Kind(k) => format!("kind={}", k),
-            Condition::CreatedAtAfter(t) => format!("created_at>{}", t),
-            Condition::CreatedAtBefore(t) => format!("created_at<{}", t),
-        }
-    }
-
     /// Check if an event satisfies this condition
     pub fn is_satisfied(&self, kind: u16, created_at: u64) -> bool {
         match self {
@@ -108,6 +99,16 @@ impl Condition {
 /// ```
 pub fn parse_conditions(query: &str) -> Result<Vec<Condition>, Nip26Error> {
     query.split('&').map(Condition::parse).collect()
+}
+
+impl std::fmt::Display for Condition {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Condition::Kind(k) => write!(f, "kind={}", k),
+            Condition::CreatedAtAfter(t) => write!(f, "created_at>{}", t),
+            Condition::CreatedAtBefore(t) => write!(f, "created_at<{}", t),
+        }
+    }
 }
 
 /// Convert conditions to query string
@@ -261,13 +262,13 @@ pub fn check_delegation_conditions(
         .collect();
 
     // Check kind conditions (OR - at least one must match if any exist)
-    if !kind_conditions.is_empty() {
-        if !kind_conditions.contains(&event_kind) {
-            return Err(Nip26Error::ConditionNotSatisfied(format!(
-                "event kind {} does not match any of the allowed kinds: {:?}",
-                event_kind, kind_conditions
-            )));
-        }
+    if !kind_conditions.is_empty()
+        && !kind_conditions.contains(&event_kind)
+    {
+        return Err(Nip26Error::ConditionNotSatisfied(format!(
+            "event kind {} does not match any of the allowed kinds: {:?}",
+            event_kind, kind_conditions
+        )));
     }
 
     // Check time conditions (AND - all must be satisfied)
@@ -275,7 +276,7 @@ pub fn check_delegation_conditions(
         if !condition.is_satisfied(event_kind, event_created_at) {
             return Err(Nip26Error::ConditionNotSatisfied(format!(
                 "condition '{}' not satisfied for kind={}, created_at={}",
-                condition.to_string(),
+                condition,
                 event_kind,
                 event_created_at
             )));

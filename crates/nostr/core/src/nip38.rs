@@ -75,15 +75,6 @@ impl StatusType {
         }
     }
 
-    /// Parse from a d tag value.
-    pub fn from_str(s: &str) -> Self {
-        match s {
-            STATUS_GENERAL => Self::General,
-            STATUS_MUSIC => Self::Music,
-            _ => Self::Custom(s.to_string()),
-        }
-    }
-
     /// Check if this is a music status.
     pub fn is_music(&self) -> bool {
         matches!(self, Self::Music)
@@ -92,6 +83,18 @@ impl StatusType {
     /// Check if this is a general status.
     pub fn is_general(&self) -> bool {
         matches!(self, Self::General)
+    }
+}
+
+impl std::str::FromStr for StatusType {
+    type Err = std::convert::Infallible;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(match s {
+            STATUS_GENERAL => Self::General,
+            STATUS_MUSIC => Self::Music,
+            _ => Self::Custom(s.to_string()),
+        })
     }
 }
 
@@ -311,6 +314,7 @@ impl UserStatus {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::str::FromStr;
 
     #[test]
     fn test_is_user_status_kind() {
@@ -345,12 +349,18 @@ mod tests {
 
     #[test]
     fn test_status_type_from_str() {
-        assert_eq!(StatusType::from_str("general"), StatusType::General);
-        assert_eq!(StatusType::from_str("music"), StatusType::Music);
-        assert_eq!(
+        assert!(matches!(
+            StatusType::from_str("general"),
+            Ok(StatusType::General)
+        ));
+        assert!(matches!(
+            StatusType::from_str("music"),
+            Ok(StatusType::Music)
+        ));
+        assert!(matches!(
             StatusType::from_str("custom"),
-            StatusType::Custom("custom".to_string())
-        );
+            Ok(StatusType::Custom(s)) if s == "custom"
+        ));
     }
 
     #[test]

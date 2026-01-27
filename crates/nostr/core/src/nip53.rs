@@ -77,8 +77,12 @@ impl LiveStatus {
         }
     }
 
-    /// Parse from string
-    pub fn from_str(s: &str) -> Result<Self, Nip53Error> {
+}
+
+impl std::str::FromStr for LiveStatus {
+    type Err = Nip53Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "planned" => Ok(LiveStatus::Planned),
             "live" => Ok(LiveStatus::Live),
@@ -111,8 +115,12 @@ impl SpaceStatus {
         }
     }
 
-    /// Parse from string
-    pub fn from_str(s: &str) -> Result<Self, Nip53Error> {
+}
+
+impl std::str::FromStr for SpaceStatus {
+    type Err = Nip53Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "open" => Ok(SpaceStatus::Open),
             "private" => Ok(SpaceStatus::Private),
@@ -659,6 +667,7 @@ pub fn is_nip53_kind(kind: u16) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::str::FromStr;
 
     #[test]
     fn test_live_status() {
@@ -666,12 +675,18 @@ mod tests {
         assert_eq!(LiveStatus::Live.as_str(), "live");
         assert_eq!(LiveStatus::Ended.as_str(), "ended");
 
-        assert_eq!(
-            LiveStatus::from_str("planned").unwrap(),
-            LiveStatus::Planned
-        );
-        assert_eq!(LiveStatus::from_str("live").unwrap(), LiveStatus::Live);
-        assert_eq!(LiveStatus::from_str("ended").unwrap(), LiveStatus::Ended);
+        assert!(matches!(
+            LiveStatus::from_str("planned"),
+            Ok(LiveStatus::Planned)
+        ));
+        assert!(matches!(
+            LiveStatus::from_str("live"),
+            Ok(LiveStatus::Live)
+        ));
+        assert!(matches!(
+            LiveStatus::from_str("ended"),
+            Ok(LiveStatus::Ended)
+        ));
         assert!(LiveStatus::from_str("invalid").is_err());
     }
 
@@ -681,15 +696,18 @@ mod tests {
         assert_eq!(SpaceStatus::Private.as_str(), "private");
         assert_eq!(SpaceStatus::Closed.as_str(), "closed");
 
-        assert_eq!(SpaceStatus::from_str("open").unwrap(), SpaceStatus::Open);
-        assert_eq!(
-            SpaceStatus::from_str("private").unwrap(),
-            SpaceStatus::Private
-        );
-        assert_eq!(
-            SpaceStatus::from_str("closed").unwrap(),
-            SpaceStatus::Closed
-        );
+        assert!(matches!(
+            SpaceStatus::from_str("open"),
+            Ok(SpaceStatus::Open)
+        ));
+        assert!(matches!(
+            SpaceStatus::from_str("private"),
+            Ok(SpaceStatus::Private)
+        ));
+        assert!(matches!(
+            SpaceStatus::from_str("closed"),
+            Ok(SpaceStatus::Closed)
+        ));
         assert!(SpaceStatus::from_str("invalid").is_err());
     }
 

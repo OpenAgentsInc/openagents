@@ -7,6 +7,7 @@
 
 use crate::Event;
 use serde::{Deserialize, Serialize};
+use std::str::FromStr;
 use thiserror::Error;
 
 /// Event kind for text notes
@@ -40,20 +41,24 @@ pub enum ETagMarker {
 }
 
 impl ETagMarker {
-    pub fn from_str(s: &str) -> Option<Self> {
-        match s {
-            "root" => Some(ETagMarker::Root),
-            "reply" => Some(ETagMarker::Reply),
-            "mention" => Some(ETagMarker::Mention),
-            _ => None,
-        }
-    }
-
     pub fn as_str(&self) -> &'static str {
         match self {
             ETagMarker::Root => "root",
             ETagMarker::Reply => "reply",
             ETagMarker::Mention => "mention",
+        }
+    }
+}
+
+impl std::str::FromStr for ETagMarker {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "root" => Ok(ETagMarker::Root),
+            "reply" => Ok(ETagMarker::Reply),
+            "mention" => Ok(ETagMarker::Mention),
+            _ => Err(()),
         }
     }
 }
@@ -98,7 +103,7 @@ impl EventReference {
         };
 
         let marker = if tag.len() > 3 && !tag[3].is_empty() {
-            ETagMarker::from_str(&tag[3])
+            ETagMarker::from_str(&tag[3]).ok()
         } else {
             None
         };
@@ -303,10 +308,19 @@ mod tests {
 
     #[test]
     fn test_etag_marker_from_str() {
-        assert_eq!(ETagMarker::from_str("root"), Some(ETagMarker::Root));
-        assert_eq!(ETagMarker::from_str("reply"), Some(ETagMarker::Reply));
-        assert_eq!(ETagMarker::from_str("mention"), Some(ETagMarker::Mention));
-        assert_eq!(ETagMarker::from_str("unknown"), None);
+        assert!(matches!(
+            ETagMarker::from_str("root"),
+            Ok(ETagMarker::Root)
+        ));
+        assert!(matches!(
+            ETagMarker::from_str("reply"),
+            Ok(ETagMarker::Reply)
+        ));
+        assert!(matches!(
+            ETagMarker::from_str("mention"),
+            Ok(ETagMarker::Mention)
+        ));
+        assert!(ETagMarker::from_str("unknown").is_err());
     }
 
     #[test]

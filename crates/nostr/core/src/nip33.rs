@@ -140,7 +140,7 @@ pub fn get_d_tag(event: &Event) -> Option<String> {
     event
         .tags
         .iter()
-        .find(|tag| tag.get(0).map(|s| s.as_str()) == Some(D_TAG))
+        .find(|tag| tag.first().map(|s| s.as_str()) == Some(D_TAG))
         .and_then(|tag| tag.get(1))
         .map(|s| s.to_string())
 }
@@ -279,7 +279,7 @@ pub fn get_event_address(event: &Event) -> Result<String, Nip33Error> {
 /// ```
 pub fn set_d_tag(tags: &mut Vec<Vec<String>>, d_tag: &str) {
     // Remove any existing d tags
-    tags.retain(|tag| tag.get(0).map(|s| s.as_str()) != Some(D_TAG));
+    tags.retain(|tag| tag.first().map(|s| s.as_str()) != Some(D_TAG));
 
     // Add the new d tag
     tags.push(vec![D_TAG.to_string(), d_tag.to_string()]);
@@ -341,7 +341,7 @@ pub fn get_a_tags(event: &Event) -> Vec<String> {
     event
         .tags
         .iter()
-        .filter(|tag| tag.get(0).map(|s| s.as_str()) == Some("a"))
+        .filter(|tag| tag.first().map(|s| s.as_str()) == Some("a"))
         .filter_map(|tag| tag.get(1))
         .map(|s| s.to_string())
         .collect()

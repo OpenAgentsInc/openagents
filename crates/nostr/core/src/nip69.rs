@@ -7,6 +7,7 @@
 
 use crate::Event;
 use serde::{Deserialize, Serialize};
+use std::str::FromStr;
 use thiserror::Error;
 
 /// Event kind for P2P orders (addressable)
@@ -56,7 +57,12 @@ impl OrderType {
         }
     }
 
-    pub fn from_str(s: &str) -> Result<Self, Nip69Error> {
+}
+
+impl std::str::FromStr for OrderType {
+    type Err = Nip69Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "buy" => Ok(OrderType::Buy),
             "sell" => Ok(OrderType::Sell),
@@ -87,7 +93,12 @@ impl OrderStatus {
         }
     }
 
-    pub fn from_str(s: &str) -> Result<Self, Nip69Error> {
+}
+
+impl std::str::FromStr for OrderStatus {
+    type Err = Nip69Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "pending" => Ok(OrderStatus::Pending),
             "canceled" => Ok(OrderStatus::Canceled),
@@ -117,7 +128,12 @@ impl BitcoinLayer {
         }
     }
 
-    pub fn from_str(s: &str) -> Result<Self, Nip69Error> {
+}
+
+impl std::str::FromStr for BitcoinLayer {
+    type Err = Nip69Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "onchain" => Ok(BitcoinLayer::Onchain),
             "lightning" => Ok(BitcoinLayer::Lightning),
@@ -673,8 +689,14 @@ mod tests {
     fn test_order_type() {
         assert_eq!(OrderType::Buy.as_str(), "buy");
         assert_eq!(OrderType::Sell.as_str(), "sell");
-        assert_eq!(OrderType::from_str("buy").unwrap(), OrderType::Buy);
-        assert_eq!(OrderType::from_str("sell").unwrap(), OrderType::Sell);
+        assert!(matches!(
+            OrderType::from_str("buy"),
+            Ok(OrderType::Buy)
+        ));
+        assert!(matches!(
+            OrderType::from_str("sell"),
+            Ok(OrderType::Sell)
+        ));
     }
 
     #[test]

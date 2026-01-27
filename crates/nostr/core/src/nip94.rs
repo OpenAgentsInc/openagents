@@ -71,9 +71,11 @@ impl Dimensions {
         Ok(Self { width, height })
     }
 
-    /// Convert to string format "WxH"
-    pub fn to_string(&self) -> String {
-        format!("{}x{}", self.width, self.height)
+}
+
+impl std::fmt::Display for Dimensions {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}x{}", self.width, self.height)
     }
 }
 

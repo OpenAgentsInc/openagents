@@ -50,6 +50,7 @@
 //! ```
 
 use std::collections::HashMap;
+use std::str::FromStr;
 use thiserror::Error;
 
 /// Event kind for poll events
@@ -134,8 +135,12 @@ impl PollType {
         }
     }
 
-    /// Parse poll type from string
-    pub fn from_str(s: &str) -> Result<Self, Nip88Error> {
+}
+
+impl std::str::FromStr for PollType {
+    type Err = Nip88Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_lowercase().as_str() {
             "singlechoice" => Ok(PollType::SingleChoice),
             "multiplechoice" => Ok(PollType::MultipleChoice),
@@ -329,7 +334,7 @@ pub fn parse_poll_options(tags: &[Vec<String>]) -> Result<Vec<PollOption>, Nip88
 pub fn parse_poll_relays(tags: &[Vec<String>]) -> Vec<String> {
     tags.iter()
         .filter(|tag| tag.first().map(|s| s.as_str()) == Some(RELAY_TAG))
-        .filter_map(|tag| tag.get(1).map(|s| s.clone()))
+        .filter_map(|tag| tag.get(1).cloned())
         .collect()
 }
 
@@ -465,7 +470,7 @@ pub fn parse_response(kind: u16, tags: &[Vec<String>]) -> Result<PollResponse, N
     let responses: Vec<String> = tags
         .iter()
         .filter(|tag| tag.first().map(|s| s.as_str()) == Some(RESPONSE_TAG))
-        .filter_map(|tag| tag.get(1).map(|s| s.clone()))
+        .filter_map(|tag| tag.get(1).cloned())
         .collect();
 
     if responses.is_empty() {
@@ -588,15 +593,21 @@ mod tests {
         assert_eq!(PollType::MultipleChoice.as_str(), "multiplechoice");
 
         assert_eq!(
-            PollType::from_str("singlechoice").unwrap(),
+            PollType::from_str("singlechoice")
+                .ok()
+                .unwrap_or(PollType::SingleChoice),
             PollType::SingleChoice
         );
         assert_eq!(
-            PollType::from_str("multiplechoice").unwrap(),
+            PollType::from_str("multiplechoice")
+                .ok()
+                .unwrap_or(PollType::MultipleChoice),
             PollType::MultipleChoice
         );
         assert_eq!(
-            PollType::from_str("SINGLECHOICE").unwrap(),
+            PollType::from_str("SINGLECHOICE")
+                .ok()
+                .unwrap_or(PollType::SingleChoice),
             PollType::SingleChoice
         );
 

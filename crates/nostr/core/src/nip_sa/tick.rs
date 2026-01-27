@@ -416,7 +416,7 @@ pub fn build_tick_history(events: &[crate::Event]) -> Vec<TickHistoryEntry> {
 
 fn get_tag_value<'a>(tags: &'a [Vec<String>], key: &str) -> Option<&'a str> {
     tags.iter().find_map(|tag| {
-        if tag.get(0).map(|value| value.as_str()) == Some(key) {
+        if tag.first().map(|value| value.as_str()) == Some(key) {
             tag.get(1).map(|value| value.as_str())
         } else {
             None

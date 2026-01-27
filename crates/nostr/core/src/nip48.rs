@@ -6,6 +6,7 @@
 //! See: <https://github.com/nostr-protocol/nips/blob/master/48.md>
 
 use crate::Event;
+use std::str::FromStr;
 use thiserror::Error;
 
 /// Tag name for proxy tags
@@ -58,15 +59,19 @@ impl ProxyProtocol {
         }
     }
 
-    /// Parse protocol from string
-    pub fn from_str(s: &str) -> Self {
-        match s.to_lowercase().as_str() {
+}
+
+impl std::str::FromStr for ProxyProtocol {
+    type Err = std::convert::Infallible;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(match s.to_lowercase().as_str() {
             "activitypub" => ProxyProtocol::ActivityPub,
             "atproto" => ProxyProtocol::AtProto,
             "rss" => ProxyProtocol::Rss,
             "web" => ProxyProtocol::Web,
             _ => ProxyProtocol::Other(s.to_string()),
-        }
+        })
     }
 }
 
@@ -150,7 +155,8 @@ impl ProxyTag {
 
         Ok(Self {
             id: tag[1].clone(),
-            protocol: ProxyProtocol::from_str(&tag[2]),
+            protocol: ProxyProtocol::from_str(&tag[2])
+                .unwrap_or_else(|_| ProxyProtocol::Other(tag[2].clone())),
         })
     }
 
@@ -188,10 +194,10 @@ impl ProxyTag {
 /// Extract proxy tag from an event
 pub fn get_proxy_tag(event: &Event) -> Option<ProxyTag> {
     for tag in &event.tags {
-        if !tag.is_empty() && tag[0] == PROXY_TAG {
-            if let Ok(proxy) = ProxyTag::from_tag(tag) {
-                return Some(proxy);
-            }
+        if !tag.is_empty() && tag[0] == PROXY_TAG
+            && let Ok(proxy) = ProxyTag::from_tag(tag)
+        {
+            return Some(proxy);
         }
     }
     None
@@ -202,10 +208,10 @@ pub fn get_proxy_tags(event: &Event) -> Vec<ProxyTag> {
     let mut proxies = Vec::new();
 
     for tag in &event.tags {
-        if !tag.is_empty() && tag[0] == PROXY_TAG {
-            if let Ok(proxy) = ProxyTag::from_tag(tag) {
-                proxies.push(proxy);
-            }
+        if !tag.is_empty() && tag[0] == PROXY_TAG
+            && let Ok(proxy) = ProxyTag::from_tag(tag)
+        {
+            proxies.push(proxy);
         }
     }
 
@@ -236,25 +242,34 @@ mod tests {
 
     #[test]
     fn test_proxy_protocol_from_str() {
-        assert_eq!(
+        assert!(matches!(
             ProxyProtocol::from_str("activitypub"),
-            ProxyProtocol::ActivityPub
-        );
-        assert_eq!(ProxyProtocol::from_str("atproto"), ProxyProtocol::AtProto);
-        assert_eq!(ProxyProtocol::from_str("rss"), ProxyProtocol::Rss);
-        assert_eq!(ProxyProtocol::from_str("web"), ProxyProtocol::Web);
+            Ok(ProxyProtocol::ActivityPub)
+        ));
+        assert!(matches!(
+            ProxyProtocol::from_str("atproto"),
+            Ok(ProxyProtocol::AtProto)
+        ));
+        assert!(matches!(
+            ProxyProtocol::from_str("rss"),
+            Ok(ProxyProtocol::Rss)
+        ));
+        assert!(matches!(
+            ProxyProtocol::from_str("web"),
+            Ok(ProxyProtocol::Web)
+        ));
 
         // Case insensitive
-        assert_eq!(
+        assert!(matches!(
             ProxyProtocol::from_str("ActivityPub"),
-            ProxyProtocol::ActivityPub
-        );
+            Ok(ProxyProtocol::ActivityPub)
+        ));
 
         // Unknown protocol
-        match ProxyProtocol::from_str("unknown") {
-            ProxyProtocol::Other(s) => assert_eq!(s, "unknown"),
-            _ => panic!("Expected Other variant"),
-        }
+        assert!(matches!(
+            ProxyProtocol::from_str("unknown"),
+            Ok(ProxyProtocol::Other(s)) if s == "unknown"
+        ));
     }
 
     #[test]

@@ -95,19 +95,20 @@ impl Nip05Identifier {
         )
     }
 
-    /// Format as string (name@domain)
-    pub fn to_string(&self) -> String {
-        if self.local == "_" {
-            // Special case: _@domain displays as just domain
-            self.domain.clone()
-        } else {
-            format!("{}@{}", self.local, self.domain)
-        }
-    }
-
     /// Check if this is a root identifier (_@domain)
     pub fn is_root(&self) -> bool {
         self.local == "_"
+    }
+}
+
+impl std::fmt::Display for Nip05Identifier {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if self.local == "_" {
+            // Special case: _@domain displays as just domain
+            write!(f, "{}", self.domain)
+        } else {
+            write!(f, "{}@{}", self.local, self.domain)
+        }
     }
 }
 

@@ -103,7 +103,7 @@ impl MembershipListEvent {
     /// Create a new membership list event.
     ///
     /// Note: The event still needs to be signed by the relay's private key.
-    pub fn new(relay_pubkey: String, members: Vec<String>) -> Event {
+    pub fn new_event(relay_pubkey: String, members: Vec<String>) -> Event {
         let mut tags = vec![vec![NIP70_PROTECTED_TAG.to_string()]];
 
         for member in members {
@@ -163,7 +163,7 @@ pub struct AddUserEvent {
 
 impl AddUserEvent {
     /// Create a new add user event.
-    pub fn new(relay_pubkey: String, member_pubkey: String) -> Event {
+    pub fn new_event(relay_pubkey: String, member_pubkey: String) -> Event {
         Event {
             id: String::new(),
             pubkey: relay_pubkey,
@@ -221,7 +221,7 @@ pub struct RemoveUserEvent {
 
 impl RemoveUserEvent {
     /// Create a new remove user event.
-    pub fn new(relay_pubkey: String, member_pubkey: String) -> Event {
+    pub fn new_event(relay_pubkey: String, member_pubkey: String) -> Event {
         Event {
             id: String::new(),
             pubkey: relay_pubkey,
@@ -279,7 +279,7 @@ pub struct JoinRequestEvent {
 
 impl JoinRequestEvent {
     /// Create a new join request event.
-    pub fn new(user_pubkey: String, claim: String) -> Event {
+    pub fn new_event(user_pubkey: String, claim: String) -> Event {
         Event {
             id: String::new(),
             pubkey: user_pubkey,
@@ -334,7 +334,7 @@ pub struct InviteRequestEvent {
 
 impl InviteRequestEvent {
     /// Create a new invite request event.
-    pub fn new(relay_pubkey: String, claim: String) -> Event {
+    pub fn new_event(relay_pubkey: String, claim: String) -> Event {
         Event {
             id: String::new(),
             pubkey: relay_pubkey,
@@ -387,7 +387,7 @@ pub struct LeaveRequestEvent {
 
 impl LeaveRequestEvent {
     /// Create a new leave request event.
-    pub fn new(user_pubkey: String) -> Event {
+    pub fn new_event(user_pubkey: String) -> Event {
         Event {
             id: String::new(),
             pubkey: user_pubkey,
@@ -615,7 +615,7 @@ mod tests {
         let relay_pubkey = "relay123".to_string();
         let members = vec!["member1".to_string(), "member2".to_string()];
 
-        let event = MembershipListEvent::new(relay_pubkey.clone(), members.clone());
+        let event = MembershipListEvent::new_event(relay_pubkey.clone(), members.clone());
 
         assert_eq!(event.kind, MEMBERSHIP_LIST_KIND);
         assert_eq!(event.pubkey, relay_pubkey);
@@ -669,7 +669,7 @@ mod tests {
         let relay_pubkey = "relay123".to_string();
         let member_pubkey = "member456".to_string();
 
-        let event = AddUserEvent::new(relay_pubkey.clone(), member_pubkey.clone());
+        let event = AddUserEvent::new_event(relay_pubkey.clone(), member_pubkey.clone());
 
         assert_eq!(event.kind, ADD_USER_KIND);
         assert!(has_protected_tag(&event));
@@ -683,7 +683,7 @@ mod tests {
         let relay_pubkey = "relay123".to_string();
         let member_pubkey = "member456".to_string();
 
-        let event = RemoveUserEvent::new(relay_pubkey.clone(), member_pubkey.clone());
+        let event = RemoveUserEvent::new_event(relay_pubkey.clone(), member_pubkey.clone());
 
         assert_eq!(event.kind, REMOVE_USER_KIND);
         assert!(has_protected_tag(&event));
@@ -697,7 +697,7 @@ mod tests {
         let user_pubkey = "user789".to_string();
         let claim = "invite_code_123".to_string();
 
-        let event = JoinRequestEvent::new(user_pubkey.clone(), claim.clone());
+        let event = JoinRequestEvent::new_event(user_pubkey.clone(), claim.clone());
 
         assert_eq!(event.kind, JOIN_REQUEST_KIND);
         assert!(has_protected_tag(&event));
@@ -715,7 +715,7 @@ mod tests {
         let relay_pubkey = "relay123".to_string();
         let claim = "invite_code_456".to_string();
 
-        let event = InviteRequestEvent::new(relay_pubkey.clone(), claim.clone());
+        let event = InviteRequestEvent::new_event(relay_pubkey.clone(), claim.clone());
 
         assert_eq!(event.kind, INVITE_REQUEST_KIND);
         assert!(has_protected_tag(&event));
@@ -728,7 +728,7 @@ mod tests {
     fn test_leave_request_event() {
         let user_pubkey = "user789".to_string();
 
-        let event = LeaveRequestEvent::new(user_pubkey.clone());
+        let event = LeaveRequestEvent::new_event(user_pubkey.clone());
 
         assert_eq!(event.kind, LEAVE_REQUEST_KIND);
         assert!(has_protected_tag(&event));

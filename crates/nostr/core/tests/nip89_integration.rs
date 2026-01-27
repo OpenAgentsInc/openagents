@@ -4,6 +4,7 @@ use nostr::{
     HandlerInfo, HandlerMetadata, HandlerRecommendation, HandlerType, KIND_HANDLER_INFO,
     KIND_HANDLER_RECOMMENDATION, PricingInfo, SocialTrustScore,
 };
+use std::str::FromStr;
 
 // =========================================================================
 // HandlerType tests
@@ -18,27 +19,42 @@ fn test_handler_type_serialization() {
 
 #[test]
 fn test_handler_type_case_insensitive_parsing() {
-    assert_eq!(HandlerType::from_str("skill").unwrap(), HandlerType::Skill);
-    assert_eq!(HandlerType::from_str("SKILL").unwrap(), HandlerType::Skill);
-    assert_eq!(HandlerType::from_str("Skill").unwrap(), HandlerType::Skill);
-    assert_eq!(HandlerType::from_str("agent").unwrap(), HandlerType::Agent);
-    assert_eq!(HandlerType::from_str("AGENT").unwrap(), HandlerType::Agent);
+    assert!(matches!(
+        HandlerType::from_str("skill"),
+        Ok(HandlerType::Skill)
+    ));
+    assert!(matches!(
+        HandlerType::from_str("SKILL"),
+        Ok(HandlerType::Skill)
+    ));
+    assert!(matches!(
+        HandlerType::from_str("Skill"),
+        Ok(HandlerType::Skill)
+    ));
+    assert!(matches!(
+        HandlerType::from_str("agent"),
+        Ok(HandlerType::Agent)
+    ));
+    assert!(matches!(
+        HandlerType::from_str("AGENT"),
+        Ok(HandlerType::Agent)
+    ));
 }
 
 #[test]
 fn test_handler_type_compute_provider_variants() {
-    assert_eq!(
-        HandlerType::from_str("compute_provider").unwrap(),
-        HandlerType::ComputeProvider
-    );
-    assert_eq!(
-        HandlerType::from_str("computeprovider").unwrap(),
-        HandlerType::ComputeProvider
-    );
-    assert_eq!(
-        HandlerType::from_str("COMPUTE_PROVIDER").unwrap(),
-        HandlerType::ComputeProvider
-    );
+    assert!(matches!(
+        HandlerType::from_str("compute_provider"),
+        Ok(HandlerType::ComputeProvider)
+    ));
+    assert!(matches!(
+        HandlerType::from_str("computeprovider"),
+        Ok(HandlerType::ComputeProvider)
+    ));
+    assert!(matches!(
+        HandlerType::from_str("COMPUTE_PROVIDER"),
+        Ok(HandlerType::ComputeProvider)
+    ));
 }
 
 #[test]
