@@ -2,7 +2,7 @@ use std::path::PathBuf;
 use std::sync::{mpsc, Arc};
 
 use anyhow::{Context, Result};
-use autopilot_app::{AppEvent, App as AutopilotApp, AppConfig, UserAction};
+use autopilot_app::{AppEvent, App as AutopilotApp, AppConfig, EventRecorder, UserAction};
 use autopilot_ui::DesktopRoot;
 use futures::StreamExt;
 use tracing_subscriber::EnvFilter;
@@ -376,6 +376,10 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
             event_buffer: EVENT_BUFFER,
         });
 
+        let mut recorder = std::env::var("AUTOPILOT_REPLAY_PATH")
+            .ok()
+            .and_then(|path| EventRecorder::create(path).ok());
+
         let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
         let workspace = Arc::new(app.open_workspace(cwd));
         let mut stream = workspace.events();
@@ -395,7 +399,12 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
 
         futures::executor::block_on(async move {
             while let Some(event) = stream.next().await {
-                let _ = proxy.send_event(event);
+                let _ = proxy.send_event(event.clone());
+                if let Some(writer) = recorder.as_mut() {
+                    if let Err(err) = writer.record_event(&event) {
+                        tracing::warn!(error = %err, "failed to record replay event");
+                    }
+                }
             }
         });
     });
