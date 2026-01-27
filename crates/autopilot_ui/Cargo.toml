@@ -1,0 +1,12 @@
+[package]
+name = "autopilot_ui"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Shared WGPUI surfaces for Autopilot"
+
+[dependencies]
+autopilot_app = { path = "../autopilot_app" }
+wgpui = { path = "../wgpui", default-features = false, features = ["desktop"] }

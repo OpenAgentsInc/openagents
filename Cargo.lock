@@ -1157,6 +1157,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "autopilot_app",
+ "autopilot_ui",
  "futures",
  "pollster 0.4.0",
  "tracing",
@@ -1178,6 +1179,14 @@ dependencies = [
  "tokio-stream",
  "tracing",
  "uuid",
+]
+
+[[package]]
+name = "autopilot_ui"
+version = "0.1.0"
+dependencies = [
+ "autopilot_app",
+ "wgpui",
 ]
 
 [[package]]

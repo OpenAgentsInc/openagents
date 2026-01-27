@@ -65,6 +65,8 @@ into reusable Rust libraries. This means:
 - `crates/autopilot_app/`
   App core used by both CLI + desktop: session lifecycle, workspace wiring,
   tool execution orchestration, event stream.
+- `crates/autopilot_ui/`
+  Shared WGPUI surfaces (immediate-mode views + components).
 - `crates/autopilot_ui_contract/`
   Canonical UI contract types: `UITree`, `UiPatch`, validation, patch apply,
   action envelope.
@@ -201,10 +203,14 @@ Gate: Status dashboard + conversation + tool-call cards working in WGPUI.
 
 Gate: desktop renders status, session list, and event log from live `autopilot_app` events.
 
-### Phase 4b: Parity & Consolidation with `crates/autopilot` UI
+### Phase 4b: Shared UI Crate + Thin Host
 
-- Move shared desktop surfaces into `crates/wgpui` or a shared UI crate.
+- Move shared desktop surfaces into a shared UI crate (`crates/autopilot_ui`).
 - Desktop binary becomes a thin host + theming + routing layer.
+
+Gate: desktop builds while consuming shared UI components from `crates/autopilot_ui`.
+
+### Phase 4c: Parity & Consolidation with `crates/autopilot` UI
 
 Priorities:
 - Thread view + composer
@@ -279,3 +285,5 @@ Effuse catalog -> WGPUI target
 - 2026-01-27: Verified `cargo build -p autopilot-desktop-wgpu` after Phase 3 wiring.
 - 2026-01-27: Phase 4 completed (core surfaces): added session list + event log panels driven by the typed `AppViewModel`, with two-column layout and immediate-mode rendering.
 - 2026-01-27: Verified `cargo build -p autopilot-desktop-wgpu` after Phase 4 UI scaffolding.
+- 2026-01-27: Phase 4b completed: created `crates/autopilot_ui`, moved the desktop root view + view model into it, and updated the WGPUI host to consume shared UI components.
+- 2026-01-27: Verified `cargo build -p autopilot-desktop-wgpu` after moving shared UI into `crates/autopilot_ui`.
