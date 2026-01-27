@@ -465,3 +465,4 @@ Effuse catalog -> WGPUI target
 - 2026-01-27: Phase 5 completed: removed the legacy `apps/autopilot-desktop` (Tauri + Effuse) tree from the repo.
 - 2026-01-27: Phase 3b continued: switched badge + command bar sizing to live text measurements for DPI-safe widths.
 - 2026-01-27: Updated migration/testability docs to reflect removal of legacy Tauri/Effuse sources.
+- 2026-01-27: Updated `SYNTHESIS_EXECUTION.md` to reflect the WGPUI desktop host and remove legacy Effuse UI patch references.
