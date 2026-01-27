@@ -470,3 +470,5 @@ Effuse catalog -> WGPUI target
 - 2026-01-27: Updated `SYNTHESIS_EXECUTION.md` to reflect the WGPUI desktop host and remove legacy Effuse UI patch references.
 - 2026-01-27: Updated plan current-state + Bun sidecar notes to remove references to deleted `apps/autopilot-desktop`.
 - 2026-01-27: Marked legacy Effuse planning docs as historical (`docs/effuse-ui-implementation-plan.md`, `docs/dsrs-effuse-ui-plan.md`, `docs/autopilot-desktop-self-improver-plan.md`).
+- 2026-01-27: Phase 3b continued: sized session id column widths using live text measurement to avoid truncation.
+- 2026-01-27: Verified `cargo test -p autopilot_ui` after session column sizing update.

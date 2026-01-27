@@ -592,14 +592,15 @@ fn paint_session_badges(cx: &mut PaintContext, header_bounds: Bounds, session_co
         true,
     );
 
-    x -= badge_gap + badge_width(cx, "NEW");
+    let new_width = badge_width(cx, "NEW");
+    x -= badge_gap + new_width;
     paint_badge(
         cx,
         "NEW",
         Bounds::new(
             x,
             header_bounds.origin.y + (header_bounds.size.height - badge_height) / 2.0,
-            badge_width(cx, "NEW"),
+            new_width,
             badge_height,
         ),
         false,
@@ -635,7 +636,7 @@ fn paint_badge(cx: &mut PaintContext, label: &str, bounds: Bounds, filled: bool)
 }
 
 fn paint_session_list(cx: &mut PaintContext, rows: &[SessionRow], bounds: Bounds) {
-    let id_column_width = 78.0;
+    let id_column_width = session_id_column_width(cx, rows);
     let heights: Vec<f32> = rows.iter().map(|_| SESSION_ROW_HEIGHT).collect();
     let row_bounds = stack_bounds(bounds, &heights, 0.0);
 
@@ -665,7 +666,7 @@ fn paint_session_list(cx: &mut PaintContext, rows: &[SessionRow], bounds: Bounds
         let detail_bounds = Bounds::new(
             row_bounds.origin.x + id_column_width + 10.0,
             row_bounds.origin.y,
-            row_bounds.size.width - id_column_width - 12.0,
+            (row_bounds.size.width - id_column_width - 12.0).max(0.0),
             row_bounds.size.height,
         );
 
@@ -686,6 +687,14 @@ fn paint_session_list(cx: &mut PaintContext, rows: &[SessionRow], bounds: Bounds
             .no_wrap();
         detail_text.paint(detail_bounds, cx);
     }
+}
+
+fn session_id_column_width(cx: &mut PaintContext, rows: &[SessionRow]) -> f32 {
+    let mut max_width: f32 = 0.0;
+    for row in rows {
+        max_width = max_width.max(cx.text.measure(&row.id, theme::font_size::BASE));
+    }
+    (max_width + 14.0).max(70.0)
 }
 
 fn session_list_height(rows: &[SessionRow]) -> f32 {
@@ -879,7 +888,7 @@ fn paint_status_sections(cx: &mut PaintContext, bounds: Bounds, sections: &[Stat
             StatusRow::Actions { actions } => {
                 let mut x = row_bounds.origin.x;
                 for action in actions {
-                    let width = badge_width(action.label);
+                    let width = badge_width(cx, action.label);
                     paint_badge(
                         cx,
                         action.label,
