@@ -1,19 +1,23 @@
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use anyhow::{Context, Result};
+use autopilot_app::{AppEvent, App as AutopilotApp, AppConfig, SessionId, UserAction, WorkspaceId};
+use futures::StreamExt;
 use tracing_subscriber::EnvFilter;
 use wgpui::components::Text;
 use wgpui::renderer::Renderer;
-use wgpui::{Bounds, Component, PaintContext, Scene, Size, TextSystem};
+use wgpui::{Bounds, Component, PaintContext, Quad, Scene, Size, TextSystem, theme};
 use winit::application::ApplicationHandler;
 use winit::event::WindowEvent;
-use winit::event_loop::{ActiveEventLoop, EventLoop};
+use winit::event_loop::{ActiveEventLoop, EventLoop, EventLoopProxy};
 use winit::window::{Window, WindowId};
 
 const WINDOW_TITLE: &str = "Autopilot Desktop (WGPUI)";
 const WINDOW_WIDTH: f64 = 1280.0;
 const WINDOW_HEIGHT: f64 = 800.0;
 const PADDING: f32 = 48.0;
+const EVENT_BUFFER: usize = 256;
 
 fn main() -> Result<()> {
     tracing_subscriber::fmt()
@@ -21,7 +25,11 @@ fn main() -> Result<()> {
         .with_target(false)
         .init();
 
-    let event_loop = EventLoop::new().context("failed to create event loop")?;
+    let event_loop = EventLoop::<AppEvent>::with_user_event()
+        .build()
+        .context("failed to create event loop")?;
+    let proxy = event_loop.create_proxy();
+    spawn_event_bridge(proxy);
     let mut app = App::default();
     event_loop
         .run_app(&mut app)
@@ -29,9 +37,18 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-#[derive(Default)]
 struct App {
     state: Option<RenderState>,
+    pending_events: Vec<AppEvent>,
+}
+
+impl Default for App {
+    fn default() -> Self {
+        Self {
+            state: None,
+            pending_events: Vec::new(),
+        }
+    }
 }
 
 struct RenderState {
@@ -43,17 +60,20 @@ struct RenderState {
     renderer: Renderer,
     text_system: TextSystem,
     scale_factor: f32,
-    root: Text,
+    root: DesktopRoot,
 }
 
-impl ApplicationHandler for App {
+impl ApplicationHandler<AppEvent> for App {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         if self.state.is_some() {
             return;
         }
 
         match init_state(event_loop) {
-            Ok(state) => {
+            Ok(mut state) => {
+                for event in self.pending_events.drain(..) {
+                    state.root.apply_event(event);
+                }
                 state.window.request_redraw();
                 self.state = Some(state);
             }
@@ -90,6 +110,15 @@ impl ApplicationHandler for App {
             _ => {}
         }
     }
+
+    fn user_event(&mut self, _event_loop: &ActiveEventLoop, event: AppEvent) {
+        if let Some(state) = &mut self.state {
+            state.root.apply_event(event);
+            state.window.request_redraw();
+        } else {
+            self.pending_events.push(event);
+        }
+    }
 }
 
 fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
@@ -103,9 +132,7 @@ fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
             .context("failed to create window")?,
     );
 
-    let root = Text::new("Autopilot Desktop (WGPUI)\nBootstrap stage")
-        .font_size(28.0)
-        .bold();
+    let root = DesktopRoot::new();
 
     pollster::block_on(async move {
         let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
@@ -238,4 +265,165 @@ fn inset_bounds(bounds: Bounds, padding: f32) -> Bounds {
     let width = (bounds.size.width - padding * 2.0).max(0.0);
     let height = (bounds.size.height - padding * 2.0).max(0.0);
     Bounds::new(bounds.origin.x + padding, bounds.origin.y + padding, width, height)
+}
+
+fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>) {
+    std::thread::spawn(move || {
+        let app = AutopilotApp::new(AppConfig {
+            event_buffer: EVENT_BUFFER,
+        });
+
+        let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+        let workspace = app.open_workspace(cwd);
+        let mut stream = workspace.events();
+
+        let session = workspace.start_session(Some("Bootstrap".to_string()));
+        workspace.dispatch(UserAction::Message {
+            session_id: session.session_id(),
+            text: "Autopilot desktop WGPUI bootstrapped.".to_string(),
+        });
+
+        futures::executor::block_on(async move {
+            while let Some(event) = stream.next().await {
+                let _ = proxy.send_event(event);
+            }
+        });
+    });
+}
+
+#[derive(Default, Clone)]
+struct AppViewModel {
+    workspace_id: Option<WorkspaceId>,
+    workspace_path: Option<PathBuf>,
+    session_id: Option<SessionId>,
+    session_label: Option<String>,
+    last_event: Option<String>,
+    event_count: usize,
+}
+
+impl AppViewModel {
+    fn apply_event(&mut self, event: &AppEvent) {
+        self.event_count += 1;
+        self.last_event = Some(format_event(event));
+
+        match event {
+            AppEvent::WorkspaceOpened { workspace_id, path } => {
+                self.workspace_id = Some(*workspace_id);
+                self.workspace_path = Some(path.clone());
+            }
+            AppEvent::SessionStarted { session_id, label, .. } => {
+                self.session_id = Some(*session_id);
+                self.session_label = label.clone();
+            }
+            AppEvent::UserActionDispatched { .. } => {}
+        }
+    }
+}
+
+struct DesktopRoot {
+    view_model: AppViewModel,
+    header: Text,
+    body: Text,
+}
+
+impl DesktopRoot {
+    fn new() -> Self {
+        let mut root = Self {
+            view_model: AppViewModel::default(),
+            header: Text::new("Autopilot Desktop (WGPUI)")
+                .font_size(30.0)
+                .bold()
+                .color(theme::text::PRIMARY),
+            body: Text::new("Waiting for events...")
+                .font_size(16.0)
+                .color(theme::text::MUTED),
+        };
+        root.refresh_text();
+        root
+    }
+
+    fn apply_event(&mut self, event: AppEvent) {
+        self.view_model.apply_event(&event);
+        self.refresh_text();
+    }
+
+    fn refresh_text(&mut self) {
+        let workspace_line = self
+            .view_model
+            .workspace_path
+            .as_ref()
+            .map(|path| format!("Workspace: {}", path.display()))
+            .unwrap_or_else(|| "Workspace: --".to_string());
+
+        let session_line = match (self.view_model.session_id, &self.view_model.session_label) {
+            (Some(id), Some(label)) => format!("Session: {:?} ({})", id, label),
+            (Some(id), None) => format!("Session: {:?}", id),
+            _ => "Session: --".to_string(),
+        };
+
+        let last_event_line = self
+            .view_model
+            .last_event
+            .clone()
+            .unwrap_or_else(|| "Last event: --".to_string());
+
+        let count_line = format!("Event count: {}", self.view_model.event_count);
+
+        let body = format!(
+            "Immediate-mode view model (Zed/GPUI-style)\n{workspace}\n{session}\n{last_event}\n{count}",
+            workspace = workspace_line,
+            session = session_line,
+            last_event = last_event_line,
+            count = count_line
+        );
+
+        self.body.set_content(body);
+    }
+}
+
+impl Component for DesktopRoot {
+    fn paint(&mut self, bounds: Bounds, cx: &mut PaintContext) {
+        let header_bounds = Bounds::new(
+            bounds.origin.x,
+            bounds.origin.y,
+            bounds.size.width,
+            48.0,
+        );
+        self.header.paint(header_bounds, cx);
+
+        let body_bounds = Bounds::new(
+            bounds.origin.x,
+            bounds.origin.y + 64.0,
+            bounds.size.width,
+            bounds.size.height - 64.0,
+        );
+        let card = Quad::new(body_bounds)
+            .with_background(theme::bg::SURFACE)
+            .with_corner_radius(14.0);
+        cx.scene.draw_quad(card);
+
+        let inset = 24.0;
+        let text_bounds = Bounds::new(
+            body_bounds.origin.x + inset,
+            body_bounds.origin.y + inset,
+            (body_bounds.size.width - inset * 2.0).max(0.0),
+            (body_bounds.size.height - inset * 2.0).max(0.0),
+        );
+        self.body.paint(text_bounds, cx);
+    }
+}
+
+fn format_event(event: &AppEvent) -> String {
+    match event {
+        AppEvent::WorkspaceOpened { path, .. } => {
+            format!("Last event: WorkspaceOpened ({})", path.display())
+        }
+        AppEvent::SessionStarted { session_id, .. } => {
+            format!("Last event: SessionStarted ({:?})", session_id)
+        }
+        AppEvent::UserActionDispatched { action, .. } => match action {
+            UserAction::Message { text, .. } => format!("Last event: Message ({})", text),
+            UserAction::Command { name, .. } => format!("Last event: Command ({})", name),
+        },
+    }
 }

@@ -91,6 +91,27 @@ For full Rustiness:
 - If a new contract is needed, write a superseding ADR and keep a compatibility
   adapter during deprecation.
 
+## Component Model (Zed/GPUI-Inspired)
+
+We will mirror the GPUI patterns from Zed:
+
+- **Application + contexts**: a root `App` owns entities; `Context<T>` is passed
+  to view methods for state access and notifications (see `crates/gpui/docs/contexts.md` in Zed).
+- **Views are entities**: any view is an `Entity<T>` implementing `Render`,
+  and GPUI calls `render()` each frame to build an element tree (see
+  `crates/gpui/src/element.rs` in Zed).
+- **Components are `RenderOnce`**: reusable, immediate-mode components are
+  pure data objects that expand to elements (Zed’s `RenderOnce`).
+- **Elements are low-level**: imperative rendering and custom layout live
+  in element implementations for performance-sensitive surfaces.
+
+In OpenAgents, we align WGPUI with this pattern:
+- WGPUI views will be entities implementing `Render`.
+- Shared UI state lives in entities; UI is reconstructed each frame.
+- Event dispatch uses actions and context, not a serialized UITree.
+- UITree/UiPatch remains as a **log + replay** artifact, not the primary
+  in-memory view state, unless we later decide otherwise via ADR.
+
 ## Packaging Without Tauri: Shipping the Bun Server
 
 If we drop Tauri packaging but still want the JS/Bun server, we can ship it as
@@ -160,14 +181,15 @@ Gate: reducer unit tests apply patch sequences -> expected UITree.
 
 ### Phase 3: WGPUI UI Runtime
 
-Choose one:
+Adopt the Zed/GPUI component model:
 
-Option 3A (fastest parity)
-- Implement `UITreeRenderer` mapping UIElement types to WGPUI components.
-
-Option 3B (cleanest long-term)
-- Map patches into a typed `AppViewModel` and render directly.
-- Keep UITree only as a backend log/debug artifact.
+- Implement a view layer based on `Render` / `RenderOnce` with entities as the
+  primary state holders.
+- Introduce a typed `AppViewModel` (or entity graph) and render directly to
+  WGPUI elements each frame (immediate-mode view construction).
+- Keep UITree/UiPatch as **recorded output** (log + replay), not the primary
+  rendering input. If we still need external UI automation, add a reducer that
+  emits UITree snapshots from the typed view model.
 
 Gate: Status dashboard + conversation + tool-call cards working in WGPUI.
 
@@ -244,3 +266,6 @@ Effuse catalog -> WGPUI target
 - 2026-01-27: Verified `cargo build -p autopilot_app`.
 - 2026-01-27: Phase 2 started: added `crates/autopilot_ui_contract` with UITree/UiElement/UiPatch types, dynamic value + visibility expressions, JSON patch parsing, and patch apply helpers plus unit tests; registered the crate in the workspace.
 - 2026-01-27: Verified `cargo build -p autopilot_ui_contract`.
+- 2026-01-27: Reviewed Zed GPUI architecture (entities + Render/RenderOnce + contexts) and updated Phase 3 to follow that immediate-mode component model; clarified UITree/UiPatch as log + replay artifacts.
+- 2026-01-27: Phase 3 started: wired `apps/autopilot-desktop-wgpu` to `crates/autopilot_app`, added an immediate-mode `AppViewModel` + `DesktopRoot` component, and bridged app events into the Winit user-event loop for rendering.
+- 2026-01-27: Verified `cargo build -p autopilot-desktop-wgpu` after Phase 3 wiring.
