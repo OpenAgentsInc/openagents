@@ -101,22 +101,6 @@ impl Component for TerminalHeader {
             cx,
         );
         x += badge_w.unwrap_or(60.0) + theme::spacing::SM;
-
-        if let Some(code) = self.exit_code {
-            let code_str = format!("exit {}", code);
-            let color = if code == 0 {
-                theme::status::SUCCESS
-            } else {
-                theme::status::ERROR
-            };
-            let text_run = cx.text.layout_mono(
-                &code_str,
-                Point::new(x, text_y),
-                theme::font_size::XS,
-                color,
-            );
-            cx.scene.draw_text(text_run);
-        }
     }
 
     fn event(

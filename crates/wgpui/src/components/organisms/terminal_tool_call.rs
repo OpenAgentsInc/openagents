@@ -90,11 +90,8 @@ impl Component for TerminalToolCall {
     fn paint(&mut self, bounds: Bounds, cx: &mut PaintContext) {
         let padding = theme::spacing::SM;
 
-        cx.scene.draw_quad(
-            Quad::new(bounds)
-                .with_background(theme::bg::APP)
-                .with_border(theme::border::DEFAULT, 1.0),
-        );
+        cx.scene
+            .draw_quad(Quad::new(bounds).with_background(theme::bg::APP));
 
         let header_height = 32.0;
         let mut header = TerminalHeader::new(&self.command).status(self.status);
