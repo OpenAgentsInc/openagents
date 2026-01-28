@@ -262,9 +262,7 @@ pub fn check_delegation_conditions(
         .collect();
 
     // Check kind conditions (OR - at least one must match if any exist)
-    if !kind_conditions.is_empty()
-        && !kind_conditions.contains(&event_kind)
-    {
+    if !kind_conditions.is_empty() && !kind_conditions.contains(&event_kind) {
         return Err(Nip26Error::ConditionNotSatisfied(format!(
             "event kind {} does not match any of the allowed kinds: {:?}",
             event_kind, kind_conditions
@@ -276,9 +274,7 @@ pub fn check_delegation_conditions(
         if !condition.is_satisfied(event_kind, event_created_at) {
             return Err(Nip26Error::ConditionNotSatisfied(format!(
                 "condition '{}' not satisfied for kind={}, created_at={}",
-                condition,
-                event_kind,
-                event_created_at
+                condition, event_kind, event_created_at
             )));
         }
     }

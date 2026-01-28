@@ -134,7 +134,6 @@ impl PollType {
             PollType::MultipleChoice => "multiplechoice",
         }
     }
-
 }
 
 impl std::str::FromStr for PollType {

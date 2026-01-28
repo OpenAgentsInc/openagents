@@ -181,12 +181,13 @@ impl PrivacyPolicy {
     pub fn validate_content(&self, content: &str) -> Result<(), PolicyViolation> {
         // Check content size
         if let Some(max_size) = self.max_content_size
-            && content.len() > max_size {
-                return Err(PolicyViolation::ContentTooLarge {
-                    size: content.len(),
-                    max: max_size,
-                });
-            }
+            && content.len() > max_size
+        {
+            return Err(PolicyViolation::ContentTooLarge {
+                size: content.len(),
+                max: max_size,
+            });
+        }
 
         // Check for file paths if not allowed
         if !self.allow_file_paths && contains_file_path(content) {

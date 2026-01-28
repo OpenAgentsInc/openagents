@@ -78,12 +78,13 @@ impl Metric for FormatMetric {
                 if let Some(s) = value.as_str() {
                     // Try to parse as JSON if it looks like JSON
                     if (s.trim().starts_with('{') || s.trim().starts_with('['))
-                        && serde_json::from_str::<serde_json::Value>(s).is_err() {
-                            return Ok(MetricScore::fail(format!(
-                                "Field '{}' contains invalid JSON",
-                                field
-                            )));
-                        }
+                        && serde_json::from_str::<serde_json::Value>(s).is_err()
+                    {
+                        return Ok(MetricScore::fail(format!(
+                            "Field '{}' contains invalid JSON",
+                            field
+                        )));
+                    }
                 }
             }
         }
@@ -312,20 +313,22 @@ impl Metric for LengthMetric {
 
         // Check bounds
         if let Some(min) = self.min_chars
-            && length < min {
-                return Ok(MetricScore::fail(format!(
-                    "Output too short: {} < {} chars",
-                    length, min
-                )));
-            }
+            && length < min
+        {
+            return Ok(MetricScore::fail(format!(
+                "Output too short: {} < {} chars",
+                length, min
+            )));
+        }
 
         if let Some(max) = self.max_chars
-            && length > max {
-                return Ok(MetricScore::fail(format!(
-                    "Output too long: {} > {} chars",
-                    length, max
-                )));
-            }
+            && length > max
+        {
+            return Ok(MetricScore::fail(format!(
+                "Output too long: {} > {} chars",
+                length, max
+            )));
+        }
 
         Ok(MetricScore::perfect())
     }
@@ -455,9 +458,10 @@ impl Metric for SyntaxMetric {
             // Look for common code field names
             for field_name in &["code", "output", "result", "content"] {
                 if let Some(v) = output.data.get(*field_name)
-                    && let Some(s) = v.as_str() {
-                        return Self::check_basic_syntax(s);
-                    }
+                    && let Some(s) = v.as_str()
+                {
+                    return Self::check_basic_syntax(s);
+                }
             }
             // Fall back to first string field
             output

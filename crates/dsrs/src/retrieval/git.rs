@@ -249,15 +249,17 @@ impl RepoIndex for GitIndex {
 
         // 2. Search blame (if we have room for more results)
         if results.len() < config.k
-            && let Ok(blame_results) = self.search_blame(query, config) {
-                results.extend(blame_results);
-            }
+            && let Ok(blame_results) = self.search_blame(query, config)
+        {
+            results.extend(blame_results);
+        }
 
         // 3. Search diffs (if still need more)
         if results.len() < config.k
-            && let Ok(diff_results) = self.search_diffs(query, config) {
-                results.extend(diff_results);
-            }
+            && let Ok(diff_results) = self.search_diffs(query, config)
+        {
+            results.extend(diff_results);
+        }
 
         // Deduplicate by path+line
         let mut seen = std::collections::HashSet::new();

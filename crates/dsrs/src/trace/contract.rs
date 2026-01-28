@@ -29,7 +29,6 @@ pub enum SpanKind {
     Consumer,
 }
 
-
 /// OpenTelemetry-compatible span status.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
@@ -43,7 +42,6 @@ pub enum SpanStatus {
     /// Operation failed.
     Error,
 }
-
 
 /// An OpenTelemetry-compatible trace span.
 ///
@@ -336,13 +334,15 @@ impl TraceContract {
             if span.kind == SpanKind::Client {
                 predict_count += 1;
                 if let Some(tokens) = span.attributes.get("lm.total_tokens")
-                    && let Some(t) = tokens.as_u64() {
-                        total_tokens += t;
-                    }
+                    && let Some(t) = tokens.as_u64()
+                {
+                    total_tokens += t;
+                }
                 if let Some(cost) = span.attributes.get("lm.cost_msats")
-                    && let Some(c) = cost.as_u64() {
-                        total_cost_msats += c;
-                    }
+                    && let Some(c) = cost.as_u64()
+                {
+                    total_cost_msats += c;
+                }
             }
         }
 

@@ -25,8 +25,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 /// Resource profile for sandbox execution.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[derive(Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
 pub enum SandboxProfile {
     /// Small: 1 vCPU, 1GB RAM, 5GB disk
     Small,
@@ -62,7 +61,6 @@ impl SandboxProfile {
         }
     }
 }
-
 
 /// Configuration for the Pylon sandbox provider.
 #[derive(Debug, Clone)]
@@ -227,10 +225,7 @@ impl PylonSandboxProvider {
                 resources: self.config.profile.limits(),
             },
             repo: RepoMount::default(),
-            commands: commands
-                .into_iter()
-                .map(SandboxCommand::new)
-                .collect(),
+            commands: commands.into_iter().map(SandboxCommand::new).collect(),
             env: std::collections::HashMap::new(),
             verification: protocol::verification::Verification::objective(),
         }

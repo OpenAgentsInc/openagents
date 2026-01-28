@@ -2,8 +2,8 @@
 //!
 //! Provides retry mechanisms for transient database errors like lock contention.
 
-use rusqlite::{Error as SqliteError, ErrorCode};
 use openagents_utils::backoff::{ExponentialBackoff, Jitter};
+use rusqlite::{Error as SqliteError, ErrorCode};
 use std::thread;
 use std::time::Duration;
 use tracing::{debug, warn};

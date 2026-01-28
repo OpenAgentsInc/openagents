@@ -26,8 +26,14 @@ async fn scenario_open_workspace_and_send_message() {
     }
 
     assert!(matches!(collected[0], AppEvent::WorkspaceOpened { .. }));
-    assert!(collected.iter().any(|event| matches!(event, AppEvent::SessionStarted { .. })));
-    assert!(collected
-        .iter()
-        .any(|event| matches!(event, AppEvent::UserActionDispatched { .. })));
+    assert!(
+        collected
+            .iter()
+            .any(|event| matches!(event, AppEvent::SessionStarted { .. }))
+    );
+    assert!(
+        collected
+            .iter()
+            .any(|event| matches!(event, AppEvent::UserActionDispatched { .. }))
+    );
 }

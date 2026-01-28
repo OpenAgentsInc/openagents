@@ -32,7 +32,6 @@ pub enum AggregationMethod {
     TrimmedMean(f64),
 }
 
-
 impl AggregationMethod {
     /// Aggregate a list of scores using this method.
     pub fn aggregate(&self, scores: &[f64]) -> f64 {
@@ -417,26 +416,28 @@ impl Scorer {
 
         // Add expected output if available (for truth metrics to compare against)
         if let Some(ref expected) = task.expected
-            && !expected.pass_commands.is_empty() {
-                ex.data.insert(
-                    "expected_commands".to_string(),
-                    serde_json::Value::Array(
-                        expected
-                            .pass_commands
-                            .iter()
-                            .map(|c| serde_json::Value::String(c.clone()))
-                            .collect(),
-                    ),
-                );
-            }
+            && !expected.pass_commands.is_empty()
+        {
+            ex.data.insert(
+                "expected_commands".to_string(),
+                serde_json::Value::Array(
+                    expected
+                        .pass_commands
+                        .iter()
+                        .map(|c| serde_json::Value::String(c.clone()))
+                        .collect(),
+                ),
+            );
+        }
 
         if let Some(ref gold_files) = task.gold_files
-            && let Some(first_gold) = gold_files.first() {
-                ex.data.insert(
-                    "expected".to_string(),
-                    serde_json::Value::String(first_gold.content.clone()),
-                );
-            }
+            && let Some(first_gold) = gold_files.first()
+        {
+            ex.data.insert(
+                "expected".to_string(),
+                serde_json::Value::String(first_gold.content.clone()),
+            );
+        }
 
         ex
     }

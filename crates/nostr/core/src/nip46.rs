@@ -88,7 +88,6 @@ impl NostrConnectMethod {
             NostrConnectMethod::Nip44Decrypt => "nip44_decrypt",
         }
     }
-
 }
 
 impl std::str::FromStr for NostrConnectMethod {
@@ -339,7 +338,6 @@ impl BunkerUrl {
             secret,
         })
     }
-
 }
 
 impl std::fmt::Display for BunkerUrl {
@@ -495,7 +493,6 @@ impl NostrConnectUrl {
             image,
         })
     }
-
 }
 
 impl std::fmt::Display for NostrConnectUrl {

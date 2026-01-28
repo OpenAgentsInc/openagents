@@ -323,7 +323,8 @@ pub fn get_external_content_refs(event: &Event) -> Vec<ExternalContent> {
     let mut refs = Vec::new();
 
     for tag in &event.tags {
-        if !tag.is_empty() && tag[0] == EXTERNAL_ID_TAG
+        if !tag.is_empty()
+            && tag[0] == EXTERNAL_ID_TAG
             && let Ok(content) = ExternalContent::from_i_tag(tag)
         {
             refs.push(content);

@@ -178,7 +178,7 @@ impl Component for DiffToolCall {
                 format!("{} {}", prefix, line.content)
             };
             let mut text = Text::new(&display)
-                .font_size(theme::font_size::BASE)
+                .font_size(theme::font_size::XS)
                 .color(color);
             text.paint(
                 Bounds::new(

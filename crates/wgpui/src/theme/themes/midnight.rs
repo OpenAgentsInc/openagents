@@ -32,7 +32,7 @@ pub static MIDNIGHT: Theme = Theme {
         info: Hsla::new(0.583, 0.8, 0.55, 1.0),    // Blue (210/360)
 
         // Accents
-        accent: Hsla::new(0.0, 0.0, 0.8, 1.0),       // #CCCCCC
+        accent: Hsla::new(0.0, 0.0, 0.8, 1.0),        // #CCCCCC
         accent_hover: Hsla::new(0.0, 0.0, 0.75, 1.0), // #BFBFBF
     },
 };

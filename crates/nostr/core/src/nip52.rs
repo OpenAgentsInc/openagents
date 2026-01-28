@@ -478,7 +478,6 @@ impl RsvpStatus {
             RsvpStatus::Tentative => "tentative",
         }
     }
-
 }
 
 impl std::str::FromStr for RsvpStatus {
@@ -512,7 +511,6 @@ impl FreeBusyStatus {
             FreeBusyStatus::Busy => "busy",
         }
     }
-
 }
 
 impl std::str::FromStr for FreeBusyStatus {

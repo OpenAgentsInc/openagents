@@ -1,13 +1,13 @@
 use std::path::PathBuf;
-use std::sync::{mpsc, Arc};
+use std::sync::{Arc, mpsc};
 
 use anyhow::{Context, Result};
-use autopilot_app::{AppEvent, App as AutopilotApp, AppConfig, EventRecorder, UserAction};
+use autopilot_app::{App as AutopilotApp, AppConfig, AppEvent, EventRecorder, UserAction};
+use autopilot_ui::MinimalRoot;
 use codex_client::{
     AppServerClient, AppServerConfig, AskForApproval, ClientInfo, SandboxMode, SandboxPolicy,
     ThreadStartParams, TurnStartParams, UserInput,
 };
-use autopilot_ui::MinimalRoot;
 use futures::StreamExt;
 use serde_json::json;
 use tracing_subscriber::EnvFilter;
@@ -42,9 +42,7 @@ fn main() -> Result<()> {
     let (action_tx, action_rx) = mpsc::channel();
     spawn_event_bridge(proxy, action_rx);
     let mut app = App::new(action_tx);
-    event_loop
-        .run_app(&mut app)
-        .context("event loop failed")?;
+    event_loop.run_app(&mut app).context("event loop failed")?;
     Ok(())
 }
 
@@ -317,11 +315,9 @@ fn render_frame(state: &mut RenderState) -> Result<()> {
     let mut paint = PaintContext::new(&mut scene, &mut state.text_system, state.scale_factor);
     state.root.paint(content_bounds, &mut paint);
 
-    state.renderer.resize(
-        &state.queue,
-        logical,
-        state.scale_factor,
-    );
+    state
+        .renderer
+        .resize(&state.queue, logical, state.scale_factor);
 
     if state.text_system.is_dirty() {
         state.renderer.update_atlas(
@@ -398,7 +394,12 @@ fn logical_size(config: &wgpu::SurfaceConfiguration, scale_factor: f32) -> Size 
 fn inset_bounds(bounds: Bounds, padding: f32) -> Bounds {
     let width = (bounds.size.width - padding * 2.0).max(0.0);
     let height = (bounds.size.height - padding * 2.0).max(0.0);
-    Bounds::new(bounds.origin.x + padding, bounds.origin.y + padding, width, height)
+    Bounds::new(
+        bounds.origin.x + padding,
+        bounds.origin.y + padding,
+        width,
+        height,
+    )
 }
 
 fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver<UserAction>) {

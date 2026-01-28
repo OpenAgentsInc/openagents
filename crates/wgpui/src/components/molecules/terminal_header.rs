@@ -67,7 +67,7 @@ impl Component for TerminalHeader {
 
         let padding = theme::spacing::SM;
         let mut x = bounds.origin.x + padding;
-        let font_size = theme::font_size::SM;
+        let font_size = theme::font_size::XS;
         let text_y = bounds.origin.y + bounds.size.height * 0.5 - font_size * 0.55;
 
         let prompt = "$ ";

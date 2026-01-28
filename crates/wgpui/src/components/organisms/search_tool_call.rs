@@ -4,6 +4,7 @@ use crate::components::molecules::ToolHeader;
 use crate::components::{Component, ComponentId, EventResult, Text};
 use crate::{Bounds, InputEvent, Quad, theme};
 
+#[derive(Clone, Debug)]
 pub struct SearchMatch {
     pub file: String,
     pub line: u32,
@@ -98,7 +99,7 @@ impl Component for SearchToolCall {
         let summary_y = bounds.origin.y + padding + header_height + 4.0;
         let summary = format!("{} matches found", self.matches.len());
         let mut summary_text = Text::new(&summary)
-            .font_size(theme::font_size::SM)
+            .font_size(theme::font_size::XS)
             .color(theme::text::MUTED);
         summary_text.paint(
             Bounds::new(
@@ -146,7 +147,7 @@ impl Component for SearchToolCall {
             );
 
             let mut content_text = Text::new(&m.content)
-                .font_size(theme::font_size::SM)
+                .font_size(theme::font_size::XS)
                 .color(theme::text::PRIMARY);
             content_text.paint(
                 Bounds::new(

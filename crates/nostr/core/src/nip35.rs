@@ -148,7 +148,8 @@ impl Torrent {
         // Find all files
         let mut files = Vec::new();
         for tag in &event.tags {
-            if !tag.is_empty() && tag[0] == FILE_TAG
+            if !tag.is_empty()
+                && tag[0] == FILE_TAG
                 && let Ok(file) = TorrentFile::from_tag(tag)
             {
                 files.push(file);

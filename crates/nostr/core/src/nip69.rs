@@ -56,7 +56,6 @@ impl OrderType {
             OrderType::Sell => "sell",
         }
     }
-
 }
 
 impl std::str::FromStr for OrderType {
@@ -92,7 +91,6 @@ impl OrderStatus {
             OrderStatus::Expired => "expired",
         }
     }
-
 }
 
 impl std::str::FromStr for OrderStatus {
@@ -127,7 +125,6 @@ impl BitcoinLayer {
             BitcoinLayer::Liquid => "liquid",
         }
     }
-
 }
 
 impl std::str::FromStr for BitcoinLayer {
@@ -689,14 +686,8 @@ mod tests {
     fn test_order_type() {
         assert_eq!(OrderType::Buy.as_str(), "buy");
         assert_eq!(OrderType::Sell.as_str(), "sell");
-        assert!(matches!(
-            OrderType::from_str("buy"),
-            Ok(OrderType::Buy)
-        ));
-        assert!(matches!(
-            OrderType::from_str("sell"),
-            Ok(OrderType::Sell)
-        ));
+        assert!(matches!(OrderType::from_str("buy"), Ok(OrderType::Buy)));
+        assert!(matches!(OrderType::from_str("sell"), Ok(OrderType::Sell)));
     }
 
     #[test]

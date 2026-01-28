@@ -58,7 +58,6 @@ impl UserAnnotation {
             pos_y,
         }
     }
-
 }
 
 impl std::str::FromStr for UserAnnotation {

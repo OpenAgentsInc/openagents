@@ -59,7 +59,6 @@ impl SignerRequestType {
             SignerRequestType::DecryptZapEvent => "decrypt_zap_event",
         }
     }
-
 }
 
 impl std::str::FromStr for SignerRequestType {

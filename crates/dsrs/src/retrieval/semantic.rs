@@ -34,8 +34,7 @@ pub struct SemanticIndex {
 }
 
 /// Embedding provider configuration.
-#[derive(Debug, Clone)]
-#[derive(Default)]
+#[derive(Debug, Clone, Default)]
 pub enum EmbeddingProvider {
     /// Local Ollama embeddings.
     Ollama { model: String, base_url: String },
@@ -50,7 +49,6 @@ pub enum EmbeddingProvider {
     #[default]
     None,
 }
-
 
 /// A chunk of code with its embedding.
 #[derive(Debug, Clone, Serialize, Deserialize)]

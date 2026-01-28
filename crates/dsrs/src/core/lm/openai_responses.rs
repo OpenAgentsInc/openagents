@@ -300,9 +300,10 @@ fn build_create_request(
     }
 
     if let Some(temperature) = request.temperature
-        && temperature_supported(model) {
-            builder.temperature(temperature as f32);
-        }
+        && temperature_supported(model)
+    {
+        builder.temperature(temperature as f32);
+    }
 
     if let Some(max_tokens) = request.max_tokens {
         builder.max_output_tokens(max_tokens as u32);
@@ -509,9 +510,10 @@ fn map_tool_choice(choice: &rig::message::ToolChoice) -> ToolChoiceParam {
 
 fn extract_store(additional_params: Option<&Value>) -> Option<bool> {
     if let Some(Value::Object(map)) = additional_params
-        && let Some(value) = map.get("store").and_then(Value::as_bool) {
-            return Some(value);
-        }
+        && let Some(value) = map.get("store").and_then(Value::as_bool)
+    {
+        return Some(value);
+    }
 
     std::env::var("OPENAI_RESPONSES_STORE")
         .ok()

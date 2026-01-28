@@ -63,7 +63,6 @@ impl HandlerType {
             HandlerType::ComputeProvider => "compute_provider",
         }
     }
-
 }
 
 impl std::str::FromStr for HandlerType {

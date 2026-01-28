@@ -74,29 +74,30 @@ impl GptOssCompletionModel {
 
             // Match pattern like "1. `field_name` (Type): description"
             if let Some(backtick_start) = line.find('`')
-                && let Some(backtick_end) = line[backtick_start + 1..].find('`') {
-                    let field_name = &line[backtick_start + 1..backtick_start + 1 + backtick_end];
+                && let Some(backtick_end) = line[backtick_start + 1..].find('`')
+            {
+                let field_name = &line[backtick_start + 1..backtick_start + 1 + backtick_end];
 
-                    if field_name == "completed" {
-                        continue;
-                    }
+                if field_name == "completed" {
+                    continue;
+                }
 
-                    // Extract type from (Type) pattern
-                    let after_name = &line[backtick_start + 2 + backtick_end..];
-                    let json_type = if let Some(paren_start) = after_name.find('(') {
-                        if let Some(paren_end) = after_name[paren_start..].find(')') {
-                            let type_str = &after_name[paren_start + 1..paren_start + paren_end];
-                            rust_type_to_json_schema(type_str)
-                        } else {
-                            json!({"type": "string"})
-                        }
+                // Extract type from (Type) pattern
+                let after_name = &line[backtick_start + 2 + backtick_end..];
+                let json_type = if let Some(paren_start) = after_name.find('(') {
+                    if let Some(paren_end) = after_name[paren_start..].find(')') {
+                        let type_str = &after_name[paren_start + 1..paren_start + paren_end];
+                        rust_type_to_json_schema(type_str)
                     } else {
                         json!({"type": "string"})
-                    };
+                    }
+                } else {
+                    json!({"type": "string"})
+                };
 
-                    properties.insert(field_name.to_string(), json_type);
-                    required.push(Value::String(field_name.to_string()));
-                }
+                properties.insert(field_name.to_string(), json_type);
+                required.push(Value::String(field_name.to_string()));
+            }
         }
 
         if properties.is_empty() {

@@ -163,19 +163,31 @@ pub enum UserAction {
         text: String,
         model: Option<String>,
     },
-    Command { session_id: SessionId, name: String, args: Vec<String> },
+    Command {
+        session_id: SessionId,
+        name: String,
+        args: Vec<String>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum AppEvent {
-    WorkspaceOpened { workspace_id: WorkspaceId, path: PathBuf },
+    WorkspaceOpened {
+        workspace_id: WorkspaceId,
+        path: PathBuf,
+    },
     SessionStarted {
         workspace_id: WorkspaceId,
         session_id: SessionId,
         label: Option<String>,
     },
-    UserActionDispatched { workspace_id: WorkspaceId, action: UserAction },
-    AppServerEvent { message: String },
+    UserActionDispatched {
+        workspace_id: WorkspaceId,
+        action: UserAction,
+    },
+    AppServerEvent {
+        message: String,
+    },
 }
 
 pub type AppEventStream = Pin<Box<dyn Stream<Item = AppEvent> + Send>>;
