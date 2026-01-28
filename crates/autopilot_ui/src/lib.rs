@@ -2147,8 +2147,33 @@ impl MinimalRoot {
         handled
     }
 
+    pub fn needs_redraw(&mut self) -> bool {
+        self.hotbar.is_flashing()
+    }
+
     pub fn cursor(&self) -> Cursor {
-        if self.hotbar.is_hovered() {
+        if self.pane_drag.is_some() {
+            Cursor::Grabbing
+        } else if self
+            .pane_store
+            .panes()
+            .iter()
+            .rev()
+            .any(|pane| {
+                if let Some(bounds) = self.pane_bounds.get(&pane.id) {
+                    if bounds.contains(self.cursor_position) {
+                        if let Some(frame) = self.pane_frames.get(&pane.id) {
+                            let title_bounds = frame.title_bounds();
+                            let close_bounds = frame.close_bounds();
+                            return title_bounds.contains(self.cursor_position)
+                                && !close_bounds.contains(self.cursor_position);
+                        }
+                    }
+                }
+                false
+            }) {
+            Cursor::Grab
+        } else if self.hotbar.is_hovered() {
             Cursor::Pointer
         } else if self
             .pane_frames

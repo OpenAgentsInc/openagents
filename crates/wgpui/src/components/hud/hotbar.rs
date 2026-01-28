@@ -122,6 +122,11 @@ impl Hotbar {
         }
     }
 
+    pub fn is_flashing(&mut self) -> bool {
+        self.clear_expired_flash();
+        self.flash_index.is_some()
+    }
+
     fn clear_expired_flash(&mut self) {
         let Some(started) = self.flash_started else {
             return;
