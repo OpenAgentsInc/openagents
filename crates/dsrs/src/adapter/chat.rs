@@ -29,22 +29,24 @@ fn extract_json_from_text(text: &str, data_type: &str) -> Value {
     // For arrays: find [...] pattern
     if (data_type.contains("Vec") || data_type.contains("array") || data_type.starts_with('['))
         && let Some(start) = trimmed.find('[')
-            && let Some(end) = trimmed.rfind(']') {
-                let json_slice = &trimmed[start..=end];
-                if let Ok(val) = serde_json::from_str(json_slice) {
-                    return val;
-                }
-            }
+        && let Some(end) = trimmed.rfind(']')
+    {
+        let json_slice = &trimmed[start..=end];
+        if let Ok(val) = serde_json::from_str(json_slice) {
+            return val;
+        }
+    }
 
     // For objects: find {...} pattern
     if (data_type.contains("object") || data_type.contains("Object") || data_type.starts_with('{'))
         && let Some(start) = trimmed.find('{')
-            && let Some(end) = trimmed.rfind('}') {
-                let json_slice = &trimmed[start..=end];
-                if let Ok(val) = serde_json::from_str(json_slice) {
-                    return val;
-                }
-            }
+        && let Some(end) = trimmed.rfind('}')
+    {
+        let json_slice = &trimmed[start..=end];
+        if let Ok(val) = serde_json::from_str(json_slice) {
+            return val;
+        }
+    }
 
     // For numbers
     if data_type == "f32" || data_type == "f64" || data_type == "i32" || data_type == "i64" {
@@ -370,9 +372,10 @@ impl Adapter for ChatAdapter {
         // Check cache first (release lock immediately after checking)
         if lm.cache
             && let Some(cache) = lm.cache_handler.as_ref()
-            && let Some(cached) = cache.lock().await.get(cache_key.clone()).await? {
-                return Ok(cached);
-            }
+            && let Some(cached) = cache.lock().await.get(cache_key.clone()).await?
+        {
+            return Ok(cached);
+        }
 
         let messages = self.format(signature, inputs.clone());
         let response = lm

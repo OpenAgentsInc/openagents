@@ -308,10 +308,7 @@ mod tests {
 
     #[test]
     fn test_etag_marker_from_str() {
-        assert!(matches!(
-            ETagMarker::from_str("root"),
-            Ok(ETagMarker::Root)
-        ));
+        assert!(matches!(ETagMarker::from_str("root"), Ok(ETagMarker::Root)));
         assert!(matches!(
             ETagMarker::from_str("reply"),
             Ok(ETagMarker::Reply)

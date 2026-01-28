@@ -45,10 +45,7 @@ impl AiServerManager {
     pub async fn start(&mut self) -> Result<()> {
         // Check if server is already running
         if self.is_running().await {
-            info!(
-                port = self.config.port,
-                "AI Gateway server already running"
-            );
+            info!(port = self.config.port, "AI Gateway server already running");
             return Ok(());
         }
 

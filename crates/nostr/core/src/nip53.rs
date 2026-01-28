@@ -76,7 +76,6 @@ impl LiveStatus {
             LiveStatus::Ended => "ended",
         }
     }
-
 }
 
 impl std::str::FromStr for LiveStatus {
@@ -114,7 +113,6 @@ impl SpaceStatus {
             SpaceStatus::Closed => "closed",
         }
     }
-
 }
 
 impl std::str::FromStr for SpaceStatus {
@@ -679,10 +677,7 @@ mod tests {
             LiveStatus::from_str("planned"),
             Ok(LiveStatus::Planned)
         ));
-        assert!(matches!(
-            LiveStatus::from_str("live"),
-            Ok(LiveStatus::Live)
-        ));
+        assert!(matches!(LiveStatus::from_str("live"), Ok(LiveStatus::Live)));
         assert!(matches!(
             LiveStatus::from_str("ended"),
             Ok(LiveStatus::Ended)

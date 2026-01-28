@@ -78,8 +78,7 @@ impl ReplayReader {
             return Ok(None);
         }
         let trimmed = self.buffer.trim_end();
-        let record: ReplayRecord =
-            serde_json::from_str(trimmed).context("parse replay record")?;
+        let record: ReplayRecord = serde_json::from_str(trimmed).context("parse replay record")?;
         Ok(Some(record))
     }
 

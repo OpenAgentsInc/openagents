@@ -270,8 +270,7 @@ pub enum ComparisonMode {
 }
 
 /// Expected output for verification.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[derive(Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ExpectedOutput {
     /// Expected fields in the output.
     #[serde(default)]
@@ -289,7 +288,6 @@ pub struct ExpectedOutput {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub forbidden_patterns: Vec<String>,
 }
-
 
 impl ExpectedOutput {
     /// Create a new expected output.

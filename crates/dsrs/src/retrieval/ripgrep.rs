@@ -101,13 +101,14 @@ impl RipgrepIndex {
                 // Format: path:line:content
                 let parts: Vec<&str> = line.splitn(3, ':').collect();
                 if parts.len() >= 3
-                    && let Ok(line_num) = parts[1].parse::<usize>() {
-                        results.push(
-                            RetrievalResult::new(parts[0], line_num, line_num, parts[2])
-                                .with_lane("ripgrep")
-                                .with_score(1.0),
-                        );
-                    }
+                    && let Ok(line_num) = parts[1].parse::<usize>()
+                {
+                    results.push(
+                        RetrievalResult::new(parts[0], line_num, line_num, parts[2])
+                            .with_lane("ripgrep")
+                            .with_score(1.0),
+                    );
+                }
             }
         }
 

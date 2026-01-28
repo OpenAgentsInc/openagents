@@ -60,10 +60,7 @@ impl ExponentialBackoff {
     ///
     /// Returns `None` if the backoff is exhausted.
     pub fn next_delay(&mut self) -> Option<Duration> {
-        if self
-            .max_attempts
-            .is_some_and(|max| self.attempt >= max)
-        {
+        if self.max_attempts.is_some_and(|max| self.attempt >= max) {
             return None;
         }
 
@@ -71,9 +68,7 @@ impl ExponentialBackoff {
         let base_ms = self.base_delay.as_millis();
         let max_ms = self.max_delay.as_millis();
         let shift = self.attempt.min(63);
-        let multiplier = 1u128
-            .checked_shl(shift)
-            .unwrap_or(u128::MAX);
+        let multiplier = 1u128.checked_shl(shift).unwrap_or(u128::MAX);
         let exp_ms = base_ms.saturating_mul(multiplier);
         let capped_ms = std::cmp::min(exp_ms, max_ms);
 
@@ -87,7 +82,7 @@ impl ExponentialBackoff {
 
         self.attempt = self.attempt.saturating_add(1);
         Some(Duration::from_millis(
-            jitter_ms.min(u128::from(u64::MAX)) as u64,
+            jitter_ms.min(u128::from(u64::MAX)) as u64
         ))
     }
 
@@ -103,8 +98,7 @@ impl ExponentialBackoff {
 
     /// Whether the backoff has reached its maximum attempts.
     pub fn is_exhausted(&self) -> bool {
-        self.max_attempts
-            .is_some_and(|max| self.attempt >= max)
+        self.max_attempts.is_some_and(|max| self.attempt >= max)
     }
 }
 
@@ -120,12 +114,9 @@ mod tests {
 
     #[test]
     fn no_jitter_is_deterministic() {
-        let mut backoff = ExponentialBackoff::new(
-            Duration::from_millis(100),
-            Duration::from_millis(1000),
-            3,
-        )
-        .with_jitter(Jitter::None);
+        let mut backoff =
+            ExponentialBackoff::new(Duration::from_millis(100), Duration::from_millis(1000), 3)
+                .with_jitter(Jitter::None);
 
         assert_eq!(backoff.next_delay().unwrap(), Duration::from_millis(100));
         assert_eq!(backoff.next_delay().unwrap(), Duration::from_millis(200));
@@ -135,11 +126,8 @@ mod tests {
 
     #[test]
     fn jittered_delay_caps_to_max() {
-        let mut backoff = ExponentialBackoff::new(
-            Duration::from_millis(500),
-            Duration::from_millis(600),
-            2,
-        );
+        let mut backoff =
+            ExponentialBackoff::new(Duration::from_millis(500), Duration::from_millis(600), 2);
         let first = backoff.next_delay().unwrap();
         assert!(first <= Duration::from_millis(600));
         let second = backoff.next_delay().unwrap();

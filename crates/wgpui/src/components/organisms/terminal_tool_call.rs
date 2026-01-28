@@ -129,7 +129,7 @@ impl Component for TerminalToolCall {
         );
 
         let mut output_text = Text::new(&self.output)
-            .font_size(theme::font_size::BASE)
+            .font_size(theme::font_size::XS)
             .color(theme::text::SECONDARY);
         output_text.paint(
             Bounds::new(

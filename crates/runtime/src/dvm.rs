@@ -1,9 +1,9 @@
 //! Shared helpers for NIP-90 DVM providers.
 
-use async_trait::async_trait;
 use crate::fx::FxRateCache;
 use crate::identity::SigningService;
 use crate::types::{AgentId, Timestamp};
+use async_trait::async_trait;
 use nostr::{Event, JobStatus, KIND_JOB_FEEDBACK, UnsignedEvent, get_event_hash};
 use nostr_client::{PoolConfig, RelayPool};
 use serde_json::Value;
@@ -130,10 +130,7 @@ pub(crate) fn msats_to_sats(msats: u64) -> u64 {
     (msats + 999) / 1000
 }
 
-pub(crate) fn bid_msats_for_max_cost(
-    fx: &FxRateCache,
-    max_cost_usd: u64,
-) -> Result<u64, String> {
+pub(crate) fn bid_msats_for_max_cost(fx: &FxRateCache, max_cost_usd: u64) -> Result<u64, String> {
     let max_cost_sats = fx
         .usd_to_sats(max_cost_usd)
         .map_err(|err| err.to_string())?;

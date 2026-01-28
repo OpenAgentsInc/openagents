@@ -223,7 +223,8 @@ pub fn get_media_attachments(event: &Event) -> Vec<MediaAttachment> {
     let mut attachments = Vec::new();
 
     for tag in &event.tags {
-        if !tag.is_empty() && tag[0] == IMETA_TAG
+        if !tag.is_empty()
+            && tag[0] == IMETA_TAG
             && let Ok(attachment) = MediaAttachment::from_tag(tag)
         {
             attachments.push(attachment);

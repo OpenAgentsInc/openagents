@@ -218,7 +218,6 @@ impl InputType {
             InputType::Text => "text",
         }
     }
-
 }
 
 impl std::str::FromStr for InputType {
@@ -261,7 +260,6 @@ impl JobStatus {
             JobStatus::Partial => "partial",
         }
     }
-
 }
 
 impl std::str::FromStr for JobStatus {
@@ -1267,10 +1265,7 @@ mod tests {
     #[test]
     fn test_input_type_from_str() {
         assert!(matches!(InputType::from_str("url"), Ok(InputType::Url)));
-        assert!(matches!(
-            InputType::from_str("event"),
-            Ok(InputType::Event)
-        ));
+        assert!(matches!(InputType::from_str("event"), Ok(InputType::Event)));
         assert!(matches!(InputType::from_str("job"), Ok(InputType::Job)));
         assert!(matches!(InputType::from_str("text"), Ok(InputType::Text)));
 

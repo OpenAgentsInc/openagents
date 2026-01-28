@@ -186,18 +186,19 @@ impl LspIndex {
         for line in stdout.lines() {
             let parts: Vec<&str> = line.splitn(3, ':').collect();
             if parts.len() >= 3
-                && let Ok(line_num) = parts[1].parse::<usize>() {
-                    let content = parts[2].trim();
-                    let kind = self.infer_symbol_kind(content);
+                && let Ok(line_num) = parts[1].parse::<usize>()
+            {
+                let content = parts[2].trim();
+                let kind = self.infer_symbol_kind(content);
 
-                    results.push(
-                        RetrievalResult::new(parts[0], line_num, line_num, content)
-                            .with_lane("lsp")
-                            .with_score(0.9)
-                            .with_metadata("kind", format!("{:?}", kind))
-                            .with_metadata("symbol", query.to_string()),
-                    );
-                }
+                results.push(
+                    RetrievalResult::new(parts[0], line_num, line_num, content)
+                        .with_lane("lsp")
+                        .with_score(0.9)
+                        .with_metadata("kind", format!("{:?}", kind))
+                        .with_metadata("symbol", query.to_string()),
+                );
+            }
         }
 
         results.truncate(config.k);

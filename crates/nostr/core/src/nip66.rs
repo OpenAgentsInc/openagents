@@ -116,7 +116,6 @@ impl Requirement {
             }
         }
     }
-
 }
 
 impl std::fmt::Display for Requirement {
@@ -154,7 +153,6 @@ impl KindPolicy {
             })
         }
     }
-
 }
 
 impl std::fmt::Display for KindPolicy {
@@ -544,7 +542,10 @@ mod tests {
         ));
         assert!(matches!(NetworkType::from_str("tor"), Ok(NetworkType::Tor)));
         assert!(matches!(NetworkType::from_str("i2p"), Ok(NetworkType::I2P)));
-        assert!(matches!(NetworkType::from_str("loki"), Ok(NetworkType::Loki)));
+        assert!(matches!(
+            NetworkType::from_str("loki"),
+            Ok(NetworkType::Loki)
+        ));
         assert!(matches!(
             NetworkType::from_str("custom"),
             Ok(NetworkType::Other(s)) if s == "custom"

@@ -156,8 +156,7 @@ impl WalletPayHandle {
             "amount_sats": payment.amount_sats,
             "paid_at": Timestamp::now().as_millis(),
         });
-        let response =
-            serde_json::to_vec(&json).map_err(|err| FsError::Other(err.to_string()))?;
+        let response = serde_json::to_vec(&json).map_err(|err| FsError::Other(err.to_string()))?;
         self.buffer.set_response(response);
         Ok(())
     }

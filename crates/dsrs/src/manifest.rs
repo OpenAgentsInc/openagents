@@ -28,7 +28,6 @@ pub enum PrivacyMode {
     PrivateRepoAllowed,
 }
 
-
 /// Compatibility requirements for running a compiled module.
 ///
 /// These are checked at runtime to ensure the execution environment

@@ -21,14 +21,8 @@ fn test_input_type_serialization() {
 
 #[test]
 fn test_input_type_case_insensitive_parsing() {
-    assert!(matches!(
-        InputType::from_str("TEXT"),
-        Ok(InputType::Text)
-    ));
-    assert!(matches!(
-        InputType::from_str("Text"),
-        Ok(InputType::Text)
-    ));
+    assert!(matches!(InputType::from_str("TEXT"), Ok(InputType::Text)));
+    assert!(matches!(InputType::from_str("Text"), Ok(InputType::Text)));
     assert!(matches!(InputType::from_str("url"), Ok(InputType::Url)));
     assert!(matches!(InputType::from_str("URL"), Ok(InputType::Url)));
 }

@@ -15,7 +15,8 @@ fn read_lock<T>(lock: &RwLock<T>) -> RwLockReadGuard<'_, T> {
 }
 
 fn write_lock<T>(lock: &RwLock<T>) -> RwLockWriteGuard<'_, T> {
-    lock.write().unwrap_or_else(|poisoned| poisoned.into_inner())
+    lock.write()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
 /// Cache entry for an issue

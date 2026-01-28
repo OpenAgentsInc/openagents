@@ -139,7 +139,6 @@ impl MintNetwork {
             MintNetwork::Regtest => "regtest",
         }
     }
-
 }
 
 impl std::str::FromStr for MintNetwork {

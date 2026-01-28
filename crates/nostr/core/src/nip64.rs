@@ -360,10 +360,7 @@ mod tests {
             GameResult::from_str("1/2-1/2"),
             Ok(GameResult::Draw)
         ));
-        assert!(matches!(
-            GameResult::from_str("*"),
-            Ok(GameResult::Unknown)
-        ));
+        assert!(matches!(GameResult::from_str("*"), Ok(GameResult::Unknown)));
         assert!(matches!(
             GameResult::from_str("invalid"),
             Ok(GameResult::Unknown)

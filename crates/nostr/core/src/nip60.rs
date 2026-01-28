@@ -59,7 +59,6 @@ impl TransactionDirection {
             TransactionDirection::Out => "out",
         }
     }
-
 }
 
 impl std::str::FromStr for TransactionDirection {
@@ -94,7 +93,6 @@ impl EventMarker {
             EventMarker::Redeemed => "redeemed",
         }
     }
-
 }
 
 impl std::str::FromStr for EventMarker {

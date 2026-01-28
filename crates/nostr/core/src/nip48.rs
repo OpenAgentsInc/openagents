@@ -58,7 +58,6 @@ impl ProxyProtocol {
             ProxyProtocol::Other(s) => s.as_str(),
         }
     }
-
 }
 
 impl std::str::FromStr for ProxyProtocol {
@@ -194,7 +193,8 @@ impl ProxyTag {
 /// Extract proxy tag from an event
 pub fn get_proxy_tag(event: &Event) -> Option<ProxyTag> {
     for tag in &event.tags {
-        if !tag.is_empty() && tag[0] == PROXY_TAG
+        if !tag.is_empty()
+            && tag[0] == PROXY_TAG
             && let Ok(proxy) = ProxyTag::from_tag(tag)
         {
             return Some(proxy);
@@ -208,7 +208,8 @@ pub fn get_proxy_tags(event: &Event) -> Vec<ProxyTag> {
     let mut proxies = Vec::new();
 
     for tag in &event.tags {
-        if !tag.is_empty() && tag[0] == PROXY_TAG
+        if !tag.is_empty()
+            && tag[0] == PROXY_TAG
             && let Ok(proxy) = ProxyTag::from_tag(tag)
         {
             proxies.push(proxy);

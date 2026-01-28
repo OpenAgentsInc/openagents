@@ -14,7 +14,7 @@ use wgpui::components::organisms::{
 };
 use wgpui::components::sections::{MessageEditor, ThreadView};
 use wgpui::components::{Text, TextInput};
-use wgpui::input::InputEvent;
+use wgpui::input::{InputEvent, Key};
 use wgpui::{
     Bounds, Button, ButtonVariant, Component, Cursor, Dropdown, DropdownOption, EventResult,
     LayoutEngine, LayoutStyle, MarkdownConfig, MarkdownDocument, MarkdownView, PaintContext, Point,
@@ -315,6 +315,7 @@ pub struct MinimalRoot {
     event_scroll: ScrollView,
     event_scroll_bounds: Bounds,
     thread_model: Option<String>,
+    raw_events_visible: bool,
 }
 
 impl MinimalRoot {
@@ -400,6 +401,7 @@ impl MinimalRoot {
             event_scroll,
             event_scroll_bounds: Bounds::ZERO,
             thread_model: Some(DEFAULT_THREAD_MODEL.to_string()),
+            raw_events_visible: false,
         }
     }
 
@@ -850,6 +852,13 @@ impl MinimalRoot {
     }
 
     pub fn handle_input(&mut self, event: &InputEvent, _bounds: Bounds) -> bool {
+        if let InputEvent::KeyDown { key, modifiers } = event {
+            if modifiers.meta && matches!(key, Key::Character(value) if value == "2") {
+                self.raw_events_visible = !self.raw_events_visible;
+                return true;
+            }
+        }
+
         if let InputEvent::MouseMove { x, y } = event {
             self.cursor_position = Point::new(*x, *y);
             self.input_hovered = self.input_bounds.contains(self.cursor_position);
@@ -870,13 +879,19 @@ impl MinimalRoot {
             false
         };
 
-        let copy_handled = matches!(
-            self.copy_button
-                .event(event, self.copy_bounds, &mut self.event_context),
-            EventResult::Handled
-        );
+        let copy_handled = if self.raw_events_visible {
+            matches!(
+                self.copy_button
+                    .event(event, self.copy_bounds, &mut self.event_context),
+                EventResult::Handled
+            )
+        } else {
+            false
+        };
 
-        let scroll_handled = if self.event_scroll_bounds.contains(self.cursor_position) {
+        let scroll_handled = if self.raw_events_visible
+            && self.event_scroll_bounds.contains(self.cursor_position)
+        {
             matches!(
                 self.event_scroll
                     .event(event, self.event_scroll_bounds, &mut self.event_context),
@@ -1202,6 +1217,12 @@ fn paint_input_bar(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintContext
 }
 
 fn paint_sidebar_contents(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintContext) {
+    if !root.raw_events_visible {
+        root.copy_bounds = Bounds::ZERO;
+        root.event_scroll_bounds = Bounds::ZERO;
+        return;
+    }
+
     let padding = 16.0;
     let header_height = 20.0;
     let header_bounds = Bounds::new(

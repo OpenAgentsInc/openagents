@@ -6,8 +6,7 @@ use serde::{Deserialize, Serialize};
 use std::ops::Range;
 
 /// Policy for chunking content before sending to providers.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[derive(Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub enum ChunkingPolicy {
     /// Send full context (default, no chunking).
     #[default]
@@ -33,7 +32,6 @@ pub enum ChunkingPolicy {
         overlap_chars: usize,
     },
 }
-
 
 impl ChunkingPolicy {
     /// Create minimal spans policy with default context.

@@ -200,7 +200,6 @@ impl NostrWalletConnectUrl {
             lud16,
         })
     }
-
 }
 
 impl std::fmt::Display for NostrWalletConnectUrl {

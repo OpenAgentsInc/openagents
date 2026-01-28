@@ -79,7 +79,11 @@ pub struct RequestToVanish {
 
 impl RequestToVanish {
     /// Create a new request to vanish for specific relays.
-    pub fn new_event(user_pubkey: String, relay_urls: Vec<String>, reason: Option<String>) -> Event {
+    pub fn new_event(
+        user_pubkey: String,
+        relay_urls: Vec<String>,
+        reason: Option<String>,
+    ) -> Event {
         let mut tags = Vec::new();
 
         for url in relay_urls {

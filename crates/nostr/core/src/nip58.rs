@@ -79,7 +79,6 @@ impl ImageDimensions {
 
         Ok(Self { width, height })
     }
-
 }
 
 impl std::fmt::Display for ImageDimensions {
