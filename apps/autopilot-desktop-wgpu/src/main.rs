@@ -35,7 +35,7 @@ mod full_auto;
 const WINDOW_TITLE: &str = "Autopilot";
 const WINDOW_WIDTH: f64 = 1280.0;
 const WINDOW_HEIGHT: f64 = 800.0;
-const PADDING: f32 = 16.0;
+const PADDING: f32 = 0.0;
 const EVENT_BUFFER: usize = 256;
 const DEFAULT_THREAD_MODEL: &str = "gpt-5.1-codex-mini";
 

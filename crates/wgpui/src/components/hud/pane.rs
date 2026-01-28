@@ -24,7 +24,7 @@ impl PaneFrame {
         let close_button = Button::new("x")
             .variant(ButtonVariant::Ghost)
             .font_size(theme::font_size::SM)
-            .padding(8.0, 4.0)
+            .padding(6.0, 2.0)
             .corner_radius(4.0)
             .on_click(move || {
                 *pending_close_click.borrow_mut() = true;
@@ -121,7 +121,7 @@ impl Component for PaneFrame {
 
         cx.scene.draw_quad(
             Quad::new(bounds)
-                .with_background(theme::bg::SURFACE)
+                .with_background(theme::bg::CODE)
                 .with_border(border_color, 1.0)
                 .with_corner_radius(self.corner_radius),
         );
@@ -136,7 +136,7 @@ impl Component for PaneFrame {
 
         cx.scene.draw_quad(
             Quad::new(title_bounds)
-                .with_background(theme::bg::SURFACE)
+                .with_background(theme::bg::CODE)
                 .with_border(border_color, 1.0),
         );
 
@@ -153,9 +153,9 @@ impl Component for PaneFrame {
         cx.scene.draw_text(title_run);
 
         if self.dismissable {
-            let button_size = self.title_height - self.padding;
+            let button_size = (self.title_height - theme::spacing::SM).max(18.0);
             let close_bounds = Bounds::new(
-                title_bounds.origin.x + title_bounds.size.width - button_size - self.padding * 0.5,
+                title_bounds.origin.x + title_bounds.size.width - button_size - theme::spacing::SM,
                 title_bounds.origin.y + (title_bounds.size.height - button_size) * 0.5,
                 button_size,
                 button_size,

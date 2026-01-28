@@ -1,3 +1,7 @@
+use std::time::Duration;
+
+use web_time::Instant;
+
 use crate::components::context::{EventContext, PaintContext};
 use crate::components::{Component, EventResult};
 use crate::text::FontStyle;
@@ -39,6 +43,9 @@ pub struct Hotbar {
     item_bounds: Vec<Bounds>,
     hovered_index: Option<usize>,
     pressed_index: Option<usize>,
+    flash_index: Option<usize>,
+    flash_started: Option<Instant>,
+    flash_duration: Duration,
     pending_clicks: Vec<u8>,
     item_size: f32,
     gap: f32,
@@ -53,6 +60,9 @@ impl Hotbar {
             item_bounds: Vec::new(),
             hovered_index: None,
             pressed_index: None,
+            flash_index: None,
+            flash_started: None,
+            flash_duration: Duration::from_millis(140),
             pending_clicks: Vec::new(),
             item_size: 36.0,
             gap: 6.0,
@@ -98,6 +108,28 @@ impl Hotbar {
         let mut clicks = Vec::new();
         std::mem::swap(&mut clicks, &mut self.pending_clicks);
         clicks
+    }
+
+    pub fn flash_slot(&mut self, slot: u8) {
+        if let Some((index, _)) = self
+            .items
+            .iter()
+            .enumerate()
+            .find(|(_, item)| item.slot == slot)
+        {
+            self.flash_index = Some(index);
+            self.flash_started = Some(Instant::now());
+        }
+    }
+
+    fn clear_expired_flash(&mut self) {
+        let Some(started) = self.flash_started else {
+            return;
+        };
+        if Instant::now().duration_since(started) >= self.flash_duration {
+            self.flash_index = None;
+            self.flash_started = None;
+        }
     }
 
     fn layout_items(&mut self, bounds: Bounds) {
@@ -157,6 +189,7 @@ impl Component for Hotbar {
             return;
         }
 
+        self.clear_expired_flash();
         self.layout_items(bounds);
 
         cx.scene.draw_quad(
@@ -174,6 +207,7 @@ impl Component for Hotbar {
             let hovered = self.hovered_index == Some(idx);
             let pressed = self.pressed_index == Some(idx);
             let (bg, border, text_color) = self.item_colors(item, hovered, pressed);
+            let flash_active = self.flash_index == Some(idx);
 
             cx.scene.draw_quad(
                 Quad::new(item_bounds)
@@ -181,6 +215,13 @@ impl Component for Hotbar {
                     .with_border(border, 1.0)
                     .with_corner_radius(4.0),
             );
+            if flash_active {
+                cx.scene.draw_quad(
+                    Quad::new(item_bounds)
+                        .with_background(theme::accent::PRIMARY.with_alpha(0.15))
+                        .with_corner_radius(4.0),
+                );
+            }
 
             let icon_text = item.icon.as_str();
             if !icon_text.is_empty() {
