@@ -57,6 +57,7 @@ pub(crate) const SECTION_MARKETPLACE_FLOWS: usize = 26;
 pub(crate) const SECTION_NOSTR_FLOWS: usize = 27;
 pub(crate) const SECTION_SOVEREIGN_AGENT_FLOWS: usize = 28;
 pub(crate) const SECTION_CODEX_EVENTS: usize = 29;
+pub(crate) const SECTION_GUIDANCE_MODULES: usize = 30;
 pub(crate) const HOT_RELOAD_POLL_MS: u64 = 500;
 
 #[derive(Clone, Copy)]

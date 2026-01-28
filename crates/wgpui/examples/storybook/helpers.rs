@@ -1,10 +1,10 @@
 use wgpui::components::hud::{CornerConfig, Frame, FrameStyle};
 use wgpui::{
     Bounds, Component, EventContext, EventResult, Hsla, InputEvent, PaintContext, Point, Quad,
-    Scene, Text, TextSystem, theme,
+    Scene, Text, TextSystem, stack_bounds, theme,
 };
 
-use crate::constants::PANEL_PADDING;
+use crate::constants::{PANEL_PADDING, SECTION_GAP};
 
 pub(crate) fn draw_panel(
     title: &str,
@@ -147,11 +147,15 @@ pub(crate) fn stacked_height(panels: &[f32]) -> f32 {
     let mut height = 0.0;
     for (idx, panel) in panels.iter().enumerate() {
         if idx > 0 {
-            height += crate::constants::SECTION_GAP;
+            height += SECTION_GAP;
         }
         height += *panel;
     }
     height
+}
+
+pub(crate) fn panel_stack(bounds: Bounds, heights: &[f32]) -> Vec<Bounds> {
+    stack_bounds(bounds, heights, SECTION_GAP)
 }
 
 pub(crate) fn inset_bounds(bounds: Bounds, inset: f32) -> Bounds {

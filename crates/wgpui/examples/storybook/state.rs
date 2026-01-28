@@ -7,28 +7,28 @@ use wgpui::components::molecules::{
 use wgpui::components::organisms::{AssistantMessage, PermissionDialog, ThreadControls};
 use wgpui::{
     Animation, Bounds, Component, Easing, EventContext, Hsla, InputEvent, MouseButton,
-    PaintContext, Point, Quad, Text, theme,
+    PaintContext, Point, Quad, Text, layout_header_nav_content, stack_bounds, theme,
 };
 
 use crate::constants::{
     GAP, HEADER_HEIGHT, MARGIN, NAV_ITEM_HEIGHT, NAV_WIDTH, PANEL_PADDING, SECTION_APM_METRICS,
     SECTION_ARWES_BACKGROUNDS, SECTION_ARWES_FRAMES, SECTION_ARWES_ILLUMINATOR, SECTION_ARWES_TEXT,
     SECTION_ATOMS, SECTION_AUTOPILOT, SECTION_BITCOIN_WALLET, SECTION_CHAT_THREADS,
-    SECTION_CODEX_EVENTS, SECTION_GITAFTER, SECTION_GITAFTER_FLOWS, SECTION_HUD_WIDGETS,
-    SECTION_INTERACTIONS, SECTION_LIGHT_DEMO, SECTION_MARKETPLACE, SECTION_MARKETPLACE_FLOWS,
-    SECTION_MOLECULES, SECTION_NOSTR_FLOWS, SECTION_NOSTR_PROTOCOL, SECTION_ORGANISMS,
-    SECTION_OVERVIEW, SECTION_PERMISSIONS, SECTION_SESSIONS, SECTION_SOVEREIGN_AGENT_FLOWS,
-    SECTION_SOVEREIGN_AGENTS, SECTION_SYSTEM_UI, SECTION_THREAD_COMPONENTS, SECTION_TOOLCALL_DEMO,
-    SECTION_WALLET_FLOWS,
+    SECTION_CODEX_EVENTS, SECTION_GITAFTER, SECTION_GITAFTER_FLOWS, SECTION_GUIDANCE_MODULES,
+    SECTION_HUD_WIDGETS, SECTION_INTERACTIONS, SECTION_LIGHT_DEMO, SECTION_MARKETPLACE,
+    SECTION_MARKETPLACE_FLOWS, SECTION_MOLECULES, SECTION_NOSTR_FLOWS, SECTION_NOSTR_PROTOCOL,
+    SECTION_ORGANISMS, SECTION_OVERVIEW, SECTION_PERMISSIONS, SECTION_SESSIONS,
+    SECTION_SOVEREIGN_AGENT_FLOWS, SECTION_SOVEREIGN_AGENTS, SECTION_SYSTEM_UI,
+    SECTION_THREAD_COMPONENTS, SECTION_TOOLCALL_DEMO, SECTION_WALLET_FLOWS,
 };
 use crate::demos::{FocusDemo, ToolcallDemo};
 use crate::sections::heights::{
     apm_metrics_height, arwes_backgrounds_height, arwes_frames_height, arwes_illuminator_height,
     arwes_text_effects_height, atoms_height, autopilot_height, bitcoin_wallet_height,
     chat_threads_height, codex_events_height, gitafter_flows_height, gitafter_height,
-    hud_widgets_height, light_demo_height, marketplace_flows_height, marketplace_height,
-    nostr_flows_height, nostr_protocol_height, permissions_height, sessions_height,
-    sovereign_agent_flows_height, sovereign_agents_height, system_ui_height,
+    guidance_modules_height, hud_widgets_height, light_demo_height, marketplace_flows_height,
+    marketplace_height, nostr_flows_height, nostr_protocol_height, permissions_height,
+    sessions_height, sovereign_agent_flows_height, sovereign_agents_height, system_ui_height,
     thread_components_height, toolcall_demo_height, wallet_flows_height,
 };
 
@@ -100,6 +100,7 @@ impl Storybook {
             "Nostr Flows",
             "Agent Flows",
             "Codex Events",
+            "Guidance Modules",
         ];
         let nav_len = nav_items.len();
 
@@ -158,26 +159,11 @@ impl Storybook {
     }
 
     fn layout(&self, bounds: Bounds) -> StoryLayout {
-        let header = Bounds::new(
-            bounds.origin.x + MARGIN,
-            bounds.origin.y + MARGIN,
-            (bounds.size.width - MARGIN * 2.0).max(0.0),
-            HEADER_HEIGHT,
-        );
-        let content_height = (bounds.size.height - MARGIN * 2.0 - HEADER_HEIGHT - GAP).max(0.0);
-        let nav = Bounds::new(
-            bounds.origin.x + MARGIN,
-            header.origin.y + header.size.height + GAP,
-            NAV_WIDTH.min((bounds.size.width - MARGIN * 2.0).max(0.0)),
-            content_height,
-        );
-        let content_width = (bounds.size.width - MARGIN * 2.0 - NAV_WIDTH - GAP).max(0.0);
-        let content = Bounds::new(
-            nav.origin.x + nav.size.width + GAP,
-            nav.origin.y,
-            content_width,
-            content_height,
-        );
+        let nav_width = NAV_WIDTH.min((bounds.size.width - MARGIN * 2.0).max(0.0));
+        let layout = layout_header_nav_content(bounds, HEADER_HEIGHT, nav_width, GAP, MARGIN);
+        let header = layout.header;
+        let nav = layout.nav;
+        let content = layout.content;
         StoryLayout {
             header,
             nav,
@@ -218,6 +204,7 @@ impl Storybook {
             SECTION_NOSTR_FLOWS => nostr_flows_height(bounds),
             SECTION_SOVEREIGN_AGENT_FLOWS => sovereign_agent_flows_height(bounds),
             SECTION_CODEX_EVENTS => codex_events_height(bounds),
+            SECTION_GUIDANCE_MODULES => guidance_modules_height(bounds),
             _ => bounds.size.height,
         }
     }
@@ -278,6 +265,7 @@ impl Storybook {
             SECTION_NOSTR_FLOWS => self.paint_nostr_flows(content_bounds, cx),
             SECTION_SOVEREIGN_AGENT_FLOWS => self.paint_sovereign_agent_flows(content_bounds, cx),
             SECTION_CODEX_EVENTS => self.paint_codex_events(content_bounds, cx),
+            SECTION_GUIDANCE_MODULES => self.paint_guidance_modules(content_bounds, cx),
             _ => {}
         }
         cx.scene.pop_clip();
@@ -392,15 +380,7 @@ impl Storybook {
                 .with_background(theme::bg::SURFACE)
                 .with_border(theme::border::DEFAULT, 1.0),
         );
-
-        let pad = PANEL_PADDING;
-        for (i, label) in self.nav_items.iter().enumerate() {
-            let item_bounds = Bounds::new(
-                bounds.origin.x + pad,
-                bounds.origin.y + pad + i as f32 * NAV_ITEM_HEIGHT,
-                bounds.size.width - pad * 2.0,
-                NAV_ITEM_HEIGHT,
-            );
+        for (i, item_bounds) in self.nav_item_bounds(bounds).iter().enumerate() {
             let is_active = self.active_section == i;
             let is_hover = self.hover_nav == Some(i);
             let bg = if is_active {
@@ -413,10 +393,10 @@ impl Storybook {
 
             if bg.a > 0.0 {
                 cx.scene
-                    .draw_quad(Quad::new(item_bounds).with_background(bg));
+                    .draw_quad(Quad::new(*item_bounds).with_background(bg));
             }
 
-            let mut text = Text::new(*label)
+            let mut text = Text::new(self.nav_items[i])
                 .font_size(theme::font_size::SM)
                 .color(if is_active {
                     theme::text::PRIMARY
@@ -436,16 +416,16 @@ impl Storybook {
     }
 
     fn handle_nav_event(&mut self, event: &InputEvent, bounds: Bounds) -> bool {
-        let pad = PANEL_PADDING;
+        let item_bounds = self.nav_item_bounds(bounds);
         match event {
             InputEvent::MouseMove { x, y } => {
                 let mut hover = None;
-                if bounds.contains(Point::new(*x, *y)) {
-                    let rel_y = *y - bounds.origin.y - pad;
-                    if rel_y >= 0.0 {
-                        let idx = (rel_y / NAV_ITEM_HEIGHT) as usize;
-                        if idx < self.nav_items.len() {
+                let cursor = Point::new(*x, *y);
+                if bounds.contains(cursor) {
+                    for (idx, item) in item_bounds.iter().enumerate() {
+                        if item.contains(cursor) {
                             hover = Some(idx);
+                            break;
                         }
                     }
                 }
@@ -455,13 +435,14 @@ impl Storybook {
                 }
             }
             InputEvent::MouseDown { button, x, y, .. } => {
-                if *button == MouseButton::Left && bounds.contains(Point::new(*x, *y)) {
-                    let rel_y = *y - bounds.origin.y - pad;
-                    if rel_y >= 0.0 {
-                        let idx = (rel_y / NAV_ITEM_HEIGHT) as usize;
-                        if idx < self.nav_items.len() {
-                            self.active_section = idx;
-                            return true;
+                if *button == MouseButton::Left {
+                    let cursor = Point::new(*x, *y);
+                    if bounds.contains(cursor) {
+                        for (idx, item) in item_bounds.iter().enumerate() {
+                            if item.contains(cursor) {
+                                self.active_section = idx;
+                                return true;
+                            }
                         }
                     }
                 }
@@ -469,5 +450,18 @@ impl Storybook {
             _ => {}
         }
         false
+    }
+
+    fn nav_item_bounds(&self, bounds: Bounds) -> Vec<Bounds> {
+        let pad = PANEL_PADDING;
+        let inner = Bounds::new(
+            bounds.origin.x + pad,
+            bounds.origin.y + pad,
+            (bounds.size.width - pad * 2.0).max(0.0),
+            (bounds.size.height - pad * 2.0).max(0.0),
+        );
+
+        let heights = vec![NAV_ITEM_HEIGHT; self.nav_items.len()];
+        stack_bounds(inner, &heights, 0.0)
     }
 }

@@ -1,6 +1,7 @@
 //! Layout engine using Taffy for CSS Flexbox layout.
 
 use crate::geometry::{Bounds, Size};
+use std::collections::HashMap;
 use slotmap::{SlotMap, new_key_type};
 use taffy::Overflow;
 use taffy::prelude::*;
@@ -9,6 +10,18 @@ new_key_type! {
     /// Identifier for a layout node.
     pub struct LayoutId;
 }
+
+type MeasureFunc = Box<
+    dyn FnMut(
+            taffy::Size<Option<f32>>,
+            taffy::Size<AvailableSpace>,
+            NodeId,
+            Option<&mut ()>,
+            &Style,
+        ) -> taffy::Size<f32>
+        + Send
+        + Sync,
+>;
 
 /// Style for layout computation.
 #[derive(Clone, Debug)]
@@ -25,6 +38,8 @@ pub struct LayoutStyle {
     pub justify_content: Option<JustifyContent>,
     /// Align items (cross axis)
     pub align_items: Option<AlignItems>,
+    /// Align content (multi-line alignment)
+    pub align_content: Option<AlignContent>,
     /// Align self (override parent's align_items)
     pub align_self: Option<AlignSelf>,
     /// Gap between items
@@ -66,6 +81,7 @@ impl Default for LayoutStyle {
             flex_wrap: FlexWrap::NoWrap,
             justify_content: None,
             align_items: None,
+            align_content: None,
             align_self: None,
             gap: taffy::Size {
                 width: LengthPercentage::length(0.0),
@@ -141,6 +157,12 @@ impl LayoutStyle {
         self
     }
 
+    /// Set flex wrap
+    pub fn flex_wrap(mut self, value: FlexWrap) -> Self {
+        self.flex_wrap = value;
+        self
+    }
+
     /// Set flex grow
     pub fn flex_grow(mut self, value: f32) -> Self {
         self.flex_grow = value;
@@ -196,6 +218,12 @@ impl LayoutStyle {
         self
     }
 
+    /// Set align content
+    pub fn align_content(mut self, value: AlignContent) -> Self {
+        self.align_content = Some(value);
+        self
+    }
+
     /// Set overflow behavior
     pub fn overflow(mut self, value: Overflow) -> Self {
         self.overflow = taffy::Point { x: value, y: value };
@@ -224,6 +252,7 @@ impl From<&LayoutStyle> for Style {
             flex_wrap: s.flex_wrap,
             justify_content: s.justify_content,
             align_items: s.align_items,
+            align_content: s.align_content,
             align_self: s.align_self,
             gap: s.gap,
             size: taffy::Size {
@@ -254,6 +283,7 @@ impl From<&LayoutStyle> for Style {
 pub struct LayoutEngine {
     taffy: TaffyTree<()>,
     nodes: SlotMap<LayoutId, NodeId>,
+    measures: HashMap<NodeId, MeasureFunc>,
 }
 
 impl Default for LayoutEngine {
@@ -267,6 +297,7 @@ impl LayoutEngine {
         Self {
             taffy: TaffyTree::new(),
             nodes: SlotMap::with_key(),
+            measures: HashMap::new(),
         }
     }
 
@@ -274,6 +305,7 @@ impl LayoutEngine {
     pub fn clear(&mut self) {
         self.taffy.clear();
         self.nodes.clear();
+        self.measures.clear();
     }
 
     /// Request a layout node with the given style and children.
@@ -298,7 +330,7 @@ impl LayoutEngine {
     }
 
     /// Request a measured leaf node (size computed by callback).
-    pub fn request_measured<F>(&mut self, style: &LayoutStyle, _measure: F) -> LayoutId
+    pub fn request_measured<F>(&mut self, style: &LayoutStyle, measure: F) -> LayoutId
     where
         F: Fn(
                 taffy::Size<Option<f32>>,
@@ -314,30 +346,37 @@ impl LayoutEngine {
         let taffy_style: Style = style.into();
         let node_id = self
             .taffy
-            .new_leaf_with_context(taffy_style, ())
+            .new_leaf(taffy_style)
             .expect("Failed to create measured node");
 
-        // Set measure function
-        self.taffy
-            .set_node_context(node_id, Some(()))
-            .expect("Failed to set context");
-
+        self.measures.insert(node_id, Box::new(measure));
         self.nodes.insert(node_id)
     }
 
     /// Compute layout for the tree rooted at the given node.
     pub fn compute_layout(&mut self, root: LayoutId, available_space: Size) {
-        if let Some(&node_id) = self.nodes.get(root) {
-            self.taffy
-                .compute_layout(
-                    node_id,
-                    taffy::Size {
-                        width: AvailableSpace::Definite(available_space.width),
-                        height: AvailableSpace::Definite(available_space.height),
-                    },
-                )
-                .expect("Failed to compute layout");
-        }
+        let Some(&node_id) = self.nodes.get(root) else {
+            return;
+        };
+
+        let available = taffy::Size {
+            width: AvailableSpace::Definite(available_space.width),
+            height: AvailableSpace::Definite(available_space.height),
+        };
+        let measures = &mut self.measures;
+        self.taffy
+            .compute_layout_with_measure(
+                node_id,
+                available,
+                |known, space, node, context, style| {
+                    if let Some(measure) = measures.get_mut(&node) {
+                        (measure)(known, space, node, context, style)
+                    } else {
+                        taffy::Size::ZERO
+                    }
+                },
+            )
+            .expect("Failed to compute layout");
     }
 
     /// Get the computed bounds for a layout node.
@@ -431,6 +470,7 @@ mod tests {
     fn test_layout_engine_creation() {
         let engine = LayoutEngine::new();
         assert!(engine.nodes.is_empty());
+        assert!(engine.measures.is_empty());
     }
 
     #[test]
@@ -482,6 +522,24 @@ mod tests {
 
         engine.clear();
         assert!(engine.nodes.is_empty());
+        assert!(engine.measures.is_empty());
+    }
+
+    #[test]
+    fn test_layout_engine_measured_leaf() {
+        let mut engine = LayoutEngine::new();
+        let id = engine.request_measured(&LayoutStyle::new(), |_, _, _, _, _| {
+            taffy::Size {
+                width: 120.0,
+                height: 42.0,
+            }
+        });
+
+        engine.compute_layout(id, Size::new(800.0, 600.0));
+        let bounds = engine.layout(id);
+
+        assert!((bounds.size.width - 120.0).abs() < 0.001);
+        assert!((bounds.size.height - 42.0).abs() < 0.001);
     }
 
     #[test]

@@ -43,6 +43,7 @@ pub mod integration;
 pub mod interactive;
 pub mod keymap;
 pub mod layout;
+pub mod layout_helpers;
 pub mod markdown;
 pub mod platform;
 pub mod renderer;
@@ -96,8 +97,9 @@ pub use components::{
 pub use curve::{CurvePrimitive, LineSegment};
 pub use effects::{Illuminator, IlluminatorSvg};
 pub use element::{
-    AnyElement, ComponentElement, Drawable, Element, ElementId, ElementPaintContext, IntoElement,
-    LayoutContext, PrepaintContext, Render, RenderOnce,
+    AnyElement, ComponentElement, Drawable, Element, ElementId, ElementPaintContext, FlexChild,
+    FlexElement, GridElement, IntoElement, LayoutContext, PrepaintContext, Render, RenderOnce,
+    StackElement,
 };
 pub use focus::{FocusChain, FocusHandle, FocusId};
 pub use geometry::{Bounds, Edges, Point, Size};
@@ -107,6 +109,10 @@ pub use interactive::{Interactive, WithAction, WithContext};
 pub use keymap::{KeyContext, Keymap, default_keymap};
 pub use layout::{
     LayoutEngine, LayoutId, LayoutStyle, auto, length, length_auto, pct, px, relative, zero,
+};
+pub use layout_helpers::{
+    HeaderNavContentLayout, PanelLayout, RowItem, grid_bounds, layout_header_nav_content,
+    layout_panel, offset_bounds, row_bounds, stack_bounds,
 };
 pub use markdown::{
     CodeBlockLayout, FadeState, MarkdownBlock, MarkdownConfig, MarkdownDocument, MarkdownLayout,
