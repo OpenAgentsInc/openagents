@@ -1818,6 +1818,9 @@ impl MinimalRoot {
             if modifiers.meta || modifiers.ctrl {
                 if let Key::Character(value) = key {
                     if let Ok(slot) = value.parse::<u8>() {
+                        if slot >= 1 && slot <= 9 {
+                            self.hotbar.flash_slot(slot);
+                        }
                         if slot >= 1 && slot <= 9 && self.handle_hotbar_slot(slot) {
                             return true;
                         }
@@ -2230,7 +2233,11 @@ impl Component for MinimalRoot {
             panes = panes_snapshot;
         }
 
-        for pane in panes.iter() {
+        let base_layer = cx.scene.layer();
+        let pane_layer_start = base_layer + 1;
+        for (index, pane) in panes.iter().enumerate() {
+            cx.scene
+                .set_layer(pane_layer_start + index as u32);
             let pane_bounds = Bounds::new(
                 bounds.origin.x + pane.rect.x,
                 bounds.origin.y + pane.rect.y,
@@ -2263,6 +2270,7 @@ impl Component for MinimalRoot {
             cx.scene.pop_clip();
         }
 
+        cx.scene.set_layer(pane_layer_start + panes.len() as u32);
         let slot_count: usize = 9;
         let bar_width = HOTBAR_PADDING * 2.0
             + HOTBAR_ITEM_SIZE * slot_count as f32
@@ -2319,6 +2327,7 @@ impl Component for MinimalRoot {
         }
         self.hotbar.set_items(items);
         self.hotbar.paint(bar_bounds, cx);
+        cx.scene.set_layer(base_layer);
     }
 }
 
