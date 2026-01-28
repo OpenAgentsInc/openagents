@@ -10,7 +10,7 @@ use wgpui::components::organisms::{
     TerminalToolCall, ThreadEntry, ThreadEntryType, ToolCallCard, UserMessage,
 };
 use wgpui::components::sections::{MessageEditor, ThreadView};
-use wgpui::components::Text;
+use wgpui::components::{Text, TextInput};
 use wgpui::input::InputEvent;
 use wgpui::{
     Bounds, Button, Component, Cursor, EventResult, LayoutEngine, LayoutStyle, PaintContext, Point,
@@ -113,6 +113,16 @@ pub struct MinimalRoot {
     pending_clicks: Rc<RefCell<u32>>,
     click_count: u32,
     disabled: bool,
+    cursor_position: Point,
+    input: TextInput,
+    input_bounds: Bounds,
+    input_hovered: bool,
+    submit_button: Button,
+    submit_bounds: Bounds,
+    pending_sends: Rc<RefCell<Vec<String>>>,
+    send_handler: Option<Box<dyn FnMut(UserAction)>>,
+    session_id: Option<SessionId>,
+    event_log: Vec<String>,
 }
 
 impl MinimalRoot {
@@ -129,6 +139,32 @@ impl MinimalRoot {
                 *pending.borrow_mut() += 1;
             });
 
+        let pending_sends = Rc::new(RefCell::new(Vec::new()));
+        let pending_submit = pending_sends.clone();
+        let input = TextInput::new()
+            .placeholder("Send message to Codex…")
+            .background(theme::bg::APP)
+            .border_color(theme::border::DEFAULT)
+            .border_color_focused(theme::border::FOCUS)
+            .text_color(theme::text::PRIMARY)
+            .placeholder_color(theme::text::MUTED)
+            .on_submit(move |value| {
+                if !value.trim().is_empty() {
+                    pending_submit.borrow_mut().push(value.to_string());
+                }
+            });
+
+        let pending_send_clicks = pending_sends.clone();
+        let submit_button = Button::new("Send")
+            .font_size(theme::font_size::SM)
+            .padding(14.0, 8.0)
+            .corner_radius(8.0)
+            .background(theme::accent::PRIMARY)
+            .text_color(theme::bg::APP)
+            .on_click(move || {
+                pending_send_clicks.borrow_mut().push(String::new());
+            });
+
         Self {
             title: "Autopilot Desktop".to_string(),
             subtitle: "WGPUI minimal shell is live.".to_string(),
@@ -139,15 +175,37 @@ impl MinimalRoot {
             pending_clicks,
             click_count: 0,
             disabled: false,
+            cursor_position: Point::ZERO,
+            input,
+            input_bounds: Bounds::ZERO,
+            input_hovered: false,
+            submit_button,
+            submit_bounds: Bounds::ZERO,
+            pending_sends,
+            send_handler: None,
+            session_id: None,
+            event_log: Vec::new(),
         }
     }
 
-    pub fn apply_event(&mut self, _event: AppEvent) {}
+    pub fn apply_event(&mut self, event: AppEvent) {
+        if let AppEvent::SessionStarted { session_id, .. } = &event {
+            self.session_id = Some(*session_id);
+        }
 
-    pub fn set_send_handler<F>(&mut self, _handler: F)
+        let raw = format!("{event:?}");
+        self.event_log.push(raw);
+        if self.event_log.len() > 80 {
+            let drain = self.event_log.len() - 80;
+            self.event_log.drain(0..drain);
+        }
+    }
+
+    pub fn set_send_handler<F>(&mut self, handler: F)
     where
         F: FnMut(UserAction) + 'static,
     {
+        self.send_handler = Some(Box::new(handler));
     }
 
     pub fn handle_input(&mut self, event: &InputEvent, _bounds: Bounds) -> bool {
@@ -166,9 +224,26 @@ impl MinimalRoot {
             }
         }
 
+        if let InputEvent::MouseMove { x, y } = event {
+            self.cursor_position = Point::new(*x, *y);
+            self.input_hovered = self.input_bounds.contains(self.cursor_position);
+        }
+
+        let input_handled = matches!(
+            self.input
+                .event(event, self.input_bounds, &mut self.event_context),
+            EventResult::Handled
+        );
+
         let handled = matches!(
             self.button
                 .event(event, self.button_bounds, &mut self.event_context),
+            EventResult::Handled
+        );
+
+        let submit_handled = matches!(
+            self.submit_button
+                .event(event, self.submit_bounds, &mut self.event_context),
             EventResult::Handled
         );
 
@@ -188,14 +263,51 @@ impl MinimalRoot {
             return true;
         }
 
-        handled
+        let pending_messages = {
+            let mut pending = self.pending_sends.borrow_mut();
+            let messages = pending.clone();
+            pending.clear();
+            messages
+        };
+
+        if !pending_messages.is_empty() {
+            let mut messages = Vec::new();
+            for message in pending_messages {
+                if message.trim().is_empty() {
+                    let value = self.input.get_value().trim().to_string();
+                    if !value.is_empty() {
+                        messages.push(value);
+                    }
+                } else {
+                    messages.push(message);
+                }
+            }
+
+            if !messages.is_empty() {
+                if let Some(session_id) = self.session_id {
+                    if let Some(handler) = self.send_handler.as_mut() {
+                        for message in messages {
+                            handler(UserAction::Message { session_id, text: message });
+                        }
+                        self.input.set_value("");
+                    }
+                } else {
+                    self.subtitle = "No active session yet.".to_string();
+                }
+                return true;
+            }
+        }
+
+        handled || submit_handled || input_handled
     }
 
     pub fn cursor(&self) -> Cursor {
         if self.disabled {
             Cursor::Default
-        } else if self.button.is_hovered() {
+        } else if self.submit_button.is_hovered() || self.button.is_hovered() {
             Cursor::Pointer
+        } else if self.input_hovered || self.input.is_focused() {
+            Cursor::Text
         } else {
             Cursor::Default
         }
@@ -216,14 +328,34 @@ impl Component for MinimalRoot {
                 .with_border(theme::border::DEFAULT, 1.0),
         );
 
+        let sidebar_width = 320.0;
+        let sidebar_bounds = Bounds::new(
+            bounds.origin.x + (bounds.size.width - sidebar_width),
+            bounds.origin.y,
+            sidebar_width,
+            bounds.size.height,
+        );
+        let main_bounds = Bounds::new(
+            bounds.origin.x,
+            bounds.origin.y,
+            bounds.size.width - sidebar_width,
+            bounds.size.height,
+        );
+
+        cx.scene.draw_quad(
+            Quad::new(sidebar_bounds)
+                .with_background(theme::bg::SURFACE)
+                .with_border(theme::border::DEFAULT, 1.0),
+        );
+
         let padding = 24.0;
-        let max_width = (bounds.size.width - padding * 2.0).max(160.0);
-        let max_height = (bounds.size.height - padding * 2.0).max(120.0);
+        let max_width = (main_bounds.size.width - padding * 2.0).max(160.0);
+        let max_height = (main_bounds.size.height - padding * 2.0).max(120.0);
         let card_width = max_width.min(520.0);
         let card_height = max_height.min(220.0);
 
-        let card_x = bounds.origin.x + (bounds.size.width - card_width) / 2.0;
-        let card_y = bounds.origin.y + (bounds.size.height - card_height) / 2.0;
+        let card_x = main_bounds.origin.x + (main_bounds.size.width - card_width) / 2.0;
+        let card_y = main_bounds.origin.y + (main_bounds.size.height - card_height) / 2.0;
         let card_bounds = Bounds::new(card_x, card_y, card_width, card_height);
 
         cx.scene.draw_quad(
@@ -271,6 +403,97 @@ impl Component for MinimalRoot {
         );
         self.button_bounds = button_bounds;
         self.button.paint(button_bounds, cx);
+
+        paint_sidebar_contents(self, sidebar_bounds, cx);
+    }
+}
+
+fn paint_sidebar_contents(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintContext) {
+    let padding = 16.0;
+    let header_height = 20.0;
+    let header_bounds = Bounds::new(
+        bounds.origin.x + padding,
+        bounds.origin.y + padding,
+        bounds.size.width - padding * 2.0,
+        header_height,
+    );
+
+    Text::new("CODEX EVENTS")
+        .font_size(theme::font_size::SM)
+        .bold()
+        .color(theme::text::PRIMARY)
+        .paint(header_bounds, cx);
+
+    let input_height = 36.0;
+    let submit_width = 76.0;
+    let gap = 8.0;
+    let input_y = bounds.origin.y + bounds.size.height - padding - input_height;
+    let input_bounds = Bounds::new(
+        bounds.origin.x + padding,
+        input_y,
+        bounds.size.width - padding * 2.0 - submit_width - gap,
+        input_height,
+    );
+    let submit_bounds = Bounds::new(
+        input_bounds.origin.x + input_bounds.size.width + gap,
+        input_y,
+        submit_width,
+        input_height,
+    );
+
+    root.input_bounds = input_bounds;
+    root.submit_bounds = submit_bounds;
+    root.input.set_max_width(input_bounds.size.width);
+    root.submit_button
+        .set_disabled(root.input.get_value().trim().is_empty());
+
+    root.input.paint(input_bounds, cx);
+    root.submit_button.paint(submit_bounds, cx);
+
+    let feed_top = header_bounds.origin.y + header_height + 8.0;
+    let feed_bottom = input_bounds.origin.y - 12.0;
+    let feed_height = (feed_bottom - feed_top).max(0.0);
+    let feed_bounds = Bounds::new(
+        bounds.origin.x + padding,
+        feed_top,
+        bounds.size.width - padding * 2.0,
+        feed_height,
+    );
+
+    let font_size = theme::font_size::XS;
+    let line_height = font_size * 1.4;
+    let max_lines = if line_height > 0.0 {
+        (feed_bounds.size.height / line_height).floor() as usize
+    } else {
+        0
+    };
+
+    if root.event_log.is_empty() {
+        Text::new("No events yet.")
+            .font_size(font_size)
+            .color(theme::text::MUTED)
+            .paint(feed_bounds, cx);
+        return;
+    }
+
+    let start = root.event_log.len().saturating_sub(max_lines.max(1));
+    let mut y = feed_bounds.origin.y;
+    for line in root.event_log[start..].iter() {
+        let line_bounds = Bounds::new(
+            feed_bounds.origin.x,
+            y,
+            feed_bounds.size.width,
+            line_height,
+        );
+        Text::new(line.as_str())
+            .font_size(font_size)
+            .color(theme::text::MUTED)
+            .no_wrap()
+            .paint(line_bounds, cx);
+        y += line_height;
+        if y > feed_bounds.origin.y + feed_bounds.size.height {
+            break;
+        }
     }
 }
 
