@@ -176,6 +176,10 @@ pub enum UserAction {
         text: String,
         model: Option<String>,
     },
+    NewChat {
+        session_id: SessionId,
+        model: Option<String>,
+    },
     Command {
         session_id: SessionId,
         name: String,

@@ -314,6 +314,9 @@ pub struct MinimalRoot {
     copy_button: Button,
     copy_bounds: Bounds,
     pending_copy: Rc<RefCell<bool>>,
+    new_chat_button: Button,
+    new_chat_bounds: Bounds,
+    pending_new_chat: Rc<RefCell<bool>>,
     keygen_button: Button,
     keygen_bounds: Bounds,
     pending_keygen: Rc<RefCell<bool>>,
@@ -396,6 +399,17 @@ impl MinimalRoot {
                 *pending_copy_click.borrow_mut() = true;
             });
 
+        let pending_new_chat = Rc::new(RefCell::new(false));
+        let pending_new_chat_click = pending_new_chat.clone();
+        let new_chat_button = Button::new("New chat")
+            .variant(ButtonVariant::Secondary)
+            .font_size(theme::font_size::XS)
+            .padding(12.0, 6.0)
+            .corner_radius(6.0)
+            .on_click(move || {
+                *pending_new_chat_click.borrow_mut() = true;
+            });
+
         let pending_keygen = Rc::new(RefCell::new(false));
         let pending_keygen_click = pending_keygen.clone();
         let keygen_button = Button::new("Generate keys")
@@ -470,6 +484,9 @@ impl MinimalRoot {
             copy_button,
             copy_bounds: Bounds::ZERO,
             pending_copy,
+            new_chat_button,
+            new_chat_bounds: Bounds::ZERO,
+            pending_new_chat,
             keygen_button,
             keygen_bounds: Bounds::ZERO,
             pending_keygen,
@@ -1074,6 +1091,27 @@ impl MinimalRoot {
         self.working_entry_index = None;
     }
 
+    fn reset_chat_state(&mut self) {
+        self.formatted_thread.clear();
+        self.formatted_message_streams.clear();
+        self.formatted_message_entries.clear();
+        self.reasoning_entries.clear();
+        self.tool_entries.clear();
+        self.last_user_message = None;
+        self.working_entry_index = None;
+        self.event_log.clear();
+        self.event_log_dirty = true;
+        self.queued_by_thread.clear();
+        self.queued_in_flight = None;
+        self.active_turn_id = None;
+        self.thread_id = None;
+        self.thread_model = Some(self.selected_model.clone());
+        self.full_auto_enabled = false;
+        self.input.set_value("");
+        self.submit_button
+            .set_disabled(self.input.get_value().trim().is_empty());
+    }
+
     fn ensure_reasoning_entry(&mut self, item_id: &str) -> usize {
         if let Some(entry) = self.reasoning_entries.get(item_id) {
             return entry.entry_index;
@@ -1380,6 +1418,12 @@ impl MinimalRoot {
             EventResult::Handled
         );
 
+        let new_chat_handled = matches!(
+            self.new_chat_button
+                .event(event, self.new_chat_bounds, &mut self.event_context),
+            EventResult::Handled
+        );
+
         let full_auto_handled = matches!(
             self.full_auto_button
                 .event(event, self.full_auto_bounds, &mut self.event_context),
@@ -1492,6 +1536,25 @@ impl MinimalRoot {
             let _ = copy_to_clipboard(&block);
         }
 
+        let should_new_chat = {
+            let mut pending = self.pending_new_chat.borrow_mut();
+            let value = *pending;
+            *pending = false;
+            value
+        };
+
+        if should_new_chat {
+            self.reset_chat_state();
+            if let (Some(session_id), Some(handler)) = (self.session_id, self.send_handler.as_mut())
+            {
+                handler(UserAction::NewChat {
+                    session_id,
+                    model: Some(self.selected_model.clone()),
+                });
+            }
+            return true;
+        }
+
         let should_stop = {
             let mut pending = self.pending_stop.borrow_mut();
             let value = *pending;
@@ -1575,6 +1638,7 @@ impl MinimalRoot {
             || scroll_handled
             || dropdown_handled
             || keygen_handled
+            || new_chat_handled
             || full_auto_handled
             || copy_handled
             || stop_handled
@@ -1585,6 +1649,8 @@ impl MinimalRoot {
         if self.submit_button.is_hovered() && !self.submit_button.is_disabled() {
             Cursor::Pointer
         } else if self.stop_button.is_hovered() && !self.stop_button.is_disabled() {
+            Cursor::Pointer
+        } else if self.new_chat_button.is_hovered() && !self.new_chat_button.is_disabled() {
             Cursor::Pointer
         } else if self.keygen_button.is_hovered() {
             Cursor::Pointer
@@ -1719,10 +1785,10 @@ fn paint_formatted_feed(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintCo
     root.full_auto_button
         .set_disabled(root.thread_id.is_none());
     let button_font = theme::font_size::XS;
-    let button_label_width =
+    let full_auto_label_width =
         cx.text
             .measure_styled_mono(full_auto_label, button_font, FontStyle::default());
-    let button_width = (button_label_width + 28.0).max(110.0);
+    let button_width = (full_auto_label_width + 28.0).max(110.0);
     let button_height = 24.0;
     let button_bounds = Bounds::new(
         header_bounds.origin.x + content_width - button_width,
@@ -1732,6 +1798,22 @@ fn paint_formatted_feed(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintCo
     );
     root.full_auto_bounds = button_bounds;
     root.full_auto_button.paint(button_bounds, cx);
+
+    root.new_chat_button
+        .set_disabled(root.session_id.is_none());
+    let new_chat_label = "New chat";
+    let new_chat_label_width =
+        cx.text
+            .measure_styled_mono(new_chat_label, button_font, FontStyle::default());
+    let new_chat_width = (new_chat_label_width + 28.0).max(96.0);
+    let new_chat_bounds = Bounds::new(
+        header_bounds.origin.x,
+        header_bounds.origin.y + (header_height - button_height) / 2.0,
+        new_chat_width,
+        button_height,
+    );
+    root.new_chat_bounds = new_chat_bounds;
+    root.new_chat_button.paint(new_chat_bounds, cx);
 
     let model = root.thread_model.as_deref().unwrap_or(DEFAULT_THREAD_MODEL);
     let thread_id = root.thread_id.as_deref().unwrap_or("unknown-thread");
@@ -2659,6 +2741,12 @@ impl DesktopRoot {
                         AssistantMessage::new("Interrupt requested."),
                     ));
                 }
+                if let UserAction::NewChat { .. } = action {
+                    self.thread_view.push_entry(ThreadEntry::new(
+                        ThreadEntryType::Assistant,
+                        AssistantMessage::new("Starting new chat."),
+                    ));
+                }
             }
             AppEvent::AppServerEvent { .. } => {}
         }
@@ -3266,6 +3354,13 @@ fn format_event(event: &AppEvent) -> String {
                 }
             }
             UserAction::Command { name, .. } => format!("Command ({})", name),
+            UserAction::NewChat { model, .. } => {
+                if let Some(model) = model {
+                    format!("NewChat [{model}]")
+                } else {
+                    "NewChat".to_string()
+                }
+            }
             UserAction::Interrupt { .. } => "Interrupt".to_string(),
             UserAction::FullAutoToggle { enabled, .. } => {
                 if *enabled {
