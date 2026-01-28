@@ -15,8 +15,9 @@ use wgpui::components::{Text, TextInput};
 use wgpui::input::InputEvent;
 use taffy::prelude::{AlignItems, JustifyContent};
 use wgpui::{
-    Bounds, Button, Component, Cursor, Dropdown, DropdownOption, EventResult, LayoutEngine,
-    LayoutStyle, PaintContext, Point, Quad, ScrollView, Size, text::FontStyle, theme, length, px,
+    Bounds, Button, ButtonVariant, Component, Cursor, Dropdown, DropdownOption, EventResult,
+    LayoutEngine, LayoutStyle, PaintContext, Point, Quad, ScrollView, Size, copy_to_clipboard,
+    text::FontStyle, theme, length, px,
 };
 
 const PANEL_PADDING: f32 = 12.0;
@@ -159,6 +160,9 @@ pub struct MinimalRoot {
     model_hovered: bool,
     pending_model_changes: Rc<RefCell<Vec<String>>>,
     selected_model: String,
+    copy_button: Button,
+    copy_bounds: Bounds,
+    pending_copy: Rc<RefCell<bool>>,
     input: TextInput,
     input_bounds: Bounds,
     input_hovered: bool,
@@ -184,6 +188,17 @@ impl MinimalRoot {
             .padding(12.0, 6.0)
             .on_change(move |_, value| {
                 pending_models.borrow_mut().push(value.to_string());
+            });
+
+        let pending_copy = Rc::new(RefCell::new(false));
+        let pending_copy_click = pending_copy.clone();
+        let copy_button = Button::new("Copy")
+            .variant(ButtonVariant::Secondary)
+            .font_size(theme::font_size::XS)
+            .padding(12.0, 6.0)
+            .corner_radius(6.0)
+            .on_click(move || {
+                *pending_copy_click.borrow_mut() = true;
             });
 
         let pending_sends = Rc::new(RefCell::new(Vec::new()));
@@ -222,6 +237,9 @@ impl MinimalRoot {
             model_hovered: false,
             pending_model_changes,
             selected_model: DEFAULT_THREAD_MODEL.to_string(),
+            copy_button,
+            copy_bounds: Bounds::ZERO,
+            pending_copy,
             input,
             input_bounds: Bounds::ZERO,
             input_hovered: false,
@@ -293,6 +311,12 @@ impl MinimalRoot {
             EventResult::Handled
         );
 
+        let copy_handled = matches!(
+            self.copy_button
+                .event(event, self.copy_bounds, &mut self.event_context),
+            EventResult::Handled
+        );
+
         let scroll_handled = if self.event_scroll_bounds.contains(self.cursor_position) {
             matches!(
                 self.event_scroll
@@ -324,6 +348,22 @@ impl MinimalRoot {
 
         if let Some(model) = pending_models.last() {
             self.selected_model = model.clone();
+        }
+
+        let should_copy = {
+            let mut pending = self.pending_copy.borrow_mut();
+            let value = *pending;
+            *pending = false;
+            value
+        };
+
+        if should_copy && !self.event_log.is_empty() {
+            let mut block = String::new();
+            for line in &self.event_log {
+                block.push_str(line);
+                block.push('\n');
+            }
+            let _ = copy_to_clipboard(&block);
         }
 
         let pending_messages = {
@@ -368,11 +408,13 @@ impl MinimalRoot {
         self.submit_button
             .set_disabled(self.input.get_value().trim().is_empty());
 
-        submit_handled || input_handled || scroll_handled || dropdown_handled
+        submit_handled || input_handled || scroll_handled || dropdown_handled || copy_handled
     }
 
     pub fn cursor(&self) -> Cursor {
         if (self.submit_button.is_hovered() && !self.submit_button.is_disabled()) {
+            Cursor::Pointer
+        } else if self.copy_button.is_hovered() && !self.copy_button.is_disabled() {
             Cursor::Pointer
         } else if self.model_hovered || self.model_dropdown.is_open() {
             Cursor::Pointer
@@ -599,12 +641,30 @@ fn paint_sidebar_contents(root: &mut MinimalRoot, bounds: Bounds, cx: &mut Paint
         bounds.size.width - padding * 2.0,
         header_height,
     );
+    let copy_button_width = 68.0;
+    let copy_bounds = Bounds::new(
+        header_bounds.origin.x + header_bounds.size.width - copy_button_width,
+        header_bounds.origin.y - 4.0,
+        copy_button_width,
+        24.0,
+    );
+    let title_bounds = Bounds::new(
+        header_bounds.origin.x,
+        header_bounds.origin.y,
+        header_bounds.size.width - copy_button_width - 8.0,
+        header_height,
+    );
 
     Text::new("CODEX EVENTS")
         .font_size(theme::font_size::SM)
         .bold()
         .color(theme::text::PRIMARY)
-        .paint(header_bounds, cx);
+        .paint(title_bounds, cx);
+
+    root.copy_bounds = copy_bounds;
+    root.copy_button
+        .set_disabled(root.event_log.is_empty());
+    root.copy_button.paint(copy_bounds, cx);
 
     let feed_top = header_bounds.origin.y + header_height + 8.0;
     let feed_bottom = bounds.origin.y + bounds.size.height - padding;
