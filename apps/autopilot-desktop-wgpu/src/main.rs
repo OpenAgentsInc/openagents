@@ -5,7 +5,7 @@ use std::sync::{Arc, mpsc};
 
 use anyhow::{Context, Result};
 use autopilot_app::{
-    App as AutopilotApp, AppConfig, AppEvent, EventRecorder, SessionId, UserAction,
+    App as AutopilotApp, AppConfig, AppEvent, EventRecorder, PylonStatus, SessionId, UserAction,
 };
 use autopilot_ui::MinimalRoot;
 use codex_client::{
@@ -17,6 +17,8 @@ use full_auto::{
     ensure_codex_lm, run_full_auto_decision,
 };
 use futures::StreamExt;
+use pylon::daemon::{ControlClient, DaemonResponse, is_daemon_running, pid_path, socket_path};
+use pylon::PylonConfig;
 use serde_json::{Value, json};
 use tracing_subscriber::EnvFilter;
 use wgpui::renderer::Renderer;
@@ -1166,6 +1168,56 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
                                 }
                             });
                         }
+                        UserAction::PylonInit => {
+                            let proxy = proxy_actions.clone();
+                            handle.block_on(async move {
+                                let result = pylon::cli::init::run(pylon::cli::init::InitArgs {
+                                    import: false,
+                                    force: false,
+                                })
+                                .await;
+                                let mut status = fetch_pylon_status();
+                                if let Err(err) = result {
+                                    status.last_error = Some(err.to_string());
+                                }
+                                let _ = proxy.send_event(AppEvent::PylonStatus { status });
+                            });
+                        }
+                        UserAction::PylonStart => {
+                            let proxy = proxy_actions.clone();
+                            handle.block_on(async move {
+                                let result = pylon::cli::start::run(pylon::cli::start::StartArgs {
+                                    foreground: false,
+                                    mode: pylon::cli::start::PylonMode::Both,
+                                    config: None,
+                                })
+                                .await;
+                                let mut status = fetch_pylon_status();
+                                if let Err(err) = result {
+                                    status.last_error = Some(err.to_string());
+                                }
+                                let _ = proxy.send_event(AppEvent::PylonStatus { status });
+                            });
+                        }
+                        UserAction::PylonStop => {
+                            let proxy = proxy_actions.clone();
+                            handle.block_on(async move {
+                                let result = pylon::cli::stop::run(pylon::cli::stop::StopArgs {
+                                    force: false,
+                                    timeout: 10,
+                                })
+                                .await;
+                                let mut status = fetch_pylon_status();
+                                if let Err(err) = result {
+                                    status.last_error = Some(err.to_string());
+                                }
+                                let _ = proxy.send_event(AppEvent::PylonStatus { status });
+                            });
+                        }
+                        UserAction::PylonRefresh => {
+                            let status = fetch_pylon_status();
+                            let _ = proxy_actions.send_event(AppEvent::PylonStatus { status });
+                        }
                         UserAction::FullAutoToggle {
                             session_id,
                             enabled,
@@ -1315,6 +1367,69 @@ fn build_auto_response(method: &str, params: Option<&Value>) -> Option<Value> {
         "item/tool/requestUserInput" => params.map(build_tool_input_response),
         _ => None,
     }
+}
+
+fn pylon_identity_exists() -> bool {
+    let config = match PylonConfig::load() {
+        Ok(config) => config,
+        Err(_) => return false,
+    };
+    let data_dir = match config.data_path() {
+        Ok(path) => path,
+        Err(_) => return false,
+    };
+    data_dir.join("identity.mnemonic").exists()
+}
+
+fn read_pylon_pid() -> Option<u32> {
+    let pid_path = pid_path().ok()?;
+    let content = std::fs::read_to_string(pid_path).ok()?;
+    content.trim().parse().ok()
+}
+
+fn fetch_pylon_status() -> PylonStatus {
+    let running = is_daemon_running();
+    let mut status = PylonStatus {
+        running,
+        pid: read_pylon_pid(),
+        uptime_secs: None,
+        provider_active: None,
+        host_active: None,
+        jobs_completed: 0,
+        earnings_msats: 0,
+        identity_exists: pylon_identity_exists(),
+        last_error: None,
+    };
+
+    if running {
+        if let Ok(socket) = socket_path() {
+            if socket.exists() {
+                let client = ControlClient::new(socket);
+                match client.status() {
+                    Ok(DaemonResponse::Status {
+                        uptime_secs,
+                        provider_active,
+                        host_active,
+                        jobs_completed,
+                        earnings_msats,
+                        ..
+                    }) => {
+                        status.uptime_secs = Some(uptime_secs);
+                        status.provider_active = Some(provider_active);
+                        status.host_active = Some(host_active);
+                        status.jobs_completed = jobs_completed;
+                        status.earnings_msats = earnings_msats;
+                    }
+                    Ok(_) => {}
+                    Err(err) => {
+                        status.last_error = Some(err.to_string());
+                    }
+                }
+            }
+        }
+    }
+
+    status
 }
 
 fn map_key(key: &WinitKey) -> Option<Key> {

@@ -56,6 +56,8 @@ const EVENTS_PANE_WIDTH: f32 = 480.0;
 const EVENTS_PANE_HEIGHT: f32 = 520.0;
 const IDENTITY_PANE_WIDTH: f32 = 520.0;
 const IDENTITY_PANE_HEIGHT: f32 = 520.0;
+const PYLON_PANE_WIDTH: f32 = 520.0;
+const PYLON_PANE_HEIGHT: f32 = 420.0;
 const HOTBAR_HEIGHT: f32 = 52.0;
 const HOTBAR_FLOAT_GAP: f32 = 18.0;
 const HOTBAR_ITEM_SIZE: f32 = 36.0;
@@ -64,7 +66,8 @@ const HOTBAR_PADDING: f32 = 6.0;
 const HOTBAR_SLOT_NEW_CHAT: u8 = 1;
 const HOTBAR_SLOT_EVENTS: u8 = 2;
 const HOTBAR_SLOT_IDENTITY: u8 = 3;
-const HOTBAR_CHAT_SLOT_START: u8 = 4;
+const HOTBAR_SLOT_PYLON: u8 = 4;
+const HOTBAR_CHAT_SLOT_START: u8 = 5;
 const HOTBAR_SLOT_MAX: u8 = 9;
 const MODEL_OPTIONS: [(&str, &str); 4] = [
     ("gpt-5.2-codex", "Latest frontier agentic coding model."),
@@ -122,6 +125,7 @@ impl AppViewModel {
             }
             AppEvent::UserActionDispatched { .. } => {}
             AppEvent::AppServerEvent { .. } => {}
+            AppEvent::PylonStatus { .. } => {}
         }
     }
 
@@ -312,6 +316,7 @@ enum PaneKind {
     Chat,
     Events,
     Identity,
+    Pylon,
 }
 
 #[derive(Clone, Debug)]
@@ -319,6 +324,7 @@ enum HotbarAction {
     FocusPane(String),
     ToggleEvents,
     ToggleIdentity,
+    TogglePylon,
     NewChat,
 }
 
@@ -528,6 +534,19 @@ pub struct MinimalRoot {
     keygen_button: Button,
     keygen_bounds: Bounds,
     pending_keygen: Rc<RefCell<bool>>,
+    pylon_status: PylonStatusView,
+    pylon_init_button: Button,
+    pylon_start_button: Button,
+    pylon_stop_button: Button,
+    pylon_refresh_button: Button,
+    pylon_init_bounds: Bounds,
+    pylon_start_bounds: Bounds,
+    pylon_stop_bounds: Bounds,
+    pylon_refresh_bounds: Bounds,
+    pending_pylon_init: Rc<RefCell<bool>>,
+    pending_pylon_start: Rc<RefCell<bool>>,
+    pending_pylon_stop: Rc<RefCell<bool>>,
+    pending_pylon_refresh: Rc<RefCell<bool>>,
     nostr_npub: Option<String>,
     nostr_nsec: Option<String>,
     spark_pubkey_hex: Option<String>,
@@ -1388,6 +1407,50 @@ impl MinimalRoot {
                 *pending_keygen_click.borrow_mut() = true;
             });
 
+        let pending_pylon_init = Rc::new(RefCell::new(false));
+        let pending_pylon_init_click = pending_pylon_init.clone();
+        let pylon_init_button = Button::new("Init identity")
+            .variant(ButtonVariant::Secondary)
+            .font_size(theme::font_size::XS)
+            .padding(10.0, 6.0)
+            .corner_radius(6.0)
+            .on_click(move || {
+                *pending_pylon_init_click.borrow_mut() = true;
+            });
+
+        let pending_pylon_start = Rc::new(RefCell::new(false));
+        let pending_pylon_start_click = pending_pylon_start.clone();
+        let pylon_start_button = Button::new("Start")
+            .variant(ButtonVariant::Secondary)
+            .font_size(theme::font_size::XS)
+            .padding(10.0, 6.0)
+            .corner_radius(6.0)
+            .on_click(move || {
+                *pending_pylon_start_click.borrow_mut() = true;
+            });
+
+        let pending_pylon_stop = Rc::new(RefCell::new(false));
+        let pending_pylon_stop_click = pending_pylon_stop.clone();
+        let pylon_stop_button = Button::new("Stop")
+            .variant(ButtonVariant::Secondary)
+            .font_size(theme::font_size::XS)
+            .padding(10.0, 6.0)
+            .corner_radius(6.0)
+            .on_click(move || {
+                *pending_pylon_stop_click.borrow_mut() = true;
+            });
+
+        let pending_pylon_refresh = Rc::new(RefCell::new(false));
+        let pending_pylon_refresh_click = pending_pylon_refresh.clone();
+        let pylon_refresh_button = Button::new("Refresh")
+            .variant(ButtonVariant::Secondary)
+            .font_size(theme::font_size::XS)
+            .padding(10.0, 6.0)
+            .corner_radius(6.0)
+            .on_click(move || {
+                *pending_pylon_refresh_click.borrow_mut() = true;
+            });
+
         let event_scroll = ScrollView::new().show_scrollbar(true).scrollbar_width(6.0);
         let hotbar = Hotbar::new()
             .item_size(HOTBAR_ITEM_SIZE)
@@ -1417,6 +1480,19 @@ impl MinimalRoot {
             keygen_button,
             keygen_bounds: Bounds::ZERO,
             pending_keygen,
+            pylon_status: PylonStatusView::default(),
+            pylon_init_button,
+            pylon_start_button,
+            pylon_stop_button,
+            pylon_refresh_button,
+            pylon_init_bounds: Bounds::ZERO,
+            pylon_start_bounds: Bounds::ZERO,
+            pylon_stop_bounds: Bounds::ZERO,
+            pylon_refresh_bounds: Bounds::ZERO,
+            pending_pylon_init,
+            pending_pylon_start,
+            pending_pylon_stop,
+            pending_pylon_refresh,
             nostr_npub: None,
             nostr_nsec: None,
             spark_pubkey_hex: None,
@@ -1446,6 +1522,19 @@ impl MinimalRoot {
                     chat.set_session_id(session_id);
                 }
                 self.session_to_pane.insert(session_id, pane_id);
+            }
+            AppEvent::PylonStatus { status } => {
+                self.pylon_status = PylonStatusView {
+                    running: status.running,
+                    pid: status.pid,
+                    uptime_secs: status.uptime_secs,
+                    provider_active: status.provider_active,
+                    host_active: status.host_active,
+                    jobs_completed: status.jobs_completed,
+                    earnings_msats: status.earnings_msats,
+                    identity_exists: status.identity_exists,
+                    last_error: status.last_error,
+                };
             }
             AppEvent::AppServerEvent { message } => {
                 if let Ok(value) = serde_json::from_str::<Value>(&message) {
@@ -1670,6 +1759,36 @@ impl MinimalRoot {
         });
     }
 
+    fn toggle_pylon_pane(&mut self, screen: Size) {
+        let last_position = self.pane_store.last_pane_position;
+        self.pane_store.toggle_pane("pylon", screen, |snapshot| {
+            let rect = snapshot
+                .as_ref()
+                .map(|snapshot| snapshot.rect)
+                .unwrap_or_else(|| {
+                    calculate_new_pane_position(
+                        last_position,
+                        screen,
+                        PYLON_PANE_WIDTH,
+                        PYLON_PANE_HEIGHT,
+                    )
+                });
+            Pane {
+                id: "pylon".to_string(),
+                kind: PaneKind::Pylon,
+                title: "Pylon".to_string(),
+                rect,
+                dismissable: true,
+            }
+        });
+
+        if self.pane_store.is_active("pylon") {
+            if let Some(handler) = self.send_handler.as_mut() {
+                handler(UserAction::PylonRefresh);
+            }
+        }
+    }
+
     fn close_pane(&mut self, id: &str) {
         self.pane_store.remove_pane(id, true);
         self.pane_frames.remove(id);
@@ -1724,6 +1843,10 @@ impl MinimalRoot {
             }
             HotbarAction::ToggleIdentity => {
                 self.toggle_identity_pane(screen);
+                true
+            }
+            HotbarAction::TogglePylon => {
+                self.toggle_pylon_pane(screen);
                 true
             }
             HotbarAction::NewChat => {
@@ -2031,6 +2154,41 @@ impl MinimalRoot {
                             );
                             handled |= keygen_handled;
                         }
+                        PaneKind::Pylon => {
+                            let init_handled = matches!(
+                                self.pylon_init_button.event(
+                                    event,
+                                    self.pylon_init_bounds,
+                                    &mut self.event_context
+                                ),
+                                EventResult::Handled
+                            );
+                            let start_handled = matches!(
+                                self.pylon_start_button.event(
+                                    event,
+                                    self.pylon_start_bounds,
+                                    &mut self.event_context
+                                ),
+                                EventResult::Handled
+                            );
+                            let stop_handled = matches!(
+                                self.pylon_stop_button.event(
+                                    event,
+                                    self.pylon_stop_bounds,
+                                    &mut self.event_context
+                                ),
+                                EventResult::Handled
+                            );
+                            let refresh_handled = matches!(
+                                self.pylon_refresh_button.event(
+                                    event,
+                                    self.pylon_refresh_bounds,
+                                    &mut self.event_context
+                                ),
+                                EventResult::Handled
+                            );
+                            handled |= init_handled || start_handled || stop_handled || refresh_handled;
+                        }
                     }
                 }
             }
@@ -2059,6 +2217,54 @@ impl MinimalRoot {
                     self.spark_pubkey_hex = None;
                     self.seed_phrase = None;
                 }
+            }
+        }
+
+        let should_init = {
+            let mut pending = self.pending_pylon_init.borrow_mut();
+            let value = *pending;
+            *pending = false;
+            value
+        };
+        if should_init {
+            if let Some(handler) = self.send_handler.as_mut() {
+                handler(UserAction::PylonInit);
+            }
+        }
+
+        let should_start = {
+            let mut pending = self.pending_pylon_start.borrow_mut();
+            let value = *pending;
+            *pending = false;
+            value
+        };
+        if should_start {
+            if let Some(handler) = self.send_handler.as_mut() {
+                handler(UserAction::PylonStart);
+            }
+        }
+
+        let should_stop = {
+            let mut pending = self.pending_pylon_stop.borrow_mut();
+            let value = *pending;
+            *pending = false;
+            value
+        };
+        if should_stop {
+            if let Some(handler) = self.send_handler.as_mut() {
+                handler(UserAction::PylonStop);
+            }
+        }
+
+        let should_refresh = {
+            let mut pending = self.pending_pylon_refresh.borrow_mut();
+            let value = *pending;
+            *pending = false;
+            value
+        };
+        if should_refresh {
+            if let Some(handler) = self.send_handler.as_mut() {
+                handler(UserAction::PylonRefresh);
             }
         }
 
@@ -2291,6 +2497,7 @@ impl Component for MinimalRoot {
                 }
                 PaneKind::Events => paint_events_pane(self, content_bounds, cx),
                 PaneKind::Identity => paint_identity_pane(self, content_bounds, cx),
+                PaneKind::Pylon => paint_pylon_pane(self, content_bounds, cx),
             }
             cx.scene.pop_clip();
         }
@@ -2325,6 +2532,13 @@ impl Component for MinimalRoot {
         );
         self.hotbar_bindings
             .insert(HOTBAR_SLOT_IDENTITY, HotbarAction::ToggleIdentity);
+
+        items.push(
+            HotbarSlot::new(HOTBAR_SLOT_PYLON, "PY", "Pylon")
+                .active(self.pane_store.is_active("pylon")),
+        );
+        self.hotbar_bindings
+            .insert(HOTBAR_SLOT_PYLON, HotbarAction::TogglePylon);
 
         let mut slot_to_pane: HashMap<u8, String> = HashMap::new();
         for (pane_id, slot) in self.chat_slot_assignments.iter() {
@@ -2799,6 +3013,155 @@ fn paint_identity_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintCon
 
     root.copy_bounds = Bounds::ZERO;
     root.event_scroll_bounds = Bounds::ZERO;
+}
+
+fn paint_pylon_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintContext) {
+    let padding = 16.0;
+    let button_height = 28.0;
+    let label_height = 16.0;
+    let value_spacing = 10.0;
+    let text_size = theme::font_size::XS;
+
+    let mut content_width = (bounds.size.width * 0.8).min(560.0).max(280.0);
+    content_width = content_width.min(bounds.size.width - padding * 2.0);
+    let content_x = bounds.origin.x + (bounds.size.width - content_width) / 2.0;
+
+    let mut y = bounds.origin.y + padding;
+    let button_row_bounds = Bounds::new(content_x, y, content_width, button_height);
+
+    let mut engine = LayoutEngine::new();
+    let init_node = engine.request_leaf(
+        &LayoutStyle::new()
+            .width(length(100.0))
+            .height(px(button_height)),
+    );
+    let start_node = engine.request_leaf(
+        &LayoutStyle::new()
+            .width(length(70.0))
+            .height(px(button_height)),
+    );
+    let stop_node = engine.request_leaf(
+        &LayoutStyle::new()
+            .width(length(70.0))
+            .height(px(button_height)),
+    );
+    let refresh_node = engine.request_leaf(
+        &LayoutStyle::new()
+            .width(length(90.0))
+            .height(px(button_height)),
+    );
+    let row = engine.request_layout(
+        &LayoutStyle::new()
+            .flex_row()
+            .align_items(AlignItems::Center)
+            .justify_content(JustifyContent::FlexStart)
+            .gap(length(8.0)),
+        &[init_node, start_node, stop_node, refresh_node],
+    );
+    engine.compute_layout(row, Size::new(content_width, button_height));
+
+    let init_bounds = offset_bounds(engine.layout(init_node), button_row_bounds.origin);
+    let start_bounds = offset_bounds(engine.layout(start_node), button_row_bounds.origin);
+    let stop_bounds = offset_bounds(engine.layout(stop_node), button_row_bounds.origin);
+    let refresh_bounds = offset_bounds(engine.layout(refresh_node), button_row_bounds.origin);
+
+    root.pylon_init_bounds = init_bounds;
+    root.pylon_start_bounds = start_bounds;
+    root.pylon_stop_bounds = stop_bounds;
+    root.pylon_refresh_bounds = refresh_bounds;
+
+    root.pylon_init_button
+        .set_disabled(root.pylon_status.identity_exists);
+    root.pylon_start_button
+        .set_disabled(!root.pylon_status.identity_exists || root.pylon_status.running);
+    root.pylon_stop_button
+        .set_disabled(!root.pylon_status.running);
+
+    root.pylon_init_button.paint(init_bounds, cx);
+    root.pylon_start_button.paint(start_bounds, cx);
+    root.pylon_stop_button.paint(stop_bounds, cx);
+    root.pylon_refresh_button.paint(refresh_bounds, cx);
+
+    y += button_height + 14.0;
+
+    let status_line = if root.pylon_status.running {
+        "Daemon: running"
+    } else {
+        "Daemon: stopped"
+    };
+    Text::new(status_line)
+        .font_size(text_size)
+        .color(theme::text::PRIMARY)
+        .paint(Bounds::new(content_x, y, content_width, label_height), cx);
+    y += label_height + value_spacing;
+
+    let identity_line = if root.pylon_status.identity_exists {
+        "Identity: present"
+    } else {
+        "Identity: missing"
+    };
+    Text::new(identity_line)
+        .font_size(text_size)
+        .color(theme::text::MUTED)
+        .paint(Bounds::new(content_x, y, content_width, label_height), cx);
+    y += label_height + value_spacing;
+
+    if let Some(pid) = root.pylon_status.pid {
+        Text::new(&format!("PID: {}", pid))
+            .font_size(text_size)
+            .color(theme::text::MUTED)
+            .paint(Bounds::new(content_x, y, content_width, label_height), cx);
+        y += label_height + value_spacing;
+    }
+
+    if let Some(uptime) = root.pylon_status.uptime_secs {
+        Text::new(&format!("Uptime: {}s", uptime))
+            .font_size(text_size)
+            .color(theme::text::MUTED)
+            .paint(Bounds::new(content_x, y, content_width, label_height), cx);
+        y += label_height + value_spacing;
+    }
+
+    if let Some(provider_active) = root.pylon_status.provider_active {
+        Text::new(&format!(
+            "Provider: {}",
+            if provider_active { "active" } else { "inactive" }
+        ))
+        .font_size(text_size)
+        .color(theme::text::MUTED)
+        .paint(Bounds::new(content_x, y, content_width, label_height), cx);
+        y += label_height + value_spacing;
+    }
+
+    if let Some(host_active) = root.pylon_status.host_active {
+        Text::new(&format!(
+            "Host: {}",
+            if host_active { "active" } else { "inactive" }
+        ))
+        .font_size(text_size)
+        .color(theme::text::MUTED)
+        .paint(Bounds::new(content_x, y, content_width, label_height), cx);
+        y += label_height + value_spacing;
+    }
+
+    Text::new(&format!("Jobs completed: {}", root.pylon_status.jobs_completed))
+        .font_size(text_size)
+        .color(theme::text::MUTED)
+        .paint(Bounds::new(content_x, y, content_width, label_height), cx);
+    y += label_height + value_spacing;
+
+    Text::new(&format!("Earnings: {} msats", root.pylon_status.earnings_msats))
+        .font_size(text_size)
+        .color(theme::text::MUTED)
+        .paint(Bounds::new(content_x, y, content_width, label_height), cx);
+    y += label_height + value_spacing;
+
+    if let Some(err) = root.pylon_status.last_error.as_deref() {
+        Text::new(err)
+            .font_size(text_size)
+            .color(theme::text::ACCENT)
+            .paint(Bounds::new(content_x, y, content_width, label_height), cx);
+    }
 }
 
 fn paint_events_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintContext) {
@@ -3774,6 +4137,19 @@ struct SessionRow {
     active: bool,
 }
 
+#[derive(Clone, Debug, Default)]
+struct PylonStatusView {
+    running: bool,
+    pid: Option<u32>,
+    uptime_secs: Option<u64>,
+    provider_active: Option<bool>,
+    host_active: Option<bool>,
+    jobs_completed: u64,
+    earnings_msats: u64,
+    identity_exists: bool,
+    last_error: Option<String>,
+}
+
 fn format_event(event: &AppEvent) -> String {
     match event {
         AppEvent::WorkspaceOpened { path, .. } => {
@@ -3798,6 +4174,10 @@ fn format_event(event: &AppEvent) -> String {
                     "NewChat".to_string()
                 }
             }
+            UserAction::PylonInit => "PylonInit".to_string(),
+            UserAction::PylonStart => "PylonStart".to_string(),
+            UserAction::PylonStop => "PylonStop".to_string(),
+            UserAction::PylonRefresh => "PylonRefresh".to_string(),
             UserAction::Interrupt { .. } => "Interrupt".to_string(),
             UserAction::FullAutoToggle { enabled, .. } => {
                 if *enabled {
@@ -3808,6 +4188,13 @@ fn format_event(event: &AppEvent) -> String {
             }
         },
         AppEvent::AppServerEvent { message } => format!("AppServerEvent ({message})"),
+        AppEvent::PylonStatus { status } => {
+            if status.running {
+                "PylonStatus (running)".to_string()
+            } else {
+                "PylonStatus (stopped)".to_string()
+            }
+        }
     }
 }
 

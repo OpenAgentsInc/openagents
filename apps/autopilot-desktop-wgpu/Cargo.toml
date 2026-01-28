@@ -30,3 +30,4 @@ chrono = { workspace = true }
 uuid = { workspace = true }
 tokio = { workspace = true }
 dsrs = { path = "../../crates/dsrs" }
+pylon = { path = "../../crates/pylon" }
