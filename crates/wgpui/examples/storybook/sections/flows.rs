@@ -27,18 +27,34 @@ use wgpui::components::sections::{
 };
 use wgpui::{Bounds, Component, Hsla, PaintContext, Point, Quad, theme};
 
-use crate::constants::SECTION_GAP;
-use crate::helpers::{draw_panel, panel_height};
+use crate::helpers::{draw_panel, panel_height, panel_stack};
 use crate::state::Storybook;
 
 impl Storybook {
     pub(crate) fn paint_thread_components(&mut self, bounds: Bounds, cx: &mut PaintContext) {
-        let mut y = bounds.origin.y;
-        let width = bounds.size.width;
+        let header_height = panel_height(160.0);
+        let editor_height = panel_height(180.0);
+        let feedback_height = panel_height(200.0);
+        let actions_height = panel_height(140.0);
+        let terminal_height = panel_height(140.0);
+        let layout_height = panel_height(400.0);
+        let trajectory_height = panel_height(220.0);
+
+        let panels = panel_stack(
+            bounds,
+            &[
+                header_height,
+                editor_height,
+                feedback_height,
+                actions_height,
+                terminal_height,
+                layout_height,
+                trajectory_height,
+            ],
+        );
 
         // ========== Panel 1: Thread Headers ==========
-        let header_height = panel_height(160.0);
-        let header_bounds = Bounds::new(bounds.origin.x, y, width, header_height);
+        let header_bounds = panels[0];
         draw_panel("Thread Headers", header_bounds, cx, |inner, cx| {
             let variants = [
                 ("Full header", true, true, Some("3 messages")),
@@ -77,11 +93,9 @@ impl Storybook {
                 header.paint(Bounds::new(tile_x, tile_y + 14.0, tile_w, 48.0), cx);
             }
         });
-        y += header_height + SECTION_GAP;
 
         // ========== Panel 2: Message Editor States ==========
-        let editor_height = panel_height(180.0);
-        let editor_bounds = Bounds::new(bounds.origin.x, y, width, editor_height);
+        let editor_bounds = panels[1];
         draw_panel("Message Editor States", editor_bounds, cx, |inner, cx| {
             let states = [
                 ("Normal mode", Mode::Normal, false, "Type a message..."),
@@ -117,11 +131,9 @@ impl Storybook {
                 editor.paint(Bounds::new(tile_x, tile_y + 14.0, tile_w, 64.0), cx);
             }
         });
-        y += editor_height + SECTION_GAP;
 
         // ========== Panel 3: Thread Feedback ==========
-        let feedback_height = panel_height(200.0);
-        let feedback_bounds = Bounds::new(bounds.origin.x, y, width, feedback_height);
+        let feedback_bounds = panels[2];
         draw_panel("Thread Feedback", feedback_bounds, cx, |inner, cx| {
             let tile_w = 280.0;
             let gap = 16.0;
@@ -159,11 +171,9 @@ impl Storybook {
             );
             cx.scene.draw_text(info);
         });
-        y += feedback_height + SECTION_GAP;
 
         // ========== Panel 4: Entry Actions ==========
-        let actions_height = panel_height(140.0);
-        let actions_bounds = Bounds::new(bounds.origin.x, y, width, actions_height);
+        let actions_bounds = panels[3];
         draw_panel("Entry Actions", actions_bounds, cx, |inner, cx| {
             let variants = [
                 ("Default (copy)", true, false, false, false),
@@ -202,11 +212,9 @@ impl Storybook {
                 actions.paint(Bounds::new(tile_x, tile_y + 16.0, tile_w, 24.0), cx);
             }
         });
-        y += actions_height + SECTION_GAP;
 
         // ========== Panel 5: Terminal Headers ==========
-        let terminal_height = panel_height(140.0);
-        let terminal_bounds = Bounds::new(bounds.origin.x, y, width, terminal_height);
+        let terminal_bounds = panels[4];
         draw_panel("Terminal Headers", terminal_bounds, cx, |inner, cx| {
             let variants = [
                 ("Pending", "cargo build", ToolStatus::Pending, None),
@@ -243,11 +251,9 @@ impl Storybook {
                 header.paint(Bounds::new(tile_x, tile_y + 14.0, tile_w, 32.0), cx);
             }
         });
-        y += terminal_height + SECTION_GAP;
 
         // ========== Panel 6: Complete Thread Layout ==========
-        let layout_height = panel_height(400.0);
-        let layout_bounds = Bounds::new(bounds.origin.x, y, width, layout_height);
+        let layout_bounds = panels[5];
         draw_panel("Complete Thread Layout", layout_bounds, cx, |inner, cx| {
             // ThreadHeader at top
             let mut header = ThreadHeader::new("Code Review Session")
@@ -316,11 +322,9 @@ impl Storybook {
                 cx,
             );
         });
-        y += layout_height + SECTION_GAP;
 
         // ========== Panel 7: Trajectory View ==========
-        let trajectory_height = panel_height(220.0);
-        let trajectory_bounds = Bounds::new(bounds.origin.x, y, width, trajectory_height);
+        let trajectory_bounds = panels[6];
         draw_panel("Trajectory View", trajectory_bounds, cx, |inner, cx| {
             let entries = vec![
                 TrajectoryEntry::new("Load workspace")
@@ -355,12 +359,25 @@ impl Storybook {
     }
 
     pub(crate) fn paint_sessions(&mut self, bounds: Bounds, cx: &mut PaintContext) {
-        let width = bounds.size.width;
-        let mut y = bounds.origin.y;
+        let cards_height = panel_height(280.0);
+        let breadcrumb_height = panel_height(120.0);
+        let search_height = panel_height(180.0);
+        let actions_height = panel_height(160.0);
+        let list_height = panel_height(320.0);
+
+        let panels = panel_stack(
+            bounds,
+            &[
+                cards_height,
+                breadcrumb_height,
+                search_height,
+                actions_height,
+                list_height,
+            ],
+        );
 
         // ========== Panel 1: Session Cards ==========
-        let cards_height = panel_height(280.0);
-        let cards_bounds = Bounds::new(bounds.origin.x, y, width, cards_height);
+        let cards_bounds = panels[0];
         draw_panel("Session Cards", cards_bounds, cx, |inner, cx| {
             let card_w = (inner.size.width - 24.0) / 3.0;
 
@@ -452,11 +469,9 @@ impl Storybook {
                 cx,
             );
         });
-        y += cards_height + SECTION_GAP;
 
         // ========== Panel 2: Session Breadcrumbs ==========
-        let breadcrumb_height = panel_height(120.0);
-        let breadcrumb_bounds = Bounds::new(bounds.origin.x, y, width, breadcrumb_height);
+        let breadcrumb_bounds = panels[1];
         draw_panel("Session Breadcrumbs", breadcrumb_bounds, cx, |inner, cx| {
             // Simple breadcrumb
             let mut bc1 = SessionBreadcrumb::new().items(vec![
@@ -498,11 +513,9 @@ impl Storybook {
                 cx,
             );
         });
-        y += breadcrumb_height + SECTION_GAP;
 
         // ========== Panel 3: Session Search ==========
-        let search_height = panel_height(180.0);
-        let search_bounds = Bounds::new(bounds.origin.x, y, width, search_height);
+        let search_bounds = panels[2];
         draw_panel(
             "Session Search & Filters",
             search_bounds,
@@ -541,11 +554,9 @@ impl Storybook {
                 );
             },
         );
-        y += search_height + SECTION_GAP;
 
         // ========== Panel 4: Session Actions ==========
-        let actions_height = panel_height(160.0);
-        let actions_bounds = Bounds::new(bounds.origin.x, y, width, actions_height);
+        let actions_bounds = panels[3];
         draw_panel("Session Actions", actions_bounds, cx, |inner, cx| {
             let label_x = inner.origin.x;
             let badge_x = inner.origin.x + 200.0;
@@ -599,11 +610,9 @@ impl Storybook {
                 .task_count(8);
             running_badge.paint(Bounds::new(badge_x, row_y, 200.0, 24.0), cx);
         });
-        y += actions_height + SECTION_GAP;
 
         // ========== Panel 5: Complete Session List ==========
-        let list_height = panel_height(320.0);
-        let list_bounds = Bounds::new(bounds.origin.x, y, width, list_height);
+        let list_bounds = panels[4];
         draw_panel("Complete Session List", list_bounds, cx, |inner, cx| {
             // Search bar at top
             let mut search = SessionSearchBar::new();
@@ -657,12 +666,25 @@ impl Storybook {
     }
 
     pub(crate) fn paint_permissions(&mut self, bounds: Bounds, cx: &mut PaintContext) {
-        let width = bounds.size.width;
-        let mut y = bounds.origin.y;
+        let decisions_height = panel_height(160.0);
+        let rules_height = panel_height(240.0);
+        let history_height = panel_height(280.0);
+        let bar_height = panel_height(200.0);
+        let stats_height = panel_height(140.0);
+
+        let panels = panel_stack(
+            bounds,
+            &[
+                decisions_height,
+                rules_height,
+                history_height,
+                bar_height,
+                stats_height,
+            ],
+        );
 
         // ========== Panel 1: Permission Decisions ==========
-        let decisions_height = panel_height(160.0);
-        let decisions_bounds = Bounds::new(bounds.origin.x, y, width, decisions_height);
+        let decisions_bounds = panels[0];
         draw_panel("Permission Decisions", decisions_bounds, cx, |inner, cx| {
             let decisions = [
                 (PermissionDecision::Ask, "Ask every time"),
@@ -721,11 +743,9 @@ impl Storybook {
                 cx.scene.draw_text(short);
             }
         });
-        y += decisions_height + SECTION_GAP;
 
         // ========== Panel 2: Permission Rules ==========
-        let rules_height = panel_height(240.0);
-        let rules_bounds = Bounds::new(bounds.origin.x, y, width, rules_height);
+        let rules_bounds = panels[1];
         draw_panel("Permission Rules", rules_bounds, cx, |inner, cx| {
             let rules = [
                 PermissionRule::new("rule-1", ToolType::Bash, "Bash")
@@ -761,11 +781,9 @@ impl Storybook {
                 );
             }
         });
-        y += rules_height + SECTION_GAP;
 
         // ========== Panel 3: Permission History ==========
-        let history_height = panel_height(280.0);
-        let history_bounds = Bounds::new(bounds.origin.x, y, width, history_height);
+        let history_bounds = panels[2];
         draw_panel("Permission History", history_bounds, cx, |inner, cx| {
             let histories = [
                 PermissionHistory::new("h-1", ToolType::Bash, "Bash", "cargo build --release")
@@ -799,11 +817,9 @@ impl Storybook {
                 );
             }
         });
-        y += history_height + SECTION_GAP;
 
         // ========== Panel 4: Permission Bar Variants ==========
-        let bar_height = panel_height(200.0);
-        let bar_bounds = Bounds::new(bounds.origin.x, y, width, bar_height);
+        let bar_bounds = panels[3];
         draw_panel("Permission Bar Variants", bar_bounds, cx, |inner, cx| {
             // Standard permission bar
             let mut bar1 = PermissionBar::new("Bash wants to execute: cargo test");
@@ -836,11 +852,9 @@ impl Storybook {
                 cx,
             );
         });
-        y += bar_height + SECTION_GAP;
 
         // ========== Panel 5: Permission Statistics ==========
-        let stats_height = panel_height(140.0);
-        let stats_bounds = Bounds::new(bounds.origin.x, y, width, stats_height);
+        let stats_bounds = panels[4];
         draw_panel("Permission Statistics", stats_bounds, cx, |inner, cx| {
             let stats = [
                 ("Total Requests", "247", theme::text::PRIMARY),
@@ -900,12 +914,25 @@ impl Storybook {
     }
 
     pub(crate) fn paint_apm_metrics(&mut self, bounds: Bounds, cx: &mut PaintContext) {
-        let width = bounds.size.width;
-        let mut y = bounds.origin.y;
+        let gauge_height = panel_height(200.0);
+        let rows_height = panel_height(220.0);
+        let comparison_height = panel_height(280.0);
+        let leaderboard_height = panel_height(320.0);
+        let trends_height = panel_height(200.0);
+
+        let panels = panel_stack(
+            bounds,
+            &[
+                gauge_height,
+                rows_height,
+                comparison_height,
+                leaderboard_height,
+                trends_height,
+            ],
+        );
 
         // ========== Panel 1: APM Gauge Variations ==========
-        let gauge_height = panel_height(200.0);
-        let gauge_bounds = Bounds::new(bounds.origin.x, y, width, gauge_height);
+        let gauge_bounds = panels[0];
         draw_panel("APM Gauge Variations", gauge_bounds, cx, |inner, cx| {
             let apms = [
                 (0.0, "Idle"),
@@ -956,11 +983,9 @@ impl Storybook {
                 cx.scene.draw_text(tier_text);
             }
         });
-        y += gauge_height + SECTION_GAP;
 
         // ========== Panel 2: APM Session Rows ==========
-        let rows_height = panel_height(220.0);
-        let rows_bounds = Bounds::new(bounds.origin.x, y, width, rows_height);
+        let rows_bounds = panels[1];
         draw_panel("APM Session Rows", rows_bounds, cx, |inner, cx| {
             let sessions = [
                 ApmSessionData::new("sess-1", "Build feature authentication", 92.0)
@@ -994,11 +1019,9 @@ impl Storybook {
                 );
             }
         });
-        y += rows_height + SECTION_GAP;
 
         // ========== Panel 3: Session Comparison ==========
-        let comparison_height = panel_height(280.0);
-        let comparison_bounds = Bounds::new(bounds.origin.x, y, width, comparison_height);
+        let comparison_bounds = panels[2];
         draw_panel("Session Comparison", comparison_bounds, cx, |inner, cx| {
             let session_a = ComparisonSession::new("sess-a", "Monday Session", 68.5)
                 .messages(120)
@@ -1021,11 +1044,9 @@ impl Storybook {
                 cx,
             );
         });
-        y += comparison_height + SECTION_GAP;
 
         // ========== Panel 4: APM Leaderboard ==========
-        let leaderboard_height = panel_height(320.0);
-        let leaderboard_bounds = Bounds::new(bounds.origin.x, y, width, leaderboard_height);
+        let leaderboard_bounds = panels[3];
         draw_panel("APM Leaderboard", leaderboard_bounds, cx, |inner, cx| {
             let entries = vec![
                 LeaderboardEntry::new("1", "Implement OAuth2 flow", 98.5)
@@ -1067,11 +1088,9 @@ impl Storybook {
                 cx,
             );
         });
-        y += leaderboard_height + SECTION_GAP;
 
         // ========== Panel 5: APM Trends Summary ==========
-        let trends_height = panel_height(200.0);
-        let trends_bounds = Bounds::new(bounds.origin.x, y, width, trends_height);
+        let trends_bounds = panels[4];
         draw_panel("APM Trends Summary", trends_bounds, cx, |inner, cx| {
             let metrics = [
                 ("Avg APM", "72.4", "+5.2%", Hsla::new(120.0, 0.7, 0.45, 1.0)),
@@ -1170,12 +1189,25 @@ impl Storybook {
     }
 
     pub(crate) fn paint_wallet_flows(&mut self, bounds: Bounds, cx: &mut PaintContext) {
-        let width = bounds.size.width;
-        let mut y = bounds.origin.y;
+        let mnemonic_height = panel_height(260.0);
+        let address_height = panel_height(180.0);
+        let tx_height = panel_height(280.0);
+        let send_height = panel_height(360.0);
+        let receive_height = panel_height(420.0);
+
+        let panels = panel_stack(
+            bounds,
+            &[
+                mnemonic_height,
+                address_height,
+                tx_height,
+                send_height,
+                receive_height,
+            ],
+        );
 
         // ========== Panel 1: Mnemonic Display ==========
-        let mnemonic_height = panel_height(260.0);
-        let mnemonic_bounds = Bounds::new(bounds.origin.x, y, width, mnemonic_height);
+        let mnemonic_bounds = panels[0];
         draw_panel("Mnemonic Display", mnemonic_bounds, cx, |inner, cx| {
             // Sample 12-word mnemonic
             let words = vec![
@@ -1204,11 +1236,9 @@ impl Storybook {
                 cx,
             );
         });
-        y += mnemonic_height + SECTION_GAP;
 
         // ========== Panel 2: Address Cards ==========
-        let address_height = panel_height(180.0);
-        let address_bounds = Bounds::new(bounds.origin.x, y, width, address_height);
+        let address_bounds = panels[1];
         draw_panel("Address Cards", address_bounds, cx, |inner, cx| {
             // Bitcoin address
             let mut btc_card = AddressCard::new(
@@ -1240,11 +1270,9 @@ impl Storybook {
                 cx,
             );
         });
-        y += address_height + SECTION_GAP;
 
         // ========== Panel 3: Transaction History ==========
-        let tx_height = panel_height(280.0);
-        let tx_bounds = Bounds::new(bounds.origin.x, y, width, tx_height);
+        let tx_bounds = panels[2];
         draw_panel("Transaction History", tx_bounds, cx, |inner, cx| {
             let transactions = [
                 TransactionInfo::new("tx-1", 150000, TransactionDirection::Incoming)
@@ -1276,11 +1304,9 @@ impl Storybook {
                 );
             }
         });
-        y += tx_height + SECTION_GAP;
 
         // ========== Panel 4: Send Flow ==========
-        let send_height = panel_height(360.0);
-        let send_bounds = Bounds::new(bounds.origin.x, y, width, send_height);
+        let send_bounds = panels[3];
         draw_panel("Send Flow Wizard", send_bounds, cx, |inner, cx| {
             let mut send_flow = SendFlow::new()
                 .step(SendStep::Review)
@@ -1297,11 +1323,9 @@ impl Storybook {
                 cx,
             );
         });
-        y += send_height + SECTION_GAP;
 
         // ========== Panel 5: Receive Flow ==========
-        let receive_height = panel_height(420.0);
-        let receive_bounds = Bounds::new(bounds.origin.x, y, width, receive_height);
+        let receive_bounds = panels[4];
         draw_panel("Receive Flow Wizard", receive_bounds, cx, |inner, cx| {
             let mut receive_flow = ReceiveFlow::new()
                 .step(ReceiveStep::ShowInvoice)
@@ -1322,12 +1346,18 @@ impl Storybook {
     }
 
     pub(crate) fn paint_gitafter_flows(&mut self, bounds: Bounds, cx: &mut PaintContext) {
-        let width = bounds.size.width;
-        let mut y = bounds.origin.y;
+        let repo_height = panel_height(240.0);
+        let issue_height = panel_height(320.0);
+        let pr_height = panel_height(280.0);
+        let labels_height = panel_height(200.0);
+
+        let panels = panel_stack(
+            bounds,
+            &[repo_height, issue_height, pr_height, labels_height],
+        );
 
         // ========== Panel 1: Repository Cards ==========
-        let repo_height = panel_height(240.0);
-        let repo_bounds = Bounds::new(bounds.origin.x, y, width, repo_height);
+        let repo_bounds = panels[0];
         draw_panel("Repository Cards", repo_bounds, cx, |inner, cx| {
             let repos = [
                 RepoInfo::new("repo-1", "openagents")
@@ -1361,11 +1391,9 @@ impl Storybook {
                 );
             }
         });
-        y += repo_height + SECTION_GAP;
 
         // ========== Panel 2: Issue List ==========
-        let issue_height = panel_height(320.0);
-        let issue_bounds = Bounds::new(bounds.origin.x, y, width, issue_height);
+        let issue_bounds = panels[1];
         draw_panel("Issue List with Bounties", issue_bounds, cx, |inner, cx| {
             let issues = [
                 IssueInfo::new("issue-1", 42, "Memory leak in event processing loop")
@@ -1405,11 +1433,9 @@ impl Storybook {
                 );
             }
         });
-        y += issue_height + SECTION_GAP;
 
         // ========== Panel 3: PR Timeline ==========
-        let pr_height = panel_height(280.0);
-        let pr_bounds = Bounds::new(bounds.origin.x, y, width, pr_height);
+        let pr_bounds = panels[2];
         draw_panel("PR Timeline", pr_bounds, cx, |inner, cx| {
             let events = [
                 PrEvent::new("ev-1", PrEventType::Commit, "alice")
@@ -1441,11 +1467,9 @@ impl Storybook {
                 );
             }
         });
-        y += pr_height + SECTION_GAP;
 
         // ========== Panel 4: Issue Labels & Status Variants ==========
-        let labels_height = panel_height(200.0);
-        let labels_bounds = Bounds::new(bounds.origin.x, y, width, labels_height);
+        let labels_bounds = panels[3];
         draw_panel(
             "Issue Labels & PR Events",
             labels_bounds,
@@ -1539,12 +1563,18 @@ impl Storybook {
     }
 
     pub(crate) fn paint_marketplace_flows(&mut self, bounds: Bounds, cx: &mut PaintContext) {
-        let width = bounds.size.width;
-        let mut y = bounds.origin.y;
+        let provider_height = panel_height(260.0);
+        let skills_height = panel_height(280.0);
+        let data_height = panel_height(280.0);
+        let ref_height = panel_height(180.0);
+
+        let panels = panel_stack(
+            bounds,
+            &[provider_height, skills_height, data_height, ref_height],
+        );
 
         // ========== Panel 1: Compute Providers ==========
-        let provider_height = panel_height(260.0);
-        let provider_bounds = Bounds::new(bounds.origin.x, y, width, provider_height);
+        let provider_bounds = panels[0];
         draw_panel("Compute Providers", provider_bounds, cx, |inner, cx| {
             let providers = [
                 ProviderInfo::new(
@@ -1578,11 +1608,9 @@ impl Storybook {
                 );
             }
         });
-        y += provider_height + SECTION_GAP;
 
         // ========== Panel 2: Skills Marketplace ==========
-        let skills_height = panel_height(280.0);
-        let skills_bounds = Bounds::new(bounds.origin.x, y, width, skills_height);
+        let skills_bounds = panels[1];
         draw_panel("Skills Marketplace", skills_bounds, cx, |inner, cx| {
             let skills = [
                 SkillInfo::new(
@@ -1623,11 +1651,9 @@ impl Storybook {
                 );
             }
         });
-        y += skills_height + SECTION_GAP;
 
         // ========== Panel 3: Data Marketplace ==========
-        let data_height = panel_height(280.0);
-        let data_bounds = Bounds::new(bounds.origin.x, y, width, data_height);
+        let data_bounds = panels[2];
         draw_panel("Data Marketplace", data_bounds, cx, |inner, cx| {
             let datasets = [
                 DatasetInfo::new(
@@ -1670,11 +1696,9 @@ impl Storybook {
                 );
             }
         });
-        y += data_height + SECTION_GAP;
 
         // ========== Panel 4: Categories & Formats Reference ==========
-        let ref_height = panel_height(180.0);
-        let ref_bounds = Bounds::new(bounds.origin.x, y, width, ref_height);
+        let ref_bounds = panels[3];
         draw_panel("Categories & Formats", ref_bounds, cx, |inner, cx| {
             // Skill categories
             let mut cat_x = inner.origin.x;
@@ -1790,12 +1814,31 @@ impl Storybook {
     }
 
     pub(crate) fn paint_nostr_flows(&mut self, bounds: Bounds, cx: &mut PaintContext) {
-        let width = bounds.size.width;
-        let mut y = bounds.origin.y;
+        let contacts_height = panel_height(320.0);
+        let dm_height = panel_height(380.0);
+        let zaps_height = panel_height(280.0);
+        let relay_mgr_height = panel_height(420.0);
+        let dm_thread_height = panel_height(450.0);
+        let zap_flow_height = panel_height(420.0);
+        let event_inspector_height = panel_height(400.0);
+        let ref_height = panel_height(180.0);
+
+        let panels = panel_stack(
+            bounds,
+            &[
+                contacts_height,
+                dm_height,
+                zaps_height,
+                relay_mgr_height,
+                dm_thread_height,
+                zap_flow_height,
+                event_inspector_height,
+                ref_height,
+            ],
+        );
 
         // ========== Panel 1: Contact Cards ==========
-        let contacts_height = panel_height(320.0);
-        let contacts_bounds = Bounds::new(bounds.origin.x, y, width, contacts_height);
+        let contacts_bounds = panels[0];
         draw_panel("Contact Management", contacts_bounds, cx, |inner, cx| {
             let contacts = [
                 ContactInfo::new("npub1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq")
@@ -1832,11 +1875,9 @@ impl Storybook {
                 );
             }
         });
-        y += contacts_height + SECTION_GAP;
 
         // ========== Panel 2: DM Conversations ==========
-        let dm_height = panel_height(380.0);
-        let dm_bounds = Bounds::new(bounds.origin.x, y, width, dm_height);
+        let dm_bounds = panels[1];
         draw_panel("Direct Messages", dm_bounds, cx, |inner, cx| {
             let messages = [
                 DmMessage::new(
@@ -1889,11 +1930,9 @@ impl Storybook {
                 );
             }
         });
-        y += dm_height + SECTION_GAP;
 
         // ========== Panel 3: Zaps & Lightning ==========
-        let zaps_height = panel_height(280.0);
-        let zaps_bounds = Bounds::new(bounds.origin.x, y, width, zaps_height);
+        let zaps_bounds = panels[2];
         draw_panel("Zaps & Lightning", zaps_bounds, cx, |inner, cx| {
             let zaps = [
                 ZapInfo::new("z1", 21000, "npub1alice...")
@@ -1920,11 +1959,9 @@ impl Storybook {
                 );
             }
         });
-        y += zaps_height + SECTION_GAP;
 
         // ========== Panel 4: Relay Manager Organism ==========
-        let relay_mgr_height = panel_height(420.0);
-        let relay_mgr_bounds = Bounds::new(bounds.origin.x, y, width, relay_mgr_height);
+        let relay_mgr_bounds = panels[3];
         draw_panel(
             "Relay Manager (Organism)",
             relay_mgr_bounds,
@@ -1948,11 +1985,9 @@ impl Storybook {
                 );
             },
         );
-        y += relay_mgr_height + SECTION_GAP;
 
         // ========== Panel 5: DM Thread Organism ==========
-        let dm_thread_height = panel_height(450.0);
-        let dm_thread_bounds = Bounds::new(bounds.origin.x, y, width, dm_thread_height);
+        let dm_thread_bounds = panels[4];
         draw_panel("DM Thread (Organism)", dm_thread_bounds, cx, |inner, cx| {
             let messages = vec![
                 DmMessage::new(
@@ -1994,11 +2029,9 @@ impl Storybook {
                 cx,
             );
         });
-        y += dm_thread_height + SECTION_GAP;
 
         // ========== Panel 6: Zap Flow Organism ==========
-        let zap_flow_height = panel_height(420.0);
-        let zap_flow_bounds = Bounds::new(bounds.origin.x, y, width, zap_flow_height);
+        let zap_flow_bounds = panels[5];
         draw_panel(
             "Zap Flow Wizard (Organism)",
             zap_flow_bounds,
@@ -2016,11 +2049,9 @@ impl Storybook {
                 );
             },
         );
-        y += zap_flow_height + SECTION_GAP;
 
         // ========== Panel 7: Event Inspector Organism ==========
-        let event_inspector_height = panel_height(400.0);
-        let event_inspector_bounds = Bounds::new(bounds.origin.x, y, width, event_inspector_height);
+        let event_inspector_bounds = panels[6];
         draw_panel(
             "Event Inspector (Organism)",
             event_inspector_bounds,
@@ -2053,12 +2084,10 @@ impl Storybook {
                 );
             },
         );
-        y += event_inspector_height + SECTION_GAP;
 
         // ========== Panel 8: Status Reference ==========
-        let ref_height = panel_height(180.0);
-        let ref_bounds = Bounds::new(bounds.origin.x, y, width, ref_height);
-        draw_panel("Nostr Status Reference", ref_bounds, cx, |inner, cx| {
+        let nostr_ref_bounds = panels[7];
+        draw_panel("Nostr Status Reference", nostr_ref_bounds, cx, |inner, cx| {
             // Verification statuses
             let mut ver_x = inner.origin.x;
             let verifications = [
@@ -2145,12 +2174,29 @@ impl Storybook {
     }
 
     pub(crate) fn paint_sovereign_agent_flows(&mut self, bounds: Bounds, cx: &mut PaintContext) {
-        let width = bounds.size.width;
-        let mut y = bounds.origin.y;
+        let profiles_height = panel_height(340.0);
+        let signing_height = panel_height(400.0);
+        let matrix_height = panel_height(280.0);
+        let inspector_height = panel_height(450.0);
+        let key_mgr_height = panel_height(450.0);
+        let schedule_height = panel_height(400.0);
+        let agent_ref_height = panel_height(180.0);
+
+        let panels = panel_stack(
+            bounds,
+            &[
+                profiles_height,
+                signing_height,
+                matrix_height,
+                inspector_height,
+                key_mgr_height,
+                schedule_height,
+                agent_ref_height,
+            ],
+        );
 
         // ========== Panel 1: Agent Profiles ==========
-        let profiles_height = panel_height(340.0);
-        let profiles_bounds = Bounds::new(bounds.origin.x, y, width, profiles_height);
+        let profiles_bounds = panels[0];
         draw_panel(
             "Sovereign Agent Profiles",
             profiles_bounds,
@@ -2195,11 +2241,9 @@ impl Storybook {
                 }
             },
         );
-        y += profiles_height + SECTION_GAP;
 
         // ========== Panel 2: Signing Requests (FROSTR) ==========
-        let signing_height = panel_height(400.0);
-        let signing_bounds = Bounds::new(bounds.origin.x, y, width, signing_height);
+        let signing_bounds = panels[1];
         draw_panel(
             "Threshold Signing Requests",
             signing_bounds,
@@ -2261,11 +2305,9 @@ impl Storybook {
                 }
             },
         );
-        y += signing_height + SECTION_GAP;
 
         // ========== Panel 3: Agent Status Matrix ==========
-        let matrix_height = panel_height(280.0);
-        let matrix_bounds = Bounds::new(bounds.origin.x, y, width, matrix_height);
+        let matrix_bounds = panels[2];
         draw_panel("Agent Status Overview", matrix_bounds, cx, |inner, cx| {
             // Status summary header
             let statuses = [
@@ -2358,11 +2400,9 @@ impl Storybook {
             );
             cx.scene.draw_text(pending_run);
         });
-        y += matrix_height + SECTION_GAP;
 
         // ========== Panel 4: Agent State Inspector Organism ==========
-        let inspector_height = panel_height(450.0);
-        let inspector_bounds = Bounds::new(bounds.origin.x, y, width, inspector_height);
+        let inspector_bounds = panels[3];
         draw_panel(
             "Agent State Inspector (Organism)",
             inspector_bounds,
@@ -2411,11 +2451,9 @@ impl Storybook {
                 );
             },
         );
-        y += inspector_height + SECTION_GAP;
 
         // ========== Panel 5: Threshold Key Manager Organism ==========
-        let key_mgr_height = panel_height(450.0);
-        let key_mgr_bounds = Bounds::new(bounds.origin.x, y, width, key_mgr_height);
+        let key_mgr_bounds = panels[4];
         draw_panel(
             "FROSTR Key Manager (Organism)",
             key_mgr_bounds,
@@ -2456,11 +2494,9 @@ impl Storybook {
                 );
             },
         );
-        y += key_mgr_height + SECTION_GAP;
 
         // ========== Panel 6: Schedule Configuration Organism ==========
-        let schedule_height = panel_height(400.0);
-        let schedule_bounds = Bounds::new(bounds.origin.x, y, width, schedule_height);
+        let schedule_bounds = panels[5];
         draw_panel(
             "Schedule Configuration (Organism)",
             schedule_bounds,
@@ -2485,12 +2521,10 @@ impl Storybook {
                 );
             },
         );
-        y += schedule_height + SECTION_GAP;
 
         // ========== Panel 7: Type & Status Reference ==========
-        let ref_height = panel_height(180.0);
-        let ref_bounds = Bounds::new(bounds.origin.x, y, width, ref_height);
-        draw_panel("Agent Types & Statuses", ref_bounds, cx, |inner, cx| {
+        let agent_ref_bounds = panels[6];
+        draw_panel("Agent Types & Statuses", agent_ref_bounds, cx, |inner, cx| {
             // Agent types
             let mut type_x = inner.origin.x;
             let types = [AgentType::Human, AgentType::Sovereign, AgentType::Custodial];
