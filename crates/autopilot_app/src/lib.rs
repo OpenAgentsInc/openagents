@@ -158,7 +158,11 @@ impl SessionId {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum UserAction {
-    Message { session_id: SessionId, text: String },
+    Message {
+        session_id: SessionId,
+        text: String,
+        model: Option<String>,
+    },
     Command { session_id: SessionId, name: String, args: Vec<String> },
 }
 

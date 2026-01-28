@@ -556,11 +556,12 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
             tokio::task::spawn_blocking(move || {
                 while let Ok(action) = action_rx.recv() {
                     workspace_for_actions.dispatch(action.clone());
-                    if let UserAction::Message { text, .. } = action {
+                    if let UserAction::Message { text, model, .. } = action {
                         let client = client_for_actions.clone();
                         let thread_id = thread_id_for_actions.clone();
                         let proxy = proxy_actions.clone();
                         let cwd = cwd_for_actions.clone();
+                        let model = model.clone();
                         handle.spawn(async move {
                             let thread_id = thread_id.lock().await.clone();
                             let Some(thread_id) = thread_id else {
@@ -577,7 +578,7 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
                             let params = TurnStartParams {
                                 thread_id,
                                 input: vec![UserInput::Text { text }],
-                                model: None,
+                                model,
                                 effort: None,
                                 summary: None,
                                 approval_policy: Some(AskForApproval::Never),

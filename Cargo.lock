@@ -1100,6 +1100,7 @@ version = "0.1.0"
 dependencies = [
  "autopilot_app",
  "serde_json",
+ "taffy",
  "wgpui",
 ]
 

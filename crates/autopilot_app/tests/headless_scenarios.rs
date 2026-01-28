@@ -13,6 +13,7 @@ async fn scenario_open_workspace_and_send_message() {
     workspace.dispatch(UserAction::Message {
         session_id: session.session_id(),
         text: "ping".to_string(),
+        model: None,
     });
 
     let mut collected = Vec::new();
