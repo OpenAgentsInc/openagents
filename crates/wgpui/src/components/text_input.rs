@@ -96,6 +96,15 @@ impl TextInput {
         visual_lines
     }
 
+    fn base_line_top(&self, bounds: Bounds, line_height: f32, line_count: usize) -> f32 {
+        let inner_height = bounds.size.height - self.padding.1 * 2.0;
+        if line_count <= 1 {
+            bounds.origin.y + self.padding.1 + (inner_height - line_height).max(0.0) * 0.5
+        } else {
+            bounds.origin.y + self.padding.1
+        }
+    }
+
     pub fn with_id(mut self, id: ComponentId) -> Self {
         self.id = Some(id);
         self
@@ -413,11 +422,9 @@ impl Component for TextInput {
         // Render each visual line (with wrapping)
         if !display_text.is_empty() {
             let visual_lines = self.wrap_text(display_text);
+            let base_line_top = self.base_line_top(bounds, line_height, visual_lines.len().max(1));
             for (i, line) in visual_lines.iter().enumerate() {
-                let line_y = bounds.origin.y
-                    + self.padding.1
-                    + line_height * i as f32
-                    + self.font_size * 0.15;
+                let line_y = base_line_top + line_height * i as f32 + self.font_size * 0.15;
                 if !line.is_empty() {
                     let text_run = if self.mono {
                         cx.text.layout_styled_mono(
@@ -449,7 +456,10 @@ impl Component for TextInput {
                 let cursor_line = self.cursor_line();
                 let cursor_col = self.cursor_visual_col();
                 let cursor_x = text_x + cursor_col as f32 * self.font_size * 0.6;
-                let cursor_y = bounds.origin.y + self.padding.1 + line_height * cursor_line as f32;
+                let visual_lines = self.wrap_text(&self.value);
+                let base_line_top =
+                    self.base_line_top(bounds, line_height, visual_lines.len().max(1));
+                let cursor_y = base_line_top + line_height * cursor_line as f32;
                 let cursor_height = line_height;
 
                 cx.scene.draw_quad(
@@ -479,7 +489,9 @@ impl Component for TextInput {
                         self.reset_cursor_blink();
 
                         let text_x = bounds.origin.x + self.padding.0;
-                        let text_y = bounds.origin.y + self.padding.1;
+                        let line_height = self.font_size * 1.4;
+                        let line_count = self.wrap_text(&self.value).len().max(1);
+                        let text_y = self.base_line_top(bounds, line_height, line_count);
                         self.cursor_pos = self.char_index_at_xy(*x, *y, text_x, text_y);
 
                         if let Some(id) = self.id {

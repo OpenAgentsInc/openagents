@@ -4,6 +4,9 @@ use std::path::PathBuf;
 use std::rc::Rc;
 
 use autopilot_app::{AppEvent, SessionId, UserAction, WorkspaceId};
+use bip39::Mnemonic;
+use nostr::derive_keypair;
+use rand::RngCore;
 use serde_json::Value;
 use taffy::prelude::{AlignItems, JustifyContent};
 use wgpui::components::EventContext;
@@ -269,6 +272,23 @@ fn message_markdown_view(document: MarkdownDocument) -> MarkdownView {
         .copy_button_on_hover(false)
 }
 
+fn generate_nip06_keypair() -> Result<(String, String), String> {
+    let mut entropy = [0u8; 32];
+    rand::rngs::OsRng.fill_bytes(&mut entropy);
+    let mnemonic = Mnemonic::from_entropy(&entropy)
+        .map_err(|e| format!("mnemonic error: {e}"))?
+        .to_string();
+    let keypair =
+        derive_keypair(&mnemonic).map_err(|e| format!("keypair derivation error: {e}"))?;
+    let npub = keypair
+        .npub()
+        .map_err(|e| format!("npub encoding error: {e}"))?;
+    let nsec = keypair
+        .nsec()
+        .map_err(|e| format!("nsec encoding error: {e}"))?;
+    Ok((npub, nsec))
+}
+
 pub struct DesktopRoot {
     view_model: AppViewModel,
     event_context: EventContext,
@@ -296,6 +316,12 @@ pub struct MinimalRoot {
     copy_button: Button,
     copy_bounds: Bounds,
     pending_copy: Rc<RefCell<bool>>,
+    keygen_button: Button,
+    keygen_bounds: Bounds,
+    pending_keygen: Rc<RefCell<bool>>,
+    nostr_npub: Option<String>,
+    nostr_nsec: Option<String>,
+    nostr_error: Option<String>,
     formatted_thread: ThreadView,
     formatted_thread_bounds: Bounds,
     formatted_message_streams: HashMap<String, StreamingMarkdown>,
@@ -315,6 +341,7 @@ pub struct MinimalRoot {
     event_scroll: ScrollView,
     event_scroll_bounds: Bounds,
     thread_model: Option<String>,
+    thread_id: Option<String>,
     raw_events_visible: bool,
 }
 
@@ -339,6 +366,17 @@ impl MinimalRoot {
             .corner_radius(6.0)
             .on_click(move || {
                 *pending_copy_click.borrow_mut() = true;
+            });
+
+        let pending_keygen = Rc::new(RefCell::new(false));
+        let pending_keygen_click = pending_keygen.clone();
+        let keygen_button = Button::new("Generate NIP-06 keypair")
+            .variant(ButtonVariant::Secondary)
+            .font_size(theme::font_size::XS)
+            .padding(12.0, 6.0)
+            .corner_radius(6.0)
+            .on_click(move || {
+                *pending_keygen_click.borrow_mut() = true;
             });
 
         let formatted_thread = ThreadView::new().item_spacing(8.0);
@@ -382,6 +420,12 @@ impl MinimalRoot {
             copy_button,
             copy_bounds: Bounds::ZERO,
             pending_copy,
+            keygen_button,
+            keygen_bounds: Bounds::ZERO,
+            pending_keygen,
+            nostr_npub: None,
+            nostr_nsec: None,
+            nostr_error: None,
             formatted_thread,
             formatted_thread_bounds: Bounds::ZERO,
             formatted_message_streams: HashMap::new(),
@@ -401,6 +445,7 @@ impl MinimalRoot {
             event_scroll,
             event_scroll_bounds: Bounds::ZERO,
             thread_model: Some(DEFAULT_THREAD_MODEL.to_string()),
+            thread_id: None,
             raw_events_visible: false,
         }
     }
@@ -415,10 +460,31 @@ impl MinimalRoot {
                     if let Some(method) = value.get("method").and_then(|m| m.as_str())
                         && method == "thread/started"
                     {
+                        if let Some(thread_id) = value
+                            .get("params")
+                            .and_then(|params| params.get("threadId"))
+                            .and_then(|id| id.as_str())
+                            .or_else(|| {
+                                value
+                                    .get("params")
+                                    .and_then(|params| params.get("thread"))
+                                    .and_then(|thread| thread.get("id"))
+                                    .and_then(|id| id.as_str())
+                            })
+                        {
+                            self.thread_id = Some(thread_id.to_string());
+                        }
                         if let Some(model) = value
                             .get("params")
                             .and_then(|params| params.get("model"))
                             .and_then(|m| m.as_str())
+                            .or_else(|| {
+                                value
+                                    .get("params")
+                                    .and_then(|params| params.get("thread"))
+                                    .and_then(|thread| thread.get("model"))
+                                    .and_then(|m| m.as_str())
+                            })
                         {
                             self.thread_model = Some(model.to_string());
                             self.selected_model = model.to_string();
@@ -879,6 +945,12 @@ impl MinimalRoot {
             false
         };
 
+        let keygen_handled = matches!(
+            self.keygen_button
+                .event(event, self.keygen_bounds, &mut self.event_context),
+            EventResult::Handled
+        );
+
         let copy_handled = if self.raw_events_visible {
             matches!(
                 self.copy_button
@@ -935,6 +1007,28 @@ impl MinimalRoot {
 
         if let Some(model) = pending_models.last() {
             self.selected_model = model.clone();
+        }
+
+        let should_generate = {
+            let mut pending = self.pending_keygen.borrow_mut();
+            let value = *pending;
+            *pending = false;
+            value
+        };
+
+        if should_generate {
+            match generate_nip06_keypair() {
+                Ok((npub, nsec)) => {
+                    self.nostr_npub = Some(npub);
+                    self.nostr_nsec = Some(nsec);
+                    self.nostr_error = None;
+                }
+                Err(err) => {
+                    self.nostr_error = Some(err);
+                    self.nostr_npub = None;
+                    self.nostr_nsec = None;
+                }
+            }
         }
 
         let should_copy = {
@@ -999,12 +1093,15 @@ impl MinimalRoot {
             || input_handled
             || scroll_handled
             || dropdown_handled
+            || keygen_handled
             || copy_handled
             || formatted_handled
     }
 
     pub fn cursor(&self) -> Cursor {
         if self.submit_button.is_hovered() && !self.submit_button.is_disabled() {
+            Cursor::Pointer
+        } else if self.keygen_button.is_hovered() {
             Cursor::Pointer
         } else if self.copy_button.is_hovered() && !self.copy_button.is_disabled() {
             Cursor::Pointer
@@ -1092,18 +1189,31 @@ fn paint_formatted_feed(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintCo
     );
 
     let model = root.thread_model.as_deref().unwrap_or(DEFAULT_THREAD_MODEL);
-    let thread_model_bounds = Bounds::new(
+    let thread_id = root.thread_id.as_deref().unwrap_or("unknown-thread");
+    let thread_line_bounds = Bounds::new(
         header_bounds.origin.x,
         header_bounds.origin.y + header_height + 6.0,
         header_bounds.size.width,
         18.0,
     );
-    Text::new(&format!("Thread initialized with {model}"))
+    Text::new(&format!("Initialized thread {thread_id}"))
+        .font_size(theme::font_size::XS)
+        .italic()
+        .color(theme::text::MUTED)
+        .paint(thread_line_bounds, cx);
+
+    let model_line_bounds = Bounds::new(
+        header_bounds.origin.x,
+        thread_line_bounds.origin.y + 18.0,
+        header_bounds.size.width,
+        18.0,
+    );
+    Text::new(&format!("Model: {model}"))
         .font_size(theme::font_size::XS)
         .color(theme::text::MUTED)
-        .paint(thread_model_bounds, cx);
+        .paint(model_line_bounds, cx);
 
-    let mut description_top = thread_model_bounds.origin.y + 22.0;
+    let mut description_top = model_line_bounds.origin.y + 18.0;
     let mut dropdown_bounds = Bounds::ZERO;
 
     if SHOW_MODEL_DROPDOWN {
@@ -1166,12 +1276,7 @@ fn paint_formatted_feed(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintCo
     );
     root.formatted_thread_bounds = feed_bounds;
 
-    if root.formatted_thread.entry_count() == 0 {
-        Text::new("No formatted events yet.")
-            .font_size(theme::font_size::SM)
-            .color(theme::text::MUTED)
-            .paint(feed_bounds, cx);
-    } else {
+    if root.formatted_thread.entry_count() != 0 {
         root.formatted_thread.paint(feed_bounds, cx);
     }
 
@@ -1217,20 +1322,98 @@ fn paint_input_bar(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintContext
 }
 
 fn paint_sidebar_contents(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintContext) {
+    let padding = 16.0;
+    let content_width = bounds.size.width - padding * 2.0;
+    let mut y = bounds.origin.y + padding;
+
+    let header_height = 20.0;
+    Text::new("NOSTR KEYS")
+        .font_size(theme::font_size::SM)
+        .bold()
+        .color(theme::text::PRIMARY)
+        .paint(
+            Bounds::new(bounds.origin.x + padding, y, content_width, header_height),
+            cx,
+        );
+    y += header_height + 8.0;
+
+    let button_height = 28.0;
+    let keygen_bounds = Bounds::new(bounds.origin.x + padding, y, content_width, button_height);
+    root.keygen_bounds = keygen_bounds;
+    root.keygen_button.paint(keygen_bounds, cx);
+    y += button_height + 12.0;
+
+    let label_height = 16.0;
+    let value_spacing = 12.0;
+
+    if let Some(npub) = &root.nostr_npub {
+        Text::new("npub")
+            .font_size(theme::font_size::XS)
+            .color(theme::text::MUTED)
+            .paint(
+                Bounds::new(bounds.origin.x + padding, y, content_width, label_height),
+                cx,
+            );
+        y += label_height;
+        let mut npub_text = Text::new(npub)
+            .font_size(theme::font_size::XS)
+            .color(theme::text::PRIMARY);
+        let (_, npub_height) = npub_text.size_hint_with_width(content_width);
+        let npub_height = npub_height.unwrap_or(label_height);
+        npub_text.paint(
+            Bounds::new(bounds.origin.x + padding, y, content_width, npub_height),
+            cx,
+        );
+        y += npub_height + value_spacing;
+
+        Text::new("nsec")
+            .font_size(theme::font_size::XS)
+            .color(theme::text::MUTED)
+            .paint(
+                Bounds::new(bounds.origin.x + padding, y, content_width, label_height),
+                cx,
+            );
+        y += label_height;
+        let mut nsec_text = Text::new(root.nostr_nsec.as_deref().unwrap_or(""))
+            .font_size(theme::font_size::XS)
+            .color(theme::text::PRIMARY);
+        let (_, nsec_height) = nsec_text.size_hint_with_width(content_width);
+        let nsec_height = nsec_height.unwrap_or(label_height);
+        nsec_text.paint(
+            Bounds::new(bounds.origin.x + padding, y, content_width, nsec_height),
+            cx,
+        );
+        y += nsec_height + value_spacing;
+    } else if let Some(err) = &root.nostr_error {
+        let mut err_text = Text::new(err)
+            .font_size(theme::font_size::XS)
+            .color(theme::status::ERROR);
+        let (_, err_height) = err_text.size_hint_with_width(content_width);
+        let err_height = err_height.unwrap_or(label_height);
+        err_text.paint(
+            Bounds::new(bounds.origin.x + padding, y, content_width, err_height),
+            cx,
+        );
+        y += err_height + value_spacing;
+    } else {
+        Text::new("No keypair generated yet.")
+            .font_size(theme::font_size::XS)
+            .color(theme::text::MUTED)
+            .paint(
+                Bounds::new(bounds.origin.x + padding, y, content_width, label_height),
+                cx,
+            );
+        y += label_height + value_spacing;
+    }
+
     if !root.raw_events_visible {
         root.copy_bounds = Bounds::ZERO;
         root.event_scroll_bounds = Bounds::ZERO;
         return;
     }
 
-    let padding = 16.0;
-    let header_height = 20.0;
-    let header_bounds = Bounds::new(
-        bounds.origin.x + padding,
-        bounds.origin.y + padding,
-        bounds.size.width - padding * 2.0,
-        header_height,
-    );
+    y += 8.0;
+    let header_bounds = Bounds::new(bounds.origin.x + padding, y, content_width, header_height);
     let copy_button_width = 68.0;
     let copy_bounds = Bounds::new(
         header_bounds.origin.x + header_bounds.size.width - copy_button_width,
@@ -1261,7 +1444,7 @@ fn paint_sidebar_contents(root: &mut MinimalRoot, bounds: Bounds, cx: &mut Paint
     let feed_bounds = Bounds::new(
         bounds.origin.x + padding,
         feed_top,
-        bounds.size.width - padding * 2.0,
+        content_width,
         feed_height,
     );
 
