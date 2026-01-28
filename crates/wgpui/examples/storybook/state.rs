@@ -7,7 +7,7 @@ use wgpui::components::molecules::{
 use wgpui::components::organisms::{AssistantMessage, PermissionDialog, ThreadControls};
 use wgpui::{
     Animation, Bounds, Component, Easing, EventContext, Hsla, InputEvent, MouseButton,
-    PaintContext, Point, Quad, Text, theme,
+    PaintContext, Point, Quad, Text, layout_header_nav_content, stack_bounds, theme,
 };
 
 use crate::constants::{
@@ -159,26 +159,11 @@ impl Storybook {
     }
 
     fn layout(&self, bounds: Bounds) -> StoryLayout {
-        let header = Bounds::new(
-            bounds.origin.x + MARGIN,
-            bounds.origin.y + MARGIN,
-            (bounds.size.width - MARGIN * 2.0).max(0.0),
-            HEADER_HEIGHT,
-        );
-        let content_height = (bounds.size.height - MARGIN * 2.0 - HEADER_HEIGHT - GAP).max(0.0);
-        let nav = Bounds::new(
-            bounds.origin.x + MARGIN,
-            header.origin.y + header.size.height + GAP,
-            NAV_WIDTH.min((bounds.size.width - MARGIN * 2.0).max(0.0)),
-            content_height,
-        );
-        let content_width = (bounds.size.width - MARGIN * 2.0 - NAV_WIDTH - GAP).max(0.0);
-        let content = Bounds::new(
-            nav.origin.x + nav.size.width + GAP,
-            nav.origin.y,
-            content_width,
-            content_height,
-        );
+        let nav_width = NAV_WIDTH.min((bounds.size.width - MARGIN * 2.0).max(0.0));
+        let layout = layout_header_nav_content(bounds, HEADER_HEIGHT, nav_width, GAP, MARGIN);
+        let header = layout.header;
+        let nav = layout.nav;
+        let content = layout.content;
         StoryLayout {
             header,
             nav,
@@ -395,15 +380,7 @@ impl Storybook {
                 .with_background(theme::bg::SURFACE)
                 .with_border(theme::border::DEFAULT, 1.0),
         );
-
-        let pad = PANEL_PADDING;
-        for (i, label) in self.nav_items.iter().enumerate() {
-            let item_bounds = Bounds::new(
-                bounds.origin.x + pad,
-                bounds.origin.y + pad + i as f32 * NAV_ITEM_HEIGHT,
-                bounds.size.width - pad * 2.0,
-                NAV_ITEM_HEIGHT,
-            );
+        for (i, item_bounds) in self.nav_item_bounds(bounds).iter().enumerate() {
             let is_active = self.active_section == i;
             let is_hover = self.hover_nav == Some(i);
             let bg = if is_active {
@@ -416,10 +393,10 @@ impl Storybook {
 
             if bg.a > 0.0 {
                 cx.scene
-                    .draw_quad(Quad::new(item_bounds).with_background(bg));
+                    .draw_quad(Quad::new(*item_bounds).with_background(bg));
             }
 
-            let mut text = Text::new(*label)
+            let mut text = Text::new(self.nav_items[i])
                 .font_size(theme::font_size::SM)
                 .color(if is_active {
                     theme::text::PRIMARY
@@ -439,16 +416,16 @@ impl Storybook {
     }
 
     fn handle_nav_event(&mut self, event: &InputEvent, bounds: Bounds) -> bool {
-        let pad = PANEL_PADDING;
+        let item_bounds = self.nav_item_bounds(bounds);
         match event {
             InputEvent::MouseMove { x, y } => {
                 let mut hover = None;
-                if bounds.contains(Point::new(*x, *y)) {
-                    let rel_y = *y - bounds.origin.y - pad;
-                    if rel_y >= 0.0 {
-                        let idx = (rel_y / NAV_ITEM_HEIGHT) as usize;
-                        if idx < self.nav_items.len() {
+                let cursor = Point::new(*x, *y);
+                if bounds.contains(cursor) {
+                    for (idx, item) in item_bounds.iter().enumerate() {
+                        if item.contains(cursor) {
                             hover = Some(idx);
+                            break;
                         }
                     }
                 }
@@ -458,13 +435,14 @@ impl Storybook {
                 }
             }
             InputEvent::MouseDown { button, x, y, .. } => {
-                if *button == MouseButton::Left && bounds.contains(Point::new(*x, *y)) {
-                    let rel_y = *y - bounds.origin.y - pad;
-                    if rel_y >= 0.0 {
-                        let idx = (rel_y / NAV_ITEM_HEIGHT) as usize;
-                        if idx < self.nav_items.len() {
-                            self.active_section = idx;
-                            return true;
+                if *button == MouseButton::Left {
+                    let cursor = Point::new(*x, *y);
+                    if bounds.contains(cursor) {
+                        for (idx, item) in item_bounds.iter().enumerate() {
+                            if item.contains(cursor) {
+                                self.active_section = idx;
+                                return true;
+                            }
                         }
                     }
                 }
@@ -472,5 +450,18 @@ impl Storybook {
             _ => {}
         }
         false
+    }
+
+    fn nav_item_bounds(&self, bounds: Bounds) -> Vec<Bounds> {
+        let pad = PANEL_PADDING;
+        let inner = Bounds::new(
+            bounds.origin.x + pad,
+            bounds.origin.y + pad,
+            (bounds.size.width - pad * 2.0).max(0.0),
+            (bounds.size.height - pad * 2.0).max(0.0),
+        );
+
+        let heights = vec![NAV_ITEM_HEIGHT; self.nav_items.len()];
+        stack_bounds(inner, &heights, 0.0)
     }
 }
