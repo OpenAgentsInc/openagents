@@ -294,9 +294,14 @@ impl MinimalRoot {
                 } else {
                     self.subtitle = "No active session yet.".to_string();
                 }
+                self.submit_button
+                    .set_disabled(self.input.get_value().trim().is_empty());
                 return true;
             }
         }
+
+        self.submit_button
+            .set_disabled(self.input.get_value().trim().is_empty());
 
         handled || submit_handled || input_handled
     }
@@ -463,7 +468,6 @@ fn paint_sidebar_contents(root: &mut MinimalRoot, bounds: Bounds, cx: &mut Paint
     );
 
     let font_size = theme::font_size::XS;
-    let line_gap = 4.0;
 
     if root.event_log.is_empty() {
         Text::new("No events yet.")
@@ -473,40 +477,16 @@ fn paint_sidebar_contents(root: &mut MinimalRoot, bounds: Bounds, cx: &mut Paint
         return;
     }
 
-    let mut measured = Vec::new();
-    let mut used_height = 0.0;
-    for line in root.event_log.iter().rev() {
-        let mut text = Text::new(line.as_str())
-            .font_size(font_size)
-            .color(theme::text::MUTED);
-        let (_, height_opt) = text.size_hint_with_width(feed_bounds.size.width);
-        let height = height_opt.unwrap_or(font_size * 1.4).max(font_size * 1.4);
-        let total_height = height + line_gap;
-        if used_height + total_height > feed_bounds.size.height {
-            break;
-        }
-        measured.push((line.clone(), height));
-        used_height += total_height;
+    let mut block = String::new();
+    for line in &root.event_log {
+        block.push_str(line);
+        block.push('\n');
     }
 
-    measured.reverse();
-    let mut y = feed_bounds.origin.y;
-    for (line, height) in measured {
-        let line_bounds = Bounds::new(
-            feed_bounds.origin.x,
-            y,
-            feed_bounds.size.width,
-            height,
-        );
-        Text::new(line.as_str())
-            .font_size(font_size)
-            .color(theme::text::MUTED)
-            .paint(line_bounds, cx);
-        y += height + line_gap;
-        if y > feed_bounds.origin.y + feed_bounds.size.height {
-            break;
-        }
-    }
+    Text::new(block.as_str())
+        .font_size(font_size)
+        .color(theme::text::MUTED)
+        .paint(feed_bounds, cx);
 }
 
 impl DesktopRoot {
