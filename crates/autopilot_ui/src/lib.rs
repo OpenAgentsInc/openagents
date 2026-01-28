@@ -11,7 +11,7 @@ use rand::RngCore;
 use serde_json::Value;
 use taffy::prelude::{AlignItems, JustifyContent};
 use wgpui::components::EventContext;
-use wgpui::components::atoms::{ToolStatus, ToolType};
+use wgpui::components::atoms::{KeybindingHint, ToolStatus, ToolType};
 use wgpui::components::organisms::{
     AssistantMessage, DiffLine, DiffLineKind, DiffToolCall, SearchMatch, SearchToolCall,
     TerminalToolCall, ThreadEntry, ThreadEntryType, ToolCallCard, UserMessage,
@@ -39,6 +39,8 @@ const STATUS_SECTION_GAP: f32 = 10.0;
 const ACCENT_BAR_WIDTH: f32 = 3.0;
 const DEFAULT_THREAD_MODEL: &str = "gpt-5.1-codex-mini";
 const BOTTOM_BAR_HEIGHT: f32 = 64.0;
+const HOTBAR_HEIGHT: f32 = 34.0;
+const HOTBAR_FLOAT_GAP: f32 = 12.0;
 const MODEL_DROPDOWN_WIDTH: f32 = 320.0;
 const DEFAULT_MODEL_INDEX: usize = 3;
 const SHOW_MODEL_DROPDOWN: bool = false;
@@ -339,6 +341,7 @@ pub struct MinimalRoot {
     thread_model: Option<String>,
     thread_id: Option<String>,
     raw_events_visible: bool,
+    nostr_visible: bool,
     nostr_fullscreen: bool,
 }
 
@@ -446,6 +449,7 @@ impl MinimalRoot {
             thread_model: Some(DEFAULT_THREAD_MODEL.to_string()),
             thread_id: None,
             raw_events_visible: false,
+            nostr_visible: false,
             nostr_fullscreen: false,
         }
     }
@@ -924,7 +928,14 @@ impl MinimalRoot {
                 return true;
             }
             if modifiers.meta && matches!(key, Key::Character(value) if value == "3") {
-                self.nostr_fullscreen = !self.nostr_fullscreen;
+                if !self.nostr_visible {
+                    self.nostr_visible = true;
+                    self.nostr_fullscreen = true;
+                } else if self.nostr_fullscreen {
+                    self.nostr_fullscreen = false;
+                } else {
+                    self.nostr_visible = false;
+                }
                 return true;
             }
         }
@@ -1138,7 +1149,7 @@ impl Component for MinimalRoot {
         );
 
         let mut engine = LayoutEngine::new();
-        let left_panel = if self.nostr_fullscreen {
+        let left_panel = if self.nostr_visible && self.nostr_fullscreen {
             None
         } else {
             Some(engine.request_layout(
@@ -1146,20 +1157,24 @@ impl Component for MinimalRoot {
                 &[],
             ))
         };
-        let right_panel = if self.nostr_fullscreen {
-            engine.request_layout(&LayoutStyle::new().flex_grow(1.0), &[])
+        let right_panel = if !self.nostr_visible {
+            None
+        } else if self.nostr_fullscreen {
+            Some(engine.request_layout(&LayoutStyle::new().flex_grow(1.0), &[]))
         } else {
             let sidebar_width = bounds.size.width * 0.5;
-            engine.request_layout(
+            Some(engine.request_layout(
                 &LayoutStyle::new().width(px(sidebar_width)).flex_shrink(0.0),
                 &[],
-            )
+            ))
         };
         let mut row_children = Vec::new();
         if let Some(left_panel) = left_panel {
             row_children.push(left_panel);
         }
-        row_children.push(right_panel);
+        if let Some(right_panel_id) = right_panel {
+            row_children.push(right_panel_id);
+        }
         let content_row = engine.request_layout(
             &LayoutStyle::new().flex_row().flex_grow(1.0),
             &row_children,
@@ -1176,14 +1191,17 @@ impl Component for MinimalRoot {
         engine.compute_layout(root, Size::new(bounds.size.width, bounds.size.height));
         let origin = bounds.origin;
 
-        let right_bounds = offset_bounds(engine.layout(right_panel), origin);
+        let right_bounds =
+            right_panel.map(|panel_id| offset_bounds(engine.layout(panel_id), origin));
         let bottom_bounds = offset_bounds(engine.layout(bottom_bar), origin);
 
-        cx.scene.draw_quad(
-            Quad::new(right_bounds)
-                .with_background(theme::bg::APP)
-                .with_border(theme::border::DEFAULT, 1.0),
-        );
+        if let Some(right_bounds) = right_bounds {
+            cx.scene.draw_quad(
+                Quad::new(right_bounds)
+                    .with_background(theme::bg::APP)
+                    .with_border(theme::border::DEFAULT, 1.0),
+            );
+        }
         cx.scene.draw_quad(
             Quad::new(bottom_bounds)
                 .with_background(theme::bg::APP)
@@ -1194,8 +1212,11 @@ impl Component for MinimalRoot {
             let left_bounds = offset_bounds(engine.layout(left_panel), origin);
             paint_formatted_feed(self, left_bounds, cx);
         }
-        paint_sidebar_contents(self, right_bounds, cx);
+        if let Some(right_bounds) = right_bounds {
+            paint_sidebar_contents(self, right_bounds, cx);
+        }
         paint_input_bar(self, bottom_bounds, cx);
+        paint_hotbar(self, bounds, bottom_bounds, cx);
     }
 }
 
@@ -1583,6 +1604,149 @@ fn paint_sidebar_contents(root: &mut MinimalRoot, bounds: Bounds, cx: &mut Paint
     }
 
     root.event_scroll.paint(feed_bounds, cx);
+}
+
+fn keybinding_hint_width(keys: &[&str], font_size: f32) -> f32 {
+    let padding_h = theme::spacing::SM;
+    let gap = 4.0;
+    let plus_width = font_size * 0.6;
+    let mut width = 0.0;
+
+    for (idx, key) in keys.iter().enumerate() {
+        if idx > 0 {
+            width += plus_width + gap;
+        }
+        let text_width = key.len() as f32 * font_size * 0.6;
+        width += text_width + padding_h * 2.0;
+        if idx + 1 < keys.len() {
+            width += gap;
+        }
+    }
+
+    width
+}
+
+fn paint_hotbar(root: &MinimalRoot, bounds: Bounds, bottom_bounds: Bounds, cx: &mut PaintContext) {
+    struct HotbarItem<'a> {
+        icon: &'a str,
+        label: &'a str,
+        keys: &'a [&'a str],
+        active: bool,
+    }
+
+    let items = [
+        HotbarItem {
+            icon: "EV",
+            label: "Events",
+            keys: &["Cmd", "2"],
+            active: root.raw_events_visible,
+        },
+        HotbarItem {
+            icon: "ID",
+            label: "Identity",
+            keys: &["Cmd", "3"],
+            active: root.nostr_visible,
+        },
+    ];
+
+    let font_size = theme::font_size::XS;
+    let icon_size = 18.0;
+    let item_gap = 14.0;
+    let icon_gap = 8.0;
+    let label_gap = 10.0;
+    let padding_x = 14.0;
+    let padding_y = 8.0;
+
+    let mut total_width = padding_x * 2.0;
+    for item in &items {
+        let label_width = cx
+            .text
+            .measure_styled_mono(item.label, font_size, FontStyle::default());
+        let hint_width = keybinding_hint_width(item.keys, font_size);
+        total_width += icon_size + icon_gap + label_width + label_gap + hint_width;
+    }
+    total_width += item_gap * (items.len().saturating_sub(1) as f32);
+
+    let bar_width = total_width.min(bounds.size.width - padding_x * 2.0);
+    let bar_x = bounds.origin.x + (bounds.size.width - bar_width) / 2.0;
+    let bar_y = bottom_bounds.origin.y - HOTBAR_FLOAT_GAP - HOTBAR_HEIGHT;
+    let bar_bounds = Bounds::new(bar_x, bar_y, bar_width, HOTBAR_HEIGHT);
+
+    cx.scene.draw_quad(
+        Quad::new(bar_bounds)
+            .with_background(theme::bg::SURFACE)
+            .with_border(theme::border::DEFAULT, 1.0)
+            .with_corner_radius(10.0),
+    );
+
+    let mut x = bar_bounds.origin.x + padding_x;
+    let center_y = bar_bounds.origin.y + bar_bounds.size.height * 0.5;
+
+    for (idx, item) in items.iter().enumerate() {
+        let icon_bounds = Bounds::new(
+            x,
+            center_y - icon_size * 0.5,
+            icon_size,
+            icon_size,
+        );
+        let icon_bg = if item.active {
+            theme::bg::MUTED
+        } else {
+            theme::bg::APP
+        };
+        let icon_border = if item.active {
+            theme::accent::PRIMARY
+        } else {
+            theme::border::DEFAULT
+        };
+        cx.scene.draw_quad(
+            Quad::new(icon_bounds)
+                .with_background(icon_bg)
+                .with_border(icon_border, 1.0)
+                .with_corner_radius(4.0),
+        );
+        let icon_font = font_size;
+        let icon_text_width = item.icon.len() as f32 * icon_font * 0.6;
+        let icon_text_x = icon_bounds.origin.x + (icon_size - icon_text_width) * 0.5;
+        let icon_text_y = icon_bounds.origin.y + icon_size * 0.5 - icon_font * 0.55;
+        let icon_run = cx.text.layout_mono(
+            item.icon,
+            Point::new(icon_text_x, icon_text_y),
+            icon_font,
+            theme::text::PRIMARY,
+        );
+        cx.scene.draw_text(icon_run);
+
+        x += icon_size + icon_gap;
+
+        let label_run = cx.text.layout_styled_mono(
+            item.label,
+            Point::new(x, center_y - font_size * 0.55),
+            font_size,
+            theme::text::PRIMARY,
+            FontStyle::default(),
+        );
+        let label_width = label_run.bounds().size.width;
+        cx.scene.draw_text(label_run);
+        x += label_width + label_gap;
+
+        let hint_width = keybinding_hint_width(item.keys, font_size);
+        let hint_bounds = Bounds::new(
+            x,
+            bar_bounds.origin.y,
+            hint_width,
+            bar_bounds.size.height,
+        );
+        let mut hint = KeybindingHint::combo(item.keys)
+            .font_size(font_size)
+            .gap(4.0);
+        hint.paint(hint_bounds, cx);
+        x += hint_width;
+
+        if idx + 1 < items.len() {
+            x += item_gap;
+        }
+    }
 }
 
 impl DesktopRoot {
