@@ -790,7 +790,10 @@ impl MinimalRoot {
                 exit_code,
                 ..
             } => {
-                let mut tool = TerminalToolCall::new(command).status(status).output(output);
+                let mut tool = TerminalToolCall::new(command)
+                    .status(status)
+                    .output(output)
+                    .expanded(false);
                 if let Some(code) = exit_code {
                     tool = tool.exit_code(code);
                 }
@@ -805,7 +808,8 @@ impl MinimalRoot {
             } => {
                 let mut card = ToolCallCard::new(ToolType::Edit, tool_name)
                     .status(status)
-                    .input(input);
+                    .input(input)
+                    .expanded(false);
                 if !output.is_empty() {
                     card = card.output(output);
                 }
@@ -817,7 +821,7 @@ impl MinimalRoot {
                 status,
                 ..
             } => {
-                let mut tool = SearchToolCall::new(query).status(status);
+                let mut tool = SearchToolCall::new(query).status(status).expanded(false);
                 if !matches.is_empty() {
                     tool = tool.matches(matches);
                 }
@@ -831,7 +835,9 @@ impl MinimalRoot {
                 status,
                 ..
             } => {
-                let mut card = ToolCallCard::new(tool_type, tool_name).status(status);
+                let mut card = ToolCallCard::new(tool_type, tool_name)
+                    .status(status)
+                    .expanded(false);
                 if let Some(input) = input {
                     card = card.input(input);
                 }
@@ -1058,12 +1064,14 @@ impl Component for MinimalRoot {
 }
 
 fn paint_formatted_feed(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintContext) {
-    let padding = 24.0;
+    let padding_x = 24.0;
+    let padding_top = 12.0;
+    let padding_bottom = 24.0;
     let header_height = 20.0;
-    let content_width = bounds.size.width - padding * 2.0;
+    let content_width = bounds.size.width - padding_x * 2.0;
     let header_bounds = Bounds::new(
-        bounds.origin.x + padding,
-        bounds.origin.y + padding,
+        bounds.origin.x + padding_x,
+        bounds.origin.y + padding_top,
         content_width,
         header_height,
     );
@@ -1080,7 +1088,7 @@ fn paint_formatted_feed(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintCo
         .color(theme::text::MUTED)
         .paint(thread_model_bounds, cx);
 
-    let mut description_top = thread_model_bounds.origin.y + 18.0;
+    let mut description_top = thread_model_bounds.origin.y + 22.0;
     let mut dropdown_bounds = Bounds::ZERO;
 
     if SHOW_MODEL_DROPDOWN {
@@ -1134,12 +1142,12 @@ fn paint_formatted_feed(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintCo
         root.model_bounds = Bounds::ZERO;
     }
 
-    let feed_top = description_top + 10.0;
+    let feed_top = description_top + 14.0;
     let feed_bounds = Bounds::new(
         header_bounds.origin.x,
         feed_top,
         header_bounds.size.width,
-        (bounds.size.height - padding) - (feed_top - bounds.origin.y),
+        (bounds.size.height - padding_bottom) - (feed_top - bounds.origin.y),
     );
     root.formatted_thread_bounds = feed_bounds;
 
