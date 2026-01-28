@@ -18,7 +18,7 @@ use wgpui::components::organisms::{
 };
 use wgpui::components::sections::{MessageEditor, ThreadView};
 use wgpui::components::{Text, TextInput};
-use wgpui::input::{InputEvent, Key};
+use wgpui::input::{InputEvent, Key, NamedKey};
 use wgpui::{
     Bounds, Button, ButtonVariant, Component, Cursor, Dropdown, DropdownOption, EventResult,
     LayoutEngine, LayoutStyle, MarkdownConfig, MarkdownDocument, MarkdownView, PaintContext, Point,
@@ -332,6 +332,9 @@ pub struct MinimalRoot {
     submit_button: Button,
     submit_bounds: Bounds,
     pending_sends: Rc<RefCell<Vec<String>>>,
+    queued_by_thread: HashMap<String, Vec<QueuedMessage>>,
+    queued_in_flight: Option<String>,
+    queued_counter: u64,
     send_handler: Option<Box<dyn FnMut(UserAction)>>,
     stop_button: Button,
     stop_bounds: Bounds,
@@ -348,6 +351,12 @@ pub struct MinimalRoot {
     left_panel_visible: bool,
     nostr_visible: bool,
     nostr_fullscreen: bool,
+}
+
+#[derive(Clone, Debug)]
+struct QueuedMessage {
+    id: u64,
+    text: String,
 }
 
 impl MinimalRoot {
@@ -456,6 +465,9 @@ impl MinimalRoot {
             submit_button,
             submit_bounds: Bounds::ZERO,
             pending_sends,
+            queued_by_thread: HashMap::new(),
+            queued_in_flight: None,
+            queued_counter: 0,
             send_handler: None,
             stop_button,
             stop_bounds: Bounds::ZERO,
@@ -535,11 +547,15 @@ impl MinimalRoot {
                             })
                         {
                             self.active_turn_id = Some(turn_id.to_string());
+                            self.queued_in_flight = None;
                         }
                     }
 
                     if let Some(method) = value.get("method").and_then(|m| m.as_str())
-                        && method == "turn/completed"
+                        && (method == "turn/completed"
+                            || method == "turn/failed"
+                            || method == "turn/aborted"
+                            || method == "turn/interrupted")
                     {
                         let completed_turn = value
                             .get("params")
@@ -557,6 +573,7 @@ impl MinimalRoot {
                             .unwrap_or(true)
                         {
                             self.active_turn_id = None;
+                            self.flush_queue_if_idle();
                         }
                     }
 
@@ -579,6 +596,70 @@ impl MinimalRoot {
         F: FnMut(UserAction) + 'static,
     {
         self.send_handler = Some(Box::new(handler));
+    }
+
+    fn is_processing(&self) -> bool {
+        self.active_turn_id.is_some() || self.queued_in_flight.is_some()
+    }
+
+    fn current_queue(&self) -> &[QueuedMessage] {
+        let Some(thread_id) = self.thread_id.as_deref() else {
+            return &[];
+        };
+        self.queued_by_thread
+            .get(thread_id)
+            .map(|queue| queue.as_slice())
+            .unwrap_or(&[])
+    }
+
+    fn enqueue_message(&mut self, text: String) -> bool {
+        let Some(thread_id) = self.thread_id.clone() else {
+            return false;
+        };
+        self.queued_counter += 1;
+        let entry = QueuedMessage {
+            id: self.queued_counter,
+            text,
+        };
+        self.queued_by_thread
+            .entry(thread_id)
+            .or_default()
+            .push(entry);
+        true
+    }
+
+    fn dispatch_message(&mut self, text: String) {
+        let Some(session_id) = self.session_id else {
+            return;
+        };
+        let Some(handler) = self.send_handler.as_mut() else {
+            return;
+        };
+        handler(UserAction::Message {
+            session_id,
+            text,
+            model: Some(self.selected_model.clone()),
+        });
+        if let Some(thread_id) = self.thread_id.clone() {
+            self.queued_in_flight = Some(thread_id);
+        }
+    }
+
+    fn flush_queue_if_idle(&mut self) {
+        if self.is_processing() {
+            return;
+        }
+        let Some(thread_id) = self.thread_id.clone() else {
+            return;
+        };
+        let Some(queue) = self.queued_by_thread.get_mut(&thread_id) else {
+            return;
+        };
+        if queue.is_empty() {
+            return;
+        }
+        let next = queue.remove(0);
+        self.dispatch_message(next.text);
     }
 
     fn apply_formatted_event(&mut self, value: &Value) {
@@ -985,6 +1066,21 @@ impl MinimalRoot {
 
     pub fn handle_input(&mut self, event: &InputEvent, _bounds: Bounds) -> bool {
         if let InputEvent::KeyDown { key, modifiers } = event {
+            if matches!(key, Key::Named(NamedKey::Tab))
+                && !modifiers.shift
+                && !modifiers.ctrl
+                && !modifiers.alt
+                && !modifiers.meta
+                && self.input.is_focused()
+                && self.is_processing()
+            {
+                let value = self.input.get_value().trim().to_string();
+                if !value.is_empty() && self.enqueue_message(value) {
+                    self.input.set_value("");
+                    self.submit_button.set_disabled(true);
+                    return true;
+                }
+            }
             if modifiers.meta && matches!(key, Key::Character(value) if value == "2") {
                 self.raw_events_visible = !self.raw_events_visible;
                 return true;
@@ -1208,18 +1304,10 @@ impl MinimalRoot {
             }
 
             if !messages.is_empty() {
-                if let Some(session_id) = self.session_id {
-                    if let Some(handler) = self.send_handler.as_mut() {
-                        for message in messages {
-                            handler(UserAction::Message {
-                                session_id,
-                                text: message,
-                                model: Some(self.selected_model.clone()),
-                            });
-                        }
-                        self.input.set_value("");
-                    }
+                for message in messages {
+                    self.dispatch_message(message);
                 }
+                self.input.set_value("");
                 self.submit_button
                     .set_disabled(self.input.get_value().trim().is_empty());
                 return true;
@@ -1438,6 +1526,31 @@ fn paint_formatted_feed(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintCo
         description_top = selector_bounds.origin.y + selector_height + 6.0;
     } else {
         root.model_bounds = Bounds::ZERO;
+    }
+
+    if !root.current_queue().is_empty() {
+        let mut queue_text = String::from("Queued");
+        for item in root.current_queue() {
+            if item.text.trim().is_empty() {
+                continue;
+            }
+            queue_text.push('\n');
+            queue_text.push_str("- ");
+            queue_text.push_str(item.text.trim());
+        }
+        let mut queue_block = Text::new(queue_text)
+            .font_size(theme::font_size::XS)
+            .color(theme::text::SECONDARY);
+        let (_, queue_height) = queue_block.size_hint_with_width(content_width);
+        let queue_height = queue_height.unwrap_or(0.0);
+        let queue_bounds = Bounds::new(
+            header_bounds.origin.x,
+            description_top + 10.0,
+            content_width,
+            queue_height,
+        );
+        queue_block.paint(queue_bounds, cx);
+        description_top = queue_bounds.origin.y + queue_bounds.size.height + 12.0;
     }
 
     let feed_top = description_top + 14.0;
@@ -1806,6 +1919,12 @@ fn paint_hotbar(root: &MinimalRoot, bounds: Bounds, bottom_bounds: Bounds, cx: &
             label: "Both",
             keys: &["Cmd", "\\"],
             active: root.left_panel_visible && root.nostr_visible,
+        },
+        HotbarItem {
+            icon: "Q",
+            label: "Queue",
+            keys: &["Tab"],
+            active: root.active_turn_id.is_some() || root.queued_in_flight.is_some(),
         },
     ];
 
