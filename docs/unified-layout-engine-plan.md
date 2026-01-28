@@ -3,7 +3,7 @@
 ## Goal
 Refactor **all WGPUI UI** in this codebase to use a single, unified layout system based on the
 `LayoutEngine` + `LayoutStyle` (Taffy) pattern already used in `crates/autopilot_ui`. Manual
-coordinate math and ad‑hoc bounds arithmetic should be removed across all WGPUI surfaces.
+coordinate math and ad-hoc bounds arithmetic should be removed across all WGPUI surfaces.
 
 This plan starts with **storybook** and then migrates the rest of the WGPUI UI stack to the
 same layout engine.
@@ -17,7 +17,7 @@ Primary WGPUI surfaces to refactor:
 - `crates/onyx/src/**`
 - `crates/wgpui/examples/**` (component_showcase, first_light, ui_pane_demo, etc.)
 
-Secondary (layout‑aware components and containers):
+Secondary (layout-aware components and containers):
 - `crates/wgpui/src/components/**`
 - `crates/wgpui/src/layout.rs`
 - `crates/wgpui/src/styled/**`
@@ -26,7 +26,7 @@ Secondary (layout‑aware components and containers):
 - `autopilot_ui` uses `LayoutEngine` + `LayoutStyle` with explicit trees and `compute_layout`.
 - Storybook and most other WGPUI screens use **manual bounds math** (x/y increments, fixed sizes).
 - The layout engine supports measured nodes in API, but **`request_measured` does not wire a
-  measurement callback to Taffy** (so auto‑sizing is not functional yet).
+  measurement callback to Taffy** (so auto-sizing is not functional yet).
 - Components generally **paint manually** and do not expose layout nodes or children to a layout
   engine.
 
@@ -100,7 +100,7 @@ Refactor the entire storybook to use the unified layout engine and layout primit
   header + nav + content (flex row, fixed nav width, flexible content).
 
 **Phase B: Section stacking**
-- Replace manual `y += height + gap` stacking with layout‑engine stacks.
+- Replace manual `y += height + gap` stacking with layout-engine stacks.
 - Convert panel heights from hardcoded values to measured or fixed styles where appropriate.
 
 **Phase C: Panel internals**
@@ -122,7 +122,7 @@ Unify all autopilot UI rendering (including overlays/modals) under the same layo
 - Audit `crates/autopilot/src/app/ui/rendering/**` for manual layout.
 - Introduce layout helpers into those render paths (or reuse the new WGPUI primitives).
 - Migrate modals (help, wallet, pylon, dspy, etc.) to layout engine bounds.
-- Replace manual scroll region bounds with layout‑computed areas.
+- Replace manual scroll region bounds with layout-computed areas.
 
 ### Acceptance Criteria
 - All autopilot UI rendering paths use layout engine for bounds.
@@ -195,18 +195,14 @@ Prevent regressions to manual layout across the codebase.
 ## Definition of Done
 - Storybook and every WGPUI UI surface uses the same layout engine (no manual bounds math).
 - Layout helpers are shared and used consistently across crates.
-- Measured layout works for text‑heavy components.
+- Measured layout works for text-heavy components.
 - CI blocks regressions to manual layout.
 
----
-
-## Immediate Next Actions
-1. Implement measured layout in `LayoutEngine`.
-2. Build shared layout helpers/primitives in WGPUI.
-3. Start storybook conversion using those helpers (header/nav/content → panels → section internals).
-
----
-
 ## Worklog
-- 2026-01-28: Phase 1 kickoff — wired measured layout support into `LayoutEngine` (store measure callbacks,
-  compute with `compute_layout_with_measure`, clear measurement map) and added a measured-layout test.
+- 2026-01-28: Phase 1: added guidance module story, wired measured layout support in WGPUI,
+  and fixed Storybook command palette bindings/shortcuts.
+- 2026-01-28: Phase 2: added `layout_helpers` utilities (offset/stack/row/grid/header-nav/
+  panel), introduced Flex/Stack/Grid elements with per-child layout styles, and exported the
+  new APIs from WGPUI. Added unit tests for helper layouts.
+- 2026-01-28: Phase 3: refactored Storybook scaffolding to use `layout_header_nav_content`
+  for header/nav/content layout and `stack_bounds` for nav item layout and hit-testing.
