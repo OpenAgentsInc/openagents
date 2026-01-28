@@ -54,6 +54,7 @@ Pane positions are calculated using `PANE_OFFSET` and clamped by `ensure_pane_vi
 - Footer: text input + Stop + Send.
 
 The **New chat** button opens a fresh chat pane and triggers a new Codex thread.
+Currently the UI keeps a single chat state; opening a new chat replaces the existing chat pane.
 
 ### Events Pane
 - Title: “CODEX EVENTS”
