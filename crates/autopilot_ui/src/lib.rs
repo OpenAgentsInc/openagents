@@ -333,6 +333,9 @@ pub struct MinimalRoot {
     submit_bounds: Bounds,
     pending_sends: Rc<RefCell<Vec<String>>>,
     send_handler: Option<Box<dyn FnMut(UserAction)>>,
+    stop_button: Button,
+    stop_bounds: Bounds,
+    pending_stop: Rc<RefCell<bool>>,
     session_id: Option<SessionId>,
     event_log: Vec<String>,
     event_log_dirty: bool,
@@ -340,6 +343,7 @@ pub struct MinimalRoot {
     event_scroll_bounds: Bounds,
     thread_model: Option<String>,
     thread_id: Option<String>,
+    active_turn_id: Option<String>,
     raw_events_visible: bool,
     left_panel_visible: bool,
     nostr_visible: bool,
@@ -408,6 +412,17 @@ impl MinimalRoot {
                 pending_send_clicks.borrow_mut().push(String::new());
             });
 
+        let pending_stop = Rc::new(RefCell::new(false));
+        let pending_stop_click = pending_stop.clone();
+        let stop_button = Button::new("Stop")
+            .variant(ButtonVariant::Danger)
+            .font_size(theme::font_size::SM)
+            .padding(14.0, 8.0)
+            .corner_radius(8.0)
+            .on_click(move || {
+                *pending_stop_click.borrow_mut() = true;
+            });
+
         let event_scroll = ScrollView::new().show_scrollbar(true).scrollbar_width(6.0);
 
         Self {
@@ -442,6 +457,9 @@ impl MinimalRoot {
             submit_bounds: Bounds::ZERO,
             pending_sends,
             send_handler: None,
+            stop_button,
+            stop_bounds: Bounds::ZERO,
+            pending_stop,
             session_id: None,
             event_log: Vec::new(),
             event_log_dirty: false,
@@ -449,6 +467,7 @@ impl MinimalRoot {
             event_scroll_bounds: Bounds::ZERO,
             thread_model: Some(DEFAULT_THREAD_MODEL.to_string()),
             thread_id: None,
+            active_turn_id: None,
             raw_events_visible: false,
             left_panel_visible: true,
             nostr_visible: false,
@@ -497,6 +516,47 @@ impl MinimalRoot {
                             if let Some(index) = model_index(model) {
                                 self.model_dropdown.set_selected(Some(index));
                             }
+                        }
+                    }
+
+                    if let Some(method) = value.get("method").and_then(|m| m.as_str())
+                        && method == "turn/started"
+                    {
+                        if let Some(turn_id) = value
+                            .get("params")
+                            .and_then(|params| params.get("turnId"))
+                            .and_then(|id| id.as_str())
+                            .or_else(|| {
+                                value
+                                    .get("params")
+                                    .and_then(|params| params.get("turn"))
+                                    .and_then(|turn| turn.get("id"))
+                                    .and_then(|id| id.as_str())
+                            })
+                        {
+                            self.active_turn_id = Some(turn_id.to_string());
+                        }
+                    }
+
+                    if let Some(method) = value.get("method").and_then(|m| m.as_str())
+                        && method == "turn/completed"
+                    {
+                        let completed_turn = value
+                            .get("params")
+                            .and_then(|params| params.get("turnId"))
+                            .and_then(|id| id.as_str())
+                            .or_else(|| {
+                                value
+                                    .get("params")
+                                    .and_then(|params| params.get("turn"))
+                                    .and_then(|turn| turn.get("id"))
+                                    .and_then(|id| id.as_str())
+                            });
+                        if completed_turn
+                            .map(|id| self.active_turn_id.as_deref() == Some(id))
+                            .unwrap_or(true)
+                        {
+                            self.active_turn_id = None;
                         }
                     }
 
@@ -1049,6 +1109,12 @@ impl MinimalRoot {
             EventResult::Handled
         );
 
+        let stop_handled = matches!(
+            self.stop_button
+                .event(event, self.stop_bounds, &mut self.event_context),
+            EventResult::Handled
+        );
+
         let pending_models = {
             let mut pending = self.pending_model_changes.borrow_mut();
             let models = pending.clone();
@@ -1102,6 +1168,25 @@ impl MinimalRoot {
             let _ = copy_to_clipboard(&block);
         }
 
+        let should_stop = {
+            let mut pending = self.pending_stop.borrow_mut();
+            let value = *pending;
+            *pending = false;
+            value
+        };
+
+        if should_stop {
+            if let (Some(session_id), Some(handler)) = (self.session_id, self.send_handler.as_mut())
+            {
+                handler(UserAction::Interrupt {
+                    session_id,
+                    thread_id: self.thread_id.clone(),
+                    turn_id: self.active_turn_id.clone(),
+                });
+            }
+            return true;
+        }
+
         let pending_messages = {
             let mut pending = self.pending_sends.borrow_mut();
             let messages = pending.clone();
@@ -1143,6 +1228,8 @@ impl MinimalRoot {
 
         self.submit_button
             .set_disabled(self.input.get_value().trim().is_empty());
+        self.stop_button
+            .set_disabled(self.thread_id.is_none());
 
         submit_handled
             || input_handled
@@ -1150,11 +1237,14 @@ impl MinimalRoot {
             || dropdown_handled
             || keygen_handled
             || copy_handled
+            || stop_handled
             || formatted_handled
     }
 
     pub fn cursor(&self) -> Cursor {
         if self.submit_button.is_hovered() && !self.submit_button.is_disabled() {
+            Cursor::Pointer
+        } else if self.stop_button.is_hovered() && !self.stop_button.is_disabled() {
             Cursor::Pointer
         } else if self.keygen_button.is_hovered() {
             Cursor::Pointer
@@ -1375,32 +1465,46 @@ fn paint_input_bar(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintContext
     let padding = 24.0;
 
     let button_font = theme::font_size::SM;
-    let label_width = cx
+    let send_label_width = cx
         .text
         .measure_styled_mono("Send", button_font, FontStyle::default());
-    let button_width = (label_width + 28.0).max(72.0);
+    let send_width = (send_label_width + 28.0).max(72.0);
+    let stop_label_width = cx
+        .text
+        .measure_styled_mono("Stop", button_font, FontStyle::default());
+    let stop_width = (stop_label_width + 28.0).max(72.0);
 
     let mut total_width = (bounds.size.width * 0.6).min(720.0).max(320.0);
     total_width = total_width.min(bounds.size.width - padding * 2.0);
 
     let bar_x = bounds.origin.x + (bounds.size.width - total_width) / 2.0;
     let bar_y = bounds.origin.y + (bounds.size.height - input_height) / 2.0;
-    let input_width = (total_width - button_width - gap).max(120.0);
+    let input_width = (total_width - send_width - stop_width - gap * 2.0).max(120.0);
     let input_bounds = Bounds::new(bar_x, bar_y, input_width, input_height);
-    let submit_bounds = Bounds::new(
+    let stop_bounds = Bounds::new(
         input_bounds.origin.x + input_bounds.size.width + gap,
         bar_y,
-        button_width,
+        stop_width,
+        input_height,
+    );
+    let submit_bounds = Bounds::new(
+        stop_bounds.origin.x + stop_bounds.size.width + gap,
+        bar_y,
+        send_width,
         input_height,
     );
 
     root.input_bounds = input_bounds;
     root.submit_bounds = submit_bounds;
+    root.stop_bounds = stop_bounds;
     root.input.set_max_width(input_bounds.size.width);
     root.submit_button
         .set_disabled(root.input.get_value().trim().is_empty());
+    root.stop_button
+        .set_disabled(root.thread_id.is_none());
 
     root.input.paint(input_bounds, cx);
+    root.stop_button.paint(stop_bounds, cx);
     root.submit_button.paint(submit_bounds, cx);
 }
 
@@ -2103,6 +2207,13 @@ impl DesktopRoot {
                         AssistantMessage::new(note),
                     ));
                 }
+
+                if let UserAction::Interrupt { .. } = action {
+                    self.thread_view.push_entry(ThreadEntry::new(
+                        ThreadEntryType::Assistant,
+                        AssistantMessage::new("Interrupt requested."),
+                    ));
+                }
             }
             AppEvent::AppServerEvent { .. } => {}
         }
@@ -2710,6 +2821,7 @@ fn format_event(event: &AppEvent) -> String {
                 }
             }
             UserAction::Command { name, .. } => format!("Command ({})", name),
+            UserAction::Interrupt { .. } => "Interrupt".to_string(),
         },
         AppEvent::AppServerEvent { message } => format!("AppServerEvent ({message})"),
     }

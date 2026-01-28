@@ -1,4 +1,5 @@
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, mpsc};
 
 use anyhow::{Context, Result};
@@ -6,7 +7,7 @@ use autopilot_app::{App as AutopilotApp, AppConfig, AppEvent, EventRecorder, Use
 use autopilot_ui::MinimalRoot;
 use codex_client::{
     AppServerClient, AppServerConfig, AskForApproval, ClientInfo, SandboxMode, SandboxPolicy,
-    ThreadStartParams, TurnStartParams, UserInput,
+    ThreadStartParams, TurnInterruptParams, TurnStartParams, UserInput,
 };
 use futures::StreamExt;
 use serde_json::json;
@@ -459,6 +460,8 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
 
             let client = Arc::new(client);
             let thread_id = Arc::new(tokio::sync::Mutex::new(None::<String>));
+            let turn_id = Arc::new(tokio::sync::Mutex::new(None::<String>));
+            let pending_interrupt = Arc::new(AtomicBool::new(false));
 
             let client_info = ClientInfo {
                 name: "autopilot-desktop-wgpu".to_string(),
@@ -511,9 +514,69 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
             }
 
             let proxy_notifications = proxy.clone();
+            let client_interrupt = client.clone();
+            let thread_id_interrupt = thread_id.clone();
+            let turn_id_interrupt = turn_id.clone();
+            let pending_interrupt_notifications = pending_interrupt.clone();
             tokio::spawn(async move {
                 let mut notification_rx = channels.notifications;
                 while let Some(notification) = notification_rx.recv().await {
+                    if notification.method == "turn/started" {
+                        if let Some(params) = notification.params.as_ref() {
+                            let next_turn = params
+                                .get("turnId")
+                                .and_then(|id| id.as_str())
+                                .or_else(|| {
+                                    params
+                                        .get("turn")
+                                        .and_then(|turn| turn.get("id"))
+                                        .and_then(|id| id.as_str())
+                                })
+                                .map(|id| id.to_string());
+                            if let Some(next_turn) = next_turn {
+                                let mut guard = turn_id_interrupt.lock().await;
+                                *guard = Some(next_turn.clone());
+                                if pending_interrupt_notifications.swap(false, Ordering::SeqCst) {
+                                    if let Some(thread_id) =
+                                        thread_id_interrupt.lock().await.clone()
+                                    {
+                                        let _ = client_interrupt
+                                            .turn_interrupt(TurnInterruptParams {
+                                                thread_id,
+                                                turn_id: next_turn,
+                                            })
+                                            .await;
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    if notification.method == "turn/completed" {
+                        let completed_turn = notification
+                            .params
+                            .as_ref()
+                            .and_then(|params| params.get("turnId"))
+                            .and_then(|id| id.as_str())
+                            .or_else(|| {
+                                notification
+                                    .params
+                                    .as_ref()
+                                    .and_then(|params| params.get("turn"))
+                                    .and_then(|turn| turn.get("id"))
+                                    .and_then(|id| id.as_str())
+                            })
+                            .map(|id| id.to_string());
+                        let mut guard = turn_id_interrupt.lock().await;
+                        if completed_turn
+                            .as_deref()
+                            .map(|id| guard.as_deref() == Some(id))
+                            .unwrap_or(true)
+                        {
+                            *guard = None;
+                        }
+                    }
+
                     let payload = json!({
                         "method": notification.method,
                         "params": notification.params,
@@ -552,6 +615,8 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
             let workspace_for_actions = workspace.clone();
             let client_for_actions = client.clone();
             let thread_id_for_actions = thread_id.clone();
+            let turn_id_for_actions = turn_id.clone();
+            let pending_interrupt_for_actions = pending_interrupt.clone();
             let proxy_actions = proxy.clone();
             let cwd_for_actions = cwd_string.clone();
             tokio::task::spawn_blocking(move || {
@@ -593,6 +658,50 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
                             };
 
                             if let Err(err) = client.turn_start(params).await {
+                                let _ = proxy.send_event(AppEvent::AppServerEvent {
+                                    message: json!({
+                                        "method": "codex/error",
+                                        "params": { "message": err.to_string() }
+                                    })
+                                    .to_string(),
+                                });
+                            }
+                        });
+                    }
+                    if let UserAction::Interrupt { .. } = action {
+                        let client = client_for_actions.clone();
+                        let thread_id = thread_id_for_actions.clone();
+                        let turn_id = turn_id_for_actions.clone();
+                        let pending_interrupt = pending_interrupt_for_actions.clone();
+                        let proxy = proxy_actions.clone();
+                        handle.spawn(async move {
+                            let thread_id = thread_id.lock().await.clone();
+                            let Some(thread_id) = thread_id else {
+                                let _ = proxy.send_event(AppEvent::AppServerEvent {
+                                    message: json!({
+                                        "method": "codex/error",
+                                        "params": { "message": "Codex thread not ready" }
+                                    })
+                                    .to_string(),
+                                });
+                                return;
+                            };
+
+                            let mut turn_guard = turn_id.lock().await;
+                            let turn_value = turn_guard.clone().unwrap_or_else(|| "pending".into());
+                            if turn_guard.is_none() {
+                                pending_interrupt.store(true, Ordering::SeqCst);
+                            } else {
+                                *turn_guard = None;
+                            }
+
+                            if let Err(err) = client
+                                .turn_interrupt(TurnInterruptParams {
+                                    thread_id,
+                                    turn_id: turn_value,
+                                })
+                                .await
+                            {
                                 let _ = proxy.send_event(AppEvent::AppServerEvent {
                                     message: json!({
                                         "method": "codex/error",
