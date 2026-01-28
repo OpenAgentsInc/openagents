@@ -15,8 +15,8 @@
 
 use crate::{SparkError, SparkSigner};
 use breez_sdk_spark::{
-    BreezSdk, ClaimHtlcPaymentRequest, EventListener, Network as SdkNetwork,
-    PrepareSendPaymentRequest, SdkBuilder, Seed, Storage, default_config,
+    BreezSdk, ClaimHtlcPaymentRequest, EventListener, Network as SdkNetwork, SdkBuilder, Seed,
+    Storage, default_config,
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -24,24 +24,28 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 // Re-export SDK types that consumers need
 pub use breez_sdk_spark::{
-    BitcoinAddressDetails, BitcoinNetwork, Bolt11Invoice, Bolt11InvoiceDetails,
-    CheckLightningAddressRequest, CheckMessageRequest, CheckMessageResponse, ClaimDepositRequest,
-    ClaimDepositResponse, ClaimHtlcPaymentResponse, Config, DepositInfo, ExternalInputParser, Fee,
-    GetInfoRequest, GetInfoResponse, GetPaymentRequest, GetPaymentResponse,
-    GetTokensMetadataRequest, GetTokensMetadataResponse, InputType, KeySetType,
-    LightningAddressInfo, ListFiatCurrenciesResponse, ListFiatRatesResponse, ListPaymentsRequest,
-    ListPaymentsResponse, ListUnclaimedDepositsRequest, ListUnclaimedDepositsResponse,
-    LnurlPayRequest, LnurlPayResponse, LnurlWithdrawRequest, LnurlWithdrawResponse, MaxFee,
-    OptimizationConfig, OptimizationProgress, Payment, PaymentDetails, PaymentMethod,
-    PaymentRequestSource, PaymentStatus, PaymentType, PrepareLnurlPayRequest,
-    PrepareLnurlPayResponse, PrepareSendPaymentResponse, ReceivePaymentMethod,
+    AssetFilter, BitcoinAddressDetails, BitcoinNetwork, Bolt11Invoice, Bolt11InvoiceDetails,
+    BurnIssuerTokenRequest, CheckLightningAddressRequest, CheckMessageRequest,
+    CheckMessageResponse, ClaimDepositRequest, ClaimDepositResponse, ClaimHtlcPaymentResponse,
+    Config, CreateIssuerTokenRequest, DepositInfo, ExternalInputParser, Fee,
+    FreezeIssuerTokenRequest, FreezeIssuerTokenResponse, GetInfoRequest, GetInfoResponse,
+    GetPaymentRequest, GetPaymentResponse, GetTokensMetadataRequest, GetTokensMetadataResponse,
+    InputType, KeySetType, LightningAddressInfo, ListFiatCurrenciesResponse,
+    ListFiatRatesResponse, ListPaymentsRequest, ListPaymentsResponse, ListUnclaimedDepositsRequest,
+    ListUnclaimedDepositsResponse, LnurlPayRequest, LnurlPayRequestDetails, LnurlPayResponse,
+    LnurlWithdrawRequest, LnurlWithdrawRequestDetails, LnurlWithdrawResponse, MaxFee,
+    MintIssuerTokenRequest, OptimizationConfig, OptimizationProgress, Payment, PaymentDetails,
+    PaymentMethod, PaymentRequestSource, PaymentStatus, PaymentType, PrepareLnurlPayRequest,
+    PrepareLnurlPayResponse, PrepareSendPaymentRequest, PrepareSendPaymentResponse,
+    ReceivePaymentMethod,
     ReceivePaymentRequest, ReceivePaymentResponse, RecommendedFees, RefundDepositRequest,
     RefundDepositResponse, RegisterLightningAddressRequest, SendOnchainFeeQuote,
     SendOnchainSpeedFeeQuote, SendPaymentMethod, SendPaymentOptions, SendPaymentRequest,
     SendPaymentResponse, SignMessageRequest, SignMessageResponse, SparkHtlcDetails,
     SparkHtlcOptions, SparkHtlcStatus, SparkInvoiceDetails, SparkInvoicePaymentDetails,
     SyncWalletRequest, SyncWalletResponse, TokenBalance, TokenIssuer, TokenMetadata,
-    UpdateUserSettingsRequest, UserSettings,
+    UnfreezeIssuerTokenRequest, UnfreezeIssuerTokenResponse, UpdateUserSettingsRequest,
+    UserSettings,
 };
 
 /// Bitcoin network to use for Spark wallet
