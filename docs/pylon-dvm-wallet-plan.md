@@ -147,3 +147,4 @@ Add pane types and map them into the pane registry:
 - Implemented Phase 1 control surface: added Pylon pane + hotbar slot, wired Pylon init/start/stop/refresh actions, and routed daemon status into UI.
 - Implemented Phase 2 wallet surface: added Wallet pane + hotbar slot, wired wallet refresh action, and populated balances + deposit addresses via Spark using Pylon identity + config data paths.
 - Implemented Phase 3 sell-compute surface: added Sell Compute pane + hotbar slot, wired provider start/stop/refresh actions, and surfaced provider/config status via new DVM provider status events.
+- Implemented Phase 4 history surface: added DVM History pane + hotbar slot, wired history refresh action, and populated earnings summary + recent jobs from the Pylon DB.

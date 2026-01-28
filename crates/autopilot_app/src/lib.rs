@@ -188,6 +188,7 @@ pub enum UserAction {
     DvmProviderStart,
     DvmProviderStop,
     DvmProviderRefresh,
+    DvmHistoryRefresh,
     Command {
         session_id: SessionId,
         name: String,
@@ -247,6 +248,31 @@ pub struct DvmProviderStatus {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DvmJobSummary {
+    pub id: String,
+    pub status: String,
+    pub kind: u16,
+    pub price_msats: u64,
+    pub created_at: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct DvmEarningsSummary {
+    pub total_msats: u64,
+    pub total_sats: u64,
+    pub job_count: u64,
+    pub by_source: Vec<(String, u64)>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct DvmHistorySnapshot {
+    pub summary: DvmEarningsSummary,
+    pub status_counts: Vec<(String, u64)>,
+    pub jobs: Vec<DvmJobSummary>,
+    pub last_error: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum AppEvent {
     WorkspaceOpened {
         workspace_id: WorkspaceId,
@@ -272,6 +298,9 @@ pub enum AppEvent {
     },
     DvmProviderStatus {
         status: DvmProviderStatus,
+    },
+    DvmHistory {
+        snapshot: DvmHistorySnapshot,
     },
 }
 
