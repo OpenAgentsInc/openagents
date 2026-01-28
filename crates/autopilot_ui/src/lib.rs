@@ -2259,6 +2259,7 @@ impl Component for MinimalRoot {
             );
             self.pane_bounds.insert(pane.id.clone(), pane_bounds);
 
+            cx.scene.push_clip(pane_bounds);
             let frame = self
                 .pane_frames
                 .entry(pane.id.clone())
@@ -2279,6 +2280,7 @@ impl Component for MinimalRoot {
                 PaneKind::Events => paint_events_pane(self, content_bounds, cx),
                 PaneKind::Identity => paint_identity_pane(self, content_bounds, cx),
             }
+            cx.scene.pop_clip();
         }
 
         let slot_count: usize = 9;
