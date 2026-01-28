@@ -7,18 +7,17 @@ use wgpui::{Bounds, Component, Hsla, PaintContext, Point, Quad, theme};
 
 use crate::constants::{
     BG_TILE_GAP, BG_TILE_H, BG_TILE_W, LIGHT_DEMO_FRAMES_INNER_H, LIGHT_DEMO_HERO_INNER_H,
-    PANEL_PADDING, SECTION_GAP, TOOLCALL_DEMO_INNER_H,
+    PANEL_PADDING, TOOLCALL_DEMO_INNER_H,
 };
 use crate::helpers::{
     draw_bitcoin_symbol, draw_panel, draw_tile, grid_metrics, inset_bounds, panel_height,
+    panel_stack,
 };
 use crate::state::Storybook;
 
 impl Storybook {
     pub(crate) fn paint_hud_widgets(&mut self, bounds: Bounds, cx: &mut PaintContext) {
-        let mut y = bounds.origin.y;
-        let width = bounds.size.width;
-        let available = (width - PANEL_PADDING * 2.0).max(0.0);
+        let available = (bounds.size.width - PANEL_PADDING * 2.0).max(0.0);
         let pulse = self.glow_pulse_anim.current_value();
 
         let scan_presets = [
@@ -38,7 +37,70 @@ impl Storybook {
             BG_TILE_GAP,
         );
         let scan_height = panel_height(scan_grid.height);
-        let scan_bounds = Bounds::new(bounds.origin.x, y, width, scan_height);
+        let meter_presets = [
+            ("Low 4", 4, 0.2, 190.0),
+            ("Med 5", 5, 0.45, 190.0),
+            ("High 6", 6, 0.75, 190.0),
+            ("Full 8", 8, 1.0, 150.0),
+            ("Amber", 6, 0.6, 35.0),
+            ("Green", 5, 0.8, 120.0),
+        ];
+
+        let meter_grid = grid_metrics(
+            available,
+            meter_presets.len(),
+            BG_TILE_W,
+            BG_TILE_H,
+            BG_TILE_GAP,
+        );
+        let meter_height = panel_height(meter_grid.height);
+
+        let reticle_presets = [
+            ("Compact", 18.0, 4.0, 4.0, 8.0, 190.0),
+            ("Wide", 32.0, 6.0, 6.0, 12.0, 190.0),
+            ("Long", 40.0, 8.0, 4.0, 14.0, 200.0),
+            ("Amber", 28.0, 5.0, 8.0, 10.0, 35.0),
+            ("Green", 26.0, 6.0, 6.0, 12.0, 120.0),
+            ("Offset", 24.0, 10.0, 10.0, 8.0, 160.0),
+        ];
+
+        let reticle_grid = grid_metrics(
+            available,
+            reticle_presets.len(),
+            BG_TILE_W,
+            BG_TILE_H,
+            BG_TILE_GAP,
+        );
+        let reticle_height = panel_height(reticle_grid.height);
+
+        let resizable_presets: [(&str, bool, bool, f32); 6] = [
+            ("Default", true, false, 8.0),
+            ("Visible", true, true, 8.0),
+            ("Large", true, true, 12.0),
+            ("Small", true, true, 4.0),
+            ("Disabled", false, false, 8.0),
+            ("Styled", true, true, 10.0),
+        ];
+
+        let resizable_grid = grid_metrics(
+            available,
+            resizable_presets.len(),
+            BG_TILE_W,
+            BG_TILE_H,
+            BG_TILE_GAP,
+        );
+        let resizable_height = panel_height(resizable_grid.height);
+
+        let panels = panel_stack(
+            bounds,
+            &[
+                scan_height,
+                meter_height,
+                reticle_height,
+                resizable_height,
+            ],
+        );
+        let scan_bounds = panels[0];
         draw_panel("Scanline sweeps", scan_bounds, cx, |inner, cx| {
             let grid = grid_metrics(
                 inner.size.width,
@@ -71,26 +133,8 @@ impl Storybook {
                 });
             }
         });
-        y += scan_height + SECTION_GAP;
 
-        let meter_presets = [
-            ("Low 4", 4, 0.2, 190.0),
-            ("Med 5", 5, 0.45, 190.0),
-            ("High 6", 6, 0.75, 190.0),
-            ("Full 8", 8, 1.0, 150.0),
-            ("Amber", 6, 0.6, 35.0),
-            ("Green", 5, 0.8, 120.0),
-        ];
-
-        let meter_grid = grid_metrics(
-            available,
-            meter_presets.len(),
-            BG_TILE_W,
-            BG_TILE_H,
-            BG_TILE_GAP,
-        );
-        let meter_height = panel_height(meter_grid.height);
-        let meter_bounds = Bounds::new(bounds.origin.x, y, width, meter_height);
+        let meter_bounds = panels[1];
         draw_panel("Signal meters", meter_bounds, cx, |inner, cx| {
             let grid = grid_metrics(
                 inner.size.width,
@@ -121,26 +165,8 @@ impl Storybook {
                 });
             }
         });
-        y += meter_height + SECTION_GAP;
 
-        let reticle_presets = [
-            ("Compact", 18.0, 4.0, 4.0, 8.0, 190.0),
-            ("Wide", 32.0, 6.0, 6.0, 12.0, 190.0),
-            ("Long", 40.0, 8.0, 4.0, 14.0, 200.0),
-            ("Amber", 28.0, 5.0, 8.0, 10.0, 35.0),
-            ("Green", 26.0, 6.0, 6.0, 12.0, 120.0),
-            ("Offset", 24.0, 10.0, 10.0, 8.0, 160.0),
-        ];
-
-        let reticle_grid = grid_metrics(
-            available,
-            reticle_presets.len(),
-            BG_TILE_W,
-            BG_TILE_H,
-            BG_TILE_GAP,
-        );
-        let reticle_height = panel_height(reticle_grid.height);
-        let reticle_bounds = Bounds::new(bounds.origin.x, y, width, reticle_height);
+        let reticle_bounds = panels[2];
         draw_panel("Reticle variants", reticle_bounds, cx, |inner, cx| {
             let grid = grid_metrics(
                 inner.size.width,
@@ -171,27 +197,9 @@ impl Storybook {
                 });
             }
         });
-        y += reticle_height + SECTION_GAP;
 
         // Resizable pane demos
-        let resizable_presets: [(&str, bool, bool, f32); 6] = [
-            ("Default", true, false, 8.0),
-            ("Visible", true, true, 8.0),
-            ("Large", true, true, 12.0),
-            ("Small", true, true, 4.0),
-            ("Disabled", false, false, 8.0),
-            ("Styled", true, true, 10.0),
-        ];
-
-        let resizable_grid = grid_metrics(
-            available,
-            resizable_presets.len(),
-            BG_TILE_W,
-            BG_TILE_H,
-            BG_TILE_GAP,
-        );
-        let resizable_height = panel_height(resizable_grid.height);
-        let resizable_bounds = Bounds::new(bounds.origin.x, y, width, resizable_height);
+        let resizable_bounds = panels[3];
         draw_panel("Resizable panes", resizable_bounds, cx, |inner, cx| {
             let grid = grid_metrics(
                 inner.size.width,
@@ -243,13 +251,13 @@ impl Storybook {
     }
 
     pub(crate) fn paint_light_demo(&mut self, bounds: Bounds, cx: &mut PaintContext) {
-        let mut y = bounds.origin.y;
-        let width = bounds.size.width;
         let progress = self.light_frame_anim.current_value();
         let glow_pulse = self.glow_pulse_anim.current_value();
 
         let frames_height = panel_height(LIGHT_DEMO_FRAMES_INNER_H);
-        let frames_bounds = Bounds::new(bounds.origin.x, y, width, frames_height);
+        let hero_height = panel_height(LIGHT_DEMO_HERO_INNER_H);
+        let panels = panel_stack(bounds, &[frames_height, hero_height]);
+        let frames_bounds = panels[0];
         draw_panel("Light demo frames", frames_bounds, cx, |inner, cx| {
             let frame_w = ((inner.size.width - 16.0).max(0.0) / 2.0).max(0.0);
             let frame_h = 60.0;
@@ -421,11 +429,7 @@ impl Storybook {
             );
             cx.scene.draw_text(usd_value);
         });
-
-        y += frames_height + SECTION_GAP;
-
-        let hero_height = panel_height(LIGHT_DEMO_HERO_INNER_H);
-        let hero_bounds = Bounds::new(bounds.origin.x, y, width, hero_height);
+        let hero_bounds = panels[1];
         draw_panel("Light demo hero frame", hero_bounds, cx, |inner, cx| {
             let pane_w = inner.size.width.min(520.0);
             let pane_h = inner.size.height.min(220.0);
@@ -504,12 +508,23 @@ impl Storybook {
     }
 
     pub(crate) fn paint_system_ui(&mut self, bounds: Bounds, cx: &mut PaintContext) {
-        let mut y = bounds.origin.y;
-        let width = bounds.size.width;
-
         // Tooltip demos
         let tooltip_height = panel_height(180.0);
-        let tooltip_bounds = Bounds::new(bounds.origin.x, y, width, tooltip_height);
+        let status_height = panel_height(120.0);
+        let notif_height = panel_height(260.0);
+        let menu_height = panel_height(200.0);
+        let palette_height = panel_height(240.0);
+        let panels = panel_stack(
+            bounds,
+            &[
+                tooltip_height,
+                status_height,
+                notif_height,
+                menu_height,
+                palette_height,
+            ],
+        );
+        let tooltip_bounds = panels[0];
         draw_panel("Tooltip positions", tooltip_bounds, cx, |inner, cx| {
             let positions = [
                 ("Top", TooltipPosition::Top, 0),
@@ -562,11 +577,9 @@ impl Storybook {
                 tooltip.paint(tile_bounds, cx);
             }
         });
-        y += tooltip_height + SECTION_GAP;
 
         // StatusBar demos
-        let status_height = panel_height(120.0);
-        let status_bounds = Bounds::new(bounds.origin.x, y, width, status_height);
+        let status_bounds = panels[1];
         draw_panel("StatusBar variants", status_bounds, cx, |inner, cx| {
             // Top status bar
             let top_bar_bounds =
@@ -601,11 +614,9 @@ impl Storybook {
                 ]);
             bot_bar.paint(bot_bar_bounds, cx);
         });
-        y += status_height + SECTION_GAP;
 
         // Notifications demos
-        let notif_height = panel_height(260.0);
-        let notif_bounds = Bounds::new(bounds.origin.x, y, width, notif_height);
+        let notif_bounds = panels[2];
         draw_panel("Notification levels", notif_bounds, cx, |inner, cx| {
             let levels = [
                 ("Info", NotificationLevel::Info, "System update available"),
@@ -670,11 +681,9 @@ impl Storybook {
                 cx.scene.draw_text(msg_run);
             }
         });
-        y += notif_height + SECTION_GAP;
 
         // ContextMenu demo
-        let menu_height = panel_height(200.0);
-        let menu_bounds = Bounds::new(bounds.origin.x, y, width, menu_height);
+        let menu_bounds = panels[3];
         draw_panel("ContextMenu preview", menu_bounds, cx, |inner, cx| {
             // Draw a static preview of a context menu
             let menu_w = 180.0;
@@ -763,11 +772,9 @@ impl Storybook {
             );
             cx.scene.draw_text(desc);
         });
-        y += menu_height + SECTION_GAP;
 
         // CommandPalette demo
-        let palette_height = panel_height(240.0);
-        let palette_bounds = Bounds::new(bounds.origin.x, y, width, palette_height);
+        let palette_bounds = panels[4];
         draw_panel("CommandPalette preview", palette_bounds, cx, |inner, cx| {
             let palette_w = 400.0;
             let palette_h = 200.0;

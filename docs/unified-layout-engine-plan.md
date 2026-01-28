@@ -210,3 +210,5 @@ Prevent regressions to manual layout across the codebase.
   sections to use layout-engine stacking for top-level panels.
 - 2026-01-28: Phase 3: converted Arwes storybook sections to use layout-engine panel stacking
   across frames/backgrounds/text effects/illuminator panels.
+- 2026-01-28: Phase 3: converted HUD storybook sections (widgets/light demo/system UI) to use
+  layout-engine panel stacking.
