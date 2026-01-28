@@ -25,6 +25,7 @@ hex = { workspace = true }
 rand = { workspace = true }
 bip39 = "2.1"
 spark = { package = "openagents-spark", path = "../spark" }
+citrea = { package = "openagents-citrea", path = "../citrea" }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
 reqwest = { workspace = true }
 bitcoin = { workspace = true }
