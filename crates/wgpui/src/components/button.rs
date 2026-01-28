@@ -2,8 +2,11 @@
 
 use crate::components::context::{EventContext, PaintContext};
 use crate::components::{AnyComponent, Component, ComponentId, EventResult};
+use crate::layout::{LayoutEngine, LayoutStyle, length, px};
 use crate::styled::{StyleRefinement, Styled};
-use crate::{Bounds, Hsla, InputEvent, MouseButton, Point, Quad, theme};
+use crate::text::FontStyle;
+use crate::{Bounds, Hsla, InputEvent, MouseButton, Point, Quad, Size, theme};
+use taffy::{AlignItems, JustifyContent};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ButtonVariant {
@@ -43,7 +46,7 @@ impl Button {
             style: StyleRefinement::default(),
             font_size: theme::font_size::SM,
             padding: (theme::spacing::LG, theme::spacing::SM),
-            corner_radius: 0.0,
+            corner_radius: 8.0,
             icon: None,
             on_click: None,
         }
@@ -172,6 +175,7 @@ impl Component for Button {
     fn paint(&mut self, bounds: Bounds, cx: &mut PaintContext) {
         let (bg_color, text_color, border_color) = self.colors();
         let font_size = self.style.font_size.unwrap_or(self.font_size);
+        let font_style = FontStyle::default();
 
         let mut quad = Quad::new(bounds).with_background(bg_color);
 
@@ -185,29 +189,100 @@ impl Component for Button {
 
         cx.scene.draw_quad(quad);
 
-        if let Some(icon) = &mut self.icon {
-            let icon_size = font_size;
-            let icon_bounds = Bounds::new(
-                bounds.origin.x + self.padding.0,
-                bounds.origin.y + (bounds.size.height - icon_size) / 2.0,
-                icon_size,
-                icon_size,
-            );
-            icon.paint(icon_bounds, cx);
-        }
-
-        if !self.label.is_empty() {
-            let content_width = self.label.chars().count() as f32 * font_size * 0.6;
-            let text_x = bounds.origin.x + (bounds.size.width - content_width) / 2.0;
-            let text_y = bounds.origin.y + bounds.size.height * 0.5 - font_size * 0.55;
-
-            let text_run = cx.text.layout_mono(
+        let mut label_run = if self.label.is_empty() {
+            None
+        } else {
+            Some(cx.text.layout_styled_mono(
                 &self.label,
-                Point::new(text_x, text_y),
+                Point::ZERO,
                 font_size,
                 text_color,
+                font_style,
+            ))
+        };
+        let label_bounds = label_run
+            .as_ref()
+            .map(|run| run.bounds())
+            .unwrap_or(Bounds::ZERO);
+        let label_size = if label_run.is_some() {
+            Size::new(label_bounds.size.width, label_bounds.size.height)
+        } else {
+            Size::ZERO
+        };
+
+        let icon_size = if self.icon.is_some() { font_size } else { 0.0 };
+        let mut layout = LayoutEngine::new();
+        let mut children = Vec::new();
+
+        let icon_id = if icon_size > 0.0 {
+            Some(
+                layout.request_leaf(
+                    &LayoutStyle::new()
+                        .width(px(icon_size))
+                        .height(px(icon_size)),
+                ),
+            )
+        } else {
+            None
+        };
+        if let Some(id) = icon_id {
+            children.push(id);
+        }
+
+        let label_id = if label_size.width > 0.0 && label_size.height > 0.0 {
+            Some(
+                layout.request_leaf(
+                    &LayoutStyle::new()
+                        .width(px(label_size.width))
+                        .height(px(label_size.height)),
+                ),
+            )
+        } else {
+            None
+        };
+        if let Some(id) = label_id {
+            children.push(id);
+        }
+
+        if !children.is_empty() {
+            let content_bounds = Bounds::new(
+                bounds.origin.x + self.padding.0,
+                bounds.origin.y + self.padding.1,
+                (bounds.size.width - self.padding.0 * 2.0).max(0.0),
+                (bounds.size.height - self.padding.1 * 2.0).max(0.0),
             );
-            cx.scene.draw_text(text_run);
+            let root_style = LayoutStyle::new()
+                .width(px(content_bounds.size.width))
+                .height(px(content_bounds.size.height))
+                .flex_row()
+                .align_items(AlignItems::Center)
+                .justify_content(JustifyContent::Center)
+                .gap(length(theme::spacing::SM));
+
+            let root = layout.request_layout(&root_style, &children);
+            layout.compute_layout(root, content_bounds.size);
+
+            if let (Some(icon_id), Some(icon)) = (icon_id, &mut self.icon) {
+                let icon_bounds = layout.layout(icon_id);
+                icon.paint(
+                    Bounds::new(
+                        content_bounds.origin.x + icon_bounds.origin.x,
+                        content_bounds.origin.y + icon_bounds.origin.y,
+                        icon_bounds.size.width,
+                        icon_bounds.size.height,
+                    ),
+                    cx,
+                );
+            }
+
+            if let (Some(label_id), Some(mut label_run)) = (label_id, label_run.take()) {
+                let label_layout = layout.layout(label_id);
+                label_run.origin = Point::new(
+                    content_bounds.origin.x + label_layout.origin.x - label_bounds.origin.x,
+                    content_bounds.origin.y + label_layout.origin.y - label_bounds.origin.y,
+                );
+                cx.scene.draw_text(label_run);
+            }
         }
     }
 
