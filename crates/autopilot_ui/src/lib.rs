@@ -11,7 +11,8 @@ use rand::RngCore;
 use serde_json::Value;
 use taffy::prelude::{AlignItems, JustifyContent};
 use wgpui::components::EventContext;
-use wgpui::components::atoms::{KeybindingHint, ToolStatus, ToolType};
+use wgpui::components::atoms::{ToolStatus, ToolType};
+use wgpui::components::hud::{Hotbar, HotbarSlot, PaneFrame};
 use wgpui::components::organisms::{
     AssistantMessage, CodexReasoningCard, DiffLine, DiffLineKind, DiffToolCall, SearchMatch,
     SearchToolCall, TerminalToolCall, ThreadEntry, ThreadEntryType, ToolCallCard, UserMessage,
@@ -41,11 +42,25 @@ const DEFAULT_THREAD_MODEL: &str = "gpt-5.1-codex-mini";
 const BOTTOM_BAR_MIN_HEIGHT: f32 = 64.0;
 const INPUT_MIN_LINES: usize = 1;
 const INPUT_MAX_LINES: Option<usize> = None;
-const HOTBAR_HEIGHT: f32 = 34.0;
-const HOTBAR_FLOAT_GAP: f32 = 12.0;
 const MODEL_DROPDOWN_WIDTH: f32 = 320.0;
 const DEFAULT_MODEL_INDEX: usize = 3;
 const SHOW_MODEL_DROPDOWN: bool = false;
+const PANE_MARGIN: f32 = 24.0;
+const PANE_OFFSET: f32 = 28.0;
+const PANE_MIN_WIDTH: f32 = 240.0;
+const PANE_MIN_HEIGHT: f32 = 140.0;
+const PANE_TITLE_HEIGHT: f32 = 28.0;
+const CHAT_PANE_WIDTH: f32 = 820.0;
+const CHAT_PANE_HEIGHT: f32 = 620.0;
+const EVENTS_PANE_WIDTH: f32 = 480.0;
+const EVENTS_PANE_HEIGHT: f32 = 520.0;
+const IDENTITY_PANE_WIDTH: f32 = 520.0;
+const IDENTITY_PANE_HEIGHT: f32 = 520.0;
+const HOTBAR_HEIGHT: f32 = 52.0;
+const HOTBAR_FLOAT_GAP: f32 = 18.0;
+const HOTBAR_ITEM_SIZE: f32 = 36.0;
+const HOTBAR_ITEM_GAP: f32 = 6.0;
+const HOTBAR_PADDING: f32 = 6.0;
 const MODEL_OPTIONS: [(&str, &str); 4] = [
     ("gpt-5.2-codex", "Latest frontier agentic coding model."),
     (
@@ -287,6 +302,163 @@ fn generate_nip06_keypair() -> Result<(String, String, String, String), String> 
     Ok((npub, nsec, spark_pubkey, mnemonic))
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum PaneKind {
+    Chat,
+    Events,
+    Identity,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct PaneRect {
+    x: f32,
+    y: f32,
+    width: f32,
+    height: f32,
+}
+
+#[derive(Clone, Debug)]
+struct Pane {
+    id: String,
+    kind: PaneKind,
+    title: String,
+    rect: PaneRect,
+    dismissable: bool,
+}
+
+#[derive(Clone, Debug)]
+struct PaneSnapshot {
+    rect: PaneRect,
+}
+
+#[derive(Default)]
+struct PaneStore {
+    panes: Vec<Pane>,
+    active_pane_id: Option<String>,
+    last_pane_position: Option<PaneRect>,
+    closed_positions: HashMap<String, PaneSnapshot>,
+}
+
+impl PaneStore {
+    fn is_active(&self, id: &str) -> bool {
+        self.active_pane_id.as_deref() == Some(id)
+    }
+
+    fn pane(&self, id: &str) -> Option<&Pane> {
+        self.panes.iter().find(|pane| pane.id == id)
+    }
+
+    fn pane_index(&self, id: &str) -> Option<usize> {
+        self.panes.iter().position(|pane| pane.id == id)
+    }
+
+    fn panes(&self) -> &[Pane] {
+        &self.panes
+    }
+
+    fn add_pane(&mut self, pane: Pane) {
+        if let Some(index) = self.pane_index(&pane.id) {
+            self.active_pane_id = Some(pane.id.clone());
+            let pane = self.panes.remove(index);
+            self.panes.push(pane);
+            return;
+        }
+
+        self.active_pane_id = Some(pane.id.clone());
+        self.last_pane_position = Some(pane.rect);
+        self.panes.push(pane);
+    }
+
+    fn remove_pane(&mut self, id: &str, store_position: bool) {
+        if let Some(index) = self.pane_index(id) {
+            let pane = self.panes.remove(index);
+            if store_position {
+                self.closed_positions.insert(
+                    pane.id.clone(),
+                    PaneSnapshot {
+                        rect: pane.rect,
+                    },
+                );
+            }
+            if self.active_pane_id.as_deref() == Some(id) {
+                self.active_pane_id = self.panes.last().map(|pane| pane.id.clone());
+            }
+        }
+    }
+
+    fn bring_to_front(&mut self, id: &str) {
+        if let Some(index) = self.pane_index(id) {
+            let pane = self.panes.remove(index);
+            self.active_pane_id = Some(pane.id.clone());
+            self.panes.push(pane);
+        }
+    }
+
+    fn toggle_pane<F>(&mut self, id: &str, screen: Size, mut create: F)
+    where
+        F: FnMut(Option<PaneSnapshot>) -> Pane,
+    {
+        if let Some(index) = self.pane_index(id) {
+            let is_active = self.active_pane_id.as_deref() == Some(id);
+            if is_active {
+                self.remove_pane(id, true);
+            } else {
+                let pane = self.panes.remove(index);
+                self.active_pane_id = Some(pane.id.clone());
+                self.panes.push(pane);
+            }
+            return;
+        }
+
+        let snapshot = self.closed_positions.get(id).cloned();
+        let mut pane = create(snapshot);
+        pane.rect = ensure_pane_visible(pane.rect, screen);
+        self.add_pane(pane);
+    }
+}
+
+fn ensure_pane_visible(rect: PaneRect, screen: Size) -> PaneRect {
+    let mut width = rect.width.max(PANE_MIN_WIDTH).min(screen.width - PANE_MARGIN * 2.0);
+    let mut height = rect.height.max(PANE_MIN_HEIGHT).min(screen.height - PANE_MARGIN * 2.0);
+    if width.is_nan() || width <= 0.0 {
+        width = PANE_MIN_WIDTH;
+    }
+    if height.is_nan() || height <= 0.0 {
+        height = PANE_MIN_HEIGHT;
+    }
+    let mut x = rect.x;
+    let mut y = rect.y;
+    x = x.max(PANE_MARGIN).min(screen.width - width - PANE_MARGIN);
+    y = y.max(PANE_MARGIN).min(screen.height - height - PANE_MARGIN);
+    PaneRect { x, y, width, height }
+}
+
+fn calculate_new_pane_position(
+    last: Option<PaneRect>,
+    screen: Size,
+    width: f32,
+    height: f32,
+) -> PaneRect {
+    if let Some(last) = last {
+        let mut x = last.x + PANE_OFFSET;
+        let mut y = last.y + PANE_OFFSET;
+        if x + width > screen.width - PANE_MARGIN {
+            x = PANE_MARGIN;
+        }
+        if y + height > screen.height - PANE_MARGIN {
+            y = PANE_MARGIN;
+        }
+        PaneRect { x, y, width, height }
+    } else {
+        PaneRect {
+            x: (screen.width - width) * 0.5,
+            y: (screen.height - height) * 0.3,
+            width,
+            height,
+        }
+    }
+}
+
 pub struct DesktopRoot {
     view_model: AppViewModel,
     event_context: EventContext,
@@ -306,6 +478,14 @@ pub struct DesktopRoot {
 pub struct MinimalRoot {
     event_context: EventContext,
     cursor_position: Point,
+    screen_size: Size,
+    pane_store: PaneStore,
+    pane_frames: HashMap<String, PaneFrame>,
+    pane_bounds: HashMap<String, Bounds>,
+    chat_pane_id: Option<String>,
+    next_chat_index: u64,
+    hotbar: Hotbar,
+    hotbar_bounds: Bounds,
     model_dropdown: Dropdown,
     model_bounds: Bounds,
     model_hovered: bool,
@@ -358,10 +538,6 @@ pub struct MinimalRoot {
     thread_model: Option<String>,
     thread_id: Option<String>,
     active_turn_id: Option<String>,
-    raw_events_visible: bool,
-    left_panel_visible: bool,
-    nostr_visible: bool,
-    nostr_fullscreen: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -472,10 +648,22 @@ impl MinimalRoot {
             });
 
         let event_scroll = ScrollView::new().show_scrollbar(true).scrollbar_width(6.0);
-
-        Self {
+        let hotbar = Hotbar::new()
+            .item_size(HOTBAR_ITEM_SIZE)
+            .padding(HOTBAR_PADDING)
+            .gap(HOTBAR_ITEM_GAP)
+            .corner_radius(8.0);
+        let mut root = Self {
             event_context: EventContext::new(),
             cursor_position: Point::ZERO,
+            screen_size: Size::new(1280.0, 720.0),
+            pane_store: PaneStore::default(),
+            pane_frames: HashMap::new(),
+            pane_bounds: HashMap::new(),
+            chat_pane_id: None,
+            next_chat_index: 1,
+            hotbar,
+            hotbar_bounds: Bounds::ZERO,
             model_dropdown,
             model_bounds: Bounds::ZERO,
             model_hovered: false,
@@ -528,11 +716,11 @@ impl MinimalRoot {
             thread_model: Some(DEFAULT_THREAD_MODEL.to_string()),
             thread_id: None,
             active_turn_id: None,
-            raw_events_visible: false,
-            left_panel_visible: true,
-            nostr_visible: false,
-            nostr_fullscreen: false,
-        }
+        };
+
+        let screen = Size::new(1280.0, 720.0);
+        root.open_chat_pane(screen, true);
+        root
     }
 
     pub fn apply_event(&mut self, event: AppEvent) {
@@ -672,6 +860,139 @@ impl MinimalRoot {
         F: FnMut(UserAction) + 'static,
     {
         self.send_handler = Some(Box::new(handler));
+    }
+
+    fn screen_size(&self) -> Size {
+        self.screen_size
+    }
+
+    fn set_screen_size(&mut self, size: Size) {
+        self.screen_size = size;
+    }
+
+    fn open_chat_pane(&mut self, screen: Size, reset_chat: bool) -> String {
+        if let Some(existing) = self.chat_pane_id.take() {
+            self.pane_store.remove_pane(&existing, true);
+        }
+
+        let id = format!("chat-{}", self.next_chat_index);
+        self.next_chat_index += 1;
+        let rect = calculate_new_pane_position(
+            self.pane_store.last_pane_position,
+            screen,
+            CHAT_PANE_WIDTH,
+            CHAT_PANE_HEIGHT,
+        );
+        let pane = Pane {
+            id: id.clone(),
+            kind: PaneKind::Chat,
+            title: "Chat".to_string(),
+            rect: ensure_pane_visible(rect, screen),
+            dismissable: true,
+        };
+        self.pane_store.add_pane(pane);
+        self.chat_pane_id = Some(id.clone());
+
+        if reset_chat {
+            self.reset_chat_state();
+        }
+
+        id
+    }
+
+    fn toggle_events_pane(&mut self, screen: Size) {
+        let last_position = self.pane_store.last_pane_position;
+        self.pane_store.toggle_pane("events", screen, |snapshot| {
+            let rect = snapshot
+                .as_ref()
+                .map(|snapshot| snapshot.rect)
+                .unwrap_or_else(|| {
+                    calculate_new_pane_position(
+                        last_position,
+                        screen,
+                        EVENTS_PANE_WIDTH,
+                        EVENTS_PANE_HEIGHT,
+                    )
+                });
+            Pane {
+                id: "events".to_string(),
+                kind: PaneKind::Events,
+                title: "Codex Events".to_string(),
+                rect,
+                dismissable: true,
+            }
+        });
+    }
+
+    fn toggle_identity_pane(&mut self, screen: Size) {
+        let last_position = self.pane_store.last_pane_position;
+        self.pane_store.toggle_pane("identity", screen, |snapshot| {
+            let rect = snapshot
+                .as_ref()
+                .map(|snapshot| snapshot.rect)
+                .unwrap_or_else(|| {
+                    calculate_new_pane_position(
+                        last_position,
+                        screen,
+                        IDENTITY_PANE_WIDTH,
+                        IDENTITY_PANE_HEIGHT,
+                    )
+                });
+            Pane {
+                id: "identity".to_string(),
+                kind: PaneKind::Identity,
+                title: "Identity".to_string(),
+                rect,
+                dismissable: true,
+            }
+        });
+    }
+
+    fn close_pane(&mut self, id: &str) {
+        self.pane_store.remove_pane(id, true);
+        self.pane_frames.remove(id);
+        self.pane_bounds.remove(id);
+        if self.chat_pane_id.as_deref() == Some(id) {
+            self.chat_pane_id = None;
+        }
+    }
+
+    fn handle_hotbar_slot(&mut self, slot: u8) -> bool {
+        let screen = self.screen_size();
+        match slot {
+            1 => {
+                if let Some(chat_id) = self.chat_pane_id.clone() {
+                    if self.pane_store.is_active(&chat_id) {
+                        self.close_pane(&chat_id);
+                    } else {
+                        self.pane_store.bring_to_front(&chat_id);
+                    }
+                } else {
+                    self.open_chat_pane(screen, false);
+                }
+                true
+            }
+            2 => {
+                self.toggle_events_pane(screen);
+                true
+            }
+            3 => {
+                self.toggle_identity_pane(screen);
+                true
+            }
+            _ => false,
+        }
+    }
+
+    fn pane_at(&self, point: Point) -> Option<String> {
+        for pane in self.pane_store.panes().iter().rev() {
+            if let Some(bounds) = self.pane_bounds.get(&pane.id) {
+                if bounds.contains(point) {
+                    return Some(pane.id.clone());
+                }
+            }
+        }
+        None
     }
 
     fn is_processing(&self) -> bool {
@@ -1108,6 +1429,7 @@ impl MinimalRoot {
         self.thread_model = Some(self.selected_model.clone());
         self.full_auto_enabled = false;
         self.input.set_value("");
+        self.input_needs_focus = true;
         self.submit_button
             .set_disabled(self.input.get_value().trim().is_empty());
     }
@@ -1341,58 +1663,22 @@ impl MinimalRoot {
                     return true;
                 }
             }
-            if modifiers.meta && matches!(key, Key::Character(value) if value == "2") {
-                self.raw_events_visible = !self.raw_events_visible;
-                return true;
-            }
-            if modifiers.meta && matches!(key, Key::Character(value) if value == "3") {
-                if !self.nostr_visible {
-                    self.nostr_visible = true;
-                    self.nostr_fullscreen = true;
-                } else if self.nostr_fullscreen {
-                    self.nostr_fullscreen = false;
-                } else {
-                    self.nostr_visible = false;
-                }
-                return true;
-            }
-            if modifiers.meta && matches!(key, Key::Character(value) if value == "[") {
-                self.left_panel_visible = !self.left_panel_visible;
-                if !self.left_panel_visible {
-                    if self.nostr_visible {
-                        self.nostr_fullscreen = true;
+
+            if modifiers.meta || modifiers.ctrl {
+                if let Key::Character(value) = key {
+                    if let Ok(slot) = value.parse::<u8>() {
+                        if slot >= 1 && slot <= 9 && self.handle_hotbar_slot(slot) {
+                            return true;
+                        }
                     }
-                } else if self.nostr_fullscreen {
-                    self.nostr_fullscreen = false;
                 }
-                return true;
-            }
-            if modifiers.meta && matches!(key, Key::Character(value) if value == "]") {
-                self.nostr_visible = !self.nostr_visible;
-                if !self.nostr_visible {
-                    self.nostr_fullscreen = false;
-                } else if !self.left_panel_visible {
-                    self.nostr_fullscreen = true;
-                } else {
-                    self.nostr_fullscreen = false;
-                }
-                return true;
-            }
-            if modifiers.meta && matches!(key, Key::Character(value) if value == "\\") {
-                if self.left_panel_visible || self.nostr_visible {
-                    self.left_panel_visible = false;
-                    self.nostr_visible = false;
-                    self.nostr_fullscreen = false;
-                } else {
-                    self.left_panel_visible = true;
-                    self.nostr_visible = true;
-                    self.nostr_fullscreen = false;
-                }
-                return true;
             }
         }
 
-        if let InputEvent::MouseMove { x, y } = event {
+        if let InputEvent::MouseMove { x, y }
+        | InputEvent::MouseDown { x, y, .. }
+        | InputEvent::MouseUp { x, y, .. } = event
+        {
             self.cursor_position = Point::new(*x, *y);
             self.input_hovered = self.input_bounds.contains(self.cursor_position);
             self.model_hovered = if SHOW_MODEL_DROPDOWN {
@@ -1402,86 +1688,159 @@ impl MinimalRoot {
             };
         }
 
-        let dropdown_handled = if SHOW_MODEL_DROPDOWN {
-            matches!(
-                self.model_dropdown
-                    .event(event, self.model_bounds, &mut self.event_context),
-                EventResult::Handled
-            )
-        } else {
-            false
+        let mut handled = matches!(
+            self.hotbar
+                .event(event, self.hotbar_bounds, &mut self.event_context),
+            EventResult::Handled
+        );
+
+        let hotbar_clicks = self.hotbar.take_clicked_slots();
+        for slot in hotbar_clicks {
+            handled |= self.handle_hotbar_slot(slot);
+        }
+
+        let target_pane = match event {
+            InputEvent::MouseMove { .. }
+            | InputEvent::MouseDown { .. }
+            | InputEvent::MouseUp { .. }
+            | InputEvent::Scroll { .. } => self.pane_at(self.cursor_position),
+            _ => self.pane_store.active_pane_id.clone(),
         };
 
-        let keygen_handled = matches!(
-            self.keygen_button
-                .event(event, self.keygen_bounds, &mut self.event_context),
-            EventResult::Handled
-        );
+        if let Some(pane_id) = target_pane {
+            if matches!(event, InputEvent::MouseDown { .. }) {
+                self.pane_store.bring_to_front(&pane_id);
+            }
 
-        let new_chat_handled = matches!(
-            self.new_chat_button
-                .event(event, self.new_chat_bounds, &mut self.event_context),
-            EventResult::Handled
-        );
+            if let Some(pane_bounds) = self.pane_bounds.get(&pane_id).copied() {
+                if let Some(frame) = self.pane_frames.get_mut(&pane_id) {
+                    handled |= frame
+                        .event(event, pane_bounds, &mut self.event_context)
+                        .is_handled();
+                    if frame.take_close_clicked() {
+                        self.close_pane(&pane_id);
+                        return true;
+                    }
+                }
 
-        let full_auto_handled = matches!(
-            self.full_auto_button
-                .event(event, self.full_auto_bounds, &mut self.event_context),
-            EventResult::Handled
-        );
+                if let Some(pane) = self.pane_store.pane(&pane_id) {
+                    match pane.kind {
+                        PaneKind::Chat => {
+                            let dropdown_handled = if SHOW_MODEL_DROPDOWN {
+                                matches!(
+                                    self.model_dropdown.event(
+                                        event,
+                                        self.model_bounds,
+                                        &mut self.event_context
+                                    ),
+                                    EventResult::Handled
+                                )
+                            } else {
+                                false
+                            };
 
-        let copy_handled = if self.raw_events_visible {
-            matches!(
-                self.copy_button
-                    .event(event, self.copy_bounds, &mut self.event_context),
-                EventResult::Handled
-            )
-        } else {
-            false
-        };
+                            let new_chat_handled = matches!(
+                                self.new_chat_button.event(
+                                    event,
+                                    self.new_chat_bounds,
+                                    &mut self.event_context
+                                ),
+                                EventResult::Handled
+                            );
 
-        let scroll_handled = if self.raw_events_visible
-            && self.event_scroll_bounds.contains(self.cursor_position)
-        {
-            matches!(
-                self.event_scroll
-                    .event(event, self.event_scroll_bounds, &mut self.event_context),
-                EventResult::Handled
-            )
-        } else {
-            false
-        };
+                            let full_auto_handled = matches!(
+                                self.full_auto_button.event(
+                                    event,
+                                    self.full_auto_bounds,
+                                    &mut self.event_context
+                                ),
+                                EventResult::Handled
+                            );
 
-        let formatted_handled = if self.formatted_thread_bounds.contains(self.cursor_position) {
-            matches!(
-                self.formatted_thread.event(
-                    event,
-                    self.formatted_thread_bounds,
-                    &mut self.event_context
-                ),
-                EventResult::Handled
-            )
-        } else {
-            false
-        };
+                            let formatted_handled = if self
+                                .formatted_thread_bounds
+                                .contains(self.cursor_position)
+                            {
+                                matches!(
+                                    self.formatted_thread.event(
+                                        event,
+                                        self.formatted_thread_bounds,
+                                        &mut self.event_context
+                                    ),
+                                    EventResult::Handled
+                                )
+                            } else {
+                                false
+                            };
 
-        let input_handled = matches!(
-            self.input
-                .event(event, self.input_bounds, &mut self.event_context),
-            EventResult::Handled
-        );
+                            let input_handled = matches!(
+                                self.input
+                                    .event(event, self.input_bounds, &mut self.event_context),
+                                EventResult::Handled
+                            );
 
-        let submit_handled = matches!(
-            self.submit_button
-                .event(event, self.submit_bounds, &mut self.event_context),
-            EventResult::Handled
-        );
+                            let submit_handled = matches!(
+                                self.submit_button.event(
+                                    event,
+                                    self.submit_bounds,
+                                    &mut self.event_context
+                                ),
+                                EventResult::Handled
+                            );
 
-        let stop_handled = matches!(
-            self.stop_button
-                .event(event, self.stop_bounds, &mut self.event_context),
-            EventResult::Handled
-        );
+                            let stop_handled = matches!(
+                                self.stop_button.event(
+                                    event,
+                                    self.stop_bounds,
+                                    &mut self.event_context
+                                ),
+                                EventResult::Handled
+                            );
+
+                            handled |= dropdown_handled
+                                || new_chat_handled
+                                || full_auto_handled
+                                || formatted_handled
+                                || input_handled
+                                || submit_handled
+                                || stop_handled;
+                        }
+                        PaneKind::Events => {
+                            let copy_handled = matches!(
+                                self.copy_button.event(
+                                    event,
+                                    self.copy_bounds,
+                                    &mut self.event_context
+                                ),
+                                EventResult::Handled
+                            );
+                            let scroll_handled =
+                                self.event_scroll_bounds.contains(self.cursor_position)
+                                    && matches!(
+                                        self.event_scroll.event(
+                                            event,
+                                            self.event_scroll_bounds,
+                                            &mut self.event_context
+                                        ),
+                                        EventResult::Handled
+                                    );
+                            handled |= copy_handled || scroll_handled;
+                        }
+                        PaneKind::Identity => {
+                            let keygen_handled = matches!(
+                                self.keygen_button.event(
+                                    event,
+                                    self.keygen_bounds,
+                                    &mut self.event_context
+                                ),
+                                EventResult::Handled
+                            );
+                            handled |= keygen_handled;
+                        }
+                    }
+                }
+            }
+        }
 
         let pending_models = {
             let mut pending = self.pending_model_changes.borrow_mut();
@@ -1544,7 +1903,8 @@ impl MinimalRoot {
         };
 
         if should_new_chat {
-            self.reset_chat_state();
+            let screen = self.screen_size();
+            self.open_chat_pane(screen, true);
             if let (Some(session_id), Some(handler)) = (self.session_id, self.send_handler.as_mut())
             {
                 handler(UserAction::NewChat {
@@ -1633,20 +1993,19 @@ impl MinimalRoot {
         self.stop_button
             .set_disabled(self.thread_id.is_none());
 
-        submit_handled
-            || input_handled
-            || scroll_handled
-            || dropdown_handled
-            || keygen_handled
-            || new_chat_handled
-            || full_auto_handled
-            || copy_handled
-            || stop_handled
-            || formatted_handled
+        handled
     }
 
     pub fn cursor(&self) -> Cursor {
-        if self.submit_button.is_hovered() && !self.submit_button.is_disabled() {
+        if self.hotbar.is_hovered() {
+            Cursor::Pointer
+        } else if self
+            .pane_frames
+            .values()
+            .any(|frame| frame.is_close_hovered())
+        {
+            Cursor::Pointer
+        } else if self.submit_button.is_hovered() && !self.submit_button.is_disabled() {
             Cursor::Pointer
         } else if self.stop_button.is_hovered() && !self.stop_button.is_disabled() {
             Cursor::Pointer
@@ -1682,86 +2041,82 @@ impl Component for MinimalRoot {
                 .with_border(theme::border::DEFAULT, 1.0),
         );
 
-        let mut engine = LayoutEngine::new();
-        let fullscreen_right = self.nostr_visible
-            && (self.nostr_fullscreen || !self.left_panel_visible);
-        let left_panel = if !self.left_panel_visible || fullscreen_right {
-            None
-        } else {
-            Some(engine.request_layout(
-                &LayoutStyle::new().flex_grow(1.0),
-                &[],
-            ))
-        };
-        let right_panel = if !self.nostr_visible {
-            None
-        } else if fullscreen_right {
-            Some(engine.request_layout(&LayoutStyle::new().flex_grow(1.0), &[]))
-        } else {
-            let sidebar_width = bounds.size.width * 0.5;
-            Some(engine.request_layout(
-                &LayoutStyle::new().width(px(sidebar_width)).flex_shrink(0.0),
-                &[],
-            ))
-        };
-        let mut row_children = Vec::new();
-        if let Some(left_panel) = left_panel {
-            row_children.push(left_panel);
-        }
-        if let Some(right_panel_id) = right_panel {
-            row_children.push(right_panel_id);
-        }
-        let content_row = engine.request_layout(
-            &LayoutStyle::new().flex_row().flex_grow(1.0),
-            &row_children,
-        );
-        let bottom_bar_height = input_bar_height(self, bounds.size.width, cx);
-        let bottom_bar =
-            engine.request_leaf(&LayoutStyle::new().height(px(bottom_bar_height)));
-        let root = engine.request_layout(
-            &LayoutStyle::new()
-                .flex_col()
-                .width(px(bounds.size.width))
-                .height(px(bounds.size.height)),
-            &[content_row, bottom_bar],
-        );
+        self.set_screen_size(Size::new(bounds.size.width, bounds.size.height));
 
-        engine.compute_layout(root, Size::new(bounds.size.width, bounds.size.height));
-        let origin = bounds.origin;
+        self.copy_bounds = Bounds::ZERO;
+        self.event_scroll_bounds = Bounds::ZERO;
+        self.keygen_bounds = Bounds::ZERO;
+        self.new_chat_bounds = Bounds::ZERO;
+        self.full_auto_bounds = Bounds::ZERO;
+        self.input_bounds = Bounds::ZERO;
+        self.submit_bounds = Bounds::ZERO;
+        self.stop_bounds = Bounds::ZERO;
 
-        let right_bounds =
-            right_panel.map(|panel_id| offset_bounds(engine.layout(panel_id), origin));
-        let bottom_bounds = offset_bounds(engine.layout(bottom_bar), origin);
+        self.pane_bounds.clear();
 
-        if let Some(right_bounds) = right_bounds {
-            cx.scene.draw_quad(
-                Quad::new(right_bounds)
-                    .with_background(theme::bg::APP)
-                    .with_border(theme::border::DEFAULT, 1.0),
+        let panes = self.pane_store.panes().to_vec();
+        for pane in panes.iter() {
+            let pane_bounds = Bounds::new(
+                bounds.origin.x + pane.rect.x,
+                bounds.origin.y + pane.rect.y,
+                pane.rect.width,
+                pane.rect.height,
             );
-        }
-        cx.scene.draw_quad(
-            Quad::new(bottom_bounds)
-                .with_background(theme::bg::APP)
-                .with_border(theme::border::DEFAULT, 1.0),
-        );
+            self.pane_bounds.insert(pane.id.clone(), pane_bounds);
 
-        if let Some(left_panel) = left_panel {
-            let left_bounds = offset_bounds(engine.layout(left_panel), origin);
-            paint_formatted_feed(self, left_bounds, cx);
+            let frame = self
+                .pane_frames
+                .entry(pane.id.clone())
+                .or_insert_with(PaneFrame::new);
+            frame.set_title(pane.title.clone());
+            frame.set_active(self.pane_store.is_active(&pane.id));
+            frame.set_dismissable(pane.dismissable);
+            frame.set_title_height(PANE_TITLE_HEIGHT);
+            frame.paint(pane_bounds, cx);
+
+            let content_bounds = frame.content_bounds();
+            match pane.kind {
+                PaneKind::Chat => paint_chat_pane(self, content_bounds, cx),
+                PaneKind::Events => paint_events_pane(self, content_bounds, cx),
+                PaneKind::Identity => paint_identity_pane(self, content_bounds, cx),
+            }
         }
-        if let Some(right_bounds) = right_bounds {
-            paint_sidebar_contents(self, right_bounds, cx);
-        }
-        paint_input_bar(self, bottom_bounds, cx);
-        paint_hotbar(self, bounds, bottom_bounds, cx);
+
+        let slot_count: usize = 9;
+        let bar_width = HOTBAR_PADDING * 2.0
+            + HOTBAR_ITEM_SIZE * slot_count as f32
+            + HOTBAR_ITEM_GAP * (slot_count.saturating_sub(1) as f32);
+        let bar_x = bounds.origin.x + (bounds.size.width - bar_width) * 0.5;
+        let bar_y = bounds.origin.y + bounds.size.height - HOTBAR_FLOAT_GAP - HOTBAR_HEIGHT;
+        let bar_bounds = Bounds::new(bar_x, bar_y, bar_width, HOTBAR_HEIGHT);
+        self.hotbar_bounds = bar_bounds;
+
+        let chat_active = self
+            .chat_pane_id
+            .as_ref()
+            .map(|id| self.pane_store.is_active(id))
+            .unwrap_or(false);
+
+        let items = vec![
+            HotbarSlot::new(1, "CH", "Chat").active(chat_active),
+            HotbarSlot::new(2, "EV", "Events").active(self.pane_store.is_active("events")),
+            HotbarSlot::new(3, "ID", "Identity").active(self.pane_store.is_active("identity")),
+            HotbarSlot::new(4, "", "Slot 4").ghost(true),
+            HotbarSlot::new(5, "", "Slot 5").ghost(true),
+            HotbarSlot::new(6, "", "Slot 6").ghost(true),
+            HotbarSlot::new(7, "", "Slot 7").ghost(true),
+            HotbarSlot::new(8, "", "Slot 8").ghost(true),
+            HotbarSlot::new(9, "", "Slot 9").ghost(true),
+        ];
+        self.hotbar.set_items(items);
+        self.hotbar.paint(bar_bounds, cx);
     }
 }
 
-fn paint_formatted_feed(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintContext) {
+fn paint_chat_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintContext) {
     let padding_x = 24.0;
     let padding_top = 12.0;
-    let padding_bottom = 24.0;
+    let padding_bottom = 16.0;
     let header_height = 28.0;
     let content_width = bounds.size.width - padding_x * 2.0;
     let header_bounds = Bounds::new(
@@ -1919,12 +2274,21 @@ fn paint_formatted_feed(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintCo
         description_top = queue_bounds.origin.y + queue_bounds.size.height + 12.0;
     }
 
+    let input_height = input_bar_height(root, bounds.size.width, cx);
+    let input_bounds = Bounds::new(
+        bounds.origin.x,
+        bounds.origin.y + bounds.size.height - input_height,
+        bounds.size.width,
+        input_height,
+    );
+
     let feed_top = description_top + 14.0;
+    let feed_bottom = input_bounds.origin.y - padding_bottom;
     let feed_bounds = Bounds::new(
         header_bounds.origin.x,
         feed_top,
         header_bounds.size.width,
-        (bounds.size.height - padding_bottom) - (feed_top - bounds.origin.y),
+        (feed_bottom - feed_top).max(0.0),
     );
     root.formatted_thread_bounds = feed_bounds;
 
@@ -1936,6 +2300,8 @@ fn paint_formatted_feed(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintCo
     if SHOW_MODEL_DROPDOWN {
         root.model_dropdown.paint(dropdown_bounds, cx);
     }
+
+    paint_input_bar(root, input_bounds, cx);
 }
 
 struct InputBarMetrics {
@@ -2031,7 +2397,7 @@ fn paint_input_bar(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintContext
     root.submit_button.paint(submit_bounds, cx);
 }
 
-fn paint_sidebar_contents(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintContext) {
+fn paint_identity_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintContext) {
     let padding = 16.0;
     let button_height = 28.0;
     let nostr_font = theme::font_size::XS + 4.0;
@@ -2043,44 +2409,41 @@ fn paint_sidebar_contents(root: &mut MinimalRoot, bounds: Bounds, cx: &mut Paint
     content_width = content_width.min(bounds.size.width - padding * 2.0);
     let content_x = bounds.origin.x + (bounds.size.width - content_width) / 2.0;
 
-    let mut y = bounds.origin.y + padding;
-    if !root.raw_events_visible {
-        let mut content_height = button_height + 12.0;
-        if let Some(npub) = &root.nostr_npub {
-            let mut npub_text = Text::new(npub).font_size(nostr_font);
-            let (_, npub_height) = npub_text.size_hint_with_width(content_width);
-            let npub_height = npub_height.unwrap_or(label_height);
-            content_height += label_height + label_value_gap + npub_height + value_spacing;
+    let mut content_height = button_height + 12.0;
+    if let Some(npub) = &root.nostr_npub {
+        let mut npub_text = Text::new(npub).font_size(nostr_font);
+        let (_, npub_height) = npub_text.size_hint_with_width(content_width);
+        let npub_height = npub_height.unwrap_or(label_height);
+        content_height += label_height + label_value_gap + npub_height + value_spacing;
 
-            let mut nsec_text =
-                Text::new(root.nostr_nsec.as_deref().unwrap_or("")).font_size(nostr_font);
-            let (_, nsec_height) = nsec_text.size_hint_with_width(content_width);
-            let nsec_height = nsec_height.unwrap_or(label_height);
-            content_height += label_height + label_value_gap + nsec_height + value_spacing;
+        let mut nsec_text =
+            Text::new(root.nostr_nsec.as_deref().unwrap_or("")).font_size(nostr_font);
+        let (_, nsec_height) = nsec_text.size_hint_with_width(content_width);
+        let nsec_height = nsec_height.unwrap_or(label_height);
+        content_height += label_height + label_value_gap + nsec_height + value_spacing;
 
-            let mut spark_text =
-                Text::new(root.spark_pubkey_hex.as_deref().unwrap_or("")).font_size(nostr_font);
-            let (_, spark_height) = spark_text.size_hint_with_width(content_width);
-            let spark_height = spark_height.unwrap_or(label_height);
-            content_height += label_height + label_value_gap + spark_height + value_spacing;
+        let mut spark_text =
+            Text::new(root.spark_pubkey_hex.as_deref().unwrap_or("")).font_size(nostr_font);
+        let (_, spark_height) = spark_text.size_hint_with_width(content_width);
+        let spark_height = spark_height.unwrap_or(label_height);
+        content_height += label_height + label_value_gap + spark_height + value_spacing;
 
-            let mut seed_text =
-                Text::new(root.seed_phrase.as_deref().unwrap_or("")).font_size(nostr_font);
-            let (_, seed_height) = seed_text.size_hint_with_width(content_width);
-            let seed_height = seed_height.unwrap_or(label_height);
-            content_height += label_height + label_value_gap + seed_height + value_spacing;
-        } else if let Some(err) = &root.nostr_error {
-            let mut err_text = Text::new(err).font_size(nostr_font);
-            let (_, err_height) = err_text.size_hint_with_width(content_width);
-            let err_height = err_height.unwrap_or(label_height);
-            content_height += err_height + value_spacing;
-        } else {
-            content_height += label_height + value_spacing;
-        }
-
-        let centered_y = bounds.origin.y + (bounds.size.height - content_height).max(0.0) * 0.5;
-        y = centered_y.max(bounds.origin.y + padding);
+        let mut seed_text =
+            Text::new(root.seed_phrase.as_deref().unwrap_or("")).font_size(nostr_font);
+        let (_, seed_height) = seed_text.size_hint_with_width(content_width);
+        let seed_height = seed_height.unwrap_or(label_height);
+        content_height += label_height + label_value_gap + seed_height + value_spacing;
+    } else if let Some(err) = &root.nostr_error {
+        let mut err_text = Text::new(err).font_size(nostr_font);
+        let (_, err_height) = err_text.size_hint_with_width(content_width);
+        let err_height = err_height.unwrap_or(label_height);
+        content_height += err_height + value_spacing;
+    } else {
+        content_height += label_height + value_spacing;
     }
+
+    let centered_y = bounds.origin.y + (bounds.size.height - content_height).max(0.0) * 0.5;
+    let mut y = centered_y.max(bounds.origin.y + padding);
 
     let button_width = (cx
         .text
@@ -2173,7 +2536,6 @@ fn paint_sidebar_contents(root: &mut MinimalRoot, bounds: Bounds, cx: &mut Paint
             Bounds::new(content_x, y, content_width, seed_height),
             cx,
         );
-        y += seed_height + value_spacing;
     } else if let Some(err) = &root.nostr_error {
         let mut err_text = Text::new(err)
             .font_size(nostr_font)
@@ -2184,7 +2546,6 @@ fn paint_sidebar_contents(root: &mut MinimalRoot, bounds: Bounds, cx: &mut Paint
             Bounds::new(content_x, y, content_width, err_height),
             cx,
         );
-        y += err_height + value_spacing;
     } else {
         Text::new("No keypair generated yet.")
             .font_size(nostr_font)
@@ -2193,18 +2554,18 @@ fn paint_sidebar_contents(root: &mut MinimalRoot, bounds: Bounds, cx: &mut Paint
                 Bounds::new(content_x, y, content_width, label_height),
                 cx,
             );
-        y += label_height + value_spacing;
     }
 
-    if !root.raw_events_visible {
-        root.copy_bounds = Bounds::ZERO;
-        root.event_scroll_bounds = Bounds::ZERO;
-        return;
-    }
+    root.copy_bounds = Bounds::ZERO;
+    root.event_scroll_bounds = Bounds::ZERO;
+}
 
-    y += 8.0;
+fn paint_events_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintContext) {
+    let padding = 16.0;
     let header_height = 20.0;
-    let header_bounds = Bounds::new(content_x, y, content_width, header_height);
+    let content_width = bounds.size.width - padding * 2.0;
+    let content_x = bounds.origin.x + padding;
+    let header_bounds = Bounds::new(content_x, bounds.origin.y + padding, content_width, header_height);
     let copy_button_width = 68.0;
     let copy_bounds = Bounds::new(
         header_bounds.origin.x + header_bounds.size.width - copy_button_width,
@@ -2269,171 +2630,6 @@ fn paint_sidebar_contents(root: &mut MinimalRoot, bounds: Bounds, cx: &mut Paint
     }
 
     root.event_scroll.paint(feed_bounds, cx);
-}
-
-fn keybinding_hint_width(keys: &[&str], font_size: f32) -> f32 {
-    let padding_h = theme::spacing::SM;
-    let gap = 4.0;
-    let plus_width = font_size * 0.6;
-    let mut width = 0.0;
-
-    for (idx, key) in keys.iter().enumerate() {
-        if idx > 0 {
-            width += plus_width + gap;
-        }
-        let text_width = key.len() as f32 * font_size * 0.6;
-        width += text_width + padding_h * 2.0;
-        if idx + 1 < keys.len() {
-            width += gap;
-        }
-    }
-
-    width
-}
-
-fn paint_hotbar(root: &MinimalRoot, bounds: Bounds, bottom_bounds: Bounds, cx: &mut PaintContext) {
-    struct HotbarItem<'a> {
-        icon: &'a str,
-        label: &'a str,
-        keys: &'a [&'a str],
-        active: bool,
-    }
-
-    let items = [
-        HotbarItem {
-            icon: "EV",
-            label: "Events",
-            keys: &["Cmd", "2"],
-            active: root.raw_events_visible,
-        },
-        HotbarItem {
-            icon: "ID",
-            label: "Identity",
-            keys: &["Cmd", "3"],
-            active: root.nostr_visible,
-        },
-        HotbarItem {
-            icon: "L",
-            label: "Left",
-            keys: &["Cmd", "["],
-            active: root.left_panel_visible,
-        },
-        HotbarItem {
-            icon: "R",
-            label: "Right",
-            keys: &["Cmd", "]"],
-            active: root.nostr_visible,
-        },
-        HotbarItem {
-            icon: "LR",
-            label: "Both",
-            keys: &["Cmd", "\\"],
-            active: root.left_panel_visible && root.nostr_visible,
-        },
-        HotbarItem {
-            icon: "Q",
-            label: "Queue",
-            keys: &["Tab"],
-            active: root.active_turn_id.is_some() || root.queued_in_flight.is_some(),
-        },
-    ];
-
-    let font_size = theme::font_size::XS;
-    let icon_size = 18.0;
-    let item_gap = 14.0;
-    let icon_gap = 8.0;
-    let label_gap = 10.0;
-    let padding_x = 14.0;
-    let mut total_width = padding_x * 2.0;
-    for item in &items {
-        let label_width = cx
-            .text
-            .measure_styled_mono(item.label, font_size, FontStyle::default());
-        let hint_width = keybinding_hint_width(item.keys, font_size);
-        total_width += icon_size + icon_gap + label_width + label_gap + hint_width;
-    }
-    total_width += item_gap * (items.len().saturating_sub(1) as f32);
-
-    let bar_width = total_width.min(bounds.size.width - padding_x * 2.0);
-    let bar_x = bounds.origin.x + (bounds.size.width - bar_width) / 2.0;
-    let bar_y = bottom_bounds.origin.y - HOTBAR_FLOAT_GAP - HOTBAR_HEIGHT;
-    let bar_bounds = Bounds::new(bar_x, bar_y, bar_width, HOTBAR_HEIGHT);
-
-    cx.scene.draw_quad(
-        Quad::new(bar_bounds)
-            .with_background(theme::bg::SURFACE)
-            .with_border(theme::border::DEFAULT, 1.0)
-            .with_corner_radius(10.0),
-    );
-
-    let mut x = bar_bounds.origin.x + padding_x;
-    let center_y = bar_bounds.origin.y + bar_bounds.size.height * 0.5;
-
-    for (idx, item) in items.iter().enumerate() {
-        let icon_bounds = Bounds::new(
-            x,
-            center_y - icon_size * 0.5,
-            icon_size,
-            icon_size,
-        );
-        let icon_bg = if item.active {
-            theme::bg::MUTED
-        } else {
-            theme::bg::APP
-        };
-        let icon_border = if item.active {
-            theme::accent::PRIMARY
-        } else {
-            theme::border::DEFAULT
-        };
-        cx.scene.draw_quad(
-            Quad::new(icon_bounds)
-                .with_background(icon_bg)
-                .with_border(icon_border, 1.0)
-                .with_corner_radius(4.0),
-        );
-        let icon_font = font_size;
-        let icon_text_width = item.icon.len() as f32 * icon_font * 0.6;
-        let icon_text_x = icon_bounds.origin.x + (icon_size - icon_text_width) * 0.5;
-        let icon_text_y = icon_bounds.origin.y + icon_size * 0.5 - icon_font * 0.55;
-        let icon_run = cx.text.layout_mono(
-            item.icon,
-            Point::new(icon_text_x, icon_text_y),
-            icon_font,
-            theme::text::PRIMARY,
-        );
-        cx.scene.draw_text(icon_run);
-
-        x += icon_size + icon_gap;
-
-        let label_run = cx.text.layout_styled_mono(
-            item.label,
-            Point::new(x, center_y - font_size * 0.55),
-            font_size,
-            theme::text::PRIMARY,
-            FontStyle::default(),
-        );
-        let label_width = label_run.bounds().size.width;
-        cx.scene.draw_text(label_run);
-        x += label_width + label_gap;
-
-        let hint_width = keybinding_hint_width(item.keys, font_size);
-        let hint_bounds = Bounds::new(
-            x,
-            bar_bounds.origin.y,
-            hint_width,
-            bar_bounds.size.height,
-        );
-        let mut hint = KeybindingHint::combo(item.keys)
-            .font_size(font_size)
-            .gap(4.0);
-        hint.paint(hint_bounds, cx);
-        x += hint_width;
-
-        if idx + 1 < items.len() {
-            x += item_gap;
-        }
-    }
 }
 
 impl DesktopRoot {
