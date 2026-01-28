@@ -670,20 +670,31 @@ impl Component for CodexRateLimitCard {
 
 pub struct CodexReasoningCard {
     id: Option<ComponentId>,
-    summary: Option<ThinkingBlock>,
-    content: Option<ThinkingBlock>,
+    block: ThinkingBlock,
 }
 
 impl CodexReasoningCard {
-    const HEADER_HEIGHT: f32 = 20.0;
-
     pub fn new(summary: Option<String>, content: Option<String>) -> Self {
-        let summary_block = summary.map(|text| ThinkingBlock::new(text));
-        let content_block = content.map(|text| ThinkingBlock::new(text));
+        let mut text = String::new();
+        if let Some(summary) = summary {
+            let trimmed = summary.trim();
+            if !trimmed.is_empty() {
+                text.push_str(trimmed);
+            }
+        }
+        if let Some(content) = content {
+            let trimmed = content.trim();
+            if !trimmed.is_empty() {
+                if !text.is_empty() {
+                    text.push_str("\n\n");
+                }
+                text.push_str(trimmed);
+            }
+        }
+        let block = ThinkingBlock::new(text);
         Self {
             id: None,
-            summary: summary_block,
-            content: content_block,
+            block,
         }
     }
 
@@ -693,38 +704,13 @@ impl CodexReasoningCard {
     }
 
     pub fn summary_expanded(mut self, expanded: bool) -> Self {
-        if let Some(block) = self.summary.as_mut() {
-            block.set_expanded(expanded);
-        }
+        self.block.set_expanded(expanded);
         self
     }
 
     pub fn content_expanded(mut self, expanded: bool) -> Self {
-        if let Some(block) = self.content.as_mut() {
-            block.set_expanded(expanded);
-        }
+        self.block.set_expanded(expanded);
         self
-    }
-
-    fn layout_blocks(&self, bounds: Bounds) -> (Option<Bounds>, Option<Bounds>) {
-        let padding = theme::spacing::SM;
-        let x = bounds.origin.x + padding;
-        let width = (bounds.size.width - padding * 2.0).max(0.0);
-        let mut y = bounds.origin.y + padding + Self::HEADER_HEIGHT + theme::spacing::XS;
-
-        let summary_bounds = self.summary.as_ref().map(|block| {
-            let height = block.size_hint().1.unwrap_or(0.0);
-            let bounds = Bounds::new(x, y, width, height);
-            y += height + theme::spacing::SM;
-            bounds
-        });
-
-        let content_bounds = self.content.as_ref().map(|block| {
-            let height = block.size_hint().1.unwrap_or(0.0);
-            Bounds::new(x, y, width, height)
-        });
-
-        (summary_bounds, content_bounds)
     }
 }
 
@@ -736,50 +722,11 @@ impl Default for CodexReasoningCard {
 
 impl Component for CodexReasoningCard {
     fn paint(&mut self, bounds: Bounds, cx: &mut PaintContext) {
-        let padding = theme::spacing::SM;
-        cx.scene.draw_quad(
-            Quad::new(bounds)
-                .with_background(theme::bg::SURFACE)
-                .with_border(theme::border::DEFAULT, 1.0),
-        );
-
-        let header_bounds = Bounds::new(
-            bounds.origin.x + padding,
-            bounds.origin.y + padding,
-            bounds.size.width - padding * 2.0,
-            Self::HEADER_HEIGHT,
-        );
-        let mut header = Text::new("Reasoning")
-            .font_size(theme::font_size::SM)
-            .color(theme::text::PRIMARY)
-            .no_wrap();
-        header.paint(header_bounds, cx);
-
-        let (summary_bounds, content_bounds) = self.layout_blocks(bounds);
-        if let (Some(bounds), Some(block)) = (summary_bounds, self.summary.as_mut()) {
-            block.paint(bounds, cx);
-        }
-        if let (Some(bounds), Some(block)) = (content_bounds, self.content.as_mut()) {
-            block.paint(bounds, cx);
-        }
+        self.block.paint(bounds, cx);
     }
 
     fn event(&mut self, event: &InputEvent, bounds: Bounds, cx: &mut EventContext) -> EventResult {
-        let (summary_bounds, content_bounds) = self.layout_blocks(bounds);
-        let mut handled = false;
-
-        if let (Some(bounds), Some(block)) = (summary_bounds, self.summary.as_mut()) {
-            handled |= matches!(block.event(event, bounds, cx), EventResult::Handled);
-        }
-        if let (Some(bounds), Some(block)) = (content_bounds, self.content.as_mut()) {
-            handled |= matches!(block.event(event, bounds, cx), EventResult::Handled);
-        }
-
-        if handled {
-            EventResult::Handled
-        } else {
-            EventResult::Ignored
-        }
+        self.block.event(event, bounds, cx)
     }
 
     fn id(&self) -> Option<ComponentId> {
@@ -787,15 +734,7 @@ impl Component for CodexReasoningCard {
     }
 
     fn size_hint(&self) -> (Option<f32>, Option<f32>) {
-        let padding = theme::spacing::SM;
-        let mut height = padding * 2.0 + Self::HEADER_HEIGHT + theme::spacing::XS;
-        if let Some(block) = &self.summary {
-            height += block.size_hint().1.unwrap_or(0.0) + theme::spacing::SM;
-        }
-        if let Some(block) = &self.content {
-            height += block.size_hint().1.unwrap_or(0.0);
-        }
-        (None, Some(height))
+        self.block.size_hint()
     }
 }
 
