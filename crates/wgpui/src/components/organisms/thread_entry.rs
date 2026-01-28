@@ -3,7 +3,7 @@ use crate::components::atoms::EntryType as AtomEntryType;
 use crate::components::context::{EventContext, PaintContext};
 use crate::components::molecules::{EntryAction, EntryActions};
 use crate::components::{Component, ComponentId, EventResult};
-use crate::{Bounds, InputEvent, Point, Quad, theme};
+use crate::{Bounds, InputEvent, Point};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum EntryType {
