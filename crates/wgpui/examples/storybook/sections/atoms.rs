@@ -20,18 +20,29 @@ use wgpui::components::organisms::{
 };
 use wgpui::{Bounds, Component, InputEvent, Key, MouseButton, PaintContext, Point, Text, theme};
 
-use crate::constants::{GAP, SECTION_GAP};
-use crate::helpers::{center_bounds, component_event, draw_panel, panel_height, panel_inner};
+use crate::constants::GAP;
+use crate::helpers::{
+    center_bounds, component_event, draw_panel, panel_height, panel_inner, panel_stack,
+};
 use crate::state::Storybook;
 
 impl Storybook {
     pub(crate) fn paint_atoms(&mut self, bounds: Bounds, cx: &mut PaintContext) {
-        let mut y = bounds.origin.y;
-        let width = bounds.size.width;
+        let panel_heights = [
+            panel_height(140.0),
+            panel_height(160.0),
+            panel_height(180.0),
+            panel_height(180.0),
+            panel_height(180.0),
+            panel_height(180.0),
+            panel_height(180.0),
+            panel_height(180.0),
+            panel_height(160.0),
+        ];
+        let panels = panel_stack(bounds, &panel_heights);
 
         // ========== Panel 1: Tool & Status Atoms ==========
-        let tool_height = panel_height(140.0);
-        let tool_bounds = Bounds::new(bounds.origin.x, y, width, tool_height);
+        let tool_bounds = panels[0];
         draw_panel("Tool & Status Atoms", tool_bounds, cx, |inner, cx| {
             let mut x = inner.origin.x;
             let row_y = inner.origin.y;
@@ -80,11 +91,9 @@ impl Storybook {
                 x += 70.0;
             }
         });
-        y += tool_height + SECTION_GAP;
 
         // ========== Panel 2: Mode & Model Atoms ==========
-        let mode_height = panel_height(160.0);
-        let mode_bounds = Bounds::new(bounds.origin.x, y, width, mode_height);
+        let mode_bounds = panels[1];
         draw_panel("Mode & Model Atoms", mode_bounds, cx, |inner, cx| {
             // Mode badges
             let mut x = inner.origin.x;
@@ -130,11 +139,9 @@ impl Storybook {
                 x += 36.0;
             }
         });
-        y += mode_height + SECTION_GAP;
 
         // ========== Panel 3: Agent Status Badges ==========
-        let agent_height = panel_height(180.0);
-        let agent_bounds = Bounds::new(bounds.origin.x, y, width, agent_height);
+        let agent_bounds = panels[2];
         draw_panel("Agent Status Badges", agent_bounds, cx, |inner, cx| {
             // Agent status badges
             let mut x = inner.origin.x;
@@ -187,11 +194,9 @@ impl Storybook {
                 x += 110.0;
             }
         });
-        y += agent_height + SECTION_GAP;
 
         // ========== Panel 4: Bitcoin & Payment Atoms ==========
-        let btc_height = panel_height(180.0);
-        let btc_bounds = Bounds::new(bounds.origin.x, y, width, btc_height);
+        let btc_bounds = panels[3];
         draw_panel("Bitcoin & Payment Atoms", btc_bounds, cx, |inner, cx| {
             // Bitcoin amounts
             let mut x = inner.origin.x;
@@ -252,11 +257,9 @@ impl Storybook {
             let mut key2 = ThresholdKeyBadge::new(2, 3);
             key2.paint(Bounds::new(x + 90.0, key_y, 80.0, 22.0), cx);
         });
-        y += btc_height + SECTION_GAP;
 
         // ========== Panel 5: Nostr Protocol Atoms ==========
-        let nostr_height = panel_height(180.0);
-        let nostr_bounds = Bounds::new(bounds.origin.x, y, width, nostr_height);
+        let nostr_bounds = panels[4];
         draw_panel("Nostr Protocol Atoms", nostr_bounds, cx, |inner, cx| {
             // Relay status badges
             let mut x = inner.origin.x;
@@ -308,11 +311,9 @@ impl Storybook {
                 x += 150.0;
             }
         });
-        y += nostr_height + SECTION_GAP;
 
         // ========== Panel 6: GitAfter Atoms ==========
-        let git_height = panel_height(180.0);
-        let git_bounds = Bounds::new(bounds.origin.x, y, width, git_height);
+        let git_bounds = panels[5];
         draw_panel("GitAfter Atoms", git_bounds, cx, |inner, cx| {
             // Issue status badges
             let mut x = inner.origin.x;
@@ -367,11 +368,9 @@ impl Storybook {
             let mut result_fail = TickEventBadge::result(TickOutcome::Failure);
             result_fail.paint(Bounds::new(x, tick_y, 100.0, 22.0), cx);
         });
-        y += git_height + SECTION_GAP;
 
         // ========== Panel 7: Marketplace Atoms ==========
-        let market_height = panel_height(180.0);
-        let market_bounds = Bounds::new(bounds.origin.x, y, width, market_height);
+        let market_bounds = panels[6];
         draw_panel("Marketplace Atoms", market_bounds, cx, |inner, cx| {
             // Market type badges
             let mut x = inner.origin.x;
@@ -438,11 +437,9 @@ impl Storybook {
                 x += 110.0;
             }
         });
-        y += market_height + SECTION_GAP;
 
         // ========== Panel 8: Autopilot Atoms ==========
-        let auto_height = panel_height(180.0);
-        let auto_bounds = Bounds::new(bounds.origin.x, y, width, auto_height);
+        let auto_bounds = panels[7];
         draw_panel("Autopilot Atoms", auto_bounds, cx, |inner, cx| {
             // Session status badges
             let mut x = inner.origin.x;
@@ -504,11 +501,9 @@ impl Storybook {
                 x += 60.0;
             }
         });
-        y += auto_height + SECTION_GAP;
 
         // ========== Panel 9: Interactive Atoms ==========
-        let interact_height = panel_height(160.0);
-        let interact_bounds = Bounds::new(bounds.origin.x, y, width, interact_height);
+        let interact_bounds = panels[8];
         draw_panel("Interactive Atoms", interact_bounds, cx, |inner, cx| {
             // Permission buttons
             let mut x = inner.origin.x;

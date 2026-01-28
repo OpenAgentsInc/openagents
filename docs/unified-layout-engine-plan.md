@@ -206,3 +206,5 @@ Prevent regressions to manual layout across the codebase.
   new APIs from WGPUI. Added unit tests for helper layouts.
 - 2026-01-28: Phase 3: refactored Storybook scaffolding to use `layout_header_nav_content`
   for header/nav/content layout and `stack_bounds` for nav item layout and hit-testing.
+- 2026-01-28: Phase 3: added `panel_stack` helper and converted the Atoms + Codex storybook
+  sections to use layout-engine stacking for top-level panels.
