@@ -100,7 +100,7 @@ impl Component for TerminalHeader {
             ),
             cx,
         );
-        x += badge_w.unwrap_or(60.0) + theme::spacing::SM;
+        let _ = badge_w.unwrap_or(60.0);
     }
 
     fn event(

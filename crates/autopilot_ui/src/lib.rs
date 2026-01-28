@@ -122,14 +122,6 @@ fn build_model_options() -> Vec<DropdownOption> {
         .collect()
 }
 
-fn model_description(model: &str) -> &'static str {
-    MODEL_OPTIONS
-        .iter()
-        .find(|(id, _)| *id == model)
-        .map(|(_, desc)| *desc)
-        .unwrap_or("Model description unavailable.")
-}
-
 fn model_index(model: &str) -> Option<usize> {
     MODEL_OPTIONS.iter().position(|(id, _)| *id == model)
 }
@@ -273,8 +265,8 @@ fn message_markdown_view(document: MarkdownDocument) -> MarkdownView {
 }
 
 fn generate_nip06_keypair() -> Result<(String, String), String> {
-    let mut entropy = [0u8; 32];
-    rand::rngs::OsRng.fill_bytes(&mut entropy);
+    let mut entropy = [0u8; 16];
+    rand::rng().fill_bytes(&mut entropy);
     let mnemonic = Mnemonic::from_entropy(&entropy)
         .map_err(|e| format!("mnemonic error: {e}"))?
         .to_string();
@@ -1220,7 +1212,7 @@ fn paint_formatted_feed(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintCo
         let selector_height = 30.0;
         let selector_bounds = Bounds::new(
             header_bounds.origin.x,
-            thread_model_bounds.origin.y + 26.0,
+            model_line_bounds.origin.y + 26.0,
             content_width,
             selector_height,
         );
