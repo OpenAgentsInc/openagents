@@ -886,6 +886,83 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
                 while let Ok(action) = action_rx.recv() {
                     workspace_for_actions.dispatch(action.clone());
                     match action {
+                        UserAction::NewChat { model, .. } => {
+                            let client = client_for_actions.clone();
+                            let thread_id = thread_id_for_actions.clone();
+                            let turn_id = turn_id_for_actions.clone();
+                            let pending_interrupt = pending_interrupt_for_actions.clone();
+                            let proxy = proxy_actions.clone();
+                            let cwd = cwd_for_actions.clone();
+                            let full_auto_state = full_auto_state.clone();
+                            let workspace = workspace_for_actions.clone();
+                            let workspace_id = workspace_id.clone();
+                            workspace.start_session(Some("New chat".to_string()));
+                            handle.spawn(async move {
+                                pending_interrupt.store(false, Ordering::SeqCst);
+                                {
+                                    let mut guard = thread_id.lock().await;
+                                    *guard = None;
+                                }
+                                {
+                                    let mut guard = turn_id.lock().await;
+                                    *guard = None;
+                                }
+                                {
+                                    let mut guard = full_auto_state.lock().await;
+                                    if guard.is_some() {
+                                        *guard = None;
+                                        let _ = proxy.send_event(AppEvent::AppServerEvent {
+                                            message: json!({
+                                                "method": "fullauto/status",
+                                                "params": {
+                                                    "workspaceId": workspace_id,
+                                                    "enabled": false,
+                                                    "state": "paused"
+                                                }
+                                            })
+                                            .to_string(),
+                                        });
+                                    }
+                                }
+
+                                let selected_model =
+                                    model.unwrap_or_else(|| DEFAULT_THREAD_MODEL.to_string());
+                                match client
+                                    .thread_start(ThreadStartParams {
+                                        model: Some(selected_model.clone()),
+                                        model_provider: None,
+                                        cwd: Some(cwd.clone()),
+                                        approval_policy: Some(AskForApproval::Never),
+                                        sandbox: Some(SandboxMode::WorkspaceWrite),
+                                    })
+                                    .await
+                                {
+                                    Ok(response) => {
+                                        let mut guard = thread_id.lock().await;
+                                        *guard = Some(response.thread.id.clone());
+                                        let _ = proxy.send_event(AppEvent::AppServerEvent {
+                                            message: json!({
+                                                "method": "thread/started",
+                                                "params": {
+                                                    "threadId": response.thread.id,
+                                                    "model": selected_model
+                                                }
+                                            })
+                                            .to_string(),
+                                        });
+                                    }
+                                    Err(err) => {
+                                        let _ = proxy.send_event(AppEvent::AppServerEvent {
+                                            message: json!({
+                                                "method": "codex/error",
+                                                "params": { "message": err.to_string() }
+                                            })
+                                            .to_string(),
+                                        });
+                                    }
+                                }
+                            });
+                        }
                         UserAction::Message { text, model, .. } => {
                             let client = client_for_actions.clone();
                             let thread_id = thread_id_for_actions.clone();
