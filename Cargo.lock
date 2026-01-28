@@ -1099,6 +1099,7 @@ name = "autopilot_ui"
 version = "0.1.0"
 dependencies = [
  "autopilot_app",
+ "serde_json",
  "wgpui",
 ]
 

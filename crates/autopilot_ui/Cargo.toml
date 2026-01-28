@@ -10,3 +10,4 @@ description = "Shared WGPUI surfaces for Autopilot"
 [dependencies]
 autopilot_app = { path = "../autopilot_app" }
 wgpui = { path = "../wgpui", default-features = false, features = ["desktop"] }
+serde_json = { workspace = true }

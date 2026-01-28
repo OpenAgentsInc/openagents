@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use std::rc::Rc;
 
 use autopilot_app::{AppEvent, SessionId, UserAction, WorkspaceId};
+use serde_json::Value;
 use wgpui::components::atoms::{ToolStatus, ToolType};
 use wgpui::components::EventContext;
 use wgpui::components::organisms::{
@@ -28,6 +29,10 @@ const COMPOSER_HEIGHT: f32 = 56.0;
 const STATUS_LINE_HEIGHT: f32 = 22.0;
 const STATUS_SECTION_GAP: f32 = 10.0;
 const ACCENT_BAR_WIDTH: f32 = 3.0;
+const DEFAULT_THREAD_MODEL: &str = "gpt-5.1-codex-mini";
+const BOTTOM_BAR_HEIGHT: f32 = 64.0;
+const SIDEBAR_MIN_WIDTH: f32 = 360.0;
+const SIDEBAR_MAX_WIDTH: f32 = 640.0;
 
 #[derive(Default, Clone)]
 pub struct AppViewModel {
@@ -105,15 +110,7 @@ pub struct DesktopRoot {
 }
 
 pub struct MinimalRoot {
-    title: String,
-    subtitle: String,
-    button_label: String,
-    button: Button,
-    button_bounds: Bounds,
     event_context: EventContext,
-    pending_clicks: Rc<RefCell<u32>>,
-    click_count: u32,
-    disabled: bool,
     cursor_position: Point,
     input: TextInput,
     input_bounds: Bounds,
@@ -127,22 +124,11 @@ pub struct MinimalRoot {
     event_log_dirty: bool,
     event_scroll: ScrollView,
     event_scroll_bounds: Bounds,
+    thread_model: Option<String>,
 }
 
 impl MinimalRoot {
     pub fn new() -> Self {
-        let pending_clicks = Rc::new(RefCell::new(0u32));
-        let pending = pending_clicks.clone();
-        let button = Button::new("Continue")
-            .font_size(theme::font_size::SM)
-            .padding(16.0, 8.0)
-            .corner_radius(8.0)
-            .background(theme::accent::PRIMARY)
-            .text_color(theme::bg::APP)
-            .on_click(move || {
-                *pending.borrow_mut() += 1;
-            });
-
         let pending_sends = Rc::new(RefCell::new(Vec::new()));
         let pending_submit = pending_sends.clone();
         let input = TextInput::new()
@@ -172,15 +158,7 @@ impl MinimalRoot {
         let event_scroll = ScrollView::new().show_scrollbar(true).scrollbar_width(6.0);
 
         Self {
-            title: "Autopilot Desktop".to_string(),
-            subtitle: "WGPUI minimal shell is live.".to_string(),
-            button_label: "Continue".to_string(),
-            button,
-            button_bounds: Bounds::ZERO,
             event_context: EventContext::new(),
-            pending_clicks,
-            click_count: 0,
-            disabled: false,
             cursor_position: Point::ZERO,
             input,
             input_bounds: Bounds::ZERO,
@@ -194,6 +172,7 @@ impl MinimalRoot {
             event_log_dirty: false,
             event_scroll,
             event_scroll_bounds: Bounds::ZERO,
+            thread_model: Some(DEFAULT_THREAD_MODEL.to_string()),
         }
     }
 
@@ -203,6 +182,20 @@ impl MinimalRoot {
                 self.session_id = Some(session_id);
             }
             AppEvent::AppServerEvent { message } => {
+                if let Ok(value) = serde_json::from_str::<Value>(&message) {
+                    if let Some(method) = value.get("method").and_then(|m| m.as_str())
+                        && method == "thread/started"
+                    {
+                        if let Some(model) = value
+                            .get("params")
+                            .and_then(|params| params.get("model"))
+                            .and_then(|m| m.as_str())
+                        {
+                            self.thread_model = Some(model.to_string());
+                        }
+                    }
+                }
+
                 self.event_log.push(message);
                 if self.event_log.len() > 200 {
                     let drain = self.event_log.len() - 200;
@@ -222,21 +215,6 @@ impl MinimalRoot {
     }
 
     pub fn handle_input(&mut self, event: &InputEvent, _bounds: Bounds) -> bool {
-        if let InputEvent::KeyDown { key, .. } = event {
-            if let wgpui::input::Key::Character(value) = key
-                && value.eq_ignore_ascii_case("d")
-            {
-                self.disabled = !self.disabled;
-                self.button.set_disabled(self.disabled);
-                self.subtitle = if self.disabled {
-                    "Button disabled (press D to re-enable).".to_string()
-                } else {
-                    "Button enabled.".to_string()
-                };
-                return true;
-            }
-        }
-
         if let InputEvent::MouseMove { x, y } = event {
             self.cursor_position = Point::new(*x, *y);
             self.input_hovered = self.input_bounds.contains(self.cursor_position);
@@ -258,33 +236,11 @@ impl MinimalRoot {
             EventResult::Handled
         );
 
-        let handled = matches!(
-            self.button
-                .event(event, self.button_bounds, &mut self.event_context),
-            EventResult::Handled
-        );
-
         let submit_handled = matches!(
             self.submit_button
                 .event(event, self.submit_bounds, &mut self.event_context),
             EventResult::Handled
         );
-
-        let clicks = {
-            let mut pending = self.pending_clicks.borrow_mut();
-            let count = *pending;
-            *pending = 0;
-            count
-        };
-        if clicks > 0 {
-            self.click_count = self.click_count.saturating_add(clicks);
-            self.subtitle = format!("Button clicked {}x.", self.click_count);
-            if self.button_label != "Clicked" {
-                self.button_label = "Clicked".to_string();
-                self.button.set_label(self.button_label.clone());
-            }
-            return true;
-        }
 
         let pending_messages = {
             let mut pending = self.pending_sends.borrow_mut();
@@ -314,8 +270,6 @@ impl MinimalRoot {
                         }
                         self.input.set_value("");
                     }
-                } else {
-                    self.subtitle = "No active session yet.".to_string();
                 }
                 self.submit_button
                     .set_disabled(self.input.get_value().trim().is_empty());
@@ -326,15 +280,11 @@ impl MinimalRoot {
         self.submit_button
             .set_disabled(self.input.get_value().trim().is_empty());
 
-        handled || submit_handled || input_handled || scroll_handled
+        submit_handled || input_handled || scroll_handled
     }
 
     pub fn cursor(&self) -> Cursor {
-        if self.disabled {
-            Cursor::Default
-        } else if (self.submit_button.is_hovered() && !self.submit_button.is_disabled())
-            || (self.button.is_hovered() && !self.button.is_disabled())
-        {
+        if (self.submit_button.is_hovered() && !self.submit_button.is_disabled()) {
             Cursor::Pointer
         } else if self.input_hovered || self.input.is_focused() {
             Cursor::Text
@@ -358,84 +308,132 @@ impl Component for MinimalRoot {
                 .with_border(theme::border::DEFAULT, 1.0),
         );
 
-        let sidebar_width = 640.0_f32.min((bounds.size.width - 120.0).max(320.0));
-        let sidebar_bounds = Bounds::new(
-            bounds.origin.x + (bounds.size.width - sidebar_width),
-            bounds.origin.y,
-            sidebar_width,
-            bounds.size.height,
+        let sidebar_width = SIDEBAR_MAX_WIDTH
+            .min((bounds.size.width - 160.0).max(SIDEBAR_MIN_WIDTH));
+
+        let mut engine = LayoutEngine::new();
+        let left_panel = engine.request_layout(&LayoutStyle::new().flex_grow(1.0), &[]);
+        let right_panel = engine.request_layout(
+            &LayoutStyle::new()
+                .width(px(sidebar_width))
+                .flex_shrink(0.0),
+            &[],
         );
-        let main_bounds = Bounds::new(
-            bounds.origin.x,
-            bounds.origin.y,
-            bounds.size.width - sidebar_width,
-            bounds.size.height,
+        let content_row = engine.request_layout(
+            &LayoutStyle::new().flex_row().flex_grow(1.0),
+            &[left_panel, right_panel],
+        );
+        let bottom_bar = engine.request_leaf(&LayoutStyle::new().height(px(BOTTOM_BAR_HEIGHT)));
+        let root = engine.request_layout(
+            &LayoutStyle::new()
+                .flex_col()
+                .width(px(bounds.size.width))
+                .height(px(bounds.size.height)),
+            &[content_row, bottom_bar],
         );
 
+        engine.compute_layout(root, Size::new(bounds.size.width, bounds.size.height));
+        let origin = bounds.origin;
+
+        let left_bounds = offset_bounds(engine.layout(left_panel), origin);
+        let right_bounds = offset_bounds(engine.layout(right_panel), origin);
+        let bottom_bounds = offset_bounds(engine.layout(bottom_bar), origin);
+
         cx.scene.draw_quad(
-            Quad::new(sidebar_bounds)
+            Quad::new(right_bounds)
                 .with_background(theme::bg::SURFACE)
                 .with_border(theme::border::DEFAULT, 1.0),
         );
-
-        let padding = 24.0;
-        let max_width = (main_bounds.size.width - padding * 2.0).max(160.0);
-        let max_height = (main_bounds.size.height - padding * 2.0).max(120.0);
-        let card_width = max_width.min(520.0);
-        let card_height = max_height.min(220.0);
-
-        let card_x = main_bounds.origin.x + (main_bounds.size.width - card_width) / 2.0;
-        let card_y = main_bounds.origin.y + (main_bounds.size.height - card_height) / 2.0;
-        let card_bounds = Bounds::new(card_x, card_y, card_width, card_height);
-
         cx.scene.draw_quad(
-            Quad::new(card_bounds)
-                .with_background(theme::bg::SURFACE)
-                .with_border(theme::border::DEFAULT, 1.0)
-                .with_corner_radius(12.0),
+            Quad::new(bottom_bounds)
+                .with_background(theme::bg::APP)
+                .with_border(theme::border::DEFAULT, 1.0),
         );
 
-        let title_bounds = Bounds::new(
-            card_bounds.origin.x + 20.0,
-            card_bounds.origin.y + 18.0,
-            card_bounds.size.width - 40.0,
-            30.0,
-        );
-        Text::new(self.title.as_str())
-            .font_size(theme::font_size::XL)
-            .bold()
-            .color(theme::text::PRIMARY)
-            .paint(title_bounds, cx);
-
-        let subtitle_bounds = Bounds::new(
-            card_bounds.origin.x + 20.0,
-            card_bounds.origin.y + 52.0,
-            card_bounds.size.width - 40.0,
-            24.0,
-        );
-        Text::new(self.subtitle.as_str())
-            .font_size(theme::font_size::BASE)
-            .color(theme::text::MUTED)
-            .paint(subtitle_bounds, cx);
-
-        let button_font = theme::font_size::SM;
-        let label_width =
-            cx.text
-                .measure_styled_mono(&self.button_label, button_font, FontStyle::default());
-        let button_padding_x = 16.0;
-        let button_width = (label_width + button_padding_x * 2.0).max(96.0);
-        let button_height = 36.0;
-        let button_bounds = Bounds::new(
-            card_bounds.origin.x + 20.0,
-            card_bounds.origin.y + card_bounds.size.height - button_height - 18.0,
-            button_width,
-            button_height,
-        );
-        self.button_bounds = button_bounds;
-        self.button.paint(button_bounds, cx);
-
-        paint_sidebar_contents(self, sidebar_bounds, cx);
+        paint_formatted_feed(self, left_bounds, cx);
+        paint_sidebar_contents(self, right_bounds, cx);
+        paint_input_bar(self, bottom_bounds, cx);
     }
+}
+
+fn paint_formatted_feed(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintContext) {
+    let padding = 24.0;
+    let header_height = 20.0;
+    let header_bounds = Bounds::new(
+        bounds.origin.x + padding,
+        bounds.origin.y + padding,
+        bounds.size.width - padding * 2.0,
+        header_height,
+    );
+
+    Text::new("FORMATTED EVENTS")
+        .font_size(theme::font_size::SM)
+        .bold()
+        .color(theme::text::PRIMARY)
+        .paint(header_bounds, cx);
+
+    let model = root
+        .thread_model
+        .as_deref()
+        .unwrap_or(DEFAULT_THREAD_MODEL);
+    let model_bounds = Bounds::new(
+        header_bounds.origin.x,
+        header_bounds.origin.y + header_height + 6.0,
+        header_bounds.size.width,
+        20.0,
+    );
+    Text::new(&format!("Thread model: {model}"))
+        .font_size(theme::font_size::SM)
+        .color(theme::text::MUTED)
+        .paint(model_bounds, cx);
+
+    let empty_bounds = Bounds::new(
+        header_bounds.origin.x,
+        model_bounds.origin.y + 26.0,
+        header_bounds.size.width,
+        (bounds.size.height - padding) - (model_bounds.origin.y - bounds.origin.y + 26.0),
+    );
+    Text::new("No formatted events yet.")
+        .font_size(theme::font_size::SM)
+        .color(theme::text::MUTED)
+        .paint(empty_bounds, cx);
+}
+
+fn paint_input_bar(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintContext) {
+    let input_height = 36.0;
+    let gap = 8.0;
+    let padding = 24.0;
+
+    let button_font = theme::font_size::SM;
+    let label_width =
+        cx.text
+            .measure_styled_mono("Send", button_font, FontStyle::default());
+    let button_width = (label_width + 28.0).max(72.0);
+
+    let mut total_width = (bounds.size.width * 0.6)
+        .min(720.0)
+        .max(320.0);
+    total_width = total_width.min(bounds.size.width - padding * 2.0);
+
+    let bar_x = bounds.origin.x + (bounds.size.width - total_width) / 2.0;
+    let bar_y = bounds.origin.y + (bounds.size.height - input_height) / 2.0;
+    let input_width = (total_width - button_width - gap).max(120.0);
+    let input_bounds = Bounds::new(bar_x, bar_y, input_width, input_height);
+    let submit_bounds = Bounds::new(
+        input_bounds.origin.x + input_bounds.size.width + gap,
+        bar_y,
+        button_width,
+        input_height,
+    );
+
+    root.input_bounds = input_bounds;
+    root.submit_bounds = submit_bounds;
+    root.input.set_max_width(input_bounds.size.width);
+    root.submit_button
+        .set_disabled(root.input.get_value().trim().is_empty());
+
+    root.input.paint(input_bounds, cx);
+    root.submit_button.paint(submit_bounds, cx);
 }
 
 fn paint_sidebar_contents(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintContext) {
@@ -454,34 +452,8 @@ fn paint_sidebar_contents(root: &mut MinimalRoot, bounds: Bounds, cx: &mut Paint
         .color(theme::text::PRIMARY)
         .paint(header_bounds, cx);
 
-    let input_height = 36.0;
-    let submit_width = 76.0;
-    let gap = 8.0;
-    let input_y = bounds.origin.y + bounds.size.height - padding - input_height;
-    let input_bounds = Bounds::new(
-        bounds.origin.x + padding,
-        input_y,
-        bounds.size.width - padding * 2.0 - submit_width - gap,
-        input_height,
-    );
-    let submit_bounds = Bounds::new(
-        input_bounds.origin.x + input_bounds.size.width + gap,
-        input_y,
-        submit_width,
-        input_height,
-    );
-
-    root.input_bounds = input_bounds;
-    root.submit_bounds = submit_bounds;
-    root.input.set_max_width(input_bounds.size.width);
-    root.submit_button
-        .set_disabled(root.input.get_value().trim().is_empty());
-
-    root.input.paint(input_bounds, cx);
-    root.submit_button.paint(submit_bounds, cx);
-
     let feed_top = header_bounds.origin.y + header_height + 8.0;
-    let feed_bottom = input_bounds.origin.y - 12.0;
+    let feed_bottom = bounds.origin.y + bounds.size.height - padding;
     let feed_height = (feed_bottom - feed_top).max(0.0);
     let feed_bounds = Bounds::new(
         bounds.origin.x + padding,
