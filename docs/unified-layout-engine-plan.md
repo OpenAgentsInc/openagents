@@ -212,3 +212,5 @@ Prevent regressions to manual layout across the codebase.
   across frames/backgrounds/text effects/illuminator panels.
 - 2026-01-28: Phase 3: converted HUD storybook sections (widgets/light demo/system UI) to use
   layout-engine panel stacking.
+- 2026-01-28: Phase 3: converted the Storybook chat threads + bitcoin wallet panels to use
+  layout-engine panel stacking.
