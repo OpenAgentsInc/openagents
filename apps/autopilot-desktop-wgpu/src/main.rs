@@ -231,6 +231,9 @@ impl ApplicationHandler<AppEvent> for App {
                 if let Err(err) = render_frame(state) {
                     tracing::warn!(error = %err, "render frame failed");
                 }
+                if state.root.needs_redraw() {
+                    state.window.request_redraw();
+                }
             }
             _ => {}
         }
