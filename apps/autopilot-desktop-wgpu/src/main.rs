@@ -27,6 +27,7 @@ const WINDOW_WIDTH: f64 = 1280.0;
 const WINDOW_HEIGHT: f64 = 800.0;
 const PADDING: f32 = 16.0;
 const EVENT_BUFFER: usize = 256;
+const DEFAULT_THREAD_MODEL: &str = "gpt-5.1-codex-mini";
 
 fn main() -> Result<()> {
     tracing_subscriber::fmt()
@@ -475,7 +476,7 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
 
             match client
                 .thread_start(ThreadStartParams {
-                    model: None,
+                    model: Some(DEFAULT_THREAD_MODEL.to_string()),
                     model_provider: None,
                     cwd: Some(cwd_string.clone()),
                     approval_policy: Some(AskForApproval::Never),
@@ -489,7 +490,10 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
                     let _ = proxy.send_event(AppEvent::AppServerEvent {
                         message: json!({
                             "method": "thread/started",
-                            "params": { "threadId": response.thread.id }
+                            "params": {
+                                "threadId": response.thread.id,
+                                "model": DEFAULT_THREAD_MODEL
+                            }
                         })
                         .to_string(),
                     });
