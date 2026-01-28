@@ -728,33 +728,23 @@ impl MarkdownRenderer {
         opacity: f32,
         mut code_blocks: Option<&mut Vec<CodeBlockLayout>>,
     ) -> f32 {
-        let indent = theme::spacing::XL;
-        let bullet_x = origin.x + theme::spacing::SM;
+        let _indent = theme::spacing::XL;
+        let _bullet_x = origin.x + theme::spacing::SM;
         let margin = theme::spacing::XS;
 
         let mut y = origin.y + margin;
 
         for item in items {
-            let item_y = y;
-
-            let bullet_color = self
+            let _item_y = y;
+            let _bullet_color = self
                 .config
                 .text_color
                 .with_alpha(self.config.text_color.a * opacity);
-            let bullet_run = text_system.layout_styled_mono(
-                "\u{2022}",
-                Point::new(bullet_x, item_y),
-                self.config.base_font_size,
-                bullet_color,
-                FontStyle::normal(),
-            );
-            scene.draw_text(bullet_run);
-
             for block in item {
                 y += self.render_block_with_opacity(
                     block,
-                    Point::new(origin.x + indent, y),
-                    max_width - indent,
+                    Point::new(origin.x, y),
+                    max_width,
                     text_system,
                     scene,
                     opacity,
