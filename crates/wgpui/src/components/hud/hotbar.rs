@@ -62,7 +62,7 @@ impl Hotbar {
             pressed_index: None,
             flash_index: None,
             flash_started: None,
-            flash_duration: Duration::from_millis(140),
+            flash_duration: Duration::from_millis(90),
             pending_clicks: Vec::new(),
             item_size: 36.0,
             gap: 6.0,
@@ -223,7 +223,7 @@ impl Component for Hotbar {
             if flash_active {
                 cx.scene.draw_quad(
                     Quad::new(item_bounds)
-                        .with_background(theme::accent::PRIMARY.with_alpha(0.15))
+                        .with_background(theme::accent::PRIMARY.with_alpha(0.08))
                         .with_corner_radius(4.0),
                 );
             }

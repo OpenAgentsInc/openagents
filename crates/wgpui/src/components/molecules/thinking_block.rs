@@ -18,7 +18,8 @@ pub struct ThinkingBlock {
 
 impl ThinkingBlock {
     pub fn new(content: impl Into<String>) -> Self {
-        let content = content.into();
+        let raw = content.into();
+        let content = strip_task_markers(&raw);
         let mut markdown_config = MarkdownConfig::default();
         markdown_config.base_font_size = theme::font_size::XS;
         markdown_config.header_sizes = [1.0; 6];
@@ -224,6 +225,38 @@ fn extract_header_label(content: &str) -> String {
         }
     }
     "Thinking".to_string()
+}
+
+fn strip_task_markers(content: &str) -> String {
+    let mut out = String::with_capacity(content.len());
+    for (idx, line) in content.lines().enumerate() {
+        if idx > 0 {
+            out.push('\n');
+        }
+        let trimmed = line.trim_start();
+        let indent_len = line.len().saturating_sub(trimmed.len());
+        out.push_str(&line[..indent_len]);
+
+        let rest = trimmed;
+        let mut cleaned = None;
+        for prefix in ["- [ ] ", "- [x] ", "- [X] ", "* [ ] ", "* [x] ", "* [X] ", "+ [ ] ", "+ [x] ", "+ [X] "] {
+            if rest.starts_with(prefix) {
+                let bullet = &prefix[..2];
+                cleaned = Some(format!("{bullet}{}", &rest[prefix.len()..]));
+                break;
+            }
+        }
+        if cleaned.is_none() {
+            for prefix in ["[ ] ", "[x] ", "[X] "] {
+                if rest.starts_with(prefix) {
+                    cleaned = Some(rest[prefix.len()..].to_string());
+                    break;
+                }
+            }
+        }
+        out.push_str(cleaned.as_deref().unwrap_or(rest));
+    }
+    out
 }
 
 #[cfg(test)]
