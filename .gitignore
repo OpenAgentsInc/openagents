@@ -78,6 +78,7 @@ docs/logs/**/*.json
 # Agent runtime files
 .openagents/agent.lock
 .openagents/locks/
+apps/autopilot-desktop/tmp/
 
 # SQLite databases (local only)
 .openagents/*.db
