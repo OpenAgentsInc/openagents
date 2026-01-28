@@ -334,7 +334,6 @@ pub struct MinimalRoot {
     pending_sends: Rc<RefCell<Vec<String>>>,
     queued_by_thread: HashMap<String, Vec<QueuedMessage>>,
     queued_in_flight: Option<String>,
-    queued_counter: u64,
     send_handler: Option<Box<dyn FnMut(UserAction)>>,
     stop_button: Button,
     stop_bounds: Bounds,
@@ -355,7 +354,6 @@ pub struct MinimalRoot {
 
 #[derive(Clone, Debug)]
 struct QueuedMessage {
-    id: u64,
     text: String,
 }
 
@@ -467,7 +465,6 @@ impl MinimalRoot {
             pending_sends,
             queued_by_thread: HashMap::new(),
             queued_in_flight: None,
-            queued_counter: 0,
             send_handler: None,
             stop_button,
             stop_bounds: Bounds::ZERO,
@@ -616,11 +613,7 @@ impl MinimalRoot {
         let Some(thread_id) = self.thread_id.clone() else {
             return false;
         };
-        self.queued_counter += 1;
-        let entry = QueuedMessage {
-            id: self.queued_counter,
-            text,
-        };
+        let entry = QueuedMessage { text };
         self.queued_by_thread
             .entry(thread_id)
             .or_default()
@@ -1934,8 +1927,6 @@ fn paint_hotbar(root: &MinimalRoot, bounds: Bounds, bottom_bounds: Bounds, cx: &
     let icon_gap = 8.0;
     let label_gap = 10.0;
     let padding_x = 14.0;
-    let padding_y = 8.0;
-
     let mut total_width = padding_x * 2.0;
     for item in &items {
         let label_width = cx

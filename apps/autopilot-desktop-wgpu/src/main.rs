@@ -622,95 +622,97 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
             tokio::task::spawn_blocking(move || {
                 while let Ok(action) = action_rx.recv() {
                     workspace_for_actions.dispatch(action.clone());
-                    if let UserAction::Message { text, model, .. } = action {
-                        let client = client_for_actions.clone();
-                        let thread_id = thread_id_for_actions.clone();
-                        let proxy = proxy_actions.clone();
-                        let cwd = cwd_for_actions.clone();
-                        let model = model.clone();
-                        handle.spawn(async move {
-                            let thread_id = thread_id.lock().await.clone();
-                            let Some(thread_id) = thread_id else {
-                                let _ = proxy.send_event(AppEvent::AppServerEvent {
-                                    message: json!({
-                                        "method": "codex/error",
-                                        "params": { "message": "Codex thread not ready" }
-                                    })
-                                    .to_string(),
-                                });
-                                return;
-                            };
+                    match action {
+                        UserAction::Message { text, model, .. } => {
+                            let client = client_for_actions.clone();
+                            let thread_id = thread_id_for_actions.clone();
+                            let proxy = proxy_actions.clone();
+                            let cwd = cwd_for_actions.clone();
+                            handle.spawn(async move {
+                                let thread_id = thread_id.lock().await.clone();
+                                let Some(thread_id) = thread_id else {
+                                    let _ = proxy.send_event(AppEvent::AppServerEvent {
+                                        message: json!({
+                                            "method": "codex/error",
+                                            "params": { "message": "Codex thread not ready" }
+                                        })
+                                        .to_string(),
+                                    });
+                                    return;
+                                };
 
-                            let params = TurnStartParams {
-                                thread_id,
-                                input: vec![UserInput::Text { text }],
-                                model,
-                                effort: None,
-                                summary: None,
-                                approval_policy: Some(AskForApproval::Never),
-                                sandbox_policy: Some(SandboxPolicy::WorkspaceWrite {
-                                    writable_roots: vec![cwd.clone()],
-                                    network_access: true,
-                                    exclude_tmpdir_env_var: false,
-                                    exclude_slash_tmp: false,
-                                }),
-                                cwd: Some(cwd),
-                            };
-
-                            if let Err(err) = client.turn_start(params).await {
-                                let _ = proxy.send_event(AppEvent::AppServerEvent {
-                                    message: json!({
-                                        "method": "codex/error",
-                                        "params": { "message": err.to_string() }
-                                    })
-                                    .to_string(),
-                                });
-                            }
-                        });
-                    }
-                    if let UserAction::Interrupt { .. } = action {
-                        let client = client_for_actions.clone();
-                        let thread_id = thread_id_for_actions.clone();
-                        let turn_id = turn_id_for_actions.clone();
-                        let pending_interrupt = pending_interrupt_for_actions.clone();
-                        let proxy = proxy_actions.clone();
-                        handle.spawn(async move {
-                            let thread_id = thread_id.lock().await.clone();
-                            let Some(thread_id) = thread_id else {
-                                let _ = proxy.send_event(AppEvent::AppServerEvent {
-                                    message: json!({
-                                        "method": "codex/error",
-                                        "params": { "message": "Codex thread not ready" }
-                                    })
-                                    .to_string(),
-                                });
-                                return;
-                            };
-
-                            let mut turn_guard = turn_id.lock().await;
-                            let turn_value = turn_guard.clone().unwrap_or_else(|| "pending".into());
-                            if turn_guard.is_none() {
-                                pending_interrupt.store(true, Ordering::SeqCst);
-                            } else {
-                                *turn_guard = None;
-                            }
-
-                            if let Err(err) = client
-                                .turn_interrupt(TurnInterruptParams {
+                                let params = TurnStartParams {
                                     thread_id,
-                                    turn_id: turn_value,
-                                })
-                                .await
-                            {
-                                let _ = proxy.send_event(AppEvent::AppServerEvent {
-                                    message: json!({
-                                        "method": "codex/error",
-                                        "params": { "message": err.to_string() }
+                                    input: vec![UserInput::Text { text }],
+                                    model,
+                                    effort: None,
+                                    summary: None,
+                                    approval_policy: Some(AskForApproval::Never),
+                                    sandbox_policy: Some(SandboxPolicy::WorkspaceWrite {
+                                        writable_roots: vec![cwd.clone()],
+                                        network_access: true,
+                                        exclude_tmpdir_env_var: false,
+                                        exclude_slash_tmp: false,
+                                    }),
+                                    cwd: Some(cwd),
+                                };
+
+                                if let Err(err) = client.turn_start(params).await {
+                                    let _ = proxy.send_event(AppEvent::AppServerEvent {
+                                        message: json!({
+                                            "method": "codex/error",
+                                            "params": { "message": err.to_string() }
+                                        })
+                                        .to_string(),
+                                    });
+                                }
+                            });
+                        }
+                        UserAction::Interrupt { .. } => {
+                            let client = client_for_actions.clone();
+                            let thread_id = thread_id_for_actions.clone();
+                            let turn_id = turn_id_for_actions.clone();
+                            let pending_interrupt = pending_interrupt_for_actions.clone();
+                            let proxy = proxy_actions.clone();
+                            handle.spawn(async move {
+                                let thread_id = thread_id.lock().await.clone();
+                                let Some(thread_id) = thread_id else {
+                                    let _ = proxy.send_event(AppEvent::AppServerEvent {
+                                        message: json!({
+                                            "method": "codex/error",
+                                            "params": { "message": "Codex thread not ready" }
+                                        })
+                                        .to_string(),
+                                    });
+                                    return;
+                                };
+
+                                let mut turn_guard = turn_id.lock().await;
+                                let turn_value = turn_guard.clone().unwrap_or_else(|| "pending".into());
+                                if turn_guard.is_none() {
+                                    pending_interrupt.store(true, Ordering::SeqCst);
+                                } else {
+                                    *turn_guard = None;
+                                }
+
+                                if let Err(err) = client
+                                    .turn_interrupt(TurnInterruptParams {
+                                        thread_id,
+                                        turn_id: turn_value,
                                     })
-                                    .to_string(),
-                                });
-                            }
-                        });
+                                    .await
+                                {
+                                    let _ = proxy.send_event(AppEvent::AppServerEvent {
+                                        message: json!({
+                                            "method": "codex/error",
+                                            "params": { "message": err.to_string() }
+                                        })
+                                        .to_string(),
+                                    });
+                                }
+                            });
+                        }
+                        _ => {}
                     }
                 }
             });
