@@ -286,6 +286,7 @@ impl Component for Button {
                 (bounds.size.width - self.padding.0 * 2.0).max(0.0),
                 (bounds.size.height - self.padding.1 * 2.0).max(0.0),
             );
+            let vertical_adjust = font_size * 0.12;
             let root_style = LayoutStyle::new()
                 .width(px(content_bounds.size.width))
                 .height(px(content_bounds.size.height))
@@ -302,7 +303,7 @@ impl Component for Button {
                 icon.paint(
                     Bounds::new(
                         content_bounds.origin.x + icon_bounds.origin.x,
-                        content_bounds.origin.y + icon_bounds.origin.y,
+                        content_bounds.origin.y + icon_bounds.origin.y + vertical_adjust,
                         icon_bounds.size.width,
                         icon_bounds.size.height,
                     ),
@@ -314,7 +315,8 @@ impl Component for Button {
                 let label_layout = layout.layout(label_id);
                 label_run.origin = Point::new(
                     content_bounds.origin.x + label_layout.origin.x - label_bounds.origin.x,
-                    content_bounds.origin.y + label_layout.origin.y - label_bounds.origin.y,
+                    content_bounds.origin.y + label_layout.origin.y - label_bounds.origin.y
+                        + vertical_adjust,
                 );
                 cx.scene.draw_text(label_run);
             }
