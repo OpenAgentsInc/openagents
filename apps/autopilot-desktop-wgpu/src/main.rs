@@ -29,7 +29,7 @@ use winit::window::{CursorIcon, Window, WindowId};
 
 mod full_auto;
 
-const WINDOW_TITLE: &str = "Autopilot Desktop (WGPUI)";
+const WINDOW_TITLE: &str = "Autopilot";
 const WINDOW_WIDTH: f64 = 1280.0;
 const WINDOW_HEIGHT: f64 = 800.0;
 const PADDING: f32 = 16.0;
