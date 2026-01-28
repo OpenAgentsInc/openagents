@@ -13,6 +13,7 @@ members = [
     "crates/codex-client",
     "crates/codex-mcp",
     "crates/compute",
+    "crates/citrea",
     "crates/dsrs",
     "crates/dsrs-macros",
     "crates/editor",

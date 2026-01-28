@@ -2,6 +2,7 @@ use clap::Parser;
 
 mod nostr_cli;
 mod spark_cli;
+mod citrea_cli;
 
 #[derive(Parser)]
 #[command(name = "openagents")]
@@ -17,6 +18,8 @@ pub enum Commands {
     Nostr(nostr_cli::NostrArgs),
     /// Spark wallet utilities (keys, payments, tokens)
     Spark(spark_cli::SparkArgs),
+    /// Citrea utilities (keys, signatures, RPC helpers)
+    Citrea(citrea_cli::CitreaArgs),
 }
 
 pub fn run() -> anyhow::Result<()> {
@@ -24,5 +27,6 @@ pub fn run() -> anyhow::Result<()> {
     match cli.command {
         Commands::Nostr(args) => nostr_cli::run(args),
         Commands::Spark(args) => spark_cli::run(args),
+        Commands::Citrea(args) => citrea_cli::run(args),
     }
 }
