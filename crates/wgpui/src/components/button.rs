@@ -125,6 +125,10 @@ impl Button {
         self.pressed
     }
 
+    pub fn is_disabled(&self) -> bool {
+        self.disabled
+    }
+
     fn colors(&self) -> (Hsla, Hsla, Hsla) {
         let mut bg = self.style.background.unwrap_or_else(|| match self.variant {
             ButtonVariant::Primary => theme::accent::PRIMARY,
