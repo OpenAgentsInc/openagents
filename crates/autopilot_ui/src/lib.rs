@@ -13,9 +13,10 @@ use wgpui::components::organisms::{
 use wgpui::components::sections::{MessageEditor, ThreadView};
 use wgpui::components::{Text, TextInput};
 use wgpui::input::InputEvent;
+use taffy::prelude::{AlignItems, JustifyContent};
 use wgpui::{
-    Bounds, Button, Component, Cursor, EventResult, LayoutEngine, LayoutStyle, PaintContext, Point,
-    Quad, ScrollView, Size, text::FontStyle, theme, length, px,
+    Bounds, Button, Component, Cursor, Dropdown, DropdownOption, EventResult, LayoutEngine,
+    LayoutStyle, PaintContext, Point, Quad, ScrollView, Size, text::FontStyle, theme, length, px,
 };
 
 const PANEL_PADDING: f32 = 12.0;
@@ -33,6 +34,26 @@ const DEFAULT_THREAD_MODEL: &str = "gpt-5.1-codex-mini";
 const BOTTOM_BAR_HEIGHT: f32 = 64.0;
 const SIDEBAR_MIN_WIDTH: f32 = 360.0;
 const SIDEBAR_MAX_WIDTH: f32 = 640.0;
+const MODEL_DROPDOWN_WIDTH: f32 = 320.0;
+const DEFAULT_MODEL_INDEX: usize = 3;
+const MODEL_OPTIONS: [(&str, &str); 4] = [
+    (
+        "gpt-5.2-codex",
+        "Latest frontier agentic coding model.",
+    ),
+    (
+        "gpt-5.2",
+        "Latest frontier model with improvements across knowledge, reasoning and coding.",
+    ),
+    (
+        "gpt-5.1-codex-max",
+        "Codex-optimized flagship for deep and fast reasoning.",
+    ),
+    (
+        "gpt-5.1-codex-mini",
+        "Optimized for Codex. Cheaper, faster, but less capable.",
+    ),
+];
 
 #[derive(Default, Clone)]
 pub struct AppViewModel {
@@ -88,6 +109,27 @@ impl AppViewModel {
     }
 }
 
+fn build_model_options() -> Vec<DropdownOption> {
+    MODEL_OPTIONS
+        .iter()
+        .map(|(id, _)| DropdownOption::new(*id, *id))
+        .collect()
+}
+
+fn model_description(model: &str) -> &'static str {
+    MODEL_OPTIONS
+        .iter()
+        .find(|(id, _)| *id == model)
+        .map(|(_, desc)| *desc)
+        .unwrap_or("Model description unavailable.")
+}
+
+fn model_index(model: &str) -> Option<usize> {
+    MODEL_OPTIONS
+        .iter()
+        .position(|(id, _)| *id == model)
+}
+
 #[derive(Clone, Debug)]
 enum UiAction {
     SendMessage(String),
@@ -112,6 +154,11 @@ pub struct DesktopRoot {
 pub struct MinimalRoot {
     event_context: EventContext,
     cursor_position: Point,
+    model_dropdown: Dropdown,
+    model_bounds: Bounds,
+    model_hovered: bool,
+    pending_model_changes: Rc<RefCell<Vec<String>>>,
+    selected_model: String,
     input: TextInput,
     input_bounds: Bounds,
     input_hovered: bool,
@@ -129,6 +176,16 @@ pub struct MinimalRoot {
 
 impl MinimalRoot {
     pub fn new() -> Self {
+        let pending_model_changes = Rc::new(RefCell::new(Vec::new()));
+        let pending_models = pending_model_changes.clone();
+        let model_dropdown = Dropdown::new(build_model_options())
+            .selected(DEFAULT_MODEL_INDEX)
+            .font_size(theme::font_size::SM)
+            .padding(12.0, 6.0)
+            .on_change(move |_, value| {
+                pending_models.borrow_mut().push(value.to_string());
+            });
+
         let pending_sends = Rc::new(RefCell::new(Vec::new()));
         let pending_submit = pending_sends.clone();
         let input = TextInput::new()
@@ -160,6 +217,11 @@ impl MinimalRoot {
         Self {
             event_context: EventContext::new(),
             cursor_position: Point::ZERO,
+            model_dropdown,
+            model_bounds: Bounds::ZERO,
+            model_hovered: false,
+            pending_model_changes,
+            selected_model: DEFAULT_THREAD_MODEL.to_string(),
             input,
             input_bounds: Bounds::ZERO,
             input_hovered: false,
@@ -186,14 +248,18 @@ impl MinimalRoot {
                     if let Some(method) = value.get("method").and_then(|m| m.as_str())
                         && method == "thread/started"
                     {
-                        if let Some(model) = value
-                            .get("params")
-                            .and_then(|params| params.get("model"))
-                            .and_then(|m| m.as_str())
-                        {
-                            self.thread_model = Some(model.to_string());
+                    if let Some(model) = value
+                        .get("params")
+                        .and_then(|params| params.get("model"))
+                        .and_then(|m| m.as_str())
+                    {
+                        self.thread_model = Some(model.to_string());
+                        self.selected_model = model.to_string();
+                        if let Some(index) = model_index(model) {
+                            self.model_dropdown.set_selected(Some(index));
                         }
                     }
+                }
                 }
 
                 self.event_log.push(message);
@@ -218,7 +284,14 @@ impl MinimalRoot {
         if let InputEvent::MouseMove { x, y } = event {
             self.cursor_position = Point::new(*x, *y);
             self.input_hovered = self.input_bounds.contains(self.cursor_position);
+            self.model_hovered = self.model_bounds.contains(self.cursor_position);
         }
+
+        let dropdown_handled = matches!(
+            self.model_dropdown
+                .event(event, self.model_bounds, &mut self.event_context),
+            EventResult::Handled
+        );
 
         let scroll_handled = if self.event_scroll_bounds.contains(self.cursor_position) {
             matches!(
@@ -241,6 +314,17 @@ impl MinimalRoot {
                 .event(event, self.submit_bounds, &mut self.event_context),
             EventResult::Handled
         );
+
+        let pending_models = {
+            let mut pending = self.pending_model_changes.borrow_mut();
+            let models = pending.clone();
+            pending.clear();
+            models
+        };
+
+        if let Some(model) = pending_models.last() {
+            self.selected_model = model.clone();
+        }
 
         let pending_messages = {
             let mut pending = self.pending_sends.borrow_mut();
@@ -266,7 +350,11 @@ impl MinimalRoot {
                 if let Some(session_id) = self.session_id {
                     if let Some(handler) = self.send_handler.as_mut() {
                         for message in messages {
-                            handler(UserAction::Message { session_id, text: message });
+                            handler(UserAction::Message {
+                                session_id,
+                                text: message,
+                                model: Some(self.selected_model.clone()),
+                            });
                         }
                         self.input.set_value("");
                     }
@@ -280,11 +368,13 @@ impl MinimalRoot {
         self.submit_button
             .set_disabled(self.input.get_value().trim().is_empty());
 
-        submit_handled || input_handled || scroll_handled
+        submit_handled || input_handled || scroll_handled || dropdown_handled
     }
 
     pub fn cursor(&self) -> Cursor {
         if (self.submit_button.is_hovered() && !self.submit_button.is_disabled()) {
+            Cursor::Pointer
+        } else if self.model_hovered || self.model_dropdown.is_open() {
             Cursor::Pointer
         } else if self.input_hovered || self.input.is_focused() {
             Cursor::Text
@@ -359,10 +449,11 @@ impl Component for MinimalRoot {
 fn paint_formatted_feed(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintContext) {
     let padding = 24.0;
     let header_height = 20.0;
+    let content_width = bounds.size.width - padding * 2.0;
     let header_bounds = Bounds::new(
         bounds.origin.x + padding,
         bounds.origin.y + padding,
-        bounds.size.width - padding * 2.0,
+        content_width,
         header_height,
     );
 
@@ -376,7 +467,7 @@ fn paint_formatted_feed(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintCo
         .thread_model
         .as_deref()
         .unwrap_or(DEFAULT_THREAD_MODEL);
-    let model_bounds = Bounds::new(
+    let thread_model_bounds = Bounds::new(
         header_bounds.origin.x,
         header_bounds.origin.y + header_height + 6.0,
         header_bounds.size.width,
@@ -385,18 +476,81 @@ fn paint_formatted_feed(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintCo
     Text::new(&format!("Thread model: {model}"))
         .font_size(theme::font_size::SM)
         .color(theme::text::MUTED)
-        .paint(model_bounds, cx);
+        .paint(thread_model_bounds, cx);
+
+    let selector_height = 30.0;
+    let selector_bounds = Bounds::new(
+        header_bounds.origin.x,
+        thread_model_bounds.origin.y + 26.0,
+        content_width,
+        selector_height,
+    );
+
+    let label_text = "Model";
+    let label_width = cx.text.measure_styled_mono(
+        label_text,
+        theme::font_size::SM,
+        FontStyle::default(),
+    );
+    let available_width = (content_width - label_width - 8.0).max(140.0);
+    let dropdown_width = available_width.min(MODEL_DROPDOWN_WIDTH);
+
+    let mut engine = LayoutEngine::new();
+    let label_node = engine.request_leaf(
+        &LayoutStyle::new()
+            .width(px(label_width))
+            .height(px(selector_height)),
+    );
+    let dropdown_node = engine.request_leaf(
+        &LayoutStyle::new()
+            .width(px(dropdown_width))
+            .height(px(selector_height)),
+    );
+    let row = engine.request_layout(
+        &LayoutStyle::new()
+            .flex_row()
+            .align_items(AlignItems::Center)
+            .justify_content(JustifyContent::FlexStart)
+            .gap(length(8.0)),
+        &[label_node, dropdown_node],
+    );
+    engine.compute_layout(row, Size::new(content_width, selector_height));
+
+    let label_bounds = offset_bounds(engine.layout(label_node), selector_bounds.origin);
+    let dropdown_bounds = offset_bounds(engine.layout(dropdown_node), selector_bounds.origin);
+
+    Text::new(label_text)
+        .font_size(theme::font_size::SM)
+        .color(theme::text::MUTED)
+        .paint(label_bounds, cx);
+
+    root.model_bounds = dropdown_bounds;
+
+    let description_bounds = Bounds::new(
+        header_bounds.origin.x,
+        selector_bounds.origin.y + selector_height + 6.0,
+        content_width,
+        36.0,
+    );
+    Text::new(model_description(&root.selected_model))
+        .font_size(theme::font_size::XS)
+        .color(theme::text::MUTED)
+        .paint(description_bounds, cx);
 
     let empty_bounds = Bounds::new(
         header_bounds.origin.x,
-        model_bounds.origin.y + 26.0,
+        description_bounds.origin.y + 30.0,
         header_bounds.size.width,
-        (bounds.size.height - padding) - (model_bounds.origin.y - bounds.origin.y + 26.0),
+        (bounds.size.height - padding)
+            - (description_bounds.origin.y - bounds.origin.y + 30.0),
     );
     Text::new("No formatted events yet.")
         .font_size(theme::font_size::SM)
         .color(theme::text::MUTED)
         .paint(empty_bounds, cx);
+
+    // Paint dropdown last so the menu overlays the rest of the feed.
+    root.model_dropdown.paint(dropdown_bounds, cx);
 }
 
 fn paint_input_bar(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintContext) {
@@ -882,6 +1036,7 @@ impl DesktopRoot {
                         handler(UserAction::Message {
                             session_id,
                             text: trimmed.to_string(),
+                            model: None,
                         });
                         self.message_editor.clear();
                     } else {
@@ -1385,7 +1540,13 @@ fn format_event(event: &AppEvent) -> String {
             format!("SessionStarted ({:?})", session_id)
         }
         AppEvent::UserActionDispatched { action, .. } => match action {
-            UserAction::Message { text, .. } => format!("Message ({})", text),
+            UserAction::Message { text, model, .. } => {
+                if let Some(model) = model {
+                    format!("Message ({text}) [{model}]")
+                } else {
+                    format!("Message ({text})")
+                }
+            }
             UserAction::Command { name, .. } => format!("Command ({})", name),
         },
         AppEvent::AppServerEvent { message } => format!("AppServerEvent ({message})"),
