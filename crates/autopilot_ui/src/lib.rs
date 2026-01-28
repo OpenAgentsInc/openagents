@@ -1,11 +1,13 @@
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::rc::Rc;
 
 use autopilot_app::{AppEvent, SessionId, UserAction, WorkspaceId};
 use serde_json::Value;
-use wgpui::components::atoms::{ToolStatus, ToolType};
+use taffy::prelude::{AlignItems, JustifyContent};
 use wgpui::components::EventContext;
+use wgpui::components::atoms::{ToolStatus, ToolType};
 use wgpui::components::organisms::{
     AssistantMessage, DiffLine, DiffLineKind, DiffToolCall, SearchMatch, SearchToolCall,
     TerminalToolCall, ThreadEntry, ThreadEntryType, ToolCallCard, UserMessage,
@@ -13,11 +15,11 @@ use wgpui::components::organisms::{
 use wgpui::components::sections::{MessageEditor, ThreadView};
 use wgpui::components::{Text, TextInput};
 use wgpui::input::InputEvent;
-use taffy::prelude::{AlignItems, JustifyContent};
 use wgpui::{
     Bounds, Button, ButtonVariant, Component, Cursor, Dropdown, DropdownOption, EventResult,
-    LayoutEngine, LayoutStyle, PaintContext, Point, Quad, ScrollView, Size, copy_to_clipboard,
-    text::FontStyle, theme, length, px,
+    LayoutEngine, LayoutStyle, MarkdownConfig, MarkdownDocument, MarkdownView, PaintContext, Point,
+    Quad, ScrollView, Size, StreamingMarkdown, copy_to_clipboard, length, px, text::FontStyle,
+    theme,
 };
 
 const PANEL_PADDING: f32 = 12.0;
@@ -37,11 +39,9 @@ const SIDEBAR_MIN_WIDTH: f32 = 360.0;
 const SIDEBAR_MAX_WIDTH: f32 = 640.0;
 const MODEL_DROPDOWN_WIDTH: f32 = 320.0;
 const DEFAULT_MODEL_INDEX: usize = 3;
+const SHOW_MODEL_DROPDOWN: bool = false;
 const MODEL_OPTIONS: [(&str, &str); 4] = [
-    (
-        "gpt-5.2-codex",
-        "Latest frontier agentic coding model.",
-    ),
+    ("gpt-5.2-codex", "Latest frontier agentic coding model."),
     (
         "gpt-5.2",
         "Latest frontier model with improvements across knowledge, reasoning and coding.",
@@ -84,7 +84,9 @@ impl AppViewModel {
                 self.workspace_id = Some(*workspace_id);
                 self.workspace_path = Some(path.clone());
             }
-            AppEvent::SessionStarted { session_id, label, .. } => {
+            AppEvent::SessionStarted {
+                session_id, label, ..
+            } => {
                 self.session_id = Some(*session_id);
                 self.session_label = label.clone();
                 self.sessions.push(SessionSummary {
@@ -126,14 +128,145 @@ fn model_description(model: &str) -> &'static str {
 }
 
 fn model_index(model: &str) -> Option<usize> {
-    MODEL_OPTIONS
-        .iter()
-        .position(|(id, _)| *id == model)
+    MODEL_OPTIONS.iter().position(|(id, _)| *id == model)
+}
+
+fn extract_message_text(item: &Value) -> Option<String> {
+    if let Some(text) = item.get("text").and_then(|t| t.as_str()) {
+        return Some(text.to_string());
+    }
+
+    if let Some(content) = item.get("content").and_then(|c| c.as_array()) {
+        for entry in content {
+            if let Some(text) = entry.get("text").and_then(|t| t.as_str()) {
+                return Some(text.to_string());
+            }
+        }
+    }
+
+    None
+}
+
+fn item_id(item: &Value) -> Option<String> {
+    item.get("id")
+        .and_then(|id| id.as_str())
+        .map(|s| s.to_string())
+}
+
+fn item_string(item: &Value, key: &str) -> Option<String> {
+    item.get(key)
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string())
+}
+
+fn value_to_command_string(value: &Value) -> Option<String> {
+    match value {
+        Value::String(text) => {
+            if text.trim().is_empty() {
+                None
+            } else {
+                Some(text.to_string())
+            }
+        }
+        Value::Array(parts) => {
+            let items: Vec<&str> = parts.iter().filter_map(|val| val.as_str()).collect();
+            if items.is_empty() {
+                None
+            } else {
+                Some(items.join(" "))
+            }
+        }
+        _ => None,
+    }
+}
+
+fn command_string_from_item(item: &Value) -> Option<String> {
+    item.get("command").and_then(value_to_command_string)
+}
+
+fn extract_file_changes(item: &Value) -> (Vec<String>, Option<String>, Option<String>) {
+    let mut paths = Vec::new();
+    let mut first_path = None;
+    let mut first_diff = None;
+    if let Some(changes) = item.get("changes").and_then(Value::as_array) {
+        for change in changes {
+            if let Some(path) = change.get("path").and_then(Value::as_str) {
+                if first_path.is_none() {
+                    first_path = Some(path.to_string());
+                }
+                paths.push(path.to_string());
+            }
+            if first_diff.is_none() {
+                if let Some(diff) = change.get("diff").and_then(Value::as_str) {
+                    first_diff = Some(diff.to_string());
+                }
+            }
+        }
+    }
+    (paths, first_path, first_diff)
 }
 
 #[derive(Clone, Debug)]
 enum UiAction {
     SendMessage(String),
+}
+
+#[derive(Clone, Debug)]
+enum ToolEntry {
+    Terminal {
+        entry_index: usize,
+        command: String,
+        output: String,
+        status: ToolStatus,
+        exit_code: Option<i32>,
+    },
+    Edit {
+        entry_index: usize,
+        tool_name: String,
+        input: String,
+        output: String,
+        status: ToolStatus,
+    },
+    Search {
+        entry_index: usize,
+        query: String,
+        matches: Vec<SearchMatch>,
+        status: ToolStatus,
+    },
+    Generic {
+        entry_index: usize,
+        tool_type: ToolType,
+        tool_name: String,
+        input: Option<String>,
+        output: Option<String>,
+        status: ToolStatus,
+    },
+}
+
+impl ToolEntry {
+    fn entry_index(&self) -> usize {
+        match self {
+            ToolEntry::Terminal { entry_index, .. } => *entry_index,
+            ToolEntry::Edit { entry_index, .. } => *entry_index,
+            ToolEntry::Search { entry_index, .. } => *entry_index,
+            ToolEntry::Generic { entry_index, .. } => *entry_index,
+        }
+    }
+}
+
+fn new_markdown_stream() -> StreamingMarkdown {
+    let mut stream = StreamingMarkdown::new();
+    let mut markdown_config = MarkdownConfig::default();
+    markdown_config.base_font_size = theme::font_size::XS;
+    markdown_config.header_sizes = [1.0; 6];
+    stream.set_markdown_config(markdown_config);
+    stream
+}
+
+fn message_markdown_view(document: MarkdownDocument) -> MarkdownView {
+    MarkdownView::new(document)
+        .show_copy_button(false)
+        .copy_button_on_hover(false)
 }
 
 pub struct DesktopRoot {
@@ -163,6 +296,12 @@ pub struct MinimalRoot {
     copy_button: Button,
     copy_bounds: Bounds,
     pending_copy: Rc<RefCell<bool>>,
+    formatted_thread: ThreadView,
+    formatted_thread_bounds: Bounds,
+    formatted_message_streams: HashMap<String, StreamingMarkdown>,
+    formatted_message_entries: HashMap<String, usize>,
+    tool_entries: HashMap<String, ToolEntry>,
+    last_user_message: Option<String>,
     input: TextInput,
     input_bounds: Bounds,
     input_hovered: bool,
@@ -200,6 +339,8 @@ impl MinimalRoot {
             .on_click(move || {
                 *pending_copy_click.borrow_mut() = true;
             });
+
+        let formatted_thread = ThreadView::new().item_spacing(8.0);
 
         let pending_sends = Rc::new(RefCell::new(Vec::new()));
         let pending_submit = pending_sends.clone();
@@ -240,6 +381,12 @@ impl MinimalRoot {
             copy_button,
             copy_bounds: Bounds::ZERO,
             pending_copy,
+            formatted_thread,
+            formatted_thread_bounds: Bounds::ZERO,
+            formatted_message_streams: HashMap::new(),
+            formatted_message_entries: HashMap::new(),
+            tool_entries: HashMap::new(),
+            last_user_message: None,
             input,
             input_bounds: Bounds::ZERO,
             input_hovered: false,
@@ -266,18 +413,20 @@ impl MinimalRoot {
                     if let Some(method) = value.get("method").and_then(|m| m.as_str())
                         && method == "thread/started"
                     {
-                    if let Some(model) = value
-                        .get("params")
-                        .and_then(|params| params.get("model"))
-                        .and_then(|m| m.as_str())
-                    {
-                        self.thread_model = Some(model.to_string());
-                        self.selected_model = model.to_string();
-                        if let Some(index) = model_index(model) {
-                            self.model_dropdown.set_selected(Some(index));
+                        if let Some(model) = value
+                            .get("params")
+                            .and_then(|params| params.get("model"))
+                            .and_then(|m| m.as_str())
+                        {
+                            self.thread_model = Some(model.to_string());
+                            self.selected_model = model.to_string();
+                            if let Some(index) = model_index(model) {
+                                self.model_dropdown.set_selected(Some(index));
+                            }
                         }
                     }
-                }
+
+                    self.apply_formatted_event(&value);
                 }
 
                 self.event_log.push(message);
@@ -298,18 +447,422 @@ impl MinimalRoot {
         self.send_handler = Some(Box::new(handler));
     }
 
+    fn apply_formatted_event(&mut self, value: &Value) {
+        let Some(method) = value.get("method").and_then(|m| m.as_str()) else {
+            return;
+        };
+
+        match method {
+            "item/started" => {
+                if let Some(item) = value.get("params").and_then(|p| p.get("item")) {
+                    if let Some(item_type) = item.get("type").and_then(|t| t.as_str()) {
+                        match item_type {
+                            "userMessage" => {
+                                if let Some(text) = extract_message_text(item) {
+                                    self.append_user_message(&text);
+                                }
+                            }
+                            "commandExecution" | "fileChange" | "mcpToolCall" | "webSearch" => {
+                                self.start_tool_entry(item_type, item);
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+            }
+            "item/completed" => {
+                if let Some(item) = value.get("params").and_then(|p| p.get("item")) {
+                    if let Some(item_type) = item.get("type").and_then(|t| t.as_str()) {
+                        match item_type {
+                            "agentMessage" => {
+                                let text = extract_message_text(item);
+                                if let Some(item_id) = item_id(item) {
+                                    self.finish_agent_message(&item_id, text.as_deref());
+                                } else if let Some(text) = text {
+                                    self.append_agent_text(&text);
+                                }
+                            }
+                            "commandExecution" | "fileChange" | "mcpToolCall" | "webSearch" => {
+                                self.complete_tool_entry(item_type, item);
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+            }
+            "item/agentMessage/delta" => {
+                if let Some(params) = value.get("params")
+                    && let Some(delta) = params.get("delta").and_then(|d| d.as_str())
+                {
+                    let item_id = params
+                        .get("itemId")
+                        .or_else(|| params.get("item_id"))
+                        .and_then(|id| id.as_str());
+                    if let Some(item_id) = item_id {
+                        self.append_agent_delta(item_id, delta);
+                    }
+                }
+            }
+            "item/commandExecution/outputDelta" | "item/fileChange/outputDelta" => {
+                if let Some(params) = value.get("params")
+                    && let Some(delta) = params.get("delta").and_then(|d| d.as_str())
+                {
+                    let item_id = params
+                        .get("itemId")
+                        .or_else(|| params.get("item_id"))
+                        .and_then(|id| id.as_str());
+                    if let Some(item_id) = item_id {
+                        self.append_tool_output(item_id, delta);
+                    }
+                }
+            }
+            "codex/event/user_message" => {
+                if let Some(text) = value
+                    .get("params")
+                    .and_then(|params| params.get("msg"))
+                    .and_then(|msg| msg.get("message"))
+                    .and_then(|m| m.as_str())
+                {
+                    self.append_user_message(text);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    fn append_user_message(&mut self, text: &str) {
+        if text.trim().is_empty() {
+            return;
+        }
+        if self.last_user_message.as_deref() == Some(text) {
+            return;
+        }
+        self.last_user_message = Some(text.to_string());
+
+        let mut stream = new_markdown_stream();
+        stream.append(&format!("> {text}"));
+        stream.complete();
+        let view = message_markdown_view(stream.document().clone());
+        self.formatted_thread
+            .push_entry(ThreadEntry::new(ThreadEntryType::User, view));
+    }
+
+    fn append_agent_text(&mut self, text: &str) {
+        if text.trim().is_empty() {
+            return;
+        }
+        let mut stream = new_markdown_stream();
+        stream.append(text);
+        stream.complete();
+        let view = message_markdown_view(stream.document().clone());
+        self.formatted_thread
+            .push_entry(ThreadEntry::new(ThreadEntryType::Assistant, view));
+    }
+
+    fn append_agent_delta(&mut self, item_id: &str, delta: &str) {
+        if delta.is_empty() {
+            return;
+        }
+
+        let entry_index = self.ensure_agent_entry(item_id);
+        let updated_doc = {
+            if let Some(stream) = self.formatted_message_streams.get_mut(item_id) {
+                stream.append(delta);
+                stream.force_reparse();
+                Some(stream.document().clone())
+            } else {
+                None
+            }
+        };
+
+        if let Some(document) = updated_doc
+            && let Some(entry) = self.formatted_thread.entry_mut(entry_index)
+        {
+            entry.set_content(message_markdown_view(document));
+        }
+    }
+
+    fn finish_agent_message(&mut self, item_id: &str, text: Option<&str>) {
+        let entry_index = self.ensure_agent_entry(item_id);
+
+        let updated_doc = {
+            if let Some(stream) = self.formatted_message_streams.get_mut(item_id) {
+                if stream.source().trim().is_empty() {
+                    if let Some(text) = text {
+                        stream.append(text);
+                    }
+                }
+                stream.complete();
+                Some(stream.document().clone())
+            } else {
+                None
+            }
+        };
+
+        if let Some(document) = updated_doc
+            && let Some(entry) = self.formatted_thread.entry_mut(entry_index)
+        {
+            entry.set_content(message_markdown_view(document));
+        }
+    }
+
+    fn ensure_agent_entry(&mut self, item_id: &str) -> usize {
+        if let Some(entry_index) = self.formatted_message_entries.get(item_id) {
+            return *entry_index;
+        }
+
+        let stream = new_markdown_stream();
+        let view = message_markdown_view(stream.document().clone());
+        self.formatted_thread
+            .push_entry(ThreadEntry::new(ThreadEntryType::Assistant, view));
+        let entry_index = self.formatted_thread.entry_count().saturating_sub(1);
+        self.formatted_message_entries
+            .insert(item_id.to_string(), entry_index);
+        self.formatted_message_streams
+            .insert(item_id.to_string(), stream);
+        entry_index
+    }
+
+    fn start_tool_entry(&mut self, item_type: &str, item: &Value) {
+        let Some(item_id) = item_id(item) else {
+            return;
+        };
+        if self.tool_entries.contains_key(&item_id) {
+            return;
+        }
+
+        let entry_index = self.formatted_thread.entry_count();
+
+        let entry = match item_type {
+            "commandExecution" => {
+                let command =
+                    command_string_from_item(item).unwrap_or_else(|| "command".to_string());
+                ToolEntry::Terminal {
+                    entry_index,
+                    command,
+                    output: String::new(),
+                    status: ToolStatus::Running,
+                    exit_code: None,
+                }
+            }
+            "fileChange" => {
+                let (paths, first_path, _) = extract_file_changes(item);
+                let input = if !paths.is_empty() {
+                    paths.join(", ")
+                } else {
+                    "file change".to_string()
+                };
+                let tool_name = first_path.unwrap_or_else(|| "file_change".to_string());
+                ToolEntry::Edit {
+                    entry_index,
+                    tool_name,
+                    input,
+                    output: String::new(),
+                    status: ToolStatus::Running,
+                }
+            }
+            "webSearch" => {
+                let query = item_string(item, "query").unwrap_or_else(|| "search".to_string());
+                ToolEntry::Search {
+                    entry_index,
+                    query,
+                    matches: Vec::new(),
+                    status: ToolStatus::Running,
+                }
+            }
+            "mcpToolCall" => {
+                let server = item_string(item, "server").unwrap_or_else(|| "mcp".to_string());
+                let tool = item_string(item, "tool").unwrap_or_else(|| "tool".to_string());
+                let tool_name = format!("mcp__{}__{}", server, tool);
+                let input = item.get("arguments").map(|args| args.to_string());
+                ToolEntry::Generic {
+                    entry_index,
+                    tool_type: ToolType::Task,
+                    tool_name,
+                    input,
+                    output: None,
+                    status: ToolStatus::Running,
+                }
+            }
+            _ => {
+                let tool_name = item_string(item, "tool").unwrap_or_else(|| "tool".to_string());
+                ToolEntry::Generic {
+                    entry_index,
+                    tool_type: ToolType::Unknown,
+                    tool_name,
+                    input: None,
+                    output: None,
+                    status: ToolStatus::Running,
+                }
+            }
+        };
+
+        self.formatted_thread
+            .push_entry(ThreadEntry::new(ThreadEntryType::Tool, Text::new("")));
+        self.tool_entries.insert(item_id.clone(), entry);
+        self.refresh_tool_entry(&item_id);
+    }
+
+    fn append_tool_output(&mut self, item_id: &str, delta: &str) {
+        if delta.is_empty() {
+            return;
+        }
+
+        if let Some(entry) = self.tool_entries.get_mut(item_id) {
+            match entry {
+                ToolEntry::Terminal { output, .. } => output.push_str(delta),
+                ToolEntry::Edit { output, .. } => output.push_str(delta),
+                ToolEntry::Generic { output, .. } => {
+                    if let Some(existing) = output.as_mut() {
+                        existing.push_str(delta);
+                    } else {
+                        *output = Some(delta.to_string());
+                    }
+                }
+                ToolEntry::Search { .. } => {}
+            }
+            self.refresh_tool_entry(item_id);
+        }
+    }
+
+    fn complete_tool_entry(&mut self, _item_type: &str, item: &Value) {
+        let Some(item_id) = item_id(item) else {
+            return;
+        };
+
+        if let Some(entry) = self.tool_entries.get_mut(&item_id) {
+            match entry {
+                ToolEntry::Terminal {
+                    status, exit_code, ..
+                } => {
+                    let code = item
+                        .get("exitCode")
+                        .and_then(|v| v.as_i64())
+                        .or_else(|| item.get("exit_code").and_then(|v| v.as_i64()))
+                        .map(|v| v as i32);
+                    if let Some(code) = code {
+                        *exit_code = Some(code);
+                        *status = if code == 0 {
+                            ToolStatus::Success
+                        } else {
+                            ToolStatus::Error
+                        };
+                    } else {
+                        *status = ToolStatus::Success;
+                    }
+                }
+                ToolEntry::Edit { status, output, .. } => {
+                    if output.is_empty() {
+                        let (_, _, diff) = extract_file_changes(item);
+                        if let Some(diff) = diff {
+                            output.push_str(&diff);
+                        }
+                    }
+                    *status = ToolStatus::Success;
+                }
+                ToolEntry::Search { status, .. } => {
+                    *status = ToolStatus::Success;
+                }
+                ToolEntry::Generic { status, .. } => {
+                    *status = ToolStatus::Success;
+                }
+            }
+            self.refresh_tool_entry(&item_id);
+        }
+    }
+
+    fn refresh_tool_entry(&mut self, item_id: &str) {
+        let entry_snapshot = match self.tool_entries.get(item_id) {
+            Some(entry) => entry.clone(),
+            None => return,
+        };
+
+        let entry_index = entry_snapshot.entry_index();
+        let Some(entry) = self.formatted_thread.entry_mut(entry_index) else {
+            return;
+        };
+
+        match entry_snapshot {
+            ToolEntry::Terminal {
+                command,
+                output,
+                status,
+                exit_code,
+                ..
+            } => {
+                let mut tool = TerminalToolCall::new(command).status(status).output(output);
+                if let Some(code) = exit_code {
+                    tool = tool.exit_code(code);
+                }
+                entry.set_content(tool);
+            }
+            ToolEntry::Edit {
+                tool_name,
+                input,
+                output,
+                status,
+                ..
+            } => {
+                let mut card = ToolCallCard::new(ToolType::Edit, tool_name)
+                    .status(status)
+                    .input(input);
+                if !output.is_empty() {
+                    card = card.output(output);
+                }
+                entry.set_content(card);
+            }
+            ToolEntry::Search {
+                query,
+                matches,
+                status,
+                ..
+            } => {
+                let mut tool = SearchToolCall::new(query).status(status);
+                if !matches.is_empty() {
+                    tool = tool.matches(matches);
+                }
+                entry.set_content(tool);
+            }
+            ToolEntry::Generic {
+                tool_type,
+                tool_name,
+                input,
+                output,
+                status,
+                ..
+            } => {
+                let mut card = ToolCallCard::new(tool_type, tool_name).status(status);
+                if let Some(input) = input {
+                    card = card.input(input);
+                }
+                if let Some(output) = output {
+                    card = card.output(output);
+                }
+                entry.set_content(card);
+            }
+        }
+    }
+
     pub fn handle_input(&mut self, event: &InputEvent, _bounds: Bounds) -> bool {
         if let InputEvent::MouseMove { x, y } = event {
             self.cursor_position = Point::new(*x, *y);
             self.input_hovered = self.input_bounds.contains(self.cursor_position);
-            self.model_hovered = self.model_bounds.contains(self.cursor_position);
+            self.model_hovered = if SHOW_MODEL_DROPDOWN {
+                self.model_bounds.contains(self.cursor_position)
+            } else {
+                false
+            };
         }
 
-        let dropdown_handled = matches!(
-            self.model_dropdown
-                .event(event, self.model_bounds, &mut self.event_context),
-            EventResult::Handled
-        );
+        let dropdown_handled = if SHOW_MODEL_DROPDOWN {
+            matches!(
+                self.model_dropdown
+                    .event(event, self.model_bounds, &mut self.event_context),
+                EventResult::Handled
+            )
+        } else {
+            false
+        };
 
         let copy_handled = matches!(
             self.copy_button
@@ -321,6 +874,19 @@ impl MinimalRoot {
             matches!(
                 self.event_scroll
                     .event(event, self.event_scroll_bounds, &mut self.event_context),
+                EventResult::Handled
+            )
+        } else {
+            false
+        };
+
+        let formatted_handled = if self.formatted_thread_bounds.contains(self.cursor_position) {
+            matches!(
+                self.formatted_thread.event(
+                    event,
+                    self.formatted_thread_bounds,
+                    &mut self.event_context
+                ),
                 EventResult::Handled
             )
         } else {
@@ -408,15 +974,20 @@ impl MinimalRoot {
         self.submit_button
             .set_disabled(self.input.get_value().trim().is_empty());
 
-        submit_handled || input_handled || scroll_handled || dropdown_handled || copy_handled
+        submit_handled
+            || input_handled
+            || scroll_handled
+            || dropdown_handled
+            || copy_handled
+            || formatted_handled
     }
 
     pub fn cursor(&self) -> Cursor {
-        if (self.submit_button.is_hovered() && !self.submit_button.is_disabled()) {
+        if self.submit_button.is_hovered() && !self.submit_button.is_disabled() {
             Cursor::Pointer
         } else if self.copy_button.is_hovered() && !self.copy_button.is_disabled() {
             Cursor::Pointer
-        } else if self.model_hovered || self.model_dropdown.is_open() {
+        } else if SHOW_MODEL_DROPDOWN && (self.model_hovered || self.model_dropdown.is_open()) {
             Cursor::Pointer
         } else if self.input_hovered || self.input.is_focused() {
             Cursor::Text
@@ -440,15 +1011,13 @@ impl Component for MinimalRoot {
                 .with_border(theme::border::DEFAULT, 1.0),
         );
 
-        let sidebar_width = SIDEBAR_MAX_WIDTH
-            .min((bounds.size.width - 160.0).max(SIDEBAR_MIN_WIDTH));
+        let sidebar_width =
+            SIDEBAR_MAX_WIDTH.min((bounds.size.width - 160.0).max(SIDEBAR_MIN_WIDTH));
 
         let mut engine = LayoutEngine::new();
         let left_panel = engine.request_layout(&LayoutStyle::new().flex_grow(1.0), &[]);
         let right_panel = engine.request_layout(
-            &LayoutStyle::new()
-                .width(px(sidebar_width))
-                .flex_shrink(0.0),
+            &LayoutStyle::new().width(px(sidebar_width)).flex_shrink(0.0),
             &[],
         );
         let content_row = engine.request_layout(
@@ -499,100 +1068,94 @@ fn paint_formatted_feed(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintCo
         header_height,
     );
 
-    Text::new("FORMATTED EVENTS")
-        .font_size(theme::font_size::SM)
-        .bold()
-        .color(theme::text::PRIMARY)
-        .paint(header_bounds, cx);
-
-    let model = root
-        .thread_model
-        .as_deref()
-        .unwrap_or(DEFAULT_THREAD_MODEL);
+    let model = root.thread_model.as_deref().unwrap_or(DEFAULT_THREAD_MODEL);
     let thread_model_bounds = Bounds::new(
         header_bounds.origin.x,
         header_bounds.origin.y + header_height + 6.0,
         header_bounds.size.width,
-        20.0,
+        18.0,
     );
-    Text::new(&format!("Thread model: {model}"))
-        .font_size(theme::font_size::SM)
+    Text::new(&format!("Thread initialized with {model}"))
+        .font_size(theme::font_size::XS)
         .color(theme::text::MUTED)
         .paint(thread_model_bounds, cx);
 
-    let selector_height = 30.0;
-    let selector_bounds = Bounds::new(
+    let mut description_top = thread_model_bounds.origin.y + 18.0;
+    let mut dropdown_bounds = Bounds::ZERO;
+
+    if SHOW_MODEL_DROPDOWN {
+        let selector_height = 30.0;
+        let selector_bounds = Bounds::new(
+            header_bounds.origin.x,
+            thread_model_bounds.origin.y + 26.0,
+            content_width,
+            selector_height,
+        );
+
+        let label_text = "Model";
+        let label_width =
+            cx.text
+                .measure_styled_mono(label_text, theme::font_size::SM, FontStyle::default());
+        let available_width = (content_width - label_width - 8.0).max(140.0);
+        let dropdown_width = available_width.min(MODEL_DROPDOWN_WIDTH);
+
+        let mut engine = LayoutEngine::new();
+        let label_node = engine.request_leaf(
+            &LayoutStyle::new()
+                .width(px(label_width))
+                .height(px(selector_height)),
+        );
+        let dropdown_node = engine.request_leaf(
+            &LayoutStyle::new()
+                .width(px(dropdown_width))
+                .height(px(selector_height)),
+        );
+        let row = engine.request_layout(
+            &LayoutStyle::new()
+                .flex_row()
+                .align_items(AlignItems::Center)
+                .justify_content(JustifyContent::FlexStart)
+                .gap(length(8.0)),
+            &[label_node, dropdown_node],
+        );
+        engine.compute_layout(row, Size::new(content_width, selector_height));
+
+        let label_bounds = offset_bounds(engine.layout(label_node), selector_bounds.origin);
+        dropdown_bounds = offset_bounds(engine.layout(dropdown_node), selector_bounds.origin);
+
+        Text::new(label_text)
+            .font_size(theme::font_size::SM)
+            .color(theme::text::MUTED)
+            .paint(label_bounds, cx);
+
+        root.model_bounds = dropdown_bounds;
+        description_top = selector_bounds.origin.y + selector_height + 6.0;
+    } else {
+        root.model_bounds = Bounds::ZERO;
+    }
+
+    let feed_top = description_top + 10.0;
+    let feed_bounds = Bounds::new(
         header_bounds.origin.x,
-        thread_model_bounds.origin.y + 26.0,
-        content_width,
-        selector_height,
-    );
-
-    let label_text = "Model";
-    let label_width = cx.text.measure_styled_mono(
-        label_text,
-        theme::font_size::SM,
-        FontStyle::default(),
-    );
-    let available_width = (content_width - label_width - 8.0).max(140.0);
-    let dropdown_width = available_width.min(MODEL_DROPDOWN_WIDTH);
-
-    let mut engine = LayoutEngine::new();
-    let label_node = engine.request_leaf(
-        &LayoutStyle::new()
-            .width(px(label_width))
-            .height(px(selector_height)),
-    );
-    let dropdown_node = engine.request_leaf(
-        &LayoutStyle::new()
-            .width(px(dropdown_width))
-            .height(px(selector_height)),
-    );
-    let row = engine.request_layout(
-        &LayoutStyle::new()
-            .flex_row()
-            .align_items(AlignItems::Center)
-            .justify_content(JustifyContent::FlexStart)
-            .gap(length(8.0)),
-        &[label_node, dropdown_node],
-    );
-    engine.compute_layout(row, Size::new(content_width, selector_height));
-
-    let label_bounds = offset_bounds(engine.layout(label_node), selector_bounds.origin);
-    let dropdown_bounds = offset_bounds(engine.layout(dropdown_node), selector_bounds.origin);
-
-    Text::new(label_text)
-        .font_size(theme::font_size::SM)
-        .color(theme::text::MUTED)
-        .paint(label_bounds, cx);
-
-    root.model_bounds = dropdown_bounds;
-
-    let description_bounds = Bounds::new(
-        header_bounds.origin.x,
-        selector_bounds.origin.y + selector_height + 6.0,
-        content_width,
-        36.0,
-    );
-    Text::new(model_description(&root.selected_model))
-        .font_size(theme::font_size::XS)
-        .color(theme::text::MUTED)
-        .paint(description_bounds, cx);
-
-    let empty_bounds = Bounds::new(
-        header_bounds.origin.x,
-        description_bounds.origin.y + 30.0,
+        feed_top,
         header_bounds.size.width,
-        (bounds.size.height - padding)
-            - (description_bounds.origin.y - bounds.origin.y + 30.0),
+        (bounds.size.height - padding) - (feed_top - bounds.origin.y),
     );
-    Text::new("No formatted events yet.")
-        .font_size(theme::font_size::SM)
-        .color(theme::text::MUTED)
-        .paint(empty_bounds, cx);
+    root.formatted_thread_bounds = feed_bounds;
+
+    if root.formatted_thread.entry_count() == 0 {
+        Text::new("No formatted events yet.")
+            .font_size(theme::font_size::SM)
+            .color(theme::text::MUTED)
+            .paint(feed_bounds, cx);
+    } else {
+        root.formatted_thread.paint(feed_bounds, cx);
+    }
 
     // Paint dropdown last so the menu overlays the rest of the feed.
-    root.model_dropdown.paint(dropdown_bounds, cx);
+    if SHOW_MODEL_DROPDOWN {
+        root.model_dropdown.paint(dropdown_bounds, cx);
+    }
 }
 
 fn paint_input_bar(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintContext) {
@@ -601,14 +1164,12 @@ fn paint_input_bar(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintContext
     let padding = 24.0;
 
     let button_font = theme::font_size::SM;
-    let label_width =
-        cx.text
-            .measure_styled_mono("Send", button_font, FontStyle::default());
+    let label_width = cx
+        .text
+        .measure_styled_mono("Send", button_font, FontStyle::default());
     let button_width = (label_width + 28.0).max(72.0);
 
-    let mut total_width = (bounds.size.width * 0.6)
-        .min(720.0)
-        .max(320.0);
+    let mut total_width = (bounds.size.width * 0.6).min(720.0).max(320.0);
     total_width = total_width.min(bounds.size.width - padding * 2.0);
 
     let bar_x = bounds.origin.x + (bounds.size.width - total_width) / 2.0;
@@ -662,8 +1223,7 @@ fn paint_sidebar_contents(root: &mut MinimalRoot, bounds: Bounds, cx: &mut Paint
         .paint(title_bounds, cx);
 
     root.copy_bounds = copy_bounds;
-    root.copy_button
-        .set_disabled(root.event_log.is_empty());
+    root.copy_button.set_disabled(root.event_log.is_empty());
     root.copy_button.paint(copy_bounds, cx);
 
     let feed_top = header_bounds.origin.y + header_height + 8.0;
@@ -697,7 +1257,9 @@ fn paint_sidebar_contents(root: &mut MinimalRoot, bounds: Bounds, cx: &mut Paint
         .font_size(font_size)
         .color(theme::text::MUTED);
     let (_, height_opt) = feed_text.size_hint_with_width(feed_bounds.size.width);
-    let content_height = height_opt.unwrap_or(feed_bounds.size.height).max(feed_bounds.size.height);
+    let content_height = height_opt
+        .unwrap_or(feed_bounds.size.height)
+        .max(feed_bounds.size.height);
     root.event_scroll
         .set_content_size(Size::new(feed_bounds.size.width, content_height));
     root.event_scroll.set_content(feed_text);
@@ -772,15 +1334,21 @@ impl DesktopRoot {
         if let InputEvent::Scroll { .. } = event {
             if layout.left_list_bounds.contains(self.cursor_position) {
                 handled |= matches!(
-                    self.session_scroll
-                        .event(event, layout.left_list_bounds, &mut self.event_context),
+                    self.session_scroll.event(
+                        event,
+                        layout.left_list_bounds,
+                        &mut self.event_context
+                    ),
                     EventResult::Handled
                 );
             }
             if layout.right_body_bounds.contains(self.cursor_position) {
                 handled |= matches!(
-                    self.status_scroll
-                        .event(event, layout.right_body_bounds, &mut self.event_context),
+                    self.status_scroll.event(
+                        event,
+                        layout.right_body_bounds,
+                        &mut self.event_context
+                    ),
                     EventResult::Handled
                 );
             }
@@ -975,7 +1543,9 @@ impl DesktopRoot {
                 ));
             }
             AppEvent::SessionStarted { label, .. } => {
-                let label = label.clone().unwrap_or_else(|| "Session started".to_string());
+                let label = label
+                    .clone()
+                    .unwrap_or_else(|| "Session started".to_string());
                 self.thread_view.push_entry(ThreadEntry::new(
                     ThreadEntryType::Assistant,
                     AssistantMessage::new(label),
@@ -1168,9 +1738,7 @@ fn build_message_editor(pending: Rc<RefCell<Vec<UiAction>>>) -> MessageEditor {
         .show_mode_badge(false)
         .show_keybinding_hint(false)
         .on_send(move |value| {
-            pending_send
-                .borrow_mut()
-                .push(UiAction::SendMessage(value));
+            pending_send.borrow_mut().push(UiAction::SendMessage(value));
         })
 }
 
@@ -1272,7 +1840,12 @@ fn paint_session_list(cx: &mut PaintContext, rows: &[SessionRow], bounds: Bounds
             );
         }
 
-        let id_bounds = Bounds::new(row_bounds.origin.x + 6.0, row_bounds.origin.y, id_column_width, row_bounds.size.height);
+        let id_bounds = Bounds::new(
+            row_bounds.origin.x + 6.0,
+            row_bounds.origin.y,
+            id_column_width,
+            row_bounds.size.height,
+        );
         let detail_bounds = Bounds::new(
             row_bounds.origin.x + id_column_width + 10.0,
             row_bounds.origin.y,
@@ -1330,13 +1903,8 @@ impl Component for SessionListView {
 fn paint_divider(cx: &mut PaintContext, bounds: Bounds) {
     let y = bounds.origin.y + bounds.size.height + 4.0;
     cx.scene.draw_quad(
-        Quad::new(Bounds::new(
-            bounds.origin.x,
-            y,
-            bounds.size.width,
-            1.0,
-        ))
-        .with_background(theme::border::SUBTLE),
+        Quad::new(Bounds::new(bounds.origin.x, y, bounds.size.width, 1.0))
+            .with_background(theme::border::SUBTLE),
     );
 }
 
@@ -1411,7 +1979,9 @@ enum StatusRow {
 fn build_status_rows(sections: Vec<StatusSectionData>) -> Vec<StatusRow> {
     let mut rows = Vec::new();
     for section in sections {
-        rows.push(StatusRow::Header { title: section.title });
+        rows.push(StatusRow::Header {
+            title: section.title,
+        });
         rows.push(StatusRow::Spacer { height: 2.0 });
 
         for line in section.lines {
@@ -1615,9 +2185,7 @@ fn format_event(event: &AppEvent) -> String {
 
 fn format_session_id(session_id: SessionId) -> String {
     let raw = format!("{:?}", session_id);
-    let trimmed = raw
-        .trim_start_matches("SessionId(")
-        .trim_end_matches(')');
+    let trimmed = raw.trim_start_matches("SessionId(").trim_end_matches(')');
     trimmed.chars().take(6).collect()
 }
 
@@ -1652,7 +2220,8 @@ impl Layout {
             .padding(padding);
         let left_panel = engine.request_layout(&left_panel_style, &[left_header, left_list]);
 
-        let center_header = engine.request_leaf(&LayoutStyle::new().height(px(PANEL_HEADER_HEIGHT)));
+        let center_header =
+            engine.request_leaf(&LayoutStyle::new().height(px(PANEL_HEADER_HEIGHT)));
         let thread_body = engine.request_layout(&LayoutStyle::new().flex_grow(1.0), &[]);
         let composer = engine.request_leaf(&LayoutStyle::new().height(px(COMPOSER_HEIGHT)));
         let center_panel_style = LayoutStyle::new()
@@ -1673,14 +2242,9 @@ impl Layout {
             .padding(padding);
         let right_panel = engine.request_layout(&right_panel_style, &[right_header, right_body]);
 
-        let content_row_style = LayoutStyle::new()
-            .flex_row()
-            .gap(panel_gap)
-            .flex_grow(1.0);
-        let content_row = engine.request_layout(
-            &content_row_style,
-            &[left_panel, center_panel, right_panel],
-        );
+        let content_row_style = LayoutStyle::new().flex_row().gap(panel_gap).flex_grow(1.0);
+        let content_row =
+            engine.request_layout(&content_row_style, &[left_panel, center_panel, right_panel]);
 
         let command_bar = engine.request_leaf(&LayoutStyle::new().height(px(COMMAND_BAR_HEIGHT)));
 
@@ -1741,9 +2305,7 @@ fn stack_bounds(bounds: Bounds, heights: &[f32], gap: f32) -> Vec<Bounds> {
     let mut nodes = Vec::with_capacity(heights.len());
 
     for height in heights {
-        let style = LayoutStyle::new()
-            .height(px(*height))
-            .flex_shrink(0.0);
+        let style = LayoutStyle::new().height(px(*height)).flex_shrink(0.0);
         nodes.push(engine.request_leaf(&style));
     }
 
