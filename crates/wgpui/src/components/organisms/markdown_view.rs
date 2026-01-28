@@ -5,7 +5,8 @@ use web_time::Instant;
 use crate::clipboard::copy_to_clipboard;
 use crate::components::context::{EventContext, PaintContext};
 use crate::components::{Component, ComponentId, EventResult};
-use crate::markdown::{MarkdownDocument, MarkdownLayout, MarkdownRenderer};
+use crate::markdown::{MarkdownConfig, MarkdownDocument, MarkdownLayout, MarkdownRenderer};
+use crate::text::FontStyle;
 use crate::{Bounds, Cursor, InputEvent, MouseButton, Point, Quad, Size, TextSystem, theme};
 
 pub struct MarkdownView {
@@ -49,6 +50,11 @@ impl MarkdownView {
 
     pub fn with_id(mut self, id: ComponentId) -> Self {
         self.id = Some(id);
+        self
+    }
+
+    pub fn with_config(mut self, config: MarkdownConfig) -> Self {
+        self.renderer = MarkdownRenderer::with_config(config);
         self
     }
 
@@ -127,6 +133,7 @@ impl MarkdownView {
         let copied_block = self.copied_block;
         let copied_at = self.copied_at;
         let feedback_duration = self.copy_feedback_duration;
+        let font_style = FontStyle::default();
 
         for (index, block) in self.layout.code_blocks.iter_mut().enumerate() {
             let is_copied = copied_block == Some(index)
@@ -134,7 +141,7 @@ impl MarkdownView {
                     .map(|t| now.duration_since(t) < feedback_duration)
                     .unwrap_or(false);
             let label = if is_copied { "Copied" } else { "Copy" };
-            let text_width = text_system.measure(label, font_size);
+            let text_width = text_system.measure_styled_mono(label, font_size, font_style);
             let button_width = text_width + padding_x * 2.0;
             let button_height = font_size + padding_y * 2.0;
 
@@ -207,7 +214,7 @@ impl MarkdownView {
             let text_y = bounds.origin.y + bounds.size.height * 0.5 - text_y_offset;
             let label_run =
                 cx.text
-                    .layout(label, Point::new(text_x, text_y), font_size, text_color);
+                    .layout_mono(label, Point::new(text_x, text_y), font_size, text_color);
             cx.scene.draw_text(label_run);
         }
     }

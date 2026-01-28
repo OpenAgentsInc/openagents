@@ -2,7 +2,7 @@ use crate::components::context::{EventContext, PaintContext};
 use crate::components::organisms::MarkdownView;
 use crate::components::{Component, ComponentId, EventResult};
 use crate::input::MouseButton;
-use crate::markdown::MarkdownParser;
+use crate::markdown::{MarkdownConfig, MarkdownParser};
 use crate::{Bounds, InputEvent, Point, Quad, theme};
 
 pub struct ThinkingBlock {
@@ -10,15 +10,22 @@ pub struct ThinkingBlock {
     content: String,
     expanded: bool,
     hovered: bool,
+    header_label: String,
     markdown: MarkdownView,
+    markdown_config: MarkdownConfig,
     rendered_text: String,
 }
 
 impl ThinkingBlock {
     pub fn new(content: impl Into<String>) -> Self {
         let content = content.into();
-        let document = MarkdownParser::new().parse(&content);
+        let mut markdown_config = MarkdownConfig::default();
+        markdown_config.base_font_size = theme::font_size::XS;
+        markdown_config.header_sizes = [1.0; 6];
+        let header_label = extract_header_label(&content);
+        let document = MarkdownParser::with_config(markdown_config.clone()).parse(&content);
         let markdown = MarkdownView::new(document)
+            .with_config(markdown_config.clone())
             .show_copy_button(false)
             .copy_button_on_hover(false);
         Self {
@@ -26,7 +33,9 @@ impl ThinkingBlock {
             content,
             expanded: false,
             hovered: false,
+            header_label,
             markdown,
+            markdown_config,
             rendered_text: String::new(),
         }
     }
@@ -87,7 +96,7 @@ impl Component for ThinkingBlock {
         let label_x = icon_bounds.origin.x + icon_size + theme::spacing::XS;
         let label_y = bounds.origin.y + header_height * 0.5 - theme::font_size::XS * 0.55;
         let label_run = cx.text.layout_mono(
-            "Thinking",
+            &self.header_label,
             Point::new(label_x, label_y),
             theme::font_size::XS,
             theme::text::MUTED,
@@ -132,8 +141,10 @@ impl Component for ThinkingBlock {
             .draw_quad(Quad::new(border_bounds).with_background(theme::border::DEFAULT));
 
         if self.content != self.rendered_text {
-            let document = MarkdownParser::new().parse(&self.content);
+            let document =
+                MarkdownParser::with_config(self.markdown_config.clone()).parse(&self.content);
             self.markdown.set_document(document);
+            self.header_label = extract_header_label(&self.content);
             self.rendered_text.clear();
             self.rendered_text.push_str(&self.content);
         }
@@ -194,6 +205,25 @@ impl Component for ThinkingBlock {
             (None, Some(header_height))
         }
     }
+}
+
+fn extract_header_label(content: &str) -> String {
+    for line in content.lines() {
+        let mut label = line.trim();
+        if label.is_empty() {
+            continue;
+        }
+        label = label.trim_start_matches('>');
+        label = label.trim();
+        if let Some(stripped) = label.strip_prefix("- ") {
+            label = stripped.trim();
+        }
+        let label = label.trim_matches(|c| c == '*' || c == '_' || c == '`').trim();
+        if !label.is_empty() {
+            return label.to_string();
+        }
+    }
+    "Thinking".to_string()
 }
 
 #[cfg(test)]
