@@ -840,6 +840,7 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
 
             let client_requests = client.clone();
             let proxy_requests = proxy.clone();
+            let full_auto_state_requests = full_auto_state.clone();
             tokio::spawn(async move {
                 let mut request_rx = channels.requests;
                 while let Some(request) = request_rx.recv().await {
@@ -861,7 +862,7 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
                     let params = request.params.as_ref();
                     let thread_id_value = extract_thread_id(params);
                     let turn_id_value = extract_turn_id(params);
-                    let mut full_auto_guard = full_auto_state.lock().await;
+                    let mut full_auto_guard = full_auto_state_requests.lock().await;
                     if let Some(state) = full_auto_guard.as_mut() {
                         state.record_event(
                             request.method.as_str(),
@@ -996,6 +997,7 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
                                         next_state.thread_id = Some(thread_id);
                                     }
                                     next_state.set_continue_prompt(continue_prompt);
+                                    let continue_prompt = next_state.continue_prompt.clone();
                                     *guard = Some(next_state);
                                     let _ = proxy.send_event(AppEvent::AppServerEvent {
                                         message: json!({
@@ -1004,7 +1006,7 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
                                                 "workspaceId": workspace_id,
                                                 "enabled": true,
                                                 "state": "running",
-                                                "continuePrompt": next_state.continue_prompt
+                                                "continuePrompt": continue_prompt
                                             }
                                         })
                                         .to_string(),

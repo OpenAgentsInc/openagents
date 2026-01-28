@@ -193,7 +193,7 @@ pub struct FullAutoDecisionRequest {
     pub turn_id: String,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct FullAutoState {
     pub enabled: bool,
     pub thread_id: Option<String>,
