@@ -175,21 +175,30 @@ impl ApplicationHandler for App {
                 state.surface.configure(&state.device, &state.config);
                 state.window.request_redraw();
             }
-            WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
+            WindowEvent::ScaleFactorChanged {
+                scale_factor,
+                new_inner_size,
+                ..
+            } => {
                 state.scale_factor = scale_factor as f32;
                 state.text_system.set_scale_factor(scale_factor as f32);
+                state.config.width = new_inner_size.width.max(1);
+                state.config.height = new_inner_size.height.max(1);
+                state.surface.configure(&state.device, &state.config);
                 state.window.request_redraw();
             }
             WindowEvent::ModifiersChanged(modifiers) => {
                 self.modifiers = modifiers.state();
             }
             WindowEvent::CursorMoved { position, .. } => {
-                self.cursor_position = Point::new(position.x as f32, position.y as f32);
+                let scale_factor = state.scale_factor.max(1.0);
+                self.cursor_position =
+                    Point::new(position.x as f32 / scale_factor, position.y as f32 / scale_factor);
                 let input_event = InputEvent::MouseMove {
                     x: self.cursor_position.x,
                     y: self.cursor_position.y,
                 };
-                let bounds = window_bounds(&state.config);
+                let bounds = window_bounds(&state.config, state.scale_factor);
                 if state.story.handle_input(&input_event, bounds) {
                     state.window.request_redraw();
                 }
@@ -220,20 +229,22 @@ impl ApplicationHandler for App {
                     },
                 };
 
-                let bounds = window_bounds(&state.config);
+                let bounds = window_bounds(&state.config, state.scale_factor);
                 if state.story.handle_input(&input_event, bounds) {
                     state.window.request_redraw();
                 }
             }
             WindowEvent::MouseWheel { delta, .. } => {
+                let scale_factor = state.scale_factor.max(1.0);
                 let (dx, dy) = match delta {
                     winit::event::MouseScrollDelta::LineDelta(x, y) => (-x * 24.0, -y * 24.0),
-                    winit::event::MouseScrollDelta::PixelDelta(pos) => {
-                        (-pos.x as f32, -pos.y as f32)
-                    }
+                    winit::event::MouseScrollDelta::PixelDelta(pos) => (
+                        -pos.x as f32 / scale_factor,
+                        -pos.y as f32 / scale_factor,
+                    ),
                 };
                 let input_event = InputEvent::Scroll { dx, dy };
-                let bounds = window_bounds(&state.config);
+                let bounds = window_bounds(&state.config, state.scale_factor);
                 if state.story.handle_input(&input_event, bounds) {
                     state.window.request_redraw();
                 }
@@ -247,13 +258,13 @@ impl ApplicationHandler for App {
                     ElementState::Pressed => InputEvent::KeyDown { key, modifiers },
                     ElementState::Released => InputEvent::KeyUp { key, modifiers },
                 };
-                let bounds = window_bounds(&state.config);
+                let bounds = window_bounds(&state.config, state.scale_factor);
                 if state.story.handle_input(&input_event, bounds) {
                     state.window.request_redraw();
                 }
             }
             WindowEvent::RedrawRequested => {
-                let bounds = window_bounds(&state.config);
+                let bounds = window_bounds(&state.config, state.scale_factor);
                 let mut scene = Scene::new();
                 state.story.tick();
                 state.story.paint(
@@ -345,6 +356,12 @@ fn to_modifiers(modifiers: ModifiersState) -> Modifiers {
     }
 }
 
-fn window_bounds(config: &wgpu::SurfaceConfiguration) -> Bounds {
-    Bounds::new(0.0, 0.0, config.width as f32, config.height as f32)
+fn window_bounds(config: &wgpu::SurfaceConfiguration, scale_factor: f32) -> Bounds {
+    let scale_factor = scale_factor.max(1.0);
+    Bounds::new(
+        0.0,
+        0.0,
+        config.width as f32 / scale_factor,
+        config.height as f32 / scale_factor,
+    )
 }
