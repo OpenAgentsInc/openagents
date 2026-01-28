@@ -208,3 +208,5 @@ Prevent regressions to manual layout across the codebase.
   for header/nav/content layout and `stack_bounds` for nav item layout and hit-testing.
 - 2026-01-28: Phase 3: added `panel_stack` helper and converted the Atoms + Codex storybook
   sections to use layout-engine stacking for top-level panels.
+- 2026-01-28: Phase 3: converted Arwes storybook sections to use layout-engine panel stacking
+  across frames/backgrounds/text effects/illuminator panels.
