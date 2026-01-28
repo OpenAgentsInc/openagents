@@ -2,7 +2,7 @@ use wgpui::components::atoms::{
     AgentScheduleBadge, AgentStatus, AgentStatusBadge, AgentType, AmountDirection, ApmGauge,
     Bech32Entity, Bech32Type, BitcoinAmount, BitcoinNetwork, BitcoinUnit, BountyBadge,
     BountyStatus, CheckpointBadge, ContentType, ContentTypeIcon, DaemonStatus, DaemonStatusBadge,
-    EarningsBadge, EarningsType, EntryMarker, EntryType, EventKind, EventKindBadge, FeedbackButton,
+    EarningsBadge, EarningsType, EntryMarker, EntryType, EventKind, EventKindBadge,
     GoalPriority, GoalProgressBadge, GoalStatus, IssueStatus, IssueStatusBadge, JobStatus,
     JobStatusBadge, KeybindingHint, LicenseStatus, MarketType, MarketTypeBadge, Mode, ModeBadge,
     Model, ModelBadge, NetworkBadge, ParallelAgentBadge, ParallelAgentStatus, PaymentMethod,
@@ -522,21 +522,15 @@ impl Storybook {
                 x += 110.0;
             }
 
-            // Feedback buttons
-            x = inner.origin.x;
-            let feedback_y = inner.origin.y + 38.0;
-            let mut up = FeedbackButton::thumbs_up();
-            up.paint(Bounds::new(x, feedback_y, 32.0, 26.0), cx);
-            let mut down = FeedbackButton::thumbs_down();
-            down.paint(Bounds::new(x + 40.0, feedback_y, 32.0, 26.0), cx);
-
             // Thinking toggle
+            x = inner.origin.x;
+            let control_y = inner.origin.y + 38.0;
             let mut toggle = ThinkingToggle::new().expanded(true);
-            toggle.paint(Bounds::new(x + 100.0, feedback_y, 100.0, 26.0), cx);
+            toggle.paint(Bounds::new(x, control_y, 120.0, 26.0), cx);
 
             // Keybinding hints
             x = inner.origin.x;
-            let key_y = feedback_y + 38.0;
+            let key_y = control_y + 38.0;
             let mut hint1 = KeybindingHint::single("K");
             hint1.paint(Bounds::new(x, key_y, 24.0, 22.0), cx);
             let mut hint2 = KeybindingHint::combo(&["Ctrl", "K"]);
