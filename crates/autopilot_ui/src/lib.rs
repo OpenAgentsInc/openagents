@@ -304,7 +304,9 @@ impl MinimalRoot {
     pub fn cursor(&self) -> Cursor {
         if self.disabled {
             Cursor::Default
-        } else if self.submit_button.is_hovered() || self.button.is_hovered() {
+        } else if (self.submit_button.is_hovered() && !self.submit_button.is_disabled())
+            || (self.button.is_hovered() && !self.button.is_disabled())
+        {
             Cursor::Pointer
         } else if self.input_hovered || self.input.is_focused() {
             Cursor::Text
@@ -328,7 +330,7 @@ impl Component for MinimalRoot {
                 .with_border(theme::border::DEFAULT, 1.0),
         );
 
-        let sidebar_width = 320.0;
+        let sidebar_width = 640.0_f32.min((bounds.size.width - 120.0).max(320.0));
         let sidebar_bounds = Bounds::new(
             bounds.origin.x + (bounds.size.width - sidebar_width),
             bounds.origin.y,
@@ -461,12 +463,7 @@ fn paint_sidebar_contents(root: &mut MinimalRoot, bounds: Bounds, cx: &mut Paint
     );
 
     let font_size = theme::font_size::XS;
-    let line_height = font_size * 1.4;
-    let max_lines = if line_height > 0.0 {
-        (feed_bounds.size.height / line_height).floor() as usize
-    } else {
-        0
-    };
+    let line_gap = 4.0;
 
     if root.event_log.is_empty() {
         Text::new("No events yet.")
@@ -476,21 +473,36 @@ fn paint_sidebar_contents(root: &mut MinimalRoot, bounds: Bounds, cx: &mut Paint
         return;
     }
 
-    let start = root.event_log.len().saturating_sub(max_lines.max(1));
+    let mut measured = Vec::new();
+    let mut used_height = 0.0;
+    for line in root.event_log.iter().rev() {
+        let mut text = Text::new(line.as_str())
+            .font_size(font_size)
+            .color(theme::text::MUTED);
+        let (_, height_opt) = text.size_hint_with_width(feed_bounds.size.width);
+        let height = height_opt.unwrap_or(font_size * 1.4).max(font_size * 1.4);
+        let total_height = height + line_gap;
+        if used_height + total_height > feed_bounds.size.height {
+            break;
+        }
+        measured.push((line.clone(), height));
+        used_height += total_height;
+    }
+
+    measured.reverse();
     let mut y = feed_bounds.origin.y;
-    for line in root.event_log[start..].iter() {
+    for (line, height) in measured {
         let line_bounds = Bounds::new(
             feed_bounds.origin.x,
             y,
             feed_bounds.size.width,
-            line_height,
+            height,
         );
         Text::new(line.as_str())
             .font_size(font_size)
             .color(theme::text::MUTED)
-            .no_wrap()
             .paint(line_bounds, cx);
-        y += line_height;
+        y += height + line_gap;
         if y > feed_bounds.origin.y + feed_bounds.size.height {
             break;
         }
