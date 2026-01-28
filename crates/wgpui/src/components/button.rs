@@ -67,6 +67,10 @@ impl Button {
         self
     }
 
+    pub fn set_disabled(&mut self, disabled: bool) {
+        self.disabled = disabled;
+    }
+
     pub fn font_size(mut self, size: f32) -> Self {
         self.font_size = size;
         self
@@ -122,22 +126,23 @@ impl Button {
     }
 
     fn colors(&self) -> (Hsla, Hsla, Hsla) {
-        let bg = self.style.background.unwrap_or_else(|| match self.variant {
+        let mut bg = self.style.background.unwrap_or_else(|| match self.variant {
             ButtonVariant::Primary => theme::accent::PRIMARY,
-            ButtonVariant::Secondary => theme::bg::SURFACE,
+            ButtonVariant::Secondary => theme::bg::MUTED,
             ButtonVariant::Ghost => Hsla::transparent(),
             ButtonVariant::Danger => theme::status::ERROR,
         });
 
-        let text = self.style.text_color.unwrap_or_else(|| {
-            let on_accent = Hsla::black();
-            match self.variant {
-                ButtonVariant::Primary | ButtonVariant::Danger => on_accent,
-                ButtonVariant::Secondary | ButtonVariant::Ghost => theme::text::PRIMARY,
-            }
+        let text = self.style.text_color.unwrap_or_else(|| match self.variant {
+            ButtonVariant::Primary => theme::bg::APP,
+            ButtonVariant::Danger => Hsla::new(0.0, 0.0, 1.0, 1.0),
+            ButtonVariant::Secondary | ButtonVariant::Ghost => theme::text::PRIMARY,
         });
 
-        let border = bg;
+        let mut border = match self.variant {
+            ButtonVariant::Secondary => theme::border::DEFAULT,
+            _ => bg,
+        };
 
         if self.disabled {
             return (
@@ -148,11 +153,37 @@ impl Button {
         }
 
         if self.pressed {
-            return (bg.darken(0.15), text, border.darken(0.15));
+            match self.variant {
+                ButtonVariant::Ghost => {
+                    bg = theme::bg::MUTED;
+                }
+                _ => {
+                    bg = bg.darken(0.15);
+                    if matches!(self.variant, ButtonVariant::Secondary) {
+                        border = border.darken(0.15);
+                    } else {
+                        border = bg;
+                    }
+                }
+            }
+            return (bg, text, border);
         }
 
         if self.hovered {
-            return (bg.lighten(0.1), text, border.lighten(0.1));
+            match self.variant {
+                ButtonVariant::Ghost => {
+                    bg = theme::bg::SURFACE;
+                }
+                _ => {
+                    bg = bg.darken(0.08);
+                    if matches!(self.variant, ButtonVariant::Secondary) {
+                        border = border.darken(0.08);
+                    } else {
+                        border = bg;
+                    }
+                }
+            }
+            return (bg, text, border);
         }
 
         (bg, text, border)
