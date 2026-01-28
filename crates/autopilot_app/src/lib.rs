@@ -168,6 +168,11 @@ pub enum UserAction {
         name: String,
         args: Vec<String>,
     },
+    Interrupt {
+        session_id: SessionId,
+        thread_id: Option<String>,
+        turn_id: Option<String>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
