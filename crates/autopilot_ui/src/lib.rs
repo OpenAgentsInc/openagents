@@ -66,6 +66,7 @@ impl AppViewModel {
                 });
             }
             AppEvent::UserActionDispatched { .. } => {}
+            AppEvent::AppServerEvent { .. } => {}
         }
     }
 
@@ -123,6 +124,9 @@ pub struct MinimalRoot {
     send_handler: Option<Box<dyn FnMut(UserAction)>>,
     session_id: Option<SessionId>,
     event_log: Vec<String>,
+    event_log_dirty: bool,
+    event_scroll: ScrollView,
+    event_scroll_bounds: Bounds,
 }
 
 impl MinimalRoot {
@@ -165,6 +169,8 @@ impl MinimalRoot {
                 pending_send_clicks.borrow_mut().push(String::new());
             });
 
+        let event_scroll = ScrollView::new().show_scrollbar(true).scrollbar_width(6.0);
+
         Self {
             title: "Autopilot Desktop".to_string(),
             subtitle: "WGPUI minimal shell is live.".to_string(),
@@ -185,19 +191,26 @@ impl MinimalRoot {
             send_handler: None,
             session_id: None,
             event_log: Vec::new(),
+            event_log_dirty: false,
+            event_scroll,
+            event_scroll_bounds: Bounds::ZERO,
         }
     }
 
     pub fn apply_event(&mut self, event: AppEvent) {
-        if let AppEvent::SessionStarted { session_id, .. } = &event {
-            self.session_id = Some(*session_id);
-        }
-
-        let raw = format!("{event:?}");
-        self.event_log.push(raw);
-        if self.event_log.len() > 80 {
-            let drain = self.event_log.len() - 80;
-            self.event_log.drain(0..drain);
+        match event {
+            AppEvent::SessionStarted { session_id, .. } => {
+                self.session_id = Some(session_id);
+            }
+            AppEvent::AppServerEvent { message } => {
+                self.event_log.push(message);
+                if self.event_log.len() > 200 {
+                    let drain = self.event_log.len() - 200;
+                    self.event_log.drain(0..drain);
+                }
+                self.event_log_dirty = true;
+            }
+            _ => {}
         }
     }
 
@@ -228,6 +241,16 @@ impl MinimalRoot {
             self.cursor_position = Point::new(*x, *y);
             self.input_hovered = self.input_bounds.contains(self.cursor_position);
         }
+
+        let scroll_handled = if self.event_scroll_bounds.contains(self.cursor_position) {
+            matches!(
+                self.event_scroll
+                    .event(event, self.event_scroll_bounds, &mut self.event_context),
+                EventResult::Handled
+            )
+        } else {
+            false
+        };
 
         let input_handled = matches!(
             self.input
@@ -303,7 +326,7 @@ impl MinimalRoot {
         self.submit_button
             .set_disabled(self.input.get_value().trim().is_empty());
 
-        handled || submit_handled || input_handled
+        handled || submit_handled || input_handled || scroll_handled
     }
 
     pub fn cursor(&self) -> Cursor {
@@ -468,6 +491,7 @@ fn paint_sidebar_contents(root: &mut MinimalRoot, bounds: Bounds, cx: &mut Paint
     );
 
     let font_size = theme::font_size::XS;
+    root.event_scroll_bounds = feed_bounds;
 
     if root.event_log.is_empty() {
         Text::new("No events yet.")
@@ -483,10 +507,22 @@ fn paint_sidebar_contents(root: &mut MinimalRoot, bounds: Bounds, cx: &mut Paint
         block.push('\n');
     }
 
-    Text::new(block.as_str())
+    let mut feed_text = Text::new(block.as_str())
         .font_size(font_size)
-        .color(theme::text::MUTED)
-        .paint(feed_bounds, cx);
+        .color(theme::text::MUTED);
+    let (_, height_opt) = feed_text.size_hint_with_width(feed_bounds.size.width);
+    let content_height = height_opt.unwrap_or(feed_bounds.size.height).max(feed_bounds.size.height);
+    root.event_scroll
+        .set_content_size(Size::new(feed_bounds.size.width, content_height));
+    root.event_scroll.set_content(feed_text);
+
+    if root.event_log_dirty {
+        let max_scroll = (content_height - feed_bounds.size.height).max(0.0);
+        root.event_scroll.scroll_to(Point::new(0.0, max_scroll));
+        root.event_log_dirty = false;
+    }
+
+    root.event_scroll.paint(feed_bounds, cx);
 }
 
 impl DesktopRoot {
@@ -780,6 +816,7 @@ impl DesktopRoot {
                     ));
                 }
             }
+            AppEvent::AppServerEvent { .. } => {}
         }
     }
 
@@ -1379,6 +1416,7 @@ fn format_event(event: &AppEvent) -> String {
             UserAction::Message { text, .. } => format!("Message ({})", text),
             UserAction::Command { name, .. } => format!("Command ({})", name),
         },
+        AppEvent::AppServerEvent { message } => format!("AppServerEvent ({message})"),
     }
 }
 
