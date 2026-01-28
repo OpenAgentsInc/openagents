@@ -13,8 +13,8 @@ use wgpui::components::sections::{MessageEditor, ThreadView};
 use wgpui::components::Text;
 use wgpui::input::InputEvent;
 use wgpui::{
-    Bounds, Component, EventResult, LayoutEngine, LayoutStyle, PaintContext, Point, Quad, ScrollView,
-    Size, text::FontStyle, theme, length, px,
+    Bounds, Button, Component, EventResult, Hsla, LayoutEngine, LayoutStyle, PaintContext, Point,
+    Quad, ScrollView, Size, text::FontStyle, theme, length, px,
 };
 
 const PANEL_PADDING: f32 = 12.0;
@@ -139,7 +139,19 @@ impl Default for MinimalRoot {
 
 impl Component for MinimalRoot {
     fn paint(&mut self, bounds: Bounds, cx: &mut PaintContext) {
-        paint_background(cx, bounds);
+        let app_bg = Hsla::from_hex(0x0A0A0A);
+        let card_bg = Hsla::from_hex(0x1A1A1A);
+        let border = Hsla::from_hex(0xFFFFFF).with_alpha(0.1);
+        let text_primary = Hsla::from_hex(0xCCCCCC);
+        let text_muted = Hsla::from_hex(0x888888);
+        let button_bg = Hsla::from_hex(0xCCCCCC);
+        let button_text = Hsla::from_hex(0x0A0A0A);
+
+        cx.scene.draw_quad(
+            Quad::new(bounds)
+                .with_background(app_bg)
+                .with_border(border, 1.0),
+        );
 
         let padding = 24.0;
         let max_width = (bounds.size.width - padding * 2.0).max(160.0);
@@ -153,8 +165,8 @@ impl Component for MinimalRoot {
 
         cx.scene.draw_quad(
             Quad::new(card_bounds)
-                .with_background(theme::bg::SURFACE)
-                .with_border(theme::border::DEFAULT, 1.0)
+                .with_background(card_bg)
+                .with_border(border, 1.0)
                 .with_corner_radius(12.0),
         );
 
@@ -167,7 +179,7 @@ impl Component for MinimalRoot {
         Text::new(self.title)
             .font_size(theme::font_size::XL)
             .bold()
-            .color(theme::text::PRIMARY)
+            .color(text_primary)
             .paint(title_bounds, cx);
 
         let subtitle_bounds = Bounds::new(
@@ -178,13 +190,13 @@ impl Component for MinimalRoot {
         );
         Text::new(self.subtitle)
             .font_size(theme::font_size::BASE)
-            .color(theme::text::SECONDARY)
+            .color(text_muted)
             .paint(subtitle_bounds, cx);
 
         let button_font = theme::font_size::SM;
         let label_width =
             cx.text
-                .measure_styled_mono(self.button_label, button_font, FontStyle::bold());
+                .measure_styled_mono(self.button_label, button_font, FontStyle::default());
         let button_padding_x = 16.0;
         let button_width = (label_width + button_padding_x * 2.0).max(96.0);
         let button_height = 36.0;
@@ -195,29 +207,13 @@ impl Component for MinimalRoot {
             button_height,
         );
 
-        cx.scene.draw_quad(
-            Quad::new(button_bounds)
-                .with_background(theme::accent::PRIMARY)
-                .with_corner_radius(8.0),
-        );
-
-        let label_height = button_font * 1.4;
-        let baseline_y = button_bounds.origin.y
-            + (button_bounds.size.height - label_height) / 2.0
-            + button_font;
-        let label_bounds = Bounds::new(
-            button_bounds.origin.x + (button_bounds.size.width - label_width) / 2.0,
-            baseline_y - button_font,
-            label_width,
-            label_height,
-        );
-
-        Text::new(self.button_label)
+        let mut button = Button::new(self.button_label)
             .font_size(button_font)
-            .bold()
-            .color(theme::bg::APP)
-            .no_wrap()
-            .paint(label_bounds, cx);
+            .padding(16.0, 8.0)
+            .corner_radius(8.0)
+            .background(button_bg)
+            .text_color(button_text);
+        button.paint(button_bounds, cx);
     }
 }
 
