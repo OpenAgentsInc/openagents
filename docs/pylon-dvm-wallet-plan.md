@@ -118,14 +118,16 @@ Add pane types and map them into the pane registry:
 
 ## Open questions / decisions
 - Should we **embed** Pylon in-process (library) or **always spawn** the daemon?
-  Requirement says spawn on-demand, so we assume external process.
+  Prefer **in-process** so Pylon only runs while the app is open. Keep daemon
+  support as a fallback for CLI parity or if we cannot safely share the core yet.
 - Where should DVM settings live: **Pylon config** vs **app-local** settings?
   Prefer Pylon config to keep CLI + UI in sync.
 - Do we want to read job history from Pylon DB directly or via a Pylon IPC API?
   (DB read is simplest but tighter coupling).
 
 ## Acceptance criteria
-- Pylon starts/stops on user action only.
+- Pylon runs **only while the app is open** (in-process by default).
+- If daemon mode is used, the app starts it on pane-open and stops it on exit.
 - Wallet + DVM provider + job history + NIP-90 dashboard accessible as panes.
 - Hotbar entries open/close panes with no UI regressions.
 - No automatic daemon spawning on app boot.
