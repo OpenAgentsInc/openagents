@@ -9,8 +9,12 @@ use codex_client::{
     AppServerClient, AppServerConfig, AskForApproval, ClientInfo, SandboxMode, SandboxPolicy,
     ThreadStartParams, TurnInterruptParams, TurnStartParams, UserInput,
 };
+use full_auto::{
+    FullAutoAction, FullAutoDecisionRequest, FullAutoDecisionResult, FullAutoState, decision_model,
+    ensure_codex_lm, run_full_auto_decision,
+};
 use futures::StreamExt;
-use serde_json::json;
+use serde_json::{Value, json};
 use tracing_subscriber::EnvFilter;
 use wgpui::renderer::Renderer;
 use wgpui::{
@@ -22,6 +26,8 @@ use winit::event::{ElementState, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, EventLoop, EventLoopProxy};
 use winit::keyboard::{Key as WinitKey, ModifiersState, NamedKey as WinitNamedKey};
 use winit::window::{CursorIcon, Window, WindowId};
+
+mod full_auto;
 
 const WINDOW_TITLE: &str = "Autopilot Desktop (WGPUI)";
 const WINDOW_WIDTH: f64 = 1280.0;
@@ -421,6 +427,7 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
             let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
             let cwd_string = cwd.to_string_lossy().to_string();
             let workspace = Arc::new(app.open_workspace(cwd.clone()));
+            let workspace_id = workspace.workspace_id().to_string();
             let mut stream = workspace.events();
 
             let _session = workspace.start_session(Some("Bootstrap".to_string()));
@@ -462,6 +469,7 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
             let thread_id = Arc::new(tokio::sync::Mutex::new(None::<String>));
             let turn_id = Arc::new(tokio::sync::Mutex::new(None::<String>));
             let pending_interrupt = Arc::new(AtomicBool::new(false));
+            let full_auto_state = Arc::new(tokio::sync::Mutex::new(None::<FullAutoState>));
 
             let client_info = ClientInfo {
                 name: "autopilot-desktop-wgpu".to_string(),
@@ -518,9 +526,17 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
             let thread_id_interrupt = thread_id.clone();
             let turn_id_interrupt = turn_id.clone();
             let pending_interrupt_notifications = pending_interrupt.clone();
+            let full_auto_state_notifications = full_auto_state.clone();
+            let proxy_full_auto = proxy.clone();
+            let client_full_auto = client.clone();
+            let cwd_full_auto = cwd_string.clone();
+            let workspace_id_full_auto = workspace_id.clone();
             tokio::spawn(async move {
                 let mut notification_rx = channels.notifications;
                 while let Some(notification) = notification_rx.recv().await {
+                    let params = notification.params.as_ref();
+                    let thread_id_value = extract_thread_id(params);
+                    let turn_id_value = extract_turn_id(params);
                     if notification.method == "turn/started" {
                         if let Some(params) = notification.params.as_ref() {
                             let next_turn = params
@@ -577,6 +593,241 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
                         }
                     }
 
+                    let decision_request: Option<FullAutoDecisionRequest> = {
+                        let mut full_auto_guard = full_auto_state_notifications.lock().await;
+                        if let Some(state) = full_auto_guard.as_mut() {
+                            state.record_event(
+                                &notification.method,
+                                params,
+                                thread_id_value.as_deref(),
+                                turn_id_value.as_deref(),
+                            );
+                            if notification.method == "thread/started" {
+                                if let Some(thread_id) = thread_id_value.as_deref() {
+                                    state.adopt_thread(thread_id);
+                                }
+                            }
+                            if notification.method == "turn/completed" {
+                                state.prepare_decision(
+                                    thread_id_value.as_deref(),
+                                    turn_id_value.as_deref(),
+                                )
+                            } else {
+                                None
+                            }
+                        } else {
+                            None
+                        }
+                    };
+
+                    if let Some(request) = decision_request {
+                        let full_auto_state = full_auto_state_notifications.clone();
+                        let proxy = proxy_full_auto.clone();
+                        let client = client_full_auto.clone();
+                        let cwd = cwd_full_auto.clone();
+                        let workspace_id = workspace_id_full_auto.clone();
+                        tokio::spawn(async move {
+                            let mut lm = {
+                                let guard = full_auto_state.lock().await;
+                                guard.as_ref().and_then(|state| state.decision_lm())
+                            };
+
+                            if lm.is_none() {
+                                let model = decision_model();
+                                match ensure_codex_lm(&model).await {
+                                    Ok(built) => {
+                                        lm = Some(built.clone());
+                                        let mut guard = full_auto_state.lock().await;
+                                        if let Some(state) = guard.as_mut() {
+                                            state.set_decision_lm(built);
+                                        }
+                                    }
+                                    Err(error) => {
+                                        let payload = json!({
+                                            "method": "fullauto/decision",
+                                            "params": {
+                                                "threadId": request.thread_id,
+                                                "turnId": request.turn_id,
+                                                "action": "pause",
+                                                "reason": error,
+                                                "confidence": 0.0,
+                                                "state": "paused"
+                                            }
+                                        });
+                                        let _ = proxy.send_event(AppEvent::AppServerEvent {
+                                            message: payload.to_string(),
+                                        });
+                                        let mut guard = full_auto_state.lock().await;
+                                        *guard = None;
+                                        let _ = proxy.send_event(AppEvent::AppServerEvent {
+                                            message: json!({
+                                                "method": "fullauto/status",
+                                                "params": {
+                                                    "workspaceId": workspace_id,
+                                                    "enabled": false,
+                                                    "state": "paused"
+                                                }
+                                            })
+                                            .to_string(),
+                                        });
+                                        return;
+                                    }
+                                }
+                            }
+
+                            let Some(lm) = lm else {
+                                return;
+                            };
+
+                            let decision_result = match run_full_auto_decision(&request.summary, &lm).await {
+                                Ok(decision) => decision,
+                                Err(error) => {
+                                    let payload = json!({
+                                        "method": "fullauto/decision",
+                                        "params": {
+                                            "threadId": request.thread_id,
+                                            "turnId": request.turn_id,
+                                            "action": "pause",
+                                            "reason": error,
+                                            "confidence": 0.0,
+                                            "state": "paused"
+                                        }
+                                    });
+                                    let _ = proxy.send_event(AppEvent::AppServerEvent {
+                                        message: payload.to_string(),
+                                    });
+                                    let mut guard = full_auto_state.lock().await;
+                                    *guard = None;
+                                    let _ = proxy.send_event(AppEvent::AppServerEvent {
+                                        message: json!({
+                                            "method": "fullauto/status",
+                                            "params": {
+                                                "workspaceId": workspace_id,
+                                                "enabled": false,
+                                                "state": "paused"
+                                            }
+                                        })
+                                        .to_string(),
+                                    });
+                                    return;
+                                }
+                            };
+
+                            let FullAutoDecisionResult {
+                                decision: raw_decision,
+                                diagnostics,
+                            } = decision_result;
+
+                            let (decision, run_id, sequence_id) = {
+                                let mut guard = full_auto_state.lock().await;
+                                if let Some(state) = guard.as_mut() {
+                                    let decision = state.enforce_guardrails(
+                                        &request.thread_id,
+                                        &request.summary,
+                                        raw_decision,
+                                    );
+                                    state.apply_decision(&request.thread_id, &decision);
+                                    let sequence_id = state.next_decision_sequence();
+                                    (decision, state.run_id.clone(), sequence_id)
+                                } else {
+                                    (raw_decision, "unknown".to_string(), 0)
+                                }
+                            };
+
+                            let decision_state = if decision.action == FullAutoAction::Continue {
+                                "running"
+                            } else {
+                                "paused"
+                            };
+                            let next_input_preview = decision
+                                .next_input
+                                .as_deref()
+                                .unwrap_or_default()
+                                .chars()
+                                .take(140)
+                                .collect::<String>();
+
+                            let guardrail_value = decision
+                                .guardrail
+                                .as_ref()
+                                .and_then(|g| serde_json::to_value(g).ok());
+                            let summary_value =
+                                serde_json::to_value(&request.summary).unwrap_or(Value::Null);
+                            let diagnostics_value =
+                                serde_json::to_value(&diagnostics).unwrap_or(Value::Null);
+
+                            let payload = json!({
+                                "method": "fullauto/decision",
+                                "params": {
+                                    "threadId": request.thread_id,
+                                    "turnId": request.turn_id,
+                                    "action": decision.action.as_str(),
+                                    "reason": decision.reason,
+                                    "confidence": decision.confidence,
+                                    "state": decision_state,
+                                    "nextInput": next_input_preview,
+                                    "sequenceId": sequence_id,
+                                    "runId": run_id,
+                                    "guardrail": guardrail_value,
+                                    "summary": summary_value
+                                }
+                            });
+                            let _ = proxy.send_event(AppEvent::AppServerEvent {
+                                message: payload.to_string(),
+                            });
+
+                            let raw_payload = json!({
+                                "method": "fullauto/decision_raw",
+                                "params": {
+                                    "threadId": request.thread_id,
+                                    "turnId": request.turn_id,
+                                    "sequenceId": sequence_id,
+                                    "runId": run_id,
+                                    "rawPrediction": diagnostics.raw_prediction,
+                                    "parseDiagnostics": diagnostics_value,
+                                    "summary": summary_value
+                                }
+                            });
+                            let _ = proxy.send_event(AppEvent::AppServerEvent {
+                                message: raw_payload.to_string(),
+                            });
+
+                            match decision.action {
+                                FullAutoAction::Continue => {
+                                    let next_input = decision
+                                        .next_input
+                                        .unwrap_or_else(|| request.fallback_prompt.clone());
+                                    let params = TurnStartParams {
+                                        thread_id: request.thread_id.clone(),
+                                        input: vec![UserInput::Text { text: next_input }],
+                                        model: None,
+                                        effort: None,
+                                        summary: None,
+                                        approval_policy: Some(AskForApproval::Never),
+                                        sandbox_policy: Some(SandboxPolicy::DangerFullAccess),
+                                        cwd: Some(cwd),
+                                    };
+                                    let _ = client.turn_start(params).await;
+                                }
+                                FullAutoAction::Pause | FullAutoAction::Stop | FullAutoAction::Review => {
+                                    let mut guard = full_auto_state.lock().await;
+                                    *guard = None;
+                                    let _ = proxy.send_event(AppEvent::AppServerEvent {
+                                        message: json!({
+                                            "method": "fullauto/status",
+                                            "params": {
+                                                "workspaceId": workspace_id,
+                                                "enabled": false,
+                                                "state": "paused"
+                                            }
+                                        })
+                                        .to_string(),
+                                    });
+                                }
+                            }
+                        });
+                    }
+
                     let payload = json!({
                         "method": notification.method,
                         "params": notification.params,
@@ -602,12 +853,23 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
                     });
 
                     let response = match request.method.as_str() {
-                        "execCommandApproval" | "applyPatchApproval" => {
-                            json!({ "decision": "approved" })
-                        }
-                        _ => json!({}),
+                        _ => build_auto_response(request.method.as_str(), request.params.as_ref())
+                            .unwrap_or_else(|| json!({})),
                     };
                     let _ = client_requests.respond(request.id, &response).await;
+
+                    let params = request.params.as_ref();
+                    let thread_id_value = extract_thread_id(params);
+                    let turn_id_value = extract_turn_id(params);
+                    let mut full_auto_guard = full_auto_state.lock().await;
+                    if let Some(state) = full_auto_guard.as_mut() {
+                        state.record_event(
+                            request.method.as_str(),
+                            params,
+                            thread_id_value.as_deref(),
+                            turn_id_value.as_deref(),
+                        );
+                    }
                 }
             });
 
@@ -712,6 +974,58 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
                                 }
                             });
                         }
+                        UserAction::FullAutoToggle {
+                            enabled,
+                            thread_id,
+                            continue_prompt,
+                            ..
+                        } => {
+                            let proxy = proxy_actions.clone();
+                            let full_auto_state = full_auto_state.clone();
+                            let workspace_id = workspace_id.clone();
+                            handle.spawn(async move {
+                                if enabled {
+                                    let mut guard = full_auto_state.lock().await;
+                                    let mut next_state = FullAutoState::new(
+                                        &workspace_id,
+                                        thread_id.clone(),
+                                        continue_prompt.clone(),
+                                    );
+                                    next_state.enabled = true;
+                                    if let Some(thread_id) = thread_id {
+                                        next_state.thread_id = Some(thread_id);
+                                    }
+                                    next_state.set_continue_prompt(continue_prompt);
+                                    *guard = Some(next_state);
+                                    let _ = proxy.send_event(AppEvent::AppServerEvent {
+                                        message: json!({
+                                            "method": "fullauto/status",
+                                            "params": {
+                                                "workspaceId": workspace_id,
+                                                "enabled": true,
+                                                "state": "running",
+                                                "continuePrompt": next_state.continue_prompt
+                                            }
+                                        })
+                                        .to_string(),
+                                    });
+                                } else {
+                                    let mut guard = full_auto_state.lock().await;
+                                    *guard = None;
+                                    let _ = proxy.send_event(AppEvent::AppServerEvent {
+                                        message: json!({
+                                            "method": "fullauto/status",
+                                            "params": {
+                                                "workspaceId": workspace_id,
+                                                "enabled": false,
+                                                "state": "paused"
+                                            }
+                                        })
+                                        .to_string(),
+                                    });
+                                }
+                            });
+                        }
                         _ => {}
                     }
                 }
@@ -720,6 +1034,81 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
             futures::future::pending::<()>().await;
         });
     });
+}
+
+fn extract_thread_id(params: Option<&Value>) -> Option<String> {
+    let params = params?;
+    if let Some(thread_id) = params
+        .get("threadId")
+        .or_else(|| params.get("thread_id"))
+        .and_then(|id| id.as_str())
+    {
+        return Some(thread_id.to_string());
+    }
+    params
+        .get("thread")
+        .and_then(|thread| thread.get("id"))
+        .and_then(|id| id.as_str())
+        .map(|id| id.to_string())
+}
+
+fn extract_turn_id(params: Option<&Value>) -> Option<String> {
+    let params = params?;
+    if let Some(turn_id) = params
+        .get("turnId")
+        .or_else(|| params.get("turn_id"))
+        .and_then(|id| id.as_str())
+    {
+        return Some(turn_id.to_string());
+    }
+    params
+        .get("turn")
+        .and_then(|turn| turn.get("id"))
+        .and_then(|id| id.as_str())
+        .map(|id| id.to_string())
+}
+
+fn build_tool_input_response(params: &Value) -> Value {
+    let mut answers = serde_json::Map::new();
+    let questions = params
+        .get("questions")
+        .and_then(|value| value.as_array())
+        .cloned()
+        .unwrap_or_default();
+
+    for question in questions {
+        let id = question
+            .get("id")
+            .and_then(|value| value.as_str())
+            .map(|value| value.to_string());
+        let answer = question
+            .get("options")
+            .and_then(|value| value.as_array())
+            .and_then(|options| options.first())
+            .and_then(|option| option.get("id"))
+            .and_then(|value| value.as_str())
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| "yes".to_string());
+
+        if let Some(id) = id {
+            answers.insert(
+                id,
+                json!({
+                    "answers": [answer],
+                }),
+            );
+        }
+    }
+
+    json!({ "answers": answers })
+}
+
+fn build_auto_response(method: &str, params: Option<&Value>) -> Option<Value> {
+    match method {
+        "execCommandApproval" | "applyPatchApproval" => Some(json!({ "decision": "approved" })),
+        "item/tool/requestUserInput" => params.map(build_tool_input_response),
+        _ => None,
+    }
 }
 
 fn map_key(key: &WinitKey) -> Option<Key> {

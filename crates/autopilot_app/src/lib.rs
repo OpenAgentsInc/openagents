@@ -1,3 +1,4 @@
+use std::fmt;
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
 
@@ -147,12 +148,24 @@ impl WorkspaceId {
     }
 }
 
+impl fmt::Display for WorkspaceId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct SessionId(Uuid);
 
 impl SessionId {
     pub fn new() -> Self {
         Self(Uuid::new_v4())
+    }
+}
+
+impl fmt::Display for SessionId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
     }
 }
 
@@ -172,6 +185,12 @@ pub enum UserAction {
         session_id: SessionId,
         thread_id: Option<String>,
         turn_id: Option<String>,
+    },
+    FullAutoToggle {
+        session_id: SessionId,
+        enabled: bool,
+        thread_id: Option<String>,
+        continue_prompt: Option<String>,
     },
 }
 

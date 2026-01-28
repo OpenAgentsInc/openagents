@@ -62,6 +62,10 @@ impl Button {
         self
     }
 
+    pub fn set_variant(&mut self, variant: ButtonVariant) {
+        self.variant = variant;
+    }
+
     pub fn disabled(mut self, disabled: bool) -> Self {
         self.disabled = disabled;
         self

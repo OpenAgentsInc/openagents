@@ -332,6 +332,10 @@ pub struct MinimalRoot {
     submit_button: Button,
     submit_bounds: Bounds,
     pending_sends: Rc<RefCell<Vec<String>>>,
+    full_auto_button: Button,
+    full_auto_bounds: Bounds,
+    pending_full_auto: Rc<RefCell<bool>>,
+    full_auto_enabled: bool,
     queued_by_thread: HashMap<String, Vec<QueuedMessage>>,
     queued_in_flight: Option<String>,
     send_handler: Option<Box<dyn FnMut(UserAction)>>,
@@ -419,6 +423,17 @@ impl MinimalRoot {
                 pending_send_clicks.borrow_mut().push(String::new());
             });
 
+        let pending_full_auto = Rc::new(RefCell::new(false));
+        let pending_full_auto_click = pending_full_auto.clone();
+        let full_auto_button = Button::new("Full Auto")
+            .variant(ButtonVariant::Secondary)
+            .font_size(theme::font_size::XS)
+            .padding(12.0, 6.0)
+            .corner_radius(6.0)
+            .on_click(move || {
+                *pending_full_auto_click.borrow_mut() = true;
+            });
+
         let pending_stop = Rc::new(RefCell::new(false));
         let pending_stop_click = pending_stop.clone();
         let stop_button = Button::new("Stop")
@@ -463,6 +478,10 @@ impl MinimalRoot {
             submit_button,
             submit_bounds: Bounds::ZERO,
             pending_sends,
+            full_auto_button,
+            full_auto_bounds: Bounds::ZERO,
+            pending_full_auto,
+            full_auto_enabled: false,
             queued_by_thread: HashMap::new(),
             queued_in_flight: None,
             send_handler: None,
@@ -571,6 +590,32 @@ impl MinimalRoot {
                         {
                             self.active_turn_id = None;
                             self.flush_queue_if_idle();
+                        }
+                    }
+
+                    if let Some(method) = value.get("method").and_then(|m| m.as_str())
+                        && method == "fullauto/status"
+                    {
+                        if let Some(enabled) = value
+                            .get("params")
+                            .and_then(|params| params.get("enabled"))
+                            .and_then(|value| value.as_bool())
+                        {
+                            self.full_auto_enabled = enabled;
+                        }
+                    }
+
+                    if let Some(method) = value.get("method").and_then(|m| m.as_str())
+                        && method == "fullauto/decision"
+                    {
+                        if let Some(action) = value
+                            .get("params")
+                            .and_then(|params| params.get("action"))
+                            .and_then(|value| value.as_str())
+                        {
+                            if action != "continue" {
+                                self.full_auto_enabled = false;
+                            }
                         }
                     }
 
@@ -1151,6 +1196,12 @@ impl MinimalRoot {
             EventResult::Handled
         );
 
+        let full_auto_handled = matches!(
+            self.full_auto_button
+                .event(event, self.full_auto_bounds, &mut self.event_context),
+            EventResult::Handled
+        );
+
         let copy_handled = if self.raw_events_visible {
             matches!(
                 self.copy_button
@@ -1276,6 +1327,28 @@ impl MinimalRoot {
             return true;
         }
 
+        let should_toggle_full_auto = {
+            let mut pending = self.pending_full_auto.borrow_mut();
+            let value = *pending;
+            *pending = false;
+            value
+        };
+
+        if should_toggle_full_auto {
+            let enabled = !self.full_auto_enabled;
+            self.full_auto_enabled = enabled;
+            if let (Some(session_id), Some(handler)) = (self.session_id, self.send_handler.as_mut())
+            {
+                handler(UserAction::FullAutoToggle {
+                    session_id,
+                    enabled,
+                    thread_id: self.thread_id.clone(),
+                    continue_prompt: None,
+                });
+            }
+            return true;
+        }
+
         let pending_messages = {
             let mut pending = self.pending_sends.borrow_mut();
             let messages = pending.clone();
@@ -1317,6 +1390,7 @@ impl MinimalRoot {
             || scroll_handled
             || dropdown_handled
             || keygen_handled
+            || full_auto_handled
             || copy_handled
             || stop_handled
             || formatted_handled
@@ -1328,6 +1402,8 @@ impl MinimalRoot {
         } else if self.stop_button.is_hovered() && !self.stop_button.is_disabled() {
             Cursor::Pointer
         } else if self.keygen_button.is_hovered() {
+            Cursor::Pointer
+        } else if self.full_auto_button.is_hovered() && !self.full_auto_button.is_disabled() {
             Cursor::Pointer
         } else if self.copy_button.is_hovered() && !self.copy_button.is_disabled() {
             Cursor::Pointer
@@ -1433,7 +1509,7 @@ fn paint_formatted_feed(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintCo
     let padding_x = 24.0;
     let padding_top = 12.0;
     let padding_bottom = 24.0;
-    let header_height = 20.0;
+    let header_height = 28.0;
     let content_width = bounds.size.width - padding_x * 2.0;
     let header_bounds = Bounds::new(
         bounds.origin.x + padding_x,
@@ -1441,6 +1517,34 @@ fn paint_formatted_feed(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintCo
         content_width,
         header_height,
     );
+
+    let full_auto_label = if root.full_auto_enabled {
+        "Full Auto On"
+    } else {
+        "Full Auto Off"
+    };
+    root.full_auto_button.set_label(full_auto_label);
+    root.full_auto_button.set_variant(if root.full_auto_enabled {
+        ButtonVariant::Primary
+    } else {
+        ButtonVariant::Secondary
+    });
+    root.full_auto_button
+        .set_disabled(root.thread_id.is_none());
+    let button_font = theme::font_size::XS;
+    let button_label_width =
+        cx.text
+            .measure_styled_mono(full_auto_label, button_font, FontStyle::default());
+    let button_width = (button_label_width + 28.0).max(110.0);
+    let button_height = 24.0;
+    let button_bounds = Bounds::new(
+        header_bounds.origin.x + content_width - button_width,
+        header_bounds.origin.y + (header_height - button_height) / 2.0,
+        button_width,
+        button_height,
+    );
+    root.full_auto_bounds = button_bounds;
+    root.full_auto_button.paint(button_bounds, cx);
 
     let model = root.thread_model.as_deref().unwrap_or(DEFAULT_THREAD_MODEL);
     let thread_id = root.thread_id.as_deref().unwrap_or("unknown-thread");
@@ -2932,6 +3036,13 @@ fn format_event(event: &AppEvent) -> String {
             }
             UserAction::Command { name, .. } => format!("Command ({})", name),
             UserAction::Interrupt { .. } => "Interrupt".to_string(),
+            UserAction::FullAutoToggle { enabled, .. } => {
+                if *enabled {
+                    "Full Auto (enabled)".to_string()
+                } else {
+                    "Full Auto (disabled)".to_string()
+                }
+            }
         },
         AppEvent::AppServerEvent { message } => format!("AppServerEvent ({message})"),
     }
