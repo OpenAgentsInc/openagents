@@ -2358,9 +2358,9 @@ impl Component for MinimalRoot {
 
 fn paint_chat_pane(chat: &mut ChatPaneState, bounds: Bounds, cx: &mut PaintContext) {
     let padding_x = 24.0;
-    let padding_top = 12.0;
+    let padding_top = 4.0;
     let padding_bottom = 16.0;
-    let header_height = 28.0;
+    let header_height = 0.0;
     let content_width = bounds.size.width - padding_x * 2.0;
     let header_bounds = Bounds::new(
         bounds.origin.x + padding_x,
@@ -2373,7 +2373,7 @@ fn paint_chat_pane(chat: &mut ChatPaneState, bounds: Bounds, cx: &mut PaintConte
     let thread_id = chat.thread_id.as_deref().unwrap_or("unknown-thread");
     let thread_line_bounds = Bounds::new(
         header_bounds.origin.x,
-        header_bounds.origin.y + header_height + 6.0,
+        header_bounds.origin.y + header_height + 2.0,
         header_bounds.size.width,
         18.0,
     );
