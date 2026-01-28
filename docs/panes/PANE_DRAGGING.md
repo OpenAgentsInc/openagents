@@ -33,3 +33,15 @@ This is the follow-on plan to add dragging/resizing to the HUD pane system. The 
 ## Notes
 - Commander uses `use-gesture` to handle drag + resize. In WGPUI we can mirror the same behavior via `InputEvent::MouseDown/Move/Up` and the `ResizablePane` component.
 - The current HUD layer already centralizes all input routing in `MinimalRoot`; this makes it straightforward to add drag/resize without changing the architecture.
+
+---
+
+## Work Log
+- Added pane drag state tracking and store updates in `MinimalRoot` so title-bar drags move panes.
+- Implemented `PaneStore::update_rect` + `set_last_position` to persist the latest drag position.
+- Routed drag start through `PaneFrame` title bounds (excluding close button) and clamped positions with `ensure_pane_visible`.
+
+## Next Steps
+- Add resize handles via `ResizablePane` (edges + corners) with min size 200x100 and viewport clamping.
+- Persist pane positions to storage and restore on launch.
+- Add drag cursor feedback and optional snap/tiling guides.

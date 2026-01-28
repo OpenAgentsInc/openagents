@@ -22,9 +22,9 @@ use wgpui::components::{Text, TextInput};
 use wgpui::input::{InputEvent, Key, NamedKey};
 use wgpui::{
     Bounds, Button, ButtonVariant, Component, Cursor, Dropdown, DropdownOption, EventResult,
-    LayoutEngine, LayoutStyle, MarkdownConfig, MarkdownDocument, MarkdownView, PaintContext, Point,
-    Quad, ScrollView, Size, StreamingMarkdown, copy_to_clipboard, length, px, text::FontStyle,
-    theme,
+    LayoutEngine, LayoutStyle, MarkdownConfig, MarkdownDocument, MarkdownView, MouseButton,
+    PaintContext, Point, Quad, ScrollView, Size, StreamingMarkdown, copy_to_clipboard, length, px,
+    text::FontStyle, theme,
 };
 
 const PANEL_PADDING: f32 = 12.0;
@@ -339,6 +339,13 @@ struct PaneSnapshot {
     rect: PaneRect,
 }
 
+#[derive(Clone, Debug)]
+struct PaneDragState {
+    pane_id: String,
+    origin: Point,
+    start_rect: PaneRect,
+}
+
 #[derive(Default)]
 struct PaneStore {
     panes: Vec<Pane>,
@@ -400,6 +407,16 @@ impl PaneStore {
             self.active_pane_id = Some(pane.id.clone());
             self.panes.push(pane);
         }
+    }
+
+    fn update_rect(&mut self, id: &str, rect: PaneRect) {
+        if let Some(index) = self.pane_index(id) {
+            self.panes[index].rect = rect;
+        }
+    }
+
+    fn set_last_position(&mut self, rect: PaneRect) {
+        self.last_pane_position = Some(rect);
     }
 
     fn toggle_pane<F>(&mut self, id: &str, screen: Size, mut create: F)
@@ -490,6 +507,7 @@ pub struct MinimalRoot {
     pane_store: PaneStore,
     pane_frames: HashMap<String, PaneFrame>,
     pane_bounds: HashMap<String, Bounds>,
+    pane_drag: Option<PaneDragState>,
     chat_panes: HashMap<String, ChatPaneState>,
     pending_session_panes: VecDeque<String>,
     session_to_pane: HashMap<SessionId, String>,
@@ -1400,6 +1418,7 @@ impl MinimalRoot {
             pane_store: PaneStore::default(),
             pane_frames: HashMap::new(),
             pane_bounds: HashMap::new(),
+            pane_drag: None,
             chat_panes: HashMap::new(),
             pending_session_panes: VecDeque::new(),
             session_to_pane: HashMap::new(),
@@ -1813,6 +1832,38 @@ impl MinimalRoot {
             }
         }
 
+        if let Some(drag) = self.pane_drag.clone() {
+            match event {
+                InputEvent::MouseMove { x, y } => {
+                    let dx = x - drag.origin.x;
+                    let dy = y - drag.origin.y;
+                    let mut rect = drag.start_rect.clone();
+                    rect.x += dx;
+                    rect.y += dy;
+                    rect = ensure_pane_visible(rect, self.screen_size());
+                    self.pane_store.update_rect(&drag.pane_id, rect);
+                    return true;
+                }
+                InputEvent::MouseUp {
+                    button: MouseButton::Left,
+                    ..
+                } => {
+                    if let Some(rect) = self
+                        .pane_store
+                        .pane(&drag.pane_id)
+                        .map(|pane| pane.rect.clone())
+                    {
+                        let rect = ensure_pane_visible(rect, self.screen_size());
+                        self.pane_store.update_rect(&drag.pane_id, rect);
+                        self.pane_store.set_last_position(rect);
+                    }
+                    self.pane_drag = None;
+                    return true;
+                }
+                _ => {}
+            }
+        }
+
         let mut handled = matches!(
             self.hotbar
                 .event(event, self.hotbar_bounds, &mut self.event_context),
@@ -1839,6 +1890,20 @@ impl MinimalRoot {
 
             if let Some(pane_bounds) = self.pane_bounds.get(&pane_id).copied() {
                 if let Some(frame) = self.pane_frames.get_mut(&pane_id) {
+                    if matches!(event, InputEvent::MouseDown { button: MouseButton::Left, .. })
+                        && frame.title_bounds().contains(self.cursor_position)
+                        && !frame.close_bounds().contains(self.cursor_position)
+                    {
+                        if let Some(pane) = self.pane_store.pane(&pane_id) {
+                            self.pane_drag = Some(PaneDragState {
+                                pane_id: pane_id.clone(),
+                                origin: self.cursor_position,
+                                start_rect: pane.rect.clone(),
+                            });
+                            self.pane_store.bring_to_front(&pane_id);
+                            return true;
+                        }
+                    }
                     handled |= frame
                         .event(event, pane_bounds, &mut self.event_context)
                         .is_handled();
