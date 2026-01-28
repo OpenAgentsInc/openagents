@@ -185,6 +185,9 @@ pub enum UserAction {
     PylonStop,
     PylonRefresh,
     WalletRefresh,
+    DvmProviderStart,
+    DvmProviderStop,
+    DvmProviderRefresh,
     Command {
         session_id: SessionId,
         name: String,
@@ -229,6 +232,20 @@ pub struct WalletStatus {
     pub last_error: Option<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct DvmProviderStatus {
+    pub running: bool,
+    pub provider_active: Option<bool>,
+    pub host_active: Option<bool>,
+    pub min_price_msats: u64,
+    pub require_payment: bool,
+    pub default_model: String,
+    pub backend_preference: Vec<String>,
+    pub network: String,
+    pub enable_payments: bool,
+    pub last_error: Option<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum AppEvent {
     WorkspaceOpened {
@@ -252,6 +269,9 @@ pub enum AppEvent {
     },
     WalletStatus {
         status: WalletStatus,
+    },
+    DvmProviderStatus {
+        status: DvmProviderStatus,
     },
 }
 
