@@ -86,8 +86,24 @@ pub use breez_sdk_spark::{EventListener, SdkEvent};
 pub use error::SparkError;
 pub use signer::SparkSigner;
 pub use wallet::{
-    Balance, Config, ExternalInputParser, InputType, KeySetType, Network, NetworkStatus,
-    NetworkStatusReport, Payment, PaymentDetails, PaymentMethod, PaymentStatus, PaymentType,
-    SendPaymentOptions, SparkHtlcDetails, SparkHtlcOptions, SparkHtlcStatus, SparkWallet,
-    SparkWalletBuilder, WalletConfig, WalletInfo, parse_input,
+    AssetFilter, Balance, BurnIssuerTokenRequest, CheckLightningAddressRequest, CheckMessageRequest,
+    CheckMessageResponse, ClaimDepositRequest, ClaimDepositResponse, ClaimHtlcPaymentResponse,
+    Config, CreateIssuerTokenRequest, ExternalInputParser, Fee, FreezeIssuerTokenRequest,
+    FreezeIssuerTokenResponse, GetInfoRequest, GetInfoResponse, GetPaymentRequest,
+    GetPaymentResponse, GetTokensMetadataRequest, GetTokensMetadataResponse, InputType, KeySetType,
+    LightningAddressInfo, ListFiatCurrenciesResponse, ListFiatRatesResponse, ListPaymentsRequest,
+    ListPaymentsResponse, ListUnclaimedDepositsRequest, ListUnclaimedDepositsResponse,
+    LnurlPayRequest, LnurlPayRequestDetails, LnurlPayResponse, LnurlWithdrawRequest,
+    LnurlWithdrawRequestDetails, LnurlWithdrawResponse, MaxFee, MintIssuerTokenRequest, Network,
+    NetworkStatus, NetworkStatusReport, Payment, PaymentDetails, PaymentMethod, PaymentRequestSource,
+    PaymentStatus, PaymentType, PrepareLnurlPayRequest, PrepareLnurlPayResponse,
+    PrepareSendPaymentRequest, PrepareSendPaymentResponse, ReceivePaymentMethod,
+    ReceivePaymentRequest, ReceivePaymentResponse, RecommendedFees, RefundDepositRequest,
+    RefundDepositResponse, RegisterLightningAddressRequest, SendOnchainFeeQuote,
+    SendOnchainSpeedFeeQuote, SendPaymentMethod, SendPaymentOptions, SendPaymentRequest,
+    SendPaymentResponse, SignMessageRequest, SignMessageResponse, SparkHtlcDetails,
+    SparkHtlcOptions, SparkHtlcStatus, SparkInvoiceDetails, SparkInvoicePaymentDetails,
+    SparkWallet, SparkWalletBuilder, SyncWalletRequest, SyncWalletResponse, TokenBalance,
+    TokenIssuer, TokenMetadata, UnfreezeIssuerTokenRequest, UnfreezeIssuerTokenResponse,
+    UpdateUserSettingsRequest, UserSettings, WalletConfig, WalletInfo, parse_input,
 };
