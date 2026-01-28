@@ -5,8 +5,8 @@ use std::sync::{Arc, mpsc};
 
 use anyhow::{Context, Result};
 use autopilot_app::{
-    App as AutopilotApp, AppConfig, AppEvent, DvmProviderStatus, EventRecorder, PylonStatus,
-    SessionId, UserAction, WalletStatus,
+    App as AutopilotApp, AppConfig, AppEvent, DvmHistorySnapshot, DvmProviderStatus, EventRecorder,
+    PylonStatus, SessionId, UserAction, WalletStatus,
 };
 use autopilot_ui::MinimalRoot;
 use codex_client::{
@@ -19,8 +19,9 @@ use full_auto::{
 };
 use futures::StreamExt;
 use openagents_spark::{Network as SparkNetwork, SparkSigner, SparkWallet, WalletConfig};
-use pylon::daemon::{ControlClient, DaemonResponse, is_daemon_running, pid_path, socket_path};
+use pylon::daemon::{ControlClient, DaemonResponse, is_daemon_running, pid_path, socket_path, db_path};
 use pylon::PylonConfig;
+use pylon::db::{PylonDb, earnings::EarningsSummary as PylonEarningsSummary, jobs::JobStatus};
 use serde_json::{Value, json};
 use tracing_subscriber::EnvFilter;
 use wgpui::renderer::Renderer;
@@ -1266,6 +1267,11 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
                             let _ = proxy_actions
                                 .send_event(AppEvent::DvmProviderStatus { status });
                         }
+                        UserAction::DvmHistoryRefresh => {
+                            let snapshot = fetch_dvm_history();
+                            let _ = proxy_actions
+                                .send_event(AppEvent::DvmHistory { snapshot });
+                        }
                         UserAction::FullAutoToggle {
                             session_id,
                             enabled,
@@ -1533,6 +1539,83 @@ fn fetch_dvm_provider_status() -> DvmProviderStatus {
     }
 
     status
+}
+
+fn fetch_dvm_history() -> DvmHistorySnapshot {
+    let mut snapshot = DvmHistorySnapshot::default();
+
+    let path = match db_path() {
+        Ok(path) => path,
+        Err(err) => {
+            snapshot.last_error = Some(format!("Failed to resolve Pylon DB path: {err}"));
+            return snapshot;
+        }
+    };
+
+    let db = match PylonDb::open(path) {
+        Ok(db) => db,
+        Err(err) => {
+            snapshot.last_error = Some(format!("Failed to open Pylon DB: {err}"));
+            return snapshot;
+        }
+    };
+
+    match db.get_earnings_summary() {
+        Ok(summary) => {
+            snapshot.summary.total_msats = summary.total_msats;
+            snapshot.summary.total_sats = summary.total_sats;
+            snapshot.summary.job_count = summary.job_count;
+            let mut sources = summary
+                .by_source
+                .into_iter()
+                .collect::<Vec<(String, u64)>>();
+            sources.sort_by(|a, b| a.0.cmp(&b.0));
+            snapshot.summary.by_source = sources;
+        }
+        Err(err) => {
+            snapshot.last_error = Some(format!("Failed to load earnings summary: {err}"));
+        }
+    }
+
+    match db.count_jobs_by_status() {
+        Ok(counts) => {
+            let mut status_counts = counts
+                .into_iter()
+                .map(|(status, count)| (status.as_str().to_string(), count))
+                .collect::<Vec<_>>();
+            status_counts.sort_by(|a, b| a.0.cmp(&b.0));
+            snapshot.status_counts = status_counts;
+        }
+        Err(err) => {
+            snapshot.last_error = Some(format!("Failed to load job counts: {err}"));
+        }
+    }
+
+    let mut jobs = Vec::new();
+    for status in [
+        JobStatus::Completed,
+        JobStatus::Failed,
+        JobStatus::Processing,
+        JobStatus::Pending,
+    ] {
+        if let Ok(list) = db.list_jobs_by_status(status, 25) {
+            jobs.extend(list);
+        }
+    }
+    jobs.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+    jobs.truncate(25);
+    snapshot.jobs = jobs
+        .into_iter()
+        .map(|job| autopilot_app::DvmJobSummary {
+            id: job.id,
+            status: job.status.as_str().to_string(),
+            kind: job.kind,
+            price_msats: job.price_msats,
+            created_at: job.created_at,
+        })
+        .collect();
+
+    snapshot
 }
 
 fn spark_network_for_pylon(network: &str) -> SparkNetwork {

@@ -62,6 +62,8 @@ const WALLET_PANE_WIDTH: f32 = 520.0;
 const WALLET_PANE_HEIGHT: f32 = 420.0;
 const SELL_COMPUTE_PANE_WIDTH: f32 = 560.0;
 const SELL_COMPUTE_PANE_HEIGHT: f32 = 460.0;
+const HISTORY_PANE_WIDTH: f32 = 640.0;
+const HISTORY_PANE_HEIGHT: f32 = 500.0;
 const HOTBAR_HEIGHT: f32 = 52.0;
 const HOTBAR_FLOAT_GAP: f32 = 18.0;
 const HOTBAR_ITEM_SIZE: f32 = 36.0;
@@ -73,7 +75,8 @@ const HOTBAR_SLOT_IDENTITY: u8 = 3;
 const HOTBAR_SLOT_PYLON: u8 = 4;
 const HOTBAR_SLOT_WALLET: u8 = 5;
 const HOTBAR_SLOT_SELL_COMPUTE: u8 = 6;
-const HOTBAR_CHAT_SLOT_START: u8 = 7;
+const HOTBAR_SLOT_HISTORY: u8 = 7;
+const HOTBAR_CHAT_SLOT_START: u8 = 8;
 const HOTBAR_SLOT_MAX: u8 = 9;
 const MODEL_OPTIONS: [(&str, &str); 4] = [
     ("gpt-5.2-codex", "Latest frontier agentic coding model."),
@@ -134,6 +137,7 @@ impl AppViewModel {
             AppEvent::PylonStatus { .. } => {}
             AppEvent::WalletStatus { .. } => {}
             AppEvent::DvmProviderStatus { .. } => {}
+            AppEvent::DvmHistory { .. } => {}
         }
     }
 
@@ -327,6 +331,7 @@ enum PaneKind {
     Pylon,
     Wallet,
     SellCompute,
+    DvmHistory,
 }
 
 #[derive(Clone, Debug)]
@@ -337,6 +342,7 @@ enum HotbarAction {
     TogglePylon,
     ToggleWallet,
     ToggleSellCompute,
+    ToggleDvmHistory,
     NewChat,
 }
 
@@ -573,6 +579,10 @@ pub struct MinimalRoot {
     pending_sell_compute_online: Rc<RefCell<bool>>,
     pending_sell_compute_offline: Rc<RefCell<bool>>,
     pending_sell_compute_refresh: Rc<RefCell<bool>>,
+    dvm_history: DvmHistoryView,
+    dvm_history_refresh_button: Button,
+    dvm_history_refresh_bounds: Bounds,
+    pending_dvm_history_refresh: Rc<RefCell<bool>>,
     nostr_npub: Option<String>,
     nostr_nsec: Option<String>,
     spark_pubkey_hex: Option<String>,
@@ -1521,6 +1531,17 @@ impl MinimalRoot {
                 *pending_sell_compute_refresh_click.borrow_mut() = true;
             });
 
+        let pending_dvm_history_refresh = Rc::new(RefCell::new(false));
+        let pending_dvm_history_refresh_click = pending_dvm_history_refresh.clone();
+        let dvm_history_refresh_button = Button::new("Refresh")
+            .variant(ButtonVariant::Secondary)
+            .font_size(theme::font_size::XS)
+            .padding(10.0, 6.0)
+            .corner_radius(6.0)
+            .on_click(move || {
+                *pending_dvm_history_refresh_click.borrow_mut() = true;
+            });
+
         let event_scroll = ScrollView::new().show_scrollbar(true).scrollbar_width(6.0);
         let hotbar = Hotbar::new()
             .item_size(HOTBAR_ITEM_SIZE)
@@ -1577,6 +1598,10 @@ impl MinimalRoot {
             pending_sell_compute_online,
             pending_sell_compute_offline,
             pending_sell_compute_refresh,
+            dvm_history: DvmHistoryView::default(),
+            dvm_history_refresh_button,
+            dvm_history_refresh_bounds: Bounds::ZERO,
+            pending_dvm_history_refresh,
             nostr_npub: None,
             nostr_nsec: None,
             spark_pubkey_hex: None,
@@ -1645,6 +1670,27 @@ impl MinimalRoot {
                     network: status.network,
                     enable_payments: status.enable_payments,
                     last_error: status.last_error,
+                };
+            }
+            AppEvent::DvmHistory { snapshot } => {
+                self.dvm_history = DvmHistoryView {
+                    summary_total_msats: snapshot.summary.total_msats,
+                    summary_total_sats: snapshot.summary.total_sats,
+                    summary_job_count: snapshot.summary.job_count,
+                    summary_by_source: snapshot.summary.by_source,
+                    status_counts: snapshot.status_counts,
+                    jobs: snapshot
+                        .jobs
+                        .into_iter()
+                        .map(|job| DvmJobView {
+                            id: job.id,
+                            status: job.status,
+                            kind: job.kind,
+                            price_msats: job.price_msats,
+                            created_at: job.created_at,
+                        })
+                        .collect(),
+                    last_error: snapshot.last_error,
                 };
             }
             AppEvent::AppServerEvent { message } => {
@@ -1960,6 +2006,37 @@ impl MinimalRoot {
         }
     }
 
+    fn toggle_dvm_history_pane(&mut self, screen: Size) {
+        let last_position = self.pane_store.last_pane_position;
+        self.pane_store
+            .toggle_pane("dvm_history", screen, |snapshot| {
+                let rect = snapshot
+                    .as_ref()
+                    .map(|snapshot| snapshot.rect)
+                    .unwrap_or_else(|| {
+                        calculate_new_pane_position(
+                            last_position,
+                            screen,
+                            HISTORY_PANE_WIDTH,
+                            HISTORY_PANE_HEIGHT,
+                        )
+                    });
+                Pane {
+                    id: "dvm_history".to_string(),
+                    kind: PaneKind::DvmHistory,
+                    title: "DVM History".to_string(),
+                    rect,
+                    dismissable: true,
+                }
+            });
+
+        if self.pane_store.is_active("dvm_history") {
+            if let Some(handler) = self.send_handler.as_mut() {
+                handler(UserAction::DvmHistoryRefresh);
+            }
+        }
+    }
+
     fn close_pane(&mut self, id: &str) {
         self.pane_store.remove_pane(id, true);
         self.pane_frames.remove(id);
@@ -2026,6 +2103,10 @@ impl MinimalRoot {
             }
             HotbarAction::ToggleSellCompute => {
                 self.toggle_sell_compute_pane(screen);
+                true
+            }
+            HotbarAction::ToggleDvmHistory => {
+                self.toggle_dvm_history_pane(screen);
                 true
             }
             HotbarAction::NewChat => {
@@ -2406,6 +2487,17 @@ impl MinimalRoot {
                             );
                             handled |= online_handled || offline_handled || refresh_handled;
                         }
+                        PaneKind::DvmHistory => {
+                            let refresh_handled = matches!(
+                                self.dvm_history_refresh_button.event(
+                                    event,
+                                    self.dvm_history_refresh_bounds,
+                                    &mut self.event_context
+                                ),
+                                EventResult::Handled
+                            );
+                            handled |= refresh_handled;
+                        }
                     }
                 }
             }
@@ -2530,6 +2622,18 @@ impl MinimalRoot {
         if should_sell_compute_refresh {
             if let Some(handler) = self.send_handler.as_mut() {
                 handler(UserAction::DvmProviderRefresh);
+            }
+        }
+
+        let should_history_refresh = {
+            let mut pending = self.pending_dvm_history_refresh.borrow_mut();
+            let value = *pending;
+            *pending = false;
+            value
+        };
+        if should_history_refresh {
+            if let Some(handler) = self.send_handler.as_mut() {
+                handler(UserAction::DvmHistoryRefresh);
             }
         }
 
@@ -2666,6 +2770,8 @@ impl MinimalRoot {
             Cursor::Pointer
         } else if self.keygen_button.is_hovered() {
             Cursor::Pointer
+        } else if self.dvm_history_refresh_button.is_hovered() {
+            Cursor::Pointer
         } else if self
             .chat_panes
             .values()
@@ -2765,6 +2871,7 @@ impl Component for MinimalRoot {
                 PaneKind::Pylon => paint_pylon_pane(self, content_bounds, cx),
                 PaneKind::Wallet => paint_wallet_pane(self, content_bounds, cx),
                 PaneKind::SellCompute => paint_sell_compute_pane(self, content_bounds, cx),
+                PaneKind::DvmHistory => paint_dvm_history_pane(self, content_bounds, cx),
             }
             cx.scene.pop_clip();
         }
@@ -2820,6 +2927,13 @@ impl Component for MinimalRoot {
         );
         self.hotbar_bindings
             .insert(HOTBAR_SLOT_SELL_COMPUTE, HotbarAction::ToggleSellCompute);
+
+        items.push(
+            HotbarSlot::new(HOTBAR_SLOT_HISTORY, "HI", "History")
+                .active(self.pane_store.is_active("dvm_history")),
+        );
+        self.hotbar_bindings
+            .insert(HOTBAR_SLOT_HISTORY, HotbarAction::ToggleDvmHistory);
 
         let mut slot_to_pane: HashMap<u8, String> = HashMap::new();
         for (pane_id, slot) in self.chat_slot_assignments.iter() {
@@ -3692,6 +3806,124 @@ fn paint_sell_compute_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut Pain
     }
 
     if let Some(err) = root.sell_compute_status.last_error.as_deref() {
+        Text::new(err)
+            .font_size(text_size)
+            .color(theme::text::ACCENT)
+            .paint(Bounds::new(content_x, y, content_width, label_height), cx);
+    }
+}
+
+fn paint_dvm_history_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintContext) {
+    let padding = 16.0;
+    let button_height = 28.0;
+    let label_height = 16.0;
+    let value_spacing = 8.0;
+    let text_size = theme::font_size::XS;
+
+    let mut content_width = (bounds.size.width * 0.9).min(700.0).max(320.0);
+    content_width = content_width.min(bounds.size.width - padding * 2.0);
+    let content_x = bounds.origin.x + (bounds.size.width - content_width) / 2.0;
+    let mut y = bounds.origin.y + padding;
+
+    let refresh_bounds = Bounds::new(
+        content_x + content_width - 90.0,
+        y,
+        90.0,
+        button_height,
+    );
+    root.dvm_history_refresh_bounds = refresh_bounds;
+    root.dvm_history_refresh_button.paint(refresh_bounds, cx);
+
+    Text::new("Earnings summary")
+        .font_size(text_size)
+        .color(theme::text::PRIMARY)
+        .paint(Bounds::new(content_x, y + 6.0, content_width, label_height), cx);
+    y += button_height + 10.0;
+
+    Text::new(&format!(
+        "Total: {} sats ({} msats)",
+        root.dvm_history.summary_total_sats, root.dvm_history.summary_total_msats
+    ))
+    .font_size(text_size)
+    .color(theme::text::MUTED)
+    .paint(Bounds::new(content_x, y, content_width, label_height), cx);
+    y += label_height + value_spacing;
+
+    Text::new(&format!(
+        "Jobs completed: {}",
+        root.dvm_history.summary_job_count
+    ))
+    .font_size(text_size)
+    .color(theme::text::MUTED)
+    .paint(Bounds::new(content_x, y, content_width, label_height), cx);
+    y += label_height + value_spacing;
+
+    if !root.dvm_history.summary_by_source.is_empty() {
+        let mut sources = root.dvm_history.summary_by_source.clone();
+        sources.sort_by(|a, b| a.0.cmp(&b.0));
+        let joined = sources
+            .into_iter()
+            .map(|(source, amount)| format!("{source}: {amount} msats"))
+            .collect::<Vec<_>>()
+            .join(" | ");
+        let mut text = Text::new(joined.as_str())
+            .font_size(text_size)
+            .color(theme::text::MUTED);
+        let (_, height) = text.size_hint_with_width(content_width);
+        let height = height.unwrap_or(label_height);
+        text.paint(Bounds::new(content_x, y, content_width, height), cx);
+        y += height + value_spacing;
+    }
+
+    if !root.dvm_history.status_counts.is_empty() {
+        let mut counts = root.dvm_history.status_counts.clone();
+        counts.sort_by(|a, b| a.0.cmp(&b.0));
+        let joined = counts
+            .into_iter()
+            .map(|(status, count)| format!("{status}: {count}"))
+            .collect::<Vec<_>>()
+            .join(" | ");
+        let mut text = Text::new(joined.as_str())
+            .font_size(text_size)
+            .color(theme::text::MUTED);
+        let (_, height) = text.size_hint_with_width(content_width);
+        let height = height.unwrap_or(label_height);
+        text.paint(Bounds::new(content_x, y, content_width, height), cx);
+        y += height + value_spacing;
+    }
+
+    Text::new("Recent jobs")
+        .font_size(text_size)
+        .color(theme::text::PRIMARY)
+        .paint(Bounds::new(content_x, y, content_width, label_height), cx);
+    y += label_height + value_spacing;
+
+    if root.dvm_history.jobs.is_empty() {
+        Text::new("No jobs recorded yet.")
+            .font_size(text_size)
+            .color(theme::text::MUTED)
+            .paint(Bounds::new(content_x, y, content_width, label_height), cx);
+        y += label_height + value_spacing;
+    } else {
+        for job in &root.dvm_history.jobs {
+            let id = if job.id.len() > 8 {
+                &job.id[..8]
+            } else {
+                &job.id
+            };
+            let line = format!(
+                "{id} | {} | kind {} | {} msats | {}",
+                job.status, job.kind, job.price_msats, job.created_at
+            );
+            Text::new(&line)
+                .font_size(text_size)
+                .color(theme::text::MUTED)
+                .paint(Bounds::new(content_x, y, content_width, label_height), cx);
+            y += label_height + 4.0;
+        }
+    }
+
+    if let Some(err) = root.dvm_history.last_error.as_deref() {
         Text::new(err)
             .font_size(text_size)
             .color(theme::text::ACCENT)
@@ -4712,6 +4944,26 @@ struct SellComputeStatusView {
     last_error: Option<String>,
 }
 
+#[derive(Clone, Debug, Default)]
+struct DvmHistoryView {
+    summary_total_msats: u64,
+    summary_total_sats: u64,
+    summary_job_count: u64,
+    summary_by_source: Vec<(String, u64)>,
+    status_counts: Vec<(String, u64)>,
+    jobs: Vec<DvmJobView>,
+    last_error: Option<String>,
+}
+
+#[derive(Clone, Debug)]
+struct DvmJobView {
+    id: String,
+    status: String,
+    kind: u16,
+    price_msats: u64,
+    created_at: u64,
+}
+
 fn format_event(event: &AppEvent) -> String {
     match event {
         AppEvent::WorkspaceOpened { path, .. } => {
@@ -4744,6 +4996,7 @@ fn format_event(event: &AppEvent) -> String {
             UserAction::DvmProviderStart => "DvmProviderStart".to_string(),
             UserAction::DvmProviderStop => "DvmProviderStop".to_string(),
             UserAction::DvmProviderRefresh => "DvmProviderRefresh".to_string(),
+            UserAction::DvmHistoryRefresh => "DvmHistoryRefresh".to_string(),
             UserAction::Interrupt { .. } => "Interrupt".to_string(),
             UserAction::FullAutoToggle { enabled, .. } => {
                 if *enabled {
@@ -4775,6 +5028,10 @@ fn format_event(event: &AppEvent) -> String {
                 "DvmProviderStatus (stopped)".to_string()
             }
         }
+        AppEvent::DvmHistory { snapshot } => format!(
+            "DvmHistory ({} jobs)",
+            snapshot.summary.job_count
+        ),
     }
 }
 
