@@ -171,6 +171,7 @@ pub enum AppEvent {
         label: Option<String>,
     },
     UserActionDispatched { workspace_id: WorkspaceId, action: UserAction },
+    AppServerEvent { message: String },
 }
 
 pub type AppEventStream = Pin<Box<dyn Stream<Item = AppEvent> + Send>>;

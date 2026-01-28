@@ -3,8 +3,13 @@ use std::sync::{mpsc, Arc};
 
 use anyhow::{Context, Result};
 use autopilot_app::{AppEvent, App as AutopilotApp, AppConfig, EventRecorder, UserAction};
+use codex_client::{
+    AppServerClient, AppServerConfig, AskForApproval, ClientInfo, SandboxMode, SandboxPolicy,
+    ThreadStartParams, TurnStartParams, UserInput,
+};
 use autopilot_ui::MinimalRoot;
 use futures::StreamExt;
+use serde_json::json;
 use tracing_subscriber::EnvFilter;
 use wgpui::renderer::Renderer;
 use wgpui::{
@@ -397,40 +402,205 @@ fn inset_bounds(bounds: Bounds, padding: f32) -> Bounds {
 
 fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver<UserAction>) {
     std::thread::spawn(move || {
-        let app = AutopilotApp::new(AppConfig {
-            event_buffer: EVENT_BUFFER,
-        });
+        let runtime = tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .build()
+            .expect("tokio runtime init failed");
+        runtime.block_on(async move {
+            let app = AutopilotApp::new(AppConfig {
+                event_buffer: EVENT_BUFFER,
+            });
 
-        let mut recorder = std::env::var("AUTOPILOT_REPLAY_PATH")
-            .ok()
-            .and_then(|path| EventRecorder::create(path).ok());
+            let mut recorder = std::env::var("AUTOPILOT_REPLAY_PATH")
+                .ok()
+                .and_then(|path| EventRecorder::create(path).ok());
 
-        let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-        let workspace = Arc::new(app.open_workspace(cwd));
-        let mut stream = workspace.events();
+            let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+            let cwd_string = cwd.to_string_lossy().to_string();
+            let workspace = Arc::new(app.open_workspace(cwd.clone()));
+            let mut stream = workspace.events();
 
-        let session = workspace.start_session(Some("Bootstrap".to_string()));
-        workspace.dispatch(UserAction::Message {
-            session_id: session.session_id(),
-            text: "Autopilot desktop WGPUI bootstrapped.".to_string(),
-        });
+            let _session = workspace.start_session(Some("Bootstrap".to_string()));
 
-        let workspace_for_actions = workspace.clone();
-        std::thread::spawn(move || {
-            while let Ok(action) = action_rx.recv() {
-                workspace_for_actions.dispatch(action);
-            }
-        });
-
-        futures::executor::block_on(async move {
-            while let Some(event) = stream.next().await {
-                let _ = proxy.send_event(event.clone());
-                if let Some(writer) = recorder.as_mut() {
-                    if let Err(err) = writer.record_event(&event) {
-                        tracing::warn!(error = %err, "failed to record replay event");
+            let proxy_events = proxy.clone();
+            tokio::spawn(async move {
+                while let Some(event) = stream.next().await {
+                    let _ = proxy_events.send_event(event.clone());
+                    if let Some(writer) = recorder.as_mut() {
+                        if let Err(err) = writer.record_event(&event) {
+                            tracing::warn!(error = %err, "failed to record replay event");
+                        }
                     }
                 }
+            });
+
+            let (client, channels) = match AppServerClient::spawn(AppServerConfig {
+                cwd: Some(cwd.clone()),
+                wire_log: None,
+                env: Vec::new(),
+            })
+            .await
+            {
+                Ok(result) => result,
+                Err(err) => {
+                    let _ = proxy.send_event(AppEvent::AppServerEvent {
+                        message: json!({
+                            "method": "codex/error",
+                            "params": { "message": err.to_string() }
+                        })
+                        .to_string(),
+                    });
+                    futures::future::pending::<()>().await;
+                    return;
+                }
+            };
+
+            let client = Arc::new(client);
+            let thread_id = Arc::new(tokio::sync::Mutex::new(None::<String>));
+
+            let client_info = ClientInfo {
+                name: "autopilot-desktop-wgpu".to_string(),
+                title: Some("Autopilot Desktop".to_string()),
+                version: env!("CARGO_PKG_VERSION").to_string(),
+            };
+            if let Err(err) = client.initialize(client_info).await {
+                let _ = proxy.send_event(AppEvent::AppServerEvent {
+                    message: json!({
+                        "method": "codex/error",
+                        "params": { "message": err.to_string() }
+                    })
+                    .to_string(),
+                });
             }
+
+            match client
+                .thread_start(ThreadStartParams {
+                    model: None,
+                    model_provider: None,
+                    cwd: Some(cwd_string.clone()),
+                    approval_policy: Some(AskForApproval::Never),
+                    sandbox: Some(SandboxMode::WorkspaceWrite),
+                })
+                .await
+            {
+                Ok(response) => {
+                    let mut guard = thread_id.lock().await;
+                    *guard = Some(response.thread.id.clone());
+                    let _ = proxy.send_event(AppEvent::AppServerEvent {
+                        message: json!({
+                            "method": "thread/started",
+                            "params": { "threadId": response.thread.id }
+                        })
+                        .to_string(),
+                    });
+                }
+                Err(err) => {
+                    let _ = proxy.send_event(AppEvent::AppServerEvent {
+                        message: json!({
+                            "method": "codex/error",
+                            "params": { "message": err.to_string() }
+                        })
+                        .to_string(),
+                    });
+                }
+            }
+
+            let proxy_notifications = proxy.clone();
+            tokio::spawn(async move {
+                let mut notification_rx = channels.notifications;
+                while let Some(notification) = notification_rx.recv().await {
+                    let payload = json!({
+                        "method": notification.method,
+                        "params": notification.params,
+                    });
+                    let _ = proxy_notifications.send_event(AppEvent::AppServerEvent {
+                        message: payload.to_string(),
+                    });
+                }
+            });
+
+            let client_requests = client.clone();
+            let proxy_requests = proxy.clone();
+            tokio::spawn(async move {
+                let mut request_rx = channels.requests;
+                while let Some(request) = request_rx.recv().await {
+                    let payload = json!({
+                        "id": request.id,
+                        "method": request.method,
+                        "params": request.params,
+                    });
+                    let _ = proxy_requests.send_event(AppEvent::AppServerEvent {
+                        message: payload.to_string(),
+                    });
+
+                    let response = match request.method.as_str() {
+                        "execCommandApproval" | "applyPatchApproval" => {
+                            json!({ "decision": "approved" })
+                        }
+                        _ => json!({}),
+                    };
+                    let _ = client_requests.respond(request.id, &response).await;
+                }
+            });
+
+            let handle = tokio::runtime::Handle::current();
+            let workspace_for_actions = workspace.clone();
+            let client_for_actions = client.clone();
+            let thread_id_for_actions = thread_id.clone();
+            let proxy_actions = proxy.clone();
+            let cwd_for_actions = cwd_string.clone();
+            tokio::task::spawn_blocking(move || {
+                while let Ok(action) = action_rx.recv() {
+                    workspace_for_actions.dispatch(action.clone());
+                    if let UserAction::Message { text, .. } = action {
+                        let client = client_for_actions.clone();
+                        let thread_id = thread_id_for_actions.clone();
+                        let proxy = proxy_actions.clone();
+                        let cwd = cwd_for_actions.clone();
+                        handle.spawn(async move {
+                            let thread_id = thread_id.lock().await.clone();
+                            let Some(thread_id) = thread_id else {
+                                let _ = proxy.send_event(AppEvent::AppServerEvent {
+                                    message: json!({
+                                        "method": "codex/error",
+                                        "params": { "message": "Codex thread not ready" }
+                                    })
+                                    .to_string(),
+                                });
+                                return;
+                            };
+
+                            let params = TurnStartParams {
+                                thread_id,
+                                input: vec![UserInput::Text { text }],
+                                model: None,
+                                effort: None,
+                                summary: None,
+                                approval_policy: Some(AskForApproval::Never),
+                                sandbox_policy: Some(SandboxPolicy::WorkspaceWrite {
+                                    writable_roots: vec![cwd.clone()],
+                                    network_access: true,
+                                    exclude_tmpdir_env_var: false,
+                                    exclude_slash_tmp: false,
+                                }),
+                                cwd: Some(cwd),
+                            };
+
+                            if let Err(err) = client.turn_start(params).await {
+                                let _ = proxy.send_event(AppEvent::AppServerEvent {
+                                    message: json!({
+                                        "method": "codex/error",
+                                        "params": { "message": err.to_string() }
+                                    })
+                                    .to_string(),
+                                });
+                            }
+                        });
+                    }
+                }
+            });
+
+            futures::future::pending::<()>().await;
         });
     });
 }
