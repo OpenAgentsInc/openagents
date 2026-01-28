@@ -1,5 +1,5 @@
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::path::PathBuf;
 use std::rc::Rc;
 
@@ -309,6 +309,14 @@ enum PaneKind {
     Identity,
 }
 
+#[derive(Clone, Debug)]
+enum HotbarAction {
+    FocusPane(String),
+    ToggleEvents,
+    ToggleIdentity,
+    NewChat,
+}
+
 #[derive(Clone, Copy, Debug)]
 struct PaneRect {
     x: f32,
@@ -482,21 +490,16 @@ pub struct MinimalRoot {
     pane_store: PaneStore,
     pane_frames: HashMap<String, PaneFrame>,
     pane_bounds: HashMap<String, Bounds>,
-    chat_pane_id: Option<String>,
+    chat_panes: HashMap<String, ChatPaneState>,
+    pending_session_panes: VecDeque<String>,
+    session_to_pane: HashMap<SessionId, String>,
+    thread_to_pane: HashMap<String, String>,
     next_chat_index: u64,
     hotbar: Hotbar,
     hotbar_bounds: Bounds,
-    model_dropdown: Dropdown,
-    model_bounds: Bounds,
-    model_hovered: bool,
-    pending_model_changes: Rc<RefCell<Vec<String>>>,
-    selected_model: String,
     copy_button: Button,
     copy_bounds: Bounds,
     pending_copy: Rc<RefCell<bool>>,
-    new_chat_button: Button,
-    new_chat_bounds: Bounds,
-    pending_new_chat: Rc<RefCell<bool>>,
     keygen_button: Button,
     keygen_bounds: Bounds,
     pending_keygen: Rc<RefCell<bool>>,
@@ -505,6 +508,36 @@ pub struct MinimalRoot {
     spark_pubkey_hex: Option<String>,
     seed_phrase: Option<String>,
     nostr_error: Option<String>,
+    send_handler: Option<Box<dyn FnMut(UserAction)>>,
+    event_log: Vec<String>,
+    event_log_dirty: bool,
+    event_scroll: ScrollView,
+    event_scroll_bounds: Bounds,
+    hotbar_bindings: HashMap<u8, HotbarAction>,
+}
+
+#[derive(Clone, Debug)]
+struct QueuedMessage {
+    text: String,
+}
+
+#[derive(Clone, Debug)]
+struct ReasoningEntry {
+    summary: String,
+    content: String,
+    entry_index: usize,
+}
+
+struct ChatPaneState {
+    session_id: Option<SessionId>,
+    thread_id: Option<String>,
+    thread_model: Option<String>,
+    active_turn_id: Option<String>,
+    model_dropdown: Dropdown,
+    model_bounds: Bounds,
+    model_hovered: bool,
+    pending_model_changes: Rc<RefCell<Vec<String>>>,
+    selected_model: String,
     formatted_thread: ThreadView,
     formatted_thread_bounds: Bounds,
     formatted_message_streams: HashMap<String, StreamingMarkdown>,
@@ -524,36 +557,18 @@ pub struct MinimalRoot {
     full_auto_bounds: Bounds,
     pending_full_auto: Rc<RefCell<bool>>,
     full_auto_enabled: bool,
-    queued_by_thread: HashMap<String, Vec<QueuedMessage>>,
-    queued_in_flight: Option<String>,
-    send_handler: Option<Box<dyn FnMut(UserAction)>>,
+    queued_messages: Vec<QueuedMessage>,
+    queued_in_flight: bool,
+    new_chat_button: Button,
+    new_chat_bounds: Bounds,
+    pending_new_chat: Rc<RefCell<bool>>,
     stop_button: Button,
     stop_bounds: Bounds,
     pending_stop: Rc<RefCell<bool>>,
-    session_id: Option<SessionId>,
-    event_log: Vec<String>,
-    event_log_dirty: bool,
-    event_scroll: ScrollView,
-    event_scroll_bounds: Bounds,
-    thread_model: Option<String>,
-    thread_id: Option<String>,
-    active_turn_id: Option<String>,
 }
 
-#[derive(Clone, Debug)]
-struct QueuedMessage {
-    text: String,
-}
-
-#[derive(Clone, Debug)]
-struct ReasoningEntry {
-    summary: String,
-    content: String,
-    entry_index: usize,
-}
-
-impl MinimalRoot {
-    pub fn new() -> Self {
+impl ChatPaneState {
+    fn new(default_model: &str) -> Self {
         let pending_model_changes = Rc::new(RefCell::new(Vec::new()));
         let pending_models = pending_model_changes.clone();
         let model_dropdown = Dropdown::new(build_model_options())
@@ -562,17 +577,6 @@ impl MinimalRoot {
             .padding(12.0, 6.0)
             .on_change(move |_, value| {
                 pending_models.borrow_mut().push(value.to_string());
-            });
-
-        let pending_copy = Rc::new(RefCell::new(false));
-        let pending_copy_click = pending_copy.clone();
-        let copy_button = Button::new("Copy")
-            .variant(ButtonVariant::Secondary)
-            .font_size(theme::font_size::XS)
-            .padding(12.0, 6.0)
-            .corner_radius(6.0)
-            .on_click(move || {
-                *pending_copy_click.borrow_mut() = true;
             });
 
         let pending_new_chat = Rc::new(RefCell::new(false));
@@ -584,17 +588,6 @@ impl MinimalRoot {
             .corner_radius(6.0)
             .on_click(move || {
                 *pending_new_chat_click.borrow_mut() = true;
-            });
-
-        let pending_keygen = Rc::new(RefCell::new(false));
-        let pending_keygen_click = pending_keygen.clone();
-        let keygen_button = Button::new("Generate keys")
-            .variant(ButtonVariant::Secondary)
-            .font_size(theme::font_size::XS + 4.0)
-            .padding(12.0, 6.0)
-            .corner_radius(6.0)
-            .on_click(move || {
-                *pending_keygen_click.borrow_mut() = true;
             });
 
         let formatted_thread = ThreadView::new().item_spacing(8.0);
@@ -647,42 +640,16 @@ impl MinimalRoot {
                 *pending_stop_click.borrow_mut() = true;
             });
 
-        let event_scroll = ScrollView::new().show_scrollbar(true).scrollbar_width(6.0);
-        let hotbar = Hotbar::new()
-            .item_size(HOTBAR_ITEM_SIZE)
-            .padding(HOTBAR_PADDING)
-            .gap(HOTBAR_ITEM_GAP)
-            .corner_radius(8.0);
-        let mut root = Self {
-            event_context: EventContext::new(),
-            cursor_position: Point::ZERO,
-            screen_size: Size::new(1280.0, 720.0),
-            pane_store: PaneStore::default(),
-            pane_frames: HashMap::new(),
-            pane_bounds: HashMap::new(),
-            chat_pane_id: None,
-            next_chat_index: 1,
-            hotbar,
-            hotbar_bounds: Bounds::ZERO,
+        Self {
+            session_id: None,
+            thread_id: None,
+            thread_model: Some(default_model.to_string()),
+            active_turn_id: None,
             model_dropdown,
             model_bounds: Bounds::ZERO,
             model_hovered: false,
             pending_model_changes,
-            selected_model: DEFAULT_THREAD_MODEL.to_string(),
-            copy_button,
-            copy_bounds: Bounds::ZERO,
-            pending_copy,
-            new_chat_button,
-            new_chat_bounds: Bounds::ZERO,
-            pending_new_chat,
-            keygen_button,
-            keygen_bounds: Bounds::ZERO,
-            pending_keygen,
-            nostr_npub: None,
-            nostr_nsec: None,
-            spark_pubkey_hex: None,
-            seed_phrase: None,
-            nostr_error: None,
+            selected_model: default_model.to_string(),
             formatted_thread,
             formatted_thread_bounds: Bounds::ZERO,
             formatted_message_streams: HashMap::new(),
@@ -702,330 +669,105 @@ impl MinimalRoot {
             full_auto_bounds: Bounds::ZERO,
             pending_full_auto,
             full_auto_enabled: false,
-            queued_by_thread: HashMap::new(),
-            queued_in_flight: None,
-            send_handler: None,
+            queued_messages: Vec::new(),
+            queued_in_flight: false,
+            new_chat_button,
+            new_chat_bounds: Bounds::ZERO,
+            pending_new_chat,
             stop_button,
             stop_bounds: Bounds::ZERO,
             pending_stop,
-            session_id: None,
-            event_log: Vec::new(),
-            event_log_dirty: false,
-            event_scroll,
-            event_scroll_bounds: Bounds::ZERO,
-            thread_model: Some(DEFAULT_THREAD_MODEL.to_string()),
-            thread_id: None,
-            active_turn_id: None,
-        };
-
-        let screen = Size::new(1280.0, 720.0);
-        root.open_chat_pane(screen, true);
-        root
-    }
-
-    pub fn apply_event(&mut self, event: AppEvent) {
-        match event {
-            AppEvent::SessionStarted { session_id, .. } => {
-                self.session_id = Some(session_id);
-            }
-            AppEvent::AppServerEvent { message } => {
-                if let Ok(value) = serde_json::from_str::<Value>(&message) {
-                    if let Some(method) = value.get("method").and_then(|m| m.as_str())
-                        && method == "thread/started"
-                    {
-                        if let Some(thread_id) = value
-                            .get("params")
-                            .and_then(|params| params.get("threadId"))
-                            .and_then(|id| id.as_str())
-                            .or_else(|| {
-                                value
-                                    .get("params")
-                                    .and_then(|params| params.get("thread"))
-                                    .and_then(|thread| thread.get("id"))
-                                    .and_then(|id| id.as_str())
-                            })
-                        {
-                            self.thread_id = Some(thread_id.to_string());
-                        }
-                        if let Some(model) = value
-                            .get("params")
-                            .and_then(|params| params.get("model"))
-                            .and_then(|m| m.as_str())
-                            .or_else(|| {
-                                value
-                                    .get("params")
-                                    .and_then(|params| params.get("thread"))
-                                    .and_then(|thread| thread.get("model"))
-                                    .and_then(|m| m.as_str())
-                            })
-                        {
-                            self.thread_model = Some(model.to_string());
-                            self.selected_model = model.to_string();
-                            if let Some(index) = model_index(model) {
-                                self.model_dropdown.set_selected(Some(index));
-                            }
-                        }
-                    }
-
-                    if let Some(method) = value.get("method").and_then(|m| m.as_str())
-                        && method == "turn/started"
-                    {
-                        if let Some(turn_id) = value
-                            .get("params")
-                            .and_then(|params| params.get("turnId"))
-                            .and_then(|id| id.as_str())
-                            .or_else(|| {
-                                value
-                                    .get("params")
-                                    .and_then(|params| params.get("turn"))
-                                    .and_then(|turn| turn.get("id"))
-                                    .and_then(|id| id.as_str())
-                            })
-                        {
-                            self.active_turn_id = Some(turn_id.to_string());
-                            self.queued_in_flight = None;
-                            self.show_working_indicator();
-                        }
-                    }
-
-                    if let Some(method) = value.get("method").and_then(|m| m.as_str())
-                        && (method == "turn/completed"
-                            || method == "turn/failed"
-                            || method == "turn/aborted"
-                            || method == "turn/interrupted")
-                    {
-                        let completed_turn = value
-                            .get("params")
-                            .and_then(|params| params.get("turnId"))
-                            .and_then(|id| id.as_str())
-                            .or_else(|| {
-                                value
-                                    .get("params")
-                                    .and_then(|params| params.get("turn"))
-                                    .and_then(|turn| turn.get("id"))
-                                    .and_then(|id| id.as_str())
-                            });
-                        if completed_turn
-                            .map(|id| self.active_turn_id.as_deref() == Some(id))
-                            .unwrap_or(true)
-                        {
-                            self.active_turn_id = None;
-                            self.flush_queue_if_idle();
-                            self.clear_working_indicator();
-                        }
-                    }
-
-                    if let Some(method) = value.get("method").and_then(|m| m.as_str())
-                        && method == "fullauto/status"
-                    {
-                        if let Some(enabled) = value
-                            .get("params")
-                            .and_then(|params| params.get("enabled"))
-                            .and_then(|value| value.as_bool())
-                        {
-                            self.full_auto_enabled = enabled;
-                        }
-                    }
-
-                    if let Some(method) = value.get("method").and_then(|m| m.as_str())
-                        && method == "fullauto/decision"
-                    {
-                        if let Some(action) = value
-                            .get("params")
-                            .and_then(|params| params.get("action"))
-                            .and_then(|value| value.as_str())
-                        {
-                            if action != "continue" {
-                                self.full_auto_enabled = false;
-                            }
-                        }
-                    }
-
-                    self.apply_formatted_event(&value);
-                }
-
-                self.event_log.push(message);
-                if self.event_log.len() > 200 {
-                    let drain = self.event_log.len() - 200;
-                    self.event_log.drain(0..drain);
-                }
-                self.event_log_dirty = true;
-            }
-            _ => {}
         }
     }
 
-    pub fn set_send_handler<F>(&mut self, handler: F)
-    where
-        F: FnMut(UserAction) + 'static,
-    {
-        self.send_handler = Some(Box::new(handler));
+    fn reset_chat_state(&mut self) {
+        self.formatted_thread.clear();
+        self.formatted_message_streams.clear();
+        self.formatted_message_entries.clear();
+        self.reasoning_entries.clear();
+        self.tool_entries.clear();
+        self.last_user_message = None;
+        self.working_entry_index = None;
+        self.queued_messages.clear();
+        self.queued_in_flight = false;
+        self.active_turn_id = None;
+        self.thread_id = None;
+        self.thread_model = Some(self.selected_model.clone());
+        self.full_auto_enabled = false;
+        self.input.set_value("");
+        self.input_needs_focus = true;
+        self.submit_button
+            .set_disabled(self.input.get_value().trim().is_empty());
     }
 
-    fn screen_size(&self) -> Size {
-        self.screen_size
+    fn take_pending_sends(&mut self) -> Vec<String> {
+        let mut pending = self.pending_sends.borrow_mut();
+        let items = pending.clone();
+        pending.clear();
+        items
     }
 
-    fn set_screen_size(&mut self, size: Size) {
-        self.screen_size = size;
+    fn take_pending_new_chat(&mut self) -> bool {
+        let mut pending = self.pending_new_chat.borrow_mut();
+        let value = *pending;
+        *pending = false;
+        value
     }
 
-    fn open_chat_pane(&mut self, screen: Size, reset_chat: bool) -> String {
-        if let Some(existing) = self.chat_pane_id.take() {
-            self.pane_store.remove_pane(&existing, true);
+    fn take_pending_stop(&mut self) -> bool {
+        let mut pending = self.pending_stop.borrow_mut();
+        let value = *pending;
+        *pending = false;
+        value
+    }
+
+    fn take_pending_full_auto(&mut self) -> bool {
+        let mut pending = self.pending_full_auto.borrow_mut();
+        let value = *pending;
+        *pending = false;
+        value
+    }
+
+    fn take_pending_models(&mut self) -> Vec<String> {
+        let mut pending = self.pending_model_changes.borrow_mut();
+        let models = pending.clone();
+        pending.clear();
+        models
+    }
+
+    fn set_session_id(&mut self, session_id: SessionId) {
+        self.session_id = Some(session_id);
+    }
+
+    fn update_thread_model(&mut self, model: &str) {
+        self.thread_model = Some(model.to_string());
+        self.selected_model = model.to_string();
+        if let Some(index) = model_index(model) {
+            self.model_dropdown.set_selected(Some(index));
         }
-
-        let id = format!("chat-{}", self.next_chat_index);
-        self.next_chat_index += 1;
-        let rect = calculate_new_pane_position(
-            self.pane_store.last_pane_position,
-            screen,
-            CHAT_PANE_WIDTH,
-            CHAT_PANE_HEIGHT,
-        );
-        let pane = Pane {
-            id: id.clone(),
-            kind: PaneKind::Chat,
-            title: "Chat".to_string(),
-            rect: ensure_pane_visible(rect, screen),
-            dismissable: true,
-        };
-        self.pane_store.add_pane(pane);
-        self.chat_pane_id = Some(id.clone());
-
-        if reset_chat {
-            self.reset_chat_state();
-        }
-
-        id
-    }
-
-    fn toggle_events_pane(&mut self, screen: Size) {
-        let last_position = self.pane_store.last_pane_position;
-        self.pane_store.toggle_pane("events", screen, |snapshot| {
-            let rect = snapshot
-                .as_ref()
-                .map(|snapshot| snapshot.rect)
-                .unwrap_or_else(|| {
-                    calculate_new_pane_position(
-                        last_position,
-                        screen,
-                        EVENTS_PANE_WIDTH,
-                        EVENTS_PANE_HEIGHT,
-                    )
-                });
-            Pane {
-                id: "events".to_string(),
-                kind: PaneKind::Events,
-                title: "Codex Events".to_string(),
-                rect,
-                dismissable: true,
-            }
-        });
-    }
-
-    fn toggle_identity_pane(&mut self, screen: Size) {
-        let last_position = self.pane_store.last_pane_position;
-        self.pane_store.toggle_pane("identity", screen, |snapshot| {
-            let rect = snapshot
-                .as_ref()
-                .map(|snapshot| snapshot.rect)
-                .unwrap_or_else(|| {
-                    calculate_new_pane_position(
-                        last_position,
-                        screen,
-                        IDENTITY_PANE_WIDTH,
-                        IDENTITY_PANE_HEIGHT,
-                    )
-                });
-            Pane {
-                id: "identity".to_string(),
-                kind: PaneKind::Identity,
-                title: "Identity".to_string(),
-                rect,
-                dismissable: true,
-            }
-        });
-    }
-
-    fn close_pane(&mut self, id: &str) {
-        self.pane_store.remove_pane(id, true);
-        self.pane_frames.remove(id);
-        self.pane_bounds.remove(id);
-        if self.chat_pane_id.as_deref() == Some(id) {
-            self.chat_pane_id = None;
-        }
-    }
-
-    fn handle_hotbar_slot(&mut self, slot: u8) -> bool {
-        let screen = self.screen_size();
-        match slot {
-            1 => {
-                if let Some(chat_id) = self.chat_pane_id.clone() {
-                    if self.pane_store.is_active(&chat_id) {
-                        self.close_pane(&chat_id);
-                    } else {
-                        self.pane_store.bring_to_front(&chat_id);
-                    }
-                } else {
-                    self.open_chat_pane(screen, false);
-                }
-                true
-            }
-            2 => {
-                self.toggle_events_pane(screen);
-                true
-            }
-            3 => {
-                self.toggle_identity_pane(screen);
-                true
-            }
-            _ => false,
-        }
-    }
-
-    fn pane_at(&self, point: Point) -> Option<String> {
-        for pane in self.pane_store.panes().iter().rev() {
-            if let Some(bounds) = self.pane_bounds.get(&pane.id) {
-                if bounds.contains(point) {
-                    return Some(pane.id.clone());
-                }
-            }
-        }
-        None
     }
 
     fn is_processing(&self) -> bool {
-        self.active_turn_id.is_some() || self.queued_in_flight.is_some()
+        self.active_turn_id.is_some() || self.queued_in_flight
     }
 
     fn current_queue(&self) -> &[QueuedMessage] {
-        let Some(thread_id) = self.thread_id.as_deref() else {
-            return &[];
-        };
-        self.queued_by_thread
-            .get(thread_id)
-            .map(|queue| queue.as_slice())
-            .unwrap_or(&[])
+        self.queued_messages.as_slice()
     }
 
-    fn enqueue_message(&mut self, text: String) -> bool {
-        let Some(thread_id) = self.thread_id.clone() else {
-            return false;
-        };
-        let entry = QueuedMessage { text };
-        self.queued_by_thread
-            .entry(thread_id)
-            .or_default()
-            .push(entry);
-        true
+    fn enqueue_message(&mut self, text: String) {
+        self.queued_messages.push(QueuedMessage { text });
     }
 
-    fn dispatch_message(&mut self, text: String) {
+    fn dispatch_message(
+        &mut self,
+        text: String,
+        send_handler: &mut Option<Box<dyn FnMut(UserAction)>>,
+    ) {
         let Some(session_id) = self.session_id else {
             return;
         };
-        let Some(handler) = self.send_handler.as_mut() else {
+        let Some(handler) = send_handler.as_mut() else {
             return;
         };
         handler(UserAction::Message {
@@ -1033,26 +775,21 @@ impl MinimalRoot {
             text,
             model: Some(self.selected_model.clone()),
         });
-        if let Some(thread_id) = self.thread_id.clone() {
-            self.queued_in_flight = Some(thread_id);
-        }
+        self.queued_in_flight = true;
     }
 
-    fn flush_queue_if_idle(&mut self) {
+    fn flush_queue_if_idle(&mut self, send_handler: &mut Option<Box<dyn FnMut(UserAction)>>) {
         if self.is_processing() {
             return;
         }
-        let Some(thread_id) = self.thread_id.clone() else {
-            return;
-        };
-        let Some(queue) = self.queued_by_thread.get_mut(&thread_id) else {
-            return;
-        };
-        if queue.is_empty() {
+        if self.thread_id.is_none() {
             return;
         }
-        let next = queue.remove(0);
-        self.dispatch_message(next.text);
+        if self.queued_messages.is_empty() {
+            return;
+        }
+        let next = self.queued_messages.remove(0);
+        self.dispatch_message(next.text, send_handler);
     }
 
     fn apply_formatted_event(&mut self, value: &Value) {
@@ -1413,28 +1150,6 @@ impl MinimalRoot {
         self.working_entry_index = None;
     }
 
-    fn reset_chat_state(&mut self) {
-        self.formatted_thread.clear();
-        self.formatted_message_streams.clear();
-        self.formatted_message_entries.clear();
-        self.reasoning_entries.clear();
-        self.tool_entries.clear();
-        self.last_user_message = None;
-        self.working_entry_index = None;
-        self.event_log.clear();
-        self.event_log_dirty = true;
-        self.queued_by_thread.clear();
-        self.queued_in_flight = None;
-        self.active_turn_id = None;
-        self.thread_id = None;
-        self.thread_model = Some(self.selected_model.clone());
-        self.full_auto_enabled = false;
-        self.input.set_value("");
-        self.input_needs_focus = true;
-        self.submit_button
-            .set_disabled(self.input.get_value().trim().is_empty());
-    }
-
     fn ensure_reasoning_entry(&mut self, item_id: &str) -> usize {
         if let Some(entry) = self.reasoning_entries.get(item_id) {
             return entry.entry_index;
@@ -1646,6 +1361,389 @@ impl MinimalRoot {
             }
         }
     }
+}
+
+impl MinimalRoot {
+    pub fn new() -> Self {
+        let pending_copy = Rc::new(RefCell::new(false));
+        let pending_copy_click = pending_copy.clone();
+        let copy_button = Button::new("Copy")
+            .variant(ButtonVariant::Secondary)
+            .font_size(theme::font_size::XS)
+            .padding(12.0, 6.0)
+            .corner_radius(6.0)
+            .on_click(move || {
+                *pending_copy_click.borrow_mut() = true;
+            });
+
+        let pending_keygen = Rc::new(RefCell::new(false));
+        let pending_keygen_click = pending_keygen.clone();
+        let keygen_button = Button::new("Generate keys")
+            .variant(ButtonVariant::Secondary)
+            .font_size(theme::font_size::XS + 4.0)
+            .padding(12.0, 6.0)
+            .corner_radius(6.0)
+            .on_click(move || {
+                *pending_keygen_click.borrow_mut() = true;
+            });
+
+        let event_scroll = ScrollView::new().show_scrollbar(true).scrollbar_width(6.0);
+        let hotbar = Hotbar::new()
+            .item_size(HOTBAR_ITEM_SIZE)
+            .padding(HOTBAR_PADDING)
+            .gap(HOTBAR_ITEM_GAP)
+            .corner_radius(8.0);
+        let mut root = Self {
+            event_context: EventContext::new(),
+            cursor_position: Point::ZERO,
+            screen_size: Size::new(1280.0, 720.0),
+            pane_store: PaneStore::default(),
+            pane_frames: HashMap::new(),
+            pane_bounds: HashMap::new(),
+            chat_panes: HashMap::new(),
+            pending_session_panes: VecDeque::new(),
+            session_to_pane: HashMap::new(),
+            thread_to_pane: HashMap::new(),
+            next_chat_index: 1,
+            hotbar,
+            hotbar_bounds: Bounds::ZERO,
+            copy_button,
+            copy_bounds: Bounds::ZERO,
+            pending_copy,
+            keygen_button,
+            keygen_bounds: Bounds::ZERO,
+            pending_keygen,
+            nostr_npub: None,
+            nostr_nsec: None,
+            spark_pubkey_hex: None,
+            seed_phrase: None,
+            nostr_error: None,
+            send_handler: None,
+            event_log: Vec::new(),
+            event_log_dirty: false,
+            event_scroll,
+            event_scroll_bounds: Bounds::ZERO,
+            hotbar_bindings: HashMap::new(),
+        };
+
+        let screen = Size::new(1280.0, 720.0);
+        root.open_chat_pane(screen, true, true);
+        root
+    }
+
+    pub fn apply_event(&mut self, event: AppEvent) {
+        match event {
+            AppEvent::SessionStarted { session_id, .. } => {
+                let pane_id = self
+                    .pending_session_panes
+                    .pop_front()
+                    .unwrap_or_else(|| self.open_chat_pane(self.screen_size(), true, false));
+                if let Some(chat) = self.chat_panes.get_mut(&pane_id) {
+                    chat.set_session_id(session_id);
+                }
+                self.session_to_pane.insert(session_id, pane_id);
+            }
+            AppEvent::AppServerEvent { message } => {
+                if let Ok(value) = serde_json::from_str::<Value>(&message) {
+                    let method = value.get("method").and_then(|m| m.as_str()).unwrap_or("");
+                    let params = value.get("params");
+                    let session_hint = params
+                        .and_then(|p| p.get("sessionId").or_else(|| p.get("session_id")))
+                        .and_then(|id| id.as_str());
+                    let thread_hint = params
+                        .and_then(|p| p.get("threadId").or_else(|| p.get("thread_id")))
+                        .and_then(|id| id.as_str())
+                        .or_else(|| {
+                            params
+                                .and_then(|p| p.get("thread"))
+                                .and_then(|thread| thread.get("id"))
+                                .and_then(|id| id.as_str())
+                        });
+
+                    let pane_id = session_hint
+                        .and_then(|session_id| self.pane_for_session_id(session_id))
+                        .or_else(|| {
+                            thread_hint
+                                .and_then(|thread_id| self.thread_to_pane.get(thread_id).cloned())
+                        })
+                        .or_else(|| self.first_chat_without_thread());
+
+                    if let Some(pane_id) = pane_id {
+                        if let Some(chat) = self.chat_panes.get_mut(&pane_id) {
+                            if method == "thread/started" {
+                                if let Some(thread_id) = thread_hint {
+                                    chat.thread_id = Some(thread_id.to_string());
+                                    self.thread_to_pane
+                                        .insert(thread_id.to_string(), pane_id.clone());
+                                }
+                                if let Some(model) = params
+                                    .and_then(|p| p.get("model"))
+                                    .and_then(|m| m.as_str())
+                                    .or_else(|| {
+                                        params
+                                            .and_then(|p| p.get("thread"))
+                                            .and_then(|thread| thread.get("model"))
+                                            .and_then(|m| m.as_str())
+                                    })
+                                {
+                                    chat.update_thread_model(model);
+                                }
+                            }
+
+                            if method == "turn/started" {
+                                if let Some(turn_id) = params
+                                    .and_then(|p| p.get("turnId"))
+                                    .and_then(|id| id.as_str())
+                                    .or_else(|| {
+                                        params
+                                            .and_then(|p| p.get("turn"))
+                                            .and_then(|turn| turn.get("id"))
+                                            .and_then(|id| id.as_str())
+                                    })
+                                {
+                                    chat.active_turn_id = Some(turn_id.to_string());
+                                    chat.queued_in_flight = false;
+                                    chat.show_working_indicator();
+                                }
+                            }
+
+                            if matches!(
+                                method,
+                                "turn/completed"
+                                    | "turn/failed"
+                                    | "turn/aborted"
+                                    | "turn/interrupted"
+                            ) {
+                                let completed_turn = params
+                                    .and_then(|p| p.get("turnId"))
+                                    .and_then(|id| id.as_str())
+                                    .or_else(|| {
+                                        params
+                                            .and_then(|p| p.get("turn"))
+                                            .and_then(|turn| turn.get("id"))
+                                            .and_then(|id| id.as_str())
+                                    });
+                                if completed_turn
+                                    .map(|id| chat.active_turn_id.as_deref() == Some(id))
+                                    .unwrap_or(true)
+                                {
+                                    chat.active_turn_id = None;
+                                    chat.clear_working_indicator();
+                                    chat.flush_queue_if_idle(&mut self.send_handler);
+                                }
+                            }
+
+                            if method == "fullauto/status" {
+                                if let Some(enabled) = params
+                                    .and_then(|p| p.get("enabled"))
+                                    .and_then(|value| value.as_bool())
+                                {
+                                    chat.full_auto_enabled = enabled;
+                                }
+                            }
+
+                            if method == "fullauto/decision" {
+                                if let Some(action) = params
+                                    .and_then(|p| p.get("action"))
+                                    .and_then(|value| value.as_str())
+                                {
+                                    if action != "continue" {
+                                        chat.full_auto_enabled = false;
+                                    }
+                                }
+                            }
+
+                            chat.apply_formatted_event(&value);
+                        }
+                    }
+                }
+
+                self.event_log.push(message);
+                if self.event_log.len() > 200 {
+                    let drain = self.event_log.len() - 200;
+                    self.event_log.drain(0..drain);
+                }
+                self.event_log_dirty = true;
+            }
+            _ => {}
+        }
+    }
+
+    pub fn set_send_handler<F>(&mut self, handler: F)
+    where
+        F: FnMut(UserAction) + 'static,
+    {
+        self.send_handler = Some(Box::new(handler));
+    }
+
+    fn screen_size(&self) -> Size {
+        self.screen_size
+    }
+
+    fn set_screen_size(&mut self, size: Size) {
+        self.screen_size = size;
+    }
+
+    fn open_chat_pane(&mut self, screen: Size, reset_chat: bool, request_session: bool) -> String {
+        let id = format!("chat-{}", self.next_chat_index);
+        self.next_chat_index += 1;
+        let rect = calculate_new_pane_position(
+            self.pane_store.last_pane_position,
+            screen,
+            CHAT_PANE_WIDTH,
+            CHAT_PANE_HEIGHT,
+        );
+        let pane = Pane {
+            id: id.clone(),
+            kind: PaneKind::Chat,
+            title: "Chat".to_string(),
+            rect: ensure_pane_visible(rect, screen),
+            dismissable: true,
+        };
+        self.pane_store.add_pane(pane);
+
+        let mut chat_state = ChatPaneState::new(DEFAULT_THREAD_MODEL);
+        if reset_chat {
+            chat_state.reset_chat_state();
+        }
+        self.chat_panes.insert(id.clone(), chat_state);
+        if request_session {
+            self.pending_session_panes.push_back(id.clone());
+        }
+
+        id
+    }
+
+    fn toggle_events_pane(&mut self, screen: Size) {
+        let last_position = self.pane_store.last_pane_position;
+        self.pane_store.toggle_pane("events", screen, |snapshot| {
+            let rect = snapshot
+                .as_ref()
+                .map(|snapshot| snapshot.rect)
+                .unwrap_or_else(|| {
+                    calculate_new_pane_position(
+                        last_position,
+                        screen,
+                        EVENTS_PANE_WIDTH,
+                        EVENTS_PANE_HEIGHT,
+                    )
+                });
+            Pane {
+                id: "events".to_string(),
+                kind: PaneKind::Events,
+                title: "Codex Events".to_string(),
+                rect,
+                dismissable: true,
+            }
+        });
+    }
+
+    fn toggle_identity_pane(&mut self, screen: Size) {
+        let last_position = self.pane_store.last_pane_position;
+        self.pane_store.toggle_pane("identity", screen, |snapshot| {
+            let rect = snapshot
+                .as_ref()
+                .map(|snapshot| snapshot.rect)
+                .unwrap_or_else(|| {
+                    calculate_new_pane_position(
+                        last_position,
+                        screen,
+                        IDENTITY_PANE_WIDTH,
+                        IDENTITY_PANE_HEIGHT,
+                    )
+                });
+            Pane {
+                id: "identity".to_string(),
+                kind: PaneKind::Identity,
+                title: "Identity".to_string(),
+                rect,
+                dismissable: true,
+            }
+        });
+    }
+
+    fn close_pane(&mut self, id: &str) {
+        self.pane_store.remove_pane(id, true);
+        self.pane_frames.remove(id);
+        self.pane_bounds.remove(id);
+        if let Some(chat) = self.chat_panes.remove(id) {
+            if let Some(session_id) = chat.session_id {
+                self.session_to_pane.remove(&session_id);
+            }
+            if let Some(thread_id) = chat.thread_id {
+                self.thread_to_pane.remove(&thread_id);
+            }
+        }
+    }
+
+    fn handle_hotbar_slot(&mut self, slot: u8) -> bool {
+        let screen = self.screen_size();
+        let Some(action) = self.hotbar_bindings.get(&slot).cloned() else {
+            return false;
+        };
+        match action {
+            HotbarAction::FocusPane(pane_id) => {
+                if self.pane_store.is_active(&pane_id) {
+                    self.close_pane(&pane_id);
+                } else {
+                    self.pane_store.bring_to_front(&pane_id);
+                }
+                true
+            }
+            HotbarAction::ToggleEvents => {
+                self.toggle_events_pane(screen);
+                true
+            }
+            HotbarAction::ToggleIdentity => {
+                self.toggle_identity_pane(screen);
+                true
+            }
+            HotbarAction::NewChat => {
+                let new_pane = self.open_chat_pane(screen, true, true);
+                let session_id = self
+                    .pane_store
+                    .active_pane_id
+                    .as_ref()
+                    .and_then(|id| self.chat_panes.get(id))
+                    .and_then(|chat| chat.session_id)
+                    .or_else(|| self.session_to_pane.keys().next().copied())
+                    .unwrap_or_else(SessionId::new);
+                if let Some(handler) = self.send_handler.as_mut() {
+                    handler(UserAction::NewChat {
+                        session_id,
+                        model: Some(DEFAULT_THREAD_MODEL.to_string()),
+                    });
+                }
+                self.pane_store.bring_to_front(&new_pane);
+                true
+            }
+        }
+    }
+
+    fn pane_for_session_id(&self, session_id: &str) -> Option<String> {
+        self.session_to_pane
+            .iter()
+            .find(|(id, _)| id.to_string() == session_id)
+            .map(|(_, pane)| pane.clone())
+    }
+
+    fn first_chat_without_thread(&self) -> Option<String> {
+        self.chat_panes
+            .iter()
+            .find(|(_, chat)| chat.thread_id.is_none())
+            .map(|(id, _)| id.clone())
+    }
+
+    fn pane_at(&self, point: Point) -> Option<String> {
+        for pane in self.pane_store.panes().iter().rev() {
+            if let Some(bounds) = self.pane_bounds.get(&pane.id) {
+                if bounds.contains(point) {
+                    return Some(pane.id.clone());
+                }
+            }
+        }
+        None
+    }
 
     pub fn handle_input(&mut self, event: &InputEvent, _bounds: Bounds) -> bool {
         if let InputEvent::KeyDown { key, modifiers } = event {
@@ -1668,14 +1766,24 @@ impl MinimalRoot {
                 && !modifiers.ctrl
                 && !modifiers.alt
                 && !modifiers.meta
-                && self.input.is_focused()
-                && self.is_processing()
             {
-                let value = self.input.get_value().trim().to_string();
-                if !value.is_empty() && self.enqueue_message(value) {
-                    self.input.set_value("");
-                    self.submit_button.set_disabled(true);
-                    return true;
+                let focused_chat = self
+                    .chat_panes
+                    .iter()
+                    .find(|(_, chat)| chat.input.is_focused())
+                    .map(|(id, _)| id.clone());
+                if let Some(chat_id) = focused_chat {
+                    if let Some(chat) = self.chat_panes.get_mut(&chat_id) {
+                        if chat.is_processing() {
+                            let value = chat.input.get_value().trim().to_string();
+                            if !value.is_empty() {
+                                chat.enqueue_message(value);
+                                chat.input.set_value("");
+                                chat.submit_button.set_disabled(true);
+                                return true;
+                            }
+                        }
+                    }
                 }
             }
 
@@ -1695,12 +1803,14 @@ impl MinimalRoot {
         | InputEvent::MouseUp { x, y, .. } = event
         {
             self.cursor_position = Point::new(*x, *y);
-            self.input_hovered = self.input_bounds.contains(self.cursor_position);
-            self.model_hovered = if SHOW_MODEL_DROPDOWN {
-                self.model_bounds.contains(self.cursor_position)
-            } else {
-                false
-            };
+            for chat in self.chat_panes.values_mut() {
+                chat.input_hovered = chat.input_bounds.contains(self.cursor_position);
+                chat.model_hovered = if SHOW_MODEL_DROPDOWN {
+                    chat.model_bounds.contains(self.cursor_position)
+                } else {
+                    false
+                };
+            }
         }
 
         let mut handled = matches!(
@@ -1741,84 +1851,86 @@ impl MinimalRoot {
                 if let Some(pane) = self.pane_store.pane(&pane_id) {
                     match pane.kind {
                         PaneKind::Chat => {
-                            let dropdown_handled = if SHOW_MODEL_DROPDOWN {
-                                matches!(
-                                    self.model_dropdown.event(
+                            if let Some(chat) = self.chat_panes.get_mut(&pane_id) {
+                                let dropdown_handled = if SHOW_MODEL_DROPDOWN {
+                                    matches!(
+                                        chat.model_dropdown.event(
+                                            event,
+                                            chat.model_bounds,
+                                            &mut self.event_context
+                                        ),
+                                        EventResult::Handled
+                                    )
+                                } else {
+                                    false
+                                };
+
+                                let new_chat_handled = matches!(
+                                    chat.new_chat_button.event(
                                         event,
-                                        self.model_bounds,
+                                        chat.new_chat_bounds,
                                         &mut self.event_context
                                     ),
                                     EventResult::Handled
-                                )
-                            } else {
-                                false
-                            };
+                                );
 
-                            let new_chat_handled = matches!(
-                                self.new_chat_button.event(
-                                    event,
-                                    self.new_chat_bounds,
-                                    &mut self.event_context
-                                ),
-                                EventResult::Handled
-                            );
-
-                            let full_auto_handled = matches!(
-                                self.full_auto_button.event(
-                                    event,
-                                    self.full_auto_bounds,
-                                    &mut self.event_context
-                                ),
-                                EventResult::Handled
-                            );
-
-                            let formatted_handled = if self
-                                .formatted_thread_bounds
-                                .contains(self.cursor_position)
-                            {
-                                matches!(
-                                    self.formatted_thread.event(
+                                let full_auto_handled = matches!(
+                                    chat.full_auto_button.event(
                                         event,
-                                        self.formatted_thread_bounds,
+                                        chat.full_auto_bounds,
                                         &mut self.event_context
                                     ),
                                     EventResult::Handled
-                                )
-                            } else {
-                                false
-                            };
+                                );
 
-                            let input_handled = matches!(
-                                self.input
-                                    .event(event, self.input_bounds, &mut self.event_context),
-                                EventResult::Handled
-                            );
+                                let formatted_handled = if chat
+                                    .formatted_thread_bounds
+                                    .contains(self.cursor_position)
+                                {
+                                    matches!(
+                                        chat.formatted_thread.event(
+                                            event,
+                                            chat.formatted_thread_bounds,
+                                            &mut self.event_context
+                                        ),
+                                        EventResult::Handled
+                                    )
+                                } else {
+                                    false
+                                };
 
-                            let submit_handled = matches!(
-                                self.submit_button.event(
-                                    event,
-                                    self.submit_bounds,
-                                    &mut self.event_context
-                                ),
-                                EventResult::Handled
-                            );
+                                let input_handled = matches!(
+                                    chat.input
+                                        .event(event, chat.input_bounds, &mut self.event_context),
+                                    EventResult::Handled
+                                );
 
-                            let stop_handled = matches!(
-                                self.stop_button.event(
-                                    event,
-                                    self.stop_bounds,
-                                    &mut self.event_context
-                                ),
-                                EventResult::Handled
-                            );
+                                let submit_handled = matches!(
+                                    chat.submit_button.event(
+                                        event,
+                                        chat.submit_bounds,
+                                        &mut self.event_context
+                                    ),
+                                    EventResult::Handled
+                                );
 
-                            handled |= dropdown_handled
-                                || new_chat_handled
-                                || full_auto_handled
-                                || formatted_handled
-                                || input_handled
-                                || submit_handled
-                                || stop_handled;
+                                let stop_handled = matches!(
+                                    chat.stop_button.event(
+                                        event,
+                                        chat.stop_bounds,
+                                        &mut self.event_context
+                                    ),
+                                    EventResult::Handled
+                                );
+
+                                handled |= dropdown_handled
+                                    || new_chat_handled
+                                    || full_auto_handled
+                                    || formatted_handled
+                                    || input_handled
+                                    || submit_handled
+                                    || stop_handled;
+                            }
                         }
                         PaneKind::Events => {
                             let copy_handled = matches!(
@@ -1857,16 +1969,8 @@ impl MinimalRoot {
             }
         }
 
-        let pending_models = {
-            let mut pending = self.pending_model_changes.borrow_mut();
-            let models = pending.clone();
-            pending.clear();
-            models
-        };
-
-        if let Some(model) = pending_models.last() {
-            self.selected_model = model.clone();
-        }
+        let mut new_chat_requested = false;
+        let mut new_chat_session: Option<SessionId> = None;
 
         let should_generate = {
             let mut pending = self.pending_keygen.borrow_mut();
@@ -1910,103 +2014,94 @@ impl MinimalRoot {
             let _ = copy_to_clipboard(&block);
         }
 
-        let should_new_chat = {
-            let mut pending = self.pending_new_chat.borrow_mut();
-            let value = *pending;
-            *pending = false;
-            value
-        };
+        let chat_ids: Vec<String> = self.chat_panes.keys().cloned().collect();
+        for chat_id in chat_ids {
+            if let Some(chat) = self.chat_panes.get_mut(&chat_id) {
+                let pending_models = chat.take_pending_models();
+                if let Some(model) = pending_models.last() {
+                    chat.selected_model = model.clone();
+                }
 
-        if should_new_chat {
+                if chat.take_pending_new_chat() {
+                    new_chat_requested = true;
+                    if new_chat_session.is_none() {
+                        new_chat_session = chat.session_id;
+                    }
+                }
+
+                if chat.take_pending_stop() {
+                    if let (Some(session_id), Some(handler)) =
+                        (chat.session_id, self.send_handler.as_mut())
+                    {
+                        handler(UserAction::Interrupt {
+                            session_id,
+                            thread_id: chat.thread_id.clone(),
+                            turn_id: chat.active_turn_id.clone(),
+                        });
+                    }
+                }
+
+                if chat.take_pending_full_auto() {
+                    let enabled = !chat.full_auto_enabled;
+                    chat.full_auto_enabled = enabled;
+                    if let (Some(session_id), Some(handler)) =
+                        (chat.session_id, self.send_handler.as_mut())
+                    {
+                        handler(UserAction::FullAutoToggle {
+                            session_id,
+                            enabled,
+                            thread_id: chat.thread_id.clone(),
+                            continue_prompt: None,
+                        });
+                    }
+                }
+
+                let pending_messages = chat.take_pending_sends();
+                if !pending_messages.is_empty() {
+                    let mut messages = Vec::new();
+                    for message in pending_messages {
+                        if message.trim().is_empty() {
+                            let value = chat.input.get_value().trim().to_string();
+                            if !value.is_empty() {
+                                messages.push(value);
+                            }
+                        } else {
+                            messages.push(message);
+                        }
+                    }
+
+                    if !messages.is_empty() {
+                        for message in messages {
+                            chat.dispatch_message(message, &mut self.send_handler);
+                        }
+                        chat.input.set_value("");
+                        chat.input.focus();
+                        chat.input_needs_focus = false;
+                        chat.submit_button
+                            .set_disabled(chat.input.get_value().trim().is_empty());
+                    }
+                }
+
+                chat.submit_button
+                    .set_disabled(chat.input.get_value().trim().is_empty());
+                chat.stop_button.set_disabled(chat.thread_id.is_none());
+            }
+        }
+
+        if new_chat_requested {
             let screen = self.screen_size();
-            self.open_chat_pane(screen, true);
-            if let (Some(session_id), Some(handler)) = (self.session_id, self.send_handler.as_mut())
-            {
+            self.open_chat_pane(screen, true, true);
+            let session_id = new_chat_session
+                .or_else(|| self.session_to_pane.keys().next().copied())
+                .unwrap_or_else(SessionId::new);
+            if let Some(handler) = self.send_handler.as_mut() {
                 handler(UserAction::NewChat {
                     session_id,
-                    model: Some(self.selected_model.clone()),
+                    model: Some(DEFAULT_THREAD_MODEL.to_string()),
                 });
             }
             return true;
         }
-
-        let should_stop = {
-            let mut pending = self.pending_stop.borrow_mut();
-            let value = *pending;
-            *pending = false;
-            value
-        };
-
-        if should_stop {
-            if let (Some(session_id), Some(handler)) = (self.session_id, self.send_handler.as_mut())
-            {
-                handler(UserAction::Interrupt {
-                    session_id,
-                    thread_id: self.thread_id.clone(),
-                    turn_id: self.active_turn_id.clone(),
-                });
-            }
-            return true;
-        }
-
-        let should_toggle_full_auto = {
-            let mut pending = self.pending_full_auto.borrow_mut();
-            let value = *pending;
-            *pending = false;
-            value
-        };
-
-        if should_toggle_full_auto {
-            let enabled = !self.full_auto_enabled;
-            self.full_auto_enabled = enabled;
-            if let (Some(session_id), Some(handler)) = (self.session_id, self.send_handler.as_mut())
-            {
-                handler(UserAction::FullAutoToggle {
-                    session_id,
-                    enabled,
-                    thread_id: self.thread_id.clone(),
-                    continue_prompt: None,
-                });
-            }
-            return true;
-        }
-
-        let pending_messages = {
-            let mut pending = self.pending_sends.borrow_mut();
-            let messages = pending.clone();
-            pending.clear();
-            messages
-        };
-
-        if !pending_messages.is_empty() {
-            let mut messages = Vec::new();
-            for message in pending_messages {
-                if message.trim().is_empty() {
-                    let value = self.input.get_value().trim().to_string();
-                    if !value.is_empty() {
-                        messages.push(value);
-                    }
-                } else {
-                    messages.push(message);
-                }
-            }
-
-            if !messages.is_empty() {
-                for message in messages {
-                    self.dispatch_message(message);
-                }
-                self.input.set_value("");
-                self.input.focus();
-                self.submit_button
-                    .set_disabled(self.input.get_value().trim().is_empty());
-                return true;
-            }
-        }
-
-        self.submit_button
-            .set_disabled(self.input.get_value().trim().is_empty());
-        self.stop_button
-            .set_disabled(self.thread_id.is_none());
 
         handled
     }
@@ -2020,21 +2115,46 @@ impl MinimalRoot {
             .any(|frame| frame.is_close_hovered())
         {
             Cursor::Pointer
-        } else if self.submit_button.is_hovered() && !self.submit_button.is_disabled() {
+        } else if self
+            .chat_panes
+            .values()
+            .any(|chat| chat.submit_button.is_hovered() && !chat.submit_button.is_disabled())
+        {
             Cursor::Pointer
-        } else if self.stop_button.is_hovered() && !self.stop_button.is_disabled() {
+        } else if self
+            .chat_panes
+            .values()
+            .any(|chat| chat.stop_button.is_hovered() && !chat.stop_button.is_disabled())
+        {
             Cursor::Pointer
-        } else if self.new_chat_button.is_hovered() && !self.new_chat_button.is_disabled() {
+        } else if self
+            .chat_panes
+            .values()
+            .any(|chat| chat.new_chat_button.is_hovered() && !chat.new_chat_button.is_disabled())
+        {
             Cursor::Pointer
         } else if self.keygen_button.is_hovered() {
             Cursor::Pointer
-        } else if self.full_auto_button.is_hovered() && !self.full_auto_button.is_disabled() {
+        } else if self
+            .chat_panes
+            .values()
+            .any(|chat| chat.full_auto_button.is_hovered() && !chat.full_auto_button.is_disabled())
+        {
             Cursor::Pointer
         } else if self.copy_button.is_hovered() && !self.copy_button.is_disabled() {
             Cursor::Pointer
-        } else if SHOW_MODEL_DROPDOWN && (self.model_hovered || self.model_dropdown.is_open()) {
+        } else if SHOW_MODEL_DROPDOWN
+            && self
+                .chat_panes
+                .values()
+                .any(|chat| chat.model_hovered || chat.model_dropdown.is_open())
+        {
             Cursor::Pointer
-        } else if self.input_hovered || self.input.is_focused() {
+        } else if self
+            .chat_panes
+            .values()
+            .any(|chat| chat.input_hovered || chat.input.is_focused())
+        {
             Cursor::Text
         } else {
             Cursor::Default
@@ -2061,11 +2181,6 @@ impl Component for MinimalRoot {
         self.copy_bounds = Bounds::ZERO;
         self.event_scroll_bounds = Bounds::ZERO;
         self.keygen_bounds = Bounds::ZERO;
-        self.new_chat_bounds = Bounds::ZERO;
-        self.full_auto_bounds = Bounds::ZERO;
-        self.input_bounds = Bounds::ZERO;
-        self.submit_bounds = Bounds::ZERO;
-        self.stop_bounds = Bounds::ZERO;
 
         self.pane_bounds.clear();
 
@@ -2091,7 +2206,11 @@ impl Component for MinimalRoot {
 
             let content_bounds = frame.content_bounds();
             match pane.kind {
-                PaneKind::Chat => paint_chat_pane(self, content_bounds, cx),
+                PaneKind::Chat => {
+                    if let Some(chat) = self.chat_panes.get_mut(&pane.id) {
+                        paint_chat_pane(chat, content_bounds, cx);
+                    }
+                }
                 PaneKind::Events => paint_events_pane(self, content_bounds, cx),
                 PaneKind::Identity => paint_identity_pane(self, content_bounds, cx),
             }
@@ -2106,29 +2225,67 @@ impl Component for MinimalRoot {
         let bar_bounds = Bounds::new(bar_x, bar_y, bar_width, HOTBAR_HEIGHT);
         self.hotbar_bounds = bar_bounds;
 
-        let chat_active = self
-            .chat_pane_id
-            .as_ref()
-            .map(|id| self.pane_store.is_active(id))
-            .unwrap_or(false);
+        let mut items = Vec::new();
+        self.hotbar_bindings.clear();
 
-        let items = vec![
-            HotbarSlot::new(1, "CH", "Chat").active(chat_active),
-            HotbarSlot::new(2, "EV", "Events").active(self.pane_store.is_active("events")),
-            HotbarSlot::new(3, "ID", "Identity").active(self.pane_store.is_active("identity")),
-            HotbarSlot::new(4, "", "Slot 4").ghost(true),
-            HotbarSlot::new(5, "", "Slot 5").ghost(true),
-            HotbarSlot::new(6, "", "Slot 6").ghost(true),
-            HotbarSlot::new(7, "", "Slot 7").ghost(true),
-            HotbarSlot::new(8, "", "Slot 8").ghost(true),
-            HotbarSlot::new(9, "", "Slot 9").ghost(true),
-        ];
+        let mut slot: u8 = 1;
+        let chat_ids: Vec<String> = self
+            .pane_store
+            .panes()
+            .iter()
+            .filter(|pane| pane.kind == PaneKind::Chat)
+            .map(|pane| pane.id.clone())
+            .collect();
+
+        for (idx, pane_id) in chat_ids.iter().enumerate() {
+            if slot > 9 {
+                break;
+            }
+            let title = format!("Chat {}", idx + 1);
+            items.push(
+                HotbarSlot::new(slot, "CH", title).active(self.pane_store.is_active(pane_id)),
+            );
+            self.hotbar_bindings
+                .insert(slot, HotbarAction::FocusPane(pane_id.clone()));
+            slot += 1;
+        }
+
+        if slot <= 9 {
+            items.push(HotbarSlot::new(slot, "+", "New chat"));
+            self.hotbar_bindings.insert(slot, HotbarAction::NewChat);
+            slot += 1;
+        }
+
+        if slot <= 9 {
+            items.push(
+                HotbarSlot::new(slot, "EV", "Events")
+                    .active(self.pane_store.is_active("events")),
+            );
+            self.hotbar_bindings
+                .insert(slot, HotbarAction::ToggleEvents);
+            slot += 1;
+        }
+
+        if slot <= 9 {
+            items.push(
+                HotbarSlot::new(slot, "ID", "Identity")
+                    .active(self.pane_store.is_active("identity")),
+            );
+            self.hotbar_bindings
+                .insert(slot, HotbarAction::ToggleIdentity);
+            slot += 1;
+        }
+
+        while slot <= 9 {
+            items.push(HotbarSlot::new(slot, "", format!("Slot {}", slot)).ghost(true));
+            slot += 1;
+        }
         self.hotbar.set_items(items);
         self.hotbar.paint(bar_bounds, cx);
     }
 }
 
-fn paint_chat_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintContext) {
+fn paint_chat_pane(chat: &mut ChatPaneState, bounds: Bounds, cx: &mut PaintContext) {
     let padding_x = 24.0;
     let padding_top = 12.0;
     let padding_bottom = 16.0;
@@ -2141,19 +2298,19 @@ fn paint_chat_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintContext
         header_height,
     );
 
-    let full_auto_label = if root.full_auto_enabled {
+    let full_auto_label = if chat.full_auto_enabled {
         "Full Auto On"
     } else {
         "Full Auto Off"
     };
-    root.full_auto_button.set_label(full_auto_label);
-    root.full_auto_button.set_variant(if root.full_auto_enabled {
+    chat.full_auto_button.set_label(full_auto_label);
+    chat.full_auto_button.set_variant(if chat.full_auto_enabled {
         ButtonVariant::Primary
     } else {
         ButtonVariant::Secondary
     });
-    root.full_auto_button
-        .set_disabled(root.thread_id.is_none());
+    chat.full_auto_button
+        .set_disabled(chat.thread_id.is_none());
     let button_font = theme::font_size::XS;
     let full_auto_label_width =
         cx.text
@@ -2166,11 +2323,11 @@ fn paint_chat_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintContext
         button_width,
         button_height,
     );
-    root.full_auto_bounds = button_bounds;
-    root.full_auto_button.paint(button_bounds, cx);
+    chat.full_auto_bounds = button_bounds;
+    chat.full_auto_button.paint(button_bounds, cx);
 
-    root.new_chat_button
-        .set_disabled(root.session_id.is_none());
+    chat.new_chat_button
+        .set_disabled(chat.session_id.is_none());
     let new_chat_label = "New chat";
     let new_chat_label_width =
         cx.text
@@ -2182,11 +2339,11 @@ fn paint_chat_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintContext
         new_chat_width,
         button_height,
     );
-    root.new_chat_bounds = new_chat_bounds;
-    root.new_chat_button.paint(new_chat_bounds, cx);
+    chat.new_chat_bounds = new_chat_bounds;
+    chat.new_chat_button.paint(new_chat_bounds, cx);
 
-    let model = root.thread_model.as_deref().unwrap_or(DEFAULT_THREAD_MODEL);
-    let thread_id = root.thread_id.as_deref().unwrap_or("unknown-thread");
+    let model = chat.thread_model.as_deref().unwrap_or(DEFAULT_THREAD_MODEL);
+    let thread_id = chat.thread_id.as_deref().unwrap_or("unknown-thread");
     let thread_line_bounds = Bounds::new(
         header_bounds.origin.x,
         header_bounds.origin.y + header_height + 6.0,
@@ -2258,15 +2415,15 @@ fn paint_chat_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintContext
             .color(theme::text::MUTED)
             .paint(label_bounds, cx);
 
-        root.model_bounds = dropdown_bounds;
+        chat.model_bounds = dropdown_bounds;
         description_top = selector_bounds.origin.y + selector_height + 6.0;
     } else {
-        root.model_bounds = Bounds::ZERO;
+        chat.model_bounds = Bounds::ZERO;
     }
 
-    if !root.current_queue().is_empty() {
+    if !chat.current_queue().is_empty() {
         let mut queue_text = String::from("Queued");
-        for item in root.current_queue() {
+        for item in chat.current_queue() {
             if item.text.trim().is_empty() {
                 continue;
             }
@@ -2289,7 +2446,7 @@ fn paint_chat_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintContext
         description_top = queue_bounds.origin.y + queue_bounds.size.height + 12.0;
     }
 
-    let input_height = input_bar_height(root, bounds.size.width, cx);
+    let input_height = input_bar_height(chat, bounds.size.width, cx);
     let input_bounds = Bounds::new(
         bounds.origin.x,
         bounds.origin.y + bounds.size.height - input_height,
@@ -2305,18 +2462,18 @@ fn paint_chat_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintContext
         header_bounds.size.width,
         (feed_bottom - feed_top).max(0.0),
     );
-    root.formatted_thread_bounds = feed_bounds;
+    chat.formatted_thread_bounds = feed_bounds;
 
-    if root.formatted_thread.entry_count() != 0 {
-        root.formatted_thread.paint(feed_bounds, cx);
+    if chat.formatted_thread.entry_count() != 0 {
+        chat.formatted_thread.paint(feed_bounds, cx);
     }
 
     // Paint dropdown last so the menu overlays the rest of the feed.
     if SHOW_MODEL_DROPDOWN {
-        root.model_dropdown.paint(dropdown_bounds, cx);
+        chat.model_dropdown.paint(dropdown_bounds, cx);
     }
 
-    paint_input_bar(root, input_bounds, cx);
+    paint_input_bar(chat, input_bounds, cx);
 }
 
 struct InputBarMetrics {
@@ -2328,7 +2485,7 @@ struct InputBarMetrics {
 }
 
 fn input_bar_metrics(
-    root: &mut MinimalRoot,
+    chat: &mut ChatPaneState,
     available_width: f32,
     cx: &mut PaintContext,
 ) -> InputBarMetrics {
@@ -2348,11 +2505,11 @@ fn input_bar_metrics(
     total_width = total_width.min(available_width - padding_x * 2.0);
     let input_width = (total_width - send_width - stop_width - gap * 2.0).max(120.0);
 
-    root.input.set_max_width(input_width);
+    chat.input.set_max_width(input_width);
     let line_height = button_font * 1.4;
     let padding_y = theme::spacing::XS;
     let min_height = line_height * INPUT_MIN_LINES as f32 + padding_y * 2.0;
-    let mut input_height = root.input.current_height().max(min_height);
+    let mut input_height = chat.input.current_height().max(min_height);
     if let Some(max_lines) = INPUT_MAX_LINES {
         let max_height = line_height * max_lines as f32 + padding_y * 2.0;
         input_height = input_height.min(max_height);
@@ -2367,16 +2524,16 @@ fn input_bar_metrics(
     }
 }
 
-fn input_bar_height(root: &mut MinimalRoot, available_width: f32, cx: &mut PaintContext) -> f32 {
-    let metrics = input_bar_metrics(root, available_width, cx);
+fn input_bar_height(chat: &mut ChatPaneState, available_width: f32, cx: &mut PaintContext) -> f32 {
+    let metrics = input_bar_metrics(chat, available_width, cx);
     let padding_y = theme::spacing::MD;
     (metrics.input_height + padding_y * 2.0).max(BOTTOM_BAR_MIN_HEIGHT)
 }
 
-fn paint_input_bar(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintContext) {
+fn paint_input_bar(chat: &mut ChatPaneState, bounds: Bounds, cx: &mut PaintContext) {
     let gap = 8.0;
     let padding_y = theme::spacing::MD;
-    let metrics = input_bar_metrics(root, bounds.size.width, cx);
+    let metrics = input_bar_metrics(chat, bounds.size.width, cx);
 
     let bar_x = bounds.origin.x + (bounds.size.width - metrics.total_width) / 2.0;
     let bar_y = bounds.origin.y + bounds.size.height - metrics.input_height - padding_y;
@@ -2394,22 +2551,22 @@ fn paint_input_bar(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintContext
         metrics.input_height,
     );
 
-    root.input_bounds = input_bounds;
-    root.submit_bounds = submit_bounds;
-    root.stop_bounds = stop_bounds;
-    root.input.set_max_width(input_bounds.size.width);
-    root.submit_button
-        .set_disabled(root.input.get_value().trim().is_empty());
-    root.stop_button
-        .set_disabled(root.thread_id.is_none());
-    if root.input_needs_focus {
-        root.input.focus();
-        root.input_needs_focus = false;
+    chat.input_bounds = input_bounds;
+    chat.submit_bounds = submit_bounds;
+    chat.stop_bounds = stop_bounds;
+    chat.input.set_max_width(input_bounds.size.width);
+    chat.submit_button
+        .set_disabled(chat.input.get_value().trim().is_empty());
+    chat.stop_button
+        .set_disabled(chat.thread_id.is_none());
+    if chat.input_needs_focus {
+        chat.input.focus();
+        chat.input_needs_focus = false;
     }
 
-    root.input.paint(input_bounds, cx);
-    root.stop_button.paint(stop_bounds, cx);
-    root.submit_button.paint(submit_bounds, cx);
+    chat.input.paint(input_bounds, cx);
+    chat.stop_button.paint(stop_bounds, cx);
+    chat.submit_button.paint(submit_bounds, cx);
 }
 
 fn paint_identity_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintContext) {
