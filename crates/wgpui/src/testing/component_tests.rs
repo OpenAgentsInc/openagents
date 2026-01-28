@@ -176,7 +176,6 @@ fn test_acp_atoms_are_components() {
     assert_component::<atoms::EarningsBadge>();
     assert_component::<atoms::EntryMarker>();
     assert_component::<atoms::EventKindBadge>();
-    assert_component::<atoms::FeedbackButton>();
     assert_component::<atoms::GoalProgressBadge>();
     assert_component::<atoms::IssueStatusBadge>();
     assert_component::<atoms::JobStatusBadge>();

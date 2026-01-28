@@ -1,4 +1,3 @@
-use crate::components::atoms::{FeedbackButton, FeedbackType};
 use crate::components::context::{EventContext, PaintContext};
 use crate::components::{Component, ComponentId, EventResult};
 use crate::{Bounds, InputEvent, MouseButton, Point, theme};
@@ -13,16 +12,12 @@ pub enum EntryAction {
 
 pub struct EntryActions {
     id: Option<ComponentId>,
-    show_feedback: bool,
     show_copy: bool,
     show_retry: bool,
     show_edit: bool,
     show_delete: bool,
-    feedback_up: bool,
-    feedback_down: bool,
     hovered_action: Option<EntryAction>,
     on_action: Option<Box<dyn FnMut(EntryAction)>>,
-    on_feedback: Option<Box<dyn FnMut(FeedbackType)>>,
     /// Last triggered action (for polling instead of callbacks).
     triggered_action: Option<EntryAction>,
 }
@@ -31,16 +26,12 @@ impl EntryActions {
     pub fn new() -> Self {
         Self {
             id: None,
-            show_feedback: true,
             show_copy: true,
             show_retry: false,
             show_edit: false,
             show_delete: false,
-            feedback_up: false,
-            feedback_down: false,
             hovered_action: None,
             on_action: None,
-            on_feedback: None,
             triggered_action: None,
         }
     }
@@ -52,11 +43,6 @@ impl EntryActions {
 
     pub fn with_id(mut self, id: ComponentId) -> Self {
         self.id = Some(id);
-        self
-    }
-
-    pub fn show_feedback(mut self, show: bool) -> Self {
-        self.show_feedback = show;
         self
     }
 
@@ -88,14 +74,6 @@ impl EntryActions {
         self
     }
 
-    pub fn on_feedback<F>(mut self, f: F) -> Self
-    where
-        F: FnMut(FeedbackType) + 'static,
-    {
-        self.on_feedback = Some(Box::new(f));
-        self
-    }
-
     fn action_buttons(&self) -> Vec<(&str, EntryAction)> {
         let mut buttons = Vec::new();
         if self.show_copy {
@@ -123,28 +101,7 @@ impl Default for EntryActions {
 impl Component for EntryActions {
     fn paint(&mut self, bounds: Bounds, cx: &mut PaintContext) {
         let mut x = bounds.origin.x;
-        let btn_size = 24.0;
         let gap = theme::spacing::XS;
-
-        if self.show_feedback {
-            let mut up_btn = FeedbackButton::thumbs_up()
-                .size(btn_size)
-                .selected(self.feedback_up);
-            up_btn.paint(
-                Bounds::new(x, bounds.origin.y, btn_size, bounds.size.height),
-                cx,
-            );
-            x += btn_size + gap;
-
-            let mut down_btn = FeedbackButton::thumbs_down()
-                .size(btn_size)
-                .selected(self.feedback_down);
-            down_btn.paint(
-                Bounds::new(x, bounds.origin.y, btn_size, bounds.size.height),
-                cx,
-            );
-            x += btn_size + theme::spacing::SM;
-        }
 
         let font_size = theme::font_size::XS;
         let text_y = bounds.origin.y + bounds.size.height * 0.5 - font_size * 0.55;
@@ -165,7 +122,6 @@ impl Component for EntryActions {
     }
 
     fn event(&mut self, event: &InputEvent, bounds: Bounds, _cx: &mut EventContext) -> EventResult {
-        let btn_size = 24.0;
         let gap = theme::spacing::XS;
 
         match event {
@@ -177,9 +133,6 @@ impl Component for EntryActions {
                 }
 
                 let mut action_x = bounds.origin.x;
-                if self.show_feedback {
-                    action_x += btn_size * 2.0 + gap + theme::spacing::SM;
-                }
 
                 let font_size = theme::font_size::XS;
                 for (label, action) in self.action_buttons() {
@@ -197,31 +150,6 @@ impl Component for EntryActions {
                     let click = Point::new(*x, *y);
 
                     let mut current_x = bounds.origin.x;
-                    if self.show_feedback {
-                        let up_bounds =
-                            Bounds::new(current_x, bounds.origin.y, btn_size, bounds.size.height);
-                        if up_bounds.contains(click) {
-                            self.feedback_up = !self.feedback_up;
-                            self.feedback_down = false;
-                            if let Some(cb) = &mut self.on_feedback {
-                                cb(FeedbackType::ThumbsUp);
-                            }
-                            return EventResult::Handled;
-                        }
-                        current_x += btn_size + gap;
-
-                        let down_bounds =
-                            Bounds::new(current_x, bounds.origin.y, btn_size, bounds.size.height);
-                        if down_bounds.contains(click) {
-                            self.feedback_down = !self.feedback_down;
-                            self.feedback_up = false;
-                            if let Some(cb) = &mut self.on_feedback {
-                                cb(FeedbackType::ThumbsDown);
-                            }
-                            return EventResult::Handled;
-                        }
-                        current_x += btn_size + theme::spacing::SM;
-                    }
 
                     let font_size = theme::font_size::XS;
                     for (label, action) in self.action_buttons() {
@@ -265,7 +193,6 @@ mod tests {
     #[test]
     fn test_entry_actions_new() {
         let actions = EntryActions::new();
-        assert!(actions.show_feedback);
         assert!(actions.show_copy);
     }
 
@@ -273,12 +200,10 @@ mod tests {
     fn test_entry_actions_builder() {
         let actions = EntryActions::new()
             .with_id(1)
-            .show_feedback(false)
             .show_retry(true)
             .show_delete(true);
 
         assert_eq!(actions.id, Some(1));
-        assert!(!actions.show_feedback);
         assert!(actions.show_retry);
         assert!(actions.show_delete);
     }
@@ -288,7 +213,6 @@ mod tests {
         let called = Rc::new(Cell::new(false));
         let called_clone = called.clone();
         let mut actions = EntryActions::new()
-            .show_feedback(false)
             .on_action(move |action| {
                 if action == EntryAction::Copy {
                     called_clone.set(true);
