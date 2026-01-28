@@ -303,8 +303,6 @@ test("VirtualList - Renders Visible Only")
 | `ThinkingToggle - Toggle Off` | Hides thinking content |
 | `PermissionButton - Allow` | Allow action triggered |
 | `PermissionButton - Deny` | Deny action triggered |
-| `FeedbackButton - Thumbs Up` | Positive feedback recorded |
-| `FeedbackButton - Thumbs Down` | Negative feedback recorded |
 
 ---
 
