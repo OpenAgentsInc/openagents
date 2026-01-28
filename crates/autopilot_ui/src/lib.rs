@@ -13,8 +13,8 @@ use wgpui::components::sections::{MessageEditor, ThreadView};
 use wgpui::components::Text;
 use wgpui::input::InputEvent;
 use wgpui::{
-    Bounds, Button, Component, EventResult, Hsla, LayoutEngine, LayoutStyle, PaintContext, Point,
-    Quad, ScrollView, Size, text::FontStyle, theme, length, px,
+    Bounds, Button, Component, EventResult, LayoutEngine, LayoutStyle, PaintContext, Point, Quad,
+    ScrollView, Size, text::FontStyle, theme, length, px,
 };
 
 const PANEL_PADDING: f32 = 12.0;
@@ -104,17 +104,39 @@ pub struct DesktopRoot {
 }
 
 pub struct MinimalRoot {
-    title: &'static str,
-    subtitle: &'static str,
-    button_label: &'static str,
+    title: String,
+    subtitle: String,
+    button_label: String,
+    button: Button,
+    button_bounds: Bounds,
+    event_context: EventContext,
+    pending_clicks: Rc<RefCell<u32>>,
+    disabled: bool,
 }
 
 impl MinimalRoot {
     pub fn new() -> Self {
+        let pending_clicks = Rc::new(RefCell::new(0u32));
+        let pending = pending_clicks.clone();
+        let button = Button::new("Continue")
+            .font_size(theme::font_size::SM)
+            .padding(16.0, 8.0)
+            .corner_radius(8.0)
+            .background(theme::accent::PRIMARY)
+            .text_color(theme::bg::APP)
+            .on_click(move || {
+                *pending.borrow_mut() += 1;
+            });
+
         Self {
-            title: "Autopilot Desktop",
-            subtitle: "WGPUI minimal shell is live.",
-            button_label: "Continue",
+            title: "Autopilot Desktop".to_string(),
+            subtitle: "WGPUI minimal shell is live.".to_string(),
+            button_label: "Continue".to_string(),
+            button,
+            button_bounds: Bounds::ZERO,
+            event_context: EventContext::new(),
+            pending_clicks,
+            disabled: false,
         }
     }
 
@@ -126,8 +148,44 @@ impl MinimalRoot {
     {
     }
 
-    pub fn handle_input(&mut self, _event: &InputEvent, _bounds: Bounds) -> bool {
-        false
+    pub fn handle_input(&mut self, event: &InputEvent, _bounds: Bounds) -> bool {
+        if let InputEvent::KeyDown { key, .. } = event {
+            if let wgpui::input::Key::Character(value) = key
+                && value.eq_ignore_ascii_case("d")
+            {
+                self.disabled = !self.disabled;
+                self.button.set_disabled(self.disabled);
+                self.subtitle = if self.disabled {
+                    "Button disabled (press D to re-enable).".to_string()
+                } else {
+                    "Button enabled.".to_string()
+                };
+                return true;
+            }
+        }
+
+        let handled = matches!(
+            self.button
+                .event(event, self.button_bounds, &mut self.event_context),
+            EventResult::Handled
+        );
+
+        let clicks = {
+            let mut pending = self.pending_clicks.borrow_mut();
+            let count = *pending;
+            *pending = 0;
+            count
+        };
+        if clicks > 0 {
+            self.subtitle = format!("Button clicked {clicks}x.");
+            if self.button_label != "Clicked" {
+                self.button_label = "Clicked".to_string();
+                self.button.set_label(self.button_label.clone());
+            }
+            return true;
+        }
+
+        handled
     }
 }
 
@@ -139,18 +197,10 @@ impl Default for MinimalRoot {
 
 impl Component for MinimalRoot {
     fn paint(&mut self, bounds: Bounds, cx: &mut PaintContext) {
-        let app_bg = Hsla::from_hex(0x0A0A0A);
-        let card_bg = Hsla::from_hex(0x1A1A1A);
-        let border = Hsla::from_hex(0xFFFFFF).with_alpha(0.1);
-        let text_primary = Hsla::from_hex(0xCCCCCC);
-        let text_muted = Hsla::from_hex(0x888888);
-        let button_bg = Hsla::from_hex(0xCCCCCC);
-        let button_text = Hsla::from_hex(0x0A0A0A);
-
         cx.scene.draw_quad(
             Quad::new(bounds)
-                .with_background(app_bg)
-                .with_border(border, 1.0),
+                .with_background(theme::bg::APP)
+                .with_border(theme::border::DEFAULT, 1.0),
         );
 
         let padding = 24.0;
@@ -165,8 +215,8 @@ impl Component for MinimalRoot {
 
         cx.scene.draw_quad(
             Quad::new(card_bounds)
-                .with_background(card_bg)
-                .with_border(border, 1.0)
+                .with_background(theme::bg::SURFACE)
+                .with_border(theme::border::DEFAULT, 1.0)
                 .with_corner_radius(12.0),
         );
 
@@ -176,10 +226,10 @@ impl Component for MinimalRoot {
             card_bounds.size.width - 40.0,
             30.0,
         );
-        Text::new(self.title)
+        Text::new(self.title.as_str())
             .font_size(theme::font_size::XL)
             .bold()
-            .color(text_primary)
+            .color(theme::text::PRIMARY)
             .paint(title_bounds, cx);
 
         let subtitle_bounds = Bounds::new(
@@ -188,15 +238,15 @@ impl Component for MinimalRoot {
             card_bounds.size.width - 40.0,
             24.0,
         );
-        Text::new(self.subtitle)
+        Text::new(self.subtitle.as_str())
             .font_size(theme::font_size::BASE)
-            .color(text_muted)
+            .color(theme::text::MUTED)
             .paint(subtitle_bounds, cx);
 
         let button_font = theme::font_size::SM;
         let label_width =
             cx.text
-                .measure_styled_mono(self.button_label, button_font, FontStyle::default());
+                .measure_styled_mono(&self.button_label, button_font, FontStyle::default());
         let button_padding_x = 16.0;
         let button_width = (label_width + button_padding_x * 2.0).max(96.0);
         let button_height = 36.0;
@@ -206,14 +256,8 @@ impl Component for MinimalRoot {
             button_width,
             button_height,
         );
-
-        let mut button = Button::new(self.button_label)
-            .font_size(button_font)
-            .padding(16.0, 8.0)
-            .corner_radius(8.0)
-            .background(button_bg)
-            .text_color(button_text);
-        button.paint(button_bounds, cx);
+        self.button_bounds = button_bounds;
+        self.button.paint(button_bounds, cx);
     }
 }
 

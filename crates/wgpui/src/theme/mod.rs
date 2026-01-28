@@ -229,40 +229,40 @@ pub mod duration {
 pub mod bg {
     use crate::color::Hsla;
 
-    /// Main app background (#000000)
-    pub const APP: Hsla = Hsla::new(0.0, 0.0, 0.0, 1.0);
+    /// Main app background (#0A0A0A)
+    pub const APP: Hsla = Hsla::new(0.0, 0.0, 0.039, 1.0);
 
     /// Surface/card background - matches `bg-card` (#1a1a1a)
     pub const SURFACE: Hsla = Hsla::new(0.0, 0.0, 0.102, 1.0);
 
-    /// Muted background - matches `bg-muted` (#262626)
-    pub const MUTED: Hsla = Hsla::new(0.0, 0.0, 0.149, 1.0);
+    /// Muted background - matches `bg-muted` (#2A2A2A)
+    pub const MUTED: Hsla = Hsla::new(0.0, 0.0, 0.165, 1.0);
 
     /// Code block background (#101010)
     pub const CODE: Hsla = Hsla::new(0.0, 0.0, 0.063, 1.0);
 
-    /// Elevated surface (#0d0d0d)
-    pub const ELEVATED: Hsla = Hsla::new(0.0, 0.0, 0.051, 1.0);
+    /// Elevated surface (#0A0A0A)
+    pub const ELEVATED: Hsla = Hsla::new(0.0, 0.0, 0.039, 1.0);
 
-    /// Hover state background (#333333)
-    pub const HOVER: Hsla = Hsla::new(0.0, 0.0, 0.200, 1.0);
+    /// Hover state background (#1A1A1A)
+    pub const HOVER: Hsla = Hsla::new(0.0, 0.0, 0.102, 1.0);
 
-    /// Selected/active state (#3f3f3f)
-    pub const SELECTED: Hsla = Hsla::new(0.0, 0.0, 0.247, 1.0);
+    /// Selected/active state (#2A2A2A)
+    pub const SELECTED: Hsla = Hsla::new(0.0, 0.0, 0.165, 1.0);
 }
 
 /// Text colors aligned with Tailwind's dark theme.
 pub mod text {
     use crate::color::Hsla;
 
-    /// Primary text - matches `text-foreground` (#fafafa)
-    pub const PRIMARY: Hsla = Hsla::new(0.0, 0.0, 0.980, 1.0);
+    /// Primary text - matches `text-foreground` (#CCCCCC)
+    pub const PRIMARY: Hsla = Hsla::new(0.0, 0.0, 0.800, 1.0);
 
-    /// Secondary text (#b0b0b0)
-    pub const SECONDARY: Hsla = Hsla::new(0.0, 0.0, 0.690, 1.0);
+    /// Secondary text (#CCCCCC)
+    pub const SECONDARY: Hsla = Hsla::new(0.0, 0.0, 0.800, 1.0);
 
-    /// Muted text - matches `text-muted-foreground` (#a1a1a1)
-    pub const MUTED: Hsla = Hsla::new(0.0, 0.0, 0.631, 1.0);
+    /// Muted text - matches `text-muted-foreground` (#888888)
+    pub const MUTED: Hsla = Hsla::new(0.0, 0.0, 0.533, 1.0);
 
     /// Disabled text (#666666)
     pub const DISABLED: Hsla = Hsla::new(0.0, 0.0, 0.400, 1.0);
@@ -272,8 +272,8 @@ pub mod text {
 pub mod accent {
     use crate::color::Hsla;
 
-    /// Primary accent - Bloomberg yellow (#FFB400)
-    pub const PRIMARY: Hsla = Hsla::new(0.117, 1.0, 0.5, 1.0);
+    /// Primary accent - matches `--primary` (#CCCCCC)
+    pub const PRIMARY: Hsla = Hsla::new(0.0, 0.0, 0.800, 1.0);
 
     /// Secondary accent - blue (#4A9EFF)
     pub const SECONDARY: Hsla = Hsla::new(0.592, 1.0, 0.65, 1.0);
@@ -295,14 +295,14 @@ pub mod accent {
 pub mod border {
     use crate::color::Hsla;
 
-    /// Default border - matches `border-border` (#404040)
-    pub const DEFAULT: Hsla = Hsla::new(0.0, 0.0, 0.251, 1.0);
+    /// Default border - matches `border` (#ffffff1a)
+    pub const DEFAULT: Hsla = Hsla::new(0.0, 0.0, 1.0, 0.1);
 
-    /// Subtle border (#1a1a1a)
+    /// Subtle border (#1A1A1A)
     pub const SUBTLE: Hsla = Hsla::new(0.0, 0.0, 0.102, 1.0);
 
-    /// Focus border - semi-transparent yellow
-    pub const FOCUS: Hsla = Hsla::new(0.117, 1.0, 0.5, 0.5);
+    /// Focus border - matches `--ring` (#888888)
+    pub const FOCUS: Hsla = Hsla::new(0.0, 0.0, 0.533, 1.0);
 
     /// Error border - semi-transparent red
     pub const ERROR: Hsla = Hsla::new(0.0, 0.76, 0.5, 0.5);
