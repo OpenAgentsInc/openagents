@@ -392,3 +392,7 @@ pub(crate) fn codex_events_height(_bounds: Bounds) -> f32 {
     ];
     stacked_height(&panels)
 }
+
+pub(crate) fn guidance_modules_height(_bounds: Bounds) -> f32 {
+    panel_height(560.0)
+}

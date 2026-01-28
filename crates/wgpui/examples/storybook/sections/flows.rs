@@ -166,11 +166,11 @@ impl Storybook {
         let actions_bounds = Bounds::new(bounds.origin.x, y, width, actions_height);
         draw_panel("Entry Actions", actions_bounds, cx, |inner, cx| {
             let variants = [
-                ("Default (feedback + copy)", true, true, false, false, false),
-                ("With retry", true, true, true, false, false),
-                ("With edit/delete", true, true, false, true, true),
-                ("All actions", true, true, true, true, true),
-                ("No feedback", false, true, true, false, false),
+                ("Default (copy)", true, false, false, false),
+                ("With retry", true, true, false, false),
+                ("With edit/delete", true, false, true, true),
+                ("All actions", true, true, true, true),
+                ("Copy only", true, false, false, false),
             ];
 
             let tile_w = 200.0;
@@ -178,7 +178,7 @@ impl Storybook {
             let gap = 12.0;
             let cols = ((inner.size.width + gap) / (tile_w + gap)).floor().max(1.0) as usize;
 
-            for (idx, (label, feedback, copy, retry, edit, delete)) in variants.iter().enumerate() {
+            for (idx, (label, copy, retry, edit, delete)) in variants.iter().enumerate() {
                 let row = idx / cols;
                 let col = idx % cols;
                 let tile_x = inner.origin.x + col as f32 * (tile_w + gap);
@@ -195,7 +195,6 @@ impl Storybook {
 
                 // EntryActions
                 let mut actions = EntryActions::new()
-                    .show_feedback(*feedback)
                     .show_copy(*copy)
                     .show_retry(*retry)
                     .show_edit(*edit)
@@ -292,10 +291,7 @@ impl Storybook {
             cx.scene.draw_text(msg2);
 
             // Entry actions for a message
-            let mut actions = EntryActions::new()
-                .show_feedback(true)
-                .show_copy(true)
-                .show_retry(true);
+            let mut actions = EntryActions::new().show_copy(true).show_retry(true);
             actions.paint(
                 Bounds::new(inner.origin.x + 12.0, content_y + 60.0, 180.0, 24.0),
                 cx,
