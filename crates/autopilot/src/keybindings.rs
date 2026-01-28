@@ -179,6 +179,14 @@ pub fn default_keybindings() -> Vec<Keybinding> {
             action: Action::OpenCommandPalette,
         },
         Keybinding {
+            key: Key::Character("k".to_string()),
+            modifiers: Modifiers {
+                meta: true,
+                ..Default::default()
+            },
+            action: Action::OpenCommandPalette,
+        },
+        Keybinding {
             key: Key::Character(",".to_string()),
             modifiers: Modifiers {
                 ctrl: true,

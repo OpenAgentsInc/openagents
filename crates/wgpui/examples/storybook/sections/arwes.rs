@@ -13,14 +13,15 @@ use crate::constants::{
     BG_TILE_GAP, BG_TILE_H, BG_TILE_W, DOT_ORIGINS, DOT_SHAPES, FRAME_ANIMATIONS, FRAME_DIRECTIONS,
     FRAME_STYLES, FRAME_TILE_GAP, FRAME_TILE_H, FRAME_TILE_W, FRAME_VARIANT_H, FRAME_VARIANT_W,
     GLOW_PRESETS, ILLUMINATOR_TILE_GAP, ILLUMINATOR_TILE_H, ILLUMINATOR_TILE_W, LINE_DIRECTIONS,
-    PANEL_PADDING, SECTION_GAP, TEXT_TILE_GAP, TEXT_TILE_H, TEXT_TILE_W,
+    PANEL_PADDING, TEXT_TILE_GAP, TEXT_TILE_H, TEXT_TILE_W,
 };
-use crate::helpers::{demo_frame, draw_panel, draw_tile, grid_metrics, inset_bounds, panel_height};
+use crate::helpers::{
+    demo_frame, draw_panel, draw_tile, grid_metrics, inset_bounds, panel_height, panel_stack,
+};
 use crate::state::Storybook;
 
 impl Storybook {
     pub(crate) fn paint_arwes_frames(&mut self, bounds: Bounds, cx: &mut PaintContext) {
-        let mut y = bounds.origin.y;
         let width = bounds.size.width;
         let available = (width - PANEL_PADDING * 2.0).max(0.0);
 
@@ -33,7 +34,80 @@ impl Storybook {
             FRAME_TILE_GAP,
         );
         let permutation_height = panel_height(grid.height);
-        let panel_bounds = Bounds::new(bounds.origin.x, y, width, permutation_height);
+        let flicker_count = FRAME_STYLES.len() * 2;
+        let flicker_grid = grid_metrics(
+            available,
+            flicker_count,
+            FRAME_VARIANT_W,
+            FRAME_VARIANT_H,
+            FRAME_TILE_GAP,
+        );
+        let flicker_height = panel_height(flicker_grid.height);
+
+        let glow_count = FRAME_STYLES.len() * 2;
+        let glow_grid = grid_metrics(
+            available,
+            glow_count,
+            FRAME_VARIANT_W,
+            FRAME_VARIANT_H,
+            FRAME_TILE_GAP,
+        );
+        let glow_height = panel_height(glow_grid.height);
+
+        let glow_palette_count = FRAME_STYLES.len() * FRAME_ANIMATIONS.len() * GLOW_PRESETS.len();
+        let glow_palette_grid = grid_metrics(
+            available,
+            glow_palette_count,
+            FRAME_VARIANT_W,
+            FRAME_VARIANT_H,
+            FRAME_TILE_GAP,
+        );
+        let glow_palette_height = panel_height(glow_palette_grid.height);
+
+        let nefrex_count = 16;
+        let nefrex_grid = grid_metrics(
+            available,
+            nefrex_count,
+            FRAME_VARIANT_W,
+            FRAME_VARIANT_H,
+            FRAME_TILE_GAP,
+        );
+        let nefrex_height = panel_height(nefrex_grid.height);
+
+        let header_count = 2;
+        let header_grid = grid_metrics(
+            available,
+            header_count,
+            FRAME_VARIANT_W,
+            FRAME_VARIANT_H,
+            FRAME_TILE_GAP,
+        );
+        let header_height = panel_height(header_grid.height);
+
+        let circle_segments = [8u32, 16, 32, 64];
+        let circle_count = circle_segments.len();
+        let circle_grid = grid_metrics(
+            available,
+            circle_count,
+            FRAME_VARIANT_W,
+            FRAME_VARIANT_H,
+            FRAME_TILE_GAP,
+        );
+        let circle_height = panel_height(circle_grid.height);
+
+        let panels = panel_stack(
+            bounds,
+            &[
+                permutation_height,
+                flicker_height,
+                glow_height,
+                glow_palette_height,
+                nefrex_height,
+                header_height,
+                circle_height,
+            ],
+        );
+        let panel_bounds = panels[0];
         draw_panel(
             "Frame permutations (style x animation x direction)",
             panel_bounds,
@@ -86,18 +160,8 @@ impl Storybook {
                 }
             },
         );
-        y += permutation_height + SECTION_GAP;
 
-        let flicker_count = FRAME_STYLES.len() * 2;
-        let flicker_grid = grid_metrics(
-            available,
-            flicker_count,
-            FRAME_VARIANT_W,
-            FRAME_VARIANT_H,
-            FRAME_TILE_GAP,
-        );
-        let flicker_height = panel_height(flicker_grid.height);
-        let flicker_bounds = Bounds::new(bounds.origin.x, y, width, flicker_height);
+        let flicker_bounds = panels[1];
         draw_panel(
             "Flicker state (enter vs exit)",
             flicker_bounds,
@@ -139,18 +203,8 @@ impl Storybook {
                 }
             },
         );
-        y += flicker_height + SECTION_GAP;
 
-        let glow_count = FRAME_STYLES.len() * 2;
-        let glow_grid = grid_metrics(
-            available,
-            glow_count,
-            FRAME_VARIANT_W,
-            FRAME_VARIANT_H,
-            FRAME_TILE_GAP,
-        );
-        let glow_height = panel_height(glow_grid.height);
-        let glow_bounds = Bounds::new(bounds.origin.x, y, width, glow_height);
+        let glow_bounds = panels[2];
         draw_panel("Glow toggle (off/on)", glow_bounds, cx, |inner, cx| {
             let grid = grid_metrics(
                 inner.size.width,
@@ -189,18 +243,8 @@ impl Storybook {
                 }
             }
         });
-        y += glow_height + SECTION_GAP;
 
-        let glow_palette_count = FRAME_STYLES.len() * FRAME_ANIMATIONS.len() * GLOW_PRESETS.len();
-        let glow_palette_grid = grid_metrics(
-            available,
-            glow_palette_count,
-            FRAME_VARIANT_W,
-            FRAME_VARIANT_H,
-            FRAME_TILE_GAP,
-        );
-        let glow_palette_height = panel_height(glow_palette_grid.height);
-        let glow_palette_bounds = Bounds::new(bounds.origin.x, y, width, glow_palette_height);
+        let glow_palette_bounds = panels[3];
         draw_panel(
             "Glow palette x animation",
             glow_palette_bounds,
@@ -258,18 +302,8 @@ impl Storybook {
                 }
             },
         );
-        y += glow_palette_height + SECTION_GAP;
 
-        let nefrex_count = 16;
-        let nefrex_grid = grid_metrics(
-            available,
-            nefrex_count,
-            FRAME_VARIANT_W,
-            FRAME_VARIANT_H,
-            FRAME_TILE_GAP,
-        );
-        let nefrex_height = panel_height(nefrex_grid.height);
-        let nefrex_bounds = Bounds::new(bounds.origin.x, y, width, nefrex_height);
+        let nefrex_bounds = panels[4];
         draw_panel(
             "Nefrex corners (LT LB RT RB order)",
             nefrex_bounds,
@@ -308,18 +342,8 @@ impl Storybook {
                 }
             },
         );
-        y += nefrex_height + SECTION_GAP;
 
-        let header_count = 2;
-        let header_grid = grid_metrics(
-            available,
-            header_count,
-            FRAME_VARIANT_W,
-            FRAME_VARIANT_H,
-            FRAME_TILE_GAP,
-        );
-        let header_height = panel_height(header_grid.height);
-        let header_bounds = Bounds::new(bounds.origin.x, y, width, header_height);
+        let header_bounds = panels[5];
         draw_panel("Header bottom toggle", header_bounds, cx, |inner, cx| {
             let grid = grid_metrics(
                 inner.size.width,
@@ -347,19 +371,8 @@ impl Storybook {
                 });
             }
         });
-        y += header_height + SECTION_GAP;
 
-        let circle_segments = [8u32, 16, 32, 64];
-        let circle_count = circle_segments.len();
-        let circle_grid = grid_metrics(
-            available,
-            circle_count,
-            FRAME_VARIANT_W,
-            FRAME_VARIANT_H,
-            FRAME_TILE_GAP,
-        );
-        let circle_height = panel_height(circle_grid.height);
-        let circle_bounds = Bounds::new(bounds.origin.x, y, width, circle_height);
+        let circle_bounds = panels[6];
         draw_panel("Circle segments", circle_bounds, cx, |inner, cx| {
             let grid = grid_metrics(
                 inner.size.width,
@@ -390,14 +403,52 @@ impl Storybook {
     }
 
     pub(crate) fn paint_arwes_backgrounds(&mut self, bounds: Bounds, cx: &mut PaintContext) {
-        let mut y = bounds.origin.y;
         let width = bounds.size.width;
         let available = (width - PANEL_PADDING * 2.0).max(0.0);
 
         let dots_count = DOT_SHAPES.len() * DOT_ORIGINS.len() * 2;
         let dots_grid = grid_metrics(available, dots_count, BG_TILE_W, BG_TILE_H, BG_TILE_GAP);
         let dots_height = panel_height(dots_grid.height);
-        let dots_bounds = Bounds::new(bounds.origin.x, y, width, dots_height);
+        let dots_states = [0.0f32, 0.35, 0.7, 1.0];
+        let dots_state_count = dots_states.len();
+        let dots_state_grid = grid_metrics(
+            available,
+            dots_state_count,
+            BG_TILE_W,
+            BG_TILE_H,
+            BG_TILE_GAP,
+        );
+        let dots_state_height = panel_height(dots_state_grid.height);
+
+        let grid_lines_count = 8;
+        let grid_lines_grid = grid_metrics(
+            available,
+            grid_lines_count,
+            BG_TILE_W,
+            BG_TILE_H,
+            BG_TILE_GAP,
+        );
+        let grid_lines_height = panel_height(grid_lines_grid.height);
+
+        let moving_count = LINE_DIRECTIONS.len() * 2;
+        let moving_grid = grid_metrics(available, moving_count, BG_TILE_W, BG_TILE_H, BG_TILE_GAP);
+        let moving_height = panel_height(moving_grid.height);
+
+        let puff_presets = 6;
+        let puff_grid = grid_metrics(available, puff_presets, BG_TILE_W, BG_TILE_H, BG_TILE_GAP);
+        let puff_height = panel_height(puff_grid.height);
+
+        let panels = panel_stack(
+            bounds,
+            &[
+                dots_height,
+                dots_state_height,
+                grid_lines_height,
+                moving_height,
+                puff_height,
+            ],
+        );
+        let dots_bounds = panels[0];
         draw_panel(
             "DotsGrid permutations (shape x origin x invert)",
             dots_bounds,
@@ -445,19 +496,8 @@ impl Storybook {
                 }
             },
         );
-        y += dots_height + SECTION_GAP;
 
-        let dots_states = [0.0f32, 0.35, 0.7, 1.0];
-        let dots_state_count = dots_states.len();
-        let dots_state_grid = grid_metrics(
-            available,
-            dots_state_count,
-            BG_TILE_W,
-            BG_TILE_H,
-            BG_TILE_GAP,
-        );
-        let dots_state_height = panel_height(dots_state_grid.height);
-        let dots_state_bounds = Bounds::new(bounds.origin.x, y, width, dots_state_height);
+        let dots_state_bounds = panels[1];
         draw_panel(
             "DotsGrid progress states",
             dots_state_bounds,
@@ -494,18 +534,8 @@ impl Storybook {
                 }
             },
         );
-        y += dots_state_height + SECTION_GAP;
 
-        let grid_lines_count = 8;
-        let grid_lines_grid = grid_metrics(
-            available,
-            grid_lines_count,
-            BG_TILE_W,
-            BG_TILE_H,
-            BG_TILE_GAP,
-        );
-        let grid_lines_height = panel_height(grid_lines_grid.height);
-        let grid_lines_bounds = Bounds::new(bounds.origin.x, y, width, grid_lines_height);
+        let grid_lines_bounds = panels[2];
         draw_panel(
             "GridLines permutations (orientation x dash)",
             grid_lines_bounds,
@@ -554,12 +584,8 @@ impl Storybook {
                 }
             },
         );
-        y += grid_lines_height + SECTION_GAP;
 
-        let moving_count = LINE_DIRECTIONS.len() * 2;
-        let moving_grid = grid_metrics(available, moving_count, BG_TILE_W, BG_TILE_H, BG_TILE_GAP);
-        let moving_height = panel_height(moving_grid.height);
-        let moving_bounds = Bounds::new(bounds.origin.x, y, width, moving_height);
+        let moving_bounds = panels[3];
         draw_panel(
             "MovingLines permutations (direction x spacing)",
             moving_bounds,
@@ -605,12 +631,8 @@ impl Storybook {
                 }
             },
         );
-        y += moving_height + SECTION_GAP;
 
-        let puff_presets = 6;
-        let puff_grid = grid_metrics(available, puff_presets, BG_TILE_W, BG_TILE_H, BG_TILE_GAP);
-        let puff_height = panel_height(puff_grid.height);
-        let puff_bounds = Bounds::new(bounds.origin.x, y, width, puff_height);
+        let puff_bounds = panels[4];
         draw_panel("Puffs permutations", puff_bounds, cx, |inner, cx| {
             let grid = grid_metrics(
                 inner.size.width,
@@ -686,7 +708,6 @@ impl Storybook {
     }
 
     pub(crate) fn paint_arwes_text_effects(&mut self, bounds: Bounds, cx: &mut PaintContext) {
-        let mut y = bounds.origin.y;
         let width = bounds.size.width;
         let available = (width - PANEL_PADDING * 2.0).max(0.0);
 
@@ -699,7 +720,17 @@ impl Storybook {
             TEXT_TILE_GAP,
         );
         let sequence_height = panel_height(sequence_grid.height);
-        let sequence_bounds = Bounds::new(bounds.origin.x, y, width, sequence_height);
+        let decipher_presets = 6;
+        let decipher_grid = grid_metrics(
+            available,
+            decipher_presets,
+            TEXT_TILE_W,
+            TEXT_TILE_H,
+            TEXT_TILE_GAP,
+        );
+        let decipher_height = panel_height(decipher_grid.height);
+        let panels = panel_stack(bounds, &[sequence_height, decipher_height]);
+        let sequence_bounds = panels[0];
         draw_panel(
             "TextSequence permutations",
             sequence_bounds,
@@ -767,18 +798,7 @@ impl Storybook {
                 }
             },
         );
-        y += sequence_height + SECTION_GAP;
-
-        let decipher_presets = 6;
-        let decipher_grid = grid_metrics(
-            available,
-            decipher_presets,
-            TEXT_TILE_W,
-            TEXT_TILE_H,
-            TEXT_TILE_GAP,
-        );
-        let decipher_height = panel_height(decipher_grid.height);
-        let decipher_bounds = Bounds::new(bounds.origin.x, y, width, decipher_height);
+        let decipher_bounds = panels[1];
         draw_panel(
             "TextDecipher permutations",
             decipher_bounds,
@@ -845,7 +865,6 @@ impl Storybook {
     }
 
     pub(crate) fn paint_arwes_illuminator(&mut self, bounds: Bounds, cx: &mut PaintContext) {
-        let mut y = bounds.origin.y;
         let width = bounds.size.width;
         let available = (width - PANEL_PADDING * 2.0).max(0.0);
 
@@ -858,7 +877,17 @@ impl Storybook {
             ILLUMINATOR_TILE_GAP,
         );
         let preset_height = panel_height(preset_grid.height);
-        let preset_bounds = Bounds::new(bounds.origin.x, y, width, preset_height);
+        let state_count = 4;
+        let state_grid = grid_metrics(
+            available,
+            state_count,
+            ILLUMINATOR_TILE_W,
+            ILLUMINATOR_TILE_H,
+            ILLUMINATOR_TILE_GAP,
+        );
+        let state_height = panel_height(state_grid.height);
+        let panels = panel_stack(bounds, &[preset_height, state_height]);
+        let preset_bounds = panels[0];
         draw_panel("Illuminator presets", preset_bounds, cx, |inner, cx| {
             let grid = grid_metrics(
                 inner.size.width,
@@ -942,18 +971,7 @@ impl Storybook {
                 });
             }
         });
-        y += preset_height + SECTION_GAP;
-
-        let state_count = 4;
-        let state_grid = grid_metrics(
-            available,
-            state_count,
-            ILLUMINATOR_TILE_W,
-            ILLUMINATOR_TILE_H,
-            ILLUMINATOR_TILE_GAP,
-        );
-        let state_height = panel_height(state_grid.height);
-        let state_bounds = Bounds::new(bounds.origin.x, y, width, state_height);
+        let state_bounds = panels[1];
         draw_panel("Illuminator states", state_bounds, cx, |inner, cx| {
             let grid = grid_metrics(
                 inner.size.width,

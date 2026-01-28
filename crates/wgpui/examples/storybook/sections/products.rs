@@ -22,18 +22,34 @@ use wgpui::components::organisms::{
 use wgpui::{Bounds, Component, PaintContext, Point, Quad, theme};
 
 use crate::constants::SECTION_GAP;
-use crate::helpers::{draw_panel, panel_height};
+use crate::helpers::{draw_panel, panel_height, panel_stack};
 use crate::state::Storybook;
 
 impl Storybook {
     pub(crate) fn paint_chat_threads(&mut self, bounds: Bounds, cx: &mut PaintContext) {
-        let mut y = bounds.origin.y;
-        let width = bounds.size.width;
         let entry_gap = 12.0;
 
         // ========== Panel 1: Simple Conversation ==========
         let simple_height = panel_height(480.0);
-        let simple_bounds = Bounds::new(bounds.origin.x, y, width, simple_height);
+        let multi_height = panel_height(600.0);
+        let edit_height = panel_height(520.0);
+        let search_height = panel_height(440.0);
+        let stream_height = panel_height(320.0);
+        let complex_height = panel_height(800.0);
+        let error_height = panel_height(280.0);
+        let panels = panel_stack(
+            bounds,
+            &[
+                simple_height,
+                multi_height,
+                edit_height,
+                search_height,
+                stream_height,
+                complex_height,
+                error_height,
+            ],
+        );
+        let simple_bounds = panels[0];
         draw_panel("Simple Conversation", simple_bounds, cx, |inner, cx| {
             let mut entry_y = inner.origin.y;
             let entry_w = inner.size.width;
@@ -68,11 +84,9 @@ impl Storybook {
                     .timestamp("10:31 AM");
             user_msg2.paint(Bounds::new(inner.origin.x, entry_y, entry_w, user2_h), cx);
         });
-        y += simple_height + SECTION_GAP;
 
         // ========== Panel 2: Multi-Tool Workflow ==========
-        let multi_height = panel_height(600.0);
-        let multi_bounds = Bounds::new(bounds.origin.x, y, width, multi_height);
+        let multi_bounds = panels[1];
         draw_panel("Multi-Tool Workflow", multi_bounds, cx, |inner, cx| {
             let mut entry_y = inner.origin.y;
             let entry_w = inner.size.width;
@@ -141,11 +155,9 @@ impl Storybook {
             .timestamp("2:16 PM");
             summary.paint(Bounds::new(inner.origin.x, entry_y, entry_w, summary_h), cx);
         });
-        y += multi_height + SECTION_GAP;
 
         // ========== Panel 3: Code Editing Session ==========
-        let edit_height = panel_height(520.0);
-        let edit_bounds = Bounds::new(bounds.origin.x, y, width, edit_height);
+        let edit_bounds = panels[2];
         draw_panel("Code Editing Session", edit_bounds, cx, |inner, cx| {
             let mut entry_y = inner.origin.y;
             let entry_w = inner.size.width;
@@ -255,11 +267,9 @@ impl Storybook {
                 cx,
             );
         });
-        y += edit_height + SECTION_GAP;
 
         // ========== Panel 4: Search & Navigation ==========
-        let search_height = panel_height(440.0);
-        let search_bounds = Bounds::new(bounds.origin.x, y, width, search_height);
+        let search_bounds = panels[3];
         draw_panel("Search & Navigation", search_bounds, cx, |inner, cx| {
             let mut entry_y = inner.origin.y;
             let entry_w = inner.size.width;
@@ -316,11 +326,9 @@ impl Storybook {
             .timestamp("11:05 AM");
             answer.paint(Bounds::new(inner.origin.x, entry_y, entry_w, answer_h), cx);
         });
-        y += search_height + SECTION_GAP;
 
         // ========== Panel 5: Streaming Response ==========
-        let stream_height = panel_height(320.0);
-        let stream_bounds = Bounds::new(bounds.origin.x, y, width, stream_height);
+        let stream_bounds = panels[4];
         draw_panel("Streaming Response", stream_bounds, cx, |inner, cx| {
             let mut entry_y = inner.origin.y;
             let entry_w = inner.size.width;
@@ -347,11 +355,9 @@ impl Storybook {
             .timestamp("4:20 PM");
             stream_msg.paint(Bounds::new(inner.origin.x, entry_y, entry_w, stream_h), cx);
         });
-        y += stream_height + SECTION_GAP;
 
         // ========== Panel 6: Complex Agent Session ==========
-        let complex_height = panel_height(800.0);
-        let complex_bounds = Bounds::new(bounds.origin.x, y, width, complex_height);
+        let complex_bounds = panels[5];
         draw_panel("Complex Agent Session", complex_bounds, cx, |inner, cx| {
             let mut entry_y = inner.origin.y;
             let entry_w = inner.size.width;
@@ -433,11 +439,9 @@ impl Storybook {
             .timestamp("9:03 AM");
             summary.paint(Bounds::new(inner.origin.x, entry_y, entry_w, summary_h), cx);
         });
-        y += complex_height + SECTION_GAP;
 
         // ========== Panel 7: Error Handling ==========
-        let error_height = panel_height(280.0);
-        let error_bounds = Bounds::new(bounds.origin.x, y, width, error_height);
+        let error_bounds = panels[6];
         draw_panel("Error Handling", error_bounds, cx, |inner, cx| {
             let mut entry_y = inner.origin.y;
             let entry_w = inner.size.width;
@@ -471,12 +475,29 @@ impl Storybook {
     }
 
     pub(crate) fn paint_bitcoin_wallet(&mut self, bounds: Bounds, cx: &mut PaintContext) {
-        let mut y = bounds.origin.y;
-        let width = bounds.size.width;
-
         // ========== Panel 1: Payment Method Icons ==========
         let methods_height = panel_height(200.0);
-        let methods_bounds = Bounds::new(bounds.origin.x, y, width, methods_height);
+        let status_height = panel_height(180.0);
+        let network_height = panel_height(160.0);
+        let amounts_height = panel_height(200.0);
+        let balance_height = panel_height(220.0);
+        let txn_height = panel_height(300.0);
+        let invoice_height = panel_height(320.0);
+        let dashboard_height = panel_height(400.0);
+        let panels = panel_stack(
+            bounds,
+            &[
+                methods_height,
+                status_height,
+                network_height,
+                amounts_height,
+                balance_height,
+                txn_height,
+                invoice_height,
+                dashboard_height,
+            ],
+        );
+        let methods_bounds = panels[0];
         draw_panel("Payment Method Icons", methods_bounds, cx, |inner, cx| {
             let methods = [
                 PaymentMethod::Lightning,
@@ -513,11 +534,9 @@ impl Storybook {
                 );
             }
         });
-        y += methods_height + SECTION_GAP;
 
         // ========== Panel 2: Payment Status Badges ==========
-        let status_height = panel_height(180.0);
-        let status_bounds = Bounds::new(bounds.origin.x, y, width, status_height);
+        let status_bounds = panels[1];
         draw_panel("Payment Status Badges", status_bounds, cx, |inner, cx| {
             let statuses = [
                 (PaymentStatus::Pending, "Awaiting confirmation..."),
@@ -557,11 +576,9 @@ impl Storybook {
                 cx.scene.draw_text(desc_run);
             }
         });
-        y += status_height + SECTION_GAP;
 
         // ========== Panel 3: Network Badges ==========
-        let network_height = panel_height(160.0);
-        let network_bounds = Bounds::new(bounds.origin.x, y, width, network_height);
+        let network_bounds = panels[2];
         draw_panel("Bitcoin Networks", network_bounds, cx, |inner, cx| {
             let networks = [
                 (BitcoinNetwork::Mainnet, "Production - Real money!"),
@@ -599,11 +616,9 @@ impl Storybook {
                 cx.scene.draw_text(desc_run);
             }
         });
-        y += network_height + SECTION_GAP;
 
         // ========== Panel 4: Bitcoin Amounts ==========
-        let amounts_height = panel_height(200.0);
-        let amounts_bounds = Bounds::new(bounds.origin.x, y, width, amounts_height);
+        let amounts_bounds = panels[3];
         draw_panel(
             "Bitcoin Amount Formatting",
             amounts_bounds,
@@ -666,11 +681,9 @@ impl Storybook {
                 }
             },
         );
-        y += amounts_height + SECTION_GAP;
 
         // ========== Panel 5: Balance Cards ==========
-        let balance_height = panel_height(220.0);
-        let balance_bounds = Bounds::new(bounds.origin.x, y, width, balance_height);
+        let balance_bounds = panels[4];
         draw_panel("Wallet Balance Cards", balance_bounds, cx, |inner, cx| {
             // Mainnet balance
             let mainnet_balance = WalletBalance::new(150000, 75000, 25000);
@@ -692,11 +705,9 @@ impl Storybook {
                 testnet_card.paint(Bounds::new(card_x, inner.origin.y, 300.0, 180.0), cx);
             }
         });
-        y += balance_height + SECTION_GAP;
 
         // ========== Panel 6: Payment Rows (Transaction History) ==========
-        let txn_height = panel_height(300.0);
-        let txn_bounds = Bounds::new(bounds.origin.x, y, width, txn_height);
+        let txn_bounds = panels[5];
         draw_panel("Transaction History", txn_bounds, cx, |inner, cx| {
             let transactions = [
                 PaymentInfo::new("tx1", 50000, PaymentDirection::Receive)
@@ -734,11 +745,9 @@ impl Storybook {
                 );
             }
         });
-        y += txn_height + SECTION_GAP;
 
         // ========== Panel 7: Invoice Displays ==========
-        let invoice_height = panel_height(320.0);
-        let invoice_bounds = Bounds::new(bounds.origin.x, y, width, invoice_height);
+        let invoice_bounds = panels[6];
         draw_panel(
             "Invoice & Address Displays",
             invoice_bounds,
@@ -787,11 +796,9 @@ impl Storybook {
                 }
             },
         );
-        y += invoice_height + SECTION_GAP;
 
         // ========== Panel 8: Complete Wallet Dashboard ==========
-        let dashboard_height = panel_height(400.0);
-        let dashboard_bounds = Bounds::new(bounds.origin.x, y, width, dashboard_height);
+        let dashboard_bounds = panels[7];
         draw_panel(
             "Complete Wallet Dashboard",
             dashboard_bounds,

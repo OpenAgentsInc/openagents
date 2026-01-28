@@ -5,6 +5,7 @@ mod codex_event_cards;
 mod diff_tool_call;
 mod dm_thread;
 mod event_inspector;
+mod guidance_module_card;
 mod markdown_view;
 mod permission_dialog;
 mod receive_flow;
@@ -33,6 +34,11 @@ pub use codex_event_cards::{
 pub use diff_tool_call::{DiffLine, DiffLineKind, DiffToolCall};
 pub use dm_thread::DmThread;
 pub use event_inspector::{EventCategory, EventData, EventInspector, InspectorView, TagData};
+pub use guidance_module_card::{
+    GuidanceAction, GuidanceAudit, GuidanceDecision, GuidanceField, GuidanceGoal,
+    GuidanceGuardrail, GuidanceGuardrailStatus, GuidanceModuleCard, GuidanceNetwork,
+    GuidancePermissions, GuidanceState,
+};
 pub use markdown_view::MarkdownView;
 pub use permission_dialog::{PermissionDialog, PermissionType};
 pub use receive_flow::{InvoiceState, ReceiveFlow, ReceiveStep, ReceiveType};
