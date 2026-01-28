@@ -184,6 +184,7 @@ pub enum UserAction {
     PylonStart,
     PylonStop,
     PylonRefresh,
+    WalletRefresh,
     Command {
         session_id: SessionId,
         name: String,
@@ -215,6 +216,19 @@ pub struct PylonStatus {
     pub last_error: Option<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct WalletStatus {
+    pub network: Option<String>,
+    pub spark_sats: u64,
+    pub lightning_sats: u64,
+    pub onchain_sats: u64,
+    pub total_sats: u64,
+    pub spark_address: Option<String>,
+    pub bitcoin_address: Option<String>,
+    pub identity_exists: bool,
+    pub last_error: Option<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum AppEvent {
     WorkspaceOpened {
@@ -235,6 +249,9 @@ pub enum AppEvent {
     },
     PylonStatus {
         status: PylonStatus,
+    },
+    WalletStatus {
+        status: WalletStatus,
     },
 }
 

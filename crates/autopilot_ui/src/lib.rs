@@ -58,6 +58,8 @@ const IDENTITY_PANE_WIDTH: f32 = 520.0;
 const IDENTITY_PANE_HEIGHT: f32 = 520.0;
 const PYLON_PANE_WIDTH: f32 = 520.0;
 const PYLON_PANE_HEIGHT: f32 = 420.0;
+const WALLET_PANE_WIDTH: f32 = 520.0;
+const WALLET_PANE_HEIGHT: f32 = 420.0;
 const HOTBAR_HEIGHT: f32 = 52.0;
 const HOTBAR_FLOAT_GAP: f32 = 18.0;
 const HOTBAR_ITEM_SIZE: f32 = 36.0;
@@ -67,7 +69,8 @@ const HOTBAR_SLOT_NEW_CHAT: u8 = 1;
 const HOTBAR_SLOT_EVENTS: u8 = 2;
 const HOTBAR_SLOT_IDENTITY: u8 = 3;
 const HOTBAR_SLOT_PYLON: u8 = 4;
-const HOTBAR_CHAT_SLOT_START: u8 = 5;
+const HOTBAR_SLOT_WALLET: u8 = 5;
+const HOTBAR_CHAT_SLOT_START: u8 = 6;
 const HOTBAR_SLOT_MAX: u8 = 9;
 const MODEL_OPTIONS: [(&str, &str); 4] = [
     ("gpt-5.2-codex", "Latest frontier agentic coding model."),
@@ -126,6 +129,7 @@ impl AppViewModel {
             AppEvent::UserActionDispatched { .. } => {}
             AppEvent::AppServerEvent { .. } => {}
             AppEvent::PylonStatus { .. } => {}
+            AppEvent::WalletStatus { .. } => {}
         }
     }
 
@@ -317,6 +321,7 @@ enum PaneKind {
     Events,
     Identity,
     Pylon,
+    Wallet,
 }
 
 #[derive(Clone, Debug)]
@@ -325,6 +330,7 @@ enum HotbarAction {
     ToggleEvents,
     ToggleIdentity,
     TogglePylon,
+    ToggleWallet,
     NewChat,
 }
 
@@ -547,6 +553,10 @@ pub struct MinimalRoot {
     pending_pylon_start: Rc<RefCell<bool>>,
     pending_pylon_stop: Rc<RefCell<bool>>,
     pending_pylon_refresh: Rc<RefCell<bool>>,
+    wallet_status: WalletStatusView,
+    wallet_refresh_button: Button,
+    wallet_refresh_bounds: Bounds,
+    pending_wallet_refresh: Rc<RefCell<bool>>,
     nostr_npub: Option<String>,
     nostr_nsec: Option<String>,
     spark_pubkey_hex: Option<String>,
@@ -1451,6 +1461,17 @@ impl MinimalRoot {
                 *pending_pylon_refresh_click.borrow_mut() = true;
             });
 
+        let pending_wallet_refresh = Rc::new(RefCell::new(false));
+        let pending_wallet_refresh_click = pending_wallet_refresh.clone();
+        let wallet_refresh_button = Button::new("Refresh")
+            .variant(ButtonVariant::Secondary)
+            .font_size(theme::font_size::XS)
+            .padding(10.0, 6.0)
+            .corner_radius(6.0)
+            .on_click(move || {
+                *pending_wallet_refresh_click.borrow_mut() = true;
+            });
+
         let event_scroll = ScrollView::new().show_scrollbar(true).scrollbar_width(6.0);
         let hotbar = Hotbar::new()
             .item_size(HOTBAR_ITEM_SIZE)
@@ -1493,6 +1514,10 @@ impl MinimalRoot {
             pending_pylon_start,
             pending_pylon_stop,
             pending_pylon_refresh,
+            wallet_status: WalletStatusView::default(),
+            wallet_refresh_button,
+            wallet_refresh_bounds: Bounds::ZERO,
+            pending_wallet_refresh,
             nostr_npub: None,
             nostr_nsec: None,
             spark_pubkey_hex: None,
@@ -1532,6 +1557,19 @@ impl MinimalRoot {
                     host_active: status.host_active,
                     jobs_completed: status.jobs_completed,
                     earnings_msats: status.earnings_msats,
+                    identity_exists: status.identity_exists,
+                    last_error: status.last_error,
+                };
+            }
+            AppEvent::WalletStatus { status } => {
+                self.wallet_status = WalletStatusView {
+                    network: status.network,
+                    spark_sats: status.spark_sats,
+                    lightning_sats: status.lightning_sats,
+                    onchain_sats: status.onchain_sats,
+                    total_sats: status.total_sats,
+                    spark_address: status.spark_address,
+                    bitcoin_address: status.bitcoin_address,
                     identity_exists: status.identity_exists,
                     last_error: status.last_error,
                 };
@@ -1789,6 +1827,36 @@ impl MinimalRoot {
         }
     }
 
+    fn toggle_wallet_pane(&mut self, screen: Size) {
+        let last_position = self.pane_store.last_pane_position;
+        self.pane_store.toggle_pane("wallet", screen, |snapshot| {
+            let rect = snapshot
+                .as_ref()
+                .map(|snapshot| snapshot.rect)
+                .unwrap_or_else(|| {
+                    calculate_new_pane_position(
+                        last_position,
+                        screen,
+                        WALLET_PANE_WIDTH,
+                        WALLET_PANE_HEIGHT,
+                    )
+                });
+            Pane {
+                id: "wallet".to_string(),
+                kind: PaneKind::Wallet,
+                title: "Wallet".to_string(),
+                rect,
+                dismissable: true,
+            }
+        });
+
+        if self.pane_store.is_active("wallet") {
+            if let Some(handler) = self.send_handler.as_mut() {
+                handler(UserAction::WalletRefresh);
+            }
+        }
+    }
+
     fn close_pane(&mut self, id: &str) {
         self.pane_store.remove_pane(id, true);
         self.pane_frames.remove(id);
@@ -1847,6 +1915,10 @@ impl MinimalRoot {
             }
             HotbarAction::TogglePylon => {
                 self.toggle_pylon_pane(screen);
+                true
+            }
+            HotbarAction::ToggleWallet => {
+                self.toggle_wallet_pane(screen);
                 true
             }
             HotbarAction::NewChat => {
@@ -2189,6 +2261,17 @@ impl MinimalRoot {
                             );
                             handled |= init_handled || start_handled || stop_handled || refresh_handled;
                         }
+                        PaneKind::Wallet => {
+                            let refresh_handled = matches!(
+                                self.wallet_refresh_button.event(
+                                    event,
+                                    self.wallet_refresh_bounds,
+                                    &mut self.event_context
+                                ),
+                                EventResult::Handled
+                            );
+                            handled |= refresh_handled;
+                        }
                     }
                 }
             }
@@ -2265,6 +2348,18 @@ impl MinimalRoot {
         if should_refresh {
             if let Some(handler) = self.send_handler.as_mut() {
                 handler(UserAction::PylonRefresh);
+            }
+        }
+
+        let should_wallet_refresh = {
+            let mut pending = self.pending_wallet_refresh.borrow_mut();
+            let value = *pending;
+            *pending = false;
+            value
+        };
+        if should_wallet_refresh {
+            if let Some(handler) = self.send_handler.as_mut() {
+                handler(UserAction::WalletRefresh);
             }
         }
 
@@ -2498,6 +2593,7 @@ impl Component for MinimalRoot {
                 PaneKind::Events => paint_events_pane(self, content_bounds, cx),
                 PaneKind::Identity => paint_identity_pane(self, content_bounds, cx),
                 PaneKind::Pylon => paint_pylon_pane(self, content_bounds, cx),
+                PaneKind::Wallet => paint_wallet_pane(self, content_bounds, cx),
             }
             cx.scene.pop_clip();
         }
@@ -2539,6 +2635,13 @@ impl Component for MinimalRoot {
         );
         self.hotbar_bindings
             .insert(HOTBAR_SLOT_PYLON, HotbarAction::TogglePylon);
+
+        items.push(
+            HotbarSlot::new(HOTBAR_SLOT_WALLET, "WL", "Wallet")
+                .active(self.pane_store.is_active("wallet")),
+        );
+        self.hotbar_bindings
+            .insert(HOTBAR_SLOT_WALLET, HotbarAction::ToggleWallet);
 
         let mut slot_to_pane: HashMap<u8, String> = HashMap::new();
         for (pane_id, slot) in self.chat_slot_assignments.iter() {
@@ -3157,6 +3260,107 @@ fn paint_pylon_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintContex
     y += label_height + value_spacing;
 
     if let Some(err) = root.pylon_status.last_error.as_deref() {
+        Text::new(err)
+            .font_size(text_size)
+            .color(theme::text::ACCENT)
+            .paint(Bounds::new(content_x, y, content_width, label_height), cx);
+    }
+}
+
+fn paint_wallet_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintContext) {
+    let padding = 16.0;
+    let button_height = 28.0;
+    let label_height = 16.0;
+    let value_spacing = 10.0;
+    let text_size = theme::font_size::XS;
+
+    let mut content_width = (bounds.size.width * 0.8).min(560.0).max(280.0);
+    content_width = content_width.min(bounds.size.width - padding * 2.0);
+    let content_x = bounds.origin.x + (bounds.size.width - content_width) / 2.0;
+    let mut y = bounds.origin.y + padding;
+
+    let refresh_bounds = Bounds::new(content_x, y, 90.0, button_height);
+    root.wallet_refresh_bounds = refresh_bounds;
+    root.wallet_refresh_button.paint(refresh_bounds, cx);
+    y += button_height + 14.0;
+
+    let identity_line = if root.wallet_status.identity_exists {
+        "Identity: present"
+    } else {
+        "Identity: missing"
+    };
+    Text::new(identity_line)
+        .font_size(text_size)
+        .color(theme::text::MUTED)
+        .paint(Bounds::new(content_x, y, content_width, label_height), cx);
+    y += label_height + value_spacing;
+
+    if let Some(network) = root.wallet_status.network.as_deref() {
+        Text::new(&format!("Network: {}", network))
+            .font_size(text_size)
+            .color(theme::text::MUTED)
+            .paint(Bounds::new(content_x, y, content_width, label_height), cx);
+        y += label_height + value_spacing;
+    }
+
+    Text::new(&format!("Total: {} sats", root.wallet_status.total_sats))
+        .font_size(text_size)
+        .color(theme::text::PRIMARY)
+        .paint(Bounds::new(content_x, y, content_width, label_height), cx);
+    y += label_height + value_spacing;
+
+    Text::new(&format!("Spark: {} sats", root.wallet_status.spark_sats))
+        .font_size(text_size)
+        .color(theme::text::MUTED)
+        .paint(Bounds::new(content_x, y, content_width, label_height), cx);
+    y += label_height + value_spacing;
+
+    Text::new(&format!(
+        "Lightning: {} sats",
+        root.wallet_status.lightning_sats
+    ))
+    .font_size(text_size)
+    .color(theme::text::MUTED)
+    .paint(Bounds::new(content_x, y, content_width, label_height), cx);
+    y += label_height + value_spacing;
+
+    Text::new(&format!("On-chain: {} sats", root.wallet_status.onchain_sats))
+        .font_size(text_size)
+        .color(theme::text::MUTED)
+        .paint(Bounds::new(content_x, y, content_width, label_height), cx);
+    y += label_height + value_spacing;
+
+    if let Some(address) = root.wallet_status.spark_address.as_deref() {
+        Text::new("Spark address")
+            .font_size(text_size)
+            .color(theme::text::MUTED)
+            .paint(Bounds::new(content_x, y, content_width, label_height), cx);
+        y += label_height + 4.0;
+        let mut text = Text::new(address)
+            .font_size(text_size)
+            .color(theme::text::PRIMARY);
+        let (_, height) = text.size_hint_with_width(content_width);
+        let height = height.unwrap_or(label_height);
+        text.paint(Bounds::new(content_x, y, content_width, height), cx);
+        y += height + value_spacing;
+    }
+
+    if let Some(address) = root.wallet_status.bitcoin_address.as_deref() {
+        Text::new("Bitcoin address")
+            .font_size(text_size)
+            .color(theme::text::MUTED)
+            .paint(Bounds::new(content_x, y, content_width, label_height), cx);
+        y += label_height + 4.0;
+        let mut text = Text::new(address)
+            .font_size(text_size)
+            .color(theme::text::PRIMARY);
+        let (_, height) = text.size_hint_with_width(content_width);
+        let height = height.unwrap_or(label_height);
+        text.paint(Bounds::new(content_x, y, content_width, height), cx);
+        y += height + value_spacing;
+    }
+
+    if let Some(err) = root.wallet_status.last_error.as_deref() {
         Text::new(err)
             .font_size(text_size)
             .color(theme::text::ACCENT)
@@ -4150,6 +4354,19 @@ struct PylonStatusView {
     last_error: Option<String>,
 }
 
+#[derive(Clone, Debug, Default)]
+struct WalletStatusView {
+    network: Option<String>,
+    spark_sats: u64,
+    lightning_sats: u64,
+    onchain_sats: u64,
+    total_sats: u64,
+    spark_address: Option<String>,
+    bitcoin_address: Option<String>,
+    identity_exists: bool,
+    last_error: Option<String>,
+}
+
 fn format_event(event: &AppEvent) -> String {
     match event {
         AppEvent::WorkspaceOpened { path, .. } => {
@@ -4178,6 +4395,7 @@ fn format_event(event: &AppEvent) -> String {
             UserAction::PylonStart => "PylonStart".to_string(),
             UserAction::PylonStop => "PylonStop".to_string(),
             UserAction::PylonRefresh => "PylonRefresh".to_string(),
+            UserAction::WalletRefresh => "WalletRefresh".to_string(),
             UserAction::Interrupt { .. } => "Interrupt".to_string(),
             UserAction::FullAutoToggle { enabled, .. } => {
                 if *enabled {
@@ -4193,6 +4411,13 @@ fn format_event(event: &AppEvent) -> String {
                 "PylonStatus (running)".to_string()
             } else {
                 "PylonStatus (stopped)".to_string()
+            }
+        }
+        AppEvent::WalletStatus { status } => {
+            if status.identity_exists {
+                "WalletStatus (identity)".to_string()
+            } else {
+                "WalletStatus (missing identity)".to_string()
             }
         }
     }
