@@ -228,10 +228,11 @@ impl ApplicationHandler<AppEvent> for App {
                 update_cursor(state);
             }
             WindowEvent::RedrawRequested => {
+                let continue_redraw = state.root.needs_redraw();
                 if let Err(err) = render_frame(state) {
                     tracing::warn!(error = %err, "render frame failed");
                 }
-                if state.root.needs_redraw() {
+                if continue_redraw {
                     state.window.request_redraw();
                 }
             }

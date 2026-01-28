@@ -115,7 +115,7 @@ impl Component for EntryActions {
 
             let text_run = cx
                 .text
-                .layout(label, Point::new(x, text_y), font_size, text_color);
+                .layout_mono(label, Point::new(x, text_y), font_size, text_color);
             cx.scene.draw_text(text_run);
             x += label.len() as f32 * font_size * 0.6 + gap;
         }
