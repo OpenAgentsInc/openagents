@@ -214,3 +214,7 @@ Prevent regressions to manual layout across the codebase.
   layout-engine panel stacking.
 - 2026-01-28: Phase 3: converted the Storybook chat threads + bitcoin wallet panels to use
   layout-engine panel stacking.
+- 2026-01-28: Phase 3: completed flows.rs migration - converted all remaining flow sections
+  (paint_thread_components, paint_sessions, paint_permissions, paint_apm_metrics, paint_wallet_flows,
+  paint_gitafter_flows, paint_marketplace_flows, paint_nostr_flows, paint_sovereign_agent_flows)
+  to use `panel_stack` layout helper. Removed `SECTION_GAP` import from flows.rs.
