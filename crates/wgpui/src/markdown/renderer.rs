@@ -465,7 +465,7 @@ impl MarkdownRenderer {
                                     bounds: Bounds::new(
                                         current_x - padding,
                                         y - padding,
-                                        text_size.width + padding * 2.0,
+                                        chunk_width + padding * 2.0,
                                         text_size.height + padding * 2.0,
                                     ),
                                     background: Some(bg_with_opacity),
@@ -520,7 +520,7 @@ impl MarkdownRenderer {
                             bounds: Bounds::new(
                                 current_x - padding,
                                 y - padding,
-                                text_size.width + padding * 2.0,
+                                word_width + padding * 2.0,
                                 text_size.height + padding * 2.0,
                             ),
                             background: Some(bg_with_opacity),
