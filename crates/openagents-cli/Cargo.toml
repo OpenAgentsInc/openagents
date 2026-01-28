@@ -24,4 +24,7 @@ serde_json = { workspace = true }
 hex = { workspace = true }
 rand = { workspace = true }
 bip39 = "2.1"
-
+spark = { package = "openagents-spark", path = "../spark" }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
+reqwest = { workspace = true }
+bitcoin = { workspace = true }

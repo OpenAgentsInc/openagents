@@ -6805,12 +6805,16 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "bip39",
+ "bitcoin",
  "clap",
  "hex",
  "nostr 0.1.0",
+ "openagents-spark",
  "rand 0.9.2",
+ "reqwest",
  "serde",
  "serde_json",
+ "tokio",
 ]
 
 [[package]]
