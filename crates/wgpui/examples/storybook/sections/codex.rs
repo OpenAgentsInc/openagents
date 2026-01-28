@@ -7,19 +7,26 @@ use wgpui::components::organisms::{
 };
 use wgpui::{Bounds, Component, PaintContext, Point, theme};
 
-use crate::constants::SECTION_GAP;
-use crate::helpers::{draw_panel, panel_height};
+use crate::helpers::{draw_panel, panel_height, panel_stack};
 use crate::state::Storybook;
 
 impl Storybook {
     pub(crate) fn paint_codex_events(&mut self, bounds: Bounds, cx: &mut PaintContext) {
-        let mut y = bounds.origin.y;
-        let width = bounds.size.width;
+        let panel_heights = [
+            panel_height(240.0),
+            panel_height(300.0),
+            panel_height(420.0),
+            panel_height(260.0),
+            panel_height(360.0),
+            panel_height(300.0),
+            panel_height(300.0),
+            panel_height(220.0),
+        ];
+        let panels = panel_stack(bounds, &panel_heights);
         let entry_gap = 12.0;
 
         // ========== Panel 1: Thread + Turn Events ==========
-        let lifecycle_height = panel_height(240.0);
-        let lifecycle_bounds = Bounds::new(bounds.origin.x, y, width, lifecycle_height);
+        let lifecycle_bounds = panels[0];
         draw_panel("Thread + Turn Events", lifecycle_bounds, cx, |inner, cx| {
             let mut entry_y = inner.origin.y;
             let entry_w = inner.size.width;
@@ -52,11 +59,9 @@ impl Storybook {
             let h = turn_completed.size_hint().1.unwrap_or(72.0);
             turn_completed.paint(Bounds::new(inner.origin.x, entry_y, entry_w, h), cx);
         });
-        y += lifecycle_height + SECTION_GAP;
 
         // ========== Panel 2: Item + Error Events ==========
-        let item_height = panel_height(300.0);
-        let item_bounds = Bounds::new(bounds.origin.x, y, width, item_height);
+        let item_bounds = panels[1];
         draw_panel("Item + Error Events", item_bounds, cx, |inner, cx| {
             let mut entry_y = inner.origin.y;
             let entry_w = inner.size.width;
@@ -97,11 +102,9 @@ impl Storybook {
             let h = error.size_hint().1.unwrap_or(72.0);
             error.paint(Bounds::new(inner.origin.x, entry_y, entry_w, h), cx);
         });
-        y += item_height + SECTION_GAP;
 
         // ========== Panel 3: Streaming Deltas ==========
-        let stream_height = panel_height(420.0);
-        let stream_bounds = Bounds::new(bounds.origin.x, y, width, stream_height);
+        let stream_bounds = panels[2];
         draw_panel("Streaming Deltas", stream_bounds, cx, |inner, cx| {
             let mut entry_y = inner.origin.y;
             let entry_w = inner.size.width;
@@ -159,11 +162,9 @@ impl Storybook {
             let term_h = 100.0;
             terminal.paint(Bounds::new(inner.origin.x, entry_y, entry_w, term_h), cx);
         });
-        y += stream_height + SECTION_GAP;
 
         // ========== Panel 4: Tool Interactions ==========
-        let tools_height = panel_height(260.0);
-        let tools_bounds = Bounds::new(bounds.origin.x, y, width, tools_height);
+        let tools_bounds = panels[3];
         draw_panel("Tool Interactions", tools_bounds, cx, |inner, cx| {
             let mut entry_y = inner.origin.y;
             let entry_w = inner.size.width;
@@ -213,11 +214,9 @@ impl Storybook {
             let h = mcp.size_hint().1.unwrap_or(70.0);
             mcp.paint(Bounds::new(inner.origin.x, entry_y, entry_w, h), cx);
         });
-        y += tools_height + SECTION_GAP;
 
         // ========== Panel 5: Plan + Diff ==========
-        let plan_height = panel_height(360.0);
-        let plan_bounds = Bounds::new(bounds.origin.x, y, width, plan_height);
+        let plan_bounds = panels[4];
         draw_panel("Plan + Diff", plan_bounds, cx, |inner, cx| {
             let mut entry_y = inner.origin.y;
             let entry_w = inner.size.width;
@@ -288,11 +287,9 @@ impl Storybook {
             let diff_h = 160.0;
             diff.paint(Bounds::new(inner.origin.x, entry_y, entry_w, diff_h), cx);
         });
-        y += plan_height + SECTION_GAP;
 
         // ========== Panel 6: Usage ==========
-        let usage_height = panel_height(300.0);
-        let usage_bounds = Bounds::new(bounds.origin.x, y, width, usage_height);
+        let usage_bounds = panels[5];
         draw_panel("Usage", usage_bounds, cx, |inner, cx| {
             let mut entry_y = inner.origin.y;
             let entry_w = inner.size.width;
@@ -330,11 +327,9 @@ impl Storybook {
             let rate_h = rate_limits.size_hint().1.unwrap_or(140.0);
             rate_limits.paint(Bounds::new(inner.origin.x, entry_y, entry_w, rate_h), cx);
         });
-        y += usage_height + SECTION_GAP;
 
         // ========== Panel 7: Account + MCP ==========
-        let account_height = panel_height(300.0);
-        let account_bounds = Bounds::new(bounds.origin.x, y, width, account_height);
+        let account_bounds = panels[6];
         draw_panel("Account + MCP", account_bounds, cx, |inner, cx| {
             let mut entry_y = inner.origin.y;
             let entry_w = inner.size.width;
@@ -375,11 +370,9 @@ impl Storybook {
             let h = legacy.size_hint().1.unwrap_or(72.0);
             legacy.paint(Bounds::new(inner.origin.x, entry_y, entry_w, h), cx);
         });
-        y += account_height + SECTION_GAP;
 
         // ========== Panel 8: Notices + Raw Response ==========
-        let notices_height = panel_height(220.0);
-        let notices_bounds = Bounds::new(bounds.origin.x, y, width, notices_height);
+        let notices_bounds = panels[7];
         draw_panel("Notices + Raw Response", notices_bounds, cx, |inner, cx| {
             let mut entry_y = inner.origin.y;
             let entry_w = inner.size.width;
