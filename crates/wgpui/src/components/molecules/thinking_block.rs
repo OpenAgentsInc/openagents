@@ -79,23 +79,7 @@ impl Component for ThinkingBlock {
     fn paint(&mut self, bounds: Bounds, cx: &mut PaintContext) {
         let padding = theme::spacing::XS;
         let header_height = 20.0;
-        let icon_size = 10.0;
-        let icon_radius = 2.0;
-        let icon_y = bounds.origin.y + (header_height - icon_size) * 0.5;
-        let icon_bounds = Bounds::new(
-            bounds.origin.x + padding,
-            icon_y,
-            icon_size,
-            icon_size,
-        );
-        cx.scene.draw_quad(
-            Quad::new(icon_bounds)
-                .with_background(theme::bg::MUTED)
-                .with_border(theme::border::DEFAULT, 1.0)
-                .with_corner_radius(icon_radius),
-        );
-
-        let label_x = icon_bounds.origin.x + icon_size + theme::spacing::XS;
+        let label_x = bounds.origin.x + padding;
         let label_y = bounds.origin.y + header_height * 0.5 - theme::font_size::XS * 0.55;
         let label_run = cx.text.layout_mono(
             &self.header_label,
@@ -177,7 +161,8 @@ impl Component for ThinkingBlock {
         }
 
         if self.expanded {
-            let content_indent = bounds.origin.x + theme::spacing::XS + 10.0 + theme::spacing::XS;
+            let padding = theme::spacing::XS;
+            let content_indent = bounds.origin.x + padding;
             let content_y = bounds.origin.y + 20.0 + theme::spacing::XS;
             let content_bounds = Bounds::new(
                 content_indent,
