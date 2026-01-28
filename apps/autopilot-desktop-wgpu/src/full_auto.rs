@@ -1,4 +1,4 @@
-use chrono::{DateTime, Utc};
+use chrono::Utc;
 use dsrs::signatures::FullAutoDecisionSignature;
 use dsrs::{example, LM, Predict, Predictor};
 use serde::{Deserialize, Serialize};
@@ -202,7 +202,6 @@ pub struct FullAutoState {
     decision_lm: Option<LM>,
     threads: HashMap<String, FullAutoThreadState>,
     pub run_id: String,
-    pub started_at: DateTime<Utc>,
     pub decision_seq: u64,
 }
 
@@ -230,7 +229,6 @@ impl FullAutoState {
             decision_lm: None,
             threads: HashMap::new(),
             run_id,
-            started_at,
             decision_seq: 0,
         }
     }

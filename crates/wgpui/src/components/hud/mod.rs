@@ -5,7 +5,9 @@ mod dots_grid;
 mod frame;
 mod frame_clips;
 mod heatmap;
+mod hotbar;
 mod notifications;
+mod pane;
 mod resizable_pane;
 mod reticle;
 mod ring_gauge;
@@ -24,7 +26,9 @@ pub use frame_clips::{
     style_frame_clip_octagon,
 };
 pub use heatmap::Heatmap;
+pub use hotbar::{Hotbar, HotbarSlot};
 pub use notifications::{Notification, NotificationLevel, NotificationPosition, Notifications};
+pub use pane::PaneFrame;
 pub use resizable_pane::{ResizablePane, ResizeEdge};
 pub use reticle::Reticle;
 pub use ring_gauge::RingGauge;
@@ -58,6 +62,8 @@ mod tests {
         let _resizable = ResizablePane::new();
         let _heatmap = Heatmap::new();
         let _ring = RingGauge::new();
+        let _hotbar = Hotbar::new();
+        let _pane = PaneFrame::new();
     }
 
     #[test]
