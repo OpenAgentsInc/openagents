@@ -341,6 +341,7 @@ pub struct MinimalRoot {
     thread_model: Option<String>,
     thread_id: Option<String>,
     raw_events_visible: bool,
+    left_panel_visible: bool,
     nostr_visible: bool,
     nostr_fullscreen: bool,
 }
@@ -449,6 +450,7 @@ impl MinimalRoot {
             thread_model: Some(DEFAULT_THREAD_MODEL.to_string()),
             thread_id: None,
             raw_events_visible: false,
+            left_panel_visible: true,
             nostr_visible: false,
             nostr_fullscreen: false,
         }
@@ -938,6 +940,40 @@ impl MinimalRoot {
                 }
                 return true;
             }
+            if modifiers.meta && matches!(key, Key::Character(value) if value == "[") {
+                self.left_panel_visible = !self.left_panel_visible;
+                if !self.left_panel_visible {
+                    if self.nostr_visible {
+                        self.nostr_fullscreen = true;
+                    }
+                } else if self.nostr_fullscreen {
+                    self.nostr_fullscreen = false;
+                }
+                return true;
+            }
+            if modifiers.meta && matches!(key, Key::Character(value) if value == "]") {
+                self.nostr_visible = !self.nostr_visible;
+                if !self.nostr_visible {
+                    self.nostr_fullscreen = false;
+                } else if !self.left_panel_visible {
+                    self.nostr_fullscreen = true;
+                } else {
+                    self.nostr_fullscreen = false;
+                }
+                return true;
+            }
+            if modifiers.meta && matches!(key, Key::Character(value) if value == "\\") {
+                if self.left_panel_visible || self.nostr_visible {
+                    self.left_panel_visible = false;
+                    self.nostr_visible = false;
+                    self.nostr_fullscreen = false;
+                } else {
+                    self.left_panel_visible = true;
+                    self.nostr_visible = true;
+                    self.nostr_fullscreen = false;
+                }
+                return true;
+            }
         }
 
         if let InputEvent::MouseMove { x, y } = event {
@@ -1149,7 +1185,9 @@ impl Component for MinimalRoot {
         );
 
         let mut engine = LayoutEngine::new();
-        let left_panel = if self.nostr_visible && self.nostr_fullscreen {
+        let fullscreen_right = self.nostr_visible
+            && (self.nostr_fullscreen || !self.left_panel_visible);
+        let left_panel = if !self.left_panel_visible || fullscreen_right {
             None
         } else {
             Some(engine.request_layout(
@@ -1159,7 +1197,7 @@ impl Component for MinimalRoot {
         };
         let right_panel = if !self.nostr_visible {
             None
-        } else if self.nostr_fullscreen {
+        } else if fullscreen_right {
             Some(engine.request_layout(&LayoutStyle::new().flex_grow(1.0), &[]))
         } else {
             let sidebar_width = bounds.size.width * 0.5;
@@ -1646,6 +1684,24 @@ fn paint_hotbar(root: &MinimalRoot, bounds: Bounds, bottom_bounds: Bounds, cx: &
             label: "Identity",
             keys: &["Cmd", "3"],
             active: root.nostr_visible,
+        },
+        HotbarItem {
+            icon: "L",
+            label: "Left",
+            keys: &["Cmd", "["],
+            active: root.left_panel_visible,
+        },
+        HotbarItem {
+            icon: "R",
+            label: "Right",
+            keys: &["Cmd", "]"],
+            active: root.nostr_visible,
+        },
+        HotbarItem {
+            icon: "LR",
+            label: "Both",
+            keys: &["Cmd", "\\"],
+            active: root.left_panel_visible && root.nostr_visible,
         },
     ];
 
