@@ -13,8 +13,8 @@ use taffy::prelude::{AlignItems, JustifyContent};
 use wgpui::components::EventContext;
 use wgpui::components::atoms::{KeybindingHint, ToolStatus, ToolType};
 use wgpui::components::organisms::{
-    AssistantMessage, DiffLine, DiffLineKind, DiffToolCall, SearchMatch, SearchToolCall,
-    TerminalToolCall, ThreadEntry, ThreadEntryType, ToolCallCard, UserMessage,
+    AssistantMessage, CodexReasoningCard, DiffLine, DiffLineKind, DiffToolCall, SearchMatch,
+    SearchToolCall, TerminalToolCall, ThreadEntry, ThreadEntryType, ToolCallCard, UserMessage,
 };
 use wgpui::components::sections::{MessageEditor, ThreadView};
 use wgpui::components::{Text, TextInput};
@@ -324,8 +324,10 @@ pub struct MinimalRoot {
     formatted_thread_bounds: Bounds,
     formatted_message_streams: HashMap<String, StreamingMarkdown>,
     formatted_message_entries: HashMap<String, usize>,
+    reasoning_entries: HashMap<String, ReasoningEntry>,
     tool_entries: HashMap<String, ToolEntry>,
     last_user_message: Option<String>,
+    working_entry_index: Option<usize>,
     input: TextInput,
     input_bounds: Bounds,
     input_hovered: bool,
@@ -359,6 +361,13 @@ pub struct MinimalRoot {
 #[derive(Clone, Debug)]
 struct QueuedMessage {
     text: String,
+}
+
+#[derive(Clone, Debug)]
+struct ReasoningEntry {
+    summary: String,
+    content: String,
+    entry_index: usize,
 }
 
 impl MinimalRoot {
@@ -470,8 +479,10 @@ impl MinimalRoot {
             formatted_thread_bounds: Bounds::ZERO,
             formatted_message_streams: HashMap::new(),
             formatted_message_entries: HashMap::new(),
+            reasoning_entries: HashMap::new(),
             tool_entries: HashMap::new(),
             last_user_message: None,
+            working_entry_index: None,
             input,
             input_bounds: Bounds::ZERO,
             input_hovered: false,
@@ -564,6 +575,7 @@ impl MinimalRoot {
                         {
                             self.active_turn_id = Some(turn_id.to_string());
                             self.queued_in_flight = None;
+                            self.show_working_indicator();
                         }
                     }
 
@@ -590,6 +602,7 @@ impl MinimalRoot {
                         {
                             self.active_turn_id = None;
                             self.flush_queue_if_idle();
+                            self.clear_working_indicator();
                         }
                     }
 
@@ -715,6 +728,11 @@ impl MinimalRoot {
                                     self.append_user_message(&text);
                                 }
                             }
+                            "reasoning" | "Reasoning" => {
+                                if let Some(item_id) = item_id(item) {
+                                    self.ensure_reasoning_entry(&item_id);
+                                }
+                            }
                             "commandExecution" | "fileChange" | "mcpToolCall" | "webSearch" => {
                                 self.start_tool_entry(item_type, item);
                             }
@@ -733,6 +751,40 @@ impl MinimalRoot {
                                     self.finish_agent_message(&item_id, text.as_deref());
                                 } else if let Some(text) = text {
                                     self.append_agent_text(&text);
+                                }
+                            }
+                            "reasoning" | "Reasoning" => {
+                                if let Some(item_id) = item_id(item) {
+                                    let summary_text = item
+                                        .get("summary")
+                                        .or_else(|| item.get("summary_text"))
+                                        .and_then(|value| value.as_array())
+                                        .map(|parts| {
+                                            parts
+                                                .iter()
+                                                .filter_map(|part| part.as_str())
+                                                .collect::<Vec<_>>()
+                                                .join("\n")
+                                        })
+                                        .unwrap_or_default();
+                                    let content_text = item
+                                        .get("content")
+                                        .or_else(|| item.get("raw_content"))
+                                        .and_then(|value| value.as_array())
+                                        .map(|parts| {
+                                            parts
+                                                .iter()
+                                                .filter_map(|part| part.as_str())
+                                                .collect::<Vec<_>>()
+                                                .join("\n")
+                                        })
+                                        .unwrap_or_default();
+                                    if !summary_text.is_empty() {
+                                        self.append_reasoning_summary_delta(&item_id, &summary_text);
+                                    }
+                                    if !content_text.is_empty() {
+                                        self.append_reasoning_content_delta(&item_id, &content_text);
+                                    }
                                 }
                             }
                             "commandExecution" | "fileChange" | "mcpToolCall" | "webSearch" => {
@@ -754,6 +806,28 @@ impl MinimalRoot {
                     if let Some(item_id) = item_id {
                         self.append_agent_delta(item_id, delta);
                     }
+                }
+            }
+            "item/reasoning/summaryTextDelta" => {
+                if let Some(params) = value.get("params")
+                    && let Some(delta) = params.get("delta").and_then(|d| d.as_str())
+                    && let Some(item_id) = params
+                        .get("itemId")
+                        .or_else(|| params.get("item_id"))
+                        .and_then(|id| id.as_str())
+                {
+                    self.append_reasoning_summary_delta(item_id, delta);
+                }
+            }
+            "item/reasoning/contentDelta" => {
+                if let Some(params) = value.get("params")
+                    && let Some(delta) = params.get("delta").and_then(|d| d.as_str())
+                    && let Some(item_id) = params
+                        .get("itemId")
+                        .or_else(|| params.get("item_id"))
+                        .and_then(|id| id.as_str())
+                {
+                    self.append_reasoning_content_delta(item_id, delta);
                 }
             }
             "item/commandExecution/outputDelta" | "item/fileChange/outputDelta" => {
@@ -804,6 +878,7 @@ impl MinimalRoot {
         if text.trim().is_empty() {
             return;
         }
+        self.clear_working_indicator();
         let mut stream = new_markdown_stream();
         stream.append(text);
         stream.complete();
@@ -816,6 +891,7 @@ impl MinimalRoot {
         if delta.is_empty() {
             return;
         }
+        self.clear_working_indicator();
 
         let entry_index = self.ensure_agent_entry(item_id);
         let updated_doc = {
@@ -836,6 +912,7 @@ impl MinimalRoot {
     }
 
     fn finish_agent_message(&mut self, item_id: &str, text: Option<&str>) {
+        self.clear_working_indicator();
         let entry_index = self.ensure_agent_entry(item_id);
 
         let updated_doc = {
@@ -864,6 +941,7 @@ impl MinimalRoot {
             return *entry_index;
         }
 
+        self.clear_working_indicator();
         let stream = new_markdown_stream();
         let view = message_markdown_view(stream.document().clone());
         self.formatted_thread
@@ -883,6 +961,8 @@ impl MinimalRoot {
         if self.tool_entries.contains_key(&item_id) {
             return;
         }
+
+        self.clear_working_indicator();
 
         let entry_index = self.formatted_thread.entry_count();
 
@@ -954,6 +1034,99 @@ impl MinimalRoot {
             .push_entry(ThreadEntry::new(ThreadEntryType::Tool, Text::new("")));
         self.tool_entries.insert(item_id.clone(), entry);
         self.refresh_tool_entry(&item_id);
+    }
+
+    fn show_working_indicator(&mut self) {
+        if self.working_entry_index.is_some() {
+            return;
+        }
+        let mut stream = new_markdown_stream();
+        stream.append("*Working...*");
+        stream.complete();
+        let view = message_markdown_view(stream.document().clone());
+        self.formatted_thread
+            .push_entry(ThreadEntry::new(ThreadEntryType::Assistant, view));
+        let entry_index = self.formatted_thread.entry_count().saturating_sub(1);
+        self.working_entry_index = Some(entry_index);
+    }
+
+    fn clear_working_indicator(&mut self) {
+        let Some(index) = self.working_entry_index else {
+            return;
+        };
+        if index + 1 == self.formatted_thread.entry_count() {
+            let _ = self.formatted_thread.pop_entry();
+        }
+        self.working_entry_index = None;
+    }
+
+    fn ensure_reasoning_entry(&mut self, item_id: &str) -> usize {
+        if let Some(entry) = self.reasoning_entries.get(item_id) {
+            return entry.entry_index;
+        }
+
+        self.clear_working_indicator();
+        let card = CodexReasoningCard::new(None, None);
+        self.formatted_thread
+            .push_entry(ThreadEntry::new(ThreadEntryType::Assistant, card));
+        let entry_index = self.formatted_thread.entry_count().saturating_sub(1);
+        self.reasoning_entries.insert(
+            item_id.to_string(),
+            ReasoningEntry {
+                summary: String::new(),
+                content: String::new(),
+                entry_index,
+            },
+        );
+        entry_index
+    }
+
+    fn append_reasoning_summary_delta(&mut self, item_id: &str, delta: &str) {
+        if delta.is_empty() {
+            return;
+        }
+        let entry_index = self.ensure_reasoning_entry(item_id);
+        if let Some(entry) = self.reasoning_entries.get_mut(item_id) {
+            entry.summary.push_str(delta);
+            if let Some(thread_entry) = self.formatted_thread.entry_mut(entry_index) {
+                let summary = if entry.summary.trim().is_empty() {
+                    None
+                } else {
+                    Some(entry.summary.clone())
+                };
+                let content = if entry.content.trim().is_empty() {
+                    None
+                } else {
+                    Some(entry.content.clone())
+                };
+                let card = CodexReasoningCard::new(summary, content);
+                thread_entry.set_content(card);
+            }
+        }
+    }
+
+    fn append_reasoning_content_delta(&mut self, item_id: &str, delta: &str) {
+        if delta.is_empty() {
+            return;
+        }
+        let entry_index = self.ensure_reasoning_entry(item_id);
+        if let Some(entry) = self.reasoning_entries.get_mut(item_id) {
+            entry.content.push_str(delta);
+            if let Some(thread_entry) = self.formatted_thread.entry_mut(entry_index) {
+                let summary = if entry.summary.trim().is_empty() {
+                    None
+                } else {
+                    Some(entry.summary.clone())
+                };
+                let content = if entry.content.trim().is_empty() {
+                    None
+                } else {
+                    Some(entry.content.clone())
+                };
+                let card = CodexReasoningCard::new(summary, content);
+                thread_entry.set_content(card);
+            }
+        }
     }
 
     fn append_tool_output(&mut self, item_id: &str, delta: &str) {
