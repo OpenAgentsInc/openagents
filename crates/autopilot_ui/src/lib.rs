@@ -60,6 +60,8 @@ const PYLON_PANE_WIDTH: f32 = 520.0;
 const PYLON_PANE_HEIGHT: f32 = 420.0;
 const WALLET_PANE_WIDTH: f32 = 520.0;
 const WALLET_PANE_HEIGHT: f32 = 420.0;
+const SELL_COMPUTE_PANE_WIDTH: f32 = 560.0;
+const SELL_COMPUTE_PANE_HEIGHT: f32 = 460.0;
 const HOTBAR_HEIGHT: f32 = 52.0;
 const HOTBAR_FLOAT_GAP: f32 = 18.0;
 const HOTBAR_ITEM_SIZE: f32 = 36.0;
@@ -70,7 +72,8 @@ const HOTBAR_SLOT_EVENTS: u8 = 2;
 const HOTBAR_SLOT_IDENTITY: u8 = 3;
 const HOTBAR_SLOT_PYLON: u8 = 4;
 const HOTBAR_SLOT_WALLET: u8 = 5;
-const HOTBAR_CHAT_SLOT_START: u8 = 6;
+const HOTBAR_SLOT_SELL_COMPUTE: u8 = 6;
+const HOTBAR_CHAT_SLOT_START: u8 = 7;
 const HOTBAR_SLOT_MAX: u8 = 9;
 const MODEL_OPTIONS: [(&str, &str); 4] = [
     ("gpt-5.2-codex", "Latest frontier agentic coding model."),
@@ -130,6 +133,7 @@ impl AppViewModel {
             AppEvent::AppServerEvent { .. } => {}
             AppEvent::PylonStatus { .. } => {}
             AppEvent::WalletStatus { .. } => {}
+            AppEvent::DvmProviderStatus { .. } => {}
         }
     }
 
@@ -322,6 +326,7 @@ enum PaneKind {
     Identity,
     Pylon,
     Wallet,
+    SellCompute,
 }
 
 #[derive(Clone, Debug)]
@@ -331,6 +336,7 @@ enum HotbarAction {
     ToggleIdentity,
     TogglePylon,
     ToggleWallet,
+    ToggleSellCompute,
     NewChat,
 }
 
@@ -557,6 +563,16 @@ pub struct MinimalRoot {
     wallet_refresh_button: Button,
     wallet_refresh_bounds: Bounds,
     pending_wallet_refresh: Rc<RefCell<bool>>,
+    sell_compute_status: SellComputeStatusView,
+    sell_compute_online_button: Button,
+    sell_compute_offline_button: Button,
+    sell_compute_refresh_button: Button,
+    sell_compute_online_bounds: Bounds,
+    sell_compute_offline_bounds: Bounds,
+    sell_compute_refresh_bounds: Bounds,
+    pending_sell_compute_online: Rc<RefCell<bool>>,
+    pending_sell_compute_offline: Rc<RefCell<bool>>,
+    pending_sell_compute_refresh: Rc<RefCell<bool>>,
     nostr_npub: Option<String>,
     nostr_nsec: Option<String>,
     spark_pubkey_hex: Option<String>,
@@ -1472,6 +1488,39 @@ impl MinimalRoot {
                 *pending_wallet_refresh_click.borrow_mut() = true;
             });
 
+        let pending_sell_compute_online = Rc::new(RefCell::new(false));
+        let pending_sell_compute_online_click = pending_sell_compute_online.clone();
+        let sell_compute_online_button = Button::new("Go online")
+            .variant(ButtonVariant::Primary)
+            .font_size(theme::font_size::XS)
+            .padding(12.0, 6.0)
+            .corner_radius(6.0)
+            .on_click(move || {
+                *pending_sell_compute_online_click.borrow_mut() = true;
+            });
+
+        let pending_sell_compute_offline = Rc::new(RefCell::new(false));
+        let pending_sell_compute_offline_click = pending_sell_compute_offline.clone();
+        let sell_compute_offline_button = Button::new("Go offline")
+            .variant(ButtonVariant::Secondary)
+            .font_size(theme::font_size::XS)
+            .padding(12.0, 6.0)
+            .corner_radius(6.0)
+            .on_click(move || {
+                *pending_sell_compute_offline_click.borrow_mut() = true;
+            });
+
+        let pending_sell_compute_refresh = Rc::new(RefCell::new(false));
+        let pending_sell_compute_refresh_click = pending_sell_compute_refresh.clone();
+        let sell_compute_refresh_button = Button::new("Refresh")
+            .variant(ButtonVariant::Secondary)
+            .font_size(theme::font_size::XS)
+            .padding(10.0, 6.0)
+            .corner_radius(6.0)
+            .on_click(move || {
+                *pending_sell_compute_refresh_click.borrow_mut() = true;
+            });
+
         let event_scroll = ScrollView::new().show_scrollbar(true).scrollbar_width(6.0);
         let hotbar = Hotbar::new()
             .item_size(HOTBAR_ITEM_SIZE)
@@ -1518,6 +1567,16 @@ impl MinimalRoot {
             wallet_refresh_button,
             wallet_refresh_bounds: Bounds::ZERO,
             pending_wallet_refresh,
+            sell_compute_status: SellComputeStatusView::default(),
+            sell_compute_online_button,
+            sell_compute_offline_button,
+            sell_compute_refresh_button,
+            sell_compute_online_bounds: Bounds::ZERO,
+            sell_compute_offline_bounds: Bounds::ZERO,
+            sell_compute_refresh_bounds: Bounds::ZERO,
+            pending_sell_compute_online,
+            pending_sell_compute_offline,
+            pending_sell_compute_refresh,
             nostr_npub: None,
             nostr_nsec: None,
             spark_pubkey_hex: None,
@@ -1571,6 +1630,20 @@ impl MinimalRoot {
                     spark_address: status.spark_address,
                     bitcoin_address: status.bitcoin_address,
                     identity_exists: status.identity_exists,
+                    last_error: status.last_error,
+                };
+            }
+            AppEvent::DvmProviderStatus { status } => {
+                self.sell_compute_status = SellComputeStatusView {
+                    running: status.running,
+                    provider_active: status.provider_active,
+                    host_active: status.host_active,
+                    min_price_msats: status.min_price_msats,
+                    require_payment: status.require_payment,
+                    default_model: status.default_model,
+                    backend_preference: status.backend_preference,
+                    network: status.network,
+                    enable_payments: status.enable_payments,
                     last_error: status.last_error,
                 };
             }
@@ -1857,6 +1930,36 @@ impl MinimalRoot {
         }
     }
 
+    fn toggle_sell_compute_pane(&mut self, screen: Size) {
+        let last_position = self.pane_store.last_pane_position;
+        self.pane_store.toggle_pane("sell_compute", screen, |snapshot| {
+            let rect = snapshot
+                .as_ref()
+                .map(|snapshot| snapshot.rect)
+                .unwrap_or_else(|| {
+                    calculate_new_pane_position(
+                        last_position,
+                        screen,
+                        SELL_COMPUTE_PANE_WIDTH,
+                        SELL_COMPUTE_PANE_HEIGHT,
+                    )
+                });
+            Pane {
+                id: "sell_compute".to_string(),
+                kind: PaneKind::SellCompute,
+                title: "Sell Compute".to_string(),
+                rect,
+                dismissable: true,
+            }
+        });
+
+        if self.pane_store.is_active("sell_compute") {
+            if let Some(handler) = self.send_handler.as_mut() {
+                handler(UserAction::DvmProviderRefresh);
+            }
+        }
+    }
+
     fn close_pane(&mut self, id: &str) {
         self.pane_store.remove_pane(id, true);
         self.pane_frames.remove(id);
@@ -1919,6 +2022,10 @@ impl MinimalRoot {
             }
             HotbarAction::ToggleWallet => {
                 self.toggle_wallet_pane(screen);
+                true
+            }
+            HotbarAction::ToggleSellCompute => {
+                self.toggle_sell_compute_pane(screen);
                 true
             }
             HotbarAction::NewChat => {
@@ -2272,6 +2379,33 @@ impl MinimalRoot {
                             );
                             handled |= refresh_handled;
                         }
+                        PaneKind::SellCompute => {
+                            let online_handled = matches!(
+                                self.sell_compute_online_button.event(
+                                    event,
+                                    self.sell_compute_online_bounds,
+                                    &mut self.event_context
+                                ),
+                                EventResult::Handled
+                            );
+                            let offline_handled = matches!(
+                                self.sell_compute_offline_button.event(
+                                    event,
+                                    self.sell_compute_offline_bounds,
+                                    &mut self.event_context
+                                ),
+                                EventResult::Handled
+                            );
+                            let refresh_handled = matches!(
+                                self.sell_compute_refresh_button.event(
+                                    event,
+                                    self.sell_compute_refresh_bounds,
+                                    &mut self.event_context
+                                ),
+                                EventResult::Handled
+                            );
+                            handled |= online_handled || offline_handled || refresh_handled;
+                        }
                     }
                 }
             }
@@ -2360,6 +2494,42 @@ impl MinimalRoot {
         if should_wallet_refresh {
             if let Some(handler) = self.send_handler.as_mut() {
                 handler(UserAction::WalletRefresh);
+            }
+        }
+
+        let should_sell_compute_online = {
+            let mut pending = self.pending_sell_compute_online.borrow_mut();
+            let value = *pending;
+            *pending = false;
+            value
+        };
+        if should_sell_compute_online {
+            if let Some(handler) = self.send_handler.as_mut() {
+                handler(UserAction::DvmProviderStart);
+            }
+        }
+
+        let should_sell_compute_offline = {
+            let mut pending = self.pending_sell_compute_offline.borrow_mut();
+            let value = *pending;
+            *pending = false;
+            value
+        };
+        if should_sell_compute_offline {
+            if let Some(handler) = self.send_handler.as_mut() {
+                handler(UserAction::DvmProviderStop);
+            }
+        }
+
+        let should_sell_compute_refresh = {
+            let mut pending = self.pending_sell_compute_refresh.borrow_mut();
+            let value = *pending;
+            *pending = false;
+            value
+        };
+        if should_sell_compute_refresh {
+            if let Some(handler) = self.send_handler.as_mut() {
+                handler(UserAction::DvmProviderRefresh);
             }
         }
 
@@ -2594,6 +2764,7 @@ impl Component for MinimalRoot {
                 PaneKind::Identity => paint_identity_pane(self, content_bounds, cx),
                 PaneKind::Pylon => paint_pylon_pane(self, content_bounds, cx),
                 PaneKind::Wallet => paint_wallet_pane(self, content_bounds, cx),
+                PaneKind::SellCompute => paint_sell_compute_pane(self, content_bounds, cx),
             }
             cx.scene.pop_clip();
         }
@@ -2642,6 +2813,13 @@ impl Component for MinimalRoot {
         );
         self.hotbar_bindings
             .insert(HOTBAR_SLOT_WALLET, HotbarAction::ToggleWallet);
+
+        items.push(
+            HotbarSlot::new(HOTBAR_SLOT_SELL_COMPUTE, "SC", "Sell")
+                .active(self.pane_store.is_active("sell_compute")),
+        );
+        self.hotbar_bindings
+            .insert(HOTBAR_SLOT_SELL_COMPUTE, HotbarAction::ToggleSellCompute);
 
         let mut slot_to_pane: HashMap<u8, String> = HashMap::new();
         for (pane_id, slot) in self.chat_slot_assignments.iter() {
@@ -3361,6 +3539,159 @@ fn paint_wallet_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintConte
     }
 
     if let Some(err) = root.wallet_status.last_error.as_deref() {
+        Text::new(err)
+            .font_size(text_size)
+            .color(theme::text::ACCENT)
+            .paint(Bounds::new(content_x, y, content_width, label_height), cx);
+    }
+}
+
+fn paint_sell_compute_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintContext) {
+    let padding = 16.0;
+    let button_height = 28.0;
+    let label_height = 16.0;
+    let value_spacing = 10.0;
+    let text_size = theme::font_size::XS;
+
+    let mut content_width = (bounds.size.width * 0.85).min(600.0).max(320.0);
+    content_width = content_width.min(bounds.size.width - padding * 2.0);
+    let content_x = bounds.origin.x + (bounds.size.width - content_width) / 2.0;
+    let mut y = bounds.origin.y + padding;
+
+    let provider_active = root.sell_compute_status.provider_active.unwrap_or(false);
+    let running = root.sell_compute_status.running;
+    root.sell_compute_online_button
+        .set_disabled(running && provider_active);
+    root.sell_compute_offline_button
+        .set_disabled(!running);
+
+    let online_width = 92.0;
+    let offline_width = 96.0;
+    let refresh_width = 86.0;
+    let gap = 8.0;
+    let row_width = online_width + offline_width + refresh_width + gap * 2.0;
+    let row_x = content_x + (content_width - row_width).max(0.0) / 2.0;
+    let online_bounds = Bounds::new(row_x, y, online_width, button_height);
+    let offline_bounds = Bounds::new(row_x + online_width + gap, y, offline_width, button_height);
+    let refresh_bounds = Bounds::new(
+        row_x + online_width + offline_width + gap * 2.0,
+        y,
+        refresh_width,
+        button_height,
+    );
+    root.sell_compute_online_bounds = online_bounds;
+    root.sell_compute_offline_bounds = offline_bounds;
+    root.sell_compute_refresh_bounds = refresh_bounds;
+    root.sell_compute_online_button.paint(online_bounds, cx);
+    root.sell_compute_offline_button.paint(offline_bounds, cx);
+    root.sell_compute_refresh_button.paint(refresh_bounds, cx);
+    y += button_height + 14.0;
+
+    let status_line = if running {
+        "Daemon: running"
+    } else {
+        "Daemon: stopped"
+    };
+    Text::new(status_line)
+        .font_size(text_size)
+        .color(theme::text::PRIMARY)
+        .paint(Bounds::new(content_x, y, content_width, label_height), cx);
+    y += label_height + value_spacing;
+
+    if let Some(provider_active) = root.sell_compute_status.provider_active {
+        Text::new(&format!(
+            "Provider: {}",
+            if provider_active { "online" } else { "offline" }
+        ))
+        .font_size(text_size)
+        .color(theme::text::MUTED)
+        .paint(Bounds::new(content_x, y, content_width, label_height), cx);
+        y += label_height + value_spacing;
+    }
+
+    if let Some(host_active) = root.sell_compute_status.host_active {
+        Text::new(&format!(
+            "Host: {}",
+            if host_active { "active" } else { "inactive" }
+        ))
+        .font_size(text_size)
+        .color(theme::text::MUTED)
+        .paint(Bounds::new(content_x, y, content_width, label_height), cx);
+        y += label_height + value_spacing;
+    }
+
+    Text::new(&format!(
+        "Min price: {} msats",
+        root.sell_compute_status.min_price_msats
+    ))
+    .font_size(text_size)
+    .color(theme::text::MUTED)
+    .paint(Bounds::new(content_x, y, content_width, label_height), cx);
+    y += label_height + value_spacing;
+
+    Text::new(&format!(
+        "Require payment: {}",
+        if root.sell_compute_status.require_payment {
+            "yes"
+        } else {
+            "no"
+        }
+    ))
+    .font_size(text_size)
+    .color(theme::text::MUTED)
+    .paint(Bounds::new(content_x, y, content_width, label_height), cx);
+    y += label_height + value_spacing;
+
+    Text::new(&format!(
+        "Payments enabled: {}",
+        if root.sell_compute_status.enable_payments {
+            "yes"
+        } else {
+            "no"
+        }
+    ))
+    .font_size(text_size)
+    .color(theme::text::MUTED)
+    .paint(Bounds::new(content_x, y, content_width, label_height), cx);
+    y += label_height + value_spacing;
+
+    Text::new(&format!(
+        "Network: {}",
+        root.sell_compute_status.network
+    ))
+    .font_size(text_size)
+    .color(theme::text::MUTED)
+    .paint(Bounds::new(content_x, y, content_width, label_height), cx);
+    y += label_height + value_spacing;
+
+    if !root.sell_compute_status.default_model.is_empty() {
+        Text::new(&format!(
+            "Default model: {}",
+            root.sell_compute_status.default_model
+        ))
+        .font_size(text_size)
+        .color(theme::text::MUTED)
+        .paint(Bounds::new(content_x, y, content_width, label_height), cx);
+        y += label_height + value_spacing;
+    }
+
+    if !root.sell_compute_status.backend_preference.is_empty() {
+        Text::new("Backends")
+            .font_size(text_size)
+            .color(theme::text::MUTED)
+            .paint(Bounds::new(content_x, y, content_width, label_height), cx);
+        y += label_height + 4.0;
+        let list = root.sell_compute_status.backend_preference.join(", ");
+        let mut text = Text::new(list.as_str())
+            .font_size(text_size)
+            .color(theme::text::PRIMARY);
+        let (_, height) = text.size_hint_with_width(content_width);
+        let height = height.unwrap_or(label_height);
+        text.paint(Bounds::new(content_x, y, content_width, height), cx);
+        y += height + value_spacing;
+    }
+
+    if let Some(err) = root.sell_compute_status.last_error.as_deref() {
         Text::new(err)
             .font_size(text_size)
             .color(theme::text::ACCENT)
@@ -4367,6 +4698,20 @@ struct WalletStatusView {
     last_error: Option<String>,
 }
 
+#[derive(Clone, Debug, Default)]
+struct SellComputeStatusView {
+    running: bool,
+    provider_active: Option<bool>,
+    host_active: Option<bool>,
+    min_price_msats: u64,
+    require_payment: bool,
+    default_model: String,
+    backend_preference: Vec<String>,
+    network: String,
+    enable_payments: bool,
+    last_error: Option<String>,
+}
+
 fn format_event(event: &AppEvent) -> String {
     match event {
         AppEvent::WorkspaceOpened { path, .. } => {
@@ -4396,6 +4741,9 @@ fn format_event(event: &AppEvent) -> String {
             UserAction::PylonStop => "PylonStop".to_string(),
             UserAction::PylonRefresh => "PylonRefresh".to_string(),
             UserAction::WalletRefresh => "WalletRefresh".to_string(),
+            UserAction::DvmProviderStart => "DvmProviderStart".to_string(),
+            UserAction::DvmProviderStop => "DvmProviderStop".to_string(),
+            UserAction::DvmProviderRefresh => "DvmProviderRefresh".to_string(),
             UserAction::Interrupt { .. } => "Interrupt".to_string(),
             UserAction::FullAutoToggle { enabled, .. } => {
                 if *enabled {
@@ -4418,6 +4766,13 @@ fn format_event(event: &AppEvent) -> String {
                 "WalletStatus (identity)".to_string()
             } else {
                 "WalletStatus (missing identity)".to_string()
+            }
+        }
+        AppEvent::DvmProviderStatus { status } => {
+            if status.running {
+                "DvmProviderStatus (running)".to_string()
+            } else {
+                "DvmProviderStatus (stopped)".to_string()
             }
         }
     }

@@ -146,3 +146,4 @@ Add pane types and map them into the pane registry:
 - Reviewed Commander Sell Compute, NIP-90, and DVM architecture docs and components.
 - Implemented Phase 1 control surface: added Pylon pane + hotbar slot, wired Pylon init/start/stop/refresh actions, and routed daemon status into UI.
 - Implemented Phase 2 wallet surface: added Wallet pane + hotbar slot, wired wallet refresh action, and populated balances + deposit addresses via Spark using Pylon identity + config data paths.
+- Implemented Phase 3 sell-compute surface: added Sell Compute pane + hotbar slot, wired provider start/stop/refresh actions, and surfaced provider/config status via new DVM provider status events.

@@ -5,8 +5,8 @@ use std::sync::{Arc, mpsc};
 
 use anyhow::{Context, Result};
 use autopilot_app::{
-    App as AutopilotApp, AppConfig, AppEvent, EventRecorder, PylonStatus, SessionId, UserAction,
-    WalletStatus,
+    App as AutopilotApp, AppConfig, AppEvent, DvmProviderStatus, EventRecorder, PylonStatus,
+    SessionId, UserAction, WalletStatus,
 };
 use autopilot_ui::MinimalRoot;
 use codex_client::{
@@ -1227,6 +1227,45 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
                                 let _ = proxy.send_event(AppEvent::WalletStatus { status });
                             });
                         }
+                        UserAction::DvmProviderStart => {
+                            let proxy = proxy_actions.clone();
+                            handle.block_on(async move {
+                                let result =
+                                    pylon::cli::start::run(pylon::cli::start::StartArgs {
+                                        foreground: false,
+                                        mode: pylon::cli::start::PylonMode::Provider,
+                                        config: None,
+                                    })
+                                    .await;
+                                let mut status = fetch_dvm_provider_status();
+                                if let Err(err) = result {
+                                    status.last_error = Some(err.to_string());
+                                }
+                                let _ =
+                                    proxy.send_event(AppEvent::DvmProviderStatus { status });
+                            });
+                        }
+                        UserAction::DvmProviderStop => {
+                            let proxy = proxy_actions.clone();
+                            handle.block_on(async move {
+                                let result = pylon::cli::stop::run(pylon::cli::stop::StopArgs {
+                                    force: false,
+                                    timeout: 10,
+                                })
+                                .await;
+                                let mut status = fetch_dvm_provider_status();
+                                if let Err(err) = result {
+                                    status.last_error = Some(err.to_string());
+                                }
+                                let _ =
+                                    proxy.send_event(AppEvent::DvmProviderStatus { status });
+                            });
+                        }
+                        UserAction::DvmProviderRefresh => {
+                            let status = fetch_dvm_provider_status();
+                            let _ = proxy_actions
+                                .send_event(AppEvent::DvmProviderStatus { status });
+                        }
                         UserAction::FullAutoToggle {
                             session_id,
                             enabled,
@@ -1428,6 +1467,61 @@ fn fetch_pylon_status() -> PylonStatus {
                         status.host_active = Some(host_active);
                         status.jobs_completed = jobs_completed;
                         status.earnings_msats = earnings_msats;
+                    }
+                    Ok(_) => {}
+                    Err(err) => {
+                        status.last_error = Some(err.to_string());
+                    }
+                }
+            }
+        }
+    }
+
+    status
+}
+
+fn fetch_dvm_provider_status() -> DvmProviderStatus {
+    let mut status = DvmProviderStatus {
+        running: false,
+        provider_active: None,
+        host_active: None,
+        min_price_msats: 0,
+        require_payment: false,
+        default_model: String::new(),
+        backend_preference: Vec::new(),
+        network: String::new(),
+        enable_payments: false,
+        last_error: None,
+    };
+
+    let config = match PylonConfig::load() {
+        Ok(config) => config,
+        Err(err) => {
+            status.last_error = Some(format!("Failed to load Pylon config: {err}"));
+            return status;
+        }
+    };
+
+    status.min_price_msats = config.min_price_msats;
+    status.require_payment = config.require_payment;
+    status.default_model = config.default_model.clone();
+    status.backend_preference = config.backend_preference.clone();
+    status.network = config.network.clone();
+    status.enable_payments = config.enable_payments;
+
+    status.running = is_daemon_running();
+    if status.running {
+        if let Ok(socket) = socket_path() {
+            if socket.exists() {
+                let client = ControlClient::new(socket);
+                match client.status() {
+                    Ok(DaemonResponse::Status {
+                        provider_active,
+                        host_active,
+                        ..
+                    }) => {
+                        status.provider_active = Some(provider_active);
+                        status.host_active = Some(host_active);
                     }
                     Ok(_) => {}
                     Err(err) => {
