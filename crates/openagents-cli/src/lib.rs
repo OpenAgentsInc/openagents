@@ -12,7 +12,7 @@ pub struct OpenAgentsCli {
 
 #[derive(clap::Subcommand)]
 pub enum Commands {
-    /// Nostr utilities (NIP-06 key management)
+    /// Nostr utilities (keys, events, encoding, encryption, auth)
     Nostr(nostr_cli::NostrArgs),
 }
 
@@ -22,4 +22,3 @@ pub fn run() -> anyhow::Result<()> {
         Commands::Nostr(args) => nostr_cli::run(args),
     }
 }
-
