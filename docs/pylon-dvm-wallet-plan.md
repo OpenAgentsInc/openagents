@@ -57,6 +57,15 @@ Add pane types and map them into the pane registry:
 - If `identity.mnemonic` is missing, prompt to **init identity** before start.
 - Use the **control socket** for status and to detect already-running daemon.
 
+### 4) Compute backends (start with Ollama)
+- **Ollama is already supported in Rust** via `crates/compute`:
+  - Backend registry auto-detects Ollama at `http://localhost:11434`.
+  - `crates/compute/src/backends/ollama.rs` implements inference requests.
+  - `DvmService` routes kind 5050 jobs to the `BackendRegistry`.
+- Pylon provider uses this registry (`crates/pylon/src/provider.rs`) so DVM
+  provider mode works with Ollama out of the box once the daemon (or in-process
+  provider) is running.
+
 ## Data + config sources
 - **Pylon config**: `~/.openagents/pylon/config.toml` (relays, payments, network).
 - **Identity**: `~/.openagents/pylon/identity.mnemonic` (NIP-06 BIP39).
