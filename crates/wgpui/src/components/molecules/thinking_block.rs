@@ -20,6 +20,7 @@ impl ThinkingBlock {
     pub fn new(content: impl Into<String>) -> Self {
         let raw = content.into();
         let content = strip_task_markers(&raw);
+        let content = strip_list_markers(&content);
         let mut markdown_config = MarkdownConfig::default();
         markdown_config.base_font_size = theme::font_size::XS;
         markdown_config.header_sizes = [1.0; 6];
@@ -250,6 +251,43 @@ fn strip_task_markers(content: &str) -> String {
             for prefix in ["[ ] ", "[x] ", "[X] "] {
                 if rest.starts_with(prefix) {
                     cleaned = Some(rest[prefix.len()..].to_string());
+                    break;
+                }
+            }
+        }
+        out.push_str(cleaned.as_deref().unwrap_or(rest));
+    }
+    out
+}
+
+fn strip_list_markers(content: &str) -> String {
+    let mut out = String::with_capacity(content.len());
+    for (idx, line) in content.lines().enumerate() {
+        if idx > 0 {
+            out.push('\n');
+        }
+        let trimmed = line.trim_start();
+        let indent_len = line.len().saturating_sub(trimmed.len());
+        out.push_str(&line[..indent_len]);
+
+        let rest = trimmed;
+        let mut cleaned = None;
+        for prefix in ["- ", "* ", "+ "] {
+            if rest.starts_with(prefix) {
+                cleaned = Some(rest[prefix.len()..].to_string());
+                break;
+            }
+        }
+        if cleaned.is_none() {
+            let mut chars = rest.chars();
+            let mut num = String::new();
+            while let Some(c) = chars.next() {
+                if c.is_ascii_digit() {
+                    num.push(c);
+                } else {
+                    if c == '.' && !num.is_empty() && chars.as_str().starts_with(' ') {
+                        cleaned = Some(chars.as_str()[1..].to_string());
+                    }
                     break;
                 }
             }
