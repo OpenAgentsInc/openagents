@@ -144,3 +144,4 @@ Add pane types and map them into the pane registry:
 ## Work log
 - Reviewed OpenAgents Pylon, Nostr, Spark, and migration docs.
 - Reviewed Commander Sell Compute, NIP-90, and DVM architecture docs and components.
+- Implemented Phase 1 control surface: added Pylon pane + hotbar slot, wired Pylon init/start/stop/refresh actions, and routed daemon status into UI.

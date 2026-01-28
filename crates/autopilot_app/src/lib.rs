@@ -180,6 +180,10 @@ pub enum UserAction {
         session_id: SessionId,
         model: Option<String>,
     },
+    PylonInit,
+    PylonStart,
+    PylonStop,
+    PylonRefresh,
     Command {
         session_id: SessionId,
         name: String,
@@ -196,6 +200,19 @@ pub enum UserAction {
         thread_id: Option<String>,
         continue_prompt: Option<String>,
     },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct PylonStatus {
+    pub running: bool,
+    pub pid: Option<u32>,
+    pub uptime_secs: Option<u64>,
+    pub provider_active: Option<bool>,
+    pub host_active: Option<bool>,
+    pub jobs_completed: u64,
+    pub earnings_msats: u64,
+    pub identity_exists: bool,
+    pub last_error: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -215,6 +232,9 @@ pub enum AppEvent {
     },
     AppServerEvent {
         message: String,
+    },
+    PylonStatus {
+        status: PylonStatus,
     },
 }
 
