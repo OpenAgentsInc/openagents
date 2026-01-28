@@ -38,7 +38,9 @@ const STATUS_LINE_HEIGHT: f32 = 22.0;
 const STATUS_SECTION_GAP: f32 = 10.0;
 const ACCENT_BAR_WIDTH: f32 = 3.0;
 const DEFAULT_THREAD_MODEL: &str = "gpt-5.1-codex-mini";
-const BOTTOM_BAR_HEIGHT: f32 = 64.0;
+const BOTTOM_BAR_MIN_HEIGHT: f32 = 64.0;
+const INPUT_MIN_LINES: usize = 1;
+const INPUT_MAX_LINES: Option<usize> = None;
 const HOTBAR_HEIGHT: f32 = 34.0;
 const HOTBAR_FLOAT_GAP: f32 = 12.0;
 const MODEL_DROPDOWN_WIDTH: f32 = 320.0;
@@ -331,6 +333,7 @@ pub struct MinimalRoot {
     input: TextInput,
     input_bounds: Bounds,
     input_hovered: bool,
+    input_needs_focus: bool,
     submit_button: Button,
     submit_bounds: Bounds,
     pending_sends: Rc<RefCell<Vec<String>>>,
@@ -486,6 +489,7 @@ impl MinimalRoot {
             input,
             input_bounds: Bounds::ZERO,
             input_hovered: false,
+            input_needs_focus: true,
             submit_button,
             submit_bounds: Bounds::ZERO,
             pending_sends,
@@ -755,6 +759,16 @@ impl MinimalRoot {
                             }
                             "reasoning" | "Reasoning" => {
                                 if let Some(item_id) = item_id(item) {
+                                    let (has_summary, has_content) = self
+                                        .reasoning_entries
+                                        .get(&item_id)
+                                        .map(|entry| {
+                                            (
+                                                !entry.summary.trim().is_empty(),
+                                                !entry.content.trim().is_empty(),
+                                            )
+                                        })
+                                        .unwrap_or((false, false));
                                     let summary_text = item
                                         .get("summary")
                                         .or_else(|| item.get("summary_text"))
@@ -779,10 +793,10 @@ impl MinimalRoot {
                                                 .join("\n")
                                         })
                                         .unwrap_or_default();
-                                    if !summary_text.is_empty() {
+                                    if !summary_text.is_empty() && !has_summary {
                                         self.append_reasoning_summary_delta(&item_id, &summary_text);
                                     }
-                                    if !content_text.is_empty() {
+                                    if !content_text.is_empty() && !has_content {
                                         self.append_reasoning_content_delta(&item_id, &content_text);
                                     }
                                 }
@@ -1089,10 +1103,11 @@ impl MinimalRoot {
         if let Some(entry) = self.reasoning_entries.get_mut(item_id) {
             entry.summary.push_str(delta);
             if let Some(thread_entry) = self.formatted_thread.entry_mut(entry_index) {
-                let summary = if entry.summary.trim().is_empty() {
-                    None
-                } else {
+                let show_summary = entry.content.trim().is_empty();
+                let summary = if show_summary && !entry.summary.trim().is_empty() {
                     Some(entry.summary.clone())
+                } else {
+                    None
                 };
                 let content = if entry.content.trim().is_empty() {
                     None
@@ -1113,11 +1128,7 @@ impl MinimalRoot {
         if let Some(entry) = self.reasoning_entries.get_mut(item_id) {
             entry.content.push_str(delta);
             if let Some(thread_entry) = self.formatted_thread.entry_mut(entry_index) {
-                let summary = if entry.summary.trim().is_empty() {
-                    None
-                } else {
-                    Some(entry.summary.clone())
-                };
+                let summary = None;
                 let content = if entry.content.trim().is_empty() {
                     None
                 } else {
@@ -1547,6 +1558,7 @@ impl MinimalRoot {
                     self.dispatch_message(message);
                 }
                 self.input.set_value("");
+                self.input.focus();
                 self.submit_button
                     .set_disabled(self.input.get_value().trim().is_empty());
                 return true;
@@ -1637,7 +1649,9 @@ impl Component for MinimalRoot {
             &LayoutStyle::new().flex_row().flex_grow(1.0),
             &row_children,
         );
-        let bottom_bar = engine.request_leaf(&LayoutStyle::new().height(px(BOTTOM_BAR_HEIGHT)));
+        let bottom_bar_height = input_bar_height(self, bounds.size.width, cx);
+        let bottom_bar =
+            engine.request_leaf(&LayoutStyle::new().height(px(bottom_bar_height)));
         let root = engine.request_layout(
             &LayoutStyle::new()
                 .flex_col()
@@ -1842,39 +1856,79 @@ fn paint_formatted_feed(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintCo
     }
 }
 
-fn paint_input_bar(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintContext) {
-    let input_height = 36.0;
-    let gap = 8.0;
-    let padding = 24.0;
+struct InputBarMetrics {
+    total_width: f32,
+    input_width: f32,
+    input_height: f32,
+    send_width: f32,
+    stop_width: f32,
+}
 
+fn input_bar_metrics(
+    root: &mut MinimalRoot,
+    available_width: f32,
+    cx: &mut PaintContext,
+) -> InputBarMetrics {
+    let gap = 8.0;
+    let padding_x = 24.0;
     let button_font = theme::font_size::SM;
-    let send_label_width = cx
-        .text
-        .measure_styled_mono("Send", button_font, FontStyle::default());
+    let send_label_width =
+        cx.text
+            .measure_styled_mono("Send", button_font, FontStyle::default());
     let send_width = (send_label_width + 28.0).max(72.0);
-    let stop_label_width = cx
-        .text
-        .measure_styled_mono("Stop", button_font, FontStyle::default());
+    let stop_label_width =
+        cx.text
+            .measure_styled_mono("Stop", button_font, FontStyle::default());
     let stop_width = (stop_label_width + 28.0).max(72.0);
 
-    let mut total_width = (bounds.size.width * 0.6).min(720.0).max(320.0);
-    total_width = total_width.min(bounds.size.width - padding * 2.0);
-
-    let bar_x = bounds.origin.x + (bounds.size.width - total_width) / 2.0;
-    let bar_y = bounds.origin.y + (bounds.size.height - input_height) / 2.0;
+    let mut total_width = (available_width * 0.6).min(720.0).max(320.0);
+    total_width = total_width.min(available_width - padding_x * 2.0);
     let input_width = (total_width - send_width - stop_width - gap * 2.0).max(120.0);
-    let input_bounds = Bounds::new(bar_x, bar_y, input_width, input_height);
+
+    root.input.set_max_width(input_width);
+    let line_height = button_font * 1.4;
+    let padding_y = theme::spacing::XS;
+    let min_height = line_height * INPUT_MIN_LINES as f32 + padding_y * 2.0;
+    let mut input_height = root.input.current_height().max(min_height);
+    if let Some(max_lines) = INPUT_MAX_LINES {
+        let max_height = line_height * max_lines as f32 + padding_y * 2.0;
+        input_height = input_height.min(max_height);
+    }
+
+    InputBarMetrics {
+        total_width,
+        input_width,
+        input_height,
+        send_width,
+        stop_width,
+    }
+}
+
+fn input_bar_height(root: &mut MinimalRoot, available_width: f32, cx: &mut PaintContext) -> f32 {
+    let metrics = input_bar_metrics(root, available_width, cx);
+    let padding_y = theme::spacing::MD;
+    (metrics.input_height + padding_y * 2.0).max(BOTTOM_BAR_MIN_HEIGHT)
+}
+
+fn paint_input_bar(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintContext) {
+    let gap = 8.0;
+    let padding_y = theme::spacing::MD;
+    let metrics = input_bar_metrics(root, bounds.size.width, cx);
+
+    let bar_x = bounds.origin.x + (bounds.size.width - metrics.total_width) / 2.0;
+    let bar_y = bounds.origin.y + bounds.size.height - metrics.input_height - padding_y;
+    let input_bounds = Bounds::new(bar_x, bar_y, metrics.input_width, metrics.input_height);
     let stop_bounds = Bounds::new(
         input_bounds.origin.x + input_bounds.size.width + gap,
         bar_y,
-        stop_width,
-        input_height,
+        metrics.stop_width,
+        metrics.input_height,
     );
     let submit_bounds = Bounds::new(
         stop_bounds.origin.x + stop_bounds.size.width + gap,
         bar_y,
-        send_width,
-        input_height,
+        metrics.send_width,
+        metrics.input_height,
     );
 
     root.input_bounds = input_bounds;
@@ -1885,6 +1939,10 @@ fn paint_input_bar(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintContext
         .set_disabled(root.input.get_value().trim().is_empty());
     root.stop_button
         .set_disabled(root.thread_id.is_none());
+    if root.input_needs_focus {
+        root.input.focus();
+        root.input_needs_focus = false;
+    }
 
     root.input.paint(input_bounds, cx);
     root.stop_button.paint(stop_bounds, cx);
