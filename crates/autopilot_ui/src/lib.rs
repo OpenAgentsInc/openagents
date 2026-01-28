@@ -1218,6 +1218,7 @@ impl MinimalRoot {
         }
         self.last_user_message = Some(text.to_string());
 
+        self.clear_working_indicator();
         let mut stream = new_markdown_stream();
         stream.append(&format!("> {text}"));
         stream.complete();
