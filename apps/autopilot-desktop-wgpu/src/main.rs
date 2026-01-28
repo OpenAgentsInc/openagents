@@ -8,14 +8,14 @@ use futures::StreamExt;
 use tracing_subscriber::EnvFilter;
 use wgpui::renderer::Renderer;
 use wgpui::{
-    Bounds, Component, InputEvent, Key, Modifiers, MouseButton, NamedKey, PaintContext, Point,
-    Scene, Size, TextSystem,
+    Bounds, Component, Cursor, InputEvent, Key, Modifiers, MouseButton, NamedKey, PaintContext,
+    Point, Scene, Size, TextSystem,
 };
 use winit::application::ApplicationHandler;
 use winit::event::{ElementState, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, EventLoop, EventLoopProxy};
 use winit::keyboard::{Key as WinitKey, ModifiersState, NamedKey as WinitNamedKey};
-use winit::window::{Window, WindowId};
+use winit::window::{CursorIcon, Window, WindowId};
 
 const WINDOW_TITLE: &str = "Autopilot Desktop (WGPUI)";
 const WINDOW_WIDTH: f64 = 1280.0;
@@ -72,6 +72,7 @@ struct RenderState {
     text_system: TextSystem,
     scale_factor: f32,
     root: MinimalRoot,
+    cursor_icon: Cursor,
 }
 
 impl ApplicationHandler<AppEvent> for App {
@@ -86,6 +87,7 @@ impl ApplicationHandler<AppEvent> for App {
                 for event in self.pending_events.drain(..) {
                     state.root.apply_event(event);
                 }
+                update_cursor(&mut state);
                 state.window.request_redraw();
                 self.state = Some(state);
             }
@@ -129,6 +131,7 @@ impl ApplicationHandler<AppEvent> for App {
                 if state.root.handle_input(&input_event, bounds) {
                     state.window.request_redraw();
                 }
+                update_cursor(state);
             }
             WindowEvent::MouseInput {
                 state: mouse_state,
@@ -161,6 +164,7 @@ impl ApplicationHandler<AppEvent> for App {
                 if state.root.handle_input(&input_event, bounds) {
                     state.window.request_redraw();
                 }
+                update_cursor(state);
             }
             WindowEvent::MouseWheel { delta, .. } => {
                 let (dx, dy) = match delta {
@@ -175,6 +179,7 @@ impl ApplicationHandler<AppEvent> for App {
                 if state.root.handle_input(&input_event, bounds) {
                     state.window.request_redraw();
                 }
+                update_cursor(state);
             }
             WindowEvent::KeyboardInput { event, .. } => {
                 let Some(key) = map_key(&event.logical_key) else {
@@ -189,6 +194,7 @@ impl ApplicationHandler<AppEvent> for App {
                 if state.root.handle_input(&input_event, bounds) {
                     state.window.request_redraw();
                 }
+                update_cursor(state);
             }
             WindowEvent::RedrawRequested => {
                 if let Err(err) = render_frame(state) {
@@ -292,6 +298,7 @@ fn init_state(
             text_system,
             scale_factor,
             root,
+            cursor_icon: Cursor::Default,
         })
     })
 }
@@ -349,6 +356,24 @@ fn render_frame(state: &mut RenderState) -> Result<()> {
     output.present();
 
     Ok(())
+}
+
+fn update_cursor(state: &mut RenderState) {
+    let cursor = state.root.cursor();
+    if cursor != state.cursor_icon {
+        state.window.set_cursor(map_cursor_icon(cursor));
+        state.cursor_icon = cursor;
+    }
+}
+
+fn map_cursor_icon(cursor: Cursor) -> CursorIcon {
+    match cursor {
+        Cursor::Default => CursorIcon::Default,
+        Cursor::Pointer => CursorIcon::Pointer,
+        Cursor::Text => CursorIcon::Text,
+        Cursor::Grab => CursorIcon::Grab,
+        Cursor::Grabbing => CursorIcon::Grabbing,
+    }
 }
 
 fn window_bounds(size: Size) -> Bounds {

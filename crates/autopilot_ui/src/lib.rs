@@ -13,8 +13,8 @@ use wgpui::components::sections::{MessageEditor, ThreadView};
 use wgpui::components::Text;
 use wgpui::input::InputEvent;
 use wgpui::{
-    Bounds, Button, Component, EventResult, LayoutEngine, LayoutStyle, PaintContext, Point, Quad,
-    ScrollView, Size, text::FontStyle, theme, length, px,
+    Bounds, Button, Component, Cursor, EventResult, LayoutEngine, LayoutStyle, PaintContext, Point,
+    Quad, ScrollView, Size, text::FontStyle, theme, length, px,
 };
 
 const PANEL_PADDING: f32 = 12.0;
@@ -111,6 +111,7 @@ pub struct MinimalRoot {
     button_bounds: Bounds,
     event_context: EventContext,
     pending_clicks: Rc<RefCell<u32>>,
+    click_count: u32,
     disabled: bool,
 }
 
@@ -136,6 +137,7 @@ impl MinimalRoot {
             button_bounds: Bounds::ZERO,
             event_context: EventContext::new(),
             pending_clicks,
+            click_count: 0,
             disabled: false,
         }
     }
@@ -177,7 +179,8 @@ impl MinimalRoot {
             count
         };
         if clicks > 0 {
-            self.subtitle = format!("Button clicked {clicks}x.");
+            self.click_count = self.click_count.saturating_add(clicks);
+            self.subtitle = format!("Button clicked {}x.", self.click_count);
             if self.button_label != "Clicked" {
                 self.button_label = "Clicked".to_string();
                 self.button.set_label(self.button_label.clone());
@@ -186,6 +189,16 @@ impl MinimalRoot {
         }
 
         handled
+    }
+
+    pub fn cursor(&self) -> Cursor {
+        if self.disabled {
+            Cursor::Default
+        } else if self.button.is_hovered() {
+            Cursor::Pointer
+        } else {
+            Cursor::Default
+        }
     }
 }
 
