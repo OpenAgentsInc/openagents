@@ -15,3 +15,4 @@ taffy = "0.9"
 nostr = { path = "../nostr/core" }
 bip39 = "2.2.0"
 rand = "0.9"
+openagents-spark = { path = "../spark" }

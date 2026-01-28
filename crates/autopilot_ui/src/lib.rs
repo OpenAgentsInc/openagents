@@ -6,6 +6,7 @@ use std::rc::Rc;
 use autopilot_app::{AppEvent, SessionId, UserAction, WorkspaceId};
 use bip39::Mnemonic;
 use nostr::derive_keypair;
+use openagents_spark::SparkSigner;
 use rand::RngCore;
 use serde_json::Value;
 use taffy::prelude::{AlignItems, JustifyContent};
@@ -264,7 +265,7 @@ fn message_markdown_view(document: MarkdownDocument) -> MarkdownView {
         .copy_button_on_hover(false)
 }
 
-fn generate_nip06_keypair() -> Result<(String, String), String> {
+fn generate_nip06_keypair() -> Result<(String, String, String), String> {
     let mut entropy = [0u8; 16];
     rand::rng().fill_bytes(&mut entropy);
     let mnemonic = Mnemonic::from_entropy(&entropy)
@@ -278,7 +279,10 @@ fn generate_nip06_keypair() -> Result<(String, String), String> {
     let nsec = keypair
         .nsec()
         .map_err(|e| format!("nsec encoding error: {e}"))?;
-    Ok((npub, nsec))
+    let spark_signer =
+        SparkSigner::from_mnemonic(&mnemonic, "").map_err(|e| format!("spark error: {e}"))?;
+    let spark_pubkey = spark_signer.public_key_hex();
+    Ok((npub, nsec, spark_pubkey))
 }
 
 pub struct DesktopRoot {
@@ -313,6 +317,7 @@ pub struct MinimalRoot {
     pending_keygen: Rc<RefCell<bool>>,
     nostr_npub: Option<String>,
     nostr_nsec: Option<String>,
+    spark_pubkey_hex: Option<String>,
     nostr_error: Option<String>,
     formatted_thread: ThreadView,
     formatted_thread_bounds: Bounds,
@@ -417,6 +422,7 @@ impl MinimalRoot {
             pending_keygen,
             nostr_npub: None,
             nostr_nsec: None,
+            spark_pubkey_hex: None,
             nostr_error: None,
             formatted_thread,
             formatted_thread_bounds: Bounds::ZERO,
@@ -1010,15 +1016,17 @@ impl MinimalRoot {
 
         if should_generate {
             match generate_nip06_keypair() {
-                Ok((npub, nsec)) => {
+                Ok((npub, nsec, spark_pubkey)) => {
                     self.nostr_npub = Some(npub);
                     self.nostr_nsec = Some(nsec);
+                    self.spark_pubkey_hex = Some(spark_pubkey);
                     self.nostr_error = None;
                 }
                 Err(err) => {
                     self.nostr_error = Some(err);
                     self.nostr_npub = None;
                     self.nostr_nsec = None;
+                    self.spark_pubkey_hex = None;
                 }
             }
         }
@@ -1318,17 +1326,6 @@ fn paint_sidebar_contents(root: &mut MinimalRoot, bounds: Bounds, cx: &mut Paint
     let content_width = bounds.size.width - padding * 2.0;
     let mut y = bounds.origin.y + padding;
 
-    let header_height = 20.0;
-    Text::new("NOSTR KEYS")
-        .font_size(theme::font_size::SM)
-        .bold()
-        .color(theme::text::PRIMARY)
-        .paint(
-            Bounds::new(bounds.origin.x + padding, y, content_width, header_height),
-            cx,
-        );
-    y += header_height + 8.0;
-
     let button_height = 28.0;
     let keygen_bounds = Bounds::new(bounds.origin.x + padding, y, content_width, button_height);
     root.keygen_bounds = keygen_bounds;
@@ -1376,6 +1373,25 @@ fn paint_sidebar_contents(root: &mut MinimalRoot, bounds: Bounds, cx: &mut Paint
             cx,
         );
         y += nsec_height + value_spacing;
+
+        Text::new("spark pubkey")
+            .font_size(theme::font_size::XS)
+            .color(theme::text::MUTED)
+            .paint(
+                Bounds::new(bounds.origin.x + padding, y, content_width, label_height),
+                cx,
+            );
+        y += label_height;
+        let mut spark_text = Text::new(root.spark_pubkey_hex.as_deref().unwrap_or(""))
+            .font_size(theme::font_size::XS)
+            .color(theme::text::PRIMARY);
+        let (_, spark_height) = spark_text.size_hint_with_width(content_width);
+        let spark_height = spark_height.unwrap_or(label_height);
+        spark_text.paint(
+            Bounds::new(bounds.origin.x + padding, y, content_width, spark_height),
+            cx,
+        );
+        y += spark_height + value_spacing;
     } else if let Some(err) = &root.nostr_error {
         let mut err_text = Text::new(err)
             .font_size(theme::font_size::XS)
@@ -1405,6 +1421,7 @@ fn paint_sidebar_contents(root: &mut MinimalRoot, bounds: Bounds, cx: &mut Paint
     }
 
     y += 8.0;
+    let header_height = 20.0;
     let header_bounds = Bounds::new(bounds.origin.x + padding, y, content_width, header_height);
     let copy_button_width = 68.0;
     let copy_bounds = Bounds::new(

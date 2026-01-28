@@ -1101,6 +1101,7 @@ dependencies = [
  "autopilot_app",
  "bip39",
  "nostr 0.1.0",
+ "openagents-spark",
  "rand 0.9.2",
  "serde_json",
  "taffy",
