@@ -38,6 +38,8 @@ pub struct LayoutStyle {
     pub justify_content: Option<JustifyContent>,
     /// Align items (cross axis)
     pub align_items: Option<AlignItems>,
+    /// Align content (multi-line alignment)
+    pub align_content: Option<AlignContent>,
     /// Align self (override parent's align_items)
     pub align_self: Option<AlignSelf>,
     /// Gap between items
@@ -79,6 +81,7 @@ impl Default for LayoutStyle {
             flex_wrap: FlexWrap::NoWrap,
             justify_content: None,
             align_items: None,
+            align_content: None,
             align_self: None,
             gap: taffy::Size {
                 width: LengthPercentage::length(0.0),
@@ -154,6 +157,12 @@ impl LayoutStyle {
         self
     }
 
+    /// Set flex wrap
+    pub fn flex_wrap(mut self, value: FlexWrap) -> Self {
+        self.flex_wrap = value;
+        self
+    }
+
     /// Set flex grow
     pub fn flex_grow(mut self, value: f32) -> Self {
         self.flex_grow = value;
@@ -209,6 +218,12 @@ impl LayoutStyle {
         self
     }
 
+    /// Set align content
+    pub fn align_content(mut self, value: AlignContent) -> Self {
+        self.align_content = Some(value);
+        self
+    }
+
     /// Set overflow behavior
     pub fn overflow(mut self, value: Overflow) -> Self {
         self.overflow = taffy::Point { x: value, y: value };
@@ -237,6 +252,7 @@ impl From<&LayoutStyle> for Style {
             flex_wrap: s.flex_wrap,
             justify_content: s.justify_content,
             align_items: s.align_items,
+            align_content: s.align_content,
             align_self: s.align_self,
             gap: s.gap,
             size: taffy::Size {
