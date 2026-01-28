@@ -39,8 +39,6 @@ const STATUS_SECTION_GAP: f32 = 10.0;
 const ACCENT_BAR_WIDTH: f32 = 3.0;
 const DEFAULT_THREAD_MODEL: &str = "gpt-5.1-codex-mini";
 const BOTTOM_BAR_HEIGHT: f32 = 64.0;
-const SIDEBAR_MIN_WIDTH: f32 = 360.0;
-const SIDEBAR_MAX_WIDTH: f32 = 640.0;
 const MODEL_DROPDOWN_WIDTH: f32 = 320.0;
 const DEFAULT_MODEL_INDEX: usize = 3;
 const SHOW_MODEL_DROPDOWN: bool = false;
@@ -265,7 +263,7 @@ fn message_markdown_view(document: MarkdownDocument) -> MarkdownView {
         .copy_button_on_hover(false)
 }
 
-fn generate_nip06_keypair() -> Result<(String, String, String), String> {
+fn generate_nip06_keypair() -> Result<(String, String, String, String), String> {
     let mut entropy = [0u8; 16];
     rand::rng().fill_bytes(&mut entropy);
     let mnemonic = Mnemonic::from_entropy(&entropy)
@@ -282,7 +280,7 @@ fn generate_nip06_keypair() -> Result<(String, String, String), String> {
     let spark_signer =
         SparkSigner::from_mnemonic(&mnemonic, "").map_err(|e| format!("spark error: {e}"))?;
     let spark_pubkey = spark_signer.public_key_hex();
-    Ok((npub, nsec, spark_pubkey))
+    Ok((npub, nsec, spark_pubkey, mnemonic))
 }
 
 pub struct DesktopRoot {
@@ -318,6 +316,7 @@ pub struct MinimalRoot {
     nostr_npub: Option<String>,
     nostr_nsec: Option<String>,
     spark_pubkey_hex: Option<String>,
+    seed_phrase: Option<String>,
     nostr_error: Option<String>,
     formatted_thread: ThreadView,
     formatted_thread_bounds: Bounds,
@@ -340,6 +339,7 @@ pub struct MinimalRoot {
     thread_model: Option<String>,
     thread_id: Option<String>,
     raw_events_visible: bool,
+    nostr_fullscreen: bool,
 }
 
 impl MinimalRoot {
@@ -367,9 +367,9 @@ impl MinimalRoot {
 
         let pending_keygen = Rc::new(RefCell::new(false));
         let pending_keygen_click = pending_keygen.clone();
-        let keygen_button = Button::new("Generate NIP-06 keypair")
+        let keygen_button = Button::new("Generate keys")
             .variant(ButtonVariant::Secondary)
-            .font_size(theme::font_size::XS)
+            .font_size(theme::font_size::XS + 4.0)
             .padding(12.0, 6.0)
             .corner_radius(6.0)
             .on_click(move || {
@@ -423,6 +423,7 @@ impl MinimalRoot {
             nostr_npub: None,
             nostr_nsec: None,
             spark_pubkey_hex: None,
+            seed_phrase: None,
             nostr_error: None,
             formatted_thread,
             formatted_thread_bounds: Bounds::ZERO,
@@ -445,6 +446,7 @@ impl MinimalRoot {
             thread_model: Some(DEFAULT_THREAD_MODEL.to_string()),
             thread_id: None,
             raw_events_visible: false,
+            nostr_fullscreen: false,
         }
     }
 
@@ -921,6 +923,10 @@ impl MinimalRoot {
                 self.raw_events_visible = !self.raw_events_visible;
                 return true;
             }
+            if modifiers.meta && matches!(key, Key::Character(value) if value == "3") {
+                self.nostr_fullscreen = !self.nostr_fullscreen;
+                return true;
+            }
         }
 
         if let InputEvent::MouseMove { x, y } = event {
@@ -1016,10 +1022,11 @@ impl MinimalRoot {
 
         if should_generate {
             match generate_nip06_keypair() {
-                Ok((npub, nsec, spark_pubkey)) => {
+                Ok((npub, nsec, spark_pubkey, seed_phrase)) => {
                     self.nostr_npub = Some(npub);
                     self.nostr_nsec = Some(nsec);
                     self.spark_pubkey_hex = Some(spark_pubkey);
+                    self.seed_phrase = Some(seed_phrase);
                     self.nostr_error = None;
                 }
                 Err(err) => {
@@ -1027,6 +1034,7 @@ impl MinimalRoot {
                     self.nostr_npub = None;
                     self.nostr_nsec = None;
                     self.spark_pubkey_hex = None;
+                    self.seed_phrase = None;
                 }
             }
         }
@@ -1129,18 +1137,32 @@ impl Component for MinimalRoot {
                 .with_border(theme::border::DEFAULT, 1.0),
         );
 
-        let sidebar_width =
-            SIDEBAR_MAX_WIDTH.min((bounds.size.width - 160.0).max(SIDEBAR_MIN_WIDTH));
-
         let mut engine = LayoutEngine::new();
-        let left_panel = engine.request_layout(&LayoutStyle::new().flex_grow(1.0), &[]);
-        let right_panel = engine.request_layout(
-            &LayoutStyle::new().width(px(sidebar_width)).flex_shrink(0.0),
-            &[],
-        );
+        let left_panel = if self.nostr_fullscreen {
+            None
+        } else {
+            Some(engine.request_layout(
+                &LayoutStyle::new().flex_grow(1.0),
+                &[],
+            ))
+        };
+        let right_panel = if self.nostr_fullscreen {
+            engine.request_layout(&LayoutStyle::new().flex_grow(1.0), &[])
+        } else {
+            let sidebar_width = bounds.size.width * 0.5;
+            engine.request_layout(
+                &LayoutStyle::new().width(px(sidebar_width)).flex_shrink(0.0),
+                &[],
+            )
+        };
+        let mut row_children = Vec::new();
+        if let Some(left_panel) = left_panel {
+            row_children.push(left_panel);
+        }
+        row_children.push(right_panel);
         let content_row = engine.request_layout(
             &LayoutStyle::new().flex_row().flex_grow(1.0),
-            &[left_panel, right_panel],
+            &row_children,
         );
         let bottom_bar = engine.request_leaf(&LayoutStyle::new().height(px(BOTTOM_BAR_HEIGHT)));
         let root = engine.request_layout(
@@ -1154,7 +1176,6 @@ impl Component for MinimalRoot {
         engine.compute_layout(root, Size::new(bounds.size.width, bounds.size.height));
         let origin = bounds.origin;
 
-        let left_bounds = offset_bounds(engine.layout(left_panel), origin);
         let right_bounds = offset_bounds(engine.layout(right_panel), origin);
         let bottom_bounds = offset_bounds(engine.layout(bottom_bar), origin);
 
@@ -1169,7 +1190,10 @@ impl Component for MinimalRoot {
                 .with_border(theme::border::DEFAULT, 1.0),
         );
 
-        paint_formatted_feed(self, left_bounds, cx);
+        if let Some(left_panel) = left_panel {
+            let left_bounds = offset_bounds(engine.layout(left_panel), origin);
+            paint_formatted_feed(self, left_bounds, cx);
+        }
         paint_sidebar_contents(self, right_bounds, cx);
         paint_input_bar(self, bottom_bounds, cx);
     }
@@ -1324,28 +1348,69 @@ fn paint_input_bar(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintContext
 fn paint_sidebar_contents(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintContext) {
     let padding = 16.0;
     let content_width = bounds.size.width - padding * 2.0;
-    let mut y = bounds.origin.y + padding;
 
     let button_height = 28.0;
+    let nostr_font = theme::font_size::XS + 4.0;
+    let label_height = 16.0;
+    let label_value_gap = 4.0;
+    let value_spacing = 12.0;
+
+    let mut y = bounds.origin.y + padding;
+    if !root.raw_events_visible {
+        let mut content_height = button_height + 12.0;
+        if let Some(npub) = &root.nostr_npub {
+            let mut npub_text = Text::new(npub).font_size(nostr_font);
+            let (_, npub_height) = npub_text.size_hint_with_width(content_width);
+            let npub_height = npub_height.unwrap_or(label_height);
+            content_height += label_height + label_value_gap + npub_height + value_spacing;
+
+            let mut nsec_text =
+                Text::new(root.nostr_nsec.as_deref().unwrap_or("")).font_size(nostr_font);
+            let (_, nsec_height) = nsec_text.size_hint_with_width(content_width);
+            let nsec_height = nsec_height.unwrap_or(label_height);
+            content_height += label_height + label_value_gap + nsec_height + value_spacing;
+
+            let mut spark_text =
+                Text::new(root.spark_pubkey_hex.as_deref().unwrap_or("")).font_size(nostr_font);
+            let (_, spark_height) = spark_text.size_hint_with_width(content_width);
+            let spark_height = spark_height.unwrap_or(label_height);
+            content_height += label_height + label_value_gap + spark_height + value_spacing;
+
+            let mut seed_text =
+                Text::new(root.seed_phrase.as_deref().unwrap_or("")).font_size(nostr_font);
+            let (_, seed_height) = seed_text.size_hint_with_width(content_width);
+            let seed_height = seed_height.unwrap_or(label_height);
+            content_height += label_height + label_value_gap + seed_height + value_spacing;
+        } else if let Some(err) = &root.nostr_error {
+            let mut err_text = Text::new(err).font_size(nostr_font);
+            let (_, err_height) = err_text.size_hint_with_width(content_width);
+            let err_height = err_height.unwrap_or(label_height);
+            content_height += err_height + value_spacing;
+        } else {
+            content_height += label_height + value_spacing;
+        }
+
+        let centered_y =
+            bounds.origin.y + (bounds.size.height - content_height).max(0.0) * 0.5;
+        y = centered_y.max(bounds.origin.y + padding);
+    }
+
     let keygen_bounds = Bounds::new(bounds.origin.x + padding, y, content_width, button_height);
     root.keygen_bounds = keygen_bounds;
     root.keygen_button.paint(keygen_bounds, cx);
     y += button_height + 12.0;
 
-    let label_height = 16.0;
-    let value_spacing = 12.0;
-
     if let Some(npub) = &root.nostr_npub {
-        Text::new("npub")
-            .font_size(theme::font_size::XS)
+        Text::new("nostr public key")
+            .font_size(nostr_font)
             .color(theme::text::MUTED)
             .paint(
                 Bounds::new(bounds.origin.x + padding, y, content_width, label_height),
                 cx,
             );
-        y += label_height;
+        y += label_height + label_value_gap;
         let mut npub_text = Text::new(npub)
-            .font_size(theme::font_size::XS)
+            .font_size(nostr_font)
             .color(theme::text::PRIMARY);
         let (_, npub_height) = npub_text.size_hint_with_width(content_width);
         let npub_height = npub_height.unwrap_or(label_height);
@@ -1355,16 +1420,16 @@ fn paint_sidebar_contents(root: &mut MinimalRoot, bounds: Bounds, cx: &mut Paint
         );
         y += npub_height + value_spacing;
 
-        Text::new("nsec")
-            .font_size(theme::font_size::XS)
+        Text::new("nostr secret key")
+            .font_size(nostr_font)
             .color(theme::text::MUTED)
             .paint(
                 Bounds::new(bounds.origin.x + padding, y, content_width, label_height),
                 cx,
             );
-        y += label_height;
+        y += label_height + label_value_gap;
         let mut nsec_text = Text::new(root.nostr_nsec.as_deref().unwrap_or(""))
-            .font_size(theme::font_size::XS)
+            .font_size(nostr_font)
             .color(theme::text::PRIMARY);
         let (_, nsec_height) = nsec_text.size_hint_with_width(content_width);
         let nsec_height = nsec_height.unwrap_or(label_height);
@@ -1374,16 +1439,16 @@ fn paint_sidebar_contents(root: &mut MinimalRoot, bounds: Bounds, cx: &mut Paint
         );
         y += nsec_height + value_spacing;
 
-        Text::new("spark pubkey")
-            .font_size(theme::font_size::XS)
+        Text::new("spark public key")
+            .font_size(nostr_font)
             .color(theme::text::MUTED)
             .paint(
                 Bounds::new(bounds.origin.x + padding, y, content_width, label_height),
                 cx,
             );
-        y += label_height;
+        y += label_height + label_value_gap;
         let mut spark_text = Text::new(root.spark_pubkey_hex.as_deref().unwrap_or(""))
-            .font_size(theme::font_size::XS)
+            .font_size(nostr_font)
             .color(theme::text::PRIMARY);
         let (_, spark_height) = spark_text.size_hint_with_width(content_width);
         let spark_height = spark_height.unwrap_or(label_height);
@@ -1392,9 +1457,28 @@ fn paint_sidebar_contents(root: &mut MinimalRoot, bounds: Bounds, cx: &mut Paint
             cx,
         );
         y += spark_height + value_spacing;
+
+        Text::new("seed phrase")
+            .font_size(nostr_font)
+            .color(theme::text::MUTED)
+            .paint(
+                Bounds::new(bounds.origin.x + padding, y, content_width, label_height),
+                cx,
+            );
+        y += label_height + label_value_gap;
+        let mut seed_text = Text::new(root.seed_phrase.as_deref().unwrap_or(""))
+            .font_size(nostr_font)
+            .color(theme::text::PRIMARY);
+        let (_, seed_height) = seed_text.size_hint_with_width(content_width);
+        let seed_height = seed_height.unwrap_or(label_height);
+        seed_text.paint(
+            Bounds::new(bounds.origin.x + padding, y, content_width, seed_height),
+            cx,
+        );
+        y += seed_height + value_spacing;
     } else if let Some(err) = &root.nostr_error {
         let mut err_text = Text::new(err)
-            .font_size(theme::font_size::XS)
+            .font_size(nostr_font)
             .color(theme::status::ERROR);
         let (_, err_height) = err_text.size_hint_with_width(content_width);
         let err_height = err_height.unwrap_or(label_height);
@@ -1405,7 +1489,7 @@ fn paint_sidebar_contents(root: &mut MinimalRoot, bounds: Bounds, cx: &mut Paint
         y += err_height + value_spacing;
     } else {
         Text::new("No keypair generated yet.")
-            .font_size(theme::font_size::XS)
+            .font_size(nostr_font)
             .color(theme::text::MUTED)
             .paint(
                 Bounds::new(bounds.origin.x + padding, y, content_width, label_height),
