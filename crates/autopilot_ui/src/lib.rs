@@ -584,9 +584,6 @@ struct ChatPaneState {
     full_auto_enabled: bool,
     queued_messages: Vec<QueuedMessage>,
     queued_in_flight: bool,
-    new_chat_button: Button,
-    new_chat_bounds: Bounds,
-    pending_new_chat: Rc<RefCell<bool>>,
     stop_button: Button,
     stop_bounds: Bounds,
     pending_stop: Rc<RefCell<bool>>,
@@ -602,17 +599,6 @@ impl ChatPaneState {
             .padding(12.0, 6.0)
             .on_change(move |_, value| {
                 pending_models.borrow_mut().push(value.to_string());
-            });
-
-        let pending_new_chat = Rc::new(RefCell::new(false));
-        let pending_new_chat_click = pending_new_chat.clone();
-        let new_chat_button = Button::new("New chat")
-            .variant(ButtonVariant::Secondary)
-            .font_size(theme::font_size::XS)
-            .padding(12.0, 6.0)
-            .corner_radius(6.0)
-            .on_click(move || {
-                *pending_new_chat_click.borrow_mut() = true;
             });
 
         let formatted_thread = ThreadView::new().item_spacing(8.0);
@@ -696,9 +682,6 @@ impl ChatPaneState {
             full_auto_enabled: false,
             queued_messages: Vec::new(),
             queued_in_flight: false,
-            new_chat_button,
-            new_chat_bounds: Bounds::ZERO,
-            pending_new_chat,
             stop_button,
             stop_bounds: Bounds::ZERO,
             pending_stop,
@@ -730,13 +713,6 @@ impl ChatPaneState {
         let items = pending.clone();
         pending.clear();
         items
-    }
-
-    fn take_pending_new_chat(&mut self) -> bool {
-        let mut pending = self.pending_new_chat.borrow_mut();
-        let value = *pending;
-        *pending = false;
-        value
     }
 
     fn take_pending_stop(&mut self) -> bool {
@@ -1963,15 +1939,6 @@ impl MinimalRoot {
                                     false
                                 };
 
-                                let new_chat_handled = matches!(
-                                    chat.new_chat_button.event(
-                                        event,
-                                        chat.new_chat_bounds,
-                                        &mut self.event_context
-                                    ),
-                                    EventResult::Handled
-                                );
-
                                 let full_auto_handled = matches!(
                                     chat.full_auto_button.event(
                                         event,
@@ -2022,7 +1989,6 @@ impl MinimalRoot {
                                 );
 
                                 handled |= dropdown_handled
-                                    || new_chat_handled
                                     || full_auto_handled
                                     || formatted_handled
                                     || input_handled
@@ -2066,9 +2032,6 @@ impl MinimalRoot {
                 }
             }
         }
-
-        let mut new_chat_requested = false;
-        let mut new_chat_session: Option<SessionId> = None;
 
         let should_generate = {
             let mut pending = self.pending_keygen.borrow_mut();
@@ -2118,13 +2081,6 @@ impl MinimalRoot {
                 let pending_models = chat.take_pending_models();
                 if let Some(model) = pending_models.last() {
                     chat.selected_model = model.clone();
-                }
-
-                if chat.take_pending_new_chat() {
-                    new_chat_requested = true;
-                    if new_chat_session.is_none() {
-                        new_chat_session = chat.session_id;
-                    }
                 }
 
                 if chat.take_pending_stop() {
@@ -2182,23 +2138,7 @@ impl MinimalRoot {
 
                 chat.submit_button
                     .set_disabled(chat.input.get_value().trim().is_empty());
-                chat.stop_button.set_disabled(chat.thread_id.is_none());
             }
-        }
-
-        if new_chat_requested {
-            let screen = self.screen_size();
-            self.open_chat_pane(screen, true, true);
-            let session_id = new_chat_session
-                .or_else(|| self.session_to_pane.keys().next().copied())
-                .unwrap_or_else(SessionId::new);
-            if let Some(handler) = self.send_handler.as_mut() {
-                handler(UserAction::NewChat {
-                    session_id,
-                    model: Some(DEFAULT_THREAD_MODEL.to_string()),
-                });
-            }
-            return true;
         }
 
         handled
@@ -2223,12 +2163,6 @@ impl MinimalRoot {
             .chat_panes
             .values()
             .any(|chat| chat.stop_button.is_hovered() && !chat.stop_button.is_disabled())
-        {
-            Cursor::Pointer
-        } else if self
-            .chat_panes
-            .values()
-            .any(|chat| chat.new_chat_button.is_hovered() && !chat.new_chat_button.is_disabled())
         {
             Cursor::Pointer
         } else if self.keygen_button.is_hovered() {
@@ -2270,8 +2204,7 @@ impl Component for MinimalRoot {
     fn paint(&mut self, bounds: Bounds, cx: &mut PaintContext) {
         cx.scene.draw_quad(
             Quad::new(bounds)
-                .with_background(theme::bg::APP)
-                .with_border(theme::border::DEFAULT, 1.0),
+                .with_background(theme::bg::APP),
         );
 
         self.set_screen_size(Size::new(bounds.size.width, bounds.size.height));
@@ -2282,7 +2215,21 @@ impl Component for MinimalRoot {
 
         self.pane_bounds.clear();
 
-        let panes = self.pane_store.panes().to_vec();
+        let panes_snapshot = self.pane_store.panes().to_vec();
+        let mut panes = Vec::with_capacity(panes_snapshot.len());
+        if let Some(active_id) = self.pane_store.active_pane_id.as_ref() {
+            for pane in panes_snapshot.iter() {
+                if pane.id != *active_id {
+                    panes.push(pane.clone());
+                }
+            }
+            if let Some(active) = panes_snapshot.iter().find(|pane| pane.id == *active_id) {
+                panes.push(active.clone());
+            }
+        } else {
+            panes = panes_snapshot;
+        }
+
         for pane in panes.iter() {
             let pane_bounds = Bounds::new(
                 bounds.origin.x + pane.rect.x,
@@ -2387,50 +2334,6 @@ fn paint_chat_pane(chat: &mut ChatPaneState, bounds: Bounds, cx: &mut PaintConte
         content_width,
         header_height,
     );
-
-    let full_auto_label = if chat.full_auto_enabled {
-        "Full Auto On"
-    } else {
-        "Full Auto Off"
-    };
-    chat.full_auto_button.set_label(full_auto_label);
-    chat.full_auto_button.set_variant(if chat.full_auto_enabled {
-        ButtonVariant::Primary
-    } else {
-        ButtonVariant::Secondary
-    });
-    chat.full_auto_button
-        .set_disabled(chat.thread_id.is_none());
-    let button_font = theme::font_size::XS;
-    let full_auto_label_width =
-        cx.text
-            .measure_styled_mono(full_auto_label, button_font, FontStyle::default());
-    let button_width = (full_auto_label_width + 28.0).max(110.0);
-    let button_height = 24.0;
-    let button_bounds = Bounds::new(
-        header_bounds.origin.x + content_width - button_width,
-        header_bounds.origin.y + (header_height - button_height) / 2.0,
-        button_width,
-        button_height,
-    );
-    chat.full_auto_bounds = button_bounds;
-    chat.full_auto_button.paint(button_bounds, cx);
-
-    chat.new_chat_button
-        .set_disabled(chat.session_id.is_none());
-    let new_chat_label = "New chat";
-    let new_chat_label_width =
-        cx.text
-            .measure_styled_mono(new_chat_label, button_font, FontStyle::default());
-    let new_chat_width = (new_chat_label_width + 28.0).max(96.0);
-    let new_chat_bounds = Bounds::new(
-        header_bounds.origin.x,
-        header_bounds.origin.y + (header_height - button_height) / 2.0,
-        new_chat_width,
-        button_height,
-    );
-    chat.new_chat_bounds = new_chat_bounds;
-    chat.new_chat_button.paint(new_chat_bounds, cx);
 
     let model = chat.thread_model.as_deref().unwrap_or(DEFAULT_THREAD_MODEL);
     let thread_id = chat.thread_id.as_deref().unwrap_or("unknown-thread");
@@ -2570,8 +2473,10 @@ struct InputBarMetrics {
     total_width: f32,
     input_width: f32,
     input_height: f32,
+    full_auto_width: f32,
     send_width: f32,
     stop_width: f32,
+    show_stop: bool,
 }
 
 fn input_bar_metrics(
@@ -2590,10 +2495,23 @@ fn input_bar_metrics(
         cx.text
             .measure_styled_mono("Stop", button_font, FontStyle::default());
     let stop_width = (stop_label_width + 28.0).max(72.0);
+    let full_auto_label = if chat.full_auto_enabled {
+        "Full Auto On"
+    } else {
+        "Full Auto Off"
+    };
+    let full_auto_width =
+        cx.text
+            .measure_styled_mono(full_auto_label, button_font, FontStyle::default())
+            + 28.0;
+    let full_auto_width = full_auto_width.max(110.0);
+    let show_stop = chat.active_turn_id.is_some();
 
     let mut total_width = (available_width * 0.6).min(720.0).max(320.0);
     total_width = total_width.min(available_width - padding_x * 2.0);
-    let input_width = (total_width - send_width - stop_width - gap * 2.0).max(120.0);
+    let reserved = send_width + full_auto_width + if show_stop { stop_width } else { 0.0 };
+    let gaps = gap * (if show_stop { 3.0 } else { 2.0 });
+    let input_width = (total_width - reserved - gaps).max(120.0);
 
     chat.input.set_max_width(input_width);
     let line_height = button_font * 1.4;
@@ -2609,8 +2527,10 @@ fn input_bar_metrics(
         total_width,
         input_width,
         input_height,
+        full_auto_width,
         send_width,
         stop_width,
+        show_stop,
     }
 }
 
@@ -2628,26 +2548,48 @@ fn paint_input_bar(chat: &mut ChatPaneState, bounds: Bounds, cx: &mut PaintConte
     let bar_x = bounds.origin.x + (bounds.size.width - metrics.total_width) / 2.0;
     let bar_y = bounds.origin.y + bounds.size.height - metrics.input_height - padding_y;
     let input_bounds = Bounds::new(bar_x, bar_y, metrics.input_width, metrics.input_height);
-    let stop_bounds = Bounds::new(
+    let full_auto_bounds = Bounds::new(
         input_bounds.origin.x + input_bounds.size.width + gap,
         bar_y,
-        metrics.stop_width,
+        metrics.full_auto_width,
         metrics.input_height,
     );
-    let submit_bounds = Bounds::new(
-        stop_bounds.origin.x + stop_bounds.size.width + gap,
-        bar_y,
-        metrics.send_width,
-        metrics.input_height,
-    );
+    let mut next_x = full_auto_bounds.origin.x + full_auto_bounds.size.width + gap;
+    let stop_bounds = if metrics.show_stop {
+        let bounds = Bounds::new(
+            next_x,
+            bar_y,
+            metrics.stop_width,
+            metrics.input_height,
+        );
+        next_x = bounds.origin.x + bounds.size.width + gap;
+        bounds
+    } else {
+        Bounds::ZERO
+    };
+    let submit_bounds =
+        Bounds::new(next_x, bar_y, metrics.send_width, metrics.input_height);
 
     chat.input_bounds = input_bounds;
     chat.submit_bounds = submit_bounds;
     chat.stop_bounds = stop_bounds;
+    chat.full_auto_bounds = full_auto_bounds;
     chat.input.set_max_width(input_bounds.size.width);
     chat.submit_button
         .set_disabled(chat.input.get_value().trim().is_empty());
-    chat.stop_button
+    chat.stop_button.set_disabled(!metrics.show_stop);
+    let full_auto_label = if chat.full_auto_enabled {
+        "Full Auto On"
+    } else {
+        "Full Auto Off"
+    };
+    chat.full_auto_button.set_label(full_auto_label);
+    chat.full_auto_button.set_variant(if chat.full_auto_enabled {
+        ButtonVariant::Primary
+    } else {
+        ButtonVariant::Secondary
+    });
+    chat.full_auto_button
         .set_disabled(chat.thread_id.is_none());
     if chat.input_needs_focus {
         chat.input.focus();
@@ -2655,7 +2597,10 @@ fn paint_input_bar(chat: &mut ChatPaneState, bounds: Bounds, cx: &mut PaintConte
     }
 
     chat.input.paint(input_bounds, cx);
-    chat.stop_button.paint(stop_bounds, cx);
+    chat.full_auto_button.paint(full_auto_bounds, cx);
+    if metrics.show_stop {
+        chat.stop_button.paint(stop_bounds, cx);
+    }
     chat.submit_button.paint(submit_bounds, cx);
 }
 
