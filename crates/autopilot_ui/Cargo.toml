@@ -12,3 +12,6 @@ autopilot_app = { path = "../autopilot_app" }
 wgpui = { path = "../wgpui", default-features = false, features = ["desktop"] }
 serde_json = { workspace = true }
 taffy = "0.9"
+nostr = { path = "../nostr/core" }
+bip39 = "2.2.0"
+rand = "0.9"
