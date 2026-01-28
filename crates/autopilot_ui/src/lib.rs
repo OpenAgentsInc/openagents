@@ -1347,13 +1347,15 @@ fn paint_input_bar(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintContext
 
 fn paint_sidebar_contents(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintContext) {
     let padding = 16.0;
-    let content_width = bounds.size.width - padding * 2.0;
-
     let button_height = 28.0;
     let nostr_font = theme::font_size::XS + 4.0;
     let label_height = 16.0;
     let label_value_gap = 4.0;
     let value_spacing = 12.0;
+
+    let mut content_width = (bounds.size.width * 0.6).min(720.0).max(320.0);
+    content_width = content_width.min(bounds.size.width - padding * 2.0);
+    let content_x = bounds.origin.x + (bounds.size.width - content_width) / 2.0;
 
     let mut y = bounds.origin.y + padding;
     if !root.raw_events_visible {
@@ -1390,12 +1392,22 @@ fn paint_sidebar_contents(root: &mut MinimalRoot, bounds: Bounds, cx: &mut Paint
             content_height += label_height + value_spacing;
         }
 
-        let centered_y =
-            bounds.origin.y + (bounds.size.height - content_height).max(0.0) * 0.5;
+        let centered_y = bounds.origin.y + (bounds.size.height - content_height).max(0.0) * 0.5;
         y = centered_y.max(bounds.origin.y + padding);
     }
 
-    let keygen_bounds = Bounds::new(bounds.origin.x + padding, y, content_width, button_height);
+    let button_width = (cx
+        .text
+        .measure_styled_mono("Generate keys", nostr_font, FontStyle::default())
+        + 32.0)
+        .max(160.0)
+        .min(content_width);
+    let keygen_bounds = Bounds::new(
+        content_x + (content_width - button_width) / 2.0,
+        y,
+        button_width,
+        button_height,
+    );
     root.keygen_bounds = keygen_bounds;
     root.keygen_button.paint(keygen_bounds, cx);
     y += button_height + 12.0;
@@ -1405,7 +1417,7 @@ fn paint_sidebar_contents(root: &mut MinimalRoot, bounds: Bounds, cx: &mut Paint
             .font_size(nostr_font)
             .color(theme::text::MUTED)
             .paint(
-                Bounds::new(bounds.origin.x + padding, y, content_width, label_height),
+                Bounds::new(content_x, y, content_width, label_height),
                 cx,
             );
         y += label_height + label_value_gap;
@@ -1415,7 +1427,7 @@ fn paint_sidebar_contents(root: &mut MinimalRoot, bounds: Bounds, cx: &mut Paint
         let (_, npub_height) = npub_text.size_hint_with_width(content_width);
         let npub_height = npub_height.unwrap_or(label_height);
         npub_text.paint(
-            Bounds::new(bounds.origin.x + padding, y, content_width, npub_height),
+            Bounds::new(content_x, y, content_width, npub_height),
             cx,
         );
         y += npub_height + value_spacing;
@@ -1424,7 +1436,7 @@ fn paint_sidebar_contents(root: &mut MinimalRoot, bounds: Bounds, cx: &mut Paint
             .font_size(nostr_font)
             .color(theme::text::MUTED)
             .paint(
-                Bounds::new(bounds.origin.x + padding, y, content_width, label_height),
+                Bounds::new(content_x, y, content_width, label_height),
                 cx,
             );
         y += label_height + label_value_gap;
@@ -1434,7 +1446,7 @@ fn paint_sidebar_contents(root: &mut MinimalRoot, bounds: Bounds, cx: &mut Paint
         let (_, nsec_height) = nsec_text.size_hint_with_width(content_width);
         let nsec_height = nsec_height.unwrap_or(label_height);
         nsec_text.paint(
-            Bounds::new(bounds.origin.x + padding, y, content_width, nsec_height),
+            Bounds::new(content_x, y, content_width, nsec_height),
             cx,
         );
         y += nsec_height + value_spacing;
@@ -1443,7 +1455,7 @@ fn paint_sidebar_contents(root: &mut MinimalRoot, bounds: Bounds, cx: &mut Paint
             .font_size(nostr_font)
             .color(theme::text::MUTED)
             .paint(
-                Bounds::new(bounds.origin.x + padding, y, content_width, label_height),
+                Bounds::new(content_x, y, content_width, label_height),
                 cx,
             );
         y += label_height + label_value_gap;
@@ -1453,7 +1465,7 @@ fn paint_sidebar_contents(root: &mut MinimalRoot, bounds: Bounds, cx: &mut Paint
         let (_, spark_height) = spark_text.size_hint_with_width(content_width);
         let spark_height = spark_height.unwrap_or(label_height);
         spark_text.paint(
-            Bounds::new(bounds.origin.x + padding, y, content_width, spark_height),
+            Bounds::new(content_x, y, content_width, spark_height),
             cx,
         );
         y += spark_height + value_spacing;
@@ -1462,7 +1474,7 @@ fn paint_sidebar_contents(root: &mut MinimalRoot, bounds: Bounds, cx: &mut Paint
             .font_size(nostr_font)
             .color(theme::text::MUTED)
             .paint(
-                Bounds::new(bounds.origin.x + padding, y, content_width, label_height),
+                Bounds::new(content_x, y, content_width, label_height),
                 cx,
             );
         y += label_height + label_value_gap;
@@ -1472,7 +1484,7 @@ fn paint_sidebar_contents(root: &mut MinimalRoot, bounds: Bounds, cx: &mut Paint
         let (_, seed_height) = seed_text.size_hint_with_width(content_width);
         let seed_height = seed_height.unwrap_or(label_height);
         seed_text.paint(
-            Bounds::new(bounds.origin.x + padding, y, content_width, seed_height),
+            Bounds::new(content_x, y, content_width, seed_height),
             cx,
         );
         y += seed_height + value_spacing;
@@ -1483,7 +1495,7 @@ fn paint_sidebar_contents(root: &mut MinimalRoot, bounds: Bounds, cx: &mut Paint
         let (_, err_height) = err_text.size_hint_with_width(content_width);
         let err_height = err_height.unwrap_or(label_height);
         err_text.paint(
-            Bounds::new(bounds.origin.x + padding, y, content_width, err_height),
+            Bounds::new(content_x, y, content_width, err_height),
             cx,
         );
         y += err_height + value_spacing;
@@ -1492,7 +1504,7 @@ fn paint_sidebar_contents(root: &mut MinimalRoot, bounds: Bounds, cx: &mut Paint
             .font_size(nostr_font)
             .color(theme::text::MUTED)
             .paint(
-                Bounds::new(bounds.origin.x + padding, y, content_width, label_height),
+                Bounds::new(content_x, y, content_width, label_height),
                 cx,
             );
         y += label_height + value_spacing;
@@ -1506,7 +1518,7 @@ fn paint_sidebar_contents(root: &mut MinimalRoot, bounds: Bounds, cx: &mut Paint
 
     y += 8.0;
     let header_height = 20.0;
-    let header_bounds = Bounds::new(bounds.origin.x + padding, y, content_width, header_height);
+    let header_bounds = Bounds::new(content_x, y, content_width, header_height);
     let copy_button_width = 68.0;
     let copy_bounds = Bounds::new(
         header_bounds.origin.x + header_bounds.size.width - copy_button_width,
@@ -1534,12 +1546,7 @@ fn paint_sidebar_contents(root: &mut MinimalRoot, bounds: Bounds, cx: &mut Paint
     let feed_top = header_bounds.origin.y + header_height + 8.0;
     let feed_bottom = bounds.origin.y + bounds.size.height - padding;
     let feed_height = (feed_bottom - feed_top).max(0.0);
-    let feed_bounds = Bounds::new(
-        bounds.origin.x + padding,
-        feed_top,
-        content_width,
-        feed_height,
-    );
+    let feed_bounds = Bounds::new(content_x, feed_top, content_width, feed_height);
 
     let font_size = theme::font_size::XS;
     root.event_scroll_bounds = feed_bounds;
