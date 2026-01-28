@@ -61,6 +61,11 @@ const HOTBAR_FLOAT_GAP: f32 = 18.0;
 const HOTBAR_ITEM_SIZE: f32 = 36.0;
 const HOTBAR_ITEM_GAP: f32 = 6.0;
 const HOTBAR_PADDING: f32 = 6.0;
+const HOTBAR_SLOT_NEW_CHAT: u8 = 1;
+const HOTBAR_SLOT_EVENTS: u8 = 2;
+const HOTBAR_SLOT_IDENTITY: u8 = 3;
+const HOTBAR_CHAT_SLOT_START: u8 = 4;
+const HOTBAR_SLOT_MAX: u8 = 9;
 const MODEL_OPTIONS: [(&str, &str); 4] = [
     ("gpt-5.2-codex", "Latest frontier agentic coding model."),
     (
@@ -509,6 +514,8 @@ pub struct MinimalRoot {
     pane_bounds: HashMap<String, Bounds>,
     pane_drag: Option<PaneDragState>,
     chat_panes: HashMap<String, ChatPaneState>,
+    chat_slot_assignments: HashMap<String, u8>,
+    chat_slot_labels: HashMap<String, String>,
     pending_session_panes: VecDeque<String>,
     session_to_pane: HashMap<SessionId, String>,
     thread_to_pane: HashMap<String, String>,
@@ -1420,6 +1427,8 @@ impl MinimalRoot {
             pane_bounds: HashMap::new(),
             pane_drag: None,
             chat_panes: HashMap::new(),
+            chat_slot_assignments: HashMap::new(),
+            chat_slot_labels: HashMap::new(),
             pending_session_panes: VecDeque::new(),
             session_to_pane: HashMap::new(),
             thread_to_pane: HashMap::new(),
@@ -1604,7 +1613,8 @@ impl MinimalRoot {
     }
 
     fn open_chat_pane(&mut self, screen: Size, reset_chat: bool, request_session: bool) -> String {
-        let id = format!("chat-{}", self.next_chat_index);
+        let chat_index = self.next_chat_index;
+        let id = format!("chat-{}", chat_index);
         self.next_chat_index += 1;
         let rect = calculate_new_pane_position(
             self.pane_store.last_pane_position,
@@ -1626,6 +1636,9 @@ impl MinimalRoot {
             chat_state.reset_chat_state();
         }
         self.chat_panes.insert(id.clone(), chat_state);
+        self.chat_slot_labels
+            .insert(id.clone(), format!("Chat {}", chat_index));
+        self.assign_chat_slot(&id);
         if request_session {
             self.pending_session_panes.push_back(id.clone());
         }
@@ -1692,6 +1705,26 @@ impl MinimalRoot {
             if let Some(thread_id) = chat.thread_id {
                 self.thread_to_pane.remove(&thread_id);
             }
+        }
+        self.chat_slot_assignments.remove(id);
+        self.chat_slot_labels.remove(id);
+    }
+
+    fn assign_chat_slot(&mut self, pane_id: &str) {
+        if self.chat_slot_assignments.contains_key(pane_id) {
+            return;
+        }
+        for slot in HOTBAR_CHAT_SLOT_START..=HOTBAR_SLOT_MAX {
+            if self
+                .chat_slot_assignments
+                .values()
+                .any(|assigned| *assigned == slot)
+            {
+                continue;
+            }
+            self.chat_slot_assignments
+                .insert(pane_id.to_string(), slot);
+            break;
         }
     }
 
@@ -2295,57 +2328,47 @@ impl Component for MinimalRoot {
         let mut items = Vec::new();
         self.hotbar_bindings.clear();
 
-        let mut slot: u8 = 1;
-        let chat_ids: Vec<String> = self
-            .pane_store
-            .panes()
-            .iter()
-            .filter(|pane| pane.kind == PaneKind::Chat)
-            .map(|pane| pane.id.clone())
-            .collect();
+        items.push(HotbarSlot::new(HOTBAR_SLOT_NEW_CHAT, "+", "New chat"));
+        self.hotbar_bindings
+            .insert(HOTBAR_SLOT_NEW_CHAT, HotbarAction::NewChat);
 
-        for (idx, pane_id) in chat_ids.iter().enumerate() {
-            if slot > 9 {
-                break;
+        items.push(
+            HotbarSlot::new(HOTBAR_SLOT_EVENTS, "EV", "Events")
+                .active(self.pane_store.is_active("events")),
+        );
+        self.hotbar_bindings
+            .insert(HOTBAR_SLOT_EVENTS, HotbarAction::ToggleEvents);
+
+        items.push(
+            HotbarSlot::new(HOTBAR_SLOT_IDENTITY, "ID", "Identity")
+                .active(self.pane_store.is_active("identity")),
+        );
+        self.hotbar_bindings
+            .insert(HOTBAR_SLOT_IDENTITY, HotbarAction::ToggleIdentity);
+
+        let mut slot_to_pane: HashMap<u8, String> = HashMap::new();
+        for (pane_id, slot) in self.chat_slot_assignments.iter() {
+            if self.chat_panes.contains_key(pane_id) {
+                slot_to_pane.insert(*slot, pane_id.clone());
             }
-            let title = format!("Chat {}", idx + 1);
-            items.push(
-                HotbarSlot::new(slot, "CH", title).active(self.pane_store.is_active(pane_id)),
-            );
-            self.hotbar_bindings
-                .insert(slot, HotbarAction::FocusPane(pane_id.clone()));
-            slot += 1;
         }
 
-        if slot <= 9 {
-            items.push(HotbarSlot::new(slot, "+", "New chat"));
-            self.hotbar_bindings.insert(slot, HotbarAction::NewChat);
-            slot += 1;
-        }
-
-        if slot <= 9 {
-            items.push(
-                HotbarSlot::new(slot, "EV", "Events")
-                    .active(self.pane_store.is_active("events")),
-            );
-            self.hotbar_bindings
-                .insert(slot, HotbarAction::ToggleEvents);
-            slot += 1;
-        }
-
-        if slot <= 9 {
-            items.push(
-                HotbarSlot::new(slot, "ID", "Identity")
-                    .active(self.pane_store.is_active("identity")),
-            );
-            self.hotbar_bindings
-                .insert(slot, HotbarAction::ToggleIdentity);
-            slot += 1;
-        }
-
-        while slot <= 9 {
-            items.push(HotbarSlot::new(slot, "", format!("Slot {}", slot)).ghost(true));
-            slot += 1;
+        for slot in HOTBAR_CHAT_SLOT_START..=HOTBAR_SLOT_MAX {
+            if let Some(pane_id) = slot_to_pane.get(&slot) {
+                let title = self
+                    .chat_slot_labels
+                    .get(pane_id)
+                    .cloned()
+                    .unwrap_or_else(|| "Chat".to_string());
+                items.push(
+                    HotbarSlot::new(slot, "CH", title)
+                        .active(self.pane_store.is_active(pane_id)),
+                );
+                self.hotbar_bindings
+                    .insert(slot, HotbarAction::FocusPane(pane_id.clone()));
+            } else {
+                items.push(HotbarSlot::new(slot, "", format!("Slot {}", slot)).ghost(true));
+            }
         }
         self.hotbar.set_items(items);
         self.hotbar.paint(bar_bounds, cx);
