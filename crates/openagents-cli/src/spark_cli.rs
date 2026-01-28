@@ -5,15 +5,14 @@ use rand::RngCore;
 use serde::Serialize;
 use spark::{
     AssetFilter, BurnIssuerTokenRequest, CheckLightningAddressRequest, CheckMessageRequest,
-    ClaimDepositRequest, CreateIssuerTokenRequest, Fee, GetPaymentRequest,
-    GetTokensMetadataRequest, InputType, ListPaymentsRequest, ListUnclaimedDepositsRequest,
-    LnurlPayRequest, LnurlWithdrawRequest, MaxFee, MintIssuerTokenRequest, Network,
-    PaymentStatus, PaymentType, PrepareLnurlPayRequest, PrepareSendPaymentRequest,
-    ReceivePaymentMethod, ReceivePaymentRequest, RefundDepositRequest,
-    RegisterLightningAddressRequest, SendPaymentMethod, SendPaymentOptions,
-    SignMessageRequest, SparkHtlcOptions, SparkHtlcStatus, SparkSigner, SparkWallet,
-    SyncWalletRequest, UnfreezeIssuerTokenRequest, UpdateUserSettingsRequest, WalletConfig,
-    parse_input, FreezeIssuerTokenRequest,
+    ClaimDepositRequest, CreateIssuerTokenRequest, Fee, FreezeIssuerTokenRequest,
+    GetPaymentRequest, GetTokensMetadataRequest, InputType, ListPaymentsRequest,
+    ListUnclaimedDepositsRequest, LnurlPayRequest, LnurlWithdrawRequest, MaxFee,
+    MintIssuerTokenRequest, Network, PaymentStatus, PaymentType, PrepareLnurlPayRequest,
+    PrepareSendPaymentRequest, ReceivePaymentMethod, ReceivePaymentRequest, RefundDepositRequest,
+    RegisterLightningAddressRequest, SendPaymentMethod, SendPaymentOptions, SignMessageRequest,
+    SparkHtlcOptions, SparkHtlcStatus, SparkSigner, SparkWallet, SyncWalletRequest,
+    UnfreezeIssuerTokenRequest, UpdateUserSettingsRequest, WalletConfig, parse_input,
 };
 use std::env;
 use std::io::{self, Read};
@@ -930,7 +929,11 @@ fn new_keypair(args: NewArgs) -> Result<()> {
     let signer = SparkSigner::from_mnemonic(&mnemonic, &args.passphrase)
         .map_err(|e| anyhow::anyhow!(e.to_string()))?;
     let output = KeypairOutput {
-        mnemonic: if args.no_mnemonic { None } else { Some(mnemonic) },
+        mnemonic: if args.no_mnemonic {
+            None
+        } else {
+            Some(mnemonic)
+        },
         public_key_hex: signer.public_key_hex(),
         private_key_hex: if args.no_private {
             None
@@ -946,7 +949,11 @@ fn derive_keypair(args: DeriveArgs) -> Result<()> {
     let signer = SparkSigner::from_mnemonic(&mnemonic, &args.passphrase)
         .map_err(|e| anyhow::anyhow!(e.to_string()))?;
     let output = KeypairOutput {
-        mnemonic: if args.show_mnemonic { Some(mnemonic) } else { None },
+        mnemonic: if args.show_mnemonic {
+            Some(mnemonic)
+        } else {
+            None
+        },
         public_key_hex: signer.public_key_hex(),
         private_key_hex: if args.no_private {
             None
@@ -1059,7 +1066,9 @@ async fn receive_command(args: ReceiveArgs) -> Result<()> {
     };
 
     let response = wallet
-        .receive_payment(ReceivePaymentRequest { payment_method: method })
+        .receive_payment(ReceivePaymentRequest {
+            payment_method: method,
+        })
         .await
         .map_err(|e| anyhow::anyhow!(e.to_string()))?;
 
@@ -1352,83 +1361,85 @@ async fn tokens_command(args: TokensArgs) -> Result<()> {
                 .map_err(|e| anyhow::anyhow!(e.to_string()))?;
             print_output(&response, args.common.output.json)
         }
-        TokensCommand::Issuer(args) => {
-            match args.command {
-                TokensIssuerCommand::Balance(args) => {
-                    let wallet = build_wallet(&args.common.wallet).await?;
-                    let issuer = wallet.get_token_issuer();
-                    let response = issuer
-                        .get_issuer_token_balance()
-                        .await
-                        .map_err(|e| anyhow::anyhow!(e.to_string()))?;
-                    print_output(&response, args.common.output.json)
-                }
-                TokensIssuerCommand::Metadata(args) => {
-                    let wallet = build_wallet(&args.common.wallet).await?;
-                    let issuer = wallet.get_token_issuer();
-                    let response = issuer
-                        .get_issuer_token_metadata()
-                        .await
-                        .map_err(|e| anyhow::anyhow!(e.to_string()))?;
-                    print_output(&response, args.common.output.json)
-                }
-                TokensIssuerCommand::Create(args) => {
-                    let wallet = build_wallet(&args.common.wallet).await?;
-                    let issuer = wallet.get_token_issuer();
-                    let response = issuer
-                        .create_issuer_token(CreateIssuerTokenRequest {
-                            name: args.name,
-                            ticker: args.ticker,
-                            decimals: args.decimals,
-                            is_freezable: args.is_freezable,
-                            max_supply: args.max_supply,
-                        })
-                        .await
-                        .map_err(|e| anyhow::anyhow!(e.to_string()))?;
-                    print_output(&response, args.common.output.json)
-                }
-                TokensIssuerCommand::Mint(args) => {
-                    let wallet = build_wallet(&args.common.wallet).await?;
-                    let issuer = wallet.get_token_issuer();
-                    let response = issuer
-                        .mint_issuer_token(MintIssuerTokenRequest { amount: args.amount })
-                        .await
-                        .map_err(|e| anyhow::anyhow!(e.to_string()))?;
-                    print_output(&response, args.common.output.json)
-                }
-                TokensIssuerCommand::Burn(args) => {
-                    let wallet = build_wallet(&args.common.wallet).await?;
-                    let issuer = wallet.get_token_issuer();
-                    let response = issuer
-                        .burn_issuer_token(BurnIssuerTokenRequest { amount: args.amount })
-                        .await
-                        .map_err(|e| anyhow::anyhow!(e.to_string()))?;
-                    print_output(&response, args.common.output.json)
-                }
-                TokensIssuerCommand::Freeze(args) => {
-                    let wallet = build_wallet(&args.common.wallet).await?;
-                    let issuer = wallet.get_token_issuer();
-                    let response = issuer
-                        .freeze_issuer_token(FreezeIssuerTokenRequest {
-                            address: args.address,
-                        })
-                        .await
-                        .map_err(|e| anyhow::anyhow!(e.to_string()))?;
-                    print_output(&response, args.common.output.json)
-                }
-                TokensIssuerCommand::Unfreeze(args) => {
-                    let wallet = build_wallet(&args.common.wallet).await?;
-                    let issuer = wallet.get_token_issuer();
-                    let response = issuer
-                        .unfreeze_issuer_token(UnfreezeIssuerTokenRequest {
-                            address: args.address,
-                        })
-                        .await
-                        .map_err(|e| anyhow::anyhow!(e.to_string()))?;
-                    print_output(&response, args.common.output.json)
-                }
+        TokensCommand::Issuer(args) => match args.command {
+            TokensIssuerCommand::Balance(args) => {
+                let wallet = build_wallet(&args.common.wallet).await?;
+                let issuer = wallet.get_token_issuer();
+                let response = issuer
+                    .get_issuer_token_balance()
+                    .await
+                    .map_err(|e| anyhow::anyhow!(e.to_string()))?;
+                print_output(&response, args.common.output.json)
             }
-        }
+            TokensIssuerCommand::Metadata(args) => {
+                let wallet = build_wallet(&args.common.wallet).await?;
+                let issuer = wallet.get_token_issuer();
+                let response = issuer
+                    .get_issuer_token_metadata()
+                    .await
+                    .map_err(|e| anyhow::anyhow!(e.to_string()))?;
+                print_output(&response, args.common.output.json)
+            }
+            TokensIssuerCommand::Create(args) => {
+                let wallet = build_wallet(&args.common.wallet).await?;
+                let issuer = wallet.get_token_issuer();
+                let response = issuer
+                    .create_issuer_token(CreateIssuerTokenRequest {
+                        name: args.name,
+                        ticker: args.ticker,
+                        decimals: args.decimals,
+                        is_freezable: args.is_freezable,
+                        max_supply: args.max_supply,
+                    })
+                    .await
+                    .map_err(|e| anyhow::anyhow!(e.to_string()))?;
+                print_output(&response, args.common.output.json)
+            }
+            TokensIssuerCommand::Mint(args) => {
+                let wallet = build_wallet(&args.common.wallet).await?;
+                let issuer = wallet.get_token_issuer();
+                let response = issuer
+                    .mint_issuer_token(MintIssuerTokenRequest {
+                        amount: args.amount,
+                    })
+                    .await
+                    .map_err(|e| anyhow::anyhow!(e.to_string()))?;
+                print_output(&response, args.common.output.json)
+            }
+            TokensIssuerCommand::Burn(args) => {
+                let wallet = build_wallet(&args.common.wallet).await?;
+                let issuer = wallet.get_token_issuer();
+                let response = issuer
+                    .burn_issuer_token(BurnIssuerTokenRequest {
+                        amount: args.amount,
+                    })
+                    .await
+                    .map_err(|e| anyhow::anyhow!(e.to_string()))?;
+                print_output(&response, args.common.output.json)
+            }
+            TokensIssuerCommand::Freeze(args) => {
+                let wallet = build_wallet(&args.common.wallet).await?;
+                let issuer = wallet.get_token_issuer();
+                let response = issuer
+                    .freeze_issuer_token(FreezeIssuerTokenRequest {
+                        address: args.address,
+                    })
+                    .await
+                    .map_err(|e| anyhow::anyhow!(e.to_string()))?;
+                print_output(&response, args.common.output.json)
+            }
+            TokensIssuerCommand::Unfreeze(args) => {
+                let wallet = build_wallet(&args.common.wallet).await?;
+                let issuer = wallet.get_token_issuer();
+                let response = issuer
+                    .unfreeze_issuer_token(UnfreezeIssuerTokenRequest {
+                        address: args.address,
+                    })
+                    .await
+                    .map_err(|e| anyhow::anyhow!(e.to_string()))?;
+                print_output(&response, args.common.output.json)
+            }
+        },
     }
 }
 
@@ -1649,10 +1660,7 @@ async fn build_wallet(options: &WalletOptions) -> Result<SparkWallet> {
     let mut builder = SparkWallet::builder(signer, config);
 
     if options.key_set.is_some() || options.use_address_index || options.account_number.is_some() {
-        let key_set = options
-            .key_set
-            .unwrap_or(KeySetArg::Default)
-            .into();
+        let key_set = options.key_set.unwrap_or(KeySetArg::Default).into();
         builder = builder.with_key_set(key_set, options.use_address_index, options.account_number);
     }
 
@@ -1705,7 +1713,9 @@ fn resolve_wallet_mnemonic(options: &WalletOptions) -> Result<String> {
             return Ok(normalized);
         }
     }
-    anyhow::bail!("Mnemonic required. Use --mnemonic, --mnemonic-file, --stdin, or set SPARK_MNEMONIC")
+    anyhow::bail!(
+        "Mnemonic required. Use --mnemonic, --mnemonic-file, --stdin, or set SPARK_MNEMONIC"
+    )
 }
 
 fn resolve_api_key(cli_key: Option<String>) -> Option<String> {
@@ -1728,8 +1738,8 @@ fn resolve_api_key(cli_key: Option<String>) -> Option<String> {
 }
 
 fn parse_private_key_hex(value: &str) -> Result<bitcoin::secp256k1::SecretKey> {
-    let bytes = hex::decode(value)
-        .map_err(|e| anyhow::anyhow!(format!("Invalid private key hex: {e}")))?;
+    let bytes =
+        hex::decode(value).map_err(|e| anyhow::anyhow!(format!("Invalid private key hex: {e}")))?;
     if bytes.len() != 32 {
         anyhow::bail!("Private key must be 32 bytes (64 hex chars)");
     }
@@ -1741,11 +1751,7 @@ fn generate_mnemonic(words: u16) -> Result<String> {
     let mut entropy = match words {
         12 => [0u8; 16].to_vec(),
         24 => [0u8; 32].to_vec(),
-        _ => {
-            return Err(anyhow::anyhow!(
-                "Invalid word count. Use 12 or 24."
-            ))
-        }
+        _ => return Err(anyhow::anyhow!("Invalid word count. Use 12 or 24.")),
     };
 
     let mut rng = rand::rng();
@@ -1808,9 +1814,7 @@ fn expiry_time_from_now(seconds: u64) -> Result<u64> {
 }
 
 fn parse_asset_filter(value: &str) -> Result<AssetFilter> {
-    value
-        .parse::<AssetFilter>()
-        .map_err(|e| anyhow::anyhow!(e))
+    value.parse::<AssetFilter>().map_err(|e| anyhow::anyhow!(e))
 }
 
 fn parse_max_fee(
@@ -1861,7 +1865,9 @@ async fn resolve_lnurl_pay_request(
     match parsed {
         InputType::LnurlPay(details) => Ok(details),
         InputType::LightningAddress(details) => Ok(details.pay_request),
-        _ => Err(anyhow::anyhow!("Input is not LNURL-pay or lightning address")),
+        _ => Err(anyhow::anyhow!(
+            "Input is not LNURL-pay or lightning address"
+        )),
     }
 }
 
@@ -1883,9 +1889,7 @@ fn validate_lnurl_amount(amount_sats: u64, details: &spark::LnurlPayRequestDetai
     let min_sats = details.min_sendable.div_ceil(1000);
     let max_sats = details.max_sendable / 1000;
     if amount_sats < min_sats || amount_sats > max_sats {
-        anyhow::bail!(
-            "Amount out of bounds. min {min_sats} sat, max {max_sats} sat"
-        );
+        anyhow::bail!("Amount out of bounds. min {min_sats} sat, max {max_sats} sat");
     }
     Ok(())
 }
@@ -1897,9 +1901,7 @@ fn validate_lnurl_withdraw_amount(
     let min_sats = details.min_withdrawable.div_ceil(1000);
     let max_sats = details.max_withdrawable / 1000;
     if amount_sats < min_sats || amount_sats > max_sats {
-        anyhow::bail!(
-            "Amount out of bounds. min {min_sats} sat, max {max_sats} sat"
-        );
+        anyhow::bail!("Amount out of bounds. min {min_sats} sat, max {max_sats} sat");
     }
     Ok(())
 }

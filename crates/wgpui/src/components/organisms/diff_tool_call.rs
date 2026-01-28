@@ -108,11 +108,8 @@ impl Component for DiffToolCall {
     fn paint(&mut self, bounds: Bounds, cx: &mut PaintContext) {
         let padding = theme::spacing::SM;
 
-        cx.scene.draw_quad(
-            Quad::new(bounds)
-                .with_background(theme::bg::SURFACE)
-                .with_border(theme::border::DEFAULT, 1.0),
-        );
+        cx.scene
+            .draw_quad(Quad::new(bounds).with_background(theme::bg::SURFACE));
 
         let header_height = 32.0;
         let mut header = DiffHeader::new(&self.file_path)

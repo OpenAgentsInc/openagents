@@ -1193,7 +1193,11 @@ fn new_keypair(args: NewArgs) -> Result<()> {
         .map_err(|e| anyhow::anyhow!(e.to_string()))?;
 
     let output = KeypairOutput {
-        mnemonic: if args.no_mnemonic { None } else { Some(mnemonic) },
+        mnemonic: if args.no_mnemonic {
+            None
+        } else {
+            Some(mnemonic)
+        },
         account,
         agent,
         public_key_hex: keypair.public_key_hex(),
@@ -1221,7 +1225,11 @@ fn derive_keypair(args: DeriveArgs) -> Result<()> {
         .map_err(|e| anyhow::anyhow!(e.to_string()))?;
 
     let output = KeypairOutput {
-        mnemonic: if args.show_mnemonic { Some(mnemonic) } else { None },
+        mnemonic: if args.show_mnemonic {
+            Some(mnemonic)
+        } else {
+            None
+        },
         account,
         agent,
         public_key_hex: keypair.public_key_hex(),
@@ -1265,7 +1273,8 @@ fn decode_keys(args: DecodeArgs) -> Result<()> {
 
     let public_key_hex = match args.npub.as_deref() {
         Some(npub) => {
-            let bytes = nostr::npub_to_public_key(npub).map_err(|e| anyhow::anyhow!(e.to_string()))?;
+            let bytes =
+                nostr::npub_to_public_key(npub).map_err(|e| anyhow::anyhow!(e.to_string()))?;
             Some(hex::encode(bytes))
         }
         None => None,
@@ -1273,7 +1282,8 @@ fn decode_keys(args: DecodeArgs) -> Result<()> {
 
     let private_key_hex = match args.nsec.as_deref() {
         Some(nsec) => {
-            let bytes = nostr::nsec_to_private_key(nsec).map_err(|e| anyhow::anyhow!(e.to_string()))?;
+            let bytes =
+                nostr::nsec_to_private_key(nsec).map_err(|e| anyhow::anyhow!(e.to_string()))?;
             Some(hex::encode(bytes))
         }
         None => None,
@@ -1308,8 +1318,8 @@ fn derive_seed(args: SeedArgs) -> Result<()> {
 
 fn derive_pubkey(args: PubkeyArgs) -> Result<()> {
     let secret = parse_secret_key(args.secret, args.nsec)?;
-    let public_key_hex = nostr::get_public_key_hex(&secret)
-        .map_err(|e| anyhow::anyhow!(e.to_string()))?;
+    let public_key_hex =
+        nostr::get_public_key_hex(&secret).map_err(|e| anyhow::anyhow!(e.to_string()))?;
     let npub = nostr::public_key_to_npub(&parse_hex_32(&public_key_hex)?)
         .map_err(|e| anyhow::anyhow!(e.to_string()))?;
 
@@ -1352,9 +1362,9 @@ fn event_sign(args: EventSignArgs) -> Result<()> {
             content: template_json.content,
         }
     } else {
-        let kind = args
-            .kind
-            .ok_or_else(|| anyhow::anyhow!("--kind or --template-json/--template-file/--stdin is required"))?;
+        let kind = args.kind.ok_or_else(|| {
+            anyhow::anyhow!("--kind or --template-json/--template-file/--stdin is required")
+        })?;
         let content = args.content.unwrap_or_default();
         let tags = parse_tags_json(args.tags_json)?;
         let created_at = args.created_at.unwrap_or_else(now_timestamp);
@@ -1366,8 +1376,8 @@ fn event_sign(args: EventSignArgs) -> Result<()> {
         }
     };
 
-    let event = nostr::finalize_event(&template, &secret)
-        .map_err(|e| anyhow::anyhow!(e.to_string()))?;
+    let event =
+        nostr::finalize_event(&template, &secret).map_err(|e| anyhow::anyhow!(e.to_string()))?;
 
     print_output(&event, args.json)
 }
@@ -1383,11 +1393,11 @@ fn event_verify(args: EventVerifyArgs) -> Result<()> {
         tags: event.tags.clone(),
         content: event.content.clone(),
     };
-    let computed_id = nostr::get_event_hash(&unsigned)
-        .map_err(|e| anyhow::anyhow!(e.to_string()))?;
+    let computed_id =
+        nostr::get_event_hash(&unsigned).map_err(|e| anyhow::anyhow!(e.to_string()))?;
     let id_matches = computed_id == event.id;
-    let signature_valid = nostr::verify_event(&event)
-        .map_err(|e| anyhow::anyhow!(e.to_string()))?;
+    let signature_valid =
+        nostr::verify_event(&event).map_err(|e| anyhow::anyhow!(e.to_string()))?;
 
     let output = EventVerifyOutput {
         struct_valid,
@@ -1460,8 +1470,8 @@ fn event_serialize(args: EventSerializeArgs) -> Result<()> {
         },
     };
 
-    let serialized = nostr::serialize_event(&unsigned)
-        .map_err(|e| anyhow::anyhow!(e.to_string()))?;
+    let serialized =
+        nostr::serialize_event(&unsigned).map_err(|e| anyhow::anyhow!(e.to_string()))?;
     let output = EventSerializeOutput { serialized };
     print_output(&output, args.json)
 }
@@ -1638,8 +1648,8 @@ fn nip04_encrypt(args: Nip04EncryptArgs) -> Result<()> {
             .ok_or_else(|| anyhow::anyhow!("--plaintext is required"))?
     };
 
-    let ciphertext = nostr::encrypt(&secret, &pubkey, &plaintext)
-        .map_err(|e| anyhow::anyhow!(e.to_string()))?;
+    let ciphertext =
+        nostr::encrypt(&secret, &pubkey, &plaintext).map_err(|e| anyhow::anyhow!(e.to_string()))?;
     let output = Nip04Output { ciphertext };
     print_output(&output, args.json)
 }
@@ -1713,8 +1723,7 @@ fn run_nip26(args: Nip26Args) -> Result<()> {
 fn nip26_create(args: Nip26CreateArgs) -> Result<()> {
     let secret = parse_secret_key(args.secret, args.nsec)?;
     let delegatee_pubkey = parse_pubkey_hex(args.delegatee_pubkey, args.delegatee_npub)?;
-    let delegation_string =
-        nostr::create_delegation_string(&delegatee_pubkey, &args.conditions);
+    let delegation_string = nostr::create_delegation_string(&delegatee_pubkey, &args.conditions);
     let token = nostr::create_delegation_token(&secret, &delegatee_pubkey, &args.conditions)
         .map_err(|e| anyhow::anyhow!(e.to_string()))?;
 
@@ -1773,8 +1782,8 @@ fn nip42_auth(args: Nip42AuthArgs) -> Result<()> {
         template.created_at = created_at;
     }
 
-    let event = nostr::finalize_event(&template, &secret)
-        .map_err(|e| anyhow::anyhow!(e.to_string()))?;
+    let event =
+        nostr::finalize_event(&template, &secret).map_err(|e| anyhow::anyhow!(e.to_string()))?;
     let output = Nip42AuthOutput { event };
     print_output(&output, args.json)
 }
@@ -1811,9 +1820,8 @@ fn nip49_encrypt(args: Nip49EncryptArgs) -> Result<()> {
 }
 
 fn nip49_decrypt(args: Nip49DecryptArgs) -> Result<()> {
-    let (secret, log_n, key_security) =
-        nostr::nip49_decrypt(&args.ncryptsec, &args.password)
-            .map_err(|e| anyhow::anyhow!(e.to_string()))?;
+    let (secret, log_n, key_security) = nostr::nip49_decrypt(&args.ncryptsec, &args.password)
+        .map_err(|e| anyhow::anyhow!(e.to_string()))?;
     let private_key_hex = hex::encode(secret);
     let nsec = nostr::private_key_to_nsec(&secret).map_err(|e| anyhow::anyhow!(e.to_string()))?;
 
@@ -1851,11 +1859,11 @@ fn nip98_create(args: Nip98CreateArgs) -> Result<()> {
         created_at: args.created_at.unwrap_or_else(now_timestamp),
     };
 
-    let event = nostr::finalize_event(&template, &secret)
-        .map_err(|e| anyhow::anyhow!(e.to_string()))?;
+    let event =
+        nostr::finalize_event(&template, &secret).map_err(|e| anyhow::anyhow!(e.to_string()))?;
     let event_json = serde_json::to_string(&event).context("serialize event")?;
-    let authorization_header =
-        nostr::encode_authorization_header(&event_json).map_err(|e| anyhow::anyhow!(e.to_string()))?;
+    let authorization_header = nostr::encode_authorization_header(&event_json)
+        .map_err(|e| anyhow::anyhow!(e.to_string()))?;
 
     let output = Nip98CreateOutput {
         authorization_header,
@@ -1882,10 +1890,7 @@ fn nip98_validate(args: Nip98ValidateArgs) -> Result<()> {
         .map_err(|e| anyhow::anyhow!(e.to_string()))?;
 
     let signature_valid = if args.verify_sig {
-        Some(
-            nostr::verify_event(&event)
-                .map_err(|e| anyhow::anyhow!(e.to_string()))?,
-        )
+        Some(nostr::verify_event(&event).map_err(|e| anyhow::anyhow!(e.to_string()))?)
     } else {
         None
     };
@@ -1966,10 +1971,10 @@ fn nip05_verify(args: Nip05VerifyArgs) -> Result<()> {
         true,
     )?;
 
-    let response = Nip05Response::from_json(&response_json)
-        .map_err(|e| anyhow::anyhow!(e.to_string()))?;
-    let identifier = Nip05Identifier::parse(&args.identifier)
-        .map_err(|e| anyhow::anyhow!(e.to_string()))?;
+    let response =
+        Nip05Response::from_json(&response_json).map_err(|e| anyhow::anyhow!(e.to_string()))?;
+    let identifier =
+        Nip05Identifier::parse(&args.identifier).map_err(|e| anyhow::anyhow!(e.to_string()))?;
 
     response
         .verify(&identifier, &expected_pubkey)
@@ -2031,11 +2036,7 @@ fn generate_mnemonic(words: u16) -> Result<String> {
     let mut entropy = match words {
         12 => [0u8; 16].to_vec(),
         24 => [0u8; 32].to_vec(),
-        _ => {
-            return Err(anyhow::anyhow!(
-                "Invalid word count. Use 12 or 24."
-            ))
-        }
+        _ => return Err(anyhow::anyhow!("Invalid word count. Use 12 or 24.")),
     };
 
     let mut rng = rand::rng();
@@ -2057,8 +2058,7 @@ fn resolve_account(account: Option<u32>, agent: Option<u32>) -> Result<(u32, Opt
 }
 
 fn parse_hex_32(hex_str: &str) -> Result<[u8; 32]> {
-    let bytes = hex::decode(hex_str)
-        .with_context(|| format!("Invalid hex: {}", hex_str))?;
+    let bytes = hex::decode(hex_str).with_context(|| format!("Invalid hex: {}", hex_str))?;
     if bytes.len() != 32 {
         return Err(anyhow::anyhow!(
             "Expected 32 bytes (64 hex chars), got {} bytes",
@@ -2077,7 +2077,9 @@ fn parse_hex_32_required(hex_str: Option<&str>, label: &str) -> Result<[u8; 32]>
 
 fn parse_secret_key(secret: Option<String>, nsec: Option<String>) -> Result<[u8; 32]> {
     if secret.is_some() && nsec.is_some() {
-        return Err(anyhow::anyhow!("Provide either --secret or --nsec, not both"));
+        return Err(anyhow::anyhow!(
+            "Provide either --secret or --nsec, not both"
+        ));
     }
 
     if let Some(secret) = secret {
@@ -2093,7 +2095,9 @@ fn parse_secret_key(secret: Option<String>, nsec: Option<String>) -> Result<[u8;
 
 fn parse_pubkey_32(pubkey: Option<String>, npub: Option<String>) -> Result<[u8; 32]> {
     if pubkey.is_some() && npub.is_some() {
-        return Err(anyhow::anyhow!("Provide either --pubkey or --npub, not both"));
+        return Err(anyhow::anyhow!(
+            "Provide either --pubkey or --npub, not both"
+        ));
     }
 
     if let Some(pubkey) = pubkey {
@@ -2116,15 +2120,12 @@ fn parse_pubkey_bytes(pubkey: Option<String>, npub: Option<String>) -> Result<Ve
     let pubkey_hex = if let Some(hex) = pubkey {
         hex
     } else if let Some(npub) = npub {
-        hex::encode(
-            nostr::npub_to_public_key(&npub).map_err(|e| anyhow::anyhow!(e.to_string()))?,
-        )
+        hex::encode(nostr::npub_to_public_key(&npub).map_err(|e| anyhow::anyhow!(e.to_string()))?)
     } else {
         return Err(anyhow::anyhow!("Provide --pubkey or --npub"));
     };
 
-    let bytes = hex::decode(&pubkey_hex)
-        .with_context(|| format!("Invalid hex: {}", pubkey_hex))?;
+    let bytes = hex::decode(&pubkey_hex).with_context(|| format!("Invalid hex: {}", pubkey_hex))?;
 
     match bytes.len() {
         32 => {
@@ -2159,13 +2160,21 @@ fn read_input_string(
     trim: bool,
 ) -> Result<String> {
     if let Some(value) = inline {
-        return Ok(if trim { value.trim().to_string() } else { value });
+        return Ok(if trim {
+            value.trim().to_string()
+        } else {
+            value
+        });
     }
 
     if let Some(path) = file {
         let content = std::fs::read_to_string(&path)
             .with_context(|| format!("Failed to read {} from {}", label, path.display()))?;
-        return Ok(if trim { content.trim().to_string() } else { content });
+        return Ok(if trim {
+            content.trim().to_string()
+        } else {
+            content
+        });
     }
 
     if stdin {
@@ -2264,8 +2273,7 @@ fn read_event_or_unsigned(input: &EventInputArgs) -> Result<EventOrUnsigned> {
         return Ok(EventOrUnsigned::Signed(event));
     }
 
-    let unsigned: UnsignedEventJson =
-        serde_json::from_str(&raw).context("Invalid event JSON")?;
+    let unsigned: UnsignedEventJson = serde_json::from_str(&raw).context("Invalid event JSON")?;
     Ok(EventOrUnsigned::Unsigned(unsigned))
 }
 

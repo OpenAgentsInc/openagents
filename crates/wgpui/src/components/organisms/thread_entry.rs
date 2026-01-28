@@ -107,11 +107,6 @@ impl Component for ThreadEntry {
         // Dense but readable padding (4px)
         let padding = 4.0;
 
-        if self.hovered {
-            cx.scene
-                .draw_quad(Quad::new(bounds).with_background(theme::bg::MUTED.with_alpha(0.3)));
-        }
-
         let mut content_bounds = bounds;
         content_bounds.origin.x += padding;
         content_bounds.origin.y += padding;

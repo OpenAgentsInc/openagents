@@ -1063,7 +1063,7 @@ impl Component for MinimalRoot {
 
         cx.scene.draw_quad(
             Quad::new(right_bounds)
-                .with_background(theme::bg::SURFACE)
+                .with_background(theme::bg::APP)
                 .with_border(theme::border::DEFAULT, 1.0),
         );
         cx.scene.draw_quad(
