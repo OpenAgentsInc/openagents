@@ -1649,6 +1649,20 @@ impl MinimalRoot {
 
     pub fn handle_input(&mut self, event: &InputEvent, _bounds: Bounds) -> bool {
         if let InputEvent::KeyDown { key, modifiers } = event {
+            if matches!(key, Key::Named(NamedKey::Escape)) && !modifiers.meta && !modifiers.ctrl {
+                if let Some(active_id) = self.pane_store.active_pane_id.clone() {
+                    let dismissable = self
+                        .pane_store
+                        .pane(&active_id)
+                        .map(|pane| pane.dismissable)
+                        .unwrap_or(true);
+                    if dismissable {
+                        self.close_pane(&active_id);
+                        return true;
+                    }
+                }
+            }
+
             if matches!(key, Key::Named(NamedKey::Tab))
                 && !modifiers.shift
                 && !modifiers.ctrl
