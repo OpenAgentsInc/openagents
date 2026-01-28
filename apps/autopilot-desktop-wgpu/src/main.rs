@@ -6,6 +6,7 @@ use std::sync::{Arc, mpsc};
 use anyhow::{Context, Result};
 use autopilot_app::{
     App as AutopilotApp, AppConfig, AppEvent, EventRecorder, PylonStatus, SessionId, UserAction,
+    WalletStatus,
 };
 use autopilot_ui::MinimalRoot;
 use codex_client::{
@@ -17,6 +18,7 @@ use full_auto::{
     ensure_codex_lm, run_full_auto_decision,
 };
 use futures::StreamExt;
+use openagents_spark::{Network as SparkNetwork, SparkSigner, SparkWallet, WalletConfig};
 use pylon::daemon::{ControlClient, DaemonResponse, is_daemon_running, pid_path, socket_path};
 use pylon::PylonConfig;
 use serde_json::{Value, json};
@@ -1218,6 +1220,13 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
                             let status = fetch_pylon_status();
                             let _ = proxy_actions.send_event(AppEvent::PylonStatus { status });
                         }
+                        UserAction::WalletRefresh => {
+                            let proxy = proxy_actions.clone();
+                            handle.block_on(async move {
+                                let status = fetch_wallet_status().await;
+                                let _ = proxy.send_event(AppEvent::WalletStatus { status });
+                            });
+                        }
                         UserAction::FullAutoToggle {
                             session_id,
                             enabled,
@@ -1426,6 +1435,116 @@ fn fetch_pylon_status() -> PylonStatus {
                     }
                 }
             }
+        }
+    }
+
+    status
+}
+
+fn spark_network_for_pylon(network: &str) -> SparkNetwork {
+    match network.to_lowercase().as_str() {
+        "mainnet" => SparkNetwork::Mainnet,
+        "testnet" => SparkNetwork::Testnet,
+        "signet" => SparkNetwork::Signet,
+        _ => SparkNetwork::Regtest,
+    }
+}
+
+async fn fetch_wallet_status() -> WalletStatus {
+    let mut status = WalletStatus {
+        network: None,
+        spark_sats: 0,
+        lightning_sats: 0,
+        onchain_sats: 0,
+        total_sats: 0,
+        spark_address: None,
+        bitcoin_address: None,
+        identity_exists: false,
+        last_error: None,
+    };
+
+    let config = match PylonConfig::load() {
+        Ok(config) => config,
+        Err(err) => {
+            status.last_error = Some(format!("Failed to load Pylon config: {err}"));
+            return status;
+        }
+    };
+
+    status.network = Some(config.network.clone());
+
+    let data_dir = match config.data_path() {
+        Ok(path) => path,
+        Err(err) => {
+            status.last_error = Some(format!("Failed to resolve Pylon data dir: {err}"));
+            return status;
+        }
+    };
+    let identity_path = data_dir.join("identity.mnemonic");
+    if !identity_path.exists() {
+        status.identity_exists = false;
+        status.last_error = Some(format!(
+            "No identity found. Run 'pylon init' first. Expected: {}",
+            identity_path.display()
+        ));
+        return status;
+    }
+    status.identity_exists = true;
+
+    let mnemonic = match std::fs::read_to_string(&identity_path) {
+        Ok(value) => value.trim().to_string(),
+        Err(err) => {
+            status.last_error = Some(format!("Failed to read identity: {err}"));
+            return status;
+        }
+    };
+
+    let signer = match SparkSigner::from_mnemonic(&mnemonic, "") {
+        Ok(signer) => signer,
+        Err(err) => {
+            status.last_error = Some(format!("Failed to derive Spark signer: {err}"));
+            return status;
+        }
+    };
+
+    let wallet_config = WalletConfig {
+        network: spark_network_for_pylon(&config.network),
+        api_key: None,
+        storage_dir: data_dir.join("spark"),
+    };
+
+    let wallet = match SparkWallet::new(signer, wallet_config).await {
+        Ok(wallet) => wallet,
+        Err(err) => {
+            status.last_error = Some(format!("Failed to init Spark wallet: {err}"));
+            return status;
+        }
+    };
+
+    match wallet.get_balance().await {
+        Ok(balance) => {
+            status.spark_sats = balance.spark_sats;
+            status.lightning_sats = balance.lightning_sats;
+            status.onchain_sats = balance.onchain_sats;
+            status.total_sats = balance.total_sats();
+        }
+        Err(err) => {
+            status.last_error = Some(format!("Failed to fetch balance: {err}"));
+            return status;
+        }
+    }
+
+    match wallet.get_spark_address().await {
+        Ok(address) => status.spark_address = Some(address),
+        Err(err) => {
+            status.last_error = Some(format!("Failed to fetch Spark address: {err}"));
+        }
+    }
+
+    match wallet.get_bitcoin_address().await {
+        Ok(address) => status.bitcoin_address = Some(address),
+        Err(err) => {
+            status.last_error = Some(format!("Failed to fetch Bitcoin address: {err}"));
         }
     }
 
