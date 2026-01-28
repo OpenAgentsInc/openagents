@@ -177,13 +177,13 @@ impl ApplicationHandler for App {
             }
             WindowEvent::ScaleFactorChanged {
                 scale_factor,
-                new_inner_size,
-                ..
+                inner_size_writer: _,
             } => {
                 state.scale_factor = scale_factor as f32;
                 state.text_system.set_scale_factor(scale_factor as f32);
-                state.config.width = new_inner_size.width.max(1);
-                state.config.height = new_inner_size.height.max(1);
+                let inner_size = state.window.inner_size();
+                state.config.width = inner_size.width.max(1);
+                state.config.height = inner_size.height.max(1);
                 state.surface.configure(&state.device, &state.config);
                 state.window.request_redraw();
             }
