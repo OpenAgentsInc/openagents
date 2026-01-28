@@ -1,9 +1,12 @@
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, mpsc};
 
 use anyhow::{Context, Result};
-use autopilot_app::{App as AutopilotApp, AppConfig, AppEvent, EventRecorder, UserAction};
+use autopilot_app::{
+    App as AutopilotApp, AppConfig, AppEvent, EventRecorder, SessionId, UserAction,
+};
 use autopilot_ui::MinimalRoot;
 use codex_client::{
     AppServerClient, AppServerConfig, AskForApproval, ClientInfo, SandboxMode, SandboxPolicy,
@@ -35,6 +38,23 @@ const WINDOW_HEIGHT: f64 = 800.0;
 const PADDING: f32 = 16.0;
 const EVENT_BUFFER: usize = 256;
 const DEFAULT_THREAD_MODEL: &str = "gpt-5.1-codex-mini";
+
+#[derive(Clone)]
+struct SessionRuntime {
+    thread_id: Arc<tokio::sync::Mutex<Option<String>>>,
+    turn_id: Arc<tokio::sync::Mutex<Option<String>>>,
+    pending_interrupt: Arc<AtomicBool>,
+}
+
+impl SessionRuntime {
+    fn new() -> Self {
+        Self {
+            thread_id: Arc::new(tokio::sync::Mutex::new(None)),
+            turn_id: Arc::new(tokio::sync::Mutex::new(None)),
+            pending_interrupt: Arc::new(AtomicBool::new(false)),
+        }
+    }
+}
 
 fn main() -> Result<()> {
     tracing_subscriber::fmt()
@@ -429,8 +449,18 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
             let workspace = Arc::new(app.open_workspace(cwd.clone()));
             let workspace_id = workspace.workspace_id().to_string();
             let mut stream = workspace.events();
+            let session_states =
+                Arc::new(tokio::sync::Mutex::new(HashMap::<SessionId, SessionRuntime>::new()));
+            let thread_to_session =
+                Arc::new(tokio::sync::Mutex::new(HashMap::<String, SessionId>::new()));
 
-            let _session = workspace.start_session(Some("Bootstrap".to_string()));
+            let bootstrap_session = workspace.start_session(Some("Bootstrap".to_string()));
+            let bootstrap_id = bootstrap_session.session_id();
+            let bootstrap_state = SessionRuntime::new();
+            {
+                let mut guard = session_states.lock().await;
+                guard.insert(bootstrap_id, bootstrap_state.clone());
+            }
 
             let proxy_events = proxy.clone();
             tokio::spawn(async move {
@@ -466,9 +496,6 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
             };
 
             let client = Arc::new(client);
-            let thread_id = Arc::new(tokio::sync::Mutex::new(None::<String>));
-            let turn_id = Arc::new(tokio::sync::Mutex::new(None::<String>));
-            let pending_interrupt = Arc::new(AtomicBool::new(false));
             let full_auto_state = Arc::new(tokio::sync::Mutex::new(None::<FullAutoState>));
 
             let client_info = ClientInfo {
@@ -497,14 +524,19 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
                 .await
             {
                 Ok(response) => {
-                    let mut guard = thread_id.lock().await;
+                    let mut guard = bootstrap_state.thread_id.lock().await;
                     *guard = Some(response.thread.id.clone());
+                    {
+                        let mut map = thread_to_session.lock().await;
+                        map.insert(response.thread.id.clone(), bootstrap_id);
+                    }
                     let _ = proxy.send_event(AppEvent::AppServerEvent {
                         message: json!({
                             "method": "thread/started",
                             "params": {
                                 "threadId": response.thread.id,
-                                "model": DEFAULT_THREAD_MODEL
+                                "model": DEFAULT_THREAD_MODEL,
+                                "sessionId": bootstrap_id.to_string()
                             }
                         })
                         .to_string(),
@@ -523,9 +555,8 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
 
             let proxy_notifications = proxy.clone();
             let client_interrupt = client.clone();
-            let thread_id_interrupt = thread_id.clone();
-            let turn_id_interrupt = turn_id.clone();
-            let pending_interrupt_notifications = pending_interrupt.clone();
+            let session_states_notifications = session_states.clone();
+            let thread_to_session_notifications = thread_to_session.clone();
             let full_auto_state_notifications = full_auto_state.clone();
             let proxy_full_auto = proxy.clone();
             let client_full_auto = client.clone();
@@ -550,18 +581,40 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
                                 })
                                 .map(|id| id.to_string());
                             if let Some(next_turn) = next_turn {
-                                let mut guard = turn_id_interrupt.lock().await;
-                                *guard = Some(next_turn.clone());
-                                if pending_interrupt_notifications.swap(false, Ordering::SeqCst) {
-                                    if let Some(thread_id) =
-                                        thread_id_interrupt.lock().await.clone()
-                                    {
-                                        let _ = client_interrupt
-                                            .turn_interrupt(TurnInterruptParams {
-                                                thread_id,
-                                                turn_id: next_turn,
-                                            })
-                                            .await;
+                                let session_id = if let Some(thread_id) =
+                                    thread_id_value.as_deref()
+                                {
+                                    thread_to_session_notifications
+                                        .lock()
+                                        .await
+                                        .get(thread_id)
+                                        .copied()
+                                } else {
+                                    None
+                                };
+                                if let Some(session_id) = session_id {
+                                    let state = session_states_notifications
+                                        .lock()
+                                        .await
+                                        .get(&session_id)
+                                        .cloned();
+                                    if let Some(state) = state {
+                                        {
+                                            let mut guard = state.turn_id.lock().await;
+                                            *guard = Some(next_turn.clone());
+                                        }
+                                        if state.pending_interrupt.swap(false, Ordering::SeqCst) {
+                                            if let Some(thread_id) =
+                                                state.thread_id.lock().await.clone()
+                                            {
+                                                let _ = client_interrupt
+                                                    .turn_interrupt(TurnInterruptParams {
+                                                        thread_id,
+                                                        turn_id: next_turn.clone(),
+                                                    })
+                                                    .await;
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -583,13 +636,31 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
                                     .and_then(|id| id.as_str())
                             })
                             .map(|id| id.to_string());
-                        let mut guard = turn_id_interrupt.lock().await;
-                        if completed_turn
-                            .as_deref()
-                            .map(|id| guard.as_deref() == Some(id))
-                            .unwrap_or(true)
-                        {
-                            *guard = None;
+                        let session_id = if let Some(thread_id) = thread_id_value.as_deref() {
+                            thread_to_session_notifications
+                                .lock()
+                                .await
+                                .get(thread_id)
+                                .copied()
+                        } else {
+                            None
+                        };
+                        if let Some(session_id) = session_id {
+                            let state = session_states_notifications
+                                .lock()
+                                .await
+                                .get(&session_id)
+                                .cloned();
+                            if let Some(state) = state {
+                                let mut guard = state.turn_id.lock().await;
+                                if completed_turn
+                                    .as_deref()
+                                    .map(|id| guard.as_deref() == Some(id))
+                                    .unwrap_or(true)
+                                {
+                                    *guard = None;
+                                }
+                            }
                         }
                     }
 
@@ -877,9 +948,8 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
             let handle = tokio::runtime::Handle::current();
             let workspace_for_actions = workspace.clone();
             let client_for_actions = client.clone();
-            let thread_id_for_actions = thread_id.clone();
-            let turn_id_for_actions = turn_id.clone();
-            let pending_interrupt_for_actions = pending_interrupt.clone();
+            let session_states_for_actions = session_states.clone();
+            let thread_to_session_for_actions = thread_to_session.clone();
             let proxy_actions = proxy.clone();
             let cwd_for_actions = cwd_string.clone();
             tokio::task::spawn_blocking(move || {
@@ -888,25 +958,23 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
                     match action {
                         UserAction::NewChat { model, .. } => {
                             let client = client_for_actions.clone();
-                            let thread_id = thread_id_for_actions.clone();
-                            let turn_id = turn_id_for_actions.clone();
-                            let pending_interrupt = pending_interrupt_for_actions.clone();
                             let proxy = proxy_actions.clone();
                             let cwd = cwd_for_actions.clone();
                             let full_auto_state = full_auto_state.clone();
                             let workspace = workspace_for_actions.clone();
                             let workspace_id = workspace_id.clone();
-                            workspace.start_session(Some("New chat".to_string()));
+                            let session_states = session_states_for_actions.clone();
+                            let thread_to_session = thread_to_session_for_actions.clone();
+                            let session_handle = workspace.start_session(Some("New chat".to_string()));
+                            let session_id = session_handle.session_id();
+                            let session_state = SessionRuntime::new();
+
                             handle.spawn(async move {
-                                pending_interrupt.store(false, Ordering::SeqCst);
                                 {
-                                    let mut guard = thread_id.lock().await;
-                                    *guard = None;
+                                    let mut guard = session_states.lock().await;
+                                    guard.insert(session_id, session_state.clone());
                                 }
-                                {
-                                    let mut guard = turn_id.lock().await;
-                                    *guard = None;
-                                }
+
                                 {
                                     let mut guard = full_auto_state.lock().await;
                                     if guard.is_some() {
@@ -938,14 +1006,21 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
                                     .await
                                 {
                                     Ok(response) => {
-                                        let mut guard = thread_id.lock().await;
-                                        *guard = Some(response.thread.id.clone());
+                                        {
+                                            let mut guard = session_state.thread_id.lock().await;
+                                            *guard = Some(response.thread.id.clone());
+                                        }
+                                        {
+                                            let mut map = thread_to_session.lock().await;
+                                            map.insert(response.thread.id.clone(), session_id);
+                                        }
                                         let _ = proxy.send_event(AppEvent::AppServerEvent {
                                             message: json!({
                                                 "method": "thread/started",
                                                 "params": {
                                                     "threadId": response.thread.id,
-                                                    "model": selected_model
+                                                    "model": selected_model,
+                                                    "sessionId": session_id.to_string()
                                                 }
                                             })
                                             .to_string(),
@@ -963,13 +1038,32 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
                                 }
                             });
                         }
-                        UserAction::Message { text, model, .. } => {
+                        UserAction::Message {
+                            session_id,
+                            text,
+                            model,
+                        } => {
                             let client = client_for_actions.clone();
-                            let thread_id = thread_id_for_actions.clone();
                             let proxy = proxy_actions.clone();
                             let cwd = cwd_for_actions.clone();
+                            let session_states = session_states_for_actions.clone();
                             handle.spawn(async move {
-                                let thread_id = thread_id.lock().await.clone();
+                                let session_state = session_states
+                                    .lock()
+                                    .await
+                                    .get(&session_id)
+                                    .cloned();
+                                let Some(session_state) = session_state else {
+                                    let _ = proxy.send_event(AppEvent::AppServerEvent {
+                                        message: json!({
+                                            "method": "codex/error",
+                                            "params": { "message": "Session not ready" }
+                                        })
+                                        .to_string(),
+                                    });
+                                    return;
+                                };
+                                let thread_id = session_state.thread_id.lock().await.clone();
                                 let Some(thread_id) = thread_id else {
                                     let _ = proxy.send_event(AppEvent::AppServerEvent {
                                         message: json!({
@@ -1008,14 +1102,27 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
                                 }
                             });
                         }
-                        UserAction::Interrupt { .. } => {
+                        UserAction::Interrupt { session_id, .. } => {
                             let client = client_for_actions.clone();
-                            let thread_id = thread_id_for_actions.clone();
-                            let turn_id = turn_id_for_actions.clone();
-                            let pending_interrupt = pending_interrupt_for_actions.clone();
                             let proxy = proxy_actions.clone();
+                            let session_states = session_states_for_actions.clone();
                             handle.spawn(async move {
-                                let thread_id = thread_id.lock().await.clone();
+                                let session_state = session_states
+                                    .lock()
+                                    .await
+                                    .get(&session_id)
+                                    .cloned();
+                                let Some(session_state) = session_state else {
+                                    let _ = proxy.send_event(AppEvent::AppServerEvent {
+                                        message: json!({
+                                            "method": "codex/error",
+                                            "params": { "message": "Session not ready" }
+                                        })
+                                        .to_string(),
+                                    });
+                                    return;
+                                };
+                                let thread_id = session_state.thread_id.lock().await.clone();
                                 let Some(thread_id) = thread_id else {
                                     let _ = proxy.send_event(AppEvent::AppServerEvent {
                                         message: json!({
@@ -1027,10 +1134,13 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
                                     return;
                                 };
 
-                                let mut turn_guard = turn_id.lock().await;
-                                let turn_value = turn_guard.clone().unwrap_or_else(|| "pending".into());
+                                let mut turn_guard = session_state.turn_id.lock().await;
+                                let turn_value =
+                                    turn_guard.clone().unwrap_or_else(|| "pending".into());
                                 if turn_guard.is_none() {
-                                    pending_interrupt.store(true, Ordering::SeqCst);
+                                    session_state
+                                        .pending_interrupt
+                                        .store(true, Ordering::SeqCst);
                                 } else {
                                     *turn_guard = None;
                                 }
@@ -1053,15 +1163,28 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
                             });
                         }
                         UserAction::FullAutoToggle {
+                            session_id,
                             enabled,
-                            thread_id,
                             continue_prompt,
                             ..
                         } => {
                             let proxy = proxy_actions.clone();
                             let full_auto_state = full_auto_state.clone();
                             let workspace_id = workspace_id.clone();
+                            let session_states = session_states_for_actions.clone();
                             handle.spawn(async move {
+                                let thread_id = {
+                                    let state = session_states
+                                        .lock()
+                                        .await
+                                        .get(&session_id)
+                                        .cloned();
+                                    if let Some(state) = state {
+                                        state.thread_id.lock().await.clone()
+                                    } else {
+                                        None
+                                    }
+                                };
                                 if enabled {
                                     let mut guard = full_auto_state.lock().await;
                                     let mut next_state = FullAutoState::new(
@@ -1070,7 +1193,7 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
                                         continue_prompt.clone(),
                                     );
                                     next_state.enabled = true;
-                                    if let Some(thread_id) = thread_id {
+                                    if let Some(thread_id) = thread_id.clone() {
                                         next_state.thread_id = Some(thread_id);
                                     }
                                     next_state.set_continue_prompt(continue_prompt);
