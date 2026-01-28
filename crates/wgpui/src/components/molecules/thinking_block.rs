@@ -1,16 +1,15 @@
-use crate::components::atoms::ThinkingToggle;
 use crate::components::context::{EventContext, PaintContext};
 use crate::components::organisms::MarkdownView;
 use crate::components::{Component, ComponentId, EventResult};
+use crate::input::MouseButton;
 use crate::markdown::MarkdownParser;
-use crate::{Bounds, InputEvent, Quad, theme};
+use crate::{Bounds, InputEvent, Point, Quad, theme};
 
 pub struct ThinkingBlock {
     id: Option<ComponentId>,
     content: String,
     expanded: bool,
-    toggle: ThinkingToggle,
-    max_collapsed_lines: usize,
+    hovered: bool,
     markdown: MarkdownView,
     rendered_text: String,
 }
@@ -26,8 +25,7 @@ impl ThinkingBlock {
             id: None,
             content,
             expanded: false,
-            toggle: ThinkingToggle::new(),
-            max_collapsed_lines: 3,
+            hovered: false,
             markdown,
             rendered_text: String::new(),
         }
@@ -40,12 +38,6 @@ impl ThinkingBlock {
 
     pub fn expanded(mut self, expanded: bool) -> Self {
         self.expanded = expanded;
-        self.toggle = self.toggle.expanded(expanded);
-        self
-    }
-
-    pub fn max_collapsed_lines(mut self, lines: usize) -> Self {
-        self.max_collapsed_lines = lines;
         self
     }
 
@@ -59,34 +51,10 @@ impl ThinkingBlock {
 
     pub fn set_expanded(&mut self, expanded: bool) {
         self.expanded = expanded;
-        self.toggle.set_expanded(expanded);
     }
 
     pub fn toggle(&mut self) {
         self.expanded = !self.expanded;
-        self.toggle.set_expanded(self.expanded);
-    }
-
-    fn visible_content(&self) -> &str {
-        if self.expanded {
-            &self.content
-        } else {
-            let lines: Vec<&str> = self
-                .content
-                .lines()
-                .take(self.max_collapsed_lines)
-                .collect();
-            if lines.len() < self.content.lines().count() {
-                return &self.content[..self
-                    .content
-                    .lines()
-                    .take(self.max_collapsed_lines)
-                    .map(|l| l.len() + 1)
-                    .sum::<usize>()
-                    .saturating_sub(1)];
-            }
-            &self.content
-        }
     }
 }
 
@@ -98,71 +66,116 @@ impl Default for ThinkingBlock {
 
 impl Component for ThinkingBlock {
     fn paint(&mut self, bounds: Bounds, cx: &mut PaintContext) {
-        let padding = theme::spacing::SM;
-        let toggle_height = 24.0;
-
-        cx.scene.draw_quad(
-            Quad::new(bounds)
-                .with_background(theme::bg::MUTED.with_alpha(0.5))
-                .with_border(theme::border::SUBTLE, 1.0),
-        );
-
-        self.toggle.paint(
-            Bounds::new(
-                bounds.origin.x + padding,
-                bounds.origin.y + padding,
-                bounds.size.width - padding * 2.0,
-                toggle_height,
-            ),
-            cx,
-        );
-
-        let content_y = bounds.origin.y + padding + toggle_height + theme::spacing::XS;
-        let content_bounds = Bounds::new(
+        let padding = theme::spacing::XS;
+        let header_height = 20.0;
+        let icon_size = 10.0;
+        let icon_radius = 2.0;
+        let icon_y = bounds.origin.y + (header_height - icon_size) * 0.5;
+        let icon_bounds = Bounds::new(
             bounds.origin.x + padding,
+            icon_y,
+            icon_size,
+            icon_size,
+        );
+        cx.scene.draw_quad(
+            Quad::new(icon_bounds)
+                .with_background(theme::bg::MUTED)
+                .with_border(theme::border::DEFAULT, 1.0)
+                .with_corner_radius(icon_radius),
+        );
+
+        let label_x = icon_bounds.origin.x + icon_size + theme::spacing::XS;
+        let label_y = bounds.origin.y + header_height * 0.5 - theme::font_size::XS * 0.55;
+        let label_run = cx.text.layout_mono(
+            "Thinking",
+            Point::new(label_x, label_y),
+            theme::font_size::XS,
+            theme::text::MUTED,
+        );
+        cx.scene.draw_text(label_run);
+
+        if self.hovered || self.expanded {
+            let chevron = if self.expanded { "v" } else { ">" };
+            let chevron_width = theme::font_size::XS * 0.6;
+            let chevron_x = bounds.origin.x + bounds.size.width - padding - chevron_width;
+            let chevron_y = label_y;
+            let chevron_run = cx.text.layout_mono(
+                chevron,
+                Point::new(chevron_x, chevron_y),
+                theme::font_size::XS,
+                theme::text::MUTED,
+            );
+            cx.scene.draw_text(chevron_run);
+        }
+
+        if !self.expanded {
+            return;
+        }
+
+        let content_y = bounds.origin.y + header_height + theme::spacing::XS;
+        let content_indent = label_x;
+        let content_bounds = Bounds::new(
+            content_indent,
             content_y,
-            bounds.size.width - padding * 2.0,
+            bounds.size.width - (content_indent - bounds.origin.x) - padding,
             (bounds.size.height - (content_y - bounds.origin.y) - padding).max(0.0),
         );
 
-        let visible = self.visible_content().to_string();
-        if visible != self.rendered_text {
-            let document = MarkdownParser::new().parse(&visible);
+        let border_x = content_indent - theme::spacing::XS;
+        let border_bounds = Bounds::new(
+            border_x,
+            content_y,
+            1.0,
+            (bounds.size.height - (content_y - bounds.origin.y) - padding).max(0.0),
+        );
+        cx.scene
+            .draw_quad(Quad::new(border_bounds).with_background(theme::border::DEFAULT));
+
+        if self.content != self.rendered_text {
+            let document = MarkdownParser::new().parse(&self.content);
             self.markdown.set_document(document);
             self.rendered_text.clear();
-            self.rendered_text.push_str(&visible);
+            self.rendered_text.push_str(&self.content);
         }
 
         self.markdown.paint(content_bounds, cx);
     }
 
     fn event(&mut self, event: &InputEvent, bounds: Bounds, cx: &mut EventContext) -> EventResult {
-        let padding = theme::spacing::SM;
-        let toggle_bounds = Bounds::new(
-            bounds.origin.x + padding,
-            bounds.origin.y + padding,
-            bounds.size.width - padding * 2.0,
-            24.0,
-        );
+        match event {
+            InputEvent::MouseMove { x, y } => {
+                let was_hovered = self.hovered;
+                self.hovered = bounds.contains(Point::new(*x, *y));
+                if was_hovered != self.hovered {
+                    return EventResult::Handled;
+                }
+            }
+            InputEvent::MouseDown { button, x, y, .. } => {
+                if *button == MouseButton::Left {
+                    let header_bounds =
+                        Bounds::new(bounds.origin.x, bounds.origin.y, bounds.size.width, 20.0);
+                    if header_bounds.contains(Point::new(*x, *y)) {
+                        self.toggle();
+                        return EventResult::Handled;
+                    }
+                }
+            }
+            _ => {}
+        }
 
-        let result = self.toggle.event(event, toggle_bounds, cx);
-        if result == EventResult::Handled {
-            self.expanded = self.toggle.is_expanded();
-            self.rendered_text.clear();
+        if self.expanded {
+            let content_indent = bounds.origin.x + theme::spacing::XS + 10.0 + theme::spacing::XS;
+            let content_y = bounds.origin.y + 20.0 + theme::spacing::XS;
+            let content_bounds = Bounds::new(
+                content_indent,
+                content_y,
+                bounds.size.width - (content_indent - bounds.origin.x) - theme::spacing::XS,
+                (bounds.size.height - (content_y - bounds.origin.y) - theme::spacing::XS).max(0.0),
+            );
+            return self.markdown.event(event, content_bounds, cx);
         }
-        let markdown_bounds = Bounds::new(
-            bounds.origin.x + padding,
-            bounds.origin.y + padding + 24.0 + theme::spacing::XS,
-            bounds.size.width - padding * 2.0,
-            (bounds.size.height - (padding + 24.0 + theme::spacing::XS + padding)).max(0.0),
-        );
-        let markdown_handled =
-            matches!(self.markdown.event(event, markdown_bounds, cx), EventResult::Handled);
-        if markdown_handled {
-            EventResult::Handled
-        } else {
-            result
-        }
+
+        EventResult::Ignored
     }
 
     fn id(&self) -> Option<ComponentId> {
@@ -170,20 +183,16 @@ impl Component for ThinkingBlock {
     }
 
     fn size_hint(&self) -> (Option<f32>, Option<f32>) {
-        let padding = theme::spacing::SM;
-        let toggle_height = 24.0;
-        let font_size = theme::font_size::SM;
-        let line_height = font_size * 1.4;
-
-        let visible_lines = if self.expanded {
-            self.content.lines().count()
+        let header_height = 20.0;
+        if self.expanded {
+            let content_height = self.markdown.size_hint().1.unwrap_or(0.0);
+            (
+                None,
+                Some(header_height + theme::spacing::XS + content_height + theme::spacing::XS),
+            )
         } else {
-            self.max_collapsed_lines.min(self.content.lines().count()) + 1
-        };
-
-        let height =
-            padding * 2.0 + toggle_height + theme::spacing::XS + visible_lines as f32 * line_height;
-        (None, Some(height))
+            (None, Some(header_height))
+        }
     }
 }
 
@@ -200,14 +209,10 @@ mod tests {
 
     #[test]
     fn test_thinking_block_builder() {
-        let block = ThinkingBlock::new("Content")
-            .with_id(1)
-            .expanded(true)
-            .max_collapsed_lines(5);
+        let block = ThinkingBlock::new("Content").with_id(1).expanded(true);
 
         assert_eq!(block.id, Some(1));
         assert!(block.is_expanded());
-        assert_eq!(block.max_collapsed_lines, 5);
     }
 
     #[test]
