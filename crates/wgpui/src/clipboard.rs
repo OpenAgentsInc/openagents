@@ -14,7 +14,10 @@ use std::process::{Command, Stdio};
 pub fn copy_to_clipboard(_contents: &str) -> Result<(), String> {
     #[cfg(target_os = "macos")]
     {
-        return copy_with_command("pbcopy", &[], _contents);
+        if copy_with_command("pbcopy", &[], _contents).is_ok() {
+            return Ok(());
+        }
+        return copy_with_command("/usr/bin/pbcopy", &[], _contents);
     }
 
     #[cfg(target_os = "linux")]
