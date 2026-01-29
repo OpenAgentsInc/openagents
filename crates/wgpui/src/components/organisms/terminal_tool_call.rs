@@ -153,7 +153,9 @@ impl Component for TerminalToolCall {
     }
 
     fn size_hint(&self) -> (Option<f32>, Option<f32>) {
-        let base_height = 28.0 + theme::spacing::SM * 2.0;
+        let padding = theme::spacing::SM;
+        let header_height = 32.0;
+        let base_height = padding * 2.0 + header_height;
         let output_height = if self.expanded && !self.output.is_empty() {
             80.0 + theme::spacing::XS
         } else {
