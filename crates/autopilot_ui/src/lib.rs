@@ -1,8 +1,8 @@
 use std::cell::RefCell;
 use std::collections::{HashMap, VecDeque};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::rc::Rc;
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use autopilot_app::{AppEvent, SessionId, ThreadSnapshot, ThreadSummary, UserAction, WorkspaceId};
 use bip39::Mnemonic;
@@ -2335,17 +2335,18 @@ impl MinimalRoot {
             .map(|summary| {
                 let pending = self.pending_thread_open.clone();
                 let thread_id = summary.id.clone();
-                let label = short_thread_id(&thread_id);
-                let button = Button::new(label)
+                let button = Button::new("")
                     .variant(ButtonVariant::Ghost)
                     .font_size(theme::font_size::XS)
-                    .padding(6.0, 2.0)
-                    .corner_radius(4.0)
+                    .padding(0.0, 0.0)
+                    .corner_radius(0.0)
                     .on_click(move || {
                         *pending.borrow_mut() = Some(thread_id.clone());
                     });
+                let branch = git_branch_for_cwd(&summary.cwd);
                 ThreadEntryView {
                     summary,
+                    branch,
                     open_button: button,
                     open_bounds: Bounds::ZERO,
                 }
@@ -5138,36 +5139,123 @@ fn paint_threads_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintCont
     root.threads_refresh_button.paint(refresh_bounds, cx);
 
     let mut y = header_bounds.origin.y + header_height + 8.0;
+    let font_size = theme::font_size::XS;
     let row_height = 18.0;
-    let id_width = 86.0;
-    let preview_width = (content_width - id_width - 8.0).max(0.0);
+    let row_gap = 6.0;
+    let char_width = font_size * 0.6;
+    let gap_chars = 2usize;
+    let gap_px = char_width * gap_chars as f32;
 
     if root.thread_entries.is_empty() {
         Text::new("No recent threads.")
-            .font_size(theme::font_size::XS)
+            .font_size(font_size)
             .color(theme::text::MUTED)
             .paint(Bounds::new(content_x, y, content_width, row_height), cx);
         return;
     }
 
-    for entry in &mut root.thread_entries {
-        let id_bounds = Bounds::new(content_x, y, id_width, row_height);
-        entry.open_bounds = id_bounds;
-        entry.open_button.paint(id_bounds, cx);
+    let mut updated_labels = Vec::with_capacity(root.thread_entries.len());
+    let mut branch_labels = Vec::with_capacity(root.thread_entries.len());
+    let mut max_updated_chars = "Updated".chars().count();
+    let mut max_branch_chars = "Branch".chars().count();
 
+    for entry in &root.thread_entries {
+        let updated = relative_time_label(entry.summary.created_at);
+        let branch_raw = entry.branch.as_deref().unwrap_or("");
+        let branch = right_elide(branch_raw, 24);
+        max_updated_chars = max_updated_chars.max(updated.chars().count());
+        max_branch_chars = max_branch_chars.max(branch.chars().count());
+        updated_labels.push(updated);
+        branch_labels.push(branch);
+    }
+
+    let total_chars = (content_width / char_width).floor().max(1.0) as usize;
+    let min_preview_chars = 8usize;
+    let mut updated_chars = max_updated_chars;
+    let mut branch_chars = max_branch_chars;
+    let mut preview_chars =
+        total_chars.saturating_sub(updated_chars + branch_chars + gap_chars * 2);
+    if preview_chars < min_preview_chars {
+        let mut deficit = min_preview_chars - preview_chars;
+        let branch_min = "Branch".chars().count();
+        let reducible_branch = branch_chars.saturating_sub(branch_min);
+        let reduce_branch = deficit.min(reducible_branch);
+        branch_chars = branch_chars.saturating_sub(reduce_branch);
+        deficit = deficit.saturating_sub(reduce_branch);
+
+        let updated_min = "Updated".chars().count();
+        let reducible_updated = updated_chars.saturating_sub(updated_min);
+        let reduce_updated = deficit.min(reducible_updated);
+        updated_chars = updated_chars.saturating_sub(reduce_updated);
+        preview_chars = total_chars.saturating_sub(updated_chars + branch_chars + gap_chars * 2);
+    }
+
+    let updated_width = (updated_chars as f32 * char_width).ceil();
+    let branch_width = (branch_chars as f32 * char_width).ceil();
+    let preview_width = (content_width - updated_width - branch_width - gap_px * 2.0).max(0.0);
+
+    let updated_x = content_x;
+    let branch_x = updated_x + updated_width + gap_px;
+    let preview_x = branch_x + branch_width + gap_px;
+
+    Text::new("Updated")
+        .font_size(font_size)
+        .bold()
+        .no_wrap()
+        .color(theme::text::PRIMARY)
+        .paint(Bounds::new(updated_x, y, updated_width, row_height), cx);
+    Text::new("Branch")
+        .font_size(font_size)
+        .bold()
+        .no_wrap()
+        .color(theme::text::PRIMARY)
+        .paint(Bounds::new(branch_x, y, branch_width, row_height), cx);
+    Text::new("Conversation")
+        .font_size(font_size)
+        .bold()
+        .no_wrap()
+        .color(theme::text::PRIMARY)
+        .paint(Bounds::new(preview_x, y, preview_width, row_height), cx);
+    y += row_height + row_gap;
+
+    for (index, entry) in root.thread_entries.iter_mut().enumerate() {
+        let row_bounds = Bounds::new(content_x, y, content_width, row_height);
+        entry.open_bounds = row_bounds;
+        entry.open_button.paint(row_bounds, cx);
+
+        let updated_label = updated_labels
+            .get(index)
+            .map(String::as_str)
+            .unwrap_or("-");
+        let branch_label = branch_labels
+            .get(index)
+            .map(String::as_str)
+            .filter(|label| !label.trim().is_empty())
+            .unwrap_or("-");
         let preview_text = if entry.summary.preview.trim().is_empty() {
             "No preview"
         } else {
             entry.summary.preview.trim()
         };
-        Text::new(preview_text)
-            .font_size(theme::font_size::XS)
+        let preview = truncate_line(preview_text, preview_chars);
+
+        Text::new(updated_label)
+            .font_size(font_size)
+            .no_wrap()
             .color(theme::text::MUTED)
-            .paint(
-                Bounds::new(content_x + id_width + 8.0, y, preview_width, row_height),
-                cx,
-            );
-        y += row_height + 6.0;
+            .paint(Bounds::new(updated_x, y, updated_width, row_height), cx);
+        Text::new(branch_label)
+            .font_size(font_size)
+            .no_wrap()
+            .color(theme::text::MUTED)
+            .paint(Bounds::new(branch_x, y, branch_width, row_height), cx);
+        Text::new(preview)
+            .font_size(font_size)
+            .no_wrap()
+            .color(theme::text::PRIMARY)
+            .paint(Bounds::new(preview_x, y, preview_width, row_height), cx);
+
+        y += row_height + row_gap;
     }
 }
 
@@ -6136,6 +6224,7 @@ struct DvmJobView {
 
 struct ThreadEntryView {
     summary: ThreadSummary,
+    branch: Option<String>,
     open_button: Button,
     open_bounds: Bounds,
 }
@@ -6228,8 +6317,121 @@ fn format_session_id(session_id: SessionId) -> String {
     trimmed.chars().take(6).collect()
 }
 
-fn short_thread_id(id: &str) -> String {
-    id.chars().take(8).collect()
+fn relative_time_label(timestamp: i64) -> String {
+    if timestamp <= 0 {
+        return "-".to_string();
+    }
+
+    let mut seconds = timestamp;
+    if seconds > 1_000_000_000_000 {
+        seconds /= 1000;
+    }
+
+    let now = match SystemTime::now().duration_since(UNIX_EPOCH) {
+        Ok(duration) => duration.as_secs() as i64,
+        Err(_) => return "-".to_string(),
+    };
+    let delta = (now - seconds).max(0);
+
+    if delta < 60 {
+        let n = delta.max(1);
+        if n == 1 {
+            format!("{n} second ago")
+        } else {
+            format!("{n} seconds ago")
+        }
+    } else if delta < 3600 {
+        let n = delta / 60;
+        if n == 1 {
+            format!("{n} minute ago")
+        } else {
+            format!("{n} minutes ago")
+        }
+    } else if delta < 86_400 {
+        let n = delta / 3600;
+        if n == 1 {
+            format!("{n} hour ago")
+        } else {
+            format!("{n} hours ago")
+        }
+    } else {
+        let n = delta / 86_400;
+        if n == 1 {
+            format!("{n} day ago")
+        } else {
+            format!("{n} days ago")
+        }
+    }
+}
+
+fn truncate_line(text: &str, max_chars: usize) -> String {
+    let clean = text.replace('\n', " ").trim().to_string();
+    if max_chars == 0 {
+        return String::new();
+    }
+    if clean.chars().count() <= max_chars {
+        return clean;
+    }
+    if max_chars == 1 {
+        return "…".to_string();
+    }
+    let mut out = clean.chars().take(max_chars - 1).collect::<String>();
+    out.push('…');
+    out
+}
+
+fn right_elide(text: &str, max_chars: usize) -> String {
+    if max_chars == 0 {
+        return String::new();
+    }
+    if text.chars().count() <= max_chars {
+        return text.to_string();
+    }
+    if max_chars == 1 {
+        return "…".to_string();
+    }
+    let tail_len = max_chars - 1;
+    let tail: String = text
+        .chars()
+        .rev()
+        .take(tail_len)
+        .collect::<String>()
+        .chars()
+        .rev()
+        .collect();
+    format!("…{tail}")
+}
+
+fn git_branch_for_cwd(cwd: &Option<String>) -> Option<String> {
+    let cwd = cwd.as_ref()?;
+    let git_path = Path::new(cwd).join(".git");
+    let head_path = if git_path.is_dir() {
+        git_path.join("HEAD")
+    } else if git_path.is_file() {
+        let gitdir_line = std::fs::read_to_string(&git_path).ok()?;
+        let gitdir = gitdir_line.trim().strip_prefix("gitdir:")?.trim();
+        let gitdir_path = Path::new(gitdir);
+        if gitdir_path.is_absolute() {
+            gitdir_path.join("HEAD")
+        } else {
+            Path::new(cwd).join(gitdir).join("HEAD")
+        }
+    } else {
+        return None;
+    };
+
+    let head = std::fs::read_to_string(head_path).ok()?;
+    let head = head.trim();
+    if let Some(reference) = head.strip_prefix("ref: ") {
+        reference
+            .rsplit('/')
+            .next()
+            .map(|branch| branch.to_string())
+    } else if head.is_empty() {
+        None
+    } else {
+        Some(head.chars().take(7).collect())
+    }
 }
 
 fn cursor_for_resize(edge: ResizeEdge) -> Option<Cursor> {
