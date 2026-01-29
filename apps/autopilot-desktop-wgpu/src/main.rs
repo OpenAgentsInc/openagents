@@ -47,6 +47,10 @@ const WINDOW_HEIGHT: f64 = 800.0;
 const PADDING: f32 = 0.0;
 const EVENT_BUFFER: usize = 256;
 const DEFAULT_THREAD_MODEL: &str = "gpt-5.1-codex-mini";
+const ZOOM_MIN: f32 = 0.5;
+const ZOOM_MAX: f32 = 2.5;
+const ZOOM_STEP_KEY: f32 = 0.1;
+const ZOOM_STEP_WHEEL: f32 = 0.05;
 
 async fn run_pylon_cli(args: &[&str]) -> anyhow::Result<()> {
     let cli = pylon::cli::PylonCli::parse_from(args);
@@ -117,8 +121,23 @@ struct RenderState {
     renderer: Renderer,
     text_system: TextSystem,
     scale_factor: f32,
+    zoom_factor: f32,
     root: MinimalRoot,
     cursor_icon: Cursor,
+}
+
+impl RenderState {
+    fn effective_scale(&self) -> f32 {
+        (self.scale_factor * self.zoom_factor).max(0.1)
+    }
+
+    fn bump_zoom(&mut self, delta: f32) {
+        let next = (self.zoom_factor + delta).clamp(ZOOM_MIN, ZOOM_MAX);
+        if (next - self.zoom_factor).abs() > f32::EPSILON {
+            self.zoom_factor = next;
+            self.text_system.set_scale_factor(self.effective_scale());
+        }
+    }
 }
 
 impl ApplicationHandler<AppEvent> for App {
@@ -159,21 +178,21 @@ impl ApplicationHandler<AppEvent> for App {
             }
             WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
                 state.scale_factor = scale_factor as f32;
-                state.text_system.set_scale_factor(state.scale_factor);
+                state.text_system.set_scale_factor(state.effective_scale());
                 state.window.request_redraw();
             }
             WindowEvent::ModifiersChanged(modifiers) => {
                 self.modifiers = modifiers.state();
             }
             WindowEvent::CursorMoved { position, .. } => {
-                let scale = state.scale_factor.max(0.1);
+                let scale = state.effective_scale();
                 self.cursor_position =
                     Point::new(position.x as f32 / scale, position.y as f32 / scale);
                 let input_event = InputEvent::MouseMove {
                     x: self.cursor_position.x,
                     y: self.cursor_position.y,
                 };
-                let bounds = content_bounds(logical_size(&state.config, state.scale_factor));
+                let bounds = content_bounds(logical_size(&state.config, state.effective_scale()));
                 if state.root.handle_input(&input_event, bounds) {
                     state.window.request_redraw();
                 }
@@ -206,28 +225,81 @@ impl ApplicationHandler<AppEvent> for App {
                     },
                 };
 
-                let bounds = content_bounds(logical_size(&state.config, state.scale_factor));
+                let bounds = content_bounds(logical_size(&state.config, state.effective_scale()));
                 if state.root.handle_input(&input_event, bounds) {
                     state.window.request_redraw();
                 }
                 update_cursor(state);
             }
             WindowEvent::MouseWheel { delta, .. } => {
-                let (dx, dy) = match delta {
-                    winit::event::MouseScrollDelta::LineDelta(x, y) => (-x * 24.0, -y * 24.0),
+                let (dx, dy, zoom_dir) = match delta {
+                    winit::event::MouseScrollDelta::LineDelta(x, y) => {
+                        (-x * 24.0, -y * 24.0, y)
+                    }
                     winit::event::MouseScrollDelta::PixelDelta(pos) => {
-                        let scale = state.scale_factor.max(0.1);
-                        (-pos.x as f32 / scale, -pos.y as f32 / scale)
+                        let scale = state.effective_scale();
+                        (-pos.x as f32 / scale, -pos.y as f32 / scale, pos.y as f32)
                     }
                 };
-                let input_event = InputEvent::Scroll { dx, dy };
-                let bounds = content_bounds(logical_size(&state.config, state.scale_factor));
-                if state.root.handle_input(&input_event, bounds) {
-                    state.window.request_redraw();
+
+                let modifiers = to_modifiers(self.modifiers);
+                let mut handled = false;
+
+                if modifiers.meta {
+                    let step = if zoom_dir > 0.0 {
+                        ZOOM_STEP_WHEEL
+                    } else if zoom_dir < 0.0 {
+                        -ZOOM_STEP_WHEEL
+                    } else {
+                        0.0
+                    };
+                    if step != 0.0 {
+                        state.bump_zoom(step);
+                        state.window.request_redraw();
+                        handled = true;
+                    }
                 }
+
+                if !handled {
+                    let input_event = InputEvent::Scroll { dx, dy };
+                    let bounds = content_bounds(logical_size(&state.config, state.effective_scale()));
+                    if state.root.handle_input(&input_event, bounds) {
+                        state.window.request_redraw();
+                        handled = true;
+                    }
+                }
+
+                if !handled {
+                    let step = if zoom_dir > 0.0 {
+                        ZOOM_STEP_WHEEL
+                    } else if zoom_dir < 0.0 {
+                        -ZOOM_STEP_WHEEL
+                    } else {
+                        0.0
+                    };
+                    if step != 0.0 {
+                        state.bump_zoom(step);
+                        state.window.request_redraw();
+                    }
+                }
+
                 update_cursor(state);
             }
             WindowEvent::KeyboardInput { event, .. } => {
+                if event.state == ElementState::Pressed && self.modifiers.super_key() {
+                    if let WinitKey::Character(ch) = &event.logical_key {
+                        let step = match ch.as_str() {
+                            "+" | "=" => Some(ZOOM_STEP_KEY),
+                            "-" => Some(-ZOOM_STEP_KEY),
+                            _ => None,
+                        };
+                        if let Some(step) = step {
+                            state.bump_zoom(step);
+                            state.window.request_redraw();
+                            return;
+                        }
+                    }
+                }
                 let Some(key) = map_key(&event.logical_key) else {
                     return;
                 };
@@ -236,7 +308,7 @@ impl ApplicationHandler<AppEvent> for App {
                     ElementState::Pressed => InputEvent::KeyDown { key, modifiers },
                     ElementState::Released => InputEvent::KeyUp { key, modifiers },
                 };
-                let bounds = content_bounds(logical_size(&state.config, state.scale_factor));
+                let bounds = content_bounds(logical_size(&state.config, state.effective_scale()));
                 if state.root.handle_input(&input_event, bounds) {
                     state.window.request_redraw();
                 }
@@ -347,6 +419,7 @@ fn init_state(
             renderer,
             text_system,
             scale_factor,
+            zoom_factor: 1.0,
             root,
             cursor_icon: Cursor::Default,
         })
@@ -354,16 +427,15 @@ fn init_state(
 }
 
 fn render_frame(state: &mut RenderState) -> Result<()> {
-    let logical = logical_size(&state.config, state.scale_factor);
+    let scale_factor = state.effective_scale();
+    let logical = logical_size(&state.config, scale_factor);
     let content_bounds = content_bounds(logical);
 
     let mut scene = Scene::new();
-    let mut paint = PaintContext::new(&mut scene, &mut state.text_system, state.scale_factor);
+    let mut paint = PaintContext::new(&mut scene, &mut state.text_system, scale_factor);
     state.root.paint(content_bounds, &mut paint);
 
-    state
-        .renderer
-        .resize(&state.queue, logical, state.scale_factor);
+    state.renderer.resize(&state.queue, logical, scale_factor);
 
     if state.text_system.is_dirty() {
         state.renderer.update_atlas(
@@ -395,7 +467,6 @@ fn render_frame(state: &mut RenderState) -> Result<()> {
             label: Some("Render Encoder"),
         });
 
-    let scale_factor = state.window.scale_factor() as f32;
     state
         .renderer
         .prepare(&state.device, &state.queue, &scene, scale_factor);
