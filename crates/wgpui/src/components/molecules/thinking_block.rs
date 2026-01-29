@@ -17,6 +17,26 @@ pub struct ThinkingBlock {
 }
 
 impl ThinkingBlock {
+    fn truncate_label(text: &str, max_width: f32, font_size: f32) -> String {
+        if max_width <= 0.0 {
+            return String::new();
+        }
+        let char_width = font_size * 0.6;
+        let max_chars = (max_width / char_width).floor() as usize;
+        if text.len() <= max_chars {
+            return text.to_string();
+        }
+        if max_chars <= 3 {
+            return "...".to_string();
+        }
+        let target = max_chars - 3;
+        let mut end = target.min(text.len());
+        while end > 0 && !text.is_char_boundary(end) {
+            end -= 1;
+        }
+        format!("{}...", &text[..end])
+    }
+
     pub fn new(content: impl Into<String>) -> Self {
         let raw = content.into();
         let content = strip_task_markers(&raw);
@@ -81,8 +101,15 @@ impl Component for ThinkingBlock {
         let header_height = 20.0;
         let label_x = bounds.origin.x + padding;
         let label_y = bounds.origin.y + header_height * 0.5 - theme::font_size::XS * 0.55;
+        let chevron_space = if self.hovered || self.expanded {
+            theme::font_size::XS * 0.6 + padding
+        } else {
+            0.0
+        };
+        let max_width = (bounds.size.width - padding * 2.0 - chevron_space).max(0.0);
+        let label = Self::truncate_label(&self.header_label, max_width, theme::font_size::XS);
         let label_run = cx.text.layout_mono(
-            &self.header_label,
+            &label,
             Point::new(label_x, label_y),
             theme::font_size::XS,
             theme::text::MUTED,
