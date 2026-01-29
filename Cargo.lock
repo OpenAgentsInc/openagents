@@ -1069,6 +1069,7 @@ dependencies = [
  "autopilot_app",
  "autopilot_ui",
  "chrono",
+ "clap",
  "codex-client",
  "dsrs",
  "futures",

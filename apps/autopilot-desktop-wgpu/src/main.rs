@@ -9,6 +9,7 @@ use autopilot_app::{
     PylonStatus, SessionId, UserAction, WalletStatus,
 };
 use autopilot_ui::MinimalRoot;
+use clap::Parser;
 use codex_client::{
     AppServerClient, AppServerConfig, AskForApproval, ClientInfo, SandboxMode, SandboxPolicy,
     ThreadStartParams, TurnInterruptParams, TurnStartParams, UserInput,
@@ -45,6 +46,11 @@ const WINDOW_HEIGHT: f64 = 800.0;
 const PADDING: f32 = 0.0;
 const EVENT_BUFFER: usize = 256;
 const DEFAULT_THREAD_MODEL: &str = "gpt-5.1-codex-mini";
+
+async fn run_pylon_cli(args: &[&str]) -> anyhow::Result<()> {
+    let cli = pylon::cli::PylonCli::parse_from(args);
+    pylon::cli::execute(cli).await
+}
 
 #[derive(Clone)]
 struct SessionRuntime {
@@ -1176,11 +1182,7 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
                         UserAction::PylonInit => {
                             let proxy = proxy_actions.clone();
                             handle.block_on(async move {
-                                let result = pylon::cli::init::run(pylon::cli::init::InitArgs {
-                                    import: false,
-                                    force: false,
-                                })
-                                .await;
+                                let result = run_pylon_cli(&["pylon", "init"]).await;
                                 let mut status = fetch_pylon_status();
                                 if let Err(err) = result {
                                     status.last_error = Some(err.to_string());
@@ -1191,12 +1193,7 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
                         UserAction::PylonStart => {
                             let proxy = proxy_actions.clone();
                             handle.block_on(async move {
-                                let result = pylon::cli::start::run(pylon::cli::start::StartArgs {
-                                    foreground: false,
-                                    mode: pylon::cli::start::PylonMode::Both,
-                                    config: None,
-                                })
-                                .await;
+                                let result = run_pylon_cli(&["pylon", "start"]).await;
                                 let mut status = fetch_pylon_status();
                                 if let Err(err) = result {
                                     status.last_error = Some(err.to_string());
@@ -1207,11 +1204,7 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
                         UserAction::PylonStop => {
                             let proxy = proxy_actions.clone();
                             handle.block_on(async move {
-                                let result = pylon::cli::stop::run(pylon::cli::stop::StopArgs {
-                                    force: false,
-                                    timeout: 10,
-                                })
-                                .await;
+                                let result = run_pylon_cli(&["pylon", "stop"]).await;
                                 let mut status = fetch_pylon_status();
                                 if let Err(err) = result {
                                     status.last_error = Some(err.to_string());
@@ -1233,12 +1226,7 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
                         UserAction::DvmProviderStart => {
                             let proxy = proxy_actions.clone();
                             handle.block_on(async move {
-                                let result =
-                                    pylon::cli::start::run(pylon::cli::start::StartArgs {
-                                        foreground: false,
-                                        mode: pylon::cli::start::PylonMode::Provider,
-                                        config: None,
-                                    })
+                                let result = run_pylon_cli(&["pylon", "start", "--mode", "provider"])
                                     .await;
                                 let mut status = fetch_dvm_provider_status();
                                 if let Err(err) = result {
@@ -1251,11 +1239,7 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
                         UserAction::DvmProviderStop => {
                             let proxy = proxy_actions.clone();
                             handle.block_on(async move {
-                                let result = pylon::cli::stop::run(pylon::cli::stop::StopArgs {
-                                    force: false,
-                                    timeout: 10,
-                                })
-                                .await;
+                                let result = run_pylon_cli(&["pylon", "stop"]).await;
                                 let mut status = fetch_dvm_provider_status();
                                 if let Err(err) = result {
                                     status.last_error = Some(err.to_string());
@@ -1367,7 +1351,10 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
                                     request = request.add_service_provider(provider);
                                 }
 
-                                let submission = match client.submit_job(request, &relays).await {
+                                let relay_refs: Vec<&str> =
+                                    relays.iter().map(|relay| relay.as_str()).collect();
+                                let submission =
+                                    match client.submit_job(request, &relay_refs).await {
                                     Ok(submission) => submission,
                                     Err(err) => {
                                         log(format!("Job submission failed: {err}"));
