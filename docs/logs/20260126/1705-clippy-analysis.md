@@ -53,3 +53,16 @@ Clippy now finishes without errors, but there is still a large warning surface. 
 ## Notes
 - The workspace denies `allow_attributes`, so suppression should use `#[expect(...)]` and only where the lint actually fires.
 - The latest `cargo clippy` run completed successfully; remaining work is cleanup/consistency, not blocking.
+
+## Addendum (2026-01-29)
+Status update after a fresh `cargo clippy --workspace --all-targets` run:
+- The workspace now **fails** clippy due to hard errors:
+  - `crates/citrea/src/rpc.rs` uses `#[allow(dead_code)]`, which is blocked by `-D clippy::allow-attributes` (must be `#[expect(dead_code)]` or removed).
+  - `crates/wgpui/src/testing/component_tests.rs` has an `assert!(... || true)` flagged by `clippy::overly_complex_bool_expr`.
+- Additional warnings remain in:
+  - `crates/spark` (`single_match_else`, `assigning_clones`, `cast_lossless`, `implicit_clone`).
+  - `crates/rlm` (`filter_next`).
+  - `crates/nostr` tests (`needless_borrows_for_generic_args`, `redundant_field_names`).
+  - `crates/wgpui` (multiple `collapsible_if`, `items_after_test_module`, `manual_range_contains`, `len_zero`, `manual_clamp`, `unused_mut`, `assertions_on_constants`, etc.).
+
+Assessment: clippy is currently **blocked by errors** and cannot pass until the citrea allow-attribute and wgpui test assertion are fixed; after that, it still needs a warning cleanup pass across spark, rlm, nostr tests, and wgpui.
