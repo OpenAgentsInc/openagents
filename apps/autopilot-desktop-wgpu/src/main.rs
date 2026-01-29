@@ -9,7 +9,6 @@ use autopilot_app::{
     PylonStatus, SessionId, UserAction, WalletStatus,
 };
 use autopilot_ui::MinimalRoot;
-use clap::Parser;
 use codex_client::{
     AppServerClient, AppServerConfig, AskForApproval, ClientInfo, SandboxMode, SandboxPolicy,
     ThreadListParams, ThreadResumeParams, ThreadStartParams, TurnInterruptParams, TurnStartParams,
@@ -22,10 +21,11 @@ use full_auto::{
 use futures::StreamExt;
 use nostr::nip90::{JobInput, JobRequest, KIND_JOB_TEXT_GENERATION};
 use nostr_client::dvm::DvmClient;
+use openagents_runtime::UnifiedIdentity;
 use openagents_spark::{Network as SparkNetwork, SparkSigner, SparkWallet, WalletConfig};
-use pylon::daemon::{ControlClient, DaemonResponse, is_daemon_running, pid_path, socket_path, db_path};
 use pylon::PylonConfig;
 use pylon::db::{PylonDb, jobs::JobStatus};
+use pylon::provider::{PylonProvider, ProviderError};
 use serde_json::{Value, json};
 use tracing_subscriber::EnvFilter;
 use wgpui::renderer::Renderer;
@@ -52,11 +52,6 @@ const ZOOM_MAX: f32 = 2.5;
 const ZOOM_STEP_KEY: f32 = 0.1;
 const ZOOM_STEP_WHEEL: f32 = 0.05;
 
-async fn run_pylon_cli(args: &[&str]) -> anyhow::Result<()> {
-    let cli = pylon::cli::PylonCli::parse_from(args);
-    pylon::cli::execute(cli).await
-}
-
 #[derive(Clone)]
 struct SessionRuntime {
     thread_id: Arc<tokio::sync::Mutex<Option<String>>>,
@@ -70,6 +65,22 @@ impl SessionRuntime {
             thread_id: Arc::new(tokio::sync::Mutex::new(None)),
             turn_id: Arc::new(tokio::sync::Mutex::new(None)),
             pending_interrupt: Arc::new(AtomicBool::new(false)),
+        }
+    }
+}
+
+struct InProcessPylon {
+    provider: Option<PylonProvider>,
+    started_at: Option<std::time::Instant>,
+    last_error: Option<String>,
+}
+
+impl InProcessPylon {
+    fn new() -> Self {
+        Self {
+            provider: None,
+            started_at: None,
+            last_error: None,
         }
     }
 }
@@ -1047,6 +1058,7 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
             let proxy_actions = proxy.clone();
             let cwd_for_actions = cwd_string.clone();
             tokio::task::spawn_blocking(move || {
+                let mut pylon_runtime = InProcessPylon::new();
                 while let Ok(action) = action_rx.recv() {
                     workspace_for_actions.dispatch(action.clone());
                     match action {
@@ -1363,39 +1375,49 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
                         }
                         UserAction::PylonInit => {
                             let proxy = proxy_actions.clone();
-                            handle.block_on(async move {
-                                let result = run_pylon_cli(&["pylon", "init"]).await;
-                                let mut status = fetch_pylon_status();
-                                if let Err(err) = result {
-                                    status.last_error = Some(err.to_string());
+                            let status = handle.block_on(async {
+                                match load_pylon_config_ollama() {
+                                    Ok(config) => {
+                                        init_pylon_identity(&mut pylon_runtime, &config).await
+                                    }
+                                    Err(err) => pylon_status_error(err.to_string()),
                                 }
-                                let _ = proxy.send_event(AppEvent::PylonStatus { status });
                             });
+                            let _ = proxy.send_event(AppEvent::PylonStatus { status });
                         }
                         UserAction::PylonStart => {
                             let proxy = proxy_actions.clone();
-                            handle.block_on(async move {
-                                let result = run_pylon_cli(&["pylon", "start"]).await;
-                                let mut status = fetch_pylon_status();
-                                if let Err(err) = result {
-                                    status.last_error = Some(err.to_string());
+                            let status = handle.block_on(async {
+                                match load_pylon_config_ollama() {
+                                    Ok(config) => {
+                                        start_pylon_in_process(&mut pylon_runtime, &config).await
+                                    }
+                                    Err(err) => pylon_status_error(err.to_string()),
                                 }
-                                let _ = proxy.send_event(AppEvent::PylonStatus { status });
                             });
+                            let _ = proxy.send_event(AppEvent::PylonStatus { status });
                         }
                         UserAction::PylonStop => {
                             let proxy = proxy_actions.clone();
-                            handle.block_on(async move {
-                                let result = run_pylon_cli(&["pylon", "stop"]).await;
-                                let mut status = fetch_pylon_status();
-                                if let Err(err) = result {
-                                    status.last_error = Some(err.to_string());
+                            let status = handle.block_on(async {
+                                match load_pylon_config_ollama() {
+                                    Ok(config) => {
+                                        stop_pylon_in_process(&mut pylon_runtime, &config).await
+                                    }
+                                    Err(err) => pylon_status_error(err.to_string()),
                                 }
-                                let _ = proxy.send_event(AppEvent::PylonStatus { status });
                             });
+                            let _ = proxy.send_event(AppEvent::PylonStatus { status });
                         }
                         UserAction::PylonRefresh => {
-                            let status = fetch_pylon_status();
+                            let status = handle.block_on(async {
+                                match load_pylon_config_ollama() {
+                                    Ok(config) => {
+                                        refresh_pylon_status(&mut pylon_runtime, &config).await
+                                    }
+                                    Err(err) => pylon_status_error(err.to_string()),
+                                }
+                            });
                             let _ = proxy_actions.send_event(AppEvent::PylonStatus { status });
                         }
                         UserAction::WalletRefresh => {
@@ -1407,31 +1429,43 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
                         }
                         UserAction::DvmProviderStart => {
                             let proxy = proxy_actions.clone();
-                            handle.block_on(async move {
-                                let result = run_pylon_cli(&["pylon", "start", "--mode", "provider"])
-                                    .await;
-                                let mut status = fetch_dvm_provider_status();
-                                if let Err(err) = result {
-                                    status.last_error = Some(err.to_string());
+                            let status = handle.block_on(async {
+                                match load_pylon_config_ollama() {
+                                    Ok(config) => {
+                                        let _ =
+                                            start_pylon_in_process(&mut pylon_runtime, &config)
+                                                .await;
+                                        fetch_dvm_provider_status(&mut pylon_runtime, &config).await
+                                    }
+                                    Err(err) => dvm_provider_status_error(err.to_string()),
                                 }
-                                let _ =
-                                    proxy.send_event(AppEvent::DvmProviderStatus { status });
                             });
+                            let _ = proxy.send_event(AppEvent::DvmProviderStatus { status });
                         }
                         UserAction::DvmProviderStop => {
                             let proxy = proxy_actions.clone();
-                            handle.block_on(async move {
-                                let result = run_pylon_cli(&["pylon", "stop"]).await;
-                                let mut status = fetch_dvm_provider_status();
-                                if let Err(err) = result {
-                                    status.last_error = Some(err.to_string());
+                            let status = handle.block_on(async {
+                                match load_pylon_config_ollama() {
+                                    Ok(config) => {
+                                        let _ =
+                                            stop_pylon_in_process(&mut pylon_runtime, &config)
+                                                .await;
+                                        fetch_dvm_provider_status(&mut pylon_runtime, &config).await
+                                    }
+                                    Err(err) => dvm_provider_status_error(err.to_string()),
                                 }
-                                let _ =
-                                    proxy.send_event(AppEvent::DvmProviderStatus { status });
                             });
+                            let _ = proxy.send_event(AppEvent::DvmProviderStatus { status });
                         }
                         UserAction::DvmProviderRefresh => {
-                            let status = fetch_dvm_provider_status();
+                            let status = handle.block_on(async {
+                                match load_pylon_config_ollama() {
+                                    Ok(config) => {
+                                        fetch_dvm_provider_status(&mut pylon_runtime, &config).await
+                                    }
+                                    Err(err) => dvm_provider_status_error(err.to_string()),
+                                }
+                            });
                             let _ = proxy_actions
                                 .send_event(AppEvent::DvmProviderStatus { status });
                         }
@@ -1715,134 +1749,243 @@ fn build_auto_response(method: &str, params: Option<&Value>) -> Option<Value> {
     }
 }
 
-fn pylon_identity_exists() -> bool {
-    let config = match PylonConfig::load() {
-        Ok(config) => config,
-        Err(_) => return false,
-    };
-    let data_dir = match config.data_path() {
-        Ok(path) => path,
-        Err(_) => return false,
-    };
-    data_dir.join("identity.mnemonic").exists()
+fn load_pylon_config_ollama() -> Result<PylonConfig> {
+    let mut config = PylonConfig::load()?;
+    config.backend_preference = vec!["ollama".to_string()];
+    if config.default_model.trim().is_empty() {
+        config.default_model = "llama3.2".to_string();
+    }
+    Ok(config)
 }
 
-fn read_pylon_pid() -> Option<u32> {
-    let pid_path = pid_path().ok()?;
-    let content = std::fs::read_to_string(pid_path).ok()?;
-    content.trim().parse().ok()
+fn identity_path_for_config(config: &PylonConfig) -> Result<PathBuf> {
+    Ok(config.data_path()?.join("identity.mnemonic"))
 }
 
-fn fetch_pylon_status() -> PylonStatus {
-    let running = is_daemon_running();
-    let mut status = PylonStatus {
-        running,
-        pid: read_pylon_pid(),
-        uptime_secs: None,
-        provider_active: None,
-        host_active: None,
-        jobs_completed: 0,
-        earnings_msats: 0,
-        identity_exists: pylon_identity_exists(),
-        last_error: None,
-    };
+fn pylon_identity_exists(config: &PylonConfig) -> bool {
+    identity_path_for_config(config)
+        .map(|path| path.exists())
+        .unwrap_or(false)
+}
 
-    if running {
-        if let Ok(socket) = socket_path() {
-            if socket.exists() {
-                let client = ControlClient::new(socket);
-                match client.status() {
-                    Ok(DaemonResponse::Status {
-                        uptime_secs,
-                        provider_active,
-                        host_active,
-                        jobs_completed,
-                        earnings_msats,
-                        ..
-                    }) => {
-                        status.uptime_secs = Some(uptime_secs);
-                        status.provider_active = Some(provider_active);
-                        status.host_active = Some(host_active);
-                        status.jobs_completed = jobs_completed;
-                        status.earnings_msats = earnings_msats;
-                    }
-                    Ok(_) => {}
-                    Err(err) => {
-                        status.last_error = Some(err.to_string());
-                    }
-                }
-            }
+fn load_or_init_identity(config: &PylonConfig) -> Result<UnifiedIdentity> {
+    let identity_path = identity_path_for_config(config)?;
+    if identity_path.exists() {
+        let mnemonic = std::fs::read_to_string(&identity_path)?
+            .trim()
+            .to_string();
+        return UnifiedIdentity::from_mnemonic(&mnemonic, "")
+            .map_err(|err| anyhow::anyhow!("Failed to load identity: {err}"));
+    }
+
+    if let Some(parent) = identity_path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+
+    let identity = UnifiedIdentity::generate()
+        .map_err(|err| anyhow::anyhow!("Failed to generate identity: {err}"))?;
+    std::fs::write(&identity_path, identity.mnemonic())?;
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&identity_path, std::fs::Permissions::from_mode(0o600))?;
+    }
+
+    Ok(identity)
+}
+
+fn pylon_status_error(err: impl Into<String>) -> PylonStatus {
+    PylonStatus {
+        last_error: Some(err.into()),
+        ..PylonStatus::default()
+    }
+}
+
+fn dvm_provider_status_error(err: impl Into<String>) -> DvmProviderStatus {
+    DvmProviderStatus {
+        last_error: Some(err.into()),
+        ..DvmProviderStatus::default()
+    }
+}
+
+async fn init_pylon_identity(
+    state: &mut InProcessPylon,
+    config: &PylonConfig,
+) -> PylonStatus {
+    match load_or_init_identity(config) {
+        Ok(_) => state.last_error = None,
+        Err(err) => state.last_error = Some(err.to_string()),
+    }
+    refresh_pylon_status(state, config).await
+}
+
+async fn start_pylon_in_process(
+    state: &mut InProcessPylon,
+    config: &PylonConfig,
+) -> PylonStatus {
+    if let Some(provider) = state.provider.as_ref() {
+        let provider_status = provider.status().await;
+        if provider_status.running {
+            state.last_error = None;
+            return refresh_pylon_status(state, config).await;
         }
     }
 
-    status
-}
-
-fn fetch_dvm_provider_status() -> DvmProviderStatus {
-    let mut status = DvmProviderStatus {
-        running: false,
-        provider_active: None,
-        host_active: None,
-        min_price_msats: 0,
-        require_payment: false,
-        default_model: String::new(),
-        backend_preference: Vec::new(),
-        network: String::new(),
-        enable_payments: false,
-        last_error: None,
-    };
-
-    let config = match PylonConfig::load() {
-        Ok(config) => config,
+    let identity = match load_or_init_identity(config) {
+        Ok(identity) => identity,
         Err(err) => {
-            status.last_error = Some(format!("Failed to load Pylon config: {err}"));
-            return status;
+            state.last_error = Some(err.to_string());
+            return refresh_pylon_status(state, config).await;
         }
     };
 
-    status.min_price_msats = config.min_price_msats;
-    status.require_payment = config.require_payment;
-    status.default_model = config.default_model.clone();
-    status.backend_preference = config.backend_preference.clone();
-    status.network = config.network.clone();
-    status.enable_payments = config.enable_payments;
-
-    status.running = is_daemon_running();
-    if status.running {
-        if let Ok(socket) = socket_path() {
-            if socket.exists() {
-                let client = ControlClient::new(socket);
-                match client.status() {
-                    Ok(DaemonResponse::Status {
-                        provider_active,
-                        host_active,
-                        ..
-                    }) => {
-                        status.provider_active = Some(provider_active);
-                        status.host_active = Some(host_active);
-                    }
-                    Ok(_) => {}
-                    Err(err) => {
-                        status.last_error = Some(err.to_string());
-                    }
-                }
+    let mut provider = match state.provider.take() {
+        Some(provider) => provider,
+        None => match PylonProvider::new(config.clone()).await {
+            Ok(provider) => provider,
+            Err(err) => {
+                state.last_error = Some(err.to_string());
+                return refresh_pylon_status(state, config).await;
             }
+        },
+    };
+
+    if let Err(err) = provider.init_with_identity(identity).await {
+        state.last_error = Some(err.to_string());
+        state.provider = None;
+        state.started_at = None;
+        return refresh_pylon_status(state, config).await;
+    }
+
+    let provider_status = provider.status().await;
+    if !provider_status.backends.iter().any(|backend| backend == "ollama") {
+        state.last_error = Some("Ollama backend not detected on localhost:11434.".to_string());
+        state.provider = None;
+        state.started_at = None;
+        return refresh_pylon_status(state, config).await;
+    }
+
+    match provider.start().await {
+        Ok(()) | Err(ProviderError::AlreadyRunning) => {
+            if state.started_at.is_none() {
+                state.started_at = Some(std::time::Instant::now());
+            }
+            state.last_error = None;
+            state.provider = Some(provider);
+        }
+        Err(err) => {
+            state.last_error = Some(err.to_string());
+            state.provider = None;
+            state.started_at = None;
         }
     }
 
-    status
+    refresh_pylon_status(state, config).await
+}
+
+async fn stop_pylon_in_process(
+    state: &mut InProcessPylon,
+    config: &PylonConfig,
+) -> PylonStatus {
+    if let Some(provider) = state.provider.as_mut() {
+        match provider.stop().await {
+            Ok(()) | Err(ProviderError::NotRunning) => {
+                state.started_at = None;
+                state.last_error = None;
+            }
+            Err(err) => {
+                state.last_error = Some(err.to_string());
+            }
+        }
+    } else {
+        state.started_at = None;
+    }
+
+    refresh_pylon_status(state, config).await
+}
+
+async fn refresh_pylon_status(
+    state: &mut InProcessPylon,
+    config: &PylonConfig,
+) -> PylonStatus {
+    let identity_exists = pylon_identity_exists(config);
+    let (running, jobs_completed, earnings_msats) = if let Some(provider) = state.provider.as_ref()
+    {
+        let provider_status = provider.status().await;
+        (
+            provider_status.running,
+            provider_status.jobs_processed,
+            provider_status.total_earnings_msats,
+        )
+    } else {
+        (false, 0, 0)
+    };
+
+    if running && state.started_at.is_none() {
+        state.started_at = Some(std::time::Instant::now());
+    }
+    if !running {
+        state.started_at = None;
+    }
+
+    PylonStatus {
+        running,
+        pid: None,
+        uptime_secs: state.started_at.as_ref().map(|t| t.elapsed().as_secs()),
+        provider_active: Some(running),
+        host_active: Some(false),
+        jobs_completed,
+        earnings_msats,
+        identity_exists,
+        last_error: state.last_error.clone(),
+    }
+}
+
+async fn fetch_dvm_provider_status(
+    state: &mut InProcessPylon,
+    config: &PylonConfig,
+) -> DvmProviderStatus {
+    let running = if let Some(provider) = state.provider.as_ref() {
+        provider.status().await.running
+    } else {
+        false
+    };
+
+    DvmProviderStatus {
+        running,
+        provider_active: Some(running),
+        host_active: Some(false),
+        min_price_msats: config.min_price_msats,
+        require_payment: config.require_payment,
+        default_model: config.default_model.clone(),
+        backend_preference: config.backend_preference.clone(),
+        network: config.network.clone(),
+        enable_payments: config.enable_payments,
+        last_error: state.last_error.clone(),
+    }
 }
 
 fn fetch_dvm_history() -> DvmHistorySnapshot {
     let mut snapshot = DvmHistorySnapshot::default();
 
-    let path = match db_path() {
-        Ok(path) => path,
+    let config = match PylonConfig::load() {
+        Ok(config) => config,
         Err(err) => {
-            snapshot.last_error = Some(format!("Failed to resolve Pylon DB path: {err}"));
+            snapshot.last_error = Some(format!("Failed to load Pylon config: {err}"));
             return snapshot;
         }
     };
+
+    let data_dir = match config.data_path() {
+        Ok(path) => path,
+        Err(err) => {
+            snapshot.last_error = Some(format!("Failed to resolve Pylon data dir: {err}"));
+            return snapshot;
+        }
+    };
+
+    let path = data_dir.join("pylon.db");
 
     let db = match PylonDb::open(path) {
         Ok(db) => db,

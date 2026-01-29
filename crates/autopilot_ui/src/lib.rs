@@ -586,6 +586,8 @@ pub struct MinimalRoot {
     keygen_bounds: Bounds,
     pending_keygen: Rc<RefCell<bool>>,
     pylon_status: PylonStatusView,
+    pylon_toggle_button: Button,
+    pylon_toggle_bounds: Bounds,
     pylon_init_button: Button,
     pylon_start_button: Button,
     pylon_stop_button: Button,
@@ -594,6 +596,7 @@ pub struct MinimalRoot {
     pylon_start_bounds: Bounds,
     pylon_stop_bounds: Bounds,
     pylon_refresh_bounds: Bounds,
+    pending_pylon_toggle: Rc<RefCell<bool>>,
     pending_pylon_init: Rc<RefCell<bool>>,
     pending_pylon_start: Rc<RefCell<bool>>,
     pending_pylon_stop: Rc<RefCell<bool>>,
@@ -1577,6 +1580,17 @@ impl MinimalRoot {
                 *pending_keygen_click.borrow_mut() = true;
             });
 
+        let pending_pylon_toggle = Rc::new(RefCell::new(false));
+        let pending_pylon_toggle_click = pending_pylon_toggle.clone();
+        let pylon_toggle_button = Button::new("Turn On")
+            .variant(ButtonVariant::Primary)
+            .font_size(theme::font_size::XS)
+            .padding(12.0, 6.0)
+            .corner_radius(6.0)
+            .on_click(move || {
+                *pending_pylon_toggle_click.borrow_mut() = true;
+            });
+
         let pending_pylon_init = Rc::new(RefCell::new(false));
         let pending_pylon_init_click = pending_pylon_init.clone();
         let pylon_init_button = Button::new("Init identity")
@@ -1764,6 +1778,8 @@ impl MinimalRoot {
             keygen_bounds: Bounds::ZERO,
             pending_keygen,
             pylon_status: PylonStatusView::default(),
+            pylon_toggle_button,
+            pylon_toggle_bounds: Bounds::ZERO,
             pylon_init_button,
             pylon_start_button,
             pylon_stop_button,
@@ -1772,6 +1788,7 @@ impl MinimalRoot {
             pylon_start_bounds: Bounds::ZERO,
             pylon_stop_bounds: Bounds::ZERO,
             pylon_refresh_bounds: Bounds::ZERO,
+            pending_pylon_toggle,
             pending_pylon_init,
             pending_pylon_start,
             pending_pylon_stop,
@@ -2875,39 +2892,15 @@ impl MinimalRoot {
                             handled |= keygen_handled;
                         }
                         PaneKind::Pylon => {
-                            let init_handled = matches!(
-                                self.pylon_init_button.event(
+                            let toggle_handled = matches!(
+                                self.pylon_toggle_button.event(
                                     event,
-                                    self.pylon_init_bounds,
+                                    self.pylon_toggle_bounds,
                                     &mut self.event_context
                                 ),
                                 EventResult::Handled
                             );
-                            let start_handled = matches!(
-                                self.pylon_start_button.event(
-                                    event,
-                                    self.pylon_start_bounds,
-                                    &mut self.event_context
-                                ),
-                                EventResult::Handled
-                            );
-                            let stop_handled = matches!(
-                                self.pylon_stop_button.event(
-                                    event,
-                                    self.pylon_stop_bounds,
-                                    &mut self.event_context
-                                ),
-                                EventResult::Handled
-                            );
-                            let refresh_handled = matches!(
-                                self.pylon_refresh_button.event(
-                                    event,
-                                    self.pylon_refresh_bounds,
-                                    &mut self.event_context
-                                ),
-                                EventResult::Handled
-                            );
-                            handled |= init_handled || start_handled || stop_handled || refresh_handled;
+                            handled |= toggle_handled;
                         }
                         PaneKind::Wallet => {
                             let refresh_handled = matches!(
@@ -3032,6 +3025,22 @@ impl MinimalRoot {
                     self.nostr_nsec = None;
                     self.spark_pubkey_hex = None;
                     self.seed_phrase = None;
+                }
+            }
+        }
+
+        let should_toggle_pylon = {
+            let mut pending = self.pending_pylon_toggle.borrow_mut();
+            let value = *pending;
+            *pending = false;
+            value
+        };
+        if should_toggle_pylon {
+            if let Some(handler) = self.send_handler.as_mut() {
+                if self.pylon_status.running {
+                    handler(UserAction::PylonStop);
+                } else {
+                    handler(UserAction::PylonStart);
                 }
             }
         }
@@ -3348,6 +3357,8 @@ impl MinimalRoot {
         {
             Cursor::Pointer
         } else if self.keygen_button.is_hovered() {
+            Cursor::Pointer
+        } else if self.pylon_toggle_button.is_hovered() {
             Cursor::Pointer
         } else if self.dvm_history_refresh_button.is_hovered() {
             Cursor::Pointer
@@ -4066,66 +4077,42 @@ fn paint_pylon_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintContex
 
     let mut y = bounds.origin.y + padding;
     let button_row_bounds = Bounds::new(content_x, y, content_width, button_height);
-
-    let mut engine = LayoutEngine::new();
-    let init_node = engine.request_leaf(
-        &LayoutStyle::new()
-            .width(px(100.0))
-            .height(px(button_height)),
+    let toggle_width = 120.0;
+    let toggle_bounds = Bounds::new(
+        button_row_bounds.origin.x,
+        button_row_bounds.origin.y,
+        toggle_width,
+        button_height,
     );
-    let start_node = engine.request_leaf(
-        &LayoutStyle::new()
-            .width(px(70.0))
-            .height(px(button_height)),
-    );
-    let stop_node = engine.request_leaf(
-        &LayoutStyle::new()
-            .width(px(70.0))
-            .height(px(button_height)),
-    );
-    let refresh_node = engine.request_leaf(
-        &LayoutStyle::new()
-            .width(px(90.0))
-            .height(px(button_height)),
-    );
-    let row = engine.request_layout(
-        &LayoutStyle::new()
-            .flex_row()
-            .align_items(AlignItems::Center)
-            .justify_content(JustifyContent::FlexStart)
-            .gap(length(8.0)),
-        &[init_node, start_node, stop_node, refresh_node],
-    );
-    engine.compute_layout(row, Size::new(content_width, button_height));
 
-    let init_bounds = offset_bounds(engine.layout(init_node), button_row_bounds.origin);
-    let start_bounds = offset_bounds(engine.layout(start_node), button_row_bounds.origin);
-    let stop_bounds = offset_bounds(engine.layout(stop_node), button_row_bounds.origin);
-    let refresh_bounds = offset_bounds(engine.layout(refresh_node), button_row_bounds.origin);
+    root.pylon_toggle_bounds = toggle_bounds;
+    root.pylon_init_bounds = Bounds::ZERO;
+    root.pylon_start_bounds = Bounds::ZERO;
+    root.pylon_stop_bounds = Bounds::ZERO;
+    root.pylon_refresh_bounds = Bounds::ZERO;
 
-    root.pylon_init_bounds = init_bounds;
-    root.pylon_start_bounds = start_bounds;
-    root.pylon_stop_bounds = stop_bounds;
-    root.pylon_refresh_bounds = refresh_bounds;
+    let toggle_label = if root.pylon_status.running {
+        "Turn Off"
+    } else {
+        "Turn On"
+    };
+    root.pylon_toggle_button.set_label(toggle_label);
+    root.pylon_toggle_button.set_variant(if root.pylon_status.running {
+        ButtonVariant::Secondary
+    } else {
+        ButtonVariant::Primary
+    });
+    root.pylon_toggle_button
+        .set_disabled(root.pylon_status.last_error.is_some() && !root.pylon_status.running);
 
-    root.pylon_init_button
-        .set_disabled(root.pylon_status.identity_exists);
-    root.pylon_start_button
-        .set_disabled(!root.pylon_status.identity_exists || root.pylon_status.running);
-    root.pylon_stop_button
-        .set_disabled(!root.pylon_status.running);
-
-    root.pylon_init_button.paint(init_bounds, cx);
-    root.pylon_start_button.paint(start_bounds, cx);
-    root.pylon_stop_button.paint(stop_bounds, cx);
-    root.pylon_refresh_button.paint(refresh_bounds, cx);
+    root.pylon_toggle_button.paint(toggle_bounds, cx);
 
     y += button_height + 14.0;
 
     let status_line = if root.pylon_status.running {
-        "Daemon: running"
+        "Provider: ON"
     } else {
-        "Daemon: stopped"
+        "Provider: OFF"
     };
     Text::new(status_line)
         .font_size(text_size)
@@ -4136,21 +4123,13 @@ fn paint_pylon_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintContex
     let identity_line = if root.pylon_status.identity_exists {
         "Identity: present"
     } else {
-        "Identity: missing"
+        "Identity: missing (auto-generate on first start)"
     };
     Text::new(identity_line)
         .font_size(text_size)
         .color(theme::text::MUTED)
         .paint(Bounds::new(content_x, y, content_width, label_height), cx);
     y += label_height + value_spacing;
-
-    if let Some(pid) = root.pylon_status.pid {
-        Text::new(&format!("PID: {}", pid))
-            .font_size(text_size)
-            .color(theme::text::MUTED)
-            .paint(Bounds::new(content_x, y, content_width, label_height), cx);
-        y += label_height + value_spacing;
-    }
 
     if let Some(uptime) = root.pylon_status.uptime_secs {
         Text::new(&format!("Uptime: {}s", uptime))
