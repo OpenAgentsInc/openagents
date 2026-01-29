@@ -138,8 +138,10 @@ impl Component for ThreadView {
         if self.auto_scroll && self.lock_to_bottom {
             let target = max_scroll;
             let delta = target - self.scroll_offset;
-            if delta.abs() > 0.5 {
-                self.scroll_offset += delta * 0.2;
+            if delta.abs() > bounds.size.height * 0.5 {
+                self.scroll_offset = target;
+            } else if delta.abs() > 0.5 {
+                self.scroll_offset += delta * 0.45;
             } else {
                 self.scroll_offset = target;
             }
