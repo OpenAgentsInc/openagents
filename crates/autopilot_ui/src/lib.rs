@@ -856,8 +856,9 @@ impl ChatPaneState {
                     stream.append(summary);
                     stream.complete();
                     let view = message_markdown_view(stream.document().clone());
-                    self.formatted_thread
-                        .push_entry(ThreadEntry::new(ThreadEntryType::Assistant, view));
+                    let entry = ThreadEntry::new(ThreadEntryType::Assistant, view)
+                        .copyable_text(summary.to_string());
+                    self.formatted_thread.push_entry(entry);
                 }
             }
             _ => {}
@@ -1110,11 +1111,12 @@ impl ChatPaneState {
 
         self.clear_working_indicator();
         let mut stream = new_markdown_stream();
-        stream.append(&format!("> {text}"));
+        let markdown = format!("> {text}");
+        stream.append(&markdown);
         stream.complete();
         let view = message_markdown_view(stream.document().clone());
-        self.formatted_thread
-            .push_entry(ThreadEntry::new(ThreadEntryType::User, view));
+        let entry = ThreadEntry::new(ThreadEntryType::User, view).copyable_text(markdown);
+        self.formatted_thread.push_entry(entry);
     }
 
     fn append_agent_text(&mut self, text: &str) {
@@ -1126,8 +1128,9 @@ impl ChatPaneState {
         stream.append(text);
         stream.complete();
         let view = message_markdown_view(stream.document().clone());
-        self.formatted_thread
-            .push_entry(ThreadEntry::new(ThreadEntryType::Assistant, view));
+        let entry =
+            ThreadEntry::new(ThreadEntryType::Assistant, view).copyable_text(text.to_string());
+        self.formatted_thread.push_entry(entry);
     }
 
     fn append_agent_delta(&mut self, item_id: &str, delta: &str) {
@@ -1150,6 +1153,9 @@ impl ChatPaneState {
         if let Some(document) = updated_doc
             && let Some(entry) = self.formatted_thread.entry_mut(entry_index)
         {
+            if let Some(stream) = self.formatted_message_streams.get(item_id) {
+                entry.set_copyable_text(stream.source().to_string());
+            }
             entry.set_content(message_markdown_view(document));
         }
     }
@@ -1175,6 +1181,9 @@ impl ChatPaneState {
         if let Some(document) = updated_doc
             && let Some(entry) = self.formatted_thread.entry_mut(entry_index)
         {
+            if let Some(stream) = self.formatted_message_streams.get(item_id) {
+                entry.set_copyable_text(stream.source().to_string());
+            }
             entry.set_content(message_markdown_view(document));
         }
     }
@@ -1187,8 +1196,8 @@ impl ChatPaneState {
         self.clear_working_indicator();
         let stream = new_markdown_stream();
         let view = message_markdown_view(stream.document().clone());
-        self.formatted_thread
-            .push_entry(ThreadEntry::new(ThreadEntryType::Assistant, view));
+        let entry = ThreadEntry::new(ThreadEntryType::Assistant, view).copyable_text(String::new());
+        self.formatted_thread.push_entry(entry);
         let entry_index = self.formatted_thread.entry_count().saturating_sub(1);
         self.formatted_message_entries
             .insert(item_id.to_string(), entry_index);
@@ -1310,8 +1319,8 @@ impl ChatPaneState {
 
         self.clear_working_indicator();
         let card = CodexReasoningCard::new(None, None);
-        self.formatted_thread
-            .push_entry(ThreadEntry::new(ThreadEntryType::Assistant, card));
+        let entry = ThreadEntry::new(ThreadEntryType::Assistant, card).copyable_text(String::new());
+        self.formatted_thread.push_entry(entry);
         let entry_index = self.formatted_thread.entry_count().saturating_sub(1);
         self.reasoning_entries.insert(
             item_id.to_string(),
@@ -1345,6 +1354,14 @@ impl ChatPaneState {
                 };
                 let card = CodexReasoningCard::new(summary, content);
                 thread_entry.set_content(card);
+                let copy_text = if !entry.content.trim().is_empty() {
+                    entry.content.clone()
+                } else {
+                    entry.summary.clone()
+                };
+                if !copy_text.trim().is_empty() {
+                    thread_entry.set_copyable_text(copy_text);
+                }
             }
         }
     }
@@ -1365,6 +1382,9 @@ impl ChatPaneState {
                 };
                 let card = CodexReasoningCard::new(summary, content);
                 thread_entry.set_content(card);
+                if !entry.content.trim().is_empty() {
+                    thread_entry.set_copyable_text(entry.content.clone());
+                }
             }
         }
     }
@@ -3305,6 +3325,12 @@ impl MinimalRoot {
             .chat_panes
             .values()
             .any(|chat| chat.submit_button.is_hovered() && !chat.submit_button.is_disabled())
+        {
+            Cursor::Pointer
+        } else if self
+            .chat_panes
+            .values()
+            .any(|chat| chat.formatted_thread.is_action_hovered())
         {
             Cursor::Pointer
         } else if self

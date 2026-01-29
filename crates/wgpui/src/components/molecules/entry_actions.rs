@@ -1,6 +1,9 @@
 use crate::components::context::{EventContext, PaintContext};
 use crate::components::{Component, ComponentId, EventResult};
-use crate::{Bounds, InputEvent, MouseButton, Point, theme};
+use crate::text::FontStyle;
+use crate::{Bounds, Button, ButtonVariant, InputEvent, Point, theme};
+use std::cell::RefCell;
+use std::rc::Rc;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EntryAction {
@@ -16,29 +19,79 @@ pub struct EntryActions {
     show_retry: bool,
     show_edit: bool,
     show_delete: bool,
-    hovered_action: Option<EntryAction>,
+    copy_button: Button,
+    retry_button: Button,
+    edit_button: Button,
+    delete_button: Button,
     on_action: Option<Box<dyn FnMut(EntryAction)>>,
-    /// Last triggered action (for polling instead of callbacks).
-    triggered_action: Option<EntryAction>,
+    pending_action: Rc<RefCell<Option<EntryAction>>>,
 }
 
 impl EntryActions {
     pub fn new() -> Self {
+        let pending_action = Rc::new(RefCell::new(None));
+        let copy_pending = pending_action.clone();
+        let retry_pending = pending_action.clone();
+        let edit_pending = pending_action.clone();
+        let delete_pending = pending_action.clone();
+        let copy_button = Button::new("Copy")
+            .variant(ButtonVariant::Ghost)
+            .font_size(theme::font_size::XS)
+            .padding(6.0, 2.0)
+            .corner_radius(4.0)
+            .on_click(move || {
+                *copy_pending.borrow_mut() = Some(EntryAction::Copy);
+            });
+        let retry_button = Button::new("Retry")
+            .variant(ButtonVariant::Ghost)
+            .font_size(theme::font_size::XS)
+            .padding(6.0, 2.0)
+            .corner_radius(4.0)
+            .on_click(move || {
+                *retry_pending.borrow_mut() = Some(EntryAction::Retry);
+            });
+        let edit_button = Button::new("Edit")
+            .variant(ButtonVariant::Ghost)
+            .font_size(theme::font_size::XS)
+            .padding(6.0, 2.0)
+            .corner_radius(4.0)
+            .on_click(move || {
+                *edit_pending.borrow_mut() = Some(EntryAction::Edit);
+            });
+        let delete_button = Button::new("Del")
+            .variant(ButtonVariant::Ghost)
+            .font_size(theme::font_size::XS)
+            .padding(6.0, 2.0)
+            .corner_radius(4.0)
+            .on_click(move || {
+                *delete_pending.borrow_mut() = Some(EntryAction::Delete);
+            });
+
         Self {
             id: None,
             show_copy: true,
             show_retry: false,
             show_edit: false,
             show_delete: false,
-            hovered_action: None,
+            copy_button,
+            retry_button,
+            edit_button,
+            delete_button,
             on_action: None,
-            triggered_action: None,
+            pending_action,
         }
     }
 
     /// Take the last triggered action (clears it).
     pub fn take_triggered_action(&mut self) -> Option<EntryAction> {
-        self.triggered_action.take()
+        self.pending_action.borrow_mut().take()
+    }
+
+    pub fn is_hovered(&self) -> bool {
+        (self.show_copy && self.copy_button.is_hovered())
+            || (self.show_retry && self.retry_button.is_hovered())
+            || (self.show_edit && self.edit_button.is_hovered())
+            || (self.show_delete && self.delete_button.is_hovered())
     }
 
     pub fn with_id(mut self, id: ComponentId) -> Self {
@@ -74,7 +127,7 @@ impl EntryActions {
         self
     }
 
-    fn action_buttons(&self) -> Vec<(&str, EntryAction)> {
+    fn action_buttons(&self) -> Vec<(&'static str, EntryAction)> {
         let mut buttons = Vec::new();
         if self.show_copy {
             buttons.push(("Copy", EntryAction::Copy));
@@ -102,71 +155,58 @@ impl Component for EntryActions {
     fn paint(&mut self, bounds: Bounds, cx: &mut PaintContext) {
         let mut x = bounds.origin.x;
         let gap = theme::spacing::XS;
-
         let font_size = theme::font_size::XS;
-        let text_y = bounds.origin.y + bounds.size.height * 0.5 - font_size * 0.55;
 
         for (label, action) in self.action_buttons() {
-            let text_color = if self.hovered_action == Some(action) {
-                theme::text::PRIMARY
-            } else {
-                theme::text::MUTED
-            };
-
-            let text_run = cx
+            let width = cx
                 .text
-                .layout_mono(label, Point::new(x, text_y), font_size, text_color);
-            cx.scene.draw_text(text_run);
-            x += label.len() as f32 * font_size * 0.6 + gap;
+                .measure_styled_mono(label, font_size, FontStyle::default())
+                + 12.0;
+            let button_bounds = Bounds::new(x, bounds.origin.y, width, bounds.size.height);
+            match action {
+                EntryAction::Copy => self.copy_button.paint(button_bounds, cx),
+                EntryAction::Retry => self.retry_button.paint(button_bounds, cx),
+                EntryAction::Edit => self.edit_button.paint(button_bounds, cx),
+                EntryAction::Delete => self.delete_button.paint(button_bounds, cx),
+            }
+            x += width + gap;
         }
     }
 
     fn event(&mut self, event: &InputEvent, bounds: Bounds, _cx: &mut EventContext) -> EventResult {
         let gap = theme::spacing::XS;
+        let mut handled = false;
+        let mut action_x = bounds.origin.x;
+        let font_size = theme::font_size::XS;
+        for (label, action) in self.action_buttons() {
+            let width = font_size * 0.6 * label.len() as f32 + 12.0;
+            let action_bounds = Bounds::new(action_x, bounds.origin.y, width, bounds.size.height);
+            let action_handled = match action {
+                EntryAction::Copy => self.copy_button.event(event, action_bounds, _cx),
+                EntryAction::Retry => self.retry_button.event(event, action_bounds, _cx),
+                EntryAction::Edit => self.edit_button.event(event, action_bounds, _cx),
+                EntryAction::Delete => self.delete_button.event(event, action_bounds, _cx),
+            };
+            if action_handled.is_handled() {
+                handled = true;
+            }
+            action_x += width + gap;
+        }
+
+        if handled {
+            if let Some(action) = self.pending_action.borrow_mut().take() {
+                if let Some(cb) = &mut self.on_action {
+                    cb(action);
+                }
+                *self.pending_action.borrow_mut() = Some(action);
+            }
+            return EventResult::Handled;
+        }
 
         match event {
             InputEvent::MouseMove { x, y } => {
-                let click = Point::new(*x, *y);
-                if !bounds.contains(click) {
-                    self.hovered_action = None;
+                if !bounds.contains(Point::new(*x, *y)) {
                     return EventResult::Ignored;
-                }
-
-                let mut action_x = bounds.origin.x;
-
-                let font_size = theme::font_size::XS;
-                for (label, action) in self.action_buttons() {
-                    let width = label.len() as f32 * font_size * 0.6;
-                    if *x >= action_x && *x < action_x + width {
-                        self.hovered_action = Some(action);
-                        return EventResult::Handled;
-                    }
-                    action_x += width + gap;
-                }
-                self.hovered_action = None;
-            }
-            InputEvent::MouseDown { button, x, y, .. } => {
-                if *button == MouseButton::Left {
-                    let click = Point::new(*x, *y);
-
-                    let mut current_x = bounds.origin.x;
-
-                    let font_size = theme::font_size::XS;
-                    for (label, action) in self.action_buttons() {
-                        let width = label.len() as f32 * font_size * 0.6;
-                        let action_bounds =
-                            Bounds::new(current_x, bounds.origin.y, width, bounds.size.height);
-                        if action_bounds.contains(click) {
-                            // Store for polling
-                            self.triggered_action = Some(action);
-                            // Also call callback if set
-                            if let Some(cb) = &mut self.on_action {
-                                cb(action);
-                            }
-                            return EventResult::Handled;
-                        }
-                        current_x += width + gap;
-                    }
                 }
             }
             _ => {}
