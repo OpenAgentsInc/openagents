@@ -1316,43 +1316,25 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
                                             state.set_decision_lm(lm.clone());
                                         }
                                     }
-                                    let should_dispatch = is_super_trigger(&text);
-                                    let (response, signatures) = if should_dispatch {
-                                        match run_guidance_super(
-                                            &proxy,
-                                            &thread_id,
-                                            &text,
-                                            &goal_intent,
-                                            &lm,
-                                        )
-                                        .await
-                                        {
-                                            Ok(result) => result,
-                                            Err(error) => (
-                                                format!("Guidance error: {error}"),
-                                                vec![
-                                                    "TaskUnderstandingSignature".to_string(),
-                                                    "PlanningSignature".to_string(),
-                                                    "GuidanceDirectiveSignature".to_string(),
-                                                ],
-                                            ),
-                                        }
-                                    } else {
-                                        match run_guidance_router(
-                                            &proxy,
-                                            &thread_id,
-                                            &text,
-                                            &goal_intent,
-                                            &lm,
-                                        )
-                                        .await
-                                        {
-                                            Ok(result) => result,
-                                            Err(error) => (
-                                                format!("Guidance error: {error}"),
-                                                vec!["GuidanceRouterSignature".to_string()],
-                                            ),
-                                        }
+                                    let should_dispatch = true;
+                                    let (response, signatures) = match run_guidance_super(
+                                        &proxy,
+                                        &thread_id,
+                                        &text,
+                                        &goal_intent,
+                                        &lm,
+                                    )
+                                    .await
+                                    {
+                                        Ok(result) => result,
+                                        Err(error) => (
+                                            format!("Guidance error: {error}"),
+                                            vec![
+                                                "TaskUnderstandingSignature".to_string(),
+                                                "PlanningSignature".to_string(),
+                                                "GuidanceDirectiveSignature".to_string(),
+                                            ],
+                                        ),
                                     };
                                     let response_text = response.clone();
                                     let payload = json!({
@@ -1931,6 +1913,7 @@ fn guidance_goal_intent() -> String {
         .unwrap_or_else(|| DEFAULT_GUIDANCE_GOAL_INTENT.to_string())
 }
 
+#[allow(dead_code)]
 fn is_super_trigger(message: &str) -> bool {
     let trimmed = message.trim().to_lowercase();
     let normalized = trimmed
@@ -1952,6 +1935,7 @@ fn is_super_trigger(message: &str) -> bool {
     )
 }
 
+#[allow(dead_code)]
 fn guidance_response_score(text: &str) -> f32 {
     let trimmed = text.trim();
     if trimmed.is_empty() {
@@ -1989,6 +1973,7 @@ fn sanitize_guidance_response(text: &str) -> String {
     line
 }
 
+#[allow(dead_code)]
 fn fallback_guidance_response(goal_intent: &str) -> String {
     if goal_intent.trim().is_empty() {
         "Summarize the request and propose the next concrete step.".to_string()
@@ -2347,6 +2332,7 @@ fn extract_first_step_description(raw: &str) -> Option<String> {
     None
 }
 
+#[allow(dead_code)]
 fn strip_question_marks(text: &str) -> String {
     text.replace('?', "").trim().to_string()
 }
@@ -2373,6 +2359,7 @@ fn is_question_like(text: &str) -> bool {
     cues.iter().any(|cue| lower.contains(cue))
 }
 
+#[allow(dead_code)]
 async fn run_task_understanding(
     message: &str,
     repo_context: &str,
@@ -2413,6 +2400,7 @@ async fn run_task_understanding(
     Ok(fallback_guidance_response(goal_intent))
 }
 
+#[allow(dead_code)]
 async fn run_planning_summary(
     message: &str,
     repo_context: &str,
@@ -2439,6 +2427,7 @@ async fn run_planning_summary(
     Ok(fallback_guidance_response(goal_intent))
 }
 
+#[allow(dead_code)]
 async fn handle_guidance_route(
     proxy: &EventLoopProxy<AppEvent>,
     thread_id: &str,
@@ -2789,6 +2778,7 @@ async fn run_guidance_followup(
     })
 }
 
+#[allow(dead_code)]
 async fn run_guidance_router(
     proxy: &EventLoopProxy<AppEvent>,
     thread_id: &str,
