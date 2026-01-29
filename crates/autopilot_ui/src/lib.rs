@@ -3619,13 +3619,6 @@ impl Component for MinimalRoot {
         let mut items = Vec::new();
         self.hotbar_bindings.clear();
 
-        items.push(
-            HotbarSlot::new(HOTBAR_SLOT_EVENTS, "EV", "Events")
-                .active(self.pane_store.is_active("events")),
-        );
-        self.hotbar_bindings
-            .insert(HOTBAR_SLOT_EVENTS, HotbarAction::ToggleEvents);
-
         items.push(HotbarSlot::new(HOTBAR_SLOT_NEW_CHAT, "+", "New chat"));
         self.hotbar_bindings
             .insert(HOTBAR_SLOT_NEW_CHAT, HotbarAction::NewChat);
@@ -3704,6 +3697,15 @@ impl Component for MinimalRoot {
                 items.push(HotbarSlot::new(slot, "", format!("Slot {}", slot)).ghost(true));
             }
         }
+
+        // Slot 0 should be rendered last (after 1-9).
+        items.push(
+            HotbarSlot::new(HOTBAR_SLOT_EVENTS, "EV", "Events")
+                .active(self.pane_store.is_active("events")),
+        );
+        self.hotbar_bindings
+            .insert(HOTBAR_SLOT_EVENTS, HotbarAction::ToggleEvents);
+
         self.hotbar.set_items(items);
         self.hotbar.paint(bar_bounds, cx);
         cx.scene.set_layer(base_layer);
