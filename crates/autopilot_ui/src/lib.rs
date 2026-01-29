@@ -335,6 +335,18 @@ fn generate_nip06_keypair() -> Result<(String, String, String, String), String> 
     Ok((npub, nsec, spark_pubkey, mnemonic))
 }
 
+fn format_seed_phrase(seed: &str) -> String {
+    let words: Vec<&str> = seed.split_whitespace().collect();
+    if words.is_empty() {
+        return String::new();
+    }
+    words
+        .chunks(6)
+        .map(|chunk| chunk.join(" "))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum PaneKind {
     Chat,
@@ -3995,6 +4007,7 @@ fn paint_identity_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintCon
 
     let mut content_height = button_height + 12.0;
     if let Some(npub) = &root.nostr_npub {
+        let seed_display = format_seed_phrase(root.seed_phrase.as_deref().unwrap_or(""));
         let mut npub_text = Text::new(npub).font_size(nostr_font);
         let (_, npub_height) = npub_text.size_hint_with_width(content_width);
         let npub_height = npub_height.unwrap_or(label_height);
@@ -4012,8 +4025,7 @@ fn paint_identity_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintCon
         let spark_height = spark_height.unwrap_or(label_height);
         content_height += label_height + label_value_gap + spark_height + value_spacing;
 
-        let mut seed_text =
-            Text::new(root.seed_phrase.as_deref().unwrap_or("")).font_size(nostr_font);
+        let mut seed_text = Text::new(seed_display).font_size(nostr_font);
         let (_, seed_height) = seed_text.size_hint_with_width(content_width);
         let seed_height = seed_height.unwrap_or(label_height);
         content_height += label_height + label_value_gap + seed_height + value_spacing;
@@ -4046,6 +4058,7 @@ fn paint_identity_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintCon
     y += button_height + 12.0;
 
     if let Some(npub) = &root.nostr_npub {
+        let seed_display = format_seed_phrase(root.seed_phrase.as_deref().unwrap_or(""));
         Text::new("nostr public key")
             .font_size(nostr_font)
             .color(theme::text::MUTED)
@@ -4111,7 +4124,7 @@ fn paint_identity_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintCon
                 cx,
             );
         y += label_height + label_value_gap;
-        let mut seed_text = Text::new(root.seed_phrase.as_deref().unwrap_or(""))
+        let mut seed_text = Text::new(seed_display)
             .font_size(nostr_font)
             .color(theme::text::PRIMARY);
         let (_, seed_height) = seed_text.size_hint_with_width(content_width);
