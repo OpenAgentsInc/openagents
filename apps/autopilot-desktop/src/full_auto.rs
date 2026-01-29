@@ -63,6 +63,8 @@ pub struct FullAutoThreadState {
     pub last_turn_id: Option<String>,
     pub last_turn_status: Option<String>,
     pub last_turn_error: Option<String>,
+    pub last_agent_message: Option<String>,
+    pub last_guidance_directive: Option<String>,
     pub plan_snapshot: Option<Value>,
     pub diff_snapshot: Option<Value>,
     pub token_usage: Option<Value>,
@@ -81,6 +83,8 @@ impl Default for FullAutoThreadState {
             last_turn_id: None,
             last_turn_status: None,
             last_turn_error: None,
+            last_agent_message: None,
+            last_guidance_directive: None,
             plan_snapshot: None,
             diff_snapshot: None,
             token_usage: None,
@@ -101,6 +105,8 @@ pub struct FullAutoTurnSummary {
     pub turn_id: String,
     pub last_turn_status: String,
     pub turn_error: String,
+    pub last_agent_message: String,
+    pub last_guidance_directive: String,
     pub turn_plan: String,
     pub diff_summary: String,
     pub token_usage: String,
@@ -264,6 +270,16 @@ impl FullAutoState {
                     .and_then(read_error)
                     .or_else(|| Some("turn error".to_string()));
             }
+            "item/agentMessage/completed" | "item/assistantMessage/completed" => {
+                if let Some(message) = params.and_then(read_agent_message) {
+                    state.last_agent_message = Some(message);
+                }
+            }
+            "item/completed" => {
+                if let Some(message) = params.and_then(read_agent_message_from_item) {
+                    state.last_agent_message = Some(message);
+                }
+            }
             "turn/completed" => {
                 state.last_turn_status = params.and_then(read_turn_status);
                 state.last_turn_error = params.and_then(read_turn_error);
@@ -317,6 +333,14 @@ impl FullAutoState {
                 .clone()
                 .unwrap_or_else(|| "completed".to_string()),
             turn_error: state.last_turn_error.clone().unwrap_or_else(String::new),
+            last_agent_message: state
+                .last_agent_message
+                .clone()
+                .unwrap_or_else(String::new),
+            last_guidance_directive: state
+                .last_guidance_directive
+                .clone()
+                .unwrap_or_else(String::new),
             turn_plan: value_to_string(state.plan_snapshot.as_ref()),
             diff_summary: value_to_string(state.diff_snapshot.as_ref()),
             token_usage: value_to_string(state.token_usage.as_ref()),
@@ -342,6 +366,11 @@ impl FullAutoState {
 
     pub fn set_decision_lm(&mut self, lm: LM) {
         self.decision_lm = Some(lm);
+    }
+
+    pub fn record_guidance_directive(&mut self, thread_id: &str, directive: String) {
+        let state = self.threads.entry(thread_id.to_string()).or_default();
+        state.last_guidance_directive = Some(directive);
     }
 
     pub fn guidance_mode(&self) -> GuidanceMode {
@@ -521,6 +550,49 @@ fn value_to_string(value: Option<&Value>) -> String {
         Some(value) => serde_json::to_string_pretty(value).unwrap_or_else(|_| value.to_string()),
         None => "".to_string(),
     }
+}
+
+fn read_agent_message(params: &Value) -> Option<String> {
+    params
+        .get("message")
+        .and_then(extract_message_text)
+        .or_else(|| params.get("item").and_then(extract_message_text))
+}
+
+fn read_agent_message_from_item(params: &Value) -> Option<String> {
+    let item = params.get("item")?;
+    let item_type = item.get("type").and_then(|value| value.as_str())?;
+    if !item_type.contains("agent") && !item_type.contains("assistant") {
+        return None;
+    }
+    extract_message_text(item)
+}
+
+fn extract_message_text(value: &Value) -> Option<String> {
+    if let Some(text) = value.get("content").and_then(|value| value.as_str()) {
+        if !text.trim().is_empty() {
+            return Some(text.trim().to_string());
+        }
+    }
+    if let Some(text) = value.get("text").and_then(|value| value.as_str()) {
+        if !text.trim().is_empty() {
+            return Some(text.trim().to_string());
+        }
+    }
+    if let Some(array) = value.get("content").and_then(|value| value.as_array()) {
+        let mut parts = Vec::new();
+        for item in array {
+            if let Some(text) = item.get("text").and_then(|value| value.as_str()) {
+                if !text.trim().is_empty() {
+                    parts.push(text.trim().to_string());
+                }
+            }
+        }
+        if !parts.is_empty() {
+            return Some(parts.join("\n"));
+        }
+    }
+    None
 }
 
 fn read_prediction_string_value(

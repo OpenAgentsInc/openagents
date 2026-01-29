@@ -1350,6 +1350,17 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
                                         message: payload.to_string(),
                                     });
                                     if should_dispatch {
+                                        {
+                                            let mut guard = full_auto_state.lock().await;
+                                            if let Some(state) = guard.as_mut() {
+                                                if state.matches_thread(Some(thread_id.as_str())) {
+                                                    state.record_guidance_directive(
+                                                        &thread_id,
+                                                        response.clone(),
+                                                    );
+                                                }
+                                            }
+                                        }
                                         emit_guidance_status(
                                             &proxy,
                                             &thread_id,
@@ -2232,6 +2243,18 @@ fn build_followup_task_summary(summary: &FullAutoTurnSummary) -> String {
     parts.push(format!("Last status: {}.", summary.last_turn_status));
     if !summary.turn_error.trim().is_empty() {
         parts.push(format!("Error: {}", summary.turn_error.trim()));
+    }
+    if !summary.last_guidance_directive.trim().is_empty() {
+        parts.push(format!(
+            "Last directive: {}",
+            summary.last_guidance_directive.trim()
+        ));
+    }
+    if !summary.last_agent_message.trim().is_empty() {
+        parts.push(format!(
+            "Last agent output: {}",
+            summary.last_agent_message.trim()
+        ));
     }
     if !summary.turn_plan.trim().is_empty() {
         parts.push(format!("Plan: {}", summary.turn_plan.trim()));
