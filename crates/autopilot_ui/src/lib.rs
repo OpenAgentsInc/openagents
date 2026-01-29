@@ -12,7 +12,9 @@ use serde_json::Value;
 use taffy::prelude::{AlignItems, JustifyContent};
 use wgpui::components::EventContext;
 use wgpui::components::atoms::{ToolStatus, ToolType};
-use wgpui::components::hud::{Hotbar, HotbarSlot, PaneFrame, ResizablePane, ResizeEdge};
+use wgpui::components::hud::{
+    DotShape, DotsGrid, Hotbar, HotbarSlot, PaneFrame, ResizablePane, ResizeEdge,
+};
 use wgpui::components::organisms::{
     AssistantMessage, CodexReasoningCard, DiffLine, DiffLineKind, DiffToolCall, SearchMatch,
     SearchToolCall, TerminalToolCall, ThreadEntry, ThreadEntryType, ToolCallCard, UserMessage,
@@ -3408,6 +3410,14 @@ impl Component for MinimalRoot {
             Quad::new(bounds)
                 .with_background(theme::bg::APP),
         );
+
+        let mut dots_grid = DotsGrid::new()
+            .shape(DotShape::Circle)
+            .color(theme::text::MUTED)
+            .opacity(0.2)
+            .distance(32.0)
+            .size(1.5);
+        dots_grid.paint(bounds, cx);
 
         self.set_screen_size(Size::new(bounds.size.width, bounds.size.height));
 
