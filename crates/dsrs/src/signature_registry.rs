@@ -6,12 +6,12 @@ use crate::signatures::{
     AgentMemorySignature, CandidateRerankSignature, ChunkAnalysisToActionSignature,
     ChunkTaskSelectorSignature, CodeEditSignature, ComplexityClassificationSignature,
     ContextSelectionSignature, DeepPlanningSignature, FailureTriageSignature,
-    FullAutoDecisionSignature, IssueSuggestionSignature, IssueValidationSignature,
-    LaneBudgeterSignature, ParallelExplorationSignature, PlanSynthesisSignature, PlanningSignature,
-    QueryComposerSignature, ResultValidationSignature, RetrievalRouterSignature,
-    SandboxProfileSelectionSignature, TaskUnderstandingSignature, ToolCallSignature,
-    ToolResultSignature, ToolSelectionSignature, TopicDecompositionSignature, UiComposerSignature,
-    UnblockSuggestionSignature, VerificationSignature,
+    FullAutoDecisionSignature, GuidanceDecisionSignature, IssueSuggestionSignature,
+    IssueValidationSignature, LaneBudgeterSignature, ParallelExplorationSignature,
+    PlanSynthesisSignature, PlanningSignature, QueryComposerSignature, ResultValidationSignature,
+    RetrievalRouterSignature, SandboxProfileSelectionSignature, TaskUnderstandingSignature,
+    ToolCallSignature, ToolResultSignature, ToolSelectionSignature, TopicDecompositionSignature,
+    UiComposerSignature, UnblockSuggestionSignature, VerificationSignature,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -41,6 +41,7 @@ pub fn list_signatures() -> Vec<DsrsSignatureInfo> {
         signature_info(ContextSelectionSignature::new()),
         signature_info(FailureTriageSignature::new()),
         signature_info(FullAutoDecisionSignature::new()),
+        signature_info(GuidanceDecisionSignature::new()),
         signature_info(IssueSuggestionSignature::new()),
         signature_info(IssueValidationSignature::new()),
         signature_info(LaneBudgeterSignature::new()),

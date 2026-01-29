@@ -1066,6 +1066,7 @@ name = "autopilot-desktop"
 version = "0.0.1"
 dependencies = [
  "anyhow",
+ "autopilot-core",
  "autopilot_app",
  "autopilot_ui",
  "chrono",

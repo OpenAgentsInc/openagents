@@ -6,6 +6,7 @@ pub mod blocker;
 pub mod boot;
 pub mod directive;
 pub mod dspy;
+pub mod guidance;
 pub mod issue;
 pub mod prompt;
 pub mod run;
@@ -43,6 +44,9 @@ pub enum Commands {
         #[command(subcommand)]
         command: dspy::DspyCommand,
     },
+
+    /// Guidance Modules utilities
+    Guidance(guidance::GuidanceArgs),
 }
 
 /// Issue subcommands
@@ -84,5 +88,6 @@ pub async fn execute(cli: AutopilotCli) -> anyhow::Result<()> {
             dspy::DspyCommand::Performance(args) => dspy::performance(args).await,
             dspy::DspyCommand::AutoOptimize(args) => dspy::auto_optimize(args).await,
         },
+        Some(Commands::Guidance(args)) => guidance::run(args).await,
     }
 }
