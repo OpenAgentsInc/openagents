@@ -3687,6 +3687,9 @@ impl Component for MinimalRoot {
         );
         self.hotbar_bindings
             .insert(HOTBAR_SLOT_THREADS, HotbarAction::ToggleThreads);
+        // Reserve slots 5 and 6 (currently unused) to keep hotbar numbering contiguous.
+        items.push(HotbarSlot::new(HOTBAR_SLOT_PYLON, "", "Slot 5").ghost(true));
+        items.push(HotbarSlot::new(HOTBAR_SLOT_SELL_COMPUTE, "", "Slot 6").ghost(true));
 
         // DVM History + NIP-90 panes disabled for now (keep code around).
         // items.push(
