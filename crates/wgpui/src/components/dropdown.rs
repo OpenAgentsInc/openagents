@@ -41,6 +41,7 @@ pub struct Dropdown {
     hover_color: Hsla,
     text_color: Hsla,
     placeholder_color: Hsla,
+    open_up: bool,
     on_change: Option<Box<dyn FnMut(usize, &str)>>,
 }
 
@@ -62,6 +63,7 @@ impl Dropdown {
             hover_color: theme::bg::MUTED,
             text_color: theme::text::PRIMARY,
             placeholder_color: theme::text::MUTED,
+            open_up: false,
             on_change: None,
         }
     }
@@ -95,6 +97,11 @@ impl Dropdown {
 
     pub fn max_visible_items(mut self, max: usize) -> Self {
         self.max_visible_items = max;
+        self
+    }
+
+    pub fn open_up(mut self, open_up: bool) -> Self {
+        self.open_up = open_up;
         self
     }
 
@@ -157,6 +164,14 @@ impl Dropdown {
     fn dropdown_height(&self) -> f32 {
         let count = self.options.len().min(self.max_visible_items);
         count as f32 * self.item_height()
+    }
+
+    fn dropdown_top(&self, bounds: Bounds) -> f32 {
+        if self.open_up {
+            bounds.origin.y - self.dropdown_height()
+        } else {
+            bounds.origin.y + bounds.size.height
+        }
     }
 
     fn option_at_y(&self, y: f32, dropdown_top: f32) -> Option<usize> {
@@ -230,7 +245,7 @@ impl Component for Dropdown {
         if self.open && !self.options.is_empty() {
             let dropdown_bounds = Bounds::new(
                 bounds.origin.x,
-                bounds.origin.y + bounds.size.height,
+                self.dropdown_top(bounds),
                 bounds.size.width,
                 self.dropdown_height(),
             );
@@ -278,7 +293,7 @@ impl Component for Dropdown {
                 self.hovered = bounds.contains(point);
 
                 if self.open {
-                    let dropdown_top = bounds.origin.y + bounds.size.height;
+                    let dropdown_top = self.dropdown_top(bounds);
                     self.hovered_option = self.option_at_y(*y, dropdown_top);
                     return EventResult::Handled;
                 }
@@ -296,7 +311,7 @@ impl Component for Dropdown {
                     if self.open {
                         let dropdown_bounds = Bounds::new(
                             bounds.origin.x,
-                            bounds.origin.y + bounds.size.height,
+                            self.dropdown_top(bounds),
                             bounds.size.width,
                             self.dropdown_height(),
                         );
