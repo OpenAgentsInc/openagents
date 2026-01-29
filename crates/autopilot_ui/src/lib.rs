@@ -695,6 +695,7 @@ impl ChatPaneState {
             .selected(DEFAULT_MODEL_INDEX)
             .font_size(theme::font_size::SM)
             .padding(12.0, 6.0)
+            .open_up(true)
             .on_change(move |_, value| {
                 pending_models.borrow_mut().push(value.to_string());
             });
@@ -3221,7 +3222,7 @@ impl MinimalRoot {
             if let Some(chat) = self.chat_panes.get_mut(&chat_id) {
                 let pending_models = chat.take_pending_models();
                 if let Some(model) = pending_models.last() {
-                    chat.selected_model = model.clone();
+                    chat.update_thread_model(model);
                 }
 
                 if chat.take_pending_stop() {
