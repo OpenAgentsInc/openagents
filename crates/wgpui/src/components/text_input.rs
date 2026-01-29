@@ -96,6 +96,40 @@ impl TextInput {
         visual_lines
     }
 
+    /// Return byte index ranges for each visual line in the value.
+    fn visual_line_ranges(&self) -> Vec<(usize, usize)> {
+        let chars_per_line = self.chars_per_line().max(1);
+        let mut ranges = Vec::new();
+        let mut offset = 0usize;
+        let lines: Vec<&str> = self.value.split('\n').collect();
+
+        for (line_index, line) in lines.iter().enumerate() {
+            if line.is_empty() {
+                ranges.push((offset, offset));
+            } else {
+                let mut remaining = *line;
+                while !remaining.is_empty() {
+                    let take = remaining
+                        .chars()
+                        .take(chars_per_line)
+                        .collect::<String>()
+                        .len();
+                    let start = offset;
+                    let end = offset + take.min(remaining.len());
+                    ranges.push((start, end));
+                    remaining = &remaining[take.min(remaining.len())..];
+                    offset = end;
+                }
+            }
+
+            if line_index + 1 < lines.len() {
+                offset = offset.saturating_add(1);
+            }
+        }
+
+        ranges
+    }
+
     fn base_line_top(&self, bounds: Bounds, line_height: f32, line_count: usize) -> f32 {
         let inner_height = bounds.size.height - self.padding.1 * 2.0;
         if line_count <= 1 {
@@ -423,6 +457,30 @@ impl Component for TextInput {
         if !display_text.is_empty() {
             let visual_lines = self.wrap_text(display_text);
             let base_line_top = self.base_line_top(bounds, line_height, visual_lines.len().max(1));
+
+            if display_text == self.value {
+                if let Some((sel_start, sel_end)) = self.get_selection() {
+                    let ranges = self.visual_line_ranges();
+                    let selection_color = Hsla::from_hex(0x1A1A1A);
+                    for (i, (line_start, line_end)) in ranges.iter().enumerate() {
+                        let overlap_start = sel_start.max(*line_start);
+                        let overlap_end = sel_end.min(*line_end);
+                        if overlap_start < overlap_end {
+                            let col_start = overlap_start - *line_start;
+                            let col_end = overlap_end - *line_start;
+                            let sel_x = text_x + col_start as f32 * self.font_size * 0.6;
+                            let sel_width =
+                                (col_end.saturating_sub(col_start)) as f32 * self.font_size * 0.6;
+                            let sel_y = base_line_top + line_height * i as f32;
+                            cx.scene.draw_quad(
+                                Quad::new(Bounds::new(sel_x, sel_y, sel_width, line_height))
+                                    .with_background(selection_color),
+                            );
+                        }
+                    }
+                }
+            }
+
             for (i, line) in visual_lines.iter().enumerate() {
                 let line_y = base_line_top + line_height * i as f32 + self.font_size * 0.15;
                 if !line.is_empty() {
