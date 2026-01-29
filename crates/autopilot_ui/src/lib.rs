@@ -2633,14 +2633,16 @@ impl MinimalRoot {
                 && !modifiers.alt
                 && !modifiers.meta
             {
-                for chat in self.chat_panes.values_mut() {
-                    if chat.model_hovered || chat.model_dropdown.is_open() {
+                if let Some(active_id) = self.pane_store.active_pane_id.clone() {
+                    if let Some(chat) = self.chat_panes.get_mut(&active_id) {
                         let options = build_model_options();
-                        let current = model_index(&chat.selected_model).unwrap_or(0);
-                        let next = (current + 1) % options.len();
-                        let value = options[next].value.clone();
-                        chat.pending_model_changes.borrow_mut().push(value);
-                        return true;
+                        if !options.is_empty() {
+                            let current = model_index(&chat.selected_model).unwrap_or(0);
+                            let next = (current + 1) % options.len();
+                            let value = options[next].value.clone();
+                            chat.pending_model_changes.borrow_mut().push(value);
+                            return true;
+                        }
                     }
                 }
             }
