@@ -1236,6 +1236,7 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
                             let proxy = proxy_actions.clone();
                             let cwd = cwd_for_actions.clone();
                             let session_states = session_states_for_actions.clone();
+                            let full_auto_state = full_auto_state.clone();
                             handle.spawn(async move {
                                 let session_state = session_states
                                     .lock()
@@ -1263,6 +1264,15 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
                                     });
                                     return;
                                 };
+                                {
+                                    let mut guard = full_auto_state.lock().await;
+                                    if let Some(state) = guard.as_mut() {
+                                        if state.matches_thread(Some(thread_id.as_str())) {
+                                            state.adopt_thread(&thread_id);
+                                            state.activate_guidance_mode();
+                                        }
+                                    }
+                                }
 
                                 let params = TurnStartParams {
                                     thread_id,
