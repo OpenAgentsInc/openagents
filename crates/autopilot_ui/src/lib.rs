@@ -1875,7 +1875,7 @@ impl MinimalRoot {
         };
 
         let screen = Size::new(1280.0, 720.0);
-        root.open_chat_pane(screen, true, true);
+        root.open_chat_pane(screen, true, true, DEFAULT_THREAD_MODEL);
         root
     }
 
@@ -1889,7 +1889,9 @@ impl MinimalRoot {
                 let pane_id = self
                     .pending_session_panes
                     .pop_front()
-                    .unwrap_or_else(|| self.open_chat_pane(self.screen_size(), true, false));
+                    .unwrap_or_else(|| {
+                        self.open_chat_pane(self.screen_size(), true, false, DEFAULT_THREAD_MODEL)
+                    });
                 if let Some(chat) = self.chat_panes.get_mut(&pane_id) {
                     chat.set_session_id(session_id);
                 }
@@ -1973,7 +1975,9 @@ impl MinimalRoot {
             } => {
                 let pane_id = self
                     .pane_for_session_id(&session_id.to_string())
-                    .unwrap_or_else(|| self.open_chat_pane(self.screen_size(), true, false));
+                    .unwrap_or_else(|| {
+                        self.open_chat_pane(self.screen_size(), true, false, DEFAULT_THREAD_MODEL)
+                    });
                 if let Some(chat) = self.chat_panes.get_mut(&pane_id) {
                     chat.load_thread_snapshot(&thread);
                     chat.update_thread_model(model.as_str());
@@ -2124,7 +2128,13 @@ impl MinimalRoot {
         self.screen_size = size;
     }
 
-    fn open_chat_pane(&mut self, screen: Size, reset_chat: bool, request_session: bool) -> String {
+    fn open_chat_pane(
+        &mut self,
+        screen: Size,
+        reset_chat: bool,
+        request_session: bool,
+        default_model: &str,
+    ) -> String {
         let chat_index = self.next_chat_index;
         let id = format!("chat-{}", chat_index);
         self.next_chat_index += 1;
@@ -2143,7 +2153,7 @@ impl MinimalRoot {
         };
         self.pane_store.add_pane(pane);
 
-        let mut chat_state = ChatPaneState::new(DEFAULT_THREAD_MODEL);
+        let mut chat_state = ChatPaneState::new(default_model);
         if reset_chat {
             chat_state.reset_chat_state();
         }
@@ -2184,7 +2194,7 @@ impl MinimalRoot {
 
     fn open_thread_from_list(&mut self, thread_id: String) {
         let screen = self.screen_size();
-        let pane_id = self.open_chat_pane(screen, true, true);
+        let pane_id = self.open_chat_pane(screen, true, true, DEFAULT_THREAD_MODEL);
         if let Some(handler) = self.send_handler.as_mut() {
             handler(UserAction::ThreadOpen { thread_id });
         }
@@ -2494,7 +2504,15 @@ impl MinimalRoot {
                 true
             }
             HotbarAction::NewChat => {
-                let new_pane = self.open_chat_pane(screen, true, true);
+                let active_model = self
+                    .pane_store
+                    .active_pane_id
+                    .as_ref()
+                    .and_then(|id| self.chat_panes.get(id))
+                    .map(|chat| chat.selected_model.clone())
+                    .unwrap_or_else(|| DEFAULT_THREAD_MODEL.to_string());
+                let new_pane =
+                    self.open_chat_pane(screen, true, true, active_model.as_str());
                 let session_id = self
                     .pane_store
                     .active_pane_id
@@ -2506,7 +2524,7 @@ impl MinimalRoot {
                 if let Some(handler) = self.send_handler.as_mut() {
                     handler(UserAction::NewChat {
                         session_id,
-                        model: Some(DEFAULT_THREAD_MODEL.to_string()),
+                        model: Some(active_model.clone()),
                     });
                 }
                 self.pane_store.bring_to_front(&new_pane);
