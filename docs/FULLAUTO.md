@@ -108,6 +108,29 @@ Policy gating:
 - Low confidence or unsafe contexts should pause or request user input.
 - If a decision conflicts with hard stop conditions, stop wins.
 
+### Guidance Modules (demo mode)
+
+Full Auto now supports a **Guidance Modules** demo pipeline that uses a
+dedicated signature with goal/state context and runs on **local Ollama**.
+
+Enable demo mode with:
+
+```
+OPENAGENTS_GUIDANCE_MODE=demo
+OPENAGENTS_GUIDANCE_MODEL=ollama:llama3.2  # optional override
+```
+
+In demo mode:
+- Full Auto builds `GuidanceInputs` (goal + summary + state + permissions).
+- Decisions are produced by `GuidanceDecisionSignature`.
+- Guardrails are enforced the same way as legacy Full Auto decisions.
+
+CLI demo:
+
+```
+autopilot guidance demo --summary path/to/summary.json
+```
+
 ## Stop conditions and guardrails
 
 Hard stops:

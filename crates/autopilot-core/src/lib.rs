@@ -17,6 +17,8 @@ pub mod ci;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod github;
 #[cfg(not(target_arch = "wasm32"))]
+pub mod guidance;
+#[cfg(not(target_arch = "wasm32"))]
 pub mod logger;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod preflight;
@@ -73,6 +75,14 @@ pub use github::{
     ConnectedRepo, GitHubClient, GitHubOAuthConfig, GitHubToken, RepoPermissions,
     branch_name_for_issue, check_github_auth, github_token_path, load_github_token,
     save_github_token,
+};
+
+#[cfg(not(target_arch = "wasm32"))]
+pub use guidance::{
+    GuidanceAction, GuidanceDecision, GuidanceDecisionDiagnostics, GuidanceDecisionResult,
+    GuidanceGoal, GuidanceGuardrailAudit, GuidanceGuardrailConfig, GuidanceGuardrailContext,
+    GuidanceInputs, GuidanceMode, GuidanceNetwork, GuidancePermissions, GuidanceState,
+    apply_guidance_guardrails, ensure_guidance_demo_lm, guidance_demo_model, run_guidance_decision,
 };
 
 #[cfg(not(target_arch = "wasm32"))]

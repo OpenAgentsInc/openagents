@@ -1,4 +1,10 @@
 use chrono::Utc;
+use autopilot_core::guidance::{
+    GuidanceAction, GuidanceDecision, GuidanceDecisionDiagnostics, GuidanceDecisionResult,
+    GuidanceGoal, GuidanceGuardrailConfig, GuidanceGuardrailContext,
+    GuidanceInputs, GuidanceMode, GuidanceNetwork, GuidancePermissions, GuidanceState,
+    apply_guidance_guardrails, guidance_demo_model,
+};
 use dsrs::signatures::FullAutoDecisionSignature;
 use dsrs::{example, LM, Predict, Predictor};
 use serde::{Deserialize, Serialize};
@@ -16,6 +22,9 @@ const ENV_MAX_TOKENS: &str = "OPENAGENTS_FULL_AUTO_MAX_TOKENS";
 const ENV_MAX_TURNS: &str = "OPENAGENTS_FULL_AUTO_MAX_TURNS";
 const ENV_NO_PROGRESS_LIMIT: &str = "OPENAGENTS_FULL_AUTO_NO_PROGRESS_LIMIT";
 const ENV_MIN_CONFIDENCE: &str = "OPENAGENTS_FULL_AUTO_MIN_CONFIDENCE";
+const ENV_GUIDANCE_GOAL: &str = "OPENAGENTS_GUIDANCE_GOAL";
+const DEFAULT_GUIDANCE_GOAL_INTENT: &str =
+    "Keep making progress on the current task using the latest plan and diff.";
 
 #[derive(Clone, Debug)]
 pub struct FullAutoConfig {
@@ -35,6 +44,11 @@ impl Default for FullAutoConfig {
         }
     }
 }
+
+pub type FullAutoAction = GuidanceAction;
+pub type FullAutoDecision = GuidanceDecision;
+pub type FullAutoDecisionDiagnostics = GuidanceDecisionDiagnostics;
+pub type FullAutoDecisionResult = GuidanceDecisionResult;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct FullAutoDecisionRecord {
@@ -118,74 +132,6 @@ impl FullAutoTurnSummary {
 }
 
 #[derive(Clone, Debug)]
-pub struct FullAutoDecision {
-    pub action: FullAutoAction,
-    pub next_input: Option<String>,
-    pub reason: String,
-    pub confidence: f32,
-    pub guardrail: Option<GuardrailAudit>,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct GuardrailAudit {
-    pub triggered: bool,
-    pub rule: Option<String>,
-    pub original_action: String,
-    pub original_confidence: f32,
-    pub enforced_action: String,
-    pub enforced_confidence: f32,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct FullAutoDecisionDiagnostics {
-    pub raw_prediction: Value,
-    pub action_raw: Option<String>,
-    pub next_input_raw: Option<String>,
-    pub reason_raw: Option<String>,
-    pub confidence_raw: Option<Value>,
-    pub action_parsed: String,
-    pub next_input_parsed: String,
-    pub reason_parsed: String,
-    pub confidence_parsed: f32,
-    pub parse_errors: Vec<String>,
-}
-
-#[derive(Clone, Debug)]
-pub struct FullAutoDecisionResult {
-    pub decision: FullAutoDecision,
-    pub diagnostics: FullAutoDecisionDiagnostics,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum FullAutoAction {
-    Continue,
-    Pause,
-    Stop,
-    Review,
-}
-
-impl FullAutoAction {
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            FullAutoAction::Continue => "continue",
-            FullAutoAction::Pause => "pause",
-            FullAutoAction::Stop => "stop",
-            FullAutoAction::Review => "review",
-        }
-    }
-
-    pub fn from_str(value: &str) -> Self {
-        match value.trim().to_lowercase().as_str() {
-            "continue" => FullAutoAction::Continue,
-            "pause" => FullAutoAction::Pause,
-            "stop" => FullAutoAction::Stop,
-            "review" => FullAutoAction::Review,
-            _ => FullAutoAction::Pause,
-        }
-    }
-}
-
-#[derive(Clone, Debug)]
 pub struct FullAutoDecisionRequest {
     pub summary: FullAutoTurnSummary,
     pub fallback_prompt: String,
@@ -199,6 +145,8 @@ pub struct FullAutoState {
     pub thread_id: Option<String>,
     pub continue_prompt: String,
     pub config: FullAutoConfig,
+    pub guidance_mode: GuidanceMode,
+    pub guidance_goal: GuidanceGoal,
     decision_lm: Option<LM>,
     threads: HashMap<String, FullAutoThreadState>,
     pub run_id: String,
@@ -210,12 +158,16 @@ impl FullAutoState {
         let config = FullAutoConfig::default();
         let run_id = format!("fullauto-{}", Uuid::new_v4());
         let started_at = Utc::now();
+        let guidance_mode = GuidanceMode::from_env();
+        let guidance_goal = guidance_goal_from_env();
         let _ = json!({
             "runId": run_id,
             "workspaceId": workspace_id,
             "threadId": thread_id,
             "startedAt": started_at.to_rfc3339(),
             "decisionModel": decision_model(),
+            "guidanceMode": format!("{:?}", guidance_mode),
+            "guidanceModel": if guidance_mode == GuidanceMode::Demo { guidance_demo_model() } else { String::new() },
             "minConfidence": config.min_confidence,
             "maxTurns": config.max_turns,
             "noProgressLimit": config.no_progress_limit,
@@ -226,6 +178,8 @@ impl FullAutoState {
             thread_id,
             continue_prompt: normalize_prompt(continue_prompt),
             config,
+            guidance_mode,
+            guidance_goal,
             decision_lm: None,
             threads: HashMap::new(),
             run_id,
@@ -384,6 +338,27 @@ impl FullAutoState {
         self.decision_lm = Some(lm);
     }
 
+    pub fn guidance_mode(&self) -> GuidanceMode {
+        self.guidance_mode
+    }
+
+    pub fn build_guidance_inputs(&self, summary: &FullAutoTurnSummary) -> GuidanceInputs {
+        let tokens_used = parse_total_tokens(&summary.token_usage);
+        let tokens_remaining = self
+            .config
+            .max_tokens
+            .and_then(|max| tokens_used.map(|used| max.saturating_sub(used)));
+        let permissions = GuidancePermissions::new(true, true, GuidanceNetwork::Full);
+        let mut state = GuidanceState::new(summary.turn_count, summary.no_progress_count, permissions);
+        state.tokens_used = tokens_used;
+        state.tokens_remaining = tokens_remaining;
+        GuidanceInputs {
+            goal: self.guidance_goal.clone(),
+            summary: serde_json::to_value(summary).unwrap_or(Value::Null),
+            state,
+        }
+    }
+
     pub fn apply_decision(&mut self, thread_id: &str, decision: &FullAutoDecision) {
         if let Some(state) = self.threads.get_mut(thread_id) {
             let record = FullAutoDecisionRecord {
@@ -405,149 +380,28 @@ impl FullAutoState {
         &self,
         thread_id: &str,
         summary: &FullAutoTurnSummary,
-        mut decision: FullAutoDecision,
+        decision: FullAutoDecision,
     ) -> FullAutoDecision {
         let state = self.threads.get(thread_id);
         let turn_count = state.map(|s| s.turn_count).unwrap_or(summary.turn_count);
         let no_progress = state
             .map(|s| s.no_progress_count)
             .unwrap_or(summary.no_progress_count);
-        let original_action = decision.action.as_str().to_string();
-        let original_confidence = decision.confidence;
-        let mut guardrail: Option<GuardrailAudit> = None;
+        let tokens_used = parse_total_tokens(&summary.token_usage);
+        let config = GuidanceGuardrailConfig {
+            min_confidence: self.config.min_confidence,
+            max_turns: self.config.max_turns,
+            no_progress_limit: self.config.no_progress_limit,
+            max_tokens: self.config.max_tokens,
+        };
+        let context = GuidanceGuardrailContext {
+            last_turn_status: summary.last_turn_status.clone(),
+            turn_count,
+            no_progress_count: no_progress,
+            tokens_used,
+        };
 
-        if summary.last_turn_status == "failed" {
-            return FullAutoDecision {
-                action: FullAutoAction::Stop,
-                next_input: None,
-                reason: "Turn failed; stopping Full Auto.".to_string(),
-                confidence: 1.0,
-                guardrail: Some(GuardrailAudit {
-                    triggered: true,
-                    rule: Some("turn_failed".to_string()),
-                    original_action: original_action.clone(),
-                    original_confidence,
-                    enforced_action: "stop".to_string(),
-                    enforced_confidence: 1.0,
-                }),
-            };
-        }
-
-        if summary.last_turn_status == "interrupted" {
-            return FullAutoDecision {
-                action: FullAutoAction::Pause,
-                next_input: None,
-                reason: "Turn interrupted; pausing Full Auto.".to_string(),
-                confidence: 1.0,
-                guardrail: Some(GuardrailAudit {
-                    triggered: true,
-                    rule: Some("turn_interrupted".to_string()),
-                    original_action: original_action.clone(),
-                    original_confidence,
-                    enforced_action: "pause".to_string(),
-                    enforced_confidence: 1.0,
-                }),
-            };
-        }
-
-        if self.config.max_turns > 0 && turn_count >= self.config.max_turns {
-            return FullAutoDecision {
-                action: FullAutoAction::Stop,
-                next_input: None,
-                reason: "Reached Full Auto turn limit.".to_string(),
-                confidence: 1.0,
-                guardrail: Some(GuardrailAudit {
-                    triggered: true,
-                    rule: Some("max_turns".to_string()),
-                    original_action: original_action.clone(),
-                    original_confidence,
-                    enforced_action: "stop".to_string(),
-                    enforced_confidence: 1.0,
-                }),
-            };
-        }
-
-        if self.config.no_progress_limit > 0 && no_progress >= self.config.no_progress_limit {
-            return FullAutoDecision {
-                action: FullAutoAction::Stop,
-                next_input: None,
-                reason: "No progress detected across multiple turns.".to_string(),
-                confidence: 1.0,
-                guardrail: Some(GuardrailAudit {
-                    triggered: true,
-                    rule: Some("no_progress".to_string()),
-                    original_action: original_action.clone(),
-                    original_confidence,
-                    enforced_action: "stop".to_string(),
-                    enforced_confidence: 1.0,
-                }),
-            };
-        }
-
-        if let Some(max_tokens) = self.config.max_tokens {
-            if let Some(total_tokens) = parse_total_tokens(&summary.token_usage) {
-                if total_tokens >= max_tokens {
-                    return FullAutoDecision {
-                        action: FullAutoAction::Stop,
-                        next_input: None,
-                        reason: "Token budget exceeded; stopping Full Auto.".to_string(),
-                        confidence: 1.0,
-                        guardrail: Some(GuardrailAudit {
-                            triggered: true,
-                            rule: Some("max_tokens".to_string()),
-                            original_action: original_action.clone(),
-                            original_confidence,
-                            enforced_action: "stop".to_string(),
-                            enforced_confidence: 1.0,
-                        }),
-                    };
-                }
-            }
-        }
-
-        if decision.confidence < self.config.min_confidence {
-            decision.action = FullAutoAction::Pause;
-            decision.reason = format!(
-                "Low confidence ({:.2}) decision; pausing Full Auto.",
-                decision.confidence
-            );
-            guardrail = Some(GuardrailAudit {
-                triggered: true,
-                rule: Some("low_confidence".to_string()),
-                original_action: original_action.clone(),
-                original_confidence,
-                enforced_action: "pause".to_string(),
-                enforced_confidence: decision.confidence,
-            });
-        }
-
-        if decision.action == FullAutoAction::Review {
-            decision.action = FullAutoAction::Pause;
-            decision.reason = "Review requested; pausing Full Auto.".to_string();
-            guardrail = Some(GuardrailAudit {
-                triggered: true,
-                rule: Some("review_requested".to_string()),
-                original_action: original_action.clone(),
-                original_confidence,
-                enforced_action: "pause".to_string(),
-                enforced_confidence: decision.confidence,
-            });
-        }
-
-        if guardrail.is_none() {
-            decision.guardrail = Some(GuardrailAudit {
-                triggered: false,
-                rule: None,
-                original_action,
-                original_confidence,
-                enforced_action: decision.action.as_str().to_string(),
-                enforced_confidence: decision.confidence,
-            });
-        } else {
-            decision.guardrail = guardrail;
-        }
-
-        decision
+        apply_guidance_guardrails(&context, &config, decision)
     }
 }
 
@@ -758,6 +612,15 @@ fn normalize_prompt(prompt: Option<String>) -> String {
     trimmed
         .map(|value| value.to_string())
         .unwrap_or_else(|| DEFAULT_CONTINUE_PROMPT.to_string())
+}
+
+fn guidance_goal_from_env() -> GuidanceGoal {
+    let intent = env::var(ENV_GUIDANCE_GOAL)
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| DEFAULT_GUIDANCE_GOAL_INTENT.to_string());
+    GuidanceGoal::new(intent)
 }
 
 fn read_env_u64(key: &str) -> Option<u64> {

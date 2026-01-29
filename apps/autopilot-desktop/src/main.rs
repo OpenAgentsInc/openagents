@@ -4,6 +4,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, mpsc};
 
 use anyhow::{Context, Result};
+use autopilot_core::guidance::{GuidanceMode, ensure_guidance_demo_lm, run_guidance_decision};
 use autopilot_app::{
     App as AutopilotApp, AppConfig, AppEvent, DvmHistorySnapshot, DvmProviderStatus, EventRecorder,
     PylonStatus, SessionId, UserAction, WalletStatus,
@@ -832,14 +833,28 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
                         let cwd = cwd_full_auto.clone();
                         let workspace_id = workspace_id_full_auto.clone();
                         tokio::spawn(async move {
-                            let mut lm = {
+                            let (guidance_mode, guidance_inputs, mut lm) = {
                                 let guard = full_auto_state.lock().await;
-                                guard.as_ref().and_then(|state| state.decision_lm())
+                                if let Some(state) = guard.as_ref() {
+                                    (
+                                        state.guidance_mode(),
+                                        Some(state.build_guidance_inputs(&request.summary)),
+                                        state.decision_lm(),
+                                    )
+                                } else {
+                                    (GuidanceMode::Legacy, None, None)
+                                }
                             };
 
                             if lm.is_none() {
-                                let model = decision_model();
-                                match ensure_codex_lm(&model).await {
+                                let built = match guidance_mode {
+                                    GuidanceMode::Demo => ensure_guidance_demo_lm().await,
+                                    GuidanceMode::Legacy => {
+                                        let model = decision_model();
+                                        ensure_codex_lm(&model).await
+                                    }
+                                };
+                                match built {
                                     Ok(built) => {
                                         lm = Some(built.clone());
                                         let mut guard = full_auto_state.lock().await;
@@ -884,7 +899,45 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
                                 return;
                             };
 
-                            let decision_result = match run_full_auto_decision(&request.summary, &lm).await {
+                            let decision_result = match guidance_mode {
+                                GuidanceMode::Demo => {
+                                    let Some(inputs) = guidance_inputs.as_ref() else {
+                                        let error = "Guidance inputs missing; pausing Full Auto.".to_string();
+                                        let payload = json!({
+                                            "method": "fullauto/decision",
+                                            "params": {
+                                                "threadId": request.thread_id,
+                                                "turnId": request.turn_id,
+                                                "action": "pause",
+                                                "reason": error,
+                                                "confidence": 0.0,
+                                                "state": "paused"
+                                            }
+                                        });
+                                        let _ = proxy.send_event(AppEvent::AppServerEvent {
+                                            message: payload.to_string(),
+                                        });
+                                        let mut guard = full_auto_state.lock().await;
+                                        *guard = None;
+                                        let _ = proxy.send_event(AppEvent::AppServerEvent {
+                                            message: json!({
+                                                "method": "fullauto/status",
+                                                "params": {
+                                                    "workspaceId": workspace_id,
+                                                    "enabled": false,
+                                                    "state": "paused"
+                                                }
+                                            })
+                                            .to_string(),
+                                        });
+                                        return;
+                                    };
+                                    run_guidance_decision(inputs, &lm).await
+                                }
+                                GuidanceMode::Legacy => run_full_auto_decision(&request.summary, &lm).await,
+                            };
+
+                            let decision_result = match decision_result {
                                 Ok(decision) => decision,
                                 Err(error) => {
                                     let payload = json!({

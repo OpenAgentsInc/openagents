@@ -23,6 +23,7 @@ pollster = { workspace = true }
 futures = { workspace = true }
 autopilot_app = { path = "../../crates/autopilot_app" }
 autopilot_ui = { path = "../../crates/autopilot_ui" }
+autopilot-core = { path = "../../crates/autopilot-core" }
 codex-client = { path = "../../crates/codex-client" }
 serde_json = { workspace = true }
 serde = { workspace = true }
