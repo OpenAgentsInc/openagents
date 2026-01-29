@@ -911,10 +911,6 @@ impl ChatPaneState {
         self.queued_messages.as_slice()
     }
 
-    fn enqueue_message(&mut self, text: String) {
-        self.queued_messages.push(QueuedMessage { text });
-    }
-
     fn dispatch_message(
         &mut self,
         text: String,
@@ -2478,6 +2474,46 @@ impl MinimalRoot {
         None
     }
 
+    fn cycle_chat_focus(&mut self) -> bool {
+        let mut chat_ids = Vec::new();
+        for pane in self.pane_store.panes() {
+            if self.chat_panes.contains_key(&pane.id) {
+                chat_ids.push(pane.id.clone());
+            }
+        }
+        if chat_ids.is_empty() {
+            return false;
+        }
+
+        let focused_id = self
+            .chat_panes
+            .iter()
+            .find(|(_, chat)| chat.input.is_focused())
+            .map(|(id, _)| id.clone());
+        let active_id = self
+            .pane_store
+            .active_pane_id
+            .clone()
+            .filter(|id| self.chat_panes.contains_key(id));
+
+        let start_id = focused_id.or(active_id);
+        let start_index = start_id
+            .and_then(|id| chat_ids.iter().position(|pane_id| pane_id == &id));
+
+        let next_index = match start_index {
+            Some(index) => (index + 1) % chat_ids.len(),
+            None => 0,
+        };
+        let next_id = chat_ids[next_index].clone();
+
+        if let Some(chat) = self.chat_panes.get_mut(&next_id) {
+            chat.input.focus();
+            chat.input_needs_focus = false;
+        }
+        self.pane_store.bring_to_front(&next_id);
+        true
+    }
+
     pub fn handle_input(&mut self, event: &InputEvent, _bounds: Bounds) -> bool {
         if let InputEvent::KeyDown { key, modifiers } = event {
             if matches!(key, Key::Named(NamedKey::Escape)) && !modifiers.meta && !modifiers.ctrl {
@@ -2500,24 +2536,7 @@ impl MinimalRoot {
                 && !modifiers.alt
                 && !modifiers.meta
             {
-                let focused_chat = self
-                    .chat_panes
-                    .iter()
-                    .find(|(_, chat)| chat.input.is_focused())
-                    .map(|(id, _)| id.clone());
-                if let Some(chat_id) = focused_chat {
-                    if let Some(chat) = self.chat_panes.get_mut(&chat_id) {
-                        if chat.is_processing() {
-                            let value = chat.input.get_value().trim().to_string();
-                            if !value.is_empty() {
-                                chat.enqueue_message(value);
-                                chat.input.set_value("");
-                                chat.submit_button.set_disabled(true);
-                                return true;
-                            }
-                        }
-                    }
-                }
+                return self.cycle_chat_focus();
             }
 
             if modifiers.meta || modifiers.ctrl {
