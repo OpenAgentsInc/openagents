@@ -36,7 +36,7 @@ impl PaneFrame {
             dismissable: true,
             title_height: 28.0,
             padding: 8.0,
-            corner_radius: 6.0,
+            corner_radius: 0.0,
             close_button,
             close_bounds: Bounds::ZERO,
             content_bounds: Bounds::ZERO,
@@ -121,7 +121,7 @@ impl Component for PaneFrame {
 
         cx.scene.draw_quad(
             Quad::new(bounds)
-                .with_background(theme::bg::CODE)
+                .with_background(theme::bg::APP)
                 .with_border(border_color, 1.0)
                 .with_corner_radius(self.corner_radius),
         );
@@ -136,7 +136,7 @@ impl Component for PaneFrame {
 
         cx.scene.draw_quad(
             Quad::new(title_bounds)
-                .with_background(theme::bg::CODE)
+                .with_background(theme::bg::APP)
                 .with_border(border_color, 1.0),
         );
 
