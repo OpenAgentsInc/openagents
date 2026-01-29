@@ -128,8 +128,9 @@ In demo mode:
 - Routes can call `TaskUnderstandingSignature` or `PlanningSignature` for a
   richer initial response.
 - If the user sends a minimal “go/just do it” prompt, **super mode** runs
-  `TaskUnderstandingSignature → PlanningSignature → GuidanceDecisionSignature`,
-  emitting each step to the UI.
+  repo research plus `TaskUnderstandingSignature → PlanningSignature →
+  GuidanceDirectiveSignature`, emitting each step to the UI and dispatching the
+  directive to Codex.
 - Guardrails are enforced the same way as legacy Full Auto decisions.
 
 CLI demo:
