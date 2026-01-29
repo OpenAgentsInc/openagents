@@ -11,6 +11,7 @@ pub struct ThreadView {
     auto_scroll: bool,
     item_spacing: f32,
     on_entry_click: Option<Box<dyn FnMut(usize)>>,
+    lock_to_bottom: bool,
 }
 
 impl ThreadView {
@@ -23,6 +24,7 @@ impl ThreadView {
             auto_scroll: true,
             item_spacing: 6.0, // Dense but readable spacing between entries
             on_entry_click: None,
+            lock_to_bottom: true,
         }
     }
 
@@ -59,6 +61,7 @@ impl ThreadView {
         let was_at_bottom = self.is_at_bottom();
         self.entries.push(entry);
         if self.auto_scroll && was_at_bottom {
+            self.lock_to_bottom = true;
             self.scroll_to_bottom();
         }
     }
@@ -73,6 +76,7 @@ impl ThreadView {
         self.entries.clear();
         self.scroll_offset = 0.0;
         self.content_height = 0.0;
+        self.lock_to_bottom = true;
     }
 
     pub fn entry_count(&self) -> usize {
@@ -100,10 +104,12 @@ impl ThreadView {
 
     pub fn scroll_to_bottom(&mut self) {
         self.scroll_offset = self.content_height;
+        self.lock_to_bottom = true;
     }
 
     pub fn scroll_to_top(&mut self) {
         self.scroll_offset = 0.0;
+        self.lock_to_bottom = false;
     }
 
     fn calculate_content_height(&self) -> f32 {
@@ -129,6 +135,15 @@ impl Component for ThreadView {
         self.content_height = self.calculate_content_height();
 
         let max_scroll = (self.content_height - bounds.size.height).max(0.0);
+        if self.auto_scroll && self.lock_to_bottom {
+            let target = max_scroll;
+            let delta = target - self.scroll_offset;
+            if delta.abs() > 0.5 {
+                self.scroll_offset += delta * 0.2;
+            } else {
+                self.scroll_offset = target;
+            }
+        }
         self.scroll_offset = self.scroll_offset.clamp(0.0, max_scroll);
 
         cx.scene.push_clip(bounds);
@@ -173,6 +188,7 @@ impl Component for ThreadView {
                 let max_scroll = (self.content_height - bounds.size.height).max(0.0);
                 // Positive dy = scroll wheel down = show content below = increase offset
                 self.scroll_offset = (self.scroll_offset + dy).clamp(0.0, max_scroll);
+                self.lock_to_bottom = self.is_at_bottom();
                 return EventResult::Handled;
             }
             InputEvent::MouseUp { x, y, .. } => {
