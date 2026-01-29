@@ -133,6 +133,8 @@ In demo mode:
   directive to Codex.
 - After each Codex turn completes in demo mode, Full Auto re-enters the guidance
   loop (repo intel + directive) and auto-continues until guardrails stop it.
+  Follow-up guidance includes the last agent output and last dispatched directive
+  in its task summary (no manual markdown plan required).
 - Guardrails are enforced the same way as legacy Full Auto decisions.
 
 CLI demo:
