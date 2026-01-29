@@ -172,9 +172,16 @@ impl Component for SearchToolCall {
     }
 
     fn size_hint(&self) -> (Option<f32>, Option<f32>) {
-        let base_height = 28.0 + 20.0 + theme::spacing::SM * 2.0;
+        let padding = theme::spacing::SM;
+        let header_height = 32.0;
+        let summary_gap = 4.0;
+        let summary_height = 16.0;
+        let base_height = padding + header_height + summary_gap + summary_height;
+        let match_height = 42.0;
         let matches_height = if self.expanded && !self.matches.is_empty() {
-            (self.matches.len().min(10) as f32) * 36.0
+            let count = self.matches.len().min(10) as f32;
+            let content_gap = 4.0; // summary (16) + gap (4) => 20, matches paint offset
+            content_gap + count * match_height
         } else {
             0.0
         };

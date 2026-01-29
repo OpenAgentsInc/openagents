@@ -203,9 +203,14 @@ impl Component for DiffToolCall {
     }
 
     fn size_hint(&self) -> (Option<f32>, Option<f32>) {
-        let base_height = 28.0 + theme::spacing::SM * 2.0;
+        let padding = theme::spacing::SM;
+        let header_height = 32.0;
+        let base_height = padding + header_height;
         let content_height = if self.expanded && !self.lines.is_empty() {
-            self.lines.len() as f32 * 18.0 + 8.0 + theme::spacing::XS
+            let line_height = 20.0;
+            let content_pad = 8.0;
+            let content_top_gap = theme::spacing::XS;
+            content_top_gap + self.lines.len() as f32 * line_height + content_pad
         } else {
             0.0
         };
