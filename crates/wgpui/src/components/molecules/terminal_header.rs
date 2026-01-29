@@ -71,17 +71,13 @@ impl Component for TerminalHeader {
         let text_y = bounds.origin.y + bounds.size.height * 0.5 - font_size * 0.55;
 
         let mut badge = ToolStatusBadge::new(self.status).show_icon(false);
-        let (badge_w, badge_h) = badge.size_hint();
+        let (badge_w, _badge_h) = badge.size_hint();
+        let badge_width = badge_w.unwrap_or(8.0);
         badge.paint(
-            Bounds::new(
-                x,
-                bounds.origin.y,
-                badge_w.unwrap_or(8.0),
-                badge_h.unwrap_or(bounds.size.height),
-            ),
+            Bounds::new(x, bounds.origin.y, badge_width, bounds.size.height),
             cx,
         );
-        x += badge_w.unwrap_or(8.0) + theme::spacing::SM;
+        x += badge_width + theme::spacing::SM;
 
         let prompt = "$ ";
         let text_run = cx.text.layout_mono(
