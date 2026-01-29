@@ -65,6 +65,19 @@ impl Component for ToolHeader {
         let mut x = bounds.origin.x;
         let icon_size = 20.0;
 
+        let mut badge = ToolStatusBadge::new(self.status);
+        let (badge_w, badge_h) = badge.size_hint();
+        badge.paint(
+            Bounds::new(
+                x,
+                bounds.origin.y,
+                badge_w.unwrap_or(8.0),
+                badge_h.unwrap_or(bounds.size.height),
+            ),
+            cx,
+        );
+        x += badge_w.unwrap_or(8.0) + theme::spacing::SM;
+
         let mut icon = ToolIcon::new(self.tool_type).size(icon_size);
         icon.paint(
             Bounds::new(x, bounds.origin.y, icon_size, bounds.size.height),
@@ -82,19 +95,6 @@ impl Component for ToolHeader {
         );
         cx.scene.draw_text(text_run);
         x += self.tool_name.len() as f32 * font_size * 0.6 + theme::spacing::MD;
-
-        let mut badge = ToolStatusBadge::new(self.status);
-        let (badge_w, badge_h) = badge.size_hint();
-        badge.paint(
-            Bounds::new(
-                x,
-                bounds.origin.y,
-                badge_w.unwrap_or(80.0),
-                badge_h.unwrap_or(bounds.size.height),
-            ),
-            cx,
-        );
-        x += badge_w.unwrap_or(80.0) + theme::spacing::SM;
 
         if let Some(dur) = &self.duration {
             let text_run = cx.text.layout_mono(

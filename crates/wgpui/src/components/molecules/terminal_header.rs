@@ -70,6 +70,19 @@ impl Component for TerminalHeader {
         let font_size = theme::font_size::XS;
         let text_y = bounds.origin.y + bounds.size.height * 0.5 - font_size * 0.55;
 
+        let mut badge = ToolStatusBadge::new(self.status).show_icon(false);
+        let (badge_w, badge_h) = badge.size_hint();
+        badge.paint(
+            Bounds::new(
+                x,
+                bounds.origin.y,
+                badge_w.unwrap_or(8.0),
+                badge_h.unwrap_or(bounds.size.height),
+            ),
+            cx,
+        );
+        x += badge_w.unwrap_or(8.0) + theme::spacing::SM;
+
         let prompt = "$ ";
         let text_run = cx.text.layout_mono(
             prompt,
@@ -87,20 +100,8 @@ impl Component for TerminalHeader {
             theme::text::PRIMARY,
         );
         cx.scene.draw_text(text_run);
-        x += self.command.len() as f32 * font_size * 0.6 + theme::spacing::MD;
 
-        let mut badge = ToolStatusBadge::new(self.status).show_icon(false);
-        let (badge_w, _) = badge.size_hint();
-        badge.paint(
-            Bounds::new(
-                x,
-                bounds.origin.y,
-                badge_w.unwrap_or(60.0),
-                bounds.size.height,
-            ),
-            cx,
-        );
-        let _ = badge_w.unwrap_or(60.0);
+        // Status dot is rendered at the left edge; no trailing status label.
     }
 
     fn event(
