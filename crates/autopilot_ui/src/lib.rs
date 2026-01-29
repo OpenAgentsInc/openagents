@@ -90,6 +90,7 @@ const HOTBAR_SLOT_SELL_COMPUTE: u8 = 6;
 const HOTBAR_SLOT_THREADS: u8 = 4;
 const HOTBAR_CHAT_SLOT_START: u8 = 7;
 const HOTBAR_SLOT_MAX: u8 = 9;
+const GRID_DOT_DISTANCE: f32 = 32.0;
 const MODEL_OPTIONS: [(&str, &str); 4] = [
     ("gpt-5.2-codex", "Latest frontier agentic coding model."),
     (
@@ -631,6 +632,7 @@ pub struct MinimalRoot {
     pane_drag: Option<PaneDragState>,
     pane_resize: Option<PaneResizeState>,
     canvas_pan: Option<CanvasPanState>,
+    background_offset: Point,
     pane_resizer: ResizablePane,
     chat_panes: HashMap<String, ChatPaneState>,
     chat_slot_assignments: HashMap<String, u8>,
@@ -1948,6 +1950,7 @@ impl MinimalRoot {
             pane_drag: None,
             pane_resize: None,
             canvas_pan: None,
+            background_offset: Point::ZERO,
             pane_resizer,
             chat_panes: HashMap::new(),
             chat_slot_assignments: HashMap::new(),
@@ -2878,6 +2881,10 @@ impl MinimalRoot {
                     let dx = next.x - pan.last.x;
                     let dy = next.y - pan.last.y;
                     self.pane_store.offset_all(dx, dy);
+                    self.background_offset = Point::new(
+                        (self.background_offset.x + dx).rem_euclid(GRID_DOT_DISTANCE),
+                        (self.background_offset.y + dy).rem_euclid(GRID_DOT_DISTANCE),
+                    );
                     self.canvas_pan = Some(CanvasPanState { last: next });
                     return true;
                 }
@@ -3753,9 +3760,23 @@ impl Component for MinimalRoot {
             .shape(DotShape::Circle)
             .color(theme::text::MUTED)
             .opacity(0.12)
-            .distance(32.0)
+            .distance(GRID_DOT_DISTANCE)
             .size(1.5);
-        dots_grid.paint(bounds, cx);
+        let grid_offset = Point::new(
+            self.background_offset
+                .x
+                .rem_euclid(GRID_DOT_DISTANCE),
+            self.background_offset
+                .y
+                .rem_euclid(GRID_DOT_DISTANCE),
+        );
+        let grid_bounds = Bounds::new(
+            bounds.origin.x + grid_offset.x,
+            bounds.origin.y + grid_offset.y,
+            bounds.size.width,
+            bounds.size.height,
+        );
+        dots_grid.paint(grid_bounds, cx);
 
         self.set_screen_size(Size::new(bounds.size.width, bounds.size.height));
 
