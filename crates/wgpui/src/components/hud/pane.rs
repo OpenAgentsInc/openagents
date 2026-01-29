@@ -121,7 +121,7 @@ impl Component for PaneFrame {
 
         cx.scene.draw_quad(
             Quad::new(bounds)
-                .with_background(theme::bg::APP)
+                .with_background(theme::bg::APP.with_alpha(0.9))
                 .with_border(border_color, 1.0)
                 .with_corner_radius(self.corner_radius),
         );
@@ -136,7 +136,7 @@ impl Component for PaneFrame {
 
         cx.scene.draw_quad(
             Quad::new(title_bounds)
-                .with_background(theme::bg::APP)
+                .with_background(theme::bg::APP.with_alpha(0.9))
                 .with_border(border_color, 1.0),
         );
 
