@@ -2528,6 +2528,10 @@ impl MinimalRoot {
         };
         let next_id = chat_ids[next_index].clone();
 
+        for chat in self.chat_panes.values_mut() {
+            chat.input.blur();
+        }
+
         if let Some(chat) = self.chat_panes.get_mut(&next_id) {
             chat.input.focus();
             chat.input_needs_focus = false;
