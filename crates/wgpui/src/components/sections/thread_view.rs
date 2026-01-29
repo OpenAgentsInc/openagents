@@ -94,6 +94,10 @@ impl ThreadView {
         self.entries.get_mut(index)
     }
 
+    pub fn is_action_hovered(&self) -> bool {
+        self.entries.iter().any(|entry| entry.is_action_hovered())
+    }
+
     pub fn scroll_to_bottom(&mut self) {
         self.scroll_offset = self.content_height;
     }

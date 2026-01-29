@@ -96,9 +96,18 @@ impl ThreadEntry {
         self.hovered
     }
 
+    pub fn is_action_hovered(&self) -> bool {
+        self.actions.is_hovered()
+    }
+
     /// Replace the content component (useful for updating tool status)
     pub fn set_content(&mut self, content: impl Component + 'static) {
         self.content = Box::new(content);
+    }
+
+    /// Update the copyable text for this entry.
+    pub fn set_copyable_text(&mut self, text: impl Into<String>) {
+        self.copyable_text = Some(text.into());
     }
 }
 
