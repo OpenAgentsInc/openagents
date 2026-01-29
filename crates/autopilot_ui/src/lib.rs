@@ -3374,6 +3374,8 @@ impl MinimalRoot {
             cursor_for_resize(resize.edge).unwrap_or(Cursor::Default)
         } else if let Some((_pane_id, edge)) = self.pane_resize_target(self.cursor_position) {
             cursor_for_resize(edge).unwrap_or(Cursor::Default)
+        } else if self.canvas_pan.is_some() {
+            Cursor::Grabbing
         } else if self.pane_drag.is_some() {
             Cursor::Grabbing
         } else if self
