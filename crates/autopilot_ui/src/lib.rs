@@ -77,17 +77,15 @@ const HOTBAR_FLOAT_GAP: f32 = 18.0;
 const HOTBAR_ITEM_SIZE: f32 = 36.0;
 const HOTBAR_ITEM_GAP: f32 = 6.0;
 const HOTBAR_PADDING: f32 = 6.0;
+const HOTBAR_SLOT_EVENTS: u8 = 0;
 const HOTBAR_SLOT_NEW_CHAT: u8 = 1;
-const HOTBAR_SLOT_EVENTS: u8 = 2;
-const HOTBAR_SLOT_IDENTITY: u8 = 3;
-const HOTBAR_SLOT_PYLON: u8 = 4;
-const HOTBAR_SLOT_WALLET: u8 = 5;
-const HOTBAR_SLOT_SELL_COMPUTE: u8 = 6;
-const HOTBAR_SLOT_HISTORY: u8 = 7;
-const HOTBAR_SLOT_NIP90: u8 = 8;
-const HOTBAR_SLOT_THREADS: u8 = 9;
-const HOTBAR_CHAT_SLOT_START: u8 = 10;
-const HOTBAR_SLOT_MAX: u8 = 13;
+const HOTBAR_SLOT_IDENTITY: u8 = 2;
+const HOTBAR_SLOT_PYLON: u8 = 3;
+const HOTBAR_SLOT_WALLET: u8 = 4;
+const HOTBAR_SLOT_SELL_COMPUTE: u8 = 5;
+const HOTBAR_SLOT_THREADS: u8 = 6;
+const HOTBAR_CHAT_SLOT_START: u8 = 7;
+const HOTBAR_SLOT_MAX: u8 = 9;
 const MODEL_OPTIONS: [(&str, &str); 4] = [
     ("gpt-5.2-codex", "Latest frontier agentic coding model."),
     (
@@ -2615,10 +2613,10 @@ impl MinimalRoot {
             if modifiers.meta || modifiers.ctrl {
                 if let Key::Character(value) = key {
                     if let Ok(slot) = value.parse::<u8>() {
-                        if slot >= 1 && slot <= 9 {
+                        if slot <= HOTBAR_SLOT_MAX {
                             self.hotbar.flash_slot(slot);
                         }
-                        if slot >= 1 && slot <= 9 && self.handle_hotbar_slot(slot) {
+                        if slot <= HOTBAR_SLOT_MAX && self.handle_hotbar_slot(slot) {
                             return true;
                         }
                     }
@@ -3558,7 +3556,7 @@ impl Component for MinimalRoot {
 
         cx.scene.set_layer(pane_layer_start + panes.len() as u32);
         let hotbar_scale = 1.0 / self.zoom_factor.max(0.1);
-        let slot_count: usize = HOTBAR_SLOT_MAX as usize;
+        let slot_count: usize = (HOTBAR_SLOT_MAX + 1) as usize;
         let item_size = HOTBAR_ITEM_SIZE * hotbar_scale;
         let padding = HOTBAR_PADDING * hotbar_scale;
         let gap = HOTBAR_ITEM_GAP * hotbar_scale;
@@ -3581,10 +3579,6 @@ impl Component for MinimalRoot {
         let mut items = Vec::new();
         self.hotbar_bindings.clear();
 
-        items.push(HotbarSlot::new(HOTBAR_SLOT_NEW_CHAT, "+", "New chat"));
-        self.hotbar_bindings
-            .insert(HOTBAR_SLOT_NEW_CHAT, HotbarAction::NewChat);
-
         items.push(
             HotbarSlot::new(HOTBAR_SLOT_EVENTS, "EV", "Events")
                 .active(self.pane_store.is_active("events")),
@@ -3592,12 +3586,9 @@ impl Component for MinimalRoot {
         self.hotbar_bindings
             .insert(HOTBAR_SLOT_EVENTS, HotbarAction::ToggleEvents);
 
-        items.push(
-            HotbarSlot::new(HOTBAR_SLOT_THREADS, "TH", "Threads")
-                .active(self.pane_store.is_active("threads")),
-        );
+        items.push(HotbarSlot::new(HOTBAR_SLOT_NEW_CHAT, "+", "New chat"));
         self.hotbar_bindings
-            .insert(HOTBAR_SLOT_THREADS, HotbarAction::ToggleThreads);
+            .insert(HOTBAR_SLOT_NEW_CHAT, HotbarAction::NewChat);
 
         items.push(
             HotbarSlot::new(HOTBAR_SLOT_IDENTITY, "ID", "Identity")
@@ -3628,18 +3619,26 @@ impl Component for MinimalRoot {
             .insert(HOTBAR_SLOT_SELL_COMPUTE, HotbarAction::ToggleSellCompute);
 
         items.push(
-            HotbarSlot::new(HOTBAR_SLOT_HISTORY, "HI", "History")
-                .active(self.pane_store.is_active("dvm_history")),
+            HotbarSlot::new(HOTBAR_SLOT_THREADS, "TH", "Threads")
+                .active(self.pane_store.is_active("threads")),
         );
         self.hotbar_bindings
-            .insert(HOTBAR_SLOT_HISTORY, HotbarAction::ToggleDvmHistory);
+            .insert(HOTBAR_SLOT_THREADS, HotbarAction::ToggleThreads);
 
-        items.push(
-            HotbarSlot::new(HOTBAR_SLOT_NIP90, "N9", "NIP-90")
-                .active(self.pane_store.is_active("nip90")),
-        );
-        self.hotbar_bindings
-            .insert(HOTBAR_SLOT_NIP90, HotbarAction::ToggleNip90);
+        // DVM History + NIP-90 panes disabled for now (keep code around).
+        // items.push(
+        //     HotbarSlot::new(HOTBAR_SLOT_HISTORY, "HI", "History")
+        //         .active(self.pane_store.is_active("dvm_history")),
+        // );
+        // self.hotbar_bindings
+        //     .insert(HOTBAR_SLOT_HISTORY, HotbarAction::ToggleDvmHistory);
+        //
+        // items.push(
+        //     HotbarSlot::new(HOTBAR_SLOT_NIP90, "N9", "NIP-90")
+        //         .active(self.pane_store.is_active("nip90")),
+        // );
+        // self.hotbar_bindings
+        //     .insert(HOTBAR_SLOT_NIP90, HotbarAction::ToggleNip90);
 
         let mut slot_to_pane: HashMap<u8, String> = HashMap::new();
         for (pane_id, slot) in self.chat_slot_assignments.iter() {
