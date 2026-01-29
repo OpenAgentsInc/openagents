@@ -488,12 +488,8 @@ impl PaneStore {
         if let Some(index) = self.pane_index(id) {
             let pane = self.panes.remove(index);
             if store_position {
-                self.closed_positions.insert(
-                    pane.id.clone(),
-                    PaneSnapshot {
-                        rect: pane.rect,
-                    },
-                );
+                self.closed_positions
+                    .insert(pane.id.clone(), PaneSnapshot { rect: pane.rect });
             }
             if self.active_pane_id.as_deref() == Some(id) {
                 self.active_pane_id = self.panes.last().map(|pane| pane.id.clone());
@@ -594,7 +590,12 @@ fn calculate_new_pane_position(
         if y + height > screen.height - PANE_MARGIN {
             y = PANE_MARGIN;
         }
-        PaneRect { x, y, width, height }
+        PaneRect {
+            x,
+            y,
+            width,
+            height,
+        }
     } else {
         PaneRect {
             x: (screen.width - width) * 0.5,
@@ -1236,10 +1237,16 @@ impl ChatPaneState {
                                         })
                                         .unwrap_or_default();
                                     if !summary_text.is_empty() && !has_summary {
-                                        self.append_reasoning_summary_delta(&item_id, &summary_text);
+                                        self.append_reasoning_summary_delta(
+                                            &item_id,
+                                            &summary_text,
+                                        );
                                     }
                                     if !content_text.is_empty() && !has_content {
-                                        self.append_reasoning_content_delta(&item_id, &content_text);
+                                        self.append_reasoning_content_delta(
+                                            &item_id,
+                                            &content_text,
+                                        );
                                     }
                                 }
                             }
@@ -1305,6 +1312,68 @@ impl ChatPaneState {
                     .and_then(|params| params.get("msg"))
                     .and_then(|msg| msg.get("message"))
                     .and_then(|m| m.as_str())
+                {
+                    self.append_user_message(text);
+                }
+            }
+            "guidance/step" => {
+                if let Some(params) = value.get("params") {
+                    let signature = params.get("signature").and_then(|value| value.as_str());
+                    let model = params.get("model").and_then(|value| value.as_str());
+                    let text = params.get("text").and_then(|value| value.as_str());
+                    if let Some(text) = text {
+                        let label = match (signature, model) {
+                            (Some(signature), Some(model)) => {
+                                format!("{signature}: {text} ({model})")
+                            }
+                            (Some(signature), None) => format!("{signature}: {text}"),
+                            _ => text.to_string(),
+                        };
+                        self.append_agent_text(&label);
+                    }
+                }
+            }
+            "guidance/response" => {
+                if let Some(params) = value.get("params") {
+                    let model = params.get("model").and_then(|value| value.as_str());
+                    let signatures = params
+                        .get("signatures")
+                        .and_then(|value| value.as_array())
+                        .map(|items| {
+                            items
+                                .iter()
+                                .filter_map(|item| item.as_str())
+                                .collect::<Vec<_>>()
+                        })
+                        .unwrap_or_default();
+                    if !signatures.is_empty() {
+                        let label = match model {
+                            Some(model) => {
+                                format!("Signatures: {} ({model})", signatures.join(" -> "))
+                            }
+                            None => format!("Signatures: {}", signatures.join(" -> ")),
+                        };
+                        self.append_agent_text(&label);
+                    } else if let Some(signature) =
+                        params.get("signature").and_then(|value| value.as_str())
+                    {
+                        let label = match model {
+                            Some(model) => format!("Signature: {signature} ({model})"),
+                            None => format!("Signature: {signature}"),
+                        };
+                        self.append_agent_text(&label);
+                    }
+                    if let Some(text) = params.get("text").and_then(|value| value.as_str()) {
+                        self.queued_in_flight = false;
+                        self.append_agent_text(text);
+                    }
+                }
+            }
+            "guidance/user_message" => {
+                if let Some(text) = value
+                    .get("params")
+                    .and_then(|params| params.get("text"))
+                    .and_then(|value| value.as_str())
                 {
                     self.append_user_message(text);
                 }
@@ -2059,12 +2128,9 @@ impl MinimalRoot {
     pub fn apply_event(&mut self, event: AppEvent) {
         match event {
             AppEvent::SessionStarted { session_id, .. } => {
-                let pane_id = self
-                    .pending_session_panes
-                    .pop_front()
-                    .unwrap_or_else(|| {
-                        self.open_chat_pane(self.screen_size(), true, false, DEFAULT_THREAD_MODEL)
-                    });
+                let pane_id = self.pending_session_panes.pop_front().unwrap_or_else(|| {
+                    self.open_chat_pane(self.screen_size(), true, false, DEFAULT_THREAD_MODEL)
+                });
                 if let Some(chat) = self.chat_panes.get_mut(&pane_id) {
                     chat.set_session_id(session_id);
                 }
@@ -2280,6 +2346,9 @@ impl MinimalRoot {
                             }
 
                             chat.apply_formatted_event(&value);
+                            if method == "guidance/response" {
+                                chat.flush_queue_if_idle(&mut self.send_handler);
+                            }
                         }
                     }
                 }
@@ -2518,26 +2587,27 @@ impl MinimalRoot {
 
     fn toggle_sell_compute_pane(&mut self, screen: Size) {
         let last_position = self.pane_store.last_pane_position;
-        self.pane_store.toggle_pane("sell_compute", screen, |snapshot| {
-            let rect = snapshot
-                .as_ref()
-                .map(|snapshot| snapshot.rect)
-                .unwrap_or_else(|| {
-                    calculate_new_pane_position(
-                        last_position,
-                        screen,
-                        SELL_COMPUTE_PANE_WIDTH,
-                        SELL_COMPUTE_PANE_HEIGHT,
-                    )
-                });
-            Pane {
-                id: "sell_compute".to_string(),
-                kind: PaneKind::SellCompute,
-                title: "Sell Compute".to_string(),
-                rect,
-                dismissable: true,
-            }
-        });
+        self.pane_store
+            .toggle_pane("sell_compute", screen, |snapshot| {
+                let rect = snapshot
+                    .as_ref()
+                    .map(|snapshot| snapshot.rect)
+                    .unwrap_or_else(|| {
+                        calculate_new_pane_position(
+                            last_position,
+                            screen,
+                            SELL_COMPUTE_PANE_WIDTH,
+                            SELL_COMPUTE_PANE_HEIGHT,
+                        )
+                    });
+                Pane {
+                    id: "sell_compute".to_string(),
+                    kind: PaneKind::SellCompute,
+                    title: "Sell Compute".to_string(),
+                    rect,
+                    dismissable: true,
+                }
+            });
 
         if self.pane_store.is_active("sell_compute") {
             if let Some(handler) = self.send_handler.as_mut() {
@@ -2629,8 +2699,7 @@ impl MinimalRoot {
             {
                 continue;
             }
-            self.chat_slot_assignments
-                .insert(pane_id.to_string(), slot);
+            self.chat_slot_assignments.insert(pane_id.to_string(), slot);
             break;
         }
     }
@@ -2701,8 +2770,7 @@ impl MinimalRoot {
                     .and_then(|id| self.chat_panes.get(id))
                     .map(|chat| chat.selected_reasoning.clone())
                     .unwrap_or_else(|| DEFAULT_REASONING_EFFORT.to_string());
-                let new_pane =
-                    self.open_chat_pane(screen, true, true, active_model.as_str());
+                let new_pane = self.open_chat_pane(screen, true, true, active_model.as_str());
                 if let Some(chat) = self.chat_panes.get_mut(&new_pane) {
                     chat.update_reasoning(&active_reasoning);
                 }
@@ -2792,8 +2860,8 @@ impl MinimalRoot {
             .filter(|id| self.chat_panes.contains_key(id));
 
         let start_id = focused_id.or(active_id);
-        let start_index = start_id
-            .and_then(|id| chat_ids.iter().position(|pane_id| pane_id == &id));
+        let start_index =
+            start_id.and_then(|id| chat_ids.iter().position(|pane_id| pane_id == &id));
 
         let next_index = match start_index {
             Some(index) => (index + 1) % chat_ids.len(),
@@ -3052,8 +3120,13 @@ impl MinimalRoot {
 
             if let Some(pane_bounds) = self.pane_bounds.get(&pane_id).copied() {
                 if let Some(frame) = self.pane_frames.get_mut(&pane_id) {
-                    if matches!(event, InputEvent::MouseDown { button: MouseButton::Left, .. })
-                        && frame.title_bounds().contains(self.cursor_position)
+                    if matches!(
+                        event,
+                        InputEvent::MouseDown {
+                            button: MouseButton::Left,
+                            ..
+                        }
+                    ) && frame.title_bounds().contains(self.cursor_position)
                         && !frame.close_bounds().contains(self.cursor_position)
                     {
                         if let Some(pane) = self.pane_store.pane(&pane_id) {
@@ -3136,8 +3209,11 @@ impl MinimalRoot {
                                 };
 
                                 let input_handled = matches!(
-                                    chat.input
-                                        .event(event, chat.input_bounds, &mut self.event_context),
+                                    chat.input.event(
+                                        event,
+                                        chat.input_bounds,
+                                        &mut self.event_context
+                                    ),
                                     EventResult::Handled
                                 );
 
@@ -3503,11 +3579,7 @@ impl MinimalRoot {
                     .filter(|part| !part.trim().is_empty())
                     .map(|part| part.trim().to_string())
                     .collect::<Vec<_>>();
-                let provider = self
-                    .nip90_provider_input
-                    .get_value()
-                    .trim()
-                    .to_string();
+                let provider = self.nip90_provider_input.get_value().trim().to_string();
                 let provider = if provider.is_empty() {
                     None
                 } else {
@@ -3539,8 +3611,7 @@ impl MinimalRoot {
                 block.push('\n');
             }
             if copy_to_clipboard(&block).is_ok() {
-                self.copy_feedback_until =
-                    Some(Instant::now() + self.copy_feedback_duration);
+                self.copy_feedback_until = Some(Instant::now() + self.copy_feedback_duration);
             }
         }
 
@@ -3658,24 +3729,19 @@ impl MinimalRoot {
             Cursor::Grabbing
         } else if self.pane_drag.is_some() {
             Cursor::Grabbing
-        } else if self
-            .pane_store
-            .panes()
-            .iter()
-            .rev()
-            .any(|pane| {
-                if let Some(bounds) = self.pane_bounds.get(&pane.id) {
-                    if bounds.contains(self.cursor_position) {
-                        if let Some(frame) = self.pane_frames.get(&pane.id) {
-                            let title_bounds = frame.title_bounds();
-                            let close_bounds = frame.close_bounds();
-                            return title_bounds.contains(self.cursor_position)
-                                && !close_bounds.contains(self.cursor_position);
-                        }
+        } else if self.pane_store.panes().iter().rev().any(|pane| {
+            if let Some(bounds) = self.pane_bounds.get(&pane.id) {
+                if bounds.contains(self.cursor_position) {
+                    if let Some(frame) = self.pane_frames.get(&pane.id) {
+                        let title_bounds = frame.title_bounds();
+                        let close_bounds = frame.close_bounds();
+                        return title_bounds.contains(self.cursor_position)
+                            && !close_bounds.contains(self.cursor_position);
                     }
                 }
-                false
-            }) {
+            }
+            false
+        }) {
             Cursor::Grab
         } else if self.hotbar.is_hovered() {
             Cursor::Pointer
@@ -3728,15 +3794,12 @@ impl MinimalRoot {
         {
             Cursor::Pointer
         } else if SHOW_MODEL_SELECTOR
-            && self
-                .chat_panes
-                .values()
-                .any(|chat| {
-                    chat.model_hovered
-                        || chat.model_dropdown.is_open()
-                        || chat.reasoning_hovered
-                        || chat.reasoning_dropdown.is_open()
-                })
+            && self.chat_panes.values().any(|chat| {
+                chat.model_hovered
+                    || chat.model_dropdown.is_open()
+                    || chat.reasoning_hovered
+                    || chat.reasoning_dropdown.is_open()
+            })
         {
             Cursor::Pointer
         } else if self
@@ -3769,10 +3832,8 @@ impl Default for MinimalRoot {
 
 impl Component for MinimalRoot {
     fn paint(&mut self, bounds: Bounds, cx: &mut PaintContext) {
-        cx.scene.draw_quad(
-            Quad::new(bounds)
-                .with_background(Hsla::black()),
-        );
+        cx.scene
+            .draw_quad(Quad::new(bounds).with_background(Hsla::black()));
 
         let mut dots_grid = DotsGrid::new()
             .shape(DotShape::Circle)
@@ -3781,12 +3842,8 @@ impl Component for MinimalRoot {
             .distance(GRID_DOT_DISTANCE)
             .size(1.5);
         let grid_offset = Point::new(
-            self.background_offset
-                .x
-                .rem_euclid(GRID_DOT_DISTANCE),
-            self.background_offset
-                .y
-                .rem_euclid(GRID_DOT_DISTANCE),
+            self.background_offset.x.rem_euclid(GRID_DOT_DISTANCE),
+            self.background_offset.y.rem_euclid(GRID_DOT_DISTANCE),
         );
         let grid_bounds = Bounds::new(
             bounds.origin.x + grid_offset.x,
@@ -3823,8 +3880,7 @@ impl Component for MinimalRoot {
         let base_layer = cx.scene.layer();
         let pane_layer_start = base_layer + 1;
         for (index, pane) in panes.iter().enumerate() {
-            cx.scene
-                .set_layer(pane_layer_start + index as u32);
+            cx.scene.set_layer(pane_layer_start + index as u32);
             let pane_bounds = Bounds::new(
                 bounds.origin.x + pane.rect.x,
                 bounds.origin.y + pane.rect.y,
@@ -3960,8 +4016,7 @@ impl Component for MinimalRoot {
                     .cloned()
                     .unwrap_or_else(|| "Chat".to_string());
                 items.push(
-                    HotbarSlot::new(slot, "CH", title)
-                        .active(self.pane_store.is_active(pane_id)),
+                    HotbarSlot::new(slot, "CH", title).active(self.pane_store.is_active(pane_id)),
                 );
                 self.hotbar_bindings
                     .insert(slot, HotbarAction::FocusPane(pane_id.clone()));
@@ -4144,13 +4199,13 @@ fn input_bar_metrics(
     let padding_x = 24.0;
     let padding_y = theme::spacing::MD;
     let button_font = theme::font_size::SM;
-    let send_label_width =
-        cx.text
-            .measure_styled_mono("Send", button_font, FontStyle::default());
+    let send_label_width = cx
+        .text
+        .measure_styled_mono("Send", button_font, FontStyle::default());
     let send_width = (send_label_width + 28.0).max(72.0);
-    let stop_label_width =
-        cx.text
-            .measure_styled_mono("Stop", button_font, FontStyle::default());
+    let stop_label_width = cx
+        .text
+        .measure_styled_mono("Stop", button_font, FontStyle::default());
     let stop_width = (stop_label_width + 28.0).max(72.0);
     let full_auto_label = if chat.full_auto_enabled {
         "Full Auto On"
@@ -4165,18 +4220,23 @@ fn input_bar_metrics(
     let queue_label_width = cx
         .text
         .measure_styled_mono("Queue", button_font, FontStyle::default())
-        .max(cx.text.measure_styled_mono(
-            "Instant",
-            button_font,
-            FontStyle::default(),
-        ));
+        .max(
+            cx.text
+                .measure_styled_mono("Instant", button_font, FontStyle::default()),
+        );
     let queue_width = (queue_label_width + 28.0).max(90.0);
     let show_stop = chat.is_processing();
 
     let mut total_width = (available_width - padding_x * 2.0).max(240.0);
     total_width = total_width.min(available_width - padding_x * 2.0);
-    let buttons_width =
-        metrics_buttons_width(queue_width, full_auto_width, send_width, stop_width, show_stop, gap);
+    let buttons_width = metrics_buttons_width(
+        queue_width,
+        full_auto_width,
+        send_width,
+        stop_width,
+        show_stop,
+        gap,
+    );
     let min_left = REASONING_DROPDOWN_MIN_WIDTH + 180.0 + gap;
     let left_available = (total_width - buttons_width - gap).max(min_left);
     let mut model_width = (left_available * 0.6).min(MODEL_DROPDOWN_WIDTH).max(180.0);
@@ -4296,11 +4356,12 @@ fn paint_input_bar(chat: &mut ChatPaneState, bounds: Bounds, cx: &mut PaintConte
         "Full Auto Off"
     };
     chat.full_auto_button.set_label(full_auto_label);
-    chat.full_auto_button.set_variant(if chat.full_auto_enabled {
-        ButtonVariant::Primary
-    } else {
-        ButtonVariant::Secondary
-    });
+    chat.full_auto_button
+        .set_variant(if chat.full_auto_enabled {
+            ButtonVariant::Primary
+        } else {
+            ButtonVariant::Secondary
+        });
     let queue_label = if chat.queue_mode { "Queue" } else { "Instant" };
     chat.queue_toggle_button.set_label(queue_label);
     chat.queue_toggle_button.set_variant(if chat.queue_mode {
@@ -4308,8 +4369,7 @@ fn paint_input_bar(chat: &mut ChatPaneState, bounds: Bounds, cx: &mut PaintConte
     } else {
         ButtonVariant::Secondary
     });
-    chat.full_auto_button
-        .set_disabled(chat.thread_id.is_none());
+    chat.full_auto_button.set_disabled(chat.thread_id.is_none());
     if chat.input_needs_focus {
         chat.input.focus();
         chat.input_needs_focus = false;
@@ -4374,12 +4434,12 @@ fn paint_identity_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintCon
     let centered_y = bounds.origin.y + (bounds.size.height - content_height).max(0.0) * 0.5;
     let mut y = centered_y.max(bounds.origin.y + padding);
 
-    let button_width = (cx
-        .text
-        .measure_styled_mono("Generate keys", nostr_font, FontStyle::default())
-        + 32.0)
-        .max(160.0)
-        .min(content_width);
+    let button_width =
+        (cx.text
+            .measure_styled_mono("Generate keys", nostr_font, FontStyle::default())
+            + 32.0)
+            .max(160.0)
+            .min(content_width);
     let keygen_bounds = Bounds::new(
         content_x + (content_width - button_width) / 2.0,
         y,
@@ -4395,95 +4455,65 @@ fn paint_identity_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintCon
         Text::new("nostr public key")
             .font_size(nostr_font)
             .color(theme::text::MUTED)
-            .paint(
-                Bounds::new(content_x, y, content_width, label_height),
-                cx,
-            );
+            .paint(Bounds::new(content_x, y, content_width, label_height), cx);
         y += label_height + label_value_gap;
         let mut npub_text = Text::new(npub)
             .font_size(nostr_font)
             .color(theme::text::PRIMARY);
         let (_, npub_height) = npub_text.size_hint_with_width(content_width);
         let npub_height = npub_height.unwrap_or(label_height);
-        npub_text.paint(
-            Bounds::new(content_x, y, content_width, npub_height),
-            cx,
-        );
+        npub_text.paint(Bounds::new(content_x, y, content_width, npub_height), cx);
         y += npub_height + value_spacing;
 
         Text::new("nostr secret key")
             .font_size(nostr_font)
             .color(theme::text::MUTED)
-            .paint(
-                Bounds::new(content_x, y, content_width, label_height),
-                cx,
-            );
+            .paint(Bounds::new(content_x, y, content_width, label_height), cx);
         y += label_height + label_value_gap;
         let mut nsec_text = Text::new(root.nostr_nsec.as_deref().unwrap_or(""))
             .font_size(nostr_font)
             .color(theme::text::PRIMARY);
         let (_, nsec_height) = nsec_text.size_hint_with_width(content_width);
         let nsec_height = nsec_height.unwrap_or(label_height);
-        nsec_text.paint(
-            Bounds::new(content_x, y, content_width, nsec_height),
-            cx,
-        );
+        nsec_text.paint(Bounds::new(content_x, y, content_width, nsec_height), cx);
         y += nsec_height + value_spacing;
 
         Text::new("spark public key")
             .font_size(nostr_font)
             .color(theme::text::MUTED)
-            .paint(
-                Bounds::new(content_x, y, content_width, label_height),
-                cx,
-            );
+            .paint(Bounds::new(content_x, y, content_width, label_height), cx);
         y += label_height + label_value_gap;
         let mut spark_text = Text::new(root.spark_pubkey_hex.as_deref().unwrap_or(""))
             .font_size(nostr_font)
             .color(theme::text::PRIMARY);
         let (_, spark_height) = spark_text.size_hint_with_width(content_width);
         let spark_height = spark_height.unwrap_or(label_height);
-        spark_text.paint(
-            Bounds::new(content_x, y, content_width, spark_height),
-            cx,
-        );
+        spark_text.paint(Bounds::new(content_x, y, content_width, spark_height), cx);
         y += spark_height + value_spacing;
 
         Text::new("seed phrase")
             .font_size(nostr_font)
             .color(theme::text::MUTED)
-            .paint(
-                Bounds::new(content_x, y, content_width, label_height),
-                cx,
-            );
+            .paint(Bounds::new(content_x, y, content_width, label_height), cx);
         y += label_height + label_value_gap;
         let mut seed_text = Text::new(seed_display)
             .font_size(nostr_font)
             .color(theme::text::PRIMARY);
         let (_, seed_height) = seed_text.size_hint_with_width(content_width);
         let seed_height = seed_height.unwrap_or(label_height);
-        seed_text.paint(
-            Bounds::new(content_x, y, content_width, seed_height),
-            cx,
-        );
+        seed_text.paint(Bounds::new(content_x, y, content_width, seed_height), cx);
     } else if let Some(err) = &root.nostr_error {
         let mut err_text = Text::new(err)
             .font_size(nostr_font)
             .color(theme::status::ERROR);
         let (_, err_height) = err_text.size_hint_with_width(content_width);
         let err_height = err_height.unwrap_or(label_height);
-        err_text.paint(
-            Bounds::new(content_x, y, content_width, err_height),
-            cx,
-        );
+        err_text.paint(Bounds::new(content_x, y, content_width, err_height), cx);
     } else {
         Text::new("No keypair generated yet.")
             .font_size(nostr_font)
             .color(theme::text::MUTED)
-            .paint(
-                Bounds::new(content_x, y, content_width, label_height),
-                cx,
-            );
+            .paint(Bounds::new(content_x, y, content_width, label_height), cx);
     }
 
     root.copy_bounds = Bounds::ZERO;
@@ -4523,11 +4553,12 @@ fn paint_pylon_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintContex
         "Turn On"
     };
     root.pylon_toggle_button.set_label(toggle_label);
-    root.pylon_toggle_button.set_variant(if root.pylon_status.running {
-        ButtonVariant::Secondary
-    } else {
-        ButtonVariant::Primary
-    });
+    root.pylon_toggle_button
+        .set_variant(if root.pylon_status.running {
+            ButtonVariant::Secondary
+        } else {
+            ButtonVariant::Primary
+        });
     root.pylon_toggle_button
         .set_disabled(root.pylon_status.last_error.is_some() && !root.pylon_status.running);
 
@@ -4568,7 +4599,11 @@ fn paint_pylon_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintContex
     if let Some(provider_active) = root.pylon_status.provider_active {
         Text::new(&format!(
             "Provider: {}",
-            if provider_active { "active" } else { "inactive" }
+            if provider_active {
+                "active"
+            } else {
+                "inactive"
+            }
         ))
         .font_size(text_size)
         .color(theme::text::MUTED)
@@ -4587,16 +4622,22 @@ fn paint_pylon_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintContex
         y += label_height + value_spacing;
     }
 
-    Text::new(&format!("Jobs completed: {}", root.pylon_status.jobs_completed))
-        .font_size(text_size)
-        .color(theme::text::MUTED)
-        .paint(Bounds::new(content_x, y, content_width, label_height), cx);
+    Text::new(&format!(
+        "Jobs completed: {}",
+        root.pylon_status.jobs_completed
+    ))
+    .font_size(text_size)
+    .color(theme::text::MUTED)
+    .paint(Bounds::new(content_x, y, content_width, label_height), cx);
     y += label_height + value_spacing;
 
-    Text::new(&format!("Earnings: {} msats", root.pylon_status.earnings_msats))
-        .font_size(text_size)
-        .color(theme::text::MUTED)
-        .paint(Bounds::new(content_x, y, content_width, label_height), cx);
+    Text::new(&format!(
+        "Earnings: {} msats",
+        root.pylon_status.earnings_msats
+    ))
+    .font_size(text_size)
+    .color(theme::text::MUTED)
+    .paint(Bounds::new(content_x, y, content_width, label_height), cx);
     y += label_height + value_spacing;
 
     if let Some(err) = root.pylon_status.last_error.as_deref() {
@@ -4664,10 +4705,13 @@ fn paint_wallet_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintConte
     .paint(Bounds::new(content_x, y, content_width, label_height), cx);
     y += label_height + value_spacing;
 
-    Text::new(&format!("On-chain: {} sats", root.wallet_status.onchain_sats))
-        .font_size(text_size)
-        .color(theme::text::MUTED)
-        .paint(Bounds::new(content_x, y, content_width, label_height), cx);
+    Text::new(&format!(
+        "On-chain: {} sats",
+        root.wallet_status.onchain_sats
+    ))
+    .font_size(text_size)
+    .color(theme::text::MUTED)
+    .paint(Bounds::new(content_x, y, content_width, label_height), cx);
     y += label_height + value_spacing;
 
     if let Some(address) = root.wallet_status.spark_address.as_deref() {
@@ -4724,8 +4768,7 @@ fn paint_sell_compute_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut Pain
     let running = root.sell_compute_status.running;
     root.sell_compute_online_button
         .set_disabled(running && provider_active);
-    root.sell_compute_offline_button
-        .set_disabled(!running);
+    root.sell_compute_offline_button.set_disabled(!running);
 
     let online_width = 92.0;
     let offline_width = 96.0;
@@ -4817,13 +4860,10 @@ fn paint_sell_compute_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut Pain
     .paint(Bounds::new(content_x, y, content_width, label_height), cx);
     y += label_height + value_spacing;
 
-    Text::new(&format!(
-        "Network: {}",
-        root.sell_compute_status.network
-    ))
-    .font_size(text_size)
-    .color(theme::text::MUTED)
-    .paint(Bounds::new(content_x, y, content_width, label_height), cx);
+    Text::new(&format!("Network: {}", root.sell_compute_status.network))
+        .font_size(text_size)
+        .color(theme::text::MUTED)
+        .paint(Bounds::new(content_x, y, content_width, label_height), cx);
     y += label_height + value_spacing;
 
     if !root.sell_compute_status.default_model.is_empty() {
@@ -4873,19 +4913,17 @@ fn paint_dvm_history_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut Paint
     let content_x = bounds.origin.x + (bounds.size.width - content_width) / 2.0;
     let mut y = bounds.origin.y + padding;
 
-    let refresh_bounds = Bounds::new(
-        content_x + content_width - 90.0,
-        y,
-        90.0,
-        button_height,
-    );
+    let refresh_bounds = Bounds::new(content_x + content_width - 90.0, y, 90.0, button_height);
     root.dvm_history_refresh_bounds = refresh_bounds;
     root.dvm_history_refresh_button.paint(refresh_bounds, cx);
 
     Text::new("Earnings summary")
         .font_size(text_size)
         .color(theme::text::PRIMARY)
-        .paint(Bounds::new(content_x, y + 6.0, content_width, label_height), cx);
+        .paint(
+            Bounds::new(content_x, y + 6.0, content_width, label_height),
+            cx,
+        );
     y += button_height + 10.0;
 
     Text::new(&format!(
@@ -5069,7 +5107,12 @@ fn paint_events_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintConte
     let header_height = 20.0;
     let content_width = bounds.size.width - padding * 2.0;
     let content_x = bounds.origin.x + padding;
-    let header_bounds = Bounds::new(content_x, bounds.origin.y + padding, content_width, header_height);
+    let header_bounds = Bounds::new(
+        content_x,
+        bounds.origin.y + padding,
+        content_width,
+        header_height,
+    );
     let copy_button_width = 68.0;
     let copy_bounds = Bounds::new(
         header_bounds.origin.x + header_bounds.size.width - copy_button_width,
@@ -5152,8 +5195,12 @@ fn paint_threads_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintCont
     let header_height = 20.0;
     let content_width = bounds.size.width - padding * 2.0;
     let content_x = bounds.origin.x + padding;
-    let header_bounds =
-        Bounds::new(content_x, bounds.origin.y + padding, content_width, header_height);
+    let header_bounds = Bounds::new(
+        content_x,
+        bounds.origin.y + padding,
+        content_width,
+        header_height,
+    );
     let refresh_button_width = 72.0;
     let refresh_bounds = Bounds::new(
         header_bounds.origin.x + header_bounds.size.width - refresh_button_width,
@@ -5262,10 +5309,7 @@ fn paint_threads_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintCont
         entry.open_bounds = row_bounds;
         entry.open_button.paint(row_bounds, cx);
 
-        let updated_label = updated_labels
-            .get(index)
-            .map(String::as_str)
-            .unwrap_or("-");
+        let updated_label = updated_labels.get(index).map(String::as_str).unwrap_or("-");
         let branch_label = branch_labels
             .get(index)
             .map(String::as_str)
@@ -6340,10 +6384,9 @@ fn format_event(event: &AppEvent) -> String {
                 "DvmProviderStatus (stopped)".to_string()
             }
         }
-        AppEvent::DvmHistory { snapshot } => format!(
-            "DvmHistory ({} jobs)",
-            snapshot.summary.job_count
-        ),
+        AppEvent::DvmHistory { snapshot } => {
+            format!("DvmHistory ({} jobs)", snapshot.summary.job_count)
+        }
         AppEvent::Nip90Log { message } => format!("Nip90Log ({message})"),
         AppEvent::ThreadsUpdated { threads } => format!("ThreadsUpdated ({})", threads.len()),
         AppEvent::ThreadLoaded { thread, .. } => format!("ThreadLoaded ({})", thread.id),

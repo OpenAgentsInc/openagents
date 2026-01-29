@@ -237,6 +237,71 @@ let sig = AgentMemorySignature::new();
 use dsrs::signatures::agent_memory::{is_simple_redundant, simple_similarity};
 ```
 
+### Full Auto & Guidance Modules
+
+Signatures that drive Autopilot Full Auto and Guidance Modules behavior.
+
+#### FullAutoDecisionSignature
+
+Decides whether a Full Auto run should continue, pause, stop, or request review.
+
+```rust
+use dsrs::signatures::FullAutoDecisionSignature;
+
+let sig = FullAutoDecisionSignature::new();
+
+// Inputs:
+// - thread_id, turn_id, last_turn_status
+// - turn_error, turn_plan, diff_summary
+// - token_usage, pending_approvals, pending_tool_inputs
+// - recent_actions, compaction_events
+
+// Outputs:
+// - action: continue | pause | stop | review
+// - next_input: next prompt if continuing
+// - reason: short justification
+// - confidence: 0.0..1.0
+```
+
+#### GuidanceDecisionSignature
+
+Decides the next guidance action after a Full Auto turn completes.
+
+```rust
+use dsrs::signatures::GuidanceDecisionSignature;
+
+let sig = GuidanceDecisionSignature::new();
+
+// Inputs:
+// - goal_intent, goal_success_criteria
+// - summary, state
+
+// Outputs:
+// - action: continue | pause | stop | review
+// - next_input: next prompt if continuing
+// - reason: short justification
+// - confidence: 0.0..1.0
+```
+
+#### GuidanceRouterSignature
+
+Routes the first Guidance Module response for a user message.
+
+```rust
+use dsrs::signatures::GuidanceRouterSignature;
+
+let sig = GuidanceRouterSignature::new();
+
+// Inputs:
+// - user_message
+// - goal_intent
+// - context (e.g. "full_auto")
+
+// Outputs:
+// - route: respond | understand | plan
+// - response: single-line guidance response to show in the UI
+```
+
 ## Plan IR & Execution
 
 Unified types for planning and execution across Adjutant and Autopilot.
@@ -1170,6 +1235,9 @@ Quick reference for all signatures by category:
 
 | Category | Signature | Location | Status |
 |----------|-----------|----------|--------|
+| **Autopilot** | FullAutoDecisionSignature | `crates/dsrs/src/signatures/full_auto.rs` | Implemented |
+|  | GuidanceDecisionSignature | `crates/dsrs/src/signatures/guidance.rs` | Implemented |
+|  | GuidanceRouterSignature | `crates/dsrs/src/signatures/guidance_router.rs` | Implemented |
 | **Coding Agent Loop** | *ContextSelectionSignature* | Spec in `crates/dsrs/docs/CODING_AGENT_LOOP.md` | Spec only |
 |  | *PlanningSignature (PlanIR)* | Spec in `crates/dsrs/docs/CODING_AGENT_LOOP.md` | Spec only |
 |  | *CompactionSummarySignature* | Spec in `crates/dsrs/docs/CODING_AGENT_LOOP.md` | Spec only |

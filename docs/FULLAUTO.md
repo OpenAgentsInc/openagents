@@ -110,8 +110,10 @@ Policy gating:
 
 ### Guidance Modules (demo mode)
 
-Full Auto now supports a **Guidance Modules** demo pipeline that uses a
-dedicated signature with goal/state context and runs on **local Ollama**.
+Full Auto now supports a **Guidance Modules** pipeline that intercepts the
+*first* user message in Full Auto and routes it through typed DSRS signatures.
+The guidance pipeline prefers the configured **Codex decision model** when
+available, and falls back to the **local Ollama** demo model.
 
 Enable demo mode with:
 
@@ -122,7 +124,12 @@ OPENAGENTS_GUIDANCE_MODEL=ollama:llama3.2  # optional override
 
 In demo mode:
 - Full Auto builds `GuidanceInputs` (goal + summary + state + permissions).
-- Decisions are produced by `GuidanceDecisionSignature`.
+- The first message runs `GuidanceRouterSignature` (route: respond | understand | plan).
+- Routes can call `TaskUnderstandingSignature` or `PlanningSignature` for a
+  richer initial response.
+- If the user sends a minimal “go/just do it” prompt, **super mode** runs
+  `TaskUnderstandingSignature → PlanningSignature → GuidanceDecisionSignature`,
+  emitting each step to the UI.
 - Guardrails are enforced the same way as legacy Full Auto decisions.
 
 CLI demo:
