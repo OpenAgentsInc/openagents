@@ -2,7 +2,7 @@
 
 **Legacy note (2026-01-27):** The Effuse/Tauri `apps/autopilot-desktop` tree has been removed.
 This plan is retained for historical context only; new UI work targets WGPUI
-(`apps/autopilot-desktop-wgpu` + `crates/autopilot_ui`).
+(`apps/autopilot-desktop` + `crates/autopilot_ui`).
 
 ## Summary
 

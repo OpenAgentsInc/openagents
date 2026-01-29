@@ -3,7 +3,7 @@
 ## Overview
 
 This document outlines the migration from the legacy `crates/autopilot/` monolith to the new
-modular architecture in `apps/autopilot-desktop-wgpu/` + supporting crates.
+modular architecture in `apps/autopilot-desktop/` + supporting crates.
 
 ## Current State
 
@@ -38,12 +38,12 @@ crates/autopilot/
 └── Cargo.toml
 ```
 
-### New Architecture (`apps/autopilot-desktop-wgpu/` + crates)
+### New Architecture (`apps/autopilot-desktop/` + crates)
 
 Clean separation of concerns with proper layering:
 
 ```
-apps/autopilot-desktop-wgpu/       # Desktop app shell (1.3k lines)
+apps/autopilot-desktop/       # Desktop app shell (1.3k lines)
 ├── src/
 │   ├── main.rs                    # Window, event loop, Codex client
 │   └── full_auto.rs               # Full-auto mode logic

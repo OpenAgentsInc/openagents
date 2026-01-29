@@ -34,7 +34,7 @@ OpenAgents is organized as a layered stack:
 
 ### Products
 - `crates/autopilot/` — user-facing app + CLI for autonomous coding runs (wgpui)
-- `apps/autopilot-desktop-wgpu/` — native WGPUI desktop host (winit + wgpu)
+- `apps/autopilot-desktop/` — native WGPUI desktop host (winit + wgpu)
 - `crates/autopilot-core/` — core execution loop, replay/session plumbing
 - `crates/onyx/` — local-first markdown editor
 - `crates/gitafter/` — Nostr-native git collaboration surface (NIP-34)
@@ -66,7 +66,7 @@ OpenAgents is organized as a layered stack:
 ## Where to start (common contributor paths)
 
 - "I want to improve Autopilot behavior" → `crates/autopilot/`, `crates/autopilot-core/`, `crates/adjutant/`
-- "I want to work on Autopilot Desktop UI" → `crates/autopilot_ui/` + `apps/autopilot-desktop-wgpu/`
+- "I want to work on Autopilot Desktop UI" → `crates/autopilot_ui/` + `apps/autopilot-desktop/`
 - "I want to add/optimize DSPy signatures" → `crates/dsrs/` (+ decision pipelines in `crates/adjutant/`)
 - "I want better replay/artifacts" → `crates/autopilot-core/` + specs in `crates/dsrs/docs/REPLAY.md` and `crates/dsrs/docs/ARTIFACTS.md`
 - "I want marketplace job schemas / verification" → `crates/protocol/` (+ any dispatchers)

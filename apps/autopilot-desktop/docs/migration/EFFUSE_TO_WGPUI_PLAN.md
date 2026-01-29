@@ -52,7 +52,7 @@ into reusable Rust libraries. This means:
 
 ### Binaries
 
-- `apps/autopilot-desktop-wgpu/`
+- `apps/autopilot-desktop/`
   Native WGPUI desktop app (new). Runs WGPUI root component.
 - `crates/autopilot/` (existing)
   Remains as the CLI + existing UI, but will share core runtime crates with
@@ -237,7 +237,7 @@ an interim sidecar or replace it outright. Viable paths:
 
 1) Bundle Bun + JS assets as a sidecar (fastest)
    - Ship the `bun` binary and JS assets alongside the WGPUI host (for example
-     under `apps/autopilot-desktop-wgpu/sidecar/`), or reuse `crates/ai-server`
+     under `apps/autopilot-desktop/sidecar/`), or reuse `crates/ai-server`
      helpers to manage the bundle.
    - On first run, copy to app data dir and spawn `bun run server.ts`.
    - Manage ports, logs, lifecycle (start/stop with app), and codesigning.
@@ -262,11 +262,11 @@ option (2) or (3) once the WGPUI app is stable.
 
 ### Phase 0: Native WGPUI Bootstrap
 
-Deliverable: `cargo run -p autopilot-desktop-wgpu` opens a window and renders
+Deliverable: `cargo run -p autopilot-desktop` opens a window and renders
 an initial WGPUI root.
 
 Checklist:
-- Add new binary crate `apps/autopilot-desktop-wgpu/`.
+- Add new binary crate `apps/autopilot-desktop/`.
 - Minimal app loop: window + renderer + WGPUI mount.
 - Render a simple WGPUI root (placeholder view or borrowed Autopilot UI).
 
@@ -421,24 +421,24 @@ Effuse catalog -> WGPUI target
 ## Work Log
 
 - 2026-01-27: Rewrote plan for full Rustiness (native WGPUI app, new crate layout, no Tauri), removed time estimates, and defined phased migration + deletion gates.
-- 2026-01-27: Phase 0 bootstrap started: added `apps/autopilot-desktop-wgpu` native WGPUI binary with a minimal render loop + text root, and registered it in the workspace.
-- 2026-01-27: Verified `cargo build -p autopilot-desktop-wgpu`.
+- 2026-01-27: Phase 0 bootstrap started: added `apps/autopilot-desktop` native WGPUI binary with a minimal render loop + text root, and registered it in the workspace.
+- 2026-01-27: Verified `cargo build -p autopilot-desktop`.
 - 2026-01-27: Updated `.cargo/config.toml` so `cargo autopilot` runs the new native WGPUI desktop binary.
 - 2026-01-27: Phase 1 started: added `crates/autopilot_app` with core app/event types, workspace/session handles, and broadcast-based event streaming; added a unit test for initial workspace events; registered the crate in the workspace.
 - 2026-01-27: Verified `cargo build -p autopilot_app`.
 - 2026-01-27: Reviewed Zed GPUI architecture (entities + Render/RenderOnce + contexts) and updated Phase 3 to follow that immediate-mode component model.
 - 2026-01-27: Dropped legacy UI protocol compatibility from the migration plan; moved to typed view model + AppEvent/UserAction replay.
-- 2026-01-27: Phase 3 started: wired `apps/autopilot-desktop-wgpu` to `crates/autopilot_app`, added an immediate-mode `AppViewModel` + `DesktopRoot` component, and bridged app events into the Winit user-event loop for rendering.
-- 2026-01-27: Verified `cargo build -p autopilot-desktop-wgpu` after Phase 3 wiring.
+- 2026-01-27: Phase 3 started: wired `apps/autopilot-desktop` to `crates/autopilot_app`, added an immediate-mode `AppViewModel` + `DesktopRoot` component, and bridged app events into the Winit user-event loop for rendering.
+- 2026-01-27: Verified `cargo build -p autopilot-desktop` after Phase 3 wiring.
 - 2026-01-27: Phase 4 completed (core surfaces): added session list + event log panels driven by the typed `AppViewModel`, with two-column layout and immediate-mode rendering.
-- 2026-01-27: Verified `cargo build -p autopilot-desktop-wgpu` after Phase 4 UI scaffolding.
+- 2026-01-27: Verified `cargo build -p autopilot-desktop` after Phase 4 UI scaffolding.
 - 2026-01-27: Phase 4b completed: created `crates/autopilot_ui`, moved the desktop root view + view model into it, and updated the WGPUI host to consume shared UI components.
-- 2026-01-27: Verified `cargo build -p autopilot-desktop-wgpu` after moving shared UI into `crates/autopilot_ui`.
-- 2026-01-27: Phase 4c completed: added ThreadView + MessageEditor conversation panel with tool call cards (read/search/terminal/diff/edit), added plan/trajectory sidebar view, session search bar, and thread controls (mode/model/run state) in `crates/autopilot_ui`, plus scroll routing + input handling via Winit in `apps/autopilot-desktop-wgpu`.
+- 2026-01-27: Verified `cargo build -p autopilot-desktop` after moving shared UI into `crates/autopilot_ui`.
+- 2026-01-27: Phase 4c completed: added ThreadView + MessageEditor conversation panel with tool call cards (read/search/terminal/diff/edit), added plan/trajectory sidebar view, session search bar, and thread controls (mode/model/run state) in `crates/autopilot_ui`, plus scroll routing + input handling via Winit in `apps/autopilot-desktop`.
 - 2026-01-27: Wired UI send actions to `autopilot_app` via an action channel so Enter/send dispatches `UserAction::Message` back into the app core.
-- 2026-01-27: Verified `cargo build -p autopilot-desktop-wgpu` after Phase 4c UI + input wiring.
+- 2026-01-27: Verified `cargo build -p autopilot-desktop` after Phase 4c UI + input wiring.
 - 2026-01-27: Reviewed Zed GPUI layout approach (element tree + Taffy, `h_flex`/`v_flex`, `StyledExt`) and expanded the migration plan with a Zed-style layout adoption path, including WGPUI parity helpers and layout conversion gates.
-- 2026-01-27: Re-read `apps/autopilot-desktop-wgpu/docs/migration/TESTABILITY.md` and aligned the plan with testability requirements (service traits, deterministic UI tests, log/replay).
+- 2026-01-27: Re-read `apps/autopilot-desktop/docs/migration/TESTABILITY.md` and aligned the plan with testability requirements (service traits, deterministic UI tests, log/replay).
 - 2026-01-27: Added a dedicated Phase 2b testability spine (headless scenarios, replay, layout snapshots) and expanded acceptance gates for contract correctness + determinism.
 - 2026-01-27: Removed legacy UI protocol references from the plan and testability alignment; moved to typed view model + AppEvent/UserAction replay.
 - 2026-01-27: Phase 3b started: replaced manual panel layout math with Taffy-powered flex layout in `crates/autopilot_ui`.
@@ -447,8 +447,8 @@ Effuse catalog -> WGPUI target
 - 2026-01-27: Phase 4 continued: switched desktop host layout + input to logical sizes (scale-factor aware) so UI scales correctly on high-DPI displays.
 - 2026-01-27: Phase 5 started: removed legacy Tauri workspace members and updated repo docs to point to the WGPUI desktop host.
 - 2026-01-27: Added LayoutStyle `flex_row`/`flex_col` helpers and switched autopilot UI layout to use WGPUI layout helpers instead of direct Taffy imports.
-- 2026-01-27: Verified `cargo build -p autopilot-desktop-wgpu` after layout + DPI fixes.
-- 2026-01-27: Moved migration docs under `apps/autopilot-desktop-wgpu/docs/migration` and updated repo documentation links.
+- 2026-01-27: Verified `cargo build -p autopilot-desktop` after layout + DPI fixes.
+- 2026-01-27: Moved migration docs under `apps/autopilot-desktop/docs/migration` and updated repo documentation links.
 - 2026-01-27: Removed legacy crates `autopilot_ui_contract` and `autopilot-desktop-runner` from the workspace (sources deleted; references cleaned up).
 - 2026-01-27: Added view model reducer tests and layout sanity tests in `crates/autopilot_ui`, plus pointer docs under `apps/autopilot-desktop/docs/migration/`.
 - 2026-01-27: Verified `cargo test -p autopilot_ui`.

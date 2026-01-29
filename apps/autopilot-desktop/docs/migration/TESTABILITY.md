@@ -29,7 +29,7 @@ WGPUI native host.
 - **Backend (legacy)**: Tauri-based Rust services, removed with the Tauri app.
 - **Core Agent Logic**: Lives in [`crates/autopilot-core/src/agent.rs`](file:///Users/christopherdavid/code/openagents/crates/autopilot-core/src/agent.rs) with DSPy-powered planning
 - **Target UI Stack**: WGPUI immediate-mode UI in `crates/autopilot_ui/` and native host in
-  `apps/autopilot-desktop-wgpu/`, moving toward Zed/GPUI-style layout and test harnesses.
+  `apps/autopilot-desktop/`, moving toward Zed/GPUI-style layout and test harnesses.
 
 ### Current UI Event Flow
 ```
@@ -38,7 +38,7 @@ Backend (Adjutant) → AppEvent stream → Typed ViewModel → WGPUI Render tree
 
 **Key Files:**
 - App core: `crates/autopilot_app/`
-- Desktop host: `apps/autopilot-desktop-wgpu/`
+- Desktop host: `apps/autopilot-desktop/`
 - Shared UI: `crates/autopilot_ui/`
 
 ### Current UI Components Structure
@@ -141,7 +141,7 @@ Concrete services:
 * `FsLive`, `GitLive`, `ProcLive`, `HttpLive`, `ModelLive`, `DbLive`, etc.
 * These live in `crates/autopilot_services/*` or inside the crate but clearly separated.
 
-#### Layer C: UI Host (`apps/autopilot-desktop-wgpu`)
+#### Layer C: UI Host (`apps/autopilot-desktop`)
 
 WGPUI renderer + OS integration:
 
@@ -611,7 +611,7 @@ Deliverables:
 
 ### Harness 4: Full Desktop smoke E2E (optional but valuable)
 
-**Scope:** compiled `autopilot-desktop-wgpu` in CI
+**Scope:** compiled `autopilot-desktop` in CI
 
 * Launch desktop in headless mode if possible (or use OS runner)
 * Use an automation driver only for a **thin smoke test**
@@ -665,7 +665,7 @@ Use JSON Lines (`.jsonl`) for simplicity:
   * scenario name
 
 Desktop host support:
-* Set `AUTOPILOT_REPLAY_PATH` to capture AppEvent JSONL from `autopilot-desktop-wgpu`.
+* Set `AUTOPILOT_REPLAY_PATH` to capture AppEvent JSONL from `autopilot-desktop`.
 
 ### Replay APIs
 

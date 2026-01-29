@@ -5,8 +5,8 @@ the documentation so the root README can stay focused on the app.
 
 ## Autopilot Desktop (WGPUI)
 
-* Desktop migration plan: `apps/autopilot-desktop-wgpu/docs/migration/EFFUSE_TO_WGPUI_PLAN.md`
-* Testability spec: `apps/autopilot-desktop-wgpu/docs/migration/TESTABILITY.md`
+* Desktop migration plan: `apps/autopilot-desktop/docs/migration/EFFUSE_TO_WGPUI_PLAN.md`
+* Testability spec: `apps/autopilot-desktop/docs/migration/TESTABILITY.md`
 
 ## Core references
 

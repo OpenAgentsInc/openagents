@@ -621,7 +621,7 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
             let full_auto_state = Arc::new(tokio::sync::Mutex::new(None::<FullAutoState>));
 
             let client_info = ClientInfo {
-                name: "autopilot-desktop-wgpu".to_string(),
+                name: "autopilot-desktop".to_string(),
                 title: Some("Autopilot Desktop".to_string()),
                 version: env!("CARGO_PKG_VERSION").to_string(),
             };
