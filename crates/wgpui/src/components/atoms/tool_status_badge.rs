@@ -73,13 +73,9 @@ impl Default for ToolStatusBadge {
 
 impl Component for ToolStatusBadge {
     fn paint(&mut self, bounds: Bounds, cx: &mut PaintContext) {
-        let dot_size = (self.font_size * 0.6).clamp(6.0, 10.0);
-        let dot_bounds = Bounds::new(
-            bounds.origin.x,
-            bounds.origin.y + (bounds.size.height - dot_size) / 2.0,
-            dot_size,
-            dot_size,
-        );
+        let dot_size = (self.font_size * 0.6).clamp(6.0, 10.0).round();
+        let dot_y = (bounds.origin.y + (bounds.size.height - dot_size) / 2.0).round();
+        let dot_bounds = Bounds::new(bounds.origin.x, dot_y, dot_size, dot_size);
 
         cx.scene.draw_quad(
             Quad::new(dot_bounds)
