@@ -151,3 +151,4 @@ Add pane types and map them into the pane registry:
 - Implemented Phase 5 NIP-90 dashboard surface: added NIP-90 pane + hotbar slot with job submission inputs, wired submit action to DvmClient with Pylon identity and relays, and streamed submission/result logs into the pane.
 - Implemented Phase 6 hotbar wiring: added explicit hotbar slots for Sell Compute, DVM History, and NIP-90 panes and expanded the hotbar slot range to keep chat slots stable.
 - Implemented Phase 7 verification: ran `cargo test -p autopilot_app -p autopilot_ui -p autopilot-desktop-wgpu` (warnings from `pylon` crate noted in output).
+- Implemented Phase 8 cleanup: addressed `pylon` warning noise by removing an unused `mut` and explicitly allowing dead-code helper functions in `local_bridge`.
