@@ -149,6 +149,14 @@ impl RenderState {
             self.text_system.set_scale_factor(self.effective_scale());
         }
     }
+
+    fn set_zoom(&mut self, zoom: f32) {
+        let next = zoom.clamp(ZOOM_MIN, ZOOM_MAX);
+        if (next - self.zoom_factor).abs() > f32::EPSILON {
+            self.zoom_factor = next;
+            self.text_system.set_scale_factor(self.effective_scale());
+        }
+    }
 }
 
 impl ApplicationHandler<AppEvent> for App {
@@ -299,15 +307,23 @@ impl ApplicationHandler<AppEvent> for App {
             WindowEvent::KeyboardInput { event, .. } => {
                 if event.state == ElementState::Pressed && self.modifiers.super_key() {
                     if let WinitKey::Character(ch) = &event.logical_key {
-                        let step = match ch.as_str() {
-                            "+" | "=" => Some(ZOOM_STEP_KEY),
-                            "-" => Some(-ZOOM_STEP_KEY),
-                            _ => None,
-                        };
-                        if let Some(step) = step {
-                            state.bump_zoom(step);
-                            state.window.request_redraw();
-                            return;
+                        match ch.as_str() {
+                            "+" | "=" => {
+                                state.bump_zoom(ZOOM_STEP_KEY);
+                                state.window.request_redraw();
+                                return;
+                            }
+                            "-" => {
+                                state.bump_zoom(-ZOOM_STEP_KEY);
+                                state.window.request_redraw();
+                                return;
+                            }
+                            "0" => {
+                                state.set_zoom(1.0);
+                                state.window.request_redraw();
+                                return;
+                            }
+                            _ => {}
                         }
                     }
                 }
