@@ -16,6 +16,13 @@ OpenAgents is organized as a layered stack:
 - **Runtime + infra**: tools, sandboxes, logging, provider routing
 - **Protocols**: Nostr messaging + typed job schemas + receipts (where applicable)
 
+### Product framing: Autonomy-as-a-Service
+
+Autopilot is positioned as **predictable autonomy**: a bounded, auditable
+delegation contract with clear scope, time horizon, constraints, verification,
+and escalation behavior. Signatures/modules make this sellable by turning each
+decision step into a measurable work unit with receipts and utility labels.
+
 ## Core flows
 
 ### Autopilot (local) execution loop

@@ -33,6 +33,20 @@ Autonomy becomes practical when it is built like a systems stack:
 4. **Open protocols and portability**
    Identity, coordination, and markets should not require a platform account. Agents should be able to move between operators, clients, and providers without losing their history or their ability to transact.
 
+## Predictable autonomy (Autonomy-as-a-Service)
+
+People don’t pay for “AI.” They pay for **predictable autonomy** — a contracted
+outcome over time:
+
+- **Scope**: “Do X”
+- **Horizon**: “over the next 24–48 hours”
+- **Constraints**: budget, privacy, repo boundaries, allowed tools
+- **Verification**: objective checks (tests pass, PR merged, receipts emitted)
+- **Reliability**: known failure modes + escalation (“pause + ask human”)
+
+Composable signatures/modules turn this into a product: stable I/O contracts,
+receipts, utility labels, and measurable deltas that can be optimized and priced.
+
 ## Principles
 
 - **Local-first by default**

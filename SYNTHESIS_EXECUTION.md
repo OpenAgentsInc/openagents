@@ -7,6 +7,8 @@
 
 A decentralized AI compute marketplace where agents run inference, earn Bitcoin, and operate autonomously. This document explains how the entire system works.
 
+**Product framing:** OpenAgents sells **predictable autonomy** (Autonomy‑as‑a‑Service) — a contracted outcome over time with explicit scope, horizon, constraints, verification, and escalation behavior. Signatures/modules make this sellable by turning decisions into measurable, auditable work units with receipts and utility labels.
+
 For the full vision, see [SYNTHESIS.md](./SYNTHESIS.md). For the agent OS concept, see [OANIX.md](./docs/OANIX.md).
 
 ### Implementation Status
