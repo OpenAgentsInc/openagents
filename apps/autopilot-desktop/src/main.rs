@@ -2194,46 +2194,45 @@ async fn run_guidance_super(
     let requirements_raw = prediction_to_string(&understanding, "requirements");
     let questions_raw = prediction_to_string(&understanding, "clarifying_questions");
     signatures.push("TaskUnderstandingSignature".to_string());
-    if let Some(question) = extract_first_json_string(&questions_raw) {
-        let question = strip_question_marks(&question);
-        let step_text = sanitize_guidance_response(&format!("Clarify: {}.", question));
-        emit_guidance_step(
-            proxy,
-            thread_id,
-            "TaskUnderstandingSignature",
-            &step_text,
-            &lm.model,
-        );
-        return Ok((step_text, signatures));
-    }
-    if let Some(requirement) = extract_first_json_string(&requirements_raw) {
+    let requirement = extract_first_json_string(&requirements_raw);
+    let question = extract_first_json_string(&questions_raw);
+    let step_text = if let Some(requirement) = requirement.as_ref() {
         let task_label = if task_type.trim().is_empty() {
             "Task".to_string()
         } else {
             task_type.clone()
         };
-        let step_text =
-            sanitize_guidance_response(&format!("{} focus: {}.", task_label, requirement));
-        emit_guidance_step(
-            proxy,
-            thread_id,
-            "TaskUnderstandingSignature",
-            &step_text,
-            &lm.model,
-        );
+        sanitize_guidance_response(&format!("{} focus: {}.", task_label, requirement))
+    } else if question.is_some() {
+        let intent = if goal_intent.trim().is_empty() {
+            "continue with the next logical task".to_string()
+        } else {
+            goal_intent.trim().to_string()
+        };
+        sanitize_guidance_response(&format!("Assumed intent: {}.", intent))
     } else {
-        emit_guidance_step(
-            proxy,
-            thread_id,
-            "TaskUnderstandingSignature",
-            "Task understanding complete.",
-            &lm.model,
-        );
-    }
+        sanitize_guidance_response("Assumed intent: continue with the next logical task.")
+    };
+    emit_guidance_step(
+        proxy,
+        thread_id,
+        "TaskUnderstandingSignature",
+        &step_text,
+        &lm.model,
+    );
 
     let planning_predictor = Predict::new(PlanningSignature::new());
+    let planning_message = if message.trim().len() <= 4 {
+        if goal_intent.trim().is_empty() {
+            "Continue with the next logical task.".to_string()
+        } else {
+            goal_intent.to_string()
+        }
+    } else {
+        message.to_string()
+    };
     let planning_inputs = example! {
-        "task_description": "input" => message.to_string(),
+        "task_description": "input" => planning_message,
         "repo_context": "input" => repo_context,
         "file_tree": "input" => "".to_string(),
         "context_summary": "input" => "".to_string(),
@@ -2265,6 +2264,7 @@ async fn run_guidance_super(
         "task_type": task_type,
         "requirements": requirements_raw,
         "plan_steps": steps_raw,
+        "assumptions": if question.is_some() { "Proceed without clarification" } else { "" },
     });
     let summary_json = serde_json::to_string_pretty(&summary_payload)
         .unwrap_or_else(|_| summary_payload.to_string());
