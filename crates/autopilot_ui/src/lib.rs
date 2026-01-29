@@ -24,7 +24,7 @@ use wgpui::components::sections::{MessageEditor, ThreadView};
 use wgpui::components::{Text, TextInput};
 use wgpui::input::{InputEvent, Key, NamedKey};
 use wgpui::{
-    Bounds, Button, ButtonVariant, Component, Cursor, Dropdown, DropdownOption, EventResult,
+    Bounds, Button, ButtonVariant, Component, Cursor, Dropdown, DropdownOption, EventResult, Hsla,
     LayoutEngine, LayoutStyle, MarkdownConfig, MarkdownDocument, MarkdownView, MouseButton,
     PaintContext, Point, Quad, ScrollView, Size, StreamingMarkdown, copy_to_clipboard, length, px,
     text::FontStyle, theme,
@@ -3486,7 +3486,7 @@ impl Component for MinimalRoot {
     fn paint(&mut self, bounds: Bounds, cx: &mut PaintContext) {
         cx.scene.draw_quad(
             Quad::new(bounds)
-                .with_background(theme::bg::APP),
+                .with_background(Hsla::black()),
         );
 
         let mut dots_grid = DotsGrid::new()
