@@ -393,6 +393,11 @@ struct PaneDragState {
 }
 
 #[derive(Clone, Debug)]
+struct CanvasPanState {
+    last: Point,
+}
+
+#[derive(Clone, Debug)]
 struct PaneResizeState {
     pane_id: String,
     edge: ResizeEdge,
@@ -466,6 +471,20 @@ impl PaneStore {
     fn update_rect(&mut self, id: &str, rect: PaneRect) {
         if let Some(index) = self.pane_index(id) {
             self.panes[index].rect = rect;
+        }
+    }
+
+    fn offset_all(&mut self, dx: f32, dy: f32) {
+        if dx == 0.0 && dy == 0.0 {
+            return;
+        }
+        for pane in &mut self.panes {
+            pane.rect.x += dx;
+            pane.rect.y += dy;
+        }
+        if let Some(last) = self.last_pane_position.as_mut() {
+            last.x += dx;
+            last.y += dy;
         }
     }
 
@@ -564,6 +583,7 @@ pub struct MinimalRoot {
     pane_bounds: HashMap<String, Bounds>,
     pane_drag: Option<PaneDragState>,
     pane_resize: Option<PaneResizeState>,
+    canvas_pan: Option<CanvasPanState>,
     pane_resizer: ResizablePane,
     chat_panes: HashMap<String, ChatPaneState>,
     chat_slot_assignments: HashMap<String, u8>,
@@ -1756,6 +1776,7 @@ impl MinimalRoot {
             pane_bounds: HashMap::new(),
             pane_drag: None,
             pane_resize: None,
+            canvas_pan: None,
             pane_resizer,
             chat_panes: HashMap::new(),
             chat_slot_assignments: HashMap::new(),
@@ -2614,11 +2635,43 @@ impl MinimalRoot {
             }
         }
 
+        if let Some(pan) = self.canvas_pan.clone() {
+            match event {
+                InputEvent::MouseMove { x, y } => {
+                    let next = Point::new(*x, *y);
+                    let dx = next.x - pan.last.x;
+                    let dy = next.y - pan.last.y;
+                    self.pane_store.offset_all(dx, dy);
+                    self.canvas_pan = Some(CanvasPanState { last: next });
+                    return true;
+                }
+                InputEvent::MouseUp {
+                    button: MouseButton::Left,
+                    ..
+                } => {
+                    self.canvas_pan = None;
+                    return true;
+                }
+                _ => {}
+            }
+        }
+
         if let InputEvent::MouseDown {
             button: MouseButton::Left,
             ..
         } = event
         {
+            if self.pane_resize.is_none() && self.pane_drag.is_none() {
+                let over_pane = self.pane_at(self.cursor_position).is_some();
+                let over_hotbar = self.hotbar_bounds.contains(self.cursor_position);
+                if !over_pane && !over_hotbar {
+                    self.canvas_pan = Some(CanvasPanState {
+                        last: self.cursor_position,
+                    });
+                    return true;
+                }
+            }
+
             if self.pane_resize.is_none() {
                 if let Some((pane_id, edge)) = self.pane_resize_target(self.cursor_position) {
                     if let Some(pane) = self.pane_store.pane(&pane_id) {
