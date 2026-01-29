@@ -1,12 +1,12 @@
-use chrono::Utc;
 use autopilot_core::guidance::{
     GuidanceAction, GuidanceDecision, GuidanceDecisionDiagnostics, GuidanceDecisionResult,
-    GuidanceGoal, GuidanceGuardrailConfig, GuidanceGuardrailContext,
-    GuidanceInputs, GuidanceMode, GuidanceNetwork, GuidancePermissions, GuidanceState,
-    apply_guidance_guardrails, guidance_demo_model,
+    GuidanceGoal, GuidanceGuardrailConfig, GuidanceGuardrailContext, GuidanceInputs, GuidanceMode,
+    GuidanceNetwork, GuidancePermissions, GuidanceState, apply_guidance_guardrails,
+    guidance_demo_model,
 };
+use chrono::Utc;
 use dsrs::signatures::FullAutoDecisionSignature;
-use dsrs::{example, LM, Predict, Predictor};
+use dsrs::{LM, Predict, Predictor, example};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::collections::HashMap;
@@ -14,8 +14,7 @@ use std::env;
 use std::time::{SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
 
-pub const DEFAULT_CONTINUE_PROMPT: &str =
-    "Continue immediately. Do not ask for confirmation or pause. If errors occur, recover and keep going.";
+pub const DEFAULT_CONTINUE_PROMPT: &str = "Continue immediately. Do not ask for confirmation or pause. If errors occur, recover and keep going.";
 
 const ENV_DECISION_MODEL: &str = "OPENAGENTS_FULL_AUTO_DECISION_MODEL";
 const ENV_MAX_TOKENS: &str = "OPENAGENTS_FULL_AUTO_MAX_TOKENS";
@@ -155,13 +154,17 @@ pub struct FullAutoState {
 }
 
 impl FullAutoState {
-    pub fn new(workspace_id: &str, thread_id: Option<String>, continue_prompt: Option<String>) -> Self {
+    pub fn new(
+        workspace_id: &str,
+        thread_id: Option<String>,
+        continue_prompt: Option<String>,
+    ) -> Self {
         let config = FullAutoConfig::default();
         let run_id = format!("fullauto-{}", Uuid::new_v4());
         let started_at = Utc::now();
         let guidance_mode = GuidanceMode::from_env();
         let guidance_goal = guidance_goal_from_env();
-        let guidance_activated = guidance_mode == GuidanceMode::Demo;
+        let guidance_activated = false;
         let _ = json!({
             "runId": run_id,
             "workspaceId": workspace_id,
@@ -345,6 +348,10 @@ impl FullAutoState {
         self.guidance_mode
     }
 
+    pub fn guidance_goal_intent(&self) -> String {
+        self.guidance_goal.intent.clone()
+    }
+
     pub fn activate_guidance_mode(&mut self) -> bool {
         if self.guidance_activated {
             return false;
@@ -362,7 +369,8 @@ impl FullAutoState {
             .max_tokens
             .and_then(|max| tokens_used.map(|used| max.saturating_sub(used)));
         let permissions = GuidancePermissions::new(true, true, GuidanceNetwork::Full);
-        let mut state = GuidanceState::new(summary.turn_count, summary.no_progress_count, permissions);
+        let mut state =
+            GuidanceState::new(summary.turn_count, summary.no_progress_count, permissions);
         state.tokens_used = tokens_used;
         state.tokens_remaining = tokens_remaining;
         GuidanceInputs {
@@ -552,11 +560,7 @@ fn read_prediction_confidence(
             ),
         },
         Value::Null => (0.0, None, Some("confidence missing".to_string())),
-        other => (
-            0.0,
-            Some(other),
-            Some("confidence not numeric".to_string()),
-        ),
+        other => (0.0, Some(other), Some("confidence not numeric".to_string())),
     }
 }
 

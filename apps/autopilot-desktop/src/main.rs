@@ -1,20 +1,26 @@
 use std::collections::HashMap;
+use std::env;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, mpsc};
 
 use anyhow::{Context, Result};
-use autopilot_core::guidance::{GuidanceMode, ensure_guidance_demo_lm, run_guidance_decision};
 use autopilot_app::{
     App as AutopilotApp, AppConfig, AppEvent, DvmHistorySnapshot, DvmProviderStatus, EventRecorder,
     PylonStatus, SessionId, UserAction, WalletStatus,
 };
+use autopilot_core::guidance::{GuidanceMode, ensure_guidance_demo_lm, run_guidance_decision};
 use autopilot_ui::MinimalRoot;
 use codex_client::{
-    AppServerClient, AppServerConfig, AskForApproval, ClientInfo, SandboxMode, SandboxPolicy,
-    ReasoningEffort, ThreadListParams, ThreadResumeParams, ThreadStartParams, TurnInterruptParams,
+    AppServerClient, AppServerConfig, AskForApproval, ClientInfo, ReasoningEffort, SandboxMode,
+    SandboxPolicy, ThreadListParams, ThreadResumeParams, ThreadStartParams, TurnInterruptParams,
     TurnStartParams, UserInput,
 };
+use dsrs::signatures::{
+    GuidanceDecisionSignature, GuidanceRouterSignature, PlanningSignature,
+    TaskUnderstandingSignature,
+};
+use dsrs::{Predict, Predictor, example};
 use full_auto::{
     FullAutoAction, FullAutoDecisionRequest, FullAutoDecisionResult, FullAutoState, decision_model,
     ensure_codex_lm, run_full_auto_decision,
@@ -26,7 +32,7 @@ use openagents_runtime::UnifiedIdentity;
 use openagents_spark::{Network as SparkNetwork, SparkSigner, SparkWallet, WalletConfig};
 use pylon::PylonConfig;
 use pylon::db::{PylonDb, jobs::JobStatus};
-use pylon::provider::{PylonProvider, ProviderError};
+use pylon::provider::{ProviderError, PylonProvider};
 use serde_json::{Value, json};
 use tracing_subscriber::EnvFilter;
 use wgpui::renderer::Renderer;
@@ -48,6 +54,9 @@ const WINDOW_HEIGHT: f64 = 800.0;
 const PADDING: f32 = 0.0;
 const EVENT_BUFFER: usize = 256;
 const DEFAULT_THREAD_MODEL: &str = "gpt-5.1-codex-mini";
+const ENV_GUIDANCE_GOAL: &str = "OPENAGENTS_GUIDANCE_GOAL";
+const DEFAULT_GUIDANCE_GOAL_INTENT: &str =
+    "Keep making progress on the current task using the latest plan and diff.";
 const ZOOM_MIN: f32 = 0.5;
 const ZOOM_MAX: f32 = 2.5;
 const ZOOM_STEP_KEY: f32 = 0.1;
@@ -265,9 +274,7 @@ impl ApplicationHandler<AppEvent> for App {
             }
             WindowEvent::MouseWheel { delta, .. } => {
                 let (dx, dy, zoom_dir) = match delta {
-                    winit::event::MouseScrollDelta::LineDelta(x, y) => {
-                        (-x * 24.0, -y * 24.0, y)
-                    }
+                    winit::event::MouseScrollDelta::LineDelta(x, y) => (-x * 24.0, -y * 24.0, y),
                     winit::event::MouseScrollDelta::PixelDelta(pos) => {
                         let scale = state.effective_scale();
                         (-pos.x as f32 / scale, -pos.y as f32 / scale, pos.y as f32)
@@ -294,7 +301,8 @@ impl ApplicationHandler<AppEvent> for App {
 
                 if !handled {
                     let input_event = InputEvent::Scroll { dx, dy };
-                    let bounds = content_bounds(logical_size(&state.config, state.effective_scale()));
+                    let bounds =
+                        content_bounds(logical_size(&state.config, state.effective_scale()));
                     if state.root.handle_input(&input_event, bounds) {
                         state.window.request_redraw();
                         handled = true;
@@ -584,8 +592,10 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
             let workspace = Arc::new(app.open_workspace(cwd.clone()));
             let workspace_id = workspace.workspace_id().to_string();
             let mut stream = workspace.events();
-            let session_states =
-                Arc::new(tokio::sync::Mutex::new(HashMap::<SessionId, SessionRuntime>::new()));
+            let session_states = Arc::new(tokio::sync::Mutex::new(HashMap::<
+                SessionId,
+                SessionRuntime,
+            >::new()));
             let thread_to_session =
                 Arc::new(tokio::sync::Mutex::new(HashMap::<String, SessionId>::new()));
 
@@ -716,8 +726,7 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
                                 })
                                 .map(|id| id.to_string());
                             if let Some(next_turn) = next_turn {
-                                let session_id = if let Some(thread_id) =
-                                    thread_id_value.as_deref()
+                                let session_id = if let Some(thread_id) = thread_id_value.as_deref()
                                 {
                                     thread_to_session_notifications
                                         .lock()
@@ -902,7 +911,8 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
                             let decision_result = match guidance_mode {
                                 GuidanceMode::Demo => {
                                     let Some(inputs) = guidance_inputs.as_ref() else {
-                                        let error = "Guidance inputs missing; pausing Full Auto.".to_string();
+                                        let error = "Guidance inputs missing; pausing Full Auto."
+                                            .to_string();
                                         let payload = json!({
                                             "method": "fullauto/decision",
                                             "params": {
@@ -934,7 +944,9 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
                                     };
                                     run_guidance_decision(inputs, &lm).await
                                 }
-                                GuidanceMode::Legacy => run_full_auto_decision(&request.summary, &lm).await,
+                                GuidanceMode::Legacy => {
+                                    run_full_auto_decision(&request.summary, &lm).await
+                                }
                             };
 
                             let decision_result = match decision_result {
@@ -1067,7 +1079,9 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
                                     };
                                     let _ = client.turn_start(params).await;
                                 }
-                                FullAutoAction::Pause | FullAutoAction::Stop | FullAutoAction::Review => {
+                                FullAutoAction::Pause
+                                | FullAutoAction::Stop
+                                | FullAutoAction::Review => {
                                     let mut guard = full_auto_state.lock().await;
                                     *guard = None;
                                     let _ = proxy.send_event(AppEvent::AppServerEvent {
@@ -1153,7 +1167,8 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
                             let workspace_id = workspace_id.clone();
                             let session_states = session_states_for_actions.clone();
                             let thread_to_session = thread_to_session_for_actions.clone();
-                            let session_handle = workspace.start_session(Some("New chat".to_string()));
+                            let session_handle =
+                                workspace.start_session(Some("New chat".to_string()));
                             let session_id = session_handle.session_id();
                             let session_state = SessionRuntime::new();
 
@@ -1238,11 +1253,8 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
                             let session_states = session_states_for_actions.clone();
                             let full_auto_state = full_auto_state.clone();
                             handle.spawn(async move {
-                                let session_state = session_states
-                                    .lock()
-                                    .await
-                                    .get(&session_id)
-                                    .cloned();
+                                let session_state =
+                                    session_states.lock().await.get(&session_id).cloned();
                                 let Some(session_state) = session_state else {
                                     let _ = proxy.send_event(AppEvent::AppServerEvent {
                                         message: json!({
@@ -1264,23 +1276,111 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
                                     });
                                     return;
                                 };
-                                {
+                                let (should_intercept, cached_lm, goal_intent) = {
                                     let mut guard = full_auto_state.lock().await;
                                     if let Some(state) = guard.as_mut() {
                                         if state.matches_thread(Some(thread_id.as_str())) {
                                             state.adopt_thread(&thread_id);
-                                            state.activate_guidance_mode();
+                                            let should_intercept = state.activate_guidance_mode();
+                                            (
+                                                should_intercept,
+                                                state.decision_lm(),
+                                                state.guidance_goal_intent(),
+                                            )
+                                        } else {
+                                            (false, None, guidance_goal_intent())
+                                        }
+                                    } else {
+                                        (false, None, guidance_goal_intent())
+                                    }
+                                };
+
+                                if should_intercept {
+                                    let _ = proxy.send_event(AppEvent::AppServerEvent {
+                                        message: json!({
+                                            "method": "guidance/user_message",
+                                            "params": {
+                                                "threadId": thread_id,
+                                                "text": text
+                                            }
+                                        })
+                                        .to_string(),
+                                    });
+                                    let (lm, should_cache) = match resolve_guidance_lm(cached_lm)
+                                        .await
+                                    {
+                                        Ok(result) => result,
+                                        Err(error) => {
+                                            let payload = json!({
+                                                "method": "guidance/response",
+                                                "params": {
+                                                    "threadId": thread_id,
+                                                    "text": format!("Guidance error: {error}"),
+                                                    "signatures": ["GuidanceRouterSignature"],
+                                                    "model": "unknown"
+                                                }
+                                            });
+                                            let _ = proxy.send_event(AppEvent::AppServerEvent {
+                                                message: payload.to_string(),
+                                            });
+                                            return;
+                                        }
+                                    };
+                                    if should_cache {
+                                        let mut guard = full_auto_state.lock().await;
+                                        if let Some(state) = guard.as_mut() {
+                                            state.set_decision_lm(lm.clone());
                                         }
                                     }
+                                    let (response, signatures) = if is_super_trigger(&text) {
+                                        match run_guidance_super(
+                                            &proxy,
+                                            &thread_id,
+                                            &text,
+                                            &goal_intent,
+                                            &lm,
+                                        )
+                                        .await
+                                        {
+                                            Ok(result) => result,
+                                            Err(error) => (
+                                                format!("Guidance error: {error}"),
+                                                vec![
+                                                    "TaskUnderstandingSignature".to_string(),
+                                                    "PlanningSignature".to_string(),
+                                                    "GuidanceDecisionSignature".to_string(),
+                                                ],
+                                            ),
+                                        }
+                                    } else {
+                                        match run_guidance_router(&text, &goal_intent, &lm).await {
+                                            Ok(result) => result,
+                                            Err(error) => (
+                                                format!("Guidance error: {error}"),
+                                                vec!["GuidanceRouterSignature".to_string()],
+                                            ),
+                                        }
+                                    };
+                                    let payload = json!({
+                                        "method": "guidance/response",
+                                        "params": {
+                                            "threadId": thread_id,
+                                            "text": response,
+                                            "signatures": signatures,
+                                            "model": lm.model
+                                        }
+                                    });
+                                    let _ = proxy.send_event(AppEvent::AppServerEvent {
+                                        message: payload.to_string(),
+                                    });
+                                    return;
                                 }
 
                                 let params = TurnStartParams {
                                     thread_id,
                                     input: vec![UserInput::Text { text }],
                                     model,
-                                    effort: reasoning
-                                        .as_deref()
-                                        .and_then(parse_reasoning_effort),
+                                    effort: reasoning.as_deref().and_then(parse_reasoning_effort),
                                     summary: None,
                                     approval_policy: Some(AskForApproval::Never),
                                     sandbox_policy: Some(SandboxPolicy::WorkspaceWrite {
@@ -1324,7 +1424,8 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
                                                 created_at: thread.created_at,
                                             })
                                             .collect::<Vec<_>>();
-                                        let _ = proxy.send_event(AppEvent::ThreadsUpdated { threads });
+                                        let _ =
+                                            proxy.send_event(AppEvent::ThreadsUpdated { threads });
                                     }
                                     Err(err) => {
                                         let _ = proxy.send_event(AppEvent::AppServerEvent {
@@ -1369,8 +1470,7 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
                                 {
                                     Ok(response) => {
                                         {
-                                            let mut guard =
-                                                session_state.thread_id.lock().await;
+                                            let mut guard = session_state.thread_id.lock().await;
                                             *guard = Some(response.thread.id.clone());
                                         }
                                         {
@@ -1413,11 +1513,8 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
                             let proxy = proxy_actions.clone();
                             let session_states = session_states_for_actions.clone();
                             handle.spawn(async move {
-                                let session_state = session_states
-                                    .lock()
-                                    .await
-                                    .get(&session_id)
-                                    .cloned();
+                                let session_state =
+                                    session_states.lock().await.get(&session_id).cloned();
                                 let Some(session_state) = session_state else {
                                     let _ = proxy.send_event(AppEvent::AppServerEvent {
                                         message: json!({
@@ -1527,9 +1624,8 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
                             let status = handle.block_on(async {
                                 match load_pylon_config_ollama() {
                                     Ok(config) => {
-                                        let _ =
-                                            start_pylon_in_process(&mut pylon_runtime, &config)
-                                                .await;
+                                        let _ = start_pylon_in_process(&mut pylon_runtime, &config)
+                                            .await;
                                         fetch_dvm_provider_status(&mut pylon_runtime, &config).await
                                     }
                                     Err(err) => dvm_provider_status_error(err.to_string()),
@@ -1542,9 +1638,8 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
                             let status = handle.block_on(async {
                                 match load_pylon_config_ollama() {
                                     Ok(config) => {
-                                        let _ =
-                                            stop_pylon_in_process(&mut pylon_runtime, &config)
-                                                .await;
+                                        let _ = stop_pylon_in_process(&mut pylon_runtime, &config)
+                                            .await;
                                         fetch_dvm_provider_status(&mut pylon_runtime, &config).await
                                     }
                                     Err(err) => dvm_provider_status_error(err.to_string()),
@@ -1561,13 +1656,12 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
                                     Err(err) => dvm_provider_status_error(err.to_string()),
                                 }
                             });
-                            let _ = proxy_actions
-                                .send_event(AppEvent::DvmProviderStatus { status });
+                            let _ =
+                                proxy_actions.send_event(AppEvent::DvmProviderStatus { status });
                         }
                         UserAction::DvmHistoryRefresh => {
                             let snapshot = fetch_dvm_history();
-                            let _ = proxy_actions
-                                .send_event(AppEvent::DvmHistory { snapshot });
+                            let _ = proxy_actions.send_event(AppEvent::DvmHistory { snapshot });
                         }
                         UserAction::Nip90Submit {
                             kind,
@@ -1664,8 +1758,8 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
 
                                 let relay_refs: Vec<&str> =
                                     relays.iter().map(|relay| relay.as_str()).collect();
-                                let submission =
-                                    match client.submit_job(request, &relay_refs).await {
+                                let submission = match client.submit_job(request, &relay_refs).await
+                                {
                                     Ok(submission) => submission,
                                     Err(err) => {
                                         log(format!("Job submission failed: {err}"));
@@ -1676,7 +1770,10 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
                                 log(format!("Submitted job {}", submission.event_id));
 
                                 match client
-                                    .await_result(&submission.event_id, std::time::Duration::from_secs(60))
+                                    .await_result(
+                                        &submission.event_id,
+                                        std::time::Duration::from_secs(60),
+                                    )
                                     .await
                                 {
                                     Ok(result) => {
@@ -1705,11 +1802,8 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
                             let session_states = session_states_for_actions.clone();
                             handle.spawn(async move {
                                 let thread_id = {
-                                    let state = session_states
-                                        .lock()
-                                        .await
-                                        .get(&session_id)
-                                        .cloned();
+                                    let state =
+                                        session_states.lock().await.get(&session_id).cloned();
                                     if let Some(state) = state {
                                         state.thread_id.lock().await.clone()
                                     } else {
@@ -1801,6 +1895,478 @@ fn extract_turn_id(params: Option<&Value>) -> Option<String> {
         .map(|id| id.to_string())
 }
 
+fn guidance_goal_intent() -> String {
+    env::var(ENV_GUIDANCE_GOAL)
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| DEFAULT_GUIDANCE_GOAL_INTENT.to_string())
+}
+
+fn is_super_trigger(message: &str) -> bool {
+    let trimmed = message.trim().to_lowercase();
+    let normalized = trimmed
+        .trim_matches(|ch: char| !ch.is_alphanumeric() && !ch.is_whitespace())
+        .to_string();
+    matches!(
+        normalized.as_str(),
+        "go" | "go ahead"
+            | "do it"
+            | "just do it"
+            | "do the thing"
+            | "do this"
+            | "execute"
+            | "run it"
+            | "continue"
+            | "proceed"
+            | "ship it"
+            | "make it happen"
+    )
+}
+
+fn guidance_response_score(text: &str) -> f32 {
+    let trimmed = text.trim();
+    if trimmed.is_empty() {
+        return 0.0;
+    }
+    if trimmed.contains('\n') || trimmed.len() > 140 {
+        return 0.0;
+    }
+    if trimmed.contains('?') || trimmed.contains('`') || trimmed.contains('\"') {
+        return 0.0;
+    }
+    let lower = trimmed.to_lowercase();
+    let banned = [
+        "i am an ai",
+        "i'm an ai",
+        "as an ai",
+        "i do not have",
+        "i don't have",
+        "i cannot",
+        "i can't",
+        "i am a language model",
+    ];
+    if banned.iter().any(|phrase| lower.contains(phrase)) {
+        return 0.0;
+    }
+    1.0
+}
+
+fn sanitize_guidance_response(text: &str) -> String {
+    let mut line = text.lines().next().unwrap_or("").trim().to_string();
+    line = line.trim_matches('"').trim_matches('\'').trim().to_string();
+    if line.len() > 140 {
+        line.truncate(140);
+    }
+    line
+}
+
+fn fallback_guidance_response(goal_intent: &str) -> String {
+    if goal_intent.trim().is_empty() {
+        "Summarize the request and propose the next concrete step.".to_string()
+    } else {
+        format!(
+            "Summarize the request and propose the next step toward: {}.",
+            goal_intent.trim()
+        )
+    }
+}
+
+async fn resolve_guidance_lm(cached_lm: Option<dsrs::LM>) -> Result<(dsrs::LM, bool), String> {
+    if let Some(lm) = cached_lm.clone()
+        && lm.model.starts_with("codex:")
+    {
+        return Ok((lm, false));
+    }
+    if let Ok(lm) = ensure_codex_lm(&decision_model()).await {
+        return Ok((lm, true));
+    }
+    if let Some(lm) = cached_lm {
+        return Ok((lm, false));
+    }
+    let lm = ensure_guidance_demo_lm().await?;
+    Ok((lm, true))
+}
+
+fn prediction_to_string(prediction: &dsrs::Prediction, key: &str) -> String {
+    match prediction.get(key, None) {
+        Value::String(text) => text.clone(),
+        Value::Number(number) => number.to_string(),
+        Value::Bool(value) => value.to_string(),
+        Value::Null => "".to_string(),
+        other => other.to_string(),
+    }
+}
+
+fn guidance_repo_context() -> String {
+    env::current_dir()
+        .ok()
+        .map(|path| format!("Repo path: {}", path.display()))
+        .unwrap_or_else(|| "Repo path: unknown".to_string())
+}
+
+fn emit_guidance_step(
+    proxy: &EventLoopProxy<AppEvent>,
+    thread_id: &str,
+    signature: &str,
+    text: &str,
+    model: &str,
+) {
+    let payload = json!({
+        "method": "guidance/step",
+        "params": {
+            "threadId": thread_id,
+            "signature": signature,
+            "text": text,
+            "model": model
+        }
+    });
+    let _ = proxy.send_event(AppEvent::AppServerEvent {
+        message: payload.to_string(),
+    });
+}
+
+fn extract_first_json_string(raw: &str) -> Option<String> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() || trimmed == "[]" {
+        return None;
+    }
+    if let Ok(Value::Array(items)) = serde_json::from_str::<Value>(trimmed) {
+        for item in items {
+            if let Some(text) = item.as_str() {
+                if !text.trim().is_empty() {
+                    return Some(text.trim().to_string());
+                }
+            } else if !item.is_null() {
+                let text = item.to_string();
+                if !text.trim().is_empty() {
+                    return Some(text);
+                }
+            }
+        }
+    }
+    let first = trimmed
+        .split('\n')
+        .map(str::trim)
+        .find(|line| !line.is_empty());
+    first.map(|line| line.trim_matches('"').trim_matches('\'').to_string())
+}
+
+fn extract_first_step_description(raw: &str) -> Option<String> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() || trimmed == "[]" {
+        return None;
+    }
+    if let Ok(Value::Array(items)) = serde_json::from_str::<Value>(trimmed) {
+        for item in items {
+            if let Some(desc) = item.get("description").and_then(|value| value.as_str()) {
+                if !desc.trim().is_empty() {
+                    return Some(desc.trim().to_string());
+                }
+            }
+        }
+    }
+    None
+}
+
+fn strip_question_marks(text: &str) -> String {
+    text.replace('?', "").trim().to_string()
+}
+
+async fn run_task_understanding(
+    message: &str,
+    repo_context: &str,
+    goal_intent: &str,
+    lm: &dsrs::LM,
+) -> Result<String, String> {
+    let predictor = Predict::new(TaskUnderstandingSignature::new());
+    let inputs = example! {
+        "user_request": "input" => message.to_string(),
+        "repo_context": "input" => repo_context.to_string(),
+    };
+    let lm = std::sync::Arc::new(lm.clone());
+    let prediction = predictor
+        .forward_with_config(inputs, lm)
+        .await
+        .map_err(|e| format!("Task understanding failed: {e}"))?;
+    let task_type = prediction_to_string(&prediction, "task_type");
+    let requirements_raw = prediction_to_string(&prediction, "requirements");
+    let questions_raw = prediction_to_string(&prediction, "clarifying_questions");
+    if let Some(question) = extract_first_json_string(&questions_raw) {
+        let question = strip_question_marks(&question);
+        return Ok(sanitize_guidance_response(&format!(
+            "Need clarification: {}.",
+            question
+        )));
+    }
+    if let Some(requirement) = extract_first_json_string(&requirements_raw) {
+        let task_type = if task_type.trim().is_empty() {
+            "Task".to_string()
+        } else {
+            task_type
+        };
+        return Ok(sanitize_guidance_response(&format!(
+            "{} focus: {}.",
+            task_type, requirement
+        )));
+    }
+    Ok(fallback_guidance_response(goal_intent))
+}
+
+async fn run_planning_summary(
+    message: &str,
+    repo_context: &str,
+    goal_intent: &str,
+    lm: &dsrs::LM,
+) -> Result<String, String> {
+    let predictor = Predict::new(PlanningSignature::new());
+    let inputs = example! {
+        "task_description": "input" => message.to_string(),
+        "repo_context": "input" => repo_context.to_string(),
+        "file_tree": "input" => "".to_string(),
+        "context_summary": "input" => "".to_string(),
+        "constraints": "input" => "full_auto_guidance".to_string(),
+    };
+    let lm = std::sync::Arc::new(lm.clone());
+    let prediction = predictor
+        .forward_with_config(inputs, lm)
+        .await
+        .map_err(|e| format!("Planning failed: {e}"))?;
+    let steps_raw = prediction_to_string(&prediction, "steps");
+    if let Some(step) = extract_first_step_description(&steps_raw) {
+        return Ok(sanitize_guidance_response(&format!("Next step: {}.", step)));
+    }
+    Ok(fallback_guidance_response(goal_intent))
+}
+
+async fn handle_guidance_route(
+    message: &str,
+    goal_intent: &str,
+    route: &str,
+    response: &str,
+    lm: &dsrs::LM,
+) -> Result<(String, Vec<String>), String> {
+    let mut signatures = vec!["GuidanceRouterSignature".to_string()];
+    let repo_context = guidance_repo_context();
+    match route.trim().to_lowercase().as_str() {
+        "understand" => {
+            let text = run_task_understanding(message, &repo_context, goal_intent, lm).await?;
+            signatures.push("TaskUnderstandingSignature".to_string());
+            Ok((text, signatures))
+        }
+        "plan" => {
+            let text = run_planning_summary(message, &repo_context, goal_intent, lm).await?;
+            signatures.push("PlanningSignature".to_string());
+            Ok((text, signatures))
+        }
+        _ => {
+            let text = if response.trim().is_empty() {
+                fallback_guidance_response(goal_intent)
+            } else {
+                sanitize_guidance_response(response)
+            };
+            Ok((text, signatures))
+        }
+    }
+}
+
+async fn run_guidance_super(
+    proxy: &EventLoopProxy<AppEvent>,
+    thread_id: &str,
+    message: &str,
+    goal_intent: &str,
+    lm: &dsrs::LM,
+) -> Result<(String, Vec<String>), String> {
+    let mut signatures = Vec::new();
+    let repo_context = guidance_repo_context();
+    let lm_arc = std::sync::Arc::new(lm.clone());
+
+    let understanding_predictor = Predict::new(TaskUnderstandingSignature::new());
+    let understanding_inputs = example! {
+        "user_request": "input" => message.to_string(),
+        "repo_context": "input" => repo_context.clone(),
+    };
+    let understanding = understanding_predictor
+        .forward_with_config(understanding_inputs, lm_arc.clone())
+        .await
+        .map_err(|e| format!("Task understanding failed: {e}"))?;
+    let task_type = prediction_to_string(&understanding, "task_type");
+    let requirements_raw = prediction_to_string(&understanding, "requirements");
+    let questions_raw = prediction_to_string(&understanding, "clarifying_questions");
+    signatures.push("TaskUnderstandingSignature".to_string());
+    if let Some(question) = extract_first_json_string(&questions_raw) {
+        let question = strip_question_marks(&question);
+        let step_text = sanitize_guidance_response(&format!("Clarify: {}.", question));
+        emit_guidance_step(
+            proxy,
+            thread_id,
+            "TaskUnderstandingSignature",
+            &step_text,
+            &lm.model,
+        );
+        return Ok((step_text, signatures));
+    }
+    if let Some(requirement) = extract_first_json_string(&requirements_raw) {
+        let task_label = if task_type.trim().is_empty() {
+            "Task".to_string()
+        } else {
+            task_type.clone()
+        };
+        let step_text =
+            sanitize_guidance_response(&format!("{} focus: {}.", task_label, requirement));
+        emit_guidance_step(
+            proxy,
+            thread_id,
+            "TaskUnderstandingSignature",
+            &step_text,
+            &lm.model,
+        );
+    } else {
+        emit_guidance_step(
+            proxy,
+            thread_id,
+            "TaskUnderstandingSignature",
+            "Task understanding complete.",
+            &lm.model,
+        );
+    }
+
+    let planning_predictor = Predict::new(PlanningSignature::new());
+    let planning_inputs = example! {
+        "task_description": "input" => message.to_string(),
+        "repo_context": "input" => repo_context,
+        "file_tree": "input" => "".to_string(),
+        "context_summary": "input" => "".to_string(),
+        "constraints": "input" => "full_auto_guidance".to_string(),
+    };
+    let planning = planning_predictor
+        .forward_with_config(planning_inputs, lm_arc.clone())
+        .await
+        .map_err(|e| format!("Planning failed: {e}"))?;
+    let steps_raw = prediction_to_string(&planning, "steps");
+    let first_step = extract_first_step_description(&steps_raw);
+    signatures.push("PlanningSignature".to_string());
+    if let Some(step) = first_step.as_ref() {
+        let step_text = sanitize_guidance_response(&format!("Plan step: {}.", step));
+        emit_guidance_step(proxy, thread_id, "PlanningSignature", &step_text, &lm.model);
+    } else {
+        emit_guidance_step(
+            proxy,
+            thread_id,
+            "PlanningSignature",
+            "Plan ready.",
+            &lm.model,
+        );
+    }
+
+    let decision_predictor = Predict::new(GuidanceDecisionSignature::new());
+    let summary_payload = json!({
+        "user_message": message,
+        "task_type": task_type,
+        "requirements": requirements_raw,
+        "plan_steps": steps_raw,
+    });
+    let summary_json = serde_json::to_string_pretty(&summary_payload)
+        .unwrap_or_else(|_| summary_payload.to_string());
+    let state_payload = json!({
+        "mode": "super",
+        "turn_count": 0,
+        "no_progress_count": 0,
+        "permissions": {
+            "can_exec": true,
+            "can_write": true,
+            "network": "full"
+        }
+    });
+    let state_json =
+        serde_json::to_string_pretty(&state_payload).unwrap_or_else(|_| state_payload.to_string());
+    let decision_inputs = example! {
+        "goal_intent": "input" => goal_intent.to_string(),
+        "goal_success_criteria": "input" => "[]".to_string(),
+        "summary": "input" => summary_json,
+        "state": "input" => state_json,
+    };
+    let decision = decision_predictor
+        .forward_with_config(decision_inputs, lm_arc)
+        .await
+        .map_err(|e| format!("Guidance decision failed: {e}"))?;
+    let action = prediction_to_string(&decision, "action");
+    let next_input = prediction_to_string(&decision, "next_input");
+    let reason = prediction_to_string(&decision, "reason");
+    signatures.push("GuidanceDecisionSignature".to_string());
+    let decision_text = if !next_input.trim().is_empty() {
+        format!("Decision: {} — {}.", action, next_input)
+    } else if !reason.trim().is_empty() {
+        format!("Decision: {} — {}.", action, reason)
+    } else {
+        format!("Decision: {}.", action)
+    };
+    emit_guidance_step(
+        proxy,
+        thread_id,
+        "GuidanceDecisionSignature",
+        &sanitize_guidance_response(&decision_text),
+        &lm.model,
+    );
+
+    let final_response = if !next_input.trim().is_empty() {
+        sanitize_guidance_response(&next_input)
+    } else if let Some(step) = first_step {
+        sanitize_guidance_response(&format!("Next step: {}.", step))
+    } else if !reason.trim().is_empty() {
+        sanitize_guidance_response(&reason)
+    } else {
+        fallback_guidance_response(goal_intent)
+    };
+
+    Ok((final_response, signatures))
+}
+
+async fn run_guidance_router(
+    message: &str,
+    goal_intent: &str,
+    lm: &dsrs::LM,
+) -> Result<(String, Vec<String>), String> {
+    let predictor = Predict::new(GuidanceRouterSignature::new());
+    let inputs = example! {
+        "user_message": "input" => message.to_string(),
+        "goal_intent": "input" => goal_intent.to_string(),
+        "context": "input" => "full_auto".to_string(),
+    };
+    let lm = std::sync::Arc::new(lm.clone());
+    let mut best: Option<(String, String, f32)> = None;
+    for _ in 0..3 {
+        let prediction = predictor
+            .forward_with_config(inputs.clone(), lm.clone())
+            .await
+            .map_err(|e| format!("Guidance router failed: {e}"))?;
+        let response = prediction_to_string(&prediction, "response");
+        let route = prediction_to_string(&prediction, "route");
+        let mut score = guidance_response_score(&response);
+        let route_norm = route.trim().to_lowercase();
+        if matches!(route_norm.as_str(), "plan" | "understand") {
+            score = score.max(0.9);
+        }
+        if score >= 0.9 {
+            return handle_guidance_route(message, goal_intent, &route, &response, lm.as_ref())
+                .await;
+        }
+        if best.as_ref().map(|(_, _, s)| score > *s).unwrap_or(true) {
+            best = Some((response, route, score));
+        }
+    }
+    if let Some((response, route, score)) = best {
+        if score > 0.0 {
+            return handle_guidance_route(message, goal_intent, &route, &response, lm.as_ref())
+                .await;
+        }
+    }
+    Ok((
+        fallback_guidance_response(goal_intent),
+        vec!["GuidanceRouterSignature".to_string()],
+    ))
+}
+
 fn build_tool_input_response(params: &Value) -> Value {
     let mut answers = serde_json::Map::new();
     let questions = params
@@ -1866,9 +2432,7 @@ fn pylon_identity_exists(config: &PylonConfig) -> bool {
 fn load_or_init_identity(config: &PylonConfig) -> Result<UnifiedIdentity> {
     let identity_path = identity_path_for_config(config)?;
     if identity_path.exists() {
-        let mnemonic = std::fs::read_to_string(&identity_path)?
-            .trim()
-            .to_string();
+        let mnemonic = std::fs::read_to_string(&identity_path)?.trim().to_string();
         return UnifiedIdentity::from_mnemonic(&mnemonic, "")
             .map_err(|err| anyhow::anyhow!("Failed to load identity: {err}"));
     }
@@ -1904,10 +2468,7 @@ fn dvm_provider_status_error(err: impl Into<String>) -> DvmProviderStatus {
     }
 }
 
-async fn init_pylon_identity(
-    state: &mut InProcessPylon,
-    config: &PylonConfig,
-) -> PylonStatus {
+async fn init_pylon_identity(state: &mut InProcessPylon, config: &PylonConfig) -> PylonStatus {
     match load_or_init_identity(config) {
         Ok(_) => state.last_error = None,
         Err(err) => state.last_error = Some(err.to_string()),
@@ -1915,10 +2476,7 @@ async fn init_pylon_identity(
     refresh_pylon_status(state, config).await
 }
 
-async fn start_pylon_in_process(
-    state: &mut InProcessPylon,
-    config: &PylonConfig,
-) -> PylonStatus {
+async fn start_pylon_in_process(state: &mut InProcessPylon, config: &PylonConfig) -> PylonStatus {
     if let Some(provider) = state.provider.as_ref() {
         let provider_status = provider.status().await;
         if provider_status.running {
@@ -1954,7 +2512,11 @@ async fn start_pylon_in_process(
     }
 
     let provider_status = provider.status().await;
-    if !provider_status.backends.iter().any(|backend| backend == "ollama") {
+    if !provider_status
+        .backends
+        .iter()
+        .any(|backend| backend == "ollama")
+    {
         state.last_error = Some("Ollama backend not detected on localhost:11434.".to_string());
         state.provider = None;
         state.started_at = None;
@@ -1979,10 +2541,7 @@ async fn start_pylon_in_process(
     refresh_pylon_status(state, config).await
 }
 
-async fn stop_pylon_in_process(
-    state: &mut InProcessPylon,
-    config: &PylonConfig,
-) -> PylonStatus {
+async fn stop_pylon_in_process(state: &mut InProcessPylon, config: &PylonConfig) -> PylonStatus {
     if let Some(provider) = state.provider.as_mut() {
         match provider.stop().await {
             Ok(()) | Err(ProviderError::NotRunning) => {
@@ -2000,10 +2559,7 @@ async fn stop_pylon_in_process(
     refresh_pylon_status(state, config).await
 }
 
-async fn refresh_pylon_status(
-    state: &mut InProcessPylon,
-    config: &PylonConfig,
-) -> PylonStatus {
+async fn refresh_pylon_status(state: &mut InProcessPylon, config: &PylonConfig) -> PylonStatus {
     let identity_exists = pylon_identity_exists(config);
     let (running, jobs_completed, earnings_msats) = if let Some(provider) = state.provider.as_ref()
     {
