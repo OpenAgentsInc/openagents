@@ -2,8 +2,7 @@ use std::cell::RefCell;
 use std::collections::{HashMap, VecDeque};
 use std::path::PathBuf;
 use std::rc::Rc;
-use std::time::Duration;
-use web_time::Instant;
+use std::time::{Duration, Instant};
 
 use autopilot_app::{AppEvent, SessionId, ThreadSnapshot, ThreadSummary, UserAction, WorkspaceId};
 use bip39::Mnemonic;
