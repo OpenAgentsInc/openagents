@@ -471,7 +471,7 @@ impl PaneStore {
         self.last_pane_position = Some(rect);
     }
 
-    fn toggle_pane<F>(&mut self, id: &str, screen: Size, mut create: F)
+    fn toggle_pane<F>(&mut self, id: &str, _screen: Size, mut create: F)
     where
         F: FnMut(Option<PaneSnapshot>) -> Pane,
     {
@@ -489,25 +489,26 @@ impl PaneStore {
 
         let snapshot = self.closed_positions.get(id).cloned();
         let mut pane = create(snapshot);
-        pane.rect = ensure_pane_visible(pane.rect, screen);
+        pane.rect = normalize_pane_rect(pane.rect);
         self.add_pane(pane);
     }
 }
 
-fn ensure_pane_visible(rect: PaneRect, screen: Size) -> PaneRect {
-    let mut width = rect.width.max(PANE_MIN_WIDTH).min(screen.width - PANE_MARGIN * 2.0);
-    let mut height = rect.height.max(PANE_MIN_HEIGHT).min(screen.height - PANE_MARGIN * 2.0);
+fn normalize_pane_rect(rect: PaneRect) -> PaneRect {
+    let mut width = rect.width.max(PANE_MIN_WIDTH);
+    let mut height = rect.height.max(PANE_MIN_HEIGHT);
     if width.is_nan() || width <= 0.0 {
         width = PANE_MIN_WIDTH;
     }
     if height.is_nan() || height <= 0.0 {
         height = PANE_MIN_HEIGHT;
     }
-    let mut x = rect.x;
-    let mut y = rect.y;
-    x = x.max(PANE_MARGIN).min(screen.width - width - PANE_MARGIN);
-    y = y.max(PANE_MARGIN).min(screen.height - height - PANE_MARGIN);
-    PaneRect { x, y, width, height }
+    PaneRect {
+        x: rect.x,
+        y: rect.y,
+        width,
+        height,
+    }
 }
 
 fn calculate_new_pane_position(
@@ -2075,7 +2076,7 @@ impl MinimalRoot {
             id: id.clone(),
             kind: PaneKind::Chat,
             title: "Chat".to_string(),
-            rect: ensure_pane_visible(rect, screen),
+            rect: normalize_pane_rect(rect),
             dismissable: true,
         };
         self.pane_store.add_pane(pane);
@@ -2631,7 +2632,7 @@ impl MinimalRoot {
                         width: next_bounds.size.width,
                         height: next_bounds.size.height,
                     };
-                    rect = ensure_pane_visible(rect, self.screen_size());
+                    rect = normalize_pane_rect(rect);
                     self.pane_store.update_rect(&resize.pane_id, rect);
                     return true;
                 }
@@ -2644,7 +2645,7 @@ impl MinimalRoot {
                         .pane(&resize.pane_id)
                         .map(|pane| pane.rect.clone())
                     {
-                        let rect = ensure_pane_visible(rect, self.screen_size());
+                        let rect = normalize_pane_rect(rect);
                         self.pane_store.update_rect(&resize.pane_id, rect);
                         self.pane_store.set_last_position(rect);
                     }
@@ -2663,7 +2664,7 @@ impl MinimalRoot {
                     let mut rect = drag.start_rect.clone();
                     rect.x += dx;
                     rect.y += dy;
-                    rect = ensure_pane_visible(rect, self.screen_size());
+                    rect = normalize_pane_rect(rect);
                     self.pane_store.update_rect(&drag.pane_id, rect);
                     return true;
                 }
@@ -2676,7 +2677,7 @@ impl MinimalRoot {
                         .pane(&drag.pane_id)
                         .map(|pane| pane.rect.clone())
                     {
-                        let rect = ensure_pane_visible(rect, self.screen_size());
+                        let rect = normalize_pane_rect(rect);
                         self.pane_store.update_rect(&drag.pane_id, rect);
                         self.pane_store.set_last_position(rect);
                     }
