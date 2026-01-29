@@ -3,7 +3,7 @@ use std::collections::{HashMap, VecDeque};
 use std::path::PathBuf;
 use std::rc::Rc;
 
-use autopilot_app::{AppEvent, SessionId, UserAction, WorkspaceId};
+use autopilot_app::{AppEvent, SessionId, ThreadSnapshot, ThreadSummary, UserAction, WorkspaceId};
 use bip39::Mnemonic;
 use nostr::derive_keypair;
 use openagents_spark::SparkSigner;
@@ -12,7 +12,7 @@ use serde_json::Value;
 use taffy::prelude::{AlignItems, JustifyContent};
 use wgpui::components::EventContext;
 use wgpui::components::atoms::{ToolStatus, ToolType};
-use wgpui::components::hud::{Hotbar, HotbarSlot, PaneFrame};
+use wgpui::components::hud::{Hotbar, HotbarSlot, PaneFrame, ResizablePane, ResizeEdge};
 use wgpui::components::organisms::{
     AssistantMessage, CodexReasoningCard, DiffLine, DiffLineKind, DiffToolCall, SearchMatch,
     SearchToolCall, TerminalToolCall, ThreadEntry, ThreadEntryType, ToolCallCard, UserMessage,
@@ -47,13 +47,16 @@ const DEFAULT_MODEL_INDEX: usize = 3;
 const SHOW_MODEL_DROPDOWN: bool = false;
 const PANE_MARGIN: f32 = 24.0;
 const PANE_OFFSET: f32 = 28.0;
-const PANE_MIN_WIDTH: f32 = 240.0;
-const PANE_MIN_HEIGHT: f32 = 140.0;
+const PANE_MIN_WIDTH: f32 = 200.0;
+const PANE_MIN_HEIGHT: f32 = 100.0;
 const PANE_TITLE_HEIGHT: f32 = 28.0;
+const PANE_RESIZE_HANDLE: f32 = 10.0;
 const CHAT_PANE_WIDTH: f32 = 820.0;
 const CHAT_PANE_HEIGHT: f32 = 620.0;
 const EVENTS_PANE_WIDTH: f32 = 480.0;
 const EVENTS_PANE_HEIGHT: f32 = 520.0;
+const THREADS_PANE_WIDTH: f32 = 520.0;
+const THREADS_PANE_HEIGHT: f32 = 520.0;
 const IDENTITY_PANE_WIDTH: f32 = 520.0;
 const IDENTITY_PANE_HEIGHT: f32 = 520.0;
 const PYLON_PANE_WIDTH: f32 = 520.0;
@@ -79,8 +82,9 @@ const HOTBAR_SLOT_WALLET: u8 = 5;
 const HOTBAR_SLOT_SELL_COMPUTE: u8 = 6;
 const HOTBAR_SLOT_HISTORY: u8 = 7;
 const HOTBAR_SLOT_NIP90: u8 = 8;
-const HOTBAR_CHAT_SLOT_START: u8 = 9;
-const HOTBAR_SLOT_MAX: u8 = 12;
+const HOTBAR_SLOT_THREADS: u8 = 9;
+const HOTBAR_CHAT_SLOT_START: u8 = 10;
+const HOTBAR_SLOT_MAX: u8 = 13;
 const MODEL_OPTIONS: [(&str, &str); 4] = [
     ("gpt-5.2-codex", "Latest frontier agentic coding model."),
     (
@@ -142,6 +146,8 @@ impl AppViewModel {
             AppEvent::DvmProviderStatus { .. } => {}
             AppEvent::DvmHistory { .. } => {}
             AppEvent::Nip90Log { .. } => {}
+            AppEvent::ThreadsUpdated { .. } => {}
+            AppEvent::ThreadLoaded { .. } => {}
         }
     }
 
@@ -331,6 +337,7 @@ fn generate_nip06_keypair() -> Result<(String, String, String, String), String> 
 enum PaneKind {
     Chat,
     Events,
+    Threads,
     Identity,
     Pylon,
     Wallet,
@@ -343,6 +350,7 @@ enum PaneKind {
 enum HotbarAction {
     FocusPane(String),
     ToggleEvents,
+    ToggleThreads,
     ToggleIdentity,
     TogglePylon,
     ToggleWallet,
@@ -377,6 +385,14 @@ struct PaneSnapshot {
 #[derive(Clone, Debug)]
 struct PaneDragState {
     pane_id: String,
+    origin: Point,
+    start_rect: PaneRect,
+}
+
+#[derive(Clone, Debug)]
+struct PaneResizeState {
+    pane_id: String,
+    edge: ResizeEdge,
     origin: Point,
     start_rect: PaneRect,
 }
@@ -543,6 +559,8 @@ pub struct MinimalRoot {
     pane_frames: HashMap<String, PaneFrame>,
     pane_bounds: HashMap<String, Bounds>,
     pane_drag: Option<PaneDragState>,
+    pane_resize: Option<PaneResizeState>,
+    pane_resizer: ResizablePane,
     chat_panes: HashMap<String, ChatPaneState>,
     chat_slot_assignments: HashMap<String, u8>,
     chat_slot_labels: HashMap<String, String>,
@@ -555,6 +573,11 @@ pub struct MinimalRoot {
     copy_button: Button,
     copy_bounds: Bounds,
     pending_copy: Rc<RefCell<bool>>,
+    threads_refresh_button: Button,
+    threads_refresh_bounds: Bounds,
+    pending_threads_refresh: Rc<RefCell<bool>>,
+    thread_entries: Vec<ThreadEntryView>,
+    pending_thread_open: Rc<RefCell<Option<String>>>,
     keygen_button: Button,
     keygen_bounds: Bounds,
     pending_keygen: Rc<RefCell<bool>>,
@@ -779,6 +802,65 @@ impl ChatPaneState {
         self.input_needs_focus = true;
         self.submit_button
             .set_disabled(self.input.get_value().trim().is_empty());
+    }
+
+    fn load_thread_snapshot(&mut self, thread: &ThreadSnapshot) {
+        self.formatted_thread.clear();
+        self.formatted_message_streams.clear();
+        self.formatted_message_entries.clear();
+        self.reasoning_entries.clear();
+        self.tool_entries.clear();
+        self.last_user_message = None;
+        self.working_entry_index = None;
+        self.queued_messages.clear();
+        self.queued_in_flight = false;
+        self.active_turn_id = None;
+        self.thread_id = Some(thread.id.clone());
+        self.input.set_value("");
+        self.input_needs_focus = true;
+        self.submit_button
+            .set_disabled(self.input.get_value().trim().is_empty());
+
+        for turn in &thread.turns {
+            for item in &turn.items {
+                self.append_snapshot_item(item);
+            }
+        }
+    }
+
+    fn append_snapshot_item(&mut self, item: &Value) {
+        let item_type = item
+            .get("type")
+            .and_then(|value| value.as_str())
+            .unwrap_or("");
+        match item_type {
+            "UserMessage" | "userMessage" => {
+                if let Some(text) = extract_message_text(item) {
+                    self.append_user_message(&text);
+                }
+            }
+            "AgentMessage" | "agentMessage" | "assistantMessage" => {
+                if let Some(text) = extract_message_text(item) {
+                    self.append_agent_text(&text);
+                }
+            }
+            "Reasoning" | "reasoning" => {
+                if let Some(summary) = item
+                    .get("summary_text")
+                    .and_then(|value| value.as_array())
+                    .and_then(|items| items.first())
+                    .and_then(|value| value.as_str())
+                {
+                    let mut stream = new_markdown_stream();
+                    stream.append(summary);
+                    stream.complete();
+                    let view = message_markdown_view(stream.document().clone());
+                    self.formatted_thread
+                        .push_entry(ThreadEntry::new(ThreadEntryType::Assistant, view));
+                }
+            }
+            _ => {}
+        }
     }
 
     fn take_pending_sends(&mut self) -> Vec<String> {
@@ -1450,6 +1532,19 @@ impl MinimalRoot {
                 *pending_copy_click.borrow_mut() = true;
             });
 
+        let pending_threads_refresh = Rc::new(RefCell::new(false));
+        let pending_threads_refresh_click = pending_threads_refresh.clone();
+        let threads_refresh_button = Button::new("Refresh")
+            .variant(ButtonVariant::Secondary)
+            .font_size(theme::font_size::XS)
+            .padding(10.0, 6.0)
+            .corner_radius(6.0)
+            .on_click(move || {
+                *pending_threads_refresh_click.borrow_mut() = true;
+            });
+
+        let pending_thread_open = Rc::new(RefCell::new(None));
+
         let pending_keygen = Rc::new(RefCell::new(false));
         let pending_keygen_click = pending_keygen.clone();
         let keygen_button = Button::new("Generate keys")
@@ -1613,6 +1708,10 @@ impl MinimalRoot {
             .padding(HOTBAR_PADDING)
             .gap(HOTBAR_ITEM_GAP)
             .corner_radius(8.0);
+        let pane_resizer = ResizablePane::new()
+            .handle_size(PANE_RESIZE_HANDLE)
+            .min_size(PANE_MIN_WIDTH, PANE_MIN_HEIGHT);
+
         let mut root = Self {
             event_context: EventContext::new(),
             cursor_position: Point::ZERO,
@@ -1621,6 +1720,8 @@ impl MinimalRoot {
             pane_frames: HashMap::new(),
             pane_bounds: HashMap::new(),
             pane_drag: None,
+            pane_resize: None,
+            pane_resizer,
             chat_panes: HashMap::new(),
             chat_slot_assignments: HashMap::new(),
             chat_slot_labels: HashMap::new(),
@@ -1633,6 +1734,11 @@ impl MinimalRoot {
             copy_button,
             copy_bounds: Bounds::ZERO,
             pending_copy,
+            threads_refresh_button,
+            threads_refresh_bounds: Bounds::ZERO,
+            pending_threads_refresh,
+            thread_entries: Vec::new(),
+            pending_thread_open,
             keygen_button,
             keygen_bounds: Bounds::ZERO,
             pending_keygen,
@@ -1776,6 +1882,26 @@ impl MinimalRoot {
                     let drain = self.nip90_log.len() - 200;
                     self.nip90_log.drain(0..drain);
                 }
+            }
+            AppEvent::ThreadsUpdated { threads } => {
+                self.set_thread_entries(threads);
+            }
+            AppEvent::ThreadLoaded {
+                session_id,
+                thread,
+                model,
+            } => {
+                let pane_id = self
+                    .pane_for_session_id(&session_id.to_string())
+                    .unwrap_or_else(|| self.open_chat_pane(self.screen_size(), true, false));
+                if let Some(chat) = self.chat_panes.get_mut(&pane_id) {
+                    chat.load_thread_snapshot(&thread);
+                    chat.update_thread_model(model.as_str());
+                    chat.set_session_id(session_id);
+                    chat.thread_id = Some(thread.id.clone());
+                }
+                self.session_to_pane.insert(session_id, pane_id.clone());
+                self.thread_to_pane.insert(thread.id, pane_id);
             }
             AppEvent::AppServerEvent { message } => {
                 if let Ok(value) = serde_json::from_str::<Value>(&message) {
@@ -1952,6 +2078,39 @@ impl MinimalRoot {
         id
     }
 
+    fn set_thread_entries(&mut self, threads: Vec<ThreadSummary>) {
+        self.thread_entries = threads
+            .into_iter()
+            .map(|summary| {
+                let pending = self.pending_thread_open.clone();
+                let thread_id = summary.id.clone();
+                let label = short_thread_id(&thread_id);
+                let button = Button::new(label)
+                    .variant(ButtonVariant::Ghost)
+                    .font_size(theme::font_size::XS)
+                    .padding(6.0, 2.0)
+                    .corner_radius(4.0)
+                    .on_click(move || {
+                        *pending.borrow_mut() = Some(thread_id.clone());
+                    });
+                ThreadEntryView {
+                    summary,
+                    open_button: button,
+                    open_bounds: Bounds::ZERO,
+                }
+            })
+            .collect();
+    }
+
+    fn open_thread_from_list(&mut self, thread_id: String) {
+        let screen = self.screen_size();
+        let pane_id = self.open_chat_pane(screen, true, true);
+        if let Some(handler) = self.send_handler.as_mut() {
+            handler(UserAction::ThreadOpen { thread_id });
+        }
+        self.pane_store.bring_to_front(&pane_id);
+    }
+
     fn toggle_events_pane(&mut self, screen: Size) {
         let last_position = self.pane_store.last_pane_position;
         self.pane_store.toggle_pane("events", screen, |snapshot| {
@@ -1970,6 +2129,30 @@ impl MinimalRoot {
                 id: "events".to_string(),
                 kind: PaneKind::Events,
                 title: "Codex Events".to_string(),
+                rect,
+                dismissable: true,
+            }
+        });
+    }
+
+    fn toggle_threads_pane(&mut self, screen: Size) {
+        let last_position = self.pane_store.last_pane_position;
+        self.pane_store.toggle_pane("threads", screen, |snapshot| {
+            let rect = snapshot
+                .as_ref()
+                .map(|snapshot| snapshot.rect)
+                .unwrap_or_else(|| {
+                    calculate_new_pane_position(
+                        last_position,
+                        screen,
+                        THREADS_PANE_WIDTH,
+                        THREADS_PANE_HEIGHT,
+                    )
+                });
+            Pane {
+                id: "threads".to_string(),
+                kind: PaneKind::Threads,
+                title: "Recent Threads".to_string(),
                 rect,
                 dismissable: true,
             }
@@ -2197,6 +2380,15 @@ impl MinimalRoot {
                 self.toggle_events_pane(screen);
                 true
             }
+            HotbarAction::ToggleThreads => {
+                self.toggle_threads_pane(screen);
+                if self.pane_store.is_active("threads") {
+                    if let Some(handler) = self.send_handler.as_mut() {
+                        handler(UserAction::ThreadsRefresh);
+                    }
+                }
+                true
+            }
             HotbarAction::ToggleIdentity => {
                 self.toggle_identity_pane(screen);
                 true
@@ -2263,6 +2455,24 @@ impl MinimalRoot {
                 if bounds.contains(point) {
                     return Some(pane.id.clone());
                 }
+            }
+        }
+        None
+    }
+
+    fn pane_resize_target(&self, point: Point) -> Option<(String, ResizeEdge)> {
+        for pane in self.pane_store.panes().iter().rev() {
+            let Some(bounds) = self.pane_bounds.get(&pane.id) else {
+                continue;
+            };
+            if let Some(frame) = self.pane_frames.get(&pane.id) {
+                if frame.close_bounds().contains(point) {
+                    continue;
+                }
+            }
+            let edge = self.pane_resizer.edge_at(*bounds, point);
+            if edge != ResizeEdge::None {
+                return Some((pane.id.clone(), edge));
             }
         }
         None
@@ -2336,6 +2546,72 @@ impl MinimalRoot {
                 } else {
                     false
                 };
+            }
+        }
+
+        if let InputEvent::MouseDown {
+            button: MouseButton::Left,
+            ..
+        } = event
+        {
+            if self.pane_resize.is_none() {
+                if let Some((pane_id, edge)) = self.pane_resize_target(self.cursor_position) {
+                    if let Some(pane) = self.pane_store.pane(&pane_id) {
+                        self.pane_resize = Some(PaneResizeState {
+                            pane_id: pane_id.clone(),
+                            edge,
+                            origin: self.cursor_position,
+                            start_rect: pane.rect.clone(),
+                        });
+                        self.pane_store.bring_to_front(&pane_id);
+                        return true;
+                    }
+                }
+            }
+        }
+
+        if let Some(resize) = self.pane_resize.clone() {
+            match event {
+                InputEvent::MouseMove { x, y } => {
+                    let start_bounds = Bounds::new(
+                        resize.start_rect.x,
+                        resize.start_rect.y,
+                        resize.start_rect.width,
+                        resize.start_rect.height,
+                    );
+                    let next_bounds = self.pane_resizer.resize_bounds(
+                        resize.edge,
+                        start_bounds,
+                        resize.origin,
+                        Point::new(*x, *y),
+                    );
+                    let mut rect = PaneRect {
+                        x: next_bounds.origin.x,
+                        y: next_bounds.origin.y,
+                        width: next_bounds.size.width,
+                        height: next_bounds.size.height,
+                    };
+                    rect = ensure_pane_visible(rect, self.screen_size());
+                    self.pane_store.update_rect(&resize.pane_id, rect);
+                    return true;
+                }
+                InputEvent::MouseUp {
+                    button: MouseButton::Left,
+                    ..
+                } => {
+                    if let Some(rect) = self
+                        .pane_store
+                        .pane(&resize.pane_id)
+                        .map(|pane| pane.rect.clone())
+                    {
+                        let rect = ensure_pane_visible(rect, self.screen_size());
+                        self.pane_store.update_rect(&resize.pane_id, rect);
+                        self.pane_store.set_last_position(rect);
+                    }
+                    self.pane_resize = None;
+                    return true;
+                }
+                _ => {}
             }
         }
 
@@ -2514,6 +2790,30 @@ impl MinimalRoot {
                                         EventResult::Handled
                                     );
                             handled |= copy_handled || scroll_handled;
+                        }
+                        PaneKind::Threads => {
+                            let refresh_handled = matches!(
+                                self.threads_refresh_button.event(
+                                    event,
+                                    self.threads_refresh_bounds,
+                                    &mut self.event_context
+                                ),
+                                EventResult::Handled
+                            );
+                            let mut entries_handled = false;
+                            for entry in &mut self.thread_entries {
+                                if matches!(
+                                    entry.open_button.event(
+                                        event,
+                                        entry.open_bounds,
+                                        &mut self.event_context
+                                    ),
+                                    EventResult::Handled
+                                ) {
+                                    entries_handled = true;
+                                }
+                            }
+                            handled |= refresh_handled || entries_handled;
                         }
                         PaneKind::Identity => {
                             let keygen_handled = matches!(
@@ -2851,6 +3151,26 @@ impl MinimalRoot {
             let _ = copy_to_clipboard(&block);
         }
 
+        let should_threads_refresh = {
+            let mut pending = self.pending_threads_refresh.borrow_mut();
+            let value = *pending;
+            *pending = false;
+            value
+        };
+        if should_threads_refresh {
+            if let Some(handler) = self.send_handler.as_mut() {
+                handler(UserAction::ThreadsRefresh);
+            }
+        }
+
+        let thread_open = {
+            let mut pending = self.pending_thread_open.borrow_mut();
+            pending.take()
+        };
+        if let Some(thread_id) = thread_open {
+            self.open_thread_from_list(thread_id);
+        }
+
         let chat_ids: Vec<String> = self.chat_panes.keys().cloned().collect();
         for chat_id in chat_ids {
             if let Some(chat) = self.chat_panes.get_mut(&chat_id) {
@@ -2983,6 +3303,14 @@ impl MinimalRoot {
             Cursor::Pointer
         } else if self.copy_button.is_hovered() && !self.copy_button.is_disabled() {
             Cursor::Pointer
+        } else if self.threads_refresh_button.is_hovered() {
+            Cursor::Pointer
+        } else if self
+            .thread_entries
+            .iter()
+            .any(|entry| entry.open_button.is_hovered())
+        {
+            Cursor::Pointer
         } else if SHOW_MODEL_DROPDOWN
             && self
                 .chat_panes
@@ -3028,6 +3356,7 @@ impl Component for MinimalRoot {
         self.set_screen_size(Size::new(bounds.size.width, bounds.size.height));
 
         self.copy_bounds = Bounds::ZERO;
+        self.threads_refresh_bounds = Bounds::ZERO;
         self.event_scroll_bounds = Bounds::ZERO;
         self.keygen_bounds = Bounds::ZERO;
 
@@ -3080,6 +3409,7 @@ impl Component for MinimalRoot {
                     }
                 }
                 PaneKind::Events => paint_events_pane(self, content_bounds, cx),
+                PaneKind::Threads => paint_threads_pane(self, content_bounds, cx),
                 PaneKind::Identity => paint_identity_pane(self, content_bounds, cx),
                 PaneKind::Pylon => paint_pylon_pane(self, content_bounds, cx),
                 PaneKind::Wallet => paint_wallet_pane(self, content_bounds, cx),
@@ -3113,6 +3443,13 @@ impl Component for MinimalRoot {
         );
         self.hotbar_bindings
             .insert(HOTBAR_SLOT_EVENTS, HotbarAction::ToggleEvents);
+
+        items.push(
+            HotbarSlot::new(HOTBAR_SLOT_THREADS, "TH", "Threads")
+                .active(self.pane_store.is_active("threads")),
+        );
+        self.hotbar_bindings
+            .insert(HOTBAR_SLOT_THREADS, HotbarAction::ToggleThreads);
 
         items.push(
             HotbarSlot::new(HOTBAR_SLOT_IDENTITY, "ID", "Identity")
@@ -4309,6 +4646,70 @@ fn paint_events_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintConte
     root.event_scroll.paint(feed_bounds, cx);
 }
 
+fn paint_threads_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintContext) {
+    let padding = 16.0;
+    let header_height = 20.0;
+    let content_width = bounds.size.width - padding * 2.0;
+    let content_x = bounds.origin.x + padding;
+    let header_bounds =
+        Bounds::new(content_x, bounds.origin.y + padding, content_width, header_height);
+    let refresh_button_width = 72.0;
+    let refresh_bounds = Bounds::new(
+        header_bounds.origin.x + header_bounds.size.width - refresh_button_width,
+        header_bounds.origin.y - 4.0,
+        refresh_button_width,
+        24.0,
+    );
+    let title_bounds = Bounds::new(
+        header_bounds.origin.x,
+        header_bounds.origin.y,
+        header_bounds.size.width - refresh_button_width - 8.0,
+        header_height,
+    );
+
+    Text::new("RECENT THREADS")
+        .font_size(theme::font_size::SM)
+        .bold()
+        .color(theme::text::PRIMARY)
+        .paint(title_bounds, cx);
+
+    root.threads_refresh_bounds = refresh_bounds;
+    root.threads_refresh_button.paint(refresh_bounds, cx);
+
+    let mut y = header_bounds.origin.y + header_height + 8.0;
+    let row_height = 18.0;
+    let id_width = 86.0;
+    let preview_width = (content_width - id_width - 8.0).max(0.0);
+
+    if root.thread_entries.is_empty() {
+        Text::new("No recent threads.")
+            .font_size(theme::font_size::XS)
+            .color(theme::text::MUTED)
+            .paint(Bounds::new(content_x, y, content_width, row_height), cx);
+        return;
+    }
+
+    for entry in &mut root.thread_entries {
+        let id_bounds = Bounds::new(content_x, y, id_width, row_height);
+        entry.open_bounds = id_bounds;
+        entry.open_button.paint(id_bounds, cx);
+
+        let preview_text = if entry.summary.preview.trim().is_empty() {
+            "No preview"
+        } else {
+            entry.summary.preview.trim()
+        };
+        Text::new(preview_text)
+            .font_size(theme::font_size::XS)
+            .color(theme::text::MUTED)
+            .paint(
+                Bounds::new(content_x + id_width + 8.0, y, preview_width, row_height),
+                cx,
+            );
+        y += row_height + 6.0;
+    }
+}
+
 impl DesktopRoot {
     pub fn new() -> Self {
         let pending_actions: Rc<RefCell<Vec<UiAction>>> = Rc::new(RefCell::new(Vec::new()));
@@ -5271,6 +5672,12 @@ struct DvmJobView {
     created_at: u64,
 }
 
+struct ThreadEntryView {
+    summary: ThreadSummary,
+    open_button: Button,
+    open_bounds: Bounds,
+}
+
 fn format_event(event: &AppEvent) -> String {
     match event {
         AppEvent::WorkspaceOpened { path, .. } => {
@@ -5305,6 +5712,8 @@ fn format_event(event: &AppEvent) -> String {
             UserAction::DvmProviderRefresh => "DvmProviderRefresh".to_string(),
             UserAction::DvmHistoryRefresh => "DvmHistoryRefresh".to_string(),
             UserAction::Nip90Submit { kind, .. } => format!("Nip90Submit (kind {kind})"),
+            UserAction::ThreadsRefresh => "ThreadsRefresh".to_string(),
+            UserAction::ThreadOpen { thread_id } => format!("ThreadOpen ({thread_id})"),
             UserAction::Interrupt { .. } => "Interrupt".to_string(),
             UserAction::FullAutoToggle { enabled, .. } => {
                 if *enabled {
@@ -5341,6 +5750,8 @@ fn format_event(event: &AppEvent) -> String {
             snapshot.summary.job_count
         ),
         AppEvent::Nip90Log { message } => format!("Nip90Log ({message})"),
+        AppEvent::ThreadsUpdated { threads } => format!("ThreadsUpdated ({})", threads.len()),
+        AppEvent::ThreadLoaded { thread, .. } => format!("ThreadLoaded ({})", thread.id),
     }
 }
 
@@ -5348,6 +5759,10 @@ fn format_session_id(session_id: SessionId) -> String {
     let raw = format!("{:?}", session_id);
     let trimmed = raw.trim_start_matches("SessionId(").trim_end_matches(')');
     trimmed.chars().take(6).collect()
+}
+
+fn short_thread_id(id: &str) -> String {
+    id.chars().take(8).collect()
 }
 
 struct Layout {

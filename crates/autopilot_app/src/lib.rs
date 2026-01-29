@@ -5,6 +5,7 @@ use std::pin::Pin;
 use futures::Stream;
 use futures::StreamExt;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use tokio::sync::broadcast;
 use tokio_stream::wrappers::BroadcastStream;
 use uuid::Uuid;
@@ -195,6 +196,10 @@ pub enum UserAction {
         relays: Vec<String>,
         provider: Option<String>,
     },
+    ThreadsRefresh,
+    ThreadOpen {
+        thread_id: String,
+    },
     Command {
         session_id: SessionId,
         name: String,
@@ -279,6 +284,28 @@ pub struct DvmHistorySnapshot {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ThreadSummary {
+    pub id: String,
+    pub preview: String,
+    pub model_provider: String,
+    pub cwd: Option<String>,
+    pub created_at: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ThreadTurn {
+    pub id: String,
+    pub items: Vec<Value>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ThreadSnapshot {
+    pub id: String,
+    pub preview: String,
+    pub turns: Vec<ThreadTurn>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum AppEvent {
     WorkspaceOpened {
         workspace_id: WorkspaceId,
@@ -310,6 +337,14 @@ pub enum AppEvent {
     },
     Nip90Log {
         message: String,
+    },
+    ThreadsUpdated {
+        threads: Vec<ThreadSummary>,
+    },
+    ThreadLoaded {
+        session_id: SessionId,
+        thread: ThreadSnapshot,
+        model: String,
     },
 }
 

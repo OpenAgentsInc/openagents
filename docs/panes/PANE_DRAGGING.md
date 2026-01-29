@@ -40,8 +40,10 @@ This is the follow-on plan to add dragging/resizing to the HUD pane system. The 
 - Added pane drag state tracking and store updates in `MinimalRoot` so title-bar drags move panes.
 - Implemented `PaneStore::update_rect` + `set_last_position` to persist the latest drag position.
 - Routed drag start through `PaneFrame` title bounds (excluding close button) and clamped positions with `ensure_pane_visible`.
+- Added resize hit-testing via `ResizablePane` with edge/corner drags that update pane rects.
+- Enforced min size (200x100) + viewport clamping during resize and persisted last rect on release.
 
 ## Next Steps
-- Add resize handles via `ResizablePane` (edges + corners) with min size 200x100 and viewport clamping.
 - Persist pane positions to storage and restore on launch.
 - Add drag cursor feedback and optional snap/tiling guides.
+- Add visual resize affordances (optional handles/hover) and resize cursor feedback.
