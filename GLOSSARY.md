@@ -101,6 +101,19 @@ Canonical definitions for OpenAgents terminology. All docs should use these term
 
 ---
 
+## Product & Commercial Terms
+
+| Term | Definition |
+|------|------------|
+| **Autonomy-as-a-Service (AaaS)** | Bounded, auditable delegation sold as a contracted outcome over time. Defined by scope, horizon, constraints, verification, and escalation behavior. |
+| **Predictable Autonomy** | The product promise of AaaS: reliable throughput with known failure modes and objective verification, not just “model output.” |
+| **Autonomy SLA** | The explicit service contract for predictable autonomy (scope + horizon + constraints + verification + escalation). |
+| **Contracted Autonomy** | Synonym for AaaS emphasizing the outcome contract rather than the model. |
+| **Guaranteed Delegation** | Informal label for AaaS emphasizing risk transfer and operator responsibility. |
+| **Outcome Ops** | Informal label for the operational layer that prices and verifies autonomy by outcomes and receipts. |
+
+---
+
 ## Artifacts & Trajectories
 
 | Term | Definition |

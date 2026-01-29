@@ -25,6 +25,21 @@ Autopilot is designed to be:
 * **Optimizable**: uses DSPy-style signatures/modules/optimizers to improve policies over time
 * **Immediate-mode UI**: WGPUI render tree with Zed-inspired layout patterns
 
+## Autonomy-as-a-Service (predictable autonomy)
+
+Autopilot is built to sell **predictable autonomy** — not “AI,” not “tokens,” but a
+**contracted outcome over time**:
+
+* **Scope**: “Do X”
+* **Horizon**: “over the next 24–48 hours”
+* **Constraints**: budget, privacy, repo boundaries, allowed tools
+* **Verification**: objective checks (tests pass, PR merged, receipts emitted)
+* **Reliability**: known failure modes + escalation (“pause + ask human”)
+
+Composability makes this sellable: signatures/modules have stable I/O contracts,
+emit receipts and utility labels, and can be optimized and A/B tested. That is
+how Autopilot turns *vibes* into *predictability*.
+
 ## CLI / other surfaces
 
 The CLI and other agent surfaces live in the same repo but are not the primary path here.
