@@ -302,6 +302,25 @@ let sig = GuidanceRouterSignature::new();
 // - response: single-line guidance response to show in the UI
 ```
 
+#### GuidanceDirectiveSignature
+
+Produces an imperative Codex directive from repo intel and task context.
+
+```rust
+use dsrs::signatures::GuidanceDirectiveSignature;
+
+let sig = GuidanceDirectiveSignature::new();
+
+// Inputs:
+// - goal_intent
+// - repo_intel (git history, status, docs, issues)
+// - task_summary (task understanding + plan)
+
+// Outputs:
+// - directive: imperative Codex instruction (no questions)
+// - rationale: short justification (optional)
+```
+
 ## Plan IR & Execution
 
 Unified types for planning and execution across Adjutant and Autopilot.
@@ -1237,6 +1256,7 @@ Quick reference for all signatures by category:
 |----------|-----------|----------|--------|
 | **Autopilot** | FullAutoDecisionSignature | `crates/dsrs/src/signatures/full_auto.rs` | Implemented |
 |  | GuidanceDecisionSignature | `crates/dsrs/src/signatures/guidance.rs` | Implemented |
+|  | GuidanceDirectiveSignature | `crates/dsrs/src/signatures/guidance_directive.rs` | Implemented |
 |  | GuidanceRouterSignature | `crates/dsrs/src/signatures/guidance_router.rs` | Implemented |
 | **Coding Agent Loop** | *ContextSelectionSignature* | Spec in `crates/dsrs/docs/CODING_AGENT_LOOP.md` | Spec only |
 |  | *PlanningSignature (PlanIR)* | Spec in `crates/dsrs/docs/CODING_AGENT_LOOP.md` | Spec only |

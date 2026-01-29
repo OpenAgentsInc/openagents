@@ -1,6 +1,8 @@
 use std::collections::HashMap;
 use std::env;
-use std::path::PathBuf;
+use std::fs;
+use std::path::{Path, PathBuf};
+use std::process::Command;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, mpsc};
 
@@ -17,7 +19,7 @@ use codex_client::{
     TurnStartParams, UserInput,
 };
 use dsrs::signatures::{
-    GuidanceDecisionSignature, GuidanceRouterSignature, PlanningSignature,
+    GuidanceDirectiveSignature, GuidanceRouterSignature, PlanningSignature,
     TaskUnderstandingSignature,
 };
 use dsrs::{Predict, Predictor, example};
@@ -1306,6 +1308,12 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
                                         })
                                         .to_string(),
                                     });
+                                    emit_guidance_status(
+                                        &proxy,
+                                        &thread_id,
+                                        None,
+                                        "Guidance: preparing...",
+                                    );
                                     let (lm, should_cache) = match resolve_guidance_lm(cached_lm)
                                         .await
                                     {
@@ -1332,7 +1340,8 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
                                             state.set_decision_lm(lm.clone());
                                         }
                                     }
-                                    let (response, signatures) = if is_super_trigger(&text) {
+                                    let should_dispatch = is_super_trigger(&text);
+                                    let (response, signatures) = if should_dispatch {
                                         match run_guidance_super(
                                             &proxy,
                                             &thread_id,
@@ -1348,7 +1357,7 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
                                                 vec![
                                                     "TaskUnderstandingSignature".to_string(),
                                                     "PlanningSignature".to_string(),
-                                                    "GuidanceDecisionSignature".to_string(),
+                                                    "GuidanceDirectiveSignature".to_string(),
                                                 ],
                                             ),
                                         }
@@ -1369,11 +1378,12 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
                                             ),
                                         }
                                     };
+                                    let response_text = response.clone();
                                     let payload = json!({
                                         "method": "guidance/response",
                                         "params": {
                                             "threadId": thread_id,
-                                            "text": response,
+                                            "text": response_text,
                                             "signatures": signatures,
                                             "model": lm.model
                                         }
@@ -1381,6 +1391,40 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
                                     let _ = proxy.send_event(AppEvent::AppServerEvent {
                                         message: payload.to_string(),
                                     });
+                                    if should_dispatch {
+                                        emit_guidance_status(
+                                            &proxy,
+                                            &thread_id,
+                                            None,
+                                            "Dispatching directive to Codex...",
+                                        );
+                                        let params = TurnStartParams {
+                                            thread_id,
+                                            input: vec![UserInput::Text { text: response.clone() }],
+                                            model,
+                                            effort: reasoning
+                                                .as_deref()
+                                                .and_then(parse_reasoning_effort),
+                                            summary: None,
+                                            approval_policy: Some(AskForApproval::Never),
+                                            sandbox_policy: Some(SandboxPolicy::WorkspaceWrite {
+                                                writable_roots: vec![cwd.clone()],
+                                                network_access: true,
+                                                exclude_tmpdir_env_var: false,
+                                                exclude_slash_tmp: false,
+                                            }),
+                                            cwd: Some(cwd),
+                                        };
+                                        if let Err(err) = client.turn_start(params).await {
+                                            let _ = proxy.send_event(AppEvent::AppServerEvent {
+                                                message: json!({
+                                                    "method": "codex/error",
+                                                    "params": { "message": err.to_string() }
+                                                })
+                                                .to_string(),
+                                            });
+                                        }
+                                    }
                                     return;
                                 }
 
@@ -2013,6 +2057,219 @@ fn guidance_repo_context() -> String {
         .unwrap_or_else(|| "Repo path: unknown".to_string())
 }
 
+#[derive(Debug, Clone)]
+struct RepoIntel {
+    root: PathBuf,
+    status: String,
+    recent_commits: String,
+    recent_files: Vec<String>,
+    doc_notes: Vec<String>,
+    task_hint: Option<String>,
+    issues_hint: Option<String>,
+    dirty: bool,
+}
+
+fn find_repo_root() -> PathBuf {
+    let cwd = env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    if let Some(root) = run_git(&cwd, &["rev-parse", "--show-toplevel"]) {
+        let trimmed = root.trim();
+        if !trimmed.is_empty() {
+            return PathBuf::from(trimmed);
+        }
+    }
+    cwd
+}
+
+fn run_git(repo_root: &Path, args: &[&str]) -> Option<String> {
+    let output = Command::new("git")
+        .args(args)
+        .current_dir(repo_root)
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let text = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    Some(text)
+}
+
+fn truncate_text(mut text: String, max_len: usize) -> String {
+    if text.len() > max_len {
+        text.truncate(max_len);
+    }
+    text
+}
+
+fn extract_task_hint(contents: &str) -> Option<String> {
+    for line in contents.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        if trimmed.starts_with("- ")
+            || trimmed.starts_with("* ")
+            || trimmed.to_lowercase().starts_with("todo")
+            || trimmed.to_lowercase().starts_with("next")
+        {
+            return Some(trimmed.trim_matches(['-', '*', ' ']).to_string());
+        }
+    }
+    None
+}
+
+fn read_doc_snippet(repo_root: &Path, rel: &str) -> Option<(String, String)> {
+    let path = repo_root.join(rel);
+    if !path.exists() {
+        return None;
+    }
+    let contents = fs::read_to_string(&path).ok()?;
+    let snippet = contents.lines().take(12).collect::<Vec<_>>().join(" ");
+    let hint = extract_task_hint(&contents).or_else(|| {
+        contents
+            .lines()
+            .map(str::trim)
+            .find(|line| !line.is_empty())
+            .map(|line| line.to_string())
+    });
+    let note = hint.unwrap_or_else(|| snippet.clone());
+    Some((rel.to_string(), truncate_text(note, 200)))
+}
+
+fn collect_repo_intel() -> RepoIntel {
+    let repo_root = find_repo_root();
+    let status = run_git(&repo_root, &["status", "-sb"]).unwrap_or_else(|| "unknown".to_string());
+    let dirty = status
+        .lines()
+        .skip(1)
+        .any(|line| !line.trim().is_empty());
+    let recent_commits = run_git(
+        &repo_root,
+        &["log", "-n", "10", "--pretty=format:%h %ad %s", "--date=short"],
+    )
+    .unwrap_or_default();
+    let recent_files_raw = run_git(
+        &repo_root,
+        &["log", "-n", "5", "--name-only", "--pretty=format:"],
+    )
+    .unwrap_or_default();
+    let mut recent_files = Vec::new();
+    for line in recent_files_raw.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        if !recent_files.contains(&trimmed.to_string()) {
+            recent_files.push(trimmed.to_string());
+        }
+        if recent_files.len() >= 8 {
+            break;
+        }
+    }
+
+    let doc_candidates = [
+        "ROADMAP.md",
+        "PROJECT_OVERVIEW.md",
+        "README.md",
+        "TODO.md",
+        "TASKS.md",
+        "ISSUES.md",
+        "BACKLOG.md",
+        "docs/WORK_LOG.md",
+        "docs/ROADMAP.md",
+        "docs/ISSUES.md",
+        "docs/PROJECTS.md",
+        "docs/TODO.md",
+    ];
+    let mut doc_notes = Vec::new();
+    let mut task_hint = None;
+    for rel in doc_candidates {
+        if let Some((name, note)) = read_doc_snippet(&repo_root, rel) {
+            if task_hint.is_none() {
+                task_hint = Some(note.clone());
+            }
+            doc_notes.push(format!("{name}: {note}"));
+        }
+    }
+
+    let issues_hint = fs::read_dir(repo_root.join("issues")).ok().and_then(|entries| {
+        let mut names = Vec::new();
+        for entry in entries.flatten().take(5) {
+            if let Some(name) = entry.file_name().to_str() {
+                names.push(name.to_string());
+            }
+        }
+        if names.is_empty() {
+            None
+        } else {
+            Some(names.join(", "))
+        }
+    });
+
+    RepoIntel {
+        root: repo_root,
+        status,
+        recent_commits,
+        recent_files,
+        doc_notes,
+        task_hint,
+        issues_hint,
+        dirty,
+    }
+}
+
+fn summarize_repo_intel(intel: &RepoIntel) -> String {
+    let status_hint = if intel.dirty { "dirty" } else { "clean" };
+    let commit_count = intel
+        .recent_commits
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .count();
+    let docs_count = intel.doc_notes.len();
+    let mut parts = vec![
+        format!("status {status_hint}"),
+        format!("commits {commit_count}"),
+        format!("docs {docs_count}"),
+    ];
+    if let Some(issue) = intel.issues_hint.as_ref() {
+        parts.push(format!("issues {}", issue));
+    }
+    format!("Repo research: {}.", parts.join(", "))
+}
+
+fn build_repo_intel_payload(intel: &RepoIntel) -> String {
+    let mut parts = Vec::new();
+    parts.push(format!("Repo root: {}", intel.root.display()));
+    if !intel.status.trim().is_empty() {
+        parts.push(format!("Git status:\n{}", intel.status.trim()));
+    }
+    if !intel.recent_commits.trim().is_empty() {
+        parts.push(format!("Recent commits:\n{}", intel.recent_commits.trim()));
+    }
+    if !intel.recent_files.is_empty() {
+        parts.push(format!("Recent files:\n{}", intel.recent_files.join(", ")));
+    }
+    if !intel.doc_notes.is_empty() {
+        parts.push(format!("Docs:\n{}", intel.doc_notes.join("\n")));
+    }
+    if let Some(issue) = intel.issues_hint.as_ref() {
+        parts.push(format!("Issues:\n{issue}"));
+    }
+    truncate_text(parts.join("\n\n"), 2000)
+}
+
+fn fallback_directive(intel: &RepoIntel, goal_intent: &str, plan_step: Option<&str>) -> String {
+    if let Some(step) = plan_step {
+        return sanitize_guidance_response(&format!("Proceed with: {}.", step));
+    }
+    if let Some(task) = intel.task_hint.as_ref() {
+        return sanitize_guidance_response(&format!("Advance task: {}.", task));
+    }
+    if !goal_intent.trim().is_empty() {
+        return sanitize_guidance_response(&format!("Proceed with: {}.", goal_intent.trim()));
+    }
+    sanitize_guidance_response("Review git status/log and continue the highest-priority open task.")
+}
+
 fn emit_guidance_step(
     proxy: &EventLoopProxy<AppEvent>,
     thread_id: &str,
@@ -2241,7 +2498,12 @@ async fn run_guidance_super(
     lm: &dsrs::LM,
 ) -> Result<(String, Vec<String>), String> {
     let mut signatures = Vec::new();
-    let repo_context = guidance_repo_context();
+    emit_guidance_status(proxy, thread_id, Some("RepoResearch"), "Running...");
+    let repo_intel = collect_repo_intel();
+    let repo_payload = build_repo_intel_payload(&repo_intel);
+    let repo_summary = summarize_repo_intel(&repo_intel);
+    emit_guidance_step(proxy, thread_id, "RepoResearch", &repo_summary, "local");
+    let repo_context = format!("{} | {}", guidance_repo_context(), repo_summary);
     let lm_arc = std::sync::Arc::new(lm.clone());
 
     emit_guidance_status(
@@ -2320,9 +2582,10 @@ async fn run_guidance_super(
     let steps_raw = prediction_to_string(&planning, "steps");
     let first_step = extract_first_step_description(&steps_raw);
     signatures.push("PlanningSignature".to_string());
-    if let Some(step) = first_step.as_ref() {
+    let plan_step_summary = if let Some(step) = first_step.as_ref() {
         let step_text = sanitize_guidance_response(&format!("Plan step: {}.", step));
         emit_guidance_step(proxy, thread_id, "PlanningSignature", &step_text, &lm.model);
+        step_text
     } else {
         emit_guidance_step(
             proxy,
@@ -2331,80 +2594,46 @@ async fn run_guidance_super(
             "Plan ready.",
             &lm.model,
         );
+        "Plan ready.".to_string()
     }
+    ;
 
+    let task_summary = format!("{} {}", step_text, plan_step_summary);
     emit_guidance_status(
         proxy,
         thread_id,
-        Some("GuidanceDecisionSignature"),
-        "Running…",
+        Some("GuidanceDirectiveSignature"),
+        "Running...",
     );
-    let decision_predictor = Predict::new(GuidanceDecisionSignature::new());
-    let summary_payload = json!({
-        "user_message": message,
-        "task_type": task_type,
-        "requirements": requirements_raw,
-        "plan_steps": steps_raw,
-        "assumptions": if question.is_some() { "Proceed without clarification" } else { "" },
-    });
-    let summary_json = serde_json::to_string_pretty(&summary_payload)
-        .unwrap_or_else(|_| summary_payload.to_string());
-    let state_payload = json!({
-        "mode": "super",
-        "turn_count": 0,
-        "no_progress_count": 0,
-        "permissions": {
-            "can_exec": true,
-            "can_write": true,
-            "network": "full"
-        }
-    });
-    let state_json =
-        serde_json::to_string_pretty(&state_payload).unwrap_or_else(|_| state_payload.to_string());
-    let decision_inputs = example! {
+    let directive_predictor = Predict::new(GuidanceDirectiveSignature::new());
+    let directive_inputs = example! {
         "goal_intent": "input" => goal_intent.to_string(),
-        "goal_success_criteria": "input" => "[]".to_string(),
-        "summary": "input" => summary_json,
-        "state": "input" => state_json,
+        "repo_intel": "input" => repo_payload,
+        "task_summary": "input" => task_summary,
     };
-    let decision = decision_predictor
-        .forward_with_config(decision_inputs, lm_arc)
+    let directive = directive_predictor
+        .forward_with_config(directive_inputs, lm_arc)
         .await
-        .map_err(|e| format!("Guidance decision failed: {e}"))?;
-    let action = prediction_to_string(&decision, "action");
-    let next_input = prediction_to_string(&decision, "next_input");
-    let _reason = prediction_to_string(&decision, "reason");
-    signatures.push("GuidanceDecisionSignature".to_string());
-    let normalized_action = action.trim().to_lowercase();
-    let action_valid = matches!(
-        normalized_action.as_str(),
-        "continue" | "pause" | "stop" | "review"
-    );
-    let mut selected_next = if !next_input.trim().is_empty() && !is_question_like(&next_input) {
-        next_input.trim().to_string()
-    } else if let Some(step) = first_step.as_ref() {
-        format!("Next step: {}.", step)
+        .map_err(|e| format!("Guidance directive failed: {e}"))?;
+    let directive_raw = prediction_to_string(&directive, "directive");
+    signatures.push("GuidanceDirectiveSignature".to_string());
+    let mut directive_text = if !directive_raw.trim().is_empty() {
+        directive_raw.trim().to_string()
     } else {
-        fallback_guidance_response(goal_intent)
+        fallback_directive(&repo_intel, goal_intent, first_step.as_deref())
     };
-    if is_question_like(&selected_next) {
-        selected_next = fallback_guidance_response(goal_intent);
+    if is_question_like(&directive_text) {
+        directive_text = fallback_directive(&repo_intel, goal_intent, first_step.as_deref());
     }
-    let selected_action = if action_valid && normalized_action == "continue" {
-        "continue".to_string()
-    } else {
-        "continue".to_string()
-    };
-    let decision_text = format!("Decision: {} — {}.", selected_action, selected_next);
     emit_guidance_step(
         proxy,
         thread_id,
-        "GuidanceDecisionSignature",
-        &sanitize_guidance_response(&decision_text),
+        "GuidanceDirectiveSignature",
+        &sanitize_guidance_response(&directive_text),
         &lm.model,
     );
 
-    let final_response = sanitize_guidance_response(&selected_next);
+    let final_response = sanitize_guidance_response(&directive_text);
 
     Ok((final_response, signatures))
 }
