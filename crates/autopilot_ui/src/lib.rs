@@ -485,6 +485,12 @@ impl PaneStore {
         }
     }
 
+    fn set_title(&mut self, id: &str, title: impl Into<String>) {
+        if let Some(index) = self.pane_index(id) {
+            self.panes[index].title = title.into();
+        }
+    }
+
     fn offset_all(&mut self, dx: f32, dy: f32) {
         if dx == 0.0 && dy == 0.0 {
             return;
@@ -1984,6 +1990,8 @@ impl MinimalRoot {
                     chat.set_session_id(session_id);
                     chat.thread_id = Some(thread.id.clone());
                 }
+                self.pane_store
+                    .set_title(&pane_id, format!("Thread {}", thread.id));
                 self.session_to_pane.insert(session_id, pane_id.clone());
                 self.thread_to_pane.insert(thread.id, pane_id);
             }
@@ -2019,6 +2027,8 @@ impl MinimalRoot {
                                     chat.thread_id = Some(thread_id.to_string());
                                     self.thread_to_pane
                                         .insert(thread_id.to_string(), pane_id.clone());
+                                    self.pane_store
+                                        .set_title(&pane_id, format!("Thread {}", thread_id));
                                 }
                                 if let Some(model) = params
                                     .and_then(|p| p.get("model"))
@@ -2147,7 +2157,7 @@ impl MinimalRoot {
         let pane = Pane {
             id: id.clone(),
             kind: PaneKind::Chat,
-            title: "Chat".to_string(),
+            title: "Thread".to_string(),
             rect: normalize_pane_rect(rect),
             dismissable: true,
         };
@@ -3745,39 +3755,14 @@ fn paint_chat_pane(chat: &mut ChatPaneState, bounds: Bounds, cx: &mut PaintConte
         header_height,
     );
 
-    let model = chat.thread_model.as_deref().unwrap_or(DEFAULT_THREAD_MODEL);
-    let thread_id = chat.thread_id.as_deref().unwrap_or("unknown-thread");
-    let thread_line_bounds = Bounds::new(
-        header_bounds.origin.x,
-        header_bounds.origin.y + header_height + 2.0,
-        header_bounds.size.width,
-        18.0,
-    );
-    Text::new(&format!("Initialized thread {thread_id}"))
-        .font_size(theme::font_size::XS)
-        .italic()
-        .color(theme::text::MUTED)
-        .paint(thread_line_bounds, cx);
-
-    let model_line_bounds = Bounds::new(
-        header_bounds.origin.x,
-        thread_line_bounds.origin.y + 18.0,
-        header_bounds.size.width,
-        18.0,
-    );
-    Text::new(&format!("Model: {model}"))
-        .font_size(theme::font_size::XS)
-        .color(theme::text::MUTED)
-        .paint(model_line_bounds, cx);
-
-    let mut description_top = model_line_bounds.origin.y + 18.0;
+    let mut description_top = header_bounds.origin.y + 4.0;
     let mut dropdown_bounds = Bounds::ZERO;
 
     if SHOW_MODEL_DROPDOWN {
         let selector_height = 30.0;
         let selector_bounds = Bounds::new(
             header_bounds.origin.x,
-            model_line_bounds.origin.y + 26.0,
+            description_top + 2.0,
             content_width,
             selector_height,
         );
