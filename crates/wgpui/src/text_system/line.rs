@@ -462,23 +462,17 @@ impl LinePaintInfo {
                     glyph_origin.y += self.line_height;
 
                     // Restart decorations on new line
-                    if current_underline.is_some() {
-                        if let Some((ref mut pos, _)) = current_underline {
-                            pos.x = glyph_origin.x;
-                            pos.y += self.line_height;
-                        }
+                    if let Some((ref mut pos, _)) = current_underline {
+                        pos.x = glyph_origin.x;
+                        pos.y += self.line_height;
                     }
-                    if current_strikethrough.is_some() {
-                        if let Some((ref mut pos, _)) = current_strikethrough {
-                            pos.x = glyph_origin.x;
-                            pos.y += self.line_height;
-                        }
+                    if let Some((ref mut pos, _)) = current_strikethrough {
+                        pos.x = glyph_origin.x;
+                        pos.y += self.line_height;
                     }
-                    if current_background.is_some() {
-                        if let Some((ref mut pos, _)) = current_background {
-                            pos.x = glyph_origin.x;
-                            pos.y += self.line_height;
-                        }
+                    if let Some((ref mut pos, _)) = current_background {
+                        pos.x = glyph_origin.x;
+                        pos.y += self.line_height;
                     }
                 }
 
@@ -488,55 +482,51 @@ impl LinePaintInfo {
                 if glyph.index >= run_end {
                     if let Some(style_run) = decoration_runs_iter.next() {
                         // Finish decorations that changed
-                        if let Some((_, ref underline_style)) = current_underline {
-                            if style_run.underline.as_ref() != Some(underline_style) {
-                                self.finish_underline(
-                                    &mut current_underline,
-                                    glyph_origin.x,
-                                    layout,
-                                );
-                            }
+                        if let Some((_, ref underline_style)) = current_underline
+                            && style_run.underline.as_ref() != Some(underline_style)
+                        {
+                            self.finish_underline(&mut current_underline, glyph_origin.x, layout);
                         }
-                        if let Some((_, ref strike_style)) = current_strikethrough {
-                            if style_run.strikethrough.as_ref() != Some(strike_style) {
-                                self.finish_strikethrough(
-                                    &mut current_strikethrough,
-                                    glyph_origin.x,
-                                    layout,
-                                );
-                            }
+                        if let Some((_, ref strike_style)) = current_strikethrough
+                            && style_run.strikethrough.as_ref() != Some(strike_style)
+                        {
+                            self.finish_strikethrough(
+                                &mut current_strikethrough,
+                                glyph_origin.x,
+                                layout,
+                            );
                         }
-                        if let Some((_, ref bg_color)) = current_background {
-                            if style_run.background_color.as_ref() != Some(bg_color) {
-                                self.finish_background(&mut current_background, glyph_origin.x);
-                            }
+                        if let Some((_, ref bg_color)) = current_background
+                            && style_run.background_color.as_ref() != Some(bg_color)
+                        {
+                            self.finish_background(&mut current_background, glyph_origin.x);
                         }
 
                         // Start new decorations
-                        if let Some(ref underline) = style_run.underline {
-                            if current_underline.is_none() {
-                                let underline_y = glyph_origin.y
-                                    + self.baseline_offset.y
-                                    + (layout.descent * 0.618);
-                                current_underline = Some((
-                                    Point::new(glyph_origin.x, underline_y),
-                                    underline.clone(),
-                                ));
-                            }
+                        if let Some(ref underline) = style_run.underline
+                            && current_underline.is_none()
+                        {
+                            let underline_y = glyph_origin.y
+                                + self.baseline_offset.y
+                                + (layout.descent * 0.618);
+                            current_underline = Some((
+                                Point::new(glyph_origin.x, underline_y),
+                                underline.clone(),
+                            ));
                         }
-                        if let Some(ref strike) = style_run.strikethrough {
-                            if current_strikethrough.is_none() {
-                                let strike_y = glyph_origin.y
-                                    + ((layout.ascent * 0.5 + self.baseline_offset.y) * 0.5);
-                                current_strikethrough =
-                                    Some((Point::new(glyph_origin.x, strike_y), strike.clone()));
-                            }
+                        if let Some(ref strike) = style_run.strikethrough
+                            && current_strikethrough.is_none()
+                        {
+                            let strike_y = glyph_origin.y
+                                + ((layout.ascent * 0.5 + self.baseline_offset.y) * 0.5);
+                            current_strikethrough =
+                                Some((Point::new(glyph_origin.x, strike_y), strike.clone()));
                         }
-                        if let Some(bg_color) = style_run.background_color {
-                            if current_background.is_none() {
-                                current_background =
-                                    Some((Point::new(glyph_origin.x, glyph_origin.y), bg_color));
-                            }
+                        if let Some(bg_color) = style_run.background_color
+                            && current_background.is_none()
+                        {
+                            current_background =
+                                Some((Point::new(glyph_origin.x, glyph_origin.y), bg_color));
                         }
 
                         run_end += style_run.len as usize;

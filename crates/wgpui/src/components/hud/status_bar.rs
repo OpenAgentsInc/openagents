@@ -3,6 +3,8 @@ use crate::components::context::{EventContext, PaintContext};
 use crate::components::{Component, ComponentId, EventResult};
 use crate::{Bounds, InputEvent, Point, Quad, theme};
 
+type StatusItemClickHandler = Box<dyn FnMut(&str) + 'static>;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum StatusBarPosition {
     #[default]
@@ -90,7 +92,7 @@ pub struct StatusBar {
     items: Vec<StatusItem>,
     position: StatusBarPosition,
     height: f32,
-    on_item_click: Option<Box<dyn FnMut(&str)>>,
+    on_item_click: Option<StatusItemClickHandler>,
 }
 
 impl StatusBar {

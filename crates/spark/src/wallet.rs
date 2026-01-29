@@ -287,27 +287,24 @@ impl SparkWalletBuilder {
     pub async fn build(self) -> Result<SparkWallet, SparkError> {
         let seed = seed_from_signer(&self.signer)?;
 
-        let mut sdk_config = match self.sdk_config {
-            Some(config) => {
-                let expected = self.config.network.to_sdk_network();
-                // breez_sdk_spark::Network does not implement PartialEq.
-                if std::mem::discriminant(&config.network) != std::mem::discriminant(&expected) {
-                    return Err(SparkError::InitializationFailed(format!(
-                        "SDK config network {:?} does not match wallet network {:?}",
-                        config.network, expected
-                    )));
-                }
-                config
+        let mut sdk_config = if let Some(config) = self.sdk_config {
+            let expected = self.config.network.to_sdk_network();
+            // breez_sdk_spark::Network does not implement PartialEq.
+            if std::mem::discriminant(&config.network) != std::mem::discriminant(&expected) {
+                return Err(SparkError::InitializationFailed(format!(
+                    "SDK config network {:?} does not match wallet network {:?}",
+                    config.network, expected
+                )));
             }
-            None => {
-                let mut config = default_config(self.config.network.to_sdk_network());
-                if self.config.api_key.is_some() {
-                    config.api_key = self.config.api_key.clone();
-                } else {
-                    config.real_time_sync_server_url = None;
-                }
-                config
+            config
+        } else {
+            let mut config = default_config(self.config.network.to_sdk_network());
+            if self.config.api_key.is_some() {
+                config.api_key = self.config.api_key.clone();
+            } else {
+                config.real_time_sync_server_url = None;
             }
+            config
         };
 
         if sdk_config.api_key.is_none() {
@@ -509,7 +506,7 @@ impl SparkWallet {
     /// Get the Breez SDK instance
     ///
     /// This provides direct access to the underlying Breez SDK for advanced operations.
-    #[allow(dead_code)]
+    #[expect(dead_code)]
     pub(crate) fn sdk(&self) -> &Arc<BreezSdk> {
         &self.sdk
     }

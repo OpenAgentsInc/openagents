@@ -66,11 +66,6 @@ impl IssueCache {
         }
     }
 
-    /// Create a new cache with default configuration
-    pub fn default() -> Self {
-        Self::new(CacheConfig::default())
-    }
-
     /// Get current git HEAD commit hash
     fn get_git_head() -> Result<String> {
         let output = Command::new("git")
@@ -191,6 +186,12 @@ impl IssueCache {
             max_size: self.config.max_size,
             git_head: read_lock(&self.last_git_head).clone(),
         }
+    }
+}
+
+impl Default for IssueCache {
+    fn default() -> Self {
+        Self::new(CacheConfig::default())
     }
 }
 

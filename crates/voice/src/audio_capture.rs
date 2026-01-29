@@ -216,7 +216,7 @@ impl AudioCapture {
                 output.len(),
                 MIN_SAMPLES
             );
-            output.extend(std::iter::repeat(0.0).take(padding_needed));
+            output.extend(std::iter::repeat_n(0.0, padding_needed));
         }
 
         Some(output)

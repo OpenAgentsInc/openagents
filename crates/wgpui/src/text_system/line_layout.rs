@@ -217,10 +217,10 @@ impl LineLayout {
 
             if width > wrap_width && boundary > last_boundary {
                 // Respect max_lines limit
-                if let Some(max) = max_lines {
-                    if boundaries.len() >= max - 1 {
-                        break;
-                    }
+                if let Some(max) = max_lines
+                    && boundaries.len() >= max - 1
+                {
+                    break;
                 }
 
                 if let Some(candidate) = last_candidate_ix.take() {

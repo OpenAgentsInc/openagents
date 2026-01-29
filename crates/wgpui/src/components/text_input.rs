@@ -3,6 +3,9 @@ use crate::components::{Component, ComponentId, EventResult};
 use crate::input::{Key, NamedKey};
 use crate::text::FontStyle;
 use crate::{Bounds, Hsla, InputEvent, MouseButton, Point, Quad, theme};
+
+type TextInputChangeHandler = Box<dyn FnMut(&str) + 'static>;
+type TextInputSubmitHandler = Box<dyn FnMut(&str) + 'static>;
 use web_time::Instant;
 
 pub struct TextInput {
@@ -23,8 +26,8 @@ pub struct TextInput {
     cursor_color: Hsla,
     cursor_blink_start: Instant,
     mono: bool,
-    on_change: Option<Box<dyn FnMut(&str)>>,
-    on_submit: Option<Box<dyn FnMut(&str)>>,
+    on_change: Option<TextInputChangeHandler>,
+    on_submit: Option<TextInputSubmitHandler>,
     /// Max width for text wrapping (set via set_max_width or during paint)
     max_width: Option<f32>,
 }
@@ -458,25 +461,25 @@ impl Component for TextInput {
             let visual_lines = self.wrap_text(display_text);
             let base_line_top = self.base_line_top(bounds, line_height, visual_lines.len().max(1));
 
-            if *display_text == self.value {
-                if let Some((sel_start, sel_end)) = self.get_selection() {
-                    let ranges = self.visual_line_ranges();
-                    let selection_color = Hsla::from_hex(0x1A1A1A);
-                    for (i, (line_start, line_end)) in ranges.iter().enumerate() {
-                        let overlap_start = sel_start.max(*line_start);
-                        let overlap_end = sel_end.min(*line_end);
-                        if overlap_start < overlap_end {
-                            let col_start = overlap_start - *line_start;
-                            let col_end = overlap_end - *line_start;
-                            let sel_x = text_x + col_start as f32 * self.font_size * 0.6;
-                            let sel_width =
-                                (col_end.saturating_sub(col_start)) as f32 * self.font_size * 0.6;
-                            let sel_y = base_line_top + line_height * i as f32;
-                            cx.scene.draw_quad(
-                                Quad::new(Bounds::new(sel_x, sel_y, sel_width, line_height))
-                                    .with_background(selection_color),
-                            );
-                        }
+            if *display_text == self.value
+                && let Some((sel_start, sel_end)) = self.get_selection()
+            {
+                let ranges = self.visual_line_ranges();
+                let selection_color = Hsla::from_hex(0x1A1A1A);
+                for (i, (line_start, line_end)) in ranges.iter().enumerate() {
+                    let overlap_start = sel_start.max(*line_start);
+                    let overlap_end = sel_end.min(*line_end);
+                    if overlap_start < overlap_end {
+                        let col_start = overlap_start - *line_start;
+                        let col_end = overlap_end - *line_start;
+                        let sel_x = text_x + col_start as f32 * self.font_size * 0.6;
+                        let sel_width =
+                            (col_end.saturating_sub(col_start)) as f32 * self.font_size * 0.6;
+                        let sel_y = base_line_top + line_height * i as f32;
+                        cx.scene.draw_quad(
+                            Quad::new(Bounds::new(sel_x, sel_y, sel_width, line_height))
+                                .with_background(selection_color),
+                        );
                     }
                 }
             }
@@ -508,7 +511,7 @@ impl Component for TextInput {
         if self.focused {
             // Blink cursor: 500ms on, 500ms off
             let elapsed = self.cursor_blink_start.elapsed().as_millis();
-            let cursor_visible = (elapsed / 500) % 2 == 0;
+            let cursor_visible = (elapsed / 500).is_multiple_of(2);
 
             if cursor_visible {
                 let cursor_line = self.cursor_line();

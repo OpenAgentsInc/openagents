@@ -1346,8 +1346,8 @@ impl VimHandler {
         let line = editor.line_text(pos.line());
         let chars: Vec<char> = line.chars().collect();
 
-        for i in (pos.column() + 1)..chars.len() {
-            if chars[i] == target {
+        for (i, ch) in chars.iter().enumerate().skip(pos.column() + 1) {
+            if *ch == target {
                 let col = if before { i - 1 } else { i };
                 return E::Pos::new(pos.line(), col);
             }
@@ -1564,33 +1564,33 @@ impl VimHandler {
         let cursor = editor.cursor();
         let range = self.find_object_range(object, around, cursor, editor);
 
-        if let Some(range) = range {
-            if let Some(op) = self.state.pop_operator() {
-                match op {
-                    Operator::Delete => {
-                        let text = self.get_range_text(&range, editor);
-                        self.state.store_register(text, true);
-                        editor.delete(range);
-                        editor.set_cursor(range.start);
-                        self.state.reset_pending();
-                        return KeyResult::TextChanged;
-                    }
-                    Operator::Change => {
-                        let text = self.get_range_text(&range, editor);
-                        self.state.store_register(text, true);
-                        editor.delete(range);
-                        editor.set_cursor(range.start);
-                        self.state.enter_insert();
-                        return KeyResult::ModeChanged(Mode::Insert);
-                    }
-                    Operator::Yank => {
-                        let text = self.get_range_text(&range, editor);
-                        self.state.store_register(text, false);
-                        self.state.reset_pending();
-                        return KeyResult::Handled;
-                    }
-                    _ => {}
+        if let Some(range) = range
+            && let Some(op) = self.state.pop_operator()
+        {
+            match op {
+                Operator::Delete => {
+                    let text = self.get_range_text(&range, editor);
+                    self.state.store_register(text, true);
+                    editor.delete(range);
+                    editor.set_cursor(range.start);
+                    self.state.reset_pending();
+                    return KeyResult::TextChanged;
                 }
+                Operator::Change => {
+                    let text = self.get_range_text(&range, editor);
+                    self.state.store_register(text, true);
+                    editor.delete(range);
+                    editor.set_cursor(range.start);
+                    self.state.enter_insert();
+                    return KeyResult::ModeChanged(Mode::Insert);
+                }
+                Operator::Yank => {
+                    let text = self.get_range_text(&range, editor);
+                    self.state.store_register(text, false);
+                    self.state.reset_pending();
+                    return KeyResult::Handled;
+                }
+                _ => {}
             }
         }
 
@@ -1972,7 +1972,7 @@ impl VimHandler {
         let end_col = (cursor.column() + count).min(line_len);
         if cursor.column() < end_col {
             let range = TextRange::new(cursor, E::Pos::new(cursor.line(), end_col));
-            let replacement: String = std::iter::repeat(c).take(count).collect();
+            let replacement: String = std::iter::repeat_n(c, count).collect();
             editor.replace(range, &replacement);
         }
 

@@ -14,13 +14,14 @@ use crate::r#async::{BackgroundExecutor, ForegroundExecutor, Task};
 
 type ObserverCallback = Box<dyn FnMut(&mut App) -> bool + 'static>;
 type ReleaseCallback = Box<dyn FnOnce(&mut dyn std::any::Any, &mut App) + 'static>;
+type DeferredCallback = Box<dyn FnOnce(&mut App) + 'static>;
 
 pub struct App {
     pub(crate) entities: EntityMap,
     pub(crate) observers: SubscriberSet<EntityId, ObserverCallback>,
     pub(crate) release_listeners: SubscriberSet<EntityId, ReleaseCallback>,
     pending_notifications: Vec<EntityId>,
-    deferred: Vec<Box<dyn FnOnce(&mut App) + 'static>>,
+    deferred: Vec<DeferredCallback>,
     flushing: bool,
     background_executor: BackgroundExecutor,
     foreground_executor: ForegroundExecutor,

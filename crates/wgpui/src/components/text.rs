@@ -41,8 +41,7 @@ impl Text {
         for line in content.split('\n') {
             let char_count = line.chars().count();
             let line_wrap_count = if chars_per_line > 0 && char_count > 0 {
-                // Ceiling division: (a + b - 1) / b
-                ((char_count + chars_per_line - 1) / chars_per_line).max(1)
+                char_count.div_ceil(chars_per_line).max(1)
             } else {
                 1
             };
@@ -281,8 +280,7 @@ impl Component for Text {
             max_line_width = max_line_width.max(paragraph_width);
 
             if self.wrap && chars_per_line > 0 && char_count > 0 {
-                // Ceiling division to ensure enough height
-                estimated_lines += ((char_count + chars_per_line - 1) / chars_per_line).max(1);
+                estimated_lines += char_count.div_ceil(chars_per_line).max(1);
             } else {
                 estimated_lines += 1;
             }

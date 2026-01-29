@@ -98,6 +98,9 @@ use crate::text::FontStyle;
 use crate::{Bounds, Hsla, InputEvent, MouseButton, Point, Quad, theme};
 use web_time::Instant;
 
+type LiveEditorTextHandler = Box<dyn FnMut(&str) + 'static>;
+type LiveEditorActionHandler = Box<dyn FnMut() + 'static>;
+
 /// Snapshot of editor state for undo/redo
 #[derive(Clone)]
 struct EditorSnapshot {
@@ -148,8 +151,8 @@ pub struct LiveEditor {
     vim: VimState,
 
     // Callbacks
-    on_change: Option<Box<dyn FnMut(&str)>>,
-    on_save: Option<Box<dyn FnMut()>>,
+    on_change: Option<LiveEditorTextHandler>,
+    on_save: Option<LiveEditorActionHandler>,
 
     // Status message (for voice transcription, etc.)
     status_message: Option<(String, Hsla)>,
@@ -712,18 +715,18 @@ impl LiveEditor {
         self.cursor_blink_start = Instant::now();
 
         // Let Cmd/Ctrl+Arrow keys pass through to standard handler
-        if modifiers.meta || modifiers.ctrl {
-            if let Key::Named(named) = key {
-                match named {
+        if (modifiers.meta || modifiers.ctrl)
+            && matches!(
+                key,
+                Key::Named(
                     NamedKey::ArrowUp
-                    | NamedKey::ArrowDown
-                    | NamedKey::ArrowLeft
-                    | NamedKey::ArrowRight => {
-                        return EventResult::Ignored;
-                    }
-                    _ => {}
-                }
-            }
+                        | NamedKey::ArrowDown
+                        | NamedKey::ArrowLeft
+                        | NamedKey::ArrowRight
+                )
+            )
+        {
+            return EventResult::Ignored;
         }
 
         match key {
@@ -1083,19 +1086,17 @@ impl LiveEditor {
         let mut col = self.cursor.column;
 
         // Move back one if we're at a word start
-        if col > 0 {
-            col -= 1;
-        }
+        col = col.saturating_sub(1);
 
         // Skip whitespace
-        while col > 0 && chars.get(col).map_or(false, |c| c.is_whitespace()) {
+        while col > 0 && chars.get(col).is_some_and(|c| c.is_whitespace()) {
             col -= 1;
         }
         // Skip to start of word
         while col > 0
             && chars
                 .get(col.saturating_sub(1))
-                .map_or(false, |&c| Self::is_vim_word_char(c))
+                .is_some_and(|&c| Self::is_vim_word_char(c))
         {
             col -= 1;
         }
@@ -2085,6 +2086,7 @@ impl LiveEditor {
 
     /// Render a line with markdown formatting
     /// `is_continuation` indicates this is a wrapped continuation (not the start of the line)
+    #[expect(clippy::too_many_arguments)]
     fn render_formatted_line(
         &self,
         line: &str,
@@ -2360,13 +2362,11 @@ impl Component for LiveEditor {
 
             for (seg_idx, (start_col, segment)) in segments.iter().enumerate() {
                 // Track cursor position in visual coordinates
-                if line_idx == self.cursor.line {
-                    if self.cursor.column >= *start_col {
-                        let segment_end = start_col + segment.chars().count();
-                        if self.cursor.column <= segment_end || seg_idx == segments.len() - 1 {
-                            cursor_visual_row = visual_row;
-                            cursor_visual_col = self.cursor.column - start_col;
-                        }
+                if line_idx == self.cursor.line && self.cursor.column >= *start_col {
+                    let segment_end = start_col + segment.chars().count();
+                    if self.cursor.column <= segment_end || seg_idx == segments.len() - 1 {
+                        cursor_visual_row = visual_row;
+                        cursor_visual_col = self.cursor.column - start_col;
                     }
                 }
 
@@ -2434,52 +2434,50 @@ impl Component for LiveEditor {
             }
 
             // Selection highlight for this segment
-            if let Some(sel) = &self.selection {
-                if !sel.is_empty() {
-                    let sel_start = sel.start();
-                    let sel_end = sel.end();
+            if let Some(sel) = &self.selection
+                && !sel.is_empty()
+            {
+                let sel_start = sel.start();
+                let sel_end = sel.end();
 
-                    if *line_idx >= sel_start.line && *line_idx <= sel_end.line {
-                        let segment_end_col = start_col + segment.chars().count();
+                if *line_idx >= sel_start.line && *line_idx <= sel_end.line {
+                    let segment_end_col = start_col + segment.chars().count();
 
-                        // Calculate selection range within this segment
-                        let line_sel_start = if *line_idx == sel_start.line {
-                            sel_start.column
-                        } else {
-                            0
+                    // Calculate selection range within this segment
+                    let line_sel_start = if *line_idx == sel_start.line {
+                        sel_start.column
+                    } else {
+                        0
+                    };
+                    let line_sel_end = if *line_idx == sel_end.line {
+                        sel_end.column
+                    } else {
+                        self.line_len(*line_idx)
+                    };
+
+                    // Intersect with segment range
+                    let seg_sel_start = line_sel_start.max(*start_col).saturating_sub(*start_col);
+                    let seg_sel_end = line_sel_end.min(segment_end_col).saturating_sub(*start_col);
+
+                    if seg_sel_start < seg_sel_end {
+                        let char_width = match block_type {
+                            BlockType::Header(level) => {
+                                let scale = header_font_scale(level);
+                                cx.text.measure_styled_mono(
+                                    "M",
+                                    self.style.font_size * scale,
+                                    FontStyle::default(),
+                                )
+                            }
+                            _ => self.mono_char_width,
                         };
-                        let line_sel_end = if *line_idx == sel_end.line {
-                            sel_end.column
-                        } else {
-                            self.line_len(*line_idx)
-                        };
+                        let sel_x = text_x + seg_sel_start as f32 * char_width;
+                        let sel_width = (seg_sel_end - seg_sel_start) as f32 * char_width;
 
-                        // Intersect with segment range
-                        let seg_sel_start =
-                            line_sel_start.max(*start_col).saturating_sub(*start_col);
-                        let seg_sel_end =
-                            line_sel_end.min(segment_end_col).saturating_sub(*start_col);
-
-                        if seg_sel_start < seg_sel_end {
-                            let char_width = match block_type {
-                                BlockType::Header(level) => {
-                                    let scale = header_font_scale(level);
-                                    cx.text.measure_styled_mono(
-                                        "M",
-                                        self.style.font_size * scale,
-                                        FontStyle::default(),
-                                    )
-                                }
-                                _ => self.mono_char_width,
-                            };
-                            let sel_x = text_x + seg_sel_start as f32 * char_width;
-                            let sel_width = (seg_sel_end - seg_sel_start) as f32 * char_width;
-
-                            cx.scene.draw_quad(
-                                Quad::new(Bounds::new(sel_x, y, sel_width, line_height))
-                                    .with_background(self.style.selection_color),
-                            );
-                        }
+                        cx.scene.draw_quad(
+                            Quad::new(Bounds::new(sel_x, y, sel_width, line_height))
+                                .with_background(self.style.selection_color),
+                        );
                     }
                 }
             }
@@ -2488,7 +2486,7 @@ impl Component for LiveEditor {
         // Cursor with blinking (500ms on, 500ms off)
         if self.focused {
             let elapsed = self.cursor_blink_start.elapsed().as_millis();
-            let cursor_visible = (elapsed / 500) % 2 == 0;
+            let cursor_visible = (elapsed / 500).is_multiple_of(2);
 
             if cursor_visible {
                 let cursor_y =

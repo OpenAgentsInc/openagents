@@ -81,6 +81,7 @@ impl SpanRef {
     }
 
     /// Create a SpanRef from chunk metadata.
+    #[expect(clippy::too_many_arguments)]
     pub fn from_chunk(
         chunk_id: usize,
         path: impl Into<String>,

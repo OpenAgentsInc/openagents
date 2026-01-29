@@ -67,10 +67,7 @@ fn parse_adr(content: &str) -> (String, Vec<String>, HashMap<String, Vec<String>
     for cap in table_re.captures_iter(&compliance_section) {
         let rule_id = cap.get(1).unwrap().as_str().to_string();
         let test_path = cap.get(2).unwrap().as_str().to_string();
-        compliance
-            .entry(rule_id)
-            .or_insert_with(Vec::new)
-            .push(test_path);
+        compliance.entry(rule_id).or_default().push(test_path);
     }
 
     (status, rule_ids, compliance)
@@ -108,10 +105,8 @@ fn test_accepted_adrs_have_compliance_tables() {
         let (status, rule_ids, compliance) = parse_adr(&content);
 
         // Only check Accepted ADRs with rule IDs
-        if status == "Accepted" && !rule_ids.is_empty() {
-            if compliance.is_empty() {
-                missing_tables.push(filename.to_string());
-            }
+        if status == "Accepted" && !rule_ids.is_empty() && compliance.is_empty() {
+            missing_tables.push(filename.to_string());
         }
     }
 
@@ -162,10 +157,7 @@ fn test_all_rules_have_test_coverage() {
         // Find rules without test coverage
         for rule_id in rule_ids {
             if !compliance.contains_key(&rule_id) {
-                uncovered_rules
-                    .entry(filename.to_string())
-                    .or_insert_with(Vec::new)
-                    .push(rule_id);
+                uncovered_rules.entry(filename.to_string()).or_default().push(rule_id);
             }
         }
     }

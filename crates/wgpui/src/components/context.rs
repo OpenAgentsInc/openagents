@@ -3,6 +3,9 @@ use crate::keymap::KeyContext;
 use crate::{Bounds, FocusChain, FocusHandle, FocusId, Point, Scene, TextSystem};
 use std::collections::HashMap;
 
+type ClipboardRead = Box<dyn Fn() -> Option<String> + 'static>;
+type ClipboardWrite = Box<dyn Fn(&str) + 'static>;
+
 pub struct PaintContext<'a> {
     pub scene: &'a mut Scene,
     pub text: &'a mut TextSystem,
@@ -47,8 +50,8 @@ pub struct EventContext {
     pending_action: Option<PendingAction>,
 
     // Clipboard access (provided by host application)
-    clipboard_read: Option<Box<dyn Fn() -> Option<String>>>,
-    clipboard_write: Option<Box<dyn Fn(&str)>>,
+    clipboard_read: Option<ClipboardRead>,
+    clipboard_write: Option<ClipboardWrite>,
 }
 
 impl EventContext {
@@ -225,7 +228,7 @@ impl EventContext {
     ) {
         self.action_listeners
             .entry(component_id)
-            .or_insert_with(ActionListeners::new)
+            .or_default()
             .on_action(handler);
     }
 
@@ -288,12 +291,10 @@ impl EventContext {
         action: &dyn AnyAction,
         component_ids: &[u64],
     ) -> Option<u64> {
-        for &id in component_ids {
-            if self.try_handle_action(action, id) {
-                return Some(id);
-            }
-        }
-        None
+        component_ids
+            .iter()
+            .find(|&&id| self.try_handle_action(action, id))
+            .copied()
     }
 }
 

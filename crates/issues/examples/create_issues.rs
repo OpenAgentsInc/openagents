@@ -12,20 +12,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // Claim the issue
         let run_id = format!("autopilot-{}", chrono::Utc::now().timestamp());
         if claim_issue(&conn, &issue.id, &run_id)? {
-            println!("Claimed issue #{}: {}", issue.number, issue.title);
-            println!("ID: {}", issue.id);
-            println!("Priority: {:?}", issue.priority);
+            eprintln!("Claimed issue #{}: {}", issue.number, issue.title);
+            eprintln!("ID: {}", issue.id);
+            eprintln!("Priority: {:?}", issue.priority);
             if let Some(directive_id) = &issue.directive_id {
-                println!("Directive: {}", directive_id);
+                eprintln!("Directive: {}", directive_id);
             }
             if let Some(description) = &issue.description {
-                println!("\nDescription:\n{}", description);
+                eprintln!("\nDescription:\n{}", description);
             }
         } else {
-            println!("Failed to claim issue - it may have been claimed by another process");
+            eprintln!("Failed to claim issue - it may have been claimed by another process");
         }
     } else {
-        println!("No ready issues available for codex agent");
+        eprintln!("No ready issues available for codex agent");
     }
 
     Ok(())

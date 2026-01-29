@@ -12,20 +12,20 @@ fn bench_validate_title(c: &mut Criterion) {
         let title = "a".repeat(len);
         group.throughput(Throughput::Bytes(len as u64));
         group.bench_with_input(BenchmarkId::new("valid", len), &title, |b, title| {
-            b.iter(|| validate_title(black_box(title)))
+            b.iter(|| validate_title(black_box(title)));
         });
     }
 
     // Benchmark titles with leading whitespace (rejected)
     let title_with_whitespace = "  Valid title";
     group.bench_function("leading_whitespace", |b| {
-        b.iter(|| validate_title(black_box(title_with_whitespace)))
+        b.iter(|| validate_title(black_box(title_with_whitespace)));
     });
 
     // Benchmark titles with trailing whitespace (rejected)
     let title_with_trailing = "Valid title  ";
     group.bench_function("trailing_whitespace", |b| {
-        b.iter(|| validate_title(black_box(title_with_trailing)))
+        b.iter(|| validate_title(black_box(title_with_trailing)));
     });
 
     // Benchmark empty title (rejected)
@@ -34,13 +34,13 @@ fn bench_validate_title(c: &mut Criterion) {
     // Benchmark too long title (rejected)
     let too_long = "a".repeat(201);
     group.bench_function("too_long", |b| {
-        b.iter(|| validate_title(black_box(&too_long)))
+        b.iter(|| validate_title(black_box(&too_long)));
     });
 
     // Benchmark unicode title
     let unicode_title = "修复认证错误🔧";
     group.bench_function("unicode", |b| {
-        b.iter(|| validate_title(black_box(unicode_title)))
+        b.iter(|| validate_title(black_box(unicode_title)));
     });
 
     group.finish();
@@ -57,7 +57,7 @@ fn bench_validate_description(c: &mut Criterion) {
         let desc = "a".repeat(len);
         group.throughput(Throughput::Bytes(len as u64));
         group.bench_with_input(BenchmarkId::new("valid", len), &desc, |b, desc| {
-            b.iter(|| validate_description(black_box(Some(desc.as_str()))))
+            b.iter(|| validate_description(black_box(Some(desc.as_str()))));
         });
     }
 
@@ -65,13 +65,13 @@ fn bench_validate_description(c: &mut Criterion) {
     let too_long = "a".repeat(10001);
     group.throughput(Throughput::Bytes(10001));
     group.bench_function("too_long", |b| {
-        b.iter(|| validate_description(black_box(Some(too_long.as_str()))))
+        b.iter(|| validate_description(black_box(Some(too_long.as_str()))));
     });
 
     // Benchmark description with newlines
     let with_newlines = "Line 1\nLine 2\nLine 3\nLine 4\nLine 5";
     group.bench_function("with_newlines", |b| {
-        b.iter(|| validate_description(black_box(Some(with_newlines))))
+        b.iter(|| validate_description(black_box(Some(with_newlines))));
     });
 
     group.finish();
@@ -87,15 +87,15 @@ fn bench_validate_agent(c: &mut Criterion) {
 
     // Benchmark invalid agents
     group.bench_function("invalid_gpt4", |b| {
-        b.iter(|| validate_agent(black_box("gpt4")))
+        b.iter(|| validate_agent(black_box("gpt4")));
     });
 
     group.bench_function("invalid_empty", |b| {
-        b.iter(|| validate_agent(black_box("")))
+        b.iter(|| validate_agent(black_box("")));
     });
 
     group.bench_function("invalid_case", |b| {
-        b.iter(|| validate_agent(black_box("Codex")))
+        b.iter(|| validate_agent(black_box("Codex")));
     });
 
     group.finish();
@@ -113,7 +113,7 @@ fn bench_combined_validation(c: &mut Criterion) {
             )));
             let agent = validate_agent(black_box("codex"));
             (title, description, agent)
-        })
+        });
     });
 
     // Simulate validating issue with max-length fields
@@ -125,7 +125,7 @@ fn bench_combined_validation(c: &mut Criterion) {
             let description = validate_description(black_box(Some(&long_description)));
             let agent = validate_agent(black_box("codex"));
             (title, description, agent)
-        })
+        });
     });
 
     group.finish();

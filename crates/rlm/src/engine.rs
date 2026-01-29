@@ -452,8 +452,7 @@ def search_context(pattern, max_results=10, window=200):
                     debug!("Executing code block (with pending FINAL)");
 
                     // If FINAL_VAR, add code to print the variable value
-                    let code_to_execute = if final_result.starts_with("VAR:") {
-                        let var_name = &final_result[4..];
+                    let code_to_execute = if let Some(var_name) = final_result.strip_prefix("VAR:") {
                         format!("{}\nprint(\"__FINAL_VAR__:\", {})", code, var_name)
                     } else {
                         code.clone()
@@ -508,7 +507,7 @@ def search_context(pattern, max_results=10, window=200):
                                         .stdout
                                         .lines()
                                         .filter(|l| !l.trim().is_empty())
-                                        .last()
+                                        .next_back()
                                         .unwrap_or("")
                                         .to_string()
                                 })

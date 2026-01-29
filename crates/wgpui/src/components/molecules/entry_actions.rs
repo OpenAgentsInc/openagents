@@ -138,10 +138,10 @@ impl EntryActions {
     }
 
     fn copy_label(&mut self) -> String {
-        if let Some(until) = self.copy_feedback_until {
-            if Instant::now() < until {
-                return "Copied".to_string();
-            }
+        if let Some(until) = self.copy_feedback_until
+            && Instant::now() < until
+        {
+            return "Copied".to_string();
         }
         self.copy_feedback_until = None;
         "Copy".to_string()
@@ -225,13 +225,10 @@ impl Component for EntryActions {
             return EventResult::Handled;
         }
 
-        match event {
-            InputEvent::MouseMove { x, y } => {
-                if !bounds.contains(Point::new(*x, *y)) {
-                    return EventResult::Ignored;
-                }
+        if let InputEvent::MouseMove { x, y } = event {
+            if !bounds.contains(Point::new(*x, *y)) {
+                return EventResult::Ignored;
             }
-            _ => {}
         }
         EventResult::Ignored
     }
@@ -248,7 +245,7 @@ impl Component for EntryActions {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::Modifiers;
+    use crate::{Modifiers, MouseButton};
     use std::cell::Cell;
     use std::rc::Rc;
 

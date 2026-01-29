@@ -3,12 +3,14 @@ use crate::components::context::{EventContext, PaintContext};
 use crate::components::{Component, ComponentId, EventResult};
 use crate::{Bounds, InputEvent, MouseButton, Point, Quad, theme};
 
+type CheckpointRestoreHandler = Box<dyn FnMut(usize, &str) + 'static>;
+
 pub struct CheckpointRestore {
     id: Option<ComponentId>,
     checkpoints: Vec<String>,
     selected_index: Option<usize>,
     hovered_index: Option<usize>,
-    on_restore: Option<Box<dyn FnMut(usize, &str)>>,
+    on_restore: Option<CheckpointRestoreHandler>,
 }
 
 impl CheckpointRestore {

@@ -163,25 +163,20 @@ impl Component for ThreadEntry {
         );
 
         // Handle actions events when hovered or shown
-        if self.show_actions || self.hovered {
-            if let EventResult::Handled = self.actions.event(event, actions_bounds, cx) {
-                // Check if an action was triggered
-                if let Some(action) = self.actions.take_triggered_action() {
-                    match action {
-                        EntryAction::Copy => {
-                            if let Some(ref text) = self.copyable_text {
-                                if copy_to_clipboard(text).is_ok() {
-                                    self.actions.set_copy_feedback();
-                                }
-                            }
-                        }
-                        _ => {
-                            // Other actions not yet implemented
-                        }
+        if (self.show_actions || self.hovered)
+            && let EventResult::Handled = self.actions.event(event, actions_bounds, cx)
+        {
+            // Check if an action was triggered
+            if let Some(action) = self.actions.take_triggered_action() {
+                if let EntryAction::Copy = action {
+                    if let Some(ref text) = self.copyable_text
+                        && copy_to_clipboard(text).is_ok()
+                    {
+                        self.actions.set_copy_feedback();
                     }
                 }
-                return EventResult::Handled;
             }
+            return EventResult::Handled;
         }
 
         self.content.event(event, content_bounds, cx)

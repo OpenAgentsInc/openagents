@@ -25,13 +25,21 @@ impl Status {
             Status::Done => "done",
         }
     }
+}
 
-    pub fn from_str(s: &str) -> Self {
-        match s {
+impl From<&str> for Status {
+    fn from(value: &str) -> Self {
+        match value {
             "in_progress" => Status::InProgress,
             "done" => Status::Done,
             _ => Status::Open,
         }
+    }
+}
+
+impl From<String> for Status {
+    fn from(value: String) -> Self {
+        Self::from(value.as_str())
     }
 }
 
@@ -55,14 +63,22 @@ impl Priority {
             Priority::Low => "low",
         }
     }
+}
 
-    pub fn from_str(s: &str) -> Self {
-        match s {
+impl From<&str> for Priority {
+    fn from(value: &str) -> Self {
+        match value {
             "urgent" => Priority::Urgent,
             "high" => Priority::High,
             "low" => Priority::Low,
             _ => Priority::Medium,
         }
+    }
+}
+
+impl From<String> for Priority {
+    fn from(value: String) -> Self {
+        Self::from(value.as_str())
     }
 }
 
@@ -84,13 +100,21 @@ impl IssueType {
             IssueType::Feature => "feature",
         }
     }
+}
 
-    pub fn from_str(s: &str) -> Self {
-        match s {
+impl From<&str> for IssueType {
+    fn from(value: &str) -> Self {
+        match value {
             "bug" => IssueType::Bug,
             "feature" => IssueType::Feature,
             _ => IssueType::Task,
         }
+    }
+}
+
+impl From<String> for IssueType {
+    fn from(value: String) -> Self {
+        Self::from(value.as_str())
     }
 }
 
@@ -136,9 +160,9 @@ impl Issue {
             number: row.get("number")?,
             title: row.get("title")?,
             description: row.get("description")?,
-            status: Status::from_str(&row.get::<_, String>("status")?),
-            priority: Priority::from_str(&row.get::<_, String>("priority")?),
-            issue_type: IssueType::from_str(&row.get::<_, String>("issue_type")?),
+            status: Status::from(row.get::<_, String>("status")?),
+            priority: Priority::from(row.get::<_, String>("priority")?),
+            issue_type: IssueType::from(row.get::<_, String>("issue_type")?),
             agent: row
                 .get::<_, Option<String>>("agent")?
                 .unwrap_or_else(|| "codex".to_string()),
@@ -177,6 +201,7 @@ impl Issue {
 }
 
 /// Create a new issue
+#[expect(clippy::too_many_arguments)]
 pub fn create_issue(
     conn: &Connection,
     title: &str,
@@ -201,6 +226,7 @@ pub fn create_issue(
 }
 
 /// Create a new issue with auto_created flag
+#[expect(clippy::too_many_arguments)]
 pub fn create_issue_with_auto(
     conn: &Connection,
     title: &str,
@@ -218,10 +244,10 @@ pub fn create_issue_with_auto(
     let agent = agent.unwrap_or("codex");
 
     conn.execute(
-        r#"
+        r"
         INSERT INTO issues (id, number, title, description, priority, issue_type, agent, directive_id, project_id, auto_created, created_at, updated_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        "#,
+        ",
         params![
             id,
             number,
@@ -232,7 +258,7 @@ pub fn create_issue_with_auto(
             agent,
             directive_id,
             project_id,
-            if auto_created { 1 } else { 0 },
+            i32::from(auto_created),
             now,
             now,
         ],
@@ -261,20 +287,17 @@ pub fn get_issue_by_number(conn: &Connection, number: i32) -> Result<Option<Issu
 pub fn list_issues(conn: &Connection, status: Option<Status>) -> Result<Vec<Issue>> {
     let mut issues = Vec::new();
 
-    match status {
-        Some(s) => {
-            let mut stmt = conn.prepare("SELECT * FROM issues WHERE status = ? ORDER BY number")?;
-            let rows = stmt.query_map([s.as_str()], Issue::from_row)?;
-            for row in rows {
-                issues.push(row?);
-            }
+    if let Some(s) = status {
+        let mut stmt = conn.prepare("SELECT * FROM issues WHERE status = ? ORDER BY number")?;
+        let rows = stmt.query_map([s.as_str()], Issue::from_row)?;
+        for row in rows {
+            issues.push(row?);
         }
-        None => {
-            let mut stmt = conn.prepare("SELECT * FROM issues ORDER BY number")?;
-            let rows = stmt.query_map([], Issue::from_row)?;
-            for row in rows {
-                issues.push(row?);
-            }
+    } else {
+        let mut stmt = conn.prepare("SELECT * FROM issues ORDER BY number")?;
+        let rows = stmt.query_map([], Issue::from_row)?;
+        for row in rows {
+            issues.push(row?);
         }
     }
 
@@ -285,23 +308,20 @@ pub fn list_issues(conn: &Connection, status: Option<Status>) -> Result<Vec<Issu
 pub fn list_auto_created_issues(conn: &Connection, status: Option<Status>) -> Result<Vec<Issue>> {
     let mut issues = Vec::new();
 
-    match status {
-        Some(s) => {
-            let mut stmt = conn.prepare(
-                "SELECT * FROM issues WHERE auto_created = 1 AND status = ? ORDER BY number DESC",
-            )?;
-            let rows = stmt.query_map([s.as_str()], Issue::from_row)?;
-            for row in rows {
-                issues.push(row?);
-            }
+    if let Some(s) = status {
+        let mut stmt = conn.prepare(
+            "SELECT * FROM issues WHERE auto_created = 1 AND status = ? ORDER BY number DESC",
+        )?;
+        let rows = stmt.query_map([s.as_str()], Issue::from_row)?;
+        for row in rows {
+            issues.push(row?);
         }
-        None => {
-            let mut stmt =
-                conn.prepare("SELECT * FROM issues WHERE auto_created = 1 ORDER BY number DESC")?;
-            let rows = stmt.query_map([], Issue::from_row)?;
-            for row in rows {
-                issues.push(row?);
-            }
+    } else {
+        let mut stmt =
+            conn.prepare("SELECT * FROM issues WHERE auto_created = 1 ORDER BY number DESC")?;
+        let rows = stmt.query_map([], Issue::from_row)?;
+        for row in rows {
+            issues.push(row?);
         }
     }
 
@@ -314,7 +334,7 @@ pub fn get_next_ready_issue(conn: &Connection, agent: Option<&str>) -> Result<Op
     match agent {
         Some(agent_filter) => conn
             .query_row(
-                r#"
+                r"
                 SELECT * FROM issues
                 WHERE status = 'open'
                   AND is_blocked = 0
@@ -331,14 +351,14 @@ pub fn get_next_ready_issue(conn: &Connection, agent: Option<&str>) -> Result<Op
                   END,
                   created_at ASC
                 LIMIT 1
-                "#,
+                ",
                 [agent_filter],
                 Issue::from_row,
             )
             .optional(),
         None => conn
             .query_row(
-                r#"
+                r"
                 SELECT * FROM issues
                 WHERE status = 'open'
                   AND is_blocked = 0
@@ -354,7 +374,7 @@ pub fn get_next_ready_issue(conn: &Connection, agent: Option<&str>) -> Result<Op
                   END,
                   created_at ASC
                 LIMIT 1
-                "#,
+                ",
                 [],
                 Issue::from_row,
             )
@@ -366,7 +386,7 @@ pub fn get_next_ready_issue(conn: &Connection, agent: Option<&str>) -> Result<Op
 pub fn claim_issue(conn: &Connection, issue_id: &str, run_id: &str) -> Result<bool> {
     let now = Utc::now().to_rfc3339();
     let updated = conn.execute(
-        r#"
+        r"
         UPDATE issues SET
           status = 'in_progress',
           claimed_by = ?,
@@ -376,7 +396,7 @@ pub fn claim_issue(conn: &Connection, issue_id: &str, run_id: &str) -> Result<bo
           AND status = 'open'
           AND is_blocked = 0
           AND (claimed_by IS NULL OR claimed_at < datetime('now', '-15 minutes'))
-        "#,
+        ",
         params![run_id, now, now, issue_id],
     )?;
     Ok(updated > 0)
@@ -386,14 +406,14 @@ pub fn claim_issue(conn: &Connection, issue_id: &str, run_id: &str) -> Result<bo
 pub fn unclaim_issue(conn: &Connection, issue_id: &str) -> Result<bool> {
     let now = Utc::now().to_rfc3339();
     let updated = conn.execute(
-        r#"
+        r"
         UPDATE issues SET
           status = 'open',
           claimed_by = NULL,
           claimed_at = NULL,
           updated_at = ?
         WHERE id = ?
-        "#,
+        ",
         params![now, issue_id],
     )?;
     Ok(updated > 0)
@@ -403,7 +423,7 @@ pub fn unclaim_issue(conn: &Connection, issue_id: &str) -> Result<bool> {
 pub fn complete_issue(conn: &Connection, issue_id: &str) -> Result<bool> {
     let now = Utc::now().to_rfc3339();
     let updated = conn.execute(
-        r#"
+        r"
         UPDATE issues SET
           status = 'done',
           claimed_by = NULL,
@@ -411,7 +431,7 @@ pub fn complete_issue(conn: &Connection, issue_id: &str) -> Result<bool> {
           completed_at = ?,
           updated_at = ?
         WHERE id = ?
-        "#,
+        ",
         params![now, now, issue_id],
     )?;
     Ok(updated > 0)
@@ -421,7 +441,7 @@ pub fn complete_issue(conn: &Connection, issue_id: &str) -> Result<bool> {
 pub fn block_issue(conn: &Connection, issue_id: &str, reason: &str) -> Result<bool> {
     let now = Utc::now().to_rfc3339();
     let updated = conn.execute(
-        r#"
+        r"
         UPDATE issues SET
           is_blocked = 1,
           blocked_reason = ?,
@@ -430,7 +450,7 @@ pub fn block_issue(conn: &Connection, issue_id: &str, reason: &str) -> Result<bo
           claimed_at = NULL,
           updated_at = ?
         WHERE id = ?
-        "#,
+        ",
         params![reason, now, issue_id],
     )?;
     Ok(updated > 0)
@@ -440,13 +460,13 @@ pub fn block_issue(conn: &Connection, issue_id: &str, reason: &str) -> Result<bo
 pub fn unblock_issue(conn: &Connection, issue_id: &str) -> Result<bool> {
     let now = Utc::now().to_rfc3339();
     let updated = conn.execute(
-        r#"
+        r"
         UPDATE issues SET
           is_blocked = 0,
           blocked_reason = NULL,
           updated_at = ?
         WHERE id = ?
-        "#,
+        ",
         params![now, issue_id],
     )?;
     Ok(updated > 0)
@@ -462,7 +482,7 @@ pub fn unblock_issue(conn: &Connection, issue_id: &str) -> Result<bool> {
 pub fn release_stale_issues(conn: &Connection, stale_minutes: i32) -> Result<usize> {
     let now = Utc::now().to_rfc3339();
     let updated = conn.execute(
-        r#"
+        r"
         UPDATE issues SET
           status = 'open',
           claimed_by = NULL,
@@ -470,7 +490,7 @@ pub fn release_stale_issues(conn: &Connection, stale_minutes: i32) -> Result<usi
           updated_at = ?
         WHERE status = 'in_progress'
           AND claimed_at < datetime('now', '-' || ? || ' minutes')
-        "#,
+        ",
         params![now, stale_minutes],
     )?;
     Ok(updated)

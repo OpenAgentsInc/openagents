@@ -3,6 +3,8 @@ use crate::components::{Component, ComponentId, EventResult};
 use crate::input::{Key, NamedKey};
 use crate::{Bounds, Hsla, InputEvent, MouseButton, Point, Quad, theme};
 
+type DropdownChangeHandler = Box<dyn FnMut(usize, &str) + 'static>;
+
 pub struct DropdownOption {
     pub label: String,
     pub value: String,
@@ -42,7 +44,7 @@ pub struct Dropdown {
     text_color: Hsla,
     placeholder_color: Hsla,
     open_up: bool,
-    on_change: Option<Box<dyn FnMut(usize, &str)>>,
+    on_change: Option<DropdownChangeHandler>,
 }
 
 impl Dropdown {
@@ -115,15 +117,15 @@ impl Dropdown {
 
     pub fn set_options(&mut self, options: Vec<DropdownOption>) {
         self.options = options;
-        if let Some(index) = self.selected_index {
-            if index >= self.options.len() {
-                self.selected_index = None;
-            }
+        if let Some(index) = self.selected_index
+            && index >= self.options.len()
+        {
+            self.selected_index = None;
         }
-        if let Some(index) = self.hovered_option {
-            if index >= self.options.len() {
-                self.hovered_option = None;
-            }
+        if let Some(index) = self.hovered_option
+            && index >= self.options.len()
+        {
+            self.hovered_option = None;
         }
         if self.options.is_empty() {
             self.open = false;
