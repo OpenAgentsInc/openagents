@@ -421,6 +421,10 @@ fn map_cursor_icon(cursor: Cursor) -> CursorIcon {
         Cursor::Text => CursorIcon::Text,
         Cursor::Grab => CursorIcon::Grab,
         Cursor::Grabbing => CursorIcon::Grabbing,
+        Cursor::ResizeNs => CursorIcon::NsResize,
+        Cursor::ResizeEw => CursorIcon::EwResize,
+        Cursor::ResizeNesw => CursorIcon::NeswResize,
+        Cursor::ResizeNwse => CursorIcon::NwseResize,
     }
 }
 

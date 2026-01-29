@@ -3248,7 +3248,11 @@ impl MinimalRoot {
     }
 
     pub fn cursor(&self) -> Cursor {
-        if self.pane_drag.is_some() {
+        if let Some(resize) = &self.pane_resize {
+            cursor_for_resize(resize.edge).unwrap_or(Cursor::Default)
+        } else if let Some((_pane_id, edge)) = self.pane_resize_target(self.cursor_position) {
+            cursor_for_resize(edge).unwrap_or(Cursor::Default)
+        } else if self.pane_drag.is_some() {
             Cursor::Grabbing
         } else if self
             .pane_store
@@ -5763,6 +5767,16 @@ fn format_session_id(session_id: SessionId) -> String {
 
 fn short_thread_id(id: &str) -> String {
     id.chars().take(8).collect()
+}
+
+fn cursor_for_resize(edge: ResizeEdge) -> Option<Cursor> {
+    match edge {
+        ResizeEdge::Top | ResizeEdge::Bottom => Some(Cursor::ResizeNs),
+        ResizeEdge::Left | ResizeEdge::Right => Some(Cursor::ResizeEw),
+        ResizeEdge::TopLeft | ResizeEdge::BottomRight => Some(Cursor::ResizeNwse),
+        ResizeEdge::TopRight | ResizeEdge::BottomLeft => Some(Cursor::ResizeNesw),
+        ResizeEdge::None => None,
+    }
 }
 
 struct Layout {
