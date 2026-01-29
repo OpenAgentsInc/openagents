@@ -2,6 +2,8 @@ use std::cell::RefCell;
 use std::collections::{HashMap, VecDeque};
 use std::path::PathBuf;
 use std::rc::Rc;
+use std::time::Duration;
+use web_time::Instant;
 
 use autopilot_app::{AppEvent, SessionId, ThreadSnapshot, ThreadSummary, UserAction, WorkspaceId};
 use bip39::Mnemonic;
@@ -596,6 +598,8 @@ pub struct MinimalRoot {
     copy_button: Button,
     copy_bounds: Bounds,
     pending_copy: Rc<RefCell<bool>>,
+    copy_feedback_until: Option<Instant>,
+    copy_feedback_duration: Duration,
     threads_refresh_button: Button,
     threads_refresh_bounds: Bounds,
     pending_threads_refresh: Rc<RefCell<bool>>,
@@ -1790,6 +1794,8 @@ impl MinimalRoot {
             copy_button,
             copy_bounds: Bounds::ZERO,
             pending_copy,
+            copy_feedback_until: None,
+            copy_feedback_duration: Duration::from_secs(1),
             threads_refresh_button,
             threads_refresh_bounds: Bounds::ZERO,
             pending_threads_refresh,
@@ -3262,7 +3268,10 @@ impl MinimalRoot {
                 block.push_str(line);
                 block.push('\n');
             }
-            let _ = copy_to_clipboard(&block);
+            if copy_to_clipboard(&block).is_ok() {
+                self.copy_feedback_until =
+                    Some(Instant::now() + self.copy_feedback_duration);
+            }
         }
 
         let should_threads_refresh = {
@@ -4735,6 +4744,17 @@ fn paint_events_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintConte
         .paint(title_bounds, cx);
 
     root.copy_bounds = copy_bounds;
+    let copy_label = if let Some(until) = root.copy_feedback_until {
+        if Instant::now() < until {
+            "Copied"
+        } else {
+            root.copy_feedback_until = None;
+            "Copy"
+        }
+    } else {
+        "Copy"
+    };
+    root.copy_button.set_label(copy_label);
     root.copy_button.set_disabled(root.event_log.is_empty());
     root.copy_button.paint(copy_bounds, cx);
 

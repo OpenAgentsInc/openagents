@@ -4,6 +4,8 @@ use crate::text::FontStyle;
 use crate::{Bounds, Button, ButtonVariant, InputEvent, Point, theme};
 use std::cell::RefCell;
 use std::rc::Rc;
+use std::time::Duration;
+use web_time::Instant;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EntryAction {
@@ -25,6 +27,8 @@ pub struct EntryActions {
     delete_button: Button,
     on_action: Option<Box<dyn FnMut(EntryAction)>>,
     pending_action: Rc<RefCell<Option<EntryAction>>>,
+    copy_feedback_until: Option<Instant>,
+    copy_feedback_duration: Duration,
 }
 
 impl EntryActions {
@@ -79,6 +83,8 @@ impl EntryActions {
             delete_button,
             on_action: None,
             pending_action,
+            copy_feedback_until: None,
+            copy_feedback_duration: Duration::from_secs(1),
         }
     }
 
@@ -127,19 +133,35 @@ impl EntryActions {
         self
     }
 
-    fn action_buttons(&self) -> Vec<(&'static str, EntryAction)> {
+    pub fn set_copy_feedback(&mut self) {
+        self.copy_feedback_until = Some(Instant::now() + self.copy_feedback_duration);
+    }
+
+    fn copy_label(&mut self) -> String {
+        if let Some(until) = self.copy_feedback_until {
+            if Instant::now() < until {
+                return "Copied".to_string();
+            }
+        }
+        self.copy_feedback_until = None;
+        "Copy".to_string()
+    }
+
+    fn action_buttons(&mut self) -> Vec<(String, EntryAction)> {
         let mut buttons = Vec::new();
         if self.show_copy {
-            buttons.push(("Copy", EntryAction::Copy));
+            let label = self.copy_label();
+            self.copy_button.set_label(label.clone());
+            buttons.push((label, EntryAction::Copy));
         }
         if self.show_retry {
-            buttons.push(("Retry", EntryAction::Retry));
+            buttons.push(("Retry".to_string(), EntryAction::Retry));
         }
         if self.show_edit {
-            buttons.push(("Edit", EntryAction::Edit));
+            buttons.push(("Edit".to_string(), EntryAction::Edit));
         }
         if self.show_delete {
-            buttons.push(("Del", EntryAction::Delete));
+            buttons.push(("Del".to_string(), EntryAction::Delete));
         }
         buttons
     }
@@ -160,7 +182,7 @@ impl Component for EntryActions {
         for (label, action) in self.action_buttons() {
             let width = cx
                 .text
-                .measure_styled_mono(label, font_size, FontStyle::default())
+                .measure_styled_mono(&label, font_size, FontStyle::default())
                 + 12.0;
             let button_bounds = Bounds::new(x, bounds.origin.y, width, bounds.size.height);
             match action {

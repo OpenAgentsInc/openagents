@@ -170,7 +170,9 @@ impl Component for ThreadEntry {
                     match action {
                         EntryAction::Copy => {
                             if let Some(ref text) = self.copyable_text {
-                                let _ = copy_to_clipboard(text);
+                                if copy_to_clipboard(text).is_ok() {
+                                    self.actions.set_copy_feedback();
+                                }
                             }
                         }
                         _ => {
