@@ -45,6 +45,7 @@ const INPUT_MAX_LINES: Option<usize> = None;
 const MODEL_DROPDOWN_WIDTH: f32 = 320.0;
 const DEFAULT_MODEL_INDEX: usize = 3;
 const SHOW_MODEL_DROPDOWN: bool = false;
+const SHOW_MODEL_SELECTOR: bool = true;
 const PANE_MARGIN: f32 = 24.0;
 const PANE_OFFSET: f32 = 28.0;
 const PANE_MIN_WIDTH: f32 = 200.0;
@@ -2560,7 +2561,7 @@ impl MinimalRoot {
             self.cursor_position = Point::new(*x, *y);
             for chat in self.chat_panes.values_mut() {
                 chat.input_hovered = chat.input_bounds.contains(self.cursor_position);
-                chat.model_hovered = if SHOW_MODEL_DROPDOWN {
+                chat.model_hovered = if SHOW_MODEL_SELECTOR {
                     chat.model_bounds.contains(self.cursor_position)
                 } else {
                     false
@@ -2719,7 +2720,7 @@ impl MinimalRoot {
                     match pane.kind {
                         PaneKind::Chat => {
                             if let Some(chat) = self.chat_panes.get_mut(&pane_id) {
-                                let dropdown_handled = if SHOW_MODEL_DROPDOWN {
+                                let dropdown_handled = if SHOW_MODEL_SELECTOR {
                                     matches!(
                                         chat.model_dropdown.event(
                                             event,
@@ -3334,7 +3335,7 @@ impl MinimalRoot {
             .any(|entry| entry.open_button.is_hovered())
         {
             Cursor::Pointer
-        } else if SHOW_MODEL_DROPDOWN
+        } else if SHOW_MODEL_SELECTOR
             && self
                 .chat_panes
                 .values()
@@ -3695,8 +3696,10 @@ fn paint_chat_pane(chat: &mut ChatPaneState, bounds: Bounds, cx: &mut PaintConte
 
 struct InputBarMetrics {
     total_width: f32,
-    input_width: f32,
     input_height: f32,
+    row_height: f32,
+    total_height: f32,
+    model_width: f32,
     full_auto_width: f32,
     send_width: f32,
     stop_width: f32,
@@ -3710,6 +3713,7 @@ fn input_bar_metrics(
 ) -> InputBarMetrics {
     let gap = 8.0;
     let padding_x = 24.0;
+    let padding_y = theme::spacing::MD;
     let button_font = theme::font_size::SM;
     let send_label_width =
         cx.text
@@ -3729,28 +3733,31 @@ fn input_bar_metrics(
             .measure_styled_mono(full_auto_label, button_font, FontStyle::default())
             + 28.0;
     let full_auto_width = full_auto_width.max(110.0);
-    let show_stop = chat.active_turn_id.is_some();
+    let show_stop = chat.is_processing();
 
-    let mut total_width = (available_width * 0.6).min(720.0).max(320.0);
+    let mut total_width = (available_width - padding_x * 2.0).max(240.0);
     total_width = total_width.min(available_width - padding_x * 2.0);
-    let reserved = send_width + full_auto_width + if show_stop { stop_width } else { 0.0 };
-    let gaps = gap * (if show_stop { 3.0 } else { 2.0 });
-    let input_width = (total_width - reserved - gaps).max(120.0);
+    let model_width = (total_width * 0.35).min(MODEL_DROPDOWN_WIDTH).max(180.0);
 
-    chat.input.set_max_width(input_width);
+    chat.input.set_max_width(total_width);
     let line_height = button_font * 1.4;
-    let padding_y = theme::spacing::XS;
-    let min_height = line_height * INPUT_MIN_LINES as f32 + padding_y * 2.0;
+    let input_padding_y = theme::spacing::XS;
+    let min_height = line_height * INPUT_MIN_LINES as f32 + input_padding_y * 2.0;
     let mut input_height = chat.input.current_height().max(min_height);
     if let Some(max_lines) = INPUT_MAX_LINES {
-        let max_height = line_height * max_lines as f32 + padding_y * 2.0;
+        let max_height = line_height * max_lines as f32 + input_padding_y * 2.0;
         input_height = input_height.min(max_height);
     }
 
+    let row_height = 28.0;
+    let total_height = input_height + row_height + gap + padding_y * 2.0;
+
     InputBarMetrics {
         total_width,
-        input_width,
         input_height,
+        row_height,
+        total_height,
+        model_width,
         full_auto_width,
         send_width,
         stop_width,
@@ -3760,44 +3767,56 @@ fn input_bar_metrics(
 
 fn input_bar_height(chat: &mut ChatPaneState, available_width: f32, cx: &mut PaintContext) -> f32 {
     let metrics = input_bar_metrics(chat, available_width, cx);
-    let padding_y = theme::spacing::MD;
-    (metrics.input_height + padding_y * 2.0).max(BOTTOM_BAR_MIN_HEIGHT)
+    metrics.total_height.max(BOTTOM_BAR_MIN_HEIGHT)
 }
 
 fn paint_input_bar(chat: &mut ChatPaneState, bounds: Bounds, cx: &mut PaintContext) {
     let gap = 8.0;
     let padding_y = theme::spacing::MD;
+    let padding_x = 24.0;
     let metrics = input_bar_metrics(chat, bounds.size.width, cx);
 
-    let bar_x = bounds.origin.x + (bounds.size.width - metrics.total_width) / 2.0;
-    let bar_y = bounds.origin.y + bounds.size.height - metrics.input_height - padding_y;
-    let input_bounds = Bounds::new(bar_x, bar_y, metrics.input_width, metrics.input_height);
-    let full_auto_bounds = Bounds::new(
-        input_bounds.origin.x + input_bounds.size.width + gap,
-        bar_y,
-        metrics.full_auto_width,
-        metrics.input_height,
+    let bar_x = bounds.origin.x + padding_x;
+    let bar_width = metrics.total_width;
+    let bar_bottom = bounds.origin.y + bounds.size.height - padding_y;
+    let row_y = bar_bottom - metrics.row_height;
+    let input_y = row_y - gap - metrics.input_height;
+    let input_bounds = Bounds::new(bar_x, input_y, bar_width, metrics.input_height);
+
+    let model_bounds = Bounds::new(bar_x, row_y, metrics.model_width, metrics.row_height);
+
+    let mut right_x = bar_x + bar_width;
+    let submit_bounds = Bounds::new(
+        right_x - metrics.send_width,
+        row_y,
+        metrics.send_width,
+        metrics.row_height,
     );
-    let mut next_x = full_auto_bounds.origin.x + full_auto_bounds.size.width + gap;
+    right_x = submit_bounds.origin.x - gap;
     let stop_bounds = if metrics.show_stop {
         let bounds = Bounds::new(
-            next_x,
-            bar_y,
+            right_x - metrics.stop_width,
+            row_y,
             metrics.stop_width,
-            metrics.input_height,
+            metrics.row_height,
         );
-        next_x = bounds.origin.x + bounds.size.width + gap;
+        right_x = bounds.origin.x - gap;
         bounds
     } else {
         Bounds::ZERO
     };
-    let submit_bounds =
-        Bounds::new(next_x, bar_y, metrics.send_width, metrics.input_height);
+    let full_auto_bounds = Bounds::new(
+        right_x - metrics.full_auto_width,
+        row_y,
+        metrics.full_auto_width,
+        metrics.row_height,
+    );
 
     chat.input_bounds = input_bounds;
     chat.submit_bounds = submit_bounds;
     chat.stop_bounds = stop_bounds;
     chat.full_auto_bounds = full_auto_bounds;
+    chat.model_bounds = model_bounds;
     chat.input.set_max_width(input_bounds.size.width);
     chat.submit_button
         .set_disabled(chat.input.get_value().trim().is_empty());
@@ -3821,6 +3840,7 @@ fn paint_input_bar(chat: &mut ChatPaneState, bounds: Bounds, cx: &mut PaintConte
     }
 
     chat.input.paint(input_bounds, cx);
+    chat.model_dropdown.paint(model_bounds, cx);
     chat.full_auto_button.paint(full_auto_bounds, cx);
     if metrics.show_stop {
         chat.stop_button.paint(stop_bounds, cx);
