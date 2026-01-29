@@ -32,3 +32,5 @@ tokio = { workspace = true }
 dsrs = { path = "../../crates/dsrs" }
 pylon = { path = "../../crates/pylon" }
 openagents-spark = { path = "../../crates/spark" }
+nostr = { path = "../../crates/nostr/core" }
+nostr-client = { path = "../../crates/nostr/client" }

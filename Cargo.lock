@@ -1072,6 +1072,8 @@ dependencies = [
  "codex-client",
  "dsrs",
  "futures",
+ "nostr 0.1.0",
+ "nostr-client",
  "openagents-spark",
  "pollster 0.4.0",
  "pylon",

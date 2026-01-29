@@ -18,6 +18,8 @@ use full_auto::{
     ensure_codex_lm, run_full_auto_decision,
 };
 use futures::StreamExt;
+use nostr::nip90::{JobInput, JobRequest, KIND_JOB_TEXT_GENERATION};
+use nostr_client::dvm::DvmClient;
 use openagents_spark::{Network as SparkNetwork, SparkSigner, SparkWallet, WalletConfig};
 use pylon::daemon::{ControlClient, DaemonResponse, is_daemon_running, pid_path, socket_path, db_path};
 use pylon::PylonConfig;
@@ -1271,6 +1273,127 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
                             let snapshot = fetch_dvm_history();
                             let _ = proxy_actions
                                 .send_event(AppEvent::DvmHistory { snapshot });
+                        }
+                        UserAction::Nip90Submit {
+                            kind,
+                            prompt,
+                            relays,
+                            provider,
+                        } => {
+                            let proxy = proxy_actions.clone();
+                            handle.spawn(async move {
+                                let log = |message: String| {
+                                    let _ = proxy.send_event(AppEvent::Nip90Log { message });
+                                };
+
+                                log("Submitting NIP-90 job...".to_string());
+
+                                let config = match PylonConfig::load() {
+                                    Ok(config) => config,
+                                    Err(err) => {
+                                        log(format!("Failed to load Pylon config: {err}"));
+                                        return;
+                                    }
+                                };
+
+                                let data_dir = match config.data_path() {
+                                    Ok(path) => path,
+                                    Err(err) => {
+                                        log(format!("Failed to resolve Pylon data dir: {err}"));
+                                        return;
+                                    }
+                                };
+                                let identity_path = data_dir.join("identity.mnemonic");
+                                if !identity_path.exists() {
+                                    log(format!(
+                                        "No identity found. Run 'pylon init' first. Expected: {}",
+                                        identity_path.display()
+                                    ));
+                                    return;
+                                }
+
+                                let mnemonic = match std::fs::read_to_string(&identity_path) {
+                                    Ok(value) => value.trim().to_string(),
+                                    Err(err) => {
+                                        log(format!("Failed to read identity: {err}"));
+                                        return;
+                                    }
+                                };
+
+                                let keypair = match nostr::derive_keypair(&mnemonic) {
+                                    Ok(pair) => pair,
+                                    Err(err) => {
+                                        log(format!("Failed to derive Nostr keys: {err}"));
+                                        return;
+                                    }
+                                };
+
+                                let client = match DvmClient::new(keypair.private_key) {
+                                    Ok(client) => client,
+                                    Err(err) => {
+                                        log(format!("Failed to init DVM client: {err}"));
+                                        return;
+                                    }
+                                };
+
+                                let relays = if relays.is_empty() {
+                                    config.relays.clone()
+                                } else {
+                                    relays
+                                };
+                                if relays.is_empty() {
+                                    log("No relays configured for NIP-90 submission.".to_string());
+                                    return;
+                                }
+
+                                let kind = if kind == 0 {
+                                    KIND_JOB_TEXT_GENERATION
+                                } else {
+                                    kind
+                                };
+
+                                let mut request = match JobRequest::new(kind) {
+                                    Ok(request) => request.add_input(JobInput::text(prompt)),
+                                    Err(err) => {
+                                        log(format!("Invalid job kind {kind}: {err}"));
+                                        return;
+                                    }
+                                };
+
+                                for relay in &relays {
+                                    request = request.add_relay(relay.clone());
+                                }
+                                if let Some(provider) = provider {
+                                    request = request.add_service_provider(provider);
+                                }
+
+                                let submission = match client.submit_job(request, &relays).await {
+                                    Ok(submission) => submission,
+                                    Err(err) => {
+                                        log(format!("Job submission failed: {err}"));
+                                        return;
+                                    }
+                                };
+
+                                log(format!("Submitted job {}", submission.event_id));
+
+                                match client
+                                    .await_result(&submission.event_id, std::time::Duration::from_secs(60))
+                                    .await
+                                {
+                                    Ok(result) => {
+                                        let preview = if result.content.len() > 400 {
+                                            format!("{}…", &result.content[..400])
+                                        } else {
+                                            result.content
+                                        };
+                                        log(format!("Result: {}", preview));
+                                    }
+                                    Err(err) => {
+                                        log(format!("Result timeout/error: {err}"));
+                                    }
+                                }
+                            });
                         }
                         UserAction::FullAutoToggle {
                             session_id,

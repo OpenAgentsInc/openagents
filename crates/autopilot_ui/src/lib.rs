@@ -64,6 +64,8 @@ const SELL_COMPUTE_PANE_WIDTH: f32 = 560.0;
 const SELL_COMPUTE_PANE_HEIGHT: f32 = 460.0;
 const HISTORY_PANE_WIDTH: f32 = 640.0;
 const HISTORY_PANE_HEIGHT: f32 = 500.0;
+const NIP90_PANE_WIDTH: f32 = 640.0;
+const NIP90_PANE_HEIGHT: f32 = 520.0;
 const HOTBAR_HEIGHT: f32 = 52.0;
 const HOTBAR_FLOAT_GAP: f32 = 18.0;
 const HOTBAR_ITEM_SIZE: f32 = 36.0;
@@ -76,8 +78,9 @@ const HOTBAR_SLOT_PYLON: u8 = 4;
 const HOTBAR_SLOT_WALLET: u8 = 5;
 const HOTBAR_SLOT_SELL_COMPUTE: u8 = 6;
 const HOTBAR_SLOT_HISTORY: u8 = 7;
-const HOTBAR_CHAT_SLOT_START: u8 = 8;
-const HOTBAR_SLOT_MAX: u8 = 9;
+const HOTBAR_SLOT_NIP90: u8 = 8;
+const HOTBAR_CHAT_SLOT_START: u8 = 9;
+const HOTBAR_SLOT_MAX: u8 = 12;
 const MODEL_OPTIONS: [(&str, &str); 4] = [
     ("gpt-5.2-codex", "Latest frontier agentic coding model."),
     (
@@ -138,6 +141,7 @@ impl AppViewModel {
             AppEvent::WalletStatus { .. } => {}
             AppEvent::DvmProviderStatus { .. } => {}
             AppEvent::DvmHistory { .. } => {}
+            AppEvent::Nip90Log { .. } => {}
         }
     }
 
@@ -332,6 +336,7 @@ enum PaneKind {
     Wallet,
     SellCompute,
     DvmHistory,
+    Nip90,
 }
 
 #[derive(Clone, Debug)]
@@ -343,6 +348,7 @@ enum HotbarAction {
     ToggleWallet,
     ToggleSellCompute,
     ToggleDvmHistory,
+    ToggleNip90,
     NewChat,
 }
 
@@ -583,6 +589,18 @@ pub struct MinimalRoot {
     dvm_history_refresh_button: Button,
     dvm_history_refresh_bounds: Bounds,
     pending_dvm_history_refresh: Rc<RefCell<bool>>,
+    nip90_kind_input: TextInput,
+    nip90_kind_bounds: Bounds,
+    nip90_relay_input: TextInput,
+    nip90_relay_bounds: Bounds,
+    nip90_provider_input: TextInput,
+    nip90_provider_bounds: Bounds,
+    nip90_prompt_input: TextInput,
+    nip90_prompt_bounds: Bounds,
+    nip90_submit_button: Button,
+    nip90_submit_bounds: Bounds,
+    pending_nip90_submit: Rc<RefCell<bool>>,
+    nip90_log: Vec<String>,
     nostr_npub: Option<String>,
     nostr_nsec: Option<String>,
     spark_pubkey_hex: Option<String>,
@@ -1542,6 +1560,53 @@ impl MinimalRoot {
                 *pending_dvm_history_refresh_click.borrow_mut() = true;
             });
 
+        let pending_nip90_submit = Rc::new(RefCell::new(false));
+        let pending_nip90_submit_click = pending_nip90_submit.clone();
+        let mut nip90_kind_input = TextInput::new()
+            .placeholder("Job kind (e.g. 5050)")
+            .background(theme::bg::APP)
+            .border_color(theme::border::DEFAULT)
+            .border_color_focused(theme::border::FOCUS)
+            .text_color(theme::text::PRIMARY)
+            .placeholder_color(theme::text::MUTED);
+        nip90_kind_input.set_value("5050");
+        let nip90_relay_input = TextInput::new()
+            .placeholder("Relay URLs (comma separated)")
+            .background(theme::bg::APP)
+            .border_color(theme::border::DEFAULT)
+            .border_color_focused(theme::border::FOCUS)
+            .text_color(theme::text::PRIMARY)
+            .placeholder_color(theme::text::MUTED);
+        let nip90_provider_input = TextInput::new()
+            .placeholder("Provider pubkey (optional)")
+            .background(theme::bg::APP)
+            .border_color(theme::border::DEFAULT)
+            .border_color_focused(theme::border::FOCUS)
+            .text_color(theme::text::PRIMARY)
+            .placeholder_color(theme::text::MUTED);
+        let nip90_prompt_input = TextInput::new()
+            .placeholder("Prompt / job input")
+            .background(theme::bg::APP)
+            .border_color(theme::border::DEFAULT)
+            .border_color_focused(theme::border::FOCUS)
+            .text_color(theme::text::PRIMARY)
+            .placeholder_color(theme::text::MUTED)
+            .on_submit(move |_value| {
+                *pending_nip90_submit_click.borrow_mut() = true;
+            });
+
+        let pending_nip90_submit_click = pending_nip90_submit.clone();
+        let nip90_submit_button = Button::new("Submit")
+            .variant(ButtonVariant::Primary)
+            .font_size(theme::font_size::SM)
+            .padding(14.0, 8.0)
+            .corner_radius(8.0)
+            .background(theme::accent::PRIMARY)
+            .text_color(theme::bg::APP)
+            .on_click(move || {
+                *pending_nip90_submit_click.borrow_mut() = true;
+            });
+
         let event_scroll = ScrollView::new().show_scrollbar(true).scrollbar_width(6.0);
         let hotbar = Hotbar::new()
             .item_size(HOTBAR_ITEM_SIZE)
@@ -1602,6 +1667,18 @@ impl MinimalRoot {
             dvm_history_refresh_button,
             dvm_history_refresh_bounds: Bounds::ZERO,
             pending_dvm_history_refresh,
+            nip90_kind_input,
+            nip90_kind_bounds: Bounds::ZERO,
+            nip90_relay_input,
+            nip90_relay_bounds: Bounds::ZERO,
+            nip90_provider_input,
+            nip90_provider_bounds: Bounds::ZERO,
+            nip90_prompt_input,
+            nip90_prompt_bounds: Bounds::ZERO,
+            nip90_submit_button,
+            nip90_submit_bounds: Bounds::ZERO,
+            pending_nip90_submit,
+            nip90_log: Vec::new(),
             nostr_npub: None,
             nostr_nsec: None,
             spark_pubkey_hex: None,
@@ -1692,6 +1769,13 @@ impl MinimalRoot {
                         .collect(),
                     last_error: snapshot.last_error,
                 };
+            }
+            AppEvent::Nip90Log { message } => {
+                self.nip90_log.push(message);
+                if self.nip90_log.len() > 200 {
+                    let drain = self.nip90_log.len() - 200;
+                    self.nip90_log.drain(0..drain);
+                }
             }
             AppEvent::AppServerEvent { message } => {
                 if let Ok(value) = serde_json::from_str::<Value>(&message) {
@@ -2037,6 +2121,30 @@ impl MinimalRoot {
         }
     }
 
+    fn toggle_nip90_pane(&mut self, screen: Size) {
+        let last_position = self.pane_store.last_pane_position;
+        self.pane_store.toggle_pane("nip90", screen, |snapshot| {
+            let rect = snapshot
+                .as_ref()
+                .map(|snapshot| snapshot.rect)
+                .unwrap_or_else(|| {
+                    calculate_new_pane_position(
+                        last_position,
+                        screen,
+                        NIP90_PANE_WIDTH,
+                        NIP90_PANE_HEIGHT,
+                    )
+                });
+            Pane {
+                id: "nip90".to_string(),
+                kind: PaneKind::Nip90,
+                title: "NIP-90".to_string(),
+                rect,
+                dismissable: true,
+            }
+        });
+    }
+
     fn close_pane(&mut self, id: &str) {
         self.pane_store.remove_pane(id, true);
         self.pane_frames.remove(id);
@@ -2107,6 +2215,10 @@ impl MinimalRoot {
             }
             HotbarAction::ToggleDvmHistory => {
                 self.toggle_dvm_history_pane(screen);
+                true
+            }
+            HotbarAction::ToggleNip90 => {
+                self.toggle_nip90_pane(screen);
                 true
             }
             HotbarAction::NewChat => {
@@ -2498,6 +2610,53 @@ impl MinimalRoot {
                             );
                             handled |= refresh_handled;
                         }
+                        PaneKind::Nip90 => {
+                            let kind_handled = matches!(
+                                self.nip90_kind_input.event(
+                                    event,
+                                    self.nip90_kind_bounds,
+                                    &mut self.event_context
+                                ),
+                                EventResult::Handled
+                            );
+                            let relay_handled = matches!(
+                                self.nip90_relay_input.event(
+                                    event,
+                                    self.nip90_relay_bounds,
+                                    &mut self.event_context
+                                ),
+                                EventResult::Handled
+                            );
+                            let provider_handled = matches!(
+                                self.nip90_provider_input.event(
+                                    event,
+                                    self.nip90_provider_bounds,
+                                    &mut self.event_context
+                                ),
+                                EventResult::Handled
+                            );
+                            let prompt_handled = matches!(
+                                self.nip90_prompt_input.event(
+                                    event,
+                                    self.nip90_prompt_bounds,
+                                    &mut self.event_context
+                                ),
+                                EventResult::Handled
+                            );
+                            let submit_handled = matches!(
+                                self.nip90_submit_button.event(
+                                    event,
+                                    self.nip90_submit_bounds,
+                                    &mut self.event_context
+                                ),
+                                EventResult::Handled
+                            );
+                            handled |= kind_handled
+                                || relay_handled
+                                || provider_handled
+                                || prompt_handled
+                                || submit_handled;
+                        }
                     }
                 }
             }
@@ -2637,6 +2796,45 @@ impl MinimalRoot {
             }
         }
 
+        let should_nip90_submit = {
+            let mut pending = self.pending_nip90_submit.borrow_mut();
+            let value = *pending;
+            *pending = false;
+            value
+        };
+        if should_nip90_submit {
+            let prompt = self.nip90_prompt_input.get_value().trim().to_string();
+            if !prompt.is_empty() {
+                let kind_value = self.nip90_kind_input.get_value();
+                let kind = kind_value.trim().parse::<u16>().unwrap_or(5050);
+                let relays_raw = self.nip90_relay_input.get_value();
+                let relays = relays_raw
+                    .split(|c: char| c == ',' || c.is_whitespace())
+                    .filter(|part| !part.trim().is_empty())
+                    .map(|part| part.trim().to_string())
+                    .collect::<Vec<_>>();
+                let provider = self
+                    .nip90_provider_input
+                    .get_value()
+                    .trim()
+                    .to_string();
+                let provider = if provider.is_empty() {
+                    None
+                } else {
+                    Some(provider)
+                };
+                if let Some(handler) = self.send_handler.as_mut() {
+                    handler(UserAction::Nip90Submit {
+                        kind,
+                        prompt,
+                        relays,
+                        provider,
+                    });
+                }
+                self.nip90_prompt_input.set_value("");
+            }
+        }
+
         let should_copy = {
             let mut pending = self.pending_copy.borrow_mut();
             let value = *pending;
@@ -2719,6 +2917,9 @@ impl MinimalRoot {
             }
         }
 
+        self.nip90_submit_button
+            .set_disabled(self.nip90_prompt_input.get_value().trim().is_empty());
+
         handled
     }
 
@@ -2772,6 +2973,8 @@ impl MinimalRoot {
             Cursor::Pointer
         } else if self.dvm_history_refresh_button.is_hovered() {
             Cursor::Pointer
+        } else if self.nip90_submit_button.is_hovered() {
+            Cursor::Pointer
         } else if self
             .chat_panes
             .values()
@@ -2791,6 +2994,16 @@ impl MinimalRoot {
             .chat_panes
             .values()
             .any(|chat| chat.input_hovered || chat.input.is_focused())
+        {
+            Cursor::Text
+        } else if self.nip90_kind_bounds.contains(self.cursor_position)
+            || self.nip90_relay_bounds.contains(self.cursor_position)
+            || self.nip90_provider_bounds.contains(self.cursor_position)
+            || self.nip90_prompt_bounds.contains(self.cursor_position)
+            || self.nip90_kind_input.is_focused()
+            || self.nip90_relay_input.is_focused()
+            || self.nip90_provider_input.is_focused()
+            || self.nip90_prompt_input.is_focused()
         {
             Cursor::Text
         } else {
@@ -2872,12 +3085,13 @@ impl Component for MinimalRoot {
                 PaneKind::Wallet => paint_wallet_pane(self, content_bounds, cx),
                 PaneKind::SellCompute => paint_sell_compute_pane(self, content_bounds, cx),
                 PaneKind::DvmHistory => paint_dvm_history_pane(self, content_bounds, cx),
+                PaneKind::Nip90 => paint_nip90_pane(self, content_bounds, cx),
             }
             cx.scene.pop_clip();
         }
 
         cx.scene.set_layer(pane_layer_start + panes.len() as u32);
-        let slot_count: usize = 9;
+        let slot_count: usize = HOTBAR_SLOT_MAX as usize;
         let bar_width = HOTBAR_PADDING * 2.0
             + HOTBAR_ITEM_SIZE * slot_count as f32
             + HOTBAR_ITEM_GAP * (slot_count.saturating_sub(1) as f32);
@@ -2934,6 +3148,13 @@ impl Component for MinimalRoot {
         );
         self.hotbar_bindings
             .insert(HOTBAR_SLOT_HISTORY, HotbarAction::ToggleDvmHistory);
+
+        items.push(
+            HotbarSlot::new(HOTBAR_SLOT_NIP90, "N9", "NIP-90")
+                .active(self.pane_store.is_active("nip90")),
+        );
+        self.hotbar_bindings
+            .insert(HOTBAR_SLOT_NIP90, HotbarAction::ToggleNip90);
 
         let mut slot_to_pane: HashMap<u8, String> = HashMap::new();
         for (pane_id, slot) in self.chat_slot_assignments.iter() {
@@ -3929,6 +4150,91 @@ fn paint_dvm_history_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut Paint
             .color(theme::text::ACCENT)
             .paint(Bounds::new(content_x, y, content_width, label_height), cx);
     }
+}
+
+fn paint_nip90_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintContext) {
+    let padding = 16.0;
+    let label_height = 16.0;
+    let input_height = 28.0;
+    let gap = 8.0;
+    let text_size = theme::font_size::XS;
+
+    let mut content_width = (bounds.size.width * 0.9).min(720.0).max(320.0);
+    content_width = content_width.min(bounds.size.width - padding * 2.0);
+    let content_x = bounds.origin.x + (bounds.size.width - content_width) / 2.0;
+    let mut y = bounds.origin.y + padding;
+
+    Text::new("Relays")
+        .font_size(text_size)
+        .color(theme::text::MUTED)
+        .paint(Bounds::new(content_x, y, content_width, label_height), cx);
+    y += label_height + 4.0;
+    let relay_bounds = Bounds::new(content_x, y, content_width, input_height);
+    root.nip90_relay_bounds = relay_bounds;
+    root.nip90_relay_input.paint(relay_bounds, cx);
+    y += input_height + gap;
+
+    Text::new("Job kind")
+        .font_size(text_size)
+        .color(theme::text::MUTED)
+        .paint(Bounds::new(content_x, y, content_width, label_height), cx);
+    y += label_height + 4.0;
+    let kind_bounds = Bounds::new(content_x, y, 140.0, input_height);
+    root.nip90_kind_bounds = kind_bounds;
+    root.nip90_kind_input.paint(kind_bounds, cx);
+    y += input_height + gap;
+
+    Text::new("Provider (optional)")
+        .font_size(text_size)
+        .color(theme::text::MUTED)
+        .paint(Bounds::new(content_x, y, content_width, label_height), cx);
+    y += label_height + 4.0;
+    let provider_bounds = Bounds::new(content_x, y, content_width, input_height);
+    root.nip90_provider_bounds = provider_bounds;
+    root.nip90_provider_input.paint(provider_bounds, cx);
+    y += input_height + gap;
+
+    Text::new("Prompt")
+        .font_size(text_size)
+        .color(theme::text::MUTED)
+        .paint(Bounds::new(content_x, y, content_width, label_height), cx);
+    y += label_height + 4.0;
+    let prompt_height = 64.0;
+    let prompt_bounds = Bounds::new(content_x, y, content_width, prompt_height);
+    root.nip90_prompt_bounds = prompt_bounds;
+    root.nip90_prompt_input.paint(prompt_bounds, cx);
+    y += prompt_height + gap;
+
+    let submit_bounds = Bounds::new(content_x, y, 120.0, 32.0);
+    root.nip90_submit_bounds = submit_bounds;
+    root.nip90_submit_button.paint(submit_bounds, cx);
+    y += 32.0 + gap;
+
+    Text::new("Activity")
+        .font_size(text_size)
+        .color(theme::text::PRIMARY)
+        .paint(Bounds::new(content_x, y, content_width, label_height), cx);
+    y += label_height + 6.0;
+
+    if root.nip90_log.is_empty() {
+        Text::new("No NIP-90 activity yet.")
+            .font_size(text_size)
+            .color(theme::text::MUTED)
+            .paint(Bounds::new(content_x, y, content_width, label_height), cx);
+        return;
+    }
+
+    let mut lines = String::new();
+    for line in root.nip90_log.iter().rev().take(12).rev() {
+        lines.push_str(line);
+        lines.push('\n');
+    }
+    let mut log_text = Text::new(lines.as_str())
+        .font_size(text_size)
+        .color(theme::text::MUTED);
+    let (_, height) = log_text.size_hint_with_width(content_width);
+    let height = height.unwrap_or(label_height);
+    log_text.paint(Bounds::new(content_x, y, content_width, height), cx);
 }
 
 fn paint_events_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintContext) {
@@ -4997,6 +5303,7 @@ fn format_event(event: &AppEvent) -> String {
             UserAction::DvmProviderStop => "DvmProviderStop".to_string(),
             UserAction::DvmProviderRefresh => "DvmProviderRefresh".to_string(),
             UserAction::DvmHistoryRefresh => "DvmHistoryRefresh".to_string(),
+            UserAction::Nip90Submit { kind, .. } => format!("Nip90Submit (kind {kind})"),
             UserAction::Interrupt { .. } => "Interrupt".to_string(),
             UserAction::FullAutoToggle { enabled, .. } => {
                 if *enabled {
@@ -5032,6 +5339,7 @@ fn format_event(event: &AppEvent) -> String {
             "DvmHistory ({} jobs)",
             snapshot.summary.job_count
         ),
+        AppEvent::Nip90Log { message } => format!("Nip90Log ({message})"),
     }
 }
 
