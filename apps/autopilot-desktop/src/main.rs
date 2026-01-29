@@ -1936,12 +1936,13 @@ fn is_super_trigger(message: &str) -> bool {
 }
 
 #[allow(dead_code)]
+#[allow(dead_code)]
 fn guidance_response_score(text: &str) -> f32 {
     let trimmed = text.trim();
     if trimmed.is_empty() {
         return 0.0;
     }
-    if trimmed.contains('\n') || trimmed.len() > 140 {
+    if trimmed.contains('\n') || trimmed.len() > 280 {
         return 0.0;
     }
     if trimmed.contains('?') || trimmed.contains('`') || trimmed.contains('\"') {
@@ -1964,13 +1965,21 @@ fn guidance_response_score(text: &str) -> f32 {
     1.0
 }
 
-fn sanitize_guidance_response(text: &str) -> String {
+fn sanitize_guidance_line(text: &str, max_len: usize) -> String {
     let mut line = text.lines().next().unwrap_or("").trim().to_string();
     line = line.trim_matches('"').trim_matches('\'').trim().to_string();
-    if line.len() > 140 {
-        line.truncate(140);
+    if line.len() > max_len {
+        line.truncate(max_len);
     }
     line
+}
+
+fn sanitize_guidance_response(text: &str) -> String {
+    sanitize_guidance_line(text, 280)
+}
+
+fn sanitize_guidance_directive(text: &str) -> String {
+    sanitize_guidance_line(text, 600)
 }
 
 #[allow(dead_code)]
@@ -2612,11 +2621,11 @@ async fn run_guidance_super(
         proxy,
         thread_id,
         "GuidanceDirectiveSignature",
-        &sanitize_guidance_response(&directive_text),
+        &sanitize_guidance_directive(&directive_text),
         &lm.model,
     );
 
-    let final_response = sanitize_guidance_response(&directive_text);
+    let final_response = sanitize_guidance_directive(&directive_text);
 
     Ok((final_response, signatures))
 }
@@ -2742,11 +2751,11 @@ async fn run_guidance_followup(
         proxy,
         thread_id,
         "GuidanceDirectiveSignature",
-        &sanitize_guidance_response(&directive_text),
+        &sanitize_guidance_directive(&directive_text),
         &lm.model,
     );
 
-    let final_response = sanitize_guidance_response(&directive_text);
+    let final_response = sanitize_guidance_directive(&directive_text);
     let decision = FullAutoDecision {
         action: FullAutoAction::Continue,
         next_input: Some(final_response.clone()),
