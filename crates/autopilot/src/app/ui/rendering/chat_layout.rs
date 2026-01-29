@@ -216,9 +216,15 @@ impl AppState {
         let max_scroll = (total_content_height - viewport_height).max(0.0);
         self.chat.scroll_offset = self.chat.scroll_offset.clamp(0.0, max_scroll);
         let was_near_bottom = self.chat.scroll_offset >= max_scroll - chat_line_height * 2.0;
-        if self.settings.coder_settings.auto_scroll && self.tools.has_running() && was_near_bottom {
+        let message_count = self.chat.messages.len();
+        let messages_changed = message_count != self.chat.last_message_count;
+        if self.settings.coder_settings.auto_scroll
+            && was_near_bottom
+            && (self.tools.has_running() || messages_changed)
+        {
             self.chat.scroll_offset = max_scroll;
         }
+        self.chat.last_message_count = message_count;
 
         if let Some(selection) = self.chat.chat_selection {
             if selection.anchor.message_index >= message_layouts.len()

@@ -127,6 +127,7 @@ pub(crate) struct ChatState {
     pub(crate) response_rx: Option<mpsc::UnboundedReceiver<ResponseEvent>>,
     pub(crate) query_control_tx: Option<mpsc::UnboundedSender<QueryControl>>,
     pub(crate) scroll_offset: f32,
+    pub(crate) last_message_count: usize,
     /// Boot sections displayed at top of chat during startup
     pub(crate) boot_sections: Option<BootSections>,
     /// Inline issue selector (replaces full-screen bootloader modal)
@@ -154,6 +155,7 @@ impl ChatState {
             response_rx: None,
             query_control_tx: None,
             scroll_offset: 0.0,
+            last_message_count: 0,
             boot_sections: Some(BootSections::new()),
             inline_issue_selector: None,
         }
