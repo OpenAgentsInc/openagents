@@ -3490,7 +3490,7 @@ impl Component for MinimalRoot {
         let mut dots_grid = DotsGrid::new()
             .shape(DotShape::Circle)
             .color(theme::text::MUTED)
-            .opacity(0.2)
+            .opacity(0.12)
             .distance(32.0)
             .size(1.5);
         dots_grid.paint(bounds, cx);
