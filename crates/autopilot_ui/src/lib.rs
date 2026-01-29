@@ -2627,6 +2627,24 @@ impl MinimalRoot {
                 return self.cycle_chat_focus();
             }
 
+            if matches!(key, Key::Named(NamedKey::Tab))
+                && modifiers.shift
+                && !modifiers.ctrl
+                && !modifiers.alt
+                && !modifiers.meta
+            {
+                for chat in self.chat_panes.values_mut() {
+                    if chat.model_hovered || chat.model_dropdown.is_open() {
+                        let options = build_model_options();
+                        let current = model_index(&chat.selected_model).unwrap_or(0);
+                        let next = (current + 1) % options.len();
+                        let value = options[next].value.clone();
+                        chat.pending_model_changes.borrow_mut().push(value);
+                        return true;
+                    }
+                }
+            }
+
             if modifiers.meta || modifiers.ctrl {
                 if let Key::Character(value) = key {
                     if let Ok(slot) = value.parse::<u8>() {
