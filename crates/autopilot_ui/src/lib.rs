@@ -1333,6 +1333,21 @@ impl ChatPaneState {
                     }
                 }
             }
+            "guidance/status" => {
+                if let Some(params) = value.get("params") {
+                    let signature = params.get("signature").and_then(|value| value.as_str());
+                    let text = params.get("text").and_then(|value| value.as_str());
+                    if let Some(text) = text {
+                        let label = match signature {
+                            Some(signature) if !signature.trim().is_empty() => {
+                                format!("{signature}: {text}")
+                            }
+                            _ => text.to_string(),
+                        };
+                        self.append_agent_text(&label);
+                    }
+                }
+            }
             "guidance/response" => {
                 if let Some(params) = value.get("params") {
                     let model = params.get("model").and_then(|value| value.as_str());

@@ -1353,7 +1353,15 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
                                             ),
                                         }
                                     } else {
-                                        match run_guidance_router(&text, &goal_intent, &lm).await {
+                                        match run_guidance_router(
+                                            &proxy,
+                                            &thread_id,
+                                            &text,
+                                            &goal_intent,
+                                            &lm,
+                                        )
+                                        .await
+                                        {
                                             Ok(result) => result,
                                             Err(error) => (
                                                 format!("Guidance error: {error}"),
@@ -2026,6 +2034,25 @@ fn emit_guidance_step(
     });
 }
 
+fn emit_guidance_status(
+    proxy: &EventLoopProxy<AppEvent>,
+    thread_id: &str,
+    signature: Option<&str>,
+    text: &str,
+) {
+    let payload = json!({
+        "method": "guidance/status",
+        "params": {
+            "threadId": thread_id,
+            "signature": signature,
+            "text": text
+        }
+    });
+    let _ = proxy.send_event(AppEvent::AppServerEvent {
+        message: payload.to_string(),
+    });
+}
+
 fn extract_first_json_string(raw: &str) -> Option<String> {
     let trimmed = raw.trim();
     if trimmed.is_empty() || trimmed == "[]" {
@@ -2071,6 +2098,28 @@ fn extract_first_step_description(raw: &str) -> Option<String> {
 
 fn strip_question_marks(text: &str) -> String {
     text.replace('?', "").trim().to_string()
+}
+
+fn is_question_like(text: &str) -> bool {
+    let lower = text.trim().to_lowercase();
+    if lower.is_empty() {
+        return false;
+    }
+    if lower.contains('?') {
+        return true;
+    }
+    let cues = [
+        "clarify",
+        "could you",
+        "can you",
+        "please provide",
+        "need more",
+        "what do you want",
+        "which task",
+        "specific task",
+        "details",
+    ];
+    cues.iter().any(|cue| lower.contains(cue))
 }
 
 async fn run_task_understanding(
@@ -2140,6 +2189,8 @@ async fn run_planning_summary(
 }
 
 async fn handle_guidance_route(
+    proxy: &EventLoopProxy<AppEvent>,
+    thread_id: &str,
     message: &str,
     goal_intent: &str,
     route: &str,
@@ -2150,11 +2201,23 @@ async fn handle_guidance_route(
     let repo_context = guidance_repo_context();
     match route.trim().to_lowercase().as_str() {
         "understand" => {
+            emit_guidance_status(
+                proxy,
+                thread_id,
+                Some("TaskUnderstandingSignature"),
+                "Running…",
+            );
             let text = run_task_understanding(message, &repo_context, goal_intent, lm).await?;
             signatures.push("TaskUnderstandingSignature".to_string());
             Ok((text, signatures))
         }
         "plan" => {
+            emit_guidance_status(
+                proxy,
+                thread_id,
+                Some("PlanningSignature"),
+                "Running…",
+            );
             let text = run_planning_summary(message, &repo_context, goal_intent, lm).await?;
             signatures.push("PlanningSignature".to_string());
             Ok((text, signatures))
@@ -2181,6 +2244,12 @@ async fn run_guidance_super(
     let repo_context = guidance_repo_context();
     let lm_arc = std::sync::Arc::new(lm.clone());
 
+    emit_guidance_status(
+        proxy,
+        thread_id,
+        Some("TaskUnderstandingSignature"),
+        "Running…",
+    );
     let understanding_predictor = Predict::new(TaskUnderstandingSignature::new());
     let understanding_inputs = example! {
         "user_request": "input" => message.to_string(),
@@ -2221,6 +2290,12 @@ async fn run_guidance_super(
         &lm.model,
     );
 
+    emit_guidance_status(
+        proxy,
+        thread_id,
+        Some("PlanningSignature"),
+        "Running…",
+    );
     let planning_predictor = Predict::new(PlanningSignature::new());
     let planning_message = if message.trim().len() <= 4 {
         if goal_intent.trim().is_empty() {
@@ -2258,6 +2333,12 @@ async fn run_guidance_super(
         );
     }
 
+    emit_guidance_status(
+        proxy,
+        thread_id,
+        Some("GuidanceDecisionSignature"),
+        "Running…",
+    );
     let decision_predictor = Predict::new(GuidanceDecisionSignature::new());
     let summary_payload = json!({
         "user_message": message,
@@ -2292,15 +2373,29 @@ async fn run_guidance_super(
         .map_err(|e| format!("Guidance decision failed: {e}"))?;
     let action = prediction_to_string(&decision, "action");
     let next_input = prediction_to_string(&decision, "next_input");
-    let reason = prediction_to_string(&decision, "reason");
+    let _reason = prediction_to_string(&decision, "reason");
     signatures.push("GuidanceDecisionSignature".to_string());
-    let decision_text = if !next_input.trim().is_empty() {
-        format!("Decision: {} — {}.", action, next_input)
-    } else if !reason.trim().is_empty() {
-        format!("Decision: {} — {}.", action, reason)
+    let normalized_action = action.trim().to_lowercase();
+    let action_valid = matches!(
+        normalized_action.as_str(),
+        "continue" | "pause" | "stop" | "review"
+    );
+    let mut selected_next = if !next_input.trim().is_empty() && !is_question_like(&next_input) {
+        next_input.trim().to_string()
+    } else if let Some(step) = first_step.as_ref() {
+        format!("Next step: {}.", step)
     } else {
-        format!("Decision: {}.", action)
+        fallback_guidance_response(goal_intent)
     };
+    if is_question_like(&selected_next) {
+        selected_next = fallback_guidance_response(goal_intent);
+    }
+    let selected_action = if action_valid && normalized_action == "continue" {
+        "continue".to_string()
+    } else {
+        "continue".to_string()
+    };
+    let decision_text = format!("Decision: {} — {}.", selected_action, selected_next);
     emit_guidance_step(
         proxy,
         thread_id,
@@ -2309,24 +2404,24 @@ async fn run_guidance_super(
         &lm.model,
     );
 
-    let final_response = if !next_input.trim().is_empty() {
-        sanitize_guidance_response(&next_input)
-    } else if let Some(step) = first_step {
-        sanitize_guidance_response(&format!("Next step: {}.", step))
-    } else if !reason.trim().is_empty() {
-        sanitize_guidance_response(&reason)
-    } else {
-        fallback_guidance_response(goal_intent)
-    };
+    let final_response = sanitize_guidance_response(&selected_next);
 
     Ok((final_response, signatures))
 }
 
 async fn run_guidance_router(
+    proxy: &EventLoopProxy<AppEvent>,
+    thread_id: &str,
     message: &str,
     goal_intent: &str,
     lm: &dsrs::LM,
 ) -> Result<(String, Vec<String>), String> {
+    emit_guidance_status(
+        proxy,
+        thread_id,
+        Some("GuidanceRouterSignature"),
+        "Running…",
+    );
     let predictor = Predict::new(GuidanceRouterSignature::new());
     let inputs = example! {
         "user_message": "input" => message.to_string(),
@@ -2348,8 +2443,16 @@ async fn run_guidance_router(
             score = score.max(0.9);
         }
         if score >= 0.9 {
-            return handle_guidance_route(message, goal_intent, &route, &response, lm.as_ref())
-                .await;
+            return handle_guidance_route(
+                proxy,
+                thread_id,
+                message,
+                goal_intent,
+                &route,
+                &response,
+                lm.as_ref(),
+            )
+            .await;
         }
         if best.as_ref().map(|(_, _, s)| score > *s).unwrap_or(true) {
             best = Some((response, route, score));
@@ -2357,8 +2460,16 @@ async fn run_guidance_router(
     }
     if let Some((response, route, score)) = best {
         if score > 0.0 {
-            return handle_guidance_route(message, goal_intent, &route, &response, lm.as_ref())
-                .await;
+            return handle_guidance_route(
+                proxy,
+                thread_id,
+                message,
+                goal_intent,
+                &route,
+                &response,
+                lm.as_ref(),
+            )
+            .await;
         }
     }
     Ok((
