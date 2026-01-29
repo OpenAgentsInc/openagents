@@ -196,6 +196,7 @@ impl Default for Dropdown {
 
 impl Component for Dropdown {
     fn paint(&mut self, bounds: Bounds, cx: &mut PaintContext) {
+        let base_layer = cx.scene.layer();
         let border = if self.open || self.hovered {
             theme::accent::PRIMARY
         } else {
@@ -243,6 +244,8 @@ impl Component for Dropdown {
         cx.scene.draw_text(arrow_run);
 
         if self.open && !self.options.is_empty() {
+            // Draw the menu on a higher layer so it overlays other UI.
+            cx.scene.set_layer(base_layer + 1);
             let dropdown_bounds = Bounds::new(
                 bounds.origin.x,
                 self.dropdown_top(bounds),
@@ -284,6 +287,7 @@ impl Component for Dropdown {
                 );
                 cx.scene.draw_text(option_run);
             }
+            cx.scene.set_layer(base_layer);
         }
     }
 
