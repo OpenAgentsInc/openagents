@@ -740,6 +740,10 @@ struct ChatPaneState {
     reasoning_hovered: bool,
     pending_reasoning_changes: Rc<RefCell<Vec<String>>>,
     selected_reasoning: String,
+    queue_toggle_button: Button,
+    queue_toggle_bounds: Bounds,
+    pending_queue_toggle: Rc<RefCell<bool>>,
+    queue_mode: bool,
     formatted_thread: ThreadView,
     formatted_thread_bounds: Bounds,
     formatted_message_streams: HashMap<String, StreamingMarkdown>,
@@ -792,6 +796,17 @@ impl ChatPaneState {
             .open_up(true)
             .on_change(move |_, value| {
                 pending_reasoning.borrow_mut().push(value.to_string());
+            });
+
+        let pending_queue_toggle = Rc::new(RefCell::new(false));
+        let pending_queue_toggle_click = pending_queue_toggle.clone();
+        let queue_toggle_button = Button::new("Queue")
+            .variant(ButtonVariant::Primary)
+            .font_size(theme::font_size::SM)
+            .padding(12.0, 6.0)
+            .corner_radius(8.0)
+            .on_click(move || {
+                *pending_queue_toggle_click.borrow_mut() = true;
             });
 
         let formatted_thread = ThreadView::new().item_spacing(8.0);
@@ -859,6 +874,10 @@ impl ChatPaneState {
             reasoning_hovered: false,
             pending_reasoning_changes,
             selected_reasoning: reasoning_default.to_string(),
+            queue_toggle_button,
+            queue_toggle_bounds: Bounds::ZERO,
+            pending_queue_toggle,
+            queue_mode: true,
             formatted_thread,
             formatted_thread_bounds: Bounds::ZERO,
             formatted_message_streams: HashMap::new(),
@@ -973,6 +992,13 @@ impl ChatPaneState {
         items
     }
 
+    fn take_pending_queue_toggle(&mut self) -> bool {
+        let mut pending = self.pending_queue_toggle.borrow_mut();
+        let value = *pending;
+        *pending = false;
+        value
+    }
+
     fn take_pending_stop(&mut self) -> bool {
         let mut pending = self.pending_stop.borrow_mut();
         let value = *pending;
@@ -1044,6 +1070,14 @@ impl ChatPaneState {
         self.queued_messages.as_slice()
     }
 
+    fn queue_message(&mut self, text: String) {
+        self.queued_messages.push(QueuedMessage { text });
+    }
+
+    fn can_dispatch(&self, send_handler: &Option<Box<dyn FnMut(UserAction)>>) -> bool {
+        self.session_id.is_some() && self.thread_id.is_some() && send_handler.is_some()
+    }
+
     fn dispatch_message(
         &mut self,
         text: String,
@@ -1052,6 +1086,9 @@ impl ChatPaneState {
         let Some(session_id) = self.session_id else {
             return;
         };
+        if self.thread_id.is_none() {
+            return;
+        }
         let Some(handler) = send_handler.as_mut() else {
             return;
         };
@@ -1064,6 +1101,31 @@ impl ChatPaneState {
         self.queued_in_flight = true;
     }
 
+    fn dispatch_or_queue_message(
+        &mut self,
+        text: String,
+        send_handler: &mut Option<Box<dyn FnMut(UserAction)>>,
+    ) {
+        let trimmed = text.trim();
+        if trimmed.is_empty() {
+            return;
+        }
+
+        if !self.queued_messages.is_empty() {
+            self.queue_message(trimmed.to_string());
+            self.flush_queue_if_idle(send_handler);
+            return;
+        }
+
+        let should_queue = self.queue_mode && self.is_processing();
+        if should_queue || !self.can_dispatch(send_handler) {
+            self.queue_message(trimmed.to_string());
+            return;
+        }
+
+        self.dispatch_message(trimmed.to_string(), send_handler);
+    }
+
     fn flush_queue_if_idle(&mut self, send_handler: &mut Option<Box<dyn FnMut(UserAction)>>) {
         if self.is_processing() {
             return;
@@ -1072,6 +1134,9 @@ impl ChatPaneState {
             return;
         }
         if self.queued_messages.is_empty() {
+            return;
+        }
+        if !self.can_dispatch(send_handler) {
             return;
         }
         let next = self.queued_messages.remove(0);
@@ -2127,6 +2192,7 @@ impl MinimalRoot {
                                 {
                                     chat.update_thread_model(model);
                                 }
+                                chat.flush_queue_if_idle(&mut self.send_handler);
                             }
 
                             if method == "turn/started" {
@@ -3018,6 +3084,15 @@ impl MinimalRoot {
                                     EventResult::Handled
                                 );
 
+                                let queue_toggle_handled = matches!(
+                                    chat.queue_toggle_button.event(
+                                        event,
+                                        chat.queue_toggle_bounds,
+                                        &mut self.event_context
+                                    ),
+                                    EventResult::Handled
+                                );
+
                                 let formatted_handled = if chat
                                     .formatted_thread_bounds
                                     .contains(self.cursor_position)
@@ -3060,6 +3135,7 @@ impl MinimalRoot {
 
                                 handled |= dropdown_handled
                                     || full_auto_handled
+                                    || queue_toggle_handled
                                     || formatted_handled
                                     || input_handled
                                     || submit_handled
@@ -3475,6 +3551,10 @@ impl MinimalRoot {
                     chat.update_reasoning(effort);
                 }
 
+                if chat.take_pending_queue_toggle() {
+                    chat.queue_mode = !chat.queue_mode;
+                }
+
                 if chat.take_pending_stop() {
                     if let (Some(session_id), Some(handler)) =
                         (chat.session_id, self.send_handler.as_mut())
@@ -3518,7 +3598,7 @@ impl MinimalRoot {
 
                     if !messages.is_empty() {
                         for message in messages {
-                            chat.dispatch_message(message, &mut self.send_handler);
+                            chat.dispatch_or_queue_message(message, &mut self.send_handler);
                         }
                         chat.input.set_value("");
                         chat.input.focus();
@@ -3987,13 +4067,14 @@ fn paint_chat_pane(chat: &mut ChatPaneState, bounds: Bounds, cx: &mut PaintConte
 }
 
 fn metrics_buttons_width(
+    queue_width: f32,
     full_auto_width: f32,
     send_width: f32,
     stop_width: f32,
     show_stop: bool,
     gap: f32,
 ) -> f32 {
-    let mut width = full_auto_width + send_width + gap;
+    let mut width = queue_width + full_auto_width + send_width + gap * 2.0;
     if show_stop {
         width += stop_width + gap;
     }
@@ -4007,6 +4088,7 @@ struct InputBarMetrics {
     total_height: f32,
     model_width: f32,
     reasoning_width: f32,
+    queue_width: f32,
     full_auto_width: f32,
     send_width: f32,
     stop_width: f32,
@@ -4040,11 +4122,21 @@ fn input_bar_metrics(
             .measure_styled_mono(full_auto_label, button_font, FontStyle::default())
             + 28.0;
     let full_auto_width = full_auto_width.max(110.0);
+    let queue_label_width = cx
+        .text
+        .measure_styled_mono("Queue", button_font, FontStyle::default())
+        .max(cx.text.measure_styled_mono(
+            "Instant",
+            button_font,
+            FontStyle::default(),
+        ));
+    let queue_width = (queue_label_width + 28.0).max(90.0);
     let show_stop = chat.is_processing();
 
     let mut total_width = (available_width - padding_x * 2.0).max(240.0);
     total_width = total_width.min(available_width - padding_x * 2.0);
-    let buttons_width = metrics_buttons_width(full_auto_width, send_width, stop_width, show_stop, gap);
+    let buttons_width =
+        metrics_buttons_width(queue_width, full_auto_width, send_width, stop_width, show_stop, gap);
     let min_left = REASONING_DROPDOWN_MIN_WIDTH + 180.0 + gap;
     let left_available = (total_width - buttons_width - gap).max(min_left);
     let mut model_width = (left_available * 0.6).min(MODEL_DROPDOWN_WIDTH).max(180.0);
@@ -4079,6 +4171,7 @@ fn input_bar_metrics(
         total_height,
         model_width,
         reasoning_width,
+        queue_width,
         full_auto_width,
         send_width,
         stop_width,
@@ -4138,11 +4231,19 @@ fn paint_input_bar(chat: &mut ChatPaneState, bounds: Bounds, cx: &mut PaintConte
         metrics.full_auto_width,
         metrics.row_height,
     );
+    right_x = full_auto_bounds.origin.x - gap;
+    let queue_bounds = Bounds::new(
+        right_x - metrics.queue_width,
+        row_y,
+        metrics.queue_width,
+        metrics.row_height,
+    );
 
     chat.input_bounds = input_bounds;
     chat.submit_bounds = submit_bounds;
     chat.stop_bounds = stop_bounds;
     chat.full_auto_bounds = full_auto_bounds;
+    chat.queue_toggle_bounds = queue_bounds;
     chat.model_bounds = model_bounds;
     chat.reasoning_bounds = reasoning_bounds;
     chat.input.set_max_width(input_bounds.size.width);
@@ -4160,6 +4261,13 @@ fn paint_input_bar(chat: &mut ChatPaneState, bounds: Bounds, cx: &mut PaintConte
     } else {
         ButtonVariant::Secondary
     });
+    let queue_label = if chat.queue_mode { "Queue" } else { "Instant" };
+    chat.queue_toggle_button.set_label(queue_label);
+    chat.queue_toggle_button.set_variant(if chat.queue_mode {
+        ButtonVariant::Primary
+    } else {
+        ButtonVariant::Secondary
+    });
     chat.full_auto_button
         .set_disabled(chat.thread_id.is_none());
     if chat.input_needs_focus {
@@ -4170,6 +4278,7 @@ fn paint_input_bar(chat: &mut ChatPaneState, bounds: Bounds, cx: &mut PaintConte
     chat.input.paint(input_bounds, cx);
     chat.model_dropdown.paint(model_bounds, cx);
     chat.reasoning_dropdown.paint(reasoning_bounds, cx);
+    chat.queue_toggle_button.paint(queue_bounds, cx);
     chat.full_auto_button.paint(full_auto_bounds, cx);
     if metrics.show_stop {
         chat.stop_button.paint(stop_bounds, cx);
@@ -5349,7 +5458,7 @@ impl DesktopRoot {
                     ));
                     self.thread_view.push_entry(ThreadEntry::new(
                         ThreadEntryType::Assistant,
-                        AssistantMessage::new("Queued message for processing."),
+                        AssistantMessage::new("Message sent."),
                     ));
                 }
 
