@@ -1078,6 +1078,7 @@ dependencies = [
  "openagents-spark",
  "pollster 0.4.0",
  "pylon",
+ "rustls",
  "serde",
  "serde_json",
  "tokio",

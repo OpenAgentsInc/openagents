@@ -218,6 +218,27 @@ impl ResizablePane {
         self
     }
 
+    /// Expose the resize hit test for external layout logic.
+    pub fn edge_at(&self, bounds: Bounds, point: Point) -> ResizeEdge {
+        self.hit_test(bounds, point)
+    }
+
+    /// Compute resized bounds from a drag without mutating internal state.
+    pub fn resize_bounds(
+        &self,
+        edge: ResizeEdge,
+        start_bounds: Bounds,
+        start_mouse: Point,
+        current_mouse: Point,
+    ) -> Bounds {
+        let drag = DragState {
+            edge,
+            start_mouse,
+            start_bounds,
+        };
+        self.calculate_new_bounds(&drag, current_mouse)
+    }
+
     /// Set background color
     pub fn background(mut self, color: Hsla) -> Self {
         self.background = Some(color);

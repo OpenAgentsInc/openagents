@@ -12,7 +12,8 @@ use autopilot_ui::MinimalRoot;
 use clap::Parser;
 use codex_client::{
     AppServerClient, AppServerConfig, AskForApproval, ClientInfo, SandboxMode, SandboxPolicy,
-    ThreadStartParams, TurnInterruptParams, TurnStartParams, UserInput,
+    ThreadListParams, ThreadResumeParams, ThreadStartParams, TurnInterruptParams, TurnStartParams,
+    UserInput,
 };
 use full_auto::{
     FullAutoAction, FullAutoDecisionRequest, FullAutoDecisionResult, FullAutoState, decision_model,
@@ -74,6 +75,7 @@ fn main() -> Result<()> {
         .with_env_filter(EnvFilter::from_default_env())
         .with_target(false)
         .init();
+    let _ = rustls::crypto::ring::default_provider().install_default();
 
     let event_loop = EventLoop::<AppEvent>::with_user_event()
         .build()
@@ -1116,6 +1118,111 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
                                         })
                                         .to_string(),
                                     });
+                                }
+                            });
+                        }
+                        UserAction::ThreadsRefresh => {
+                            let client = client_for_actions.clone();
+                            let proxy = proxy_actions.clone();
+                            handle.spawn(async move {
+                                let params = ThreadListParams {
+                                    limit: Some(10),
+                                    ..Default::default()
+                                };
+                                match client.thread_list(params).await {
+                                    Ok(response) => {
+                                        let threads = response
+                                            .data
+                                            .into_iter()
+                                            .map(|thread| autopilot_app::ThreadSummary {
+                                                id: thread.id,
+                                                preview: thread.preview,
+                                                model_provider: thread.model_provider,
+                                                cwd: thread.cwd,
+                                                created_at: thread.created_at,
+                                            })
+                                            .collect::<Vec<_>>();
+                                        let _ = proxy.send_event(AppEvent::ThreadsUpdated { threads });
+                                    }
+                                    Err(err) => {
+                                        let _ = proxy.send_event(AppEvent::AppServerEvent {
+                                            message: json!({
+                                                "method": "codex/error",
+                                                "params": { "message": err.to_string() }
+                                            })
+                                            .to_string(),
+                                        });
+                                    }
+                                }
+                            });
+                        }
+                        UserAction::ThreadOpen { thread_id } => {
+                            let client = client_for_actions.clone();
+                            let proxy = proxy_actions.clone();
+                            let cwd = cwd_for_actions.clone();
+                            let workspace = workspace_for_actions.clone();
+                            let session_states = session_states_for_actions.clone();
+                            let thread_to_session = thread_to_session_for_actions.clone();
+                            let session_handle =
+                                workspace.start_session(Some("Thread".to_string()));
+                            let session_id = session_handle.session_id();
+                            let session_state = SessionRuntime::new();
+
+                            handle.spawn(async move {
+                                {
+                                    let mut guard = session_states.lock().await;
+                                    guard.insert(session_id, session_state.clone());
+                                }
+
+                                match client
+                                    .thread_resume(ThreadResumeParams {
+                                        thread_id: thread_id.clone(),
+                                        model: None,
+                                        model_provider: None,
+                                        cwd: Some(cwd),
+                                        approval_policy: Some(AskForApproval::Never),
+                                        sandbox: Some(SandboxMode::WorkspaceWrite),
+                                    })
+                                    .await
+                                {
+                                    Ok(response) => {
+                                        {
+                                            let mut guard =
+                                                session_state.thread_id.lock().await;
+                                            *guard = Some(response.thread.id.clone());
+                                        }
+                                        {
+                                            let mut map = thread_to_session.lock().await;
+                                            map.insert(response.thread.id.clone(), session_id);
+                                        }
+                                        let thread = autopilot_app::ThreadSnapshot {
+                                            id: response.thread.id,
+                                            preview: response.thread.preview,
+                                            turns: response
+                                                .thread
+                                                .turns
+                                                .into_iter()
+                                                .map(|turn| autopilot_app::ThreadTurn {
+                                                    id: turn.id,
+                                                    items: turn.items,
+                                                })
+                                                .collect(),
+                                        };
+                                        let _ = proxy.send_event(AppEvent::ThreadLoaded {
+                                            session_id,
+                                            thread,
+                                            model: response.model,
+                                        });
+                                    }
+                                    Err(err) => {
+                                        let _ = proxy.send_event(AppEvent::AppServerEvent {
+                                            message: json!({
+                                                "method": "codex/error",
+                                                "params": { "message": err.to_string() }
+                                            })
+                                            .to_string(),
+                                        });
+                                    }
                                 }
                             });
                         }

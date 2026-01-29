@@ -35,3 +35,4 @@ openagents-spark = { path = "../../crates/spark" }
 nostr = { path = "../../crates/nostr/core" }
 nostr-client = { path = "../../crates/nostr/client" }
 clap = { workspace = true }
+rustls = "0.23"
