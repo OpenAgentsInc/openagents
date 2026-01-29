@@ -3648,22 +3648,22 @@ fn paint_pylon_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintContex
     let mut engine = LayoutEngine::new();
     let init_node = engine.request_leaf(
         &LayoutStyle::new()
-            .width(length(100.0))
+            .width(px(100.0))
             .height(px(button_height)),
     );
     let start_node = engine.request_leaf(
         &LayoutStyle::new()
-            .width(length(70.0))
+            .width(px(70.0))
             .height(px(button_height)),
     );
     let stop_node = engine.request_leaf(
         &LayoutStyle::new()
-            .width(length(70.0))
+            .width(px(70.0))
             .height(px(button_height)),
     );
     let refresh_node = engine.request_leaf(
         &LayoutStyle::new()
-            .width(length(90.0))
+            .width(px(90.0))
             .height(px(button_height)),
     );
     let row = engine.request_layout(
@@ -3775,7 +3775,7 @@ fn paint_pylon_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintContex
     if let Some(err) = root.pylon_status.last_error.as_deref() {
         Text::new(err)
             .font_size(text_size)
-            .color(theme::text::ACCENT)
+            .color(theme::accent::RED)
             .paint(Bounds::new(content_x, y, content_width, label_height), cx);
     }
 }
@@ -3876,7 +3876,7 @@ fn paint_wallet_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintConte
     if let Some(err) = root.wallet_status.last_error.as_deref() {
         Text::new(err)
             .font_size(text_size)
-            .color(theme::text::ACCENT)
+            .color(theme::accent::RED)
             .paint(Bounds::new(content_x, y, content_width, label_height), cx);
     }
 }
@@ -4029,7 +4029,7 @@ fn paint_sell_compute_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut Pain
     if let Some(err) = root.sell_compute_status.last_error.as_deref() {
         Text::new(err)
             .font_size(text_size)
-            .color(theme::text::ACCENT)
+            .color(theme::accent::RED)
             .paint(Bounds::new(content_x, y, content_width, label_height), cx);
     }
 }
@@ -4147,7 +4147,7 @@ fn paint_dvm_history_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut Paint
     if let Some(err) = root.dvm_history.last_error.as_deref() {
         Text::new(err)
             .font_size(text_size)
-            .color(theme::text::ACCENT)
+            .color(theme::accent::RED)
             .paint(Bounds::new(content_x, y, content_width, label_height), cx);
     }
 }
@@ -4622,6 +4622,7 @@ impl DesktopRoot {
                 }
             }
             AppEvent::AppServerEvent { .. } => {}
+            _ => {}
         }
     }
 
