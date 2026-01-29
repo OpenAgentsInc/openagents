@@ -66,7 +66,7 @@ impl Component for ToolHeader {
         let icon_size = 20.0;
 
         let mut badge = ToolStatusBadge::new(self.status);
-        let (badge_w, badge_h) = badge.size_hint();
+        let (badge_w, _badge_h) = badge.size_hint();
         badge.paint(
             Bounds::new(
                 x,

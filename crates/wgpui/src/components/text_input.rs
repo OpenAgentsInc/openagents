@@ -458,7 +458,7 @@ impl Component for TextInput {
             let visual_lines = self.wrap_text(display_text);
             let base_line_top = self.base_line_top(bounds, line_height, visual_lines.len().max(1));
 
-            if display_text == self.value {
+            if *display_text == self.value {
                 if let Some((sel_start, sel_end)) = self.get_selection() {
                     let ranges = self.visual_line_ranges();
                     let selection_color = Hsla::from_hex(0x1A1A1A);
