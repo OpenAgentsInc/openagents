@@ -31,6 +31,7 @@ uuid = { workspace = true }
 tokio = { workspace = true }
 dsrs = { path = "../../crates/dsrs" }
 pylon = { path = "../../crates/pylon" }
+openagents-runtime = { path = "../../crates/runtime", default-features = false }
 openagents-spark = { path = "../../crates/spark" }
 nostr = { path = "../../crates/nostr/core" }
 nostr-client = { path = "../../crates/nostr/client" }

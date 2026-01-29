@@ -123,7 +123,26 @@ impl PylonProvider {
         let bridge_manager = Self::try_start_fm_bridge().await;
 
         // Auto-detect inference backends (will now find Apple FM if bridge started)
-        let registry = BackendRegistry::detect().await;
+        let mut registry = BackendRegistry::detect().await;
+
+        if !config.backend_preference.is_empty() {
+            if config.backend_preference.len() == 1 {
+                let preferred = config.backend_preference[0].as_str();
+                if let Some(backend) = registry.get(preferred) {
+                    let mut filtered = BackendRegistry::new();
+                    filtered.register_with_id(preferred, backend);
+                    registry = filtered;
+                } else {
+                    registry = BackendRegistry::new();
+                }
+            } else {
+                for backend in &config.backend_preference {
+                    if registry.set_default(backend) {
+                        break;
+                    }
+                }
+            }
+        }
 
         if !registry.has_backends() {
             tracing::warn!("No inference backends detected");
