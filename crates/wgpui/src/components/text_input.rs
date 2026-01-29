@@ -460,10 +460,16 @@ impl Component for TextInput {
                 let base_line_top =
                     self.base_line_top(bounds, line_height, visual_lines.len().max(1));
                 let cursor_y = base_line_top + line_height * cursor_line as f32;
+                let cursor_offset_y = -2.0;
                 let cursor_height = line_height;
 
                 cx.scene.draw_quad(
-                    Quad::new(Bounds::new(cursor_x, cursor_y, 2.0, cursor_height))
+                    Quad::new(Bounds::new(
+                        cursor_x,
+                        cursor_y + cursor_offset_y,
+                        2.0,
+                        cursor_height,
+                    ))
                         .with_background(self.cursor_color),
                 );
             }
