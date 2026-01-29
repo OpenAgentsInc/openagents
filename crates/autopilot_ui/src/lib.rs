@@ -578,6 +578,7 @@ pub struct MinimalRoot {
     event_context: EventContext,
     cursor_position: Point,
     screen_size: Size,
+    zoom_factor: f32,
     pane_store: PaneStore,
     pane_frames: HashMap<String, PaneFrame>,
     pane_bounds: HashMap<String, Bounds>,
@@ -1771,6 +1772,7 @@ impl MinimalRoot {
             event_context: EventContext::new(),
             cursor_position: Point::ZERO,
             screen_size: Size::new(1280.0, 720.0),
+            zoom_factor: 1.0,
             pane_store: PaneStore::default(),
             pane_frames: HashMap::new(),
             pane_bounds: HashMap::new(),
@@ -1860,6 +1862,10 @@ impl MinimalRoot {
         let screen = Size::new(1280.0, 720.0);
         root.open_chat_pane(screen, true, true);
         root
+    }
+
+    pub fn set_zoom_factor(&mut self, zoom: f32) {
+        self.zoom_factor = zoom.max(0.1);
     }
 
     pub fn apply_event(&mut self, event: AppEvent) {
@@ -3551,14 +3557,26 @@ impl Component for MinimalRoot {
         }
 
         cx.scene.set_layer(pane_layer_start + panes.len() as u32);
+        let hotbar_scale = 1.0 / self.zoom_factor.max(0.1);
         let slot_count: usize = HOTBAR_SLOT_MAX as usize;
-        let bar_width = HOTBAR_PADDING * 2.0
-            + HOTBAR_ITEM_SIZE * slot_count as f32
-            + HOTBAR_ITEM_GAP * (slot_count.saturating_sub(1) as f32);
+        let item_size = HOTBAR_ITEM_SIZE * hotbar_scale;
+        let padding = HOTBAR_PADDING * hotbar_scale;
+        let gap = HOTBAR_ITEM_GAP * hotbar_scale;
+        let bar_height = HOTBAR_HEIGHT * hotbar_scale;
+        let float_gap = HOTBAR_FLOAT_GAP * hotbar_scale;
+        let bar_width = padding * 2.0
+            + item_size * slot_count as f32
+            + gap * (slot_count.saturating_sub(1) as f32);
         let bar_x = bounds.origin.x + (bounds.size.width - bar_width) * 0.5;
-        let bar_y = bounds.origin.y + bounds.size.height - HOTBAR_FLOAT_GAP - HOTBAR_HEIGHT;
-        let bar_bounds = Bounds::new(bar_x, bar_y, bar_width, HOTBAR_HEIGHT);
+        let bar_y = bounds.origin.y + bounds.size.height - float_gap - bar_height;
+        let bar_bounds = Bounds::new(bar_x, bar_y, bar_width, bar_height);
         self.hotbar_bounds = bar_bounds;
+
+        self.hotbar.set_item_size(item_size);
+        self.hotbar.set_padding(padding);
+        self.hotbar.set_gap(gap);
+        self.hotbar.set_corner_radius(8.0 * hotbar_scale);
+        self.hotbar.set_font_scale(hotbar_scale);
 
         let mut items = Vec::new();
         self.hotbar_bindings.clear();

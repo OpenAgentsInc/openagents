@@ -51,6 +51,7 @@ pub struct Hotbar {
     gap: f32,
     padding: f32,
     corner_radius: f32,
+    font_scale: f32,
 }
 
 impl Hotbar {
@@ -68,6 +69,7 @@ impl Hotbar {
             gap: 6.0,
             padding: 6.0,
             corner_radius: 6.0,
+            font_scale: 1.0,
         }
     }
 
@@ -85,9 +87,17 @@ impl Hotbar {
         self
     }
 
+    pub fn set_item_size(&mut self, size: f32) {
+        self.item_size = size;
+    }
+
     pub fn gap(mut self, gap: f32) -> Self {
         self.gap = gap;
         self
+    }
+
+    pub fn set_gap(&mut self, gap: f32) {
+        self.gap = gap;
     }
 
     pub fn padding(mut self, padding: f32) -> Self {
@@ -95,9 +105,26 @@ impl Hotbar {
         self
     }
 
+    pub fn set_padding(&mut self, padding: f32) {
+        self.padding = padding;
+    }
+
     pub fn corner_radius(mut self, radius: f32) -> Self {
         self.corner_radius = radius;
         self
+    }
+
+    pub fn set_corner_radius(&mut self, radius: f32) {
+        self.corner_radius = radius;
+    }
+
+    pub fn font_scale(mut self, scale: f32) -> Self {
+        self.font_scale = scale.max(0.1);
+        self
+    }
+
+    pub fn set_font_scale(&mut self, scale: f32) {
+        self.font_scale = scale.max(0.1);
     }
 
     pub fn is_hovered(&self) -> bool {
@@ -204,8 +231,8 @@ impl Component for Hotbar {
                 .with_corner_radius(self.corner_radius),
         );
 
-        let icon_font = theme::font_size::SM;
-        let number_font = theme::font_size::XS * 0.85;
+        let icon_font = theme::font_size::SM * self.font_scale;
+        let number_font = theme::font_size::XS * 0.85 * self.font_scale;
 
         for (idx, item) in self.items.iter().enumerate() {
             let item_bounds = self.item_bounds[idx];
