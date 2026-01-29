@@ -58,7 +58,7 @@ impl Dropdown {
             font_size: theme::font_size::SM,
             padding: (theme::spacing::SM, theme::spacing::XS),
             max_visible_items: 6,
-            background: theme::bg::SURFACE,
+            background: theme::bg::SURFACE.with_alpha(1.0),
             border_color: theme::border::DEFAULT,
             hover_color: theme::bg::MUTED,
             text_color: theme::text::PRIMARY,
