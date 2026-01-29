@@ -91,7 +91,7 @@ impl Component for TerminalToolCall {
         let padding = theme::spacing::SM;
 
         cx.scene
-            .draw_quad(Quad::new(bounds).with_background(theme::bg::APP));
+            .draw_quad(Quad::new(bounds).with_background(theme::bg::SURFACE));
 
         let header_height = 32.0;
         let mut header = TerminalHeader::new(&self.command).status(self.status);
