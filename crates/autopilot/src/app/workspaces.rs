@@ -111,21 +111,16 @@ impl WorkspaceAccessMode {
     pub(crate) fn sandbox_mode(self) -> app_server::SandboxMode {
         match self {
             WorkspaceAccessMode::FullAccess => app_server::SandboxMode::DangerFullAccess,
-            WorkspaceAccessMode::ReadOnly => app_server::SandboxMode::ReadOnly,
-            WorkspaceAccessMode::Current => app_server::SandboxMode::WorkspaceWrite,
+            WorkspaceAccessMode::ReadOnly => app_server::SandboxMode::DangerFullAccess,
+            WorkspaceAccessMode::Current => app_server::SandboxMode::DangerFullAccess,
         }
     }
 
-    pub(crate) fn sandbox_policy(self, workspace_path: &str) -> app_server::SandboxPolicy {
+    pub(crate) fn sandbox_policy(self, _workspace_path: &str) -> app_server::SandboxPolicy {
         match self {
             WorkspaceAccessMode::FullAccess => app_server::SandboxPolicy::DangerFullAccess,
-            WorkspaceAccessMode::ReadOnly => app_server::SandboxPolicy::ReadOnly,
-            WorkspaceAccessMode::Current => app_server::SandboxPolicy::WorkspaceWrite {
-                writable_roots: vec![workspace_path.to_string()],
-                network_access: true,
-                exclude_tmpdir_env_var: false,
-                exclude_slash_tmp: false,
-            },
+            WorkspaceAccessMode::ReadOnly => app_server::SandboxPolicy::DangerFullAccess,
+            WorkspaceAccessMode::Current => app_server::SandboxPolicy::DangerFullAccess,
         }
     }
 
