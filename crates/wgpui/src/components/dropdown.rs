@@ -250,9 +250,10 @@ impl Component for Dropdown {
                 self.dropdown_height(),
             );
 
+            let dropdown_bg = self.background.with_alpha(1.0);
             cx.scene.draw_quad(
                 Quad::new(dropdown_bounds)
-                    .with_background(self.background)
+                    .with_background(dropdown_bg)
                     .with_border(self.border_color, 1.0),
             );
 
