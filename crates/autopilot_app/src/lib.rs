@@ -189,6 +189,12 @@ pub enum UserAction {
     DvmProviderStop,
     DvmProviderRefresh,
     DvmHistoryRefresh,
+    Nip90Submit {
+        kind: u16,
+        prompt: String,
+        relays: Vec<String>,
+        provider: Option<String>,
+    },
     Command {
         session_id: SessionId,
         name: String,
@@ -301,6 +307,9 @@ pub enum AppEvent {
     },
     DvmHistory {
         snapshot: DvmHistorySnapshot,
+    },
+    Nip90Log {
+        message: String,
     },
 }
 
