@@ -444,6 +444,7 @@ fn render_frame(state: &mut RenderState) -> Result<()> {
 
     let mut scene = Scene::new();
     let mut paint = PaintContext::new(&mut scene, &mut state.text_system, scale_factor);
+    state.root.set_zoom_factor(state.zoom_factor);
     state.root.paint(content_bounds, &mut paint);
 
     state.renderer.resize(&state.queue, logical, scale_factor);
