@@ -3631,25 +3631,25 @@ impl Component for MinimalRoot {
             .insert(HOTBAR_SLOT_IDENTITY, HotbarAction::ToggleIdentity);
 
         items.push(
-            HotbarSlot::new(HOTBAR_SLOT_PYLON, "PY", "Pylon")
-                .active(self.pane_store.is_active("pylon")),
-        );
-        self.hotbar_bindings
-            .insert(HOTBAR_SLOT_PYLON, HotbarAction::TogglePylon);
-
-        items.push(
             HotbarSlot::new(HOTBAR_SLOT_WALLET, "WL", "Wallet")
                 .active(self.pane_store.is_active("wallet")),
         );
         self.hotbar_bindings
             .insert(HOTBAR_SLOT_WALLET, HotbarAction::ToggleWallet);
-
-        items.push(
-            HotbarSlot::new(HOTBAR_SLOT_SELL_COMPUTE, "SC", "Sell")
-                .active(self.pane_store.is_active("sell_compute")),
-        );
-        self.hotbar_bindings
-            .insert(HOTBAR_SLOT_SELL_COMPUTE, HotbarAction::ToggleSellCompute);
+        // Pylon + Sell Compute panes hidden from hotbar for now.
+        // items.push(
+        //     HotbarSlot::new(HOTBAR_SLOT_PYLON, "PY", "Pylon")
+        //         .active(self.pane_store.is_active("pylon")),
+        // );
+        // self.hotbar_bindings
+        //     .insert(HOTBAR_SLOT_PYLON, HotbarAction::TogglePylon);
+        //
+        // items.push(
+        //     HotbarSlot::new(HOTBAR_SLOT_SELL_COMPUTE, "SC", "Sell")
+        //         .active(self.pane_store.is_active("sell_compute")),
+        // );
+        // self.hotbar_bindings
+        //     .insert(HOTBAR_SLOT_SELL_COMPUTE, HotbarAction::ToggleSellCompute);
 
         items.push(
             HotbarSlot::new(HOTBAR_SLOT_THREADS, "TH", "Threads")
