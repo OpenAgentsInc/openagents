@@ -765,6 +765,7 @@ struct ChatPaneState {
     full_auto_bounds: Bounds,
     pending_full_auto: Rc<RefCell<bool>>,
     full_auto_enabled: bool,
+    guidance_mode_active: bool,
     queued_messages: Vec<QueuedMessage>,
     queued_in_flight: bool,
     stop_button: Button,
@@ -899,6 +900,7 @@ impl ChatPaneState {
             full_auto_bounds: Bounds::ZERO,
             pending_full_auto,
             full_auto_enabled: false,
+            guidance_mode_active: false,
             queued_messages: Vec::new(),
             queued_in_flight: false,
             stop_button,
@@ -921,6 +923,7 @@ impl ChatPaneState {
         self.thread_id = None;
         self.thread_model = Some(self.selected_model.clone());
         self.full_auto_enabled = false;
+        self.guidance_mode_active = false;
         self.input.set_value("");
         self.input_needs_focus = true;
         self.submit_button
@@ -1100,7 +1103,18 @@ impl ChatPaneState {
             model: Some(self.selected_model.clone()),
             reasoning: Some(self.selected_reasoning.clone()),
         });
+        if self.full_auto_enabled {
+            self.activate_guidance_mode();
+        }
         self.queued_in_flight = true;
+    }
+
+    fn activate_guidance_mode(&mut self) {
+        if self.guidance_mode_active {
+            return;
+        }
+        self.guidance_mode_active = true;
+        self.append_agent_text("GUIDANCE MODE");
     }
 
     fn dispatch_or_queue_message(
@@ -2247,6 +2261,9 @@ impl MinimalRoot {
                                     .and_then(|value| value.as_bool())
                                 {
                                     chat.full_auto_enabled = enabled;
+                                    if !enabled {
+                                        chat.guidance_mode_active = false;
+                                    }
                                 }
                             }
 
@@ -2257,6 +2274,7 @@ impl MinimalRoot {
                                 {
                                     if action != "continue" {
                                         chat.full_auto_enabled = false;
+                                        chat.guidance_mode_active = false;
                                     }
                                 }
                             }

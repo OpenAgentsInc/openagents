@@ -147,6 +147,7 @@ pub struct FullAutoState {
     pub config: FullAutoConfig,
     pub guidance_mode: GuidanceMode,
     pub guidance_goal: GuidanceGoal,
+    pub guidance_activated: bool,
     decision_lm: Option<LM>,
     threads: HashMap<String, FullAutoThreadState>,
     pub run_id: String,
@@ -160,6 +161,7 @@ impl FullAutoState {
         let started_at = Utc::now();
         let guidance_mode = GuidanceMode::from_env();
         let guidance_goal = guidance_goal_from_env();
+        let guidance_activated = guidance_mode == GuidanceMode::Demo;
         let _ = json!({
             "runId": run_id,
             "workspaceId": workspace_id,
@@ -180,6 +182,7 @@ impl FullAutoState {
             config,
             guidance_mode,
             guidance_goal,
+            guidance_activated,
             decision_lm: None,
             threads: HashMap::new(),
             run_id,
@@ -340,6 +343,16 @@ impl FullAutoState {
 
     pub fn guidance_mode(&self) -> GuidanceMode {
         self.guidance_mode
+    }
+
+    pub fn activate_guidance_mode(&mut self) -> bool {
+        if self.guidance_activated {
+            return false;
+        }
+        self.guidance_activated = true;
+        self.guidance_mode = GuidanceMode::Demo;
+        self.decision_lm = None;
+        true
     }
 
     pub fn build_guidance_inputs(&self, summary: &FullAutoTurnSummary) -> GuidanceInputs {
