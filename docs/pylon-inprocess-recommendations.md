@@ -94,7 +94,7 @@ struct InProcessPylon {
 - Guard against double initialization (if user clicks Start twice).
 
 ## Work log
-- Implemented in-process provider state (`InProcessPylon`) in `apps/autopilot-desktop-wgpu`.
+- Implemented in-process provider state (`InProcessPylon`) in `apps/autopilot-desktop`.
 - Replaced Pylon CLI/daemon calls with in-process start/stop/status.
 - Added Ollama-only enforcement (start fails without Ollama backend).
 - Simplified Pylon pane to a single Turn On/Turn Off button (already in UI).

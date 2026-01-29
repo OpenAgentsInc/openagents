@@ -1,7 +1,7 @@
 [workspace]
 resolver = "2"
 members = [
-    "apps/autopilot-desktop-wgpu",
+    "apps/autopilot-desktop",
     "crates/adjutant",
     "crates/agent",
     "crates/ai-server",

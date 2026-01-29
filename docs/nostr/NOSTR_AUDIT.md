@@ -18,7 +18,7 @@ Nostr commands.
 There is a migration plan in a sibling repo:
 
 - `/Users/christopherdavid/code/openagents/apps/autopilot-desktop/docs/migration/EFFUSE_TO_WGPUI_PLAN.md`
-  currently points to `apps/autopilot-desktop-wgpu/docs/migration/EFFUSE_TO_WGPUI_PLAN.md`.
+  currently points to `apps/autopilot-desktop/docs/migration/EFFUSE_TO_WGPUI_PLAN.md`.
 
 This doc is not part of this repo, but it is relevant to ongoing UI work in main.
 

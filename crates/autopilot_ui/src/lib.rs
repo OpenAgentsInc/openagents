@@ -5241,7 +5241,7 @@ impl DesktopRoot {
         self.thread_view
             .push_entry(ThreadEntry::new(ThreadEntryType::Tool, search));
 
-        let terminal = TerminalToolCall::new("cargo build -p autopilot-desktop-wgpu")
+        let terminal = TerminalToolCall::new("cargo build -p autopilot-desktop")
             .status(ToolStatus::Success)
             .exit_code(0)
             .output("Finished dev [unoptimized + debuginfo] target(s) in 2.8s\n");

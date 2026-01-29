@@ -1,6 +1,6 @@
 [package]
-name = "autopilot-desktop-wgpu"
-version.workspace = true
+name = "autopilot-desktop"
+version = "0.0.1"
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
@@ -8,7 +8,7 @@ publish.workspace = true
 description = "Native WGPUI desktop app for Autopilot"
 
 [[bin]]
-name = "autopilot-desktop-wgpu"
+name = "autopilot-desktop"
 path = "src/main.rs"
 
 [dependencies]

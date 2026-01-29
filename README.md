@@ -10,10 +10,10 @@ If you're looking for the philosophy / "why open", start with **[MANIFESTO.md](.
 ```bash
 git clone https://github.com/OpenAgentsInc/openagents.git
 cd openagents
-cargo run -p autopilot-desktop-wgpu
+cargo run -p autopilot-desktop
 ```
 
-For release builds, see **[apps/autopilot-desktop-wgpu/docs/migration/EFFUSE_TO_WGPUI_PLAN.md](apps/autopilot-desktop-wgpu/docs/migration/EFFUSE_TO_WGPUI_PLAN.md)**.
+For release builds, see **[apps/autopilot-desktop/docs/migration/EFFUSE_TO_WGPUI_PLAN.md](apps/autopilot-desktop/docs/migration/EFFUSE_TO_WGPUI_PLAN.md)**.
 
 ## What you get
 
@@ -34,7 +34,7 @@ If you need them, use the docs index below to navigate the relevant crates and g
 
 Start with:
 
-* **Desktop docs**: [apps/autopilot-desktop-wgpu/docs/migration/EFFUSE_TO_WGPUI_PLAN.md](apps/autopilot-desktop-wgpu/docs/migration/EFFUSE_TO_WGPUI_PLAN.md)
+* **Desktop docs**: [apps/autopilot-desktop/docs/migration/EFFUSE_TO_WGPUI_PLAN.md](apps/autopilot-desktop/docs/migration/EFFUSE_TO_WGPUI_PLAN.md)
 * **Docs index (everything else)**: [docs/README.md](docs/README.md)
 * **Repo map / ownership**: [PROJECT_OVERVIEW.md](./PROJECT_OVERVIEW.md)
 * **Agent contract / contribution norms**: [AGENTS.md](./AGENTS.md)
