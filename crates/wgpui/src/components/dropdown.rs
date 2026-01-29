@@ -113,6 +113,23 @@ impl Dropdown {
         self
     }
 
+    pub fn set_options(&mut self, options: Vec<DropdownOption>) {
+        self.options = options;
+        if let Some(index) = self.selected_index {
+            if index >= self.options.len() {
+                self.selected_index = None;
+            }
+        }
+        if let Some(index) = self.hovered_option {
+            if index >= self.options.len() {
+                self.hovered_option = None;
+            }
+        }
+        if self.options.is_empty() {
+            self.open = false;
+        }
+    }
+
     pub fn selected_value(&self) -> Option<&str> {
         self.selected_index.map(|i| self.options[i].value.as_str())
     }

@@ -46,7 +46,10 @@ const BOTTOM_BAR_MIN_HEIGHT: f32 = 64.0;
 const INPUT_MIN_LINES: usize = 1;
 const INPUT_MAX_LINES: Option<usize> = None;
 const MODEL_DROPDOWN_WIDTH: f32 = 320.0;
+const REASONING_DROPDOWN_MIN_WIDTH: f32 = 140.0;
+const REASONING_DROPDOWN_MAX_WIDTH: f32 = 200.0;
 const DEFAULT_MODEL_INDEX: usize = 3;
+const DEFAULT_REASONING_EFFORT: &str = "medium";
 const SHOW_MODEL_DROPDOWN: bool = false;
 const SHOW_MODEL_SELECTOR: bool = true;
 const PANE_MARGIN: f32 = 24.0;
@@ -102,6 +105,8 @@ const MODEL_OPTIONS: [(&str, &str); 4] = [
         "Optimized for Codex. Cheaper, faster, but less capable.",
     ),
 ];
+const REASONING_OPTIONS_FULL: [&str; 4] = ["low", "medium", "high", "xhigh"];
+const REASONING_OPTIONS_MINI: [&str; 2] = ["medium", "high"];
 
 #[derive(Default, Clone)]
 pub struct AppViewModel {
@@ -171,6 +176,30 @@ fn build_model_options() -> Vec<DropdownOption> {
         .iter()
         .map(|(id, _)| DropdownOption::new(*id, *id))
         .collect()
+}
+
+fn reasoning_options_for_model(model: &str) -> &'static [&'static str] {
+    match model {
+        "gpt-5.1-codex-mini" => &REASONING_OPTIONS_MINI,
+        _ => &REASONING_OPTIONS_FULL,
+    }
+}
+
+fn build_reasoning_options(model: &str) -> Vec<DropdownOption> {
+    reasoning_options_for_model(model)
+        .iter()
+        .map(|value| DropdownOption::new(*value, *value))
+        .collect()
+}
+
+fn reasoning_index(model: &str, effort: &str) -> Option<usize> {
+    reasoning_options_for_model(model)
+        .iter()
+        .position(|value| value.eq_ignore_ascii_case(effort))
+}
+
+fn default_reasoning_for_model(_model: &str) -> &'static str {
+    DEFAULT_REASONING_EFFORT
 }
 
 fn model_index(model: &str) -> Option<usize> {
@@ -706,6 +735,11 @@ struct ChatPaneState {
     model_hovered: bool,
     pending_model_changes: Rc<RefCell<Vec<String>>>,
     selected_model: String,
+    reasoning_dropdown: Dropdown,
+    reasoning_bounds: Bounds,
+    reasoning_hovered: bool,
+    pending_reasoning_changes: Rc<RefCell<Vec<String>>>,
+    selected_reasoning: String,
     formatted_thread: ThreadView,
     formatted_thread_bounds: Bounds,
     formatted_message_streams: HashMap<String, StreamingMarkdown>,
@@ -736,13 +770,28 @@ impl ChatPaneState {
     fn new(default_model: &str) -> Self {
         let pending_model_changes = Rc::new(RefCell::new(Vec::new()));
         let pending_models = pending_model_changes.clone();
+        let selected_index = model_index(default_model).unwrap_or(DEFAULT_MODEL_INDEX);
         let model_dropdown = Dropdown::new(build_model_options())
-            .selected(DEFAULT_MODEL_INDEX)
+            .selected(selected_index)
             .font_size(theme::font_size::SM)
             .padding(12.0, 6.0)
             .open_up(true)
             .on_change(move |_, value| {
                 pending_models.borrow_mut().push(value.to_string());
+            });
+
+        let pending_reasoning_changes = Rc::new(RefCell::new(Vec::new()));
+        let pending_reasoning = pending_reasoning_changes.clone();
+        let reasoning_options = build_reasoning_options(default_model);
+        let reasoning_default = default_reasoning_for_model(default_model);
+        let reasoning_index = reasoning_index(default_model, reasoning_default).unwrap_or(0);
+        let reasoning_dropdown = Dropdown::new(reasoning_options)
+            .selected(reasoning_index)
+            .font_size(theme::font_size::SM)
+            .padding(12.0, 6.0)
+            .open_up(true)
+            .on_change(move |_, value| {
+                pending_reasoning.borrow_mut().push(value.to_string());
             });
 
         let formatted_thread = ThreadView::new().item_spacing(8.0);
@@ -805,6 +854,11 @@ impl ChatPaneState {
             model_hovered: false,
             pending_model_changes,
             selected_model: default_model.to_string(),
+            reasoning_dropdown,
+            reasoning_bounds: Bounds::ZERO,
+            reasoning_hovered: false,
+            pending_reasoning_changes,
+            selected_reasoning: reasoning_default.to_string(),
             formatted_thread,
             formatted_thread_bounds: Bounds::ZERO,
             formatted_message_streams: HashMap::new(),
@@ -940,6 +994,13 @@ impl ChatPaneState {
         models
     }
 
+    fn take_pending_reasoning(&mut self) -> Vec<String> {
+        let mut pending = self.pending_reasoning_changes.borrow_mut();
+        let efforts = pending.clone();
+        pending.clear();
+        efforts
+    }
+
     fn set_session_id(&mut self, session_id: SessionId) {
         self.session_id = Some(session_id);
     }
@@ -949,6 +1010,29 @@ impl ChatPaneState {
         self.selected_model = model.to_string();
         if let Some(index) = model_index(model) {
             self.model_dropdown.set_selected(Some(index));
+        }
+        self.refresh_reasoning_options(model);
+    }
+
+    fn update_reasoning(&mut self, effort: &str) {
+        self.selected_reasoning = effort.to_string();
+        if let Some(index) = reasoning_index(&self.selected_model, effort) {
+            self.reasoning_dropdown.set_selected(Some(index));
+        }
+    }
+
+    fn refresh_reasoning_options(&mut self, model: &str) {
+        let options = build_reasoning_options(model);
+        self.reasoning_dropdown.set_options(options);
+        let default_effort = default_reasoning_for_model(model);
+        let next_effort = if reasoning_index(model, &self.selected_reasoning).is_some() {
+            self.selected_reasoning.clone()
+        } else {
+            default_effort.to_string()
+        };
+        self.selected_reasoning = next_effort.clone();
+        if let Some(index) = reasoning_index(model, &next_effort) {
+            self.reasoning_dropdown.set_selected(Some(index));
         }
     }
 
@@ -975,6 +1059,7 @@ impl ChatPaneState {
             session_id,
             text,
             model: Some(self.selected_model.clone()),
+            reasoning: Some(self.selected_reasoning.clone()),
         });
         self.queued_in_flight = true;
     }
@@ -2521,8 +2606,18 @@ impl MinimalRoot {
                     .and_then(|id| self.chat_panes.get(id))
                     .map(|chat| chat.selected_model.clone())
                     .unwrap_or_else(|| DEFAULT_THREAD_MODEL.to_string());
+                let active_reasoning = self
+                    .pane_store
+                    .active_pane_id
+                    .as_ref()
+                    .and_then(|id| self.chat_panes.get(id))
+                    .map(|chat| chat.selected_reasoning.clone())
+                    .unwrap_or_else(|| DEFAULT_REASONING_EFFORT.to_string());
                 let new_pane =
                     self.open_chat_pane(screen, true, true, active_model.as_str());
+                if let Some(chat) = self.chat_panes.get_mut(&new_pane) {
+                    chat.update_reasoning(&active_reasoning);
+                }
                 let session_id = self
                     .pane_store
                     .active_pane_id
@@ -2698,6 +2793,11 @@ impl MinimalRoot {
                 chat.input_hovered = chat.input_bounds.contains(self.cursor_position);
                 chat.model_hovered = if SHOW_MODEL_SELECTOR {
                     chat.model_bounds.contains(self.cursor_position)
+                } else {
+                    false
+                };
+                chat.reasoning_hovered = if SHOW_MODEL_SELECTOR {
+                    chat.reasoning_bounds.contains(self.cursor_position)
                 } else {
                     false
                 };
@@ -2888,14 +2988,23 @@ impl MinimalRoot {
                         PaneKind::Chat => {
                             if let Some(chat) = self.chat_panes.get_mut(&pane_id) {
                                 let dropdown_handled = if SHOW_MODEL_SELECTOR {
-                                    matches!(
+                                    let model_handled = matches!(
                                         chat.model_dropdown.event(
                                             event,
                                             chat.model_bounds,
                                             &mut self.event_context
                                         ),
                                         EventResult::Handled
-                                    )
+                                    );
+                                    let reasoning_handled = matches!(
+                                        chat.reasoning_dropdown.event(
+                                            event,
+                                            chat.reasoning_bounds,
+                                            &mut self.event_context
+                                        ),
+                                        EventResult::Handled
+                                    );
+                                    model_handled || reasoning_handled
                                 } else {
                                     false
                                 };
@@ -3361,6 +3470,11 @@ impl MinimalRoot {
                     chat.update_thread_model(model);
                 }
 
+                let pending_reasoning = chat.take_pending_reasoning();
+                if let Some(effort) = pending_reasoning.last() {
+                    chat.update_reasoning(effort);
+                }
+
                 if chat.take_pending_stop() {
                     if let (Some(session_id), Some(handler)) =
                         (chat.session_id, self.send_handler.as_mut())
@@ -3511,7 +3625,12 @@ impl MinimalRoot {
             && self
                 .chat_panes
                 .values()
-                .any(|chat| chat.model_hovered || chat.model_dropdown.is_open())
+                .any(|chat| {
+                    chat.model_hovered
+                        || chat.model_dropdown.is_open()
+                        || chat.reasoning_hovered
+                        || chat.reasoning_dropdown.is_open()
+                })
         {
             Cursor::Pointer
         } else if self
@@ -3867,12 +3986,27 @@ fn paint_chat_pane(chat: &mut ChatPaneState, bounds: Bounds, cx: &mut PaintConte
     paint_input_bar(chat, input_bounds, cx);
 }
 
+fn metrics_buttons_width(
+    full_auto_width: f32,
+    send_width: f32,
+    stop_width: f32,
+    show_stop: bool,
+    gap: f32,
+) -> f32 {
+    let mut width = full_auto_width + send_width + gap;
+    if show_stop {
+        width += stop_width + gap;
+    }
+    width
+}
+
 struct InputBarMetrics {
     total_width: f32,
     input_height: f32,
     row_height: f32,
     total_height: f32,
     model_width: f32,
+    reasoning_width: f32,
     full_auto_width: f32,
     send_width: f32,
     stop_width: f32,
@@ -3910,7 +4044,20 @@ fn input_bar_metrics(
 
     let mut total_width = (available_width - padding_x * 2.0).max(240.0);
     total_width = total_width.min(available_width - padding_x * 2.0);
-    let model_width = (total_width * 0.35).min(MODEL_DROPDOWN_WIDTH).max(180.0);
+    let buttons_width = metrics_buttons_width(full_auto_width, send_width, stop_width, show_stop, gap);
+    let min_left = REASONING_DROPDOWN_MIN_WIDTH + 180.0 + gap;
+    let left_available = (total_width - buttons_width - gap).max(min_left);
+    let mut model_width = (left_available * 0.6).min(MODEL_DROPDOWN_WIDTH).max(180.0);
+    let mut reasoning_width = (left_available - model_width - gap)
+        .clamp(REASONING_DROPDOWN_MIN_WIDTH, REASONING_DROPDOWN_MAX_WIDTH);
+    if model_width + reasoning_width + gap > left_available {
+        let overflow = model_width + reasoning_width + gap - left_available;
+        if reasoning_width - overflow >= REASONING_DROPDOWN_MIN_WIDTH {
+            reasoning_width -= overflow;
+        } else if model_width - overflow >= 180.0 {
+            model_width -= overflow;
+        }
+    }
 
     chat.input.set_max_width(total_width);
     let line_height = button_font * 1.4;
@@ -3931,6 +4078,7 @@ fn input_bar_metrics(
         row_height,
         total_height,
         model_width,
+        reasoning_width,
         full_auto_width,
         send_width,
         stop_width,
@@ -3957,6 +4105,12 @@ fn paint_input_bar(chat: &mut ChatPaneState, bounds: Bounds, cx: &mut PaintConte
     let input_bounds = Bounds::new(bar_x, input_y, bar_width, metrics.input_height);
 
     let model_bounds = Bounds::new(bar_x, row_y, metrics.model_width, metrics.row_height);
+    let reasoning_bounds = Bounds::new(
+        model_bounds.origin.x + model_bounds.size.width + gap,
+        row_y,
+        metrics.reasoning_width,
+        metrics.row_height,
+    );
 
     let mut right_x = bar_x + bar_width;
     let submit_bounds = Bounds::new(
@@ -3990,6 +4144,7 @@ fn paint_input_bar(chat: &mut ChatPaneState, bounds: Bounds, cx: &mut PaintConte
     chat.stop_bounds = stop_bounds;
     chat.full_auto_bounds = full_auto_bounds;
     chat.model_bounds = model_bounds;
+    chat.reasoning_bounds = reasoning_bounds;
     chat.input.set_max_width(input_bounds.size.width);
     chat.submit_button
         .set_disabled(chat.input.get_value().trim().is_empty());
@@ -4014,6 +4169,7 @@ fn paint_input_bar(chat: &mut ChatPaneState, bounds: Bounds, cx: &mut PaintConte
 
     chat.input.paint(input_bounds, cx);
     chat.model_dropdown.paint(model_bounds, cx);
+    chat.reasoning_dropdown.paint(reasoning_bounds, cx);
     chat.full_auto_button.paint(full_auto_bounds, cx);
     if metrics.show_stop {
         chat.stop_button.paint(stop_bounds, cx);
@@ -5314,6 +5470,7 @@ impl DesktopRoot {
                             session_id,
                             text: trimmed.to_string(),
                             model: None,
+                            reasoning: None,
                         });
                         self.message_editor.clear();
                     } else {
@@ -5883,13 +6040,18 @@ fn format_event(event: &AppEvent) -> String {
             format!("SessionStarted ({:?})", session_id)
         }
         AppEvent::UserActionDispatched { action, .. } => match action {
-            UserAction::Message { text, model, .. } => {
-                if let Some(model) = model {
-                    format!("Message ({text}) [{model}]")
-                } else {
-                    format!("Message ({text})")
+            UserAction::Message {
+                text,
+                model,
+                reasoning,
+                ..
+            } => match (model, reasoning) {
+                (Some(model), Some(reasoning)) => {
+                    format!("Message ({text}) [{model}, {reasoning}]")
                 }
-            }
+                (Some(model), None) => format!("Message ({text}) [{model}]"),
+                _ => format!("Message ({text})"),
+            },
             UserAction::Command { name, .. } => format!("Command ({})", name),
             UserAction::NewChat { model, .. } => {
                 if let Some(model) = model {
