@@ -14,6 +14,7 @@ async fn scenario_open_workspace_and_send_message() {
         session_id: session.session_id(),
         text: "ping".to_string(),
         model: None,
+        reasoning: None,
     });
 
     let mut collected = Vec::new();

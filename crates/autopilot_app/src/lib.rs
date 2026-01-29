@@ -176,6 +176,7 @@ pub enum UserAction {
         session_id: SessionId,
         text: String,
         model: Option<String>,
+        reasoning: Option<String>,
     },
     NewChat {
         session_id: SessionId,

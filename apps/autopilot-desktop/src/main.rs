@@ -11,8 +11,8 @@ use autopilot_app::{
 use autopilot_ui::MinimalRoot;
 use codex_client::{
     AppServerClient, AppServerConfig, AskForApproval, ClientInfo, SandboxMode, SandboxPolicy,
-    ThreadListParams, ThreadResumeParams, ThreadStartParams, TurnInterruptParams, TurnStartParams,
-    UserInput,
+    ReasoningEffort, ThreadListParams, ThreadResumeParams, ThreadStartParams, TurnInterruptParams,
+    TurnStartParams, UserInput,
 };
 use full_auto::{
     FullAutoAction, FullAutoDecisionRequest, FullAutoDecisionResult, FullAutoState, decision_model,
@@ -51,6 +51,18 @@ const ZOOM_MIN: f32 = 0.5;
 const ZOOM_MAX: f32 = 2.5;
 const ZOOM_STEP_KEY: f32 = 0.1;
 const ZOOM_STEP_WHEEL: f32 = 0.05;
+
+fn parse_reasoning_effort(value: &str) -> Option<ReasoningEffort> {
+    match value.trim().to_lowercase().as_str() {
+        "low" => Some(ReasoningEffort::Low),
+        "medium" => Some(ReasoningEffort::Medium),
+        "high" => Some(ReasoningEffort::High),
+        "xhigh" | "x-high" => Some(ReasoningEffort::XHigh),
+        "minimal" => Some(ReasoningEffort::Minimal),
+        "none" => Some(ReasoningEffort::None),
+        _ => None,
+    }
+}
 
 #[derive(Clone)]
 struct SessionRuntime {
@@ -1165,6 +1177,7 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
                             session_id,
                             text,
                             model,
+                            reasoning,
                         } => {
                             let client = client_for_actions.clone();
                             let proxy = proxy_actions.clone();
@@ -1202,7 +1215,9 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
                                     thread_id,
                                     input: vec![UserInput::Text { text }],
                                     model,
-                                    effort: None,
+                                    effort: reasoning
+                                        .as_deref()
+                                        .and_then(parse_reasoning_effort),
                                     summary: None,
                                     approval_policy: Some(AskForApproval::Never),
                                     sandbox_policy: Some(SandboxPolicy::WorkspaceWrite {
