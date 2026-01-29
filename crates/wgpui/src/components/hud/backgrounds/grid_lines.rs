@@ -210,6 +210,7 @@ fn normalized_dash(dash: &[f32]) -> Vec<f32> {
     filtered
 }
 
+#[expect(clippy::too_many_arguments)]
 fn draw_dashed(
     cx: &mut PaintContext,
     x: f32,

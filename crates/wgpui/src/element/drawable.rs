@@ -3,7 +3,7 @@ use std::any::Any;
 use crate::Bounds;
 use crate::layout::LayoutId;
 
-use super::element::{Element, ElementPaintContext, LayoutContext, PrepaintContext};
+use super::core::{Element, ElementPaintContext, LayoutContext, PrepaintContext};
 
 pub(crate) trait ElementObject {
     fn as_any_mut(&mut self) -> &mut dyn Any;
@@ -110,7 +110,6 @@ mod tests {
             _cx: &mut PrepaintContext,
         ) -> Self::PrepaintState {
             self.calls.borrow_mut().push("prepaint");
-            ()
         }
 
         fn paint(

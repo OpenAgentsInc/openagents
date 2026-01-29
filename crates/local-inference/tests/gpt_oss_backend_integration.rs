@@ -24,7 +24,7 @@ async fn test_gpt_oss_initialize() {
         .await;
 
     let mut client = GptOssClient::builder()
-        .base_url(&mock_server.uri())
+        .base_url(mock_server.uri())
         .build()
         .expect("Failed to build client");
 
@@ -58,7 +58,7 @@ async fn test_gpt_oss_initialize_failure() {
         .await;
 
     let mut client = GptOssClient::builder()
-        .base_url(&mock_server.uri())
+        .base_url(mock_server.uri())
         .build()
         .expect("Failed to build client");
 
@@ -105,7 +105,7 @@ async fn test_gpt_oss_list_models() {
         .await;
 
     let client = GptOssClient::builder()
-        .base_url(&mock_server.uri())
+        .base_url(mock_server.uri())
         .build()
         .expect("Failed to build client");
 
@@ -147,7 +147,7 @@ async fn test_gpt_oss_get_model_info() {
         .await;
 
     let client = GptOssClient::builder()
-        .base_url(&mock_server.uri())
+        .base_url(mock_server.uri())
         .build()
         .expect("Failed to build client");
 
@@ -195,7 +195,7 @@ async fn test_gpt_oss_complete() {
         .await;
 
     let mut client = GptOssClient::builder()
-        .base_url(&mock_server.uri())
+        .base_url(mock_server.uri())
         .build()
         .expect("Failed to build client");
 
@@ -251,7 +251,7 @@ async fn test_gpt_oss_complete_120b() {
         .await;
 
     let mut client = GptOssClient::builder()
-        .base_url(&mock_server.uri())
+        .base_url(mock_server.uri())
         .build()
         .expect("Failed to build client");
 
@@ -307,7 +307,7 @@ async fn test_gpt_oss_complete_simple() {
         .await;
 
     let mut client = GptOssClient::builder()
-        .base_url(&mock_server.uri())
+        .base_url(mock_server.uri())
         .build()
         .expect("Failed to build client");
 
@@ -355,7 +355,7 @@ async fn test_gpt_oss_complete_stream() {
         .await;
 
     let mut client = GptOssClient::builder()
-        .base_url(&mock_server.uri())
+        .base_url(mock_server.uri())
         .build()
         .expect("Failed to build client");
 
@@ -413,7 +413,7 @@ async fn test_gpt_oss_has_model() {
         .await;
 
     let client = GptOssClient::builder()
-        .base_url(&mock_server.uri())
+        .base_url(mock_server.uri())
         .build()
         .expect("Failed to build client");
 
@@ -449,7 +449,7 @@ async fn test_gpt_oss_shutdown() {
         .await;
 
     let mut client = GptOssClient::builder()
-        .base_url(&mock_server.uri())
+        .base_url(mock_server.uri())
         .build()
         .expect("Failed to build client");
 

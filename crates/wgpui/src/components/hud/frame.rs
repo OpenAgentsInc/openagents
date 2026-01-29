@@ -384,6 +384,7 @@ impl Frame {
         }
     }
 
+    #[expect(clippy::too_many_arguments)]
     fn draw_animated_glow_line(
         &self,
         cx: &mut PaintContext,

@@ -2,7 +2,7 @@ use crate::Bounds;
 use crate::layout::LayoutId;
 
 use super::drawable::{Drawable, ElementObject};
-use super::element::{Element, ElementPaintContext, LayoutContext, PrepaintContext};
+use super::core::{Element, ElementPaintContext, LayoutContext, PrepaintContext};
 
 pub struct AnyElement {
     inner: Box<dyn ElementObject>,

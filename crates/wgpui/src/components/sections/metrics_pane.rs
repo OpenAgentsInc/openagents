@@ -144,17 +144,17 @@ impl Component for MetricsPane {
         cx.scene.draw_text(last_pr_run);
         y += 14.0;
 
-        if let Some(ref url) = self.last_pr.url {
-            if !url.is_empty() {
-                let url_run = cx.text.layout_mono(
-                    url,
-                    Point::new(x, y),
-                    theme::font_size::XS,
-                    theme::text::MUTED,
-                );
-                cx.scene.draw_text(url_run);
-                y += 14.0;
-            }
+        if let Some(ref url) = self.last_pr.url
+            && !url.is_empty()
+        {
+            let url_run = cx.text.layout_mono(
+                url,
+                Point::new(x, y),
+                theme::font_size::XS,
+                theme::text::MUTED,
+            );
+            cx.scene.draw_text(url_run);
+            y += 14.0;
         }
 
         if let Some(ref usage) = self.usage {

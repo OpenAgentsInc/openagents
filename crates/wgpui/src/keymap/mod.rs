@@ -32,8 +32,8 @@
 
 mod context;
 mod defaults;
-mod keymap;
+mod core;
 
 pub use context::KeyContext;
 pub use defaults::default_keymap;
-pub use keymap::Keymap;
+pub use core::Keymap;

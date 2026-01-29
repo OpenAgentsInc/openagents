@@ -664,20 +664,14 @@ impl AnimatorNode {
     }
 
     fn drain_commands(&mut self, now: Instant) {
-        loop {
-            match self.command_rx.try_recv() {
-                Ok(command) => self.handle_command(command, now),
-                Err(_) => break,
-            }
+        while let Ok(command) = self.command_rx.try_recv() {
+            self.handle_command(command, now);
         }
     }
 
     fn drain_child_messages(&mut self, now: Instant) {
-        loop {
-            match self.children_rx.try_recv() {
-                Ok(message) => self.handle_child_message(message, now),
-                Err(_) => break,
-            }
+        while let Ok(message) = self.children_rx.try_recv() {
+            self.handle_child_message(message, now);
         }
     }
 

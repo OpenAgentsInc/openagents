@@ -52,13 +52,21 @@ impl DirectiveStatus {
             DirectiveStatus::Completed => "completed",
         }
     }
+}
 
-    pub fn from_str(s: &str) -> Self {
-        match s.to_lowercase().as_str() {
+impl From<&str> for DirectiveStatus {
+    fn from(value: &str) -> Self {
+        match value.to_ascii_lowercase().as_str() {
             "paused" => DirectiveStatus::Paused,
             "completed" => DirectiveStatus::Completed,
             _ => DirectiveStatus::Active,
         }
+    }
+}
+
+impl From<String> for DirectiveStatus {
+    fn from(value: String) -> Self {
+        Self::from(value.as_str())
     }
 }
 
@@ -293,7 +301,7 @@ impl DirectiveProgress {
         if self.total_issues == 0 {
             return 0;
         }
-        ((self.completed_issues as f64 / self.total_issues as f64) * 100.0) as u8
+        ((f64::from(self.completed_issues) / f64::from(self.total_issues)) * 100.0) as u8
     }
 
     /// Returns true if this directive needs more work.
@@ -368,9 +376,9 @@ pub fn list_issues_by_directive(
                 number: row.get("number")?,
                 title: row.get("title")?,
                 description: row.get("description")?,
-                status: Status::from_str(&row.get::<_, String>("status")?),
-                priority: Priority::from_str(&row.get::<_, String>("priority")?),
-                issue_type: crate::issue::IssueType::from_str(&row.get::<_, String>("issue_type")?),
+                status: Status::from(row.get::<_, String>("status")?),
+                priority: Priority::from(row.get::<_, String>("priority")?),
+                issue_type: crate::issue::IssueType::from(row.get::<_, String>("issue_type")?),
                 agent: row
                     .get::<_, Option<String>>("agent")?
                     .unwrap_or_else(|| "codex".to_string()),
@@ -386,13 +394,11 @@ pub fn list_issues_by_directive(
                 created_at: chrono::DateTime::parse_from_rfc3339(
                     &row.get::<_, String>("created_at")?,
                 )
-                .map(|dt| dt.with_timezone(&chrono::Utc))
-                .unwrap_or_else(|_| chrono::Utc::now()),
+                .map_or_else(|_| chrono::Utc::now(), |dt| dt.with_timezone(&chrono::Utc)),
                 updated_at: chrono::DateTime::parse_from_rfc3339(
                     &row.get::<_, String>("updated_at")?,
                 )
-                .map(|dt| dt.with_timezone(&chrono::Utc))
-                .unwrap_or_else(|_| chrono::Utc::now()),
+                .map_or_else(|_| chrono::Utc::now(), |dt| dt.with_timezone(&chrono::Utc)),
                 completed_at: row
                     .get::<_, Option<String>>("completed_at")?
                     .and_then(|s| chrono::DateTime::parse_from_rfc3339(&s).ok())

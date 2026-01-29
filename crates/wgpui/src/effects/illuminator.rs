@@ -282,20 +282,20 @@ impl IlluminatorSvg {
 
         format!(
             "<defs>\
-<radialGradient id=\"{id}\" gradientUnits=\"userSpaceOnUse\" cx=\"{cx}\" cy=\"{cy}\" r=\"{r}\">\
-<stop offset=\"0%\" stop-color=\"{color}\" stop-opacity=\"{a0}\"/>\
-<stop offset=\"60%\" stop-color=\"{color}\" stop-opacity=\"{a1}\"/>\
+<radialGradient id=\"{id}\" gradientUnits=\"userSpaceOnUse\" cx=\"{cx:.2}\" cy=\"{cy:.2}\" r=\"{r:.2}\">\
+<stop offset=\"0%\" stop-color=\"{color}\" stop-opacity=\"{a0:.3}\"/>\
+<stop offset=\"60%\" stop-color=\"{color}\" stop-opacity=\"{a1:.3}\"/>\
 <stop offset=\"100%\" stop-color=\"{color}\" stop-opacity=\"0\"/>\
 </radialGradient>\
 </defs>\
-<circle cx=\"{cx}\" cy=\"{cy}\" r=\"{r}\" fill=\"url(#{id})\"/>",
+<circle cx=\"{cx:.2}\" cy=\"{cy:.2}\" r=\"{r:.2}\" fill=\"url(#{id})\"/>",
             id = escape_svg(&self.gradient_id),
-            cx = format!("{:.2}", self.position.x),
-            cy = format!("{:.2}", self.position.y),
-            r = format!("{:.2}", self.radius),
+            cx = self.position.x,
+            cy = self.position.y,
+            r = self.radius,
             color = color,
-            a0 = format!("{:.3}", base_alpha),
-            a1 = format!("{:.3}", mid_alpha),
+            a0 = base_alpha,
+            a1 = mid_alpha,
         )
     }
 }

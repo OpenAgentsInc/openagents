@@ -28,7 +28,7 @@
 //! keymap.add(binding);
 //! ```
 
-mod action;
+mod core;
 mod binding;
 mod dispatch;
 mod keystroke;
@@ -37,7 +37,7 @@ mod macros;
 mod registry;
 pub mod standard;
 
-pub use action::{Action, ActionId, AnyAction, NoAction};
+pub use core::{Action, ActionId, AnyAction, NoAction};
 pub use binding::KeyBinding;
 pub use dispatch::{ActionHandler, ActionListeners, DispatchPhase, DispatchResult, PendingAction};
 pub use keystroke::{Keystroke, KeystrokeMatch, KeystrokeParseError};

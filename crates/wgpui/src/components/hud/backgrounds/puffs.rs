@@ -354,6 +354,7 @@ impl PseudoRng {
     }
 }
 
+#[expect(clippy::too_many_arguments)]
 fn create_puffs_sets(
     rng: &mut PseudoRng,
     size: Size,

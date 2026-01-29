@@ -335,11 +335,11 @@ impl Component for Hotbar {
                 return EventResult::Ignored;
             }
             let idx = self.item_index_at(Point::new(*x, *y));
-            if let Some(index) = idx {
-                if !self.items[index].ghost {
-                    self.pressed_index = Some(index);
-                    return EventResult::Handled;
-                }
+            if let Some(index) = idx
+                && !self.items[index].ghost
+            {
+                self.pressed_index = Some(index);
+                return EventResult::Handled;
             }
         }
 

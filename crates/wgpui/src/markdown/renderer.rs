@@ -269,6 +269,7 @@ impl MarkdownRenderer {
         )
     }
 
+    #[expect(clippy::too_many_arguments)]
     fn render_with_opacity_internal(
         &self,
         document: &MarkdownDocument,
@@ -301,6 +302,7 @@ impl MarkdownRenderer {
         Size::new(max_width, y - origin.y)
     }
 
+    #[expect(clippy::too_many_arguments)]
     fn render_block_with_opacity(
         &self,
         block: &MarkdownBlock,
@@ -394,6 +396,7 @@ impl MarkdownRenderer {
         }
     }
 
+    #[expect(clippy::too_many_arguments)]
     fn render_lines(
         &self,
         lines: &[StyledLine],
@@ -563,6 +566,7 @@ impl MarkdownRenderer {
         y - origin.y
     }
 
+    #[expect(clippy::too_many_arguments)]
     fn render_code_block(
         &self,
         lines: &[StyledLine],
@@ -669,6 +673,7 @@ impl MarkdownRenderer {
         total_height + metrics.margin * 2.0
     }
 
+    #[expect(clippy::too_many_arguments)]
     fn render_blockquote(
         &self,
         blocks: &[MarkdownBlock],
@@ -718,6 +723,7 @@ impl MarkdownRenderer {
         content_height + margin * 2.0
     }
 
+    #[expect(clippy::too_many_arguments)]
     fn render_unordered_list(
         &self,
         items: &[Vec<MarkdownBlock>],
@@ -764,6 +770,7 @@ impl MarkdownRenderer {
         y - origin.y + margin
     }
 
+    #[expect(clippy::too_many_arguments)]
     fn render_ordered_list(
         &self,
         start: u64,
@@ -835,6 +842,7 @@ impl MarkdownRenderer {
         margin * 2.0 + 1.0
     }
 
+    #[expect(clippy::too_many_arguments)]
     fn render_table(
         &self,
         headers: &[Vec<StyledLine>],
@@ -955,7 +963,7 @@ fn split_into_words(text: &str) -> Vec<String> {
                 && current_word
                     .chars()
                     .last()
-                    .map_or(false, |c| c.is_whitespace())
+                    .is_some_and(|c| c.is_whitespace())
             {
                 // Previous segment ended with whitespace, push it and start new word
                 words.push(std::mem::take(&mut current_word));

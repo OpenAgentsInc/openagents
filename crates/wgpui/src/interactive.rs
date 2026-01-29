@@ -26,6 +26,8 @@ use crate::{Bounds, ComponentId, InputEvent};
 use std::any::Any;
 use std::marker::PhantomData;
 
+type ActionHandler = Box<dyn FnMut(&dyn Any) -> bool + 'static>;
+
 /// Extension trait for adding declarative action handlers to components.
 ///
 /// This trait is automatically implemented for all types that implement `Component`.
@@ -81,7 +83,7 @@ impl<C: Component + Sized> Interactive for C {}
 /// Wrapper that adds action handling to a component.
 pub struct WithAction<C, A> {
     inner: C,
-    handler: Box<dyn FnMut(&dyn Any) -> bool>,
+    handler: ActionHandler,
     _action: PhantomData<A>,
 }
 
@@ -110,10 +112,10 @@ impl<C: Component, A: Action> Component for WithAction<C, A> {
         // Check for pending action
         if let Some(pending) = cx.take_pending_action() {
             // Try to handle if it's our action type
-            if pending.action.action_id() == std::any::TypeId::of::<A>() {
-                if (self.handler)(pending.action.as_any()) {
-                    return EventResult::Handled;
-                }
+            if pending.action.action_id() == std::any::TypeId::of::<A>()
+                && (self.handler)(pending.action.as_any())
+            {
+                return EventResult::Handled;
             }
             // Put it back if we didn't handle it
             cx.dispatch_action(pending.action);

@@ -344,7 +344,7 @@ pub fn strip_header_prefix(line: &str) -> &str {
     let mut skip = 0;
 
     // Skip # symbols
-    while let Some(c) = chars.next() {
+    for c in chars {
         if c == '#' {
             skip += 1;
         } else if c == ' ' {
@@ -378,12 +378,12 @@ pub fn strip_list_prefix(line: &str) -> &str {
             break;
         }
     }
-    if digits > 0 {
-        if let Some(c) = chars.next() {
-            if (c == '.' || c == ')') && chars.next() == Some(' ') {
-                return &trimmed[digits + 2..];
-            }
-        }
+    if digits > 0
+        && let Some(c) = chars.next()
+        && matches!(c, '.' | ')')
+        && chars.next() == Some(' ')
+    {
+        return &trimmed[digits + 2..];
     }
 
     trimmed
@@ -392,13 +392,10 @@ pub fn strip_list_prefix(line: &str) -> &str {
 /// Strip blockquote prefix (> and optional space)
 pub fn strip_blockquote_prefix(line: &str) -> &str {
     let trimmed = line.trim_start();
-    if trimmed.starts_with("> ") {
-        &trimmed[2..]
-    } else if trimmed.starts_with(">") {
-        &trimmed[1..]
-    } else {
-        trimmed
-    }
+    trimmed
+        .strip_prefix("> ")
+        .or_else(|| trimmed.strip_prefix('>'))
+        .unwrap_or(trimmed)
 }
 
 #[cfg(test)]

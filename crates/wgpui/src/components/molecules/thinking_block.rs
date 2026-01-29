@@ -41,9 +41,11 @@ impl ThinkingBlock {
         let raw = content.into();
         let content = strip_task_markers(&raw);
         let content = strip_list_markers(&content);
-        let mut markdown_config = MarkdownConfig::default();
-        markdown_config.base_font_size = theme::font_size::XS;
-        markdown_config.header_sizes = [1.0; 6];
+        let markdown_config = MarkdownConfig {
+            base_font_size: theme::font_size::XS,
+            header_sizes: [1.0; 6],
+            ..Default::default()
+        };
         let header_label = extract_header_label(&content);
         let document = MarkdownParser::with_config(markdown_config.clone()).parse(&content);
         let markdown = MarkdownView::new(document)
@@ -252,17 +254,20 @@ fn strip_task_markers(content: &str) -> String {
 
         let rest = trimmed;
         let mut cleaned = None;
-        for prefix in ["- [ ] ", "- [x] ", "- [X] ", "* [ ] ", "* [x] ", "* [X] ", "+ [ ] ", "+ [x] ", "+ [X] "] {
-            if rest.starts_with(prefix) {
+        for prefix in [
+            "- [ ] ", "- [x] ", "- [X] ", "* [ ] ", "* [x] ", "* [X] ", "+ [ ] ", "+ [x] ",
+            "+ [X] ",
+        ] {
+            if let Some(stripped) = rest.strip_prefix(prefix) {
                 let bullet = &prefix[..2];
-                cleaned = Some(format!("{bullet}{}", &rest[prefix.len()..]));
+                cleaned = Some(format!("{bullet}{stripped}"));
                 break;
             }
         }
         if cleaned.is_none() {
             for prefix in ["[ ] ", "[x] ", "[X] "] {
-                if rest.starts_with(prefix) {
-                    cleaned = Some(rest[prefix.len()..].to_string());
+                if let Some(stripped) = rest.strip_prefix(prefix) {
+                    cleaned = Some(stripped.to_string());
                     break;
                 }
             }
@@ -285,8 +290,8 @@ fn strip_list_markers(content: &str) -> String {
         let rest = trimmed;
         let mut cleaned = None;
         for prefix in ["- ", "* ", "+ "] {
-            if rest.starts_with(prefix) {
-                cleaned = Some(rest[prefix.len()..].to_string());
+            if let Some(stripped) = rest.strip_prefix(prefix) {
+                cleaned = Some(stripped.to_string());
                 break;
             }
         }
@@ -297,8 +302,10 @@ fn strip_list_markers(content: &str) -> String {
                 if c.is_ascii_digit() {
                     num.push(c);
                 } else {
-                    if c == '.' && !num.is_empty() && chars.as_str().starts_with(' ') {
-                        cleaned = Some(chars.as_str()[1..].to_string());
+                    if c == '.' && !num.is_empty() {
+                        if let Some(stripped) = chars.as_str().strip_prefix(' ') {
+                            cleaned = Some(stripped.to_string());
+                        }
                     }
                     break;
                 }

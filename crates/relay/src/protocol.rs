@@ -204,19 +204,14 @@ pub struct SessionStatus {
 // === Codex Tunnel Types ===
 
 /// Codex session autonomy level.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum CodexSessionAutonomy {
     Full,
+    #[default]
     Supervised,
     Restricted,
     ReadOnly,
-}
-
-impl Default for CodexSessionAutonomy {
-    fn default() -> Self {
-        Self::Supervised
-    }
 }
 
 /// Tool definition for Codex sessions.

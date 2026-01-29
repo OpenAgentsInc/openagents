@@ -5,7 +5,6 @@ use std::path::Path;
 use tracing::{debug, error, info};
 
 /// Current schema version
-#[expect(dead_code)]
 const SCHEMA_VERSION: i32 = 11;
 
 /// Initialize the database with migrations
@@ -140,7 +139,7 @@ fn set_schema_version(conn: &Connection, version: i32) -> Result<()> {
 fn migrate_v1(conn: &Connection) -> Result<()> {
     info!("Running migration v1");
     conn.execute_batch(
-        r#"
+        r"
         -- Issues table
         CREATE TABLE IF NOT EXISTS issues (
             id TEXT PRIMARY KEY,
@@ -182,7 +181,7 @@ fn migrate_v1(conn: &Connection) -> Result<()> {
         );
 
         INSERT OR IGNORE INTO issue_counter (id, next_number) VALUES (1, 1);
-        "#,
+        ",
     )?;
 
     set_schema_version(conn, 1).map_err(|e| {
@@ -224,7 +223,7 @@ fn migrate_v2(conn: &Connection) -> Result<()> {
 
     // Recreate issues table with explicit NOT NULL constraint on id
     conn.execute_batch(
-        r#"
+        r"
         -- Create new table with proper constraints
         CREATE TABLE issues_new (
             id TEXT NOT NULL PRIMARY KEY,
@@ -256,7 +255,7 @@ fn migrate_v2(conn: &Connection) -> Result<()> {
         -- Recreate indexes
         CREATE INDEX idx_issues_status ON issues(status);
         CREATE INDEX idx_issues_number ON issues(number);
-        "#,
+        ",
     )?;
 
     set_schema_version(conn, 2)?;
@@ -268,7 +267,7 @@ fn migrate_v3(conn: &Connection) -> Result<()> {
     info!("Running migration v3");
     // Sync issue_counter to MAX(number) + 1 to fix any desync from manual inserts
     conn.execute_batch(
-        r#"
+        r"
         UPDATE issue_counter
         SET next_number = COALESCE((SELECT MAX(number) + 1 FROM issues), 1)
         WHERE id = 1;
@@ -282,7 +281,7 @@ fn migrate_v3(conn: &Connection) -> Result<()> {
             SET next_number = MAX(next_number, NEW.number + 1)
             WHERE id = 1;
         END;
-        "#,
+        ",
     )?;
 
     set_schema_version(conn, 3)?;
@@ -294,7 +293,7 @@ fn migrate_v4(conn: &Connection) -> Result<()> {
     info!("Running migration v4");
     // Add projects and sessions tables for multi-project Autopilot support
     conn.execute_batch(
-        r#"
+        r"
         -- Projects table
         CREATE TABLE IF NOT EXISTS projects (
             id TEXT NOT NULL PRIMARY KEY,
@@ -331,7 +330,7 @@ fn migrate_v4(conn: &Connection) -> Result<()> {
         CREATE INDEX IF NOT EXISTS idx_sessions_project ON sessions(project_id);
         CREATE INDEX IF NOT EXISTS idx_sessions_status ON sessions(status);
         CREATE INDEX IF NOT EXISTS idx_sessions_started ON sessions(started_at);
-        "#,
+        ",
     )?;
 
     set_schema_version(conn, 4)?;
@@ -343,10 +342,10 @@ fn migrate_v5(conn: &Connection) -> Result<()> {
     info!("Running migration v5");
     // Add agent column to issues table for Codex integration
     conn.execute_batch(
-        r#"
+        r"
         -- Add agent column (default: 'codex')
         ALTER TABLE issues ADD COLUMN agent TEXT NOT NULL DEFAULT 'codex';
-        "#,
+        ",
     )?;
 
     set_schema_version(conn, 5)?;
@@ -358,13 +357,13 @@ fn migrate_v6(conn: &Connection) -> Result<()> {
     info!("Running migration v6");
     // Add directive_id column to issues table for linking issues to directives
     conn.execute_batch(
-        r#"
+        r"
         -- Add directive_id column for linking issues to directives
         ALTER TABLE issues ADD COLUMN directive_id TEXT;
 
         -- Index for efficient directive lookups
         CREATE INDEX IF NOT EXISTS idx_issues_directive ON issues(directive_id);
-        "#,
+        ",
     )?;
 
     set_schema_version(conn, 6)?;
@@ -376,13 +375,13 @@ fn migrate_v7(conn: &Connection) -> Result<()> {
     info!("Running migration v7");
     // Add project_id column to issues table for project-scoped issues
     conn.execute_batch(
-        r#"
+        r"
         -- Add project_id column for linking issues to projects
         ALTER TABLE issues ADD COLUMN project_id TEXT;
 
         -- Index for efficient project lookups
         CREATE INDEX IF NOT EXISTS idx_issues_project ON issues(project_id);
-        "#,
+        ",
     )?;
 
     set_schema_version(conn, 7)?;
@@ -394,7 +393,7 @@ fn migrate_v8(conn: &Connection) -> Result<()> {
     info!("Running migration v8");
     // Add ON DELETE CASCADE to issue_events foreign key
     conn.execute_batch(
-        r#"
+        r"
         -- Create new table with CASCADE delete
         CREATE TABLE issue_events_new (
             id TEXT PRIMARY KEY,
@@ -417,7 +416,7 @@ fn migrate_v8(conn: &Connection) -> Result<()> {
 
         -- Recreate index
         CREATE INDEX idx_issue_events_issue ON issue_events(issue_id);
-        "#,
+        ",
     )?;
 
     set_schema_version(conn, 8)?;
@@ -429,9 +428,9 @@ fn migrate_v9(conn: &Connection) -> Result<()> {
     info!("Running migration v9");
     // Add index on agent column for efficient agent filtering
     conn.execute_batch(
-        r#"
+        r"
         CREATE INDEX IF NOT EXISTS idx_issues_agent ON issues(agent);
-        "#,
+        ",
     )?;
 
     set_schema_version(conn, 9)?;
@@ -443,9 +442,9 @@ fn migrate_v10(conn: &Connection) -> Result<()> {
     info!("Running migration v10");
     // Add index on claimed_by column for efficient claim expiry queries
     conn.execute_batch(
-        r#"
+        r"
         CREATE INDEX IF NOT EXISTS idx_issues_claimed_by ON issues(claimed_by);
-        "#,
+        ",
     )?;
 
     set_schema_version(conn, 10)?;
@@ -457,9 +456,9 @@ fn migrate_v11(conn: &Connection) -> Result<()> {
     info!("Running migration v11");
     // Add auto_created field to track issues created by automated detection
     conn.execute_batch(
-        r#"
+        r"
         ALTER TABLE issues ADD COLUMN auto_created INTEGER DEFAULT 0;
-        "#,
+        ",
     )?;
 
     set_schema_version(conn, 11)?;

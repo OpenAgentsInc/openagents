@@ -4,6 +4,9 @@ use crate::input::{Key, NamedKey};
 use crate::text::FontStyle;
 use crate::{Bounds, Hsla, InputEvent, Point, Quad, theme};
 
+type CommandSelectHandler = Box<dyn FnMut(&Command) + 'static>;
+type CommandCloseHandler = Box<dyn FnMut() + 'static>;
+
 #[derive(Clone, Debug)]
 pub struct Command {
     pub id: String,
@@ -51,8 +54,8 @@ pub struct CommandPalette {
     scroll_offset: usize,
     item_height: f32,
     mono: bool,
-    on_select: Option<Box<dyn FnMut(&Command)>>,
-    on_close: Option<Box<dyn FnMut()>>,
+    on_select: Option<CommandSelectHandler>,
+    on_close: Option<CommandCloseHandler>,
 }
 
 impl CommandPalette {

@@ -34,13 +34,6 @@ impl KeyContext {
         Self::default()
     }
 
-    /// Create a context with a single identifier.
-    pub fn from_str(identifier: impl Into<String>) -> Self {
-        let mut ctx = Self::new();
-        ctx.push(identifier);
-        ctx
-    }
-
     /// Push a context identifier onto the stack.
     ///
     /// This should be called when entering a component that defines
@@ -113,6 +106,22 @@ impl KeyContext {
     /// Iterate over identifiers from leaf to root.
     pub fn iter_rev(&self) -> impl Iterator<Item = &str> {
         self.identifiers.iter().rev().map(|s| s.as_str())
+    }
+}
+
+impl From<&str> for KeyContext {
+    fn from(identifier: &str) -> Self {
+        let mut ctx = Self::new();
+        ctx.push(identifier);
+        ctx
+    }
+}
+
+impl From<String> for KeyContext {
+    fn from(identifier: String) -> Self {
+        let mut ctx = Self::new();
+        ctx.push(identifier);
+        ctx
     }
 }
 
@@ -193,7 +202,7 @@ mod tests {
 
     #[test]
     fn test_from_str() {
-        let ctx = KeyContext::from_str("Editor");
+        let ctx = KeyContext::from("Editor");
         assert_eq!(ctx.depth(), 1);
         assert_eq!(ctx.current(), Some("Editor"));
     }

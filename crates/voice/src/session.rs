@@ -77,7 +77,7 @@ impl VoiceSession {
 
     /// Create with custom configuration
     pub fn with_config(config: VoiceConfig) -> Result<Self, VoiceError> {
-        let audio_capture = AudioCapture::new().map_err(|e| VoiceError::AudioInit(e))?;
+        let audio_capture = AudioCapture::new().map_err(VoiceError::AudioInit)?;
 
         let state = Arc::new(Mutex::new(SessionState {
             transcriber: None,
@@ -238,7 +238,7 @@ impl VoiceSession {
         // Start audio capture
         self.audio_capture
             .start()
-            .map_err(|e| VoiceError::RecordingStart(e))?;
+            .map_err(VoiceError::RecordingStart)?;
 
         self.recording = true;
         self.press_time = Some(Instant::now());

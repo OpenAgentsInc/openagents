@@ -15,34 +15,34 @@ pub fn copy_to_clipboard(_contents: &str) -> Result<(), String> {
     #[cfg(target_os = "macos")]
     {
         if copy_with_command("pbcopy", &[], _contents).is_ok() {
-            return Ok(());
+            Ok(())
+        } else {
+            copy_with_command("/usr/bin/pbcopy", &[], _contents)
         }
-        return copy_with_command("/usr/bin/pbcopy", &[], _contents);
     }
 
     #[cfg(target_os = "linux")]
     {
         // Try Wayland first, then X11 tools
         if try_command("wl-copy", &[], _contents).is_ok() {
-            return Ok(());
+            Ok(())
+        } else if try_command("xclip", &["-selection", "clipboard"], _contents).is_ok() {
+            Ok(())
+        } else if try_command("xsel", &["--clipboard", "--input"], _contents).is_ok() {
+            Ok(())
+        } else {
+            Err("No clipboard tool available. Install wl-copy, xclip, or xsel.".into())
         }
-        if try_command("xclip", &["-selection", "clipboard"], _contents).is_ok() {
-            return Ok(());
-        }
-        if try_command("xsel", &["--clipboard", "--input"], _contents).is_ok() {
-            return Ok(());
-        }
-        return Err("No clipboard tool available. Install wl-copy, xclip, or xsel.".into());
     }
 
     #[cfg(target_os = "windows")]
     {
-        return copy_with_command("cmd", &["/C", "clip"], _contents);
+        copy_with_command("cmd", &["/C", "clip"], _contents)
     }
 
     #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
     {
-        return Err("Clipboard not supported on this platform".into());
+        Err("Clipboard not supported on this platform".into())
     }
 }
 

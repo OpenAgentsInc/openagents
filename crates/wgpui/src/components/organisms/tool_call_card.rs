@@ -258,19 +258,19 @@ impl Component for ToolCallCard {
         cx.scene.draw_text(name_run);
 
         // Status text on right (only for running with elapsed time)
-        if self.status == ToolStatus::Running {
-            if let Some(elapsed) = self.elapsed_secs {
-                let status_text = format!("{:.1}s", elapsed);
-                let status_x = bounds.origin.x + bounds.size.width - 50.0;
-                let status_run = cx.text.layout_styled_mono(
-                    &status_text,
-                    Point::new(status_x, y),
-                    Self::DETAIL_FONT_SIZE,
-                    theme::status::WARNING,
-                    FontStyle::default(),
-                );
-                cx.scene.draw_text(status_run);
-            }
+        if self.status == ToolStatus::Running
+            && let Some(elapsed) = self.elapsed_secs
+        {
+            let status_text = format!("{:.1}s", elapsed);
+            let status_x = bounds.origin.x + bounds.size.width - 50.0;
+            let status_run = cx.text.layout_styled_mono(
+                &status_text,
+                Point::new(status_x, y),
+                Self::DETAIL_FONT_SIZE,
+                theme::status::WARNING,
+                FontStyle::default(),
+            );
+            cx.scene.draw_text(status_run);
         }
 
         // Track height used by expanded content
@@ -379,20 +379,20 @@ impl Component for ToolCallCard {
                     cx.scene.draw_text(name_run);
 
                     // Elapsed time for running tools
-                    if child.status == ToolStatus::Running {
-                        if let Some(elapsed) = child.elapsed_secs {
-                            let status_x =
-                                container_bounds.origin.x + container_bounds.size.width - 50.0;
-                            let status_text = format!("{:.1}s", elapsed);
-                            let status_run = cx.text.layout_styled_mono(
-                                &status_text,
-                                Point::new(status_x, child_text_y),
-                                Self::DETAIL_FONT_SIZE,
-                                theme::status::WARNING,
-                                FontStyle::default(),
-                            );
-                            cx.scene.draw_text(status_run);
-                        }
+                    if child.status == ToolStatus::Running
+                        && let Some(elapsed) = child.elapsed_secs
+                    {
+                        let status_x =
+                            container_bounds.origin.x + container_bounds.size.width - 50.0;
+                        let status_text = format!("{:.1}s", elapsed);
+                        let status_run = cx.text.layout_styled_mono(
+                            &status_text,
+                            Point::new(status_x, child_text_y),
+                            Self::DETAIL_FONT_SIZE,
+                            theme::status::WARNING,
+                            FontStyle::default(),
+                        );
+                        cx.scene.draw_text(status_run);
                     }
                 }
                 child_y += Self::HEADER_HEIGHT;
@@ -457,24 +457,18 @@ impl Component for ToolCallCard {
             }
             InputEvent::Scroll { dy, .. } => {
                 // Only handle scroll if mouse is within children bounds
-                if !self.child_tools.is_empty() {
-                    if let Some(mouse_pos) = self.last_mouse_pos {
-                        if children_bounds.contains(mouse_pos) {
-                            let max_scroll = (total_children_height - visible_height).max(0.0);
-                            let new_scroll = (self.child_scroll - dy).clamp(0.0, max_scroll);
+                if !self.child_tools.is_empty()
+                    && let Some(mouse_pos) = self.last_mouse_pos
+                    && children_bounds.contains(mouse_pos)
+                {
+                    let max_scroll = (total_children_height - visible_height).max(0.0);
+                    let new_scroll = (self.child_scroll - dy).clamp(0.0, max_scroll);
 
-                            // Disable auto-scroll if user scrolled up manually
-                            if new_scroll < max_scroll {
-                                self.auto_scroll = false;
-                            } else {
-                                // Re-enable auto-scroll if user scrolled to bottom
-                                self.auto_scroll = true;
-                            }
+                    // Disable auto-scroll if user scrolled up manually
+                    self.auto_scroll = new_scroll >= max_scroll;
 
-                            self.child_scroll = new_scroll;
-                            return EventResult::Handled;
-                        }
-                    }
+                    self.child_scroll = new_scroll;
+                    return EventResult::Handled;
                 }
             }
             _ => {}

@@ -22,15 +22,23 @@ impl SessionStatus {
             SessionStatus::Cancelled => "cancelled",
         }
     }
+}
 
-    pub fn from_str(s: &str) -> Self {
-        match s {
+impl From<&str> for SessionStatus {
+    fn from(value: &str) -> Self {
+        match value {
             "running" => SessionStatus::Running,
             "completed" => SessionStatus::Completed,
             "failed" => SessionStatus::Failed,
             "cancelled" => SessionStatus::Cancelled,
             _ => SessionStatus::Running,
         }
+    }
+}
+
+impl From<String> for SessionStatus {
+    fn from(value: String) -> Self {
+        Self::from(value.as_str())
     }
 }
 
@@ -146,7 +154,7 @@ pub fn list_sessions(conn: &Connection, project_id: Option<&str>) -> Result<Vec<
             Ok(Session {
                 id: row.get(0)?,
                 project_id: row.get(1)?,
-                status: SessionStatus::from_str(&row.get::<_, String>(2)?),
+                status: SessionStatus::from(row.get::<_, String>(2)?),
                 prompt: row.get(3)?,
                 model: row.get(4)?,
                 pid: row.get(5)?,
@@ -169,7 +177,7 @@ pub fn list_sessions(conn: &Connection, project_id: Option<&str>) -> Result<Vec<
             Ok(Session {
                 id: row.get(0)?,
                 project_id: row.get(1)?,
-                status: SessionStatus::from_str(&row.get::<_, String>(2)?),
+                status: SessionStatus::from(row.get::<_, String>(2)?),
                 prompt: row.get(3)?,
                 model: row.get(4)?,
                 pid: row.get(5)?,
@@ -199,7 +207,7 @@ pub fn get_session(conn: &Connection, session_id: &str) -> Result<Option<Session
             Ok(Session {
                 id: row.get(0)?,
                 project_id: row.get(1)?,
-                status: SessionStatus::from_str(&row.get::<_, String>(2)?),
+                status: SessionStatus::from(row.get::<_, String>(2)?),
                 prompt: row.get(3)?,
                 model: row.get(4)?,
                 pid: row.get(5)?,
@@ -229,7 +237,7 @@ pub fn get_active_sessions(conn: &Connection) -> Result<Vec<Session>> {
             Ok(Session {
                 id: row.get(0)?,
                 project_id: row.get(1)?,
-                status: SessionStatus::from_str(&row.get::<_, String>(2)?),
+                status: SessionStatus::from(row.get::<_, String>(2)?),
                 prompt: row.get(3)?,
                 model: row.get(4)?,
                 pid: row.get(5)?,

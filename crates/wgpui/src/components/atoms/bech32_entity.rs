@@ -114,13 +114,6 @@ impl Bech32Entity {
         }
     }
 
-    /// Create from a bech32 string, auto-detecting the type
-    pub fn from_str(value: impl Into<String>) -> Self {
-        let val: String = value.into();
-        let entity_type = Bech32Type::from_str_prefix(&val).unwrap_or_default();
-        Self::new(entity_type, val)
-    }
-
     pub fn with_id(mut self, id: ComponentId) -> Self {
         self.id = Some(id);
         self
@@ -156,6 +149,20 @@ impl Bech32Entity {
         } else {
             self.value.clone()
         }
+    }
+}
+
+impl From<&str> for Bech32Entity {
+    fn from(value: &str) -> Self {
+        let entity_type = Bech32Type::from_str_prefix(value).unwrap_or_default();
+        Self::new(entity_type, value)
+    }
+}
+
+impl From<String> for Bech32Entity {
+    fn from(value: String) -> Self {
+        let entity_type = Bech32Type::from_str_prefix(&value).unwrap_or_default();
+        Self::new(entity_type, value)
     }
 }
 

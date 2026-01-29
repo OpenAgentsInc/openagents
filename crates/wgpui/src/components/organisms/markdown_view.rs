@@ -117,11 +117,11 @@ impl MarkdownView {
     }
 
     fn clear_expired_copy(&mut self) {
-        if let Some(copied_at) = self.copied_at {
-            if Instant::now().duration_since(copied_at) >= self.copy_feedback_duration {
-                self.copied_at = None;
-                self.copied_block = None;
-            }
+        if let Some(copied_at) = self.copied_at
+            && Instant::now().duration_since(copied_at) >= self.copy_feedback_duration
+        {
+            self.copied_at = None;
+            self.copied_block = None;
         }
     }
 
@@ -221,10 +221,10 @@ impl MarkdownView {
 
     fn hit_copy_button(&self, point: Point) -> Option<usize> {
         for (index, block) in self.layout.code_blocks.iter().enumerate() {
-            if let Some(bounds) = block.copy_bounds {
-                if bounds.contains(point) {
-                    return Some(index);
-                }
+            if let Some(bounds) = block.copy_bounds
+                && bounds.contains(point)
+            {
+                return Some(index);
             }
         }
         None
@@ -289,15 +289,14 @@ impl Component for MarkdownView {
             InputEvent::MouseDown { button, x, y, .. } => {
                 if *button == MouseButton::Left && self.show_copy_button {
                     let point = Point::new(*x, *y);
-                    if let Some(index) = self.hit_copy_button(point) {
-                        if let Some(code) =
+                    if let Some(index) = self.hit_copy_button(point)
+                        && let Some(code) =
                             self.layout.code_blocks.get(index).map(|b| b.code.clone())
-                        {
-                            self.copy_code(code);
-                            self.copied_block = Some(index);
-                            self.copied_at = Some(Instant::now());
-                            return EventResult::Handled;
-                        }
+                    {
+                        self.copy_code(code);
+                        self.copied_block = Some(index);
+                        self.copied_at = Some(Instant::now());
+                        return EventResult::Handled;
                     }
                 }
             }

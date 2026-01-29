@@ -185,7 +185,6 @@ mod tests {
         ) -> Self::PrepaintState {
             self.last_bounds = Some(bounds);
             cx.register(99, Bounds::new(10.0, 10.0, 10.0, 10.0), 2);
-            ()
         }
 
         fn paint(
