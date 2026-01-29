@@ -72,7 +72,7 @@ impl Component for ToolHeader {
                 x,
                 bounds.origin.y,
                 badge_w.unwrap_or(8.0),
-                badge_h.unwrap_or(bounds.size.height),
+                bounds.size.height,
             ),
             cx,
         );
