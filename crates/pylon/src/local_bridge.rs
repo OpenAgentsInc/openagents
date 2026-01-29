@@ -1333,6 +1333,7 @@ async fn build_placeholder_capabilities(config: &LocalBridgeConfig) -> BridgeCap
     }
 }
 
+#[allow(dead_code)]
 fn resolve_codex_home() -> Option<PathBuf> {
     if let Ok(home_override) = env::var("CODEX_HOME") {
         let trimmed = home_override.trim();
@@ -1344,6 +1345,7 @@ fn resolve_codex_home() -> Option<PathBuf> {
     dirs::home_dir().map(|home| home.join(".codex"))
 }
 
+#[allow(dead_code)]
 fn build_codex_home_override() -> Result<(Vec<(String, String)>, Option<TempDir>)> {
     let mut env_overrides = Vec::new();
     let Some(codex_home) = resolve_codex_home() else {
@@ -1434,7 +1436,7 @@ async fn fetch_codex_capabilities_from_session(
     client: &Arc<Mutex<Option<AppServerClient>>>,
 ) -> Option<CodexCapabilities> {
     let model = normalize_codex_model(&config.model);
-    let mut guard = client.lock().await;
+    let guard = client.lock().await;
     let client = guard.as_ref()?;
 
     let account = match tokio::time::timeout(
@@ -1515,6 +1517,7 @@ async fn fetch_codex_capabilities_from_session(
     Some(capabilities)
 }
 
+#[allow(dead_code)]
 async fn fetch_codex_capabilities(config: &CodexConfig) -> CodexCapabilities {
     let enabled = config.enabled;
     let model = normalize_codex_model(&config.model);
