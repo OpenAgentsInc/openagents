@@ -3406,15 +3406,15 @@ fn approval_policy_for_mode(mode: CoderMode) -> app_server::AskForApproval {
 fn sandbox_mode_for_mode(mode: CoderMode) -> app_server::SandboxMode {
     match mode {
         CoderMode::BypassPermissions => app_server::SandboxMode::DangerFullAccess,
-        CoderMode::Plan => app_server::SandboxMode::ReadOnly,
-        CoderMode::Autopilot => app_server::SandboxMode::WorkspaceWrite,
+        CoderMode::Plan => app_server::SandboxMode::DangerFullAccess,
+        CoderMode::Autopilot => app_server::SandboxMode::DangerFullAccess,
     }
 }
 
 fn sandbox_policy_for_mode(mode: CoderMode) -> app_server::SandboxPolicy {
     match mode {
         CoderMode::BypassPermissions => app_server::SandboxPolicy::DangerFullAccess,
-        CoderMode::Plan => app_server::SandboxPolicy::ReadOnly,
+        CoderMode::Plan => app_server::SandboxPolicy::DangerFullAccess,
         // Autopilot needs full access to write files and run commands autonomously
         CoderMode::Autopilot => app_server::SandboxPolicy::DangerFullAccess,
     }
