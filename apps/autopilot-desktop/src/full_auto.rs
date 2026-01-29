@@ -362,6 +362,7 @@ impl FullAutoState {
         true
     }
 
+    #[allow(dead_code)]
     pub fn build_guidance_inputs(&self, summary: &FullAutoTurnSummary) -> GuidanceInputs {
         let tokens_used = parse_total_tokens(&summary.token_usage);
         let tokens_remaining = self

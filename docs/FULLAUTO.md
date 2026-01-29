@@ -131,6 +131,8 @@ In demo mode:
   repo research plus `TaskUnderstandingSignature → PlanningSignature →
   GuidanceDirectiveSignature`, emitting each step to the UI and dispatching the
   directive to Codex.
+- After each Codex turn completes in demo mode, Full Auto re-enters the guidance
+  loop (repo intel + directive) and auto-continues until guardrails stop it.
 - Guardrails are enforced the same way as legacy Full Auto decisions.
 
 CLI demo:
