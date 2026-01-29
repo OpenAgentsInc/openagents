@@ -11,7 +11,7 @@ use autopilot_app::{
     App as AutopilotApp, AppConfig, AppEvent, DvmHistorySnapshot, DvmProviderStatus, EventRecorder,
     PylonStatus, SessionId, UserAction, WalletStatus,
 };
-use autopilot_core::guidance::{GuidanceMode, ensure_guidance_demo_lm, run_guidance_decision};
+use autopilot_core::guidance::{GuidanceMode, ensure_guidance_demo_lm};
 use autopilot_ui::MinimalRoot;
 use codex_client::{
     AppServerClient, AppServerConfig, AskForApproval, ClientInfo, ReasoningEffort, SandboxMode,
@@ -24,8 +24,9 @@ use dsrs::signatures::{
 };
 use dsrs::{Predict, Predictor, example};
 use full_auto::{
-    FullAutoAction, FullAutoDecisionRequest, FullAutoDecisionResult, FullAutoState, decision_model,
-    ensure_codex_lm, run_full_auto_decision,
+    FullAutoAction, FullAutoDecision, FullAutoDecisionDiagnostics, FullAutoDecisionRequest,
+    FullAutoDecisionResult, FullAutoState, FullAutoTurnSummary, decision_model, ensure_codex_lm,
+    run_full_auto_decision,
 };
 use futures::StreamExt;
 use nostr::nip90::{JobInput, JobRequest, KIND_JOB_TEXT_GENERATION};
@@ -844,16 +845,16 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
                         let cwd = cwd_full_auto.clone();
                         let workspace_id = workspace_id_full_auto.clone();
                         tokio::spawn(async move {
-                            let (guidance_mode, guidance_inputs, mut lm) = {
+                            let (guidance_mode, mut lm, goal_intent) = {
                                 let guard = full_auto_state.lock().await;
                                 if let Some(state) = guard.as_ref() {
                                     (
                                         state.guidance_mode(),
-                                        Some(state.build_guidance_inputs(&request.summary)),
                                         state.decision_lm(),
+                                        state.guidance_goal_intent(),
                                     )
                                 } else {
-                                    (GuidanceMode::Legacy, None, None)
+                                    (GuidanceMode::Legacy, None, guidance_goal_intent())
                                 }
                             };
 
@@ -912,39 +913,14 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
 
                             let decision_result = match guidance_mode {
                                 GuidanceMode::Demo => {
-                                    let Some(inputs) = guidance_inputs.as_ref() else {
-                                        let error = "Guidance inputs missing; pausing Full Auto."
-                                            .to_string();
-                                        let payload = json!({
-                                            "method": "fullauto/decision",
-                                            "params": {
-                                                "threadId": request.thread_id,
-                                                "turnId": request.turn_id,
-                                                "action": "pause",
-                                                "reason": error,
-                                                "confidence": 0.0,
-                                                "state": "paused"
-                                            }
-                                        });
-                                        let _ = proxy.send_event(AppEvent::AppServerEvent {
-                                            message: payload.to_string(),
-                                        });
-                                        let mut guard = full_auto_state.lock().await;
-                                        *guard = None;
-                                        let _ = proxy.send_event(AppEvent::AppServerEvent {
-                                            message: json!({
-                                                "method": "fullauto/status",
-                                                "params": {
-                                                    "workspaceId": workspace_id,
-                                                    "enabled": false,
-                                                    "state": "paused"
-                                                }
-                                            })
-                                            .to_string(),
-                                        });
-                                        return;
-                                    };
-                                    run_guidance_decision(inputs, &lm).await
+                                    run_guidance_followup(
+                                        &proxy,
+                                        &request.thread_id,
+                                        &request.summary,
+                                        &goal_intent,
+                                        &lm,
+                                    )
+                                    .await
                                 }
                                 GuidanceMode::Legacy => {
                                     run_full_auto_decision(&request.summary, &lm).await
@@ -2257,6 +2233,24 @@ fn build_repo_intel_payload(intel: &RepoIntel) -> String {
     truncate_text(parts.join("\n\n"), 2000)
 }
 
+fn build_followup_task_summary(summary: &FullAutoTurnSummary) -> String {
+    let mut parts = Vec::new();
+    parts.push(format!("Last status: {}.", summary.last_turn_status));
+    if !summary.turn_error.trim().is_empty() {
+        parts.push(format!("Error: {}", summary.turn_error.trim()));
+    }
+    if !summary.turn_plan.trim().is_empty() {
+        parts.push(format!("Plan: {}", summary.turn_plan.trim()));
+    }
+    if !summary.diff_summary.trim().is_empty() {
+        parts.push(format!("Diff: {}", summary.diff_summary.trim()));
+    }
+    if !summary.recent_actions.trim().is_empty() {
+        parts.push(format!("Recent actions: {}", summary.recent_actions.trim()));
+    }
+    truncate_text(parts.join("\n"), 2000)
+}
+
 fn fallback_directive(intel: &RepoIntel, goal_intent: &str, plan_step: Option<&str>) -> String {
     if let Some(step) = plan_step {
         return sanitize_guidance_response(&format!("Proceed with: {}.", step));
@@ -2636,6 +2630,163 @@ async fn run_guidance_super(
     let final_response = sanitize_guidance_response(&directive_text);
 
     Ok((final_response, signatures))
+}
+
+async fn run_guidance_followup(
+    proxy: &EventLoopProxy<AppEvent>,
+    thread_id: &str,
+    summary: &FullAutoTurnSummary,
+    goal_intent: &str,
+    lm: &dsrs::LM,
+) -> Result<FullAutoDecisionResult, String> {
+    emit_guidance_status(proxy, thread_id, Some("RepoResearch"), "Running...");
+    let repo_intel = collect_repo_intel();
+    let repo_payload = build_repo_intel_payload(&repo_intel);
+    let repo_summary = summarize_repo_intel(&repo_intel);
+    emit_guidance_step(proxy, thread_id, "RepoResearch", &repo_summary, "local");
+
+    let task_summary = build_followup_task_summary(summary);
+    let repo_context = format!("{} | {}", guidance_repo_context(), repo_summary);
+    let lm_arc = std::sync::Arc::new(lm.clone());
+    let mut signatures = Vec::new();
+
+    emit_guidance_status(
+        proxy,
+        thread_id,
+        Some("TaskUnderstandingSignature"),
+        "Running…",
+    );
+    let understanding_predictor = Predict::new(TaskUnderstandingSignature::new());
+    let understanding_inputs = example! {
+        "user_request": "input" => format!("Continue work. {task_summary}"),
+        "repo_context": "input" => repo_context.clone(),
+    };
+    let understanding = understanding_predictor
+        .forward_with_config(understanding_inputs, lm_arc.clone())
+        .await
+        .map_err(|e| format!("Task understanding failed: {e}"))?;
+    let task_type = prediction_to_string(&understanding, "task_type");
+    let requirements_raw = prediction_to_string(&understanding, "requirements");
+    signatures.push("TaskUnderstandingSignature".to_string());
+    let requirement = extract_first_json_string(&requirements_raw);
+    let step_text = if let Some(requirement) = requirement.as_ref() {
+        let task_label = if task_type.trim().is_empty() {
+            "Task".to_string()
+        } else {
+            task_type.clone()
+        };
+        sanitize_guidance_response(&format!("{} focus: {}.", task_label, requirement))
+    } else {
+        sanitize_guidance_response("Assumed focus: keep advancing the highest-priority task.")
+    };
+    emit_guidance_step(
+        proxy,
+        thread_id,
+        "TaskUnderstandingSignature",
+        &step_text,
+        &lm.model,
+    );
+
+    emit_guidance_status(
+        proxy,
+        thread_id,
+        Some("PlanningSignature"),
+        "Running…",
+    );
+    let planning_predictor = Predict::new(PlanningSignature::new());
+    let planning_inputs = example! {
+        "task_description": "input" => format!("Continue work. {task_summary}"),
+        "repo_context": "input" => repo_context,
+        "file_tree": "input" => "".to_string(),
+        "context_summary": "input" => "".to_string(),
+        "constraints": "input" => "full_auto_guidance".to_string(),
+    };
+    let planning = planning_predictor
+        .forward_with_config(planning_inputs, lm_arc.clone())
+        .await
+        .map_err(|e| format!("Planning failed: {e}"))?;
+    let steps_raw = prediction_to_string(&planning, "steps");
+    let first_step = extract_first_step_description(&steps_raw);
+    signatures.push("PlanningSignature".to_string());
+    let plan_step_summary = if let Some(step) = first_step.as_ref() {
+        let step_text = sanitize_guidance_response(&format!("Plan step: {}.", step));
+        emit_guidance_step(proxy, thread_id, "PlanningSignature", &step_text, &lm.model);
+        step_text
+    } else {
+        emit_guidance_step(
+            proxy,
+            thread_id,
+            "PlanningSignature",
+            "Plan ready.",
+            &lm.model,
+        );
+        "Plan ready.".to_string()
+    };
+
+    emit_guidance_status(
+        proxy,
+        thread_id,
+        Some("GuidanceDirectiveSignature"),
+        "Running...",
+    );
+    let directive_predictor = Predict::new(GuidanceDirectiveSignature::new());
+    let directive_inputs = example! {
+        "goal_intent": "input" => goal_intent.to_string(),
+        "repo_intel": "input" => repo_payload,
+        "task_summary": "input" => format!("{} {}", step_text, plan_step_summary),
+    };
+    let directive = directive_predictor
+        .forward_with_config(directive_inputs, lm_arc)
+        .await
+        .map_err(|e| format!("Guidance directive failed: {e}"))?;
+    let directive_raw = prediction_to_string(&directive, "directive");
+    signatures.push("GuidanceDirectiveSignature".to_string());
+    let mut directive_text = if !directive_raw.trim().is_empty() {
+        directive_raw.trim().to_string()
+    } else {
+        fallback_directive(&repo_intel, goal_intent, first_step.as_deref())
+    };
+    if is_question_like(&directive_text) {
+        directive_text = fallback_directive(&repo_intel, goal_intent, first_step.as_deref());
+    }
+    emit_guidance_step(
+        proxy,
+        thread_id,
+        "GuidanceDirectiveSignature",
+        &sanitize_guidance_response(&directive_text),
+        &lm.model,
+    );
+
+    let final_response = sanitize_guidance_response(&directive_text);
+    let decision = FullAutoDecision {
+        action: FullAutoAction::Continue,
+        next_input: Some(final_response.clone()),
+        reason: "Guidance loop directive".to_string(),
+        confidence: 0.75,
+        guardrail: None,
+    };
+    let diagnostics = FullAutoDecisionDiagnostics {
+        raw_prediction: json!({
+            "directive": directive_raw,
+            "task_summary": task_summary,
+            "repo_summary": repo_summary,
+            "signatures": signatures,
+        }),
+        action_raw: Some("continue".to_string()),
+        next_input_raw: Some(final_response.clone()),
+        reason_raw: Some("Guidance loop directive".to_string()),
+        confidence_raw: Some(Value::from(0.75)),
+        action_parsed: "continue".to_string(),
+        next_input_parsed: final_response.clone(),
+        reason_parsed: "Guidance loop directive".to_string(),
+        confidence_parsed: 0.75,
+        parse_errors: Vec::new(),
+    };
+
+    Ok(FullAutoDecisionResult {
+        decision,
+        diagnostics,
+    })
 }
 
 async fn run_guidance_router(
