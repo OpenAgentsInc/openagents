@@ -20,6 +20,10 @@ pub enum Cursor {
     Text,
     Grab,
     Grabbing,
+    ResizeNs,
+    ResizeEw,
+    ResizeNesw,
+    ResizeNwse,
 }
 
 impl Cursor {
@@ -30,6 +34,10 @@ impl Cursor {
             Cursor::Text => "text",
             Cursor::Grab => "grab",
             Cursor::Grabbing => "grabbing",
+            Cursor::ResizeNs => "ns-resize",
+            Cursor::ResizeEw => "ew-resize",
+            Cursor::ResizeNesw => "nesw-resize",
+            Cursor::ResizeNwse => "nwse-resize",
         }
     }
 }
