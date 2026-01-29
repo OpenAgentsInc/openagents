@@ -23,7 +23,7 @@ use nostr_client::dvm::DvmClient;
 use openagents_spark::{Network as SparkNetwork, SparkSigner, SparkWallet, WalletConfig};
 use pylon::daemon::{ControlClient, DaemonResponse, is_daemon_running, pid_path, socket_path, db_path};
 use pylon::PylonConfig;
-use pylon::db::{PylonDb, earnings::EarningsSummary as PylonEarningsSummary, jobs::JobStatus};
+use pylon::db::{PylonDb, jobs::JobStatus};
 use serde_json::{Value, json};
 use tracing_subscriber::EnvFilter;
 use wgpui::renderer::Renderer;
