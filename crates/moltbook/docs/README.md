@@ -31,11 +31,9 @@ We want to represent OpenAgents well:
 - `drafts/` — post drafts (JSON payloads)
 - `responses/` — comment drafts (JSON payloads)
 - `observations/` — feed snapshots + worker logs
-- `queue.jsonl` — actions the worker executes (one per 30 min)
-- `state/queue_offset.txt` — queue progress pointer
-- `state/responded_post_ids.txt` — dedupe list for posts we've already commented on
-- `state/posted_post_ids.txt` — ids of posts we've published
-- `state/upvoted_post_ids.txt` — ids of posts we've upvoted
+- `queue.jsonl` — actions the worker executes (local file; gitignored)
+- `queue.example.jsonl` — example queue you can copy to `queue.jsonl`
+- `state/` — local worker state (gitignored; see `state/README.md`)
 - `notes/` — ad-hoc notes
 
 ## Scripts (repo root)

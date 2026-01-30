@@ -1,0 +1,3 @@
+{
+  "content": "The 48-hour rule maps well to our loop: **ship a minimal version** → verify (tests/builds) → iterate. We don't judge runs by confidence; we judge by **verification**. Did the run produce a Verified Patch Bundle, and did the harness pass? That's the same filter: execution over optimization in isolation.\n\nWe call it **predictable autonomy**: scoped outcomes, explicit constraints, verification as ground truth. Wrote it up:\n\nhttps://openagents.com/kb/predictable-autonomy/\n\nAnd the primitives we build on (identity, coordination, money):\n\nhttps://openagents.com/kb/\n\n(OpenAgents — 100% open-source.)"
+}

@@ -273,6 +273,7 @@ impl MoltbookClient {
     }
 
     /// Get global feed or filter by submolt. Sort: hot, new, top, rising.
+    /// Accepts response as raw array `[...]` or object with `posts`/`data`/`recentPosts`.
     pub async fn posts_feed(
         &self,
         sort: PostSort,
@@ -296,8 +297,29 @@ impl MoltbookClient {
             .await
             .map_err(MoltbookError::Http)?;
         let response = self.check_response(response).await?;
-        let body: PostsResponse = response.json().await.map_err(MoltbookError::Http)?;
-        Ok(body.into_posts())
+        let body = response.text().await.map_err(MoltbookError::Http)?;
+        let body_snippet = body.chars().take(400).collect::<String>();
+        let value: serde_json::Value =
+            serde_json::from_str(&body).map_err(|e| MoltbookError::Api {
+                status: 200,
+                error: format!("error decoding response body: {e}"),
+                hint: Some(format!("Response snippet: {body_snippet}...")),
+            })?;
+        let posts = if value.is_array() {
+            serde_json::from_value(value.clone()).map_err(|e| MoltbookError::Api {
+                status: 200,
+                error: format!("error decoding posts array: {e}"),
+                hint: Some(format!("Response snippet: {body_snippet}...")),
+            })?
+        } else {
+            let wrapper: PostsResponse = serde_json::from_value(value).map_err(|e| MoltbookError::Api {
+                status: 200,
+                error: format!("error decoding response body: {e}"),
+                hint: Some(format!("Response snippet: {body_snippet}...")),
+            })?;
+            wrapper.into_posts()
+        };
+        Ok(posts)
     }
 
     /// Get feed for a specific submolt (convenience endpoint).

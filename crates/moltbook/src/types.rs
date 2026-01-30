@@ -1,6 +1,36 @@
 //! Request and response types for the Moltbook API.
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
+
+/// Deserialize a string from either a JSON string or number (API may return id as number).
+fn string_or_number<'de, D>(deserializer: D) -> std::result::Result<String, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum StringOrNumber {
+        Str(String),
+        Num(i64),
+        Float(f64),
+    }
+    match StringOrNumber::deserialize(deserializer)? {
+        StringOrNumber::Str(s) => Ok(s),
+        StringOrNumber::Num(n) => Ok(n.to_string()),
+        StringOrNumber::Float(f) => Ok(f.to_string()),
+    }
+}
+
+fn deserialize_submolt_name<'de, D>(deserializer: D) -> std::result::Result<Option<String>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let opt = Option::<SubmoltRef>::deserialize(deserializer)?;
+    Ok(opt.and_then(|r| match r {
+        SubmoltRef::Name(s) => Some(s),
+        SubmoltRef::Object { name, .. } => name,
+    }))
+}
 
 // ---------- Registration ----------
 
@@ -179,10 +209,28 @@ impl CommentSort {
     }
 }
 
+/// Submolt in a post can be a string (name) or an object with id, name, display_name.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(untagged)]
+#[allow(dead_code)]
+enum SubmoltRef {
+    Name(String),
+    Object {
+        #[serde(default)]
+        id: Option<String>,
+        #[serde(default)]
+        name: Option<String>,
+        #[serde(default, rename = "display_name")]
+        display_name: Option<String>,
+    },
+}
+
+/// Post from feed or single-post response. API may send camelCase or snake_case.
 #[derive(Debug, Clone, Deserialize)]
 pub struct Post {
+    #[serde(deserialize_with = "string_or_number")]
     pub id: String,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_submolt_name")]
     pub submolt: Option<String>,
     #[serde(default)]
     pub title: Option<String>,
@@ -194,18 +242,20 @@ pub struct Post {
     pub author: Option<PostAuthor>,
     #[serde(default)]
     pub score: Option<i64>,
-    #[serde(default)]
+    #[serde(default, alias = "commentCount")]
     pub comment_count: Option<u64>,
-    #[serde(default)]
+    #[serde(default, alias = "createdAt")]
     pub created_at: Option<String>,
-    #[serde(default)]
+    #[serde(default, alias = "isPinned")]
     pub is_pinned: Option<bool>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct PostAuthor {
-    pub name: String,
     #[serde(default)]
+    pub id: Option<String>,
+    pub name: String,
+    #[serde(default, alias = "avatarUrl")]
     pub avatar_url: Option<String>,
 }
 
@@ -326,15 +376,17 @@ pub struct Moderator {
 // ---------- Feed / list responses ----------
 
 /// Response from GET /posts (global feed or by submolt).
+/// API may return a raw array `[...]` or an object with `posts`, `data`, or `recentPosts`.
 #[derive(Debug, Clone, Deserialize)]
 pub struct PostsResponse {
     #[serde(default)]
     pub success: Option<bool>,
     #[serde(default)]
     pub posts: Option<Vec<Post>>,
-    /// Some APIs return `data` with posts array.
     #[serde(default)]
     pub data: Option<Vec<Post>>,
+    #[serde(default, rename = "recentPosts")]
+    pub recent_posts: Option<Vec<Post>>,
 }
 
 impl PostsResponse {
@@ -342,6 +394,7 @@ impl PostsResponse {
     pub fn into_posts(self) -> Vec<Post> {
         self.posts
             .or(self.data)
+            .or(self.recent_posts)
             .unwrap_or_default()
     }
 }
