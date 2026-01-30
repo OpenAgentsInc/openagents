@@ -22,6 +22,11 @@
 	--box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
 }
 
+html,
+body {
+	height: 100%;
+}
+
 @font-face {
 	font-family: "Atkinson";
 	src: url("/fonts/atkinson-regular.woff") format("woff");
@@ -51,12 +56,16 @@ body {
 	line-height: 1.7;
 	word-wrap: break-word;
 	overflow-wrap: break-word;
+	min-height: 100vh;
+	display: flex;
+	flex-direction: column;
 }
 main {
 	width: 720px;
 	max-width: calc(100% - 2em);
 	margin: auto;
 	padding: 3em 1em;
+	flex: 1 0 auto;
 }
 h1,
 h2,
