@@ -114,7 +114,7 @@ OpenClaw repo tasks:
 
 OpenAgents repo tasks (if needed):
 - Ensure `autopilot run` emits a machine-readable summary or writes a stable session id to stdout.
-- Add a helper command if necessary: `autopilot session show <id> --json`.
+- Add a helper command if necessary: `autopilot session show <id> --json`. (implemented)
 - Make sure `OPENAGENTS_HOME` is resolved centrally and documented.
 
 Acceptance criteria:

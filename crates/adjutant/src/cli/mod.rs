@@ -10,6 +10,7 @@ pub mod guidance;
 pub mod issue;
 pub mod prompt;
 pub mod run;
+pub mod session;
 pub mod status;
 pub mod stream;
 
@@ -47,6 +48,12 @@ pub enum Commands {
 
     /// Guidance Modules utilities
     Guidance(guidance::GuidanceArgs),
+
+    /// Session artifacts and inspection
+    Session {
+        #[command(subcommand)]
+        command: session::SessionCommand,
+    },
 }
 
 /// Issue subcommands
@@ -89,5 +96,8 @@ pub async fn execute(cli: AutopilotCli) -> anyhow::Result<()> {
             dspy::DspyCommand::AutoOptimize(args) => dspy::auto_optimize(args).await,
         },
         Some(Commands::Guidance(args)) => guidance::run(args).await,
+        Some(Commands::Session { command }) => match command {
+            session::SessionCommand::Show(args) => session::show(args).await,
+        },
     }
 }
