@@ -55,6 +55,54 @@ places where Autopilot can either:
 - If Autopilot is integrated as a tool, a skill can teach the Moltbot agent
   when and how to call it, with gating via `metadata.moltbot.requires`.
 
+## Autopilot app surfaces in `apps/` (what to hook)
+
+The only app under `apps/` is the desktop host:
+- `apps/autopilot-desktop/src/main.rs` is the Winit/WGPU host that runs the
+  Codex app-server client and the Full Auto guidance loop.
+- `apps/autopilot-desktop/src/full_auto.rs` owns Full Auto state, decision
+  summaries, and the DSRS-backed decision signature wiring.
+
+The guidance loop already emits structured events to the UI layer via
+`AppEvent::AppServerEvent` messages with method names like:
+- `guidance/status`
+- `guidance/step`
+- `guidance/response`
+- `guidance/user_message`
+- `fullauto/decision`
+
+Event payloads already include structured fields (thread id, signature, text,
+model, signatures list), which makes them good candidates to mirror into
+Moltbot as progress notifications.
+
+## Guidance mode and DSRS usage (today)
+
+Guidance mode is already DSRS-first inside the Autopilot desktop app:
+
+- `apps/autopilot-desktop/src/main.rs` uses DSRS `Predict` with:
+  - `TaskUnderstandingSignature`
+  - `PlanningSignature`
+  - `GuidanceDirectiveSignature`
+  - `GuidanceRouterSignature`
+  in `run_guidance_super` and `run_guidance_followup`.
+- `apps/autopilot-desktop/src/full_auto.rs` uses
+  `FullAutoDecisionSignature` in `run_full_auto_decision`.
+- `crates/autopilot-core/src/guidance.rs` uses
+  `GuidanceDecisionSignature` and provides `GuidanceMode::Demo` with
+  `ensure_guidance_demo_lm` (Ollama model by default) and shared guardrails.
+- Guidance mode selection is env-driven:
+  - `OPENAGENTS_GUIDANCE_MODE=demo` routes to the DSRS guidance pipeline and
+    `OPENAGENTS_GUIDANCE_MODEL` (default `ollama:llama3.2`).
+  - Legacy mode uses `OPENAGENTS_FULL_AUTO_DECISION_MODEL` (default
+    `codex:gpt-5.2-codex`) for `FullAutoDecisionSignature`.
+- `FullAutoTurnSummary` (in `full_auto.rs`) is the structured input to
+  `FullAutoDecisionSignature` (plan, diff, tokens, pending approvals, etc.).
+- `guidance/response` events already include the list of signatures used, which
+  is a natural hook for progress streaming.
+
+Takeaway: if Moltbot integration needs to understand or reflect guidance
+decisions, the DSRS signatures above are the definitive places to trace.
+
 ## Integration ideas (ranked by leverage)
 
 ### 1) Plugin tool: `autopilot.run` (most direct)
@@ -96,6 +144,27 @@ places where Autopilot can either:
   or trigger node actions.
 - This keeps messaging/routing (WhatsApp, Telegram, Slack, etc.) in Moltbot and
   leaves code execution in Autopilot.
+
+### 4b) Progress notifications from Autopilot into Moltbot
+- Autopilot desktop already emits structured guidance events
+  (`guidance/status`, `guidance/step`, `guidance/response`, `fullauto/decision`).
+- Create a lightweight bridge that forwards those events to Moltbot:
+  - Option A: Autopilot calls Moltbot Gateway WS `message`/`agent` to deliver a
+    short progress line to the same user channel.
+  - Option B: Autopilot calls `POST /tools/invoke` with `message` or
+    `sessions_send` to keep delivery inside Moltbot tool policy.
+  - Option C: A Moltbot plugin registers an RPC method like
+    `autopilot.progress` and Autopilot sends JSON events that the plugin turns
+    into outbound messages or status cards.
+- Recommended throttling:
+  - Only emit `guidance/status` on signature changes (or debounce to 1-2s).
+  - Emit `guidance/step` and `guidance/response` immediately (low volume, high
+    value).
+  - Optional: drop `guidance/user_message` if Moltbot is already showing the
+    inbound prompt.
+- Suggested payload shape (single line per event):
+  - `run_id`, `thread_id`, `turn_id`, `phase`, `signature`, `summary`,
+    `confidence`, `repo`, `timestamp`.
 
 ### 5) Sub-agent orchestration wrapper
 - Build a plugin tool that calls `sessions_spawn` with an agent dedicated to
