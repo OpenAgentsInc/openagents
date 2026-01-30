@@ -5258,7 +5258,7 @@ fn paint_threads_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintCont
 
     let mut y = header_bounds.origin.y + header_height + 8.0;
     let font_size = theme::font_size::XS;
-    let row_height = 18.0;
+    let row_height = (font_size * 1.4).ceil();
     let row_gap = 6.0;
     let char_width = font_size * 0.6;
     let gap_chars = 2usize;
