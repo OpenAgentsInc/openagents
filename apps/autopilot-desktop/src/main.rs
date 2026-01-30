@@ -395,9 +395,18 @@ fn init_state(
     event_loop: &ActiveEventLoop,
     action_tx: mpsc::Sender<UserAction>,
 ) -> Result<RenderState> {
-    let window_attrs = Window::default_attributes()
-        .with_title(WINDOW_TITLE)
-        .with_inner_size(winit::dpi::LogicalSize::new(WINDOW_WIDTH, WINDOW_HEIGHT));
+    let mut window_attrs = Window::default_attributes().with_title(WINDOW_TITLE);
+    if let Some(monitor) = event_loop
+        .primary_monitor()
+        .or_else(|| event_loop.available_monitors().next())
+    {
+        let size = monitor.size().to_logical(monitor.scale_factor());
+        window_attrs = window_attrs.with_inner_size(size).with_maximized(true);
+    } else {
+        window_attrs = window_attrs
+            .with_inner_size(winit::dpi::LogicalSize::new(WINDOW_WIDTH, WINDOW_HEIGHT))
+            .with_maximized(true);
+    }
 
     let window = Arc::new(
         event_loop
