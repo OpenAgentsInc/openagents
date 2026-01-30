@@ -340,7 +340,7 @@ pub fn inline_code_background() -> Hsla {
 /// Strip markdown header prefix (# symbols and space)
 pub fn strip_header_prefix(line: &str) -> &str {
     let trimmed = line.trim_start();
-    let mut chars = trimmed.chars();
+    let chars = trimmed.chars();
     let mut skip = 0;
 
     // Skip # symbols

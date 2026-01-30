@@ -194,6 +194,18 @@ impl Component for ThreadView {
                 return EventResult::Handled;
             }
             InputEvent::MouseUp { x, y, .. } => {
+                let mut check_y = bounds.origin.y - self.scroll_offset;
+                for entry in &mut self.entries {
+                    let (_, entry_height) = entry.size_hint();
+                    let height = entry_height.unwrap_or(30.0);
+                    let entry_bounds = Bounds::new(bounds.origin.x, check_y, bounds.size.width, height);
+                    let result = entry.event(event, entry_bounds, cx);
+                    if result == EventResult::Handled {
+                        return result;
+                    }
+                    check_y += height + self.item_spacing;
+                }
+
                 let point = Point::new(*x, *y);
                 if bounds.contains(point) {
                     let mut check_y = bounds.origin.y - self.scroll_offset;
@@ -206,13 +218,14 @@ impl Component for ThreadView {
                         if entry_bounds.contains(point) {
                             if let Some(callback) = &mut self.on_entry_click {
                                 callback(i);
+                                return EventResult::Handled;
                             }
-                            return EventResult::Handled;
                         }
 
                         check_y += height + self.item_spacing;
                     }
                 }
+                return EventResult::Ignored;
             }
             _ => {}
         }

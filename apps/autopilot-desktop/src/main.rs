@@ -1,12 +1,15 @@
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, mpsc};
 
 use anyhow::{Context, Result};
+use arboard::Clipboard;
 use autopilot_app::{
     App as AutopilotApp, AppConfig, AppEvent, DvmHistorySnapshot, DvmProviderStatus, EventRecorder,
     PylonStatus, SessionId, UserAction, WalletStatus,
@@ -403,6 +406,17 @@ fn init_state(
     );
 
     let mut root = MinimalRoot::new();
+    let clipboard = Rc::new(RefCell::new(Clipboard::new().ok()));
+    let read_clip = clipboard.clone();
+    let write_clip = clipboard.clone();
+    root.set_clipboard(
+        move || read_clip.borrow_mut().as_mut()?.get_text().ok(),
+        move |text| {
+            if let Some(clip) = write_clip.borrow_mut().as_mut() {
+                let _ = clip.set_text(text);
+            }
+        },
+    );
     root.set_send_handler(move |action| {
         let _ = action_tx.send(action);
     });

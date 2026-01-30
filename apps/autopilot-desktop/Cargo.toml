@@ -38,3 +38,4 @@ nostr = { path = "../../crates/nostr/core" }
 nostr-client = { path = "../../crates/nostr/client" }
 clap = { workspace = true }
 rustls = "0.23"
+arboard = "3.4"

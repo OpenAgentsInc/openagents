@@ -74,7 +74,7 @@ use crate::verification::{
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
-#[expect(dead_code)]
+#[allow(dead_code)]
 pub enum StartupPhase {
     /// Idle - waiting for user to provide a prompt or select an issue
     Idle,

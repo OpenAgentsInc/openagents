@@ -391,6 +391,7 @@ enum PaneKind {
 }
 
 #[derive(Clone, Debug)]
+#[allow(dead_code)]
 enum HotbarAction {
     FocusPane(String),
     ToggleEvents,
@@ -660,9 +661,13 @@ pub struct MinimalRoot {
     pylon_status: PylonStatusView,
     pylon_toggle_button: Button,
     pylon_toggle_bounds: Bounds,
+    #[allow(dead_code)]
     pylon_init_button: Button,
+    #[allow(dead_code)]
     pylon_start_button: Button,
+    #[allow(dead_code)]
     pylon_stop_button: Button,
+    #[allow(dead_code)]
     pylon_refresh_button: Button,
     pylon_init_bounds: Bounds,
     pylon_start_bounds: Bounds,
@@ -2134,6 +2139,14 @@ impl MinimalRoot {
         let screen = Size::new(1280.0, 720.0);
         root.open_chat_pane(screen, true, true, DEFAULT_THREAD_MODEL);
         root
+    }
+
+    pub fn set_clipboard(
+        &mut self,
+        read: impl Fn() -> Option<String> + 'static,
+        write: impl Fn(&str) + 'static,
+    ) {
+        self.event_context.set_clipboard(read, write);
     }
 
     pub fn set_zoom_factor(&mut self, zoom: f32) {
@@ -6263,6 +6276,7 @@ struct SessionRow {
 #[derive(Clone, Debug, Default)]
 struct PylonStatusView {
     running: bool,
+    #[allow(dead_code)]
     pid: Option<u32>,
     uptime_secs: Option<u64>,
     provider_active: Option<bool>,
