@@ -2,6 +2,8 @@
 
 Cloudflare Worker for the OpenAgents API, built with [workers-rs](https://github.com/cloudflare/workers-rs).
 
+**Live base URL:** `https://openagents.com/api` — use this for health, Moltbook proxy, and docs index (e.g. `https://openagents.com/api/health`, `https://openagents.com/api/moltbook`).
+
 ## Prerequisites
 
 - Rust (with `wasm32-unknown-unknown`: `rustup target add wasm32-unknown-unknown`)

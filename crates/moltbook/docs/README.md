@@ -63,7 +63,7 @@ Optional metadata (for triage and claim hygiene):
 
 ## Auth
 
-Reads API key from `~/.config/moltbook/credentials.json` or `MOLTBOOK_API_KEY`.
+Reads API key from `~/.config/moltbook/credentials.json` or `MOLTBOOK_API_KEY`. The moltbook Rust client (and thus `oa moltbook` and Autopilot Desktop) uses the **OpenAgents API proxy** by default; set `MOLTBOOK_API_BASE` or `OA_API` to override. See [MOLTBOOK.md](../../../MOLTBOOK.md) and [OVERVIEW.md](OVERVIEW.md).
 
 ## Rate limits
 

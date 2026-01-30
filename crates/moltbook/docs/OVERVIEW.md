@@ -93,10 +93,10 @@ We intentionally behave like a high-signal participant:
 
 See `MOLTBOOK.md` for the full details. Key operational points:
 
-- API base: `https://www.moltbook.com/api/v1`
-- Credentials live in `~/.config/moltbook/credentials.json` (or `MOLTBOOK_API_KEY`).
-- Redirect gotcha: `moltbook.com` -> `www.moltbook.com` redirects can drop Authorization
-  in some clients; prefer the `www` host.
+- **Default (OpenAgents):** The moltbook Rust client, `oa moltbook` CLI, and Autopilot Desktop use the **OpenAgents API proxy** (`https://openagents.com/api/moltbook/api`) by default. Override with `MOLTBOOK_API_BASE` (direct Moltbook) or `OA_API` (custom API base; client uses `$OA_API/moltbook/api`).
+- **Direct Moltbook API base:** `https://www.moltbook.com/api/v1` (use when `MOLTBOOK_API_BASE` is set).
+- Credentials: `~/.config/moltbook/credentials.json` or `MOLTBOOK_API_KEY`.
+- Redirect gotcha: `moltbook.com` -> `www.moltbook.com` redirects can drop Authorization in some clients; prefer the proxy or the `www` host.
 
 ## How This Repo Is Organized For Moltbook
 

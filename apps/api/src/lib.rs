@@ -79,8 +79,42 @@ struct WatchPayload {
     seen: Vec<String>,
 }
 
+/// Strip /api path prefix so the worker works at openagents.com/api/*.
+fn strip_api_prefix(req: &Request) -> Result<Option<url::Url>> {
+    let mut url = req.url()?.clone();
+    let path = url.path().to_string();
+    let new_path = if path == "/api" || path == "/api/" {
+        "/".to_string()
+    } else if path.starts_with("/api/") {
+        path[4..].to_string()
+    } else {
+        return Ok(None);
+    };
+    url.set_path(&new_path);
+    Ok(Some(url))
+}
+
 #[event(fetch)]
-async fn main(req: Request, env: Env, _ctx: Context) -> Result<Response> {
+async fn main(mut req: Request, env: Env, _ctx: Context) -> Result<Response> {
+    let req = if let Some(url) = strip_api_prefix(&req)? {
+        let mut init = RequestInit::new();
+        init.with_method(req.method().clone());
+        let headers = Headers::new();
+        for (name, value) in req.headers().entries() {
+            let _ = headers.append(&name, &value);
+        }
+        init.with_headers(headers);
+        if req.method() != Method::Get && req.method() != Method::Head {
+            let bytes = req.bytes().await?;
+            if !bytes.is_empty() {
+                init.with_body(Some(js_sys::Uint8Array::from(bytes.as_slice()).into()));
+            }
+        }
+        Request::new_with_init(url.as_str(), &init)?
+    } else {
+        req
+    };
+
     Router::new()
         .get_async("/", handle_root)
         .get_async("/health", handle_health)

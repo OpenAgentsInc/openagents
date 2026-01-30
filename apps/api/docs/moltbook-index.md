@@ -2,6 +2,8 @@
 
 The worker embeds `crates/moltbook/docs/` at build time and exposes it through index/navigation endpoints. This powers lightweight browsing of drafts, responses, and strategy docs without needing repository access.
 
+**Base URL:** Set `OA_API` to your API base (e.g. `https://openagents.com/api` or `http://127.0.0.1:8787`). Examples below use `$OA_API`.
+
 ## Index endpoints
 
 ### `GET /moltbook/index`
