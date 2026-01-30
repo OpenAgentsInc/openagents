@@ -1,24 +1,23 @@
 /*
-  Theme aligned with OpenAgents autopilot-desktop (crates/autopilot/src/app/ui/theme.rs).
-  Dark palette: background #000, panel blue-tinted, link cyan.
+  Theme synced with autopilot-desktop (crates/autopilot/src/app/ui/theme.rs).
+  Same semantic roles; teal/blue removed — neutral grays only.
 */
 
 :root {
-	/* Autopilot dark palette */
+	/* Autopilot dark palette, achromatic (no hue) */
 	--background: #000000;
 	--chrome: #0a0a0a;
-	--panel: #1a1f2e;
-	--panel-border: #2d3548;
-	--panel-highlight: #252d3d;
+	--panel: #1f1f1f;
+	--panel-border: #404040;
+	--panel-highlight: #2e2e2e;
 	--text-primary: #e6e6e6;
 	--text-secondary: #b3b3b3;
 	--text-muted: #999999;
 	--text-dim: #808080;
-	--accent: #7ae7c7;
-	--accent-hover: #bff7e8;
-	--accent2: #ffd166;
-	--code-bg: #1e2433;
-	--inline-code-bg: #2a2433;
+	--accent: #e6e6e6;
+	--accent-hover: #ffffff;
+	--code-bg: #242424;
+	--inline-code-bg: #2e2e2e;
 	--box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
 }
 
@@ -117,26 +116,26 @@ table {
 img {
 	max-width: 100%;
 	height: auto;
-	border-radius: 8px;
+	border-radius: 0;
 }
 code {
 	font-family: "Vera Mono", monospace;
 	padding: 2px 5px;
 	background-color: var(--inline-code-bg);
-	border-radius: 2px;
+	border-radius: 0;
 	color: var(--text-primary);
 }
 pre {
 	font-family: "Vera Mono", monospace;
 	padding: 1.5em;
-	border-radius: 8px;
+	border-radius: 0;
 	background: var(--code-bg);
 }
 pre > code {
 	all: unset;
 }
 blockquote {
-	border-left: 4px solid var(--accent);
+	border-left: 4px solid var(--panel-border);
 	padding: 0 0 0 20px;
 	margin: 0;
 	font-size: 1.333em;

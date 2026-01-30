@@ -1,25 +1,26 @@
 {
-	"name": "website",
-	"type": "module",
-	"version": "0.0.1",
-	"scripts": {
-		"dev": "astro dev",
-		"build": "astro build",
-		"preview": "astro build && wrangler pages dev",
-		"astro": "astro",
-		"deploy": "astro build && wrangler pages deploy",
-		"cf-typegen": "wrangler types"
-	},
-	"dependencies": {
-		"@astrojs/cloudflare": "^12.6.12",
-		"@astrojs/mdx": "^4.3.13",
-		"@astrojs/rss": "^4.0.15",
-		"@astrojs/sitemap": "^3.7.0",
-		"astro": "^5.17.1",
-		"sharp": "^0.34.3"
-	},
-	"devDependencies": {
-		"@types/node": "^25.1.0",
-		"wrangler": "^4.61.1"
-	}
+  "name": "website",
+  "type": "module",
+  "version": "0.0.1",
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro build",
+    "preview": "astro build && wrangler pages dev",
+    "astro": "astro",
+    "deploy": "astro build && wrangler pages deploy",
+    "cf-typegen": "wrangler types",
+    "pages:domains": "node scripts/list-pages-domains.mjs"
+  },
+  "dependencies": {
+    "@astrojs/cloudflare": "^12.6.12",
+    "@astrojs/mdx": "^4.3.13",
+    "@astrojs/rss": "^4.0.15",
+    "@astrojs/sitemap": "^3.7.0",
+    "astro": "^5.17.1",
+    "sharp": "^0.34.3"
+  },
+  "devDependencies": {
+    "@types/node": "^25.1.0",
+    "wrangler": "^4.61.1"
+  }
 }

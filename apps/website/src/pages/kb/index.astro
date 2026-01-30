@@ -34,7 +34,7 @@ const articles = (await getCollection('kb')).sort(
 			.card {
 				border: 1px solid var(--panel-border);
 				background: var(--panel);
-				border-radius: 14px;
+				border-radius: 0;
 				padding: 16px 16px;
 				box-shadow: var(--box-shadow);
 				text-decoration: none;
@@ -72,7 +72,7 @@ const articles = (await getCollection('kb')).sort(
 					"Courier New", monospace;
 				font-size: 12px;
 				padding: 4px 8px;
-				border-radius: 999px;
+				border-radius: 0;
 				border: 1px solid var(--panel-border);
 				color: var(--text-muted);
 				background: color-mix(in srgb, var(--panel) 88%, #000000 12%);
