@@ -1,0 +1,6 @@
+name = "openagents-api"
+main = "build/index.js"
+compatibility_date = "2025-01-30"
+
+[build]
+command = "cargo install worker-build@^0.7 && worker-build --release"
