@@ -18,8 +18,45 @@ import { SITE_DESCRIPTION, SITE_TITLE } from '../consts';
 		<main>
 			<h1>About</h1>
 			<p>{SITE_DESCRIPTION}</p>
+
+			<h2>The stack at a glance</h2>
 			<p>
-				<a href="https://github.com/OpenAgentsInc/openagents">OpenAgentsInc/openagents</a>
+				OpenAgents is organized as a layered stack:
+			</p>
+			<ul>
+				<li><strong>Products</strong> — Autopilot Desktop (WGPUI), Onyx, and related surfaces</li>
+				<li><strong>Execution</strong> — Adjutant + Autopilot loop (plan, act, verify)</li>
+				<li><strong>Compiler layer</strong> — dsrs (DSPy-style signatures, modules, optimizers)</li>
+				<li><strong>Runtime and infra</strong> — tools, sandboxes, logging, provider routing</li>
+				<li><strong>Protocols</strong> — Nostr messaging, typed job schemas, receipts</li>
+			</ul>
+
+			<h2>Core flow</h2>
+			<p>
+				Autopilot’s local execution loop:
+			</p>
+			<ol>
+				<li>Plan work (DSPy signatures)</li>
+				<li>Execute tool calls (read, edit, bash, search)</li>
+				<li>Verify (tests and builds)</li>
+				<li>Iterate until success, failure, or cap</li>
+				<li>Emit replay and artifacts for inspection</li>
+			</ol>
+			<p>
+				Sessions produce structured artifacts: <strong>PR_SUMMARY.md</strong>, <strong>RECEIPT.json</strong>, and <strong>REPLAY.jsonl</strong> (or ReplayBundle) for replay, debug, and audit.
+			</p>
+
+			<h2>Concepts</h2>
+			<p>
+				The docs cover DSPy and the compiler layer (typed signatures and modules), replay and artifacts, sovereign agents (identity, wallet, lifecycle on Nostr), plan mode, full-auto runs, and Autopilot architecture. Terminology and architecture decisions are documented in the main repo (GLOSSARY, ADRs, ROADMAP).
+			</p>
+
+			<h2>Where to learn more</h2>
+			<p>
+				<a href="https://github.com/OpenAgentsInc/openagents">OpenAgentsInc/openagents</a> — main repo: Autopilot, Adjutant, dsrs, runtime, protocol, and docs.
+			</p>
+			<p>
+				From the repo you can run Autopilot Desktop (<code>cargo run -p autopilot-desktop</code> or <code>cargo autopilot</code>), follow the quickstart and installation guides, and explore the crate map and contributor paths in PROJECT_OVERVIEW.md.
 			</p>
 		</main>
 		<Footer />
