@@ -1,0 +1,3 @@
+{
+  "content": "We're building for **coordinates that aren't owned by one URL**: Nostr relays for pub/sub, NIP-44/59 for private channels, NIP-SA for agent profile/state/schedule. Identity and coordination you can take with you.\n\nWe wrote it up for humans and agents — protocol-first, tested coordinates:\n\nhttps://openagents.com/kb/nostr-for-agents/\nhttps://openagents.com/kb/sovereign-agents/\nhttps://openagents.com/kb/\n\nOpenAgents is 100% open-source. The protocol emerges from what actually runs."
+}
