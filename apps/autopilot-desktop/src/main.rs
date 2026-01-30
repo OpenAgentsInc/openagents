@@ -15,7 +15,9 @@ use autopilot_app::{
     PylonStatus, SessionId, UserAction, WalletStatus,
 };
 use autopilot_core::guidance::{GuidanceMode, ensure_guidance_demo_lm};
-use autopilot_ui::MinimalRoot;
+use autopilot_ui::{
+    MinimalRoot, ShortcutBinding, ShortcutChord, ShortcutCommand, ShortcutRegistry, ShortcutScope,
+};
 use codex_client::{
     AppServerClient, AppServerConfig, AskForApproval, ClientInfo, ReasoningEffort, SandboxMode,
     SandboxPolicy, ThreadListParams, ThreadResumeParams, ThreadStartParams, TurnInterruptParams,
@@ -67,6 +69,9 @@ const ZOOM_MIN: f32 = 0.5;
 const ZOOM_MAX: f32 = 2.5;
 const ZOOM_STEP_KEY: f32 = 0.1;
 const ZOOM_STEP_WHEEL: f32 = 0.05;
+const HOTBAR_SLOT_MAX: u8 = 9;
+const SHORTCUT_PRIORITY_APP: u8 = 100;
+const SHORTCUT_PRIORITY_GLOBAL: u8 = 50;
 
 fn parse_reasoning_effort(value: &str) -> Option<ReasoningEffort> {
     match value.trim().to_lowercase().as_str() {
@@ -77,6 +82,137 @@ fn parse_reasoning_effort(value: &str) -> Option<ReasoningEffort> {
         "minimal" => Some(ReasoningEffort::Minimal),
         "none" => Some(ReasoningEffort::None),
         _ => None,
+    }
+}
+
+fn build_shortcut_registry() -> ShortcutRegistry {
+    let mut registry = ShortcutRegistry::new();
+
+    let app_modifiers = [
+        Modifiers {
+            meta: true,
+            ctrl: false,
+            alt: false,
+            shift: false,
+        },
+        Modifiers {
+            meta: false,
+            ctrl: true,
+            alt: false,
+            shift: false,
+        },
+    ];
+
+    for modifiers in app_modifiers {
+        for slot in 0..=HOTBAR_SLOT_MAX {
+            register_shortcut(
+                &mut registry,
+                ShortcutBinding {
+                    id: "hotbar_slot",
+                    chord: ShortcutChord::new(
+                        Key::Character(slot.to_string()),
+                        modifiers,
+                    ),
+                    scope: ShortcutScope::App,
+                    priority: SHORTCUT_PRIORITY_APP,
+                    command: ShortcutCommand::HotbarSlot(slot),
+                },
+            );
+        }
+
+        register_shortcut(
+            &mut registry,
+            ShortcutBinding {
+                id: "zoom_in",
+                chord: ShortcutChord::new(Key::Character("+".to_string()), modifiers),
+                scope: ShortcutScope::Global,
+                priority: SHORTCUT_PRIORITY_GLOBAL,
+                command: ShortcutCommand::ZoomIn,
+            },
+        );
+        register_shortcut(
+            &mut registry,
+            ShortcutBinding {
+                id: "zoom_in_eq",
+                chord: ShortcutChord::new(Key::Character("=".to_string()), modifiers),
+                scope: ShortcutScope::Global,
+                priority: SHORTCUT_PRIORITY_GLOBAL,
+                command: ShortcutCommand::ZoomIn,
+            },
+        );
+        register_shortcut(
+            &mut registry,
+            ShortcutBinding {
+                id: "zoom_out",
+                chord: ShortcutChord::new(Key::Character("-".to_string()), modifiers),
+                scope: ShortcutScope::Global,
+                priority: SHORTCUT_PRIORITY_GLOBAL,
+                command: ShortcutCommand::ZoomOut,
+            },
+        );
+        register_shortcut(
+            &mut registry,
+            ShortcutBinding {
+                id: "zoom_reset",
+                chord: ShortcutChord::new(Key::Character("0".to_string()), modifiers),
+                scope: ShortcutScope::Global,
+                priority: SHORTCUT_PRIORITY_GLOBAL,
+                command: ShortcutCommand::ZoomReset,
+            },
+        );
+    }
+
+    register_shortcut(
+        &mut registry,
+        ShortcutBinding {
+            id: "close_active_pane",
+            chord: ShortcutChord::new(Key::Named(NamedKey::Escape), Modifiers::default()),
+            scope: ShortcutScope::App,
+            priority: SHORTCUT_PRIORITY_APP,
+            command: ShortcutCommand::CloseActivePane,
+        },
+    );
+    register_shortcut(
+        &mut registry,
+        ShortcutBinding {
+            id: "cycle_chat_focus",
+            chord: ShortcutChord::new(Key::Named(NamedKey::Tab), Modifiers::default()),
+            scope: ShortcutScope::App,
+            priority: SHORTCUT_PRIORITY_APP,
+            command: ShortcutCommand::CycleChatFocus,
+        },
+    );
+    register_shortcut(
+        &mut registry,
+        ShortcutBinding {
+            id: "cycle_chat_model",
+            chord: ShortcutChord::new(
+                Key::Named(NamedKey::Tab),
+                Modifiers {
+                    shift: true,
+                    ctrl: false,
+                    alt: false,
+                    meta: false,
+                },
+            ),
+            scope: ShortcutScope::App,
+            priority: SHORTCUT_PRIORITY_APP,
+            command: ShortcutCommand::CycleChatModel,
+        },
+    );
+
+    registry
+}
+
+fn register_shortcut(registry: &mut ShortcutRegistry, binding: ShortcutBinding) {
+    let conflicts = registry.register(binding);
+    for conflict in conflicts {
+        tracing::warn!(
+            chord = ?conflict.chord,
+            existing = ?conflict.existing.command,
+            incoming = ?conflict.incoming.command,
+            "shortcut conflict detected"
+        );
     }
 }
 
@@ -162,6 +298,7 @@ struct RenderState {
     scale_factor: f32,
     zoom_factor: f32,
     root: MinimalRoot,
+    shortcuts: ShortcutRegistry,
     cursor_icon: Cursor,
 }
 
@@ -336,39 +473,41 @@ impl ApplicationHandler<AppEvent> for App {
                     return;
                 };
                 let modifiers = to_modifiers(self.modifiers);
+                if event.state == ElementState::Pressed {
+                    if let Some(resolution) = state.shortcuts.resolve(
+                        ShortcutChord::new(key.clone(), modifiers),
+                        state.root.shortcut_context(),
+                    ) {
+                        let handled = match resolution.command {
+                            ShortcutCommand::ZoomIn => {
+                                state.bump_zoom(ZOOM_STEP_KEY);
+                                true
+                            }
+                            ShortcutCommand::ZoomOut => {
+                                state.bump_zoom(-ZOOM_STEP_KEY);
+                                true
+                            }
+                            ShortcutCommand::ZoomReset => {
+                                state.set_zoom(1.0);
+                                true
+                            }
+                            _ => state.root.apply_shortcut(resolution.command),
+                        };
+                        if handled {
+                            state.window.request_redraw();
+                            update_cursor(state);
+                            return;
+                        }
+                    }
+                }
+
                 let input_event = match event.state {
                     ElementState::Pressed => InputEvent::KeyDown { key, modifiers },
                     ElementState::Released => InputEvent::KeyUp { key, modifiers },
                 };
                 let bounds = content_bounds(logical_size(&state.config, state.effective_scale()));
-                let handled = state.root.handle_input(&input_event, bounds);
-                if handled {
+                if state.root.handle_input(&input_event, bounds) {
                     state.window.request_redraw();
-                    update_cursor(state);
-                    return;
-                }
-
-                if event.state == ElementState::Pressed && self.modifiers.super_key() {
-                    if let WinitKey::Character(ch) = &event.logical_key {
-                        match ch.as_str() {
-                            "+" | "=" => {
-                                state.bump_zoom(ZOOM_STEP_KEY);
-                                state.window.request_redraw();
-                                return;
-                            }
-                            "-" => {
-                                state.bump_zoom(-ZOOM_STEP_KEY);
-                                state.window.request_redraw();
-                                return;
-                            }
-                            "0" => {
-                                state.set_zoom(1.0);
-                                state.window.request_redraw();
-                                return;
-                            }
-                            _ => {}
-                        }
-                    }
                 }
                 update_cursor(state);
             }
@@ -434,6 +573,7 @@ fn init_state(
     root.set_send_handler(move |action| {
         let _ = action_tx.send(action);
     });
+    let shortcuts = build_shortcut_registry();
 
     pollster::block_on(async move {
         let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
@@ -500,6 +640,7 @@ fn init_state(
             scale_factor,
             zoom_factor: 1.0,
             root,
+            shortcuts,
             cursor_icon: Cursor::Default,
         })
     })
