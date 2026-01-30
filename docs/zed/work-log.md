@@ -70,3 +70,23 @@ Date: 2026-01-30
 - 2026-01-30: Rebuilt the input/composer bar layout in `crates/autopilot_ui/src/lib.rs` using `LayoutEngine` rows/columns instead of manual y/x offsets.
 - 2026-01-30: Added a small layout prelude (`h_flex`, `v_flex`, `flex_1`, `gap`, `min_w`) and applied it across the main panel layout and helper layouts in `crates/autopilot_ui/src/lib.rs`.
 - 2026-01-30: Converted Autopilot Desktop panes to layout-engine column/row primitives (chat pane, identity, pylon, wallet, sell-compute, DVM history, NIP-90, events, threads, file editor) and added `column_bounds` + centered layout helpers in `crates/autopilot_ui/src/lib.rs` to eliminate manual y-offset layout.
+
+# Zed Phase 1 Work Log (Workspace + Project Skeleton)
+
+Date: 2026-01-30
+
+## Work summary
+- Updated `docs/zed/zed-parity-roadmap.md` Phase 1 to explicitly target the **pane + hotbar** system, with the File Editor pane hosting the project tree, tabs, splits, and open/save flows.
+- Added a File Editor workspace shell in `crates/autopilot_ui/src/lib.rs`:
+  - Project panel embedded in the File Editor pane (workspace-rooted tree, expand/collapse, selection, refresh).
+  - Tab bar + split groups (horizontal/vertical) inside the same pane.
+  - Active-group handling and tab switching.
+- Implemented a file open/save pipeline:
+  - New `UserAction::SaveFile` + `AppEvent::FileSaved`/`FileSaveFailed` contracts.
+  - Desktop host writes to disk and reports status; UI shows status and dirty indicators.
+- Added ADR-0023 to formalize the open/save event contract.
+
+## Notes / constraints
+- File tree ignores `.git`, `target`, `node_modules`, `.idea`, `.vscode`, `.DS_Store`, `.cache` by default to keep the tree responsive.
+- Tree refresh is manual (button), and saves are explicit (button or Ctrl/Cmd+S).
+

@@ -23,7 +23,8 @@ use wgpui::components::organisms::{
 };
 use wgpui::components::sections::{MessageEditor, ThreadView};
 use wgpui::components::{Text, TextInput};
-use wgpui::input::InputEvent;
+use wgpui::input::{InputEvent, Key, Modifiers};
+use wgpui::scroll::{ScrollContainer, ScrollDirection, ScrollRegion};
 use wgpui::{
     Bounds, Button, ButtonVariant, Component, Cursor, Dropdown, DropdownOption, EventResult, Hsla,
     LayoutEngine, LayoutStyle, MarkdownConfig, MarkdownDocument, MarkdownView, MouseButton,
@@ -59,6 +60,19 @@ const DEFAULT_MODEL_INDEX: usize = 0;
 const DEFAULT_REASONING_EFFORT: &str = "xhigh";
 const SHOW_MODEL_DROPDOWN: bool = false;
 const SHOW_MODEL_SELECTOR: bool = true;
+const FILE_EDITOR_PANEL_PADDING: f32 = 12.0;
+const FILE_EDITOR_PANEL_GAP: f32 = 10.0;
+const FILE_TREE_MIN_WIDTH: f32 = 220.0;
+const FILE_TREE_MAX_WIDTH: f32 = 320.0;
+const FILE_TREE_ROW_HEIGHT: f32 = 22.0;
+const FILE_TREE_INDENT: f32 = 14.0;
+const FILE_TREE_SCROLLBAR_WIDTH: f32 = 6.0;
+const FILE_EDITOR_TOOLBAR_HEIGHT: f32 = 30.0;
+const FILE_EDITOR_TAB_HEIGHT: f32 = 26.0;
+const FILE_EDITOR_TAB_GAP: f32 = 6.0;
+const FILE_EDITOR_TAB_PADDING: f32 = 14.0;
+const FILE_EDITOR_SPLIT_GAP: f32 = 8.0;
+const FILE_TREE_MAX_ENTRIES: usize = 3000;
 const PANE_MARGIN: f32 = 24.0;
 const PANE_OFFSET: f32 = 28.0;
 const PANE_MIN_WIDTH: f32 = 200.0;
@@ -167,6 +181,8 @@ impl AppViewModel {
             AppEvent::ThreadLoaded { .. } => {}
             AppEvent::FileOpened { .. } => {}
             AppEvent::FileOpenFailed { .. } => {}
+            AppEvent::FileSaved { .. } => {}
+            AppEvent::FileSaveFailed { .. } => {}
         }
     }
 
@@ -801,20 +817,93 @@ struct ChatPaneState {
     pending_stop: Rc<RefCell<bool>>,
 }
 
-struct FileEditorPaneState {
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum SplitDirection {
+    None,
+    Horizontal,
+    Vertical,
+}
+
+struct EditorTab {
+    path: PathBuf,
+    title: String,
     editor: EditorElement,
+    saved_revision: u64,
+    loading: bool,
+}
+
+struct TabHit {
+    tab_id: usize,
+    bounds: Bounds,
+}
+
+struct EditorGroup {
+    tabs: Vec<usize>,
+    active_tab: Option<usize>,
+    group_bounds: Bounds,
+    tab_bar_bounds: Bounds,
+    editor_bounds: Bounds,
+    tab_hits: Vec<TabHit>,
+}
+
+struct FileNode {
+    path: PathBuf,
+    name: String,
+    is_dir: bool,
+    expanded: bool,
+    children: Vec<FileNode>,
+}
+
+struct FileTreeRow {
+    path: PathBuf,
+    depth: usize,
+    is_dir: bool,
+    expanded: bool,
+    bounds: Bounds,
+}
+
+struct PendingOpenRequest {
+    path: PathBuf,
+    target_group: usize,
+}
+
+struct FileEditorPaneState {
+    workspace_root: Option<PathBuf>,
+    tree_root: Option<FileNode>,
+    tree_rows: Vec<FileTreeRow>,
+    tree_scroll: ScrollContainer,
+    tree_bounds: Bounds,
+    tree_header_bounds: Bounds,
+    tree_refresh_button: Button,
+    tree_refresh_bounds: Bounds,
+    pending_tree_refresh: Rc<RefCell<bool>>,
+    selected_tree_path: Option<PathBuf>,
     path_input: TextInput,
     open_button: Button,
     reload_button: Button,
+    save_button: Button,
+    split_horizontal_button: Button,
+    split_vertical_button: Button,
     path_bounds: Bounds,
     open_bounds: Bounds,
     reload_bounds: Bounds,
-    editor_bounds: Bounds,
-    pending_open: Rc<RefCell<bool>>,
-    pending_reload: Rc<RefCell<bool>>,
-    current_path: Option<PathBuf>,
+    save_bounds: Bounds,
+    split_h_bounds: Bounds,
+    split_v_bounds: Bounds,
     status: Option<String>,
     status_is_error: bool,
+    tabs: HashMap<usize, EditorTab>,
+    tab_by_path: HashMap<PathBuf, usize>,
+    groups: Vec<EditorGroup>,
+    active_group: usize,
+    split_direction: SplitDirection,
+    next_tab_id: usize,
+    pending_open: Rc<RefCell<bool>>,
+    pending_reload: Rc<RefCell<bool>>,
+    pending_save: Rc<RefCell<bool>>,
+    pending_split: Rc<RefCell<Option<SplitDirection>>>,
+    pending_open_requests: Vec<PendingOpenRequest>,
+    pending_open_dispatches: Vec<PathBuf>,
 }
 
 impl ChatPaneState {
@@ -1876,12 +1965,49 @@ impl ChatPaneState {
     }
 }
 
+impl EditorGroup {
+    fn new() -> Self {
+        Self {
+            tabs: Vec::new(),
+            active_tab: None,
+            group_bounds: Bounds::ZERO,
+            tab_bar_bounds: Bounds::ZERO,
+            editor_bounds: Bounds::ZERO,
+            tab_hits: Vec::new(),
+        }
+    }
+}
+
+impl EditorTab {
+    fn new(path: PathBuf) -> Self {
+        let title = path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or("untitled")
+            .to_string();
+        let mut editor = EditorElement::new(Editor::new(""));
+        editor.set_wrap_lines(true);
+        editor.set_read_only(false);
+        Self {
+            path,
+            title,
+            editor,
+            saved_revision: 0,
+            loading: true,
+        }
+    }
+
+    fn is_dirty(&self) -> bool {
+        self.editor.editor().revision() != self.saved_revision
+    }
+}
+
 impl FileEditorPaneState {
     fn new() -> Self {
         let pending_open = Rc::new(RefCell::new(false));
         let pending_open_submit = pending_open.clone();
         let mut path_input = TextInput::new()
-            .placeholder("Path to file (relative or absolute)")
+            .placeholder("Open path (relative to workspace)")
             .background(theme::bg::APP)
             .border_color(theme::border::DEFAULT)
             .border_color_focused(theme::border::FOCUS)
@@ -1891,7 +2017,6 @@ impl FileEditorPaneState {
                 *pending_open_submit.borrow_mut() = true;
             });
         path_input.set_mono(true);
-        path_input.set_value("~/code/openagents/README.md");
 
         let pending_open_click = pending_open.clone();
         let open_button = Button::new("Open")
@@ -1914,24 +2039,88 @@ impl FileEditorPaneState {
                 *pending_reload_click.borrow_mut() = true;
             });
 
-        let mut editor = EditorElement::new(Editor::new(""));
-        editor.set_wrap_lines(true);
-        editor.set_read_only(true);
+        let pending_save = Rc::new(RefCell::new(false));
+        let pending_save_click = pending_save.clone();
+        let save_button = Button::new("Save")
+            .variant(ButtonVariant::Primary)
+            .font_size(theme::font_size::SM)
+            .padding(12.0, 6.0)
+            .corner_radius(6.0)
+            .on_click(move || {
+                *pending_save_click.borrow_mut() = true;
+            });
+
+        let pending_split = Rc::new(RefCell::new(None));
+        let pending_split_h = pending_split.clone();
+        let split_horizontal_button = Button::new("Split H")
+            .variant(ButtonVariant::Secondary)
+            .font_size(theme::font_size::SM)
+            .padding(10.0, 6.0)
+            .corner_radius(6.0)
+            .on_click(move || {
+                *pending_split_h.borrow_mut() = Some(SplitDirection::Horizontal);
+            });
+
+        let pending_split_v = pending_split.clone();
+        let split_vertical_button = Button::new("Split V")
+            .variant(ButtonVariant::Secondary)
+            .font_size(theme::font_size::SM)
+            .padding(10.0, 6.0)
+            .corner_radius(6.0)
+            .on_click(move || {
+                *pending_split_v.borrow_mut() = Some(SplitDirection::Vertical);
+            });
+
+        let pending_tree_refresh = Rc::new(RefCell::new(false));
+        let pending_tree_refresh_click = pending_tree_refresh.clone();
+        let tree_refresh_button = Button::new("Refresh")
+            .variant(ButtonVariant::Secondary)
+            .font_size(theme::font_size::XS)
+            .padding(10.0, 6.0)
+            .corner_radius(6.0)
+            .on_click(move || {
+                *pending_tree_refresh_click.borrow_mut() = true;
+            });
+
+        let groups = vec![EditorGroup::new()];
 
         Self {
-            editor,
+            workspace_root: None,
+            tree_root: None,
+            tree_rows: Vec::new(),
+            tree_scroll: ScrollContainer::new(Bounds::ZERO, ScrollDirection::Vertical),
+            tree_bounds: Bounds::ZERO,
+            tree_header_bounds: Bounds::ZERO,
+            tree_refresh_button,
+            tree_refresh_bounds: Bounds::ZERO,
+            pending_tree_refresh,
+            selected_tree_path: None,
             path_input,
             open_button,
             reload_button,
+            save_button,
+            split_horizontal_button,
+            split_vertical_button,
             path_bounds: Bounds::ZERO,
             open_bounds: Bounds::ZERO,
             reload_bounds: Bounds::ZERO,
-            editor_bounds: Bounds::ZERO,
+            save_bounds: Bounds::ZERO,
+            split_h_bounds: Bounds::ZERO,
+            split_v_bounds: Bounds::ZERO,
+            status: Some("No workspace open".to_string()),
+            status_is_error: false,
+            tabs: HashMap::new(),
+            tab_by_path: HashMap::new(),
+            groups,
+            active_group: 0,
+            split_direction: SplitDirection::None,
+            next_tab_id: 1,
             pending_open,
             pending_reload,
-            current_path: None,
-            status: Some("No file loaded".to_string()),
-            status_is_error: false,
+            pending_save,
+            pending_split,
+            pending_open_requests: Vec::new(),
+            pending_open_dispatches: Vec::new(),
         }
     }
 
@@ -1949,31 +2138,354 @@ impl FileEditorPaneState {
         value
     }
 
-    fn set_contents(&mut self, path: PathBuf, contents: String) {
-        self.editor.set_text(&contents);
-        let language = SyntaxLanguage::from_path(path.to_string_lossy().as_ref());
-        self.editor.set_language(language);
-        self.editor.reset_scroll();
-        let line_count = self.editor.editor().buffer().line_count();
-        let byte_count = self.editor.editor().buffer().len_bytes();
-        self.status = Some(format!(
-            "{} | {} lines | {} bytes",
-            path.display(),
-            line_count,
-            byte_count
-        ));
+    fn take_pending_save(&mut self) -> bool {
+        let mut pending = self.pending_save.borrow_mut();
+        let value = *pending;
+        *pending = false;
+        value
+    }
+
+    fn take_pending_split(&mut self) -> Option<SplitDirection> {
+        let mut pending = self.pending_split.borrow_mut();
+        let value = *pending;
+        *pending = None;
+        value
+    }
+
+    fn take_pending_tree_refresh(&mut self) -> bool {
+        let mut pending = self.pending_tree_refresh.borrow_mut();
+        let value = *pending;
+        *pending = false;
+        value
+    }
+
+    fn request_save(&mut self) {
+        *self.pending_save.borrow_mut() = true;
+    }
+
+    fn set_workspace_root(&mut self, path: PathBuf) {
+        self.workspace_root = Some(path);
+        self.refresh_tree();
+    }
+
+    fn refresh_tree(&mut self) {
+        if let Some(root) = self.workspace_root.clone() {
+            let mut remaining = FILE_TREE_MAX_ENTRIES;
+            let mut node = build_file_node(&root, &mut remaining);
+            node.expanded = true;
+            self.tree_root = Some(node);
+            self.tree_scroll.scroll_to(Point::ZERO);
+            self.tree_rows.clear();
+            self.selected_tree_path = None;
+        }
+    }
+
+    fn toggle_tree_node(&mut self, path: &Path) {
+        if let Some(root) = self.tree_root.as_mut() {
+            toggle_tree_node(root, path);
+        }
+    }
+
+    fn queue_open_path(&mut self, path: PathBuf, force_reload: bool) {
+        if let Some(tab_id) = self.tab_by_path.get(&path).copied() {
+            self.activate_tab_by_id(tab_id);
+            if let Some(tab) = self.tabs.get(&tab_id) {
+                if tab.is_dirty() && !force_reload {
+                    self.status = Some(format!(
+                        "Unsaved changes in {} (not reloaded).",
+                        path.display()
+                    ));
+                    self.status_is_error = false;
+                    return;
+                }
+            }
+            if !force_reload {
+                self.status = Some(format!("Focused {}", path.display()));
+                self.status_is_error = false;
+                self.path_input
+                    .set_value(path.to_string_lossy().to_string());
+                return;
+            }
+        }
+
+        if self
+            .pending_open_requests
+            .iter()
+            .any(|req| req.path == path)
+        {
+            return;
+        }
+
+        let target_group = self.active_group;
+        self.pending_open_requests.push(PendingOpenRequest {
+            path: path.clone(),
+            target_group,
+        });
+        self.pending_open_dispatches.push(path.clone());
+        let verb = if force_reload { "Reloading" } else { "Opening" };
+        self.status = Some(format!("{verb} {}...", path.display()));
         self.status_is_error = false;
-        self.current_path = Some(path.clone());
         self.path_input
             .set_value(path.to_string_lossy().to_string());
     }
 
-    fn set_error(&mut self, path: PathBuf, error: String) {
-        self.status = Some(format!("{}: {}", path.display(), error));
-        self.status_is_error = true;
-        self.current_path = Some(path.clone());
+    fn resolve_path(&self, raw: &str) -> Option<PathBuf> {
+        let trimmed = raw.trim();
+        if trimmed.is_empty() {
+            return None;
+        }
+        let mut path = if trimmed == "~" || trimmed.starts_with("~/") {
+            let home = std::env::var("HOME").unwrap_or_default();
+            if home.is_empty() {
+                PathBuf::from(trimmed)
+            } else if trimmed == "~" {
+                PathBuf::from(home)
+            } else {
+                PathBuf::from(home).join(&trimmed[2..])
+            }
+        } else {
+            PathBuf::from(trimmed)
+        };
+
+        if path.is_absolute() {
+            return Some(path);
+        }
+
+        if let Some(root) = &self.workspace_root {
+            path = root.join(path);
+            return Some(path);
+        }
+
+        std::env::current_dir().ok().map(|cwd| cwd.join(path))
+    }
+
+    fn set_contents(&mut self, path: PathBuf, contents: String) {
+        let target_group = self
+            .pending_open_requests
+            .iter()
+            .position(|req| req.path == path)
+            .map(|idx| self.pending_open_requests.remove(idx).target_group)
+            .unwrap_or(self.active_group);
+
+        let existing_tab = self.tab_by_path.get(&path).copied();
+        let tab_id = existing_tab.unwrap_or_else(|| self.create_tab(path.clone(), target_group));
+
+        if let Some(tab) = self.tabs.get_mut(&tab_id) {
+            tab.loading = false;
+            tab.editor.set_text(&contents);
+            let language = SyntaxLanguage::from_path(path.to_string_lossy().as_ref());
+            tab.editor.set_language(language);
+            tab.editor.reset_scroll();
+            tab.saved_revision = tab.editor.editor().revision();
+        }
+
+        if existing_tab.is_some() {
+            self.activate_tab_by_id(tab_id);
+        } else {
+            self.activate_tab(tab_id, target_group);
+        }
         self.path_input
             .set_value(path.to_string_lossy().to_string());
+
+        if let Some(tab) = self.tabs.get(&tab_id) {
+            let line_count = tab.editor.editor().buffer().line_count();
+            let byte_count = tab.editor.editor().buffer().len_bytes();
+            self.status = Some(format!(
+                "{} | {} lines | {} bytes",
+                path.display(),
+                line_count,
+                byte_count
+            ));
+            self.status_is_error = false;
+        }
+    }
+
+    fn set_error(&mut self, path: PathBuf, error: String) {
+        if let Some(tab_id) = self.tab_by_path.get(&path).copied() {
+            if let Some(tab) = self.tabs.get_mut(&tab_id) {
+                tab.loading = false;
+            }
+        }
+        self.pending_open_requests.retain(|req| req.path != path);
+        self.status = Some(format!("{}: {}", path.display(), error));
+        self.status_is_error = true;
+        self.path_input
+            .set_value(path.to_string_lossy().to_string());
+    }
+
+    fn set_saved(&mut self, path: PathBuf) {
+        if let Some(tab_id) = self.tab_by_path.get(&path).copied() {
+            if let Some(tab) = self.tabs.get_mut(&tab_id) {
+                tab.saved_revision = tab.editor.editor().revision();
+                tab.loading = false;
+            }
+            self.status = Some(format!("Saved {}", path.display()));
+            self.status_is_error = false;
+        }
+    }
+
+    fn set_save_error(&mut self, path: PathBuf, error: String) {
+        self.status = Some(format!("Save failed: {}: {}", path.display(), error));
+        self.status_is_error = true;
+    }
+
+    fn active_tab_id(&self) -> Option<usize> {
+        self.groups
+            .get(self.active_group)
+            .and_then(|group| group.active_tab)
+    }
+
+    fn active_tab(&self) -> Option<&EditorTab> {
+        self.active_tab_id().and_then(|id| self.tabs.get(&id))
+    }
+
+    fn active_tab_mut(&mut self) -> Option<&mut EditorTab> {
+        let id = self.active_tab_id()?;
+        self.tabs.get_mut(&id)
+    }
+
+    fn active_tab_path(&self) -> Option<PathBuf> {
+        self.active_tab().map(|tab| tab.path.clone())
+    }
+
+    fn tree_row_at(&self, point: Point) -> Option<&FileTreeRow> {
+        self.tree_rows
+            .iter()
+            .find(|row| row.bounds.contains(point))
+    }
+
+    fn tab_hit_at(&self, point: Point) -> Option<(usize, usize)> {
+        for (group_index, group) in self.groups.iter().enumerate() {
+            for hit in &group.tab_hits {
+                if hit.bounds.contains(point) {
+                    return Some((group_index, hit.tab_id));
+                }
+            }
+        }
+        None
+    }
+
+    fn group_at_point(&self, point: Point) -> Option<usize> {
+        self.groups
+            .iter()
+            .enumerate()
+            .find(|(_, group)| group.group_bounds.contains(point))
+            .map(|(idx, _)| idx)
+    }
+
+    fn editor_bounds_for_group(&self, group_index: usize) -> Option<Bounds> {
+        self.groups.get(group_index).map(|group| group.editor_bounds)
+    }
+
+    fn editor_cursor_at(&self, point: Point) -> Option<Cursor> {
+        for group in &self.groups {
+            if group.editor_bounds.contains(point) {
+                if let Some(tab_id) = group.active_tab {
+                    if let Some(tab) = self.tabs.get(&tab_id) {
+                        return Some(tab.editor.cursor());
+                    }
+                }
+            }
+        }
+        if let Some(tab) = self.active_tab() {
+            if tab.editor.is_focused() {
+                return Some(tab.editor.cursor());
+            }
+        }
+        None
+    }
+
+    fn blur_editors(&mut self) {
+        for tab in self.tabs.values_mut() {
+            tab.editor.blur();
+        }
+    }
+
+    fn create_tab(&mut self, path: PathBuf, group_index: usize) -> usize {
+        let id = self.next_tab_id;
+        self.next_tab_id += 1;
+        let tab = EditorTab::new(path.clone());
+        self.tabs.insert(id, tab);
+        self.tab_by_path.insert(path, id);
+        let target_group = if self.groups.is_empty() {
+            self.groups.push(EditorGroup::new());
+            0
+        } else {
+            group_index.min(self.groups.len().saturating_sub(1))
+        };
+        if let Some(group) = self.groups.get_mut(target_group) {
+            group.tabs.push(id);
+            group.active_tab = Some(id);
+        }
+        id
+    }
+
+    fn activate_tab_by_id(&mut self, tab_id: usize) {
+        let mut group_index = None;
+        for (idx, group) in self.groups.iter().enumerate() {
+            if group.tabs.contains(&tab_id) {
+                group_index = Some(idx);
+                break;
+            }
+        }
+        if let Some(index) = group_index {
+            self.activate_tab(tab_id, index);
+        }
+    }
+
+    fn activate_tab(&mut self, tab_id: usize, group_index: usize) {
+        if let Some(group) = self.groups.get_mut(group_index) {
+            group.active_tab = Some(tab_id);
+        }
+        self.active_group = group_index.min(self.groups.len().saturating_sub(1));
+        if let Some(tab) = self.tabs.get(&tab_id) {
+            self.path_input
+                .set_value(tab.path.to_string_lossy().to_string());
+            self.selected_tree_path = Some(tab.path.clone());
+        }
+    }
+
+    fn save_active_tab(&mut self) -> Option<(PathBuf, String)> {
+        let tab = self.active_tab_mut()?;
+        let path = tab.path.clone();
+        let contents = tab.editor.editor().text();
+        self.status = Some(format!("Saving {}...", path.display()));
+        self.status_is_error = false;
+        Some((path, contents))
+    }
+
+    fn set_split_direction(&mut self, direction: SplitDirection) {
+        if direction == self.split_direction {
+            self.collapse_split();
+            return;
+        }
+
+        self.split_direction = direction;
+        if self.groups.len() < 2 {
+            self.groups.push(EditorGroup::new());
+        }
+    }
+
+    fn collapse_split(&mut self) {
+        if self.groups.len() > 1 {
+            let mut merged_tabs = Vec::new();
+            for group in self.groups.iter().skip(1) {
+                merged_tabs.extend(group.tabs.iter().copied());
+            }
+            if let Some(primary) = self.groups.first_mut() {
+                for tab_id in merged_tabs {
+                    if !primary.tabs.contains(&tab_id) {
+                        primary.tabs.push(tab_id);
+                    }
+                }
+                if primary.active_tab.is_none() {
+                    primary.active_tab = primary.tabs.first().copied();
+                }
+            }
+        }
+        self.groups.truncate(1);
+        self.split_direction = SplitDirection::None;
+        self.active_group = 0;
     }
 }
 
@@ -2313,7 +2825,8 @@ impl MinimalRoot {
         let text_input_focused = self
             .chat_panes
             .values()
-            .any(|chat| chat.input.is_focused());
+            .any(|chat| chat.input.is_focused())
+            || self.file_editor.path_input.is_focused();
         ShortcutContext { text_input_focused }
     }
 
@@ -2332,6 +2845,9 @@ impl MinimalRoot {
 
     pub fn apply_event(&mut self, event: AppEvent) {
         match event {
+            AppEvent::WorkspaceOpened { path, .. } => {
+                self.file_editor.set_workspace_root(path.clone());
+            }
             AppEvent::SessionStarted { session_id, .. } => {
                 let pane_id = self.pending_session_panes.pop_front().unwrap_or_else(|| {
                     self.open_chat_pane(self.screen_size(), true, false, DEFAULT_THREAD_MODEL)
@@ -2443,6 +2959,12 @@ impl MinimalRoot {
             }
             AppEvent::FileOpenFailed { path, error } => {
                 self.file_editor.set_error(path, error);
+            }
+            AppEvent::FileSaved { path } => {
+                self.file_editor.set_saved(path);
+            }
+            AppEvent::FileSaveFailed { path, error } => {
+                self.file_editor.set_save_error(path, error);
             }
             AppEvent::AppServerEvent { message } => {
                 if let Ok(value) = serde_json::from_str::<Value>(&message) {
@@ -2929,7 +3451,7 @@ impl MinimalRoot {
         self.pane_frames.remove(id);
         self.pane_bounds.remove(id);
         if id == "file_editor" {
-            self.file_editor.editor.blur();
+            self.file_editor.blur_editors();
         }
         if let Some(chat) = self.chat_panes.remove(id) {
             if let Some(session_id) = chat.session_id {
@@ -3540,10 +4062,12 @@ impl MinimalRoot {
                                 ),
                                 EventResult::Handled
                             );
-                            if self.file_editor.path_input.is_focused()
-                                && self.file_editor.editor.is_focused()
-                            {
-                                self.file_editor.editor.blur();
+                            if self.file_editor.path_input.is_focused() {
+                                if let Some(tab) = self.file_editor.active_tab_mut() {
+                                    if tab.editor.is_focused() {
+                                        tab.editor.blur();
+                                    }
+                                }
                             }
                             let open_handled = matches!(
                                 self.file_editor.open_button.event(
@@ -3561,26 +4085,156 @@ impl MinimalRoot {
                                 ),
                                 EventResult::Handled
                             );
-                            let key_event =
-                                matches!(event, InputEvent::KeyDown { .. } | InputEvent::KeyUp { .. });
-                            let editor_target = self
-                                .file_editor
-                                .editor_bounds
-                                .contains(self.cursor_position)
-                                || (key_event
-                                    && self.file_editor.editor.is_focused()
-                                    && !self.file_editor.path_input.is_focused());
-                            let editor_handled = if editor_target {
-                                matches!(
+                            let save_handled = matches!(
+                                self.file_editor.save_button.event(
+                                    event,
+                                    self.file_editor.save_bounds,
+                                    &mut self.event_context
+                                ),
+                                EventResult::Handled
+                            );
+                            let split_h_handled = matches!(
+                                self.file_editor.split_horizontal_button.event(
+                                    event,
+                                    self.file_editor.split_h_bounds,
+                                    &mut self.event_context
+                                ),
+                                EventResult::Handled
+                            );
+                            let split_v_handled = matches!(
+                                self.file_editor.split_vertical_button.event(
+                                    event,
+                                    self.file_editor.split_v_bounds,
+                                    &mut self.event_context
+                                ),
+                                EventResult::Handled
+                            );
+                            let tree_refresh_handled = matches!(
+                                self.file_editor.tree_refresh_button.event(
+                                    event,
+                                    self.file_editor.tree_refresh_bounds,
+                                    &mut self.event_context
+                                ),
+                                EventResult::Handled
+                            );
+
+                            let mut tree_scroll_handled = false;
+                            if let InputEvent::Scroll { dx, dy } = event {
+                                if self.file_editor.tree_bounds.contains(self.cursor_position) {
                                     self.file_editor
-                                        .editor
-                                        .event(event, self.file_editor.editor_bounds, &mut self.event_context),
-                                    EventResult::Handled
-                                )
-                            } else {
-                                false
-                            };
-                            handled |= path_handled || open_handled || reload_handled || editor_handled;
+                                        .tree_scroll
+                                        .scroll_by(Point::new(*dx, *dy));
+                                    tree_scroll_handled = true;
+                                }
+                            }
+
+                            let mut click_handled = false;
+                            if let InputEvent::MouseDown {
+                                button: MouseButton::Left,
+                                ..
+                            } = event
+                            {
+                                if let Some((row_path, is_dir)) = self
+                                    .file_editor
+                                    .tree_row_at(self.cursor_position)
+                                    .map(|row| (row.path.clone(), row.is_dir))
+                                {
+                                    self.file_editor.selected_tree_path =
+                                        Some(row_path.clone());
+                                    if is_dir {
+                                        self.file_editor.toggle_tree_node(&row_path);
+                                    } else {
+                                        self.file_editor.queue_open_path(row_path, false);
+                                    }
+                                    click_handled = true;
+                                }
+
+                                if let Some((group_index, tab_id)) =
+                                    self.file_editor.tab_hit_at(self.cursor_position)
+                                {
+                                    self.file_editor.activate_tab(tab_id, group_index);
+                                    click_handled = true;
+                                }
+
+                                if let Some(group_index) =
+                                    self.file_editor.group_at_point(self.cursor_position)
+                                {
+                                    self.file_editor.active_group = group_index;
+                                }
+                            }
+
+                            let mut save_shortcut_handled = false;
+                            if let InputEvent::KeyDown { key, modifiers } = event {
+                                if is_save_chord(modifiers, key)
+                                    && !self.file_editor.path_input.is_focused()
+                                {
+                                    self.file_editor.request_save();
+                                    save_shortcut_handled = true;
+                                }
+                            }
+
+                            let key_event = matches!(
+                                event,
+                                InputEvent::KeyDown { .. } | InputEvent::KeyUp { .. }
+                            );
+                            let mut editor_handled = false;
+                            if !save_shortcut_handled && !self.file_editor.path_input.is_focused()
+                            {
+                                let mut target_group = None;
+                                if key_event {
+                                    if let Some(tab) = self.file_editor.active_tab() {
+                                        if tab.editor.is_focused() {
+                                            target_group = Some(self.file_editor.active_group);
+                                        }
+                                    }
+                                } else if let Some(group_index) =
+                                    self.file_editor.group_at_point(self.cursor_position)
+                                {
+                                    if let Some(bounds) =
+                                        self.file_editor.editor_bounds_for_group(group_index)
+                                    {
+                                        if bounds.contains(self.cursor_position) {
+                                            target_group = Some(group_index);
+                                        }
+                                    }
+                                }
+
+                                if let Some(group_index) = target_group {
+                                    let bounds =
+                                        self.file_editor.editor_bounds_for_group(group_index);
+                                    let tab_id = self
+                                        .file_editor
+                                        .groups
+                                        .get(group_index)
+                                        .and_then(|group| group.active_tab);
+                                    if let (Some(bounds), Some(tab_id)) = (bounds, tab_id) {
+                                        if let Some(tab) =
+                                            self.file_editor.tabs.get_mut(&tab_id)
+                                        {
+                                            editor_handled = matches!(
+                                                tab.editor.event(
+                                                    event,
+                                                    bounds,
+                                                    &mut self.event_context
+                                                ),
+                                                EventResult::Handled
+                                            );
+                                        }
+                                    }
+                                }
+                            }
+
+                            handled |= path_handled
+                                || open_handled
+                                || reload_handled
+                                || save_handled
+                                || split_h_handled
+                                || split_v_handled
+                                || tree_refresh_handled
+                                || tree_scroll_handled
+                                || click_handled
+                                || save_shortcut_handled
+                                || editor_handled;
                         }
                         PaneKind::Identity => {
                             let keygen_handled = matches!(
@@ -3943,32 +4597,72 @@ impl MinimalRoot {
             self.open_thread_from_list(thread_id);
         }
 
+        let should_tree_refresh = self.file_editor.take_pending_tree_refresh();
+        if should_tree_refresh {
+            if self.file_editor.workspace_root.is_some() {
+                self.file_editor.refresh_tree();
+            } else {
+                self.file_editor.status = Some("No workspace open.".to_string());
+                self.file_editor.status_is_error = true;
+            }
+        }
+
+        if let Some(split) = self.file_editor.take_pending_split() {
+            self.file_editor.set_split_direction(split);
+        }
+
         let should_file_open = self.file_editor.take_pending_open();
         if should_file_open {
-            let path = self.file_editor.path_input.get_value().trim().to_string();
-            if !path.is_empty() {
-                self.file_editor.status = Some(format!("Opening {}...", path));
-                self.file_editor.status_is_error = false;
-                if let Some(handler) = self.send_handler.as_mut() {
-                    handler(UserAction::OpenFile { path });
-                }
+            let raw = self.file_editor.path_input.get_value();
+            if let Some(path) = self.file_editor.resolve_path(&raw) {
+                self.file_editor.queue_open_path(path, false);
+            } else {
+                self.file_editor.status = Some("Enter a file path to open.".to_string());
+                self.file_editor.status_is_error = true;
             }
         }
 
         let should_file_reload = self.file_editor.take_pending_reload();
         if should_file_reload {
-            let path = self
+            let target = self
                 .file_editor
-                .current_path
-                .as_ref()
-                .map(|path| path.to_string_lossy().to_string())
-                .unwrap_or_else(|| self.file_editor.path_input.get_value().trim().to_string());
-            if !path.is_empty() {
-                self.file_editor.status = Some(format!("Reloading {}...", path));
-                self.file_editor.status_is_error = false;
+                .active_tab_path()
+                .or_else(|| {
+                    let raw = self.file_editor.path_input.get_value();
+                    self.file_editor.resolve_path(&raw)
+                });
+            if let Some(path) = target {
+                self.file_editor.queue_open_path(path, true);
+            } else {
+                self.file_editor.status = Some("No file to reload.".to_string());
+                self.file_editor.status_is_error = true;
+            }
+        }
+
+        let should_file_save = self.file_editor.take_pending_save();
+        if should_file_save {
+            if let Some((path, contents)) = self.file_editor.save_active_tab() {
                 if let Some(handler) = self.send_handler.as_mut() {
-                    handler(UserAction::OpenFile { path });
+                    handler(UserAction::SaveFile {
+                        path: path.to_string_lossy().to_string(),
+                        contents,
+                    });
                 }
+            } else {
+                self.file_editor.status = Some("No file to save.".to_string());
+                self.file_editor.status_is_error = true;
+            }
+        }
+
+        if !self.file_editor.pending_open_dispatches.is_empty() {
+            if let Some(handler) = self.send_handler.as_mut() {
+                for path in self.file_editor.pending_open_dispatches.drain(..) {
+                    handler(UserAction::OpenFile {
+                        path: path.to_string_lossy().to_string(),
+                    });
+                }
+            } else {
+                self.file_editor.pending_open_dispatches.clear();
             }
         }
 
@@ -4136,6 +4830,19 @@ impl MinimalRoot {
             && !self.file_editor.open_button.is_disabled())
             || (self.file_editor.reload_button.is_hovered()
                 && !self.file_editor.reload_button.is_disabled())
+            || (self.file_editor.save_button.is_hovered()
+                && !self.file_editor.save_button.is_disabled())
+            || self.file_editor.split_horizontal_button.is_hovered()
+            || self.file_editor.split_vertical_button.is_hovered()
+            || self.file_editor.tree_refresh_button.is_hovered()
+            || self
+                .file_editor
+                .tree_row_at(self.cursor_position)
+                .is_some()
+            || self
+                .file_editor
+                .tab_hit_at(self.cursor_position)
+                .is_some()
         {
             Cursor::Pointer
         } else if SHOW_MODEL_SELECTOR
@@ -4153,10 +4860,10 @@ impl MinimalRoot {
             .any(|chat| chat.input_hovered || chat.input.is_focused())
         {
             Cursor::Text
-        } else if self.file_editor.editor_bounds.contains(self.cursor_position)
-            || self.file_editor.editor.is_focused()
+        } else if let Some(cursor) =
+            self.file_editor.editor_cursor_at(self.cursor_position)
         {
-            self.file_editor.editor.cursor()
+            cursor
         } else if self.file_editor.path_bounds.contains(self.cursor_position)
             || self.file_editor.path_input.is_focused()
         {
@@ -4216,7 +4923,12 @@ impl Component for MinimalRoot {
         self.file_editor.path_bounds = Bounds::ZERO;
         self.file_editor.open_bounds = Bounds::ZERO;
         self.file_editor.reload_bounds = Bounds::ZERO;
-        self.file_editor.editor_bounds = Bounds::ZERO;
+        self.file_editor.save_bounds = Bounds::ZERO;
+        self.file_editor.split_h_bounds = Bounds::ZERO;
+        self.file_editor.split_v_bounds = Bounds::ZERO;
+        self.file_editor.tree_bounds = Bounds::ZERO;
+        self.file_editor.tree_header_bounds = Bounds::ZERO;
+        self.file_editor.tree_refresh_bounds = Bounds::ZERO;
 
         self.pane_bounds.clear();
 
@@ -6034,31 +6746,242 @@ fn paint_threads_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintCont
 }
 
 fn paint_file_editor_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintContext) {
-    let padding = 12.0;
-    let gap = 8.0;
-    let button_height = 28.0;
-    let button_width = 80.0;
-    let content_width = (bounds.size.width - padding * 2.0).max(0.0);
-    let content_bounds = centered_column_bounds(bounds, content_width, padding);
+    let padding = FILE_EDITOR_PANEL_PADDING;
+    let gap = FILE_EDITOR_PANEL_GAP;
+    let content_bounds = Bounds::new(
+        bounds.origin.x + padding,
+        bounds.origin.y + padding,
+        (bounds.size.width - padding * 2.0).max(0.0),
+        (bounds.size.height - padding * 2.0).max(0.0),
+    );
 
-    let mut items = vec![ColumnItem::Fixed(button_height)];
-    if root.file_editor.status.is_some() {
-        let status_height = theme::font_size::XS * 1.4;
-        items.push(ColumnItem::Fixed(gap));
-        items.push(ColumnItem::Fixed(status_height));
+    let project_width = (content_bounds.size.width * 0.28)
+        .clamp(FILE_TREE_MIN_WIDTH, FILE_TREE_MAX_WIDTH);
+    let row_items = [
+        wgpui::RowItem::fixed(project_width),
+        wgpui::RowItem::flex(1.0),
+    ];
+    let columns = aligned_row_bounds(
+        content_bounds,
+        content_bounds.size.height,
+        &row_items,
+        gap,
+        JustifyContent::FlexStart,
+        AlignItems::Stretch,
+    );
+    let project_bounds = *columns.get(0).unwrap_or(&content_bounds);
+    let editor_bounds = *columns.get(1).unwrap_or(&content_bounds);
+
+    paint_file_tree_panel(root, project_bounds, cx);
+    paint_editor_workspace_panel(root, editor_bounds, cx);
+}
+
+fn paint_file_tree_panel(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintContext) {
+    let header_height = FILE_EDITOR_TOOLBAR_HEIGHT;
+    let subheader_height = theme::font_size::XS * 1.4;
+    let gap = 6.0;
+
+    let mut items = vec![ColumnItem::Fixed(header_height)];
+    if root.file_editor.workspace_root.is_some() {
+        items.push(ColumnItem::Fixed(subheader_height));
     }
-    items.push(ColumnItem::Fixed(gap));
     items.push(ColumnItem::Flex(1.0));
 
-    let bounds_list = column_bounds(content_bounds, &items, 0.0);
-    let mut idx = 0;
-    let bar_bounds = *bounds_list.get(idx).unwrap_or(&content_bounds);
-    idx += 1;
+    let rows = column_bounds(bounds, &items, gap);
+    let header_bounds = *rows.get(0).unwrap_or(&bounds);
+    let mut index = 1usize;
+    let subtitle_bounds = if root.file_editor.workspace_root.is_some() {
+        let bounds = *rows.get(index).unwrap_or(&bounds);
+        index += 1;
+        Some(bounds)
+    } else {
+        None
+    };
+    let list_bounds = *rows.get(index).unwrap_or(&bounds);
 
+    let refresh_width = 78.0;
+    let header_row = aligned_row_bounds(
+        header_bounds,
+        header_height,
+        &[wgpui::RowItem::flex(1.0), wgpui::RowItem::fixed(refresh_width)],
+        6.0,
+        JustifyContent::FlexStart,
+        AlignItems::Center,
+    );
+    let title_bounds = *header_row.get(0).unwrap_or(&header_bounds);
+    let refresh_bounds = *header_row.get(1).unwrap_or(&header_bounds);
+
+    root.file_editor.tree_header_bounds = header_bounds;
+    root.file_editor.tree_refresh_bounds = refresh_bounds;
+
+    Text::new("PROJECT")
+        .font_size(theme::font_size::SM)
+        .bold()
+        .color(theme::text::PRIMARY)
+        .paint(title_bounds, cx);
+    root.file_editor
+        .tree_refresh_button
+        .set_disabled(root.file_editor.workspace_root.is_none());
+    root.file_editor.tree_refresh_button.paint(refresh_bounds, cx);
+
+    if let Some(bounds) = subtitle_bounds {
+        let label = root
+            .file_editor
+            .workspace_root
+            .as_ref()
+            .map(|path| path.display().to_string())
+            .unwrap_or_else(|| "No workspace".to_string());
+        Text::new(label)
+            .font_size(theme::font_size::XS)
+            .color(theme::text::MUTED)
+            .no_wrap()
+            .paint(bounds, cx);
+    }
+
+    root.file_editor.tree_bounds = list_bounds;
+    root.file_editor.tree_rows.clear();
+
+    let Some(tree_root) = root.file_editor.tree_root.as_ref() else {
+        Text::new("Open a workspace to browse files.")
+            .font_size(theme::font_size::XS)
+            .color(theme::text::MUTED)
+            .paint(list_bounds, cx);
+        return;
+    };
+
+    collect_tree_rows(tree_root, 0, &mut root.file_editor.tree_rows);
+    if root.file_editor.tree_rows.is_empty() {
+        Text::new("No files found.")
+            .font_size(theme::font_size::XS)
+            .color(theme::text::MUTED)
+            .paint(list_bounds, cx);
+        return;
+    }
+
+    let row_height = FILE_TREE_ROW_HEIGHT;
+    let content_height = row_height * root.file_editor.tree_rows.len() as f32;
+    root.file_editor.tree_scroll.set_viewport(list_bounds);
+    root.file_editor
+        .tree_scroll
+        .set_content_size(Size::new(list_bounds.size.width, content_height));
+
+    let mut region = ScrollRegion::vertical(list_bounds, content_height);
+    region.scroll_offset = root.file_editor.tree_scroll.scroll_offset;
+    region.begin(&mut cx.scene);
+
+    let active_path = root.file_editor.active_tab_path();
+    for (index, row) in root.file_editor.tree_rows.iter_mut().enumerate() {
+        let y = list_bounds.origin.y + index as f32 * row_height;
+        let row_bounds = Bounds::new(
+            list_bounds.origin.x,
+            region.scroll_y(y),
+            list_bounds.size.width,
+            row_height,
+        );
+        row.bounds = row_bounds;
+        if !region.is_visible_y(row_bounds.origin.y, row_height) {
+            continue;
+        }
+
+        let is_active = active_path
+            .as_ref()
+            .map(|path| path == &row.path)
+            .unwrap_or(false);
+        let is_selected = root
+            .file_editor
+            .selected_tree_path
+            .as_ref()
+            .map(|path| path == &row.path)
+            .unwrap_or(false);
+        if is_active || is_selected {
+            let bg = if is_active {
+                theme::bg::SELECTED
+            } else {
+                theme::bg::HOVER
+            };
+            cx.scene
+                .draw_quad(Quad::new(row_bounds).with_background(bg));
+        }
+
+        let indent = row.depth as f32 * FILE_TREE_INDENT;
+        let icon = if row.is_dir {
+            if row.expanded {
+                "v"
+            } else {
+                ">"
+            }
+        } else {
+            "-"
+        };
+        let name = row
+            .path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .map(|name| name.to_string())
+            .unwrap_or_else(|| row.path.display().to_string());
+        let label = format!("{icon} {name}");
+        let text_bounds = Bounds::new(
+            row_bounds.origin.x + 6.0 + indent,
+            row_bounds.origin.y,
+            (row_bounds.size.width - indent - 12.0).max(0.0),
+            row_height,
+        );
+        Text::new(label)
+            .font_size(theme::font_size::XS)
+            .color(if is_active {
+                theme::text::PRIMARY
+            } else {
+                theme::text::SECONDARY
+            })
+            .no_wrap()
+            .paint(text_bounds, cx);
+    }
+
+    region.end(&mut cx.scene);
+
+    if region.can_scroll() {
+        let track_bounds = Bounds::new(
+            list_bounds.origin.x + list_bounds.size.width - FILE_TREE_SCROLLBAR_WIDTH,
+            list_bounds.origin.y,
+            FILE_TREE_SCROLLBAR_WIDTH,
+            list_bounds.size.height,
+        );
+        region.draw_scrollbar(
+            &mut cx.scene,
+            track_bounds,
+            theme::bg::SURFACE,
+            theme::text::MUTED,
+            FILE_TREE_SCROLLBAR_WIDTH / 2.0,
+        );
+    }
+}
+
+fn paint_editor_workspace_panel(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintContext) {
+    let toolbar_height = FILE_EDITOR_TOOLBAR_HEIGHT;
+    let status_height = theme::font_size::XS * 1.4;
+    let gap = FILE_EDITOR_PANEL_GAP;
+
+    let mut items = vec![ColumnItem::Fixed(toolbar_height)];
     if root.file_editor.status.is_some() {
-        idx += 1; // gap
-        let status_bounds = *bounds_list.get(idx).unwrap_or(&content_bounds);
-        idx += 1;
+        items.push(ColumnItem::Fixed(status_height));
+    }
+    items.push(ColumnItem::Flex(1.0));
+
+    let sections = column_bounds(bounds, &items, gap);
+    let toolbar_bounds = *sections.get(0).unwrap_or(&bounds);
+    let mut index = 1usize;
+    let status_bounds = if root.file_editor.status.is_some() {
+        let bounds = *sections.get(index).unwrap_or(&bounds);
+        index += 1;
+        Some(bounds)
+    } else {
+        None
+    };
+    let workspace_bounds = *sections.get(index).unwrap_or(&bounds);
+
+    paint_file_editor_toolbar(root, toolbar_bounds, cx);
+
+    if let Some(bounds) = status_bounds {
         let status_color = if root.file_editor.status_is_error {
             theme::status::ERROR
         } else {
@@ -6068,48 +6991,387 @@ fn paint_file_editor_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut Paint
             Text::new(status)
                 .font_size(theme::font_size::XS)
                 .color(status_color)
-                .paint(status_bounds, cx);
+                .paint(bounds, cx);
         }
     }
 
-    idx += 1; // gap before editor
-    let editor_bounds = *bounds_list.get(idx).unwrap_or(&content_bounds);
-    root.file_editor.editor_bounds = editor_bounds;
+    paint_editor_groups(root, workspace_bounds, cx);
+}
+
+fn paint_file_editor_toolbar(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintContext) {
+    let gap = 6.0;
+    let button_font = theme::font_size::SM;
+    let mut measure = |label: &str| {
+        cx.text
+            .measure_styled_mono(label, button_font, FontStyle::default())
+            + 24.0
+    };
+    let open_width = measure("Open").max(64.0);
+    let reload_width = measure("Reload").max(72.0);
+    let save_width = measure("Save").max(64.0);
+    let split_h_width = measure("Split H").max(72.0);
+    let split_v_width = measure("Split V").max(72.0);
 
     let row_items = [
         wgpui::RowItem::flex(1.0),
-        wgpui::RowItem::fixed(button_width),
-        wgpui::RowItem::fixed(button_width),
+        wgpui::RowItem::fixed(open_width),
+        wgpui::RowItem::fixed(reload_width),
+        wgpui::RowItem::fixed(save_width),
+        wgpui::RowItem::fixed(split_h_width),
+        wgpui::RowItem::fixed(split_v_width),
     ];
     let row_bounds = aligned_row_bounds(
-        bar_bounds,
-        button_height,
+        bounds,
+        FILE_EDITOR_TOOLBAR_HEIGHT,
         &row_items,
         gap,
         JustifyContent::FlexStart,
         AlignItems::Center,
     );
-    let path_bounds = *row_bounds.get(0).unwrap_or(&bar_bounds);
-    let reload_bounds = *row_bounds.get(1).unwrap_or(&bar_bounds);
-    let open_bounds = *row_bounds.get(2).unwrap_or(&bar_bounds);
+
+    let path_bounds = *row_bounds.get(0).unwrap_or(&bounds);
+    let open_bounds = *row_bounds.get(1).unwrap_or(&bounds);
+    let reload_bounds = *row_bounds.get(2).unwrap_or(&bounds);
+    let save_bounds = *row_bounds.get(3).unwrap_or(&bounds);
+    let split_h_bounds = *row_bounds.get(4).unwrap_or(&bounds);
+    let split_v_bounds = *row_bounds.get(5).unwrap_or(&bounds);
 
     root.file_editor.path_bounds = path_bounds;
     root.file_editor.open_bounds = open_bounds;
     root.file_editor.reload_bounds = reload_bounds;
+    root.file_editor.save_bounds = save_bounds;
+    root.file_editor.split_h_bounds = split_h_bounds;
+    root.file_editor.split_v_bounds = split_v_bounds;
+
     root.file_editor
         .path_input
         .set_max_width(path_bounds.size.width);
 
     let has_path = !root.file_editor.path_input.get_value().trim().is_empty();
+    let has_tab = root.file_editor.active_tab_id().is_some();
     root.file_editor.open_button.set_disabled(!has_path);
-    root.file_editor
-        .reload_button
-        .set_disabled(root.file_editor.current_path.is_none());
+    root.file_editor.reload_button.set_disabled(!has_tab);
+    root.file_editor.save_button.set_disabled(!has_tab);
 
     root.file_editor.path_input.paint(path_bounds, cx);
-    root.file_editor.reload_button.paint(reload_bounds, cx);
     root.file_editor.open_button.paint(open_bounds, cx);
-    root.file_editor.editor.paint(editor_bounds, cx);
+    root.file_editor.reload_button.paint(reload_bounds, cx);
+    root.file_editor.save_button.paint(save_bounds, cx);
+    root.file_editor
+        .split_horizontal_button
+        .paint(split_h_bounds, cx);
+    root.file_editor
+        .split_vertical_button
+        .paint(split_v_bounds, cx);
+}
+
+fn paint_editor_groups(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintContext) {
+    let split = root.file_editor.split_direction;
+    let group_count = if matches!(split, SplitDirection::None) { 1 } else { 2 };
+    let workspace_ready = root.file_editor.workspace_root.is_some();
+
+    if root.file_editor.groups.len() < group_count {
+        while root.file_editor.groups.len() < group_count {
+            root.file_editor.groups.push(EditorGroup::new());
+        }
+    }
+    if root.file_editor.active_group >= group_count {
+        root.file_editor.active_group = 0;
+    }
+
+    let group_bounds_list = match split {
+        SplitDirection::Horizontal => column_bounds(
+            bounds,
+            &[ColumnItem::Flex(1.0), ColumnItem::Flex(1.0)],
+            FILE_EDITOR_SPLIT_GAP,
+        ),
+        SplitDirection::Vertical => aligned_row_bounds(
+            bounds,
+            bounds.size.height,
+            &[wgpui::RowItem::flex(1.0), wgpui::RowItem::flex(1.0)],
+            FILE_EDITOR_SPLIT_GAP,
+            JustifyContent::FlexStart,
+            AlignItems::Stretch,
+        ),
+        SplitDirection::None => vec![bounds],
+    };
+
+    let active_group = root.file_editor.active_group;
+    let tabs = &mut root.file_editor.tabs;
+    let groups = &mut root.file_editor.groups;
+
+    for (index, group_bounds) in group_bounds_list.into_iter().enumerate() {
+        if let Some(group) = groups.get_mut(index) {
+            group.group_bounds = group_bounds;
+            let group_sections = column_bounds(
+                group_bounds,
+                &[ColumnItem::Fixed(FILE_EDITOR_TAB_HEIGHT), ColumnItem::Flex(1.0)],
+                0.0,
+            );
+            let tab_bar_bounds = *group_sections.get(0).unwrap_or(&group_bounds);
+            let editor_bounds = *group_sections.get(1).unwrap_or(&group_bounds);
+            group.tab_bar_bounds = tab_bar_bounds;
+            group.editor_bounds = editor_bounds;
+            group.tab_hits.clear();
+
+            if group.active_tab.is_none() {
+                group.active_tab = group.tabs.first().copied();
+            }
+
+            paint_tab_bar(tabs, group, tab_bar_bounds, index == active_group, cx);
+            paint_editor_content(tabs, workspace_ready, group, editor_bounds, cx);
+        }
+    }
+
+    for group in groups.iter_mut().skip(group_count) {
+        group.group_bounds = Bounds::ZERO;
+        group.tab_bar_bounds = Bounds::ZERO;
+        group.editor_bounds = Bounds::ZERO;
+        group.tab_hits.clear();
+    }
+}
+
+fn paint_tab_bar(
+    tabs: &HashMap<usize, EditorTab>,
+    group: &mut EditorGroup,
+    bounds: Bounds,
+    is_active_group: bool,
+    cx: &mut PaintContext,
+) {
+    if group.tabs.is_empty() {
+        return;
+    }
+
+    let font_size = theme::font_size::XS;
+    let padding = FILE_EDITOR_TAB_PADDING;
+    let min_width = 90.0;
+    let max_width = 220.0;
+
+    let mut labels = Vec::with_capacity(group.tabs.len());
+    let mut widths = Vec::with_capacity(group.tabs.len());
+
+    for tab_id in &group.tabs {
+        let Some(tab) = tabs.get(tab_id) else {
+            labels.push("Missing".to_string());
+            widths.push(min_width);
+            continue;
+        };
+        let mut label = tab.title.clone();
+        if tab.loading {
+            label.push_str(" (loading)");
+        }
+        if tab.is_dirty() {
+            label.push_str(" *");
+        }
+        let label_width =
+            cx.text
+                .measure_styled_mono(&label, font_size, FontStyle::default());
+        let width = (label_width + padding * 2.0).clamp(min_width, max_width);
+        labels.push(label);
+        widths.push(width);
+    }
+
+    let total_width: f32 = widths.iter().sum::<f32>()
+        + FILE_EDITOR_TAB_GAP * (widths.len().saturating_sub(1) as f32);
+    if total_width > bounds.size.width && !widths.is_empty() {
+        let available =
+            (bounds.size.width - FILE_EDITOR_TAB_GAP * (widths.len().saturating_sub(1) as f32))
+                .max(min_width);
+        let uniform = (available / widths.len() as f32).max(min_width);
+        for width in widths.iter_mut() {
+            *width = uniform;
+        }
+    }
+
+    let row_items = widths
+        .iter()
+        .map(|width| wgpui::RowItem::fixed(*width))
+        .collect::<Vec<_>>();
+    let row_bounds = aligned_row_bounds(
+        bounds,
+        FILE_EDITOR_TAB_HEIGHT,
+        &row_items,
+        FILE_EDITOR_TAB_GAP,
+        JustifyContent::FlexStart,
+        AlignItems::Center,
+    );
+
+    for ((tab_id, label), tab_bounds) in group
+        .tabs
+        .iter()
+        .zip(labels.iter())
+        .zip(row_bounds.into_iter())
+    {
+        let is_active = group.active_tab == Some(*tab_id);
+        let bg = if is_active {
+            theme::bg::SELECTED
+        } else if is_active_group {
+            theme::bg::SURFACE
+        } else {
+            theme::bg::APP
+        };
+        cx.scene.draw_quad(
+            Quad::new(tab_bounds)
+                .with_background(bg)
+                .with_border(theme::border::DEFAULT, 1.0),
+        );
+
+        let text_bounds = Bounds::new(
+            tab_bounds.origin.x + 8.0,
+            tab_bounds.origin.y,
+            (tab_bounds.size.width - 16.0).max(0.0),
+            tab_bounds.size.height,
+        );
+        Text::new(label)
+            .font_size(font_size)
+            .color(if is_active {
+                theme::text::PRIMARY
+            } else {
+                theme::text::MUTED
+            })
+            .no_wrap()
+            .paint(text_bounds, cx);
+
+        group.tab_hits.push(TabHit {
+            tab_id: *tab_id,
+            bounds: tab_bounds,
+        });
+    }
+}
+
+fn paint_editor_content(
+    tabs: &mut HashMap<usize, EditorTab>,
+    workspace_ready: bool,
+    group: &mut EditorGroup,
+    bounds: Bounds,
+    cx: &mut PaintContext,
+) {
+    if let Some(tab_id) = group.active_tab {
+        if let Some(tab) = tabs.get_mut(&tab_id) {
+            tab.editor.paint(bounds, cx);
+            return;
+        }
+    }
+
+    let hint = if workspace_ready {
+        "Open a file from the project tree or enter a path."
+    } else {
+        "Open a workspace to start editing."
+    };
+    Text::new(hint)
+        .font_size(theme::font_size::XS)
+        .color(theme::text::MUTED)
+        .paint(bounds, cx);
+}
+
+fn build_file_node(path: &Path, remaining: &mut usize) -> FileNode {
+    let name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .map(|name| name.to_string())
+        .unwrap_or_else(|| path.display().to_string());
+    let is_dir = path.is_dir();
+    if *remaining == 0 {
+        return FileNode {
+            path: path.to_path_buf(),
+            name,
+            is_dir,
+            expanded: false,
+            children: Vec::new(),
+        };
+    }
+
+    *remaining = remaining.saturating_sub(1);
+
+    let mut node = FileNode {
+        path: path.to_path_buf(),
+        name,
+        is_dir,
+        expanded: false,
+        children: Vec::new(),
+    };
+
+    if !is_dir || *remaining == 0 {
+        return node;
+    }
+
+    let mut dirs = Vec::new();
+    let mut files = Vec::new();
+    if let Ok(entries) = std::fs::read_dir(path) {
+        for entry in entries.flatten() {
+            if *remaining == 0 {
+                break;
+            }
+            let file_name = entry.file_name().to_string_lossy().to_string();
+            if is_ignored_entry(&file_name) {
+                continue;
+            }
+            let entry_path = entry.path();
+            let child = build_file_node(&entry_path, remaining);
+            if child.is_dir {
+                dirs.push(child);
+            } else {
+                files.push(child);
+            }
+        }
+    }
+
+    dirs.sort_by(|a, b| a.name.cmp(&b.name));
+    files.sort_by(|a, b| a.name.cmp(&b.name));
+    node.children.extend(dirs);
+    node.children.extend(files);
+    node
+}
+
+fn is_ignored_entry(name: &str) -> bool {
+    matches!(
+        name,
+        ".git"
+            | "target"
+            | "node_modules"
+            | ".idea"
+            | ".vscode"
+            | ".DS_Store"
+            | ".cache"
+    )
+}
+
+fn toggle_tree_node(node: &mut FileNode, target: &Path) -> bool {
+    if node.path == target {
+        node.expanded = !node.expanded;
+        return true;
+    }
+
+    for child in &mut node.children {
+        if child.is_dir && toggle_tree_node(child, target) {
+            return true;
+        }
+    }
+    false
+}
+
+fn collect_tree_rows(node: &FileNode, depth: usize, rows: &mut Vec<FileTreeRow>) {
+    for child in &node.children {
+        rows.push(FileTreeRow {
+            path: child.path.clone(),
+            depth,
+            is_dir: child.is_dir,
+            expanded: child.expanded,
+            bounds: Bounds::ZERO,
+        });
+        if child.is_dir && child.expanded {
+            collect_tree_rows(child, depth + 1, rows);
+        }
+    }
+}
+
+fn is_save_chord(modifiers: &Modifiers, key: &Key) -> bool {
+    if modifiers.alt {
+        return false;
+    }
+    let has_modifier = modifiers.ctrl || modifiers.meta;
+    let is_s = matches!(key, Key::Character(value) if value.eq_ignore_ascii_case("s"));
+    has_modifier && is_s
 }
 
 impl DesktopRoot {
@@ -7345,6 +8607,7 @@ fn format_event(event: &AppEvent) -> String {
             UserAction::ThreadsLoadMore { .. } => "ThreadsLoadMore".to_string(),
             UserAction::ThreadOpen { thread_id } => format!("ThreadOpen ({thread_id})"),
             UserAction::OpenFile { path } => format!("OpenFile ({path})"),
+            UserAction::SaveFile { path, .. } => format!("SaveFile ({path})"),
             UserAction::Interrupt { .. } => "Interrupt".to_string(),
             UserAction::FullAutoToggle { enabled, .. } => {
                 if *enabled {
@@ -7391,6 +8654,10 @@ fn format_event(event: &AppEvent) -> String {
         AppEvent::FileOpened { path, .. } => format!("FileOpened ({})", path.display()),
         AppEvent::FileOpenFailed { path, error } => {
             format!("FileOpenFailed ({}: {})", path.display(), error)
+        }
+        AppEvent::FileSaved { path } => format!("FileSaved ({})", path.display()),
+        AppEvent::FileSaveFailed { path, error } => {
+            format!("FileSaveFailed ({}: {})", path.display(), error)
         }
     }
 }

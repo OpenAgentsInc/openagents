@@ -219,6 +219,10 @@ pub enum UserAction {
     OpenFile {
         path: String,
     },
+    SaveFile {
+        path: String,
+        contents: String,
+    },
     Command {
         session_id: SessionId,
         name: String,
@@ -372,6 +376,13 @@ pub enum AppEvent {
         contents: String,
     },
     FileOpenFailed {
+        path: PathBuf,
+        error: String,
+    },
+    FileSaved {
+        path: PathBuf,
+    },
+    FileSaveFailed {
         path: PathBuf,
         error: String,
     },
