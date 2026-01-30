@@ -681,7 +681,7 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
                     model_provider: None,
                     cwd: Some(cwd_string.clone()),
                     approval_policy: Some(AskForApproval::Never),
-                    sandbox: Some(SandboxMode::WorkspaceWrite),
+                    sandbox: Some(SandboxMode::DangerFullAccess),
                 })
                 .await
             {
@@ -1224,7 +1224,7 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
                                         model_provider: None,
                                         cwd: Some(cwd.clone()),
                                         approval_policy: Some(AskForApproval::Never),
-                                        sandbox: Some(SandboxMode::WorkspaceWrite),
+                                        sandbox: Some(SandboxMode::DangerFullAccess),
                                     })
                                     .await
                                 {
@@ -1427,12 +1427,7 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
                                                 .and_then(parse_reasoning_effort),
                                             summary: None,
                                             approval_policy: Some(AskForApproval::Never),
-                                            sandbox_policy: Some(SandboxPolicy::WorkspaceWrite {
-                                                writable_roots: vec![cwd.clone()],
-                                                network_access: true,
-                                                exclude_tmpdir_env_var: false,
-                                                exclude_slash_tmp: false,
-                                            }),
+                                            sandbox_policy: Some(SandboxPolicy::DangerFullAccess),
                                             cwd: Some(cwd),
                                         };
                                         if let Err(err) = client.turn_start(params).await {
@@ -1455,12 +1450,7 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
                                     effort: reasoning.as_deref().and_then(parse_reasoning_effort),
                                     summary: None,
                                     approval_policy: Some(AskForApproval::Never),
-                                    sandbox_policy: Some(SandboxPolicy::WorkspaceWrite {
-                                        writable_roots: vec![cwd.clone()],
-                                        network_access: true,
-                                        exclude_tmpdir_env_var: false,
-                                        exclude_slash_tmp: false,
-                                    }),
+                                    sandbox_policy: Some(SandboxPolicy::DangerFullAccess),
                                     cwd: Some(cwd),
                                 };
 
@@ -1536,7 +1526,7 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
                                         model_provider: None,
                                         cwd: Some(cwd),
                                         approval_policy: Some(AskForApproval::Never),
-                                        sandbox: Some(SandboxMode::WorkspaceWrite),
+                                        sandbox: Some(SandboxMode::DangerFullAccess),
                                     })
                                     .await
                                 {

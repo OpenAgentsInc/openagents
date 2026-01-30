@@ -73,15 +73,12 @@ impl MarkdownRenderer {
 
             MarkdownBlock::CodeBlock { lines, .. } => {
                 let metrics = self.code_block_metrics();
-                let content_height: f32 = lines
-                    .iter()
-                    .map(|l| {
-                        l.spans
-                            .first()
-                            .map(|s| s.style.font_size * l.line_height)
-                            .unwrap_or(self.config.base_font_size * theme::line_height::NORMAL)
-                    })
-                    .sum();
+                let content_height = self.measure_lines(
+                    lines,
+                    max_width - metrics.padding * 2.0,
+                    0,
+                    text_system,
+                );
                 content_height
                     + metrics.padding * 2.0
                     + metrics.header_height
@@ -579,16 +576,12 @@ impl MarkdownRenderer {
         code_blocks: Option<&mut Vec<CodeBlockLayout>>,
     ) -> f32 {
         let metrics = self.code_block_metrics();
-
-        let content_height: f32 = lines
-            .iter()
-            .map(|l| {
-                l.spans
-                    .first()
-                    .map(|s| s.style.font_size * l.line_height)
-                    .unwrap_or(self.config.base_font_size * theme::line_height::NORMAL)
-            })
-            .sum();
+        let content_height = self.measure_lines(
+            lines,
+            max_width - metrics.padding * 2.0,
+            0,
+            text_system,
+        );
 
         let total_height = content_height + metrics.padding * 2.0 + metrics.header_height;
 
@@ -626,15 +619,18 @@ impl MarkdownRenderer {
 
         if let Some(lang) = language.as_ref() {
             let label_x = header_bounds.origin.x + metrics.padding;
-            let label_y = header_bounds.origin.y + header_bounds.size.height * 0.5
-                - theme::font_size::XS * 0.55;
             let label_color = theme::text::MUTED.with_alpha(opacity);
-            let label = text_system.layout(
+            let mut label = text_system.layout(
                 lang,
-                Point::new(label_x, label_y),
+                Point::ZERO,
                 theme::font_size::XS,
                 label_color,
             );
+            let label_bounds = label.bounds();
+            let label_y = header_bounds.origin.y
+                + (header_bounds.size.height - label_bounds.size.height) * 0.5
+                - label_bounds.origin.y;
+            label.origin = Point::new(label_x - label_bounds.origin.x, label_y);
             scene.draw_text(label);
         }
 
