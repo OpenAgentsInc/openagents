@@ -1583,7 +1583,19 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
                         UserAction::OpenFile { path } => {
                             let proxy = proxy_actions.clone();
                             let cwd = cwd_for_actions.clone();
-                            let path_buf = PathBuf::from(path.trim());
+                            let raw = path.trim();
+                            let path_buf = if raw == "~" || raw.starts_with("~/") {
+                                let home = std::env::var("HOME").unwrap_or_default();
+                                if home.is_empty() {
+                                    PathBuf::from(raw)
+                                } else if raw == "~" {
+                                    PathBuf::from(home)
+                                } else {
+                                    PathBuf::from(home).join(&raw[2..])
+                                }
+                            } else {
+                                PathBuf::from(raw)
+                            };
                             let resolved = if path_buf.is_absolute() {
                                 path_buf
                             } else {

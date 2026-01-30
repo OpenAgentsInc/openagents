@@ -1881,6 +1881,7 @@ impl FileEditorPaneState {
                 *pending_open_submit.borrow_mut() = true;
             });
         path_input.set_mono(true);
+        path_input.set_value("~/code/openagents/README.md");
 
         let pending_open_click = pending_open.clone();
         let open_button = Button::new("Open")

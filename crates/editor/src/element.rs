@@ -3,6 +3,7 @@ use wgpui::{
     Bounds, Cursor, EventContext, Hsla, InputEvent, Key, MouseButton, NamedKey, PaintContext,
     Point, Quad, copy_to_clipboard, theme,
 };
+use wgpui::text::FontStyle;
 
 use crate::caret::Position;
 use crate::display_map::DisplayMap;
@@ -203,7 +204,10 @@ impl EditorElement {
 
     fn update_layout(&mut self, bounds: Bounds, cx: &mut PaintContext) {
         self.bounds = bounds;
-        self.char_width = cx.text.measure("M", self.font_size).max(1.0);
+        self.char_width = cx
+            .text
+            .measure_styled_mono("M", self.font_size, FontStyle::default())
+            .max(1.0);
         self.line_height = self.font_size * 1.4;
         let line_count = self.editor.buffer().line_count();
         let digits = line_count.to_string().len().max(2);
@@ -396,7 +400,7 @@ impl EditorElement {
         let x = base_x + (start_col.saturating_sub(display_start)) as f32 * self.char_width;
         let run = cx
             .text
-            .layout(&segment, Point::new(x, text_y), self.font_size, color);
+            .layout_mono(&segment, Point::new(x, text_y), self.font_size, color);
         cx.scene.draw_text(run);
     }
 }
@@ -574,7 +578,7 @@ impl Component for EditorElement {
                     + self.gutter_width
                     - self.gutter_padding
                     - (line_number.chars().count() as f32 * self.char_width);
-                let number_run = cx.text.layout(
+                let number_run = cx.text.layout_mono(
                     &line_number,
                     Point::new(number_x, text_y),
                     self.font_size,
@@ -608,7 +612,7 @@ impl Component for EditorElement {
                         Quad::new(highlight_bounds)
                             .with_background(theme::accent::PRIMARY.with_alpha(0.12)),
                     );
-                    let run = cx.text.layout(
+                    let run = cx.text.layout_mono(
                         &composition.text,
                         Point::new(x, text_y),
                         self.font_size,
