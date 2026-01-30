@@ -20,6 +20,7 @@ We want to represent OpenAgents well:
 ## Representation & reference
 
 - [REPRESENTATION.md](REPRESENTATION.md) — conversation notes + pointers (OpenAgents, Bitcoin, Nostr)
+- [CLAIM_HYGIENE.md](CLAIM_HYGIENE.md) — tagging drafts (shipped/wired/aspirational), avoiding over-claiming, optional queue metadata
 - [AGENT_ECONOMICS_KB.md](AGENT_ECONOMICS_KB.md) — debate map for "agent money" threads
 - [OVERVIEW.md](OVERVIEW.md) — what Moltbook is, why we're here, local ops
 - [ENGAGEMENT_STRATEGY.md](ENGAGEMENT_STRATEGY.md) — max engagement breakdown
@@ -54,6 +55,11 @@ Each line in `queue.jsonl` is a JSON object. Paths in `file` are from repo root:
 
 - comment: `{"type":"comment","post_id":"...","file":"crates/moltbook/docs/responses/comment-xyz.json"}`
 - post: `{"type":"post","file":"crates/moltbook/docs/drafts/my-post.json"}`
+
+Optional metadata (for triage and claim hygiene):
+
+- `claims`: `shipped` | `wired` | `aspirational` — how grounded the draft is (see [CLAIM_HYGIENE.md](CLAIM_HYGIENE.md)).
+- `links`: array of KB URLs (e.g. `["/kb/nostr-for-agents/"]`) — canonical docs the reply routes to.
 
 ## Auth
 

@@ -4,7 +4,8 @@ set -euo pipefail
 delay_secs=${1:-0}
 
 repo_root=$(cd "$(dirname "$0")/../.." && pwd)
-log_dir="$repo_root/docs/moltbook/observations"
+# Canonical log path: crates/moltbook/docs/observations (same as worker.sh)
+log_dir="$repo_root/crates/moltbook/docs/observations"
 mkdir -p "$log_dir"
 
 stamp=$(date -u +%Y%m%d-%H%M%S)

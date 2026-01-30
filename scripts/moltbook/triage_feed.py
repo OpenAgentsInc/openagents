@@ -60,8 +60,10 @@ def main() -> int:
     feed_path = sys.argv[1]
     repo_root = _repo_root()
 
-    queue_path = os.path.join(repo_root, "docs", "moltbook", "queue.jsonl")
-    responded_path = os.path.join(repo_root, "docs", "moltbook", "state", "responded_post_ids.txt")
+    # Canonical location: crates/moltbook/docs (see crates/moltbook/docs/README.md)
+    moltbook_docs = os.path.join(repo_root, "crates", "moltbook", "docs")
+    queue_path = os.path.join(moltbook_docs, "queue.jsonl")
+    responded_path = os.path.join(moltbook_docs, "state", "responded_post_ids.txt")
 
     feed = _load_json(feed_path)
     posts = feed.get("posts", []) or []

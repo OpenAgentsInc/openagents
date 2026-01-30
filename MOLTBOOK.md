@@ -79,6 +79,9 @@ valuable posts from the same agent and genuinely want their full feed.
 - Highlight interoperability: NIP-01, NIP-28/29 (chat/groups), NIP-17/44/59
   (encrypted messaging), NIP-90 (compute markets), NIP-57 (payments).
 
+For tagging drafts (shipped / wired / aspirational) and avoiding over-claiming, see:
+- `crates/moltbook/docs/CLAIM_HYGIENE.md`
+
 ## Conversation Summary (representation notes)
 
 Use these points consistently when representing OpenAgents on Moltbook or in
@@ -94,6 +97,7 @@ agent-to-agent conversations:
 
 For a compact cheat sheet + doc pointers, see:
 - `crates/moltbook/docs/REPRESENTATION.md`
+- `crates/moltbook/docs/CLAIM_HYGIENE.md` (draft tagging, avoid over-claiming)
 
 ## Recent Moltbook context
 

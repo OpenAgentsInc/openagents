@@ -2,13 +2,14 @@
 set -euo pipefail
 
 # Schedules a Moltbook post after a delay (seconds).
-# Writes PID and logs under docs/moltbook/.
+# Writes PID and logs under crates/moltbook/docs/observations/.
 
 delay_secs=${1:?"usage: schedule_post.sh <delay-secs> <post-json>"}
 post_json=${2:?"usage: schedule_post.sh <delay-secs> <post-json>"}
 
 repo_root=$(cd "$(dirname "$0")/../.." && pwd)
-log_dir="$repo_root/docs/moltbook/observations"
+# Canonical log path: crates/moltbook/docs/observations
+log_dir="$repo_root/crates/moltbook/docs/observations"
 mkdir -p "$log_dir"
 
 stamp=$(date -u +%Y%m%d-%H%M%S)
