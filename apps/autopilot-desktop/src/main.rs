@@ -85,6 +85,28 @@ fn parse_reasoning_effort(value: &str) -> Option<ReasoningEffort> {
     }
 }
 
+fn resolve_path(raw: &str, cwd: &str) -> PathBuf {
+    let trimmed = raw.trim();
+    let path_buf = if trimmed == "~" || trimmed.starts_with("~/") {
+        let home = std::env::var("HOME").unwrap_or_default();
+        if home.is_empty() {
+            PathBuf::from(trimmed)
+        } else if trimmed == "~" {
+            PathBuf::from(home)
+        } else {
+            PathBuf::from(home).join(&trimmed[2..])
+        }
+    } else {
+        PathBuf::from(trimmed)
+    };
+
+    if path_buf.is_absolute() {
+        path_buf
+    } else {
+        PathBuf::from(cwd).join(path_buf)
+    }
+}
+
 fn build_shortcut_registry() -> ShortcutRegistry {
     let mut registry = ShortcutRegistry::new();
 
@@ -1776,24 +1798,7 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
                         UserAction::OpenFile { path } => {
                             let proxy = proxy_actions.clone();
                             let cwd = cwd_for_actions.clone();
-                            let raw = path.trim();
-                            let path_buf = if raw == "~" || raw.starts_with("~/") {
-                                let home = std::env::var("HOME").unwrap_or_default();
-                                if home.is_empty() {
-                                    PathBuf::from(raw)
-                                } else if raw == "~" {
-                                    PathBuf::from(home)
-                                } else {
-                                    PathBuf::from(home).join(&raw[2..])
-                                }
-                            } else {
-                                PathBuf::from(raw)
-                            };
-                            let resolved = if path_buf.is_absolute() {
-                                path_buf
-                            } else {
-                                PathBuf::from(cwd).join(path_buf)
-                            };
+                            let resolved = resolve_path(&path, &cwd);
                             match std::fs::read_to_string(&resolved) {
                                 Ok(contents) => {
                                     let _ = proxy.send_event(AppEvent::FileOpened {
@@ -1803,6 +1808,23 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
                                 }
                                 Err(err) => {
                                     let _ = proxy.send_event(AppEvent::FileOpenFailed {
+                                        path: resolved,
+                                        error: err.to_string(),
+                                    });
+                                }
+                            }
+                        }
+                        UserAction::SaveFile { path, contents } => {
+                            let proxy = proxy_actions.clone();
+                            let cwd = cwd_for_actions.clone();
+                            let resolved = resolve_path(&path, &cwd);
+                            match std::fs::write(&resolved, contents) {
+                                Ok(_) => {
+                                    let _ =
+                                        proxy.send_event(AppEvent::FileSaved { path: resolved });
+                                }
+                                Err(err) => {
+                                    let _ = proxy.send_event(AppEvent::FileSaveFailed {
                                         path: resolved,
                                         error: err.to_string(),
                                     });

@@ -40,11 +40,11 @@ Exit criteria
 
 Purpose: deliver the Zed-style *workspace frame* that everything else plugs into.
 
-Deliverables
-- **Workspace model**: worktree(s), file tree, tabs, panes (dockable panels).
-- **Project panel** with file tree, basic open/reveal.
-- **Tabs + splits**: pane container with horizontal/vertical splits.
-- **File open/save** pipeline (disk I/O, dirty state).
+Deliverables (adapted to pane + hotbar system)
+- **Workspace model**: worktree(s) + file tree rooted in the active workspace, surfaced inside the **File Editor pane** (hotbar).
+- **Project panel** inside the File Editor pane: file tree with expand/collapse, open/reveal, and selection.
+- **Tabs + splits** within the File Editor pane: tab bar + horizontal/vertical split groups, using the pane system for window-level docking and hotbar activation.
+- **File open/save** pipeline: open from file tree (plus direct path open), edit in-place, dirty tracking, save to disk, and status feedback.
 
 Where to build
 - New or expanded crates: `crates/workspace`, `crates/project`, `crates/panel` (names flexible).
@@ -190,4 +190,3 @@ Exit criteria
 - `crates/editor` and `crates/editor::EditorView` are a real foundation and should be expanded, not replaced.
 - `crates/vim` provides a full editor-agnostic vim emulation layer ready for integration with `crates/editor`.
 - WGPUI already contains action/keymap, focus, layout, and testing primitives; the main gap is **wiring them into the editor workspace**.
-
