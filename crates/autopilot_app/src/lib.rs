@@ -209,6 +209,18 @@ pub enum UserAction {
         relays: Vec<String>,
         provider: Option<String>,
     },
+    MoltbookRefresh,
+    MoltbookSay {
+        text: String,
+        submolt: Option<String>,
+    },
+    MoltbookComment {
+        post_id: String,
+        text: String,
+    },
+    MoltbookUpvote {
+        post_id: String,
+    },
     ThreadsRefresh,
     ThreadsLoadMore {
         cursor: Option<String>,
@@ -306,6 +318,27 @@ pub struct DvmHistorySnapshot {
     pub last_error: Option<String>,
 }
 
+/// Summary of a Moltbook post for the UI feed.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MoltbookPostSummary {
+    pub id: String,
+    pub title: Option<String>,
+    pub content_preview: Option<String>,
+    pub author_name: Option<String>,
+    pub score: Option<i64>,
+    pub comment_count: Option<u64>,
+    pub created_at: Option<String>,
+    pub submolt: Option<String>,
+}
+
+/// Summary of the current Moltbook agent profile (stats for engagement UI).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct MoltbookProfileSummary {
+    pub agent_name: String,
+    pub posts_count: u64,
+    pub comments_count: u64,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ThreadSummary {
     pub id: String,
@@ -360,6 +393,15 @@ pub enum AppEvent {
     },
     Nip90Log {
         message: String,
+    },
+    MoltbookFeedUpdated {
+        posts: Vec<MoltbookPostSummary>,
+    },
+    MoltbookLog {
+        message: String,
+    },
+    MoltbookProfileLoaded {
+        profile: MoltbookProfileSummary,
     },
     ThreadsUpdated {
         threads: Vec<ThreadSummary>,
