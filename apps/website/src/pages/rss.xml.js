@@ -3,7 +3,12 @@ import rss from '@astrojs/rss';
 import { SITE_DESCRIPTION, SITE_TITLE } from '../consts';
 
 export async function GET(context) {
-	const posts = await getCollection('blog');
+	let posts = [];
+	try {
+		posts = await getCollection('blog');
+	} catch {
+		// Blog collection may be empty or not yet used.
+	}
 	return rss({
 		title: SITE_TITLE,
 		description: SITE_DESCRIPTION,
