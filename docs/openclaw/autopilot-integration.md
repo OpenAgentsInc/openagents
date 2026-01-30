@@ -1,17 +1,17 @@
-# Autopilot x Moltbot integration ideas
+# Autopilot x OpenClaw integration ideas
 
-This note is based on the Moltbot repo at `~/code/moltbot` and highlights
+This note is based on the OpenClaw repo at `~/code/openclaw` and highlights
 integration surfaces that look stable and intended for extension. It focuses on
 places where Autopilot can either:
-- be invoked from Moltbot (delegate a code task), or
-- use Moltbot as its messaging/control plane (deliver updates, ask for approvals,
+- be invoked from OpenClaw (delegate a code task), or
+- use OpenClaw as its messaging/control plane (deliver updates, ask for approvals,
   access nodes/tools).
 
-## Moltbot surfaces that are designed for integration
+## OpenClaw surfaces that are designed for integration
 
 1) Gateway WS protocol (operator or node clients)
 - Docs: `docs/concepts/architecture.md`, `docs/gateway/protocol.md`.
-- Moltbot already treats the Gateway as the control plane for operators and
+- OpenClaw already treats the Gateway as the control plane for operators and
   nodes. Autopilot can connect as:
   - operator: send `agent` requests, receive streaming `agent` events, and
     post messages to channels.
@@ -21,13 +21,13 @@ places where Autopilot can either:
 2) Gateway HTTP endpoints
 - Tools invoke API: `docs/gateway/tools-invoke-http-api.md` (`POST /tools/invoke`).
 - OpenResponses endpoint: `docs/gateway/openresponses-http-api.md`.
-- This is the cleanest way for Autopilot to call Moltbot tools without running
+- This is the cleanest way for Autopilot to call OpenClaw tools without running
   a full agent turn (message sending, sessions, nodes, browser, etc.).
 
 3) Plugin system (tools, gateway methods, HTTP handlers, services, hooks)
 - Docs: `docs/plugin.md`, `docs/plugins/agent-tools.md`.
 - Types: `src/plugins/types.ts`.
-- Tools are collected in `src/agents/moltbot-tools.ts` and merged with plugin
+- Tools are collected in `src/agents/openclaw-tools.ts` and merged with plugin
   tools via `resolvePluginTools`.
 - Plugins can also register Gateway RPC methods and background services.
 
@@ -35,7 +35,7 @@ places where Autopilot can either:
 - Docs: `docs/concepts/agent-loop.md` (hook list).
 - Hooks in code: `src/plugins/types.ts`.
 - Useful for routing certain requests to Autopilot and for capturing/normalizing
-  Autopilot outputs into Moltbot sessions.
+  Autopilot outputs into OpenClaw sessions.
 
 5) Sub-agents and session tools
 - Docs: `docs/tools/subagents.md`, `docs/concepts/session-tool.md`.
@@ -52,8 +52,8 @@ places where Autopilot can either:
 
 7) Skills (prompt-time instructions)
 - Docs: `docs/tools/skills.md`.
-- If Autopilot is integrated as a tool, a skill can teach the Moltbot agent
-  when and how to call it, with gating via `metadata.moltbot.requires`.
+- If Autopilot is integrated as a tool, a skill can teach the OpenClaw agent
+  when and how to call it, with gating via `metadata.openclaw.requires`.
 
 ## Autopilot app surfaces in `apps/` (what to hook)
 
@@ -73,7 +73,7 @@ The guidance loop already emits structured events to the UI layer via
 
 Event payloads already include structured fields (thread id, signature, text,
 model, signatures list), which makes them good candidates to mirror into
-Moltbot as progress notifications.
+OpenClaw as progress notifications.
 
 ## Guidance mode and DSRS usage (today)
 
@@ -100,13 +100,13 @@ Guidance mode is already DSRS-first inside the Autopilot desktop app:
 - `guidance/response` events already include the list of signatures used, which
   is a natural hook for progress streaming.
 
-Takeaway: if Moltbot integration needs to understand or reflect guidance
+Takeaway: if OpenClaw integration needs to understand or reflect guidance
 decisions, the DSRS signatures above are the definitive places to trace.
 
 ## Integration ideas (ranked by leverage)
 
 ### 1) Plugin tool: `autopilot.run` (most direct)
-- Implement a Moltbot plugin that registers an optional tool (allowlisted) that
+- Implement an OpenClaw plugin that registers an optional tool (allowlisted) that
   shells out to `autopilot run`.
 - Pattern to follow: `extensions/llm-task`.
 - Inputs might include:
@@ -125,42 +125,42 @@ decisions, the DSRS signatures above are the definitive places to trace.
 - Use `api.registerService` to manage a local Autopilot worker and stream
   progress updates as Gateway events (similar to `agent` stream semantics).
 - This keeps the heavy work out of the LLM tool call budget and allows
-  progress updates in the Moltbot UI/CLI.
+  progress updates in the OpenClaw UI/CLI.
 
 ### 3) Autopilot as a Gateway node (device-style integration)
 - Autopilot connects to the Gateway as a `role: node` client (see
   `docs/gateway/protocol.md` for `caps/commands/permissions`).
 - Autopilot exposes commands like:
   - `autopilot.run`, `autopilot.status`, `autopilot.cancel`.
-- Moltbot already has a `nodes` tool; a plugin tool could wrap node commands
+- OpenClaw already has a `nodes` tool; a plugin tool could wrap node commands
   to make Autopilot feel first-class.
 - Benefits: built-in pairing/approval flow, remote execution support, and
   clear device identity.
 
-### 4) Autopilot uses Moltbot as the messaging control plane
+### 4) Autopilot uses OpenClaw as the messaging control plane
 - Autopilot can connect as an operator client and call `agent` or `message`
   methods to deliver updates to user channels.
 - Or use `POST /tools/invoke` to send messages, post to channels, fetch sessions,
   or trigger node actions.
-- This keeps messaging/routing (WhatsApp, Telegram, Slack, etc.) in Moltbot and
+- This keeps messaging/routing (WhatsApp, Telegram, Slack, etc.) in OpenClaw and
   leaves code execution in Autopilot.
 
-### 4b) Progress notifications from Autopilot into Moltbot
+### 4b) Progress notifications from Autopilot into OpenClaw
 - Autopilot desktop already emits structured guidance events
   (`guidance/status`, `guidance/step`, `guidance/response`, `fullauto/decision`).
-- Create a lightweight bridge that forwards those events to Moltbot:
-  - Option A: Autopilot calls Moltbot Gateway WS `message`/`agent` to deliver a
+- Create a lightweight bridge that forwards those events to OpenClaw:
+  - Option A: Autopilot calls OpenClaw Gateway WS `message`/`agent` to deliver a
     short progress line to the same user channel.
   - Option B: Autopilot calls `POST /tools/invoke` with `message` or
-    `sessions_send` to keep delivery inside Moltbot tool policy.
-  - Option C: A Moltbot plugin registers an RPC method like
+    `sessions_send` to keep delivery inside OpenClaw tool policy.
+  - Option C: An OpenClaw plugin registers an RPC method like
     `autopilot.progress` and Autopilot sends JSON events that the plugin turns
     into outbound messages or status cards.
 - Recommended throttling:
   - Only emit `guidance/status` on signature changes (or debounce to 1-2s).
   - Emit `guidance/step` and `guidance/response` immediately (low volume, high
     value).
-  - Optional: drop `guidance/user_message` if Moltbot is already showing the
+  - Optional: drop `guidance/user_message` if OpenClaw is already showing the
     inbound prompt.
 - Suggested payload shape (single line per event):
   - `run_id`, `thread_id`, `turn_id`, `phase`, `signature`, `summary`,
@@ -186,32 +186,32 @@ decisions, the DSRS signatures above are the definitive places to trace.
 
 ## Suggested MVP path (lowest effort, highest value)
 
-1) Implement a Moltbot plugin tool `autopilot.run` (optional/allowlisted).
+1) Implement an OpenClaw plugin tool `autopilot.run` (optional/allowlisted).
 2) Parse the Verified Patch Bundle artifacts and return:
    - PR summary text
    - receipt + replay paths (or hashes)
    - a brief file-change summary
-3) Add a skill in Moltbot workspace that teaches when to use the tool.
+3) Add a skill in OpenClaw workspace that teaches when to use the tool.
 4) Optionally add a `/autopilot` command wrapper that routes directly to the
    tool (bypass the LLM if needed).
 
 ## Notes on safety and policy
 
-- Moltbot already has tool policy and sandboxing gates; keep the Autopilot tool
+- OpenClaw already has tool policy and sandboxing gates; keep the Autopilot tool
   optional and behind allowlists.
-- If Autopilot is invoked via `exec`, remember that Moltbot tool policies apply
-  only to Moltbot tools; Autopilot must enforce its own sandbox/approval rules.
-- If Autopilot uses Moltbot's `POST /tools/invoke`, those calls are gated by the
+- If Autopilot is invoked via `exec`, remember that OpenClaw tool policies apply
+  only to OpenClaw tools; Autopilot must enforce its own sandbox/approval rules.
+- If Autopilot uses OpenClaw's `POST /tools/invoke`, those calls are gated by the
   Gateway auth token and tool allowlists.
 
-## Code references (Moltbot)
+## Code references (OpenClaw)
 
 - Gateway protocol: `docs/gateway/protocol.md`
 - Gateway architecture: `docs/concepts/architecture.md`
 - Tools invoke HTTP API: `docs/gateway/tools-invoke-http-api.md`
 - Plugin system: `docs/plugin.md`, `docs/plugins/agent-tools.md`,
   `src/plugins/types.ts`
-- Tool registry merge point: `src/agents/moltbot-tools.ts`
+- Tool registry merge point: `src/agents/openclaw-tools.ts`
 - Agent loop hooks: `docs/concepts/agent-loop.md`
 - Sub-agents + session tools: `docs/tools/subagents.md`,
   `docs/concepts/session-tool.md`
