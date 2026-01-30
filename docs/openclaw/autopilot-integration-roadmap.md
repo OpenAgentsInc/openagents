@@ -246,6 +246,10 @@ Output (JSON):
   - `lines_added`
   - `lines_removed`
 
+Schemas:
+- Params: `docs/openclaw/schemas/autopilot.run.params.json`
+- Response: `docs/openclaw/schemas/autopilot.run.response.json`
+
 ### `autopilot.progress` event (Autopilot -> OpenClaw)
 
 Payload:

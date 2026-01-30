@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "autopilot.run params",
+  "type": "object",
+  "required": ["task", "repo_path"],
+  "properties": {
+    "task": {
+      "type": "string"
+    },
+    "repo_path": {
+      "type": "string"
+    },
+    "access": {
+      "type": "string",
+      "enum": ["read_only", "full"]
+    },
+    "timeout_seconds": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "model": {
+      "type": "string"
+    },
+    "lane": {
+      "type": "string"
+    },
+    "autopilot_loop": {
+      "type": "boolean"
+    },
+    "allowlist": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "env_overrides": {
+      "type": "object",
+      "additionalProperties": { "type": "string" }
+    },
+    "openclaw_session_id": {
+      "type": "string"
+    }
+  },
+  "additionalProperties": false
+}

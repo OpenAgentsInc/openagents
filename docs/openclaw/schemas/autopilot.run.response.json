@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "autopilot.run response",
+  "type": "object",
+  "required": ["session_id", "status"],
+  "properties": {
+    "session_id": { "type": "string" },
+    "status": {
+      "type": "string",
+      "enum": ["success", "failed", "cancelled", "timeout"]
+    },
+    "summary": { "type": "string" },
+    "artifacts": {
+      "type": "object",
+      "properties": {
+        "pr_summary_path": { "type": "string" },
+        "receipt_path": { "type": "string" },
+        "replay_path": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "verification": {
+      "type": "object",
+      "properties": {
+        "commands": { "type": "array", "items": { "type": "string" } },
+        "exit_codes": { "type": "array", "items": { "type": "integer" } },
+        "verification_delta": { "type": "number" }
+      },
+      "additionalProperties": false
+    },
+    "diff_stats": {
+      "type": "object",
+      "properties": {
+        "files_changed": { "type": "integer" },
+        "lines_added": { "type": "integer" },
+        "lines_removed": { "type": "integer" }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": true
+}
