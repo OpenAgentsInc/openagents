@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "autopilot.progress params (sessions_send)",
+  "type": "object",
+  "required": ["session_id", "message"],
+  "properties": {
+    "session_id": { "type": "string" },
+    "message": { "type": "string" },
+    "metadata": {
+      "type": "object",
+      "$ref": "autopilot.progress.metadata.json"
+    }
+  },
+  "additionalProperties": true
+}

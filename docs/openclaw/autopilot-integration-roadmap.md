@@ -267,7 +267,8 @@ Payload:
 - `timestamp`
 
 Schema:
-- `docs/openclaw/schemas/autopilot.progress.metadata.json`
+- Metadata: `docs/openclaw/schemas/autopilot.progress.metadata.json`
+- Params (sessions_send): `docs/openclaw/schemas/autopilot.progress.params.json`
 
 ### `autopilot.approval` tool (OpenClaw plugin)
 
