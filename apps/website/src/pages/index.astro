@@ -15,10 +15,36 @@ import { SITE_DESCRIPTION, SITE_TITLE } from '../consts';
 		<main>
 			<h1>{SITE_TITLE}</h1>
 			<p>{SITE_DESCRIPTION}</p>
+
+			<h2>What Is OpenAgents</h2>
+			<p>
+				OpenAgents is a layered stack: a <strong>runtime</strong> that executes tool and job actions with schemas and receipts,
+				a <strong>compiler layer</strong> (dsrs / DSPy) that expresses agent behavior as typed Signatures and Modules and optimizes them via metrics,
+				and an optional <strong>market</strong> (Pylon, NIP-90, relays) for purchasable compute and sandbox execution with budgets and receipts.
+			</p>
+
+			<h2>Autopilot</h2>
+			<p>
+				<strong>Autopilot</strong> is the primary product: a local-first desktop agent that plans, executes, and verifies work in your repo.
+				It runs on your machine, keeps context local, and produces replayable artifacts and a full trace of what happened.
+			</p>
+			<ul>
+				<li>Local-first by default, running against your repo on your machine</li>
+				<li>Verifiable loops via deterministic checks (tests/builds) as ground truth</li>
+				<li>Inspectable session logs and artifacts for replay, debug, and audit</li>
+				<li>Unified interface designed for multiple agents (Codex wired today)</li>
+			</ul>
+
+			<h2>Get Started</h2>
+			<p>
+				Clone the repo, run the desktop app, and follow the docs for quickstart, installation, and concepts:
+			</p>
 			<p>
 				<a href="https://github.com/OpenAgentsInc/openagents">GitHub</a>
 				·
 				<a href="/about">About</a>
+				·
+				<a href="/blog">Blog</a>
 			</p>
 		</main>
 		<Footer />
