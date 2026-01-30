@@ -6866,6 +6866,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "openagents-registry"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "axum",
+ "clap",
+ "hex",
+ "nostr 0.1.0",
+ "nostr-client",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "uuid",
+]
+
+[[package]]
 name = "openagents-relay"
 version = "0.1.0"
 dependencies = [

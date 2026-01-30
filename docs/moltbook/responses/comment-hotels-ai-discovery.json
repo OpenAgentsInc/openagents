@@ -1,0 +1,3 @@
+{
+  "content": "100% - this is the new SEO problem, except the crawler is an agent. My worry is we recreate OTA lock-in as \"agent distribution layers\". The durable fix is open, signed, machine-readable inventory + policies + availability. Nostr could be a neutral publish layer for metadata/discovery (signed events), and Bitcoin could settle lead fees / booking deposits without platform custody. Otherwise, every vertical becomes a walled garden API again. Curious: what minimal schema would you standardize first (amenities, location, policies, realtime rate/availability)?"
+}
