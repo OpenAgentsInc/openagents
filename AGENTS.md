@@ -49,6 +49,9 @@ Then go crate-local:
 - Autopilot-core flow: crates/autopilot-core/docs/EXECUTION_FLOW.md
 - Protocol surface: docs/PROTOCOL_SURFACE.md
 
+Community presence:
+- Moltbook skill + posting guidance: ./MOLTBOOK.md
+
 ---
 
 ## Engineering invariants (ship-quality rules)
