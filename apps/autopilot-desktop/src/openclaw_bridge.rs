@@ -19,10 +19,15 @@ pub struct OpenClawProgressBridge {
     tool_name: String,
     debounce_ms: u64,
     include_metadata: bool,
+    approvals_mode: bool,
+    approvals_endpoint: Option<String>,
+    approvals_tool: String,
+    approvals_timeout_ms: u64,
     run_id: String,
     client: reqwest::Client,
     last_status_sent: Mutex<Option<Instant>>,
     warned_missing_session: AtomicBool,
+    warned_missing_approvals: AtomicBool,
 }
 
 impl OpenClawProgressBridge {
@@ -37,27 +42,43 @@ impl OpenClawProgressBridge {
             }
         };
 
-        if matches!(mode, ProgressMode::Off) {
+        let approvals_mode = read_env("OPENCLAW_APPROVALS_MODE")
+            .map(|value| matches!(value.as_str(), "1" | "true" | "yes" | "on"))
+            .unwrap_or(false);
+
+        if matches!(mode, ProgressMode::Off) && !approvals_mode {
             return None;
         }
 
-        let endpoint = match resolve_endpoint() {
-            Some(endpoint) => endpoint,
-            None => {
-                warn!("OPENCLAW_PROGRESS_MODE enabled but no endpoint configured");
-                return None;
+        let endpoint = if matches!(mode, ProgressMode::Http) {
+            match resolve_endpoint() {
+                Some(endpoint) => endpoint,
+                None => {
+                    warn!("OPENCLAW_PROGRESS_MODE enabled but no endpoint configured");
+                    return None;
+                }
             }
+        } else {
+            String::new()
         };
 
         let api_token = read_env("OPENCLAW_API_TOKEN");
         let session_id = read_env("OPENCLAW_SESSION_ID");
-        let tool_name = read_env("OPENCLAW_PROGRESS_TOOL").unwrap_or_else(|| "sessions_send".to_string());
+        let tool_name =
+            read_env("OPENCLAW_PROGRESS_TOOL").unwrap_or_else(|| "sessions_send".to_string());
         let debounce_ms = read_env("OPENCLAW_PROGRESS_DEBOUNCE_MS")
             .and_then(|value| value.parse::<u64>().ok())
             .unwrap_or(1200);
         let include_metadata = read_env("OPENCLAW_PROGRESS_INCLUDE_METADATA")
             .map(|value| matches!(value.as_str(), "1" | "true" | "yes"))
             .unwrap_or(false);
+        let approvals_endpoint = read_env("OPENCLAW_APPROVALS_URL")
+            .or_else(|| read_env("OPENCLAW_GATEWAY_URL").map(|url| join_url(&url, "tools/invoke")));
+        let approvals_tool =
+            read_env("OPENCLAW_APPROVALS_TOOL").unwrap_or_else(|| "autopilot.approval".to_string());
+        let approvals_timeout_ms = read_env("OPENCLAW_APPROVALS_TIMEOUT_MS")
+            .and_then(|value| value.parse::<u64>().ok())
+            .unwrap_or(30_000);
 
         let client = match reqwest::Client::builder()
             .timeout(Duration::from_secs(5))
@@ -78,10 +99,15 @@ impl OpenClawProgressBridge {
             tool_name,
             debounce_ms,
             include_metadata,
+            approvals_mode,
+            approvals_endpoint,
+            approvals_tool,
+            approvals_timeout_ms,
             run_id: format!("autopilot-{}", uuid::Uuid::new_v4()),
             client,
             last_status_sent: Mutex::new(None),
             warned_missing_session: AtomicBool::new(false),
+            warned_missing_approvals: AtomicBool::new(false),
         })
     }
 
@@ -173,6 +199,47 @@ impl OpenClawProgressBridge {
         };
 
         self.send_payload(payload);
+    }
+
+    pub fn approvals_enabled(&self) -> bool {
+        self.approvals_mode
+    }
+
+    pub async fn handle_request(
+        &self,
+        request_id: &str,
+        method: &str,
+        params: Option<&Value>,
+    ) -> Option<Value> {
+        if !self.approvals_mode {
+            return None;
+        }
+        let endpoint = match self.approvals_endpoint.as_deref() {
+            Some(endpoint) => endpoint.to_string(),
+            None => {
+                self.warn_missing_approvals();
+                return None;
+            }
+        };
+        let session_id = match self.session_id.as_deref() {
+            Some(value) if !value.trim().is_empty() => value.trim().to_string(),
+            _ => {
+                self.warn_missing_session();
+                return None;
+            }
+        };
+
+        match method {
+            "execCommandApproval" | "applyPatchApproval" => {
+                self.request_approval_decision(request_id, method, params, session_id, endpoint)
+                    .await
+            }
+            "item/tool/requestUserInput" => {
+                self.request_tool_input(request_id, method, params, session_id, endpoint)
+                    .await
+            }
+            _ => None,
+        }
     }
 
     fn build_payload(
@@ -276,12 +343,94 @@ impl OpenClawProgressBridge {
         });
     }
 
+    async fn request_approval_decision(
+        &self,
+        request_id: &str,
+        method: &str,
+        params: Option<&Value>,
+        session_id: String,
+        endpoint: String,
+    ) -> Option<Value> {
+        let payload = self.build_approval_payload(request_id, method, params, session_id);
+        let response = self.send_approval_payload(endpoint, payload).await?;
+        let response_payload = extract_response_payload(response);
+        parse_approval_decision(&response_payload)
+    }
+
+    async fn request_tool_input(
+        &self,
+        request_id: &str,
+        method: &str,
+        params: Option<&Value>,
+        session_id: String,
+        endpoint: String,
+    ) -> Option<Value> {
+        let payload = self.build_approval_payload(request_id, method, params, session_id);
+        let response = self.send_approval_payload(endpoint, payload).await?;
+        let response_payload = extract_response_payload(response);
+        response_payload
+            .get("answers")
+            .cloned()
+            .map(|answers| json!({ "answers": answers }))
+    }
+
+    fn build_approval_payload(
+        &self,
+        request_id: &str,
+        method: &str,
+        params: Option<&Value>,
+        session_id: String,
+    ) -> Value {
+        json!({
+            "tool": self.approvals_tool,
+            "params": {
+                "session_id": session_id,
+                "run_id": self.run_id,
+                "request_id": request_id,
+                "method": method,
+                "params": params.cloned().unwrap_or(Value::Null),
+            }
+        })
+    }
+
+    async fn send_approval_payload(&self, endpoint: String, payload: Value) -> Option<Value> {
+        let mut request = self.client.post(endpoint).json(&payload);
+        if let Some(token) = self.api_token.clone() {
+            request = request.bearer_auth(token);
+        }
+        if self.approvals_timeout_ms > 0 {
+            request = request.timeout(Duration::from_millis(self.approvals_timeout_ms));
+        }
+        match request.send().await {
+            Ok(response) => match response.json::<Value>().await {
+                Ok(value) => Some(value),
+                Err(err) => {
+                    warn!(error = %err, "openclaw approvals response parse error");
+                    None
+                }
+            },
+            Err(err) => {
+                warn!(error = %err, "openclaw approvals request error");
+                None
+            }
+        }
+    }
+
     fn warn_missing_session(&self) {
         if !self
             .warned_missing_session
             .swap(true, Ordering::Relaxed)
         {
             warn!("OPENCLAW_SESSION_ID missing; skipping progress forwarding");
+        }
+    }
+
+    fn warn_missing_approvals(&self) {
+        if !self
+            .warned_missing_approvals
+            .swap(true, Ordering::Relaxed)
+        {
+            warn!("OPENCLAW_APPROVALS_URL missing; skipping approval forwarding");
         }
     }
 }
@@ -329,6 +478,52 @@ fn merge_metadata(target: &mut Value, extra: Value) {
     };
     for (key, value) in extra_map {
         target_map.insert(key, value);
+    }
+}
+
+fn extract_response_payload(value: Value) -> Value {
+    match value {
+        Value::Object(map) => {
+            if let Some(result) = map.get("result") {
+                return result.clone();
+            }
+            if let Some(result) = map.get("data") {
+                return result.clone();
+            }
+            if let Some(result) = map.get("response") {
+                return result.clone();
+            }
+            Value::Object(map)
+        }
+        other => other,
+    }
+}
+
+fn parse_approval_decision(value: &Value) -> Option<Value> {
+    let decision_value = value
+        .get("decision")
+        .and_then(|v| v.as_str())
+        .map(|v| v.to_string())
+        .or_else(|| value.as_str().map(|v| v.to_string()))?;
+    let decision_norm = decision_value.trim().to_lowercase();
+    let (decision, accept_settings) = match decision_norm.as_str() {
+        "accept" | "approved" | "approve" | "yes" => ("accept", None),
+        "acceptforsession" | "accept_for_session" | "session" => (
+            "acceptForSession",
+            Some(json!({ "forSession": true })),
+        ),
+        "decline" | "deny" | "denied" | "rejected" | "no" => ("decline", None),
+        "cancel" | "abort" => ("cancel", None),
+        _ => return None,
+    };
+
+    if let Some(settings) = accept_settings {
+        Some(json!({
+            "decision": decision,
+            "acceptSettings": settings,
+        }))
+    } else {
+        Some(json!({ "decision": decision }))
     }
 }
 

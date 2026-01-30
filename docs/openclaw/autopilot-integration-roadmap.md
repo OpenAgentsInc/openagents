@@ -272,6 +272,9 @@ Recommended env/config toggles:
 - `OPENCLAW_PROGRESS_DEBOUNCE_MS` (default 1200)
 - `OPENCLAW_PROGRESS_INCLUDE_METADATA` (default off)
 - `OPENCLAW_APPROVALS_MODE` (on | off)
+- `OPENCLAW_APPROVALS_URL` (default `${OPENCLAW_GATEWAY_URL}/tools/invoke`)
+- `OPENCLAW_APPROVALS_TOOL` (default `autopilot.approval`)
+- `OPENCLAW_APPROVALS_TIMEOUT_MS` (default 30000)
 
 ## Test plan (minimum)
 

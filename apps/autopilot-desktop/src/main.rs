@@ -19,9 +19,9 @@ use autopilot_ui::{
     MinimalRoot, ShortcutBinding, ShortcutChord, ShortcutCommand, ShortcutRegistry, ShortcutScope,
 };
 use codex_client::{
-    AppServerClient, AppServerConfig, AskForApproval, ClientInfo, ReasoningEffort, SandboxMode,
-    SandboxPolicy, ThreadListParams, ThreadResumeParams, ThreadStartParams, TurnInterruptParams,
-    TurnStartParams, UserInput,
+    AppServerClient, AppServerConfig, AppServerRequestId, AskForApproval, ClientInfo,
+    ReasoningEffort, SandboxMode, SandboxPolicy, ThreadListParams, ThreadResumeParams,
+    ThreadStartParams, TurnInterruptParams, TurnStartParams, UserInput,
 };
 use dsrs::signatures::{
     GuidanceDirectiveSignature, GuidanceRouterSignature, PlanningSignature,
@@ -110,6 +110,25 @@ fn resolve_path(raw: &str, cwd: &str) -> PathBuf {
         path_buf
     } else {
         PathBuf::from(cwd).join(path_buf)
+    }
+}
+
+fn openclaw_approval_policy() -> AskForApproval {
+    let approvals_enabled = OPENCLAW_BRIDGE
+        .get()
+        .map(|bridge| bridge.approvals_enabled())
+        .unwrap_or(false);
+    if approvals_enabled {
+        AskForApproval::OnRequest
+    } else {
+        AskForApproval::Never
+    }
+}
+
+fn format_request_id(id: &AppServerRequestId) -> String {
+    match id {
+        AppServerRequestId::String(value) => value.clone(),
+        AppServerRequestId::Integer(value) => value.to_string(),
     }
 }
 
@@ -866,7 +885,7 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
                     model: Some(DEFAULT_THREAD_MODEL.to_string()),
                     model_provider: None,
                     cwd: Some(cwd_string.clone()),
-                    approval_policy: Some(AskForApproval::Never),
+                    approval_policy: Some(openclaw_approval_policy()),
                     sandbox: Some(SandboxMode::DangerFullAccess),
                 })
                 .await
@@ -1290,7 +1309,7 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
                                         model: None,
                                         effort: None,
                                         summary: None,
-                                        approval_policy: Some(AskForApproval::Never),
+                                        approval_policy: Some(openclaw_approval_policy()),
                                         sandbox_policy: Some(SandboxPolicy::DangerFullAccess),
                                         cwd: Some(cwd),
                                     };
@@ -1342,10 +1361,39 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
                         message: payload.to_string(),
                     });
 
-                    let response = match request.method.as_str() {
-                        _ => build_auto_response(request.method.as_str(), request.params.as_ref())
-                            .unwrap_or_else(|| json!({})),
+                    let approvals_enabled = OPENCLAW_BRIDGE
+                        .get()
+                        .map(|bridge| bridge.approvals_enabled())
+                        .unwrap_or(false);
+                    let request_id = format_request_id(&request.id);
+                    let mut response = if approvals_enabled {
+                        if let Some(bridge) = OPENCLAW_BRIDGE.get() {
+                            bridge
+                                .handle_request(
+                                    request_id.as_str(),
+                                    request.method.as_str(),
+                                    request.params.as_ref(),
+                                )
+                                .await
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
                     };
+                    if response.is_none() && approvals_enabled {
+                        response =
+                            approval_fallback_response(request.method.as_str(), request.params.as_ref());
+                    }
+                    let response = response
+                        .or_else(|| {
+                            if approvals_enabled {
+                                None
+                            } else {
+                                build_auto_response(request.method.as_str(), request.params.as_ref())
+                            }
+                        })
+                        .unwrap_or_else(|| json!({}));
                     let _ = client_requests.respond(request.id, &response).await;
 
                     let params = request.params.as_ref();
@@ -1420,7 +1468,7 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
                                         model: Some(selected_model.clone()),
                                         model_provider: None,
                                         cwd: Some(cwd.clone()),
-                                        approval_policy: Some(AskForApproval::Never),
+                                        approval_policy: Some(openclaw_approval_policy()),
                                         sandbox: Some(SandboxMode::DangerFullAccess),
                                     })
                                     .await
@@ -1618,7 +1666,7 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
                                                 .as_deref()
                                                 .and_then(parse_reasoning_effort),
                                             summary: None,
-                                            approval_policy: Some(AskForApproval::Never),
+                                            approval_policy: Some(openclaw_approval_policy()),
                                             sandbox_policy: Some(SandboxPolicy::DangerFullAccess),
                                             cwd: Some(cwd),
                                         };
@@ -1641,7 +1689,7 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
                                     model,
                                     effort: reasoning.as_deref().and_then(parse_reasoning_effort),
                                     summary: None,
-                                    approval_policy: Some(AskForApproval::Never),
+                                    approval_policy: Some(openclaw_approval_policy()),
                                     sandbox_policy: Some(SandboxPolicy::DangerFullAccess),
                                     cwd: Some(cwd),
                                 };
@@ -1765,7 +1813,7 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
                                         model: None,
                                         model_provider: None,
                                         cwd: Some(cwd),
-                                        approval_policy: Some(AskForApproval::Never),
+                                        approval_policy: Some(openclaw_approval_policy()),
                                         sandbox: Some(SandboxMode::DangerFullAccess),
                                     })
                                     .await
@@ -3287,6 +3335,65 @@ fn build_tool_input_response(params: &Value) -> Value {
     }
 
     json!({ "answers": answers })
+}
+
+fn build_tool_input_response_safe(params: &Value) -> Value {
+    let mut answers = serde_json::Map::new();
+    let questions = params
+        .get("questions")
+        .and_then(|value| value.as_array())
+        .cloned()
+        .unwrap_or_default();
+
+    for question in questions {
+        let id = question
+            .get("id")
+            .and_then(|value| value.as_str())
+            .map(|value| value.to_string());
+        let options = question
+            .get("options")
+            .and_then(|value| value.as_array())
+            .cloned()
+            .unwrap_or_default();
+        let answer = options
+            .iter()
+            .find_map(|option| {
+                let option_id = option.get("id")?.as_str()?;
+                let lower = option_id.to_lowercase();
+                if lower.contains("cancel") || lower.contains("deny") || lower.contains("no") {
+                    Some(option_id.to_string())
+                } else {
+                    None
+                }
+            })
+            .or_else(|| {
+                options
+                    .first()
+                    .and_then(|option| option.get("id"))
+                    .and_then(|value| value.as_str())
+                    .map(|value| value.to_string())
+            })
+            .unwrap_or_else(|| "cancel".to_string());
+
+        if let Some(id) = id {
+            answers.insert(
+                id,
+                json!({
+                    "answers": [answer],
+                }),
+            );
+        }
+    }
+
+    json!({ "answers": answers })
+}
+
+fn approval_fallback_response(method: &str, params: Option<&Value>) -> Option<Value> {
+    match method {
+        "execCommandApproval" | "applyPatchApproval" => Some(json!({ "decision": "decline" })),
+        "item/tool/requestUserInput" => params.map(build_tool_input_response_safe),
+        _ => None,
+    }
 }
 
 fn build_auto_response(method: &str, params: Option<&Value>) -> Option<Value> {
