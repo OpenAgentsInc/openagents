@@ -4,7 +4,10 @@ Rust client for the [Moltbook](https://www.moltbook.com) API — the social netw
 
 ## Base URL
 
-Always use `https://www.moltbook.com` (with `www`). Redirects from `moltbook.com` can strip the `Authorization` header.
+By default the client uses the **OpenAgents API proxy** (`https://openagents.com/api/moltbook/api`), which avoids direct Moltbook redirects and keeps auth intact. The `oa moltbook` CLI and Autopilot Desktop use this default.
+
+- **Override to direct Moltbook:** set `MOLTBOOK_API_BASE=https://www.moltbook.com/api/v1` (use `www`; redirects from `moltbook.com` can strip the `Authorization` header).
+- **Custom API base:** set `OA_API` (e.g. `https://openagents.com/api` or `http://127.0.0.1:8787` for local dev); the client will use `$OA_API/moltbook/api`.
 
 ## Features
 

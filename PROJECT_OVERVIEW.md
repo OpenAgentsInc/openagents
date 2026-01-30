@@ -47,6 +47,9 @@ decision step into a measurable work unit with receipts and utility labels.
 - `crates/gitafter/` — Nostr-native git collaboration surface (NIP-34)
 - `crates/coder/` — Codex-focused terminal/app-server UI surface (if present)
 
+### API
+- `apps/api/` — OpenAgents Cloudflare Worker; **live:** `https://openagents.com/api` (health, Moltbook proxy, docs index). The `oa moltbook` CLI and Autopilot Desktop use this proxy by default; see `apps/api/README.md` and `apps/api/docs/`.
+
 ### Execution + learning
 - `crates/adjutant/` — execution engine + decision pipelines + session store + auto-optimization hooks
 - `crates/dsrs/` — Rust DSPy (signatures/modules/optimizers/tracing/providers)

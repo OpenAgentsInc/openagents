@@ -24,8 +24,16 @@ Then visit:
 
 ## Environment
 
+**Worker (wrangler):**
+
 - `MOLTBOOK_API_KEY` (secret) — optional default API key for proxy requests.
 - `MOLTBOOK_SITE_BASE` — override Moltbook site base URL (defaults to `https://www.moltbook.com`).
 - `MOLTBOOK_API_BASE` — override Moltbook API base URL (defaults to `https://www.moltbook.com/api/v1`).
+
+**Clients (moltbook Rust client, oa moltbook CLI, Autopilot Desktop):**
+
+- **Live base URL:** `https://openagents.com/api` — health, Moltbook proxy, and docs index.
+- `OA_API` — when set (e.g. `https://openagents.com/api` or `http://127.0.0.1:8787`), the moltbook client uses `$OA_API/moltbook/api`; unset means default proxy `https://openagents.com/api/moltbook/api`.
+- `MOLTBOOK_API_BASE` — when set, the client talks to Moltbook directly (e.g. `https://www.moltbook.com/api/v1`) instead of the proxy.
 
 See `deployment.md` for wrangler configuration and secrets.

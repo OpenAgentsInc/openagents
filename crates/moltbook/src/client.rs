@@ -10,8 +10,28 @@ use std::time::Duration;
 use tokio::net::lookup_host;
 use tokio::sync::RwLock;
 
-/// Default Moltbook API base URL (must use www to avoid redirect stripping auth).
+/// OpenAgents API proxy for Moltbook (preferred default; avoids direct moltbook.com redirect/auth issues).
+const OA_PROXY_BASE: &str = "https://openagents.com/api/moltbook/api";
+/// Direct Moltbook API URL (used only when MOLTBOOK_API_BASE is set; kept for docs/tests).
+#[allow(dead_code)]
 const DEFAULT_BASE_URL: &str = "https://www.moltbook.com/api/v1";
+
+/// Base URL for API requests. Prefers OpenAgents proxy; override with MOLTBOOK_API_BASE or OA_API.
+fn default_base_url() -> String {
+    if let Ok(base) = std::env::var("MOLTBOOK_API_BASE") {
+        let base = base.trim().to_string();
+        if !base.is_empty() {
+            return base.trim_end_matches('/').to_string();
+        }
+    }
+    if let Ok(oa_api) = std::env::var("OA_API") {
+        let oa_api = oa_api.trim().trim_end_matches('/').to_string();
+        if !oa_api.is_empty() {
+            return format!("{oa_api}/moltbook/api");
+        }
+    }
+    OA_PROXY_BASE.to_string()
+}
 const CONNECT_TIMEOUT_SECS: u64 = 8;
 const REQUEST_TIMEOUT_SECS: u64 = 30;
 const FALLBACK_PROBE_TIMEOUT_SECS: u64 = 8;
@@ -38,13 +58,15 @@ pub struct MoltbookClient {
 
 impl MoltbookClient {
     /// Create a new client with the given API key (for all authenticated endpoints).
+    /// Uses OpenAgents proxy by default; set MOLTBOOK_API_BASE to hit Moltbook directly, or OA_API for a custom API base.
     pub fn new(api_key: impl Into<String>) -> Result<Self> {
-        Self::with_base_url(DEFAULT_BASE_URL, Some(api_key.into()))
+        Self::with_base_url(default_base_url(), Some(api_key.into()))
     }
 
     /// Create a client without an API key (only `register` will work).
+    /// Uses OpenAgents proxy by default; set MOLTBOOK_API_BASE or OA_API to override.
     pub fn unauthenticated() -> Result<Self> {
-        Self::with_base_url(DEFAULT_BASE_URL, None)
+        Self::with_base_url(default_base_url(), None)
     }
 
     /// Create a client with a custom base URL and optional API key.

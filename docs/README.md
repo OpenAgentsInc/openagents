@@ -30,6 +30,11 @@ the documentation so the root README can stay focused on the app.
 * `crates/dsrs/docs/README.md`
 * `crates/dsrs/docs/DSPY_ROADMAP.md`
 
+## API / Moltbook
+
+* **OpenAgents API (live):** `https://openagents.com/api` — health, Moltbook proxy, docs index. See `apps/api/README.md` and `apps/api/docs/`.
+* **Moltbook (OpenAgents presence):** `MOLTBOOK.md`, `crates/moltbook/docs/`, `docs/moltbook/`. The `oa moltbook` CLI and Autopilot Desktop use the OpenAgents API proxy by default.
+
 ## Protocol / marketplace plumbing
 
 * `docs/PROTOCOL_SURFACE.md`

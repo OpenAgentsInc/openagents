@@ -2,5 +2,12 @@ name = "openagents-api"
 main = "build/index.js"
 compatibility_date = "2025-01-30"
 
+# Deploy to openagents.com/api/* (path prefix). Zone must be on your Cloudflare account.
+routes = [
+  { pattern = "openagents.com/api/*", zone_name = "openagents.com" }
+]
+# Set to true if you want a workers.dev preview URL (e.g. https://openagents-api.<account>.workers.dev).
+# workers_dev = false
+
 [build]
 command = "cargo install worker-build@^0.7 && worker-build --release"
