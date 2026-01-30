@@ -12,6 +12,26 @@ pub struct ToolHeader {
 }
 
 impl ToolHeader {
+    fn truncate_label(text: &str, max_width: f32, font_size: f32) -> String {
+        if max_width <= 0.0 {
+            return String::new();
+        }
+        let char_width = font_size * 0.6;
+        let max_chars = (max_width / char_width).floor() as usize;
+        if text.len() <= max_chars {
+            return text.to_string();
+        }
+        if max_chars <= 3 {
+            return "...".to_string();
+        }
+        let target = max_chars - 3;
+        let mut end = target.min(text.len());
+        while end > 0 && !text.is_char_boundary(end) {
+            end -= 1;
+        }
+        format!("{}...", &text[..end])
+    }
+
     pub fn new(tool_type: ToolType, name: impl Into<String>) -> Self {
         Self {
             id: None,
@@ -87,14 +107,21 @@ impl Component for ToolHeader {
 
         let font_size = theme::font_size::XS;
         let text_y = bounds.origin.y + bounds.size.height * 0.5 - font_size * 0.55;
+        let mut available_width =
+            (bounds.origin.x + bounds.size.width - theme::spacing::SM - x).max(0.0);
+        if let Some(dur) = &self.duration {
+            let dur_width = dur.len() as f32 * font_size * 0.6 + theme::spacing::SM;
+            available_width = (available_width - dur_width).max(0.0);
+        }
+        let tool_name = Self::truncate_label(&self.tool_name, available_width, font_size);
         let text_run = cx.text.layout_mono(
-            &self.tool_name,
+            &tool_name,
             Point::new(x, text_y),
             font_size,
             theme::text::PRIMARY,
         );
         cx.scene.draw_text(text_run);
-        x += self.tool_name.len() as f32 * font_size * 0.6 + theme::spacing::MD;
+        x += tool_name.len() as f32 * font_size * 0.6 + theme::spacing::MD;
 
         if let Some(dur) = &self.duration {
             let text_run = cx.text.layout_mono(
