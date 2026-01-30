@@ -44,3 +44,4 @@ tokio = { version = "1", default-features = false, features = ["time"] }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt"] }
+reqwest = { workspace = true }

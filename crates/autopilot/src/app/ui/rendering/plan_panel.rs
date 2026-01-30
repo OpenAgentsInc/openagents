@@ -1,8 +1,10 @@
 /// Default width for the plan panel
 const PLAN_PANEL_WIDTH: f32 = 230.0;
 /// Minimum height for resizing
+#[allow(dead_code)]
 const PLAN_PANEL_MIN_HEIGHT: f32 = 140.0;
 /// Maximum height for resizing
+#[allow(dead_code)]
 const PLAN_PANEL_MAX_HEIGHT: f32 = 420.0;
 /// Padding inside the panel
 const PLAN_PANEL_PADDING: f32 = 12.0;

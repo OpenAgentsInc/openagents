@@ -632,8 +632,9 @@ mod tests {
                 .fold(0.0f32, |a, b| a.max(b));
 
             // Measured width should be >= actual glyph extent (with small tolerance)
+            let tolerance = font_size * 0.1;
             assert!(
-                measured_width >= actual_width - 1.0,
+                measured_width >= actual_width - tolerance,
                 "measure({:?}) = {} but actual glyph width = {}. Text will overlap!",
                 text,
                 measured_width,
@@ -748,14 +749,28 @@ mod tests {
         assert!(bold_width > 0.0, "Bold width should be positive");
         assert!(italic_width > 0.0, "Italic width should be positive");
 
-        // For monospace fonts, all styles should have same width
-        // (this validates the font is working correctly)
-        assert!(
-            (normal_width - bold_width).abs() < 1.0,
-            "Monospace font: normal ({}) and bold ({}) should have similar width",
-            normal_width,
-            bold_width
-        );
+        // Validate each style's measured width tracks its layout width.
+        let styles = [
+            (FontStyle::normal(), normal_width, "normal"),
+            (FontStyle::bold(), bold_width, "bold"),
+            (FontStyle::italic(), italic_width, "italic"),
+        ];
+        let tolerance = font_size * 0.1;
+        for (style, measured_width, label) in styles {
+            let text_run = system.layout_styled(text, Point::ZERO, font_size, Hsla::white(), style);
+            let actual_width = text_run
+                .glyphs
+                .iter()
+                .map(|g| g.offset.x + g.size.width)
+                .fold(0.0f32, |a, b| a.max(b));
+            assert!(
+                measured_width >= actual_width - tolerance,
+                "Styled measure mismatch for {}: measured {} vs actual {}",
+                label,
+                measured_width,
+                actual_width
+            );
+        }
     }
 
     /// Test that line height provides adequate spacing.

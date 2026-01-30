@@ -154,6 +154,7 @@ pub async fn init_llm(
 }
 
 /// Check if the LLM server is healthy.
+#[allow(dead_code)]
 pub async fn check_server_health(server_url: &str) -> bool {
     match GptOssClient::with_base_url(server_url) {
         Ok(client) => client.health().await.unwrap_or(false),

@@ -199,6 +199,7 @@ impl CatalogState {
             .collect();
     }
 
+    #[allow(dead_code)]
     pub(crate) fn merged_mcp_servers(&self) -> HashMap<String, McpServerConfig> {
         let mut servers = self.mcp_project_servers.clone();
         for (name, config) in &self.mcp_runtime_servers {
@@ -270,6 +271,7 @@ impl CatalogState {
         self.mcp_status_error = error;
     }
 
+    #[allow(dead_code)]
     pub(crate) fn mcp_status_summary(&self) -> Option<String> {
         let total = self.merged_mcp_servers().len();
         if total == 0 {

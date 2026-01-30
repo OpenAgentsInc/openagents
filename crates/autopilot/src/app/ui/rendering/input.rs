@@ -47,6 +47,7 @@ impl AppState {
     }
 }
 
+#[allow(dead_code)]
 fn render_input(
     state: &mut AppState,
     scene: &mut Scene,
@@ -257,11 +258,13 @@ fn render_input(
     scene.draw_text(right_run);
 }
 
+#[allow(dead_code)]
 struct ComposerMenuItem {
     label: String,
     selected: bool,
 }
 
+#[allow(dead_code)]
 fn composer_menu_items(state: &AppState, menu: ComposerMenuKind) -> Vec<ComposerMenuItem> {
     let Some(composer) = state.workspaces.active_composer() else {
         return Vec::new();

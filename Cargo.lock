@@ -6922,6 +6922,7 @@ dependencies = [
  "breez-sdk-spark",
  "dirs 6.0.0",
  "hex",
+ "reqwest",
  "serde",
  "serde_json",
  "thiserror 2.0.17",

@@ -17,6 +17,7 @@ pub(crate) enum CommandAction {
 pub(crate) enum ModalState {
     None,
     /// Bootloader modal shown on startup.
+    #[allow(dead_code)]
     Bootloader,
     ModelPicker {
         selected: usize,

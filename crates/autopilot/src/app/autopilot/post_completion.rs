@@ -58,6 +58,7 @@ pub(crate) enum PostCompletionResult {
         next_issue: Option<NextIssueInfo>,
     },
     /// No more issues available
+    #[allow(dead_code)]
     NoMoreIssues,
     /// Error during processing
     Error(String),

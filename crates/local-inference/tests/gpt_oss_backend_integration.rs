@@ -344,10 +344,10 @@ async fn test_gpt_oss_complete_stream() {
         .respond_with(
             ResponseTemplate::new(200)
                 .set_body_string(
-                    "data: {\"id\":\"chunk-1\",\"model\":\"gpt-oss-20b\",\"delta\":\"Rust \",\"finish_reason\":null}\n\n\
-                     data: {\"id\":\"chunk-2\",\"model\":\"gpt-oss-20b\",\"delta\":\"is \",\"finish_reason\":null}\n\n\
-                     data: {\"id\":\"chunk-3\",\"model\":\"gpt-oss-20b\",\"delta\":\"great!\",\"finish_reason\":null}\n\n\
-                     data: {\"id\":\"final\",\"model\":\"gpt-oss-20b\",\"delta\":\"\",\"finish_reason\":\"stop\"}\n\n"
+                    "data: {\"id\":\"chunk-1\",\"model\":\"gpt-oss-20b\",\"choices\":[{\"index\":0,\"text\":\"Rust \",\"finish_reason\":null}]}\n\n\
+                     data: {\"id\":\"chunk-2\",\"model\":\"gpt-oss-20b\",\"choices\":[{\"index\":0,\"text\":\"is \",\"finish_reason\":null}]}\n\n\
+                     data: {\"id\":\"chunk-3\",\"model\":\"gpt-oss-20b\",\"choices\":[{\"index\":0,\"text\":\"great!\",\"finish_reason\":null}]}\n\n\
+                     data: {\"id\":\"final\",\"model\":\"gpt-oss-20b\",\"choices\":[{\"index\":0,\"text\":\"\",\"finish_reason\":\"stop\"}]}\n\n"
                 )
                 .insert_header("content-type", "text/event-stream")
         )
@@ -380,7 +380,7 @@ async fn test_gpt_oss_complete_stream() {
     assert_eq!(chunks[0].delta, "Rust ");
     assert_eq!(chunks[1].delta, "is ");
     assert_eq!(chunks[2].delta, "great!");
-    assert_eq!(chunks[3].finish_reason, Some("stop".to_string()));
+    assert_eq!(chunks[3].finish_reason.as_deref(), Some("stop"));
 }
 
 #[tokio::test]

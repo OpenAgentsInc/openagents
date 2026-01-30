@@ -2,6 +2,7 @@ pub(crate) const INPUT_HEIGHT: f32 = 40.0;
 pub(crate) const INPUT_PADDING: f32 = 12.0;
 pub(crate) const OUTPUT_PADDING: f32 = 12.0;
 pub(crate) const STATUS_BAR_HEIGHT: f32 = 20.0;
+#[allow(dead_code)]
 pub(crate) const STATUS_BAR_FONT_SIZE: f32 = 13.0;
 pub(crate) const COMPOSER_BAR_HEIGHT: f32 = 28.0;
 pub(crate) const COMPOSER_BAR_GAP: f32 = 8.0;

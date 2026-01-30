@@ -57,6 +57,7 @@ async fn test_complete_with_invalid_server() {
         top_p: None,
         stop: None,
         stream: false,
+        json_schema: None,
     };
 
     let result = client.complete(request).await;

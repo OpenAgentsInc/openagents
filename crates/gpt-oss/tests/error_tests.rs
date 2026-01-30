@@ -43,6 +43,7 @@ async fn test_network_error_handling() {
         top_p: None,
         stop: None,
         stream: false,
+        json_schema: None,
     };
 
     let result = client.complete(request).await;
@@ -73,6 +74,7 @@ async fn test_timeout_error() {
         top_p: None,
         stop: None,
         stream: false,
+        json_schema: None,
     };
 
     let result = client.complete(request).await;
@@ -119,6 +121,7 @@ async fn test_multiple_sequential_errors() {
         top_p: None,
         stop: None,
         stream: false,
+        json_schema: None,
     };
 
     // Multiple errors should be independent
