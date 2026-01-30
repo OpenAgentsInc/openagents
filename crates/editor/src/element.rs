@@ -24,6 +24,7 @@ pub struct EditorElement {
     line_height: f32,
     padding: f32,
     gutter_padding: f32,
+    gutter_gap: f32,
     background: Hsla,
     border_color: Hsla,
     text_color: Hsla,
@@ -55,6 +56,7 @@ impl EditorElement {
             line_height: theme::font_size::SM * 1.4,
             padding: theme::spacing::SM,
             gutter_padding: theme::spacing::XS,
+            gutter_gap: theme::spacing::XS,
             background: theme::bg::APP,
             border_color: theme::border::DEFAULT,
             text_color: theme::text::PRIMARY,
@@ -211,14 +213,18 @@ impl EditorElement {
         let digits = line_count.to_string().len().max(2);
         self.gutter_width = self.gutter_padding * 2.0 + digits as f32 * self.char_width;
         self.text_origin = Point::new(
-            bounds.origin.x + self.padding + self.gutter_width,
+            bounds.origin.x + self.padding + self.gutter_width + self.gutter_gap,
             bounds.origin.y + self.padding,
         );
 
         let viewport_height = (bounds.size.height - self.padding * 2.0).max(0.0);
         self.scroll.set_viewport(viewport_height);
 
-        let text_width = (bounds.size.width - self.padding * 2.0 - self.gutter_width).max(0.0);
+        let text_width = (bounds.size.width
+            - self.padding * 2.0
+            - self.gutter_width
+            - self.gutter_gap)
+            .max(0.0);
         let wrap_width = if self.wrap_lines { Some(text_width) } else { None };
         self.display_map.update(
             self.editor.buffer(),
