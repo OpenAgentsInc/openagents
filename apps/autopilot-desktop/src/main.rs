@@ -1773,6 +1773,42 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
                                 }
                             });
                         }
+                        UserAction::OpenFile { path } => {
+                            let proxy = proxy_actions.clone();
+                            let cwd = cwd_for_actions.clone();
+                            let raw = path.trim();
+                            let path_buf = if raw == "~" || raw.starts_with("~/") {
+                                let home = std::env::var("HOME").unwrap_or_default();
+                                if home.is_empty() {
+                                    PathBuf::from(raw)
+                                } else if raw == "~" {
+                                    PathBuf::from(home)
+                                } else {
+                                    PathBuf::from(home).join(&raw[2..])
+                                }
+                            } else {
+                                PathBuf::from(raw)
+                            };
+                            let resolved = if path_buf.is_absolute() {
+                                path_buf
+                            } else {
+                                PathBuf::from(cwd).join(path_buf)
+                            };
+                            match std::fs::read_to_string(&resolved) {
+                                Ok(contents) => {
+                                    let _ = proxy.send_event(AppEvent::FileOpened {
+                                        path: resolved,
+                                        contents,
+                                    });
+                                }
+                                Err(err) => {
+                                    let _ = proxy.send_event(AppEvent::FileOpenFailed {
+                                        path: resolved,
+                                        error: err.to_string(),
+                                    });
+                                }
+                            }
+                        }
                         UserAction::Interrupt { session_id, .. } => {
                             let client = client_for_actions.clone();
                             let proxy = proxy_actions.clone();
