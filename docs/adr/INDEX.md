@@ -2,7 +2,7 @@
 
 Architecture Decision Records for the OpenAgents project.
 
-**Quick links:** [README.md](./README.md) (process) | [TEMPLATE.md](./TEMPLATE.md) | Next available: **ADR-0024**
+**Quick links:** [README.md](./README.md) (process) | [TEMPLATE.md](./TEMPLATE.md) | Next available: **ADR-0025**
 
 ---
 
@@ -33,6 +33,7 @@ Architecture Decision Records for the OpenAgents project.
 | [ADR-0021](./ADR-0021-rust-ts-type-generation.md) | Rust-to-TypeScript Contract Generation for Tauri IPC | Accepted | 2026-01-25 | UX | — | autopilot-desktop | 2026-01-25 |
 | [ADR-0022](./ADR-0022-effuse-uitree-ipc.md) | Effuse UITree + UI Patch IPC Contract | Accepted | 2026-01-25 | UX | — | autopilot-desktop | 2026-01-25 |
 | [ADR-0023](./ADR-0023-file-editor-open-save-events.md) | File Editor Open/Save Event Contract | Accepted | 2026-01-30 | UX | — | autopilot-ui | 2026-01-30 |
+| [ADR-0024](./ADR-0024-openagents-api-moltbook-proxy.md) | OpenAgents API Moltbook Proxy + Index | Accepted | 2026-01-30 | UX | — | api | 2026-01-30 |
 
 ---
 
@@ -70,6 +71,7 @@ Architecture Decision Records for the OpenAgents project.
 - [ADR-0021](./ADR-0021-rust-ts-type-generation.md) — Rust-to-TypeScript Contract Generation for Tauri IPC
 - [ADR-0022](./ADR-0022-effuse-uitree-ipc.md) — Effuse UITree + UI Patch IPC Contract
 - [ADR-0023](./ADR-0023-file-editor-open-save-events.md) — File Editor Open/Save Event Contract
+- [ADR-0024](./ADR-0024-openagents-api-moltbook-proxy.md) — OpenAgents API Moltbook Proxy + Index
 
 ### Security (privacy, redaction)
 - [ADR-0016](./ADR-0016-privacy-defaults-swarm-dispatch.md) — Privacy Defaults for Swarm Dispatch
@@ -82,7 +84,7 @@ Architecture Decision Records for the OpenAgents project.
 ## By Status
 
 ### Accepted
-- ADR-0001, ADR-0002, ADR-0003, ADR-0004, ADR-0005, ADR-0006, ADR-0007, ADR-0008, ADR-0009, ADR-0010, ADR-0011, ADR-0012, ADR-0013, ADR-0014, ADR-0015, ADR-0016, ADR-0017, ADR-0018, ADR-0019, ADR-0020, ADR-0021, ADR-0022, ADR-0023
+- ADR-0001, ADR-0002, ADR-0003, ADR-0004, ADR-0005, ADR-0006, ADR-0007, ADR-0008, ADR-0009, ADR-0010, ADR-0011, ADR-0012, ADR-0013, ADR-0014, ADR-0015, ADR-0016, ADR-0017, ADR-0018, ADR-0019, ADR-0020, ADR-0021, ADR-0022, ADR-0023, ADR-0024
 
 ### Proposed
 - (none)
