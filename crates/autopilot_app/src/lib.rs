@@ -210,6 +210,9 @@ pub enum UserAction {
         provider: Option<String>,
     },
     ThreadsRefresh,
+    ThreadsLoadMore {
+        cursor: Option<String>,
+    },
     ThreadOpen {
         thread_id: String,
     },
@@ -353,6 +356,8 @@ pub enum AppEvent {
     },
     ThreadsUpdated {
         threads: Vec<ThreadSummary>,
+        next_cursor: Option<String>,
+        append: bool,
     },
     ThreadLoaded {
         session_id: SessionId,
