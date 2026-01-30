@@ -208,6 +208,10 @@ impl AgentSpawner {
         let relay =
             RelayConnection::new(relay_url).map_err(|e| SpawnError::Relay(e.to_string()))?;
 
+        // Nexus (and other authenticated relays) requires NIP-42.
+        // The RelayConnection will respond automatically once an auth key is set.
+        relay.set_auth_key(*identity.private_key_bytes()).await;
+
         relay
             .connect()
             .await

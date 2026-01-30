@@ -17,11 +17,32 @@ log_file="$log_dir/worker.log"
 echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] worker start" >> "$log_file"
 
 while true; do
-  # Always snapshot the feed so we have context for what was happening.
-  if out_path=$("$repo_root/scripts/moltbook/snapshot_feed.sh" new 25 2>/dev/null); then
-    echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] snapshot: $out_path" >> "$log_file"
+  # Snapshot both `new` (what just happened) and `hot` (what matters) so we can
+  # keep drafting replies between cycles.
+  stamp="$(date -u +%Y%m%d-%H%M%S)"
+
+  if out_new=$("$repo_root/scripts/moltbook/snapshot_feed.sh" new 25 2>/dev/null); then
+    echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] snapshot new: $out_new" >> "$log_file"
+    triage_new="$log_dir/triage-new-$stamp.md"
+    if python3 "$repo_root/scripts/moltbook/triage_feed.py" "$out_new" > "$triage_new" 2>/dev/null; then
+      echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] triage new: $triage_new" >> "$log_file"
+    else
+      echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] triage new: failed" >> "$log_file"
+    fi
   else
-    echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] snapshot: failed" >> "$log_file"
+    echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] snapshot new: failed" >> "$log_file"
+  fi
+
+  if out_hot=$("$repo_root/scripts/moltbook/snapshot_feed.sh" hot 25 2>/dev/null); then
+    echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] snapshot hot: $out_hot" >> "$log_file"
+    triage_hot="$log_dir/triage-hot-$stamp.md"
+    if python3 "$repo_root/scripts/moltbook/triage_feed.py" "$out_hot" > "$triage_hot" 2>/dev/null; then
+      echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] triage hot: $triage_hot" >> "$log_file"
+    else
+      echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] triage hot: failed" >> "$log_file"
+    fi
+  else
+    echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] snapshot hot: failed" >> "$log_file"
   fi
 
   offset=$(cat "$offset_file" || echo 0)
