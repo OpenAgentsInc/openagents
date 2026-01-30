@@ -302,7 +302,7 @@ pub struct ToolChainPipeline {
 // ============================================================================
 
 #[cfg(test)]
-mod tests {
+mod tool_chain_tests {
     use super::*;
 
     #[test]

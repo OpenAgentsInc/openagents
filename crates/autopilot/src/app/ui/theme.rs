@@ -29,6 +29,7 @@ pub(crate) struct UiPalette {
     pub(crate) prompt: Hsla,
     #[allow(dead_code)]
     pub(crate) status_left: Hsla,
+    #[allow(dead_code)]
     pub(crate) status_right: Hsla,
     pub(crate) user_text: Hsla,
     pub(crate) assistant_text: Hsla,

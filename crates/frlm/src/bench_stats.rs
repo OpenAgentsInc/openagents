@@ -3,7 +3,7 @@
 //! Run with: cargo test -p frlm bench_stats --release -- --nocapture
 
 use crate::policy::{BudgetPolicy, Quorum, VerificationTier};
-use crate::types::{Fragment, SubQueryResult, Venue};
+use crate::types::{SubQueryResult, Venue};
 use crate::verification::Verifier;
 use std::time::Instant;
 

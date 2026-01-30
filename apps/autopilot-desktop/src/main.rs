@@ -859,6 +859,20 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
                         let cwd = cwd_full_auto.clone();
                         let workspace_id = workspace_id_full_auto.clone();
                         tokio::spawn(async move {
+                            let is_active = {
+                                let guard = full_auto_state.lock().await;
+                                guard
+                                    .as_ref()
+                                    .map(|state| {
+                                        state.enabled
+                                            && state.matches_thread(Some(request.thread_id.as_str()))
+                                    })
+                                    .unwrap_or(false)
+                            };
+                            if !is_active {
+                                return;
+                            }
+
                             let (guidance_mode, mut lm, goal_intent) = {
                                 let guard = full_auto_state.lock().await;
                                 if let Some(state) = guard.as_ref() {
@@ -974,6 +988,20 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
                                     return;
                                 }
                             };
+
+                            let is_active = {
+                                let guard = full_auto_state.lock().await;
+                                guard
+                                    .as_ref()
+                                    .map(|state| {
+                                        state.enabled
+                                            && state.matches_thread(Some(request.thread_id.as_str()))
+                                    })
+                                    .unwrap_or(false)
+                            };
+                            if !is_active {
+                                return;
+                            }
 
                             let FullAutoDecisionResult {
                                 decision: raw_decision,
@@ -1330,7 +1358,6 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
                                             state.set_decision_lm(lm.clone());
                                         }
                                     }
-                                    let should_dispatch = true;
                                     let (response, signatures) = match run_guidance_super(
                                         &proxy,
                                         &thread_id,
@@ -1349,6 +1376,16 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
                                                 "GuidanceDirectiveSignature".to_string(),
                                             ],
                                         ),
+                                    };
+                                    let should_dispatch = {
+                                        let guard = full_auto_state.lock().await;
+                                        guard
+                                            .as_ref()
+                                            .map(|state| {
+                                                state.enabled
+                                                    && state.matches_thread(Some(thread_id.as_str()))
+                                            })
+                                            .unwrap_or(false)
                                     };
                                     let response_text = response.clone();
                                     let payload = json!({
@@ -1547,6 +1584,8 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
                             let client = client_for_actions.clone();
                             let proxy = proxy_actions.clone();
                             let session_states = session_states_for_actions.clone();
+                            let full_auto_state = full_auto_state.clone();
+                            let workspace_id = workspace_id.clone();
                             handle.spawn(async move {
                                 let session_state =
                                     session_states.lock().await.get(&session_id).cloned();
@@ -1571,6 +1610,31 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
                                     });
                                     return;
                                 };
+
+                                let should_disable_full_auto = {
+                                    let mut guard = full_auto_state.lock().await;
+                                    let matches = guard
+                                        .as_ref()
+                                        .map(|state| state.matches_thread(Some(thread_id.as_str())))
+                                        .unwrap_or(false);
+                                    if matches {
+                                        *guard = None;
+                                    }
+                                    matches
+                                };
+                                if should_disable_full_auto {
+                                    let _ = proxy.send_event(AppEvent::AppServerEvent {
+                                        message: json!({
+                                            "method": "fullauto/status",
+                                            "params": {
+                                                "workspaceId": workspace_id,
+                                                "enabled": false,
+                                                "state": "paused"
+                                            }
+                                        })
+                                        .to_string(),
+                                    });
+                                }
 
                                 let mut turn_guard = session_state.turn_id.lock().await;
                                 let turn_value =

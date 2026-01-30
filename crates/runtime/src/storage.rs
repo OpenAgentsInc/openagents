@@ -70,7 +70,10 @@ where
     #[cfg(not(target_arch = "wasm32"))]
     {
         if let Ok(handle) = tokio::runtime::Handle::try_current() {
-            return tokio::task::block_in_place(|| handle.block_on(future));
+            if handle.runtime_flavor() == tokio::runtime::RuntimeFlavor::MultiThread {
+                return tokio::task::block_in_place(|| handle.block_on(future));
+            }
+            return handle.block_on(future);
         }
     }
     futures::executor::block_on(future)

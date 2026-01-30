@@ -16,6 +16,7 @@ fn test_request_serialization() {
         top_p: Some(0.9),
         stop: Some(vec!["END".to_string()]),
         stream: false,
+        json_schema: None,
     };
 
     let json_str = serde_json::to_string(&request).unwrap();
@@ -35,6 +36,7 @@ fn test_request_serialization_minimal() {
         top_p: None,
         stop: None,
         stream: false,
+        json_schema: None,
     };
 
     let json_str = serde_json::to_string(&request).unwrap();
@@ -130,16 +132,21 @@ fn test_stream_chunk_deserialization() {
     let json_str = r#"{
         "id": "chunk-789",
         "model": "gpt-oss-20b",
-        "delta": "word",
-        "finish_reason": null
+        "choices": [
+            { "index": 0, "text": "word", "finish_reason": null }
+        ]
     }"#;
 
     let chunk: GptOssStreamChunk = serde_json::from_str(json_str).unwrap();
 
     assert_eq!(chunk.id, "chunk-789");
     assert_eq!(chunk.model, "gpt-oss-20b");
-    assert_eq!(chunk.delta, "word");
-    assert_eq!(chunk.finish_reason, None);
+    assert_eq!(chunk.delta(), "word");
+    let finish_reason = chunk
+        .choices
+        .first()
+        .and_then(|choice| choice.finish_reason.as_deref());
+    assert!(finish_reason.is_none());
 }
 
 #[test]
@@ -147,14 +154,19 @@ fn test_stream_chunk_with_finish_reason() {
     let json_str = r#"{
         "id": "chunk-final",
         "model": "gpt-oss-20b",
-        "delta": "",
-        "finish_reason": "stop"
+        "choices": [
+            { "index": 0, "text": "", "finish_reason": "stop" }
+        ]
     }"#;
 
     let chunk: GptOssStreamChunk = serde_json::from_str(json_str).unwrap();
 
-    assert_eq!(chunk.delta, "");
-    assert_eq!(chunk.finish_reason, Some("stop".to_string()));
+    assert_eq!(chunk.delta(), "");
+    let finish_reason = chunk
+        .choices
+        .first()
+        .and_then(|choice| choice.finish_reason.as_deref());
+    assert_eq!(finish_reason, Some("stop"));
 }
 
 #[test]
@@ -167,6 +179,7 @@ fn test_request_roundtrip() {
         top_p: Some(0.95),
         stop: Some(vec!["STOP".to_string(), "END".to_string()]),
         stream: true,
+        json_schema: None,
     };
 
     let json = serde_json::to_string(&original).unwrap();

@@ -211,7 +211,76 @@ mod wallet_tests {
     use openagents_spark::{Payment, PaymentStatus, PaymentType, SparkError};
     use std::fs;
     use std::time::{SystemTime, UNIX_EPOCH};
-    use testing::RegtestFaucet;
+    use reqwest::Client;
+
+    struct RegtestFaucet {
+        client: Client,
+        url: String,
+        username: Option<String>,
+        password: Option<String>,
+    }
+
+    impl RegtestFaucet {
+        fn new() -> Result<Self, SparkError> {
+            let url = env::var("FAUCET_URL")
+                .unwrap_or_else(|_| "https://api.lightspark.com/graphql/spark/rc".to_string());
+            Ok(Self {
+                client: Client::new(),
+                url,
+                username: env::var("FAUCET_USERNAME").ok(),
+                password: env::var("FAUCET_PASSWORD").ok(),
+            })
+        }
+
+        async fn fund_address(&self, address: &str, amount_sats: u64) -> Result<String, SparkError> {
+            let mut request = self
+                .client
+                .post(&self.url)
+                .header("Content-Type", "application/json")
+                .json(&serde_json::json!({
+                    "operationName": "RequestRegtestFunds",
+                    "variables": {
+                        "address": address,
+                        "amount_sats": amount_sats
+                    },
+                    "query": "mutation RequestRegtestFunds($address: String!, $amount_sats: Long!) { request_regtest_funds(input: {address: $address, amount_sats: $amount_sats}) { transaction_hash }}"
+                }));
+
+            if let (Some(username), Some(password)) = (&self.username, &self.password) {
+                request = request.basic_auth(username, Some(password));
+            }
+
+            let response = request
+                .send()
+                .await
+                .map_err(|e| SparkError::Wallet(format!("Faucet request failed: {e}")))?;
+
+            let result: serde_json::Value = response
+                .json()
+                .await
+                .map_err(|e| SparkError::Wallet(format!("Failed to parse faucet response: {e}")))?;
+
+            if let Some(errors) = result.get("errors").and_then(|e| e.as_array()) {
+                if let Some(err) = errors.first() {
+                    let msg = err
+                        .get("message")
+                        .and_then(|m| m.as_str())
+                        .unwrap_or("Unknown error");
+                    return Err(SparkError::Wallet(format!("Faucet error: {msg}")));
+                }
+            }
+
+            let txid = result
+                .get("data")
+                .and_then(|data| data.get("request_regtest_funds"))
+                .and_then(|data| data.get("transaction_hash"))
+                .and_then(|hash| hash.as_str())
+                .unwrap_or_default()
+                .to_string();
+
+            Ok(txid)
+        }
+    }
     use tokio::time::{Duration, Instant, sleep};
 
     async fn wait_for_payment_by_id(

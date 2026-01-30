@@ -1050,7 +1050,7 @@ fn test_nostr_driver_routes_dm() {
     assert_eq!(routed[0].envelope.payload["nostr"]["decrypted"], true);
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn test_driver_sink_routes_envelope() {
     let storage = Arc::new(InMemoryStorage::new());
     let runtime = Arc::new(LocalRuntime::new(storage));
@@ -1113,7 +1113,7 @@ fn fake_event(pubkey: String, kind: u16, content: String, tags: Vec<Vec<String>>
     }
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn test_control_plane_http() {
     let storage = Arc::new(InMemoryStorage::new());
     let runtime = Arc::new(LocalRuntime::new(storage));
@@ -1793,6 +1793,10 @@ impl OpenAgentsApiClient for TestOpenAgentsApi {
 impl ContainerProvider for TestContainerProvider {
     fn id(&self) -> &str {
         &self.id
+    }
+
+    fn requires_openagents_auth(&self) -> bool {
+        self.id == "cloudflare"
     }
 
     fn info(&self) -> ContainerProviderInfo {

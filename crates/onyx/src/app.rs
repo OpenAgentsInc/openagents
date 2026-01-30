@@ -500,7 +500,10 @@ impl RenderState {
                     }
                     should_refresh_sidebar = true;
                 }
-                FileChange::Created(_) | FileChange::Deleted(_) => {
+                FileChange::Created(path) | FileChange::Deleted(path) => {
+                    if self.current_file.as_ref() == Some(path) {
+                        should_reload_current = true;
+                    }
                     should_refresh_sidebar = true;
                 }
             }

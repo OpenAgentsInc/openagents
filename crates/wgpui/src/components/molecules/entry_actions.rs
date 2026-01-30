@@ -216,7 +216,8 @@ impl Component for EntryActions {
         }
 
         if handled {
-            if let Some(action) = self.pending_action.borrow_mut().take() {
+            let pending_action = self.pending_action.borrow_mut().take();
+            if let Some(action) = pending_action {
                 if let Some(cb) = &mut self.on_action {
                     cb(action);
                 }
@@ -284,14 +285,22 @@ mod tests {
         let x = bounds.origin.x + width / 2.0;
         let y = bounds.origin.y + bounds.size.height / 2.0;
 
-        let event = InputEvent::MouseDown {
+        let event_down = InputEvent::MouseDown {
             button: MouseButton::Left,
             x,
             y,
             modifiers: Modifiers::default(),
         };
         let mut cx = EventContext::new();
-        let result = actions.event(&event, bounds, &mut cx);
+        let result = actions.event(&event_down, bounds, &mut cx);
+        assert_eq!(result, EventResult::Handled);
+
+        let event_up = InputEvent::MouseUp {
+            button: MouseButton::Left,
+            x,
+            y,
+        };
+        let result = actions.event(&event_up, bounds, &mut cx);
 
         assert_eq!(result, EventResult::Handled);
         assert!(called.get());

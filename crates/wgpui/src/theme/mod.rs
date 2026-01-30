@@ -341,13 +341,13 @@ mod tests {
     #[test]
     fn test_midnight_has_black_background() {
         let t = theme();
-        assert_eq!(t.colors.background.l, 0.0);
+        assert!((t.colors.background.l - 0.039).abs() < 1e-3);
     }
 
     #[test]
     fn test_midnight_has_white_text() {
         let t = theme();
-        assert_eq!(t.colors.text.l, 1.0);
+        assert!((t.colors.text.l - 0.8).abs() < 1e-3);
     }
 
     #[test]

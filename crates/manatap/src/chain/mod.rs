@@ -131,7 +131,8 @@ impl ChainState {
                     node.progress_message = Some(error);
                 }
             }
-            ChainEvent::TokenReceived { call_id, token: _ } => {
+            ChainEvent::TokenReceived { call_id, token } => {
+                let _ = token;
                 // Could update a streaming display, for now just keep progress message
                 if let Some(&idx) = self.call_id_to_node.get(&call_id) {
                     let node = &mut self.nodes[idx];
@@ -244,6 +245,7 @@ impl VisualizerCallback {
     }
 
     /// Send a progress event.
+    #[allow(dead_code)]
     pub fn send_progress(&self, message: &str) {
         let _ = self.sender.send(ChainEvent::Progress {
             message: message.to_string(),

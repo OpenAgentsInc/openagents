@@ -1,9 +1,11 @@
 use crate::components::{ChainNode, NodeState};
 
+#[allow(dead_code)]
 pub fn demo_prompt() -> &'static str {
     "Summarize the markdown files in the root level of this repository."
 }
 
+#[allow(dead_code)]
 pub fn demo_chain() -> Vec<ChainNode> {
     vec![
         ChainNode::new("TaskAnalysisSignature")

@@ -132,21 +132,25 @@ impl ChainNode {
         self
     }
 
+    #[allow(dead_code)]
     pub fn with_state(mut self, state: NodeState) -> Self {
         self.state = state;
         self
     }
 
+    #[allow(dead_code)]
     pub fn with_input(mut self, field: &str, value: &str) -> Self {
         self.inputs.push((field.to_string(), value.to_string()));
         self
     }
 
+    #[allow(dead_code)]
     pub fn with_output(mut self, field: &str, value: &str) -> Self {
         self.outputs.push((field.to_string(), value.to_string()));
         self
     }
 
+    #[allow(dead_code)]
     pub fn with_metrics(mut self, tokens: u32, cost: u64, duration: u64) -> Self {
         self.tokens = Some(tokens);
         self.cost_msats = Some(cost);
@@ -154,6 +158,7 @@ impl ChainNode {
         self
     }
 
+    #[allow(dead_code)]
     pub fn with_progress(mut self, message: &str) -> Self {
         self.progress_message = Some(message.to_string());
         self

@@ -82,8 +82,10 @@ pub(crate) struct InlineIssueSelector {
     /// Issue suggestions to display
     pub(crate) suggestions: Vec<IssueSuggestionDisplay>,
     /// Number of issues filtered out (stale/blocked)
+    #[allow(dead_code)]
     pub(crate) filtered_count: usize,
     /// Confidence score from the LLM
+    #[allow(dead_code)]
     pub(crate) confidence: f32,
     /// Whether awaiting user selection
     pub(crate) await_selection: bool,

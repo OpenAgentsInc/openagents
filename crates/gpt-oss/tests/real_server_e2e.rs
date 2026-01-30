@@ -38,6 +38,7 @@ async fn test_real_server_e2e() {
         top_p: None,
         stop: None,
         stream: false,
+        json_schema: None,
     };
 
     let response = client.complete(request).await.expect("Completion failed");

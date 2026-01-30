@@ -1,5 +1,7 @@
 //! Boot card component for GPU-rendered boot stages.
 
+#![allow(dead_code)]
+
 use wgpui::{Bounds, Hsla, Point, Quad, Scene, TextSystem};
 
 use super::events::{BootStage, StageDetails};

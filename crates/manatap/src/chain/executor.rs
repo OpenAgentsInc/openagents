@@ -1199,6 +1199,7 @@ fn format_code_snippets(matches: &[CodeMatch]) -> String {
 }
 
 /// Truncate a string for display.
+#[allow(dead_code)]
 fn truncate_for_display(s: &str, max_len: usize) -> String {
     if s.len() <= max_len {
         s.to_string()
