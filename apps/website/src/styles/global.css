@@ -28,29 +28,25 @@ body {
 }
 
 @font-face {
-	font-family: "Atkinson";
-	src: url("/fonts/atkinson-regular.woff") format("woff");
+	font-family: "Vera Mono";
+	src: url("/fonts/VeraMono.ttf") format("truetype");
 	font-weight: 400;
 	font-style: normal;
 	font-display: swap;
 }
 @font-face {
-	font-family: "Atkinson";
-	src: url("/fonts/atkinson-bold.woff") format("woff");
+	font-family: "Vera Mono";
+	src: url("/fonts/VeraMono-Bold.ttf") format("truetype");
 	font-weight: 700;
 	font-style: normal;
 	font-display: swap;
 }
 body {
-	font-family: "Atkinson", sans-serif;
+	font-family: "Inter", sans-serif;
 	margin: 0;
 	padding: 0;
 	text-align: left;
-	background:
-		radial-gradient(900px 600px at 12% 18%, rgba(122, 231, 199, 0.16), transparent 60%),
-		radial-gradient(900px 600px at 88% 10%, rgba(255, 209, 102, 0.12), transparent 60%),
-		radial-gradient(900px 600px at 80% 92%, rgba(94, 162, 255, 0.14), transparent 60%),
-		linear-gradient(180deg, #05060a, var(--background));
+	background: var(--background);
 	color: var(--text-primary);
 	font-size: 20px;
 	line-height: 1.7;
@@ -124,12 +120,14 @@ img {
 	border-radius: 8px;
 }
 code {
+	font-family: "Vera Mono", monospace;
 	padding: 2px 5px;
 	background-color: var(--inline-code-bg);
 	border-radius: 2px;
 	color: var(--text-primary);
 }
 pre {
+	font-family: "Vera Mono", monospace;
 	padding: 1.5em;
 	border-radius: 8px;
 	background: var(--code-bg);
