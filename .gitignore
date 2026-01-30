@@ -146,6 +146,9 @@ crates/*/*/autopilot.db
 # Snapshot testing - DO track snapshots
 !**/snapshots/
 
+# Moltbook feed snapshots + triage output (can contain third-party secrets)
+docs/moltbook/observations/
+
 # Proptest regression files (generated during property-based testing)
 proptest-regressions/
 **/proptest-regressions/
