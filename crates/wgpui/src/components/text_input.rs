@@ -465,7 +465,7 @@ impl Component for TextInput {
                 && let Some((sel_start, sel_end)) = self.get_selection()
             {
                 let ranges = self.visual_line_ranges();
-                let selection_color = Hsla::from_hex(0x1A1A1A);
+                let selection_color = Hsla::from_hex(0x2A2A2A);
                 for (i, (line_start, line_end)) in ranges.iter().enumerate() {
                     let overlap_start = sel_start.max(*line_start);
                     let overlap_end = sel_end.min(*line_end);
