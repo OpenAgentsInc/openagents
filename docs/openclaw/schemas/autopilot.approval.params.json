@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "autopilot.approval params",
+  "type": "object",
+  "required": ["session_id", "run_id", "request_id", "method", "params"],
+  "properties": {
+    "session_id": {
+      "type": "string"
+    },
+    "run_id": {
+      "type": "string"
+    },
+    "request_id": {
+      "type": "string"
+    },
+    "method": {
+      "type": "string",
+      "enum": [
+        "execCommandApproval",
+        "applyPatchApproval",
+        "item/tool/requestUserInput"
+      ]
+    },
+    "params": {
+      "type": "object"
+    }
+  },
+  "additionalProperties": false
+}

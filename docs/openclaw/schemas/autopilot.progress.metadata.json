@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "autopilot.progress metadata",
+  "type": "object",
+  "required": ["event", "run_id", "thread_id", "phase"],
+  "properties": {
+    "event": {
+      "const": "autopilot.progress"
+    },
+    "run_id": {
+      "type": "string"
+    },
+    "thread_id": {
+      "type": "string"
+    },
+    "phase": {
+      "type": "string",
+      "enum": [
+        "guidance/status",
+        "guidance/step",
+        "guidance/response",
+        "fullauto/decision",
+        "tool",
+        "verify"
+      ]
+    },
+    "signature": {
+      "type": ["string", "null"]
+    },
+    "model": {
+      "type": ["string", "null"]
+    },
+    "turn_id": {
+      "type": ["string", "null"]
+    },
+    "signatures": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "action": {
+      "type": "string"
+    },
+    "state": {
+      "type": "string"
+    },
+    "confidence": {
+      "type": "number",
+      "minimum": 0.0,
+      "maximum": 1.0
+    }
+  },
+  "additionalProperties": true
+}

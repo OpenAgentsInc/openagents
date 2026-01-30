@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "autopilot.approval response",
+  "type": "object",
+  "properties": {
+    "decision": {
+      "type": "string",
+      "enum": ["accept", "acceptForSession", "decline", "cancel"]
+    },
+    "acceptSettings": {
+      "type": "object",
+      "properties": {
+        "forSession": { "type": "boolean" }
+      },
+      "required": ["forSession"],
+      "additionalProperties": false
+    },
+    "answers": {
+      "type": "object"
+    }
+  },
+  "additionalProperties": true
+}

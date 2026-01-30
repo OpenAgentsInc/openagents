@@ -259,6 +259,9 @@ Payload:
 - `confidence`
 - `timestamp`
 
+Schema:
+- `docs/openclaw/schemas/autopilot.progress.metadata.json`
+
 ### `autopilot.approval` tool (OpenClaw plugin)
 
 Input (JSON):
@@ -274,6 +277,10 @@ Output (JSON):
   - Optional `acceptSettings` if `acceptForSession`
 - Or tool input:
   - `answers` object mirroring Codex tool input shape
+
+Schemas:
+- Params: `docs/openclaw/schemas/autopilot.approval.params.json`
+- Response: `docs/openclaw/schemas/autopilot.approval.response.json`
 
 ## Configuration and feature flags
 
