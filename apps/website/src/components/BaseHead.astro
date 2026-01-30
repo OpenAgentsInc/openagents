@@ -19,7 +19,6 @@ const { title, description, image } = Astro.props;
 <!-- Global Metadata -->
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 <link rel="icon" href="/favicon.ico" />
 <link rel="sitemap" href="/sitemap-index.xml" />
 <link
@@ -30,9 +29,12 @@ const { title, description, image } = Astro.props;
 />
 <meta name="generator" content={Astro.generator} />
 
-<!-- Font preloads -->
-<link rel="preload" href="/fonts/atkinson-regular.woff" as="font" type="font/woff" crossorigin />
-<link rel="preload" href="/fonts/atkinson-bold.woff" as="font" type="font/woff" crossorigin />
+<!-- Fonts: Inter (prose), Vera Mono (code) -->
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<link rel="preload" href="/fonts/VeraMono.ttf" as="font" type="font/ttf" crossorigin />
+<link rel="preload" href="/fonts/VeraMono-Bold.ttf" as="font" type="font/ttf" crossorigin />
 
 <!-- Canonical URL -->
 <link rel="canonical" href={canonicalURL} />
