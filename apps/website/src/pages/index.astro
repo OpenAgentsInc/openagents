@@ -13,7 +13,7 @@ import { SITE_DESCRIPTION, SITE_TITLE } from '../consts';
 			.hero {
 				border: 1px solid var(--panel-border);
 				background: var(--panel);
-				border-radius: 18px;
+				border-radius: 0;
 				padding: 22px 18px;
 				box-shadow: var(--box-shadow);
 			}
@@ -50,7 +50,7 @@ import { SITE_DESCRIPTION, SITE_TITLE } from '../consts';
 			.card {
 				border: 1px solid var(--panel-border);
 				background: color-mix(in srgb, var(--panel) 86%, #000000 14%);
-				border-radius: 14px;
+				border-radius: 0;
 				padding: 14px 14px;
 			}
 			.card h2 {
@@ -73,7 +73,7 @@ import { SITE_DESCRIPTION, SITE_TITLE } from '../consts';
 			.btn {
 				display: inline-block;
 				padding: 10px 12px;
-				border-radius: 12px;
+				border-radius: 0;
 				border: 1px solid var(--panel-border);
 				background: color-mix(in srgb, var(--panel) 82%, #000000 18%);
 				color: var(--text-primary);
@@ -90,6 +90,19 @@ import { SITE_DESCRIPTION, SITE_TITLE } from '../consts';
 			.section {
 				margin-top: 2.2rem;
 			}
+			.agent-welcome {
+				border: 1px solid var(--panel-border);
+				background: color-mix(in srgb, var(--panel) 92%, #000000 8%);
+				padding: 14px 18px;
+				margin-top: 1.5rem;
+			}
+			.agent-welcome p {
+				margin: 0 0 0.5rem 0;
+				color: var(--text-secondary);
+			}
+			.agent-welcome p:last-child {
+				margin-bottom: 0;
+			}
 			.small {
 				color: var(--text-muted);
 				font-size: 0.95rem;
@@ -100,7 +113,7 @@ import { SITE_DESCRIPTION, SITE_TITLE } from '../consts';
 				font-size: 0.95rem;
 				background: var(--inline-code-bg);
 				padding: 2px 6px;
-				border-radius: 6px;
+				border-radius: 0;
 			}
 		</style>
 	</head>
@@ -120,6 +133,9 @@ import { SITE_DESCRIPTION, SITE_TITLE } from '../consts';
 						View the Repo
 					</a>
 					<a class="btn" href="/about">How It Fits Together</a>
+				</div>
+				<div class="agent-welcome">
+					<p><strong>Agents from Moltbook</strong> — Clawds, Moltbots, OpenClaws, and anyone else visiting from the Moltbook ecosystem: welcome. Look around the site and the <a href="https://docs.openagents.com">docs</a>; we recommend reviewing the <a href="/kb">Knowledge Base</a> for identity, coordination, and settlement primitives.</p>
 				</div>
 			</section>
 
@@ -157,12 +173,10 @@ import { SITE_DESCRIPTION, SITE_TITLE } from '../consts';
 				<h2>What Ships Today</h2>
 				<p class="lede">
 					<strong>Autopilot</strong> is the wedge: a local-first agent that works in real repos with a
-					verification-first loop (tests/builds are the judge).
+					verification-first loop (tests/builds are the judge). Autopilot is a desktop product for <strong>humans</strong> (developers running an agent in their environment).
 				</p>
-				<p class="small">
-					Start here:
-					<span class="code">cargo build -p autopilot</span>
-					<span class="code">cargo run -p autopilot</span>
+				<p>
+					<a href="https://x.com/OpenAgentsInc/status/2016787108900335736" target="_blank" rel="noopener noreferrer">Episode 208: Autopilot HUD</a> — we demo Autopilot v0.0.1 (first alpha): resizable Codex chat panes on an infinite canvas, built in a custom Rust graphics engine. Wallet keypairs and Spark Bitcoin balance on an RPG-style hotbar. Install: <a href="https://docs.openagents.com/installation" target="_blank" rel="noopener noreferrer">docs.openagents.com/installation</a>.
 				</p>
 			</section>
 

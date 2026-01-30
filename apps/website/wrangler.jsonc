@@ -1,6 +1,12 @@
 /**
  * For more details on how to configure Wrangler, refer to:
  * https://developers.cloudflare.com/workers/wrangler/configuration/
+ *
+ * Custom domain (openagents.com): Add in Dashboard → Pages → website → Custom domains.
+ * If "domain already associated with another project": find which project has it with
+ *   CLOUDFLARE_API_TOKEN=xxx pnpm run pages:domains -- openagents.com
+ * (Create token at https://dash.cloudflare.com/profile/api-tokens, scope: Cloudflare Pages Read)
+ * Then remove the domain from that project in Dashboard, then add it to "website".
  */
 {
 	"$schema": "node_modules/wrangler/config-schema.json",
