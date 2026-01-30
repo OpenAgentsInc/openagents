@@ -4257,6 +4257,13 @@ impl Component for MinimalRoot {
         );
         self.hotbar_bindings
             .insert(HOTBAR_SLOT_WALLET, HotbarAction::ToggleWallet);
+
+        items.push(
+            HotbarSlot::new(HOTBAR_SLOT_THREADS, "TH", "Threads")
+                .active(self.pane_store.is_active("threads")),
+        );
+        self.hotbar_bindings
+            .insert(HOTBAR_SLOT_THREADS, HotbarAction::ToggleThreads);
         items.push(
             HotbarSlot::new(HOTBAR_SLOT_FILE_EDITOR, "FE", "Files")
                 .active(self.pane_store.is_active("file_editor")),
@@ -4270,13 +4277,6 @@ impl Component for MinimalRoot {
         // );
         // self.hotbar_bindings
         //     .insert(HOTBAR_SLOT_SELL_COMPUTE, HotbarAction::ToggleSellCompute);
-
-        items.push(
-            HotbarSlot::new(HOTBAR_SLOT_THREADS, "TH", "Threads")
-                .active(self.pane_store.is_active("threads")),
-        );
-        self.hotbar_bindings
-            .insert(HOTBAR_SLOT_THREADS, HotbarAction::ToggleThreads);
         // Reserve slot 6 (currently unused) to keep hotbar numbering contiguous.
         items.push(HotbarSlot::new(HOTBAR_SLOT_SELL_COMPUTE, "", "Slot 6").ghost(true));
 
