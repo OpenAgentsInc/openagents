@@ -6868,6 +6868,7 @@ dependencies = [
  "bitcoin",
  "clap",
  "hex",
+ "moltbook",
  "nostr 0.1.0",
  "openagents-citrea",
  "openagents-spark",

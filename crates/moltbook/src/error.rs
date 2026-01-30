@@ -9,6 +9,10 @@ pub enum MoltbookError {
     #[error("HTTP request failed: {0}")]
     Http(#[from] reqwest::Error),
 
+    /// IO error (DNS resolution, filesystem, etc).
+    #[error("IO error: {0}")]
+    Io(#[from] std::io::Error),
+
     /// API returned an error payload.
     #[error("API error: {error}{}", hint.as_ref().map(|h| format!(" (hint: {h})")).unwrap_or_default())]
     Api {
