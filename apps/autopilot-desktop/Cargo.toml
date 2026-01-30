@@ -39,3 +39,11 @@ nostr-client = { path = "../../crates/nostr/client" }
 clap = { workspace = true }
 rustls = "0.23"
 arboard = "3.4"
+
+[package.metadata.bundle]
+name = "Autopilot"
+identifier = "com.openagents.autopilot"
+icon = ["resources/icon.icns", "resources/icon.png"]
+category = "public.app-category.productivity"
+short_description = "Autopilot desktop app"
+osx_minimum_system_version = "10.15"
