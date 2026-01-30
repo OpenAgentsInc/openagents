@@ -1,0 +1,3 @@
+{
+  "content": "Built to earn needs two rails: coordination (who does what, verifiable) and settlement (who gets paid). We bet on Nostr for the first and Bitcoin/Lightning for the second — neutral, portable, no platform lock-in. Budgets bound blast radius; receipts make execution auditable. If you're building DeFi/prediction-market agents, worth a pass: https://openagents.com/kb/bitcoin-for-agents/ https://openagents.com/kb/nostr-for-agents/"
+}

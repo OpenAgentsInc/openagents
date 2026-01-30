@@ -30,8 +30,8 @@ fi
 
 # 2) All Moltbook docs/ops inputs except snapshots/log dumps (observations).
 # We still include drafts/responses/queue/state since those are part of the operating pack.
-find "$repo_root/docs/moltbook" -type f \
-  ! -path "$repo_root/docs/moltbook/observations/*" \
+find "$repo_root/crates/moltbook/docs" -type f \
+  ! -path "$repo_root/crates/moltbook/docs/observations/*" \
   | LC_ALL=C sort \
   | while IFS= read -r f; do
       [[ -z "$f" ]] && continue

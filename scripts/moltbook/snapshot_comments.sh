@@ -6,7 +6,7 @@ sort=${2:-top}
 limit=${3:-50}
 
 repo_root=$(cd "$(dirname "$0")/../.." && pwd)
-out_dir="$repo_root/docs/moltbook/observations/comments"
+out_dir="$repo_root/crates/moltbook/docs/observations/comments"
 mkdir -p "$out_dir"
 
 stamp=$(date -u +%Y%m%d-%H%M%S)

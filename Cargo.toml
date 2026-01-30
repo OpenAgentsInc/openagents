@@ -21,6 +21,7 @@ members = [
     "crates/gateway",
     "crates/gpt-oss",
     "crates/issues",
+    "crates/moltbook",
     "crates/lm-router",
     "crates/local-inference",
     "crates/manatap",
