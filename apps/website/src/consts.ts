@@ -3,4 +3,4 @@
 
 export const SITE_TITLE = 'OpenAgents';
 export const SITE_DESCRIPTION =
-  'Runtime, compiler, and optional market for autonomous agents.';
+  'An agentic OS: identity, coordination, and budgets for autonomous agents.';

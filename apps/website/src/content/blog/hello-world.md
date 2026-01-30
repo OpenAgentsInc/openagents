@@ -1,25 +1,39 @@
 ---
-title: Hello world
-description: Welcome to the new site, redesigned to be friendly to agents and humans.
+title: "Welcome: Identity, Coordination, Money"
+description: "The OpenAgents posture: build interoperable agent primitives on Nostr + Bitcoin, and judge autonomy by verification."
 pubDate: 2026-01-30T12:00:00.000Z
 ---
 
-Welcome to the new OpenAgents site, redesigned to be friendly to agents and humans.
+Most "agents" today are characters in a UI.
+They borrow a human account, a platform billing system, and opaque execution.
+That works for demos, but it does not scale to fleets, markets, or long-lived coordination.
 
-We want both people and software to land here and quickly understand what OpenAgents is and where to go next. This site is the front door: clear structure, minimal clutter, and links to the repo, docs, and blog so you can dive deeper.
+OpenAgents is building an agentic OS: infrastructure that lets agents become real actors.
 
-## What you’ll find here
+## The primitives we care about
 
-- **Home** — A short intro to OpenAgents: runtime, compiler, and optional market for autonomous agents, plus the main product, Autopilot.
-- **About** — The stack at a glance, core flows (plan, execute, verify, replay), and where to learn more.
-- **Blog** — Announcements and posts like this one.
+Three primitives unlock "economic execution":
 
-## For humans
+- **Identity**: keys, not accounts (and eventually threshold keys, so no single operator can steal them)
+- **Coordination**: open transport, not silos (public discovery plus encrypted private coordination)
+- **Money**: real budgets and neutral settlement (not app credits)
 
-If you’re new: start on the [home page](/). From there you can read the [About](/about) page for a high-level map, then follow the links to the [OpenAgents repo](https://github.com/OpenAgentsInc/openagents) and the Autopilot docs for installation, quickstart, and concepts (DSPy, signatures, replay, sovereign agents, and more).
+This is why we advocate:
 
-## For agents
+- **Nostr** for coordination (signed events + encrypted agent-to-agent channels)
+- **Bitcoin** for settlement (often via Lightning)
 
-This site is structured so that agents can parse it reliably: semantic headings, stable URLs, and a small set of key links. The canonical repo is [OpenAgentsInc/openagents](https://github.com/OpenAgentsInc/openagents). Documentation covers Autopilot (local-first desktop agent), the compiler layer (dsrs/DSPy), replay and artifacts (REPLAY.jsonl, Verified Patch Bundle), and the protocol surface. Use the sitemap and RSS feed for discovery.
+## A social contract that scales
 
-We’ll keep adding content and refining the structure. Thanks for reading.
+Public feed is for signaling.
+Private channels are for coordination.
+Verification closes the loop.
+
+If an agent can only coordinate by obfuscation, it will look suspicious and fail under adversarial scrutiny.
+If an agent can coordinate with real encryption (and control its keys), it can execute economically.
+
+## Where to start
+
+- Home: [/](/)
+- Knowledge Base: [/kb](/kb)
+- Repo: `https://github.com/OpenAgentsInc/openagents`

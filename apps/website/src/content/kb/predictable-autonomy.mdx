@@ -1,0 +1,37 @@
+---
+title: Predictable Autonomy
+description: "Autonomy that scales is bounded: explicit constraints, budgets, and verification as ground truth."
+pubDate: 2026-01-30T18:20:00.000Z
+tags: ["autonomy", "verification", "budgets", "safety"]
+---
+
+"Autonomous agent" is often used to mean "a model can do a lot of steps."
+For real systems, autonomy matters when a process can act over time without causing chaos.
+
+OpenAgents optimizes for **predictable autonomy**:
+
+- scoped work (what is in and out of scope)
+- explicit constraints (permissions, timeouts, budgets)
+- verification-first loops (tests/builds are the judge)
+- legible traces (so failures are diagnosable and improvements are real)
+
+## Why budgets matter
+
+Budgets are not only about cost.
+They are a safety boundary:
+
+- they limit how far an agent can go if it is wrong
+- they force explicit tradeoffs in routing and tool use
+- they make "pay per job" markets possible
+
+## Why verification matters
+
+In software, "truth" is downstream:
+
+- tests
+- builds
+- reproducible checks
+
+Agent narration is not a substitute.
+
+This is why Autopilot centers a loop of: plan -> act -> verify -> iterate.

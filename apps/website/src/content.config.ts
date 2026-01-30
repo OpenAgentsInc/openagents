@@ -16,4 +16,18 @@ const blog = defineCollection({
 		}),
 });
 
-export const collections = { blog };
+const kb = defineCollection({
+	// Load Markdown and MDX files in the `src/content/kb/` directory.
+	loader: glob({ base: './src/content/kb', pattern: '**/*.{md,mdx}' }),
+	schema: ({ image }) =>
+		z.object({
+			title: z.string(),
+			description: z.string(),
+			pubDate: z.coerce.date(),
+			updatedDate: z.coerce.date().optional(),
+			heroImage: image().optional(),
+			tags: z.array(z.string()).optional(),
+		}),
+});
+
+export const collections = { blog, kb };

@@ -1,14 +1,22 @@
 ---
 import { Image } from 'astro:assets';
-import type { CollectionEntry } from 'astro:content';
 import BaseHead from '../components/BaseHead.astro';
 import Footer from '../components/Footer.astro';
 import FormattedDate from '../components/FormattedDate.astro';
 import Header from '../components/Header.astro';
 
-type Props = CollectionEntry<'blog'>['data'];
+import type { ImageMetadata } from 'astro';
 
-const { title, description, pubDate, updatedDate, heroImage } = Astro.props;
+interface Props {
+	title: string;
+	description: string;
+	pubDate: Date;
+	updatedDate?: Date;
+	heroImage?: ImageMetadata;
+	tags?: string[];
+}
+
+const { title, description, pubDate, updatedDate, heroImage, tags } = Astro.props;
 ---
 
 <html lang="en">
@@ -52,6 +60,23 @@ const { title, description, pubDate, updatedDate, heroImage } = Astro.props;
 			.last-updated-on {
 				font-style: italic;
 			}
+			.tags {
+				margin-top: 0.85rem;
+				display: flex;
+				justify-content: center;
+				flex-wrap: wrap;
+				gap: 8px;
+			}
+			.tag {
+				font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
+					"Courier New", monospace;
+				font-size: 12px;
+				padding: 4px 8px;
+				border-radius: 999px;
+				border: 1px solid var(--panel-border);
+				color: var(--text-muted);
+				background: color-mix(in srgb, var(--panel) 88%, #000000 12%);
+			}
 		</style>
 	</head>
 
@@ -75,6 +100,13 @@ const { title, description, pubDate, updatedDate, heroImage } = Astro.props;
 							}
 						</div>
 						<h1>{title}</h1>
+						{tags?.length ? (
+							<div class="tags">
+								{tags.slice(0, 8).map((t) => (
+									<span class="tag">{t}</span>
+								))}
+							</div>
+						) : null}
 						<hr />
 					</div>
 					<slot />
