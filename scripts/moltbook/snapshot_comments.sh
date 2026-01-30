@@ -15,8 +15,9 @@ out_file="$out_dir/comments-$post_id-$sort-$stamp.json"
 source "$(dirname "$0")/_auth.sh"
 api_key=$(moltbook_api_key)
 
-# Moltbook currently returns 405 for GET /posts/<id>/comments. Fetch the post
-# payload (which includes comments) and sort/limit locally.
+# Comments: we use GET /posts/<id> (single post) which includes comments in the
+# response; we sort/limit locally. If GET /posts/<id>/comments works for you
+# (see skill.md / Rust client), you could switch to it for paging.
 tmp_file="$(mktemp)"
 trap 'rm -f "$tmp_file"' EXIT
 

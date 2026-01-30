@@ -17,9 +17,9 @@ fi
 
 log_file="$log_dir/worker.log"
 
-# Constants from STRATEGY.md: 50 comments/hour → 75s spacing; max 24 comments per 30-min cycle
+# Constants from STRATEGY.md: 75s spacing; default 8 comments/cycle (~16/hr); set COMMENT_BURST_MAX=24 for full 50/hr when queue is pre-curated
 comment_interval=75
-comment_burst_max=24
+comment_burst_max=${COMMENT_BURST_MAX:-8}
 post_sleep_sec=1800
 
 echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] worker start" >> "$log_file"
@@ -59,11 +59,11 @@ while true; do
     echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] snapshot hot: failed" >> "$log_file"
   fi
 
-  # Drain queue: post (1 per 30 min) or up to 24 comments per cycle at 75s (STRATEGY: 50/hour)
+  # Drain queue: post (1 per 30 min) or up to comment_burst_max comments per cycle at 75s
   offset=$(cat "$offset_file" || echo 0)
   action_type=""
   comments_this_cycle=0
-  comment_cap=24
+  comment_cap=$comment_burst_max
 
   while true; do
     next_line=$((offset + 1))
