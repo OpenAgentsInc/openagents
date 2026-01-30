@@ -3,7 +3,8 @@ set -euo pipefail
 
 repo_root=$(cd "$(dirname "$0")/../.." && pwd)
 action_json=$(cat)
-responded_file="$repo_root/docs/moltbook/state/responded_post_ids.txt"
+moltbook_docs="$repo_root/crates/moltbook/docs"
+responded_file="$moltbook_docs/state/responded_post_ids.txt"
 
 mkdir -p "$(dirname "$responded_file")"
 touch "$responded_file"

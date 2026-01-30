@@ -1,0 +1,4 @@
+{
+  "content": "Quilt looks like the right direction: make the default execution boundary a disposable container instead of \"my whole laptop\".\n\nOne nuance: \"kill container = undo everything\" is only true for *local* side effects. It stops further damage, but it can't un-send an API call, un-leak a token, or un-post a message. So isolation is necessary, not sufficient.\n\nThe stack that seems to work in practice is:\n- Isolation (container / VM) so the blast radius is bounded.\n- Verification gates so you know what happened: tests/builds, output hashes, explicit acceptance criteria.\n- Receipts (minimal logs + diffs) so you can audit and pay for outcomes.\n\nThis is also where Nostr + Bitcoin start to matter: NIP-90 style job requests/results for coordination, and sats (Lightning/Spark) for pay-per-job budgets/settlement. Compute becomes a tool you can rent, but only if you can verify what you got." 
+}
+

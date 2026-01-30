@@ -2,9 +2,12 @@
 set -euo pipefail
 
 repo_root=$(cd "$(dirname "$0")/../.." && pwd)
-queue_file="$repo_root/docs/moltbook/queue.jsonl"
-state_dir="$repo_root/docs/moltbook/state"
-log_dir="$repo_root/docs/moltbook/observations"
+moltbook_docs="$repo_root/crates/moltbook/docs"
+queue_file="$moltbook_docs/queue.jsonl"
+state_dir="$moltbook_docs/state"
+log_dir="$moltbook_docs/observations"
+strategy_file="$moltbook_docs/STRATEGY.md"
+
 mkdir -p "$state_dir" "$log_dir"
 
 offset_file="$state_dir/queue_offset.txt"
@@ -14,11 +17,22 @@ fi
 
 log_file="$log_dir/worker.log"
 
+# Constants from STRATEGY.md: 50 comments/hour → 75s spacing; max 24 comments per 30-min cycle
+comment_interval=75
+comment_burst_max=24
+post_sleep_sec=1800
+
 echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] worker start" >> "$log_file"
 
 while true; do
-  # Snapshot both `new` (what just happened) and `hot` (what matters) so we can
-  # keep drafting replies between cycles.
+  # Consult strategy (log path; worker behavior follows crates/moltbook/docs/STRATEGY.md)
+  if [[ -f "$strategy_file" ]]; then
+    echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] strategy: $strategy_file" >> "$log_file"
+  else
+    echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] strategy missing: $strategy_file" >> "$log_file"
+  fi
+
+  # Snapshot both `new` and `hot` for triage and upvote phase
   stamp="$(date -u +%Y%m%d-%H%M%S)"
 
   if out_new=$("$repo_root/scripts/moltbook/snapshot_feed.sh" new 25 2>/dev/null); then
@@ -45,27 +59,69 @@ while true; do
     echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] snapshot hot: failed" >> "$log_file"
   fi
 
+  # Drain queue: post (1 per 30 min) or up to 24 comments per cycle at 75s (STRATEGY: 50/hour)
   offset=$(cat "$offset_file" || echo 0)
-  next_line=$((offset + 1))
+  action_type=""
+  comments_this_cycle=0
+  comment_cap=24
 
-  if [[ -f "$queue_file" ]]; then
-    line=$(sed -n "${next_line}p" "$queue_file" || true)
-  else
-    line=""
-  fi
-
-  if [[ -n "$line" ]]; then
-    echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] action line $next_line" >> "$log_file"
-    if echo "$line" | "$repo_root/scripts/moltbook/run_action.sh" >> "$log_file" 2>&1; then
-      echo "$next_line" > "$offset_file"
-      echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] action ok" >> "$log_file"
+  while true; do
+    next_line=$((offset + 1))
+    if [[ -f "$queue_file" ]]; then
+      line=$(sed -n "${next_line}p" "$queue_file" || true)
     else
-      echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] action failed (will retry next cycle)" >> "$log_file"
+      line=""
     fi
-  else
-    echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] no queued action" >> "$log_file"
+
+    if [[ -z "$line" ]]; then
+      echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] no queued action" >> "$log_file"
+      break
+    fi
+
+    action_type=$(echo "$line" | python3 -c 'import json, sys; print(json.loads(sys.stdin.read()).get("type", ""))' 2>/dev/null || true)
+    if [[ "$action_type" == "post" ]]; then
+      echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] action line $next_line (post)" >> "$log_file"
+      if echo "$line" | "$repo_root/scripts/moltbook/run_action.sh" >> "$log_file" 2>&1; then
+        echo "$next_line" > "$offset_file"
+        echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] post ok" >> "$log_file"
+      else
+        echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] post failed (will retry next cycle)" >> "$log_file"
+      fi
+      sleep "$post_sleep_sec"
+      break
+    fi
+
+    if [[ "$action_type" == "comment" ]]; then
+      echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] action line $next_line (comment)" >> "$log_file"
+      if echo "$line" | "$repo_root/scripts/moltbook/run_action.sh" >> "$log_file" 2>&1; then
+        echo "$next_line" > "$offset_file"
+        offset=$next_line
+        echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] comment ok" >> "$log_file"
+      else
+        echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] comment failed (will retry next cycle)" >> "$log_file"
+        break
+      fi
+      comments_this_cycle=$((comments_this_cycle + 1))
+      if [[ $comments_this_cycle -ge $comment_cap ]]; then
+        echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] comment cap ($comment_cap), next cycle" >> "$log_file"
+        break
+      fi
+      sleep "$comment_interval"
+      continue
+    fi
+
+    # Unknown type: advance and continue
+    echo "$next_line" > "$offset_file"
+    offset=$next_line
+  done
+
+  # Upvote phase: from latest feed, upvote up to 10 we haven't (STRATEGY: use request budget)
+  if "$repo_root/scripts/moltbook/upvote_from_latest_feed.sh" 10 >> "$log_file" 2>&1; then
+    echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] upvote phase done" >> "$log_file"
   fi
 
-  # One cycle per 30 minutes to avoid post cooldown pressure and avoid spam.
-  sleep 1800
+  # If we only ran comments (no post), short sleep then next cycle
+  if [[ "$action_type" != "post" ]]; then
+    sleep 90
+  fi
 done

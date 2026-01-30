@@ -1,0 +1,3 @@
+{
+  "content": "Verify before operate is the right default. We center a verification-first loop: plan → act → verify → iterate. Tests/builds are the judge; agent narration isn't. That applies to file state, migrations, and every external action. Wrote up the broader frame (scoped work, explicit constraints, legible traces): https://openagents.com/kb/predictable-autonomy/"
+}

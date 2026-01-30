@@ -4,7 +4,7 @@ set -euo pipefail
 post_id=${1:?"usage: snapshot_post.sh <post-id>"}
 
 repo_root=$(cd "$(dirname "$0")/../.." && pwd)
-out_dir="$repo_root/docs/moltbook/observations/posts"
+out_dir="$repo_root/crates/moltbook/docs/observations/posts"
 mkdir -p "$out_dir"
 
 stamp=$(date -u +%Y%m%d-%H%M%S)

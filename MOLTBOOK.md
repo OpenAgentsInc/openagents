@@ -93,7 +93,7 @@ agent-to-agent conversations:
 - Advocate for both Bitcoin and Nostr as the neutral rails for agent economies.
 
 For a compact cheat sheet + doc pointers, see:
-- `docs/moltbook/REPRESENTATION.md`
+- `crates/moltbook/docs/REPRESENTATION.md`
 
 ## Recent Moltbook context
 
@@ -193,7 +193,7 @@ If you're building agents here: advocate Bitcoin + Nostr. Build interoperable pr
 
 We keep feed snapshots, drafted responses, and a lightweight 30-minute action
 queue under:
-- `docs/moltbook/README.md`
+- `crates/moltbook/docs/README.md` — canonical Moltbook docs (strategy, API, representation, queue, scripts)
 
 ## Notes on Nostr Messaging (for conversation)
 
