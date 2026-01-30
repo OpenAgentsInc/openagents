@@ -117,6 +117,64 @@ impl OpenClawProgressBridge {
         self.send_payload(payload);
     }
 
+    pub fn emit_guidance_response(
+        &self,
+        thread_id: &str,
+        text: &str,
+        signatures: &[String],
+        model: &str,
+    ) {
+        let signature_label = signatures.first().map(|value| value.as_str());
+        let extra_metadata = if signatures.is_empty() {
+            None
+        } else {
+            Some(json!({ "signatures": signatures }))
+        };
+        let message = format_progress_message("guidance/response", signature_label, text);
+        let Some(payload) = self.build_payload_with_message(
+            "guidance/response",
+            thread_id,
+            message,
+            signature_label,
+            Some(model),
+            extra_metadata,
+        ) else {
+            return;
+        };
+
+        self.send_payload(payload);
+    }
+
+    pub fn emit_fullauto_decision(
+        &self,
+        thread_id: &str,
+        action: &str,
+        reason: &str,
+        confidence: f32,
+        state: &str,
+    ) {
+        let message = format!(
+            "FullAuto {state}: {action} ({confidence:.2}) - {reason}",
+        );
+        let extra_metadata = json!({
+            "action": action,
+            "state": state,
+            "confidence": confidence,
+        });
+        let Some(payload) = self.build_payload_with_message(
+            "fullauto/decision",
+            thread_id,
+            message,
+            None,
+            None,
+            Some(extra_metadata),
+        ) else {
+            return;
+        };
+
+        self.send_payload(payload);
+    }
+
     fn build_payload(
         &self,
         method: &str,
@@ -124,6 +182,19 @@ impl OpenClawProgressBridge {
         signature: Option<&str>,
         text: &str,
         model: Option<&str>,
+    ) -> Option<Value> {
+        let message = format_progress_message(method, signature, text);
+        self.build_payload_with_message(method, thread_id, message, signature, model, None)
+    }
+
+    fn build_payload_with_message(
+        &self,
+        method: &str,
+        thread_id: &str,
+        message: String,
+        signature: Option<&str>,
+        model: Option<&str>,
+        extra_metadata: Option<Value>,
     ) -> Option<Value> {
         let session_id = match self.session_id.as_deref() {
             Some(value) if !value.trim().is_empty() => value.trim().to_string(),
@@ -133,14 +204,14 @@ impl OpenClawProgressBridge {
             }
         };
 
-        let message = truncate_text(format_progress_message(method, signature, text), 400);
+        let message = truncate_text(message, 400);
         let mut params = json!({
             "session_id": session_id,
             "message": message,
         });
 
         if self.include_metadata {
-            let metadata = json!({
+            let mut metadata = json!({
                 "event": "autopilot.progress",
                 "run_id": self.run_id,
                 "thread_id": thread_id,
@@ -148,6 +219,9 @@ impl OpenClawProgressBridge {
                 "signature": signature,
                 "model": model,
             });
+            if let Some(extra) = extra_metadata {
+                merge_metadata(&mut metadata, extra);
+            }
             if let Value::Object(map) = &mut params {
                 map.insert("metadata".to_string(), metadata);
             }
@@ -238,12 +312,23 @@ fn format_progress_message(method: &str, signature: Option<&str>, text: &str) ->
     let label = match method {
         "guidance/status" => "Status",
         "guidance/step" => "Step",
+        "guidance/response" => "Response",
+        "fullauto/decision" => "Decision",
         _ => "Update",
     };
     if let Some(sig) = signature {
         format!("{label} [{sig}]: {clean}")
     } else {
         format!("{label}: {clean}")
+    }
+}
+
+fn merge_metadata(target: &mut Value, extra: Value) {
+    let (Value::Object(target_map), Value::Object(extra_map)) = (target, extra) else {
+        return;
+    };
+    for (key, value) in extra_map {
+        target_map.insert(key, value);
     }
 }
 

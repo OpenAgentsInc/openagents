@@ -1215,6 +1215,7 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
                             } else {
                                 "paused"
                             };
+                            let decision_reason = decision.reason.clone();
                             let next_input_preview = decision
                                 .next_input
                                 .as_deref()
@@ -1222,6 +1223,16 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
                                 .chars()
                                 .take(140)
                                 .collect::<String>();
+
+                            if let Some(bridge) = OPENCLAW_BRIDGE.get() {
+                                bridge.emit_fullauto_decision(
+                                    &request.thread_id,
+                                    decision.action.as_str(),
+                                    &decision_reason,
+                                    decision.confidence,
+                                    decision_state,
+                                );
+                            }
 
                             let guardrail_value = decision
                                 .guardrail
@@ -1238,7 +1249,7 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
                                     "threadId": request.thread_id,
                                     "turnId": request.turn_id,
                                     "action": decision.action.as_str(),
-                                    "reason": decision.reason,
+                                    "reason": decision_reason,
                                     "confidence": decision.confidence,
                                     "state": decision_state,
                                     "nextInput": next_input_preview,
@@ -1523,18 +1534,18 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
                                     {
                                         Ok(result) => result,
                                         Err(error) => {
-                                            let payload = json!({
-                                                "method": "guidance/response",
-                                                "params": {
-                                                    "threadId": thread_id,
-                                                    "text": format!("Guidance error: {error}"),
-                                                    "signatures": ["GuidanceRouterSignature"],
-                                                    "model": "unknown"
-                                                }
-                                            });
-                                            let _ = proxy.send_event(AppEvent::AppServerEvent {
-                                                message: payload.to_string(),
-                                            });
+                                            let signatures = vec![
+                                                "GuidanceRouterSignature".to_string(),
+                                            ];
+                                            let response_text =
+                                                format!("Guidance error: {error}");
+                                            emit_guidance_response(
+                                                &proxy,
+                                                &thread_id,
+                                                &response_text,
+                                                &signatures,
+                                                "unknown",
+                                            );
                                             return;
                                         }
                                     };
@@ -1574,18 +1585,13 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
                                             .unwrap_or(false)
                                     };
                                     let response_text = response.clone();
-                                    let payload = json!({
-                                        "method": "guidance/response",
-                                        "params": {
-                                            "threadId": thread_id,
-                                            "text": response_text,
-                                            "signatures": signatures,
-                                            "model": lm.model
-                                        }
-                                    });
-                                    let _ = proxy.send_event(AppEvent::AppServerEvent {
-                                        message: payload.to_string(),
-                                    });
+                                    emit_guidance_response(
+                                        &proxy,
+                                        &thread_id,
+                                        &response_text,
+                                        &signatures,
+                                        &lm.model,
+                                    );
                                     if should_dispatch {
                                         {
                                             let mut guard = full_auto_state.lock().await;
@@ -2658,6 +2664,30 @@ fn emit_guidance_status(
             "threadId": thread_id,
             "signature": signature,
             "text": text
+        }
+    });
+    let _ = proxy.send_event(AppEvent::AppServerEvent {
+        message: payload.to_string(),
+    });
+}
+
+fn emit_guidance_response(
+    proxy: &EventLoopProxy<AppEvent>,
+    thread_id: &str,
+    text: &str,
+    signatures: &[String],
+    model: &str,
+) {
+    if let Some(bridge) = OPENCLAW_BRIDGE.get() {
+        bridge.emit_guidance_response(thread_id, text, signatures, model);
+    }
+    let payload = json!({
+        "method": "guidance/response",
+        "params": {
+            "threadId": thread_id,
+            "text": text,
+            "signatures": signatures,
+            "model": model,
         }
     });
     let _ = proxy.send_event(AppEvent::AppServerEvent {

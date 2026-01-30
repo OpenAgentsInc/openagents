@@ -267,6 +267,10 @@ Recommended env/config toggles:
 - `OPENCLAW_API_TOKEN`
 - `OPENCLAW_SESSION_ID`
 - `OPENCLAW_PROGRESS_MODE` (ws | http | off)
+- `OPENCLAW_PROGRESS_URL` (override POST endpoint for progress; default `${OPENCLAW_GATEWAY_URL}/tools/invoke`)
+- `OPENCLAW_PROGRESS_TOOL` (default `sessions_send`)
+- `OPENCLAW_PROGRESS_DEBOUNCE_MS` (default 1200)
+- `OPENCLAW_PROGRESS_INCLUDE_METADATA` (default off)
 - `OPENCLAW_APPROVALS_MODE` (on | off)
 
 ## Test plan (minimum)
