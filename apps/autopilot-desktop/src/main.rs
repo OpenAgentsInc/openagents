@@ -38,6 +38,7 @@ use nostr::nip90::{JobInput, JobRequest, KIND_JOB_TEXT_GENERATION};
 use nostr_client::dvm::DvmClient;
 use openagents_runtime::UnifiedIdentity;
 use openagents_spark::{Network as SparkNetwork, SparkSigner, SparkWallet, WalletConfig};
+use once_cell::sync::OnceCell;
 use pylon::PylonConfig;
 use pylon::db::{PylonDb, jobs::JobStatus};
 use pylon::provider::{ProviderError, PylonProvider};
@@ -55,6 +56,9 @@ use winit::keyboard::{Key as WinitKey, ModifiersState, NamedKey as WinitNamedKey
 use winit::window::{CursorIcon, Window, WindowId};
 
 mod full_auto;
+mod openclaw_bridge;
+
+use openclaw_bridge::OpenClawProgressBridge;
 
 const WINDOW_TITLE: &str = "Autopilot";
 const WINDOW_WIDTH: f64 = 1280.0;
@@ -72,6 +76,8 @@ const ZOOM_STEP_WHEEL: f32 = 0.05;
 const HOTBAR_SLOT_MAX: u8 = 9;
 const SHORTCUT_PRIORITY_APP: u8 = 100;
 const SHORTCUT_PRIORITY_GLOBAL: u8 = 50;
+
+static OPENCLAW_BRIDGE: OnceCell<OpenClawProgressBridge> = OnceCell::new();
 
 fn parse_reasoning_effort(value: &str) -> Option<ReasoningEffort> {
     match value.trim().to_lowercase().as_str() {
@@ -773,6 +779,9 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
             .build()
             .expect("tokio runtime init failed");
         runtime.block_on(async move {
+            if let Some(bridge) = OpenClawProgressBridge::from_env() {
+                let _ = OPENCLAW_BRIDGE.set(bridge);
+            }
             let app = AutopilotApp::new(AppConfig {
                 event_buffer: EVENT_BUFFER,
             });
@@ -2617,6 +2626,9 @@ fn emit_guidance_step(
     text: &str,
     model: &str,
 ) {
+    if let Some(bridge) = OPENCLAW_BRIDGE.get() {
+        bridge.emit_guidance_step(thread_id, signature, text, model);
+    }
     let payload = json!({
         "method": "guidance/step",
         "params": {
@@ -2637,6 +2649,9 @@ fn emit_guidance_status(
     signature: Option<&str>,
     text: &str,
 ) {
+    if let Some(bridge) = OPENCLAW_BRIDGE.get() {
+        bridge.emit_guidance_status(thread_id, signature, text);
+    }
     let payload = json!({
         "method": "guidance/status",
         "params": {

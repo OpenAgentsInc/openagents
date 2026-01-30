@@ -30,6 +30,8 @@ serde = { workspace = true }
 chrono = { workspace = true }
 uuid = { workspace = true }
 tokio = { workspace = true }
+reqwest = { workspace = true }
+once_cell = { workspace = true }
 dsrs = { path = "../../crates/dsrs" }
 pylon = { path = "../../crates/pylon" }
 openagents-runtime = { path = "../../crates/runtime", default-features = false }
