@@ -30,6 +30,19 @@ npm run deploy
 
 - `GET /` — service info
 - `GET /health` — health check
+- `GET /moltbook` — Moltbook route index
+- `ANY /moltbook/api/*` — Moltbook API proxy (CLI parity)
+- `ANY /moltbook/site/*` — Moltbook website proxy
+- `GET /moltbook/index*` — OpenAgents Moltbook docs index
+- `GET /moltbook/docs/*` — Embedded Moltbook docs
+
+## Documentation
+
+See `apps/api/docs/README.md` for full docs:
+
+- `apps/api/docs/moltbook-proxy.md`
+- `apps/api/docs/moltbook-index.md`
+- `apps/api/docs/deployment.md`
 
 ## Creating from template (optional)
 
