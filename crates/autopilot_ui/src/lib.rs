@@ -1,5 +1,5 @@
 use std::cell::RefCell;
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -657,6 +657,10 @@ pub struct MinimalRoot {
     threads_refresh_button: Button,
     threads_refresh_bounds: Bounds,
     pending_threads_refresh: Rc<RefCell<bool>>,
+    threads_load_more_button: Button,
+    threads_load_more_bounds: Bounds,
+    pending_threads_load_more: Rc<RefCell<bool>>,
+    threads_next_cursor: Option<String>,
     thread_entries: Vec<ThreadEntryView>,
     pending_thread_open: Rc<RefCell<Option<String>>>,
     keygen_button: Button,
@@ -1866,6 +1870,17 @@ impl MinimalRoot {
                 *pending_threads_refresh_click.borrow_mut() = true;
             });
 
+        let pending_threads_load_more = Rc::new(RefCell::new(false));
+        let pending_threads_load_more_click = pending_threads_load_more.clone();
+        let threads_load_more_button = Button::new("Load 10 more")
+            .variant(ButtonVariant::Secondary)
+            .font_size(theme::font_size::XS)
+            .padding(10.0, 6.0)
+            .corner_radius(6.0)
+            .on_click(move || {
+                *pending_threads_load_more_click.borrow_mut() = true;
+            });
+
         let pending_thread_open = Rc::new(RefCell::new(None));
 
         let pending_keygen = Rc::new(RefCell::new(false));
@@ -2076,6 +2091,10 @@ impl MinimalRoot {
             threads_refresh_button,
             threads_refresh_bounds: Bounds::ZERO,
             pending_threads_refresh,
+            threads_load_more_button,
+            threads_load_more_bounds: Bounds::ZERO,
+            pending_threads_load_more,
+            threads_next_cursor: None,
             thread_entries: Vec::new(),
             pending_thread_open,
             keygen_button,
@@ -2236,8 +2255,13 @@ impl MinimalRoot {
                     self.nip90_log.drain(0..drain);
                 }
             }
-            AppEvent::ThreadsUpdated { threads } => {
-                self.set_thread_entries(threads);
+            AppEvent::ThreadsUpdated {
+                threads,
+                next_cursor,
+                append,
+            } => {
+                self.set_thread_entries(threads, append);
+                self.threads_next_cursor = next_cursor;
             }
             AppEvent::ThreadLoaded {
                 session_id,
@@ -2451,29 +2475,41 @@ impl MinimalRoot {
         id
     }
 
-    fn set_thread_entries(&mut self, threads: Vec<ThreadSummary>) {
-        self.thread_entries = threads
-            .into_iter()
-            .map(|summary| {
-                let pending = self.pending_thread_open.clone();
-                let thread_id = summary.id.clone();
-                let button = Button::new("")
-                    .variant(ButtonVariant::Ghost)
-                    .font_size(theme::font_size::XS)
-                    .padding(0.0, 0.0)
-                    .corner_radius(0.0)
-                    .on_click(move || {
-                        *pending.borrow_mut() = Some(thread_id.clone());
-                    });
-                let branch = git_branch_for_cwd(&summary.cwd);
-                ThreadEntryView {
-                    summary,
-                    branch,
-                    open_button: button,
-                    open_bounds: Bounds::ZERO,
-                }
-            })
-            .collect();
+    fn set_thread_entries(&mut self, threads: Vec<ThreadSummary>, append: bool) {
+        let mut existing_ids = HashSet::new();
+        let mut entries = if append {
+            for entry in &self.thread_entries {
+                existing_ids.insert(entry.summary.id.clone());
+            }
+            std::mem::take(&mut self.thread_entries)
+        } else {
+            Vec::new()
+        };
+
+        for summary in threads {
+            if append && existing_ids.contains(&summary.id) {
+                continue;
+            }
+            let pending = self.pending_thread_open.clone();
+            let thread_id = summary.id.clone();
+            let button = Button::new("")
+                .variant(ButtonVariant::Ghost)
+                .font_size(theme::font_size::XS)
+                .padding(0.0, 0.0)
+                .corner_radius(0.0)
+                .on_click(move || {
+                    *pending.borrow_mut() = Some(thread_id.clone());
+                });
+            let branch = git_branch_for_cwd(&summary.cwd);
+            entries.push(ThreadEntryView {
+                summary,
+                branch,
+                open_button: button,
+                open_bounds: Bounds::ZERO,
+            });
+        }
+
+        self.thread_entries = entries;
     }
 
     fn open_thread_from_list(&mut self, thread_id: String) {
@@ -3306,6 +3342,14 @@ impl MinimalRoot {
                                 ),
                                 EventResult::Handled
                             );
+                            let load_more_handled = matches!(
+                                self.threads_load_more_button.event(
+                                    event,
+                                    self.threads_load_more_bounds,
+                                    &mut self.event_context
+                                ),
+                                EventResult::Handled
+                            );
                             let mut entries_handled = false;
                             for entry in &mut self.thread_entries {
                                 if matches!(
@@ -3319,7 +3363,7 @@ impl MinimalRoot {
                                     entries_handled = true;
                                 }
                             }
-                            handled |= refresh_handled || entries_handled;
+                            handled |= refresh_handled || load_more_handled || entries_handled;
                         }
                         PaneKind::Identity => {
                             let keygen_handled = matches!(
@@ -3654,8 +3698,23 @@ impl MinimalRoot {
             value
         };
         if should_threads_refresh {
+            self.threads_next_cursor = None;
             if let Some(handler) = self.send_handler.as_mut() {
                 handler(UserAction::ThreadsRefresh);
+            }
+        }
+
+        let should_threads_load_more = {
+            let mut pending = self.pending_threads_load_more.borrow_mut();
+            let value = *pending;
+            *pending = false;
+            value
+        };
+        if should_threads_load_more {
+            if let Some(handler) = self.send_handler.as_mut() {
+                handler(UserAction::ThreadsLoadMore {
+                    cursor: self.threads_next_cursor.clone(),
+                });
             }
         }
 
@@ -3817,7 +3876,9 @@ impl MinimalRoot {
             Cursor::Pointer
         } else if self.copy_button.is_hovered() && !self.copy_button.is_disabled() {
             Cursor::Pointer
-        } else if self.threads_refresh_button.is_hovered() {
+        } else if self.threads_refresh_button.is_hovered()
+            || self.threads_load_more_button.is_hovered()
+        {
             Cursor::Pointer
         } else if self
             .thread_entries
@@ -3889,6 +3950,7 @@ impl Component for MinimalRoot {
 
         self.copy_bounds = Bounds::ZERO;
         self.threads_refresh_bounds = Bounds::ZERO;
+        self.threads_load_more_bounds = Bounds::ZERO;
         self.event_scroll_bounds = Bounds::ZERO;
         self.keygen_bounds = Bounds::ZERO;
 
@@ -5234,16 +5296,25 @@ fn paint_threads_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintCont
         header_height,
     );
     let refresh_button_width = 72.0;
+    let load_more_button_width = 120.0;
+    let button_gap = 8.0;
+    let buttons_width = refresh_button_width + load_more_button_width + button_gap;
     let refresh_bounds = Bounds::new(
         header_bounds.origin.x + header_bounds.size.width - refresh_button_width,
         header_bounds.origin.y - 4.0,
         refresh_button_width,
         24.0,
     );
+    let load_more_bounds = Bounds::new(
+        refresh_bounds.origin.x - button_gap - load_more_button_width,
+        refresh_bounds.origin.y,
+        load_more_button_width,
+        refresh_bounds.size.height,
+    );
     let title_bounds = Bounds::new(
         header_bounds.origin.x,
         header_bounds.origin.y,
-        header_bounds.size.width - refresh_button_width - 8.0,
+        (header_bounds.size.width - buttons_width - 8.0).max(0.0),
         header_height,
     );
 
@@ -5254,7 +5325,11 @@ fn paint_threads_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintCont
         .paint(title_bounds, cx);
 
     root.threads_refresh_bounds = refresh_bounds;
+    root.threads_load_more_bounds = load_more_bounds;
     root.threads_refresh_button.paint(refresh_bounds, cx);
+    root.threads_load_more_button
+        .set_disabled(root.threads_next_cursor.is_none());
+    root.threads_load_more_button.paint(load_more_bounds, cx);
 
     let mut y = header_bounds.origin.y + header_height + 8.0;
     let font_size = theme::font_size::XS;
@@ -6385,6 +6460,7 @@ fn format_event(event: &AppEvent) -> String {
             UserAction::DvmHistoryRefresh => "DvmHistoryRefresh".to_string(),
             UserAction::Nip90Submit { kind, .. } => format!("Nip90Submit (kind {kind})"),
             UserAction::ThreadsRefresh => "ThreadsRefresh".to_string(),
+            UserAction::ThreadsLoadMore { .. } => "ThreadsLoadMore".to_string(),
             UserAction::ThreadOpen { thread_id } => format!("ThreadOpen ({thread_id})"),
             UserAction::Interrupt { .. } => "Interrupt".to_string(),
             UserAction::FullAutoToggle { enabled, .. } => {
@@ -6421,7 +6497,13 @@ fn format_event(event: &AppEvent) -> String {
             format!("DvmHistory ({} jobs)", snapshot.summary.job_count)
         }
         AppEvent::Nip90Log { message } => format!("Nip90Log ({message})"),
-        AppEvent::ThreadsUpdated { threads } => format!("ThreadsUpdated ({})", threads.len()),
+        AppEvent::ThreadsUpdated { threads, append, .. } => {
+            if *append {
+                format!("ThreadsUpdated (+{})", threads.len())
+            } else {
+                format!("ThreadsUpdated ({})", threads.len())
+            }
+        }
         AppEvent::ThreadLoaded { thread, .. } => format!("ThreadLoaded ({})", thread.id),
     }
 }

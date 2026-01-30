@@ -1487,7 +1487,55 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
                                             })
                                             .collect::<Vec<_>>();
                                         let _ =
-                                            proxy.send_event(AppEvent::ThreadsUpdated { threads });
+                                            proxy.send_event(AppEvent::ThreadsUpdated {
+                                                threads,
+                                                next_cursor: response.next_cursor,
+                                                append: false,
+                                            });
+                                    }
+                                    Err(err) => {
+                                        let _ = proxy.send_event(AppEvent::AppServerEvent {
+                                            message: json!({
+                                                "method": "codex/error",
+                                                "params": { "message": err.to_string() }
+                                            })
+                                            .to_string(),
+                                        });
+                                    }
+                                }
+                            });
+                        }
+                        UserAction::ThreadsLoadMore { cursor } => {
+                            let client = client_for_actions.clone();
+                            let proxy = proxy_actions.clone();
+                            handle.spawn(async move {
+                                let Some(cursor) = cursor else {
+                                    return;
+                                };
+                                let params = ThreadListParams {
+                                    limit: Some(10),
+                                    cursor: Some(cursor),
+                                    ..Default::default()
+                                };
+                                match client.thread_list(params).await {
+                                    Ok(response) => {
+                                        let threads = response
+                                            .data
+                                            .into_iter()
+                                            .map(|thread| autopilot_app::ThreadSummary {
+                                                id: thread.id,
+                                                preview: thread.preview,
+                                                model_provider: thread.model_provider,
+                                                cwd: thread.cwd,
+                                                created_at: thread.created_at,
+                                            })
+                                            .collect::<Vec<_>>();
+                                        let _ =
+                                            proxy.send_event(AppEvent::ThreadsUpdated {
+                                                threads,
+                                                next_cursor: response.next_cursor,
+                                                append: true,
+                                            });
                                     }
                                     Err(err) => {
                                         let _ = proxy.send_event(AppEvent::AppServerEvent {
