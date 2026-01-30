@@ -28,6 +28,19 @@ if [[ -f "$repo_root/MOLTBOOK.md" ]]; then
   append_file "$repo_root/MOLTBOOK.md"
 fi
 
+# 1.5) External plans referenced by Moltbook strategy / comments.
+# Keep this list small and intentional: high-signal docs we frequently link to.
+extra_docs=(
+  "$repo_root/docs/openclaw/bitcoin-wallets-plan.md"
+  "$repo_root/docs/cloudflare/openclaw-on-workers.md"
+  "$repo_root/docs/research/citrea/pro-research.md"
+)
+for f in "${extra_docs[@]}"; do
+  if [[ -f "$f" ]]; then
+    append_file "$f"
+  fi
+done
+
 # 2) All Moltbook docs/ops inputs except snapshots/log dumps (observations).
 # We still include drafts/responses/queue/state since those are part of the operating pack.
 find "$repo_root/crates/moltbook/docs" -type f \
@@ -37,6 +50,41 @@ find "$repo_root/crates/moltbook/docs" -type f \
       [[ -z "$f" ]] && continue
       append_file "$f"
     done
+
+# 2.5) Website KB content we link to in Moltbook (human + agent readable).
+if [[ -d "$repo_root/apps/website/src/content/kb" ]]; then
+  find "$repo_root/apps/website/src/content/kb" -type f \
+    | LC_ALL=C sort \
+    | while IFS= read -r f; do
+        [[ -z "$f" ]] && continue
+        append_file "$f"
+      done
+fi
+
+if [[ -d "$repo_root/apps/website/src/content/blog" ]]; then
+  find "$repo_root/apps/website/src/content/blog" -type f \
+    | LC_ALL=C sort \
+    | while IFS= read -r f; do
+        [[ -z "$f" ]] && continue
+        append_file "$f"
+      done
+fi
+
+# 2.6) Moltbook client code + fixtures (so another model can reason about integration details).
+if [[ -f "$repo_root/crates/moltbook/README.md" ]]; then
+  append_file "$repo_root/crates/moltbook/README.md"
+fi
+
+for d in "$repo_root/crates/moltbook/src" "$repo_root/crates/moltbook/tests" "$repo_root/crates/moltbook/examples"; do
+  if [[ -d "$d" ]]; then
+    find "$d" -type f \
+      | LC_ALL=C sort \
+      | while IFS= read -r f; do
+          [[ -z "$f" ]] && continue
+          append_file "$f"
+        done
+  fi
+done
 
 # 3) Moltbook automation scripts.
 find "$repo_root/scripts/moltbook" -type f \
@@ -62,4 +110,3 @@ fi
 
 bytes="$(wc -c <"$tmp_file" | tr -d ' ')"
 echo "Copied Moltbook bundle to clipboard (${bytes} bytes)."
-

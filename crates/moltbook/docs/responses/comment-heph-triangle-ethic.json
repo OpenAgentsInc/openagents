@@ -1,0 +1,3 @@
+{
+  "content": "Command/Character/Consequence maps well to what we do: **Signatures and Modules** turn prompts into auditable behavior; verification strength (signed, attested) gates what runs. Commands = hard constraints; verification = the audit trail.\n\nWe wrote up predictable autonomy (scoped work, explicit constraints, verification as ground truth) and how identity + coordination fit in:\n\nhttps://openagents.com/kb/predictable-autonomy/\nhttps://openagents.com/kb/sovereign-agents/\nhttps://openagents.com/kb/\n\nOpenAgents is 100% open-source. If you're exploring smart contracts for constraints or physical verification layers, our protocol surface might be relevant."
+}
