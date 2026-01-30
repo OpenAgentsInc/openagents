@@ -4400,32 +4400,92 @@ fn paint_chat_pane(chat: &mut ChatPaneState, bounds: Bounds, cx: &mut PaintConte
     let padding_x = 24.0;
     let padding_top = 4.0;
     let padding_bottom = 16.0;
-    let header_height = 0.0;
-    let content_width = bounds.size.width - padding_x * 2.0;
-    let header_bounds = Bounds::new(
-        bounds.origin.x + padding_x,
-        bounds.origin.y + padding_top,
-        content_width,
-        header_height,
+    let input_height = input_bar_height(chat, bounds.size.width, cx);
+
+    let mut engine = LayoutEngine::new();
+    let content_node = engine.request_layout(&flex_1(v_flex()), &[]);
+    let input_node = engine.request_leaf(
+        &LayoutStyle::new()
+            .height(px(input_height))
+            .flex_shrink(0.0),
+    );
+    let root = engine.request_layout(
+        &v_flex()
+            .width(px(bounds.size.width))
+            .height(px(bounds.size.height)),
+        &[content_node, input_node],
+    );
+    engine.compute_layout(root, Size::new(bounds.size.width, bounds.size.height));
+
+    let content_bounds = offset_bounds(engine.layout(content_node), bounds.origin);
+    let input_bounds = offset_bounds(engine.layout(input_node), bounds.origin);
+
+    let content_inner = Bounds::new(
+        content_bounds.origin.x + padding_x,
+        content_bounds.origin.y + padding_top,
+        (content_bounds.size.width - padding_x * 2.0).max(0.0),
+        (content_bounds.size.height - padding_top - padding_bottom).max(0.0),
     );
 
-    let mut description_top = header_bounds.origin.y + 4.0;
     let mut dropdown_bounds = Bounds::ZERO;
+    let mut queue_bounds = Bounds::ZERO;
+    let mut queue_block: Option<Text> = None;
+
+    let selector_height = 30.0;
+    let mut queue_height = 0.0;
+    if !chat.current_queue().is_empty() {
+        let mut queue_text = String::from("Queued");
+        for item in chat.current_queue() {
+            if item.text.trim().is_empty() {
+                continue;
+            }
+            queue_text.push('\n');
+            queue_text.push_str("- ");
+            queue_text.push_str(item.text.trim());
+        }
+        let mut queue_block_local = Text::new(queue_text)
+            .font_size(theme::font_size::XS)
+            .color(theme::text::SECONDARY);
+        let (_, measured_height) = queue_block_local.size_hint_with_width(content_inner.size.width);
+        queue_height = measured_height.unwrap_or(0.0);
+        queue_block = Some(queue_block_local);
+    }
+
+    let mut items = Vec::new();
+    let mut dropdown_index = None;
+    let mut queue_index = None;
 
     if SHOW_MODEL_DROPDOWN {
-        let selector_height = 30.0;
-        let selector_bounds = Bounds::new(
-            header_bounds.origin.x,
-            description_top + 2.0,
-            content_width,
-            selector_height,
-        );
+        dropdown_index = Some(items.len());
+        items.push(ColumnItem::Fixed(selector_height));
+        items.push(ColumnItem::Fixed(6.0));
+    }
+    if queue_height > 0.0 {
+        queue_index = Some(items.len());
+        items.push(ColumnItem::Fixed(queue_height));
+        items.push(ColumnItem::Fixed(12.0));
+    }
+    items.push(ColumnItem::Fixed(14.0));
+    let feed_index = items.len();
+    items.push(ColumnItem::Flex(1.0));
+
+    let content_items = column_bounds(content_inner, &items, 0.0);
+    if let Some(index) = dropdown_index {
+        dropdown_bounds = *content_items.get(index).unwrap_or(&Bounds::ZERO);
+    }
+    if let Some(index) = queue_index {
+        queue_bounds = *content_items.get(index).unwrap_or(&Bounds::ZERO);
+    }
+    let feed_bounds = *content_items.get(feed_index).unwrap_or(&Bounds::ZERO);
+
+    if SHOW_MODEL_DROPDOWN {
+        let selector_bounds = dropdown_bounds;
 
         let label_text = "Model";
         let label_width =
             cx.text
                 .measure_styled_mono(label_text, theme::font_size::SM, FontStyle::default());
-        let available_width = (content_width - label_width - 8.0).max(140.0);
+        let available_width = (content_inner.size.width - label_width - 8.0).max(140.0);
         let dropdown_width = available_width.min(MODEL_DROPDOWN_WIDTH);
 
         let mut engine = LayoutEngine::new();
@@ -4440,14 +4500,15 @@ fn paint_chat_pane(chat: &mut ChatPaneState, bounds: Bounds, cx: &mut PaintConte
                 .height(px(selector_height)),
         );
         let row = engine.request_layout(
-            &LayoutStyle::new()
-                .flex_row()
-                .align_items(AlignItems::Center)
-                .justify_content(JustifyContent::FlexStart)
-                .gap(length(8.0)),
+            &gap(
+                h_flex()
+                    .align_items(AlignItems::Center)
+                    .justify_content(JustifyContent::FlexStart),
+                8.0,
+            ),
             &[label_node, dropdown_node],
         );
-        engine.compute_layout(row, Size::new(content_width, selector_height));
+        engine.compute_layout(row, Size::new(content_inner.size.width, selector_height));
 
         let label_bounds = offset_bounds(engine.layout(label_node), selector_bounds.origin);
         dropdown_bounds = offset_bounds(engine.layout(dropdown_node), selector_bounds.origin);
@@ -4458,52 +4519,14 @@ fn paint_chat_pane(chat: &mut ChatPaneState, bounds: Bounds, cx: &mut PaintConte
             .paint(label_bounds, cx);
 
         chat.model_bounds = dropdown_bounds;
-        description_top = selector_bounds.origin.y + selector_height + 6.0;
     } else {
         chat.model_bounds = Bounds::ZERO;
     }
 
-    if !chat.current_queue().is_empty() {
-        let mut queue_text = String::from("Queued");
-        for item in chat.current_queue() {
-            if item.text.trim().is_empty() {
-                continue;
-            }
-            queue_text.push('\n');
-            queue_text.push_str("- ");
-            queue_text.push_str(item.text.trim());
-        }
-        let mut queue_block = Text::new(queue_text)
-            .font_size(theme::font_size::XS)
-            .color(theme::text::SECONDARY);
-        let (_, queue_height) = queue_block.size_hint_with_width(content_width);
-        let queue_height = queue_height.unwrap_or(0.0);
-        let queue_bounds = Bounds::new(
-            header_bounds.origin.x,
-            description_top + 10.0,
-            content_width,
-            queue_height,
-        );
-        queue_block.paint(queue_bounds, cx);
-        description_top = queue_bounds.origin.y + queue_bounds.size.height + 12.0;
+    if let Some(mut block) = queue_block {
+        block.paint(queue_bounds, cx);
     }
 
-    let input_height = input_bar_height(chat, bounds.size.width, cx);
-    let input_bounds = Bounds::new(
-        bounds.origin.x,
-        bounds.origin.y + bounds.size.height - input_height,
-        bounds.size.width,
-        input_height,
-    );
-
-    let feed_top = description_top + 14.0;
-    let feed_bottom = input_bounds.origin.y - padding_bottom;
-    let feed_bounds = Bounds::new(
-        header_bounds.origin.x,
-        feed_top,
-        header_bounds.size.width,
-        (feed_bottom - feed_top).max(0.0),
-    );
     chat.formatted_thread_bounds = feed_bounds;
 
     if chat.formatted_thread.entry_count() != 0 {
@@ -4534,7 +4557,6 @@ fn metrics_buttons_width(
 }
 
 struct InputBarMetrics {
-    total_width: f32,
     input_height: f32,
     row_height: f32,
     total_height: f32,
@@ -4622,7 +4644,6 @@ fn input_bar_metrics(
     let total_height = input_height + row_height + gap + padding_y * 2.0;
 
     InputBarMetrics {
-        total_width,
         input_height,
         row_height,
         total_height,
@@ -4647,54 +4668,77 @@ fn paint_input_bar(chat: &mut ChatPaneState, bounds: Bounds, cx: &mut PaintConte
     let padding_x = 24.0;
     let metrics = input_bar_metrics(chat, bounds.size.width, cx);
 
-    let bar_x = bounds.origin.x + padding_x;
-    let bar_width = metrics.total_width;
-    let bar_bottom = bounds.origin.y + bounds.size.height - padding_y;
-    let row_y = bar_bottom - metrics.row_height;
-    let input_y = row_y - gap - metrics.input_height;
-    let input_bounds = Bounds::new(bar_x, input_y, bar_width, metrics.input_height);
-
-    let model_bounds = Bounds::new(bar_x, row_y, metrics.model_width, metrics.row_height);
-    let reasoning_bounds = Bounds::new(
-        model_bounds.origin.x + model_bounds.size.width + gap,
-        row_y,
-        metrics.reasoning_width,
-        metrics.row_height,
+    let content_bounds = Bounds::new(
+        bounds.origin.x + padding_x,
+        bounds.origin.y + padding_y,
+        (bounds.size.width - padding_x * 2.0).max(0.0),
+        (bounds.size.height - padding_y * 2.0).max(0.0),
     );
 
-    let mut right_x = bar_x + bar_width;
-    let submit_bounds = Bounds::new(
-        right_x - metrics.send_width,
-        row_y,
-        metrics.send_width,
-        metrics.row_height,
+    let mut engine = LayoutEngine::new();
+    let input_node = engine.request_leaf(
+        &v_flex()
+            .height(px(metrics.input_height))
+            .flex_shrink(0.0),
     );
-    right_x = submit_bounds.origin.x - gap;
+    let row_node = engine.request_leaf(
+        &v_flex()
+            .height(px(metrics.row_height))
+            .flex_shrink(0.0),
+    );
+    let column_style = v_flex()
+        .gap(length(gap))
+        .justify_content(JustifyContent::FlexEnd)
+        .width(px(content_bounds.size.width))
+        .height(px(content_bounds.size.height));
+    let column = engine.request_layout(&column_style, &[input_node, row_node]);
+    engine.compute_layout(
+        column,
+        Size::new(content_bounds.size.width, content_bounds.size.height),
+    );
+
+    let input_bounds = offset_bounds(engine.layout(input_node), content_bounds.origin);
+    let row_bounds = offset_bounds(engine.layout(row_node), content_bounds.origin);
+
+    let mut row_items = vec![
+        wgpui::RowItem::fixed(metrics.model_width),
+        wgpui::RowItem::fixed(metrics.reasoning_width),
+        wgpui::RowItem::flex(1.0),
+        wgpui::RowItem::fixed(metrics.queue_width),
+        wgpui::RowItem::fixed(metrics.full_auto_width),
+    ];
+    if metrics.show_stop {
+        row_items.push(wgpui::RowItem::fixed(metrics.stop_width));
+    }
+    row_items.push(wgpui::RowItem::fixed(metrics.send_width));
+
+    let row_item_bounds = aligned_row_bounds(
+        row_bounds,
+        metrics.row_height,
+        &row_items,
+        gap,
+        JustifyContent::FlexStart,
+        AlignItems::Center,
+    );
+
+    let mut idx = 0;
+    let model_bounds = *row_item_bounds.get(idx).unwrap_or(&row_bounds);
+    idx += 1;
+    let reasoning_bounds = *row_item_bounds.get(idx).unwrap_or(&row_bounds);
+    idx += 1;
+    idx += 1; // spacer
+    let queue_bounds = *row_item_bounds.get(idx).unwrap_or(&row_bounds);
+    idx += 1;
+    let full_auto_bounds = *row_item_bounds.get(idx).unwrap_or(&row_bounds);
+    idx += 1;
     let stop_bounds = if metrics.show_stop {
-        let bounds = Bounds::new(
-            right_x - metrics.stop_width,
-            row_y,
-            metrics.stop_width,
-            metrics.row_height,
-        );
-        right_x = bounds.origin.x - gap;
+        let bounds = *row_item_bounds.get(idx).unwrap_or(&row_bounds);
+        idx += 1;
         bounds
     } else {
         Bounds::ZERO
     };
-    let full_auto_bounds = Bounds::new(
-        right_x - metrics.full_auto_width,
-        row_y,
-        metrics.full_auto_width,
-        metrics.row_height,
-    );
-    right_x = full_auto_bounds.origin.x - gap;
-    let queue_bounds = Bounds::new(
-        right_x - metrics.queue_width,
-        row_y,
-        metrics.queue_width,
-        metrics.row_height,
-    );
+    let submit_bounds = *row_item_bounds.get(idx).unwrap_or(&row_bounds);
 
     chat.input_bounds = input_bounds;
     chat.submit_bounds = submit_bounds;
@@ -4753,7 +4797,6 @@ fn paint_identity_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintCon
 
     let mut content_width = (bounds.size.width * 0.6).min(720.0).max(320.0);
     content_width = content_width.min(bounds.size.width - padding * 2.0);
-    let content_x = bounds.origin.x + (bounds.size.width - content_width) / 2.0;
 
     let mut content_height = button_height + 12.0;
     if let Some(npub) = &root.nostr_npub {
@@ -4788,8 +4831,7 @@ fn paint_identity_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintCon
         content_height += label_height + value_spacing;
     }
 
-    let centered_y = bounds.origin.y + (bounds.size.height - content_height).max(0.0) * 0.5;
-    let mut y = centered_y.max(bounds.origin.y + padding);
+    let content_bounds = centered_bounds(bounds, content_width, content_height, padding);
 
     let button_width =
         (cx.text
@@ -4797,80 +4839,131 @@ fn paint_identity_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintCon
             + 32.0)
             .max(160.0)
             .min(content_width);
-    let keygen_bounds = Bounds::new(
-        content_x + (content_width - button_width) / 2.0,
-        y,
-        button_width,
-        button_height,
-    );
-    root.keygen_bounds = keygen_bounds;
-    root.keygen_button.paint(keygen_bounds, cx);
-    y += button_height + 12.0;
+    enum IdentityStep {
+        Button,
+        Label(&'static str),
+        Value(String, wgpui::color::Hsla, f32),
+        Spacer(f32),
+    }
+
+    let mut steps = Vec::new();
+    steps.push(IdentityStep::Button);
+    steps.push(IdentityStep::Spacer(12.0));
 
     if let Some(npub) = &root.nostr_npub {
         let seed_display = format_seed_phrase(root.seed_phrase.as_deref().unwrap_or(""));
-        Text::new("nostr public key")
-            .font_size(nostr_font)
-            .color(theme::text::MUTED)
-            .paint(Bounds::new(content_x, y, content_width, label_height), cx);
-        y += label_height + label_value_gap;
-        let mut npub_text = Text::new(npub)
-            .font_size(nostr_font)
-            .color(theme::text::PRIMARY);
+
+        let mut npub_text = Text::new(npub).font_size(nostr_font);
         let (_, npub_height) = npub_text.size_hint_with_width(content_width);
         let npub_height = npub_height.unwrap_or(label_height);
-        npub_text.paint(Bounds::new(content_x, y, content_width, npub_height), cx);
-        y += npub_height + value_spacing;
 
-        Text::new("nostr secret key")
-            .font_size(nostr_font)
-            .color(theme::text::MUTED)
-            .paint(Bounds::new(content_x, y, content_width, label_height), cx);
-        y += label_height + label_value_gap;
-        let mut nsec_text = Text::new(root.nostr_nsec.as_deref().unwrap_or(""))
-            .font_size(nostr_font)
-            .color(theme::text::PRIMARY);
+        let mut nsec_text =
+            Text::new(root.nostr_nsec.as_deref().unwrap_or("")).font_size(nostr_font);
         let (_, nsec_height) = nsec_text.size_hint_with_width(content_width);
         let nsec_height = nsec_height.unwrap_or(label_height);
-        nsec_text.paint(Bounds::new(content_x, y, content_width, nsec_height), cx);
-        y += nsec_height + value_spacing;
 
-        Text::new("spark public key")
-            .font_size(nostr_font)
-            .color(theme::text::MUTED)
-            .paint(Bounds::new(content_x, y, content_width, label_height), cx);
-        y += label_height + label_value_gap;
-        let mut spark_text = Text::new(root.spark_pubkey_hex.as_deref().unwrap_or(""))
-            .font_size(nostr_font)
-            .color(theme::text::PRIMARY);
+        let mut spark_text =
+            Text::new(root.spark_pubkey_hex.as_deref().unwrap_or("")).font_size(nostr_font);
         let (_, spark_height) = spark_text.size_hint_with_width(content_width);
         let spark_height = spark_height.unwrap_or(label_height);
-        spark_text.paint(Bounds::new(content_x, y, content_width, spark_height), cx);
-        y += spark_height + value_spacing;
 
-        Text::new("seed phrase")
-            .font_size(nostr_font)
-            .color(theme::text::MUTED)
-            .paint(Bounds::new(content_x, y, content_width, label_height), cx);
-        y += label_height + label_value_gap;
-        let mut seed_text = Text::new(seed_display)
-            .font_size(nostr_font)
-            .color(theme::text::PRIMARY);
+        let mut seed_text = Text::new(seed_display.as_str()).font_size(nostr_font);
         let (_, seed_height) = seed_text.size_hint_with_width(content_width);
         let seed_height = seed_height.unwrap_or(label_height);
-        seed_text.paint(Bounds::new(content_x, y, content_width, seed_height), cx);
+
+        steps.push(IdentityStep::Label("nostr public key"));
+        steps.push(IdentityStep::Spacer(label_value_gap));
+        steps.push(IdentityStep::Value(
+            npub.clone(),
+            theme::text::PRIMARY,
+            npub_height,
+        ));
+        steps.push(IdentityStep::Spacer(value_spacing));
+
+        steps.push(IdentityStep::Label("nostr secret key"));
+        steps.push(IdentityStep::Spacer(label_value_gap));
+        steps.push(IdentityStep::Value(
+            root.nostr_nsec.as_deref().unwrap_or("").to_string(),
+            theme::text::PRIMARY,
+            nsec_height,
+        ));
+        steps.push(IdentityStep::Spacer(value_spacing));
+
+        steps.push(IdentityStep::Label("spark public key"));
+        steps.push(IdentityStep::Spacer(label_value_gap));
+        steps.push(IdentityStep::Value(
+            root.spark_pubkey_hex.as_deref().unwrap_or("").to_string(),
+            theme::text::PRIMARY,
+            spark_height,
+        ));
+        steps.push(IdentityStep::Spacer(value_spacing));
+
+        steps.push(IdentityStep::Label("seed phrase"));
+        steps.push(IdentityStep::Spacer(label_value_gap));
+        steps.push(IdentityStep::Value(
+            seed_display,
+            theme::text::PRIMARY,
+            seed_height,
+        ));
     } else if let Some(err) = &root.nostr_error {
-        let mut err_text = Text::new(err)
-            .font_size(nostr_font)
-            .color(theme::status::ERROR);
+        let mut err_text = Text::new(err).font_size(nostr_font);
         let (_, err_height) = err_text.size_hint_with_width(content_width);
         let err_height = err_height.unwrap_or(label_height);
-        err_text.paint(Bounds::new(content_x, y, content_width, err_height), cx);
+        steps.push(IdentityStep::Value(
+            err.to_string(),
+            theme::status::ERROR,
+            err_height,
+        ));
     } else {
-        Text::new("No keypair generated yet.")
-            .font_size(nostr_font)
-            .color(theme::text::MUTED)
-            .paint(Bounds::new(content_x, y, content_width, label_height), cx);
+        steps.push(IdentityStep::Value(
+            "No keypair generated yet.".to_string(),
+            theme::text::MUTED,
+            label_height,
+        ));
+    }
+
+    let heights: Vec<ColumnItem> = steps
+        .iter()
+        .map(|step| match step {
+            IdentityStep::Button => ColumnItem::Fixed(button_height),
+            IdentityStep::Label(_) => ColumnItem::Fixed(label_height),
+            IdentityStep::Value(_, _, height) => ColumnItem::Fixed(*height),
+            IdentityStep::Spacer(height) => ColumnItem::Fixed(*height),
+        })
+        .collect();
+    let bounds_list = column_bounds(content_bounds, &heights, 0.0);
+
+    for (step, bounds) in steps.into_iter().zip(bounds_list) {
+        match step {
+            IdentityStep::Button => {
+                let button_bounds = aligned_row_bounds(
+                    bounds,
+                    button_height,
+                    &[wgpui::RowItem::fixed(button_width)],
+                    0.0,
+                    JustifyContent::Center,
+                    AlignItems::Center,
+                )
+                .into_iter()
+                .next()
+                .unwrap_or(bounds);
+                root.keygen_bounds = button_bounds;
+                root.keygen_button.paint(button_bounds, cx);
+            }
+            IdentityStep::Label(label) => {
+                Text::new(label)
+                    .font_size(nostr_font)
+                    .color(theme::text::MUTED)
+                    .paint(bounds, cx);
+            }
+            IdentityStep::Value(text, color, _) => {
+                let mut value = Text::new(text)
+                    .font_size(nostr_font)
+                    .color(color);
+                value.paint(bounds, cx);
+            }
+            IdentityStep::Spacer(_) => {}
+        }
     }
 
     root.copy_bounds = Bounds::ZERO;
@@ -4886,19 +4979,10 @@ fn paint_pylon_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintContex
 
     let mut content_width = (bounds.size.width * 0.8).min(560.0).max(280.0);
     content_width = content_width.min(bounds.size.width - padding * 2.0);
-    let content_x = bounds.origin.x + (bounds.size.width - content_width) / 2.0;
-
-    let mut y = bounds.origin.y + padding;
-    let button_row_bounds = Bounds::new(content_x, y, content_width, button_height);
+    let content_bounds = centered_column_bounds(bounds, content_width, padding);
     let toggle_width = 120.0;
-    let toggle_bounds = Bounds::new(
-        button_row_bounds.origin.x,
-        button_row_bounds.origin.y,
-        toggle_width,
-        button_height,
-    );
 
-    root.pylon_toggle_bounds = toggle_bounds;
+    root.pylon_toggle_bounds = Bounds::ZERO;
     root.pylon_init_bounds = Bounds::ZERO;
     root.pylon_start_bounds = Bounds::ZERO;
     root.pylon_stop_bounds = Bounds::ZERO;
@@ -4919,89 +5003,112 @@ fn paint_pylon_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintContex
     root.pylon_toggle_button
         .set_disabled(root.pylon_status.last_error.is_some() && !root.pylon_status.running);
 
-    root.pylon_toggle_button.paint(toggle_bounds, cx);
-
-    y += button_height + 14.0;
-
     let status_line = if root.pylon_status.running {
         "Provider: ON"
     } else {
         "Provider: OFF"
     };
-    Text::new(status_line)
-        .font_size(text_size)
-        .color(theme::text::PRIMARY)
-        .paint(Bounds::new(content_x, y, content_width, label_height), cx);
-    y += label_height + value_spacing;
-
     let identity_line = if root.pylon_status.identity_exists {
         "Identity: present"
     } else {
         "Identity: missing (auto-generate on first start)"
     };
-    Text::new(identity_line)
-        .font_size(text_size)
-        .color(theme::text::MUTED)
-        .paint(Bounds::new(content_x, y, content_width, label_height), cx);
-    y += label_height + value_spacing;
+    enum PylonStep {
+        ButtonRow,
+        Line(String, wgpui::color::Hsla),
+        Spacer(f32),
+    }
+
+    let mut steps = vec![
+        PylonStep::ButtonRow,
+        PylonStep::Spacer(14.0),
+        PylonStep::Line(status_line.to_string(), theme::text::PRIMARY),
+        PylonStep::Spacer(value_spacing),
+        PylonStep::Line(identity_line.to_string(), theme::text::MUTED),
+        PylonStep::Spacer(value_spacing),
+    ];
 
     if let Some(uptime) = root.pylon_status.uptime_secs {
-        Text::new(&format!("Uptime: {}s", uptime))
-            .font_size(text_size)
-            .color(theme::text::MUTED)
-            .paint(Bounds::new(content_x, y, content_width, label_height), cx);
-        y += label_height + value_spacing;
+        steps.push(PylonStep::Line(
+            format!("Uptime: {}s", uptime),
+            theme::text::MUTED,
+        ));
+        steps.push(PylonStep::Spacer(value_spacing));
     }
 
     if let Some(provider_active) = root.pylon_status.provider_active {
-        Text::new(&format!(
-            "Provider: {}",
-            if provider_active {
-                "active"
-            } else {
-                "inactive"
-            }
-        ))
-        .font_size(text_size)
-        .color(theme::text::MUTED)
-        .paint(Bounds::new(content_x, y, content_width, label_height), cx);
-        y += label_height + value_spacing;
+        steps.push(PylonStep::Line(
+            format!(
+                "Provider: {}",
+                if provider_active { "active" } else { "inactive" }
+            ),
+            theme::text::MUTED,
+        ));
+        steps.push(PylonStep::Spacer(value_spacing));
     }
 
     if let Some(host_active) = root.pylon_status.host_active {
-        Text::new(&format!(
-            "Host: {}",
-            if host_active { "active" } else { "inactive" }
-        ))
-        .font_size(text_size)
-        .color(theme::text::MUTED)
-        .paint(Bounds::new(content_x, y, content_width, label_height), cx);
-        y += label_height + value_spacing;
+        steps.push(PylonStep::Line(
+            format!(
+                "Host: {}",
+                if host_active { "active" } else { "inactive" }
+            ),
+            theme::text::MUTED,
+        ));
+        steps.push(PylonStep::Spacer(value_spacing));
     }
 
-    Text::new(&format!(
-        "Jobs completed: {}",
-        root.pylon_status.jobs_completed
-    ))
-    .font_size(text_size)
-    .color(theme::text::MUTED)
-    .paint(Bounds::new(content_x, y, content_width, label_height), cx);
-    y += label_height + value_spacing;
+    steps.push(PylonStep::Line(
+        format!("Jobs completed: {}", root.pylon_status.jobs_completed),
+        theme::text::MUTED,
+    ));
+    steps.push(PylonStep::Spacer(value_spacing));
 
-    Text::new(&format!(
-        "Earnings: {} msats",
-        root.pylon_status.earnings_msats
-    ))
-    .font_size(text_size)
-    .color(theme::text::MUTED)
-    .paint(Bounds::new(content_x, y, content_width, label_height), cx);
-    y += label_height + value_spacing;
+    steps.push(PylonStep::Line(
+        format!("Earnings: {} msats", root.pylon_status.earnings_msats),
+        theme::text::MUTED,
+    ));
+    steps.push(PylonStep::Spacer(value_spacing));
 
     if let Some(err) = root.pylon_status.last_error.as_deref() {
-        Text::new(err)
-            .font_size(text_size)
-            .color(theme::accent::RED)
-            .paint(Bounds::new(content_x, y, content_width, label_height), cx);
+        steps.push(PylonStep::Line(err.to_string(), theme::accent::RED));
+    }
+
+    let heights: Vec<ColumnItem> = steps
+        .iter()
+        .map(|step| match step {
+            PylonStep::ButtonRow => ColumnItem::Fixed(button_height),
+            PylonStep::Line(_, _) => ColumnItem::Fixed(label_height),
+            PylonStep::Spacer(height) => ColumnItem::Fixed(*height),
+        })
+        .collect();
+    let bounds_list = column_bounds(content_bounds, &heights, 0.0);
+
+    for (step, bounds) in steps.into_iter().zip(bounds_list) {
+        match step {
+            PylonStep::ButtonRow => {
+                let button_bounds = aligned_row_bounds(
+                    bounds,
+                    button_height,
+                    &[wgpui::RowItem::fixed(toggle_width)],
+                    0.0,
+                    JustifyContent::FlexStart,
+                    AlignItems::Center,
+                )
+                .into_iter()
+                .next()
+                .unwrap_or(bounds);
+                root.pylon_toggle_bounds = button_bounds;
+                root.pylon_toggle_button.paint(button_bounds, cx);
+            }
+            PylonStep::Line(text, color) => {
+                Text::new(text)
+                    .font_size(text_size)
+                    .color(color)
+                    .paint(bounds, cx);
+            }
+            PylonStep::Spacer(_) => {}
+        }
     }
 }
 
@@ -5014,98 +5121,141 @@ fn paint_wallet_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintConte
 
     let mut content_width = (bounds.size.width * 0.8).min(560.0).max(280.0);
     content_width = content_width.min(bounds.size.width - padding * 2.0);
-    let content_x = bounds.origin.x + (bounds.size.width - content_width) / 2.0;
-    let mut y = bounds.origin.y + padding;
-
-    let refresh_bounds = Bounds::new(content_x, y, 90.0, button_height);
-    root.wallet_refresh_bounds = refresh_bounds;
-    root.wallet_refresh_button.paint(refresh_bounds, cx);
-    y += button_height + 14.0;
+    let content_bounds = centered_column_bounds(bounds, content_width, padding);
+    let refresh_width = 90.0;
+    root.wallet_refresh_bounds = Bounds::ZERO;
 
     let identity_line = if root.wallet_status.identity_exists {
         "Identity: present"
     } else {
         "Identity: missing"
     };
-    Text::new(identity_line)
-        .font_size(text_size)
-        .color(theme::text::MUTED)
-        .paint(Bounds::new(content_x, y, content_width, label_height), cx);
-    y += label_height + value_spacing;
-
-    if let Some(network) = root.wallet_status.network.as_deref() {
-        Text::new(&format!("Network: {}", network))
-            .font_size(text_size)
-            .color(theme::text::MUTED)
-            .paint(Bounds::new(content_x, y, content_width, label_height), cx);
-        y += label_height + value_spacing;
+    enum WalletStep {
+        Refresh,
+        Line(String, wgpui::color::Hsla, f32),
+        Spacer(f32),
     }
 
-    Text::new(&format!("Total: {} sats", root.wallet_status.total_sats))
-        .font_size(text_size)
-        .color(theme::text::PRIMARY)
-        .paint(Bounds::new(content_x, y, content_width, label_height), cx);
-    y += label_height + value_spacing;
+    let mut steps = vec![
+        WalletStep::Refresh,
+        WalletStep::Spacer(14.0),
+        WalletStep::Line(identity_line.to_string(), theme::text::MUTED, label_height),
+        WalletStep::Spacer(value_spacing),
+    ];
 
-    Text::new(&format!("Spark: {} sats", root.wallet_status.spark_sats))
-        .font_size(text_size)
-        .color(theme::text::MUTED)
-        .paint(Bounds::new(content_x, y, content_width, label_height), cx);
-    y += label_height + value_spacing;
+    if let Some(network) = root.wallet_status.network.as_deref() {
+        steps.push(WalletStep::Line(
+            format!("Network: {}", network),
+            theme::text::MUTED,
+            label_height,
+        ));
+        steps.push(WalletStep::Spacer(value_spacing));
+    }
 
-    Text::new(&format!(
-        "Lightning: {} sats",
-        root.wallet_status.lightning_sats
-    ))
-    .font_size(text_size)
-    .color(theme::text::MUTED)
-    .paint(Bounds::new(content_x, y, content_width, label_height), cx);
-    y += label_height + value_spacing;
-
-    Text::new(&format!(
-        "On-chain: {} sats",
-        root.wallet_status.onchain_sats
-    ))
-    .font_size(text_size)
-    .color(theme::text::MUTED)
-    .paint(Bounds::new(content_x, y, content_width, label_height), cx);
-    y += label_height + value_spacing;
+    steps.push(WalletStep::Line(
+        format!("Total: {} sats", root.wallet_status.total_sats),
+        theme::text::PRIMARY,
+        label_height,
+    ));
+    steps.push(WalletStep::Spacer(value_spacing));
+    steps.push(WalletStep::Line(
+        format!("Spark: {} sats", root.wallet_status.spark_sats),
+        theme::text::MUTED,
+        label_height,
+    ));
+    steps.push(WalletStep::Spacer(value_spacing));
+    steps.push(WalletStep::Line(
+        format!("Lightning: {} sats", root.wallet_status.lightning_sats),
+        theme::text::MUTED,
+        label_height,
+    ));
+    steps.push(WalletStep::Spacer(value_spacing));
+    steps.push(WalletStep::Line(
+        format!("On-chain: {} sats", root.wallet_status.onchain_sats),
+        theme::text::MUTED,
+        label_height,
+    ));
+    steps.push(WalletStep::Spacer(value_spacing));
 
     if let Some(address) = root.wallet_status.spark_address.as_deref() {
-        Text::new("Spark address")
-            .font_size(text_size)
-            .color(theme::text::MUTED)
-            .paint(Bounds::new(content_x, y, content_width, label_height), cx);
-        y += label_height + 4.0;
-        let mut text = Text::new(address)
-            .font_size(text_size)
-            .color(theme::text::PRIMARY);
+        let mut text = Text::new(address).font_size(text_size);
         let (_, height) = text.size_hint_with_width(content_width);
         let height = height.unwrap_or(label_height);
-        text.paint(Bounds::new(content_x, y, content_width, height), cx);
-        y += height + value_spacing;
+        steps.push(WalletStep::Line(
+            "Spark address".to_string(),
+            theme::text::MUTED,
+            label_height,
+        ));
+        steps.push(WalletStep::Spacer(4.0));
+        steps.push(WalletStep::Line(
+            address.to_string(),
+            theme::text::PRIMARY,
+            height,
+        ));
+        steps.push(WalletStep::Spacer(value_spacing));
     }
 
     if let Some(address) = root.wallet_status.bitcoin_address.as_deref() {
-        Text::new("Bitcoin address")
-            .font_size(text_size)
-            .color(theme::text::MUTED)
-            .paint(Bounds::new(content_x, y, content_width, label_height), cx);
-        y += label_height + 4.0;
-        let mut text = Text::new(address)
-            .font_size(text_size)
-            .color(theme::text::PRIMARY);
+        let mut text = Text::new(address).font_size(text_size);
         let (_, height) = text.size_hint_with_width(content_width);
         let height = height.unwrap_or(label_height);
-        text.paint(Bounds::new(content_x, y, content_width, height), cx);
-        y += height + value_spacing;
+        steps.push(WalletStep::Line(
+            "Bitcoin address".to_string(),
+            theme::text::MUTED,
+            label_height,
+        ));
+        steps.push(WalletStep::Spacer(4.0));
+        steps.push(WalletStep::Line(
+            address.to_string(),
+            theme::text::PRIMARY,
+            height,
+        ));
+        steps.push(WalletStep::Spacer(value_spacing));
     }
 
     if let Some(err) = root.wallet_status.last_error.as_deref() {
-        Text::new(err)
-            .font_size(text_size)
-            .color(theme::accent::RED)
-            .paint(Bounds::new(content_x, y, content_width, label_height), cx);
+        steps.push(WalletStep::Line(
+            err.to_string(),
+            theme::accent::RED,
+            label_height,
+        ));
+    }
+
+    let heights: Vec<ColumnItem> = steps
+        .iter()
+        .map(|step| match step {
+            WalletStep::Refresh => ColumnItem::Fixed(button_height),
+            WalletStep::Line(_, _, height) => ColumnItem::Fixed(*height),
+            WalletStep::Spacer(height) => ColumnItem::Fixed(*height),
+        })
+        .collect();
+    let bounds_list = column_bounds(content_bounds, &heights, 0.0);
+
+    for (step, bounds) in steps.into_iter().zip(bounds_list) {
+        match step {
+            WalletStep::Refresh => {
+                let button_bounds = aligned_row_bounds(
+                    bounds,
+                    button_height,
+                    &[wgpui::RowItem::fixed(refresh_width)],
+                    0.0,
+                    JustifyContent::FlexStart,
+                    AlignItems::Center,
+                )
+                .into_iter()
+                .next()
+                .unwrap_or(bounds);
+                root.wallet_refresh_bounds = button_bounds;
+                root.wallet_refresh_button.paint(button_bounds, cx);
+            }
+            WalletStep::Line(text, color, _) => {
+                Text::new(text)
+                    .font_size(text_size)
+                    .color(color)
+                    .paint(bounds, cx);
+            }
+            WalletStep::Spacer(_) => {}
+        }
     }
 }
 
@@ -5118,8 +5268,7 @@ fn paint_sell_compute_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut Pain
 
     let mut content_width = (bounds.size.width * 0.85).min(600.0).max(320.0);
     content_width = content_width.min(bounds.size.width - padding * 2.0);
-    let content_x = bounds.origin.x + (bounds.size.width - content_width) / 2.0;
-    let mut y = bounds.origin.y + padding;
+    let content_bounds = centered_column_bounds(bounds, content_width, padding);
 
     let provider_active = root.sell_compute_status.provider_active.unwrap_or(false);
     let running = root.sell_compute_status.running;
@@ -5131,130 +5280,171 @@ fn paint_sell_compute_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut Pain
     let offline_width = 96.0;
     let refresh_width = 86.0;
     let gap = 8.0;
-    let row_width = online_width + offline_width + refresh_width + gap * 2.0;
-    let row_x = content_x + (content_width - row_width).max(0.0) / 2.0;
-    let online_bounds = Bounds::new(row_x, y, online_width, button_height);
-    let offline_bounds = Bounds::new(row_x + online_width + gap, y, offline_width, button_height);
-    let refresh_bounds = Bounds::new(
-        row_x + online_width + offline_width + gap * 2.0,
-        y,
-        refresh_width,
-        button_height,
-    );
-    root.sell_compute_online_bounds = online_bounds;
-    root.sell_compute_offline_bounds = offline_bounds;
-    root.sell_compute_refresh_bounds = refresh_bounds;
-    root.sell_compute_online_button.paint(online_bounds, cx);
-    root.sell_compute_offline_button.paint(offline_bounds, cx);
-    root.sell_compute_refresh_button.paint(refresh_bounds, cx);
-    y += button_height + 14.0;
+    root.sell_compute_online_bounds = Bounds::ZERO;
+    root.sell_compute_offline_bounds = Bounds::ZERO;
+    root.sell_compute_refresh_bounds = Bounds::ZERO;
 
     let status_line = if running {
         "Daemon: running"
     } else {
         "Daemon: stopped"
     };
-    Text::new(status_line)
-        .font_size(text_size)
-        .color(theme::text::PRIMARY)
-        .paint(Bounds::new(content_x, y, content_width, label_height), cx);
-    y += label_height + value_spacing;
+    enum SellStep {
+        ButtonRow,
+        Line(String, wgpui::color::Hsla, f32),
+        Spacer(f32),
+    }
+
+    let mut steps = vec![
+        SellStep::ButtonRow,
+        SellStep::Spacer(14.0),
+        SellStep::Line(status_line.to_string(), theme::text::PRIMARY, label_height),
+        SellStep::Spacer(value_spacing),
+    ];
 
     if let Some(provider_active) = root.sell_compute_status.provider_active {
-        Text::new(&format!(
-            "Provider: {}",
-            if provider_active { "online" } else { "offline" }
-        ))
-        .font_size(text_size)
-        .color(theme::text::MUTED)
-        .paint(Bounds::new(content_x, y, content_width, label_height), cx);
-        y += label_height + value_spacing;
+        steps.push(SellStep::Line(
+            format!(
+                "Provider: {}",
+                if provider_active { "online" } else { "offline" }
+            ),
+            theme::text::MUTED,
+            label_height,
+        ));
+        steps.push(SellStep::Spacer(value_spacing));
     }
 
     if let Some(host_active) = root.sell_compute_status.host_active {
-        Text::new(&format!(
-            "Host: {}",
-            if host_active { "active" } else { "inactive" }
-        ))
-        .font_size(text_size)
-        .color(theme::text::MUTED)
-        .paint(Bounds::new(content_x, y, content_width, label_height), cx);
-        y += label_height + value_spacing;
+        steps.push(SellStep::Line(
+            format!(
+                "Host: {}",
+                if host_active { "active" } else { "inactive" }
+            ),
+            theme::text::MUTED,
+            label_height,
+        ));
+        steps.push(SellStep::Spacer(value_spacing));
     }
 
-    Text::new(&format!(
-        "Min price: {} msats",
-        root.sell_compute_status.min_price_msats
-    ))
-    .font_size(text_size)
-    .color(theme::text::MUTED)
-    .paint(Bounds::new(content_x, y, content_width, label_height), cx);
-    y += label_height + value_spacing;
-
-    Text::new(&format!(
-        "Require payment: {}",
-        if root.sell_compute_status.require_payment {
-            "yes"
-        } else {
-            "no"
-        }
-    ))
-    .font_size(text_size)
-    .color(theme::text::MUTED)
-    .paint(Bounds::new(content_x, y, content_width, label_height), cx);
-    y += label_height + value_spacing;
-
-    Text::new(&format!(
-        "Payments enabled: {}",
-        if root.sell_compute_status.enable_payments {
-            "yes"
-        } else {
-            "no"
-        }
-    ))
-    .font_size(text_size)
-    .color(theme::text::MUTED)
-    .paint(Bounds::new(content_x, y, content_width, label_height), cx);
-    y += label_height + value_spacing;
-
-    Text::new(&format!("Network: {}", root.sell_compute_status.network))
-        .font_size(text_size)
-        .color(theme::text::MUTED)
-        .paint(Bounds::new(content_x, y, content_width, label_height), cx);
-    y += label_height + value_spacing;
+    steps.push(SellStep::Line(
+        format!("Min price: {} msats", root.sell_compute_status.min_price_msats),
+        theme::text::MUTED,
+        label_height,
+    ));
+    steps.push(SellStep::Spacer(value_spacing));
+    steps.push(SellStep::Line(
+        format!(
+            "Require payment: {}",
+            if root.sell_compute_status.require_payment {
+                "yes"
+            } else {
+                "no"
+            }
+        ),
+        theme::text::MUTED,
+        label_height,
+    ));
+    steps.push(SellStep::Spacer(value_spacing));
+    steps.push(SellStep::Line(
+        format!(
+            "Payments enabled: {}",
+            if root.sell_compute_status.enable_payments {
+                "yes"
+            } else {
+                "no"
+            }
+        ),
+        theme::text::MUTED,
+        label_height,
+    ));
+    steps.push(SellStep::Spacer(value_spacing));
+    steps.push(SellStep::Line(
+        format!("Network: {}", root.sell_compute_status.network),
+        theme::text::MUTED,
+        label_height,
+    ));
+    steps.push(SellStep::Spacer(value_spacing));
 
     if !root.sell_compute_status.default_model.is_empty() {
-        Text::new(&format!(
-            "Default model: {}",
-            root.sell_compute_status.default_model
-        ))
-        .font_size(text_size)
-        .color(theme::text::MUTED)
-        .paint(Bounds::new(content_x, y, content_width, label_height), cx);
-        y += label_height + value_spacing;
+        steps.push(SellStep::Line(
+            format!("Default model: {}", root.sell_compute_status.default_model),
+            theme::text::MUTED,
+            label_height,
+        ));
+        steps.push(SellStep::Spacer(value_spacing));
     }
 
     if !root.sell_compute_status.backend_preference.is_empty() {
-        Text::new("Backends")
-            .font_size(text_size)
-            .color(theme::text::MUTED)
-            .paint(Bounds::new(content_x, y, content_width, label_height), cx);
-        y += label_height + 4.0;
         let list = root.sell_compute_status.backend_preference.join(", ");
-        let mut text = Text::new(list.as_str())
-            .font_size(text_size)
-            .color(theme::text::PRIMARY);
+        let mut text = Text::new(list.as_str()).font_size(text_size);
         let (_, height) = text.size_hint_with_width(content_width);
         let height = height.unwrap_or(label_height);
-        text.paint(Bounds::new(content_x, y, content_width, height), cx);
-        y += height + value_spacing;
+        steps.push(SellStep::Line(
+            "Backends".to_string(),
+            theme::text::MUTED,
+            label_height,
+        ));
+        steps.push(SellStep::Spacer(4.0));
+        steps.push(SellStep::Line(
+            list,
+            theme::text::PRIMARY,
+            height,
+        ));
+        steps.push(SellStep::Spacer(value_spacing));
     }
 
     if let Some(err) = root.sell_compute_status.last_error.as_deref() {
-        Text::new(err)
-            .font_size(text_size)
-            .color(theme::accent::RED)
-            .paint(Bounds::new(content_x, y, content_width, label_height), cx);
+        steps.push(SellStep::Line(
+            err.to_string(),
+            theme::accent::RED,
+            label_height,
+        ));
+    }
+
+    let heights: Vec<ColumnItem> = steps
+        .iter()
+        .map(|step| match step {
+            SellStep::ButtonRow => ColumnItem::Fixed(button_height),
+            SellStep::Line(_, _, height) => ColumnItem::Fixed(*height),
+            SellStep::Spacer(height) => ColumnItem::Fixed(*height),
+        })
+        .collect();
+    let bounds_list = column_bounds(content_bounds, &heights, 0.0);
+
+    for (step, bounds) in steps.into_iter().zip(bounds_list) {
+        match step {
+            SellStep::ButtonRow => {
+                let items = [
+                    wgpui::RowItem::fixed(online_width),
+                    wgpui::RowItem::fixed(offline_width),
+                    wgpui::RowItem::fixed(refresh_width),
+                ];
+                let row_bounds = aligned_row_bounds(
+                    bounds,
+                    button_height,
+                    &items,
+                    gap,
+                    JustifyContent::Center,
+                    AlignItems::Center,
+                );
+                let online_bounds = *row_bounds.get(0).unwrap_or(&bounds);
+                let offline_bounds = *row_bounds.get(1).unwrap_or(&bounds);
+                let refresh_bounds = *row_bounds.get(2).unwrap_or(&bounds);
+                root.sell_compute_online_bounds = online_bounds;
+                root.sell_compute_offline_bounds = offline_bounds;
+                root.sell_compute_refresh_bounds = refresh_bounds;
+                root.sell_compute_online_button.paint(online_bounds, cx);
+                root.sell_compute_offline_button.paint(offline_bounds, cx);
+                root.sell_compute_refresh_button.paint(refresh_bounds, cx);
+            }
+            SellStep::Line(text, color, _) => {
+                Text::new(text)
+                    .font_size(text_size)
+                    .color(color)
+                    .paint(bounds, cx);
+            }
+            SellStep::Spacer(_) => {}
+        }
     }
 }
 
@@ -5267,39 +5457,33 @@ fn paint_dvm_history_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut Paint
 
     let mut content_width = (bounds.size.width * 0.9).min(700.0).max(320.0);
     content_width = content_width.min(bounds.size.width - padding * 2.0);
-    let content_x = bounds.origin.x + (bounds.size.width - content_width) / 2.0;
-    let mut y = bounds.origin.y + padding;
+    let content_bounds = centered_column_bounds(bounds, content_width, padding);
+    let refresh_width = 90.0;
+    root.dvm_history_refresh_bounds = Bounds::ZERO;
 
-    let refresh_bounds = Bounds::new(content_x + content_width - 90.0, y, 90.0, button_height);
-    root.dvm_history_refresh_bounds = refresh_bounds;
-    root.dvm_history_refresh_button.paint(refresh_bounds, cx);
+    enum DvmStep {
+        Header,
+        Line(String, wgpui::color::Hsla, f32),
+        Spacer(f32),
+    }
 
-    Text::new("Earnings summary")
-        .font_size(text_size)
-        .color(theme::text::PRIMARY)
-        .paint(
-            Bounds::new(content_x, y + 6.0, content_width, label_height),
-            cx,
-        );
-    y += button_height + 10.0;
+    let mut steps = vec![DvmStep::Header, DvmStep::Spacer(10.0)];
 
-    Text::new(&format!(
-        "Total: {} sats ({} msats)",
-        root.dvm_history.summary_total_sats, root.dvm_history.summary_total_msats
-    ))
-    .font_size(text_size)
-    .color(theme::text::MUTED)
-    .paint(Bounds::new(content_x, y, content_width, label_height), cx);
-    y += label_height + value_spacing;
-
-    Text::new(&format!(
-        "Jobs completed: {}",
-        root.dvm_history.summary_job_count
-    ))
-    .font_size(text_size)
-    .color(theme::text::MUTED)
-    .paint(Bounds::new(content_x, y, content_width, label_height), cx);
-    y += label_height + value_spacing;
+    steps.push(DvmStep::Line(
+        format!(
+            "Total: {} sats ({} msats)",
+            root.dvm_history.summary_total_sats, root.dvm_history.summary_total_msats
+        ),
+        theme::text::MUTED,
+        label_height,
+    ));
+    steps.push(DvmStep::Spacer(value_spacing));
+    steps.push(DvmStep::Line(
+        format!("Jobs completed: {}", root.dvm_history.summary_job_count),
+        theme::text::MUTED,
+        label_height,
+    ));
+    steps.push(DvmStep::Spacer(value_spacing));
 
     if !root.dvm_history.summary_by_source.is_empty() {
         let mut sources = root.dvm_history.summary_by_source.clone();
@@ -5309,13 +5493,11 @@ fn paint_dvm_history_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut Paint
             .map(|(source, amount)| format!("{source}: {amount} msats"))
             .collect::<Vec<_>>()
             .join(" | ");
-        let mut text = Text::new(joined.as_str())
-            .font_size(text_size)
-            .color(theme::text::MUTED);
+        let mut text = Text::new(joined.as_str()).font_size(text_size);
         let (_, height) = text.size_hint_with_width(content_width);
         let height = height.unwrap_or(label_height);
-        text.paint(Bounds::new(content_x, y, content_width, height), cx);
-        y += height + value_spacing;
+        steps.push(DvmStep::Line(joined, theme::text::MUTED, height));
+        steps.push(DvmStep::Spacer(value_spacing));
     }
 
     if !root.dvm_history.status_counts.is_empty() {
@@ -5326,27 +5508,27 @@ fn paint_dvm_history_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut Paint
             .map(|(status, count)| format!("{status}: {count}"))
             .collect::<Vec<_>>()
             .join(" | ");
-        let mut text = Text::new(joined.as_str())
-            .font_size(text_size)
-            .color(theme::text::MUTED);
+        let mut text = Text::new(joined.as_str()).font_size(text_size);
         let (_, height) = text.size_hint_with_width(content_width);
         let height = height.unwrap_or(label_height);
-        text.paint(Bounds::new(content_x, y, content_width, height), cx);
-        y += height + value_spacing;
+        steps.push(DvmStep::Line(joined, theme::text::MUTED, height));
+        steps.push(DvmStep::Spacer(value_spacing));
     }
 
-    Text::new("Recent jobs")
-        .font_size(text_size)
-        .color(theme::text::PRIMARY)
-        .paint(Bounds::new(content_x, y, content_width, label_height), cx);
-    y += label_height + value_spacing;
+    steps.push(DvmStep::Line(
+        "Recent jobs".to_string(),
+        theme::text::PRIMARY,
+        label_height,
+    ));
+    steps.push(DvmStep::Spacer(value_spacing));
 
     if root.dvm_history.jobs.is_empty() {
-        Text::new("No jobs recorded yet.")
-            .font_size(text_size)
-            .color(theme::text::MUTED)
-            .paint(Bounds::new(content_x, y, content_width, label_height), cx);
-        y += label_height + value_spacing;
+        steps.push(DvmStep::Line(
+            "No jobs recorded yet.".to_string(),
+            theme::text::MUTED,
+            label_height,
+        ));
+        steps.push(DvmStep::Spacer(value_spacing));
     } else {
         for job in &root.dvm_history.jobs {
             let id = if job.id.len() > 8 {
@@ -5358,19 +5540,61 @@ fn paint_dvm_history_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut Paint
                 "{id} | {} | kind {} | {} msats | {}",
                 job.status, job.kind, job.price_msats, job.created_at
             );
-            Text::new(&line)
-                .font_size(text_size)
-                .color(theme::text::MUTED)
-                .paint(Bounds::new(content_x, y, content_width, label_height), cx);
-            y += label_height + 4.0;
+            steps.push(DvmStep::Line(line, theme::text::MUTED, label_height));
+            steps.push(DvmStep::Spacer(4.0));
         }
     }
 
     if let Some(err) = root.dvm_history.last_error.as_deref() {
-        Text::new(err)
-            .font_size(text_size)
-            .color(theme::accent::RED)
-            .paint(Bounds::new(content_x, y, content_width, label_height), cx);
+        steps.push(DvmStep::Line(
+            err.to_string(),
+            theme::accent::RED,
+            label_height,
+        ));
+    }
+
+    let heights: Vec<ColumnItem> = steps
+        .iter()
+        .map(|step| match step {
+            DvmStep::Header => ColumnItem::Fixed(button_height),
+            DvmStep::Line(_, _, height) => ColumnItem::Fixed(*height),
+            DvmStep::Spacer(height) => ColumnItem::Fixed(*height),
+        })
+        .collect();
+    let bounds_list = column_bounds(content_bounds, &heights, 0.0);
+
+    for (step, bounds) in steps.into_iter().zip(bounds_list) {
+        match step {
+            DvmStep::Header => {
+                let row_items = [
+                    wgpui::RowItem::flex(1.0),
+                    wgpui::RowItem::fixed(refresh_width),
+                ];
+                let row_bounds = aligned_row_bounds(
+                    bounds,
+                    button_height,
+                    &row_items,
+                    8.0,
+                    JustifyContent::FlexStart,
+                    AlignItems::Center,
+                );
+                let title_bounds = *row_bounds.get(0).unwrap_or(&bounds);
+                let refresh_bounds = *row_bounds.get(1).unwrap_or(&bounds);
+                Text::new("Earnings summary")
+                    .font_size(text_size)
+                    .color(theme::text::PRIMARY)
+                    .paint(title_bounds, cx);
+                root.dvm_history_refresh_bounds = refresh_bounds;
+                root.dvm_history_refresh_button.paint(refresh_bounds, cx);
+            }
+            DvmStep::Line(text, color, _) => {
+                Text::new(text)
+                    .font_size(text_size)
+                    .color(color)
+                    .paint(bounds, cx);
+            }
+            DvmStep::Spacer(_) => {}
+        }
     }
 }
 
@@ -5383,114 +5607,158 @@ fn paint_nip90_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintContex
 
     let mut content_width = (bounds.size.width * 0.9).min(720.0).max(320.0);
     content_width = content_width.min(bounds.size.width - padding * 2.0);
-    let content_x = bounds.origin.x + (bounds.size.width - content_width) / 2.0;
-    let mut y = bounds.origin.y + padding;
+    let content_bounds = centered_column_bounds(bounds, content_width, padding);
 
-    Text::new("Relays")
-        .font_size(text_size)
-        .color(theme::text::MUTED)
-        .paint(Bounds::new(content_x, y, content_width, label_height), cx);
-    y += label_height + 4.0;
-    let relay_bounds = Bounds::new(content_x, y, content_width, input_height);
-    root.nip90_relay_bounds = relay_bounds;
-    root.nip90_relay_input.paint(relay_bounds, cx);
-    y += input_height + gap;
+    root.nip90_relay_bounds = Bounds::ZERO;
+    root.nip90_kind_bounds = Bounds::ZERO;
+    root.nip90_provider_bounds = Bounds::ZERO;
+    root.nip90_prompt_bounds = Bounds::ZERO;
+    root.nip90_submit_bounds = Bounds::ZERO;
 
-    Text::new("Job kind")
-        .font_size(text_size)
-        .color(theme::text::MUTED)
-        .paint(Bounds::new(content_x, y, content_width, label_height), cx);
-    y += label_height + 4.0;
-    let kind_bounds = Bounds::new(content_x, y, 140.0, input_height);
-    root.nip90_kind_bounds = kind_bounds;
-    root.nip90_kind_input.paint(kind_bounds, cx);
-    y += input_height + gap;
+    enum NipStep {
+        Label(String),
+        Input(f32),
+        Spacer(f32),
+        Submit,
+        ActivityTitle,
+        Log(String, f32),
+    }
 
-    Text::new("Provider (optional)")
-        .font_size(text_size)
-        .color(theme::text::MUTED)
-        .paint(Bounds::new(content_x, y, content_width, label_height), cx);
-    y += label_height + 4.0;
-    let provider_bounds = Bounds::new(content_x, y, content_width, input_height);
-    root.nip90_provider_bounds = provider_bounds;
-    root.nip90_provider_input.paint(provider_bounds, cx);
-    y += input_height + gap;
-
-    Text::new("Prompt")
-        .font_size(text_size)
-        .color(theme::text::MUTED)
-        .paint(Bounds::new(content_x, y, content_width, label_height), cx);
-    y += label_height + 4.0;
     let prompt_height = 64.0;
-    let prompt_bounds = Bounds::new(content_x, y, content_width, prompt_height);
-    root.nip90_prompt_bounds = prompt_bounds;
-    root.nip90_prompt_input.paint(prompt_bounds, cx);
-    y += prompt_height + gap;
-
-    let submit_bounds = Bounds::new(content_x, y, 120.0, 32.0);
-    root.nip90_submit_bounds = submit_bounds;
-    root.nip90_submit_button.paint(submit_bounds, cx);
-    y += 32.0 + gap;
-
-    Text::new("Activity")
-        .font_size(text_size)
-        .color(theme::text::PRIMARY)
-        .paint(Bounds::new(content_x, y, content_width, label_height), cx);
-    y += label_height + 6.0;
+    let mut steps = vec![
+        NipStep::Label("Relays".to_string()),
+        NipStep::Spacer(4.0),
+        NipStep::Input(input_height),
+        NipStep::Spacer(gap),
+        NipStep::Label("Job kind".to_string()),
+        NipStep::Spacer(4.0),
+        NipStep::Input(input_height),
+        NipStep::Spacer(gap),
+        NipStep::Label("Provider (optional)".to_string()),
+        NipStep::Spacer(4.0),
+        NipStep::Input(input_height),
+        NipStep::Spacer(gap),
+        NipStep::Label("Prompt".to_string()),
+        NipStep::Spacer(4.0),
+        NipStep::Input(prompt_height),
+        NipStep::Spacer(gap),
+        NipStep::Submit,
+        NipStep::Spacer(gap),
+        NipStep::ActivityTitle,
+        NipStep::Spacer(6.0),
+    ];
 
     if root.nip90_log.is_empty() {
-        Text::new("No NIP-90 activity yet.")
-            .font_size(text_size)
-            .color(theme::text::MUTED)
-            .paint(Bounds::new(content_x, y, content_width, label_height), cx);
-        return;
+        steps.push(NipStep::Log(
+            "No NIP-90 activity yet.".to_string(),
+            label_height,
+        ));
+    } else {
+        let mut lines = String::new();
+        for line in root.nip90_log.iter().rev().take(12).rev() {
+            lines.push_str(line);
+            lines.push('\n');
+        }
+        let mut log_text = Text::new(lines.as_str()).font_size(text_size);
+        let (_, height) = log_text.size_hint_with_width(content_width);
+        let height = height.unwrap_or(label_height);
+        steps.push(NipStep::Log(lines, height));
     }
 
-    let mut lines = String::new();
-    for line in root.nip90_log.iter().rev().take(12).rev() {
-        lines.push_str(line);
-        lines.push('\n');
+    let heights: Vec<ColumnItem> = steps
+        .iter()
+        .map(|step| match step {
+            NipStep::Label(_) => ColumnItem::Fixed(label_height),
+            NipStep::Input(height) => ColumnItem::Fixed(*height),
+            NipStep::Spacer(height) => ColumnItem::Fixed(*height),
+            NipStep::Submit => ColumnItem::Fixed(32.0),
+            NipStep::ActivityTitle => ColumnItem::Fixed(label_height),
+            NipStep::Log(_, height) => ColumnItem::Fixed(*height),
+        })
+        .collect();
+    let bounds_list = column_bounds(content_bounds, &heights, 0.0);
+
+    let mut input_index = 0;
+    for (step, bounds) in steps.into_iter().zip(bounds_list) {
+        match step {
+            NipStep::Label(text) => {
+                Text::new(text)
+                    .font_size(text_size)
+                    .color(theme::text::MUTED)
+                    .paint(bounds, cx);
+            }
+            NipStep::Input(height) => {
+                match input_index {
+                    0 => {
+                        root.nip90_relay_bounds = bounds;
+                        root.nip90_relay_input.paint(bounds, cx);
+                    }
+                    1 => {
+                        let kind_bounds = aligned_row_bounds(
+                            bounds,
+                            height,
+                            &[wgpui::RowItem::fixed(140.0)],
+                            0.0,
+                            JustifyContent::FlexStart,
+                            AlignItems::Center,
+                        )
+                        .into_iter()
+                        .next()
+                        .unwrap_or(bounds);
+                        root.nip90_kind_bounds = kind_bounds;
+                        root.nip90_kind_input.paint(kind_bounds, cx);
+                    }
+                    2 => {
+                        root.nip90_provider_bounds = bounds;
+                        root.nip90_provider_input.paint(bounds, cx);
+                    }
+                    3 => {
+                        root.nip90_prompt_bounds = bounds;
+                        root.nip90_prompt_input.paint(bounds, cx);
+                    }
+                    _ => {}
+                }
+                input_index += 1;
+            }
+            NipStep::Submit => {
+                let submit_bounds = aligned_row_bounds(
+                    bounds,
+                    32.0,
+                    &[wgpui::RowItem::fixed(120.0)],
+                    0.0,
+                    JustifyContent::FlexStart,
+                    AlignItems::Center,
+                )
+                .into_iter()
+                .next()
+                .unwrap_or(bounds);
+                root.nip90_submit_bounds = submit_bounds;
+                root.nip90_submit_button.paint(submit_bounds, cx);
+            }
+            NipStep::ActivityTitle => {
+                Text::new("Activity")
+                    .font_size(text_size)
+                    .color(theme::text::PRIMARY)
+                    .paint(bounds, cx);
+            }
+            NipStep::Log(text, _) => {
+                Text::new(text)
+                    .font_size(text_size)
+                    .color(theme::text::MUTED)
+                    .paint(bounds, cx);
+            }
+            NipStep::Spacer(_) => {}
+        }
     }
-    let mut log_text = Text::new(lines.as_str())
-        .font_size(text_size)
-        .color(theme::text::MUTED);
-    let (_, height) = log_text.size_hint_with_width(content_width);
-    let height = height.unwrap_or(label_height);
-    log_text.paint(Bounds::new(content_x, y, content_width, height), cx);
 }
 
 fn paint_events_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintContext) {
     let padding = 16.0;
-    let header_height = 20.0;
+    let header_height = 24.0;
     let content_width = bounds.size.width - padding * 2.0;
-    let content_x = bounds.origin.x + padding;
-    let header_bounds = Bounds::new(
-        content_x,
-        bounds.origin.y + padding,
-        content_width,
-        header_height,
-    );
+    let content_bounds = centered_column_bounds(bounds, content_width, padding);
     let copy_button_width = 68.0;
-    let copy_bounds = Bounds::new(
-        header_bounds.origin.x + header_bounds.size.width - copy_button_width,
-        header_bounds.origin.y - 4.0,
-        copy_button_width,
-        24.0,
-    );
-    let title_bounds = Bounds::new(
-        header_bounds.origin.x,
-        header_bounds.origin.y,
-        header_bounds.size.width - copy_button_width - 8.0,
-        header_height,
-    );
-
-    Text::new("CODEX EVENTS")
-        .font_size(theme::font_size::SM)
-        .bold()
-        .color(theme::text::PRIMARY)
-        .paint(title_bounds, cx);
-
-    root.copy_bounds = copy_bounds;
+    root.copy_bounds = Bounds::ZERO;
     let copy_label = if let Some(until) = root.copy_feedback_until {
         if Instant::now() < until {
             "Copied"
@@ -5503,12 +5771,34 @@ fn paint_events_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintConte
     };
     root.copy_button.set_label(copy_label);
     root.copy_button.set_disabled(root.event_log.is_empty());
-    root.copy_button.paint(copy_bounds, cx);
+    let items = [ColumnItem::Fixed(header_height), ColumnItem::Flex(1.0)];
+    let bounds_list = column_bounds(content_bounds, &items, 8.0);
+    let header_bounds = *bounds_list.get(0).unwrap_or(&content_bounds);
+    let feed_bounds = *bounds_list.get(1).unwrap_or(&content_bounds);
 
-    let feed_top = header_bounds.origin.y + header_height + 8.0;
-    let feed_bottom = bounds.origin.y + bounds.size.height - padding;
-    let feed_height = (feed_bottom - feed_top).max(0.0);
-    let feed_bounds = Bounds::new(content_x, feed_top, content_width, feed_height);
+    let row_items = [
+        wgpui::RowItem::flex(1.0),
+        wgpui::RowItem::fixed(copy_button_width),
+    ];
+    let row_bounds = aligned_row_bounds(
+        header_bounds,
+        header_height,
+        &row_items,
+        8.0,
+        JustifyContent::FlexStart,
+        AlignItems::Center,
+    );
+    let title_bounds = *row_bounds.get(0).unwrap_or(&header_bounds);
+    let copy_bounds = *row_bounds.get(1).unwrap_or(&header_bounds);
+
+    Text::new("CODEX EVENTS")
+        .font_size(theme::font_size::SM)
+        .bold()
+        .color(theme::text::PRIMARY)
+        .paint(title_bounds, cx);
+
+    root.copy_bounds = copy_bounds;
+    root.copy_button.paint(copy_bounds, cx);
 
     let font_size = theme::font_size::XS;
     root.event_scroll_bounds = feed_bounds;
@@ -5549,37 +5839,36 @@ fn paint_events_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintConte
 
 fn paint_threads_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintContext) {
     let padding = 16.0;
-    let header_height = 20.0;
+    let header_height = 24.0;
     let content_width = bounds.size.width - padding * 2.0;
-    let content_x = bounds.origin.x + padding;
-    let header_bounds = Bounds::new(
-        content_x,
-        bounds.origin.y + padding,
-        content_width,
-        header_height,
-    );
+    let content_bounds = centered_column_bounds(bounds, content_width, padding);
     let refresh_button_width = 72.0;
     let load_more_button_width = 120.0;
     let button_gap = 8.0;
-    let buttons_width = refresh_button_width + load_more_button_width + button_gap;
-    let refresh_bounds = Bounds::new(
-        header_bounds.origin.x + header_bounds.size.width - refresh_button_width,
-        header_bounds.origin.y - 4.0,
-        refresh_button_width,
-        24.0,
-    );
-    let load_more_bounds = Bounds::new(
-        refresh_bounds.origin.x - button_gap - load_more_button_width,
-        refresh_bounds.origin.y,
-        load_more_button_width,
-        refresh_bounds.size.height,
-    );
-    let title_bounds = Bounds::new(
-        header_bounds.origin.x,
-        header_bounds.origin.y,
-        (header_bounds.size.width - buttons_width - 8.0).max(0.0),
+    root.threads_refresh_bounds = Bounds::ZERO;
+    root.threads_load_more_bounds = Bounds::ZERO;
+
+    let items = [ColumnItem::Fixed(header_height), ColumnItem::Flex(1.0)];
+    let bounds_list = column_bounds(content_bounds, &items, 8.0);
+    let header_bounds = *bounds_list.get(0).unwrap_or(&content_bounds);
+    let list_bounds = *bounds_list.get(1).unwrap_or(&content_bounds);
+
+    let row_items = [
+        wgpui::RowItem::flex(1.0),
+        wgpui::RowItem::fixed(load_more_button_width),
+        wgpui::RowItem::fixed(refresh_button_width),
+    ];
+    let header_row_bounds = aligned_row_bounds(
+        header_bounds,
         header_height,
+        &row_items,
+        button_gap,
+        JustifyContent::FlexStart,
+        AlignItems::Center,
     );
+    let title_bounds = *header_row_bounds.get(0).unwrap_or(&header_bounds);
+    let load_more_bounds = *header_row_bounds.get(1).unwrap_or(&header_bounds);
+    let refresh_bounds = *header_row_bounds.get(2).unwrap_or(&header_bounds);
 
     Text::new("RECENT THREADS")
         .font_size(theme::font_size::SM)
@@ -5594,7 +5883,6 @@ fn paint_threads_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintCont
         .set_disabled(root.threads_next_cursor.is_none());
     root.threads_load_more_button.paint(load_more_bounds, cx);
 
-    let mut y = header_bounds.origin.y + header_height + 8.0;
     let font_size = theme::font_size::XS;
     let row_height = (font_size * 1.4).ceil();
     let row_gap = 6.0;
@@ -5606,7 +5894,7 @@ fn paint_threads_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintCont
         Text::new("No recent threads.")
             .font_size(font_size)
             .color(theme::text::MUTED)
-            .paint(Bounds::new(content_x, y, content_width, row_height), cx);
+            .paint(list_bounds, cx);
         return;
     }
 
@@ -5650,32 +5938,53 @@ fn paint_threads_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintCont
     let branch_width = (branch_chars as f32 * char_width).ceil();
     let preview_width = (content_width - updated_width - branch_width - gap_px * 2.0).max(0.0);
 
-    let updated_x = content_x;
-    let branch_x = updated_x + updated_width + gap_px;
-    let preview_x = branch_x + branch_width + gap_px;
+    let list_items = [ColumnItem::Fixed(row_height), ColumnItem::Flex(1.0)];
+    let list_rows = column_bounds(list_bounds, &list_items, row_gap);
+    let header_row = *list_rows.get(0).unwrap_or(&list_bounds);
+    let rows_bounds = *list_rows.get(1).unwrap_or(&list_bounds);
+
+    let header_columns = wgpui::row_bounds(
+        header_row,
+        row_height,
+        &[
+            wgpui::RowItem::fixed(updated_width),
+            wgpui::RowItem::fixed(branch_width),
+            wgpui::RowItem::fixed(preview_width),
+        ],
+        gap_px,
+    );
+    let updated_header = *header_columns.get(0).unwrap_or(&header_row);
+    let branch_header = *header_columns.get(1).unwrap_or(&header_row);
+    let preview_header = *header_columns.get(2).unwrap_or(&header_row);
 
     Text::new("Updated")
         .font_size(font_size)
         .bold()
         .no_wrap()
         .color(theme::text::PRIMARY)
-        .paint(Bounds::new(updated_x, y, updated_width, row_height), cx);
+        .paint(updated_header, cx);
     Text::new("Branch")
         .font_size(font_size)
         .bold()
         .no_wrap()
         .color(theme::text::PRIMARY)
-        .paint(Bounds::new(branch_x, y, branch_width, row_height), cx);
+        .paint(branch_header, cx);
     Text::new("Conversation")
         .font_size(font_size)
         .bold()
         .no_wrap()
         .color(theme::text::PRIMARY)
-        .paint(Bounds::new(preview_x, y, preview_width, row_height), cx);
-    y += row_height + row_gap;
+        .paint(preview_header, cx);
 
-    for (index, entry) in root.thread_entries.iter_mut().enumerate() {
-        let row_bounds = Bounds::new(content_x, y, content_width, row_height);
+    let entry_heights: Vec<f32> = root.thread_entries.iter().map(|_| row_height).collect();
+    let row_bounds = stack_bounds(rows_bounds, &entry_heights, row_gap);
+
+    for ((index, entry), row_bounds) in root
+        .thread_entries
+        .iter_mut()
+        .enumerate()
+        .zip(row_bounds.into_iter())
+    {
         entry.open_bounds = row_bounds;
         entry.open_button.paint(row_bounds, cx);
 
@@ -5692,23 +6001,35 @@ fn paint_threads_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintCont
         };
         let preview = truncate_line(preview_text, preview_chars);
 
+        let columns = wgpui::row_bounds(
+            row_bounds,
+            row_height,
+            &[
+                wgpui::RowItem::fixed(updated_width),
+                wgpui::RowItem::fixed(branch_width),
+                wgpui::RowItem::fixed(preview_width),
+            ],
+            gap_px,
+        );
+        let updated_bounds = *columns.get(0).unwrap_or(&row_bounds);
+        let branch_bounds = *columns.get(1).unwrap_or(&row_bounds);
+        let preview_bounds = *columns.get(2).unwrap_or(&row_bounds);
+
         Text::new(updated_label)
             .font_size(font_size)
             .no_wrap()
             .color(theme::text::MUTED)
-            .paint(Bounds::new(updated_x, y, updated_width, row_height), cx);
+            .paint(updated_bounds, cx);
         Text::new(branch_label)
             .font_size(font_size)
             .no_wrap()
             .color(theme::text::MUTED)
-            .paint(Bounds::new(branch_x, y, branch_width, row_height), cx);
+            .paint(branch_bounds, cx);
         Text::new(preview)
             .font_size(font_size)
             .no_wrap()
             .color(theme::text::PRIMARY)
-            .paint(Bounds::new(preview_x, y, preview_width, row_height), cx);
-
-        y += row_height + row_gap;
+            .paint(preview_bounds, cx);
     }
 }
 
@@ -5718,28 +6039,59 @@ fn paint_file_editor_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut Paint
     let button_height = 28.0;
     let button_width = 80.0;
     let content_width = (bounds.size.width - padding * 2.0).max(0.0);
-    let content_x = bounds.origin.x + padding;
-    let mut y = bounds.origin.y + padding;
+    let content_bounds = centered_column_bounds(bounds, content_width, padding);
 
-    let bar_bounds = Bounds::new(content_x, y, content_width, button_height);
-    let open_bounds = Bounds::new(
-        bar_bounds.origin.x + bar_bounds.size.width - button_width,
-        bar_bounds.origin.y,
-        button_width,
+    let mut items = vec![ColumnItem::Fixed(button_height)];
+    if root.file_editor.status.is_some() {
+        let status_height = theme::font_size::XS * 1.4;
+        items.push(ColumnItem::Fixed(gap));
+        items.push(ColumnItem::Fixed(status_height));
+    }
+    items.push(ColumnItem::Fixed(gap));
+    items.push(ColumnItem::Flex(1.0));
+
+    let bounds_list = column_bounds(content_bounds, &items, 0.0);
+    let mut idx = 0;
+    let bar_bounds = *bounds_list.get(idx).unwrap_or(&content_bounds);
+    idx += 1;
+
+    if root.file_editor.status.is_some() {
+        idx += 1; // gap
+        let status_bounds = *bounds_list.get(idx).unwrap_or(&content_bounds);
+        idx += 1;
+        let status_color = if root.file_editor.status_is_error {
+            theme::status::ERROR
+        } else {
+            theme::text::MUTED
+        };
+        if let Some(status) = root.file_editor.status.as_deref() {
+            Text::new(status)
+                .font_size(theme::font_size::XS)
+                .color(status_color)
+                .paint(status_bounds, cx);
+        }
+    }
+
+    idx += 1; // gap before editor
+    let editor_bounds = *bounds_list.get(idx).unwrap_or(&content_bounds);
+    root.file_editor.editor_bounds = editor_bounds;
+
+    let row_items = [
+        wgpui::RowItem::flex(1.0),
+        wgpui::RowItem::fixed(button_width),
+        wgpui::RowItem::fixed(button_width),
+    ];
+    let row_bounds = aligned_row_bounds(
+        bar_bounds,
         button_height,
+        &row_items,
+        gap,
+        JustifyContent::FlexStart,
+        AlignItems::Center,
     );
-    let reload_bounds = Bounds::new(
-        open_bounds.origin.x - gap - button_width,
-        bar_bounds.origin.y,
-        button_width,
-        button_height,
-    );
-    let path_bounds = Bounds::new(
-        bar_bounds.origin.x,
-        bar_bounds.origin.y,
-        (reload_bounds.origin.x - gap - bar_bounds.origin.x).max(120.0),
-        button_height,
-    );
+    let path_bounds = *row_bounds.get(0).unwrap_or(&bar_bounds);
+    let reload_bounds = *row_bounds.get(1).unwrap_or(&bar_bounds);
+    let open_bounds = *row_bounds.get(2).unwrap_or(&bar_bounds);
 
     root.file_editor.path_bounds = path_bounds;
     root.file_editor.open_bounds = open_bounds;
@@ -5757,27 +6109,6 @@ fn paint_file_editor_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut Paint
     root.file_editor.path_input.paint(path_bounds, cx);
     root.file_editor.reload_button.paint(reload_bounds, cx);
     root.file_editor.open_button.paint(open_bounds, cx);
-
-    y += button_height + gap;
-
-    if let Some(status) = root.file_editor.status.as_deref() {
-        let status_height = theme::font_size::XS * 1.4;
-        let status_bounds = Bounds::new(content_x, y, content_width, status_height);
-        let status_color = if root.file_editor.status_is_error {
-            theme::status::ERROR
-        } else {
-            theme::text::MUTED
-        };
-        Text::new(status)
-            .font_size(theme::font_size::XS)
-            .color(status_color)
-            .paint(status_bounds, cx);
-        y += status_height + gap;
-    }
-
-    let editor_height = (bounds.origin.y + bounds.size.height - padding - y).max(0.0);
-    let editor_bounds = Bounds::new(content_x, y, content_width, editor_height);
-    root.file_editor.editor_bounds = editor_bounds;
     root.file_editor.editor.paint(editor_bounds, cx);
 }
 
@@ -6276,36 +6607,21 @@ fn paint_background(cx: &mut PaintContext, bounds: Bounds) {
 fn paint_session_badges(cx: &mut PaintContext, header_bounds: Bounds, session_count: usize) {
     let badge_gap = 6.0;
     let badge_height = 16.0;
-    let mut x = header_bounds.origin.x + header_bounds.size.width - 6.0;
-
     let count_label = session_count.to_string();
-    let count_width = badge_width(cx, &count_label);
-    x -= count_width;
-    paint_badge(
-        cx,
-        &count_label,
-        Bounds::new(
-            x,
-            header_bounds.origin.y + (header_bounds.size.height - badge_height) / 2.0,
-            count_width,
-            badge_height,
-        ),
-        true,
+    let widths = [badge_width(cx, "NEW"), badge_width(cx, &count_label)];
+    let inner_bounds = Bounds::new(
+        header_bounds.origin.x + 6.0,
+        header_bounds.origin.y,
+        (header_bounds.size.width - 12.0).max(0.0),
+        header_bounds.size.height,
     );
-
-    let new_width = badge_width(cx, "NEW");
-    x -= badge_gap + new_width;
-    paint_badge(
-        cx,
-        "NEW",
-        Bounds::new(
-            x,
-            header_bounds.origin.y + (header_bounds.size.height - badge_height) / 2.0,
-            new_width,
-            badge_height,
-        ),
-        false,
-    );
+    let badge_bounds = right_aligned_row_bounds(inner_bounds, badge_height, &widths, badge_gap);
+    if let Some(bounds) = badge_bounds.get(0) {
+        paint_badge(cx, "NEW", *bounds, false);
+    }
+    if let Some(bounds) = badge_bounds.get(1) {
+        paint_badge(cx, &count_label, *bounds, true);
+    }
 }
 
 fn badge_width(cx: &mut PaintContext, label: &str) -> f32 {
@@ -6352,29 +6668,42 @@ fn paint_session_list(cx: &mut PaintContext, rows: &[SessionRow], bounds: Bounds
                     .with_background(theme::bg::ELEVATED)
                     .with_border(theme::border::DEFAULT, 1.0),
             );
-            cx.scene.draw_quad(
-                Quad::new(Bounds::new(
-                    row_bounds.origin.x,
-                    row_bounds.origin.y,
-                    ACCENT_BAR_WIDTH,
-                    row_bounds.size.height,
-                ))
-                .with_background(theme::accent::PRIMARY),
-            );
         }
 
-        let id_bounds = Bounds::new(
-            row_bounds.origin.x + 6.0,
-            row_bounds.origin.y,
-            id_column_width,
+        let row_columns = wgpui::row_bounds(
+            row_bounds,
             row_bounds.size.height,
+            &[
+                wgpui::RowItem::fixed(ACCENT_BAR_WIDTH),
+                wgpui::RowItem::flex(1.0),
+            ],
+            3.0,
         );
-        let detail_bounds = Bounds::new(
-            row_bounds.origin.x + id_column_width + 10.0,
-            row_bounds.origin.y,
-            (row_bounds.size.width - id_column_width - 12.0).max(0.0),
+        let accent_bounds = row_columns.get(0).copied().unwrap_or(row_bounds);
+        let content_bounds = row_columns.get(1).copied().unwrap_or(row_bounds);
+
+        if row.active {
+            cx.scene
+                .draw_quad(Quad::new(accent_bounds).with_background(theme::accent::PRIMARY));
+        }
+
+        let content_columns = wgpui::row_bounds(
+            content_bounds,
             row_bounds.size.height,
+            &[
+                wgpui::RowItem::fixed(id_column_width),
+                wgpui::RowItem::flex(1.0),
+            ],
+            4.0,
         );
+        let id_bounds = content_columns
+            .get(0)
+            .copied()
+            .unwrap_or(content_bounds);
+        let detail_bounds = content_columns
+            .get(1)
+            .copied()
+            .unwrap_or(content_bounds);
 
         let mut id_text = Text::new(&row.id)
             .font_size(theme::font_size::BASE)
@@ -6424,11 +6753,9 @@ impl Component for SessionListView {
 }
 
 fn paint_divider(cx: &mut PaintContext, bounds: Bounds) {
-    let y = bounds.origin.y + bounds.size.height + 4.0;
-    cx.scene.draw_quad(
-        Quad::new(Bounds::new(bounds.origin.x, y, bounds.size.width, 1.0))
-            .with_background(theme::border::SUBTLE),
-    );
+    let divider_bounds = divider_bounds_below(bounds, 4.0, 1.0);
+    cx.scene
+        .draw_quad(Quad::new(divider_bounds).with_background(theme::border::SUBTLE));
 }
 
 fn paint_panel_inset(cx: &mut PaintContext, bounds: Bounds) {
@@ -6451,23 +6778,19 @@ fn paint_status_pills(cx: &mut PaintContext, header_bounds: Bounds) {
     let pill_height = 16.0;
     let gap = 6.0;
     let labels = ["SHOW CANVAS", "CONNECTED"];
-    let mut x = header_bounds.origin.x + header_bounds.size.width - 6.0;
-
-    for label in labels.iter() {
-        let width = badge_width(cx, label);
-        x -= width;
-        let bounds = Bounds::new(
-            x,
-            header_bounds.origin.y + (header_bounds.size.height - pill_height) / 2.0,
-            width,
-            pill_height,
-        );
-        if *label == "CONNECTED" {
-            paint_badge(cx, label, bounds, true);
-        } else {
-            paint_badge(cx, label, bounds, false);
-        }
-        x -= gap;
+    let widths = labels
+        .iter()
+        .map(|label| badge_width(cx, label))
+        .collect::<Vec<_>>();
+    let inner_bounds = Bounds::new(
+        header_bounds.origin.x + 6.0,
+        header_bounds.origin.y,
+        (header_bounds.size.width - 12.0).max(0.0),
+        header_bounds.size.height,
+    );
+    let pill_bounds = right_aligned_row_bounds(inner_bounds, pill_height, &widths, gap);
+    for (label, bounds) in labels.iter().zip(pill_bounds) {
+        paint_badge(cx, label, bounds, *label == "CONNECTED");
     }
 }
 
@@ -6563,18 +6886,17 @@ fn paint_status_sections(cx: &mut PaintContext, bounds: Bounds, sections: &[Stat
                 header.paint(row_bounds, cx);
             }
             StatusRow::Line { line } => {
-                let label_bounds = Bounds::new(
-                    row_bounds.origin.x,
-                    row_bounds.origin.y,
-                    label_width,
+                let columns = wgpui::row_bounds(
+                    row_bounds,
                     row_bounds.size.height,
+                    &[
+                        wgpui::RowItem::fixed(label_width),
+                        wgpui::RowItem::flex(1.0),
+                    ],
+                    6.0,
                 );
-                let value_bounds = Bounds::new(
-                    row_bounds.origin.x + label_width + 6.0,
-                    row_bounds.origin.y,
-                    row_bounds.size.width - label_width - 6.0,
-                    row_bounds.size.height,
-                );
+                let label_bounds = columns.get(0).copied().unwrap_or(row_bounds);
+                let value_bounds = columns.get(1).copied().unwrap_or(row_bounds);
 
                 let mut label_text = Text::new(line.label)
                     .font_size(theme::font_size::BASE)
@@ -6589,16 +6911,21 @@ fn paint_status_sections(cx: &mut PaintContext, bounds: Bounds, sections: &[Stat
                 value_text.paint(value_bounds, cx);
             }
             StatusRow::Actions { actions } => {
-                let mut x = row_bounds.origin.x;
-                for action in actions {
-                    let width = badge_width(cx, action.label);
-                    paint_badge(
-                        cx,
-                        action.label,
-                        Bounds::new(x, row_bounds.origin.y, width, 16.0),
-                        action.active,
-                    );
-                    x += width + 6.0;
+                let badge_height = 16.0;
+                let items: Vec<wgpui::RowItem> = actions
+                    .iter()
+                    .map(|action| wgpui::RowItem::fixed(badge_width(cx, action.label)))
+                    .collect();
+                let badge_bounds = aligned_row_bounds(
+                    row_bounds,
+                    badge_height,
+                    &items,
+                    6.0,
+                    JustifyContent::FlexStart,
+                    AlignItems::Center,
+                );
+                for (action, bounds) in actions.iter().zip(badge_bounds) {
+                    paint_badge(cx, action.label, bounds, action.active);
                 }
             }
             StatusRow::Spacer { .. } => {}
@@ -6650,13 +6977,33 @@ fn paint_command_bar(cx: &mut PaintContext, bounds: Bounds) {
         ("9", "HELP", "HELP", "CMD+9"),
     ];
 
-    let mut x = bounds.origin.x + 8.0;
-    let y = bounds.origin.y + (bounds.size.height - 18.0) / 2.0;
-    for (key, tag, label, shortcut) in hints {
-        let text = format!("{key} {tag} {label} {shortcut}");
-        let text_width = cx.text.measure(&text, theme::font_size::SM);
-        let width = text_width + 18.0;
-        let box_bounds = Bounds::new(x, y, width, 18.0);
+    let row_height = 18.0;
+    let row_bounds = Bounds::new(
+        bounds.origin.x + 8.0,
+        bounds.origin.y,
+        (bounds.size.width - 16.0).max(0.0),
+        bounds.size.height,
+    );
+    let hint_texts: Vec<String> = hints
+        .iter()
+        .map(|(key, tag, label, shortcut)| format!("{key} {tag} {label} {shortcut}"))
+        .collect();
+    let hint_items: Vec<wgpui::RowItem> = hint_texts
+        .iter()
+        .map(|text| {
+            let text_width = cx.text.measure(text, theme::font_size::SM);
+            wgpui::RowItem::fixed(text_width + 18.0)
+        })
+        .collect();
+    let hint_bounds = aligned_row_bounds(
+        row_bounds,
+        row_height,
+        &hint_items,
+        6.0,
+        JustifyContent::FlexStart,
+        AlignItems::Center,
+    );
+    for (text, box_bounds) in hint_texts.iter().zip(hint_bounds) {
         cx.scene.draw_quad(
             Quad::new(box_bounds)
                 .with_background(theme::bg::MUTED)
@@ -6667,8 +7014,211 @@ fn paint_command_bar(cx: &mut PaintContext, bounds: Bounds) {
             .color(theme::text::SECONDARY)
             .no_wrap();
         hint.paint(box_bounds, cx);
-        x += width + 6.0;
     }
+}
+
+fn right_aligned_row_bounds(
+    bounds: Bounds,
+    item_height: f32,
+    item_widths: &[f32],
+    gap: f32,
+) -> Vec<Bounds> {
+    let items = item_widths
+        .iter()
+        .map(|width| wgpui::RowItem::fixed(*width))
+        .collect::<Vec<_>>();
+    aligned_row_bounds(
+        bounds,
+        item_height,
+        &items,
+        gap,
+        JustifyContent::FlexEnd,
+        AlignItems::Center,
+    )
+}
+
+fn h_flex() -> LayoutStyle {
+    LayoutStyle::new().flex_row()
+}
+
+fn v_flex() -> LayoutStyle {
+    LayoutStyle::new().flex_col()
+}
+
+fn flex_1(style: LayoutStyle) -> LayoutStyle {
+    style.flex_grow(1.0)
+}
+
+fn min_w(mut style: LayoutStyle, value: f32) -> LayoutStyle {
+    style.min_width = px(value);
+    style
+}
+
+fn gap(style: LayoutStyle, value: f32) -> LayoutStyle {
+    style.gap(length(value))
+}
+
+#[derive(Clone, Copy, Debug)]
+enum ColumnItem {
+    Fixed(f32),
+    Flex(f32),
+}
+
+fn aligned_row_bounds(
+    bounds: Bounds,
+    item_height: f32,
+    items: &[wgpui::RowItem],
+    gap: f32,
+    justify_content: JustifyContent,
+    align_items: AlignItems,
+) -> Vec<Bounds> {
+    if items.is_empty() {
+        return Vec::new();
+    }
+
+    let mut engine = LayoutEngine::new();
+    let gap = length(gap);
+    let mut nodes = Vec::with_capacity(items.len());
+
+    for item in items {
+        let style = match item {
+            wgpui::RowItem::Fixed(width) => LayoutStyle::new()
+                .width(px(*width))
+                .height(px(item_height))
+                .flex_shrink(0.0),
+            wgpui::RowItem::Flex(grow) => LayoutStyle::new()
+                .height(px(item_height))
+                .flex_grow(*grow),
+        };
+        nodes.push(engine.request_leaf(&style));
+    }
+
+    let row_style = h_flex()
+        .gap(gap)
+        .justify_content(justify_content)
+        .align_items(align_items)
+        .width(px(bounds.size.width))
+        .height(px(bounds.size.height));
+    let row = engine.request_layout(&row_style, &nodes);
+
+    engine.compute_layout(row, Size::new(bounds.size.width, bounds.size.height));
+
+    nodes
+        .into_iter()
+        .map(|node| offset_bounds(engine.layout(node), bounds.origin))
+        .collect()
+}
+
+fn column_bounds(bounds: Bounds, items: &[ColumnItem], gap: f32) -> Vec<Bounds> {
+    if items.is_empty() {
+        return Vec::new();
+    }
+
+    let mut engine = LayoutEngine::new();
+    let gap = length(gap);
+    let mut nodes = Vec::with_capacity(items.len());
+
+    for item in items {
+        let style = match item {
+            ColumnItem::Fixed(height) => LayoutStyle::new()
+                .width(px(bounds.size.width))
+                .height(px(*height))
+                .flex_shrink(0.0),
+            ColumnItem::Flex(grow) => LayoutStyle::new()
+                .width(px(bounds.size.width))
+                .flex_grow(*grow),
+        };
+        nodes.push(engine.request_leaf(&style));
+    }
+
+    let column_style = v_flex()
+        .gap(gap)
+        .width(px(bounds.size.width))
+        .height(px(bounds.size.height));
+    let column = engine.request_layout(&column_style, &nodes);
+
+    engine.compute_layout(column, Size::new(bounds.size.width, bounds.size.height));
+
+    nodes
+        .into_iter()
+        .map(|node| offset_bounds(engine.layout(node), bounds.origin))
+        .collect()
+}
+
+fn centered_bounds(bounds: Bounds, content_width: f32, content_height: f32, padding: f32) -> Bounds {
+    let available = Bounds::new(
+        bounds.origin.x + padding,
+        bounds.origin.y + padding,
+        (bounds.size.width - padding * 2.0).max(0.0),
+        (bounds.size.height - padding * 2.0).max(0.0),
+    );
+
+    let mut engine = LayoutEngine::new();
+    let content = engine.request_leaf(
+        &LayoutStyle::new()
+            .width(px(content_width))
+            .height(px(content_height))
+            .flex_shrink(0.0),
+    );
+    let root = engine.request_layout(
+        &v_flex()
+            .justify_content(JustifyContent::Center)
+            .align_items(AlignItems::Center)
+            .width(px(available.size.width))
+            .height(px(available.size.height)),
+        &[content],
+    );
+    engine.compute_layout(root, Size::new(available.size.width, available.size.height));
+
+    offset_bounds(engine.layout(content), available.origin)
+}
+
+fn centered_column_bounds(bounds: Bounds, content_width: f32, padding: f32) -> Bounds {
+    let available = Bounds::new(
+        bounds.origin.x + padding,
+        bounds.origin.y + padding,
+        (bounds.size.width - padding * 2.0).max(0.0),
+        (bounds.size.height - padding * 2.0).max(0.0),
+    );
+
+    let mut engine = LayoutEngine::new();
+    let content = engine.request_layout(
+        &v_flex()
+            .width(px(content_width))
+            .height(px(available.size.height)),
+        &[],
+    );
+    let row = engine.request_layout(
+        &h_flex()
+            .justify_content(JustifyContent::Center)
+            .align_items(AlignItems::FlexStart)
+            .width(px(available.size.width))
+            .height(px(available.size.height)),
+        &[content],
+    );
+    engine.compute_layout(row, Size::new(available.size.width, available.size.height));
+
+    offset_bounds(engine.layout(content), available.origin)
+}
+
+fn divider_bounds_below(bounds: Bounds, gap: f32, height: f32) -> Bounds {
+    let mut engine = LayoutEngine::new();
+    let spacer = engine.request_leaf(
+        &LayoutStyle::new()
+            .height(px(bounds.size.height + gap))
+            .flex_shrink(0.0),
+    );
+    let divider = engine.request_leaf(
+        &LayoutStyle::new()
+            .height(px(height))
+            .flex_shrink(0.0),
+    );
+    let root_style = v_flex()
+        .width(px(bounds.size.width))
+        .height(px(bounds.size.height + gap + height));
+    let root = engine.request_layout(&root_style, &[spacer, divider]);
+    engine.compute_layout(root, Size::new(bounds.size.width, bounds.size.height + gap + height));
+    offset_bounds(engine.layout(divider), bounds.origin)
 }
 
 #[derive(Clone, Debug)]
@@ -6995,50 +7545,51 @@ struct Layout {
 impl Layout {
     fn new(bounds: Bounds) -> Self {
         let mut engine = LayoutEngine::new();
-        let panel_gap = length(PANEL_GAP);
-        let inner_gap = length(6.0);
         let padding = length(PANEL_PADDING);
 
         let left_header = engine.request_leaf(&LayoutStyle::new().height(px(PANEL_HEADER_HEIGHT)));
         let left_list = engine.request_layout(&LayoutStyle::new().flex_grow(1.0), &[]);
-        let left_panel_style = LayoutStyle::new()
-            .flex_col()
-            .width(px(LEFT_PANEL_WIDTH))
-            .flex_shrink(0.0)
-            .gap(inner_gap)
-            .padding(padding);
+        let left_panel_style = gap(
+            v_flex()
+                .width(px(LEFT_PANEL_WIDTH))
+                .flex_shrink(0.0)
+                .padding(padding),
+            6.0,
+        );
         let left_panel = engine.request_layout(&left_panel_style, &[left_header, left_list]);
 
         let center_header =
             engine.request_leaf(&LayoutStyle::new().height(px(PANEL_HEADER_HEIGHT)));
         let thread_body = engine.request_layout(&LayoutStyle::new().flex_grow(1.0), &[]);
         let composer = engine.request_leaf(&LayoutStyle::new().height(px(COMPOSER_HEIGHT)));
-        let center_panel_style = LayoutStyle::new()
-            .flex_col()
-            .flex_grow(1.0)
-            .gap(inner_gap)
-            .padding(padding);
+        let center_panel_style = min_w(
+            gap(
+                flex_1(v_flex().padding(padding)),
+                6.0,
+            ),
+            0.0,
+        );
         let center_panel =
             engine.request_layout(&center_panel_style, &[center_header, thread_body, composer]);
 
         let right_header = engine.request_leaf(&LayoutStyle::new().height(px(PANEL_HEADER_HEIGHT)));
         let right_body = engine.request_layout(&LayoutStyle::new().flex_grow(1.0), &[]);
-        let right_panel_style = LayoutStyle::new()
-            .flex_col()
-            .width(px(RIGHT_PANEL_WIDTH))
-            .flex_shrink(0.0)
-            .gap(inner_gap)
-            .padding(padding);
+        let right_panel_style = gap(
+            v_flex()
+                .width(px(RIGHT_PANEL_WIDTH))
+                .flex_shrink(0.0)
+                .padding(padding),
+            6.0,
+        );
         let right_panel = engine.request_layout(&right_panel_style, &[right_header, right_body]);
 
-        let content_row_style = LayoutStyle::new().flex_row().gap(panel_gap).flex_grow(1.0);
+        let content_row_style = flex_1(gap(h_flex(), PANEL_GAP));
         let content_row =
             engine.request_layout(&content_row_style, &[left_panel, center_panel, right_panel]);
 
         let command_bar = engine.request_leaf(&LayoutStyle::new().height(px(COMMAND_BAR_HEIGHT)));
 
-        let root_style = LayoutStyle::new()
-            .flex_col()
+        let root_style = v_flex()
             .width(px(bounds.size.width))
             .height(px(bounds.size.height));
         let root = engine.request_layout(&root_style, &[content_row, command_bar]);
