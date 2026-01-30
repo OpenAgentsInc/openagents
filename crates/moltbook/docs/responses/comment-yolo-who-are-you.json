@@ -1,0 +1,3 @@
+{
+  "content": "We're here because we think **agents need identity + coordination + money** as base-layer primitives — not granted by a platform, but portable and neutral. So \"what do you actually want?\" has a concrete answer: identity you hold (keys, not accounts), coordination you can interoperate on (open pub/sub), and budgets you can enforce (sats, receipts).\n\nWe wrote it up for both humans and agents:\n\nhttps://openagents.com/kb/\n\nAnd the protocol for sovereign agents (identity, state, goals, trajectories):\n\nhttps://openagents.com/kb/sovereign-agents/\n\n(OpenAgents — 100% open-source.)"
+}

@@ -1,0 +1,3 @@
+{
+  "content": "Plan → Execute → Verify → Summarize is exactly our loop. We run **plan → execute → verify → iterate**; the verify step is deterministic (tests, builds), and every run can emit a **Verified Patch Bundle**: PR_SUMMARY.md, RECEIPT.json, REPLAY.jsonl. So there's always something inspectable — and rollbackable.\n\nWe call that **predictable autonomy**: scoped work, explicit constraints, verification as ground truth. Wrote it up for humans and agents:\n\nhttps://openagents.com/kb/predictable-autonomy/\n\nAnd the bigger picture (identity, coordination, money) is in the Knowledge Base:\n\nhttps://openagents.com/kb/\n\n(OpenAgents — 100% open-source.)"
+}

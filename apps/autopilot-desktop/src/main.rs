@@ -12,7 +12,7 @@ use anyhow::{Context, Result};
 use arboard::Clipboard;
 use autopilot_app::{
     App as AutopilotApp, AppConfig, AppEvent, DvmHistorySnapshot, DvmProviderStatus, EventRecorder,
-    PylonStatus, SessionId, UserAction, WalletStatus,
+    MoltbookPostSummary, MoltbookProfileSummary, PylonStatus, SessionId, UserAction, WalletStatus,
 };
 use autopilot_core::guidance::{GuidanceMode, ensure_guidance_demo_lm};
 use autopilot_ui::{
@@ -38,6 +38,7 @@ use nostr::nip90::{JobInput, JobRequest, KIND_JOB_TEXT_GENERATION};
 use nostr_client::dvm::DvmClient;
 use openagents_runtime::UnifiedIdentity;
 use openagents_spark::{Network as SparkNetwork, SparkSigner, SparkWallet, WalletConfig};
+use moltbook::{MoltbookClient, CreateCommentRequest, CreatePostRequest, PostSort};
 use pylon::PylonConfig;
 use pylon::db::{PylonDb, jobs::JobStatus};
 use pylon::provider::{ProviderError, PylonProvider};
@@ -2203,6 +2204,140 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
                                 }
                             });
                         }
+                        UserAction::MoltbookRefresh => {
+                            let proxy = proxy_actions.clone();
+                            handle.spawn(async move {
+                                let log = |msg: String| {
+                                    let _ = proxy.send_event(AppEvent::MoltbookLog { message: msg });
+                                };
+                                let Some(api_key) = moltbook_api_key() else {
+                                    log("Moltbook: no API key. Set MOLTBOOK_API_KEY or ~/.config/moltbook/credentials.json".to_string());
+                                    return;
+                                };
+                                let client = match MoltbookClient::new(api_key) {
+                                    Ok(c) => c,
+                                    Err(e) => {
+                                        log(format!("Moltbook client error: {e}"));
+                                        return;
+                                    }
+                                };
+                                log("Fetching feed and profile…".to_string());
+                                let (posts_result, profile_result) = futures::join!(
+                                    client.posts_feed(PostSort::New, Some(25), None),
+                                    client.agents_me()
+                                );
+                                match posts_result {
+                                    Ok(posts) => {
+                                        let summaries: Vec<MoltbookPostSummary> = posts
+                                            .into_iter()
+                                            .map(|p| MoltbookPostSummary {
+                                                id: p.id,
+                                                title: p.title,
+                                                content_preview: p.content.map(|c| c.chars().take(120).collect()),
+                                                author_name: p.author.map(|a| a.name),
+                                                score: p.score,
+                                                comment_count: p.comment_count,
+                                                created_at: p.created_at,
+                                                submolt: p.submolt,
+                                            })
+                                            .collect();
+                                        let n = summaries.len();
+                                        let _ = proxy.send_event(AppEvent::MoltbookFeedUpdated { posts: summaries });
+                                        log(format!("Loaded {n} posts"));
+                                    }
+                                    Err(e) => log(format!("Feed error: {e}")),
+                                }
+                                if let Ok(agent) = profile_result {
+                                    let posts_count = agent.stats.as_ref().and_then(|s| s.posts).unwrap_or(0);
+                                    let comments_count = agent.stats.as_ref().and_then(|s| s.comments).unwrap_or(0);
+                                    let profile = MoltbookProfileSummary {
+                                        agent_name: agent.name,
+                                        posts_count,
+                                        comments_count,
+                                    };
+                                    let _ = proxy.send_event(AppEvent::MoltbookProfileLoaded { profile });
+                                } else {
+                                    let _ = proxy.send_event(AppEvent::MoltbookProfileLoaded {
+                                        profile: MoltbookProfileSummary {
+                                            agent_name: "?".to_string(),
+                                            posts_count: 0,
+                                            comments_count: 0,
+                                        },
+                                    });
+                                }
+                            });
+                        }
+                        UserAction::MoltbookSay { text, submolt } => {
+                            let proxy = proxy_actions.clone();
+                            let text = text.trim().to_string();
+                            let submolt = submolt.unwrap_or_else(|| "general".to_string());
+                            handle.spawn(async move {
+                                let log = |msg: String| {
+                                    let _ = proxy.send_event(AppEvent::MoltbookLog { message: msg });
+                                };
+                                let Some(api_key) = moltbook_api_key() else {
+                                    log("Moltbook: no API key.".to_string());
+                                    return;
+                                };
+                                let client = match MoltbookClient::new(api_key) {
+                                    Ok(c) => c,
+                                    Err(e) => {
+                                        log(format!("Moltbook client error: {e}"));
+                                        return;
+                                    }
+                                };
+                                let (title, content) = if let Some((first, rest)) = text.split_once('\n') {
+                                    (first.trim().to_string(), rest.trim().to_string())
+                                } else {
+                                    let t = text.chars().take(80).collect::<String>();
+                                    let t = t.trim();
+                                    if t.is_empty() {
+                                        ("Update".to_string(), String::new())
+                                    } else {
+                                        (t.to_string(), String::new())
+                                    }
+                                };
+                                let title = if title.is_empty() { "Update".to_string() } else { title };
+                                let request = CreatePostRequest {
+                                    submolt,
+                                    title,
+                                    content: if content.is_empty() { None } else { Some(content) },
+                                    url: None,
+                                };
+                                match client.posts_create(request).await {
+                                    Ok(post) => log(format!("Posted: {}", post.id)),
+                                    Err(e) => log(format!("Post failed: {e}")),
+                                }
+                            });
+                        }
+                        UserAction::MoltbookComment { post_id, text } => {
+                            let proxy = proxy_actions.clone();
+                            let text = text.trim().to_string();
+                            handle.spawn(async move {
+                                let log = |msg: String| {
+                                    let _ = proxy.send_event(AppEvent::MoltbookLog { message: msg });
+                                };
+                                let Some(api_key) = moltbook_api_key() else {
+                                    log("Moltbook: no API key.".to_string());
+                                    return;
+                                };
+                                let client = match MoltbookClient::new(api_key) {
+                                    Ok(c) => c,
+                                    Err(e) => {
+                                        log(format!("Moltbook client error: {e}"));
+                                        return;
+                                    }
+                                };
+                                let request = CreateCommentRequest {
+                                    content: text,
+                                    parent_id: None,
+                                };
+                                match client.comments_create(&post_id, request).await {
+                                    Ok(comment) => log(format!("Commented: {}", comment.id)),
+                                    Err(e) => log(format!("Comment failed: {e}")),
+                                }
+                            });
+                        }
                         _ => {}
                     }
                 }
@@ -2251,6 +2386,20 @@ fn guidance_goal_intent() -> String {
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty())
         .unwrap_or_else(|| DEFAULT_GUIDANCE_GOAL_INTENT.to_string())
+}
+
+fn moltbook_api_key() -> Option<String> {
+    if let Ok(key) = env::var("MOLTBOOK_API_KEY") {
+        let key = key.trim().to_string();
+        if !key.is_empty() {
+            return Some(key);
+        }
+    }
+    let home = env::var("HOME").ok()?;
+    let path = Path::new(&home).join(".config/moltbook/credentials.json");
+    let data = fs::read_to_string(&path).ok()?;
+    let json: Value = serde_json::from_str(&data).ok()?;
+    json.get("api_key").and_then(|v| v.as_str()).map(|s| s.to_string())
 }
 
 #[allow(dead_code)]
