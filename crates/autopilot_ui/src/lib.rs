@@ -32,7 +32,10 @@ use wgpui::{
 };
 
 pub mod shortcuts;
-pub use shortcuts::{ShortcutCommand, ShortcutContext};
+pub use shortcuts::{
+    ShortcutBinding, ShortcutChord, ShortcutCommand, ShortcutContext, ShortcutRegistry,
+    ShortcutScope,
+};
 
 const PANEL_PADDING: f32 = 12.0;
 const PANEL_GAP: f32 = 12.0;

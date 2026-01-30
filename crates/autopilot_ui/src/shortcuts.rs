@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use wgpui::input::{Key, Modifiers};
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct ShortcutChord {
     pub key: Key,
     pub modifiers: Modifiers,
@@ -79,7 +79,7 @@ impl ShortcutRegistry {
             for index in existing {
                 if let Some(prior) = self.bindings.get(*index).cloned() {
                     conflicts.push(ShortcutConflict {
-                        chord: binding.chord,
+                        chord: binding.chord.clone(),
                         existing: prior,
                         incoming: binding.clone(),
                     });
@@ -87,11 +87,9 @@ impl ShortcutRegistry {
             }
         }
         let index = self.bindings.len();
+        let chord = binding.chord.clone();
         self.bindings.push(binding);
-        self.by_chord
-            .entry(binding.chord)
-            .or_default()
-            .push(index);
+        self.by_chord.entry(chord).or_default().push(index);
         conflicts
     }
 
