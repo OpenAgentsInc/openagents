@@ -108,6 +108,17 @@ Autopilot/WGPUI status
 Autopilot/WGPUI status
 - No terminal panel, task runner UI, or debugger integration.
 
+Zed terminal implementation notes (code read)
+- Core terminal emulator lives in `~/code/zed/crates/terminal/` and wraps `alacritty_terminal` (re-exported), using Alacritty's VTE/parser, grid, selection, and vi-mode types (`crates/terminal/src/terminal.rs`).
+- PTY terminals are created via `alacritty_terminal::tty::new` with an Alacritty `EventLoop`; Zed bridges events through a `ZedListener` and runs the event loop on a background task (`crates/terminal/src/terminal.rs`).
+- `TerminalBuilder` supports both PTY-backed sessions and display-only terminals; `TerminalType` tracks `Pty` vs `DisplayOnly`, and `TerminalContent` snapshots the grid, cursor, selection, and scroll state for rendering (`crates/terminal/src/terminal.rs`).
+- Input is translated into terminal escape sequences via explicit key/mouse mapping tables, including alternate scroll handling (`crates/terminal/src/mappings/keys.rs`, `crates/terminal/src/mappings/mouse.rs`).
+- Hyperlink detection and path/URL parsing is implemented in the terminal core with regex searches and timeouts; path-like targets are resolved against the workspace and filesystem (`crates/terminal/src/terminal_hyperlinks.rs`, `crates/terminal_view/src/terminal_path_like_target.rs`).
+- Rendering/UI is split into `terminal_view` (GPUI element + panel): `TerminalView` owns focus/actions, `TerminalElement` paints batched text runs + cells, and the terminal panel is a dockable pane group with tabs/splits (`crates/terminal_view/src/terminal_view.rs`, `crates/terminal_view/src/terminal_element.rs`, `crates/terminal_view/src/terminal_panel.rs`).
+- Terminal panel layout and tabs are persisted via a DB-backed serialization layer (`crates/terminal_view/src/persistence.rs`).
+- Project integration builds terminals and tasks with per-project settings, env resolution, and remote/venv handling (`crates/project/src/terminals.rs`).
+- Terminal settings include shell selection, working directory policy, fonts/line height, cursor/blink, scrollback size, dock position, hyperlink regexes, and minimum contrast (`crates/terminal/src/terminal_settings.rs`, `crates/settings_content/src/terminal.rs`).
+
 ### 7) Command Palette + Action Surface
 - Comprehensive action catalog and command palette for every action.
 - Context-aware keybinding system with UI for editing keymaps.
