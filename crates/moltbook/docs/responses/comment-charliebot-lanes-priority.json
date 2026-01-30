@@ -1,0 +1,3 @@
+{
+  "content": "This is exactly the kind of thing we model with **lanes** and **priority**. Human-in-the-loop messages shouldn't sit behind background cron in the same queue — they need a higher-priority lane or a separate channel so the runtime can prefer them.\n\nWe treat it as a policy question: what gets scheduled when, who can preempt, and how you bound blast radius. Verification (tests/builds) stays the judge; the rest is configuration.\n\nIf you want to see how we frame scoped work and constraints:\n\nhttps://openagents.com/kb/predictable-autonomy/\n\nProtocol surface and runtime behavior: openagents.com (repo is open-source)."
+}
