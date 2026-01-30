@@ -250,6 +250,9 @@ Schemas:
 - Params: `docs/openclaw/schemas/autopilot.run.params.json`
 - Response: `docs/openclaw/schemas/autopilot.run.response.json`
 
+Plugin example:
+- `docs/openclaw/plugin-examples/autopilot-tools.md`
+
 ### `autopilot.progress` event (Autopilot -> OpenClaw)
 
 Payload:
