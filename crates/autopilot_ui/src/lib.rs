@@ -22,13 +22,16 @@ use wgpui::components::organisms::{
 };
 use wgpui::components::sections::{MessageEditor, ThreadView};
 use wgpui::components::{Text, TextInput};
-use wgpui::input::{InputEvent, Key, NamedKey};
+use wgpui::input::InputEvent;
 use wgpui::{
     Bounds, Button, ButtonVariant, Component, Cursor, Dropdown, DropdownOption, EventResult, Hsla,
     LayoutEngine, LayoutStyle, MarkdownConfig, MarkdownDocument, MarkdownView, MouseButton,
     PaintContext, Point, Quad, ScrollView, Size, StreamingMarkdown, copy_to_clipboard, length, px,
     text::FontStyle, theme,
 };
+
+pub mod shortcuts;
+pub use shortcuts::{ShortcutCommand, ShortcutContext};
 
 const PANEL_PADDING: f32 = 12.0;
 const PANEL_GAP: f32 = 12.0;
@@ -2176,6 +2179,27 @@ impl MinimalRoot {
         self.zoom_factor = zoom.max(0.1);
     }
 
+    pub fn shortcut_context(&self) -> ShortcutContext {
+        let text_input_focused = self
+            .chat_panes
+            .values()
+            .any(|chat| chat.input.is_focused());
+        ShortcutContext { text_input_focused }
+    }
+
+    pub fn apply_shortcut(&mut self, command: ShortcutCommand) -> bool {
+        match command {
+            ShortcutCommand::HotbarSlot(slot) => {
+                self.hotbar.flash_slot(slot);
+                self.handle_hotbar_slot(slot)
+            }
+            ShortcutCommand::CycleChatFocus => self.cycle_chat_focus(),
+            ShortcutCommand::CycleChatModel => self.cycle_chat_model(),
+            ShortcutCommand::CloseActivePane => self.close_active_pane(),
+            _ => false,
+        }
+    }
+
     pub fn apply_event(&mut self, event: AppEvent) {
         match event {
             AppEvent::SessionStarted { session_id, .. } => {
@@ -2755,6 +2779,22 @@ impl MinimalRoot {
         self.chat_slot_labels.remove(id);
     }
 
+    fn close_active_pane(&mut self) -> bool {
+        let Some(active_id) = self.pane_store.active_pane_id.clone() else {
+            return false;
+        };
+        let dismissable = self
+            .pane_store
+            .pane(&active_id)
+            .map(|pane| pane.dismissable)
+            .unwrap_or(true);
+        if dismissable {
+            self.close_pane(&active_id);
+            return true;
+        }
+        false
+    }
+
     fn assign_chat_slot(&mut self, pane_id: &str) {
         if self.chat_slot_assignments.contains_key(pane_id) {
             return;
@@ -2862,6 +2902,22 @@ impl MinimalRoot {
         }
     }
 
+    fn cycle_chat_model(&mut self) -> bool {
+        if let Some(active_id) = self.pane_store.active_pane_id.clone() {
+            if let Some(chat) = self.chat_panes.get_mut(&active_id) {
+                let options = build_model_options();
+                if !options.is_empty() {
+                    let current = model_index(&chat.selected_model).unwrap_or(0);
+                    let next = (current + 1) % options.len();
+                    let value = options[next].value.clone();
+                    chat.pending_model_changes.borrow_mut().push(value);
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
     fn pane_for_session_id(&self, session_id: &str) -> Option<String> {
         self.session_to_pane
             .iter()
@@ -2950,64 +3006,6 @@ impl MinimalRoot {
     }
 
     pub fn handle_input(&mut self, event: &InputEvent, _bounds: Bounds) -> bool {
-        if let InputEvent::KeyDown { key, modifiers } = event {
-            if matches!(key, Key::Named(NamedKey::Escape)) && !modifiers.meta && !modifiers.ctrl {
-                if let Some(active_id) = self.pane_store.active_pane_id.clone() {
-                    let dismissable = self
-                        .pane_store
-                        .pane(&active_id)
-                        .map(|pane| pane.dismissable)
-                        .unwrap_or(true);
-                    if dismissable {
-                        self.close_pane(&active_id);
-                        return true;
-                    }
-                }
-            }
-
-            if matches!(key, Key::Named(NamedKey::Tab))
-                && !modifiers.shift
-                && !modifiers.ctrl
-                && !modifiers.alt
-                && !modifiers.meta
-            {
-                return self.cycle_chat_focus();
-            }
-
-            if matches!(key, Key::Named(NamedKey::Tab))
-                && modifiers.shift
-                && !modifiers.ctrl
-                && !modifiers.alt
-                && !modifiers.meta
-            {
-                if let Some(active_id) = self.pane_store.active_pane_id.clone() {
-                    if let Some(chat) = self.chat_panes.get_mut(&active_id) {
-                        let options = build_model_options();
-                        if !options.is_empty() {
-                            let current = model_index(&chat.selected_model).unwrap_or(0);
-                            let next = (current + 1) % options.len();
-                            let value = options[next].value.clone();
-                            chat.pending_model_changes.borrow_mut().push(value);
-                            return true;
-                        }
-                    }
-                }
-            }
-
-            if modifiers.meta || modifiers.ctrl {
-                if let Key::Character(value) = key {
-                    if let Ok(slot) = value.parse::<u8>() {
-                        if slot <= HOTBAR_SLOT_MAX {
-                            self.hotbar.flash_slot(slot);
-                        }
-                        if slot <= HOTBAR_SLOT_MAX && self.handle_hotbar_slot(slot) {
-                            return true;
-                        }
-                    }
-                }
-            }
-        }
-
         if let InputEvent::MouseMove { x, y }
         | InputEvent::MouseDown { x, y, .. }
         | InputEvent::MouseUp { x, y, .. } = event
