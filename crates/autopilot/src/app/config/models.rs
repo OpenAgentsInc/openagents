@@ -24,7 +24,7 @@ impl ModelOption {
 
     pub(crate) fn model_id(&self) -> &'static str {
         match self {
-            ModelOption::Default => "gpt-5.1-codex-max",
+            ModelOption::Default => "gpt-5.2-codex",
             ModelOption::Mini => "gpt-5.1-codex-mini",
             ModelOption::Reasoning => "gpt-5.2",
         }
@@ -32,6 +32,7 @@ impl ModelOption {
 
     pub(crate) fn from_id(id: &str) -> ModelOption {
         match id {
+            "gpt-5.2-codex" => ModelOption::Default,
             "gpt-5.1-codex-max" => ModelOption::Default,
             "gpt-5.1-codex-mini" => ModelOption::Mini,
             "gpt-5.2" => ModelOption::Reasoning,
@@ -47,7 +48,7 @@ impl ModelOption {
 
     pub(crate) fn description(&self) -> &'static str {
         match self {
-            ModelOption::Default => "GPT-5.1 Codex Max · Deep and fast reasoning",
+            ModelOption::Default => "GPT-5.2 Codex · Frontier coding model",
             ModelOption::Mini => "GPT-5.1 Codex Mini · Faster, lower cost",
             ModelOption::Reasoning => "GPT-5.2 · Latest frontier model",
         }
