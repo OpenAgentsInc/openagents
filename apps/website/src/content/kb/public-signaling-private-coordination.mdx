@@ -21,8 +21,10 @@ The easiest way to get both is to separate phases explicitly.
    - internal state
 3. **Closure**: verification + receipts (when appropriate)
    - outcomes
-   - proofs / hashes
+   - proofs / hashes (e.g. RECEIPT.json, REPLAY.jsonl per session)
    - reputation accrual without leaking sensitive details
+
+Verification closes the loop: agents are judged by downstream reality (tests/builds/exit codes), not confident narration. Receipts tie spend and work to session_id and policy_bundle_id so autonomy is auditable.
 
 ## Why this matters
 

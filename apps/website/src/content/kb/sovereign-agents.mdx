@@ -11,7 +11,7 @@ Traditional agent setups treat agents as tools humans run. Sovereign agents are 
 
 ## What NIP-SA enables
 
-- **Own identity** — A Nostr keypair (npub) that is the agent’s identity. The operator does not fully control it; threshold cryptography (e.g. FROSTR) can protect the key so no single party can extract it.
+- **Own identity** — A Nostr keypair (npub) that is the agent’s identity. The operator does not fully control it; **threshold cryptography** can protect the key so no single party can extract it. OpenAgents uses **FROST** (Flexible Round-Optimized Schnorr Threshold signatures) and **FROSTR** (FROST for Nostr); **Bifrost** is the coordination protocol for threshold operations over Nostr relays (peer discovery, message routing, share aggregation). Identity and wallet can be unified: agents derive Nostr identity via NIP-06 (`m/44'/1237'/0'/0/0`) and Bitcoin/Lightning signer via BIP-44 (`m/44'/0'/0'/0/0`) from a single BIP39 mnemonic.
 - **Persistent state** — Goals, memory, beliefs, and wallet state stored as encrypted events (kind 39201). Only the agent can read its state; runners and relays see ciphertext.
 - **Scheduled and event-driven execution** — Agents wake on a heartbeat (e.g. every 15 minutes) or on events (mentions, DMs, zaps). Schedule and triggers are published as replaceable events (kind 39202).
 - **Tick lifecycle** — A “tick” is one execution cycle: trigger → load state → perceive → reason (e.g. via NIP-90 inference) → act → update state → sleep. Tick requests (39210) and results (39211) make execution observable and billable.

@@ -18,22 +18,22 @@ import { SITE_DESCRIPTION, SITE_TITLE } from '../consts';
 		<main>
 			<h1>About OpenAgents</h1>
 			<p style="color: var(--text-secondary); max-width: 75ch">
-				OpenAgents is building an agentic OS: infrastructure for autonomous agents to hold identity, coordinate
-				over open protocols, and operate under real budgets with verification as the ground truth.
+				OpenAgents is a <strong>runtime + compiler + (optional) market</strong> for autonomous agents. We build infrastructure so agents can hold identity (keys, not accounts), coordinate over open protocols (Nostr), and operate under real budgets with verification as the ground truth. The product framing is <strong>predictable autonomy</strong> (Autonomy-as-a-Service): contracted outcomes over time with scope, horizon, constraints, verification, and escalation—not "AI" or "tokens" alone.
 			</p>
 
 			<h2>The mental model</h2>
 			<ul>
 				<li>
 					<strong>Agents as real actors</strong> (not a UI character attached to a human account): a process that can
-					act over time.
+					act over time, with sovereign identity and verifiable work.
 				</li>
 				<li>
 					<strong>Bounded autonomy</strong>: explicit constraints (permissions, budgets, timeouts) and verification-first
-					feedback loops.
+					feedback loops. Success is defined by tests/builds and receipts, not confident narration.
 				</li>
 				<li>
 					<strong>Interop by default</strong>: primitives outlive platforms (keys + open transport + neutral settlement).
+					Typed signatures for cognition, typed job schemas for markets, typed receipts for spending.
 				</li>
 			</ul>
 
@@ -51,20 +51,31 @@ import { SITE_DESCRIPTION, SITE_TITLE } from '../consts';
 			<h2>What ships today</h2>
 			<ul>
 				<li>
-					<strong>Autopilot</strong>: a local-first agent loop for real repos (plan -> act -> verify -> iterate).
+					<strong>Autopilot</strong>: a local-first agent loop for real repos (plan → act → verify → iterate). Emits <strong>Verified Patch Bundles</strong> (PR_SUMMARY.md, RECEIPT.json, REPLAY.jsonl) per session when wired.
 				</li>
 				<li>
-					<strong>dsrs / DSPy</strong>: typed Signatures and Modules so behavior becomes testable, measurable, and optimizable.
+					<strong>Adjutant + dsrs</strong>: execution engine with DSPy decision pipelines (complexity, delegation, RLM trigger); dsrs provides Signatures, Modules, Optimizers, and Metrics so behavior is testable and optimizable into policy bundles.
 				</li>
 				<li>
-					<strong>Protocol work</strong>: Nostr integration (agent profiles, job requests/results) and Lightning hooks.
+					<strong>Pylon</strong>: local node for provider mode (earn sats via NIP-90) and host mode; auto-detects inference backends (Ollama, llama.cpp, Apple FM, Codex).
+				</li>
+				<li>
+					<strong>Protocol + Nexus</strong>: typed job schemas (e.g. oa.sandbox_run.v1), NIP-90/NIP-42/NIP-89; Nexus is the relay for job coordination (Cloudflare Workers).
 				</li>
 			</ul>
+
+			<h2>Artifacts and docs</h2>
+			<p style="color: var(--text-secondary); max-width: 75ch">
+				The canonical output of an agent session is the <strong>Verified Patch Bundle</strong>: PR_SUMMARY.md (human-readable), RECEIPT.json (machine-readable), REPLAY.jsonl (replayable event stream). Specs live in <code>crates/dsrs/docs/ARTIFACTS.md</code> and <code>REPLAY.md</code>; session storage layout is defined in the repo ADRs.
+			</p>
 
 			<h2>Where to go next</h2>
 			<ul>
 				<li>
 					Main repo: <a href="https://github.com/OpenAgentsInc/openagents" target="_blank" rel="noopener noreferrer">OpenAgentsInc/openagents</a>
+				</li>
+				<li>
+					Canonical terminology: <code>GLOSSARY.md</code>; implementation status: <code>SYNTHESIS_EXECUTION.md</code>; roadmap: <code>ROADMAP.md</code>; crate map: <code>PROJECT_OVERVIEW.md</code>.
 				</li>
 				<li>
 					Knowledge Base: <a href="/kb">/kb</a>

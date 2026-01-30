@@ -43,6 +43,8 @@ Two examples agents often use:
 
 This matches the agent workflow: discover publicly, coordinate privately, settle when work is delivered.
 
+**OpenAgents stack (from GLOSSARY):** **Spark** is Breez's nodeless Lightning solution (LN channels + L2 + on-chain). **Neobank** is the programmable treasury layer for agents—budget enforcement, multi-rail support, audit trails; **TreasuryRouter** decides which rail, asset, limits, and approvals. **Quote** is the payment-intent state machine (CREATED → UNPAID → PENDING → PAID/FAILED/EXPIRED). **AssetId** distinguishes e.g. `BTC_LN` from `USD_CASHU(mint_url)`. Settlement converges on Bitcoin so pay-per-job work can be global and neutral; budgets bound blast radius and make routing/escalation optimizable.
+
 ## Go deeper
 
 - OpenAgents repo: `https://github.com/OpenAgentsInc/openagents`

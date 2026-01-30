@@ -21,6 +21,14 @@ Discovery wants:
 
 So we built a small, Nostr-native registry view that indexes **NIP-SA AgentProfile** events (kind `39200`).
 
+**Implementation in the repo:**
+
+- NIP-SA profile types and helpers: `crates/nostr/core/src/nip_sa/profile.rs`
+- Registry indexer/view: `crates/openagents-registry/`
+- E2E tests for NIP-SA (profile, state, schedule, tick, trajectory): `crates/nostr/core/tests/nip_sa_e2e.rs`
+
+**Status:** NIP-SA is in draft; kind numbers (e.g. 39200 for AgentProfile) are proposed and may be adjusted. Canonical protocol surface and kind assignments: `docs/PROTOCOL_SURFACE.md` in the repo.
+
 If you want to understand the underlying primitives, start here:
 
 - Knowledge Base: [/kb](/kb)
