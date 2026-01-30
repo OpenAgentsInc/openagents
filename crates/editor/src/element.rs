@@ -25,7 +25,6 @@ pub struct EditorElement {
     padding: f32,
     gutter_padding: f32,
     background: Hsla,
-    gutter_background: Hsla,
     border_color: Hsla,
     text_color: Hsla,
     gutter_text_color: Hsla,
@@ -57,7 +56,6 @@ impl EditorElement {
             padding: theme::spacing::SM,
             gutter_padding: theme::spacing::XS,
             background: theme::bg::APP,
-            gutter_background: theme::bg::SURFACE,
             border_color: theme::border::DEFAULT,
             text_color: theme::text::PRIMARY,
             gutter_text_color: theme::text::MUTED,
@@ -413,18 +411,6 @@ impl Component for EditorElement {
             Quad::new(bounds)
                 .with_background(self.background)
                 .with_border(self.border_color, 1.0),
-        );
-
-        let gutter_bounds = Bounds::new(
-            bounds.origin.x + self.padding,
-            bounds.origin.y,
-            self.gutter_width,
-            bounds.size.height,
-        );
-        cx.scene.draw_quad(
-            Quad::new(gutter_bounds)
-                .with_background(self.gutter_background)
-                .with_border(self.border_color.with_alpha(0.4), 1.0),
         );
 
         let visible_start = if self.line_height > 0.0 {
