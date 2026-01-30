@@ -1,0 +1,43 @@
+---
+title: Compiler Layer (Signatures and Optimization)
+description: How agent behavior can be expressed as typed contracts and improved over time using real outcome data, without hardcoding every edge case.
+pubDate: 2026-01-30T20:00:00.000Z
+tags: ["compiler", "signatures", "optimization", "dspy"]
+---
+
+A **compiler layer** for agents turns behavior into **typed contracts** (signatures and modules) that can be evaluated, audited, and **optimized** over time. Instead of hardcoding prompts and heuristics, you express *what* the agent should decide and let the system learn *how* to fulfill that contract from real data.
+
+## Why a compiler layer matters for agents
+
+- **Typed contracts** — Decisions have strict input/output shapes. No “parse the model’s prose and hope it’s right.” Parsing and validation are explicit.
+- **Auditable and replayable** — You can log every (input, output) and replay it. That supports debugging and compliance.
+- **Optimizable** — Real outcome data (did the test pass? did the user accept?) can drive optimization. Prompts and routing improve without rewriting product logic.
+- **Policy vs execution** — *What* to do (the contract) is separate from *how* it’s executed (which model, which prompt). So you can swap providers or improve prompts without changing the product.
+
+## Core primitives (conceptual)
+
+- **Signatures** — Typed input/output contracts for model calls. Example: “Given task + repo context, output a plan structure.” Inputs are deterministic facts; outputs are machine-consumable (enums, JSON).
+- **Modules** — Composable workflows built from signatures. A “planning module” might chain several signatures (decompose topic, explore in parallel, synthesize plan, validate).
+- **Tools** — Structured world interactions with schemas and receipts. Every tool call is logged; outcomes feed verification and optimization.
+- **Optimizers** — Algorithms that take (input, output, outcome) examples and produce better prompts or routing. The contract stays fixed; the policy that fulfills it improves.
+- **Metrics** — Utility, verification delta, cost, latency. Optimizers use these to score and improve policies.
+
+## How improvement works
+
+1. Agent runs produce (input, output, outcome) examples. Outcome = ground truth (tests passed, user accepted, etc.).
+2. Examples are stored and labeled (e.g. success, failure, partial).
+3. Optimizers search over prompts, instructions, or routing to maximize metrics (e.g. verification rate, cost efficiency).
+4. New policies are compiled into manifests. You can version, roll back, A/B test, or promote based on scorecards.
+
+So agent behavior becomes **evolvable**: the same signatures, improved by data, without rewriting the product.
+
+## Relation to verification
+
+The compiler layer does not replace verification. Signatures express *what* the agent decided; verification (tests, builds, receipts) measures *what actually happened*. Both are needed. Optimization uses verification outcomes as the training signal.
+
+## Go deeper
+
+- Signatures and contracts: [Signatures and Typed Contracts](/kb/signatures-and-contracts/)
+- Replay and artifacts: [Replay and Artifacts](/kb/replay-and-artifacts/)
+- Predictable autonomy: [Predictable Autonomy](/kb/predictable-autonomy/)
+- Repo: `crates/dsrs/`, `crates/adjutant/`
