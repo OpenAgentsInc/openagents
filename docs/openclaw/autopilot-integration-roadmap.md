@@ -259,6 +259,22 @@ Payload:
 - `confidence`
 - `timestamp`
 
+### `autopilot.approval` tool (OpenClaw plugin)
+
+Input (JSON):
+- `session_id` (string, required)
+- `run_id` (string, required)
+- `request_id` (string, required)
+- `method` (string, required)
+- `params` (object, required) — original app-server request params
+
+Output (JSON):
+- Approval decision:
+  - `decision` (enum: accept | acceptForSession | decline | cancel)
+  - Optional `acceptSettings` if `acceptForSession`
+- Or tool input:
+  - `answers` object mirroring Codex tool input shape
+
 ## Configuration and feature flags
 
 Recommended env/config toggles:

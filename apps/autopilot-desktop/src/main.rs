@@ -1246,6 +1246,7 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
                             if let Some(bridge) = OPENCLAW_BRIDGE.get() {
                                 bridge.emit_fullauto_decision(
                                     &request.thread_id,
+                                    &request.turn_id,
                                     decision.action.as_str(),
                                     &decision_reason,
                                     decision.confidence,

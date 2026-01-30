@@ -174,6 +174,7 @@ impl OpenClawProgressBridge {
     pub fn emit_fullauto_decision(
         &self,
         thread_id: &str,
+        turn_id: &str,
         action: &str,
         reason: &str,
         confidence: f32,
@@ -186,6 +187,7 @@ impl OpenClawProgressBridge {
             "action": action,
             "state": state,
             "confidence": confidence,
+            "turn_id": turn_id,
         });
         let Some(payload) = self.build_payload_with_message(
             "fullauto/decision",
