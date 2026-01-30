@@ -332,6 +332,22 @@ impl ApplicationHandler<AppEvent> for App {
                 update_cursor(state);
             }
             WindowEvent::KeyboardInput { event, .. } => {
+                let Some(key) = map_key(&event.logical_key) else {
+                    return;
+                };
+                let modifiers = to_modifiers(self.modifiers);
+                let input_event = match event.state {
+                    ElementState::Pressed => InputEvent::KeyDown { key, modifiers },
+                    ElementState::Released => InputEvent::KeyUp { key, modifiers },
+                };
+                let bounds = content_bounds(logical_size(&state.config, state.effective_scale()));
+                let handled = state.root.handle_input(&input_event, bounds);
+                if handled {
+                    state.window.request_redraw();
+                    update_cursor(state);
+                    return;
+                }
+
                 if event.state == ElementState::Pressed && self.modifiers.super_key() {
                     if let WinitKey::Character(ch) = &event.logical_key {
                         match ch.as_str() {
@@ -353,18 +369,6 @@ impl ApplicationHandler<AppEvent> for App {
                             _ => {}
                         }
                     }
-                }
-                let Some(key) = map_key(&event.logical_key) else {
-                    return;
-                };
-                let modifiers = to_modifiers(self.modifiers);
-                let input_event = match event.state {
-                    ElementState::Pressed => InputEvent::KeyDown { key, modifiers },
-                    ElementState::Released => InputEvent::KeyUp { key, modifiers },
-                };
-                let bounds = content_bounds(logical_size(&state.config, state.effective_scale()));
-                if state.root.handle_input(&input_event, bounds) {
-                    state.window.request_redraw();
                 }
                 update_cursor(state);
             }
@@ -400,7 +404,8 @@ fn init_state(
         .primary_monitor()
         .or_else(|| event_loop.available_monitors().next())
     {
-        let size = monitor.size().to_logical(monitor.scale_factor());
+        let size: winit::dpi::LogicalSize<f64> =
+            monitor.size().to_logical(monitor.scale_factor());
         window_attrs = window_attrs.with_inner_size(size).with_maximized(true);
     } else {
         window_attrs = window_attrs
