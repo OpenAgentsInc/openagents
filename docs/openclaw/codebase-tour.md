@@ -1,13 +1,13 @@
-# Moltbot codebase tour (overview)
+# OpenClaw codebase tour (overview)
 
-This is a high-level map of the Moltbot repo at `~/code/moltbot`. It is meant as
+This is a high-level map of the OpenClaw repo at `~/code/openclaw`. It is meant as
 an orientation doc for integration work (Autopilot or other systems) so you can
 find the right surface quickly.
 
 ## Top-level layout
 
 - `src/` - Core runtime (Gateway, agent loop, tools, routing, config, CLI). This
-  is the heart of Moltbot.
+  is the heart of OpenClaw.
 - `extensions/` - Plugin packages (channels, tools, auth providers, optional
   features). Most integrations live here.
 - `docs/` - Mintlify docs for the product. Good for protocol + feature behavior.
@@ -28,7 +28,7 @@ find the right surface quickly.
 ### Agent loop and tool runtime
 - `src/agents/` - Embedded agent runtime, tool wiring, sessions, skills,
   sandboxing, and provider/model selection.
-  - Core tool registry is built in `src/agents/moltbot-tools.ts` and merges
+  - Core tool registry is built in `src/agents/openclaw-tools.ts` and merges
     plugin tools via `resolvePluginTools`.
   - CLI fallback backends live in `src/agents/cli-backends.ts` and
     `src/agents/cli-runner.ts`.
@@ -51,8 +51,8 @@ find the right surface quickly.
   presence, exec approvals.
 
 ### CLI
-- `src/commands/` - CLI commands (`moltbot gateway`, `moltbot agent`,
-  `moltbot doctor`, etc.).
+- `src/commands/` - CLI commands (`openclaw gateway`, `openclaw agent`,
+  `openclaw doctor`, etc.).
 - `src/cli/` - CLI framework utilities, prompts, progress output.
 
 ## Plugin system (extensions/)
@@ -92,7 +92,7 @@ Nodes connect to the Gateway as role `node` and expose commands like
 
 ## Docs and user behavior
 
-Moltbot docs are in `docs/` and are served via Mintlify. These docs are
+OpenClaw docs are in `docs/` and are served via Mintlify. These docs are
 extensive and include:
 - Gateway behavior and protocol
 - Channel setup
