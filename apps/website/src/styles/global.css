@@ -14,8 +14,9 @@
 	--text-secondary: #b3b3b3;
 	--text-muted: #999999;
 	--text-dim: #808080;
-	--accent: #ffffff;
-	--accent-hover: #ffffff;
+	--accent: #7ae7c7;
+	--accent-hover: #bff7e8;
+	--accent2: #ffd166;
 	--code-bg: #1e2433;
 	--inline-code-bg: #2a2433;
 	--box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
@@ -40,7 +41,11 @@ body {
 	margin: 0;
 	padding: 0;
 	text-align: left;
-	background: var(--background);
+	background:
+		radial-gradient(900px 600px at 12% 18%, rgba(122, 231, 199, 0.16), transparent 60%),
+		radial-gradient(900px 600px at 88% 10%, rgba(255, 209, 102, 0.12), transparent 60%),
+		radial-gradient(900px 600px at 80% 92%, rgba(94, 162, 255, 0.14), transparent 60%),
+		linear-gradient(180deg, #05060a, var(--background));
 	color: var(--text-primary);
 	font-size: 20px;
 	line-height: 1.7;

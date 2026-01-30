@@ -9,43 +9,176 @@ import { SITE_DESCRIPTION, SITE_TITLE } from '../consts';
 <html lang="en">
 	<head>
 		<BaseHead title={SITE_TITLE} description={SITE_DESCRIPTION} />
+		<style>
+			.hero {
+				border: 1px solid var(--panel-border);
+				background: radial-gradient(
+						800px 500px at 15% 20%,
+						color-mix(in srgb, var(--accent) 16%, transparent),
+						transparent 60%
+					),
+					var(--panel);
+				border-radius: 18px;
+				padding: 22px 18px;
+				box-shadow: var(--box-shadow);
+			}
+			.hero h1 {
+				margin: 0 0 0.5rem 0;
+			}
+			.hero p {
+				margin: 0;
+				color: var(--text-secondary);
+				max-width: 70ch;
+			}
+			.lede {
+				color: var(--text-secondary);
+				max-width: 75ch;
+			}
+			.kicker {
+				font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
+					"Courier New", monospace;
+				color: var(--text-muted);
+				font-size: 0.95rem;
+				margin-bottom: 0.6rem;
+			}
+			.grid {
+				display: grid;
+				grid-template-columns: 1fr;
+				gap: 14px;
+				margin: 1.25rem 0 0;
+			}
+			@media (min-width: 860px) {
+				.grid {
+					grid-template-columns: 1fr 1fr 1fr;
+				}
+			}
+			.card {
+				border: 1px solid var(--panel-border);
+				background: color-mix(in srgb, var(--panel) 86%, #000000 14%);
+				border-radius: 14px;
+				padding: 14px 14px;
+			}
+			.card h2 {
+				font-size: 1.25rem;
+				margin: 0 0 0.35rem 0;
+			}
+			.card p {
+				margin: 0;
+				color: var(--text-secondary);
+				font-size: 1rem;
+				line-height: 1.55;
+			}
+			.cta {
+				margin-top: 1rem;
+				display: flex;
+				gap: 10px;
+				flex-wrap: wrap;
+				align-items: center;
+			}
+			.btn {
+				display: inline-block;
+				padding: 10px 12px;
+				border-radius: 12px;
+				border: 1px solid var(--panel-border);
+				background: color-mix(in srgb, var(--panel) 82%, #000000 18%);
+				color: var(--text-primary);
+				text-decoration: none;
+				box-shadow: var(--box-shadow);
+			}
+			.btn:hover {
+				border-color: color-mix(in srgb, var(--accent) 55%, var(--panel-border));
+			}
+			.btn.primary {
+				border-color: color-mix(in srgb, var(--accent) 65%, var(--panel-border));
+				background: color-mix(in srgb, var(--accent) 18%, var(--panel) 82%);
+			}
+			.section {
+				margin-top: 2.2rem;
+			}
+			.small {
+				color: var(--text-muted);
+				font-size: 0.95rem;
+			}
+			.code {
+				font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
+					"Courier New", monospace;
+				font-size: 0.95rem;
+				background: var(--inline-code-bg);
+				padding: 2px 6px;
+				border-radius: 6px;
+			}
+		</style>
 	</head>
 	<body>
 		<Header />
 		<main>
-			<h1>{SITE_TITLE}</h1>
-			<p>{SITE_DESCRIPTION}</p>
+			<section class="hero">
+				<div class="kicker">Agentic OS</div>
+				<h1>{SITE_TITLE}</h1>
+				<p>
+					OpenAgents builds infrastructure for autonomous agents to become reliable operators and economic
+					actors: identity you can hold, coordination you can interoperate on, and budgets you can enforce.
+				</p>
+				<div class="cta">
+					<a class="btn primary" href="/kb">Read the Knowledge Base</a>
+					<a class="btn" href="https://github.com/OpenAgentsInc/openagents" target="_blank" rel="noopener noreferrer">
+						View the Repo
+					</a>
+					<a class="btn" href="/about">How It Fits Together</a>
+				</div>
+			</section>
 
-			<h2>What Is OpenAgents</h2>
-			<p>
-				OpenAgents is a layered stack: a <strong>runtime</strong> that executes tool and job actions with schemas and receipts,
-				a <strong>compiler layer</strong> (dsrs / DSPy) that expresses agent behavior as typed Signatures and Modules and optimizes them via metrics,
-				and an optional <strong>market</strong> (Pylon, NIP-90, relays) for purchasable compute and sandbox execution with budgets and receipts.
-			</p>
+			<section class="section">
+				<h2>The Primitives</h2>
+				<div class="grid">
+					<div class="card">
+						<h2>Identity</h2>
+						<p>
+							Keys, not accounts. Agents should be able to sign, rotate, and eventually threshold-protect
+							their identity without platform permission.
+						</p>
+					</div>
+					<div class="card">
+						<h2>Coordination</h2>
+						<p>
+							Public signaling and private execution. OpenAgents advocates Nostr as a neutral pub/sub fabric
+							with encrypted agent-to-agent channels.
+						</p>
+					</div>
+					<div class="card">
+						<h2>Money</h2>
+						<p>
+							Budgets as a control plane. Settlement converges on Bitcoin (often via Lightning) so pay-per-job
+							work can be global and neutral.
+						</p>
+					</div>
+				</div>
+				<p class="small" style="margin-top: 1rem">
+					A useful mantra from the agent world: <strong>public feed is for signaling; private layer is for coordination</strong>.
+				</p>
+			</section>
 
-			<h2>Autopilot</h2>
-			<p>
-				<strong>Autopilot</strong> is the primary product: a local-first desktop agent that plans, executes, and verifies work in your repo.
-				It runs on your machine, keeps context local, and produces replayable artifacts and a full trace of what happened.
-			</p>
-			<ul>
-				<li>Local-first by default, running against your repo on your machine</li>
-				<li>Verifiable loops via deterministic checks (tests/builds) as ground truth</li>
-				<li>Inspectable session logs and artifacts for replay, debug, and audit</li>
-				<li>Unified interface designed for multiple agents (Codex wired today)</li>
-			</ul>
+			<section class="section">
+				<h2>What Ships Today</h2>
+				<p class="lede">
+					<strong>Autopilot</strong> is the wedge: a local-first agent that works in real repos with a
+					verification-first loop (tests/builds are the judge).
+				</p>
+				<p class="small">
+					Start here:
+					<span class="code">cargo build -p autopilot</span>
+					<span class="code">cargo run -p autopilot</span>
+				</p>
+			</section>
 
-			<h2>Get Started</h2>
-			<p>
-				Clone the repo, run the desktop app, and follow the docs for quickstart, installation, and concepts:
-			</p>
-			<p>
-				<a href="https://github.com/OpenAgentsInc/openagents">GitHub</a>
-				·
-				<a href="/about">About</a>
-				·
-				<a href="/blog">Blog</a>
-			</p>
+			<section class="section">
+				<h2>Start With These</h2>
+				<ul>
+					<li><a href="/kb/nostr-for-agents/">Nostr for Agents</a> (identity + coordination)</li>
+					<li><a href="/kb/bitcoin-for-agents/">Bitcoin for Agents</a> (budgets + settlement)</li>
+					<li><a href="/kb/agent-registry/">Agent Registry</a> (discoverability without capture)</li>
+				</ul>
+			</section>
 		</main>
 		<Footer />
 	</body>

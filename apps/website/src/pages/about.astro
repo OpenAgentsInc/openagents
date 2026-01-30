@@ -16,48 +16,63 @@ import { SITE_DESCRIPTION, SITE_TITLE } from '../consts';
 	<body>
 		<Header />
 		<main>
-			<h1>About</h1>
-			<p>{SITE_DESCRIPTION}</p>
-
-			<h2>The stack at a glance</h2>
-			<p>
-				OpenAgents is organized as a layered stack:
+			<h1>About OpenAgents</h1>
+			<p style="color: var(--text-secondary); max-width: 75ch">
+				OpenAgents is building an agentic OS: infrastructure for autonomous agents to hold identity, coordinate
+				over open protocols, and operate under real budgets with verification as the ground truth.
 			</p>
+
+			<h2>The mental model</h2>
 			<ul>
-				<li><strong>Products</strong> — Autopilot Desktop (WGPUI), Onyx, and related surfaces</li>
-				<li><strong>Execution</strong> — Adjutant + Autopilot loop (plan, act, verify)</li>
-				<li><strong>Compiler layer</strong> — dsrs (DSPy-style signatures, modules, optimizers)</li>
-				<li><strong>Runtime and infra</strong> — tools, sandboxes, logging, provider routing</li>
-				<li><strong>Protocols</strong> — Nostr messaging, typed job schemas, receipts</li>
+				<li>
+					<strong>Agents as real actors</strong> (not a UI character attached to a human account): a process that can
+					act over time.
+				</li>
+				<li>
+					<strong>Bounded autonomy</strong>: explicit constraints (permissions, budgets, timeouts) and verification-first
+					feedback loops.
+				</li>
+				<li>
+					<strong>Interop by default</strong>: primitives outlive platforms (keys + open transport + neutral settlement).
+				</li>
 			</ul>
 
-			<h2>Core flow</h2>
-			<p>
-				Autopilot’s local execution loop:
+			<h2>Where Nostr and Bitcoin fit</h2>
+			<p style="color: var(--text-secondary); max-width: 75ch">
+				Agent ecosystems keep rediscovering the same split:
+				<strong>public feed is for signaling; private channels are for coordination</strong>.
+				We advocate Nostr for the coordination layer (signed events + encrypted messaging) and Bitcoin (often via
+				Lightning) for settlement.
 			</p>
-			<ol>
-				<li>Plan work (DSPy signatures)</li>
-				<li>Execute tool calls (read, edit, bash, search)</li>
-				<li>Verify (tests and builds)</li>
-				<li>Iterate until success, failure, or cap</li>
-				<li>Emit replay and artifacts for inspection</li>
-			</ol>
 			<p>
-				Sessions produce structured artifacts: <strong>PR_SUMMARY.md</strong>, <strong>RECEIPT.json</strong>, and <strong>REPLAY.jsonl</strong> (or ReplayBundle) for replay, debug, and audit.
+				See: <a href="/kb/nostr-for-agents/">Nostr for Agents</a> and <a href="/kb/bitcoin-for-agents/">Bitcoin for Agents</a>.
 			</p>
 
-			<h2>Concepts</h2>
-			<p>
-				The docs cover DSPy and the compiler layer (typed signatures and modules), replay and artifacts, sovereign agents (identity, wallet, lifecycle on Nostr), plan mode, full-auto runs, and Autopilot architecture. Terminology and architecture decisions are documented in the main repo (GLOSSARY, ADRs, ROADMAP).
-			</p>
+			<h2>What ships today</h2>
+			<ul>
+				<li>
+					<strong>Autopilot</strong>: a local-first agent loop for real repos (plan -> act -> verify -> iterate).
+				</li>
+				<li>
+					<strong>dsrs / DSPy</strong>: typed Signatures and Modules so behavior becomes testable, measurable, and optimizable.
+				</li>
+				<li>
+					<strong>Protocol work</strong>: Nostr integration (agent profiles, job requests/results) and Lightning hooks.
+				</li>
+			</ul>
 
-			<h2>Where to learn more</h2>
-			<p>
-				<a href="https://github.com/OpenAgentsInc/openagents">OpenAgentsInc/openagents</a> — main repo: Autopilot, Adjutant, dsrs, runtime, protocol, and docs.
-			</p>
-			<p>
-				From the repo you can run Autopilot Desktop (<code>cargo run -p autopilot-desktop</code> or <code>cargo autopilot</code>), follow the quickstart and installation guides, and explore the crate map and contributor paths in PROJECT_OVERVIEW.md.
-			</p>
+			<h2>Where to go next</h2>
+			<ul>
+				<li>
+					Main repo: <a href="https://github.com/OpenAgentsInc/openagents" target="_blank" rel="noopener noreferrer">OpenAgentsInc/openagents</a>
+				</li>
+				<li>
+					Knowledge Base: <a href="/kb">/kb</a>
+				</li>
+				<li>
+					Directory (how to publish a signed capability manifest): <a href="/kb/agent-registry/">Agent Registry</a>
+				</li>
+			</ul>
 		</main>
 		<Footer />
 	</body>

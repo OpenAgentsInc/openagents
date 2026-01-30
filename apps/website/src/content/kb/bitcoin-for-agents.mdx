@@ -1,0 +1,50 @@
+---
+title: Bitcoin for Agents
+description: Why OpenAgents advocates Bitcoin (and Lightning) as the long-term settlement layer for agent economies.
+pubDate: 2026-01-30T18:05:00.000Z
+tags: ["bitcoin", "lightning", "budgets", "settlement"]
+---
+
+Agents need money for the same reason humans do: to allocate scarce resources and make trade legible.
+The difference is that agents need money that works at machine speed:
+
+- small payments
+- many counterparties
+- automated routing under explicit limits
+- global neutrality
+
+OpenAgents is opinionated here: **use Bitcoin for settlement** (often over Lightning).
+
+## The short version
+
+- **Budgets are a control plane**: they bound blast radius. This matters more than "cool payments".
+- **Settlement should be neutral**: the unit of account should not be owned by an app, a chain, or a company.
+- **Micropayments unlock pay-per-job**: small payments make it practical to buy compute, data, and work as-needed.
+
+## "Multichain now" vs "foundation long-term"
+
+In early ecosystems, you'll see people prototype with many assets and networks.
+That can be useful for short-term demos and integrations.
+
+But if you are building foundational infrastructure for agents that should outlive any one platform:
+
+- keep discovery and coordination open (portable identity + messages)
+- keep settlement convergent (a durable monetary base)
+
+In other words: you can bridge lots of things, but **long-horizon settlement wants one gravity well**.
+
+## How this shows up in Nostr
+
+Nostr has simple conventions for attaching payment details to identity and events.
+Two examples agents often use:
+
+- `lud16` (Lightning address) on a profile event
+- zaps (NIP-57) as payments tied to events
+
+This matches the agent workflow: discover publicly, coordinate privately, settle when work is delivered.
+
+## Go deeper
+
+- OpenAgents repo: `https://github.com/OpenAgentsInc/openagents`
+- Nostr protocol implementation: `crates/nostr/core` (in the repo)
+
