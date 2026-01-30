@@ -1580,6 +1580,30 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
                                 }
                             });
                         }
+                        UserAction::OpenFile { path } => {
+                            let proxy = proxy_actions.clone();
+                            let cwd = cwd_for_actions.clone();
+                            let path_buf = PathBuf::from(path.trim());
+                            let resolved = if path_buf.is_absolute() {
+                                path_buf
+                            } else {
+                                PathBuf::from(cwd).join(path_buf)
+                            };
+                            match std::fs::read_to_string(&resolved) {
+                                Ok(contents) => {
+                                    let _ = proxy.send_event(AppEvent::FileOpened {
+                                        path: resolved,
+                                        contents,
+                                    });
+                                }
+                                Err(err) => {
+                                    let _ = proxy.send_event(AppEvent::FileOpenFailed {
+                                        path: resolved,
+                                        error: err.to_string(),
+                                    });
+                                }
+                            }
+                        }
                         UserAction::Interrupt { session_id, .. } => {
                             let client = client_for_actions.clone();
                             let proxy = proxy_actions.clone();

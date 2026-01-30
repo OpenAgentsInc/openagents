@@ -6,6 +6,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use autopilot_app::{AppEvent, SessionId, ThreadSnapshot, ThreadSummary, UserAction, WorkspaceId};
 use bip39::Mnemonic;
+use editor::{Editor, EditorElement, SyntaxLanguage};
 use nostr::derive_keypair;
 use openagents_spark::SparkSigner;
 use rand::RngCore;
@@ -64,6 +65,8 @@ const EVENTS_PANE_WIDTH: f32 = 480.0;
 const EVENTS_PANE_HEIGHT: f32 = 520.0;
 const THREADS_PANE_WIDTH: f32 = 520.0;
 const THREADS_PANE_HEIGHT: f32 = 520.0;
+const FILE_EDITOR_PANE_WIDTH: f32 = 720.0;
+const FILE_EDITOR_PANE_HEIGHT: f32 = 560.0;
 const IDENTITY_PANE_WIDTH: f32 = 520.0;
 const IDENTITY_PANE_HEIGHT: f32 = 520.0;
 const PYLON_PANE_WIDTH: f32 = 520.0;
@@ -84,7 +87,7 @@ const HOTBAR_PADDING: f32 = 6.0;
 const HOTBAR_SLOT_EVENTS: u8 = 0;
 const HOTBAR_SLOT_NEW_CHAT: u8 = 1;
 const HOTBAR_SLOT_IDENTITY: u8 = 2;
-const HOTBAR_SLOT_PYLON: u8 = 5;
+const HOTBAR_SLOT_FILE_EDITOR: u8 = 5;
 const HOTBAR_SLOT_WALLET: u8 = 3;
 const HOTBAR_SLOT_SELL_COMPUTE: u8 = 6;
 const HOTBAR_SLOT_THREADS: u8 = 4;
@@ -156,6 +159,8 @@ impl AppViewModel {
             AppEvent::Nip90Log { .. } => {}
             AppEvent::ThreadsUpdated { .. } => {}
             AppEvent::ThreadLoaded { .. } => {}
+            AppEvent::FileOpened { .. } => {}
+            AppEvent::FileOpenFailed { .. } => {}
         }
     }
 
@@ -386,6 +391,7 @@ enum PaneKind {
     Chat,
     Events,
     Threads,
+    FileEditor,
     Identity,
     Pylon,
     Wallet,
@@ -400,6 +406,7 @@ enum HotbarAction {
     FocusPane(String),
     ToggleEvents,
     ToggleThreads,
+    ToggleFileEditor,
     ToggleIdentity,
     TogglePylon,
     ToggleWallet,
@@ -659,6 +666,7 @@ pub struct MinimalRoot {
     pending_threads_refresh: Rc<RefCell<bool>>,
     thread_entries: Vec<ThreadEntryView>,
     pending_thread_open: Rc<RefCell<Option<String>>>,
+    file_editor: FileEditorPaneState,
     keygen_button: Button,
     keygen_bounds: Bounds,
     pending_keygen: Rc<RefCell<bool>>,
@@ -781,6 +789,22 @@ struct ChatPaneState {
     stop_button: Button,
     stop_bounds: Bounds,
     pending_stop: Rc<RefCell<bool>>,
+}
+
+struct FileEditorPaneState {
+    editor: EditorElement,
+    path_input: TextInput,
+    open_button: Button,
+    reload_button: Button,
+    path_bounds: Bounds,
+    open_bounds: Bounds,
+    reload_bounds: Bounds,
+    editor_bounds: Bounds,
+    pending_open: Rc<RefCell<bool>>,
+    pending_reload: Rc<RefCell<bool>>,
+    current_path: Option<PathBuf>,
+    status: Option<String>,
+    status_is_error: bool,
 }
 
 impl ChatPaneState {
@@ -1842,6 +1866,106 @@ impl ChatPaneState {
     }
 }
 
+impl FileEditorPaneState {
+    fn new() -> Self {
+        let pending_open = Rc::new(RefCell::new(false));
+        let pending_open_submit = pending_open.clone();
+        let mut path_input = TextInput::new()
+            .placeholder("Path to file (relative or absolute)")
+            .background(theme::bg::APP)
+            .border_color(theme::border::DEFAULT)
+            .border_color_focused(theme::border::FOCUS)
+            .text_color(theme::text::PRIMARY)
+            .placeholder_color(theme::text::MUTED)
+            .on_submit(move |_value| {
+                *pending_open_submit.borrow_mut() = true;
+            });
+        path_input.set_mono(true);
+
+        let pending_open_click = pending_open.clone();
+        let open_button = Button::new("Open")
+            .variant(ButtonVariant::Primary)
+            .font_size(theme::font_size::SM)
+            .padding(12.0, 6.0)
+            .corner_radius(6.0)
+            .on_click(move || {
+                *pending_open_click.borrow_mut() = true;
+            });
+
+        let pending_reload = Rc::new(RefCell::new(false));
+        let pending_reload_click = pending_reload.clone();
+        let reload_button = Button::new("Reload")
+            .variant(ButtonVariant::Secondary)
+            .font_size(theme::font_size::SM)
+            .padding(12.0, 6.0)
+            .corner_radius(6.0)
+            .on_click(move || {
+                *pending_reload_click.borrow_mut() = true;
+            });
+
+        let mut editor = EditorElement::new(Editor::new(""));
+        editor.set_wrap_lines(true);
+        editor.set_read_only(true);
+
+        Self {
+            editor,
+            path_input,
+            open_button,
+            reload_button,
+            path_bounds: Bounds::ZERO,
+            open_bounds: Bounds::ZERO,
+            reload_bounds: Bounds::ZERO,
+            editor_bounds: Bounds::ZERO,
+            pending_open,
+            pending_reload,
+            current_path: None,
+            status: Some("No file loaded".to_string()),
+            status_is_error: false,
+        }
+    }
+
+    fn take_pending_open(&mut self) -> bool {
+        let mut pending = self.pending_open.borrow_mut();
+        let value = *pending;
+        *pending = false;
+        value
+    }
+
+    fn take_pending_reload(&mut self) -> bool {
+        let mut pending = self.pending_reload.borrow_mut();
+        let value = *pending;
+        *pending = false;
+        value
+    }
+
+    fn set_contents(&mut self, path: PathBuf, contents: String) {
+        self.editor.set_text(&contents);
+        let language = SyntaxLanguage::from_path(path.to_string_lossy().as_ref());
+        self.editor.set_language(language);
+        self.editor.reset_scroll();
+        let line_count = self.editor.editor().buffer().line_count();
+        let byte_count = self.editor.editor().buffer().len_bytes();
+        self.status = Some(format!(
+            "{} | {} lines | {} bytes",
+            path.display(),
+            line_count,
+            byte_count
+        ));
+        self.status_is_error = false;
+        self.current_path = Some(path.clone());
+        self.path_input
+            .set_value(path.to_string_lossy().to_string());
+    }
+
+    fn set_error(&mut self, path: PathBuf, error: String) {
+        self.status = Some(format!("{}: {}", path.display(), error));
+        self.status_is_error = true;
+        self.current_path = Some(path.clone());
+        self.path_input
+            .set_value(path.to_string_lossy().to_string());
+    }
+}
+
 impl MinimalRoot {
     pub fn new() -> Self {
         let pending_copy = Rc::new(RefCell::new(false));
@@ -1867,6 +1991,7 @@ impl MinimalRoot {
             });
 
         let pending_thread_open = Rc::new(RefCell::new(None));
+        let file_editor = FileEditorPaneState::new();
 
         let pending_keygen = Rc::new(RefCell::new(false));
         let pending_keygen_click = pending_keygen.clone();
@@ -2078,6 +2203,7 @@ impl MinimalRoot {
             pending_threads_refresh,
             thread_entries: Vec::new(),
             pending_thread_open,
+            file_editor,
             keygen_button,
             keygen_bounds: Bounds::ZERO,
             pending_keygen,
@@ -2259,6 +2385,12 @@ impl MinimalRoot {
                     .set_title(&pane_id, format!("Thread {}", thread.id));
                 self.session_to_pane.insert(session_id, pane_id.clone());
                 self.thread_to_pane.insert(thread.id, pane_id);
+            }
+            AppEvent::FileOpened { path, contents } => {
+                self.file_editor.set_contents(path, contents);
+            }
+            AppEvent::FileOpenFailed { path, error } => {
+                self.file_editor.set_error(path, error);
             }
             AppEvent::AppServerEvent { message } => {
                 if let Ok(value) = serde_json::from_str::<Value>(&message) {
@@ -2533,6 +2665,31 @@ impl MinimalRoot {
         });
     }
 
+    fn toggle_file_editor_pane(&mut self, screen: Size) {
+        let last_position = self.pane_store.last_pane_position;
+        self.pane_store
+            .toggle_pane("file_editor", screen, |snapshot| {
+                let rect = snapshot
+                    .as_ref()
+                    .map(|snapshot| snapshot.rect)
+                    .unwrap_or_else(|| {
+                        calculate_new_pane_position(
+                            last_position,
+                            screen,
+                            FILE_EDITOR_PANE_WIDTH,
+                            FILE_EDITOR_PANE_HEIGHT,
+                        )
+                    });
+                Pane {
+                    id: "file_editor".to_string(),
+                    kind: PaneKind::FileEditor,
+                    title: "File Editor".to_string(),
+                    rect,
+                    dismissable: true,
+                }
+            });
+    }
+
     fn toggle_identity_pane(&mut self, screen: Size) {
         let last_position = self.pane_store.last_pane_position;
         self.pane_store.toggle_pane("identity", screen, |snapshot| {
@@ -2707,6 +2864,9 @@ impl MinimalRoot {
         self.pane_store.remove_pane(id, true);
         self.pane_frames.remove(id);
         self.pane_bounds.remove(id);
+        if id == "file_editor" {
+            self.file_editor.editor.blur();
+        }
         if let Some(chat) = self.chat_panes.remove(id) {
             if let Some(session_id) = chat.session_id {
                 self.session_to_pane.remove(&session_id);
@@ -2761,6 +2921,10 @@ impl MinimalRoot {
                         handler(UserAction::ThreadsRefresh);
                     }
                 }
+                true
+            }
+            HotbarAction::ToggleFileEditor => {
+                self.toggle_file_editor_pane(screen);
                 true
             }
             HotbarAction::ToggleIdentity => {
@@ -3321,6 +3485,57 @@ impl MinimalRoot {
                             }
                             handled |= refresh_handled || entries_handled;
                         }
+                        PaneKind::FileEditor => {
+                            let path_handled = matches!(
+                                self.file_editor.path_input.event(
+                                    event,
+                                    self.file_editor.path_bounds,
+                                    &mut self.event_context
+                                ),
+                                EventResult::Handled
+                            );
+                            if self.file_editor.path_input.is_focused()
+                                && self.file_editor.editor.is_focused()
+                            {
+                                self.file_editor.editor.blur();
+                            }
+                            let open_handled = matches!(
+                                self.file_editor.open_button.event(
+                                    event,
+                                    self.file_editor.open_bounds,
+                                    &mut self.event_context
+                                ),
+                                EventResult::Handled
+                            );
+                            let reload_handled = matches!(
+                                self.file_editor.reload_button.event(
+                                    event,
+                                    self.file_editor.reload_bounds,
+                                    &mut self.event_context
+                                ),
+                                EventResult::Handled
+                            );
+                            let key_event =
+                                matches!(event, InputEvent::KeyDown { .. } | InputEvent::KeyUp { .. });
+                            let editor_target = self
+                                .file_editor
+                                .editor_bounds
+                                .contains(self.cursor_position)
+                                || (key_event
+                                    && self.file_editor.editor.is_focused()
+                                    && !self.file_editor.path_input.is_focused());
+                            let editor_handled = if editor_target {
+                                matches!(
+                                    self.file_editor
+                                        .editor
+                                        .event(event, self.file_editor.editor_bounds, &mut self.event_context),
+                                    EventResult::Handled
+                                )
+                            } else {
+                                false
+                            };
+                            handled |= path_handled || open_handled || reload_handled || editor_handled;
+                        }
                         PaneKind::Identity => {
                             let keygen_handled = matches!(
                                 self.keygen_button.event(
@@ -3667,6 +3882,35 @@ impl MinimalRoot {
             self.open_thread_from_list(thread_id);
         }
 
+        let should_file_open = self.file_editor.take_pending_open();
+        if should_file_open {
+            let path = self.file_editor.path_input.get_value().trim().to_string();
+            if !path.is_empty() {
+                self.file_editor.status = Some(format!("Opening {}...", path));
+                self.file_editor.status_is_error = false;
+                if let Some(handler) = self.send_handler.as_mut() {
+                    handler(UserAction::OpenFile { path });
+                }
+            }
+        }
+
+        let should_file_reload = self.file_editor.take_pending_reload();
+        if should_file_reload {
+            let path = self
+                .file_editor
+                .current_path
+                .as_ref()
+                .map(|path| path.to_string_lossy().to_string())
+                .unwrap_or_else(|| self.file_editor.path_input.get_value().trim().to_string());
+            if !path.is_empty() {
+                self.file_editor.status = Some(format!("Reloading {}...", path));
+                self.file_editor.status_is_error = false;
+                if let Some(handler) = self.send_handler.as_mut() {
+                    handler(UserAction::OpenFile { path });
+                }
+            }
+        }
+
         let chat_ids: Vec<String> = self.chat_panes.keys().cloned().collect();
         for chat_id in chat_ids {
             if let Some(chat) = self.chat_panes.get_mut(&chat_id) {
@@ -3825,6 +4069,12 @@ impl MinimalRoot {
             .any(|entry| entry.open_button.is_hovered())
         {
             Cursor::Pointer
+        } else if (self.file_editor.open_button.is_hovered()
+            && !self.file_editor.open_button.is_disabled())
+            || (self.file_editor.reload_button.is_hovered()
+                && !self.file_editor.reload_button.is_disabled())
+        {
+            Cursor::Pointer
         } else if SHOW_MODEL_SELECTOR
             && self.chat_panes.values().any(|chat| {
                 chat.model_hovered
@@ -3838,6 +4088,14 @@ impl MinimalRoot {
             .chat_panes
             .values()
             .any(|chat| chat.input_hovered || chat.input.is_focused())
+        {
+            Cursor::Text
+        } else if self.file_editor.editor_bounds.contains(self.cursor_position)
+            || self.file_editor.editor.is_focused()
+        {
+            self.file_editor.editor.cursor()
+        } else if self.file_editor.path_bounds.contains(self.cursor_position)
+            || self.file_editor.path_input.is_focused()
         {
             Cursor::Text
         } else if self.nip90_kind_bounds.contains(self.cursor_position)
@@ -3891,6 +4149,10 @@ impl Component for MinimalRoot {
         self.threads_refresh_bounds = Bounds::ZERO;
         self.event_scroll_bounds = Bounds::ZERO;
         self.keygen_bounds = Bounds::ZERO;
+        self.file_editor.path_bounds = Bounds::ZERO;
+        self.file_editor.open_bounds = Bounds::ZERO;
+        self.file_editor.reload_bounds = Bounds::ZERO;
+        self.file_editor.editor_bounds = Bounds::ZERO;
 
         self.pane_bounds.clear();
 
@@ -3941,6 +4203,7 @@ impl Component for MinimalRoot {
                 }
                 PaneKind::Events => paint_events_pane(self, content_bounds, cx),
                 PaneKind::Threads => paint_threads_pane(self, content_bounds, cx),
+                PaneKind::FileEditor => paint_file_editor_pane(self, content_bounds, cx),
                 PaneKind::Identity => paint_identity_pane(self, content_bounds, cx),
                 PaneKind::Pylon => paint_pylon_pane(self, content_bounds, cx),
                 PaneKind::Wallet => paint_wallet_pane(self, content_bounds, cx),
@@ -3993,14 +4256,13 @@ impl Component for MinimalRoot {
         );
         self.hotbar_bindings
             .insert(HOTBAR_SLOT_WALLET, HotbarAction::ToggleWallet);
-        // Pylon + Sell Compute panes hidden from hotbar for now.
-        // items.push(
-        //     HotbarSlot::new(HOTBAR_SLOT_PYLON, "PY", "Pylon")
-        //         .active(self.pane_store.is_active("pylon")),
-        // );
-        // self.hotbar_bindings
-        //     .insert(HOTBAR_SLOT_PYLON, HotbarAction::TogglePylon);
-        //
+        items.push(
+            HotbarSlot::new(HOTBAR_SLOT_FILE_EDITOR, "FE", "Files")
+                .active(self.pane_store.is_active("file_editor")),
+        );
+        self.hotbar_bindings
+            .insert(HOTBAR_SLOT_FILE_EDITOR, HotbarAction::ToggleFileEditor);
+        // Sell Compute pane hidden from hotbar for now.
         // items.push(
         //     HotbarSlot::new(HOTBAR_SLOT_SELL_COMPUTE, "SC", "Sell")
         //         .active(self.pane_store.is_active("sell_compute")),
@@ -4014,8 +4276,7 @@ impl Component for MinimalRoot {
         );
         self.hotbar_bindings
             .insert(HOTBAR_SLOT_THREADS, HotbarAction::ToggleThreads);
-        // Reserve slots 5 and 6 (currently unused) to keep hotbar numbering contiguous.
-        items.push(HotbarSlot::new(HOTBAR_SLOT_PYLON, "", "Slot 5").ghost(true));
+        // Reserve slot 6 (currently unused) to keep hotbar numbering contiguous.
         items.push(HotbarSlot::new(HOTBAR_SLOT_SELL_COMPUTE, "", "Slot 6").ghost(true));
 
         // DVM History + NIP-90 panes disabled for now (keep code around).
@@ -5374,6 +5635,75 @@ fn paint_threads_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintCont
     }
 }
 
+fn paint_file_editor_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintContext) {
+    let padding = 12.0;
+    let gap = 8.0;
+    let button_height = 28.0;
+    let button_width = 80.0;
+    let content_width = (bounds.size.width - padding * 2.0).max(0.0);
+    let content_x = bounds.origin.x + padding;
+    let mut y = bounds.origin.y + padding;
+
+    let bar_bounds = Bounds::new(content_x, y, content_width, button_height);
+    let open_bounds = Bounds::new(
+        bar_bounds.origin.x + bar_bounds.size.width - button_width,
+        bar_bounds.origin.y,
+        button_width,
+        button_height,
+    );
+    let reload_bounds = Bounds::new(
+        open_bounds.origin.x - gap - button_width,
+        bar_bounds.origin.y,
+        button_width,
+        button_height,
+    );
+    let path_bounds = Bounds::new(
+        bar_bounds.origin.x,
+        bar_bounds.origin.y,
+        (reload_bounds.origin.x - gap - bar_bounds.origin.x).max(120.0),
+        button_height,
+    );
+
+    root.file_editor.path_bounds = path_bounds;
+    root.file_editor.open_bounds = open_bounds;
+    root.file_editor.reload_bounds = reload_bounds;
+    root.file_editor
+        .path_input
+        .set_max_width(path_bounds.size.width);
+
+    let has_path = !root.file_editor.path_input.get_value().trim().is_empty();
+    root.file_editor.open_button.set_disabled(!has_path);
+    root.file_editor
+        .reload_button
+        .set_disabled(root.file_editor.current_path.is_none());
+
+    root.file_editor.path_input.paint(path_bounds, cx);
+    root.file_editor.reload_button.paint(reload_bounds, cx);
+    root.file_editor.open_button.paint(open_bounds, cx);
+
+    y += button_height + gap;
+
+    if let Some(status) = root.file_editor.status.as_deref() {
+        let status_height = theme::font_size::XS * 1.4;
+        let status_bounds = Bounds::new(content_x, y, content_width, status_height);
+        let status_color = if root.file_editor.status_is_error {
+            theme::status::ERROR
+        } else {
+            theme::text::MUTED
+        };
+        Text::new(status)
+            .font_size(theme::font_size::XS)
+            .color(status_color)
+            .paint(status_bounds, cx);
+        y += status_height + gap;
+    }
+
+    let editor_height = (bounds.origin.y + bounds.size.height - padding - y).max(0.0);
+    let editor_bounds = Bounds::new(content_x, y, content_width, editor_height);
+    root.file_editor.editor_bounds = editor_bounds;
+    root.file_editor.editor.paint(editor_bounds, cx);
+}
+
 impl DesktopRoot {
     pub fn new() -> Self {
         let pending_actions: Rc<RefCell<Vec<UiAction>>> = Rc::new(RefCell::new(Vec::new()));
@@ -6386,6 +6716,7 @@ fn format_event(event: &AppEvent) -> String {
             UserAction::Nip90Submit { kind, .. } => format!("Nip90Submit (kind {kind})"),
             UserAction::ThreadsRefresh => "ThreadsRefresh".to_string(),
             UserAction::ThreadOpen { thread_id } => format!("ThreadOpen ({thread_id})"),
+            UserAction::OpenFile { path } => format!("OpenFile ({path})"),
             UserAction::Interrupt { .. } => "Interrupt".to_string(),
             UserAction::FullAutoToggle { enabled, .. } => {
                 if *enabled {
@@ -6423,6 +6754,10 @@ fn format_event(event: &AppEvent) -> String {
         AppEvent::Nip90Log { message } => format!("Nip90Log ({message})"),
         AppEvent::ThreadsUpdated { threads } => format!("ThreadsUpdated ({})", threads.len()),
         AppEvent::ThreadLoaded { thread, .. } => format!("ThreadLoaded ({})", thread.id),
+        AppEvent::FileOpened { path, .. } => format!("FileOpened ({})", path.display()),
+        AppEvent::FileOpenFailed { path, error } => {
+            format!("FileOpenFailed ({}: {})", path.display(), error)
+        }
     }
 }
 

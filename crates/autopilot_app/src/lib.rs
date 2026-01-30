@@ -213,6 +213,9 @@ pub enum UserAction {
     ThreadOpen {
         thread_id: String,
     },
+    OpenFile {
+        path: String,
+    },
     Command {
         session_id: SessionId,
         name: String,
@@ -358,6 +361,14 @@ pub enum AppEvent {
         session_id: SessionId,
         thread: ThreadSnapshot,
         model: String,
+    },
+    FileOpened {
+        path: PathBuf,
+        contents: String,
+    },
+    FileOpenFailed {
+        path: PathBuf,
+        error: String,
     },
 }
 
