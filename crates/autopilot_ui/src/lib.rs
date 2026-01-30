@@ -41,15 +41,15 @@ const COMPOSER_HEIGHT: f32 = 56.0;
 const STATUS_LINE_HEIGHT: f32 = 22.0;
 const STATUS_SECTION_GAP: f32 = 10.0;
 const ACCENT_BAR_WIDTH: f32 = 3.0;
-const DEFAULT_THREAD_MODEL: &str = "gpt-5.1-codex-mini";
+const DEFAULT_THREAD_MODEL: &str = "gpt-5.2-codex";
 const BOTTOM_BAR_MIN_HEIGHT: f32 = 64.0;
 const INPUT_MIN_LINES: usize = 1;
 const INPUT_MAX_LINES: Option<usize> = None;
 const MODEL_DROPDOWN_WIDTH: f32 = 320.0;
 const REASONING_DROPDOWN_MIN_WIDTH: f32 = 140.0;
 const REASONING_DROPDOWN_MAX_WIDTH: f32 = 200.0;
-const DEFAULT_MODEL_INDEX: usize = 3;
-const DEFAULT_REASONING_EFFORT: &str = "medium";
+const DEFAULT_MODEL_INDEX: usize = 0;
+const DEFAULT_REASONING_EFFORT: &str = "xhigh";
 const SHOW_MODEL_DROPDOWN: bool = false;
 const SHOW_MODEL_SELECTOR: bool = true;
 const PANE_MARGIN: f32 = 24.0;
@@ -199,8 +199,12 @@ fn reasoning_index(model: &str, effort: &str) -> Option<usize> {
         .position(|value| value.eq_ignore_ascii_case(effort))
 }
 
-fn default_reasoning_for_model(_model: &str) -> &'static str {
-    DEFAULT_REASONING_EFFORT
+fn default_reasoning_for_model(model: &str) -> &'static str {
+    if model.contains("mini") {
+        "high"
+    } else {
+        DEFAULT_REASONING_EFFORT
+    }
 }
 
 fn model_index(model: &str) -> Option<usize> {

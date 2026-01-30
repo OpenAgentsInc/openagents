@@ -59,7 +59,7 @@ const WINDOW_WIDTH: f64 = 1280.0;
 const WINDOW_HEIGHT: f64 = 800.0;
 const PADDING: f32 = 0.0;
 const EVENT_BUFFER: usize = 256;
-const DEFAULT_THREAD_MODEL: &str = "gpt-5.1-codex-mini";
+const DEFAULT_THREAD_MODEL: &str = "gpt-5.2-codex";
 const ENV_GUIDANCE_GOAL: &str = "OPENAGENTS_GUIDANCE_GOAL";
 const DEFAULT_GUIDANCE_GOAL_INTENT: &str =
     "Keep making progress on the current task using the latest plan and diff.";

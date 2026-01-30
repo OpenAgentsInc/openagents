@@ -150,7 +150,7 @@ pub(crate) fn normalize_reasoning_effort_for_model(
     effort: Option<app_server::ReasoningEffort>,
 ) -> Option<app_server::ReasoningEffort> {
     if is_gpt_5_2_codex_model(model_name) {
-        return Some(app_server::ReasoningEffort::Medium);
+        return effort.or(Some(app_server::ReasoningEffort::XHigh));
     }
     effort
 }

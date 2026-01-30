@@ -201,11 +201,11 @@ impl CodexCompletionModel {
         })?;
 
         // Start a turn with the prompt
-        // TEMP: Force gpt-5.1-codex-mini model override
+        // TEMP: Force gpt-5.2-codex model override
         let turn_params = TurnStartParams {
             thread_id: state.thread_id.clone(),
             input: vec![UserInput::Text { text: prompt }],
-            model: Some("gpt-5.1-codex-mini".to_string()),
+            model: Some("gpt-5.2-codex".to_string()),
             effort: None,
             summary: None,
             approval_policy: None,
@@ -289,11 +289,11 @@ impl super::client_registry::CompletionProvider for CodexCompletionModel {
         })?;
 
         // Start a turn with the prompt
-        // TEMP: Force gpt-5.1-codex-mini model override
+        // TEMP: Force gpt-5.2-codex model override
         let turn_params = TurnStartParams {
             thread_id: state.thread_id.clone(),
             input: vec![UserInput::Text { text: prompt }],
-            model: Some("gpt-5.1-codex-mini".to_string()),
+            model: Some("gpt-5.2-codex".to_string()),
             effort: None,
             summary: None,
             approval_policy: None,

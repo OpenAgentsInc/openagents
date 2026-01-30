@@ -535,7 +535,7 @@ pub fn decision_model() -> String {
         .ok()
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty())
-        .unwrap_or_else(|| "codex:gpt-5.1-codex-mini".to_string())
+        .unwrap_or_else(|| "codex:gpt-5.2-codex".to_string())
 }
 
 fn serialize_recent_actions(actions: &[FullAutoDecisionRecord]) -> String {
