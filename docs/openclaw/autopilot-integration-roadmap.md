@@ -252,6 +252,7 @@ Schemas:
 
 Plugin example:
 - `docs/openclaw/plugin-examples/autopilot-tools.md`
+- `docs/openclaw/plugin-examples/autopilot-progress.md`
 
 ### `autopilot.progress` event (Autopilot -> OpenClaw)
 
