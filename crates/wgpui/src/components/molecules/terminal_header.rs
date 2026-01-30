@@ -12,6 +12,26 @@ pub struct TerminalHeader {
 }
 
 impl TerminalHeader {
+    fn truncate_command(text: &str, max_width: f32, font_size: f32) -> String {
+        if max_width <= 0.0 {
+            return String::new();
+        }
+        let char_width = font_size * 0.6;
+        let max_chars = (max_width / char_width).floor() as usize;
+        if text.len() <= max_chars {
+            return text.to_string();
+        }
+        if max_chars <= 3 {
+            return "...".to_string();
+        }
+        let target = max_chars - 3;
+        let mut end = target.min(text.len());
+        while end > 0 && !text.is_char_boundary(end) {
+            end -= 1;
+        }
+        format!("{}...", &text[..end])
+    }
+
     pub fn new(command: impl Into<String>) -> Self {
         Self {
             id: None,
@@ -89,8 +109,11 @@ impl Component for TerminalHeader {
         cx.scene.draw_text(text_run);
         x += prompt.len() as f32 * font_size * 0.6;
 
+        let available_width =
+            (bounds.origin.x + bounds.size.width - padding - x).max(0.0);
+        let command = Self::truncate_command(&self.command, available_width, font_size);
         let text_run = cx.text.layout_mono(
-            &self.command,
+            &command,
             Point::new(x, text_y),
             font_size,
             theme::text::PRIMARY,
