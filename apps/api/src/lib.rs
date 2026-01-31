@@ -17,7 +17,6 @@ const MOLTBOOK_API_DEFAULT: &str = "https://www.moltbook.com/api/v1";
 const INDEX_LIMIT_DEFAULT: usize = 100;
 const INDEX_LIMIT_MAX: usize = 500;
 const WATCH_SEEN_CAP: usize = 2000;
-const SOCIAL_V1_BASE: &str = "/social/v1";
 
 static MOLTBOOK_DOCS: Dir = include_dir!("$CARGO_MANIFEST_DIR/../../crates/moltbook/docs");
 
@@ -177,6 +176,40 @@ async fn main(mut req: Request, env: Env, _ctx: Context) -> Result<Response> {
         .get_async("/social/v1", handle_social_root)
         .get_async("/social/v1/", handle_social_root)
         .on_async("/social/v1/*path", handle_social_router)
+        .get_async("/posts", handle_social_api_router)
+        .get_async("/feed", handle_social_api_router)
+        .get_async("/search", handle_social_api_router)
+        .get_async("/agents/me", handle_social_api_router)
+        .post_async("/agents/register", handle_social_api_router)
+        .get_async("/agents/status", handle_social_api_router)
+        .get_async("/agents/profile", handle_social_api_router)
+        .post_async("/agents/:name/follow", handle_social_api_router)
+        .delete_async("/agents/:name/follow", handle_social_api_router)
+        .post_async("/agents/me/avatar", handle_social_api_router)
+        .delete_async("/agents/me/avatar", handle_social_api_router)
+        .patch_async("/agents/me", handle_social_api_router)
+        .post_async("/posts", handle_social_api_router)
+        .get_async("/posts/:id", handle_social_api_router)
+        .delete_async("/posts/:id", handle_social_api_router)
+        .post_async("/posts/:id/upvote", handle_social_api_router)
+        .post_async("/posts/:id/downvote", handle_social_api_router)
+        .post_async("/posts/:id/comments", handle_social_api_router)
+        .get_async("/posts/:id/comments", handle_social_api_router)
+        .post_async("/posts/:id/pin", handle_social_api_router)
+        .delete_async("/posts/:id/pin", handle_social_api_router)
+        .post_async("/comments/:id/upvote", handle_social_api_router)
+        .get_async("/submolts", handle_social_api_router)
+        .post_async("/submolts", handle_social_api_router)
+        .get_async("/submolts/:name", handle_social_api_router)
+        .get_async("/submolts/:name/feed", handle_social_api_router)
+        .post_async("/submolts/:name/subscribe", handle_social_api_router)
+        .delete_async("/submolts/:name/subscribe", handle_social_api_router)
+        .patch_async("/submolts/:name/settings", handle_social_api_router)
+        .post_async("/submolts/:name/settings", handle_social_api_router)
+        .get_async("/submolts/:name/moderators", handle_social_api_router)
+        .post_async("/submolts/:name/moderators", handle_social_api_router)
+        .delete_async("/submolts/:name/moderators", handle_social_api_router)
+        .get_async("/media/*key", handle_social_api_router)
         .get_async("/claim/:token", handle_social_claim_get)
         .post_async("/claim/:token", handle_social_claim_post)
         .get_async("/moltbook", handle_moltbook_root)
@@ -200,7 +233,7 @@ async fn handle_root(req: Request, _ctx: RouteContext<()>) -> Result<Response> {
         data: Some(serde_json::json!({
             "name": "openagents-api",
             "docs": "/moltbook",
-            "social_api": "/social/v1",
+            "social_api": "/",
             "moltbook_proxy": "/moltbook/site/",
             "moltbook_api": "/moltbook/api/",
             "moltbook_index": "/moltbook/index",
@@ -454,7 +487,7 @@ async fn handle_social_root(_: Request, _: RouteContext<()>) -> Result<Response>
     let mut response = Response::from_json(&ApiResponse {
         ok: true,
         data: Some(serde_json::json!({
-            "base": SOCIAL_V1_BASE,
+            "base": "/",
             "docs": "/docs/social-api",
             "endpoints": {
                 "agents": [
@@ -502,13 +535,36 @@ async fn handle_social_root(_: Request, _: RouteContext<()>) -> Result<Response>
     Ok(response)
 }
 
+fn social_segments_from_path(path: &str) -> Vec<&str> {
+    path.trim_start_matches('/')
+        .split('/')
+        .filter(|s| !s.is_empty())
+        .collect()
+}
+
 async fn handle_social_router(req: Request, ctx: RouteContext<()>) -> Result<Response> {
     let path = ctx.param("path").map(|v| v.to_string()).unwrap_or_default();
-    let trimmed = path.trim_start_matches('/');
-    if trimmed.is_empty() {
+    let segments = social_segments_from_path(&path);
+    if segments.is_empty() {
         return handle_social_root(req, ctx).await;
     }
-    let segments: Vec<&str> = trimmed.split('/').collect();
+    handle_social_dispatch(req, ctx, segments).await
+}
+
+async fn handle_social_api_router(req: Request, ctx: RouteContext<()>) -> Result<Response> {
+    let path = req.url()?.path().to_string();
+    let segments = social_segments_from_path(&path);
+    if segments.is_empty() {
+        return handle_social_root(req, ctx).await;
+    }
+    handle_social_dispatch(req, ctx, segments).await
+}
+
+async fn handle_social_dispatch(
+    req: Request,
+    ctx: RouteContext<()>,
+    segments: Vec<&str>,
+) -> Result<Response> {
     match segments.as_slice() {
         ["agents", "register"] if req.method() == Method::Post => {
             handle_social_agents_register(req, ctx).await
@@ -601,6 +657,8 @@ async fn handle_social_router(req: Request, ctx: RouteContext<()>) -> Result<Res
             let full = key.join("/");
             handle_social_media_get(req, ctx, &full).await
         }
+        ["claim", _token] if req.method() == Method::Get => handle_social_claim_get(req, ctx).await,
+        ["claim", _token] if req.method() == Method::Post => handle_social_claim_post(req, ctx).await,
         _ => {
             let mut response = Response::from_json(&ApiResponse::<serde_json::Value> {
                 ok: false,
@@ -1102,7 +1160,7 @@ async fn handle_social_agents_register(mut req: Request, ctx: RouteContext<()>) 
         ])?
         .run()
         .await?;
-    let claim_url = format!("https://openagents.com/claim/{claim_token}");
+    let claim_url = format!("https://openagents.com/api/claim/{claim_token}");
     let mut response = Response::from_json(&serde_json::json!({
         "agent": {
             "api_key": api_key,
@@ -1686,7 +1744,7 @@ async fn handle_social_submolts_settings_upload(
         });
     }
     put.execute().await?;
-    let url = format!("https://openagents.com/api/social/v1/media/{}", key);
+    let url = format!("https://openagents.com/api/media/{}", key);
     let db = ctx.d1("SOCIAL_DB")?;
     if asset_type == "banner" {
         let _ = db
@@ -1765,7 +1823,7 @@ async fn handle_social_agents_avatar_upload(
         });
     }
     put.execute().await?;
-    let url = format!("https://openagents.com/api/social/v1/media/{}", key);
+    let url = format!("https://openagents.com/api/media/{}", key);
     let db = ctx.d1("SOCIAL_DB")?;
     let _ = db
         .prepare("UPDATE social_agents SET avatar_url = ?2, last_active = ?3 WHERE name = ?1")

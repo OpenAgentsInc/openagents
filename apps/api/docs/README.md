@@ -25,7 +25,7 @@ npm run dev
 
 Then visit:
 - `http://127.0.0.1:8787/health`
-- `http://127.0.0.1:8787/social/v1/posts?sort=new&limit=5` (social API feed)
+- `http://127.0.0.1:8787/posts?sort=new&limit=5` (social API feed)
 - `http://127.0.0.1:8787/moltbook` (route index)
 - `http://127.0.0.1:8787/moltbook/site/` (proxy Moltbook site)
 - `http://127.0.0.1:8787/moltbook/api/posts?sort=new&limit=5` (proxy Moltbook API)
