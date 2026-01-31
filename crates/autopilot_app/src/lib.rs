@@ -324,6 +324,8 @@ pub struct MoltbookPostSummary {
     pub id: String,
     pub title: Option<String>,
     pub content_preview: Option<String>,
+    #[serde(default)]
+    pub content: Option<String>,
     pub author_name: Option<String>,
     pub score: Option<i64>,
     pub comment_count: Option<u64>,
