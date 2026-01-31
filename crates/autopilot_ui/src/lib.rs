@@ -777,6 +777,7 @@ pub struct MinimalRoot {
     moltbook_post_panes: HashMap<String, MoltbookPostPane>,
     pending_moltbook_refresh: Rc<RefCell<bool>>,
     pending_moltbook_replies: Rc<RefCell<Vec<String>>>,
+    moltbook_reply_feedback: HashMap<String, Instant>,
     nostr_npub: Option<String>,
     nostr_nsec: Option<String>,
     spark_pubkey_hex: Option<String>,
@@ -2844,6 +2845,7 @@ impl MinimalRoot {
             moltbook_post_panes: HashMap::new(),
             pending_moltbook_refresh,
             pending_moltbook_replies,
+            moltbook_reply_feedback: HashMap::new(),
             nostr_npub: None,
             nostr_nsec: None,
             spark_pubkey_hex: None,
@@ -4096,14 +4098,24 @@ impl MinimalRoot {
                     ) && frame.title_bounds().contains(self.cursor_position)
                         && !frame.close_bounds().contains(self.cursor_position)
                     {
+                        let mut allow_drag = true;
                         if let Some(pane) = self.pane_store.pane(&pane_id) {
-                            self.pane_drag = Some(PaneDragState {
-                                pane_id: pane_id.clone(),
-                                origin: self.cursor_position,
-                                start_rect: pane.rect.clone(),
-                            });
-                            self.pane_store.bring_to_front(&pane_id);
-                            return true;
+                            if pane.kind == PaneKind::MoltbookPost {
+                                if let Some(post_pane) = self.moltbook_post_panes.get(&pane_id) {
+                                    if post_pane.reply_bounds.contains(self.cursor_position) {
+                                        allow_drag = false;
+                                    }
+                                }
+                            }
+                            if allow_drag {
+                                self.pane_drag = Some(PaneDragState {
+                                    pane_id: pane_id.clone(),
+                                    origin: self.cursor_position,
+                                    start_rect: pane.rect.clone(),
+                                });
+                                self.pane_store.bring_to_front(&pane_id);
+                                return true;
+                            }
                         }
                     }
                     handled |= frame
@@ -4832,6 +4844,8 @@ impl MinimalRoot {
         if !pending_replies.is_empty() {
             if let Some(handler) = self.send_handler.as_mut() {
                 for post_id in pending_replies {
+                    self.moltbook_reply_feedback
+                        .insert(post_id.clone(), Instant::now());
                     handler(UserAction::MoltbookReply { post_id });
                 }
             }
@@ -7292,13 +7306,25 @@ fn paint_moltbook_post_header(
     let text_size = theme::font_size::XS;
     let padding = 8.0;
     let gap = 6.0;
+    let feedback_duration = Duration::from_secs(8);
 
     let mut right = title_bounds.origin.x + title_bounds.size.width - padding;
     if close_bounds.size.width > 0.0 {
         right = close_bounds.origin.x - gap;
     }
 
-    let label = post_pane.reply_button.label();
+    let is_pending = root
+        .moltbook_reply_feedback
+        .get(&post_pane.post_id)
+        .map(|stamp| stamp.elapsed() < feedback_duration)
+        .unwrap_or(false);
+    if !is_pending {
+        root.moltbook_reply_feedback.remove(&post_pane.post_id);
+    }
+
+    let label = if is_pending { "[Queued]" } else { "[+Reply]" };
+    post_pane.reply_button.set_label(label);
+    post_pane.reply_button.set_disabled(is_pending);
     let text_width =
         cx.text
             .measure_styled_mono(label, text_size, FontStyle::default());
