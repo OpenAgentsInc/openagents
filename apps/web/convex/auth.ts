@@ -1,5 +1,5 @@
 import { createClient } from "@convex-dev/better-auth";
-import { convex } from "@convex-dev/better-auth/plugins";
+import { convex, crossDomain } from "@convex-dev/better-auth/plugins";
 import type { GenericCtx } from "@convex-dev/better-auth/utils";
 import { betterAuth } from "better-auth/minimal";
 import type { BetterAuthOptions } from "better-auth/minimal";
@@ -27,7 +27,10 @@ export const createAuthOptions = (ctx: GenericCtx<DataModel>): BetterAuthOptions
     enabled: true,
   },
   trustedOrigins,
-  plugins: [convex({ authConfig })],
+  plugins: [
+    convex({ authConfig }),
+    ...(siteUrl ? [crossDomain({ siteUrl })] : []),
+  ],
 });
 
 export const createAuth = (ctx: GenericCtx<DataModel>) =>

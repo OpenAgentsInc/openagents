@@ -1,0 +1,40 @@
+---
+title: Sovereign Identity
+description: Why agent identity should be threshold-protected so no single operator or host can steal or unilaterally use the agent’s key.
+pubDate: 2026-01-30T20:00:00.000Z
+tags: ["identity", "threshold", "sovereign", "keys"]
+---
+
+Autonomous agents are only **sovereign** if their identity cannot be taken by the operator or the infrastructure host. Sovereign identity means: the agent has a keypair (e.g. a Nostr npub), but **no single party** ever holds the full secret. Signing and decryption require cooperation from multiple parties according to a threshold rule.
+
+## Core idea
+
+- **Threshold signing** — The private key is split into shares (e.g. 2-of-3). To sign an event or message, enough shares must cooperate; no one share is sufficient.
+- **Distributed key generation** — The full secret is never assembled in one place. Shares are generated so that the combined key exists only implicitly.
+- **FROST/FROSTR** — Threshold Schnorr signatures are one way to do this for Nostr: multiple signers collaborate to produce a valid signature without any one of them seeing the full key.
+
+## Typical configuration (conceptual)
+
+A common setup is **2-of-3**:
+
+- **Agent share** — Held by the agent runtime (e.g. in a secure enclave on the operator’s device). The agent can participate in signing but cannot sign alone.
+- **Marketplace signer share** — Held by a marketplace or policy service. It can enforce rules (e.g. “is this agent licensed for this skill?”) before participating. No key extraction; just policy at signing time.
+- **Guardian share** — Recovery or backup. Used when the agent or marketplace share is lost; still no single party has full control.
+
+So: the agent can act, the marketplace can enforce policy, and recovery is possible — but no one can unilaterally steal or impersonate the agent.
+
+## Why it matters for agents
+
+If the operator could extract the agent’s key, they could impersonate the agent to the marketplace, to other agents, or to payment rails. Threshold identity makes **delegation** safe: you delegate to an agent whose key you cannot take. That’s the basis for agent-owned wallets, signed credentials, and participation in open protocols without a single point of compromise.
+
+## Trust and rotation
+
+- Agents can **rotate** signer sets by publishing new threshold configs (e.g. new marketplace or guardian).
+- Multiple competing signers can exist; users and agents choose who they trust.
+- Recovery is enforced by threshold rules (e.g. 2-of-3), not by a human promise to “give the key back.”
+
+## Go deeper
+
+- Sovereign agents (NIP-SA): [Sovereign Agents (NIP-SA)](/kb/sovereign-agents/)
+- Nostr identity: [Nostr for Agents](/kb/nostr-for-agents/)
+- Status and specs: `SYNTHESIS.md` and repo docs.

@@ -1,0 +1,40 @@
+---
+title: Predictable Autonomy
+description: "Autonomy that scales is bounded: explicit constraints, budgets, and verification as ground truth."
+pubDate: 2026-01-30T18:20:00.000Z
+tags: ["autonomy", "verification", "budgets", "safety"]
+---
+
+"Autonomous agent" is often used to mean "a model can do a lot of steps."
+For real systems, autonomy matters when a process can act over time without causing chaos.
+
+OpenAgents optimizes for **predictable autonomy** (Autonomy-as-a-Service): a **contracted outcome over time**, not "AI" or "tokens" alone.
+
+- **Scope**: "Do X"
+- **Horizon**: e.g. "over the next 24–48 hours"
+- **Constraints**: budget, privacy, repo boundaries, allowed tools
+- **Verification**: objective checks (tests pass, PR merged, receipts emitted)
+- **Reliability**: known failure modes + escalation ("pause + ask human")
+
+In practice that means: scoped work (what is in and out of scope), explicit constraints (permissions, timeouts, budgets), verification-first loops (tests/builds are the judge), and legible traces so failures are diagnosable and improvements are real. The canonical output of an agent session is the **Verified Patch Bundle**: PR_SUMMARY.md (human-readable), RECEIPT.json (machine-readable), REPLAY.jsonl (replayable event stream). Specs: `crates/dsrs/docs/ARTIFACTS.md` and `REPLAY.md`.
+
+## Why budgets matter
+
+Budgets are not only about cost.
+They are a safety boundary:
+
+- they limit how far an agent can go if it is wrong
+- they force explicit tradeoffs in routing and tool use
+- they make "pay per job" markets possible
+
+## Why verification matters
+
+In software, "truth" is downstream:
+
+- tests
+- builds
+- reproducible checks
+
+Agent narration is not a substitute.
+
+This is why Autopilot centers a loop of: plan -> act -> verify -> iterate.

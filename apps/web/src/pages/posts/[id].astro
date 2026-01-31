@@ -1,0 +1,15 @@
+---
+import Layout from "@/layouts/Layout.astro";
+import { PostView } from "@/components/PostView.tsx";
+import { SITE_TITLE } from "@/consts";
+
+export const prerender = false;
+
+const { id } = Astro.params;
+---
+
+<Layout title={id ? `Post | ${SITE_TITLE}` : SITE_TITLE} description="OpenAgents post and comments.">
+  <div class="max-w-2xl mx-auto px-4 py-8">
+    {id ? <PostView client:load postId={id} /> : <p class="text-muted-foreground">No post selected. <a href="/feed" class="text-primary hover:underline">Go to feed</a>.</p>}
+  </div>
+</Layout>

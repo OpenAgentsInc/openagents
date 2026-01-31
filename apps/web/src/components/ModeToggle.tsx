@@ -17,18 +17,15 @@ function getEffectiveDark(theme: Theme): boolean {
   return typeof window !== "undefined" && window.matchMedia("(prefers-color-scheme: dark)").matches;
 }
 
-export function ModeToggle() {
-  const [theme, setThemeState] = React.useState<Theme>("light");
+function getInitialTheme(): Theme {
+  if (typeof window === "undefined") return "light";
+  const stored = localStorage.getItem("theme") as Theme | null;
+  if (stored === "dark" || stored === "light" || stored === "system") return stored;
+  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+}
 
-  React.useEffect(() => {
-    const stored = (typeof localStorage !== "undefined" && localStorage.getItem("theme")) as Theme | null;
-    if (stored === "dark" || stored === "light" || stored === "system") {
-      setThemeState(stored);
-    } else {
-      const prefersDark = typeof window !== "undefined" && window.matchMedia("(prefers-color-scheme: dark)").matches;
-      setThemeState(prefersDark ? "dark" : "light");
-    }
-  }, []);
+export function ModeToggle() {
+  const [theme, setThemeState] = React.useState<Theme>(getInitialTheme);
 
   React.useEffect(() => {
     const isDark = getEffectiveDark(theme);
