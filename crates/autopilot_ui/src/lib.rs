@@ -7074,6 +7074,7 @@ fn paint_moltbook_header(
 
     cx.scene.push_clip(header_bounds);
     let profile_line = moltbook_profile_line(root);
+    cx.scene.push_clip(profile_bounds);
     let profile_run = cx.text.layout_styled_mono(
         profile_line.as_str(),
         Point::new(profile_bounds.origin.x, baseline_y),
@@ -7082,8 +7083,10 @@ fn paint_moltbook_header(
         FontStyle::default(),
     );
     cx.scene.draw_text(profile_run);
+    cx.scene.pop_clip();
 
     let activity_line = moltbook_activity_line(root);
+    cx.scene.push_clip(activity_bounds);
     let activity_run = cx.text.layout_styled_mono(
         activity_line.as_str(),
         Point::new(activity_bounds.origin.x, baseline_y),
@@ -7092,6 +7095,7 @@ fn paint_moltbook_header(
         FontStyle::default(),
     );
     cx.scene.draw_text(activity_run);
+    cx.scene.pop_clip();
 
     if refresh_bounds.size.width > 0.0 {
         let button_height = (header_bounds.size.height - 6.0).max(18.0);
