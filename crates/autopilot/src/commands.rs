@@ -62,6 +62,7 @@ pub enum Command {
     NexusRefresh,
     SparkWallet,
     SparkWalletRefresh,
+    SparkWalletAttach,
     Gateway,
     GatewayRefresh,
     Nip90,
@@ -449,6 +450,11 @@ const COMMAND_SPECS: &[CommandSpec] = &[
         requires_args: false,
     },
     CommandSpec {
+        usage: "/spark attach",
+        description: "Attach Spark wallet to OpenAgents account (needs openagents_api_key in pylon config)",
+        requires_args: false,
+    },
+    CommandSpec {
         usage: "/nip90",
         description: "Open NIP-90 job monitor",
         requires_args: false,
@@ -748,6 +754,7 @@ fn parse_spark_command(args: Vec<String>) -> Command {
         None => Command::SparkWallet,
         Some("open") | Some("status") => Command::SparkWallet,
         Some("refresh") => Command::SparkWalletRefresh,
+        Some("attach") => Command::SparkWalletAttach,
         Some(other) => Command::Custom(format!("spark {}", other), parts.collect()),
     }
 }

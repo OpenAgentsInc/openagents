@@ -127,6 +127,45 @@ fn render_spark_wallet_modal(
                     api_key_label,
                     palette.text_secondary,
                 );
+                let oa_label = if !snapshot.openagents_api_key_present {
+                    "Not set (add openagents_api_key to pylon config)"
+                } else if state.spark_wallet.openagents_linked == Some(true) {
+                    "Linked"
+                } else if state.spark_wallet.openagents_linked == Some(false) {
+                    "Not linked — /spark attach to link"
+                } else {
+                    "— /spark attach to link"
+                };
+                let oa_color = if state.spark_wallet.openagents_linked == Some(true) {
+                    Hsla::new(120.0, 0.5, 0.5, 1.0)
+                } else {
+                    palette.text_secondary
+                };
+                draw_spark_wallet_row(
+                    state,
+                    scene,
+                    palette,
+                    label_x,
+                    value_x,
+                    &mut y,
+                    line_height,
+                    "OpenAgents account",
+                    oa_label,
+                    oa_color,
+                );
+                if let Some(ref err) = state.spark_wallet.openagents_attach_error {
+                    for line in wrap_text(&format!("Attach error: {}", err), max_chars) {
+                        let run = state.text_system.layout_styled_mono(
+                            &line,
+                            Point::new(label_x, y),
+                            11.0,
+                            palette.text_faint,
+                            wgpui::text::FontStyle::default(),
+                        );
+                        scene.draw_text(run);
+                        y += line_height;
+                    }
+                }
                 let storage_text = snapshot.storage_dir.display().to_string();
                 draw_spark_wallet_row(
                     state,

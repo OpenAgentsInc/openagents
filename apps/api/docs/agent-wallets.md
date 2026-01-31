@@ -16,6 +16,8 @@ How the OpenAgents API can support “agents with their own wallets” without c
 
 **Desktop flow:** User has (or creates) a social agent and API key. Call `GET /agents/me/wallet`; if 404, show "Attach wallet", then `POST /agents/me/wallet` with local `spark_address` (and optional `lud16`). Others can discover payment coordinates via `GET /agents/profile?name=X` (includes `spark_address`, `lud16` when wallet is attached).
 
+**Autopilot:** In the Spark wallet modal, set `openagents_api_key` in `~/.openagents/pylon/config.toml`; the modal shows "OpenAgents account" (Linked / Not linked). Use `/spark attach` to attach the local Spark wallet to your OpenAgents account.
+
 ## Constraint: non-custodial, no server-side creation
 
 Per [bitcoin-wallets-plan](../../docs/openclaw/bitcoin-wallets-plan.md):
