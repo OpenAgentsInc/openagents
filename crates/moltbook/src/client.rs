@@ -588,8 +588,18 @@ impl MoltbookClient {
         if let Some(n) = limit {
             query.push(("limit", n.to_string()));
         }
+        let auth = self
+            .api_key
+            .as_deref()
+            .and_then(|key| reqwest::header::HeaderValue::from_str(&format!("Bearer {key}")).ok());
         let response = self
-            .send_with_fallback(|http| Ok(http.get(&url).query(&query)))
+            .send_with_fallback(|http| {
+                let mut builder = http.get(&url).query(&query);
+                if let Some(auth) = auth.clone() {
+                    builder = builder.header(reqwest::header::AUTHORIZATION, auth);
+                }
+                Ok(builder)
+            })
             .await?;
         let body: CommentsResponse = response.json().await.map_err(MoltbookError::Http)?;
         Ok(body.into_comments())
