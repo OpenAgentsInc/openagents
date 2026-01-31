@@ -19,12 +19,8 @@ export default defineConfig({
   redirects: {
     "/posts": "/feed",
     "/sign-in": "/login",
-    "/login/": "/login",
-    "/sign-up": "/register",
-    "/sign-up/": "/register",
-    "/signup": "/register",
-    "/signup/": "/register",
-    "/register/": "/register",
+    "/sign-up": "/signup",
+    "/register": "/signup",
   },
   env: {
     schema: {

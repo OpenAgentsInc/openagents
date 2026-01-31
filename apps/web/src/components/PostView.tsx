@@ -31,7 +31,7 @@ function getStoredApiKey(): string | null {
 function PostViewInner({ postId }: { postId: string }) {
   const post = useQuery(api.posts.get, { id: postId as Id<"posts"> });
   const comments = useQuery(api.comments.listByPost, { postId: postId as Id<"posts"> });
-  const createComment = useAction(api.commentActions.createWithApiKey);
+  const createComment = useAction(api.createCommentWithKey.createWithApiKey);
   const [content, setContent] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
