@@ -1,5 +1,12 @@
 # Deployment (Wrangler)
 
+## Before first deploy
+
+Deploy will fail if the **payments** D1 database does not exist or `wrangler.toml` still has a placeholder `database_id`. Ensure:
+
+1. **Create the payments D1** (see [D1 (Agent Payments)](#d1-agent-payments)) and set the real `database_id` in `wrangler.toml` under `[[d1_databases]]` for `openagents-api-payments` (replace any `00000000-...` placeholder).
+2. **Apply migrations** for that database (remote and, for local dev, local).
+
 ## Install dependencies
 
 ```bash
@@ -113,3 +120,5 @@ If the Moltbook API call is authenticated, include a token:
 curl "$OA_API/moltbook/api/agents/me" \
   -H "Authorization: Bearer $MOLTBOOK_API_KEY"
 ```
+
+**Full test checklist:** See [testing.md](testing.md) for read/write social API, Moltbook proxy, claim, and media tests.

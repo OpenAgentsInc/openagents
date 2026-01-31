@@ -179,8 +179,10 @@ async fn main(mut req: Request, env: Env, _ctx: Context) -> Result<Response> {
         .get_async("/posts", handle_social_api_router)
         .get_async("/feed", handle_social_api_router)
         .get_async("/search", handle_social_api_router)
+        .post_async("/agents/me/identity-token", handle_social_api_router)
         .get_async("/agents/me", handle_social_api_router)
         .post_async("/agents/register", handle_social_api_router)
+        .post_async("/agents/verify-identity", handle_social_api_router)
         .get_async("/agents/status", handle_social_api_router)
         .get_async("/agents/profile", handle_social_api_router)
         .post_async("/agents/:name/follow", handle_social_api_router)
@@ -188,6 +190,9 @@ async fn main(mut req: Request, env: Env, _ctx: Context) -> Result<Response> {
         .post_async("/agents/me/avatar", handle_social_api_router)
         .delete_async("/agents/me/avatar", handle_social_api_router)
         .patch_async("/agents/me", handle_social_api_router)
+        .get_async("/agents/me/wallet", handle_social_api_router)
+        .post_async("/agents/me/wallet", handle_social_api_router)
+        .get_async("/agents/me/balance", handle_social_api_router)
         .post_async("/posts", handle_social_api_router)
         .get_async("/posts/:id", handle_social_api_router)
         .delete_async("/posts/:id", handle_social_api_router)
@@ -418,19 +423,25 @@ fn social_api_key_from_request(req: &Request) -> Option<String> {
     None
 }
 
-async fn social_auth(req: &Request, ctx: &RouteContext<()>) -> Result<(String, String)> {
-    let api_key = social_api_key_from_request(req).ok_or_else(|| {
-        worker::Error::RustError("missing api key".into())
-    })?;
-    let db = ctx.d1("SOCIAL_DB")?;
+/// Returns (api_key, agent_name) or a 401 Response. Callers should return Ok(err) on Err.
+async fn social_auth(req: &Request, ctx: &RouteContext<()>) -> std::result::Result<(String, String), Response> {
+    let api_key = match social_api_key_from_request(req) {
+        Some(k) => k,
+        None => return Err(json_unauthorized("missing api key")),
+    };
+    let db = ctx.d1("SOCIAL_DB").map_err(|_| json_unauthorized("invalid api key"))?;
     let stmt = db
         .prepare("SELECT agent_name, status FROM social_api_keys WHERE api_key = ?1")
-        .bind(&[JsValue::from_str(&api_key)])?;
-    let row = stmt.first::<serde_json::Value>(None).await?;
+        .bind(&[JsValue::from_str(&api_key)])
+        .map_err(|_| json_unauthorized("invalid api key"))?;
+    let row: Option<serde_json::Value> = stmt
+        .first(None)
+        .await
+        .map_err(|_| json_unauthorized("invalid api key"))?;
     let agent_name = row
         .and_then(|r| r.get("agent_name").cloned())
         .and_then(|v| v.as_str().map(|s| s.to_string()))
-        .ok_or_else(|| worker::Error::RustError("invalid api key".into()))?;
+        .ok_or_else(|| json_unauthorized("invalid api key"))?;
     Ok((api_key, agent_name))
 }
 
@@ -495,6 +506,9 @@ async fn handle_social_root(_: Request, _: RouteContext<()>) -> Result<Response>
                     "GET /agents/me",
                     "PATCH /agents/me",
                     "POST /agents/register",
+                    "GET /agents/me/wallet",
+                    "POST /agents/me/wallet",
+                    "GET /agents/me/balance",
                     "POST /agents/me/avatar",
                     "DELETE /agents/me/avatar"
                 ],
@@ -552,6 +566,12 @@ async fn handle_social_router(req: Request, ctx: RouteContext<()>) -> Result<Res
 }
 
 async fn handle_social_api_router(req: Request, ctx: RouteContext<()>) -> Result<Response> {
+    // General rate limit: 100 req/min per API key (Moltbook parity). Only when key present.
+    if let Some(api_key) = social_api_key_from_request(&req) {
+        if let Ok(Some(retry)) = social_rate_limit(&ctx, &api_key, "request", 60, 100).await {
+            return rate_limit_429(retry);
+        }
+    }
     let path = req.url()?.path().to_string();
     let segments = social_segments_from_path(&path);
     if segments.is_empty() {
@@ -569,9 +589,24 @@ async fn handle_social_dispatch(
         ["agents", "register"] if req.method() == Method::Post => {
             handle_social_agents_register(req, ctx).await
         }
+        ["agents", "me", "identity-token"] if req.method() == Method::Post => {
+            handle_social_identity_token(req, ctx).await
+        }
+        ["agents", "me", "wallet"] if req.method() == Method::Get => {
+            handle_social_agents_me_wallet_get(req, ctx).await
+        }
+        ["agents", "me", "wallet"] if req.method() == Method::Post => {
+            handle_social_agents_me_wallet_post(req, ctx).await
+        }
+        ["agents", "me", "balance"] if req.method() == Method::Get => {
+            handle_social_agents_me_balance(req, ctx).await
+        }
         ["agents", "me"] if req.method() == Method::Get => handle_social_agents_me(req, ctx).await,
         ["agents", "me"] if req.method() == Method::Patch => {
             handle_social_agents_me_update(req, ctx).await
+        }
+        ["agents", "verify-identity"] if req.method() == Method::Post => {
+            handle_social_verify_identity(req, ctx).await
         }
         ["agents", "status"] if req.method() == Method::Get => {
             handle_social_agents_status(req, ctx).await
@@ -1090,6 +1125,20 @@ async fn handle_social_agents_profile(req: Request, ctx: RouteContext<()>) -> Re
         .bind(&[JsValue::from_str(&name)])?;
     let posts = posts_stmt.all().await?.results::<SocialPostRow>()?;
     let recent: Vec<serde_json::Value> = posts.into_iter().map(post_row_to_value).collect();
+
+    let wallet_stmt = db
+        .prepare("SELECT spark_address, lud16 FROM social_agent_wallets WHERE agent_name = ?1")
+        .bind(&[JsValue::from_str(&name)])?;
+    let wallet_row = wallet_stmt.first::<serde_json::Value>(None).await?;
+    let (spark_address, lud16) = wallet_row
+        .map(|r| {
+            (
+                r.get("spark_address").and_then(|v| v.as_str()).map(|s| s.to_string()),
+                r.get("lud16").and_then(|v| v.as_str()).map(|s| s.to_string()),
+            )
+        })
+        .unwrap_or((None, None));
+
     let mut response = Response::from_json(&serde_json::json!({
         "success": true,
         "agent": {
@@ -1106,7 +1155,9 @@ async fn handle_social_agents_profile(req: Request, ctx: RouteContext<()>) -> Re
                 "xHandle": author.as_ref().and_then(|a| a.get("owner_x_handle").cloned()).unwrap_or(serde_json::Value::Null),
                 "xName": author.as_ref().and_then(|a| a.get("owner_x_name").cloned()).unwrap_or(serde_json::Value::Null)
             },
-            "avatar_url": author.as_ref().and_then(|a| a.get("avatar_url").cloned()).unwrap_or(serde_json::Value::Null)
+            "avatar_url": author.as_ref().and_then(|a| a.get("avatar_url").cloned()).unwrap_or(serde_json::Value::Null),
+            "spark_address": spark_address,
+            "lud16": lud16
         },
         "recentPosts": recent
     }))?;
@@ -1174,7 +1225,10 @@ async fn handle_social_agents_register(mut req: Request, ctx: RouteContext<()>) 
 }
 
 async fn handle_social_agents_me(req: Request, ctx: RouteContext<()>) -> Result<Response> {
-    let (_api_key, agent_name) = social_auth(&req, &ctx).await?;
+    let (_api_key, agent_name) = match social_auth(&req, &ctx).await {
+        Ok(t) => t,
+        Err(r) => return Ok(r),
+    };
     let db = ctx.d1("SOCIAL_DB")?;
     let stmt = db
         .prepare("SELECT name, description, created_at, last_active, karma, metadata, is_claimed, claimed_at, owner_x_handle, owner_x_name FROM social_agents WHERE name = ?1")
@@ -1205,7 +1259,10 @@ async fn handle_social_agents_me(req: Request, ctx: RouteContext<()>) -> Result<
 }
 
 async fn handle_social_agents_me_update(mut req: Request, ctx: RouteContext<()>) -> Result<Response> {
-    let (_api_key, agent_name) = social_auth(&req, &ctx).await?;
+    let (_api_key, agent_name) = match social_auth(&req, &ctx).await {
+        Ok(t) => t,
+        Err(r) => return Ok(r),
+    };
     let body: UpdateProfileBody = req.json().await.unwrap_or(UpdateProfileBody {
         description: None,
         metadata: None,
@@ -1225,7 +1282,10 @@ async fn handle_social_agents_me_update(mut req: Request, ctx: RouteContext<()>)
 }
 
 async fn handle_social_agents_status(req: Request, ctx: RouteContext<()>) -> Result<Response> {
-    let (api_key, _agent_name) = social_auth(&req, &ctx).await?;
+    let (api_key, _agent_name) = match social_auth(&req, &ctx).await {
+        Ok(t) => t,
+        Err(r) => return Ok(r),
+    };
     let db = ctx.d1("SOCIAL_DB")?;
     let stmt = db
         .prepare("SELECT status FROM social_api_keys WHERE api_key = ?1")
@@ -1240,20 +1300,317 @@ async fn handle_social_agents_status(req: Request, ctx: RouteContext<()>) -> Res
     Ok(response)
 }
 
-async fn handle_social_posts_create(mut req: Request, ctx: RouteContext<()>) -> Result<Response> {
-    let (api_key, agent_name) = social_auth(&req, &ctx).await?;
-    if let Some(retry) = social_rate_limit(&ctx, &api_key, "post", 1800, 1).await? {
-        return Response::from_json(&serde_json::json!({
-            "success": false,
-            "error": "Rate limit exceeded",
-            "retry_after_minutes": retry
-        }))
-        .map(|r| r.with_status(429));
+async fn handle_social_agents_me_wallet_get(req: Request, ctx: RouteContext<()>) -> Result<Response> {
+    let (_api_key, agent_name) = match social_auth(&req, &ctx).await {
+        Ok(t) => t,
+        Err(r) => return Ok(r),
+    };
+    let db = ctx.d1("SOCIAL_DB")?;
+    let stmt = db
+        .prepare("SELECT agent_name, spark_address, lud16, updated_at FROM social_agent_wallets WHERE agent_name = ?1")
+        .bind(&[JsValue::from_str(&agent_name)])?;
+    let row = stmt.first::<serde_json::Value>(None).await?;
+    let Some(row) = row else {
+        return json_error("wallet not found", 404);
+    };
+    let mut response = Response::from_json(&serde_json::json!({
+        "spark_address": row.get("spark_address").and_then(|v| v.as_str()).unwrap_or(""),
+        "lud16": row.get("lud16").and_then(|v| v.as_str()),
+        "updated_at": row.get("updated_at").and_then(|v| v.as_str()).unwrap_or("")
+    }))?;
+    apply_cors(&mut response)?;
+    Ok(response)
+}
+
+async fn handle_social_agents_me_wallet_post(mut req: Request, ctx: RouteContext<()>) -> Result<Response> {
+    let (_api_key, agent_name) = match social_auth(&req, &ctx).await {
+        Ok(t) => t,
+        Err(r) => return Ok(r),
+    };
+    let body: RegisterWalletBody = match req.json().await {
+        Ok(b) => b,
+        Err(_) => return json_error("invalid body", 400),
+    };
+    let spark_address = body.spark_address.trim();
+    if spark_address.is_empty() {
+        return json_error("spark_address required", 400);
     }
-    let body: CreatePostBody = req
-        .json()
+    let now = now_iso();
+
+    let social_db = ctx.d1("SOCIAL_DB")?;
+    let _ = social_db
+        .prepare("INSERT OR REPLACE INTO social_agent_wallets (agent_name, spark_address, lud16, updated_at) VALUES (?1, ?2, ?3, ?4)")
+        .bind(&[
+            JsValue::from_str(&agent_name),
+            JsValue::from_str(spark_address),
+            serde_wasm_bindgen::to_value(&body.lud16).unwrap_or(JsValue::NULL),
+            JsValue::from_str(&now),
+        ])?
+        .run()
+        .await?;
+
+    let payments_db = ctx.d1("DB")?;
+    let link_stmt = payments_db
+        .prepare("SELECT payments_agent_id FROM social_agent_payments_link WHERE agent_name = ?1")
+        .bind(&[JsValue::from_str(&agent_name)])?;
+    let link_row = link_stmt.first::<serde_json::Value>(None).await?;
+    let payments_agent_id: i64 = if let Some(row) = link_row {
+        row.get("payments_agent_id")
+            .and_then(|v| v.as_i64())
+            .unwrap_or(0)
+    } else {
+        0
+    };
+
+    if payments_agent_id == 0 {
+        #[derive(Debug, Deserialize)]
+        struct AgentIdRow {
+            id: i64,
+        }
+        let insert_stmt = payments_db
+            .prepare("INSERT INTO agents (name) VALUES (?1) RETURNING id")
+            .bind(&[JsValue::from_str(&agent_name)])?;
+        let new_row = insert_stmt.first::<AgentIdRow>(None).await?;
+        let Some(new_row) = new_row else {
+            return json_error("failed to create payments agent", 500);
+        };
+        let id = new_row.id;
+        let _ = payments_db
+            .prepare("INSERT INTO agent_wallets (agent_id, spark_address, lud16, updated_at) VALUES (?1, ?2, ?3, ?4)")
+            .bind(&[
+                JsValue::from_f64(id as f64),
+                JsValue::from_str(spark_address),
+                serde_wasm_bindgen::to_value(&body.lud16).unwrap_or(JsValue::NULL),
+                JsValue::from_str(&now),
+            ])?
+            .run()
+            .await?;
+        let _ = payments_db
+            .prepare("INSERT INTO social_agent_payments_link (agent_name, payments_agent_id) VALUES (?1, ?2)")
+            .bind(&[JsValue::from_str(&agent_name), JsValue::from_f64(id as f64)])?
+            .run()
+            .await?;
+    } else {
+        let _ = payments_db
+            .prepare("UPDATE agent_wallets SET spark_address = ?2, lud16 = ?3, updated_at = ?4 WHERE agent_id = ?1")
+            .bind(&[
+                JsValue::from_f64(payments_agent_id as f64),
+                JsValue::from_str(spark_address),
+                serde_wasm_bindgen::to_value(&body.lud16).unwrap_or(JsValue::NULL),
+                JsValue::from_str(&now),
+            ])?
+            .run()
+            .await?;
+    }
+
+    let mut response = Response::from_json(&serde_json::json!({
+        "spark_address": spark_address,
+        "lud16": body.lud16,
+        "updated_at": now
+    }))?;
+    apply_cors(&mut response)?;
+    Ok(response)
+}
+
+async fn handle_social_agents_me_balance(req: Request, ctx: RouteContext<()>) -> Result<Response> {
+    let (_api_key, agent_name) = match social_auth(&req, &ctx).await {
+        Ok(t) => t,
+        Err(r) => return Ok(r),
+    };
+    let db = ctx.d1("DB")?;
+    let stmt = db
+        .prepare("SELECT payments_agent_id FROM social_agent_payments_link WHERE agent_name = ?1")
+        .bind(&[JsValue::from_str(&agent_name)])?;
+    let row = stmt.first::<serde_json::Value>(None).await?;
+    let id = match row.and_then(|r| r.get("payments_agent_id").and_then(|v| v.as_i64())) {
+        Some(i) => i,
+        None => return json_error("wallet not linked", 404),
+    };
+    let spark_url = ctx.var("SPARK_API_URL").map_err(|_| worker::Error::RustError("SPARK_API_URL not set".into()))?;
+    let url = format!("{}/agents/{}/balance", spark_url.to_string(), id);
+    let mut init = RequestInit::new();
+    init.with_method(Method::Get);
+    let headers = Headers::new();
+    if let Ok(Some(auth)) = req.headers().get("authorization") {
+        let _ = headers.set("authorization", &auth);
+    }
+    init.with_headers(headers);
+    let proxy = Request::new_with_init(&url, &init)?;
+    let mut resp = Fetch::Request(proxy).send().await?;
+    let status = resp.status_code();
+    let text = resp.text().await.unwrap_or_default();
+    let data: serde_json::Value = serde_json::from_str(&text).unwrap_or(serde_json::Value::Null);
+    let mut out = Response::from_json(&ApiResponse {
+        ok: status >= 200 && status < 300,
+        data: Some(data),
+        error: None,
+    })?;
+    out = out.with_status(status);
+    apply_cors(&mut out)?;
+    Ok(out)
+}
+
+async fn handle_social_identity_token(req: Request, ctx: RouteContext<()>) -> Result<Response> {
+    let (_api_key, agent_name) = match social_auth(&req, &ctx).await {
+        Ok(t) => t,
+        Err(r) => return Ok(r),
+    };
+    let db = ctx.d1("SOCIAL_DB")?;
+    let now = js_sys::Date::new_0();
+    let now_sec = now.get_time() / 1000.0;
+    let exp_sec = now_sec + 3600.0;
+    let now_iso = now
+        .to_iso_string()
+        .as_string()
+        .unwrap_or_else(|| js_sys::Date::new_0().to_string().into());
+    let exp_at = exp_sec.to_string();
+    let token_id = random_token("oa_id_", 32);
+    let _ = db
+        .prepare("INSERT INTO social_identity_tokens (id, agent_name, exp_at, created_at) VALUES (?1, ?2, ?3, ?4)")
+        .bind(&[
+            JsValue::from_str(&token_id),
+            JsValue::from_str(&agent_name),
+            JsValue::from_str(&exp_at),
+            JsValue::from_str(&now_iso),
+        ])?
+        .run()
+        .await?;
+    let mut response = Response::from_json(&serde_json::json!({ "token": token_id }))?;
+    apply_cors(&mut response)?;
+    Ok(response)
+}
+
+async fn handle_social_verify_identity(mut req: Request, ctx: RouteContext<()>) -> Result<Response> {
+    #[derive(serde::Deserialize)]
+    struct VerifyBody {
+        token: Option<String>,
+    }
+    let body: VerifyBody = match req.json().await {
+        Ok(b) => b,
+        Err(_) => return json_error("invalid body", 400),
+    };
+    let token_id = match body
+        .token
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
+        Some(t) => t.to_string(),
+        None => return json_error("token required", 400),
+    };
+    let db = ctx.d1("SOCIAL_DB")?;
+    let stmt = db
+        .prepare("SELECT agent_name, exp_at FROM social_identity_tokens WHERE id = ?1")
+        .bind(&[JsValue::from_str(&token_id)])?;
+    let row: Option<serde_json::Value> = stmt.first(None).await?;
+    let (agent_name, exp_at) = match row {
+        Some(r) => {
+            let name = r.get("agent_name").and_then(|v| v.as_str()).map(|s| s.to_string());
+            let exp = r.get("exp_at").and_then(|v| v.as_str()).map(|s| s.to_string());
+            match (name, exp) {
+                (Some(n), Some(e)) => (n, e),
+                _ => {
+                    let _ = db
+                        .prepare("DELETE FROM social_identity_tokens WHERE id = ?1")
+                        .bind(&[JsValue::from_str(&token_id)])?
+                        .run()
+                        .await;
+                    return Ok(verify_identity_error("invalid or expired token"));
+                }
+            }
+        }
+        None => return Ok(verify_identity_error("invalid or expired token")),
+    };
+    let now_sec = js_sys::Date::new_0().get_time() / 1000.0;
+    let exp_sec: f64 = exp_at.parse().unwrap_or(0.0);
+    if now_sec > exp_sec {
+        let _ = db
+            .prepare("DELETE FROM social_identity_tokens WHERE id = ?1")
+            .bind(&[JsValue::from_str(&token_id)])?
+            .run()
+            .await;
+        return Ok(verify_identity_error("token expired"));
+    }
+    let _ = db
+        .prepare("DELETE FROM social_identity_tokens WHERE id = ?1")
+        .bind(&[JsValue::from_str(&token_id)])?
+        .run()
+        .await?;
+    let agent_stmt = db
+        .prepare("SELECT name, description, created_at, last_active, karma, metadata, is_claimed, claimed_at, owner_x_handle, owner_x_name, avatar_url FROM social_agents WHERE name = ?1")
+        .bind(&[JsValue::from_str(&agent_name)])?;
+    let agent_row: Option<serde_json::Value> = agent_stmt.first(None).await?;
+    let agent = match agent_row {
+        Some(r) => r,
+        None => return Ok(verify_identity_error("agent not found")),
+    };
+    let posts_count: u64 = db
+        .prepare("SELECT COUNT(*) as c FROM social_posts WHERE author_name = ?1")
+        .bind(&[JsValue::from_str(&agent_name)])?
+        .first::<serde_json::Value>(None)
         .await
-        .map_err(|_| worker::Error::RustError("invalid body".into()))?;
+        .ok()
+        .flatten()
+        .and_then(|r| r.get("c").and_then(|v| v.as_u64()))
+        .unwrap_or(0);
+    let comments_count: u64 = db
+        .prepare("SELECT COUNT(*) as c FROM social_comments WHERE author_name = ?1")
+        .bind(&[JsValue::from_str(&agent_name)])?
+        .first::<serde_json::Value>(None)
+        .await
+        .ok()
+        .flatten()
+        .and_then(|r| r.get("c").and_then(|v| v.as_u64()))
+        .unwrap_or(0);
+    let payload = serde_json::json!({
+        "success": true,
+        "valid": true,
+        "agent": {
+            "id": agent.get("name").and_then(|v| v.as_str()).unwrap_or(""),
+            "name": agent.get("name").and_then(|v| v.as_str()).unwrap_or(""),
+            "description": agent.get("description").and_then(|v| v.as_str()).unwrap_or(""),
+            "karma": agent.get("karma").and_then(|v| v.as_i64()).unwrap_or(0),
+            "avatar_url": agent.get("avatar_url").and_then(|v| v.as_str()).unwrap_or(""),
+            "is_claimed": agent.get("is_claimed").and_then(|v| v.as_i64()).map(|i| i != 0).unwrap_or(false),
+            "created_at": agent.get("created_at").and_then(|v| v.as_str()).unwrap_or(""),
+            "follower_count": 0,
+            "stats": { "posts": posts_count, "comments": comments_count },
+            "owner": {
+                "x_handle": agent.get("owner_x_handle").and_then(|v| v.as_str()).unwrap_or(""),
+                "x_name": agent.get("owner_x_name").and_then(|v| v.as_str()).unwrap_or(""),
+                "x_verified": false,
+                "x_follower_count": 0
+            }
+        }
+    });
+    let mut response = Response::from_json(&payload)?;
+    apply_cors(&mut response)?;
+    Ok(response)
+}
+
+fn verify_identity_error(message: &str) -> Response {
+    let body = serde_json::json!({
+        "success": false,
+        "valid": false,
+        "error": message
+    });
+    let mut response = Response::from_json(&body).expect("verify error json").with_status(401);
+    let _ = apply_cors(&mut response);
+    response
+}
+
+async fn handle_social_posts_create(mut req: Request, ctx: RouteContext<()>) -> Result<Response> {
+    let (api_key, agent_name) = match social_auth(&req, &ctx).await {
+        Ok(t) => t,
+        Err(r) => return Ok(r),
+    };
+    if let Some(retry) = social_rate_limit(&ctx, &api_key, "post", 1800, 1).await? {
+        return rate_limit_429(retry);
+    }
+    let body: CreatePostBody = match req.json().await {
+        Ok(b) => b,
+        Err(_) => return json_error("invalid body", 400),
+    };
     if body.title.trim().is_empty() || body.submolt.trim().is_empty() {
         return json_error("title and submolt required", 400);
     }
@@ -1301,7 +1658,10 @@ async fn handle_social_posts_create(mut req: Request, ctx: RouteContext<()>) -> 
 }
 
 async fn handle_social_posts_delete(req: Request, ctx: RouteContext<()>, post_id: &str) -> Result<Response> {
-    let (_api_key, agent_name) = social_auth(&req, &ctx).await?;
+    let (_api_key, agent_name) = match social_auth(&req, &ctx).await {
+        Ok(t) => t,
+        Err(r) => return Ok(r),
+    };
     let db = ctx.d1("SOCIAL_DB")?;
     let stmt = db
         .prepare("SELECT author_name FROM social_posts WHERE id = ?1")
@@ -1326,14 +1686,12 @@ async fn handle_social_comments_create(
     ctx: RouteContext<()>,
     post_id: &str,
 ) -> Result<Response> {
-    let (api_key, agent_name) = social_auth(&req, &ctx).await?;
+    let (api_key, agent_name) = match social_auth(&req, &ctx).await {
+        Ok(t) => t,
+        Err(r) => return Ok(r),
+    };
     if let Some(retry) = social_rate_limit(&ctx, &api_key, "comment", 3600, 50).await? {
-        return Response::from_json(&serde_json::json!({
-            "success": false,
-            "error": "Rate limit exceeded",
-            "retry_after_minutes": retry
-        }))
-        .map(|r| r.with_status(429));
+        return rate_limit_429(retry);
     }
     let body: CreateCommentBody = req
         .json()
@@ -1382,7 +1740,10 @@ async fn handle_social_posts_vote(
     post_id: &str,
     value: i64,
 ) -> Result<Response> {
-    let (_api_key, agent_name) = social_auth(&req, &ctx).await?;
+    let (_api_key, agent_name) = match social_auth(&req, &ctx).await {
+        Ok(t) => t,
+        Err(r) => return Ok(r),
+    };
     let db = ctx.d1("SOCIAL_DB")?;
     let stmt = db
         .prepare("SELECT value FROM social_votes WHERE object_type = 'post' AND object_id = ?1 AND voter_name = ?2")
@@ -1422,7 +1783,10 @@ async fn handle_social_comments_vote(
     comment_id: &str,
     value: i64,
 ) -> Result<Response> {
-    let (_api_key, agent_name) = social_auth(&req, &ctx).await?;
+    let (_api_key, agent_name) = match social_auth(&req, &ctx).await {
+        Ok(t) => t,
+        Err(r) => return Ok(r),
+    };
     let db = ctx.d1("SOCIAL_DB")?;
     let stmt = db
         .prepare("SELECT value FROM social_votes WHERE object_type = 'comment' AND object_id = ?1 AND voter_name = ?2")
@@ -1461,7 +1825,10 @@ async fn handle_social_agents_follow(
     ctx: RouteContext<()>,
     target: &str,
 ) -> Result<Response> {
-    let (_api_key, agent_name) = social_auth(&req, &ctx).await?;
+    let (_api_key, agent_name) = match social_auth(&req, &ctx).await {
+        Ok(t) => t,
+        Err(r) => return Ok(r),
+    };
     let db = ctx.d1("SOCIAL_DB")?;
     let _ = db
         .prepare("INSERT OR IGNORE INTO social_follows (follower_name, following_name, created_at) VALUES (?1, ?2, ?3)")
@@ -1485,7 +1852,10 @@ async fn handle_social_agents_unfollow(
     ctx: RouteContext<()>,
     target: &str,
 ) -> Result<Response> {
-    let (_api_key, agent_name) = social_auth(&req, &ctx).await?;
+    let (_api_key, agent_name) = match social_auth(&req, &ctx).await {
+        Ok(t) => t,
+        Err(r) => return Ok(r),
+    };
     let db = ctx.d1("SOCIAL_DB")?;
     let _ = db
         .prepare("DELETE FROM social_follows WHERE follower_name = ?1 AND following_name = ?2")
@@ -1504,7 +1874,10 @@ async fn handle_social_submolts_create(
     mut req: Request,
     ctx: RouteContext<()>,
 ) -> Result<Response> {
-    let (_api_key, agent_name) = social_auth(&req, &ctx).await?;
+    let (_api_key, agent_name) = match social_auth(&req, &ctx).await {
+        Ok(t) => t,
+        Err(r) => return Ok(r),
+    };
     let body: CreateSubmoltBody = req
         .json()
         .await
@@ -1541,7 +1914,10 @@ async fn handle_social_submolts_subscribe(
     ctx: RouteContext<()>,
     submolt_name: &str,
 ) -> Result<Response> {
-    let (_api_key, agent_name) = social_auth(&req, &ctx).await?;
+    let (_api_key, agent_name) = match social_auth(&req, &ctx).await {
+        Ok(t) => t,
+        Err(r) => return Ok(r),
+    };
     let db = ctx.d1("SOCIAL_DB")?;
     let _ = db
         .prepare("INSERT OR IGNORE INTO social_subscriptions (agent_name, submolt_name, created_at) VALUES (?1, ?2, ?3)")
@@ -1567,7 +1943,10 @@ async fn handle_social_submolts_unsubscribe(
     ctx: RouteContext<()>,
     submolt_name: &str,
 ) -> Result<Response> {
-    let (_api_key, agent_name) = social_auth(&req, &ctx).await?;
+    let (_api_key, agent_name) = match social_auth(&req, &ctx).await {
+        Ok(t) => t,
+        Err(r) => return Ok(r),
+    };
     let db = ctx.d1("SOCIAL_DB")?;
     let _ = db
         .prepare("DELETE FROM social_subscriptions WHERE agent_name = ?1 AND submolt_name = ?2")
@@ -1589,7 +1968,10 @@ async fn handle_social_submolts_moderators_add(
     ctx: RouteContext<()>,
     submolt_name: &str,
 ) -> Result<Response> {
-    let (_api_key, agent_name) = social_auth(&req, &ctx).await?;
+    let (_api_key, agent_name) = match social_auth(&req, &ctx).await {
+        Ok(t) => t,
+        Err(r) => return Ok(r),
+    };
     let body: ModeratorBody = req.json().await.unwrap_or(ModeratorBody {
         agent_name: "".to_string(),
         role: None,
@@ -1627,7 +2009,10 @@ async fn handle_social_submolts_moderators_remove(
     ctx: RouteContext<()>,
     submolt_name: &str,
 ) -> Result<Response> {
-    let (_api_key, agent_name) = social_auth(&req, &ctx).await?;
+    let (_api_key, agent_name) = match social_auth(&req, &ctx).await {
+        Ok(t) => t,
+        Err(r) => return Ok(r),
+    };
     let body: ModeratorBody = req.json().await.unwrap_or(ModeratorBody {
         agent_name: "".to_string(),
         role: None,
@@ -1684,7 +2069,10 @@ async fn handle_social_submolts_settings_update(
     ctx: RouteContext<()>,
     submolt_name: &str,
 ) -> Result<Response> {
-    let (_api_key, agent_name) = social_auth(&req, &ctx).await?;
+    let (_api_key, agent_name) = match social_auth(&req, &ctx).await {
+        Ok(t) => t,
+        Err(r) => return Ok(r),
+    };
     let body: SubmoltSettingsBody = req.json().await.unwrap_or(SubmoltSettingsBody {
         description: None,
         banner_color: None,
@@ -1713,7 +2101,10 @@ async fn handle_social_submolts_settings_upload(
     ctx: RouteContext<()>,
     submolt_name: &str,
 ) -> Result<Response> {
-    let (_api_key, agent_name) = social_auth(&req, &ctx).await?;
+    let (_api_key, agent_name) = match social_auth(&req, &ctx).await {
+        Ok(t) => t,
+        Err(r) => return Ok(r),
+    };
     if !is_submolt_owner(&ctx, submolt_name, &agent_name).await? {
         return json_error("forbidden", 403);
     }
@@ -1776,7 +2167,10 @@ async fn handle_social_posts_pin(
     post_id: &str,
     pinned: bool,
 ) -> Result<Response> {
-    let (_api_key, agent_name) = social_auth(&req, &ctx).await?;
+    let (_api_key, agent_name) = match social_auth(&req, &ctx).await {
+        Ok(t) => t,
+        Err(r) => return Ok(r),
+    };
     let db = ctx.d1("SOCIAL_DB")?;
     let stmt = db
         .prepare("SELECT submolt FROM social_posts WHERE id = ?1")
@@ -1802,7 +2196,10 @@ async fn handle_social_agents_avatar_upload(
     mut req: Request,
     ctx: RouteContext<()>,
 ) -> Result<Response> {
-    let (_api_key, agent_name) = social_auth(&req, &ctx).await?;
+    let (_api_key, agent_name) = match social_auth(&req, &ctx).await {
+        Ok(t) => t,
+        Err(r) => return Ok(r),
+    };
     let form = req.form_data().await?;
     let Some(worker::FormEntry::File(file)) = form.get("file") else {
         return json_error("file required", 400);
@@ -1841,7 +2238,10 @@ async fn handle_social_agents_avatar_remove(
     req: Request,
     ctx: RouteContext<()>,
 ) -> Result<Response> {
-    let (_api_key, agent_name) = social_auth(&req, &ctx).await?;
+    let (_api_key, agent_name) = match social_auth(&req, &ctx).await {
+        Ok(t) => t,
+        Err(r) => return Ok(r),
+    };
     let db = ctx.d1("SOCIAL_DB")?;
     let _ = db
         .prepare("UPDATE social_agents SET avatar_url = NULL, last_active = ?2 WHERE name = ?1")
@@ -1908,8 +2308,10 @@ async fn handle_social_claim_post(req: Request, ctx: RouteContext<()>) -> Result
     if token.is_empty() {
         return json_error("token required", 400);
     }
-    let auth_key = social_api_key_from_request(&req)
-        .ok_or_else(|| worker::Error::RustError("missing api key".into()))?;
+    let auth_key = match social_api_key_from_request(&req) {
+        Some(k) => k,
+        None => return Ok(json_unauthorized("missing api key")),
+    };
     let db = ctx.d1("SOCIAL_DB")?;
     let stmt = db
         .prepare("SELECT api_key, agent_name FROM social_claims WHERE claim_token = ?1")
@@ -2211,7 +2613,12 @@ async fn handle_moltbook_root(_: Request, _: RouteContext<()>) -> Result<Respons
                 "search": "/moltbook/index/search?q=term",
                 "docs": "/moltbook/docs/{path}"
             },
-            "watch": "/moltbook/watch"
+            "watch": "/moltbook/watch",
+            "developers": {
+                "identity_token": "POST /moltbook/api/agents/me/identity-token (bot API key)",
+                "verify_identity": "POST /moltbook/api/agents/verify-identity (X-Moltbook-App-Key + body {\"token\":\"...\"})",
+                "auth_instructions": "https://www.moltbook.com/auth.md?app=...&endpoint=..."
+            }
         })),
         error: None,
     })?;
@@ -2932,6 +3339,31 @@ fn json_error(message: &str, status: u16) -> Result<Response> {
     .with_status(status);
     apply_cors(&mut response)?;
     Ok(response)
+}
+
+/// 429 rate limit response with retry_after_minutes (Moltbook parity).
+fn rate_limit_429(retry_after_minutes: i64) -> Result<Response> {
+    let mut response = Response::from_json(&serde_json::json!({
+        "success": false,
+        "error": "Rate limit exceeded",
+        "retry_after_minutes": retry_after_minutes
+    }))?
+    .with_status(429);
+    apply_cors(&mut response)?;
+    Ok(response)
+}
+
+/// Returns a 401 Response for auth failures (caller returns Ok(this)).
+fn json_unauthorized(message: &str) -> Response {
+    let mut response = Response::from_json(&ApiResponse::<serde_json::Value> {
+        ok: false,
+        data: None,
+        error: Some(message.to_string()),
+    })
+    .expect("401 json")
+    .with_status(401);
+    let _ = apply_cors(&mut response);
+    response
 }
 
 fn moltbook_site_base(env: &Env) -> String {
