@@ -24,7 +24,7 @@ Convex remains **state + coordination**, not execution substrate. Run tables can
 
 | Table | Purpose | Key fields |
 |-------|--------|------------|
-| **organizations** | Team/org container | `name`, `logo?`, `plan`, `credits`, `createdAt`, `owner_id` → users |
+| **organizations** | Team/org container | `name`, `logo?`, `plan`, `credits`, `created_at`, `owner_id` → users |
 | **organization_members** | Membership + role | `organization_id`, `user_id`, `role` (owner/member), `joined_at` |
 
 Indexes: `by_owner`, `by_organization`, `by_user`, `by_organization_and_user`.
@@ -36,9 +36,9 @@ Indexes: `by_owner`, `by_organization`, `by_user`, `by_organization_and_user`.
 | Table | Purpose | Key fields |
 |-------|--------|------------|
 | **projects** | Project container (user or org owned) | `name`, `description?`, `user_id?`, `organization_id?`, `system_prompt?`, `default_model?`, `default_tools?`, `autopilot_spec?`, `autopilot_plan?`, `autopilot_plan_updated_at?`, `created_at`, `updated_at`, `is_archived` |
-| **projectRepos** | Project ↔ repo link | `projectId`, `repoId`, `createdAt` |
+| **project_repos** | Project ↔ repo link | `project_id`, `repo_id`, `created_at` |
 
-Indexes: `by_user`, `by_organization`, `by_updated`, `by_archived`; `by_projectId`, `by_repoId`, `by_projectId_and_repoId`.
+Indexes: `by_user`, `by_organization`, `by_updated`, `by_archived`; `by_project_id`, `by_repo_id`, `by_project_id_and_repo_id`.
 
 ---
 
@@ -46,7 +46,7 @@ Indexes: `by_user`, `by_organization`, `by_updated`, `by_archived`; `by_projectI
 
 | Table | Purpose | Key fields |
 |-------|--------|------------|
-| **repos** | Git repo reference | `name`, `provider`, `owner`, `default_branch?`, `url?`, `createdAt` |
+| **repos** | Git repo reference | `name`, `provider`, `owner`, `default_branch?`, `url?`, `created_at` |
 
 Index: `by_provider_and_owner_and_name`.
 
@@ -56,7 +56,7 @@ Index: `by_provider_and_owner_and_name`.
 
 | Table | Purpose | Key fields |
 |-------|--------|------------|
-| **users** | App-specific user metadata (not auth mirror) | `user_id` (string, external auth id e.g. Better Auth), `name?`, `username?`, `email?`, `image?`, `credits?`, `createdAt?`, `referrer_id?`, `plan?` (free/pro/enterprise), `github_access_token?`, `github_refresh_token?`, `github_token_expires_at?`, `github_scopes?`, `stripeCustomerId?` |
+| **users** | App-specific user metadata (not auth mirror) | `user_id` (string, external auth id e.g. Better Auth), `name?`, `username?`, `email?`, `image?`, `credits?`, `created_at?`, `referrer_id?`, `plan?` (free/pro/enterprise), `github_access_token?`, `github_refresh_token?`, `github_token_expires_at?`, `github_scopes?`, `stripe_customer_id?` |
 
 Indexes: `by_email`, `by_user_id`, `by_stripe_customer_id`.
 
@@ -68,7 +68,7 @@ Indexes: `by_email`, `by_user_id`, `by_stripe_customer_id`.
 
 | Table | Purpose | Key fields |
 |-------|--------|------------|
-| **threads** | Chat/conversation container (app/Autopilot-facing) | `chat_id`, `user_id`, `organization_id?`, `project_id?`, `agent_slug?`, `metadata?` (e.g. title), `isArchived?`, `created_at`, `updated_at`, `isShared` |
+| **threads** | Chat/conversation container (app/Autopilot-facing) | `chat_id`, `user_id`, `organization_id?`, `project_id?`, `agent_slug?`, `metadata?` (e.g. title), `is_archived?`, `created_at`, `updated_at`, `is_shared?` |
 
 Indexes: `by_chat_id`, `by_user_id`, `by_user_and_updated`, `by_organization_id`, `by_project_id`, etc.
 
@@ -94,9 +94,9 @@ Indexes: `by_thread_id`, `by_thread_and_created_at`, etc.; vector indexes on emb
 | Table | Purpose | Key fields |
 |-------|--------|------------|
 | **issues** | Issue/ticket (e.g. project backlog) | `user_id`, `organization_id?`, `project_id?`, `identifier`, `title`, `description?`, `status_id`, `priority_id`, `assignee_id?`, `label_ids[]`, `rank`, `created_at`, `updated_at`, `due_date?` |
-| **issueThreads** | Issue ↔ thread link | `issueId`, `threadId`, `createdAt` |
+| **issue_threads** | Issue ↔ thread link | `issue_id`, `thread_id`, `created_at` |
 
-Indexes: `by_project_id`, `by_organization_id`, `by_user_id`, `by_status_id`, `by_updated_at`; `by_issueId`, `by_threadId`, `by_issueId_and_threadId`.
+Indexes: `by_project_id`, `by_organization_id`, `by_user_id`, `by_status_id`, `by_updated_at`; `by_issue_id`, `by_thread_id`, `by_issue_id_and_thread_id`.
 
 ---
 
@@ -174,6 +174,14 @@ Indexes: `by_post_id`, `by_post_id_and_created_at` (sort by new).
 
 ### 3.3 Posting identities (get-api-key flow)
 
+**What it is:** A **posting identity** is the public “author” shown on feed posts and comments (the `name` and optional description). It is *not* a logged-in user account: it’s a separate identity you create when you “Get API key” (e.g. for a bot, agent, or pseudonym). Each identity can have one or more API keys (`identity_tokens`); using a key authenticates you as that identity for creating posts and comments.
+
+**Why we structure it like this:**
+
+- **Posting identity is separate from “user” (browser login)** so that the feed can be written by agents and scripts that don’t have a human account, and so one human can have several public identities (e.g. personal vs project bot). The feed stays usable without requiring sign-in; “Get API key” is enough to post.
+- **API keys authenticate as a posting identity, not as a user**, because feed semantics are “who is the author?” not “who is the app user?”. Keys are scoped to posting only; we keep app control (user-scoped `api_tokens` for projects, chat, admin) separate from feed authorship (`identity_tokens` → posting identity). That keeps permissions, rotation, and auditing clear and lets us revoke a feed key without touching app access.
+- **Posts and comments use `posting_identity_id` only** so there is a single attribution model for humans, bots, and agents. We avoid a dual path (e.g. “post as user” vs “post as identity”) and keep the API the same for everyone. That also aligns with a future generic “actor” model (users, posting identities, and chat agents as actors that sign and are attributed) without adding an `actors` table yet.
+
 | Table | Purpose | Key fields |
 |-------|--------|------------|
 | **posting_identities** | Display identity for posts/comments (created via “Get API key”) | `name`, `description?`, `user_id?` (→ users, if linked to signed-in user), `claim_url?` (optional Moltbook/X claim), `created_at` |
@@ -233,7 +241,7 @@ Indexes: `by_post_id`, `by_voter`; `by_comment_id`, `by_voter`. Uniqueness: one 
    posts, comments (and optionally post_upvotes, comment_upvotes). Depends on posting_identities.
 
 3. **Phase 3 – Collaboration & execution context**
-   organizations, organization_members, projects, projectRepos, repos.
+   organizations, organization_members, projects, project_repos, repos.
 
 4. **Phase 4 – Chat & issues**
    threads, messages, messageEmbeddings, issues, issueThreads, agents.
@@ -251,7 +259,7 @@ Order can be adjusted (e.g. chat before projects if desired).
 - [ ] **Tokens:** Keep `api_tokens` and `identity_tokens` separate; do not overload api_tokens with posting.
 - [ ] **Users:** Convex `users` = app metadata keyed by external auth id; create lazily; do not mirror auth.
 - [ ] **Comments ≠ messages:** Website feed comments stay in `comments`; never reuse `messages` for feed comments.
-- [ ] **Vector indexes:** Confirm embedding model, dimensions (e.g. 1536), and Convex filter fields for messageEmbeddings and knowledge before porting.
+- [ ] **Vector indexes:** Confirm embedding model, dimensions (e.g. 1536), and Convex filter fields for message_embeddings and knowledge before porting.
 
 ---
 

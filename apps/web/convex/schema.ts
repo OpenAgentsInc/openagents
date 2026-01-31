@@ -3,6 +3,9 @@ import { v } from "convex/values";
 
 export default defineSchema({
   // ─── Website (feed, posting identity) ─────────────────────────────────────
+  // Posting identity = the public "author" for feed posts and comments (name shown on each post/comment).
+  // Created when someone gets an API key (e.g. /get-api-key). Can represent a person, bot, or agent.
+  // identity_tokens (hashed API keys) authenticate as a posting_identity.
   posting_identities: defineTable({
     name: v.string(),
     description: v.optional(v.string()),
@@ -75,11 +78,11 @@ export default defineSchema({
     github_refresh_token: v.optional(v.string()),
     github_token_expires_at: v.optional(v.number()),
     github_scopes: v.optional(v.string()),
-    stripeCustomerId: v.optional(v.string()),
+    stripe_customer_id: v.optional(v.string()),
   })
     .index("by_email", ["email"])
     .index("by_user_id", ["user_id"])
-    .index("by_stripe_customer_id", ["stripeCustomerId"]),
+    .index("by_stripe_customer_id", ["stripe_customer_id"]),
 
   api_tokens: defineTable({
     user_id: v.string(),
@@ -131,14 +134,14 @@ export default defineSchema({
     .index("by_updated", ["updated_at"])
     .index("by_archived", ["is_archived"]),
 
-  projectRepos: defineTable({
-    projectId: v.id("projects"),
-    repoId: v.id("repos"),
-    createdAt: v.number(),
+  project_repos: defineTable({
+    project_id: v.id("projects"),
+    repo_id: v.id("repos"),
+    created_at: v.number(),
   })
-    .index("by_projectId", ["projectId"])
-    .index("by_repoId", ["repoId"])
-    .index("by_projectId_and_repoId", ["projectId", "repoId"]),
+    .index("by_project_id", ["project_id"])
+    .index("by_repo_id", ["repo_id"])
+    .index("by_project_id_and_repo_id", ["project_id", "repo_id"]),
 
   repos: defineTable({
     name: v.string(),
@@ -146,7 +149,7 @@ export default defineSchema({
     owner: v.string(),
     default_branch: v.optional(v.string()),
     url: v.optional(v.string()),
-    createdAt: v.number(),
+    created_at: v.number(),
   }).index("by_provider_and_owner_and_name", ["provider", "owner", "name"]),
 
   threads: defineTable({
@@ -156,10 +159,10 @@ export default defineSchema({
     project_id: v.optional(v.id("projects")),
     agent_slug: v.optional(v.string()),
     metadata: v.optional(v.any()),
-    isArchived: v.optional(v.boolean()),
+    is_archived: v.optional(v.boolean()),
     created_at: v.number(),
     updated_at: v.number(),
-    isShared: v.optional(v.boolean()),
+    is_shared: v.optional(v.boolean()),
   })
     .index("by_chat_id", ["chat_id"])
     .index("by_user_id", ["user_id"])
@@ -184,7 +187,7 @@ export default defineSchema({
     .index("by_thread_id", ["thread_id"])
     .index("by_thread_and_created_at", ["thread_id", "created_at"]),
 
-  messageEmbeddings: defineTable({
+  message_embeddings: defineTable({
     message_id: v.string(),
     content_embedding: v.array(v.float64()),
     tool_embedding: v.optional(v.array(v.float64())),
@@ -216,14 +219,14 @@ export default defineSchema({
     .index("by_status_id", ["status_id"])
     .index("by_updated_at", ["updated_at"]),
 
-  issueThreads: defineTable({
-    issueId: v.id("issues"),
-    threadId: v.id("threads"),
-    createdAt: v.number(),
+  issue_threads: defineTable({
+    issue_id: v.id("issues"),
+    thread_id: v.id("threads"),
+    created_at: v.number(),
   })
-    .index("by_issueId", ["issueId"])
-    .index("by_threadId", ["threadId"])
-    .index("by_issueId_and_threadId", ["issueId", "threadId"]),
+    .index("by_issue_id", ["issue_id"])
+    .index("by_thread_id", ["thread_id"])
+    .index("by_issue_id_and_thread_id", ["issue_id", "thread_id"]),
 
   knowledge: defineTable({
     title: v.optional(v.string()),

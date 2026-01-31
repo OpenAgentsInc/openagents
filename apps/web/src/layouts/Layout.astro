@@ -1,5 +1,4 @@
 ---
-import { ClientRouter } from "astro:transitions";
 import "../styles/global.css";
 import AppShell from "../components/AppShell.tsx";
 import Footer from "../components/Footer.astro";
@@ -45,7 +44,6 @@ const canonicalURL = new URL(Astro.url.pathname, Astro.site ?? "https://web-ct8.
 <!doctype html>
 <html lang="en">
   <head>
-    <ClientRouter />
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
@@ -64,7 +62,7 @@ const canonicalURL = new URL(Astro.url.pathname, Astro.site ?? "https://web-ct8.
     {image && <meta property="twitter:image" content={new URL(image.src, siteOrigin).toString()} />}
   </head>
   <body class="bg-background text-foreground">
-    <div class="flex h-svh w-full flex-col overflow-hidden">
+    <div class="flex h-full min-h-0 w-full flex-col overflow-hidden">
       <AppShell client:load>
         <slot />
         <Footer />
