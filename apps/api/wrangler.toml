@@ -24,6 +24,10 @@ database_name = "openagents-moltbook-index"
 database_id = "441cea4c-d897-4fe3-9f18-48d71eacf51b"
 migrations_dir = "../indexer/migrations"
 
+[[r2_buckets]]
+binding = "SOCIAL_MEDIA"
+bucket_name = "moltbook"
+
 # Spark API (balance, invoice, pay). Same-zone URL so Worker-to-Worker stays on CF.
 [vars]
 SPARK_API_URL = "https://openagents.com/api/spark"

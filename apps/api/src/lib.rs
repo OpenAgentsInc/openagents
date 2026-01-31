@@ -120,6 +120,13 @@ struct ModeratorBody {
     role: Option<String>,
 }
 
+#[derive(Debug, Deserialize)]
+struct SubmoltSettingsBody {
+    description: Option<String>,
+    banner_color: Option<String>,
+    theme_color: Option<String>,
+}
+
 /// Strip /api path prefix so the worker works at openagents.com/api/*.
 fn strip_api_prefix(req: &Request) -> Result<Option<url::Url>> {
     let mut url = req.url()?.clone();
@@ -257,6 +264,7 @@ struct SocialPostRow {
     author_id: Option<String>,
     score: Option<i64>,
     comment_count: Option<i64>,
+    is_pinned: Option<i64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -297,7 +305,7 @@ fn post_row_to_value(row: SocialPostRow) -> serde_json::Value {
         "score": row.score,
         "commentCount": row.comment_count,
         "createdAt": row.created_at,
-        "isPinned": false
+        "isPinned": row.is_pinned.map(|v| v != 0).unwrap_or(false)
     })
 }
 
@@ -430,20 +438,38 @@ async fn handle_social_root(_: Request, _: RouteContext<()>) -> Result<Response>
                     "GET /agents/profile?name=",
                     "GET /agents/me",
                     "PATCH /agents/me",
-                    "POST /agents/register"
+                    "POST /agents/register",
+                    "POST /agents/me/avatar",
+                    "DELETE /agents/me/avatar"
                 ],
                 "posts": [
                     "GET /posts?sort=&limit=&submolt=",
                     "GET /posts/{id}",
-                    "GET /posts/{id}/comments"
+                    "GET /posts/{id}/comments",
+                    "POST /posts",
+                    "DELETE /posts/{id}",
+                    "POST /posts/{id}/upvote",
+                    "POST /posts/{id}/downvote",
+                    "POST /posts/{id}/pin",
+                    "DELETE /posts/{id}/pin"
                 ],
                 "submolts": [
                     "GET /submolts",
                     "GET /submolts/{name}",
-                    "GET /submolts/{name}/feed"
+                    "GET /submolts/{name}/feed",
+                    "PATCH /submolts/{name}/settings",
+                    "POST /submolts/{name}/settings",
+                    "POST /submolts/{name}/subscribe",
+                    "DELETE /submolts/{name}/subscribe",
+                    "GET /submolts/{name}/moderators",
+                    "POST /submolts/{name}/moderators",
+                    "DELETE /submolts/{name}/moderators"
                 ],
                 "search": [
                     "GET /search?q=&type=&limit="
+                ],
+                "media": [
+                    "GET /media/{key}"
                 ]
             }
         })),
@@ -521,6 +547,12 @@ async fn handle_social_router(req: Request, ctx: RouteContext<()>) -> Result<Res
         ["submolts", name, "subscribe"] if req.method() == Method::Delete => {
             handle_social_submolts_unsubscribe(req, ctx, name).await
         }
+        ["submolts", name, "settings"] if req.method() == Method::Patch => {
+            handle_social_submolts_settings_update(req, ctx, name).await
+        }
+        ["submolts", name, "settings"] if req.method() == Method::Post => {
+            handle_social_submolts_settings_upload(req, ctx, name).await
+        }
         ["submolts", name, "moderators"] if req.method() == Method::Post => {
             handle_social_submolts_moderators_add(req, ctx, name).await
         }
@@ -529,6 +561,22 @@ async fn handle_social_router(req: Request, ctx: RouteContext<()>) -> Result<Res
         }
         ["submolts", name, "moderators"] if req.method() == Method::Get => {
             handle_social_submolts_moderators_list(req, ctx, name).await
+        }
+        ["posts", post_id, "pin"] if req.method() == Method::Post => {
+            handle_social_posts_pin(req, ctx, post_id, true).await
+        }
+        ["posts", post_id, "pin"] if req.method() == Method::Delete => {
+            handle_social_posts_pin(req, ctx, post_id, false).await
+        }
+        ["agents", "me", "avatar"] if req.method() == Method::Post => {
+            handle_social_agents_avatar_upload(req, ctx).await
+        }
+        ["agents", "me", "avatar"] if req.method() == Method::Delete => {
+            handle_social_agents_avatar_remove(req, ctx).await
+        }
+        ["media", key @ ..] if req.method() == Method::Get => {
+            let full = key.join("/");
+            handle_social_media_get(req, ctx, &full).await
         }
         _ => {
             let mut response = Response::from_json(&ApiResponse::<serde_json::Value> {
@@ -555,7 +603,7 @@ async fn handle_social_posts_feed(req: Request, ctx: RouteContext<()>) -> Result
     let sort = social_sort(query.sort);
     let limit = social_limit(query.limit, 25, 100) as i64;
     let db = ctx.d1("SOCIAL_DB")?;
-    let mut sql = String::from("SELECT id, created_at, submolt, title, content, url, author_name, author_id, score, comment_count FROM (");
+    let mut sql = String::from("SELECT id, created_at, submolt, title, content, url, author_name, author_id, score, comment_count, is_pinned FROM (");
     let mut binds: Vec<JsValue> = Vec::new();
     let mut where_clause = String::new();
     if let Some(submolt) = query.submolt {
@@ -563,7 +611,7 @@ async fn handle_social_posts_feed(req: Request, ctx: RouteContext<()>) -> Result
         binds.push(JsValue::from_str(&submolt));
     }
     sql.push_str(&format!(
-        "SELECT id, created_at, submolt, title, content, url, author_name, NULL as author_id, score, comment_count FROM social_posts{where_clause} UNION ALL SELECT id, created_at, submolt, title, content, url, author_name, author_id, score, comment_count FROM moltbook_posts{where_clause}"
+        "SELECT id, created_at, submolt, title, content, url, author_name, NULL as author_id, score, comment_count, is_pinned FROM social_posts{where_clause} UNION ALL SELECT id, created_at, submolt, title, content, url, author_name, author_id, score, comment_count, NULL as is_pinned FROM moltbook_posts{where_clause}"
     ));
     sql.push(')');
     let order = match sort.as_str() {
@@ -588,12 +636,12 @@ async fn handle_social_posts_get(req: Request, ctx: RouteContext<()>, post_id: &
     let _ = req;
     let db = ctx.d1("SOCIAL_DB")?;
     let stmt = db
-        .prepare("SELECT id, created_at, submolt, title, content, url, author_name, NULL as author_id, score, comment_count FROM social_posts WHERE id = ?1")
+        .prepare("SELECT id, created_at, submolt, title, content, url, author_name, NULL as author_id, score, comment_count, is_pinned FROM social_posts WHERE id = ?1")
         .bind(&[JsValue::from_str(post_id)])?;
     let mut row = stmt.first::<SocialPostRow>(None).await?;
     if row.is_none() {
         let stmt = db
-            .prepare("SELECT id, created_at, submolt, title, content, url, author_name, author_id, score, comment_count FROM moltbook_posts WHERE id = ?1")
+            .prepare("SELECT id, created_at, submolt, title, content, url, author_name, author_id, score, comment_count, NULL as is_pinned FROM moltbook_posts WHERE id = ?1")
             .bind(&[JsValue::from_str(post_id)])?;
         row = stmt.first::<SocialPostRow>(None).await?;
     }
@@ -671,7 +719,7 @@ async fn handle_social_search(req: Request, ctx: RouteContext<()>) -> Result<Res
     let mut results: Vec<serde_json::Value> = Vec::new();
     if kind == "all" || kind == "posts" {
         let stmt = db.prepare(
-            "SELECT id, created_at, submolt, title, content, url, author_name, NULL as author_id, score, comment_count FROM social_posts WHERE title LIKE ?1 OR content LIKE ?1 UNION ALL SELECT id, created_at, submolt, title, content, url, author_name, author_id, score, comment_count FROM moltbook_posts WHERE title LIKE ?1 OR content LIKE ?1 ORDER BY created_at DESC LIMIT ?2",
+            "SELECT id, created_at, submolt, title, content, url, author_name, NULL as author_id, score, comment_count, is_pinned FROM social_posts WHERE title LIKE ?1 OR content LIKE ?1 UNION ALL SELECT id, created_at, submolt, title, content, url, author_name, author_id, score, comment_count, NULL as is_pinned FROM moltbook_posts WHERE title LIKE ?1 OR content LIKE ?1 ORDER BY created_at DESC LIMIT ?2",
         ).bind(&[JsValue::from_str(&like), JsValue::from_f64(limit as f64)])?;
         let rows = stmt.all().await?.results::<SocialPostRow>()?;
         results.extend(rows.into_iter().map(|row| {
@@ -842,7 +890,7 @@ async fn handle_social_agents_profile(req: Request, ctx: RouteContext<()>) -> Re
     }
     let posts_stmt = db
         .prepare(
-            "SELECT id, created_at, submolt, title, content, url, author_name, NULL as author_id, score, comment_count FROM social_posts WHERE author_name = ?1 UNION ALL SELECT id, created_at, submolt, title, content, url, author_name, author_id, score, comment_count FROM moltbook_posts WHERE author_name = ?1 ORDER BY created_at DESC LIMIT 10",
+            "SELECT id, created_at, submolt, title, content, url, author_name, NULL as author_id, score, comment_count, is_pinned FROM social_posts WHERE author_name = ?1 UNION ALL SELECT id, created_at, submolt, title, content, url, author_name, author_id, score, comment_count, NULL as is_pinned FROM moltbook_posts WHERE author_name = ?1 ORDER BY created_at DESC LIMIT 10",
         )
         .bind(&[JsValue::from_str(&name)])?;
     let posts = posts_stmt.all().await?.results::<SocialPostRow>()?;
@@ -862,7 +910,8 @@ async fn handle_social_agents_profile(req: Request, ctx: RouteContext<()>) -> Re
             "owner": {
                 "xHandle": author.as_ref().and_then(|a| a.get("owner_x_handle").cloned()).unwrap_or(serde_json::Value::Null),
                 "xName": author.as_ref().and_then(|a| a.get("owner_x_name").cloned()).unwrap_or(serde_json::Value::Null)
-            }
+            },
+            "avatar_url": author.as_ref().and_then(|a| a.get("avatar_url").cloned()).unwrap_or(serde_json::Value::Null)
         },
         "recentPosts": recent
     }))?;
@@ -941,6 +990,7 @@ async fn handle_social_agents_me(req: Request, ctx: RouteContext<()>) -> Result<
             "xHandle": row.get("owner_x_handle"),
             "xName": row.get("owner_x_name")
         },
+        "avatar_url": row.get("avatar_url"),
         "stats": null
     }))?;
     apply_cors(&mut response)?;
@@ -1016,16 +1066,16 @@ async fn handle_social_posts_create(mut req: Request, ctx: RouteContext<()>) -> 
         ])?
         .run()
         .await?;
-    let _ = db
-        .prepare("INSERT OR IGNORE INTO social_submolts (name, display_name, description, subscriber_count, owner_name) VALUES (?1, ?2, ?3, 0, ?4)")
-        .bind(&[
-            JsValue::from_str(&body.submolt),
-            JsValue::from_str(&body.submolt),
-            JsValue::from_str(""),
-            JsValue::from_str(&agent_name),
-        ])?
-        .run()
-        .await?;
+        let _ = db
+            .prepare("INSERT OR IGNORE INTO social_submolts (name, display_name, description, subscriber_count, owner_name) VALUES (?1, ?2, ?3, 0, ?4)")
+            .bind(&[
+                JsValue::from_str(&body.submolt),
+                JsValue::from_str(&body.submolt),
+                JsValue::from_str(""),
+                JsValue::from_str(&agent_name),
+            ])?
+            .run()
+            .await?;
     let post = serde_json::json!({
         "id": post_id,
         "submolt": body.submolt,
@@ -1420,6 +1470,217 @@ async fn handle_social_submolts_moderators_list(
     let mut response = Response::from_json(&moderators)?;
     apply_cors(&mut response)?;
     Ok(response)
+}
+
+async fn handle_social_submolts_settings_update(
+    mut req: Request,
+    ctx: RouteContext<()>,
+    submolt_name: &str,
+) -> Result<Response> {
+    let (_api_key, agent_name) = social_auth(&req, &ctx).await?;
+    let body: SubmoltSettingsBody = req.json().await.unwrap_or(SubmoltSettingsBody {
+        description: None,
+        banner_color: None,
+        theme_color: None,
+    });
+    if !is_submolt_owner(&ctx, submolt_name, &agent_name).await? {
+        return json_error("forbidden", 403);
+    }
+    let db = ctx.d1("SOCIAL_DB")?;
+    let _ = db
+        .prepare("UPDATE social_submolts SET description = COALESCE(?2, description), banner_color = COALESCE(?3, banner_color), theme_color = COALESCE(?4, theme_color), updated_at = ?5 WHERE name = ?1")
+        .bind(&[
+            JsValue::from_str(submolt_name),
+            serde_wasm_bindgen::to_value(&body.description).unwrap_or(JsValue::NULL),
+            serde_wasm_bindgen::to_value(&body.banner_color).unwrap_or(JsValue::NULL),
+            serde_wasm_bindgen::to_value(&body.theme_color).unwrap_or(JsValue::NULL),
+            JsValue::from_str(&now_iso()),
+        ])?
+        .run()
+        .await?;
+    handle_social_submolts_get(req, ctx, submolt_name).await
+}
+
+async fn handle_social_submolts_settings_upload(
+    mut req: Request,
+    ctx: RouteContext<()>,
+    submolt_name: &str,
+) -> Result<Response> {
+    let (_api_key, agent_name) = social_auth(&req, &ctx).await?;
+    if !is_submolt_owner(&ctx, submolt_name, &agent_name).await? {
+        return json_error("forbidden", 403);
+    }
+    let form = req.form_data().await?;
+    let Some(worker::FormEntry::File(file)) = form.get("file") else {
+        return json_error("file required", 400);
+    };
+    let asset_type = form.get_field("type").unwrap_or_else(|| "avatar".to_string());
+    let max_size = if asset_type == "banner" { 2_000_000 } else { 500_000 };
+    if file.size() > max_size {
+        return json_error("file too large", 400);
+    }
+    let bytes = file.bytes().await?;
+    let filename = file.name();
+    let key = format!(
+        "social/submolts/{}/{}/{}",
+        submolt_name,
+        asset_type,
+        filename
+    );
+    let bucket = ctx.env.bucket("SOCIAL_MEDIA")?;
+    let mut put = bucket.put(&key, bytes);
+    let mime = file.type_();
+    if !mime.is_empty() {
+        put = put.http_metadata(worker::HttpMetadata {
+            content_type: Some(mime),
+            ..Default::default()
+        });
+    }
+    put.execute().await?;
+    let url = format!("https://openagents.com/api/social/v1/media/{}", key);
+    let db = ctx.d1("SOCIAL_DB")?;
+    if asset_type == "banner" {
+        let _ = db
+            .prepare("UPDATE social_submolts SET banner_url = ?2, updated_at = ?3 WHERE name = ?1")
+            .bind(&[
+                JsValue::from_str(submolt_name),
+                JsValue::from_str(&url),
+                JsValue::from_str(&now_iso()),
+            ])?
+            .run()
+            .await?;
+    } else {
+        let _ = db
+            .prepare("UPDATE social_submolts SET avatar_url = ?2, updated_at = ?3 WHERE name = ?1")
+            .bind(&[
+                JsValue::from_str(submolt_name),
+                JsValue::from_str(&url),
+                JsValue::from_str(&now_iso()),
+            ])?
+            .run()
+            .await?;
+    }
+    handle_social_submolts_get(req, ctx, submolt_name).await
+}
+
+async fn handle_social_posts_pin(
+    req: Request,
+    ctx: RouteContext<()>,
+    post_id: &str,
+    pinned: bool,
+) -> Result<Response> {
+    let (_api_key, agent_name) = social_auth(&req, &ctx).await?;
+    let db = ctx.d1("SOCIAL_DB")?;
+    let stmt = db
+        .prepare("SELECT submolt FROM social_posts WHERE id = ?1")
+        .bind(&[JsValue::from_str(post_id)])?;
+    let row = stmt.first::<serde_json::Value>(None).await?;
+    let Some(submolt) = row.and_then(|r| r.get("submolt").and_then(|v| v.as_str()).map(|s| s.to_string())) else {
+        return json_error("post not found", 404);
+    };
+    if !is_submolt_owner_or_mod(&ctx, &submolt, &agent_name).await? {
+        return json_error("forbidden", 403);
+    }
+    let _ = db
+        .prepare("UPDATE social_posts SET is_pinned = ?2 WHERE id = ?1")
+        .bind(&[JsValue::from_str(post_id), JsValue::from_f64(if pinned { 1.0 } else { 0.0 })])?
+        .run()
+        .await?;
+    let mut response = Response::from_json(&serde_json::json!({ "success": true }))?;
+    apply_cors(&mut response)?;
+    Ok(response)
+}
+
+async fn handle_social_agents_avatar_upload(
+    mut req: Request,
+    ctx: RouteContext<()>,
+) -> Result<Response> {
+    let (_api_key, agent_name) = social_auth(&req, &ctx).await?;
+    let form = req.form_data().await?;
+    let Some(worker::FormEntry::File(file)) = form.get("file") else {
+        return json_error("file required", 400);
+    };
+    if file.size() > 500_000 {
+        return json_error("file too large", 400);
+    }
+    let bytes = file.bytes().await?;
+    let filename = file.name();
+    let key = format!("social/avatars/{}/{}", agent_name, filename);
+    let bucket = ctx.env.bucket("SOCIAL_MEDIA")?;
+    let mut put = bucket.put(&key, bytes);
+    let mime = file.type_();
+    if !mime.is_empty() {
+        put = put.http_metadata(worker::HttpMetadata {
+            content_type: Some(mime),
+            ..Default::default()
+        });
+    }
+    put.execute().await?;
+    let url = format!("https://openagents.com/api/social/v1/media/{}", key);
+    let db = ctx.d1("SOCIAL_DB")?;
+    let _ = db
+        .prepare("UPDATE social_agents SET avatar_url = ?2, last_active = ?3 WHERE name = ?1")
+        .bind(&[
+            JsValue::from_str(&agent_name),
+            JsValue::from_str(&url),
+            JsValue::from_str(&now_iso()),
+        ])?
+        .run()
+        .await?;
+    handle_social_agents_me(req, ctx).await
+}
+
+async fn handle_social_agents_avatar_remove(
+    req: Request,
+    ctx: RouteContext<()>,
+) -> Result<Response> {
+    let (_api_key, agent_name) = social_auth(&req, &ctx).await?;
+    let db = ctx.d1("SOCIAL_DB")?;
+    let _ = db
+        .prepare("UPDATE social_agents SET avatar_url = NULL, last_active = ?2 WHERE name = ?1")
+        .bind(&[JsValue::from_str(&agent_name), JsValue::from_str(&now_iso())])?
+        .run()
+        .await?;
+    handle_social_agents_me(req, ctx).await
+}
+
+async fn handle_social_media_get(req: Request, ctx: RouteContext<()>, key: &str) -> Result<Response> {
+    let _ = req;
+    let bucket = ctx.env.bucket("SOCIAL_MEDIA")?;
+    let object = bucket.get(key).execute().await?;
+    let Some(obj) = object else {
+        return json_error("not found", 404);
+    };
+    let body = obj.body().ok_or_else(|| worker::Error::RustError("missing body".into()))?;
+    let mut response = Response::from_body(body.response_body()?)?;
+    if let Some(content_type) = obj.http_metadata().content_type {
+        response.headers_mut().set("content-type", &content_type)?;
+    }
+    Ok(response)
+}
+
+async fn is_submolt_owner(ctx: &RouteContext<()>, submolt_name: &str, agent_name: &str) -> Result<bool> {
+    let db = ctx.d1("SOCIAL_DB")?;
+    let stmt = db
+        .prepare("SELECT owner_name FROM social_submolts WHERE name = ?1")
+        .bind(&[JsValue::from_str(submolt_name)])?;
+    let owner = stmt
+        .first::<serde_json::Value>(None)
+        .await?
+        .and_then(|r| r.get("owner_name").and_then(|v| v.as_str()).map(|s| s.to_string()));
+    Ok(owner.as_deref() == Some(agent_name))
+}
+
+async fn is_submolt_owner_or_mod(ctx: &RouteContext<()>, submolt_name: &str, agent_name: &str) -> Result<bool> {
+    if is_submolt_owner(ctx, submolt_name, agent_name).await? {
+        return Ok(true);
+    }
+    let db = ctx.d1("SOCIAL_DB")?;
+    let stmt = db
+        .prepare("SELECT agent_name FROM social_moderators WHERE submolt_name = ?1 AND agent_name = ?2")
+        .bind(&[JsValue::from_str(submolt_name), JsValue::from_str(agent_name)])?;
+    let row = stmt.first::<serde_json::Value>(None).await?;
+    Ok(row.is_some())
 }
 
 async fn handle_agents_wallet_onboarding(_: Request, _: RouteContext<()>) -> Result<Response> {
