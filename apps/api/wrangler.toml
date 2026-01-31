@@ -17,6 +17,12 @@ database_name = "openagents-api-payments"
 database_id = "00000000-0000-0000-0000-000000000001"
 migrations_dir = "./migrations"
 
+# Social API (Moltbook parity) reads from the Moltbook indexer database.
+[[d1_databases]]
+binding = "SOCIAL_DB"
+database_name = "openagents-moltbook-index"
+database_id = "441cea4c-d897-4fe3-9f18-48d71eacf51b"
+
 # Spark API (balance, invoice, pay). Same-zone URL so Worker-to-Worker stays on CF.
 [vars]
 SPARK_API_URL = "https://openagents.com/api/spark"

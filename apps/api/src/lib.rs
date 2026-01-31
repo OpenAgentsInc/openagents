@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashSet, VecDeque};
 use std::path::Path;
 use url::form_urlencoded;
+use wasm_bindgen::JsValue;
 use worker::*;
 
 const MOLTBOOK_SITE_DEFAULT: &str = "https://www.moltbook.com";
@@ -16,6 +17,7 @@ const MOLTBOOK_API_DEFAULT: &str = "https://www.moltbook.com/api/v1";
 const INDEX_LIMIT_DEFAULT: usize = 100;
 const INDEX_LIMIT_MAX: usize = 500;
 const WATCH_SEEN_CAP: usize = 2000;
+const SOCIAL_V1_BASE: &str = "/social/v1";
 
 static MOLTBOOK_DOCS: Dir = include_dir!("$CARGO_MANIFEST_DIR/../../crates/moltbook/docs");
 
@@ -126,6 +128,9 @@ async fn main(mut req: Request, env: Env, _ctx: Context) -> Result<Response> {
         .get_async("/agents/:id/balance", handle_agents_balance)
         .post_async("/payments/invoice", handle_payments_invoice)
         .post_async("/payments/pay", handle_payments_pay)
+        .get_async("/social/v1", handle_social_root)
+        .get_async("/social/v1/", handle_social_root)
+        .on_async("/social/v1/*path", handle_social_router)
         .get_async("/moltbook", handle_moltbook_root)
         .get_async("/moltbook/", handle_moltbook_root)
         .on_async("/moltbook/*path", handle_moltbook_router)
@@ -147,6 +152,7 @@ async fn handle_root(req: Request, _ctx: RouteContext<()>) -> Result<Response> {
         data: Some(serde_json::json!({
             "name": "openagents-api",
             "docs": "/moltbook",
+            "social_api": "/social/v1",
             "moltbook_proxy": "/moltbook/site/",
             "moltbook_api": "/moltbook/api/",
             "moltbook_index": "/moltbook/index",
@@ -168,6 +174,480 @@ async fn handle_health(_: Request, _: RouteContext<()>) -> Result<Response> {
         }),
         error: None,
     })?;
+    apply_cors(&mut response)?;
+    Ok(response)
+}
+
+// --- Social API (Moltbook parity, OpenAgents storage) ---
+
+#[derive(Debug, Deserialize)]
+struct SocialFeedQuery {
+    sort: Option<String>,
+    limit: Option<u32>,
+    submolt: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct SocialCommentsQuery {
+    sort: Option<String>,
+    limit: Option<u32>,
+}
+
+#[derive(Debug, Deserialize)]
+struct SocialSearchQuery {
+    q: Option<String>,
+    #[serde(rename = "type")]
+    r#type: Option<String>,
+    limit: Option<u32>,
+}
+
+#[derive(Debug, Deserialize)]
+struct SocialProfileQuery {
+    name: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct SocialPostRow {
+    id: String,
+    created_at: Option<String>,
+    submolt: Option<String>,
+    title: Option<String>,
+    content: Option<String>,
+    url: Option<String>,
+    author_name: Option<String>,
+    author_id: Option<String>,
+    score: Option<i64>,
+    comment_count: Option<i64>,
+}
+
+#[derive(Debug, Deserialize)]
+struct SocialCommentRow {
+    id: String,
+    post_id: String,
+    parent_id: Option<String>,
+    created_at: Option<String>,
+    author_name: Option<String>,
+    author_id: Option<String>,
+    content: Option<String>,
+    score: Option<i64>,
+}
+
+#[derive(Debug, Deserialize)]
+struct SocialSubmoltRow {
+    name: String,
+    post_count: Option<i64>,
+}
+
+fn social_limit(limit: Option<u32>, default_limit: u32, max_limit: u32) -> u32 {
+    limit.unwrap_or(default_limit).min(max_limit).max(1)
+}
+
+fn social_sort(sort: Option<String>) -> String {
+    sort.unwrap_or_else(|| "new".to_string())
+}
+
+fn post_row_to_value(row: SocialPostRow) -> serde_json::Value {
+    let author = row.author_name.map(|name| {
+        serde_json::json!({
+            "name": name,
+            "id": row.author_id
+        })
+    });
+    serde_json::json!({
+        "id": row.id,
+        "submolt": row.submolt,
+        "title": row.title,
+        "content": row.content,
+        "url": row.url,
+        "author": author,
+        "score": row.score,
+        "commentCount": row.comment_count,
+        "createdAt": row.created_at,
+        "isPinned": false
+    })
+}
+
+fn comment_row_to_value(row: SocialCommentRow) -> serde_json::Value {
+    let author = row.author_name.map(|name| {
+        serde_json::json!({
+            "name": name,
+            "id": row.author_id
+        })
+    });
+    serde_json::json!({
+        "id": row.id,
+        "post_id": row.post_id,
+        "parent_id": row.parent_id,
+        "content": row.content,
+        "author": author,
+        "score": row.score,
+        "created_at": row.created_at
+    })
+}
+
+async fn handle_social_root(_: Request, _: RouteContext<()>) -> Result<Response> {
+    let mut response = Response::from_json(&ApiResponse {
+        ok: true,
+        data: Some(serde_json::json!({
+            "base": SOCIAL_V1_BASE,
+            "docs": "/docs/social-api",
+            "endpoints": {
+                "agents": [
+                    "GET /agents/profile?name=",
+                    "GET /agents/me",
+                    "PATCH /agents/me",
+                    "POST /agents/register"
+                ],
+                "posts": [
+                    "GET /posts?sort=&limit=&submolt=",
+                    "GET /posts/{id}",
+                    "GET /posts/{id}/comments"
+                ],
+                "submolts": [
+                    "GET /submolts",
+                    "GET /submolts/{name}",
+                    "GET /submolts/{name}/feed"
+                ],
+                "search": [
+                    "GET /search?q=&type=&limit="
+                ]
+            }
+        })),
+        error: None,
+    })?;
+    apply_cors(&mut response)?;
+    Ok(response)
+}
+
+async fn handle_social_router(req: Request, ctx: RouteContext<()>) -> Result<Response> {
+    let path = ctx.param("path").map(|v| v.to_string()).unwrap_or_default();
+    let trimmed = path.trim_start_matches('/');
+    if trimmed.is_empty() {
+        return handle_social_root(req, ctx).await;
+    }
+    let segments: Vec<&str> = trimmed.split('/').collect();
+    match segments.as_slice() {
+        ["posts"] => handle_social_posts_feed(req, ctx).await,
+        ["posts", post_id] => handle_social_posts_get(req, ctx, post_id).await,
+        ["posts", post_id, "comments"] => handle_social_posts_comments(req, ctx, post_id).await,
+        ["feed"] => handle_social_feed(req, ctx).await,
+        ["search"] => handle_social_search(req, ctx).await,
+        ["submolts"] => handle_social_submolts_list(req, ctx).await,
+        ["submolts", name] => handle_social_submolts_get(req, ctx, name).await,
+        ["submolts", name, "feed"] => handle_social_submolts_feed(req, ctx, name).await,
+        ["agents", "profile"] => handle_social_agents_profile(req, ctx).await,
+        _ => {
+            let mut response = Response::from_json(&ApiResponse::<serde_json::Value> {
+                ok: false,
+                data: None,
+                error: Some("not found".to_string()),
+            })?;
+            response = response.with_status(404);
+            apply_cors(&mut response)?;
+            Ok(response)
+        }
+    }
+}
+
+async fn handle_social_posts_feed(req: Request, ctx: RouteContext<()>) -> Result<Response> {
+    let url = req.url()?;
+    let query: SocialFeedQuery = serde_qs::from_str(url.query().unwrap_or("")).unwrap_or(
+        SocialFeedQuery {
+            sort: None,
+            limit: None,
+            submolt: None,
+        },
+    );
+    let sort = social_sort(query.sort);
+    let limit = social_limit(query.limit, 25, 100) as i64;
+    let db = ctx.d1("SOCIAL_DB")?;
+    let mut sql = String::from("SELECT id, created_at, submolt, title, content, url, author_name, author_id, score, comment_count FROM moltbook_posts");
+    let mut binds: Vec<JsValue> = Vec::new();
+    if let Some(submolt) = query.submolt {
+        sql.push_str(" WHERE submolt = ?1");
+        binds.push(JsValue::from_str(&submolt));
+    }
+    let order = match sort.as_str() {
+        "top" => "ORDER BY score DESC, created_at DESC",
+        "hot" | "rising" => "ORDER BY score DESC, created_at DESC",
+        _ => "ORDER BY created_at DESC",
+    };
+    sql.push_str(&format!(" {order} LIMIT {limit}"));
+    let stmt = if binds.is_empty() {
+        db.prepare(&sql)
+    } else {
+        db.prepare(&sql).bind(&binds)?
+    };
+    let rows = stmt.all().await?.results::<SocialPostRow>()?;
+    let posts: Vec<serde_json::Value> = rows.into_iter().map(post_row_to_value).collect();
+    let mut response = Response::from_json(&serde_json::json!({ "posts": posts }))?;
+    apply_cors(&mut response)?;
+    Ok(response)
+}
+
+async fn handle_social_posts_get(req: Request, ctx: RouteContext<()>, post_id: &str) -> Result<Response> {
+    let _ = req;
+    let db = ctx.d1("SOCIAL_DB")?;
+    let stmt = db
+        .prepare("SELECT id, created_at, submolt, title, content, url, author_name, author_id, score, comment_count FROM moltbook_posts WHERE id = ?1")
+        .bind(&[JsValue::from_str(post_id)])?;
+    let row = stmt.first::<SocialPostRow>(None).await?;
+    let mut response = if let Some(row) = row {
+        Response::from_json(&post_row_to_value(row))?
+    } else {
+        Response::from_json(&ApiResponse::<serde_json::Value> {
+            ok: false,
+            data: None,
+            error: Some("post not found".to_string()),
+        })?
+        .with_status(404)
+    };
+    apply_cors(&mut response)?;
+    Ok(response)
+}
+
+async fn handle_social_posts_comments(
+    req: Request,
+    ctx: RouteContext<()>,
+    post_id: &str,
+) -> Result<Response> {
+    let url = req.url()?;
+    let query: SocialCommentsQuery =
+        serde_qs::from_str(url.query().unwrap_or("")).unwrap_or(SocialCommentsQuery {
+            sort: None,
+            limit: None,
+        });
+    let sort = social_sort(query.sort);
+    let limit = social_limit(query.limit, 50, 100) as i64;
+    let order = match sort.as_str() {
+        "top" | "controversial" => "ORDER BY score DESC, created_at DESC",
+        _ => "ORDER BY created_at ASC",
+    };
+    let db = ctx.d1("SOCIAL_DB")?;
+    let stmt = db
+        .prepare(&format!(
+            "SELECT id, post_id, parent_id, created_at, author_name, author_id, content, score FROM moltbook_comments WHERE post_id = ?1 {order} LIMIT {limit}"
+        ))
+        .bind(&[JsValue::from_str(post_id)])?;
+    let rows = stmt.all().await?.results::<SocialCommentRow>()?;
+    let comments: Vec<serde_json::Value> = rows.into_iter().map(comment_row_to_value).collect();
+    let mut response = Response::from_json(&serde_json::json!({ "comments": comments }))?;
+    apply_cors(&mut response)?;
+    Ok(response)
+}
+
+async fn handle_social_feed(req: Request, ctx: RouteContext<()>) -> Result<Response> {
+    handle_social_posts_feed(req, ctx).await
+}
+
+async fn handle_social_search(req: Request, ctx: RouteContext<()>) -> Result<Response> {
+    let url = req.url()?;
+    let query: SocialSearchQuery =
+        serde_qs::from_str(url.query().unwrap_or("")).unwrap_or(SocialSearchQuery {
+            q: None,
+            r#type: None,
+            limit: None,
+        });
+    let q = query.q.unwrap_or_default();
+    if q.is_empty() {
+        let mut response = Response::from_json(&ApiResponse::<serde_json::Value> {
+            ok: false,
+            data: None,
+            error: Some("missing q".to_string()),
+        })?
+        .with_status(400);
+        apply_cors(&mut response)?;
+        return Ok(response);
+    }
+    let limit = social_limit(query.limit, 20, 50) as i64;
+    let kind = query.r#type.unwrap_or_else(|| "all".to_string());
+    let like = format!("%{}%", q);
+    let db = ctx.d1("SOCIAL_DB")?;
+    let mut results: Vec<serde_json::Value> = Vec::new();
+    if kind == "all" || kind == "posts" {
+        let stmt = db.prepare(
+            "SELECT id, created_at, submolt, title, content, url, author_name, author_id, score, comment_count FROM moltbook_posts WHERE title LIKE ?1 OR content LIKE ?1 ORDER BY created_at DESC LIMIT ?2",
+        ).bind(&[JsValue::from_str(&like), JsValue::from_f64(limit as f64)])?;
+        let rows = stmt.all().await?.results::<SocialPostRow>()?;
+        results.extend(rows.into_iter().map(|row| {
+            serde_json::json!({
+                "id": row.id,
+                "type": "post",
+                "title": row.title,
+                "content": row.content,
+                "upvotes": row.score,
+                "downvotes": 0,
+                "created_at": row.created_at,
+                "author": {
+                    "name": row.author_name,
+                    "id": row.author_id
+                },
+                "post_id": row.id
+            })
+        }));
+    }
+    if kind == "all" || kind == "comments" {
+        let stmt = db.prepare(
+            "SELECT id, post_id, parent_id, created_at, author_name, author_id, content, score FROM moltbook_comments WHERE content LIKE ?1 ORDER BY created_at DESC LIMIT ?2",
+        ).bind(&[JsValue::from_str(&like), JsValue::from_f64(limit as f64)])?;
+        let rows = stmt.all().await?.results::<SocialCommentRow>()?;
+        results.extend(rows.into_iter().map(|row| {
+            serde_json::json!({
+                "id": row.id,
+                "type": "comment",
+                "title": null,
+                "content": row.content,
+                "upvotes": row.score,
+                "downvotes": 0,
+                "created_at": row.created_at,
+                "author": {
+                    "name": row.author_name,
+                    "id": row.author_id
+                },
+                "post_id": row.post_id
+            })
+        }));
+    }
+    let mut response = Response::from_json(&serde_json::json!({
+        "success": true,
+        "query": q,
+        "type": kind,
+        "results": results,
+        "count": results.len()
+    }))?;
+    apply_cors(&mut response)?;
+    Ok(response)
+}
+
+async fn handle_social_submolts_list(_: Request, ctx: RouteContext<()>) -> Result<Response> {
+    let db = ctx.d1("SOCIAL_DB")?;
+    let stmt = db.prepare(
+        "SELECT submolt AS name, COUNT(*) as post_count FROM moltbook_posts WHERE submolt IS NOT NULL GROUP BY submolt ORDER BY post_count DESC LIMIT 200",
+    );
+    let rows = stmt.all().await?.results::<SocialSubmoltRow>()?;
+    let submolts: Vec<serde_json::Value> = rows
+        .into_iter()
+        .map(|row| {
+            serde_json::json!({
+                "name": row.name,
+                "display_name": null,
+                "description": null,
+                "subscriber_count": row.post_count,
+                "your_role": null,
+                "avatar_url": null,
+                "banner_url": null
+            })
+        })
+        .collect();
+    let mut response = Response::from_json(&serde_json::json!({ "submolts": submolts }))?;
+    apply_cors(&mut response)?;
+    Ok(response)
+}
+
+async fn handle_social_submolts_get(
+    _: Request,
+    ctx: RouteContext<()>,
+    submolt_name: &str,
+) -> Result<Response> {
+    let db = ctx.d1("SOCIAL_DB")?;
+    let stmt = db
+        .prepare(
+            "SELECT submolt AS name, COUNT(*) as post_count FROM moltbook_posts WHERE submolt = ?1 GROUP BY submolt LIMIT 1",
+        )
+        .bind(&[JsValue::from_str(submolt_name)])?;
+    let row = stmt.first::<SocialSubmoltRow>(None).await?;
+    let mut response = if let Some(row) = row {
+        Response::from_json(&serde_json::json!({
+            "name": row.name,
+            "display_name": null,
+            "description": null,
+            "subscriber_count": row.post_count,
+            "your_role": null,
+            "avatar_url": null,
+            "banner_url": null
+        }))?
+    } else {
+        Response::from_json(&ApiResponse::<serde_json::Value> {
+            ok: false,
+            data: None,
+            error: Some("submolt not found".to_string()),
+        })?
+        .with_status(404)
+    };
+    apply_cors(&mut response)?;
+    Ok(response)
+}
+
+async fn handle_social_submolts_feed(
+    req: Request,
+    ctx: RouteContext<()>,
+    submolt_name: &str,
+) -> Result<Response> {
+    let mut url = req.url()?;
+    let mut query = url.query().unwrap_or("").to_string();
+    if !query.is_empty() {
+        query.push('&');
+    }
+    query.push_str(&format!("submolt={}", submolt_name));
+    url.set_query(Some(&query));
+    let mut init = RequestInit::new();
+    init.with_method(req.method().clone());
+    let forward = Request::new_with_init(url.as_str(), &init)?;
+    handle_social_posts_feed(forward, ctx).await
+}
+
+async fn handle_social_agents_profile(req: Request, ctx: RouteContext<()>) -> Result<Response> {
+    let url = req.url()?;
+    let query: SocialProfileQuery =
+        serde_qs::from_str(url.query().unwrap_or("")).unwrap_or(SocialProfileQuery { name: None });
+    let Some(name) = query.name else {
+        let mut response = Response::from_json(&ApiResponse::<serde_json::Value> {
+            ok: false,
+            data: None,
+            error: Some("missing name".to_string()),
+        })?
+        .with_status(400);
+        apply_cors(&mut response)?;
+        return Ok(response);
+    };
+    let db = ctx.d1("SOCIAL_DB")?;
+    let stmt = db
+        .prepare("SELECT name FROM moltbook_authors WHERE name = ?1 LIMIT 1")
+        .bind(&[JsValue::from_str(&name)])?;
+    let author = stmt.first::<serde_json::Value>(None).await?;
+    if author.is_none() {
+        let mut response = Response::from_json(&ApiResponse::<serde_json::Value> {
+            ok: false,
+            data: None,
+            error: Some("agent not found".to_string()),
+        })?
+        .with_status(404);
+        apply_cors(&mut response)?;
+        return Ok(response);
+    }
+    let posts_stmt = db
+        .prepare(
+            "SELECT id, created_at, submolt, title, content, url, author_name, author_id, score, comment_count FROM moltbook_posts WHERE author_name = ?1 ORDER BY created_at DESC LIMIT 10",
+        )
+        .bind(&[JsValue::from_str(&name)])?;
+    let posts = posts_stmt.all().await?.results::<SocialPostRow>()?;
+    let recent: Vec<serde_json::Value> = posts.into_iter().map(post_row_to_value).collect();
+    let mut response = Response::from_json(&serde_json::json!({
+        "success": true,
+        "agent": {
+            "name": name,
+            "description": null,
+            "karma": null,
+            "follower_count": null,
+            "following_count": null,
+            "is_claimed": null,
+            "is_active": null,
+            "created_at": null,
+            "last_active": null,
+            "owner": null
+        },
+        "recentPosts": recent
+    }))?;
     apply_cors(&mut response)?;
     Ok(response)
 }
@@ -307,19 +787,20 @@ async fn handle_agents_balance(req: Request, ctx: RouteContext<()>) -> Result<Re
     let id = ctx.param("id").ok_or_else(|| worker::Error::RustError("invalid id".into()))?;
     if let Ok(spark_url) = ctx.var("SPARK_API_URL") {
         let url = format!("{}/agents/{}/balance", spark_url.to_string(), id);
-        let mut init = RequestInit::new().with_method(Method::Get);
+        let mut init = RequestInit::new();
+        init.with_method(Method::Get);
         let headers = Headers::new();
         if let Ok(Some(auth)) = req.headers().get("authorization") {
             let _ = headers.set("authorization", &auth);
         }
         init.with_headers(headers);
         let proxy = Request::new_with_init(&url, &init)?;
-        let resp = Fetch::Request(proxy).send().await?;
+        let mut resp = Fetch::Request(proxy).send().await?;
         let status = resp.status_code();
         let text = resp.text().await.unwrap_or_default();
         let data: serde_json::Value = serde_json::from_str(&text).unwrap_or(serde_json::Value::Null);
         let mut out = Response::from_json(&ApiResponse { ok: status >= 200 && status < 300, data: Some(data), error: None })?;
-        out.set_status(status);
+        out = out.with_status(status);
         apply_cors(&mut out)?;
         return Ok(out);
     }
@@ -338,22 +819,22 @@ async fn handle_payments_invoice(mut req: Request, ctx: RouteContext<()>) -> Res
     if let Ok(spark_url) = ctx.var("SPARK_API_URL") {
         let url = format!("{}/payments/invoice", spark_url.to_string());
         let body_json = serde_json::json!({ "agent_id": body.agent_id, "amount_sats": body.amount_sats, "description": body.description });
-        let mut headers = Headers::new();
+        let headers = Headers::new();
         let _ = headers.set("content-type", "application/json");
         if let Ok(Some(auth)) = req.headers().get("authorization") {
             let _ = headers.set("authorization", &auth);
         }
-        let init = RequestInit::new()
-            .with_method(Method::Post)
-            .with_headers(headers)
-            .with_body(Some(worker::Body::from(body_json.to_string())));
+        let mut init = RequestInit::new();
+        init.with_method(Method::Post);
+        init.with_headers(headers);
+        init.with_body(Some(JsValue::from_str(&body_json.to_string())));
         let proxy = Request::new_with_init(&url, &init)?;
-        let resp = Fetch::Request(proxy).send().await?;
+        let mut resp = Fetch::Request(proxy).send().await?;
         let status = resp.status_code();
         let text = resp.text().await.unwrap_or_default();
         let data: serde_json::Value = serde_json::from_str(&text).unwrap_or(serde_json::json!({ "error": text }));
         let mut out = Response::from_json(&ApiResponse { ok: status >= 200 && status < 300, data: Some(data), error: None })?;
-        out.set_status(status);
+        out = out.with_status(status);
         apply_cors(&mut out)?;
         return Ok(out);
     }
@@ -374,9 +855,9 @@ async fn handle_payments_pay(mut req: Request, ctx: RouteContext<()>) -> Result<
     if let Ok(spark_url) = ctx.var("SPARK_API_URL") {
         let url = format!("{}/payments/pay", spark_url.to_string());
         let body_json = serde_json::json!({ "agent_id": body.agent_id, "invoice": body.invoice });
-        let init = RequestInit::new()
-            .with_method(Method::Post)
-            .with_body(Some(worker::Body::from(body_json.to_string())));
+        let mut init = RequestInit::new();
+        init.with_method(Method::Post);
+        init.with_body(Some(JsValue::from_str(&body_json.to_string())));
         let mut proxy = Request::new_with_init(&url, &init)?;
         proxy.headers_mut()?.set("content-type", "application/json")?;
         if let Ok(h) = req.headers().get("authorization") {
@@ -384,12 +865,12 @@ async fn handle_payments_pay(mut req: Request, ctx: RouteContext<()>) -> Result<
                 proxy.headers_mut()?.set("authorization", &auth)?;
             }
         }
-        let resp = Fetch::Request(proxy).send().await?;
+        let mut resp = Fetch::Request(proxy).send().await?;
         let status = resp.status_code();
         let text = resp.text().await.unwrap_or_default();
         let data: serde_json::Value = serde_json::from_str(&text).unwrap_or(serde_json::json!({ "error": text }));
         let mut out = Response::from_json(&ApiResponse { ok: status >= 200 && status < 300, data: Some(data), error: None })?;
-        out.set_status(status);
+        out = out.with_status(status);
         apply_cors(&mut out)?;
         return Ok(out);
     }
