@@ -210,6 +210,12 @@ pub enum UserAction {
         provider: Option<String>,
     },
     MoltbookRefresh,
+    MoltbookLoadComments {
+        post_id: String,
+    },
+    MoltbookReply {
+        post_id: String,
+    },
     MoltbookSay {
         text: String,
         submolt: Option<String>,
@@ -333,6 +339,18 @@ pub struct MoltbookPostSummary {
     pub submolt: Option<String>,
 }
 
+/// Summary of a Moltbook comment for UI rendering.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MoltbookCommentSummary {
+    pub id: String,
+    pub post_id: Option<String>,
+    pub parent_id: Option<String>,
+    pub content: Option<String>,
+    pub author_name: Option<String>,
+    pub score: Option<i64>,
+    pub created_at: Option<String>,
+}
+
 /// Summary of the current Moltbook agent profile (stats for engagement UI).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct MoltbookProfileSummary {
@@ -398,6 +416,10 @@ pub enum AppEvent {
     },
     MoltbookFeedUpdated {
         posts: Vec<MoltbookPostSummary>,
+    },
+    MoltbookCommentsLoaded {
+        post_id: String,
+        comments: Vec<MoltbookCommentSummary>,
     },
     MoltbookLog {
         message: String,

@@ -5,8 +5,8 @@ use std::rc::Rc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use autopilot_app::{
-    AppEvent, MoltbookPostSummary, MoltbookProfileSummary, SessionId, ThreadSnapshot,
-    ThreadSummary, UserAction, WorkspaceId,
+    AppEvent, MoltbookCommentSummary, MoltbookPostSummary, MoltbookProfileSummary, SessionId,
+    ThreadSnapshot, ThreadSummary, UserAction, WorkspaceId,
 };
 use bip39::Mnemonic;
 use editor::{Editor, EditorElement, SyntaxLanguage};
@@ -184,6 +184,7 @@ impl AppViewModel {
             AppEvent::DvmHistory { .. } => {}
             AppEvent::Nip90Log { .. } => {}
             AppEvent::MoltbookFeedUpdated { .. } => {}
+            AppEvent::MoltbookCommentsLoaded { .. } => {}
             AppEvent::MoltbookLog { .. } => {}
             AppEvent::MoltbookProfileLoaded { .. } => {}
             AppEvent::ThreadsUpdated { .. } => {}
@@ -775,6 +776,7 @@ pub struct MinimalRoot {
     moltbook_feed_scroll_bounds: Bounds,
     moltbook_post_panes: HashMap<String, MoltbookPostPane>,
     pending_moltbook_refresh: Rc<RefCell<bool>>,
+    pending_moltbook_replies: Rc<RefCell<Vec<String>>>,
     nostr_npub: Option<String>,
     nostr_nsec: Option<String>,
     spark_pubkey_hex: Option<String>,
@@ -2734,6 +2736,7 @@ impl MinimalRoot {
             .on_click(move || {
                 *pending_moltbook_refresh_click.borrow_mut() = true;
             });
+        let pending_moltbook_replies = Rc::new(RefCell::new(Vec::new()));
         let event_scroll = ScrollView::new().show_scrollbar(true).scrollbar_width(6.0);
         let moltbook_feed_scroll = ScrollView::new().show_scrollbar(true).scrollbar_width(6.0);
         let hotbar = Hotbar::new()
@@ -2840,6 +2843,7 @@ impl MinimalRoot {
             moltbook_feed_scroll_bounds: Bounds::ZERO,
             moltbook_post_panes: HashMap::new(),
             pending_moltbook_refresh,
+            pending_moltbook_replies,
             nostr_npub: None,
             nostr_nsec: None,
             spark_pubkey_hex: None,
@@ -2975,6 +2979,13 @@ impl MinimalRoot {
                 self.moltbook_feed = posts;
                 self.moltbook_feed_scroll.scroll_to(Point::new(0.0, 0.0));
                 self.refresh_moltbook_post_panes();
+            }
+            AppEvent::MoltbookCommentsLoaded { post_id, comments } => {
+                for pane in self.moltbook_post_panes.values_mut() {
+                    if pane.post_id == post_id {
+                        pane.set_comments(comments.clone());
+                    }
+                }
             }
             AppEvent::MoltbookLog { message } => {
                 self.moltbook_log.push(message);
@@ -3543,6 +3554,13 @@ impl MinimalRoot {
             if let Some(existing) = self.moltbook_post_panes.get_mut(&pane_id) {
                 existing.update_from(&post);
                 self.pane_store.set_title(&pane_id, existing.title.clone());
+                if existing.comments.is_empty() {
+                    if let Some(handler) = self.send_handler.as_mut() {
+                        handler(UserAction::MoltbookLoadComments {
+                            post_id: post.id.clone(),
+                        });
+                    }
+                }
             }
             self.pane_store.bring_to_front(&pane_id);
             return;
@@ -3562,8 +3580,14 @@ impl MinimalRoot {
             dismissable: true,
         };
         self.pane_store.add_pane(pane);
-        let pane_state = MoltbookPostPane::new(&post, title);
+        let pane_state =
+            MoltbookPostPane::new(&post, title, self.pending_moltbook_replies.clone());
         self.moltbook_post_panes.insert(pane_id, pane_state);
+        if let Some(handler) = self.send_handler.as_mut() {
+            handler(UserAction::MoltbookLoadComments {
+                post_id: post.id.clone(),
+            });
+        }
     }
 
     fn refresh_moltbook_post_panes(&mut self) {
@@ -4578,6 +4602,14 @@ impl MinimalRoot {
                         }
                         PaneKind::MoltbookPost => {
                             if let Some(post_pane) = self.moltbook_post_panes.get_mut(&pane_id) {
+                                let reply_handled = matches!(
+                                    post_pane.reply_button.event(
+                                        event,
+                                        post_pane.reply_bounds,
+                                        &mut self.event_context
+                                    ),
+                                    EventResult::Handled
+                                );
                                 let scroll_handled = post_pane.scroll_bounds.contains(
                                     self.cursor_position,
                                 ) && matches!(
@@ -4588,7 +4620,7 @@ impl MinimalRoot {
                                     ),
                                     EventResult::Handled
                                 );
-                                handled |= scroll_handled;
+                                handled |= reply_handled || scroll_handled;
                             }
                         }
                     }
@@ -4790,6 +4822,18 @@ impl MinimalRoot {
         if should_moltbook_refresh {
             if let Some(handler) = self.send_handler.as_mut() {
                 handler(UserAction::MoltbookRefresh);
+            }
+        }
+
+        let pending_replies = {
+            let mut pending = self.pending_moltbook_replies.borrow_mut();
+            std::mem::take(&mut *pending)
+        };
+        if !pending_replies.is_empty() {
+            if let Some(handler) = self.send_handler.as_mut() {
+                for post_id in pending_replies {
+                    handler(UserAction::MoltbookReply { post_id });
+                }
             }
         }
 
@@ -5046,6 +5090,12 @@ impl MinimalRoot {
             .any(|chat| chat.stop_button.is_hovered() && !chat.stop_button.is_disabled())
         {
             Cursor::Pointer
+        } else if self
+            .moltbook_post_panes
+            .values()
+            .any(|pane| pane.reply_button.is_hovered() && !pane.reply_button.is_disabled())
+        {
+            Cursor::Pointer
         } else if self.keygen_button.is_hovered() {
             Cursor::Pointer
         } else if self.pylon_toggle_button.is_hovered() {
@@ -5215,6 +5265,9 @@ impl Component for MinimalRoot {
 
             if let PaneKind::Moltbook = pane.kind {
                 paint_moltbook_header(self, &pane.title, title_bounds, close_bounds, cx);
+            }
+            if let PaneKind::MoltbookPost = pane.kind {
+                paint_moltbook_post_header(self, &pane.id, title_bounds, close_bounds, cx);
             }
             match pane.kind {
                 PaneKind::Chat => {
@@ -6810,6 +6863,8 @@ struct MoltbookPostView {
     meta: String,
     markdown: MarkdownDocument,
     markdown_config: MarkdownConfig,
+    comments: Vec<MoltbookCommentSummary>,
+    comment_docs: Vec<MarkdownDocument>,
 }
 
 impl MoltbookPostView {
@@ -6818,12 +6873,16 @@ impl MoltbookPostView {
         meta: String,
         markdown: MarkdownDocument,
         markdown_config: MarkdownConfig,
+        comments: Vec<MoltbookCommentSummary>,
+        comment_docs: Vec<MarkdownDocument>,
     ) -> Self {
         Self {
             title,
             meta,
             markdown,
             markdown_config,
+            comments,
+            comment_docs,
         }
     }
 }
@@ -6833,6 +6892,9 @@ impl Component for MoltbookPostView {
         let padding = 16.0;
         let title_gap = 6.0;
         let meta_gap = 12.0;
+        let section_gap = 12.0;
+        let comment_gap = 10.0;
+        let comment_header_gap = 4.0;
         let title_size = theme::font_size::SM;
         let meta_size = theme::font_size::XS;
 
@@ -6862,20 +6924,63 @@ impl Component for MoltbookPostView {
         }
 
         let renderer = MarkdownRenderer::with_config(self.markdown_config.clone());
-        let body_height = (bounds.origin.y + bounds.size.height - padding - y).max(0.0);
-        if body_height <= 0.0 {
-            return;
+        let body_size = renderer.measure(&self.markdown, inner_width, &mut cx.text);
+        if body_size.height > 0.0 {
+            let body_bounds = Bounds::new(inner_x, y, inner_width, body_size.height);
+            cx.scene.push_clip(body_bounds);
+            renderer.render(
+                &self.markdown,
+                Point::new(body_bounds.origin.x, body_bounds.origin.y),
+                body_bounds.size.width,
+                &mut cx.text,
+                &mut cx.scene,
+            );
+            cx.scene.pop_clip();
         }
-        let body_bounds = Bounds::new(inner_x, y, inner_width, body_height);
-        cx.scene.push_clip(body_bounds);
-        renderer.render(
-            &self.markdown,
-            Point::new(body_bounds.origin.x, body_bounds.origin.y),
-            body_bounds.size.width,
-            &mut cx.text,
-            &mut cx.scene,
-        );
-        cx.scene.pop_clip();
+        y += body_size.height;
+
+        if !self.comments.is_empty() {
+            y += section_gap;
+            let mut header_text = Text::new("Comments")
+                .font_size(meta_size)
+                .color(theme::text::PRIMARY)
+                .bold();
+            let (_, header_h) = header_text.size_hint_with_width(inner_width);
+            let header_h = header_h.unwrap_or(meta_size + 4.0);
+            let header_bounds = Bounds::new(inner_x, y, inner_width, header_h);
+            header_text.paint(header_bounds, cx);
+            y += header_h + comment_header_gap;
+
+            for (index, comment) in self.comments.iter().enumerate() {
+                let comment_header = moltbook_comment_header(comment);
+                let mut comment_header_text = Text::new(comment_header.as_str())
+                    .font_size(meta_size)
+                    .color(theme::text::MUTED);
+                let (_, header_h) = comment_header_text.size_hint_with_width(inner_width);
+                let header_h = header_h.unwrap_or(meta_size + 4.0);
+                let header_bounds = Bounds::new(inner_x, y, inner_width, header_h);
+                comment_header_text.paint(header_bounds, cx);
+                y += header_h + comment_header_gap;
+
+                let doc = self
+                    .comment_docs
+                    .get(index)
+                    .cloned()
+                    .unwrap_or_default();
+                let comment_size = renderer.measure(&doc, inner_width, &mut cx.text);
+                let comment_bounds = Bounds::new(inner_x, y, inner_width, comment_size.height);
+                cx.scene.push_clip(comment_bounds);
+                renderer.render(
+                    &doc,
+                    Point::new(comment_bounds.origin.x, comment_bounds.origin.y),
+                    comment_bounds.size.width,
+                    &mut cx.text,
+                    &mut cx.scene,
+                );
+                cx.scene.pop_clip();
+                y += comment_size.height + comment_gap;
+            }
+        }
     }
 }
 
@@ -6982,26 +7087,70 @@ fn moltbook_post_document(post: &MoltbookPostSummary, config: &MarkdownConfig) -
     parser.parse(&content)
 }
 
+fn moltbook_comment_header(comment: &MoltbookCommentSummary) -> String {
+    let mut parts = Vec::new();
+    if let Some(author) = comment.author_name.as_deref() {
+        if !author.trim().is_empty() {
+            parts.push(author.to_string());
+        }
+    }
+    if let Some(score) = comment.score {
+        parts.push(format!("{score} ↑"));
+    }
+    if let Some(created_at) = comment.created_at.as_deref() {
+        if !created_at.trim().is_empty() {
+            parts.push(created_at.to_string());
+        }
+    }
+    if parts.is_empty() {
+        "Comment".to_string()
+    } else {
+        parts.join(" · ")
+    }
+}
+
 struct MoltbookPostPane {
     post_id: String,
     title: String,
     meta: String,
     markdown: MarkdownDocument,
     markdown_config: MarkdownConfig,
+    comments: Vec<MoltbookCommentSummary>,
+    comment_docs: Vec<MarkdownDocument>,
+    reply_button: Button,
+    reply_bounds: Bounds,
     scroll: ScrollView,
     scroll_bounds: Bounds,
 }
 
 impl MoltbookPostPane {
-    fn new(post: &MoltbookPostSummary, title: String) -> Self {
+    fn new(
+        post: &MoltbookPostSummary,
+        title: String,
+        pending_replies: Rc<RefCell<Vec<String>>>,
+    ) -> Self {
         let markdown_config = moltbook_markdown_config(theme::font_size::SM);
         let markdown = moltbook_post_document(post, &markdown_config);
+        let post_id = post.id.clone();
+        let pending_reply_click = pending_replies.clone();
+        let reply_button = Button::new("[+Reply]")
+            .variant(ButtonVariant::Secondary)
+            .font_size(theme::font_size::XS)
+            .padding(8.0, 4.0)
+            .corner_radius(6.0)
+            .on_click(move || {
+                pending_reply_click.borrow_mut().push(post_id.clone());
+            });
         Self {
             post_id: post.id.clone(),
             title,
             meta: moltbook_post_meta(post),
             markdown,
             markdown_config,
+            comments: Vec::new(),
+            comment_docs: Vec::new(),
+            reply_button,
+            reply_bounds: Bounds::ZERO,
             scroll: ScrollView::new().show_scrollbar(true).scrollbar_width(6.0),
             scroll_bounds: Bounds::ZERO,
         }
@@ -7011,6 +7160,22 @@ impl MoltbookPostPane {
         self.title = moltbook_post_title(post);
         self.meta = moltbook_post_meta(post);
         self.markdown = moltbook_post_document(post, &self.markdown_config);
+    }
+
+    fn set_comments(&mut self, comments: Vec<MoltbookCommentSummary>) {
+        let parser = MarkdownParser::with_config(self.markdown_config.clone());
+        self.comment_docs = comments
+            .iter()
+            .map(|comment| {
+                let content = comment.content.as_deref().unwrap_or("");
+                if content.is_empty() {
+                    MarkdownDocument::default()
+                } else {
+                    parser.parse(content)
+                }
+            })
+            .collect();
+        self.comments = comments;
     }
 }
 
@@ -7111,6 +7276,40 @@ fn paint_moltbook_header(
         root.moltbook_refresh_bounds = Bounds::ZERO;
     }
     cx.scene.pop_clip();
+}
+
+fn paint_moltbook_post_header(
+    root: &mut MinimalRoot,
+    pane_id: &str,
+    title_bounds: Bounds,
+    close_bounds: Bounds,
+    cx: &mut PaintContext,
+) {
+    let Some(post_pane) = root.moltbook_post_panes.get_mut(pane_id) else {
+        return;
+    };
+
+    let text_size = theme::font_size::XS;
+    let padding = 8.0;
+    let gap = 6.0;
+
+    let mut right = title_bounds.origin.x + title_bounds.size.width - padding;
+    if close_bounds.size.width > 0.0 {
+        right = close_bounds.origin.x - gap;
+    }
+
+    let label = post_pane.reply_button.label();
+    let text_width =
+        cx.text
+            .measure_styled_mono(label, text_size, FontStyle::default());
+    let button_width = (text_width + 16.0).max(64.0);
+    let button_height = (title_bounds.size.height - 6.0).max(18.0);
+    let x = (right - button_width).max(title_bounds.origin.x + padding);
+    let y = title_bounds.origin.y + (title_bounds.size.height - button_height) * 0.5;
+    let button_bounds = Bounds::new(x, y, button_width, button_height);
+
+    post_pane.reply_bounds = button_bounds;
+    post_pane.reply_button.paint(button_bounds, cx);
 }
 
 fn paint_moltbook_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintContext) {
@@ -7227,11 +7426,45 @@ fn paint_moltbook_post_pane(
     let renderer = MarkdownRenderer::with_config(post_pane.markdown_config.clone());
     let body_size = renderer.measure(&post_pane.markdown, inner_width, &mut cx.text);
 
+    let mut comments_height = 0.0;
+    if !post_pane.comments.is_empty() {
+        let meta_size = theme::font_size::XS;
+        let section_gap = 12.0;
+        let comment_gap = 10.0;
+        let comment_header_gap = 4.0;
+
+        let mut header_text = Text::new("Comments")
+            .font_size(meta_size)
+            .color(theme::text::PRIMARY)
+            .bold();
+        let (_, header_h) = header_text.size_hint_with_width(inner_width);
+        let header_h = header_h.unwrap_or(meta_size + 4.0);
+        comments_height += section_gap + header_h + comment_header_gap;
+
+        for (index, comment) in post_pane.comments.iter().enumerate() {
+            let comment_header = moltbook_comment_header(comment);
+            let mut comment_header_text = Text::new(comment_header.as_str())
+                .font_size(meta_size)
+                .color(theme::text::MUTED);
+            let (_, header_h) = comment_header_text.size_hint_with_width(inner_width);
+            let header_h = header_h.unwrap_or(meta_size + 4.0);
+            comments_height += header_h + comment_header_gap;
+
+            let doc = post_pane
+                .comment_docs
+                .get(index)
+                .cloned()
+                .unwrap_or_default();
+            let comment_size = renderer.measure(&doc, inner_width, &mut cx.text);
+            comments_height += comment_size.height + comment_gap;
+        }
+    }
+
     let mut content_height = padding + title_h + title_gap;
     if meta_h > 0.0 {
         content_height += meta_h + meta_gap;
     }
-    content_height += body_size.height + padding;
+    content_height += body_size.height + comments_height + padding;
     let content_height = content_height.max(bounds.size.height);
 
     post_pane.scroll_bounds = bounds;
@@ -7243,6 +7476,8 @@ fn paint_moltbook_post_pane(
         post_pane.meta.clone(),
         post_pane.markdown.clone(),
         post_pane.markdown_config.clone(),
+        post_pane.comments.clone(),
+        post_pane.comment_docs.clone(),
     ));
     post_pane.scroll.paint(bounds, cx);
 }
@@ -9387,6 +9622,10 @@ fn format_event(event: &AppEvent) -> String {
             UserAction::DvmHistoryRefresh => "DvmHistoryRefresh".to_string(),
             UserAction::Nip90Submit { kind, .. } => format!("Nip90Submit (kind {kind})"),
             UserAction::MoltbookRefresh => "MoltbookRefresh".to_string(),
+            UserAction::MoltbookLoadComments { post_id } => {
+                format!("MoltbookLoadComments ({post_id})")
+            }
+            UserAction::MoltbookReply { post_id } => format!("MoltbookReply ({post_id})"),
             UserAction::MoltbookSay { .. } => "MoltbookSay".to_string(),
             UserAction::MoltbookComment { post_id, .. } => format!("MoltbookComment ({post_id})"),
             UserAction::MoltbookUpvote { post_id } => format!("MoltbookUpvote ({post_id})"),
@@ -9432,6 +9671,9 @@ fn format_event(event: &AppEvent) -> String {
         AppEvent::Nip90Log { message } => format!("Nip90Log ({message})"),
         AppEvent::MoltbookFeedUpdated { posts } => {
             format!("MoltbookFeedUpdated ({} posts)", posts.len())
+        }
+        AppEvent::MoltbookCommentsLoaded { post_id, comments } => {
+            format!("MoltbookCommentsLoaded ({post_id}, {} comments)", comments.len())
         }
         AppEvent::MoltbookLog { message } => format!("MoltbookLog ({message})"),
         AppEvent::MoltbookProfileLoaded { profile } => {
