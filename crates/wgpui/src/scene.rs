@@ -94,13 +94,15 @@ pub struct GpuQuad {
     pub border_color: [f32; 4],
     pub border_width: f32,
     pub corner_radius: f32,
-    pub _padding: [f32; 2],
+    pub clip_origin: [f32; 2],
+    pub clip_size: [f32; 2],
 }
 
 impl GpuQuad {
     /// Create a GPU quad from a scene quad.
     /// This is the GPU boundary where we scale from logical to physical pixels.
-    pub fn from_quad(quad: &Quad, scale_factor: f32) -> Self {
+    pub fn from_quad(quad: &Quad, clip: Option<Bounds>, scale_factor: f32) -> Self {
+        let (clip_origin, clip_size) = clip_to_gpu(clip, scale_factor);
         // Scale from LOGICAL to PHYSICAL pixels at GPU boundary.
         Self {
             origin: [
@@ -136,7 +138,8 @@ impl GpuQuad {
             },
             border_width: quad.border_width * scale_factor,
             corner_radius: quad.corner_radius * scale_factor,
-            _padding: [0.0, 0.0],
+            clip_origin,
+            clip_size,
         }
     }
 }
@@ -235,6 +238,8 @@ pub struct GpuTextQuad {
     pub size: [f32; 2],
     pub uv: [f32; 4],
     pub color: [f32; 4],
+    pub clip_origin: [f32; 2],
+    pub clip_size: [f32; 2],
 }
 
 impl GpuTextQuad {
@@ -244,8 +249,10 @@ impl GpuTextQuad {
         glyph: &GlyphInstance,
         origin: Point,
         color: Hsla,
+        clip: Option<Bounds>,
         scale_factor: f32,
     ) -> Self {
+        let (clip_origin, clip_size) = clip_to_gpu(clip, scale_factor);
         // Scale from LOGICAL to PHYSICAL pixels at GPU boundary.
         // - origin: logical position where text run starts
         // - glyph.offset: logical offset from origin (already divided by scale_factor in text.rs)
@@ -271,6 +278,8 @@ impl GpuTextQuad {
                     color.to_rgba()
                 }
             },
+            clip_origin,
+            clip_size,
         }
     }
 }
@@ -305,9 +314,9 @@ impl SvgQuad {
 
 #[derive(Default)]
 pub struct Scene {
-    pub quads: Vec<(u32, Quad)>,            // (layer, quad)
-    pub text_runs: Vec<(u32, TextRun)>,     // (layer, text_run)
-    pub curves: Vec<(u32, CurvePrimitive)>, // (layer, curve)
+    pub quads: Vec<(u32, Quad, Option<Bounds>)>, // (layer, quad, clip)
+    pub text_runs: Vec<(u32, TextRun, Option<Bounds>)>, // (layer, text_run, clip)
+    pub curves: Vec<(u32, CurvePrimitive)>,      // (layer, curve)
     pub svg_quads: Vec<SvgQuad>,
     clip_stack: Vec<Bounds>,
     current_layer: u32,
@@ -341,20 +350,21 @@ impl Scene {
     pub fn draw_quad(&mut self, quad: Quad) {
         if let Some(clip) = self.clip_stack.last() {
             if quad.bounds.intersects(clip) {
-                self.quads.push((self.current_layer, quad));
+                self.quads.push((self.current_layer, quad, Some(*clip)));
             }
         } else {
-            self.quads.push((self.current_layer, quad));
+            self.quads.push((self.current_layer, quad, None));
         }
     }
 
     pub fn draw_text(&mut self, text_run: TextRun) {
         if let Some(clip) = self.clip_stack.last() {
             if text_run.bounds().intersects(clip) {
-                self.text_runs.push((self.current_layer, text_run));
+                self.text_runs
+                    .push((self.current_layer, text_run, Some(*clip)));
             }
         } else {
-            self.text_runs.push((self.current_layer, text_run));
+            self.text_runs.push((self.current_layer, text_run, None));
         }
     }
 
@@ -427,8 +437,8 @@ impl Scene {
     pub fn gpu_quads_for_layer(&self, layer: u32, scale_factor: f32) -> Vec<GpuQuad> {
         self.quads
             .iter()
-            .filter(|(l, _)| *l == layer)
-            .map(|(_, q)| GpuQuad::from_quad(q, scale_factor))
+            .filter(|(l, _, _)| *l == layer)
+            .map(|(_, q, clip)| GpuQuad::from_quad(q, *clip, scale_factor))
             .collect()
     }
 
@@ -436,7 +446,7 @@ impl Scene {
     /// This is the GPU boundary where we scale from logical to physical pixels.
     pub fn gpu_text_quads_for_layer(&self, layer: u32, scale_factor: f32) -> Vec<GpuTextQuad> {
         let mut quads = Vec::new();
-        for (l, run) in &self.text_runs {
+        for (l, run, clip) in &self.text_runs {
             if *l != layer {
                 continue;
             }
@@ -445,6 +455,7 @@ impl Scene {
                     glyph,
                     run.origin,
                     run.color,
+                    *clip,
                     scale_factor,
                 ));
             }
@@ -457,8 +468,8 @@ impl Scene {
         let mut layers: Vec<u32> = self
             .quads
             .iter()
-            .map(|(l, _)| *l)
-            .chain(self.text_runs.iter().map(|(l, _)| *l))
+            .map(|(l, _, _)| *l)
+            .chain(self.text_runs.iter().map(|(l, _, _)| *l))
             .chain(self.curves.iter().map(|(l, _)| *l))
             .collect();
         layers.sort();
@@ -467,15 +478,31 @@ impl Scene {
     }
 
     pub fn quads(&self) -> Vec<&Quad> {
-        self.quads.iter().map(|(_, q)| q).collect()
+        self.quads.iter().map(|(_, q, _)| q).collect()
     }
 
     pub fn text_runs(&self) -> Vec<&TextRun> {
-        self.text_runs.iter().map(|(_, r)| r).collect()
+        self.text_runs.iter().map(|(_, r, _)| r).collect()
     }
 
     pub fn svg_quads(&self) -> &[SvgQuad] {
         &self.svg_quads
+    }
+}
+
+fn clip_to_gpu(clip: Option<Bounds>, scale_factor: f32) -> ([f32; 2], [f32; 2]) {
+    match clip {
+        Some(bounds) => (
+            [
+                bounds.origin.x * scale_factor,
+                bounds.origin.y * scale_factor,
+            ],
+            [
+                bounds.size.width * scale_factor,
+                bounds.size.height * scale_factor,
+            ],
+        ),
+        None => ([0.0, 0.0], [-1.0, -1.0]),
     }
 }
 
@@ -562,7 +589,7 @@ mod tests {
             .with_background(Hsla::from_hex(0xFF0000));
 
         // Test with scale_factor 1.0 (no scaling)
-        let gpu_quad = GpuQuad::from_quad(&quad, 1.0);
+        let gpu_quad = GpuQuad::from_quad(&quad, None, 1.0);
 
         assert!((gpu_quad.origin[0] - 10.0).abs() < 0.001);
         assert!((gpu_quad.origin[1] - 20.0).abs() < 0.001);
@@ -577,7 +604,7 @@ mod tests {
             .with_border(Hsla::white(), 2.0);
 
         // Test with scale_factor 2.0 (2x scaling)
-        let gpu_quad = GpuQuad::from_quad(&quad, 2.0);
+        let gpu_quad = GpuQuad::from_quad(&quad, None, 2.0);
 
         // Position and size should be scaled by 2x
         assert!((gpu_quad.origin[0] - 20.0).abs() < 0.001); // 10 * 2 = 20
@@ -597,7 +624,8 @@ mod tests {
         };
 
         // Test with scale_factor 1.0 (no scaling)
-        let gpu_quad = GpuTextQuad::from_glyph(&glyph, Point::new(10.0, 20.0), Hsla::white(), 1.0);
+        let gpu_quad =
+            GpuTextQuad::from_glyph(&glyph, Point::new(10.0, 20.0), Hsla::white(), None, 1.0);
 
         assert!((gpu_quad.position[0] - 15.0).abs() < 0.001);
         assert!((gpu_quad.position[1] - 20.0).abs() < 0.001);
@@ -613,7 +641,8 @@ mod tests {
         };
 
         // Test with scale_factor 2.0 (2x scaling)
-        let gpu_quad = GpuTextQuad::from_glyph(&glyph, Point::new(10.0, 20.0), Hsla::white(), 2.0);
+        let gpu_quad =
+            GpuTextQuad::from_glyph(&glyph, Point::new(10.0, 20.0), Hsla::white(), None, 2.0);
 
         // Position and size should be scaled by 2x
         assert!((gpu_quad.position[0] - 30.0).abs() < 0.001); // (10 + 5) * 2 = 30

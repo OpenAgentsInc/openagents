@@ -263,6 +263,16 @@ impl Renderer {
                             offset: 52, // corner_radius
                             shader_location: 5,
                         },
+                        wgpu::VertexAttribute {
+                            format: wgpu::VertexFormat::Float32x2,
+                            offset: 56,
+                            shader_location: 6,
+                        },
+                        wgpu::VertexAttribute {
+                            format: wgpu::VertexFormat::Float32x2,
+                            offset: 64,
+                            shader_location: 7,
+                        },
                     ],
                 }],
                 compilation_options: Default::default(),
@@ -398,6 +408,16 @@ impl Renderer {
                             format: wgpu::VertexFormat::Float32x4,
                             offset: 32,
                             shader_location: 3,
+                        },
+                        wgpu::VertexAttribute {
+                            format: wgpu::VertexFormat::Float32x2,
+                            offset: 48,
+                            shader_location: 4,
+                        },
+                        wgpu::VertexAttribute {
+                            format: wgpu::VertexFormat::Float32x2,
+                            offset: 56,
+                            shader_location: 5,
                         },
                     ],
                 }],
