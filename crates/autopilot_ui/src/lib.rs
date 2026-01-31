@@ -6547,6 +6547,59 @@ fn paint_moltbook_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintCon
 
     root.moltbook_refresh_bounds = Bounds::ZERO;
 
+    #[derive(Clone)]
+    struct FeedRow {
+        title: String,
+        preview: String,
+        title_height: f32,
+        preview_height: f32,
+        total_height: f32,
+    }
+
+    let feed_rows = if root.moltbook_feed.is_empty() {
+        Vec::new()
+    } else {
+        root.moltbook_feed
+            .iter()
+            .map(|post| {
+                let title = post.title.as_deref().unwrap_or("(no title)");
+                let author = post.author_name.as_deref().unwrap_or("?");
+                let score = post
+                    .score
+                    .map(|s| s.to_string())
+                    .unwrap_or_else(|| "—".to_string());
+                let header = format!("{author} · {title} · {score} ↑");
+                let preview = post
+                    .content_preview
+                    .as_deref()
+                    .unwrap_or("")
+                    .chars()
+                    .take(120)
+                    .collect::<String>();
+                let mut header_text = Text::new(header.as_str()).font_size(text_size);
+                let (_, header_h) = header_text.size_hint_with_width(content_bounds.size.width);
+                let title_height = header_h.unwrap_or(row_height).max(row_height);
+                let preview_height = if preview.is_empty() {
+                    0.0
+                } else {
+                    let mut preview_text = Text::new(preview.as_str()).font_size(text_size);
+                    let (_, preview_h) =
+                        preview_text.size_hint_with_width(content_bounds.size.width);
+                    preview_h.unwrap_or(row_height).max(row_height)
+                };
+                let gap = if preview_height > 0.0 { 4.0 } else { 0.0 };
+                let total_height = title_height + preview_height + gap;
+                FeedRow {
+                    title: header,
+                    preview,
+                    title_height,
+                    preview_height,
+                    total_height,
+                }
+            })
+            .collect::<Vec<_>>()
+    };
+
     let mut steps: Vec<(MoltStep, f32)> = vec![
         (MoltStep::EngagementHeader, label_height),
         (MoltStep::Spacer, gap),
@@ -6569,21 +6622,14 @@ fn paint_moltbook_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintCon
         Log(String),
     }
 
-    let feed_height = if root.moltbook_feed.is_empty() {
+    let feed_height = if feed_rows.is_empty() {
         40.0
     } else {
-        root.moltbook_feed
+        feed_rows
             .iter()
-            .map(|p| {
-                let lines = 1 + p
-                    .content_preview
-                    .as_deref()
-                    .map(|c| (c.len() / 48).max(1))
-                    .unwrap_or(0);
-                (lines as f32 * row_height).max(row_height * 2.0)
-            })
+            .map(|row| row.total_height)
             .sum::<f32>()
-            .min(180.0)
+            .min(220.0)
     };
     steps.push((MoltStep::FeedItem, feed_height));
     steps.push((MoltStep::Spacer, gap));
@@ -6655,45 +6701,29 @@ fn paint_moltbook_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintCon
                         .paint(bounds, cx);
                 } else {
                     let mut y = bounds.origin.y;
-                    for post in &root.moltbook_feed {
-                        let line_h = row_height * 2.0;
-                        if y + line_h > bounds.origin.y + bounds.size.height {
+                    for row in &feed_rows {
+                        if y + row.total_height > bounds.origin.y + bounds.size.height {
                             break;
                         }
-                        let row_bounds = Bounds::new(bounds.origin.x, y, bounds.size.width, line_h);
-                        let title = post.title.as_deref().unwrap_or("(no title)");
-                        let author = post.author_name.as_deref().unwrap_or("?");
-                        let preview = post
-                            .content_preview
-                            .as_deref()
-                            .unwrap_or("")
-                            .chars()
-                            .take(48)
-                            .collect::<String>();
-                        let score = post
-                            .score
-                            .map(|s| s.to_string())
-                            .unwrap_or_else(|| "—".to_string());
-                        let text = format!("{} · {} · {} ↑", author, title, score);
-                        Text::new(text.as_str())
+                        let header_bounds =
+                            Bounds::new(bounds.origin.x, y, bounds.size.width, row.title_height);
+                        Text::new(row.title.as_str())
                             .font_size(text_size)
                             .color(theme::text::PRIMARY)
-                            .paint(row_bounds, cx);
-                        if !preview.is_empty() {
-                            Text::new(preview.as_str())
+                            .paint(header_bounds, cx);
+                        if !row.preview.is_empty() {
+                            let preview_bounds = Bounds::new(
+                                bounds.origin.x,
+                                y + row.title_height + 4.0,
+                                bounds.size.width,
+                                row.preview_height,
+                            );
+                            Text::new(row.preview.as_str())
                                 .font_size(text_size)
                                 .color(theme::text::MUTED)
-                                .paint(
-                                    Bounds::new(
-                                        bounds.origin.x,
-                                        y + row_height,
-                                        bounds.size.width,
-                                        row_height,
-                                    ),
-                                    cx,
-                                );
+                                .paint(preview_bounds, cx);
                         }
-                        y += line_h;
+                        y += row.total_height;
                     }
                 }
             }
