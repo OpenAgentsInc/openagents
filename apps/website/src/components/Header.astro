@@ -33,12 +33,8 @@ import HeaderLink from './HeaderLink.astro';
 					el.replaceChildren(btn);
 				} else {
 					const link = document.createElement('a');
-					link.href = '#';
-					link.textContent = 'Sign in with GitHub';
-					link.addEventListener('click', async (e) => {
-						e.preventDefault();
-						await signIn.social({ provider: 'github', callbackURL: window.location.pathname || '/' });
-					});
+					link.href = '/login';
+					link.textContent = 'Sign in';
 					el.replaceChildren(link);
 				}
 			}
