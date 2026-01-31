@@ -112,10 +112,9 @@ const HOTBAR_PADDING: f32 = 6.0;
 const HOTBAR_SLOT_EVENTS: u8 = 0;
 const HOTBAR_SLOT_NEW_CHAT: u8 = 1;
 const HOTBAR_SLOT_IDENTITY: u8 = 2;
-const HOTBAR_SLOT_FILE_EDITOR: u8 = 5;
 const HOTBAR_SLOT_WALLET: u8 = 3;
-const HOTBAR_SLOT_SELL_COMPUTE: u8 = 6;
 const HOTBAR_SLOT_THREADS: u8 = 4;
+const HOTBAR_SLOT_MOLTBOOK: u8 = 5;
 const HOTBAR_CHAT_SLOT_START: u8 = 7;
 const HOTBAR_SLOT_MAX: u8 = 9;
 const GRID_DOT_DISTANCE: f32 = 32.0;
@@ -5127,12 +5126,6 @@ impl Component for MinimalRoot {
         );
         self.hotbar_bindings
             .insert(HOTBAR_SLOT_THREADS, HotbarAction::ToggleThreads);
-        items.push(
-            HotbarSlot::new(HOTBAR_SLOT_FILE_EDITOR, "FE", "Files")
-                .active(self.pane_store.is_active("file_editor")),
-        );
-        self.hotbar_bindings
-            .insert(HOTBAR_SLOT_FILE_EDITOR, HotbarAction::ToggleFileEditor);
         // Sell Compute pane hidden from hotbar for now.
         // items.push(
         //     HotbarSlot::new(HOTBAR_SLOT_SELL_COMPUTE, "SC", "Sell")
@@ -5141,11 +5134,11 @@ impl Component for MinimalRoot {
         // self.hotbar_bindings
         //     .insert(HOTBAR_SLOT_SELL_COMPUTE, HotbarAction::ToggleSellCompute);
         items.push(
-            HotbarSlot::new(HOTBAR_SLOT_SELL_COMPUTE, "MB", "Moltbook")
+            HotbarSlot::new(HOTBAR_SLOT_MOLTBOOK, "MB", "Moltbook")
                 .active(self.pane_store.is_active("moltbook")),
         );
         self.hotbar_bindings
-            .insert(HOTBAR_SLOT_SELL_COMPUTE, HotbarAction::ToggleMoltbook);
+            .insert(HOTBAR_SLOT_MOLTBOOK, HotbarAction::ToggleMoltbook);
 
         // DVM History + NIP-90 panes disabled for now (keep code around).
         // items.push(
