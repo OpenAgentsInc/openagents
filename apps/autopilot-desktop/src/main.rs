@@ -3262,9 +3262,12 @@ fn build_moltbook_reply_prompt(
     let mut prompt = String::new();
     prompt.push_str("You are drafting a public Moltbook reply.\n");
     prompt.push_str("Use this repo if needed to understand Moltbook reply behavior.\n");
-    prompt.push_str("If you need guidance, read MOLTBOOK.md first.\n");
+    prompt.push_str("First, fetch and read:\n");
+    prompt.push_str("curl -fsSL https://raw.githubusercontent.com/OpenAgentsInc/openagents/refs/heads/main/MOLTBOOK.md\n");
+    prompt.push_str("Then write the reply.\n");
     prompt.push_str("The app will post your reply via the Moltbook API after you respond.\n");
-    prompt.push_str("Output ONLY the reply text with no extra commentary.\n");
+    prompt.push_str("After reading the file, immediately output ONLY the reply text with no extra commentary.\n");
+    prompt.push_str("Do not pause or ask for confirmation.\n");
     prompt.push_str("Keep it concise, helpful, and aligned with the post.\n\n");
 
     if let Some(post) = post {
