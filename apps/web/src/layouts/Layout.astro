@@ -39,16 +39,20 @@ import { ModeToggle } from "../components/ModeToggle.tsx";
     <meta name="generator" content={Astro.generator} />
     <title>Astro Basics</title>
   </head>
-  <body class="min-h-screen bg-background text-foreground">
-    <header class="border-b border-border bg-background px-4 py-2 flex justify-between items-center">
-      <a href="/" class="text-lg font-semibold text-foreground hover:text-primary transition-colors">
-        Web
-      </a>
-      <div class="flex items-center gap-2">
-        <ModeToggle client:load />
-        <AuthUI client:load />
-      </div>
-    </header>
-    <slot />
+  <body class="bg-background text-foreground">
+    <div class="fixed inset-0 h-screen flex flex-col overflow-hidden">
+      <header class="shrink-0 border-b border-border bg-background px-4 py-2 flex justify-between items-center">
+        <a href="/" class="text-lg font-semibold text-foreground hover:text-primary transition-colors">
+          Web
+        </a>
+        <div class="flex items-center gap-2">
+          <ModeToggle client:load />
+          <AuthUI client:load />
+        </div>
+      </header>
+      <main class="flex-1 min-h-0 overflow-auto">
+        <slot />
+      </main>
+    </div>
   </body>
 </html>
