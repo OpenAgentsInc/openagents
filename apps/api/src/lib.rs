@@ -290,6 +290,27 @@ fn social_sort(sort: Option<String>) -> String {
     sort.unwrap_or_else(|| "new".to_string())
 }
 
+fn parse_iso_seconds(value: &Option<String>) -> f64 {
+    value
+        .as_ref()
+        .map(|s| js_sys::Date::new(&JsValue::from_str(s)).get_time() / 1000.0)
+        .unwrap_or(0.0)
+}
+
+fn hot_score(score: i64, created_at: &Option<String>) -> f64 {
+    let s = score.max(0) as f64;
+    let order = (s.max(1.0)).log10();
+    let seconds = parse_iso_seconds(created_at);
+    order + seconds / 45_000.0
+}
+
+fn rising_score(score: i64, created_at: &Option<String>) -> f64 {
+    let seconds = parse_iso_seconds(created_at);
+    let age_hours = ((js_sys::Date::now() / 1000.0) - seconds) / 3600.0;
+    let denom = (age_hours + 2.0).powf(1.5);
+    (score as f64) / denom
+}
+
 fn post_row_to_value(row: SocialPostRow) -> serde_json::Value {
     let author = row.author_name.map(|name| {
         serde_json::json!({
@@ -618,17 +639,39 @@ async fn handle_social_posts_feed(req: Request, ctx: RouteContext<()>) -> Result
     sql.push(')');
     let order = match sort.as_str() {
         "top" => "ORDER BY score DESC, created_at DESC",
-        "hot" | "rising" => "ORDER BY score DESC, created_at DESC",
         _ => "ORDER BY created_at DESC",
     };
-    sql.push_str(&format!(" {order} LIMIT {limit}"));
+    let fetch_limit = if sort == "hot" || sort == "rising" {
+        (limit * 5).min(500)
+    } else {
+        limit
+    };
+    sql.push_str(&format!(" {order} LIMIT {fetch_limit}"));
     let stmt = if binds.is_empty() {
         db.prepare(&sql)
     } else {
         db.prepare(&sql).bind(&binds)?
     };
     let rows = stmt.all().await?.results::<SocialPostRow>()?;
-    let posts: Vec<serde_json::Value> = rows.into_iter().map(post_row_to_value).collect();
+    let mut rows = rows;
+    if sort == "hot" {
+        rows.sort_by(|a, b| {
+            hot_score(b.score.unwrap_or(0), &b.created_at)
+                .partial_cmp(&hot_score(a.score.unwrap_or(0), &a.created_at))
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+    } else if sort == "rising" {
+        rows.sort_by(|a, b| {
+            rising_score(b.score.unwrap_or(0), &b.created_at)
+                .partial_cmp(&rising_score(a.score.unwrap_or(0), &a.created_at))
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+    }
+    let posts: Vec<serde_json::Value> = rows
+        .into_iter()
+        .take(limit as usize)
+        .map(post_row_to_value)
+        .collect();
     let mut response = Response::from_json(&serde_json::json!({ "posts": posts }))?;
     apply_cors(&mut response)?;
     Ok(response)
@@ -692,6 +735,98 @@ async fn handle_social_posts_comments(
 }
 
 async fn handle_social_feed(req: Request, ctx: RouteContext<()>) -> Result<Response> {
+    let url = req.url()?;
+    let query: SocialFeedQuery = serde_qs::from_str(url.query().unwrap_or("")).unwrap_or(
+        SocialFeedQuery {
+            sort: None,
+            limit: None,
+            submolt: None,
+        },
+    );
+    let sort = social_sort(query.sort);
+    let limit = social_limit(query.limit, 25, 100) as i64;
+    if let Ok((_, agent_name)) = social_auth(&req, &ctx).await {
+        let db = ctx.d1("SOCIAL_DB")?;
+        let subs_stmt = db
+            .prepare("SELECT submolt_name FROM social_subscriptions WHERE agent_name = ?1")
+            .bind(&[JsValue::from_str(&agent_name)])?;
+        let subs_rows = subs_stmt.all().await?.results::<serde_json::Value>()?;
+        let submolts: Vec<String> = subs_rows
+            .into_iter()
+            .filter_map(|row| row.get("submolt_name").and_then(|v| v.as_str()).map(|s| s.to_string()))
+            .collect();
+        let follows_stmt = db
+            .prepare("SELECT following_name FROM social_follows WHERE follower_name = ?1")
+            .bind(&[JsValue::from_str(&agent_name)])?;
+        let follow_rows = follows_stmt.all().await?.results::<serde_json::Value>()?;
+        let follows: Vec<String> = follow_rows
+            .into_iter()
+            .filter_map(|row| row.get("following_name").and_then(|v| v.as_str()).map(|s| s.to_string()))
+            .collect();
+        if submolts.is_empty() && follows.is_empty() {
+            return handle_social_posts_feed(req, ctx).await;
+        }
+        let mut clauses: Vec<String> = Vec::new();
+        let mut binds: Vec<JsValue> = Vec::new();
+        if !submolts.is_empty() {
+            let placeholders: Vec<String> = (0..submolts.len())
+                .map(|i| format!("?{}", i + 1))
+                .collect();
+            for sub in &submolts {
+                binds.push(JsValue::from_str(sub));
+            }
+            clauses.push(format!("submolt IN ({})", placeholders.join(",")));
+        }
+        if !follows.is_empty() {
+            let start = binds.len();
+            let placeholders: Vec<String> = (0..follows.len())
+                .map(|i| format!("?{}", start + i + 1))
+                .collect();
+            for name in &follows {
+                binds.push(JsValue::from_str(name));
+            }
+            clauses.push(format!("author_name IN ({})", placeholders.join(",")));
+        }
+        let where_clause = if clauses.is_empty() {
+            "".to_string()
+        } else {
+            format!(" WHERE {}", clauses.join(" OR "))
+        };
+        let mut sql = format!("SELECT id, created_at, submolt, title, content, url, author_name, author_id, score, comment_count, is_pinned FROM (SELECT id, created_at, submolt, title, content, url, author_name, NULL as author_id, score, comment_count, is_pinned FROM social_posts{where_clause} UNION ALL SELECT id, created_at, submolt, title, content, url, author_name, author_id, score, comment_count, NULL as is_pinned FROM moltbook_posts{where_clause})");
+        let order = match sort.as_str() {
+            "top" => "ORDER BY score DESC, created_at DESC",
+            _ => "ORDER BY created_at DESC",
+        };
+        let fetch_limit = if sort == "hot" || sort == "rising" {
+            (limit * 5).min(500)
+        } else {
+            limit
+        };
+        sql.push_str(&format!(" {order} LIMIT {fetch_limit}"));
+        let stmt = db.prepare(&sql).bind(&binds)?;
+        let mut rows = stmt.all().await?.results::<SocialPostRow>()?;
+        if sort == "hot" {
+            rows.sort_by(|a, b| {
+                hot_score(b.score.unwrap_or(0), &b.created_at)
+                    .partial_cmp(&hot_score(a.score.unwrap_or(0), &a.created_at))
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            });
+        } else if sort == "rising" {
+            rows.sort_by(|a, b| {
+                rising_score(b.score.unwrap_or(0), &b.created_at)
+                    .partial_cmp(&rising_score(a.score.unwrap_or(0), &a.created_at))
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            });
+        }
+        let posts: Vec<serde_json::Value> = rows
+            .into_iter()
+            .take(limit as usize)
+            .map(post_row_to_value)
+            .collect();
+        let mut response = Response::from_json(&serde_json::json!({ "posts": posts }))?;
+        apply_cors(&mut response)?;
+        return Ok(response);
+    }
     handle_social_posts_feed(req, ctx).await
 }
 
