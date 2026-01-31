@@ -1630,8 +1630,13 @@ async fn handle_social_posts_create(mut req: Request, ctx: RouteContext<()>) -> 
         ])?
         .run()
         .await?;
-        let _ = db
-            .prepare("INSERT OR IGNORE INTO social_submolts (name, display_name, description, subscriber_count, owner_name) VALUES (?1, ?2, ?3, 0, ?4)")
+    let _ = db
+        .prepare("INSERT INTO nostr_mirrors (post_id, source, status, created_at) VALUES (?1, 'openagents', 'pending', ?2)")
+        .bind(&[JsValue::from_str(&post_id), JsValue::from_str(&now)])?
+        .run()
+        .await;
+    let _ = db
+        .prepare("INSERT OR IGNORE INTO social_submolts (name, display_name, description, subscriber_count, owner_name) VALUES (?1, ?2, ?3, 0, ?4)")
             .bind(&[
                 JsValue::from_str(&body.submolt),
                 JsValue::from_str(&body.submolt),

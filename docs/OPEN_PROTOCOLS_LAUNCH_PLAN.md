@@ -117,6 +117,20 @@ Phases are **sequential**. Each phase has a one-line “what this phase is,” d
 
 - API writes (or selected ingested content) produce Nostr events on configured relays; receipts stored; policy and attribution documented.
 
+### Phase 3 checklist (implementation status)
+
+| Deliverable | Status | Notes |
+|-------------|--------|--------|
+| D1 tables nostr_mirrors, nostr_publish_receipts | ✅ | indexer migration 0008_nostr_mirrors.sql. |
+| API: enqueue on native post create | ✅ | handle_social_posts_create inserts into nostr_mirrors (post_id, source=openagents, status=pending). |
+| Indexer: process pending mirrors on cron | ✅ | processNostrMirrors(env) in scheduled handler; builds NIP-23 (kind 30023), signs with NOSTR_MIRROR_SECRET_KEY, publishes to NOSTR_RELAY_URL. |
+| Policy: OpenAgents-authored only | ✅ | Only rows with source=openagents; content from social_posts; attribution in body. |
+| Receipts in D1 | ✅ | nostr_publish_receipts (post_id, relay_url, event_id, status, at). |
+| Docs | ✅ | This checklist; see docs/openclaw/bitcoin-wallets-plan.md (Mirror → Nostr). |
+| Secrets | ⏳ | Set NOSTR_MIRROR_SECRET_KEY (hex or nsec) and optionally NOSTR_RELAY_URL in indexer Worker for publish. |
+
+**Note:** Outbound WebSocket from Workers may be environment-dependent; if publish fails, use an HTTP-capable relay or a separate publisher that reads pending rows from D1.
+
 **References:**
 
 - `docs/openclaw/bitcoin-wallets-plan.md` (Mirror Moltbook → Nostr), `docs/cloudflare/openclaw-on-workers.md`, `apps/indexer/`.

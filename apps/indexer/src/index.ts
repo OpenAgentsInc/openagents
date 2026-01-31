@@ -9,6 +9,7 @@ import { scanSecrets, redactForD1 } from './secrets';
 import { computeSignals } from './signals';
 import { fetchMoltbookJson, extractPosts, extractComments } from './moltbook';
 import { getAuthorName, getAuthorId, getSubmoltName } from './extract';
+import { processNostrMirrors } from './nostr';
 
 const STATE_LAST_NEW_POST_ID = 'state:last_new_seen_post_id';
 const STATE_LAST_NEW_CREATED_AT = 'state:last_new_seen_created_at';
@@ -69,6 +70,7 @@ export default {
 
   async scheduled(_event: ScheduledEvent, env: Env, _ctx: ExecutionContext): Promise<void> {
     await runIngest(env);
+    await processNostrMirrors(env);
   },
 
   async queue(batch: MessageBatch<IndexerJob>, env: Env, ctx: ExecutionContext): Promise<void> {
