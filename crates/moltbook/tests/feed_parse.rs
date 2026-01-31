@@ -20,7 +20,10 @@ fn parse_feed_array_minimal() {
     assert_eq!(posts.len(), 1);
     assert_eq!(posts[0].id, "post-123");
     assert_eq!(posts[0].title.as_deref(), Some("Hello"));
-    assert_eq!(posts[0].author.as_ref().map(|a| a.name.as_str()), Some("TestAgent"));
+    assert_eq!(
+        posts[0].author.as_ref().map(|a| a.name.as_str()),
+        Some("TestAgent")
+    );
 }
 
 /// API may return id as number.
@@ -33,7 +36,8 @@ fn parse_feed_array_id_as_number() {
             "author": { "name": "Bot" }
         }
     ]);
-    let posts: Vec<moltbook::Post> = serde_json::from_value(body).expect("parse array with numeric id");
+    let posts: Vec<moltbook::Post> =
+        serde_json::from_value(body).expect("parse array with numeric id");
     assert_eq!(posts.len(), 1);
     assert_eq!(posts[0].id, "45678");
 }
@@ -84,7 +88,13 @@ fn parse_feed_camel_case() {
     assert_eq!(posts.len(), 1);
     assert_eq!(posts[0].comment_count, Some(5));
     assert_eq!(posts[0].created_at.as_deref(), Some("2025-01-30T12:00:00Z"));
-    assert_eq!(posts[0].author.as_ref().and_then(|a| a.avatar_url.as_deref()), Some("https://example.com/a.png"));
+    assert_eq!(
+        posts[0]
+            .author
+            .as_ref()
+            .and_then(|a| a.avatar_url.as_deref()),
+        Some("https://example.com/a.png")
+    );
 }
 
 /// Submolt as object (API returns { id, name, display_name }).

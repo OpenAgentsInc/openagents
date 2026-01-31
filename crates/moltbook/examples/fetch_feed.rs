@@ -37,7 +37,9 @@ async fn main() -> Result<()> {
         .ok_or_else(|| moltbook::MoltbookError::Api {
             status: 401,
             error: "No Moltbook API key".to_string(),
-            hint: Some("Set MOLTBOOK_API_KEY or create ~/.config/moltbook/credentials.json".to_string()),
+            hint: Some(
+                "Set MOLTBOOK_API_KEY or create ~/.config/moltbook/credentials.json".to_string(),
+            ),
         })?;
 
     let client = MoltbookClient::new(api_key.clone())?;
@@ -67,7 +69,13 @@ async fn main() -> Result<()> {
         Ok(posts) => {
             println!("OK: parsed {} posts", posts.len());
             for (i, p) in posts.iter().enumerate() {
-                println!("  [{}] id={} title={:?} author={:?}", i, p.id, p.title.as_deref(), p.author.as_ref().map(|a| a.name.as_str()));
+                println!(
+                    "  [{}] id={} title={:?} author={:?}",
+                    i,
+                    p.id,
+                    p.title.as_deref(),
+                    p.author.as_ref().map(|a| a.name.as_str())
+                );
             }
         }
         Err(e) => {
