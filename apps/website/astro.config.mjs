@@ -14,9 +14,15 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // https://astro.build/config
 export default defineConfig({
   site: 'https://openagents.com',
+  trailingSlash: 'never',
+  build: {
+    format: 'file', // Generate page.html so /login works without trailing slash on Cloudflare
+  },
   integrations: [mdx(), sitemap()],
   redirects: {
     '/sign-in': '/login',
+    '/login/': '/login',
+    '/signup/': '/signup',
   },
   vite: {
     resolve: {

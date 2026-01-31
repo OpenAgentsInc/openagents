@@ -18,7 +18,7 @@
 	"pages_build_output_dir": "./dist",
 	"observability": {
 		"enabled": true
-	}
+	},
 	/**
 	 * Smart Placement
 	 * https://developers.cloudflare.com/workers/configuration/smart-placement/#smart-placement
@@ -26,14 +26,12 @@
 	// "placement": {  "mode": "smart" }
 	/**
 	 * D1 database for Better Auth (users, sessions).
-	 * Create: npx wrangler d1 create website-auth
-	 * Then set database_id (and optional preview_database_id) below.
 	 */
 	"d1_databases": [
 		{
 			"binding": "DB",
 			"database_name": "website-auth",
-			"database_id": "REPLACE_ME_AFTER_WRANGLER_D1_CREATE"
+			"database_id": "694f0479-6258-4ba8-bcd2-678456319556"
 		}
 	],
 	/**

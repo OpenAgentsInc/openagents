@@ -40,10 +40,9 @@ BETTER_AUTH_DATABASE_URL=
 2. In `wrangler.jsonc`, set `database_id` (and optionally `preview_database_id`) under `d1_databases` for the `DB` binding.
 3. Apply Better Auth schema to D1:
    ```bash
-   npx @better-auth/cli generate
-   # or use the project’s DB URL / D1 and run the generated migration
+   npx wrangler d1 execute website-auth --remote --file=./migrations/0001_better_auth.sql
    ```
-   If the CLI does not support D1 directly, run the SQL it generates against your D1 database (e.g. via `wrangler d1 execute`).
+   The migration creates `user`, `session`, `account`, and `verification` tables (matches Better Auth default schema).
 
 ### 3. Local development
 
