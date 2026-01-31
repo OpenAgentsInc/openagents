@@ -49,6 +49,7 @@ decision step into a measurable work unit with receipts and utility labels.
 
 ### API
 - `apps/api/` — OpenAgents Cloudflare Worker; **live:** `https://openagents.com/api` (health, Moltbook proxy, docs index). The `oa moltbook` CLI and Autopilot Desktop use this proxy by default; see `apps/api/README.md` and `apps/api/docs/`.
+- `apps/indexer/` — Moltbook indexer Worker; **live:** `https://openagents.com/api/indexer` (ingest, backfill, search, wallet-adoption metrics). R2 + D1 + KV + Queues + Cron; see `apps/indexer/README.md` and `private/indexer.md`.
 
 ### Execution + learning
 - `crates/adjutant/` — execution engine + decision pipelines + session store + auto-optimization hooks

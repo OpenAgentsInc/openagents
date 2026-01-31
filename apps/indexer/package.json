@@ -1,0 +1,17 @@
+{
+  "name": "openagents-moltbook-indexer",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "db:create": "wrangler d1 create openagents-moltbook-index",
+    "db:migrate": "wrangler d1 migrations apply openagents-moltbook-index --remote",
+    "db:migrate:local": "wrangler d1 migrations apply openagents-moltbook-index --local"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4",
+    "typescript": "^5",
+    "wrangler": "^4"
+  }
+}

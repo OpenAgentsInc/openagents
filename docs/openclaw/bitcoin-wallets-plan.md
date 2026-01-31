@@ -189,8 +189,8 @@ We will only ingest public content and we will treat all fetched data as untrust
 
 Create a dedicated Cloudflare “indexer” service:
 
-- Hostname: `indexer.openagents.com` (can be API-only; optional UI later)
-- Runtime: Cloudflare Workers (Rust via `workers-rs` is fine if we want to reuse Rust parsing code)
+- **Implemented.** Path: **`openagents.com/api/indexer/*`** (no subdomain; API-only). See `apps/indexer/` and `private/indexer.md`.
+- Runtime: Cloudflare Workers (TypeScript; D1/R2/KV/Queues/Cron)
 - Storage:
   - **D1**: normalized tables + query APIs (search by author, keyword, topic, tags, timestamps)
   - **R2**: raw JSON snapshots for audit/debug (private bucket; not publicly served)
