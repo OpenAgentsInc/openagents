@@ -1,6 +1,6 @@
 use sha3::{Digest, Keccak256};
 
-use crate::{CitreaError, Address, Bytes32};
+use crate::{Address, Bytes32, CitreaError};
 
 pub fn keccak256(data: &[u8]) -> Bytes32 {
     let mut hasher = Keccak256::new();
@@ -23,7 +23,7 @@ pub fn address_from_uncompressed_pubkey(pubkey: &[u8]) -> Result<Address, Citrea
             return Err(CitreaError::InvalidLength {
                 expected: 64,
                 actual: other,
-            })
+            });
         }
     };
 

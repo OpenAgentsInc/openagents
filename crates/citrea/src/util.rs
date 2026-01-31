@@ -39,9 +39,11 @@ pub fn parse_u64_hex_or_dec(input: &str) -> Result<u64, CitreaError> {
     if trimmed.is_empty() {
         return Err(CitreaError::InvalidChainId("empty value".to_string()));
     }
-    if let Some(hex) = trimmed.strip_prefix("0x").or_else(|| trimmed.strip_prefix("0X")) {
-        u64::from_str_radix(hex, 16)
-            .map_err(|e| CitreaError::InvalidChainId(e.to_string()))
+    if let Some(hex) = trimmed
+        .strip_prefix("0x")
+        .or_else(|| trimmed.strip_prefix("0X"))
+    {
+        u64::from_str_radix(hex, 16).map_err(|e| CitreaError::InvalidChainId(e.to_string()))
     } else {
         trimmed
             .parse::<u64>()

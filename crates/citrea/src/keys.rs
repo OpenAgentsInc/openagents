@@ -1,6 +1,6 @@
 use bitcoin::secp256k1::{self, Message, Secp256k1, SecretKey, XOnlyPublicKey, schnorr};
 
-use crate::{CitreaError, Bytes32, Bytes64};
+use crate::{Bytes32, Bytes64, CitreaError};
 
 pub type SchnorrKeypair = nostr::Keypair;
 

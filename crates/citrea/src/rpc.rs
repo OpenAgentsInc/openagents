@@ -4,7 +4,7 @@ use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    CitreaError, BlockTag, RpcCallRequest,
+    BlockTag, CitreaError, RpcCallRequest,
     types::{Address, Bytes32},
     util::{format_hex_prefixed, parse_hex_u64},
 };
@@ -78,8 +78,7 @@ impl RpcClient {
         if !status.is_success() {
             return Err(CitreaError::Http(format!(
                 "HTTP {} from {}",
-                status,
-                self.url
+                status, self.url
             )));
         }
 
@@ -96,7 +95,9 @@ impl RpcClient {
     }
 
     pub async fn chain_id(&self) -> Result<u64, CitreaError> {
-        let result: String = self.request("eth_chainId", Vec::<serde_json::Value>::new()).await?;
+        let result: String = self
+            .request("eth_chainId", Vec::<serde_json::Value>::new())
+            .await?;
         parse_hex_u64(&result)
     }
 
@@ -107,7 +108,11 @@ impl RpcClient {
         parse_hex_u64(&result)
     }
 
-    pub async fn get_balance(&self, address: &Address, block: BlockTag) -> Result<String, CitreaError> {
+    pub async fn get_balance(
+        &self,
+        address: &Address,
+        block: BlockTag,
+    ) -> Result<String, CitreaError> {
         let params = vec![
             serde_json::Value::String(format_hex_prefixed(address)),
             block.to_param(),
@@ -128,7 +133,11 @@ impl RpcClient {
         parse_hex_u64(&result)
     }
 
-    pub async fn call(&self, request: RpcCallRequest, block: BlockTag) -> Result<String, CitreaError> {
+    pub async fn call(
+        &self,
+        request: RpcCallRequest,
+        block: BlockTag,
+    ) -> Result<String, CitreaError> {
         let params = vec![serde_json::to_value(request)?, block.to_param()];
         self.request("eth_call", params).await
     }
@@ -143,7 +152,8 @@ impl RpcClient {
         raw_deposit: &str,
     ) -> Result<serde_json::Value, CitreaError> {
         let params = vec![raw_deposit];
-        self.request("citrea_sendRawDepositTransaction", params).await
+        self.request("citrea_sendRawDepositTransaction", params)
+            .await
     }
 
     pub async fn transaction_receipt(
