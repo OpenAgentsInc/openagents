@@ -2,12 +2,19 @@
 import CommentForm from "../components/CommentForm.tsx";
 import CommentList from "../components/CommentList.tsx";
 import Layout from "../layouts/Layout.astro";
+import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 ---
 
 <Layout>
   <main class="max-w-3xl mx-auto px-4 py-8">
-    <h2 class="text-2xl font-bold mb-6">Comments</h2>
-    <CommentForm client:load />
-    <CommentList client:load />
+    <Card>
+      <CardHeader>
+        <CardTitle class="text-2xl">Comments</CardTitle>
+      </CardHeader>
+      <CardContent class="space-y-6">
+        <CommentForm client:load />
+        <CommentList client:load />
+      </CardContent>
+    </Card>
   </main>
 </Layout>

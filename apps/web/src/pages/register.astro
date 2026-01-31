@@ -1,14 +1,24 @@
 ---
 import Layout from "../layouts/Layout.astro";
 import SignUpForm from "../components/SignUpForm.tsx";
+import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 ---
 
 <Layout>
   <main class="max-w-md mx-auto px-4 py-12">
-    <h1 class="text-2xl font-bold mb-6">Sign up</h1>
-    <SignUpForm client:load />
-    <p class="mt-4 text-sm text-gray-600">
-      Already have an account? <a href="/login" class="text-indigo-600 hover:text-indigo-800">Sign in</a>
-    </p>
+    <Card>
+      <CardHeader>
+        <CardTitle class="text-2xl">Register</CardTitle>
+      </CardHeader>
+      <CardContent class="space-y-4">
+        <SignUpForm client:load />
+        <p class="mt-4 text-center text-sm text-muted-foreground">
+          Already have an account?{" "}
+          <a href="/login" class="text-primary underline-offset-4 hover:underline font-medium">
+            Sign in
+          </a>
+        </p>
+      </CardContent>
+    </Card>
   </main>
 </Layout>
