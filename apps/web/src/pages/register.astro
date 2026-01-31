@@ -2,9 +2,10 @@
 import Layout from "../layouts/Layout.astro";
 import SignUpForm from "../components/SignUpForm.tsx";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
+import { SITE_TITLE } from "@/consts";
 ---
 
-<Layout>
+<Layout title={`Register | ${SITE_TITLE}`} description="Create an OpenAgents account.">
   <main class="max-w-md mx-auto px-4 py-12">
     <Card>
       <CardHeader>

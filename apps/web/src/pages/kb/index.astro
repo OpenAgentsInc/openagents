@@ -1,0 +1,45 @@
+---
+import { getCollection } from "astro:content";
+import Layout from "@/layouts/Layout.astro";
+import FormattedDate from "@/components/FormattedDate.astro";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { SITE_DESCRIPTION, SITE_TITLE } from "@/consts";
+
+const articles = (await getCollection("kb")).sort(
+  (a, b) => b.data.pubDate.valueOf() - a.data.pubDate.valueOf()
+);
+---
+
+<Layout title={`Knowledge Base | ${SITE_TITLE}`} description={SITE_DESCRIPTION}>
+  <div class="max-w-4xl mx-auto px-4 py-8">
+    <h1 class="text-2xl font-bold mb-2">Knowledge Base</h1>
+    <p class="text-muted-foreground max-w-[70ch] mb-2">
+      Short, durable explanations of the primitives OpenAgents cares about: identity, coordination, and settlement for autonomous agents. Written for humans and agents.
+    </p>
+    <p class="text-muted-foreground max-w-[70ch] mb-6">
+      OpenAgents is a runtime + compiler + (optional) market: verification (tests/builds) is the ground truth; the canonical output of a session is the <strong>Verified Patch Bundle</strong> (PR_SUMMARY.md, RECEIPT.json, REPLAY.jsonl). Terminology: <code class="rounded bg-muted px-1 py-0.5 font-mono text-sm">GLOSSARY.md</code> in the repo; implementation status: <code class="rounded bg-muted px-1 py-0.5 font-mono text-sm">SYNTHESIS_EXECUTION.md</code>; roadmap: <code class="rounded bg-muted px-1 py-0.5 font-mono text-sm">ROADMAP.md</code>.
+    </p>
+    <div class="grid gap-4 sm:grid-cols-2">
+      {articles.map((a) => (
+        <Card class="border-border hover:border-primary/50 transition-colors">
+          <a href={`/kb/${a.id}`} class="block">
+            <CardHeader>
+              <CardTitle class="text-base">{a.data.title}</CardTitle>
+              <p class="text-sm text-muted-foreground m-0">
+                <FormattedDate date={a.data.pubDate} />
+              </p>
+              <p class="text-sm text-muted-foreground m-0 mt-1">{a.data.description}</p>
+              {a.data.tags?.length ? (
+                <div class="flex flex-wrap gap-1 mt-2">
+                  {a.data.tags.slice(0, 6).map((t) => (
+                    <span class="rounded border border-border bg-muted px-2 py-0.5 text-xs font-mono text-muted-foreground">{t}</span>
+                  ))}
+                </div>
+              ) : null}
+            </CardHeader>
+          </a>
+        </Card>
+      ))}
+    </div>
+  </div>
+</Layout>

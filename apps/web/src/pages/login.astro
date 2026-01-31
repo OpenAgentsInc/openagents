@@ -2,9 +2,10 @@
 import Layout from "../layouts/Layout.astro";
 import SignInForm from "../components/SignInForm.tsx";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
+import { SITE_TITLE } from "@/consts";
 ---
 
-<Layout>
+<Layout title={`Sign in | ${SITE_TITLE}`} description="Sign in to OpenAgents.">
   <main class="max-w-md mx-auto px-4 py-12">
     <Card>
       <CardHeader>

@@ -1,7 +1,19 @@
 ---
+import { ClientRouter } from "astro:transitions";
 import "../styles/global.css";
-import AuthUI from "../components/AuthUI.tsx";
-import { ModeToggle } from "../components/ModeToggle.tsx";
+import AppShell from "../components/AppShell.tsx";
+import Footer from "../components/Footer.astro";
+import { SITE_TITLE } from "@/consts";
+
+interface Props {
+  title?: string;
+  description?: string;
+  image?: { src: string };
+}
+
+const { title = SITE_TITLE, description = "An agentic OS: identity, coordination, and budgets for autonomous agents.", image } = Astro.props;
+const siteOrigin = Astro.site?.origin ?? "https://web-ct8.pages.dev";
+const canonicalURL = new URL(Astro.url.pathname, Astro.site ?? "https://web-ct8.pages.dev");
 ---
 
 <script is:inline>
@@ -33,26 +45,30 @@ import { ModeToggle } from "../components/ModeToggle.tsx";
 <!doctype html>
 <html lang="en">
   <head>
+    <ClientRouter />
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" type="image/x-icon" href="/favicon.ico" />
     <meta name="generator" content={Astro.generator} />
-    <title>Astro Basics</title>
+    <link rel="canonical" href={canonicalURL} />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:url" content={Astro.url} />
+    <meta property="twitter:card" content={image ? "summary_large_image" : "summary"} />
+    <meta property="twitter:title" content={title} />
+    <meta property="twitter:description" content={description} />
+    {image && <meta property="og:image" content={new URL(image.src, siteOrigin).toString()} />}
+    {image && <meta property="twitter:image" content={new URL(image.src, siteOrigin).toString()} />}
   </head>
   <body class="bg-background text-foreground">
-    <div class="fixed inset-0 h-screen flex flex-col overflow-hidden">
-      <header class="shrink-0 border-b border-border bg-background px-4 py-2 flex justify-between items-center">
-        <a href="/" class="text-lg font-semibold text-foreground hover:text-primary transition-colors">
-          Web
-        </a>
-        <div class="flex items-center gap-2">
-          <ModeToggle client:load />
-          <AuthUI client:load />
-        </div>
-      </header>
-      <main class="flex-1 min-h-0 overflow-auto">
+    <div class="flex h-svh w-full flex-col overflow-hidden" transition:persist="app-shell">
+      <AppShell client:load>
         <slot />
-      </main>
+        <Footer />
+      </AppShell>
     </div>
   </body>
 </html>

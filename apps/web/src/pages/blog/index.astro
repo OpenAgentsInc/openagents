@@ -1,0 +1,39 @@
+---
+import { Image } from "astro:assets";
+import { getCollection } from "astro:content";
+import Layout from "@/layouts/Layout.astro";
+import FormattedDate from "@/components/FormattedDate.astro";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { SITE_DESCRIPTION, SITE_TITLE } from "@/consts";
+
+const posts = (await getCollection("blog")).sort(
+  (a, b) => b.data.pubDate.valueOf() - a.data.pubDate.valueOf()
+);
+---
+
+<Layout title={`Blog | ${SITE_TITLE}`} description={SITE_DESCRIPTION}>
+  <div class="max-w-4xl mx-auto px-4 py-8">
+    <h1 class="text-2xl font-bold mb-6">Blog</h1>
+    <div class="grid gap-6 sm:grid-cols-2">
+      {posts.map((post, i) => (
+        <Card class={i === 0 ? "sm:col-span-2" : ""}>
+          <a href={`/blog/${post.id}`} class="block">
+            <CardHeader>
+              {post.data.heroImage && (
+                <div class="mb-2">
+                  <Image width={720} height={360} src={post.data.heroImage} alt="" class="rounded-md w-full object-cover" />
+                </div>
+              )}
+              <CardTitle class={i === 0 ? "text-2xl" : "text-lg"}>
+                {post.data.title}
+              </CardTitle>
+              <p class="text-sm text-muted-foreground m-0">
+                <FormattedDate date={post.data.pubDate} />
+              </p>
+            </CardHeader>
+          </a>
+        </Card>
+      ))}
+    </div>
+  </div>
+</Layout>
