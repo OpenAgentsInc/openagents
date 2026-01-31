@@ -1,5 +1,6 @@
 ---
 import "../styles/global.css";
+import { ClientRouter } from "astro:transitions";
 import AppShell from "../components/AppShell.tsx";
 import Footer from "../components/Footer.astro";
 import { SITE_TITLE } from "@/consts";
@@ -44,6 +45,7 @@ const canonicalURL = new URL(Astro.url.pathname, Astro.site ?? "https://web-ct8.
 <!doctype html>
 <html lang="en">
   <head>
+    <ClientRouter />
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />

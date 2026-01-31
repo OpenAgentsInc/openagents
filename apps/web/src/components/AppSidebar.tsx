@@ -11,6 +11,7 @@ import {
   LogOutIcon,
   RssIcon,
   UserIcon,
+  UsersRoundIcon,
 } from "lucide-react";
 import { authClient } from "@/lib/auth-client";
 import { api } from "../../convex/_generated/api";
@@ -42,6 +43,7 @@ import { cn } from "@/lib/utils";
 const navItems = [
   { href: "/", label: "Home", icon: HomeIcon, exact: true },
   { href: "/feed", label: "Feed", icon: RssIcon, exact: true },
+  { href: "/communities", label: "Communities", icon: UsersRoundIcon, exact: false },
   { href: "/kb", label: "Knowledge", icon: BookOpenIcon, exact: false },
   { href: "/blog", label: "Blog", icon: FileTextIcon, exact: false },
   { href: "/about", label: "About", icon: InfoIcon, exact: true },
