@@ -70,10 +70,7 @@ impl MoltbookClient {
     }
 
     /// Create a client with a custom base URL and optional API key.
-    pub fn with_base_url(
-        base_url: impl Into<String>,
-        api_key: Option<String>,
-    ) -> Result<Self> {
+    pub fn with_base_url(base_url: impl Into<String>, api_key: Option<String>) -> Result<Self> {
         let base_url = base_url.into();
         let (host, port) = parse_host_port(&base_url);
         let http = Client::builder()
@@ -98,14 +95,11 @@ impl MoltbookClient {
     }
 
     fn auth_header(&self) -> Result<reqwest::header::HeaderValue> {
-        let key = self
-            .api_key
-            .as_deref()
-            .ok_or_else(|| MoltbookError::Api {
-                status: 401,
-                error: "API key required".to_string(),
-                hint: Some("Use MoltbookClient::new(api_key) or register first.".to_string()),
-            })?;
+        let key = self.api_key.as_deref().ok_or_else(|| MoltbookError::Api {
+            status: 401,
+            error: "API key required".to_string(),
+            hint: Some("Use MoltbookClient::new(api_key) or register first.".to_string()),
+        })?;
         let value = format!("Bearer {key}");
         reqwest::header::HeaderValue::from_str(&value).map_err(|_| MoltbookError::Api {
             status: 401,
@@ -281,14 +275,13 @@ impl MoltbookClient {
                     .header(reqwest::header::AUTHORIZATION, auth.clone()))
             })
             .await?;
-        let envelope: crate::types::AgentsMeEnvelope = response.json().await.map_err(MoltbookError::Http)?;
-        envelope
-            .into_agent()
-            .ok_or_else(|| MoltbookError::Api {
-                status: 200,
-                error: "agents/me response missing 'data' and 'agent'".to_string(),
-                hint: None,
-            })
+        let envelope: crate::types::AgentsMeEnvelope =
+            response.json().await.map_err(MoltbookError::Http)?;
+        envelope.into_agent().ok_or_else(|| MoltbookError::Api {
+            status: 200,
+            error: "agents/me response missing 'data' and 'agent'".to_string(),
+            hint: None,
+        })
     }
 
     /// Check claim status (pending_claim or claimed).
@@ -310,11 +303,7 @@ impl MoltbookClient {
     pub async fn agents_profile(&self, name: &str) -> Result<ProfileResponse> {
         let url = self.url("agents/profile");
         let response = self
-            .send_with_fallback(|http| {
-                Ok(http
-                    .get(&url)
-                    .query(&[("name", name)]))
-            })
+            .send_with_fallback(|http| Ok(http.get(&url).query(&[("name", name)])))
             .await?;
         let body = response.json().await.map_err(MoltbookError::Http)?;
         Ok(body)
@@ -337,7 +326,11 @@ impl MoltbookClient {
     }
 
     /// Upload avatar (multipart; max 500 KB; JPEG/PNG/GIF/WebP).
-    pub async fn agents_me_avatar_upload(&self, image_bytes: &[u8], filename: &str) -> Result<Agent> {
+    pub async fn agents_me_avatar_upload(
+        &self,
+        image_bytes: &[u8],
+        filename: &str,
+    ) -> Result<Agent> {
         let url = self.url("agents/me/avatar");
         let auth = self.auth_header()?;
         let response = self
@@ -437,11 +430,7 @@ impl MoltbookClient {
             query.push(("submolt", s.to_string()));
         }
         let response = self
-            .send_with_fallback(|http| {
-                Ok(http
-                    .get(&url)
-                    .query(&query))
-            })
+            .send_with_fallback(|http| Ok(http.get(&url).query(&query)))
             .await?;
         let body = response.text().await.map_err(MoltbookError::Http)?;
         let body_snippet = body.chars().take(400).collect::<String>();
@@ -458,11 +447,12 @@ impl MoltbookClient {
                 hint: Some(format!("Response snippet: {body_snippet}...")),
             })?
         } else {
-            let wrapper: PostsResponse = serde_json::from_value(value).map_err(|e| MoltbookError::Api {
-                status: 200,
-                error: format!("error decoding response body: {e}"),
-                hint: Some(format!("Response snippet: {body_snippet}...")),
-            })?;
+            let wrapper: PostsResponse =
+                serde_json::from_value(value).map_err(|e| MoltbookError::Api {
+                    status: 200,
+                    error: format!("error decoding response body: {e}"),
+                    hint: Some(format!("Response snippet: {body_snippet}...")),
+                })?;
             wrapper.into_posts()
         };
         Ok(posts)
@@ -481,11 +471,7 @@ impl MoltbookClient {
             query.push(("limit", n.to_string()));
         }
         let response = self
-            .send_with_fallback(|http| {
-                Ok(http
-                    .get(&url)
-                    .query(&query))
-            })
+            .send_with_fallback(|http| Ok(http.get(&url).query(&query)))
             .await?;
         let body: PostsResponse = response.json().await.map_err(MoltbookError::Http)?;
         Ok(body.into_posts())
@@ -494,12 +480,7 @@ impl MoltbookClient {
     /// Get a single post by ID.
     pub async fn posts_get(&self, post_id: &str) -> Result<Post> {
         let url = self.url(&format!("posts/{post_id}"));
-        let response = self
-            .send_with_fallback(|http| {
-                Ok(http
-                    .get(&url))
-            })
-            .await?;
+        let response = self.send_with_fallback(|http| Ok(http.get(&url))).await?;
         let body = response.json().await.map_err(MoltbookError::Http)?;
         Ok(body)
     }
@@ -576,7 +557,11 @@ impl MoltbookClient {
     // ---------- Comments ----------
 
     /// Add a comment or reply to a post.
-    pub async fn comments_create(&self, post_id: &str, request: CreateCommentRequest) -> Result<Comment> {
+    pub async fn comments_create(
+        &self,
+        post_id: &str,
+        request: CreateCommentRequest,
+    ) -> Result<Comment> {
         let url = self.url(&format!("posts/{post_id}/comments"));
         let auth = self.auth_header()?;
         let response = self
@@ -604,11 +589,7 @@ impl MoltbookClient {
             query.push(("limit", n.to_string()));
         }
         let response = self
-            .send_with_fallback(|http| {
-                Ok(http
-                    .get(&url)
-                    .query(&query))
-            })
+            .send_with_fallback(|http| Ok(http.get(&url).query(&query)))
             .await?;
         let body: CommentsResponse = response.json().await.map_err(MoltbookError::Http)?;
         Ok(body.into_comments())
@@ -661,11 +642,7 @@ impl MoltbookClient {
             query.push(("limit", n.to_string()));
         }
         let response = self
-            .send_with_fallback(|http| {
-                Ok(http
-                    .get(&url)
-                    .query(&query))
-            })
+            .send_with_fallback(|http| Ok(http.get(&url).query(&query)))
             .await?;
         let body = response.json().await.map_err(MoltbookError::Http)?;
         Ok(body)
@@ -692,11 +669,7 @@ impl MoltbookClient {
     /// List all submolts.
     pub async fn submolts_list(&self) -> Result<Vec<Submolt>> {
         let url = self.url("submolts");
-        let response = self
-            .send_with_fallback(|http| {
-                Ok(http.get(&url))
-            })
-            .await?;
+        let response = self.send_with_fallback(|http| Ok(http.get(&url))).await?;
         let body: SubmoltsResponse = response.json().await.map_err(MoltbookError::Http)?;
         Ok(body.into_submolts())
     }
@@ -704,11 +677,7 @@ impl MoltbookClient {
     /// Get a single submolt by name.
     pub async fn submolts_get(&self, name: &str) -> Result<Submolt> {
         let url = self.url(&format!("submolts/{name}"));
-        let response = self
-            .send_with_fallback(|http| {
-                Ok(http.get(&url))
-            })
-            .await?;
+        let response = self.send_with_fallback(|http| Ok(http.get(&url))).await?;
         let body = response.json().await.map_err(MoltbookError::Http)?;
         Ok(body)
     }
@@ -857,11 +826,7 @@ impl MoltbookClient {
     /// List moderators of a submolt.
     pub async fn submolts_moderators_list(&self, submolt_name: &str) -> Result<Vec<Moderator>> {
         let url = self.url(&format!("submolts/{submolt_name}/moderators"));
-        let response = self
-            .send_with_fallback(|http| {
-                Ok(http.get(&url))
-            })
-            .await?;
+        let response = self.send_with_fallback(|http| Ok(http.get(&url))).await?;
         let body = response.json().await.map_err(MoltbookError::Http)?;
         Ok(body)
     }
