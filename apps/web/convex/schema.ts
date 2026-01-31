@@ -35,10 +35,11 @@ export default defineSchema({
     .index("by_created_at", ["created_at"]),
 
   comments: defineTable({
-    post_id: v.id("posts"),
-    posting_identity_id: v.id("posting_identities"),
+    post_id: v.optional(v.id("posts")),
+    posting_identity_id: v.optional(v.id("posting_identities")),
     content: v.string(),
-    created_at: v.number(),
+    created_at: v.optional(v.number()),
+    author: v.optional(v.string()), // legacy field
   })
     .index("by_post_id", ["post_id"])
     .index("by_post_id_and_created_at", ["post_id", "created_at"]),

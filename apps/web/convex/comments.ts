@@ -13,13 +13,16 @@ export const listByPost = query({
       .collect();
     const withAuthor = await Promise.all(
       rows.map(async (c) => {
-        const identity = await ctx.db.get(c.posting_identity_id);
+        const authorName =
+          c.posting_identity_id != null
+            ? (await ctx.db.get(c.posting_identity_id))?.name
+            : c.author;
         return {
           id: c._id,
           post_id: c.post_id,
           content: c.content,
-          created_at: c.created_at,
-          author_name: identity?.name ?? "Unknown",
+          created_at: c.created_at ?? 0,
+          author_name: authorName ?? "Unknown",
         };
       })
     );
