@@ -2961,6 +2961,7 @@ impl MinimalRoot {
             }
             AppEvent::MoltbookFeedUpdated { posts } => {
                 self.moltbook_feed = posts;
+                self.moltbook_feed_scroll.scroll_to(Point::new(0.0, 0.0));
             }
             AppEvent::MoltbookLog { message } => {
                 self.moltbook_log.push(message);
@@ -4437,7 +4438,18 @@ impl MinimalRoot {
                                 ),
                                 EventResult::Handled
                             );
-                            handled |= refresh_handled;
+                            let scroll_handled = self
+                                .moltbook_feed_scroll_bounds
+                                .contains(self.cursor_position)
+                                && matches!(
+                                    self.moltbook_feed_scroll.event(
+                                        event,
+                                        self.moltbook_feed_scroll_bounds,
+                                        &mut self.event_context
+                                    ),
+                                    EventResult::Handled
+                                );
+                            handled |= refresh_handled || scroll_handled;
                         }
                     }
                 }
@@ -6534,6 +6546,79 @@ fn paint_nip90_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintContex
     }
 }
 
+#[derive(Clone, Debug)]
+struct MoltbookFeedRow {
+    title: String,
+    preview: String,
+    title_height: f32,
+    preview_height: f32,
+    preview_gap: f32,
+}
+
+impl MoltbookFeedRow {
+    fn block_height(&self) -> f32 {
+        self.title_height + self.preview_height + self.preview_gap
+    }
+}
+
+struct MoltbookFeedView {
+    rows: Vec<MoltbookFeedRow>,
+    font_size: f32,
+    row_gap: f32,
+    empty_message: String,
+}
+
+impl MoltbookFeedView {
+    fn new(rows: Vec<MoltbookFeedRow>, font_size: f32, row_gap: f32) -> Self {
+        Self {
+            rows,
+            font_size,
+            row_gap,
+            empty_message: "Refresh to load feed.".to_string(),
+        }
+    }
+}
+
+impl Component for MoltbookFeedView {
+    fn paint(&mut self, bounds: Bounds, cx: &mut PaintContext) {
+        if self.rows.is_empty() {
+            Text::new(self.empty_message.as_str())
+                .font_size(self.font_size)
+                .color(theme::text::MUTED)
+                .paint(bounds, cx);
+            return;
+        }
+
+        let mut y = bounds.origin.y;
+        for (idx, row) in self.rows.iter().enumerate() {
+            let header_bounds =
+                Bounds::new(bounds.origin.x, y, bounds.size.width, row.title_height);
+            Text::new(row.title.as_str())
+                .font_size(self.font_size)
+                .color(theme::text::PRIMARY)
+                .paint(header_bounds, cx);
+
+            if !row.preview.is_empty() {
+                let preview_bounds = Bounds::new(
+                    bounds.origin.x,
+                    y + row.title_height + row.preview_gap,
+                    bounds.size.width,
+                    row.preview_height,
+                );
+                Text::new(row.preview.as_str())
+                    .font_size(self.font_size)
+                    .color(theme::text::MUTED)
+                    .paint(preview_bounds, cx);
+            }
+
+            y += row.block_height();
+            if idx + 1 < self.rows.len() {
+                y += self.row_gap;
+            }
+        }
+    }
+}
+
 fn paint_moltbook_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintContext) {
     let padding = 16.0;
     let label_height = 16.0;
@@ -6547,58 +6632,44 @@ fn paint_moltbook_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintCon
 
     root.moltbook_refresh_bounds = Bounds::ZERO;
 
-    #[derive(Clone)]
-    struct FeedRow {
-        title: String,
-        preview: String,
-        title_height: f32,
-        preview_height: f32,
-        total_height: f32,
-    }
-
-    let feed_rows = if root.moltbook_feed.is_empty() {
-        Vec::new()
-    } else {
-        root.moltbook_feed
-            .iter()
-            .map(|post| {
-                let title = post.title.as_deref().unwrap_or("(no title)");
-                let author = post.author_name.as_deref().unwrap_or("?");
-                let score = post
-                    .score
-                    .map(|s| s.to_string())
-                    .unwrap_or_else(|| "—".to_string());
-                let header = format!("{author} · {title} · {score} ↑");
-                let preview = post
-                    .content_preview
-                    .as_deref()
-                    .unwrap_or("")
-                    .chars()
-                    .take(120)
-                    .collect::<String>();
-                let mut header_text = Text::new(header.as_str()).font_size(text_size);
-                let (_, header_h) = header_text.size_hint_with_width(content_bounds.size.width);
-                let title_height = header_h.unwrap_or(row_height).max(row_height);
-                let preview_height = if preview.is_empty() {
-                    0.0
-                } else {
-                    let mut preview_text = Text::new(preview.as_str()).font_size(text_size);
-                    let (_, preview_h) =
-                        preview_text.size_hint_with_width(content_bounds.size.width);
-                    preview_h.unwrap_or(row_height).max(row_height)
-                };
-                let gap = if preview_height > 0.0 { 4.0 } else { 0.0 };
-                let total_height = title_height + preview_height + gap;
-                FeedRow {
-                    title: header,
-                    preview,
-                    title_height,
-                    preview_height,
-                    total_height,
-                }
-            })
-            .collect::<Vec<_>>()
-    };
+    let feed_rows = root
+        .moltbook_feed
+        .iter()
+        .map(|post| {
+            let title = post.title.as_deref().unwrap_or("(no title)");
+            let author = post.author_name.as_deref().unwrap_or("?");
+            let score = post
+                .score
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| "—".to_string());
+            let header = format!("{author} · {title} · {score} ↑");
+            let preview = post
+                .content_preview
+                .as_deref()
+                .unwrap_or("")
+                .chars()
+                .take(140)
+                .collect::<String>();
+            let mut header_text = Text::new(header.as_str()).font_size(text_size);
+            let (_, header_h) = header_text.size_hint_with_width(content_bounds.size.width);
+            let title_height = header_h.unwrap_or(row_height).max(row_height);
+            let (preview_height, preview_gap) = if preview.is_empty() {
+                (0.0, 0.0)
+            } else {
+                let mut preview_text = Text::new(preview.as_str()).font_size(text_size);
+                let (_, preview_h) = preview_text.size_hint_with_width(content_bounds.size.width);
+                (preview_h.unwrap_or(row_height).max(row_height), 4.0)
+            };
+            MoltbookFeedRow {
+                title: header,
+                preview,
+                title_height,
+                preview_height,
+                preview_gap,
+            }
+        })
+        .collect::<Vec<_>>();
+    let feed_row_gap = 6.0;
 
     let mut steps: Vec<(MoltStep, f32)> = vec![
         (MoltStep::EngagementHeader, label_height),
@@ -6622,16 +6693,7 @@ fn paint_moltbook_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintCon
         Log(String),
     }
 
-    let feed_height = if feed_rows.is_empty() {
-        40.0
-    } else {
-        feed_rows
-            .iter()
-            .map(|row| row.total_height)
-            .sum::<f32>()
-            .min(220.0)
-    };
-    steps.push((MoltStep::FeedItem, feed_height));
+    steps.push((MoltStep::FeedItem, 0.0));
     steps.push((MoltStep::Spacer, gap));
     steps.push((MoltStep::LogTitle, label_height));
     steps.push((MoltStep::Spacer, 6.0));
@@ -6651,7 +6713,13 @@ fn paint_moltbook_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintCon
     let log_height = (log_content.lines().count().max(1) as f32) * row_height;
     steps.push((MoltStep::Log(log_content), log_height));
 
-    let heights: Vec<ColumnItem> = steps.iter().map(|(_, h)| ColumnItem::Fixed(*h)).collect();
+    let heights: Vec<ColumnItem> = steps
+        .iter()
+        .map(|(step, h)| match step {
+            MoltStep::FeedItem => ColumnItem::Flex(1.0),
+            _ => ColumnItem::Fixed(*h),
+        })
+        .collect();
     let bounds_list = column_bounds(content_bounds, &heights, 0.0);
 
     for ((step, _), step_bounds) in steps.iter().zip(bounds_list.iter()) {
@@ -6694,38 +6762,22 @@ fn paint_moltbook_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintCon
             }
             MoltStep::FeedItem => {
                 root.moltbook_feed_scroll_bounds = bounds;
-                if root.moltbook_feed.is_empty() {
-                    Text::new("Refresh to load feed.")
-                        .font_size(text_size)
-                        .color(theme::text::MUTED)
-                        .paint(bounds, cx);
+                let content_height = if feed_rows.is_empty() {
+                    row_height
                 } else {
-                    let mut y = bounds.origin.y;
-                    for row in &feed_rows {
-                        if y + row.total_height > bounds.origin.y + bounds.size.height {
-                            break;
-                        }
-                        let header_bounds =
-                            Bounds::new(bounds.origin.x, y, bounds.size.width, row.title_height);
-                        Text::new(row.title.as_str())
-                            .font_size(text_size)
-                            .color(theme::text::PRIMARY)
-                            .paint(header_bounds, cx);
-                        if !row.preview.is_empty() {
-                            let preview_bounds = Bounds::new(
-                                bounds.origin.x,
-                                y + row.title_height + 4.0,
-                                bounds.size.width,
-                                row.preview_height,
-                            );
-                            Text::new(row.preview.as_str())
-                                .font_size(text_size)
-                                .color(theme::text::MUTED)
-                                .paint(preview_bounds, cx);
-                        }
-                        y += row.total_height;
-                    }
-                }
+                    let rows_height: f32 =
+                        feed_rows.iter().map(MoltbookFeedRow::block_height).sum();
+                    rows_height + feed_row_gap * (feed_rows.len().saturating_sub(1) as f32)
+                };
+                let content_height = content_height.max(bounds.size.height);
+                root.moltbook_feed_scroll
+                    .set_content_size(Size::new(bounds.size.width, content_height));
+                root.moltbook_feed_scroll.set_content(MoltbookFeedView::new(
+                    feed_rows.clone(),
+                    text_size,
+                    feed_row_gap,
+                ));
+                root.moltbook_feed_scroll.paint(bounds, cx);
             }
             MoltStep::LogTitle => {
                 Text::new("Activity")
