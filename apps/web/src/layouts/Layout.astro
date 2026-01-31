@@ -1,5 +1,6 @@
 ---
 import "../styles/global.css";
+import AuthUI from "../components/AuthUI.tsx";
 ---
 
 <!doctype html>
@@ -12,6 +13,10 @@ import "../styles/global.css";
     <title>Astro Basics</title>
   </head>
   <body>
+    <header class="border-b border-gray-200 px-4 py-2 flex justify-between items-center">
+      <a href="/" class="text-lg font-semibold text-gray-900">Web</a>
+      <AuthUI client:load />
+    </header>
     <slot />
   </body>
 </html>

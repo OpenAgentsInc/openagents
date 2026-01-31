@@ -9,25 +9,28 @@
     "dev:convex": "convex dev",
     "build": "astro build",
     "preview": "astro preview",
-    "deploy": "CONVEX_URL=https://blessed-warbler-385.convex.cloud astro build && wrangler pages deploy",
+    "deploy": "CONVEX_URL=https://blessed-warbler-385.convex.cloud PUBLIC_CONVEX_SITE_URL=https://blessed-warbler-385.convex.site astro build && wrangler pages deploy",
     "format": "prettier --write ."
   },
   "dependencies": {
     "@astrojs/react": "^4.4.2",
+    "@convex-dev/better-auth": "0.10.10",
     "@types/react": "^19.2.10",
     "@types/react-dom": "^19.2.3",
     "astro": "^5.17.1",
+    "better-auth": "1.4.9",
     "convex": "^1.31.7",
     "react": "^19.2.4",
     "react-dom": "^19.2.4"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.1.18",
-    "wrangler": "^4.61.1",
+    "@types/node": "^25.1.0",
     "npm-run-all2": "^8.0.4",
     "prettier": "^3.8.1",
     "prettier-plugin-astro": "^0.14.1",
     "prettier-plugin-tailwindcss": "^0.7.2",
-    "tailwindcss": "^4.1.18"
+    "tailwindcss": "^4.1.18",
+    "wrangler": "^4.61.1"
   }
 }

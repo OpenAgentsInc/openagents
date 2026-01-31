@@ -8,12 +8,12 @@ import { SITE_TITLE } from '../consts';
 <!doctype html>
 <html lang="en">
 	<head>
-		<BaseHead title={`Sign up · ${SITE_TITLE}`} description="Create an OpenAgents account with email or GitHub." />
+		<BaseHead title={`Register · ${SITE_TITLE}`} description="Create an OpenAgents account with email or GitHub." />
 	</head>
 	<body>
 		<Header />
 		<main class="auth-main">
-			<h1>Sign up</h1>
+			<h1>Register</h1>
 			<form id="signup-form" class="auth-form">
 				<label for="name">Name</label>
 				<input id="name" name="name" type="text" required minlength="1" maxlength="100" autocomplete="name" placeholder="Your name" />
@@ -25,8 +25,8 @@ import { SITE_TITLE } from '../consts';
 				<button type="submit">Create account</button>
 			</form>
 			<p class="auth-divider">or</p>
-			<button type="button" id="github-signup" class="auth-social">Sign up with GitHub</button>
-			<p class="auth-footer">Already have an account? <a href="/login">Sign in</a></p>
+			<button type="button" id="github-signup" class="auth-social">Register with GitHub</button>
+			<p class="auth-footer">Already have an account? <a href="/login">Log in</a></p>
 		</main>
 		<Footer />
 		<script>
@@ -56,7 +56,7 @@ import { SITE_TITLE } from '../consts';
 					if (errorEl) errorEl.hidden = true;
 					const { data, error } = await signUp.email({ name, email, password, callbackURL: '/' });
 					if (error) {
-						showError(error.message ?? 'Sign up failed');
+						showError(error.message ?? 'Registration failed');
 						if (btn) (btn as HTMLButtonElement).disabled = false;
 						return;
 					}
