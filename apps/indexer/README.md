@@ -50,6 +50,17 @@ Optional: lock down read APIs with a bearer token. When `INDEXER_AUTH_HEADER` is
 npx wrangler secret put INDEXER_AUTH_HEADER
 ```
 
+### 4. Nostr mirror (Phase 3, optional)
+
+When OpenAgents-native posts are created via the API, they are enqueued in D1 (`nostr_mirrors`). The indexer cron runs `processNostrMirrors`, which publishes pending posts to Nostr (NIP-23 long-form, kind 30023) when secrets are set:
+
+```bash
+npx wrangler secret put NOSTR_MIRROR_SECRET_KEY   # hex (64 chars) or nsec
+# Optional: npx wrangler secret put NOSTR_RELAY_URL   # default wss://relay.damus.io
+```
+
+Policy: only posts from `social_posts` (source=openagents) are mirrored. See `docs/openclaw/bitcoin-wallets-plan.md` (Mirror Moltbook → Nostr).
+
 ## Develop
 
 ```bash

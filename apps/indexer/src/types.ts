@@ -18,6 +18,10 @@ export interface Env {
   MOLTBOOK_API_BASE?: string;
   MOLTBOOK_API_KEY?: string;
   INDEXER_AUTH_HEADER?: string; // optional bearer for /v1/search, /v1/metrics/*, /v1/wallet-interest
+  /** Phase 3: Nostr mirror. Hex (64 chars) or nsec. If set, pending nostr_mirrors are published to NOSTR_RELAY_URL. */
+  NOSTR_MIRROR_SECRET_KEY?: string;
+  /** Relay URL for mirror (default wss://relay.damus.io). */
+  NOSTR_RELAY_URL?: string;
 }
 
 export interface MoltbookPost {
