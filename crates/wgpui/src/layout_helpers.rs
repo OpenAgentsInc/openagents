@@ -102,12 +102,7 @@ pub fn row_bounds(bounds: Bounds, height: f32, items: &[RowItem], gap: f32) -> V
         .collect()
 }
 
-pub fn grid_bounds(
-    bounds: Bounds,
-    item_size: Size,
-    count: usize,
-    gap: f32,
-) -> Vec<Bounds> {
+pub fn grid_bounds(bounds: Bounds, item_size: Size, count: usize, gap: f32) -> Vec<Bounds> {
     if count == 0 {
         return Vec::new();
     }
@@ -180,12 +175,7 @@ pub fn layout_header_nav_content(
     }
 }
 
-pub fn layout_panel(
-    bounds: Bounds,
-    header_height: f32,
-    gap: f32,
-    padding: f32,
-) -> PanelLayout {
+pub fn layout_panel(bounds: Bounds, header_height: f32, gap: f32, padding: f32) -> PanelLayout {
     let mut engine = LayoutEngine::new();
     let gap = length(gap);
     let padding = length(padding);
@@ -239,7 +229,11 @@ mod tests {
     #[test]
     fn test_row_bounds_with_flex() {
         let bounds = Bounds::new(10.0, 20.0, 300.0, 40.0);
-        let items = [RowItem::fixed(100.0), RowItem::flex(1.0), RowItem::flex(1.0)];
+        let items = [
+            RowItem::fixed(100.0),
+            RowItem::flex(1.0),
+            RowItem::flex(1.0),
+        ];
         let rows = row_bounds(bounds, 24.0, &items, 10.0);
 
         assert_eq!(rows.len(), 3);

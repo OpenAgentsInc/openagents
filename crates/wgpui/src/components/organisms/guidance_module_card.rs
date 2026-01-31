@@ -302,11 +302,7 @@ impl GuidanceModuleCard {
     }
 
     fn yes_no(value: bool) -> &'static str {
-        if value {
-            "Yes"
-        } else {
-            "No"
-        }
+        if value { "Yes" } else { "No" }
     }
 
     fn format_time(ms: u64) -> String {
@@ -320,13 +316,7 @@ impl GuidanceModuleCard {
         }
     }
 
-    fn draw_section_title(
-        cx: &mut PaintContext,
-        title: &str,
-        x: f32,
-        y: f32,
-        width: f32,
-    ) -> f32 {
+    fn draw_section_title(cx: &mut PaintContext, title: &str, x: f32, y: f32, width: f32) -> f32 {
         let mut text = Text::new(title)
             .font_size(theme::font_size::SM)
             .color(theme::text::SECONDARY)
@@ -343,9 +333,7 @@ impl GuidanceModuleCard {
         width: f32,
         color: Hsla,
     ) -> f32 {
-        let mut block = Text::new(text)
-            .font_size(theme::font_size::SM)
-            .color(color);
+        let mut block = Text::new(text).font_size(theme::font_size::SM).color(color);
         let (_, height) = block.size_hint_with_width(width);
         let height = height.unwrap_or(Self::MIN_ROW_HEIGHT);
         block.paint(Bounds::new(x, y, width, height), cx);
@@ -384,15 +372,7 @@ impl GuidanceModuleCard {
             return 0.0;
         }
         let tags = decision.tags.join(", ");
-        Self::draw_key_value(
-            cx,
-            "Tags",
-            &tags,
-            x,
-            y,
-            width,
-            theme::text::SECONDARY,
-        ) + Self::ROW_GAP
+        Self::draw_key_value(cx, "Tags", &tags, x, y, width, theme::text::SECONDARY) + Self::ROW_GAP
     }
 
     fn draw_goal_section(&self, cx: &mut PaintContext, x: f32, y: f32, width: f32) -> f32 {
@@ -674,12 +654,21 @@ impl Component for GuidanceModuleCard {
             .color(theme::text::PRIMARY)
             .no_wrap();
         title_text.paint(
-            Bounds::new(content.origin.x, content.origin.y, content.size.width, Self::HEADER_HEIGHT),
+            Bounds::new(
+                content.origin.x,
+                content.origin.y,
+                content.size.width,
+                Self::HEADER_HEIGHT,
+            ),
             cx,
         );
 
         if let Some(decision) = &self.decision {
-            let label = format!("{} · {:.0}%", decision.action.label(), decision.confidence * 100.0);
+            let label = format!(
+                "{} · {:.0}%",
+                decision.action.label(),
+                decision.confidence * 100.0
+            );
             let font_size = theme::font_size::XS;
             let padding_x = 10.0;
             let padding_y = 4.0;
@@ -751,12 +740,7 @@ impl Component for GuidanceModuleCard {
 
     fn size_hint(&self) -> (Option<f32>, Option<f32>) {
         let section_count = 6;
-        let rows = self.summary.len()
-            + self
-                .guardrails
-                .len()
-                .max(1)
-            + 12;
+        let rows = self.summary.len() + self.guardrails.len().max(1) + 12;
         let height = theme::spacing::LG * 2.0
             + Self::HEADER_HEIGHT
             + (section_count as f32 * Self::SECTION_GAP)

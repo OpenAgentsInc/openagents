@@ -2087,90 +2087,95 @@ impl Storybook {
 
         // ========== Panel 8: Status Reference ==========
         let nostr_ref_bounds = panels[7];
-        draw_panel("Nostr Status Reference", nostr_ref_bounds, cx, |inner, cx| {
-            // Verification statuses
-            let mut ver_x = inner.origin.x;
-            let verifications = [
-                ContactVerification::Verified,
-                ContactVerification::WebOfTrust,
-                ContactVerification::Unknown,
-            ];
+        draw_panel(
+            "Nostr Status Reference",
+            nostr_ref_bounds,
+            cx,
+            |inner, cx| {
+                // Verification statuses
+                let mut ver_x = inner.origin.x;
+                let verifications = [
+                    ContactVerification::Verified,
+                    ContactVerification::WebOfTrust,
+                    ContactVerification::Unknown,
+                ];
 
-            for ver in &verifications {
-                let ver_w = (ver.label().len() as f32 * 7.0) + 16.0;
-                cx.scene.draw_quad(
-                    Quad::new(Bounds::new(ver_x, inner.origin.y, ver_w, 20.0))
-                        .with_background(ver.color().with_alpha(0.2))
-                        .with_border(ver.color(), 1.0),
-                );
-                let text = cx.text.layout(
-                    ver.label(),
-                    Point::new(ver_x + 6.0, inner.origin.y + 4.0),
-                    theme::font_size::XS,
-                    ver.color(),
-                );
-                cx.scene.draw_text(text);
-                ver_x += ver_w + 12.0;
-            }
+                for ver in &verifications {
+                    let ver_w = (ver.label().len() as f32 * 7.0) + 16.0;
+                    cx.scene.draw_quad(
+                        Quad::new(Bounds::new(ver_x, inner.origin.y, ver_w, 20.0))
+                            .with_background(ver.color().with_alpha(0.2))
+                            .with_border(ver.color(), 1.0),
+                    );
+                    let text = cx.text.layout(
+                        ver.label(),
+                        Point::new(ver_x + 6.0, inner.origin.y + 4.0),
+                        theme::font_size::XS,
+                        ver.color(),
+                    );
+                    cx.scene.draw_text(text);
+                    ver_x += ver_w + 12.0;
+                }
 
-            // Encryption statuses
-            let mut enc_x = inner.origin.x;
-            let encryptions = [
-                EncryptionStatus::Encrypted,
-                EncryptionStatus::Decrypted,
-                EncryptionStatus::Failed,
-            ];
+                // Encryption statuses
+                let mut enc_x = inner.origin.x;
+                let encryptions = [
+                    EncryptionStatus::Encrypted,
+                    EncryptionStatus::Decrypted,
+                    EncryptionStatus::Failed,
+                ];
 
-            for enc in &encryptions {
-                let enc_w = 80.0;
-                cx.scene.draw_quad(
-                    Quad::new(Bounds::new(enc_x, inner.origin.y + 35.0, enc_w, 20.0))
-                        .with_background(enc.color().with_alpha(0.2))
-                        .with_border(enc.color(), 1.0),
-                );
-                let label = format!(
-                    "{} {}",
-                    enc.icon(),
-                    match enc {
-                        EncryptionStatus::Encrypted => "Encrypted",
-                        EncryptionStatus::Decrypted => "Decrypted",
-                        EncryptionStatus::Failed => "Failed",
-                    }
-                );
-                let text = cx.text.layout(
-                    &label,
-                    Point::new(enc_x + 6.0, inner.origin.y + 39.0),
-                    theme::font_size::XS,
-                    enc.color(),
-                );
-                cx.scene.draw_text(text);
-                enc_x += enc_w + 12.0;
-            }
+                for enc in &encryptions {
+                    let enc_w = 80.0;
+                    cx.scene.draw_quad(
+                        Quad::new(Bounds::new(enc_x, inner.origin.y + 35.0, enc_w, 20.0))
+                            .with_background(enc.color().with_alpha(0.2))
+                            .with_border(enc.color(), 1.0),
+                    );
+                    let label = format!(
+                        "{} {}",
+                        enc.icon(),
+                        match enc {
+                            EncryptionStatus::Encrypted => "Encrypted",
+                            EncryptionStatus::Decrypted => "Decrypted",
+                            EncryptionStatus::Failed => "Failed",
+                        }
+                    );
+                    let text = cx.text.layout(
+                        &label,
+                        Point::new(enc_x + 6.0, inner.origin.y + 39.0),
+                        theme::font_size::XS,
+                        enc.color(),
+                    );
+                    cx.scene.draw_text(text);
+                    enc_x += enc_w + 12.0;
+                }
 
-            // DM directions
-            let mut dir_x = inner.origin.x;
-            let directions = [
-                ("Incoming", Hsla::new(200.0, 0.6, 0.5, 1.0)),
-                ("Outgoing", theme::accent::PRIMARY),
-            ];
+                // DM directions
+                let mut dir_x = inner.origin.x;
+                let directions = [
+                    ("Incoming", Hsla::new(200.0, 0.6, 0.5, 1.0)),
+                    ("Outgoing", theme::accent::PRIMARY),
+                ];
 
-            for (label, color) in &directions {
-                let dir_w = 80.0;
-                cx.scene.draw_quad(
-                    Quad::new(Bounds::new(dir_x, inner.origin.y + 70.0, dir_w, 20.0))
-                        .with_background(color.with_alpha(0.2))
-                        .with_border(*color, 1.0),
-                );
-                let text = cx.text.layout(
-                    label,
-                    Point::new(dir_x + 6.0, inner.origin.y + 74.0),
-                    theme::font_size::XS,
-                    *color,
-                );
-                cx.scene.draw_text(text);
-                dir_x += dir_w + 12.0;
-            }
-        });
+                for (label, color) in &directions {
+                    let dir_w = 80.0;
+                    cx.scene.draw_quad(
+                        Quad::new(Bounds::new(dir_x, inner.origin.y + 70.0, dir_w, 20.0))
+                            .with_background(color.with_alpha(0.2))
+                            .with_border(*color, 1.0),
+                    );
+                    let text = cx.text.layout(
+                        label,
+                        Point::new(dir_x + 6.0, inner.origin.y + 74.0),
+                        theme::font_size::XS,
+                        *color,
+                    );
+                    cx.scene.draw_text(text);
+                    dir_x += dir_w + 12.0;
+                }
+            },
+        );
     }
 
     pub(crate) fn paint_sovereign_agent_flows(&mut self, bounds: Bounds, cx: &mut PaintContext) {
@@ -2524,120 +2529,125 @@ impl Storybook {
 
         // ========== Panel 7: Type & Status Reference ==========
         let agent_ref_bounds = panels[6];
-        draw_panel("Agent Types & Statuses", agent_ref_bounds, cx, |inner, cx| {
-            // Agent types
-            let mut type_x = inner.origin.x;
-            let types = [AgentType::Human, AgentType::Sovereign, AgentType::Custodial];
+        draw_panel(
+            "Agent Types & Statuses",
+            agent_ref_bounds,
+            cx,
+            |inner, cx| {
+                // Agent types
+                let mut type_x = inner.origin.x;
+                let types = [AgentType::Human, AgentType::Sovereign, AgentType::Custodial];
 
-            for agent_type in &types {
-                let type_w = (agent_type.label().len() as f32 * 7.0) + 24.0;
-                cx.scene.draw_quad(
-                    Quad::new(Bounds::new(type_x, inner.origin.y, type_w, 22.0))
-                        .with_background(agent_type.color().with_alpha(0.2))
-                        .with_border(agent_type.color(), 1.0),
-                );
-                let icon = agent_type.icon();
-                let icon_run = cx.text.layout(
-                    icon,
-                    Point::new(type_x + 4.0, inner.origin.y + 4.0),
-                    theme::font_size::XS,
-                    agent_type.color(),
-                );
-                cx.scene.draw_text(icon_run);
-                let label_run = cx.text.layout(
-                    agent_type.label(),
-                    Point::new(type_x + 18.0, inner.origin.y + 4.0),
-                    theme::font_size::XS,
-                    agent_type.color(),
-                );
-                cx.scene.draw_text(label_run);
-                type_x += type_w + 10.0;
-            }
+                for agent_type in &types {
+                    let type_w = (agent_type.label().len() as f32 * 7.0) + 24.0;
+                    cx.scene.draw_quad(
+                        Quad::new(Bounds::new(type_x, inner.origin.y, type_w, 22.0))
+                            .with_background(agent_type.color().with_alpha(0.2))
+                            .with_border(agent_type.color(), 1.0),
+                    );
+                    let icon = agent_type.icon();
+                    let icon_run = cx.text.layout(
+                        icon,
+                        Point::new(type_x + 4.0, inner.origin.y + 4.0),
+                        theme::font_size::XS,
+                        agent_type.color(),
+                    );
+                    cx.scene.draw_text(icon_run);
+                    let label_run = cx.text.layout(
+                        agent_type.label(),
+                        Point::new(type_x + 18.0, inner.origin.y + 4.0),
+                        theme::font_size::XS,
+                        agent_type.color(),
+                    );
+                    cx.scene.draw_text(label_run);
+                    type_x += type_w + 10.0;
+                }
 
-            // Agent statuses
-            let mut status_x = inner.origin.x;
-            let statuses = [
-                AgentStatus::Online,
-                AgentStatus::Busy,
-                AgentStatus::Idle,
-                AgentStatus::Error,
-                AgentStatus::Offline,
-            ];
+                // Agent statuses
+                let mut status_x = inner.origin.x;
+                let statuses = [
+                    AgentStatus::Online,
+                    AgentStatus::Busy,
+                    AgentStatus::Idle,
+                    AgentStatus::Error,
+                    AgentStatus::Offline,
+                ];
 
-            for status in &statuses {
-                let status_w = (status.label().len() as f32 * 6.0) + 14.0;
-                cx.scene.draw_quad(
-                    Quad::new(Bounds::new(status_x, inner.origin.y + 35.0, status_w, 20.0))
-                        .with_background(status.color().with_alpha(0.2))
-                        .with_border(status.color(), 1.0),
-                );
-                let status_run = cx.text.layout(
-                    status.label(),
-                    Point::new(status_x + 6.0, inner.origin.y + 39.0),
-                    theme::font_size::XS,
-                    status.color(),
-                );
-                cx.scene.draw_text(status_run);
-                status_x += status_w + 8.0;
-            }
+                for status in &statuses {
+                    let status_w = (status.label().len() as f32 * 6.0) + 14.0;
+                    cx.scene.draw_quad(
+                        Quad::new(Bounds::new(status_x, inner.origin.y + 35.0, status_w, 20.0))
+                            .with_background(status.color().with_alpha(0.2))
+                            .with_border(status.color(), 1.0),
+                    );
+                    let status_run = cx.text.layout(
+                        status.label(),
+                        Point::new(status_x + 6.0, inner.origin.y + 39.0),
+                        theme::font_size::XS,
+                        status.color(),
+                    );
+                    cx.scene.draw_text(status_run);
+                    status_x += status_w + 8.0;
+                }
 
-            // Signing types
-            let mut sig_x = inner.origin.x;
-            let sig_types = [
-                SigningType::Transaction,
-                SigningType::Message,
-                SigningType::Event,
-                SigningType::KeyRotation,
-            ];
+                // Signing types
+                let mut sig_x = inner.origin.x;
+                let sig_types = [
+                    SigningType::Transaction,
+                    SigningType::Message,
+                    SigningType::Event,
+                    SigningType::KeyRotation,
+                ];
 
-            for sig_type in &sig_types {
-                let sig_w = (sig_type.label().len() as f32 * 6.0) + 22.0;
-                cx.scene.draw_quad(
-                    Quad::new(Bounds::new(sig_x, inner.origin.y + 70.0, sig_w, 20.0))
-                        .with_background(sig_type.color().with_alpha(0.2))
-                        .with_border(sig_type.color(), 1.0),
-                );
-                let icon_run = cx.text.layout(
-                    sig_type.icon(),
-                    Point::new(sig_x + 4.0, inner.origin.y + 74.0),
-                    theme::font_size::XS,
-                    sig_type.color(),
-                );
-                cx.scene.draw_text(icon_run);
-                let sig_run = cx.text.layout(
-                    sig_type.label(),
-                    Point::new(sig_x + 16.0, inner.origin.y + 74.0),
-                    theme::font_size::XS,
-                    sig_type.color(),
-                );
-                cx.scene.draw_text(sig_run);
-                sig_x += sig_w + 8.0;
-            }
+                for sig_type in &sig_types {
+                    let sig_w = (sig_type.label().len() as f32 * 6.0) + 22.0;
+                    cx.scene.draw_quad(
+                        Quad::new(Bounds::new(sig_x, inner.origin.y + 70.0, sig_w, 20.0))
+                            .with_background(sig_type.color().with_alpha(0.2))
+                            .with_border(sig_type.color(), 1.0),
+                    );
+                    let icon_run = cx.text.layout(
+                        sig_type.icon(),
+                        Point::new(sig_x + 4.0, inner.origin.y + 74.0),
+                        theme::font_size::XS,
+                        sig_type.color(),
+                    );
+                    cx.scene.draw_text(icon_run);
+                    let sig_run = cx.text.layout(
+                        sig_type.label(),
+                        Point::new(sig_x + 16.0, inner.origin.y + 74.0),
+                        theme::font_size::XS,
+                        sig_type.color(),
+                    );
+                    cx.scene.draw_text(sig_run);
+                    sig_x += sig_w + 8.0;
+                }
 
-            // Urgency levels
-            let mut urg_x = inner.origin.x;
-            let urgencies = [
-                SigningUrgency::Normal,
-                SigningUrgency::Urgent,
-                SigningUrgency::Expired,
-            ];
+                // Urgency levels
+                let mut urg_x = inner.origin.x;
+                let urgencies = [
+                    SigningUrgency::Normal,
+                    SigningUrgency::Urgent,
+                    SigningUrgency::Expired,
+                ];
 
-            for urgency in &urgencies {
-                let urg_w = (urgency.label().len() as f32 * 6.0) + 12.0;
-                cx.scene.draw_quad(
-                    Quad::new(Bounds::new(urg_x, inner.origin.y + 105.0, urg_w, 20.0))
-                        .with_background(urgency.color().with_alpha(0.2))
-                        .with_border(urgency.color(), 1.0),
-                );
-                let urg_run = cx.text.layout(
-                    urgency.label(),
-                    Point::new(urg_x + 5.0, inner.origin.y + 109.0),
-                    theme::font_size::XS,
-                    urgency.color(),
-                );
-                cx.scene.draw_text(urg_run);
-                urg_x += urg_w + 8.0;
-            }
-        });
+                for urgency in &urgencies {
+                    let urg_w = (urgency.label().len() as f32 * 6.0) + 12.0;
+                    cx.scene.draw_quad(
+                        Quad::new(Bounds::new(urg_x, inner.origin.y + 105.0, urg_w, 20.0))
+                            .with_background(urgency.color().with_alpha(0.2))
+                            .with_border(urgency.color(), 1.0),
+                    );
+                    let urg_run = cx.text.layout(
+                        urgency.label(),
+                        Point::new(urg_x + 5.0, inner.origin.y + 109.0),
+                        theme::font_size::XS,
+                        urgency.color(),
+                    );
+                    cx.scene.draw_text(urg_run);
+                    urg_x += urg_w + 8.0;
+                }
+            },
+        );
     }
 }

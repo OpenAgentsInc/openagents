@@ -93,12 +93,7 @@ impl Storybook {
 
         let panels = panel_stack(
             bounds,
-            &[
-                scan_height,
-                meter_height,
-                reticle_height,
-                resizable_height,
-            ],
+            &[scan_height, meter_height, reticle_height, resizable_height],
         );
         let scan_bounds = panels[0];
         draw_panel("Scanline sweeps", scan_bounds, cx, |inner, cx| {

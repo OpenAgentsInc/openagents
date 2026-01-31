@@ -192,8 +192,10 @@ impl ApplicationHandler for App {
             }
             WindowEvent::CursorMoved { position, .. } => {
                 let scale_factor = state.scale_factor.max(1.0);
-                self.cursor_position =
-                    Point::new(position.x as f32 / scale_factor, position.y as f32 / scale_factor);
+                self.cursor_position = Point::new(
+                    position.x as f32 / scale_factor,
+                    position.y as f32 / scale_factor,
+                );
                 let input_event = InputEvent::MouseMove {
                     x: self.cursor_position.x,
                     y: self.cursor_position.y,
@@ -238,10 +240,9 @@ impl ApplicationHandler for App {
                 let scale_factor = state.scale_factor.max(1.0);
                 let (dx, dy) = match delta {
                     winit::event::MouseScrollDelta::LineDelta(x, y) => (-x * 24.0, -y * 24.0),
-                    winit::event::MouseScrollDelta::PixelDelta(pos) => (
-                        -pos.x as f32 / scale_factor,
-                        -pos.y as f32 / scale_factor,
-                    ),
+                    winit::event::MouseScrollDelta::PixelDelta(pos) => {
+                        (-pos.x as f32 / scale_factor, -pos.y as f32 / scale_factor)
+                    }
                 };
                 let input_event = InputEvent::Scroll { dx, dy };
                 let bounds = window_bounds(&state.config, state.scale_factor);

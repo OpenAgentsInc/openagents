@@ -286,7 +286,8 @@ impl Component for Hotbar {
                 );
                 let shortcut = format!("{}", item.slot);
                 let text_width = shortcut.len() as f32 * number_font * 0.55;
-                let text_x = overlay_bounds.origin.x + (overlay_bounds.size.width - text_width) * 0.5;
+                let text_x =
+                    overlay_bounds.origin.x + (overlay_bounds.size.width - text_width) * 0.5;
                 let text_y =
                     overlay_bounds.origin.y + overlay_bounds.size.height * 0.5 - number_font * 0.5;
                 let shortcut_run = cx.text.layout_styled_mono(
@@ -301,12 +302,7 @@ impl Component for Hotbar {
         }
     }
 
-    fn event(
-        &mut self,
-        event: &InputEvent,
-        bounds: Bounds,
-        _cx: &mut EventContext,
-    ) -> EventResult {
+    fn event(&mut self, event: &InputEvent, bounds: Bounds, _cx: &mut EventContext) -> EventResult {
         if self.items.is_empty() {
             return EventResult::Ignored;
         }

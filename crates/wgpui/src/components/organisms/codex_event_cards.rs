@@ -692,10 +692,7 @@ impl CodexReasoningCard {
             }
         }
         let block = ThinkingBlock::new(text);
-        Self {
-            id: None,
-            block,
-        }
+        Self { id: None, block }
     }
 
     pub fn with_id(mut self, id: ComponentId) -> Self {

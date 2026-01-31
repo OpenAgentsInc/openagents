@@ -28,8 +28,8 @@
 //! keymap.add(binding);
 //! ```
 
-mod core;
 mod binding;
+mod core;
 mod dispatch;
 mod keystroke;
 #[macro_use]
@@ -37,8 +37,8 @@ mod macros;
 mod registry;
 pub mod standard;
 
-pub use core::{Action, ActionId, AnyAction, NoAction};
 pub use binding::KeyBinding;
+pub use core::{Action, ActionId, AnyAction, NoAction};
 pub use dispatch::{ActionHandler, ActionListeners, DispatchPhase, DispatchResult, PendingAction};
 pub use keystroke::{Keystroke, KeystrokeMatch, KeystrokeParseError};
 pub use registry::ActionRegistry;

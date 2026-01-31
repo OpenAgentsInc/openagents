@@ -531,7 +531,7 @@ impl Component for TextInput {
                         2.0,
                         cursor_height,
                     ))
-                        .with_background(self.cursor_color),
+                    .with_background(self.cursor_color),
                 );
             }
         }

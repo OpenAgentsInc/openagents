@@ -109,8 +109,7 @@ impl Component for TerminalHeader {
         cx.scene.draw_text(text_run);
         x += prompt.len() as f32 * font_size * 0.6;
 
-        let available_width =
-            (bounds.origin.x + bounds.size.width - padding - x).max(0.0);
+        let available_width = (bounds.origin.x + bounds.size.width - padding - x).max(0.0);
         let command = Self::truncate_command(&self.command, available_width, font_size);
         let text_run = cx.text.layout_mono(
             &command,

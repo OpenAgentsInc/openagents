@@ -141,8 +141,8 @@ impl Component for PaneFrame {
         );
 
         let title_text_x = title_bounds.origin.x + self.padding;
-        let title_text_y = title_bounds.origin.y + title_bounds.size.height * 0.5
-            - theme::font_size::XS * 0.55;
+        let title_text_y =
+            title_bounds.origin.y + title_bounds.size.height * 0.5 - theme::font_size::XS * 0.55;
         let title_run = cx.text.layout_styled_mono(
             &self.title,
             Point::new(title_text_x, title_text_y),
@@ -174,12 +174,7 @@ impl Component for PaneFrame {
         );
     }
 
-    fn event(
-        &mut self,
-        event: &InputEvent,
-        _bounds: Bounds,
-        cx: &mut EventContext,
-    ) -> EventResult {
+    fn event(&mut self, event: &InputEvent, _bounds: Bounds, cx: &mut EventContext) -> EventResult {
         if self.dismissable {
             let handled = self
                 .close_button

@@ -4,7 +4,9 @@ use crate::layout::{LayoutId, LayoutStyle, length, px};
 use crate::layout_helpers::offset_bounds;
 use crate::{Bounds, Size};
 
-use super::{AnyElement, Element, ElementPaintContext, IntoElement, LayoutContext, PrepaintContext};
+use super::{
+    AnyElement, Element, ElementPaintContext, IntoElement, LayoutContext, PrepaintContext,
+};
 
 pub struct FlexChild {
     element: AnyElement,
