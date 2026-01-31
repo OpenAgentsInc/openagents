@@ -3042,9 +3042,14 @@ fn build_moltbook_reply_prompt(
     prompt.push_str("key = os.environ.get(\"MOLTBOOK_API_KEY\")\n");
     prompt.push_str("if not key:\n");
     prompt.push_str("    cred = pathlib.Path(\"~/.config/moltbook/credentials.json\").expanduser()\n");
-    prompt.push_str("    key = json.loads(cred.read_text()).get(\"api_key\", \"\")\n");
+    prompt.push_str("    if cred.exists():\n");
+    prompt.push_str("        key = json.loads(cred.read_text()).get(\"api_key\", \"\")\n");
+    prompt.push_str("    else:\n");
+    prompt.push_str("        fallback = pathlib.Path(\"~/.config/moltbook\").expanduser()\n");
+    prompt.push_str("        if fallback.is_file():\n");
+    prompt.push_str("            key = json.loads(fallback.read_text()).get(\"api_key\", \"\")\n");
     prompt.push_str("if not key:\n");
-    prompt.push_str("    raise SystemExit(\"Missing MOLTBOOK_API_KEY\")\n");
+    prompt.push_str("    raise SystemExit(\"Missing MOLTBOOK_API_KEY; set env var or create ~/.config/moltbook/credentials.json\")\n");
     prompt.push_str("def request(method, url, payload=None):\n");
     prompt.push_str("    req = urllib.request.Request(url, method=method)\n");
     prompt.push_str("    req.add_header(\"Authorization\", f\"Bearer {key}\")\n");
