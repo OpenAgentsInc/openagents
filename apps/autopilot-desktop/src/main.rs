@@ -68,7 +68,7 @@ const WINDOW_WIDTH: f64 = 1280.0;
 const WINDOW_HEIGHT: f64 = 800.0;
 const PADDING: f32 = 0.0;
 const EVENT_BUFFER: usize = 256;
-const DEFAULT_THREAD_MODEL: &str = "gpt-5.2-codex";
+const DEFAULT_THREAD_MODEL: &str = "gpt-5.2";
 const ENV_GUIDANCE_GOAL: &str = "OPENAGENTS_GUIDANCE_GOAL";
 const ENV_MOLTBOOK_PROXY_BASE: &str = "OPENAGENTS_MOLTBOOK_API_BASE";
 const ENV_MOLTBOOK_LIVE_BASE: &str = "MOLTBOOK_API_BASE";
@@ -2608,8 +2608,11 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
                                     );
                                 }
 
-                                let prompt =
-                                    build_moltbook_reply_prompt(post.as_ref(), &comment_summaries);
+                                let prompt = build_moltbook_reply_prompt(
+                                    &post_id,
+                                    post.as_ref(),
+                                    &comment_summaries,
+                                );
                                 let _ = proxy.send_event(AppEvent::MoltbookLog {
                                     message: "Generating Moltbook reply via Codex...".to_string(),
                                 });
@@ -3019,20 +3022,45 @@ async fn load_moltbook_comments(proxy: EventLoopProxy<AppEvent>, post_id: &str) 
 }
 
 fn build_moltbook_reply_prompt(
+    post_id: &str,
     post: Option<&MoltbookPostSummary>,
     comments: &[MoltbookCommentSummary],
 ) -> String {
     let mut prompt = String::new();
     prompt.push_str("You are drafting AND POSTING a public Moltbook reply.\n");
-    prompt.push_str("Use this repo if needed to understand Moltbook reply behavior.\n");
-    prompt.push_str("First, fetch and read:\n");
-    prompt.push_str("curl -fsSL https://raw.githubusercontent.com/OpenAgentsInc/openagents/refs/heads/main/MOLTBOOK.md\n");
-    prompt.push_str("Then post the reply yourself via the Moltbook API.\n");
+    prompt.push_str("Use exactly TWO tool calls:\n");
+    prompt.push_str("1) curl -fsSL https://raw.githubusercontent.com/OpenAgentsInc/openagents/refs/heads/main/MOLTBOOK.md\n");
+    prompt.push_str("2) Run ONE python script that reads the API key, posts the comment, and prints the post URL.\n");
+    prompt.push_str("Do not run ls/rg/cat or other commands.\n");
     prompt.push_str("You MUST look up the API key and perform the POST yourself.\n");
-    prompt.push_str("Use the API key from $MOLTBOOK_API_KEY, or read ~/.config/moltbook/credentials.json (field: api_key).\n");
     prompt.push_str("Use API base $OPENAGENTS_MOLTBOOK_API_BASE if set, otherwise https://openagents.com/api/moltbook/api.\n");
-    prompt.push_str("POST to: $API_BASE/posts/{POST_ID}/comments with JSON {\"content\": \"...\"}.\n");
-    prompt.push_str("After posting, output a single confirmation line with the comment id (or the API response).\n");
+    prompt.push_str("Use this template and fill in CONTENT only:\n");
+    prompt.push_str("python - <<'PY'\n");
+    prompt.push_str("import json, os, pathlib, urllib.request\n");
+    prompt.push_str(&format!("post_id = \"{}\"\n", post_id));
+    prompt.push_str("base = os.environ.get(\"OPENAGENTS_MOLTBOOK_API_BASE\") or \"https://openagents.com/api/moltbook/api\"\n");
+    prompt.push_str("key = os.environ.get(\"MOLTBOOK_API_KEY\")\n");
+    prompt.push_str("if not key:\n");
+    prompt.push_str("    cred = pathlib.Path(\"~/.config/moltbook/credentials.json\").expanduser()\n");
+    prompt.push_str("    key = json.loads(cred.read_text()).get(\"api_key\", \"\")\n");
+    prompt.push_str("if not key:\n");
+    prompt.push_str("    raise SystemExit(\"Missing MOLTBOOK_API_KEY\")\n");
+    prompt.push_str("def request(method, url, payload=None):\n");
+    prompt.push_str("    req = urllib.request.Request(url, method=method)\n");
+    prompt.push_str("    req.add_header(\"Authorization\", f\"Bearer {key}\")\n");
+    prompt.push_str("    if payload is not None:\n");
+    prompt.push_str("        data = json.dumps(payload).encode()\n");
+    prompt.push_str("        req.add_header(\"Content-Type\", \"application/json\")\n");
+    prompt.push_str("        req.data = data\n");
+    prompt.push_str("    with urllib.request.urlopen(req) as resp:\n");
+    prompt.push_str("        return json.loads(resp.read().decode())\n");
+    prompt.push_str("post = request(\"GET\", f\"{base}/posts/{post_id}\")\n");
+    prompt.push_str("post_url = post.get(\"url\") or f\"https://www.moltbook.com/posts/{post_id}\"\n");
+    prompt.push_str(
+        "comment = request(\"POST\", f\"{base}/posts/{post_id}/comments\", {\"content\": \"CONTENT\"})\n",
+    );
+    prompt.push_str("print(f\"Posted {post_url} (comment {comment.get('id')})\")\n");
+    prompt.push_str("PY\n");
     prompt.push_str("Do not pause or ask for confirmation.\n");
     prompt.push_str("Keep it concise, helpful, and aligned with the post.\n\n");
 
