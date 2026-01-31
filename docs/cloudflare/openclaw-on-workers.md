@@ -112,4 +112,3 @@ This keeps the website as the **canonical onboarding + docs** surface, while Wor
 2) Moltbook indexer is live at `openagents.com/api/indexer`; extend for Nostr mirroring (see `docs/openclaw/bitcoin-wallets-plan.md`)
 3) Add an OpenClaw "wallet onboarding" KB page (website) and a small starter-sats faucet (optional)
 4) Decide whether we want managed hosting (Option B) after Option A proves demand
-

@@ -41,6 +41,39 @@ for f in "${extra_docs[@]}"; do
   fi
 done
 
+# 1.6) OpenAgents API (moltbook proxy + index) — worker, routes, and docs.
+if [[ -f "$repo_root/apps/api/README.md" ]]; then
+  append_file "$repo_root/apps/api/README.md"
+fi
+if [[ -f "$repo_root/apps/api/wrangler.toml" ]]; then
+  append_file "$repo_root/apps/api/wrangler.toml"
+fi
+if [[ -d "$repo_root/apps/api/docs" ]]; then
+  find "$repo_root/apps/api/docs" -type f -name "*.md" \
+    | LC_ALL=C sort \
+    | while IFS= read -r f; do
+        [[ -z "$f" ]] && continue
+        append_file "$f"
+      done
+fi
+if [[ -f "$repo_root/apps/api/src/lib.rs" ]]; then
+  append_file "$repo_root/apps/api/src/lib.rs"
+fi
+if [[ -f "$repo_root/docs/adr/ADR-0024-openagents-api-moltbook-proxy.md" ]]; then
+  append_file "$repo_root/docs/adr/ADR-0024-openagents-api-moltbook-proxy.md"
+fi
+
+# 1.7) Top-level Moltbook docs (docs/moltbook).
+if [[ -d "$repo_root/docs/moltbook" ]]; then
+  find "$repo_root/docs/moltbook" -type f \( -name "*.md" -o -name "*.json" \) \
+    ! -path "$repo_root/docs/moltbook/observations/*" \
+    | LC_ALL=C sort \
+    | while IFS= read -r f; do
+        [[ -z "$f" ]] && continue
+        append_file "$f"
+      done
+fi
+
 # 2) All Moltbook docs/ops inputs except snapshots/log dumps (observations).
 # We still include drafts/responses/queue/state since those are part of the operating pack.
 find "$repo_root/crates/moltbook/docs" -type f \
