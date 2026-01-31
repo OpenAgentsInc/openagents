@@ -30,9 +30,9 @@ use wgpui::input::{InputEvent, Key, Modifiers};
 use wgpui::scroll::{ScrollContainer, ScrollDirection, ScrollRegion};
 use wgpui::{
     Bounds, Button, ButtonVariant, Component, Cursor, Dropdown, DropdownOption, EventResult, Hsla,
-    LayoutEngine, LayoutStyle, MarkdownConfig, MarkdownDocument, MarkdownView, MouseButton,
-    PaintContext, Point, Quad, ScrollView, Size, StreamingMarkdown, copy_to_clipboard, grid_bounds,
-    length, px, text::FontStyle, theme,
+    LayoutEngine, LayoutStyle, MarkdownConfig, MarkdownDocument, MarkdownParser, MarkdownRenderer,
+    MarkdownView, MouseButton, PaintContext, Point, Quad, ScrollView, Size, StreamingMarkdown,
+    copy_to_clipboard, grid_bounds, length, px, text::FontStyle, theme,
 };
 
 pub mod shortcuts;
@@ -104,6 +104,8 @@ const NIP90_PANE_WIDTH: f32 = 640.0;
 const NIP90_PANE_HEIGHT: f32 = 520.0;
 const MOLTBOOK_PANE_WIDTH: f32 = 560.0;
 const MOLTBOOK_PANE_HEIGHT: f32 = 520.0;
+const MOLTBOOK_POST_PANE_WIDTH: f32 = 640.0;
+const MOLTBOOK_POST_PANE_HEIGHT: f32 = 560.0;
 const HOTBAR_HEIGHT: f32 = 52.0;
 const HOTBAR_FLOAT_GAP: f32 = 18.0;
 const HOTBAR_ITEM_SIZE: f32 = 36.0;
@@ -377,6 +379,13 @@ fn new_markdown_stream() -> StreamingMarkdown {
     stream
 }
 
+fn moltbook_markdown_config(font_size: f32) -> MarkdownConfig {
+    let mut markdown_config = MarkdownConfig::default();
+    markdown_config.base_font_size = font_size;
+    markdown_config.header_sizes = [1.0; 6];
+    markdown_config
+}
+
 fn message_markdown_view(document: MarkdownDocument) -> MarkdownView {
     MarkdownView::new(document)
         .show_copy_button(false)
@@ -428,6 +437,7 @@ enum PaneKind {
     DvmHistory,
     Nip90,
     Moltbook,
+    MoltbookPost,
 }
 
 #[derive(Clone, Debug)]
@@ -763,6 +773,7 @@ pub struct MinimalRoot {
     #[allow(dead_code)]
     moltbook_feed_scroll: ScrollView,
     moltbook_feed_scroll_bounds: Bounds,
+    moltbook_post_panes: HashMap<String, MoltbookPostPane>,
     pending_moltbook_refresh: Rc<RefCell<bool>>,
     nostr_npub: Option<String>,
     nostr_nsec: Option<String>,
@@ -2827,6 +2838,7 @@ impl MinimalRoot {
             moltbook_refresh_bounds: Bounds::ZERO,
             moltbook_feed_scroll,
             moltbook_feed_scroll_bounds: Bounds::ZERO,
+            moltbook_post_panes: HashMap::new(),
             pending_moltbook_refresh,
             nostr_npub: None,
             nostr_nsec: None,
@@ -2962,6 +2974,7 @@ impl MinimalRoot {
             AppEvent::MoltbookFeedUpdated { posts } => {
                 self.moltbook_feed = posts;
                 self.moltbook_feed_scroll.scroll_to(Point::new(0.0, 0.0));
+                self.refresh_moltbook_post_panes();
             }
             AppEvent::MoltbookLog { message } => {
                 self.moltbook_log.push(message);
@@ -3523,6 +3536,98 @@ impl MinimalRoot {
         }
     }
 
+    fn open_moltbook_post_pane(&mut self, post: MoltbookPostSummary) {
+        let pane_id = format!("moltbook-post-{}", post.id);
+        let title = moltbook_post_title(&post);
+        if self.pane_store.pane(&pane_id).is_some() {
+            if let Some(existing) = self.moltbook_post_panes.get_mut(&pane_id) {
+                existing.update_from(&post);
+                self.pane_store.set_title(&pane_id, existing.title.clone());
+            }
+            self.pane_store.bring_to_front(&pane_id);
+            return;
+        }
+
+        let rect = calculate_new_pane_position(
+            self.pane_store.last_pane_position,
+            self.screen_size(),
+            MOLTBOOK_POST_PANE_WIDTH,
+            MOLTBOOK_POST_PANE_HEIGHT,
+        );
+        let pane = Pane {
+            id: pane_id.clone(),
+            kind: PaneKind::MoltbookPost,
+            title: title.clone(),
+            rect: normalize_pane_rect(rect),
+            dismissable: true,
+        };
+        self.pane_store.add_pane(pane);
+        let pane_state = MoltbookPostPane::new(&post, title);
+        self.moltbook_post_panes.insert(pane_id, pane_state);
+    }
+
+    fn refresh_moltbook_post_panes(&mut self) {
+        if self.moltbook_post_panes.is_empty() {
+            return;
+        }
+        let mut by_id: HashMap<String, MoltbookPostSummary> = HashMap::new();
+        for post in &self.moltbook_feed {
+            by_id.insert(post.id.clone(), post.clone());
+        }
+        for (pane_id, pane) in self.moltbook_post_panes.iter_mut() {
+            if let Some(post) = by_id.get(&pane.post_id) {
+                pane.update_from(post);
+                self.pane_store.set_title(pane_id, pane.title.clone());
+            }
+        }
+    }
+
+    fn moltbook_card_index_at(&self, point: Point) -> Option<usize> {
+        if self.moltbook_feed.is_empty() {
+            return None;
+        }
+        let bounds = self.moltbook_feed_scroll_bounds;
+        if !bounds.contains(point) {
+            return None;
+        }
+        let card_gap = 12.0;
+        let min_card = 220.0;
+        let max_card = 320.0;
+        let (card_size, mut content_height) = moltbook_card_layout(
+            bounds.size.width,
+            self.moltbook_feed.len(),
+            min_card,
+            max_card,
+            card_gap,
+        );
+        if card_size <= 0.0 {
+            return None;
+        }
+        if self.moltbook_feed.is_empty() {
+            content_height = 20.0;
+        }
+        let content_height = content_height.max(bounds.size.height);
+        let scroll_offset = self.moltbook_feed_scroll.scroll_offset();
+        let content_bounds = Bounds::new(
+            bounds.origin.x - scroll_offset.x,
+            bounds.origin.y - scroll_offset.y,
+            bounds.size.width,
+            content_height,
+        );
+        let cards = grid_bounds(
+            content_bounds,
+            Size::new(card_size, card_size),
+            self.moltbook_feed.len(),
+            card_gap,
+        );
+        for (index, card) in cards.iter().enumerate() {
+            if card.contains(point) {
+                return Some(index);
+            }
+        }
+        None
+    }
+
     fn close_pane(&mut self, id: &str) {
         self.pane_store.remove_pane(id, true);
         self.pane_frames.remove(id);
@@ -3538,6 +3643,7 @@ impl MinimalRoot {
                 self.thread_to_pane.remove(&thread_id);
             }
         }
+        self.moltbook_post_panes.remove(id);
         self.chat_slot_assignments.remove(id);
         self.chat_slot_labels.remove(id);
     }
@@ -4449,7 +4555,41 @@ impl MinimalRoot {
                                     ),
                                     EventResult::Handled
                                 );
-                            handled |= refresh_handled || scroll_handled;
+                            let mut opened = false;
+                            if !scroll_handled {
+                                if let InputEvent::MouseDown {
+                                    button: MouseButton::Left,
+                                    ..
+                                } = event
+                                {
+                                    if let Some(index) =
+                                        self.moltbook_card_index_at(self.cursor_position)
+                                    {
+                                        if let Some(post) =
+                                            self.moltbook_feed.get(index).cloned()
+                                        {
+                                            self.open_moltbook_post_pane(post);
+                                            opened = true;
+                                        }
+                                    }
+                                }
+                            }
+                            handled |= refresh_handled || scroll_handled || opened;
+                        }
+                        PaneKind::MoltbookPost => {
+                            if let Some(post_pane) = self.moltbook_post_panes.get_mut(&pane_id) {
+                                let scroll_handled = post_pane.scroll_bounds.contains(
+                                    self.cursor_position,
+                                ) && matches!(
+                                    post_pane.scroll.event(
+                                        event,
+                                        post_pane.scroll_bounds,
+                                        &mut self.event_context
+                                    ),
+                                    EventResult::Handled
+                                );
+                                handled |= scroll_handled;
+                            }
                         }
                     }
                 }
@@ -5092,6 +5232,7 @@ impl Component for MinimalRoot {
                 PaneKind::DvmHistory => paint_dvm_history_pane(self, content_bounds, cx),
                 PaneKind::Nip90 => paint_nip90_pane(self, content_bounds, cx),
                 PaneKind::Moltbook => paint_moltbook_pane(self, content_bounds, cx),
+                PaneKind::MoltbookPost => paint_moltbook_post_pane(self, &pane.id, content_bounds, cx),
             }
             cx.scene.pop_clip();
         }
@@ -6557,7 +6698,7 @@ fn paint_nip90_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintContex
 struct MoltbookFeedRow {
     title: String,
     meta: String,
-    preview: String,
+    preview_markdown: MarkdownDocument,
 }
 
 struct MoltbookFeedView {
@@ -6566,16 +6707,24 @@ struct MoltbookFeedView {
     gap: f32,
     font_size: f32,
     empty_message: String,
+    markdown: MarkdownRenderer,
 }
 
 impl MoltbookFeedView {
-    fn new(rows: Vec<MoltbookFeedRow>, card_size: f32, gap: f32, font_size: f32) -> Self {
+    fn new(
+        rows: Vec<MoltbookFeedRow>,
+        card_size: f32,
+        gap: f32,
+        font_size: f32,
+        markdown_config: MarkdownConfig,
+    ) -> Self {
         Self {
             rows,
             card_size,
             gap,
             font_size,
             empty_message: "Refresh to load feed.".to_string(),
+            markdown: MarkdownRenderer::with_config(markdown_config),
         }
     }
 }
@@ -6638,16 +6787,94 @@ impl Component for MoltbookFeedView {
             meta_text.paint(meta_bounds, cx);
             y += meta_h + meta_gap;
 
-            if y < inner_bottom && !row.preview.is_empty() {
+            if y < inner_bottom && !row.preview_markdown.is_empty() {
                 let preview_bounds = Bounds::new(inner_x, y, inner_width, inner_bottom - y);
-                Text::new(row.preview.as_str())
-                    .font_size(self.font_size)
-                    .color(theme::text::SECONDARY)
-                    .paint(preview_bounds, cx);
+                cx.scene.push_clip(preview_bounds);
+                self.markdown.render(
+                    &row.preview_markdown,
+                    Point::new(preview_bounds.origin.x, preview_bounds.origin.y),
+                    preview_bounds.size.width,
+                    &mut cx.text,
+                    &mut cx.scene,
+                );
+                cx.scene.pop_clip();
             }
 
             cx.scene.pop_clip();
         }
+    }
+}
+
+struct MoltbookPostView {
+    title: String,
+    meta: String,
+    markdown: MarkdownDocument,
+    markdown_config: MarkdownConfig,
+}
+
+impl MoltbookPostView {
+    fn new(
+        title: String,
+        meta: String,
+        markdown: MarkdownDocument,
+        markdown_config: MarkdownConfig,
+    ) -> Self {
+        Self {
+            title,
+            meta,
+            markdown,
+            markdown_config,
+        }
+    }
+}
+
+impl Component for MoltbookPostView {
+    fn paint(&mut self, bounds: Bounds, cx: &mut PaintContext) {
+        let padding = 16.0;
+        let gap = 6.0;
+        let title_size = theme::font_size::SM;
+        let meta_size = theme::font_size::XS;
+
+        let inner_width = (bounds.size.width - padding * 2.0).max(0.0);
+        let inner_x = bounds.origin.x + padding;
+        let mut y = bounds.origin.y + padding;
+
+        let mut title_text = Text::new(self.title.as_str())
+            .font_size(title_size)
+            .color(theme::text::PRIMARY)
+            .bold();
+        let (_, title_h) = title_text.size_hint_with_width(inner_width);
+        let title_h = title_h.unwrap_or(title_size + 6.0);
+        let title_bounds = Bounds::new(inner_x, y, inner_width, title_h);
+        title_text.paint(title_bounds, cx);
+        y += title_h + gap;
+
+        if !self.meta.is_empty() {
+            let mut meta_text = Text::new(self.meta.as_str())
+                .font_size(meta_size)
+                .color(theme::text::MUTED);
+            let (_, meta_h) = meta_text.size_hint_with_width(inner_width);
+            let meta_h = meta_h.unwrap_or(meta_size + 4.0);
+            let meta_bounds = Bounds::new(inner_x, y, inner_width, meta_h);
+            meta_text.paint(meta_bounds, cx);
+            y += meta_h + gap;
+        }
+
+        let renderer = MarkdownRenderer::with_config(self.markdown_config.clone());
+        let body_height = (bounds.origin.y + bounds.size.height - padding - y).max(0.0);
+        if body_height <= 0.0 {
+            return;
+        }
+        let body_bounds = Bounds::new(inner_x, y, inner_width, body_height);
+        cx.scene.push_clip(body_bounds);
+        renderer.render(
+            &self.markdown,
+            Point::new(body_bounds.origin.x, body_bounds.origin.y),
+            body_bounds.size.width,
+            &mut cx.text,
+            &mut cx.scene,
+        );
+        cx.scene.pop_clip();
     }
 }
 
@@ -6700,6 +6927,90 @@ fn moltbook_activity_line(root: &MinimalRoot) -> String {
         .last()
         .cloned()
         .unwrap_or_else(|| "No Moltbook activity yet.".to_string())
+}
+
+fn moltbook_post_title(post: &MoltbookPostSummary) -> String {
+    post.title
+        .as_deref()
+        .filter(|title| !title.trim().is_empty())
+        .unwrap_or("Moltbook Post")
+        .to_string()
+}
+
+fn moltbook_post_meta(post: &MoltbookPostSummary) -> String {
+    let mut parts = Vec::new();
+    if let Some(author) = post.author_name.as_deref() {
+        if !author.trim().is_empty() {
+            parts.push(author.to_string());
+        }
+    }
+    if let Some(submolt) = post.submolt.as_deref() {
+        if !submolt.trim().is_empty() {
+            parts.push(format!("@{submolt}"));
+        }
+    }
+    if let Some(created_at) = post.created_at.as_deref() {
+        if !created_at.trim().is_empty() {
+            parts.push(created_at.to_string());
+        }
+    }
+    if parts.is_empty() {
+        "Moltbook".to_string()
+    } else {
+        parts.join(" · ")
+    }
+}
+
+fn moltbook_post_content(post: &MoltbookPostSummary) -> String {
+    let content = post
+        .content
+        .as_deref()
+        .or_else(|| post.content_preview.as_deref())
+        .unwrap_or("")
+        .trim();
+    if content.is_empty() {
+        "No content available.".to_string()
+    } else {
+        content.to_string()
+    }
+}
+
+fn moltbook_post_document(post: &MoltbookPostSummary, config: &MarkdownConfig) -> MarkdownDocument {
+    let parser = MarkdownParser::with_config(config.clone());
+    let content = moltbook_post_content(post);
+    parser.parse(&content)
+}
+
+struct MoltbookPostPane {
+    post_id: String,
+    title: String,
+    meta: String,
+    markdown: MarkdownDocument,
+    markdown_config: MarkdownConfig,
+    scroll: ScrollView,
+    scroll_bounds: Bounds,
+}
+
+impl MoltbookPostPane {
+    fn new(post: &MoltbookPostSummary, title: String) -> Self {
+        let markdown_config = moltbook_markdown_config(theme::font_size::SM);
+        let markdown = moltbook_post_document(post, &markdown_config);
+        Self {
+            post_id: post.id.clone(),
+            title,
+            meta: moltbook_post_meta(post),
+            markdown,
+            markdown_config,
+            scroll: ScrollView::new().show_scrollbar(true).scrollbar_width(6.0),
+            scroll_bounds: Bounds::ZERO,
+        }
+    }
+
+    fn update_from(&mut self, post: &MoltbookPostSummary) {
+        self.title = moltbook_post_title(post);
+        self.meta = moltbook_post_meta(post);
+        self.markdown = moltbook_post_document(post, &self.markdown_config);
+    }
 }
 
 fn paint_moltbook_header(
@@ -6805,6 +7116,9 @@ fn paint_moltbook_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintCon
     let content_width = (bounds.size.width - padding * 2.0).max(320.0);
     let content_bounds = centered_column_bounds(bounds, content_width, padding);
 
+    let markdown_config = moltbook_markdown_config(text_size);
+    let parser = MarkdownParser::with_config(markdown_config.clone());
+
     let feed_rows = root
         .moltbook_feed
         .iter()
@@ -6821,17 +7135,20 @@ fn paint_moltbook_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintCon
                 .unwrap_or_else(|| "—".to_string());
             let header = format!("{author} · {title}");
             let meta = format!("{score} ↑ · {comments} comments");
-            let preview = post
+            let preview_source = post
                 .content_preview
                 .as_deref()
-                .unwrap_or("")
-                .chars()
-                .take(200)
-                .collect::<String>();
+                .or_else(|| post.content.as_deref())
+                .unwrap_or("");
+            let preview_markdown = if preview_source.is_empty() {
+                MarkdownDocument::default()
+            } else {
+                parser.parse(preview_source)
+            };
             MoltbookFeedRow {
                 title: header,
                 meta,
-                preview,
+                preview_markdown,
             }
         })
         .collect::<Vec<_>>();
@@ -6858,8 +7175,64 @@ fn paint_moltbook_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintCon
         card_size,
         card_gap,
         text_size,
+        markdown_config,
     ));
     root.moltbook_feed_scroll.paint(content_bounds, cx);
+}
+
+fn paint_moltbook_post_pane(
+    root: &mut MinimalRoot,
+    pane_id: &str,
+    bounds: Bounds,
+    cx: &mut PaintContext,
+) {
+    let Some(post_pane) = root.moltbook_post_panes.get_mut(pane_id) else {
+        return;
+    };
+
+    let padding = 16.0;
+    let gap = 6.0;
+    let title_size = theme::font_size::SM;
+    let meta_size = theme::font_size::XS;
+    let inner_width = (bounds.size.width - padding * 2.0).max(0.0);
+
+    let mut title_text = Text::new(post_pane.title.as_str())
+        .font_size(title_size)
+        .color(theme::text::PRIMARY)
+        .bold();
+    let (_, title_h) = title_text.size_hint_with_width(inner_width);
+    let title_h = title_h.unwrap_or(title_size + 6.0);
+
+    let mut meta_h = 0.0;
+    if !post_pane.meta.is_empty() {
+        let mut meta_text = Text::new(post_pane.meta.as_str())
+            .font_size(meta_size)
+            .color(theme::text::MUTED);
+        let (_, measured) = meta_text.size_hint_with_width(inner_width);
+        meta_h = measured.unwrap_or(meta_size + 4.0);
+    }
+
+    let renderer = MarkdownRenderer::with_config(post_pane.markdown_config.clone());
+    let body_size = renderer.measure(&post_pane.markdown, inner_width, &mut cx.text);
+
+    let mut content_height = padding + title_h + gap;
+    if meta_h > 0.0 {
+        content_height += meta_h + gap;
+    }
+    content_height += body_size.height + padding;
+    let content_height = content_height.max(bounds.size.height);
+
+    post_pane.scroll_bounds = bounds;
+    post_pane
+        .scroll
+        .set_content_size(Size::new(bounds.size.width, content_height));
+    post_pane.scroll.set_content(MoltbookPostView::new(
+        post_pane.title.clone(),
+        post_pane.meta.clone(),
+        post_pane.markdown.clone(),
+        post_pane.markdown_config.clone(),
+    ));
+    post_pane.scroll.paint(bounds, cx);
 }
 
 fn paint_events_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintContext) {

@@ -2307,15 +2307,22 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
                                         }
                                         let summaries: Vec<MoltbookPostSummary> = posts
                                             .into_iter()
-                                            .map(|p| MoltbookPostSummary {
-                                                id: p.id,
-                                                title: p.title,
-                                                content_preview: p.content.map(|c| c.chars().take(120).collect()),
-                                                author_name: p.author.map(|a| a.name),
-                                                score: p.score,
-                                                comment_count: p.comment_count,
-                                                created_at: p.created_at,
-                                                submolt: p.submolt,
+                                            .map(|p| {
+                                                let content = p.content;
+                                                let content_preview = content
+                                                    .as_deref()
+                                                    .map(|c| c.chars().take(120).collect());
+                                                MoltbookPostSummary {
+                                                    id: p.id,
+                                                    title: p.title,
+                                                    content_preview,
+                                                    content,
+                                                    author_name: p.author.map(|a| a.name),
+                                                    score: p.score,
+                                                    comment_count: p.comment_count,
+                                                    created_at: p.created_at,
+                                                    submolt: p.submolt,
+                                                }
                                             })
                                             .collect();
                                         let new_count = summaries.len();
@@ -2455,6 +2462,7 @@ fn moltbook_cache_connection() -> Result<Connection> {
             id TEXT PRIMARY KEY,
             title TEXT,
             content_preview TEXT,
+            content TEXT,
             author_name TEXT,
             score INTEGER,
             comment_count INTEGER,
@@ -2466,13 +2474,28 @@ fn moltbook_cache_connection() -> Result<Connection> {
         CREATE INDEX IF NOT EXISTS idx_moltbook_posts_ingested ON moltbook_posts(ingested_at);",
     )
     .context("init moltbook cache schema")?;
+    ensure_moltbook_cache_column(&conn, "content", "TEXT")?;
     Ok(conn)
+}
+
+fn ensure_moltbook_cache_column(conn: &Connection, name: &str, definition: &str) -> Result<()> {
+    let mut stmt = conn.prepare("PRAGMA table_info(moltbook_posts)")?;
+    let mut rows = stmt.query([])?;
+    while let Some(row) = rows.next()? {
+        let column: String = row.get(1)?;
+        if column == name {
+            return Ok(());
+        }
+    }
+    let ddl = format!("ALTER TABLE moltbook_posts ADD COLUMN {name} {definition}");
+    conn.execute(&ddl, []).context("alter moltbook cache schema")?;
+    Ok(())
 }
 
 fn load_moltbook_cache(limit: usize) -> Result<Vec<MoltbookPostSummary>> {
     let conn = moltbook_cache_connection()?;
     let mut stmt = conn.prepare(
-        "SELECT id, title, content_preview, author_name, score, comment_count, created_at, submolt
+        "SELECT id, title, content_preview, content, author_name, score, comment_count, created_at, submolt
          FROM moltbook_posts
          ORDER BY
            CASE WHEN created_at IS NULL OR created_at = '' THEN 1 ELSE 0 END,
@@ -2485,11 +2508,12 @@ fn load_moltbook_cache(limit: usize) -> Result<Vec<MoltbookPostSummary>> {
             id: row.get(0)?,
             title: row.get(1)?,
             content_preview: row.get(2)?,
-            author_name: row.get(3)?,
-            score: row.get(4)?,
-            comment_count: row.get(5)?,
-            created_at: row.get(6)?,
-            submolt: row.get(7)?,
+            content: row.get(3)?,
+            author_name: row.get(4)?,
+            score: row.get(5)?,
+            comment_count: row.get(6)?,
+            created_at: row.get(7)?,
+            submolt: row.get(8)?,
         })
     })?;
     let mut results = Vec::new();
@@ -2509,11 +2533,12 @@ fn store_moltbook_cache(posts: &[MoltbookPostSummary]) -> Result<()> {
     {
         let mut stmt = tx.prepare(
             "INSERT INTO moltbook_posts
-                (id, title, content_preview, author_name, score, comment_count, created_at, submolt, ingested_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+                (id, title, content_preview, content, author_name, score, comment_count, created_at, submolt, ingested_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
              ON CONFLICT(id) DO UPDATE SET
                 title = excluded.title,
                 content_preview = excluded.content_preview,
+                content = excluded.content,
                 author_name = excluded.author_name,
                 score = excluded.score,
                 comment_count = excluded.comment_count,
@@ -2526,6 +2551,7 @@ fn store_moltbook_cache(posts: &[MoltbookPostSummary]) -> Result<()> {
                 post.id,
                 post.title,
                 post.content_preview,
+                post.content,
                 post.author_name,
                 post.score,
                 post.comment_count,
@@ -2548,7 +2574,11 @@ fn merge_moltbook_posts(
         map.entry(post.id.clone()).or_insert(post);
     }
     for post in fresh.drain(..) {
-        map.insert(post.id.clone(), post);
+        if let Some(existing) = map.remove(&post.id) {
+            map.insert(post.id.clone(), merge_moltbook_post(existing, post));
+        } else {
+            map.insert(post.id.clone(), post);
+        }
     }
     let mut merged: Vec<MoltbookPostSummary> = map.into_values().collect();
     merged.sort_by(|a, b| {
@@ -2566,6 +2596,23 @@ fn merge_moltbook_posts(
         merged.truncate(MOLTBOOK_CACHE_LIMIT);
     }
     merged
+}
+
+fn merge_moltbook_post(
+    existing: MoltbookPostSummary,
+    incoming: MoltbookPostSummary,
+) -> MoltbookPostSummary {
+    MoltbookPostSummary {
+        id: incoming.id,
+        title: incoming.title.or(existing.title),
+        content_preview: incoming.content_preview.or(existing.content_preview),
+        content: incoming.content.or(existing.content),
+        author_name: incoming.author_name.or(existing.author_name),
+        score: incoming.score.or(existing.score),
+        comment_count: incoming.comment_count.or(existing.comment_count),
+        created_at: incoming.created_at.or(existing.created_at),
+        submolt: incoming.submolt.or(existing.submolt),
+    }
 }
 
 fn trimmed_env_url(key: &str) -> Option<String> {
