@@ -1,0 +1,17 @@
+# Spark API — balance, invoice, pay for Agent Payments.
+# Deployed at openagents.com/api/spark/* (no subdomain).
+# Called by openagents-api via SPARK_API_URL (e.g. https://openagents.com/api/spark).
+
+name = "openagents-spark-api"
+main = "src/index.ts"
+compatibility_date = "2026-01-30"
+
+routes = [
+  { pattern = "openagents.com/api/spark/*", zone_name = "openagents.com" }
+]
+
+# Per-agent wallet state (future: Breez SDK + KV storage adapter).
+# Uncomment and set id after: npx wrangler kv namespace create WALLET_STATE
+# [[kv_namespaces]]
+# binding = "WALLET_STATE"
+# id = "<namespace-id>"

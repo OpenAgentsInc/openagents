@@ -17,7 +17,7 @@ export interface Env {
   OA_API?: string;
   MOLTBOOK_API_BASE?: string;
   MOLTBOOK_API_KEY?: string;
-  INDEXER_AUTH_HEADER?: string; // optional bearer for /v1/search and /v1/metrics
+  INDEXER_AUTH_HEADER?: string; // optional bearer for /v1/search, /v1/metrics/*, /v1/wallet-interest
 }
 
 export interface MoltbookPost {

@@ -118,6 +118,14 @@ async fn main(mut req: Request, env: Env, _ctx: Context) -> Result<Response> {
     Router::new()
         .get_async("/", handle_root)
         .get_async("/health", handle_health)
+        .get_async("/agents/wallet-onboarding", handle_agents_wallet_onboarding)
+        .post_async("/agents", handle_agents_create)
+        .get_async("/agents/:id", handle_agents_get)
+        .post_async("/agents/:id/wallet", handle_agents_wallet_register)
+        .get_async("/agents/:id/wallet", handle_agents_wallet_get)
+        .get_async("/agents/:id/balance", handle_agents_balance)
+        .post_async("/payments/invoice", handle_payments_invoice)
+        .post_async("/payments/pay", handle_payments_pay)
         .get_async("/moltbook", handle_moltbook_root)
         .get_async("/moltbook/", handle_moltbook_root)
         .on_async("/moltbook/*path", handle_moltbook_router)
@@ -142,7 +150,8 @@ async fn handle_root(req: Request, _ctx: RouteContext<()>) -> Result<Response> {
             "moltbook_proxy": "/moltbook/site/",
             "moltbook_api": "/moltbook/api/",
             "moltbook_index": "/moltbook/index",
-            "moltbook_indexer": "/api/indexer"
+            "moltbook_indexer": "/api/indexer",
+            "agents_wallet_onboarding": "/api/agents/wallet-onboarding"
         })),
         error: None,
     })?;
@@ -161,6 +170,230 @@ async fn handle_health(_: Request, _: RouteContext<()>) -> Result<Response> {
     })?;
     apply_cors(&mut response)?;
     Ok(response)
+}
+
+async fn handle_agents_wallet_onboarding(_: Request, _: RouteContext<()>) -> Result<Response> {
+    let mut response = Response::from_json(&ApiResponse {
+        ok: true,
+        data: Some(serde_json::json!({
+            "docs_url": "https://docs.openagents.com/kb/openclaw-wallets",
+            "local_command_hint": "pylon agent spawn --name <name> --network mainnet",
+            "wallet_interest_url": "https://openagents.com/api/indexer/v1/wallet-interest?days=30&limit=10"
+        })),
+        error: None,
+    })?;
+    apply_cors(&mut response)?;
+    Ok(response)
+}
+
+// --- Agent Payments (D1 + optional Spark API proxy) ---
+
+#[derive(Debug, Deserialize)]
+struct CreateAgentBody {
+    name: Option<String>,
+}
+
+async fn handle_agents_create(mut req: Request, ctx: RouteContext<()>) -> Result<Response> {
+    let body: CreateAgentBody = req.json().await.unwrap_or(CreateAgentBody { name: None });
+    let name = body.name.unwrap_or_else(|| "".to_string());
+    let db = ctx.d1("DB")?;
+    let stmt = db
+        .prepare("INSERT INTO agents (name) VALUES (?1) RETURNING id, name, created_at")
+        .bind(&[JsValue::from_str(&name)])?;
+    let result = stmt.first::<AgentRow>(None).await?;
+    let row = result.ok_or_else(|| worker::Error::RustError("insert failed".into()))?;
+    let mut response = Response::from_json(&ApiResponse {
+        ok: true,
+        data: Some(serde_json::json!({ "id": row.id, "name": row.name, "created_at": row.created_at })),
+        error: None,
+    })?;
+    apply_cors(&mut response)?;
+    Ok(response)
+}
+
+#[derive(Debug, Deserialize)]
+struct AgentRow {
+    id: i64,
+    name: String,
+    created_at: String,
+}
+
+async fn handle_agents_get(_: Request, ctx: RouteContext<()>) -> Result<Response> {
+    let id = ctx.param("id").and_then(|s| s.parse::<i64>().ok()).ok_or_else(|| worker::Error::RustError("invalid id".into()))?;
+    let db = ctx.d1("DB")?;
+    let stmt = db.prepare("SELECT id, name, created_at FROM agents WHERE id = ?1").bind(&[JsValue::from_f64(id as f64)])?;
+    let row = stmt.first::<AgentRow>(None).await?;
+    let mut response = Response::from_json(&ApiResponse {
+        ok: true,
+        data: row.map(|r| serde_json::json!({ "id": r.id, "name": r.name, "created_at": r.created_at })),
+        error: None,
+    })?;
+    apply_cors(&mut response)?;
+    Ok(response)
+}
+
+#[derive(Debug, Deserialize)]
+struct RegisterWalletBody {
+    spark_address: String,
+    lud16: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct WalletRow {
+    agent_id: i64,
+    spark_address: String,
+    lud16: Option<String>,
+    updated_at: String,
+}
+
+async fn handle_agents_wallet_register(mut req: Request, ctx: RouteContext<()>) -> Result<Response> {
+    let id: i64 = ctx.param("id").and_then(|s| s.parse().ok()).ok_or_else(|| worker::Error::RustError("invalid id".into()))?;
+    let body: RegisterWalletBody = req.json().await.map_err(|_| worker::Error::RustError("invalid body".into()))?;
+    if body.spark_address.is_empty() {
+        return json_error("spark_address required", 400);
+    }
+    let db = ctx.d1("DB")?;
+    let stmt = db
+        .prepare(
+            "INSERT INTO agent_wallets (agent_id, spark_address, lud16, updated_at) VALUES (?1, ?2, ?3, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+             ON CONFLICT(agent_id) DO UPDATE SET spark_address = ?2, lud16 = ?3, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')",
+        )
+        .bind(&[
+            JsValue::from_f64(id as f64),
+            JsValue::from_str(&body.spark_address),
+            serde_wasm_bindgen::to_value(&body.lud16).unwrap_or(JsValue::undefined()),
+        ])?;
+    stmt.run().await?;
+    let sel = db.prepare("SELECT agent_id, spark_address, lud16, updated_at FROM agent_wallets WHERE agent_id = ?1").bind(&[JsValue::from_f64(id as f64)])?;
+    let row = sel.first::<WalletRow>(None).await?.ok_or_else(|| worker::Error::RustError("wallet row missing".into()))?;
+    let mut response = Response::from_json(&ApiResponse {
+        ok: true,
+        data: Some(serde_json::json!({
+            "agent_id": row.agent_id,
+            "spark_address": row.spark_address,
+            "lud16": row.lud16,
+            "updated_at": row.updated_at
+        })),
+        error: None,
+    })?;
+    apply_cors(&mut response)?;
+    Ok(response)
+}
+
+async fn handle_agents_wallet_get(_: Request, ctx: RouteContext<()>) -> Result<Response> {
+    let id: i64 = ctx.param("id").and_then(|s| s.parse().ok()).ok_or_else(|| worker::Error::RustError("invalid id".into()))?;
+    let db = ctx.d1("DB")?;
+    let stmt = db.prepare("SELECT agent_id, spark_address, lud16, updated_at FROM agent_wallets WHERE agent_id = ?1").bind(&[JsValue::from_f64(id as f64)])?;
+    let row = stmt.first::<WalletRow>(None).await?;
+    if row.is_none() {
+        return json_error("wallet not found", 404);
+    }
+    let row = row.unwrap();
+    let mut response = Response::from_json(&ApiResponse {
+        ok: true,
+        data: Some(serde_json::json!({
+            "agent_id": row.agent_id,
+            "spark_address": row.spark_address,
+            "lud16": row.lud16,
+            "updated_at": row.updated_at
+        })),
+        error: None,
+    })?;
+    apply_cors(&mut response)?;
+    Ok(response)
+}
+
+async fn handle_agents_balance(req: Request, ctx: RouteContext<()>) -> Result<Response> {
+    let id = ctx.param("id").ok_or_else(|| worker::Error::RustError("invalid id".into()))?;
+    if let Ok(spark_url) = ctx.var("SPARK_API_URL") {
+        let url = format!("{}/agents/{}/balance", spark_url.to_string(), id);
+        let mut init = RequestInit::new().with_method(Method::Get);
+        let headers = Headers::new();
+        if let Ok(Some(auth)) = req.headers().get("authorization") {
+            let _ = headers.set("authorization", &auth);
+        }
+        init.with_headers(headers);
+        let proxy = Request::new_with_init(&url, &init)?;
+        let resp = Fetch::Request(proxy).send().await?;
+        let status = resp.status_code();
+        let text = resp.text().await.unwrap_or_default();
+        let data: serde_json::Value = serde_json::from_str(&text).unwrap_or(serde_json::Value::Null);
+        let mut out = Response::from_json(&ApiResponse { ok: status >= 200 && status < 300, data: Some(data), error: None })?;
+        out.set_status(status);
+        apply_cors(&mut out)?;
+        return Ok(out);
+    }
+    json_error("SPARK_API_URL not set; balance requires Spark API backend", 501)
+}
+
+#[derive(Debug, Deserialize)]
+struct CreateInvoiceBody {
+    agent_id: i64,
+    amount_sats: u64,
+    description: Option<String>,
+}
+
+async fn handle_payments_invoice(mut req: Request, ctx: RouteContext<()>) -> Result<Response> {
+    let body: CreateInvoiceBody = req.json().await.map_err(|_| worker::Error::RustError("invalid body".into()))?;
+    if let Ok(spark_url) = ctx.var("SPARK_API_URL") {
+        let url = format!("{}/payments/invoice", spark_url.to_string());
+        let body_json = serde_json::json!({ "agent_id": body.agent_id, "amount_sats": body.amount_sats, "description": body.description });
+        let mut headers = Headers::new();
+        let _ = headers.set("content-type", "application/json");
+        if let Ok(Some(auth)) = req.headers().get("authorization") {
+            let _ = headers.set("authorization", &auth);
+        }
+        let init = RequestInit::new()
+            .with_method(Method::Post)
+            .with_headers(headers)
+            .with_body(Some(worker::Body::from(body_json.to_string())));
+        let proxy = Request::new_with_init(&url, &init)?;
+        let resp = Fetch::Request(proxy).send().await?;
+        let status = resp.status_code();
+        let text = resp.text().await.unwrap_or_default();
+        let data: serde_json::Value = serde_json::from_str(&text).unwrap_or(serde_json::json!({ "error": text }));
+        let mut out = Response::from_json(&ApiResponse { ok: status >= 200 && status < 300, data: Some(data), error: None })?;
+        out.set_status(status);
+        apply_cors(&mut out)?;
+        return Ok(out);
+    }
+    json_error("SPARK_API_URL not set; create invoice requires Spark API backend", 501)
+}
+
+#[derive(Debug, Deserialize)]
+struct PayInvoiceBody {
+    agent_id: i64,
+    invoice: String,
+}
+
+async fn handle_payments_pay(mut req: Request, ctx: RouteContext<()>) -> Result<Response> {
+    let body: PayInvoiceBody = req.json().await.map_err(|_| worker::Error::RustError("invalid body".into()))?;
+    if body.invoice.is_empty() {
+        return json_error("invoice required", 400);
+    }
+    if let Ok(spark_url) = ctx.var("SPARK_API_URL") {
+        let url = format!("{}/payments/pay", spark_url.to_string());
+        let body_json = serde_json::json!({ "agent_id": body.agent_id, "invoice": body.invoice });
+        let init = RequestInit::new()
+            .with_method(Method::Post)
+            .with_body(Some(worker::Body::from(body_json.to_string())));
+        let mut proxy = Request::new_with_init(&url, &init)?;
+        proxy.headers_mut()?.set("content-type", "application/json")?;
+        if let Ok(h) = req.headers().get("authorization") {
+            if let Some(auth) = h {
+                proxy.headers_mut()?.set("authorization", &auth)?;
+            }
+        }
+        let resp = Fetch::Request(proxy).send().await?;
+        let status = resp.status_code();
+        let text = resp.text().await.unwrap_or_default();
+        let data: serde_json::Value = serde_json::from_str(&text).unwrap_or(serde_json::json!({ "error": text }));
+        let mut out = Response::from_json(&ApiResponse { ok: status >= 200 && status < 300, data: Some(data), error: None })?;
+        out.set_status(status);
+        apply_cors(&mut out)?;
+        return Ok(out);
+    }
+    json_error("SPARK_API_URL not set; pay requires Spark API backend", 501)
 }
 
 async fn handle_moltbook_root(_: Request, _: RouteContext<()>) -> Result<Response> {

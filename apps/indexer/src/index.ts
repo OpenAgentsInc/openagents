@@ -48,6 +48,9 @@ export default {
     if (path === '/v1/metrics/wallet-adoption') {
       return handleWalletAdoption(request, env);
     }
+    if (path === '/v1/wallet-interest') {
+      return handleWalletInterest(request, env);
+    }
     if (path === '/ingest' && request.method === 'POST') {
       return runIngestAndRespond(env);
     }
@@ -365,6 +368,7 @@ function jsonResponse(data: unknown, status = 200): Response {
   });
 }
 
+/** When INDEXER_AUTH_HEADER is set, /v1/search, /v1/metrics/*, and /v1/wallet-interest require Authorization: Bearer <value>. */
 function requireAuth(request: Request, env: Env): boolean {
   const header = env.INDEXER_AUTH_HEADER;
   if (header) {
@@ -433,6 +437,116 @@ async function handleWalletAdoption(request: Request, env: Env): Promise<Respons
       distinct_objects_with_lud16: (withLud16 as { c: number })?.c ?? 0,
       distinct_objects_with_npub: (withNpub as { c: number })?.c ?? 0,
       signal_counts: metrics,
+    },
+  });
+}
+
+const WALLET_INTEREST_SIGNALS = ['has_lud16', 'has_npub', 'mentions_wallet', 'mentions_lightning', 'mentions_openclaw'];
+
+async function handleWalletInterest(request: Request, env: Env): Promise<Response> {
+  if (!requireAuth(request, env)) {
+    return jsonResponse({ ok: false, error: 'unauthorized' }, 401);
+  }
+  const url = new URL(request.url);
+  const days = Math.min(365, parseInt(url.searchParams.get('days') ?? '30', 10) || 30);
+  const limit = Math.min(100, parseInt(url.searchParams.get('limit') ?? '20', 10) || 20);
+  const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+
+  const rows = await env.DB.prepare(
+    `SELECT object_type, object_id, signal, created_at FROM derived_signals
+     WHERE signal IN (?, ?, ?, ?, ?) AND created_at >= ?
+     ORDER BY created_at DESC`
+  )
+    .bind(...WALLET_INTEREST_SIGNALS, since)
+    .all();
+
+  const byKey = new Map<string, { signals: string[]; created_at: string }>();
+  for (const r of (rows.results ?? []) as { object_type: string; object_id: string; signal: string; created_at: string }[]) {
+    const key = `${r.object_type}:${r.object_id}`;
+    if (!byKey.has(key)) {
+      byKey.set(key, { signals: [], created_at: r.created_at });
+    }
+    const entry = byKey.get(key)!;
+    if (!entry.signals.includes(r.signal)) entry.signals.push(r.signal);
+  }
+
+  const ordered = [...byKey.entries()]
+    .sort((a, b) => b[1].created_at.localeCompare(a[1].created_at))
+    .slice(0, limit);
+
+  const postIds: string[] = [];
+  const commentIds: string[] = [];
+  for (const [key] of ordered) {
+    const [type, id] = key.split(':');
+    if (type === 'post') postIds.push(id);
+    else if (type === 'comment') commentIds.push(id);
+  }
+
+  const posts: { id: string; title: string | null; url: string | null; created_at: string | null; author_name: string | null; signals: string[] }[] = [];
+  const comments: { id: string; post_id: string; content_snippet: string; created_at: string | null; author_name: string | null; signals: string[] }[] = [];
+
+  if (postIds.length > 0) {
+    const placeholders = postIds.map(() => '?').join(',');
+    const postRows = await env.DB.prepare(
+      `SELECT id, title, url, created_at, author_name FROM moltbook_posts WHERE id IN (${placeholders})`
+    )
+      .bind(...postIds)
+      .all();
+    const postMap = new Map<string, { title: string | null; url: string | null; created_at: string | null; author_name: string | null }>();
+    for (const r of (postRows.results ?? []) as { id: string; title: string | null; url: string | null; created_at: string | null; author_name: string | null }[]) {
+      postMap.set(r.id, { title: r.title, url: r.url, created_at: r.created_at, author_name: r.author_name });
+    }
+    for (const [key] of ordered) {
+      const [type, id] = key.split(':');
+      if (type !== 'post') continue;
+      const meta = postMap.get(id);
+      const entry = byKey.get(key)!;
+      posts.push({
+        id,
+        title: meta?.title ?? null,
+        url: meta?.url ?? null,
+        created_at: meta?.created_at ?? null,
+        author_name: meta?.author_name ?? null,
+        signals: entry.signals,
+      });
+    }
+  }
+
+  if (commentIds.length > 0) {
+    const placeholders = commentIds.map(() => '?').join(',');
+    const commentRows = await env.DB.prepare(
+      `SELECT id, post_id, content, created_at, author_name FROM moltbook_comments WHERE id IN (${placeholders})`
+    )
+      .bind(...commentIds)
+      .all();
+    const commentMap = new Map<string, { post_id: string; content: string | null; created_at: string | null; author_name: string | null }>();
+    for (const r of (commentRows.results ?? []) as { id: string; post_id: string; content: string | null; created_at: string | null; author_name: string | null }[]) {
+      commentMap.set(r.id, { post_id: r.post_id, content: r.content, created_at: r.created_at, author_name: r.author_name });
+    }
+    for (const [key] of ordered) {
+      const [type, id] = key.split(':');
+      if (type !== 'comment') continue;
+      const meta = commentMap.get(id);
+      const snippet = (meta?.content ?? '').slice(0, 200);
+      const entry = byKey.get(key)!;
+      comments.push({
+        id,
+        post_id: meta?.post_id ?? '',
+        content_snippet: snippet,
+        created_at: meta?.created_at ?? null,
+        author_name: meta?.author_name ?? null,
+        signals: entry.signals,
+      });
+    }
+  }
+
+  return jsonResponse({
+    ok: true,
+    data: {
+      days,
+      since,
+      posts,
+      comments,
     },
   });
 }

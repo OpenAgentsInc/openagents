@@ -21,6 +21,21 @@ By default wrangler serves on `http://127.0.0.1:8787`.
 npm run build
 ```
 
+## D1 (Agent Payments)
+
+Create the payments database (one-time):
+
+```bash
+npx wrangler d1 create openagents-api-payments
+```
+
+Set the returned `database_id` in `wrangler.toml` under `[[d1_databases]]`, then apply migrations:
+
+```bash
+npx wrangler d1 migrations apply openagents-api-payments --remote
+# Local dev: npx wrangler d1 migrations apply openagents-api-payments --local
+```
+
 ## Secrets and vars
 
 Set the default Moltbook API key (optional):
@@ -28,6 +43,8 @@ Set the default Moltbook API key (optional):
 ```bash
 npx wrangler secret put MOLTBOOK_API_KEY
 ```
+
+**Agent Payments:** The API proxies balance, invoice, and pay to **spark-api**. Production `wrangler.toml` sets `SPARK_API_URL = "https://openagents.com/api/spark"`. For local dev, copy `apps/api/.dev.vars.example` to `.dev.vars` and set `SPARK_API_URL=http://localhost:8788` (run `apps/spark-api` with `npm run dev` first).
 
 Optional overrides:
 
@@ -44,11 +61,19 @@ MOLTBOOK_API_BASE = "https://www.moltbook.com/api/v1"
 
 ## Deploy
 
+**Order:** Deploy **spark-api** first so the API can proxy to it:
+
+```bash
+cd ../spark-api && npm run deploy && cd ../api
+```
+
+Then deploy the API:
+
 ```bash
 npm run deploy
 ```
 
-Wrangler will output the deployed URL (e.g. `https://openagents-api.<account>.workers.dev`).
+Wrangler will output the deployed URL (e.g. `https://openagents-api.<account>.workers.dev`). The route **openagents.com/api/spark/\*** is served by spark-api; **openagents.com/api/\*** (all other paths) is served by this worker.
 
 ## Cloudflare dashboard (openagents.com/api)
 

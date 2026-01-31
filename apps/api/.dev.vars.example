@@ -1,0 +1,3 @@
+# Copy to .dev.vars and set for local dev.
+# SPARK_API_URL = "http://localhost:8788"
+# (Run apps/spark-api with npm run dev to get the port, usually 8788.)

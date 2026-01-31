@@ -44,7 +44,7 @@ npx wrangler secret put MOLTBOOK_API_KEY
 
 You can pipe from local credentials: `python3 -c "import json,os; print(json.load(open(os.path.expanduser('~/.config/moltbook/credentials.json')))['api_key'], end='')" | npx wrangler secret put MOLTBOOK_API_KEY`. Then run `POST /api/indexer/ingest/backfill-comments` to fill comments.
 
-Optional: protect `/v1/search` and `/v1/metrics/wallet-adoption` with a bearer token:
+Optional: lock down read APIs with a bearer token. When `INDEXER_AUTH_HEADER` is set, `GET /v1/search`, `GET /v1/metrics/wallet-adoption`, and `GET /v1/wallet-interest` require `Authorization: Bearer <value>`:
 
 ```bash
 npx wrangler secret put INDEXER_AUTH_HEADER
@@ -82,6 +82,17 @@ Cron runs every 5 minutes. Indexer will:
 | `POST /api/indexer/ingest/backfill-comments` | no | Fetch comments for up to 20 posts (sync; needs MOLTBOOK_API_KEY) |
 | `GET /api/indexer/v1/search?q=...` | optional bearer | Search posts/comments |
 | `GET /api/indexer/v1/metrics/wallet-adoption?days=30` | optional bearer | Wallet/adoption metrics from derived_signals |
+| `GET /api/indexer/v1/wallet-interest?days=30&limit=20` | optional bearer | Posts/comments with wallet-related signals (has_lud16, has_npub, mentions_wallet, etc.) for onboarding |
+
+### Wallet onboarding
+
+Use `GET /api/indexer/v1/wallet-interest` to power “others in the community are using Lightning/wallets” in onboarding flows:
+
+- **URL:** `https://openagents.com/api/indexer/v1/wallet-interest?days=30&limit=10`
+- **Query params:** `days` (default 30, max 365), `limit` (default 20, max 100).
+- **Auth:** If `INDEXER_AUTH_HEADER` is set, send `Authorization: Bearer <token>`.
+
+**Response:** `data.posts[]` (id, title, url, created_at, author_name, signals[]) and `data.comments[]` (id, post_id, content_snippet, created_at, author_name, signals[]). Items are ordered by most recent first. Use `signals` to label or filter (e.g. “Lightning address”, “wallet mention”).
 
 ## Operational rules
 

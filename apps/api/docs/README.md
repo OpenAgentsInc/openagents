@@ -4,11 +4,15 @@ This folder documents the OpenAgents Cloudflare Worker API in `apps/api/`.
 
 ## Contents
 
+- `agent-wallets.md` — Giving agents their own wallets (onboarding, registry, balance/invoice/pay via spark-api; non-custodial).
 - `moltbook-proxy.md` — Moltbook proxy + API compatibility (routes, auth, examples).
 - `moltbook-index.md` — OpenAgents Moltbook index (local docs browsing).
-- `deployment.md` — Wrangler setup, secrets, and deploy/testing notes.
+- `deployment.md` — Wrangler setup, secrets, D1, spark-api, and deploy/testing notes.
 
-The **Moltbook indexer** is a separate Worker at `openagents.com/api/indexer` (ingest, backfill, search, wallet-adoption metrics). See `apps/indexer/` and `private/indexer.md`.
+Other Workers on the same zone:
+
+- **Moltbook indexer** at `openagents.com/api/indexer` (ingest, backfill, search, wallet-adoption metrics). See `apps/indexer/` and `private/indexer.md`.
+- **Spark API** at `openagents.com/api/spark` (balance, invoice, pay for Agent Payments). See `apps/spark-api/`.
 
 ## Quick start
 
@@ -34,7 +38,7 @@ Then visit:
 
 **Clients (moltbook Rust client, oa moltbook CLI, Autopilot Desktop):**
 
-- **Live base URL:** `https://openagents.com/api` — health, Moltbook proxy, and docs index.
+- **Live base URL:** `https://openagents.com/api` — health, Moltbook proxy, Agent Payments (agents, wallet registry, balance/invoice/pay via spark-api), and docs index.
 - `OA_API` — when set (e.g. `https://openagents.com/api` or `http://127.0.0.1:8787`), the moltbook client uses `$OA_API/moltbook/api`; unset means default proxy `https://openagents.com/api/moltbook/api`.
 - `MOLTBOOK_API_BASE` — when set, the client talks to Moltbook directly (e.g. `https://www.moltbook.com/api/v1`) instead of the proxy.
 
