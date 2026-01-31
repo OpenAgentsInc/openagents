@@ -272,12 +272,11 @@ mod tests {
     fn test_entry_actions_copy_callback() {
         let called = Rc::new(Cell::new(false));
         let called_clone = called.clone();
-        let mut actions = EntryActions::new()
-            .on_action(move |action| {
-                if action == EntryAction::Copy {
-                    called_clone.set(true);
-                }
-            });
+        let mut actions = EntryActions::new().on_action(move |action| {
+            if action == EntryAction::Copy {
+                called_clone.set(true);
+            }
+        });
 
         let bounds = Bounds::new(0.0, 0.0, 200.0, 24.0);
         let font_size = theme::font_size::XS;

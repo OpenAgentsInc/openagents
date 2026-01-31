@@ -1,8 +1,8 @@
 //! Layout engine using Taffy for CSS Flexbox layout.
 
 use crate::geometry::{Bounds, Size};
-use std::collections::HashMap;
 use slotmap::{SlotMap, new_key_type};
+use std::collections::HashMap;
 use taffy::Overflow;
 use taffy::prelude::*;
 
@@ -528,11 +528,9 @@ mod tests {
     #[test]
     fn test_layout_engine_measured_leaf() {
         let mut engine = LayoutEngine::new();
-        let id = engine.request_measured(&LayoutStyle::new(), |_, _, _, _, _| {
-            taffy::Size {
-                width: 120.0,
-                height: 42.0,
-            }
+        let id = engine.request_measured(&LayoutStyle::new(), |_, _, _, _, _| taffy::Size {
+            width: 120.0,
+            height: 42.0,
         });
 
         engine.compute_layout(id, Size::new(800.0, 600.0));

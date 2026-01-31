@@ -31,9 +31,9 @@
 //! ```
 
 mod context;
-mod defaults;
 mod core;
+mod defaults;
 
 pub use context::KeyContext;
-pub use defaults::default_keymap;
 pub use core::Keymap;
+pub use defaults::default_keymap;

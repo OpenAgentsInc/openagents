@@ -234,7 +234,9 @@ fn extract_header_label(content: &str) -> String {
         if let Some(stripped) = label.strip_prefix("- ") {
             label = stripped.trim();
         }
-        let label = label.trim_matches(|c| c == '*' || c == '_' || c == '`').trim();
+        let label = label
+            .trim_matches(|c| c == '*' || c == '_' || c == '`')
+            .trim();
         if !label.is_empty() {
             return label.to_string();
         }

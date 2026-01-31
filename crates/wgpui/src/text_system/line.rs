@@ -506,13 +506,10 @@ impl LinePaintInfo {
                         if let Some(ref underline) = style_run.underline
                             && current_underline.is_none()
                         {
-                            let underline_y = glyph_origin.y
-                                + self.baseline_offset.y
-                                + (layout.descent * 0.618);
-                            current_underline = Some((
-                                Point::new(glyph_origin.x, underline_y),
-                                underline.clone(),
-                            ));
+                            let underline_y =
+                                glyph_origin.y + self.baseline_offset.y + (layout.descent * 0.618);
+                            current_underline =
+                                Some((Point::new(glyph_origin.x, underline_y), underline.clone()));
                         }
                         if let Some(ref strike) = style_run.strikethrough
                             && current_strikethrough.is_none()

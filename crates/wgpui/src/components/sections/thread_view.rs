@@ -198,7 +198,8 @@ impl Component for ThreadView {
                 for entry in &mut self.entries {
                     let (_, entry_height) = entry.size_hint();
                     let height = entry_height.unwrap_or(30.0);
-                    let entry_bounds = Bounds::new(bounds.origin.x, check_y, bounds.size.width, height);
+                    let entry_bounds =
+                        Bounds::new(bounds.origin.x, check_y, bounds.size.width, height);
                     let result = entry.event(event, entry_bounds, cx);
                     if result == EventResult::Handled {
                         return result;

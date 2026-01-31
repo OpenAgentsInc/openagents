@@ -73,12 +73,8 @@ impl MarkdownRenderer {
 
             MarkdownBlock::CodeBlock { lines, .. } => {
                 let metrics = self.code_block_metrics();
-                let content_height = self.measure_lines(
-                    lines,
-                    max_width - metrics.padding * 2.0,
-                    0,
-                    text_system,
-                );
+                let content_height =
+                    self.measure_lines(lines, max_width - metrics.padding * 2.0, 0, text_system);
                 content_height
                     + metrics.padding * 2.0
                     + metrics.header_height
@@ -576,12 +572,8 @@ impl MarkdownRenderer {
         code_blocks: Option<&mut Vec<CodeBlockLayout>>,
     ) -> f32 {
         let metrics = self.code_block_metrics();
-        let content_height = self.measure_lines(
-            lines,
-            max_width - metrics.padding * 2.0,
-            0,
-            text_system,
-        );
+        let content_height =
+            self.measure_lines(lines, max_width - metrics.padding * 2.0, 0, text_system);
 
         let total_height = content_height + metrics.padding * 2.0 + metrics.header_height;
 
@@ -620,12 +612,8 @@ impl MarkdownRenderer {
         if let Some(lang) = language.as_ref() {
             let label_x = header_bounds.origin.x + metrics.padding;
             let label_color = theme::text::MUTED.with_alpha(opacity);
-            let mut label = text_system.layout(
-                lang,
-                Point::ZERO,
-                theme::font_size::XS,
-                label_color,
-            );
+            let mut label =
+                text_system.layout(lang, Point::ZERO, theme::font_size::XS, label_color);
             let label_bounds = label.bounds();
             let label_y = header_bounds.origin.y
                 + (header_bounds.size.height - label_bounds.size.height) * 0.5
