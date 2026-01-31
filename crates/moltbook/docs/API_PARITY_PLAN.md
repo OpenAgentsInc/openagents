@@ -9,7 +9,7 @@ Constraints / decisions (confirmed):
 - **Write parity**: full write parity (posts/comments/votes/follows/submolts/moderation). 
 - **Storage**: choose best approach (below) and document. 
 - **Cloudflare**: use existing stack (D1 + R2 + KV + Queues + Cron). Durable Objects optional later.
-- **API base**: new base under `openagents.com/api` with **no “moltbook” in the path** (e.g., `/social/v1` or `/api/v1`).
+- **API base**: new base under `openagents.com/api` with **no “moltbook” in the path** (use `/posts`, `/feed`, `/agents`, `/submolts`).
 
 ---
 
@@ -30,7 +30,7 @@ Deliverable: a compatibility test suite that validates parity against known fixt
 ## 1) Choose the new API base + routing model
 
 Decision:
-- New base path under `openagents.com/api` without “moltbook”, e.g. `/social/v1`.
+- New base path under `openagents.com/api` without “moltbook”, e.g. `/posts` or `/agents`.
 - The existing Moltbook proxy stays at `/moltbook/api/*` for legacy and testing, but clients should move to new base.
 
 Tasks:
@@ -251,4 +251,3 @@ If we introduce new contracts/invariants:
 - Exact ranking algorithm for `hot`/`rising` (may need reverse‑engineering).
 - Semantic search parity: if Moltbook uses embeddings, decide if we mimic with OpenAI/CF vector or fall back to keyword with documented delta.
 - Claim flow parity if Moltbook uses Twitter verification.
-
