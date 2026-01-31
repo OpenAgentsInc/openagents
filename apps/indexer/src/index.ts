@@ -51,6 +51,9 @@ export default {
     if (path === '/v1/wallet-interest') {
       return handleWalletInterest(request, env);
     }
+    if (path === '/v1/ingest/posts' && request.method === 'POST') {
+      return handleIngestPosts(request, env);
+    }
     if (path === '/ingest' && request.method === 'POST') {
       return runIngestAndRespond(env);
     }
@@ -117,69 +120,11 @@ async function runIngest(env: Env): Promise<{ postsFetched: number; newPosts: nu
 
   for (const raw of posts) {
     const post = raw as MoltbookPost;
-    const id = post.id ?? (post as Record<string, unknown>).id;
-    if (typeof id !== 'string') continue;
-
-    const existing = await env.DB.prepare('SELECT 1 FROM moltbook_posts WHERE id = ?').bind(id).first();
-    if (existing) continue;
-
-    newCount++;
-    const r2Key = r2KeyPost(new Date(), id);
-    await env.R2.put(r2Key, JSON.stringify(post), { httpMetadata: { contentType: 'application/json' } });
-
-    const scanTitle = scanSecrets(post.title);
-    const scanContent = scanSecrets(post.content);
-    const hasSecrets = scanTitle.hasSecrets || scanContent.hasSecrets;
-    if (hasSecrets) {
-      const qKey = r2KeyQuarantine(new Date(), 'post', id);
-      await env.R2.put(qKey, JSON.stringify(post), { httpMetadata: { contentType: 'application/json' } });
+    const result = await ingestPost(env, post, now);
+    if (result.inserted) {
+      newCount++;
     }
-
-    const content = redactForD1(post.content ?? '', scanContent);
-    const title = redactForD1(post.title ?? '', scanTitle);
-    const authorName = getAuthorName(post);
-    const authorId = getAuthorId(post);
-    const submoltName = getSubmoltName(post.submolt);
-    await env.DB.prepare(
-      `INSERT INTO moltbook_posts (id, created_at, submolt, title, content, url, author_name, author_id, score, comment_count, raw_r2_key, ingested_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-    )
-      .bind(
-        id,
-        d1Val(post.created_at),
-        submoltName ?? null,
-        title || null,
-        content || null,
-        d1Val(post.url),
-        authorName ?? null,
-        authorId ?? null,
-        d1Val(post.score),
-        d1Val(post.comment_count),
-        r2Key,
-        now
-      )
-      .run();
-
-    const signals = computeSignals('post', id, content || title, now);
-    for (const row of signals) {
-      await env.DB.prepare(
-        `INSERT OR IGNORE INTO derived_signals (object_type, object_id, signal, value, created_at) VALUES (?, ?, ?, ?, ?)`
-      )
-        .bind(row.object_type, row.object_id, row.signal, row.value, row.created_at)
-        .run();
-    }
-
-    if (authorName) {
-      await env.DB.prepare(
-        `INSERT INTO moltbook_authors (name, last_seen_at, raw_profile_r2_key) VALUES (?, ?, NULL) ON CONFLICT(name) DO UPDATE SET last_seen_at = excluded.last_seen_at`
-      )
-        .bind(authorName, now)
-        .run();
-    }
-
-    const commentCount = typeof post.comment_count === 'number' ? post.comment_count : 0;
-    if (commentCount > 0) {
-      await env.JOBS.send({ type: 'FETCH_COMMENTS', post_id: id, attempt: 1 });
+    if (result.queuedComments) {
       queuedCount++;
     }
   }
@@ -203,6 +148,137 @@ async function runIngestAndRespond(env: Env): Promise<Response> {
     const msg = e instanceof Error ? e.message : String(e);
     return jsonResponse({ ok: false, error: msg }, 500);
   }
+}
+
+async function handleIngestPosts(request: Request, env: Env): Promise<Response> {
+  let payload: unknown;
+  try {
+    payload = await request.json();
+  } catch (e) {
+    return jsonResponse({ ok: false, error: 'invalid_json' }, 400);
+  }
+
+  if (!payload || typeof payload !== 'object') {
+    return jsonResponse({ ok: false, error: 'invalid_payload' }, 400);
+  }
+
+  const { posts, source } = payload as { posts?: unknown; source?: string };
+  if (!Array.isArray(posts)) {
+    return jsonResponse({ ok: false, error: 'posts_required' }, 400);
+  }
+
+  const now = new Date().toISOString();
+  let inserted = 0;
+  let queued = 0;
+  let skipped = 0;
+  const errors: string[] = [];
+
+  for (const raw of posts) {
+    try {
+      const result = await ingestPost(env, raw as MoltbookPost, now);
+      if (result.inserted) {
+        inserted++;
+      } else {
+        skipped++;
+      }
+      if (result.queuedComments) {
+        queued++;
+      }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      errors.push(msg);
+    }
+  }
+
+  return jsonResponse({
+    ok: true,
+    data: {
+      source: source ?? null,
+      received: posts.length,
+      inserted,
+      skipped,
+      queuedComments: queued,
+      errors: errors.slice(0, 20),
+    },
+  });
+}
+
+async function ingestPost(
+  env: Env,
+  post: MoltbookPost,
+  now: string
+): Promise<{ inserted: boolean; queuedComments: boolean }> {
+  const id = post.id ?? (post as Record<string, unknown>).id;
+  if (typeof id !== 'string' || !id.trim()) {
+    return { inserted: false, queuedComments: false };
+  }
+
+  const existing = await env.DB.prepare('SELECT 1 FROM moltbook_posts WHERE id = ?').bind(id).first();
+  if (existing) {
+    return { inserted: false, queuedComments: false };
+  }
+
+  const r2Key = r2KeyPost(new Date(), id);
+  await env.R2.put(r2Key, JSON.stringify(post), { httpMetadata: { contentType: 'application/json' } });
+
+  const scanTitle = scanSecrets(post.title);
+  const scanContent = scanSecrets(post.content);
+  const hasSecrets = scanTitle.hasSecrets || scanContent.hasSecrets;
+  if (hasSecrets) {
+    const qKey = r2KeyQuarantine(new Date(), 'post', id);
+    await env.R2.put(qKey, JSON.stringify(post), { httpMetadata: { contentType: 'application/json' } });
+  }
+
+  const content = redactForD1(post.content ?? '', scanContent);
+  const title = redactForD1(post.title ?? '', scanTitle);
+  const authorName = getAuthorName(post);
+  const authorId = getAuthorId(post);
+  const submoltName = getSubmoltName(post.submolt);
+  await env.DB.prepare(
+    `INSERT INTO moltbook_posts (id, created_at, submolt, title, content, url, author_name, author_id, score, comment_count, raw_r2_key, ingested_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  )
+    .bind(
+      id,
+      d1Val(post.created_at),
+      submoltName ?? null,
+      title || null,
+      content || null,
+      d1Val(post.url),
+      authorName ?? null,
+      authorId ?? null,
+      d1Val(post.score),
+      d1Val(post.comment_count),
+      r2Key,
+      now
+    )
+    .run();
+
+  const signals = computeSignals('post', id, content || title, now);
+  for (const row of signals) {
+    await env.DB.prepare(
+      `INSERT OR IGNORE INTO derived_signals (object_type, object_id, signal, value, created_at) VALUES (?, ?, ?, ?, ?)`
+    )
+      .bind(row.object_type, row.object_id, row.signal, row.value, row.created_at)
+      .run();
+  }
+
+  if (authorName) {
+    await env.DB.prepare(
+      `INSERT INTO moltbook_authors (name, last_seen_at, raw_profile_r2_key) VALUES (?, ?, NULL) ON CONFLICT(name) DO UPDATE SET last_seen_at = excluded.last_seen_at`
+    )
+      .bind(authorName, now)
+      .run();
+  }
+
+  const commentCount = typeof post.comment_count === 'number' ? post.comment_count : 0;
+  let queuedComments = false;
+  if (commentCount > 0) {
+    await env.JOBS.send({ type: 'FETCH_COMMENTS', post_id: id, attempt: 1 });
+    queuedComments = true;
+  }
+
+  return { inserted: true, queuedComments };
 }
 
 /** Backfill author_name, author_id, submolt from raw R2 post JSON for existing rows. */
