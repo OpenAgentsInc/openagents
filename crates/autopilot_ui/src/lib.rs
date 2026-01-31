@@ -7115,15 +7115,16 @@ fn paint_moltbook_header(
 
 fn paint_moltbook_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintContext) {
     let padding_x = 16.0;
+    let padding_top = 10.0;
     let text_size = theme::font_size::XS;
     let row_height = 20.0;
 
     let content_width = (bounds.size.width - padding_x * 2.0).max(320.0);
     let content_bounds = Bounds::new(
         bounds.origin.x + padding_x,
-        bounds.origin.y,
+        bounds.origin.y + padding_top,
         content_width,
-        (bounds.size.height - 1.0).max(0.0),
+        (bounds.size.height - padding_top - 1.0).max(0.0),
     );
 
     let markdown_config = moltbook_markdown_config(text_size);
