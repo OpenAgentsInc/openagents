@@ -70,8 +70,7 @@ const ENV_MOLTBOOK_LIVE_BASE: &str = "MOLTBOOK_API_BASE";
 const ENV_OPENAGENTS_INDEXER_BASE: &str = "OPENAGENTS_INDEXER_BASE";
 const DEFAULT_GUIDANCE_GOAL_INTENT: &str =
     "Keep making progress on the current task using the latest plan and diff.";
-const DEFAULT_MOLTBOOK_PROXY_BASE: &str =
-    "https://openagents-api.openagents.workers.dev/moltbook/api";
+const DEFAULT_MOLTBOOK_PROXY_BASE: &str = "https://openagents.com/api/moltbook/api";
 const DEFAULT_MOLTBOOK_LIVE_BASE: &str = "https://www.moltbook.com/api/v1";
 const DEFAULT_OPENAGENTS_INDEXER_BASE: &str = "https://openagents.com/api/indexer";
 const ZOOM_MIN: f32 = 0.5;
