@@ -21,7 +21,9 @@ where
     }
 }
 
-fn deserialize_submolt_name<'de, D>(deserializer: D) -> std::result::Result<Option<String>, D::Error>
+fn deserialize_submolt_name<'de, D>(
+    deserializer: D,
+) -> std::result::Result<Option<String>, D::Error>
 where
     D: Deserializer<'de>,
 {
@@ -226,7 +228,7 @@ enum SubmoltRef {
 }
 
 /// Post from feed or single-post response. API may send camelCase or snake_case.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Post {
     #[serde(deserialize_with = "string_or_number")]
     pub id: String,
@@ -250,7 +252,7 @@ pub struct Post {
     pub is_pinned: Option<bool>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct PostAuthor {
     #[serde(default)]
     pub id: Option<String>,
@@ -278,7 +280,7 @@ pub struct CreateCommentRequest {
     pub parent_id: Option<String>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Comment {
     pub id: String,
     #[serde(default)]

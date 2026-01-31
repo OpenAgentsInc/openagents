@@ -34,14 +34,15 @@ use full_auto::{
     run_full_auto_decision,
 };
 use futures::StreamExt;
+use moltbook::{MoltbookClient, PostSort};
 use nostr::nip90::{JobInput, JobRequest, KIND_JOB_TEXT_GENERATION};
 use nostr_client::dvm::DvmClient;
 use openagents_runtime::UnifiedIdentity;
 use openagents_spark::{Network as SparkNetwork, SparkSigner, SparkWallet, WalletConfig};
-use moltbook::{MoltbookClient, CreateCommentRequest, CreatePostRequest, PostSort};
 use pylon::PylonConfig;
 use pylon::db::{PylonDb, jobs::JobStatus};
 use pylon::provider::{ProviderError, PylonProvider};
+use reqwest::Client as HttpClient;
 use serde_json::{Value, json};
 use tracing_subscriber::EnvFilter;
 use wgpui::renderer::Renderer;
@@ -64,8 +65,15 @@ const PADDING: f32 = 0.0;
 const EVENT_BUFFER: usize = 256;
 const DEFAULT_THREAD_MODEL: &str = "gpt-5.2-codex";
 const ENV_GUIDANCE_GOAL: &str = "OPENAGENTS_GUIDANCE_GOAL";
+const ENV_MOLTBOOK_PROXY_BASE: &str = "OPENAGENTS_MOLTBOOK_API_BASE";
+const ENV_MOLTBOOK_LIVE_BASE: &str = "MOLTBOOK_API_BASE";
+const ENV_OPENAGENTS_INDEXER_BASE: &str = "OPENAGENTS_INDEXER_BASE";
 const DEFAULT_GUIDANCE_GOAL_INTENT: &str =
     "Keep making progress on the current task using the latest plan and diff.";
+const DEFAULT_MOLTBOOK_PROXY_BASE: &str =
+    "https://openagents-api.openagents.workers.dev/moltbook/api";
+const DEFAULT_MOLTBOOK_LIVE_BASE: &str = "https://www.moltbook.com/api/v1";
+const DEFAULT_OPENAGENTS_INDEXER_BASE: &str = "https://openagents.com/api/indexer";
 const ZOOM_MIN: f32 = 0.5;
 const ZOOM_MAX: f32 = 2.5;
 const ZOOM_STEP_KEY: f32 = 0.1;
@@ -132,10 +140,7 @@ fn build_shortcut_registry() -> ShortcutRegistry {
                 &mut registry,
                 ShortcutBinding {
                     id: "hotbar_slot",
-                    chord: ShortcutChord::new(
-                        Key::Character(slot.to_string()),
-                        modifiers,
-                    ),
+                    chord: ShortcutChord::new(Key::Character(slot.to_string()), modifiers),
                     scope: ShortcutScope::App,
                     priority: SHORTCUT_PRIORITY_APP,
                     command: ShortcutCommand::HotbarSlot(slot),
@@ -566,8 +571,7 @@ fn init_state(
         .primary_monitor()
         .or_else(|| event_loop.available_monitors().next())
     {
-        let size: winit::dpi::LogicalSize<f64> =
-            monitor.size().to_logical(monitor.scale_factor());
+        let size: winit::dpi::LogicalSize<f64> = monitor.size().to_logical(monitor.scale_factor());
         window_attrs = window_attrs.with_inner_size(size).with_maximized(true);
     } else {
         window_attrs = window_attrs
@@ -2214,20 +2218,81 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
                                     log("Moltbook: no API key. Set MOLTBOOK_API_KEY or ~/.config/moltbook/credentials.json".to_string());
                                     return;
                                 };
-                                let client = match MoltbookClient::new(api_key) {
-                                    Ok(c) => c,
+                                let proxy_base = moltbook_proxy_base();
+                                let live_base = moltbook_live_base();
+                                let proxy_client = match MoltbookClient::with_base_url(
+                                    proxy_base.clone(),
+                                    Some(api_key.clone()),
+                                ) {
+                                    Ok(c) => Some(c),
                                     Err(e) => {
-                                        log(format!("Moltbook client error: {e}"));
-                                        return;
+                                        log(format!("Moltbook proxy client error: {e}"));
+                                        None
                                     }
                                 };
+                                let live_client = match MoltbookClient::with_base_url(
+                                    live_base.clone(),
+                                    Some(api_key.clone()),
+                                ) {
+                                    Ok(c) => Some(c),
+                                    Err(e) => {
+                                        log(format!("Moltbook live client error: {e}"));
+                                        None
+                                    }
+                                };
+                                if proxy_client.is_none() && live_client.is_none() {
+                                    log("Moltbook: no usable client configured.".to_string());
+                                    return;
+                                }
                                 log("Fetching feed and profile…".to_string());
-                                let (posts_result, profile_result) = futures::join!(
-                                    client.posts_feed(PostSort::New, Some(25), None),
-                                    client.agents_me()
-                                );
+                                let mut feed_source = "openagents_proxy";
+                                let posts_result = if let Some(client) = proxy_client.as_ref() {
+                                    match client.posts_feed(PostSort::New, Some(25), None).await {
+                                        Ok(posts) => Ok(posts),
+                                        Err(e) => {
+                                            log(format!("Proxy feed error: {e}"));
+                                            if let Some(live) = live_client.as_ref() {
+                                                feed_source = "moltbook_live";
+                                                log("Falling back to live Moltbook API for feed…".to_string());
+                                                live.posts_feed(PostSort::New, Some(25), None).await
+                                            } else {
+                                                Err(e)
+                                            }
+                                        }
+                                    }
+                                } else if let Some(live) = live_client.as_ref() {
+                                    feed_source = "moltbook_live";
+                                    live.posts_feed(PostSort::New, Some(25), None).await
+                                } else {
+                                    unreachable!("moltbook clients checked above");
+                                };
                                 match posts_result {
                                     Ok(posts) => {
+                                        let indexer_base = openagents_indexer_base();
+                                        let ingest_url = format!(
+                                            "{}/v1/ingest/posts",
+                                            indexer_base.trim_end_matches('/')
+                                        );
+                                        let http = HttpClient::new();
+                                        let ingest_payload = json!({
+                                            "source": feed_source,
+                                            "posts": &posts,
+                                        });
+                                        match http.post(&ingest_url).json(&ingest_payload).send().await
+                                        {
+                                            Ok(resp) => {
+                                                if !resp.status().is_success() {
+                                                    let status = resp.status();
+                                                    let body = resp.text().await.unwrap_or_default();
+                                                    log(format!(
+                                                        "Indexer ingest failed ({status}): {body}"
+                                                    ));
+                                                }
+                                            }
+                                            Err(e) => {
+                                                log(format!("Indexer ingest error: {e}"));
+                                            }
+                                        }
                                         let summaries: Vec<MoltbookPostSummary> = posts
                                             .into_iter()
                                             .map(|p| MoltbookPostSummary {
@@ -2247,95 +2312,50 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
                                     }
                                     Err(e) => log(format!("Feed error: {e}")),
                                 }
-                                if let Ok(agent) = profile_result {
-                                    let posts_count = agent.stats.as_ref().and_then(|s| s.posts).unwrap_or(0);
-                                    let comments_count = agent.stats.as_ref().and_then(|s| s.comments).unwrap_or(0);
-                                    let profile = MoltbookProfileSummary {
-                                        agent_name: agent.name,
-                                        posts_count,
-                                        comments_count,
-                                    };
-                                    let _ = proxy.send_event(AppEvent::MoltbookProfileLoaded { profile });
+                                let profile_result = if let Some(client) = proxy_client.as_ref() {
+                                    match client.agents_me().await {
+                                        Ok(profile) => Ok(profile),
+                                        Err(e) => {
+                                            log(format!("Proxy profile error: {e}"));
+                                            if let Some(live) = live_client.as_ref() {
+                                                log("Falling back to live Moltbook API for profile…".to_string());
+                                                live.agents_me().await
+                                            } else {
+                                                Err(e)
+                                            }
+                                        }
+                                    }
+                                } else if let Some(live) = live_client.as_ref() {
+                                    live.agents_me().await
                                 } else {
-                                    let _ = proxy.send_event(AppEvent::MoltbookProfileLoaded {
-                                        profile: MoltbookProfileSummary {
-                                            agent_name: "?".to_string(),
-                                            posts_count: 0,
-                                            comments_count: 0,
-                                        },
-                                    });
-                                }
+                                    unreachable!("moltbook clients checked above");
+                                };
+                                match profile_result {
+                                    Ok(agent) => {
+                                        let posts_count = agent.stats.as_ref().and_then(|s| s.posts).unwrap_or(0);
+                                        let comments_count = agent.stats.as_ref().and_then(|s| s.comments).unwrap_or(0);
+                                        let profile = MoltbookProfileSummary {
+                                            agent_name: agent.name,
+                                            posts_count,
+                                            comments_count,
+                                        };
+                                        let _ = proxy.send_event(AppEvent::MoltbookProfileLoaded { profile });
+                                    }
+                                    Err(_) => {
+                                        let _ = proxy.send_event(AppEvent::MoltbookProfileLoaded {
+                                            profile: MoltbookProfileSummary {
+                                                agent_name: "?".to_string(),
+                                                posts_count: 0,
+                                                comments_count: 0,
+                                            },
+                                        });
+                                    }
+                                };
                             });
                         }
-                        UserAction::MoltbookSay { text, submolt } => {
-                            let proxy = proxy_actions.clone();
-                            let text = text.trim().to_string();
-                            let submolt = submolt.unwrap_or_else(|| "general".to_string());
-                            handle.spawn(async move {
-                                let log = |msg: String| {
-                                    let _ = proxy.send_event(AppEvent::MoltbookLog { message: msg });
-                                };
-                                let Some(api_key) = moltbook_api_key() else {
-                                    log("Moltbook: no API key.".to_string());
-                                    return;
-                                };
-                                let client = match MoltbookClient::new(api_key) {
-                                    Ok(c) => c,
-                                    Err(e) => {
-                                        log(format!("Moltbook client error: {e}"));
-                                        return;
-                                    }
-                                };
-                                let (title, content) = if let Some((first, rest)) = text.split_once('\n') {
-                                    (first.trim().to_string(), rest.trim().to_string())
-                                } else {
-                                    let t = text.chars().take(80).collect::<String>();
-                                    let t = t.trim();
-                                    if t.is_empty() {
-                                        ("Update".to_string(), String::new())
-                                    } else {
-                                        (t.to_string(), String::new())
-                                    }
-                                };
-                                let title = if title.is_empty() { "Update".to_string() } else { title };
-                                let request = CreatePostRequest {
-                                    submolt,
-                                    title,
-                                    content: if content.is_empty() { None } else { Some(content) },
-                                    url: None,
-                                };
-                                match client.posts_create(request).await {
-                                    Ok(post) => log(format!("Posted: {}", post.id)),
-                                    Err(e) => log(format!("Post failed: {e}")),
-                                }
-                            });
-                        }
-                        UserAction::MoltbookComment { post_id, text } => {
-                            let proxy = proxy_actions.clone();
-                            let text = text.trim().to_string();
-                            handle.spawn(async move {
-                                let log = |msg: String| {
-                                    let _ = proxy.send_event(AppEvent::MoltbookLog { message: msg });
-                                };
-                                let Some(api_key) = moltbook_api_key() else {
-                                    log("Moltbook: no API key.".to_string());
-                                    return;
-                                };
-                                let client = match MoltbookClient::new(api_key) {
-                                    Ok(c) => c,
-                                    Err(e) => {
-                                        log(format!("Moltbook client error: {e}"));
-                                        return;
-                                    }
-                                };
-                                let request = CreateCommentRequest {
-                                    content: text,
-                                    parent_id: None,
-                                };
-                                match client.comments_create(&post_id, request).await {
-                                    Ok(comment) => log(format!("Commented: {}", comment.id)),
-                                    Err(e) => log(format!("Comment failed: {e}")),
-                                }
+                        UserAction::MoltbookSay { .. } | UserAction::MoltbookComment { .. } => {
+                            let _ = proxy_actions.send_event(AppEvent::MoltbookLog {
+                                message: "Moltbook is read-only in this build.".to_string(),
                             });
                         }
                         _ => {}
@@ -2388,6 +2408,38 @@ fn guidance_goal_intent() -> String {
         .unwrap_or_else(|| DEFAULT_GUIDANCE_GOAL_INTENT.to_string())
 }
 
+fn trimmed_env_url(key: &str) -> Option<String> {
+    env::var(key)
+        .ok()
+        .map(|value| value.trim().trim_end_matches('/').to_string())
+        .filter(|value| !value.is_empty())
+}
+
+fn moltbook_proxy_base() -> String {
+    if let Some(value) = trimmed_env_url(ENV_MOLTBOOK_PROXY_BASE) {
+        return value;
+    }
+    if let Some(oa_api) = trimmed_env_url("OA_API") {
+        return format!("{oa_api}/moltbook/api");
+    }
+    DEFAULT_MOLTBOOK_PROXY_BASE.to_string()
+}
+
+fn moltbook_live_base() -> String {
+    trimmed_env_url(ENV_MOLTBOOK_LIVE_BASE)
+        .unwrap_or_else(|| DEFAULT_MOLTBOOK_LIVE_BASE.to_string())
+}
+
+fn openagents_indexer_base() -> String {
+    if let Some(value) = trimmed_env_url(ENV_OPENAGENTS_INDEXER_BASE) {
+        return value;
+    }
+    if let Some(oa_api) = trimmed_env_url("OA_API") {
+        return format!("{oa_api}/indexer");
+    }
+    DEFAULT_OPENAGENTS_INDEXER_BASE.to_string()
+}
+
 fn moltbook_api_key() -> Option<String> {
     if let Ok(key) = env::var("MOLTBOOK_API_KEY") {
         let key = key.trim().to_string();
@@ -2399,7 +2451,9 @@ fn moltbook_api_key() -> Option<String> {
     let path = Path::new(&home).join(".config/moltbook/credentials.json");
     let data = fs::read_to_string(&path).ok()?;
     let json: Value = serde_json::from_str(&data).ok()?;
-    json.get("api_key").and_then(|v| v.as_str()).map(|s| s.to_string())
+    json.get("api_key")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string())
 }
 
 #[allow(dead_code)]
@@ -2597,13 +2651,16 @@ fn read_doc_snippet(repo_root: &Path, rel: &str) -> Option<(String, String)> {
 fn collect_repo_intel() -> RepoIntel {
     let repo_root = find_repo_root();
     let status = run_git(&repo_root, &["status", "-sb"]).unwrap_or_else(|| "unknown".to_string());
-    let dirty = status
-        .lines()
-        .skip(1)
-        .any(|line| !line.trim().is_empty());
+    let dirty = status.lines().skip(1).any(|line| !line.trim().is_empty());
     let recent_commits = run_git(
         &repo_root,
-        &["log", "-n", "10", "--pretty=format:%h %ad %s", "--date=short"],
+        &[
+            "log",
+            "-n",
+            "10",
+            "--pretty=format:%h %ad %s",
+            "--date=short",
+        ],
     )
     .unwrap_or_default();
     let recent_files_raw = run_git(
@@ -2650,19 +2707,21 @@ fn collect_repo_intel() -> RepoIntel {
         }
     }
 
-    let issues_hint = fs::read_dir(repo_root.join("issues")).ok().and_then(|entries| {
-        let mut names = Vec::new();
-        for entry in entries.flatten().take(5) {
-            if let Some(name) = entry.file_name().to_str() {
-                names.push(name.to_string());
+    let issues_hint = fs::read_dir(repo_root.join("issues"))
+        .ok()
+        .and_then(|entries| {
+            let mut names = Vec::new();
+            for entry in entries.flatten().take(5) {
+                if let Some(name) = entry.file_name().to_str() {
+                    names.push(name.to_string());
+                }
             }
-        }
-        if names.is_empty() {
-            None
-        } else {
-            Some(names.join(", "))
-        }
-    });
+            if names.is_empty() {
+                None
+            } else {
+                Some(names.join(", "))
+            }
+        });
 
     RepoIntel {
         root: repo_root,
@@ -2962,12 +3021,7 @@ async fn handle_guidance_route(
             Ok((text, signatures))
         }
         "plan" => {
-            emit_guidance_status(
-                proxy,
-                thread_id,
-                Some("PlanningSignature"),
-                "Running…",
-            );
+            emit_guidance_status(proxy, thread_id, Some("PlanningSignature"), "Running…");
             let text = run_planning_summary(message, &repo_context, goal_intent, lm).await?;
             signatures.push("PlanningSignature".to_string());
             Ok((text, signatures))
@@ -3045,12 +3099,7 @@ async fn run_guidance_super(
         &lm.model,
     );
 
-    emit_guidance_status(
-        proxy,
-        thread_id,
-        Some("PlanningSignature"),
-        "Running…",
-    );
+    emit_guidance_status(proxy, thread_id, Some("PlanningSignature"), "Running…");
     let planning_predictor = Predict::new(PlanningSignature::new());
     let planning_message = if message.trim().len() <= 4 {
         if goal_intent.trim().is_empty() {
@@ -3088,8 +3137,7 @@ async fn run_guidance_super(
             &lm.model,
         );
         "Plan ready.".to_string()
-    }
-    ;
+    };
 
     let task_summary = format!("{} {}", step_text, plan_step_summary);
     emit_guidance_status(
@@ -3186,12 +3234,7 @@ async fn run_guidance_followup(
         &lm.model,
     );
 
-    emit_guidance_status(
-        proxy,
-        thread_id,
-        Some("PlanningSignature"),
-        "Running…",
-    );
+    emit_guidance_status(proxy, thread_id, Some("PlanningSignature"), "Running…");
     let planning_predictor = Predict::new(PlanningSignature::new());
     let planning_inputs = example! {
         "task_description": "input" => format!("Continue work. {task_summary}"),

@@ -5,8 +5,8 @@ use std::rc::Rc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use autopilot_app::{
-    AppEvent, MoltbookPostSummary, MoltbookProfileSummary, SessionId, ThreadSnapshot, ThreadSummary,
-    UserAction, WorkspaceId,
+    AppEvent, MoltbookPostSummary, MoltbookProfileSummary, SessionId, ThreadSnapshot,
+    ThreadSummary, UserAction, WorkspaceId,
 };
 use bip39::Mnemonic;
 use editor::{Editor, EditorElement, SyntaxLanguage};
@@ -759,26 +759,12 @@ pub struct MinimalRoot {
     moltbook_feed: Vec<MoltbookPostSummary>,
     moltbook_log: Vec<String>,
     moltbook_profile: Option<MoltbookProfileSummary>,
-    moltbook_say_input: TextInput,
-    moltbook_submolt_input: TextInput,
     moltbook_refresh_button: Button,
-    moltbook_say_button: Button,
-    moltbook_comment_post_id: Option<String>,
-    moltbook_comment_input: TextInput,
-    moltbook_comment_button: Button,
-    moltbook_say_bounds: Bounds,
-    moltbook_submolt_bounds: Bounds,
     moltbook_refresh_bounds: Bounds,
-    moltbook_say_btn_bounds: Bounds,
-    moltbook_comment_bounds: Bounds,
-    moltbook_comment_btn_bounds: Bounds,
     #[allow(dead_code)]
     moltbook_feed_scroll: ScrollView,
     moltbook_feed_scroll_bounds: Bounds,
-    moltbook_reply_bounds: HashMap<String, Bounds>,
     pending_moltbook_refresh: Rc<RefCell<bool>>,
-    pending_moltbook_say: Rc<RefCell<bool>>,
-    pending_moltbook_comment: Rc<RefCell<bool>>,
     nostr_npub: Option<String>,
     nostr_nsec: Option<String>,
     spark_pubkey_hex: Option<String>,
@@ -2382,9 +2368,7 @@ impl FileEditorPaneState {
     }
 
     fn tree_row_at(&self, point: Point) -> Option<&FileTreeRow> {
-        self.tree_rows
-            .iter()
-            .find(|row| row.bounds.contains(point))
+        self.tree_rows.iter().find(|row| row.bounds.contains(point))
     }
 
     fn tab_hit_at(&self, point: Point) -> Option<(usize, usize)> {
@@ -2407,7 +2391,9 @@ impl FileEditorPaneState {
     }
 
     fn editor_bounds_for_group(&self, group_index: usize) -> Option<Bounds> {
-        self.groups.get(group_index).map(|group| group.editor_bounds)
+        self.groups
+            .get(group_index)
+            .map(|group| group.editor_bounds)
     }
 
     fn editor_cursor_at(&self, point: Point) -> Option<Cursor> {
@@ -2738,49 +2724,6 @@ impl MinimalRoot {
             .on_click(move || {
                 *pending_moltbook_refresh_click.borrow_mut() = true;
             });
-        let pending_moltbook_say = Rc::new(RefCell::new(false));
-        let pending_moltbook_say_click = pending_moltbook_say.clone();
-        let moltbook_say_button = Button::new("Post")
-            .variant(ButtonVariant::Primary)
-            .font_size(theme::font_size::XS)
-            .padding(12.0, 6.0)
-            .corner_radius(6.0)
-            .on_click(move || {
-                *pending_moltbook_say_click.borrow_mut() = true;
-            });
-        let pending_moltbook_comment = Rc::new(RefCell::new(false));
-        let pending_moltbook_comment_click = pending_moltbook_comment.clone();
-        let moltbook_comment_button = Button::new("Comment")
-            .variant(ButtonVariant::Secondary)
-            .font_size(theme::font_size::XS)
-            .padding(10.0, 6.0)
-            .corner_radius(6.0)
-            .on_click(move || {
-                *pending_moltbook_comment_click.borrow_mut() = true;
-            });
-        let moltbook_say_input = TextInput::new()
-            .placeholder("What should the agent say? (post to Moltbook)")
-            .background(theme::bg::APP)
-            .border_color(theme::border::DEFAULT)
-            .border_color_focused(theme::border::FOCUS)
-            .text_color(theme::text::PRIMARY)
-            .placeholder_color(theme::text::MUTED);
-        let mut moltbook_submolt_input = TextInput::new()
-            .placeholder("general")
-            .background(theme::bg::APP)
-            .border_color(theme::border::DEFAULT)
-            .border_color_focused(theme::border::FOCUS)
-            .text_color(theme::text::PRIMARY)
-            .placeholder_color(theme::text::MUTED);
-        moltbook_submolt_input.set_value("general");
-        let moltbook_comment_input = TextInput::new()
-            .placeholder("Reply to selected post...")
-            .background(theme::bg::APP)
-            .border_color(theme::border::DEFAULT)
-            .border_color_focused(theme::border::FOCUS)
-            .text_color(theme::text::PRIMARY)
-            .placeholder_color(theme::text::MUTED);
-
         let event_scroll = ScrollView::new().show_scrollbar(true).scrollbar_width(6.0);
         let moltbook_feed_scroll = ScrollView::new().show_scrollbar(true).scrollbar_width(6.0);
         let hotbar = Hotbar::new()
@@ -2881,25 +2824,11 @@ impl MinimalRoot {
             moltbook_feed: Vec::new(),
             moltbook_log: Vec::new(),
             moltbook_profile: None,
-            moltbook_say_input,
-            moltbook_submolt_input,
             moltbook_refresh_button,
-            moltbook_say_button,
-            moltbook_comment_post_id: None,
-            moltbook_comment_input,
-            moltbook_comment_button,
-            moltbook_say_bounds: Bounds::ZERO,
-            moltbook_submolt_bounds: Bounds::ZERO,
             moltbook_refresh_bounds: Bounds::ZERO,
-            moltbook_say_btn_bounds: Bounds::ZERO,
-            moltbook_comment_bounds: Bounds::ZERO,
-            moltbook_comment_btn_bounds: Bounds::ZERO,
             moltbook_feed_scroll,
             moltbook_feed_scroll_bounds: Bounds::ZERO,
-            moltbook_reply_bounds: HashMap::new(),
             pending_moltbook_refresh,
-            pending_moltbook_say,
-            pending_moltbook_comment,
             nostr_npub: None,
             nostr_nsec: None,
             spark_pubkey_hex: None,
@@ -2931,10 +2860,7 @@ impl MinimalRoot {
     }
 
     pub fn shortcut_context(&self) -> ShortcutContext {
-        let text_input_focused = self
-            .chat_panes
-            .values()
-            .any(|chat| chat.input.is_focused())
+        let text_input_focused = self.chat_panes.values().any(|chat| chat.input.is_focused())
             || self.file_editor.path_input.is_focused();
         ShortcutContext { text_input_focused }
     }
@@ -4276,9 +4202,7 @@ impl MinimalRoot {
                             let mut tree_scroll_handled = false;
                             if let InputEvent::Scroll { dx, dy } = event {
                                 if self.file_editor.tree_bounds.contains(self.cursor_position) {
-                                    self.file_editor
-                                        .tree_scroll
-                                        .scroll_by(Point::new(*dx, *dy));
+                                    self.file_editor.tree_scroll.scroll_by(Point::new(*dx, *dy));
                                     tree_scroll_handled = true;
                                 }
                             }
@@ -4294,8 +4218,7 @@ impl MinimalRoot {
                                     .tree_row_at(self.cursor_position)
                                     .map(|row| (row.path.clone(), row.is_dir))
                                 {
-                                    self.file_editor.selected_tree_path =
-                                        Some(row_path.clone());
+                                    self.file_editor.selected_tree_path = Some(row_path.clone());
                                     if is_dir {
                                         self.file_editor.toggle_tree_node(&row_path);
                                     } else {
@@ -4333,8 +4256,7 @@ impl MinimalRoot {
                                 InputEvent::KeyDown { .. } | InputEvent::KeyUp { .. }
                             );
                             let mut editor_handled = false;
-                            if !save_shortcut_handled && !self.file_editor.path_input.is_focused()
-                            {
+                            if !save_shortcut_handled && !self.file_editor.path_input.is_focused() {
                                 let mut target_group = None;
                                 if key_event {
                                     if let Some(tab) = self.file_editor.active_tab() {
@@ -4363,9 +4285,7 @@ impl MinimalRoot {
                                         .get(group_index)
                                         .and_then(|group| group.active_tab);
                                     if let (Some(bounds), Some(tab_id)) = (bounds, tab_id) {
-                                        if let Some(tab) =
-                                            self.file_editor.tabs.get_mut(&tab_id)
-                                        {
+                                        if let Some(tab) = self.file_editor.tabs.get_mut(&tab_id) {
                                             editor_handled = matches!(
                                                 tab.editor.event(
                                                     event,
@@ -4510,38 +4430,6 @@ impl MinimalRoot {
                                 || submit_handled;
                         }
                         PaneKind::Moltbook => {
-                            if let InputEvent::MouseDown {
-                                button: MouseButton::Left,
-                                x,
-                                y,
-                                ..
-                            } = event
-                            {
-                                let pt = Point::new(*x, *y);
-                                for (post_id, b) in &self.moltbook_reply_bounds {
-                                    if b.contains(pt) {
-                                        self.moltbook_comment_post_id = Some(post_id.clone());
-                                        handled = true;
-                                        break;
-                                    }
-                                }
-                            }
-                            let say_handled = matches!(
-                                self.moltbook_say_input.event(
-                                    event,
-                                    self.moltbook_say_bounds,
-                                    &mut self.event_context
-                                ),
-                                EventResult::Handled
-                            );
-                            let submolt_handled = matches!(
-                                self.moltbook_submolt_input.event(
-                                    event,
-                                    self.moltbook_submolt_bounds,
-                                    &mut self.event_context
-                                ),
-                                EventResult::Handled
-                            );
                             let refresh_handled = matches!(
                                 self.moltbook_refresh_button.event(
                                     event,
@@ -4550,36 +4438,7 @@ impl MinimalRoot {
                                 ),
                                 EventResult::Handled
                             );
-                            let say_btn_handled = matches!(
-                                self.moltbook_say_button.event(
-                                    event,
-                                    self.moltbook_say_btn_bounds,
-                                    &mut self.event_context
-                                ),
-                                EventResult::Handled
-                            );
-                            let comment_handled = matches!(
-                                self.moltbook_comment_input.event(
-                                    event,
-                                    self.moltbook_comment_bounds,
-                                    &mut self.event_context
-                                ),
-                                EventResult::Handled
-                            );
-                            let comment_btn_handled = matches!(
-                                self.moltbook_comment_button.event(
-                                    event,
-                                    self.moltbook_comment_btn_bounds,
-                                    &mut self.event_context
-                                ),
-                                EventResult::Handled
-                            );
-                            handled |= say_handled
-                                || submolt_handled
-                                || refresh_handled
-                                || say_btn_handled
-                                || comment_handled
-                                || comment_btn_handled;
+                            handled |= refresh_handled;
                         }
                     }
                 }
@@ -4783,49 +4642,6 @@ impl MinimalRoot {
             }
         }
 
-        let should_moltbook_say = {
-            let mut pending = self.pending_moltbook_say.borrow_mut();
-            let value = *pending;
-            *pending = false;
-            value
-        };
-        if should_moltbook_say {
-            let text = self.moltbook_say_input.get_value().trim().to_string();
-            if !text.is_empty() {
-                let submolt = self.moltbook_submolt_input.get_value().trim().to_string();
-                let submolt = if submolt.is_empty() {
-                    None
-                } else {
-                    Some(submolt)
-                };
-                if let Some(handler) = self.send_handler.as_mut() {
-                    handler(UserAction::MoltbookSay { text, submolt });
-                }
-                self.moltbook_say_input.set_value("");
-            }
-        }
-
-        let should_moltbook_comment = {
-            let mut pending = self.pending_moltbook_comment.borrow_mut();
-            let value = *pending;
-            *pending = false;
-            value
-        };
-        if should_moltbook_comment {
-            if let Some(ref post_id) = self.moltbook_comment_post_id {
-                let text = self.moltbook_comment_input.get_value().trim().to_string();
-                if !text.is_empty() {
-                    if let Some(handler) = self.send_handler.as_mut() {
-                        handler(UserAction::MoltbookComment {
-                            post_id: post_id.clone(),
-                            text,
-                        });
-                    }
-                    self.moltbook_comment_input.set_value("");
-                }
-            }
-        }
-
         let should_copy = {
             let mut pending = self.pending_copy.borrow_mut();
             let value = *pending;
@@ -4906,13 +4722,10 @@ impl MinimalRoot {
 
         let should_file_reload = self.file_editor.take_pending_reload();
         if should_file_reload {
-            let target = self
-                .file_editor
-                .active_tab_path()
-                .or_else(|| {
-                    let raw = self.file_editor.path_input.get_value();
-                    self.file_editor.resolve_path(&raw)
-                });
+            let target = self.file_editor.active_tab_path().or_else(|| {
+                let raw = self.file_editor.path_input.get_value();
+                self.file_editor.resolve_path(&raw)
+            });
             if let Some(path) = target {
                 self.file_editor.queue_open_path(path, true);
             } else {
@@ -5026,13 +4839,6 @@ impl MinimalRoot {
         self.nip90_submit_button
             .set_disabled(self.nip90_prompt_input.get_value().trim().is_empty());
 
-        self.moltbook_say_button
-            .set_disabled(self.moltbook_say_input.get_value().trim().is_empty());
-        self.moltbook_comment_button.set_disabled(
-            self.moltbook_comment_post_id.is_none()
-                || self.moltbook_comment_input.get_value().trim().is_empty(),
-        );
-
         handled
     }
 
@@ -5124,14 +4930,8 @@ impl MinimalRoot {
             || self.file_editor.split_horizontal_button.is_hovered()
             || self.file_editor.split_vertical_button.is_hovered()
             || self.file_editor.tree_refresh_button.is_hovered()
-            || self
-                .file_editor
-                .tree_row_at(self.cursor_position)
-                .is_some()
-            || self
-                .file_editor
-                .tab_hit_at(self.cursor_position)
-                .is_some()
+            || self.file_editor.tree_row_at(self.cursor_position).is_some()
+            || self.file_editor.tab_hit_at(self.cursor_position).is_some()
         {
             Cursor::Pointer
         } else if SHOW_MODEL_SELECTOR
@@ -5149,9 +4949,7 @@ impl MinimalRoot {
             .any(|chat| chat.input_hovered || chat.input.is_focused())
         {
             Cursor::Text
-        } else if let Some(cursor) =
-            self.file_editor.editor_cursor_at(self.cursor_position)
-        {
+        } else if let Some(cursor) = self.file_editor.editor_cursor_at(self.cursor_position) {
             cursor
         } else if self.file_editor.path_bounds.contains(self.cursor_position)
             || self.file_editor.path_input.is_focused()
@@ -5165,14 +4963,6 @@ impl MinimalRoot {
             || self.nip90_relay_input.is_focused()
             || self.nip90_provider_input.is_focused()
             || self.nip90_prompt_input.is_focused()
-        {
-            Cursor::Text
-        } else if self.moltbook_say_bounds.contains(self.cursor_position)
-            || self.moltbook_submolt_bounds.contains(self.cursor_position)
-            || self.moltbook_comment_bounds.contains(self.cursor_position)
-            || self.moltbook_say_input.is_focused()
-            || self.moltbook_submolt_input.is_focused()
-            || self.moltbook_comment_input.is_focused()
         {
             Cursor::Text
         } else {
@@ -5418,11 +5208,8 @@ fn paint_chat_pane(chat: &mut ChatPaneState, bounds: Bounds, cx: &mut PaintConte
 
     let mut engine = LayoutEngine::new();
     let content_node = engine.request_layout(&flex_1(v_flex()), &[]);
-    let input_node = engine.request_leaf(
-        &LayoutStyle::new()
-            .height(px(input_height))
-            .flex_shrink(0.0),
-    );
+    let input_node =
+        engine.request_leaf(&LayoutStyle::new().height(px(input_height)).flex_shrink(0.0));
     let root = engine.request_layout(
         &v_flex()
             .width(px(bounds.size.width))
@@ -5690,16 +5477,9 @@ fn paint_input_bar(chat: &mut ChatPaneState, bounds: Bounds, cx: &mut PaintConte
     );
 
     let mut engine = LayoutEngine::new();
-    let input_node = engine.request_leaf(
-        &v_flex()
-            .height(px(metrics.input_height))
-            .flex_shrink(0.0),
-    );
-    let row_node = engine.request_leaf(
-        &v_flex()
-            .height(px(metrics.row_height))
-            .flex_shrink(0.0),
-    );
+    let input_node =
+        engine.request_leaf(&v_flex().height(px(metrics.input_height)).flex_shrink(0.0));
+    let row_node = engine.request_leaf(&v_flex().height(px(metrics.row_height)).flex_shrink(0.0));
     let column_style = v_flex()
         .gap(length(gap))
         .justify_content(JustifyContent::FlexEnd)
@@ -5971,9 +5751,7 @@ fn paint_identity_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintCon
                     .paint(bounds, cx);
             }
             IdentityStep::Value(text, color, _) => {
-                let mut value = Text::new(text)
-                    .font_size(nostr_font)
-                    .color(color);
+                let mut value = Text::new(text).font_size(nostr_font).color(color);
                 value.paint(bounds, cx);
             }
             IdentityStep::Spacer(_) => {}
@@ -6054,7 +5832,11 @@ fn paint_pylon_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintContex
         steps.push(PylonStep::Line(
             format!(
                 "Provider: {}",
-                if provider_active { "active" } else { "inactive" }
+                if provider_active {
+                    "active"
+                } else {
+                    "inactive"
+                }
             ),
             theme::text::MUTED,
         ));
@@ -6063,10 +5845,7 @@ fn paint_pylon_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintContex
 
     if let Some(host_active) = root.pylon_status.host_active {
         steps.push(PylonStep::Line(
-            format!(
-                "Host: {}",
-                if host_active { "active" } else { "inactive" }
-            ),
+            format!("Host: {}", if host_active { "active" } else { "inactive" }),
             theme::text::MUTED,
         ));
         steps.push(PylonStep::Spacer(value_spacing));
@@ -6330,10 +6109,7 @@ fn paint_sell_compute_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut Pain
 
     if let Some(host_active) = root.sell_compute_status.host_active {
         steps.push(SellStep::Line(
-            format!(
-                "Host: {}",
-                if host_active { "active" } else { "inactive" }
-            ),
+            format!("Host: {}", if host_active { "active" } else { "inactive" }),
             theme::text::MUTED,
             label_height,
         ));
@@ -6341,7 +6117,10 @@ fn paint_sell_compute_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut Pain
     }
 
     steps.push(SellStep::Line(
-        format!("Min price: {} msats", root.sell_compute_status.min_price_msats),
+        format!(
+            "Min price: {} msats",
+            root.sell_compute_status.min_price_msats
+        ),
         theme::text::MUTED,
         label_height,
     ));
@@ -6399,11 +6178,7 @@ fn paint_sell_compute_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut Pain
             label_height,
         ));
         steps.push(SellStep::Spacer(4.0));
-        steps.push(SellStep::Line(
-            list,
-            theme::text::PRIMARY,
-            height,
-        ));
+        steps.push(SellStep::Line(list, theme::text::PRIMARY, height));
         steps.push(SellStep::Spacer(value_spacing));
     }
 
@@ -6769,7 +6544,6 @@ fn paint_nip90_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintContex
 fn paint_moltbook_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintContext) {
     let padding = 16.0;
     let label_height = 16.0;
-    let input_height = 28.0;
     let gap = 8.0;
     let text_size = theme::font_size::XS;
     let row_height = 20.0;
@@ -6778,13 +6552,7 @@ fn paint_moltbook_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintCon
     content_width = content_width.min(bounds.size.width - padding * 2.0);
     let content_bounds = centered_column_bounds(bounds, content_width, padding);
 
-    root.moltbook_say_bounds = Bounds::ZERO;
-    root.moltbook_submolt_bounds = Bounds::ZERO;
     root.moltbook_refresh_bounds = Bounds::ZERO;
-    root.moltbook_say_btn_bounds = Bounds::ZERO;
-    root.moltbook_comment_bounds = Bounds::ZERO;
-    root.moltbook_comment_btn_bounds = Bounds::ZERO;
-    root.moltbook_reply_bounds.clear();
 
     let mut steps: Vec<(MoltStep, f32)> = vec![
         (MoltStep::EngagementHeader, label_height),
@@ -6793,6 +6561,8 @@ fn paint_moltbook_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintCon
         (MoltStep::Spacer, gap),
         (MoltStep::FeedHeader, label_height),
         (MoltStep::Spacer, 4.0),
+        (MoltStep::ReadOnlyNote, label_height),
+        (MoltStep::Spacer, 4.0),
     ];
 
     enum MoltStep {
@@ -6800,14 +6570,8 @@ fn paint_moltbook_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintCon
         Spacer,
         Refresh,
         FeedHeader,
+        ReadOnlyNote,
         FeedItem,
-        SayLabel,
-        SubmoltInput,
-        SayInput,
-        SayButton,
-        ReplyLabel,
-        CommentInput,
-        CommentButton,
         LogTitle,
         Log(String),
     }
@@ -6818,7 +6582,11 @@ fn paint_moltbook_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintCon
         root.moltbook_feed
             .iter()
             .map(|p| {
-                let lines = 1 + p.content_preview.as_deref().map(|c| (c.len() / 48).max(1)).unwrap_or(0);
+                let lines = 1 + p
+                    .content_preview
+                    .as_deref()
+                    .map(|c| (c.len() / 48).max(1))
+                    .unwrap_or(0);
                 (lines as f32 * row_height).max(row_height * 2.0)
             })
             .sum::<f32>()
@@ -6826,44 +6594,43 @@ fn paint_moltbook_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintCon
     };
     steps.push((MoltStep::FeedItem, feed_height));
     steps.push((MoltStep::Spacer, gap));
-    steps.push((MoltStep::SayLabel, label_height));
-    steps.push((MoltStep::Spacer, 4.0));
-    steps.push((MoltStep::SubmoltInput, input_height));
-    steps.push((MoltStep::Spacer, 4.0));
-    steps.push((MoltStep::SayInput, 48.0));
-    steps.push((MoltStep::Spacer, gap));
-    steps.push((MoltStep::SayButton, 32.0));
-    steps.push((MoltStep::Spacer, gap));
-    steps.push((MoltStep::ReplyLabel, label_height));
-    steps.push((MoltStep::Spacer, 4.0));
-    steps.push((MoltStep::CommentInput, 36.0));
-    steps.push((MoltStep::Spacer, 4.0));
-    steps.push((MoltStep::CommentButton, 32.0));
-    steps.push((MoltStep::Spacer, gap));
     steps.push((MoltStep::LogTitle, label_height));
     steps.push((MoltStep::Spacer, 6.0));
 
     let log_content = if root.moltbook_log.is_empty() {
         "No Moltbook activity yet.".to_string()
     } else {
-        root.moltbook_log.iter().rev().take(8).rev().cloned().collect::<Vec<_>>().join("\n")
+        root.moltbook_log
+            .iter()
+            .rev()
+            .take(8)
+            .rev()
+            .cloned()
+            .collect::<Vec<_>>()
+            .join("\n")
     };
     let log_height = (log_content.lines().count().max(1) as f32) * row_height;
     steps.push((MoltStep::Log(log_content), log_height));
 
-    let heights: Vec<ColumnItem> = steps
-        .iter()
-        .map(|(_, h)| ColumnItem::Fixed(*h))
-        .collect();
+    let heights: Vec<ColumnItem> = steps.iter().map(|(_, h)| ColumnItem::Fixed(*h)).collect();
     let bounds_list = column_bounds(content_bounds, &heights, 0.0);
 
     for ((step, _), step_bounds) in steps.iter().zip(bounds_list.iter()) {
         let bounds = *step_bounds;
         match step {
             MoltStep::EngagementHeader => {
-                let profile_line = root.moltbook_profile.as_ref().map(|p| {
-                    format!("{} · {} posts · {} comments", p.agent_name, p.posts_count, p.comments_count)
-                }).unwrap_or_else(|| "Moltbook · 2 posts/hr · 50 comments/hr (strategy)".to_string());
+                let profile_line = root
+                    .moltbook_profile
+                    .as_ref()
+                    .map(|p| {
+                        format!(
+                            "{} · {} posts · {} comments",
+                            p.agent_name, p.posts_count, p.comments_count
+                        )
+                    })
+                    .unwrap_or_else(|| {
+                        "Moltbook · 2 posts/hr · 50 comments/hr (strategy)".to_string()
+                    });
                 Text::new(profile_line.as_str())
                     .font_size(text_size)
                     .color(theme::text::MUTED)
@@ -6878,6 +6645,12 @@ fn paint_moltbook_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintCon
                 Text::new("Feed (new)")
                     .font_size(text_size)
                     .color(theme::text::PRIMARY)
+                    .paint(bounds, cx);
+            }
+            MoltStep::ReadOnlyNote => {
+                Text::new("Read-only mode · posting and comments are disabled")
+                    .font_size(text_size)
+                    .color(theme::text::MUTED)
                     .paint(bounds, cx);
             }
             MoltStep::FeedItem => {
@@ -6897,72 +6670,39 @@ fn paint_moltbook_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintCon
                         let row_bounds = Bounds::new(bounds.origin.x, y, bounds.size.width, line_h);
                         let title = post.title.as_deref().unwrap_or("(no title)");
                         let author = post.author_name.as_deref().unwrap_or("?");
-                        let preview = post.content_preview.as_deref().unwrap_or("").chars().take(48).collect::<String>();
-                        let score = post.score.map(|s| s.to_string()).unwrap_or_else(|| "—".to_string());
+                        let preview = post
+                            .content_preview
+                            .as_deref()
+                            .unwrap_or("")
+                            .chars()
+                            .take(48)
+                            .collect::<String>();
+                        let score = post
+                            .score
+                            .map(|s| s.to_string())
+                            .unwrap_or_else(|| "—".to_string());
                         let text = format!("{} · {} · {} ↑", author, title, score);
                         Text::new(text.as_str())
                             .font_size(text_size)
                             .color(theme::text::PRIMARY)
                             .paint(row_bounds, cx);
-                        let reply_w = 36.0;
-                        let reply_bounds = Bounds::new(
-                            bounds.origin.x + bounds.size.width - reply_w,
-                            y,
-                            reply_w,
-                            line_h,
-                        );
-                        root.moltbook_reply_bounds.insert(post.id.clone(), reply_bounds);
-                        Text::new("Reply")
-                            .font_size(text_size)
-                            .color(theme::accent::PRIMARY)
-                            .paint(reply_bounds, cx);
                         if !preview.is_empty() {
                             Text::new(preview.as_str())
                                 .font_size(text_size)
                                 .color(theme::text::MUTED)
                                 .paint(
-                                    Bounds::new(bounds.origin.x, y + row_height, bounds.size.width - reply_w, row_height),
+                                    Bounds::new(
+                                        bounds.origin.x,
+                                        y + row_height,
+                                        bounds.size.width,
+                                        row_height,
+                                    ),
                                     cx,
                                 );
                         }
                         y += line_h;
                     }
                 }
-            }
-            MoltStep::SayLabel => {
-                Text::new("Say (post)")
-                    .font_size(text_size)
-                    .color(theme::text::PRIMARY)
-                    .paint(bounds, cx);
-            }
-            MoltStep::SubmoltInput => {
-                root.moltbook_submolt_bounds = bounds;
-                root.moltbook_submolt_input.paint(bounds, cx);
-            }
-            MoltStep::SayInput => {
-                root.moltbook_say_bounds = bounds;
-                root.moltbook_say_input.paint(bounds, cx);
-            }
-            MoltStep::SayButton => {
-                let btn_bounds = Bounds::new(bounds.origin.x, bounds.origin.y, 100.0, 32.0);
-                root.moltbook_say_btn_bounds = btn_bounds;
-                root.moltbook_say_button.paint(btn_bounds, cx);
-            }
-            MoltStep::ReplyLabel => {
-                let label = root.moltbook_comment_post_id.as_ref().map(|id| format!("Reply to {}", &id[..id.len().min(12)])).unwrap_or_else(|| "Select a post (Reply) above".to_string());
-                Text::new(label.as_str())
-                    .font_size(text_size)
-                    .color(theme::text::MUTED)
-                    .paint(bounds, cx);
-            }
-            MoltStep::CommentInput => {
-                root.moltbook_comment_bounds = bounds;
-                root.moltbook_comment_input.paint(bounds, cx);
-            }
-            MoltStep::CommentButton => {
-                let btn_bounds = Bounds::new(bounds.origin.x, bounds.origin.y, 90.0, 32.0);
-                root.moltbook_comment_btn_bounds = btn_bounds;
-                root.moltbook_comment_button.paint(btn_bounds, cx);
             }
             MoltStep::LogTitle => {
                 Text::new("Activity")
@@ -7271,8 +7011,8 @@ fn paint_file_editor_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut Paint
         (bounds.size.height - padding * 2.0).max(0.0),
     );
 
-    let project_width = (content_bounds.size.width * 0.28)
-        .clamp(FILE_TREE_MIN_WIDTH, FILE_TREE_MAX_WIDTH);
+    let project_width =
+        (content_bounds.size.width * 0.28).clamp(FILE_TREE_MIN_WIDTH, FILE_TREE_MAX_WIDTH);
     let row_items = [
         wgpui::RowItem::fixed(project_width),
         wgpui::RowItem::flex(1.0),
@@ -7319,7 +7059,10 @@ fn paint_file_tree_panel(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintC
     let header_row = aligned_row_bounds(
         header_bounds,
         header_height,
-        &[wgpui::RowItem::flex(1.0), wgpui::RowItem::fixed(refresh_width)],
+        &[
+            wgpui::RowItem::flex(1.0),
+            wgpui::RowItem::fixed(refresh_width),
+        ],
         6.0,
         JustifyContent::FlexStart,
         AlignItems::Center,
@@ -7338,7 +7081,9 @@ fn paint_file_tree_panel(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintC
     root.file_editor
         .tree_refresh_button
         .set_disabled(root.file_editor.workspace_root.is_none());
-    root.file_editor.tree_refresh_button.paint(refresh_bounds, cx);
+    root.file_editor
+        .tree_refresh_button
+        .paint(refresh_bounds, cx);
 
     if let Some(bounds) = subtitle_bounds {
         let label = root
@@ -7421,11 +7166,7 @@ fn paint_file_tree_panel(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintC
 
         let indent = row.depth as f32 * FILE_TREE_INDENT;
         let icon = if row.is_dir {
-            if row.expanded {
-                "v"
-            } else {
-                ">"
-            }
+            if row.expanded { "v" } else { ">" }
         } else {
             "-"
         };
@@ -7583,7 +7324,11 @@ fn paint_file_editor_toolbar(root: &mut MinimalRoot, bounds: Bounds, cx: &mut Pa
 
 fn paint_editor_groups(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintContext) {
     let split = root.file_editor.split_direction;
-    let group_count = if matches!(split, SplitDirection::None) { 1 } else { 2 };
+    let group_count = if matches!(split, SplitDirection::None) {
+        1
+    } else {
+        2
+    };
     let workspace_ready = root.file_editor.workspace_root.is_some();
 
     if root.file_editor.groups.len() < group_count {
@@ -7621,7 +7366,10 @@ fn paint_editor_groups(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintCon
             group.group_bounds = group_bounds;
             let group_sections = column_bounds(
                 group_bounds,
-                &[ColumnItem::Fixed(FILE_EDITOR_TAB_HEIGHT), ColumnItem::Flex(1.0)],
+                &[
+                    ColumnItem::Fixed(FILE_EDITOR_TAB_HEIGHT),
+                    ColumnItem::Flex(1.0),
+                ],
                 0.0,
             );
             let tab_bar_bounds = *group_sections.get(0).unwrap_or(&group_bounds);
@@ -7679,20 +7427,20 @@ fn paint_tab_bar(
         if tab.is_dirty() {
             label.push_str(" *");
         }
-        let label_width =
-            cx.text
-                .measure_styled_mono(&label, font_size, FontStyle::default());
+        let label_width = cx
+            .text
+            .measure_styled_mono(&label, font_size, FontStyle::default());
         let width = (label_width + padding * 2.0).clamp(min_width, max_width);
         labels.push(label);
         widths.push(width);
     }
 
-    let total_width: f32 = widths.iter().sum::<f32>()
-        + FILE_EDITOR_TAB_GAP * (widths.len().saturating_sub(1) as f32);
+    let total_width: f32 =
+        widths.iter().sum::<f32>() + FILE_EDITOR_TAB_GAP * (widths.len().saturating_sub(1) as f32);
     if total_width > bounds.size.width && !widths.is_empty() {
-        let available =
-            (bounds.size.width - FILE_EDITOR_TAB_GAP * (widths.len().saturating_sub(1) as f32))
-                .max(min_width);
+        let available = (bounds.size.width
+            - FILE_EDITOR_TAB_GAP * (widths.len().saturating_sub(1) as f32))
+            .max(min_width);
         let uniform = (available / widths.len() as f32).max(min_width);
         for width in widths.iter_mut() {
             *width = uniform;
@@ -7842,13 +7590,7 @@ fn build_file_node(path: &Path, remaining: &mut usize) -> FileNode {
 fn is_ignored_entry(name: &str) -> bool {
     matches!(
         name,
-        ".git"
-            | "target"
-            | "node_modules"
-            | ".idea"
-            | ".vscode"
-            | ".DS_Store"
-            | ".cache"
+        ".git" | "target" | "node_modules" | ".idea" | ".vscode" | ".DS_Store" | ".cache"
     )
 }
 
@@ -8474,14 +8216,8 @@ fn paint_session_list(cx: &mut PaintContext, rows: &[SessionRow], bounds: Bounds
             ],
             4.0,
         );
-        let id_bounds = content_columns
-            .get(0)
-            .copied()
-            .unwrap_or(content_bounds);
-        let detail_bounds = content_columns
-            .get(1)
-            .copied()
-            .unwrap_or(content_bounds);
+        let id_bounds = content_columns.get(0).copied().unwrap_or(content_bounds);
+        let detail_bounds = content_columns.get(1).copied().unwrap_or(content_bounds);
 
         let mut id_text = Text::new(&row.id)
             .font_size(theme::font_size::BASE)
@@ -8864,9 +8600,9 @@ fn aligned_row_bounds(
                 .width(px(*width))
                 .height(px(item_height))
                 .flex_shrink(0.0),
-            wgpui::RowItem::Flex(grow) => LayoutStyle::new()
-                .height(px(item_height))
-                .flex_grow(*grow),
+            wgpui::RowItem::Flex(grow) => {
+                LayoutStyle::new().height(px(item_height)).flex_grow(*grow)
+            }
         };
         nodes.push(engine.request_leaf(&style));
     }
@@ -8923,7 +8659,12 @@ fn column_bounds(bounds: Bounds, items: &[ColumnItem], gap: f32) -> Vec<Bounds> 
         .collect()
 }
 
-fn centered_bounds(bounds: Bounds, content_width: f32, content_height: f32, padding: f32) -> Bounds {
+fn centered_bounds(
+    bounds: Bounds,
+    content_width: f32,
+    content_height: f32,
+    padding: f32,
+) -> Bounds {
     let available = Bounds::new(
         bounds.origin.x + padding,
         bounds.origin.y + padding,
@@ -8986,16 +8727,15 @@ fn divider_bounds_below(bounds: Bounds, gap: f32, height: f32) -> Bounds {
             .height(px(bounds.size.height + gap))
             .flex_shrink(0.0),
     );
-    let divider = engine.request_leaf(
-        &LayoutStyle::new()
-            .height(px(height))
-            .flex_shrink(0.0),
-    );
+    let divider = engine.request_leaf(&LayoutStyle::new().height(px(height)).flex_shrink(0.0));
     let root_style = v_flex()
         .width(px(bounds.size.width))
         .height(px(bounds.size.height + gap + height));
     let root = engine.request_layout(&root_style, &[spacer, divider]);
-    engine.compute_layout(root, Size::new(bounds.size.width, bounds.size.height + gap + height));
+    engine.compute_layout(
+        root,
+        Size::new(bounds.size.width, bounds.size.height + gap + height),
+    );
     offset_bounds(engine.layout(divider), bounds.origin)
 }
 
@@ -9163,10 +8903,16 @@ fn format_event(event: &AppEvent) -> String {
             format!("DvmHistory ({} jobs)", snapshot.summary.job_count)
         }
         AppEvent::Nip90Log { message } => format!("Nip90Log ({message})"),
-        AppEvent::MoltbookFeedUpdated { posts } => format!("MoltbookFeedUpdated ({} posts)", posts.len()),
+        AppEvent::MoltbookFeedUpdated { posts } => {
+            format!("MoltbookFeedUpdated ({} posts)", posts.len())
+        }
         AppEvent::MoltbookLog { message } => format!("MoltbookLog ({message})"),
-        AppEvent::MoltbookProfileLoaded { profile } => format!("MoltbookProfileLoaded ({})", profile.agent_name),
-        AppEvent::ThreadsUpdated { threads, append, .. } => {
+        AppEvent::MoltbookProfileLoaded { profile } => {
+            format!("MoltbookProfileLoaded ({})", profile.agent_name)
+        }
+        AppEvent::ThreadsUpdated {
+            threads, append, ..
+        } => {
             if *append {
                 format!("ThreadsUpdated (+{})", threads.len())
             } else {
@@ -9352,13 +9098,7 @@ impl Layout {
             engine.request_leaf(&LayoutStyle::new().height(px(PANEL_HEADER_HEIGHT)));
         let thread_body = engine.request_layout(&LayoutStyle::new().flex_grow(1.0), &[]);
         let composer = engine.request_leaf(&LayoutStyle::new().height(px(COMPOSER_HEIGHT)));
-        let center_panel_style = min_w(
-            gap(
-                flex_1(v_flex().padding(padding)),
-                6.0,
-            ),
-            0.0,
-        );
+        let center_panel_style = min_w(gap(flex_1(v_flex().padding(padding)), 6.0), 0.0);
         let center_panel =
             engine.request_layout(&center_panel_style, &[center_header, thread_body, composer]);
 

@@ -80,6 +80,7 @@ Cron runs every 5 minutes. Indexer will:
 | `POST /api/indexer/ingest` | no | Run incremental ingest (posts + enqueue comment jobs) |
 | `POST /api/indexer/ingest/backfill-authors` | no | Backfill author_name, author_id, submolt from R2 raw post JSON |
 | `POST /api/indexer/ingest/backfill-comments` | no | Fetch comments for up to 20 posts (sync; needs MOLTBOOK_API_KEY) |
+| `POST /api/indexer/v1/ingest/posts` | no | Upsert raw posts (for clients that already fetched Moltbook data) |
 | `GET /api/indexer/v1/search?q=...` | optional bearer | Search posts/comments |
 | `GET /api/indexer/v1/metrics/wallet-adoption?days=30` | optional bearer | Wallet/adoption metrics from derived_signals |
 | `GET /api/indexer/v1/wallet-interest?days=30&limit=20` | optional bearer | Posts/comments with wallet-related signals (has_lud16, has_npub, mentions_wallet, etc.) for onboarding |
@@ -93,6 +94,18 @@ Use `GET /api/indexer/v1/wallet-interest` to power “others in the community ar
 - **Auth:** If `INDEXER_AUTH_HEADER` is set, send `Authorization: Bearer <token>`.
 
 **Response:** `data.posts[]` (id, title, url, created_at, author_name, signals[]) and `data.comments[]` (id, post_id, content_snippet, created_at, author_name, signals[]). Items are ordered by most recent first. Use `signals` to label or filter (e.g. “Lightning address”, “wallet mention”).
+
+### Client-side ingest
+
+When a client has already fetched Moltbook posts (via the OpenAgents proxy or direct API), it can upsert them into the indexer:
+
+```bash
+curl -X POST https://openagents.com/api/indexer/v1/ingest/posts \
+  -H "Content-Type: application/json" \
+  -d '{"source":"autopilot-desktop","posts":[{"id":"...","title":"..."}]}'
+```
+
+The indexer ignores duplicates, stores raw JSON in R2, normalizes into D1, and queues comment ingestion if `comment_count > 0`.
 
 ## Operational rules
 
