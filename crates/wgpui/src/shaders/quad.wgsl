@@ -19,6 +19,8 @@ struct InstanceInput {
     @location(3) border_color: vec4<f32>,
     @location(4) border_width: f32,
     @location(5) corner_radius: f32,
+    @location(6) clip_origin: vec2<f32>,
+    @location(7) clip_size: vec2<f32>,
 }
 
 struct VertexOutput {
@@ -29,6 +31,9 @@ struct VertexOutput {
     @location(3) border_color: vec4<f32>,
     @location(4) border_width: f32,
     @location(5) corner_radius: f32,
+    @location(6) world_pos: vec2<f32>,
+    @location(7) clip_origin: vec2<f32>,
+    @location(8) clip_size: vec2<f32>,
 }
 
 @vertex
@@ -57,6 +62,9 @@ fn vs_main(vertex: VertexInput, instance: InstanceInput) -> VertexOutput {
     out.border_color = instance.border_color;
     out.border_width = instance.border_width;
     out.corner_radius = instance.corner_radius;
+    out.world_pos = world_pos;
+    out.clip_origin = instance.clip_origin;
+    out.clip_size = instance.clip_size;
 
     return out;
 }
@@ -70,6 +78,16 @@ fn rounded_box_sdf(p: vec2<f32>, size: vec2<f32>, radius: f32) -> f32 {
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
+    if in.clip_size.x >= 0.0 && in.clip_size.y >= 0.0 {
+        if in.world_pos.x < in.clip_origin.x
+            || in.world_pos.y < in.clip_origin.y
+            || in.world_pos.x > in.clip_origin.x + in.clip_size.x
+            || in.world_pos.y > in.clip_origin.y + in.clip_size.y
+        {
+            discard;
+        }
+    }
+
     // Convert local_pos to centered coordinates (center of quad = 0,0)
     let half_size = in.size * 0.5;
     let centered_pos = in.local_pos - half_size;
