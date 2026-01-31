@@ -157,7 +157,10 @@ fn test_all_rules_have_test_coverage() {
         // Find rules without test coverage
         for rule_id in rule_ids {
             if !compliance.contains_key(&rule_id) {
-                uncovered_rules.entry(filename.to_string()).or_default().push(rule_id);
+                uncovered_rules
+                    .entry(filename.to_string())
+                    .or_default()
+                    .push(rule_id);
             }
         }
     }

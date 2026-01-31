@@ -209,9 +209,9 @@ mod config_tests {
 mod wallet_tests {
     use super::*;
     use openagents_spark::{Payment, PaymentStatus, PaymentType, SparkError};
+    use reqwest::Client;
     use std::fs;
     use std::time::{SystemTime, UNIX_EPOCH};
-    use reqwest::Client;
 
     struct RegtestFaucet {
         client: Client,
@@ -232,7 +232,11 @@ mod wallet_tests {
             })
         }
 
-        async fn fund_address(&self, address: &str, amount_sats: u64) -> Result<String, SparkError> {
+        async fn fund_address(
+            &self,
+            address: &str,
+            amount_sats: u64,
+        ) -> Result<String, SparkError> {
             let mut request = self
                 .client
                 .post(&self.url)
