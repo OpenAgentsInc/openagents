@@ -7118,7 +7118,7 @@ fn paint_moltbook_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintCon
         bounds.origin.x + padding_x,
         bounds.origin.y,
         content_width,
-        bounds.size.height,
+        (bounds.size.height - 1.0).max(0.0),
     );
 
     let markdown_config = moltbook_markdown_config(text_size);
