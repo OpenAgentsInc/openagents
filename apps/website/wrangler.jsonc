@@ -25,6 +25,18 @@
 	 */
 	// "placement": {  "mode": "smart" }
 	/**
+	 * D1 database for Better Auth (users, sessions).
+	 * Create: npx wrangler d1 create website-auth
+	 * Then set database_id (and optional preview_database_id) below.
+	 */
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "website-auth",
+			"database_id": "REPLACE_ME_AFTER_WRANGLER_D1_CREATE"
+		}
+	],
+	/**
 	 * Bindings
 	 * Bindings allow your Worker to interact with resources on the Cloudflare Developer Platform, including
 	 * databases, object storage, AI inference, real-time communication and more.
