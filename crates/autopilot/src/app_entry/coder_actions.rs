@@ -2463,6 +2463,14 @@ impl AutopilotApp {
                     state.spark_wallet.set_error(message);
                     should_redraw = true;
                 }
+                SparkWalletEvent::OpenAgentsLinked(linked) => {
+                    state.spark_wallet.set_openagents_linked(linked);
+                    should_redraw = true;
+                }
+                SparkWalletEvent::AttachResult { ok, error } => {
+                    state.spark_wallet.set_attach_result(ok, error);
+                    should_redraw = true;
+                }
             }
         }
 

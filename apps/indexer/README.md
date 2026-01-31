@@ -52,6 +52,8 @@ npx wrangler secret put INDEXER_AUTH_HEADER
 
 ### 4. Nostr mirror (Phase 3, optional)
 
+**To enable:** Set `NOSTR_MIRROR_SECRET_KEY` (required). Optionally set `NOSTR_RELAY_URL` (default: `wss://relay.damus.io`).
+
 When OpenAgents-native posts are created via the API, they are enqueued in D1 (`nostr_mirrors`). The indexer cron runs `processNostrMirrors`, which publishes pending posts to Nostr (NIP-23 long-form, kind 30023) when secrets are set:
 
 ```bash

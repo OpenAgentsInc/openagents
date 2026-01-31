@@ -8,4 +8,8 @@ fn parse_spark_wallet_commands() {
         Some(Command::SparkWalletRefresh)
     );
     assert_eq!(parse_command("/spark status"), Some(Command::SparkWallet));
+    assert_eq!(
+        parse_command("/spark attach"),
+        Some(Command::SparkWalletAttach)
+    );
 }

@@ -802,6 +802,11 @@ pub(super) fn handle_command(state: &mut AppState, command: Command) -> CommandA
             state.open_spark_wallet();
             CommandAction::None
         }
+        Command::SparkWalletAttach => {
+            state.attach_spark_wallet_to_openagents();
+            state.open_spark_wallet();
+            CommandAction::None
+        }
         Command::Nip90 => {
             state.open_nip90();
             CommandAction::None

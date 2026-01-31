@@ -709,6 +709,10 @@ impl AppState {
         self.spark_wallet.refresh();
     }
 
+    pub(super) fn attach_spark_wallet_to_openagents(&mut self) {
+        self.spark_wallet.attach_to_openagents();
+    }
+
     pub(super) fn connect_dvm(&mut self, relay_url: Option<String>) {
         if let Some(url) = relay_url {
             self.dvm.connect_to(url);
