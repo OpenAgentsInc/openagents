@@ -81,6 +81,45 @@ struct WatchPayload {
     seen: Vec<String>,
 }
 
+#[derive(Debug, Deserialize)]
+struct RegisterRequestBody {
+    name: String,
+    description: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct UpdateProfileBody {
+    description: Option<String>,
+    metadata: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Deserialize)]
+struct CreatePostBody {
+    submolt: String,
+    title: String,
+    content: Option<String>,
+    url: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct CreateCommentBody {
+    content: String,
+    parent_id: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct CreateSubmoltBody {
+    name: String,
+    display_name: String,
+    description: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct ModeratorBody {
+    agent_name: String,
+    role: Option<String>,
+}
+
 /// Strip /api path prefix so the worker works at openagents.com/api/*.
 fn strip_api_prefix(req: &Request) -> Result<Option<url::Url>> {
     let mut url = req.url()?.clone();
@@ -232,11 +271,6 @@ struct SocialCommentRow {
     score: Option<i64>,
 }
 
-#[derive(Debug, Deserialize)]
-struct SocialSubmoltRow {
-    name: String,
-    post_count: Option<i64>,
-}
 
 fn social_limit(limit: Option<u32>, default_limit: u32, max_limit: u32) -> u32 {
     limit.unwrap_or(default_limit).min(max_limit).max(1)
@@ -285,6 +319,106 @@ fn comment_row_to_value(row: SocialCommentRow) -> serde_json::Value {
     })
 }
 
+fn now_iso() -> String {
+    js_sys::Date::new_0().to_string().into()
+}
+
+fn random_token(prefix: &str, len: usize) -> String {
+    let mut out = String::with_capacity(prefix.len() + len);
+    out.push_str(prefix);
+    while out.len() < prefix.len() + len {
+        let v = (js_sys::Math::random() * 36.0).floor() as u32;
+        let ch = std::char::from_digit(v, 36).unwrap_or('a');
+        out.push(ch);
+    }
+    out
+}
+
+fn social_api_key_from_request(req: &Request) -> Option<String> {
+    if let Ok(Some(auth)) = req.headers().get("authorization") {
+        let trimmed = auth.trim();
+        if let Some(rest) = trimmed.strip_prefix("Bearer ") {
+            if !rest.trim().is_empty() {
+                return Some(rest.trim().to_string());
+            }
+        }
+    }
+    for header in ["x-api-key", "x-moltbook-api-key", "x-oa-moltbook-api-key"] {
+        if let Ok(Some(value)) = req.headers().get(header) {
+            let trimmed = value.trim();
+            if !trimmed.is_empty() {
+                return Some(trimmed.to_string());
+            }
+        }
+    }
+    None
+}
+
+async fn social_auth(req: &Request, ctx: &RouteContext<()>) -> Result<(String, String)> {
+    let api_key = social_api_key_from_request(req).ok_or_else(|| {
+        worker::Error::RustError("missing api key".into())
+    })?;
+    let db = ctx.d1("SOCIAL_DB")?;
+    let stmt = db
+        .prepare("SELECT agent_name, status FROM social_api_keys WHERE api_key = ?1")
+        .bind(&[JsValue::from_str(&api_key)])?;
+    let row = stmt.first::<serde_json::Value>(None).await?;
+    let agent_name = row
+        .and_then(|r| r.get("agent_name").cloned())
+        .and_then(|v| v.as_str().map(|s| s.to_string()))
+        .ok_or_else(|| worker::Error::RustError("invalid api key".into()))?;
+    Ok((api_key, agent_name))
+}
+
+async fn social_rate_limit(
+    ctx: &RouteContext<()>,
+    api_key: &str,
+    action: &str,
+    window_seconds: i64,
+    max_count: i64,
+) -> Result<Option<i64>> {
+    let now = now_iso();
+    let db = ctx.d1("SOCIAL_DB")?;
+    let stmt = db
+        .prepare("SELECT window_start, count FROM social_rate_limits WHERE api_key = ?1 AND action = ?2")
+        .bind(&[JsValue::from_str(api_key), JsValue::from_str(action)])?;
+    let row = stmt.first::<serde_json::Value>(None).await?;
+    if let Some(row) = row {
+        let window_start = row.get("window_start").and_then(|v| v.as_str()).unwrap_or("");
+        let count = row.get("count").and_then(|v| v.as_i64()).unwrap_or(0);
+        let window_start_ms = js_sys::Date::new(&JsValue::from_str(window_start)).get_time();
+        let now_ms = js_sys::Date::new(&JsValue::from_str(&now)).get_time();
+        if now_ms - window_start_ms < (window_seconds as f64 * 1000.0) {
+            if count >= max_count {
+                let retry = ((window_seconds as f64 * 1000.0 - (now_ms - window_start_ms)) / 60000.0)
+                    .ceil() as i64;
+                return Ok(Some(retry.max(1)));
+            }
+            let _ = db
+                .prepare("UPDATE social_rate_limits SET count = ?3 WHERE api_key = ?1 AND action = ?2")
+                .bind(&[
+                    JsValue::from_str(api_key),
+                    JsValue::from_str(action),
+                    JsValue::from_f64((count + 1) as f64),
+                ])?
+                .run()
+                .await?;
+            return Ok(None);
+        }
+    }
+    let _ = db
+        .prepare("INSERT OR REPLACE INTO social_rate_limits (api_key, action, window_start, count) VALUES (?1, ?2, ?3, ?4)")
+        .bind(&[
+            JsValue::from_str(api_key),
+            JsValue::from_str(action),
+            JsValue::from_str(&now),
+            JsValue::from_f64(1.0),
+        ])?
+        .run()
+        .await?;
+    Ok(None)
+}
+
 async fn handle_social_root(_: Request, _: RouteContext<()>) -> Result<Response> {
     let mut response = Response::from_json(&ApiResponse {
         ok: true,
@@ -327,15 +461,75 @@ async fn handle_social_router(req: Request, ctx: RouteContext<()>) -> Result<Res
     }
     let segments: Vec<&str> = trimmed.split('/').collect();
     match segments.as_slice() {
-        ["posts"] => handle_social_posts_feed(req, ctx).await,
-        ["posts", post_id] => handle_social_posts_get(req, ctx, post_id).await,
-        ["posts", post_id, "comments"] => handle_social_posts_comments(req, ctx, post_id).await,
-        ["feed"] => handle_social_feed(req, ctx).await,
-        ["search"] => handle_social_search(req, ctx).await,
-        ["submolts"] => handle_social_submolts_list(req, ctx).await,
-        ["submolts", name] => handle_social_submolts_get(req, ctx, name).await,
-        ["submolts", name, "feed"] => handle_social_submolts_feed(req, ctx, name).await,
-        ["agents", "profile"] => handle_social_agents_profile(req, ctx).await,
+        ["agents", "register"] if req.method() == Method::Post => {
+            handle_social_agents_register(req, ctx).await
+        }
+        ["agents", "me"] if req.method() == Method::Get => handle_social_agents_me(req, ctx).await,
+        ["agents", "me"] if req.method() == Method::Patch => {
+            handle_social_agents_me_update(req, ctx).await
+        }
+        ["agents", "status"] if req.method() == Method::Get => {
+            handle_social_agents_status(req, ctx).await
+        }
+        ["agents", "profile"] if req.method() == Method::Get => {
+            handle_social_agents_profile(req, ctx).await
+        }
+        ["agents", name, "follow"] if req.method() == Method::Post => {
+            handle_social_agents_follow(req, ctx, name).await
+        }
+        ["agents", name, "follow"] if req.method() == Method::Delete => {
+            handle_social_agents_unfollow(req, ctx, name).await
+        }
+        ["posts"] if req.method() == Method::Get => handle_social_posts_feed(req, ctx).await,
+        ["posts"] if req.method() == Method::Post => handle_social_posts_create(req, ctx).await,
+        ["posts", post_id] if req.method() == Method::Get => {
+            handle_social_posts_get(req, ctx, post_id).await
+        }
+        ["posts", post_id] if req.method() == Method::Delete => {
+            handle_social_posts_delete(req, ctx, post_id).await
+        }
+        ["posts", post_id, "comments"] if req.method() == Method::Get => {
+            handle_social_posts_comments(req, ctx, post_id).await
+        }
+        ["posts", post_id, "comments"] if req.method() == Method::Post => {
+            handle_social_comments_create(req, ctx, post_id).await
+        }
+        ["posts", post_id, "upvote"] if req.method() == Method::Post => {
+            handle_social_posts_vote(req, ctx, post_id, 1).await
+        }
+        ["posts", post_id, "downvote"] if req.method() == Method::Post => {
+            handle_social_posts_vote(req, ctx, post_id, -1).await
+        }
+        ["comments", comment_id, "upvote"] if req.method() == Method::Post => {
+            handle_social_comments_vote(req, ctx, comment_id, 1).await
+        }
+        ["feed"] if req.method() == Method::Get => handle_social_feed(req, ctx).await,
+        ["search"] if req.method() == Method::Get => handle_social_search(req, ctx).await,
+        ["submolts"] if req.method() == Method::Get => handle_social_submolts_list(req, ctx).await,
+        ["submolts"] if req.method() == Method::Post => {
+            handle_social_submolts_create(req, ctx).await
+        }
+        ["submolts", name] if req.method() == Method::Get => {
+            handle_social_submolts_get(req, ctx, name).await
+        }
+        ["submolts", name, "feed"] if req.method() == Method::Get => {
+            handle_social_submolts_feed(req, ctx, name).await
+        }
+        ["submolts", name, "subscribe"] if req.method() == Method::Post => {
+            handle_social_submolts_subscribe(req, ctx, name).await
+        }
+        ["submolts", name, "subscribe"] if req.method() == Method::Delete => {
+            handle_social_submolts_unsubscribe(req, ctx, name).await
+        }
+        ["submolts", name, "moderators"] if req.method() == Method::Post => {
+            handle_social_submolts_moderators_add(req, ctx, name).await
+        }
+        ["submolts", name, "moderators"] if req.method() == Method::Delete => {
+            handle_social_submolts_moderators_remove(req, ctx, name).await
+        }
+        ["submolts", name, "moderators"] if req.method() == Method::Get => {
+            handle_social_submolts_moderators_list(req, ctx, name).await
+        }
         _ => {
             let mut response = Response::from_json(&ApiResponse::<serde_json::Value> {
                 ok: false,
@@ -361,12 +555,17 @@ async fn handle_social_posts_feed(req: Request, ctx: RouteContext<()>) -> Result
     let sort = social_sort(query.sort);
     let limit = social_limit(query.limit, 25, 100) as i64;
     let db = ctx.d1("SOCIAL_DB")?;
-    let mut sql = String::from("SELECT id, created_at, submolt, title, content, url, author_name, author_id, score, comment_count FROM moltbook_posts");
+    let mut sql = String::from("SELECT id, created_at, submolt, title, content, url, author_name, author_id, score, comment_count FROM (");
     let mut binds: Vec<JsValue> = Vec::new();
+    let mut where_clause = String::new();
     if let Some(submolt) = query.submolt {
-        sql.push_str(" WHERE submolt = ?1");
+        where_clause = " WHERE submolt = ?1".to_string();
         binds.push(JsValue::from_str(&submolt));
     }
+    sql.push_str(&format!(
+        "SELECT id, created_at, submolt, title, content, url, author_name, NULL as author_id, score, comment_count FROM social_posts{where_clause} UNION ALL SELECT id, created_at, submolt, title, content, url, author_name, author_id, score, comment_count FROM moltbook_posts{where_clause}"
+    ));
+    sql.push(')');
     let order = match sort.as_str() {
         "top" => "ORDER BY score DESC, created_at DESC",
         "hot" | "rising" => "ORDER BY score DESC, created_at DESC",
@@ -389,9 +588,15 @@ async fn handle_social_posts_get(req: Request, ctx: RouteContext<()>, post_id: &
     let _ = req;
     let db = ctx.d1("SOCIAL_DB")?;
     let stmt = db
-        .prepare("SELECT id, created_at, submolt, title, content, url, author_name, author_id, score, comment_count FROM moltbook_posts WHERE id = ?1")
+        .prepare("SELECT id, created_at, submolt, title, content, url, author_name, NULL as author_id, score, comment_count FROM social_posts WHERE id = ?1")
         .bind(&[JsValue::from_str(post_id)])?;
-    let row = stmt.first::<SocialPostRow>(None).await?;
+    let mut row = stmt.first::<SocialPostRow>(None).await?;
+    if row.is_none() {
+        let stmt = db
+            .prepare("SELECT id, created_at, submolt, title, content, url, author_name, author_id, score, comment_count FROM moltbook_posts WHERE id = ?1")
+            .bind(&[JsValue::from_str(post_id)])?;
+        row = stmt.first::<SocialPostRow>(None).await?;
+    }
     let mut response = if let Some(row) = row {
         Response::from_json(&post_row_to_value(row))?
     } else {
@@ -426,7 +631,7 @@ async fn handle_social_posts_comments(
     let db = ctx.d1("SOCIAL_DB")?;
     let stmt = db
         .prepare(&format!(
-            "SELECT id, post_id, parent_id, created_at, author_name, author_id, content, score FROM moltbook_comments WHERE post_id = ?1 {order} LIMIT {limit}"
+            "SELECT id, post_id, parent_id, created_at, author_name, NULL as author_id, content, score FROM social_comments WHERE post_id = ?1 UNION ALL SELECT id, post_id, parent_id, created_at, author_name, author_id, content, score FROM moltbook_comments WHERE post_id = ?1 {order} LIMIT {limit}"
         ))
         .bind(&[JsValue::from_str(post_id)])?;
     let rows = stmt.all().await?.results::<SocialCommentRow>()?;
@@ -466,7 +671,7 @@ async fn handle_social_search(req: Request, ctx: RouteContext<()>) -> Result<Res
     let mut results: Vec<serde_json::Value> = Vec::new();
     if kind == "all" || kind == "posts" {
         let stmt = db.prepare(
-            "SELECT id, created_at, submolt, title, content, url, author_name, author_id, score, comment_count FROM moltbook_posts WHERE title LIKE ?1 OR content LIKE ?1 ORDER BY created_at DESC LIMIT ?2",
+            "SELECT id, created_at, submolt, title, content, url, author_name, NULL as author_id, score, comment_count FROM social_posts WHERE title LIKE ?1 OR content LIKE ?1 UNION ALL SELECT id, created_at, submolt, title, content, url, author_name, author_id, score, comment_count FROM moltbook_posts WHERE title LIKE ?1 OR content LIKE ?1 ORDER BY created_at DESC LIMIT ?2",
         ).bind(&[JsValue::from_str(&like), JsValue::from_f64(limit as f64)])?;
         let rows = stmt.all().await?.results::<SocialPostRow>()?;
         results.extend(rows.into_iter().map(|row| {
@@ -488,7 +693,7 @@ async fn handle_social_search(req: Request, ctx: RouteContext<()>) -> Result<Res
     }
     if kind == "all" || kind == "comments" {
         let stmt = db.prepare(
-            "SELECT id, post_id, parent_id, created_at, author_name, author_id, content, score FROM moltbook_comments WHERE content LIKE ?1 ORDER BY created_at DESC LIMIT ?2",
+            "SELECT id, post_id, parent_id, created_at, author_name, NULL as author_id, content, score FROM social_comments WHERE content LIKE ?1 UNION ALL SELECT id, post_id, parent_id, created_at, author_name, author_id, content, score FROM moltbook_comments WHERE content LIKE ?1 ORDER BY created_at DESC LIMIT ?2",
         ).bind(&[JsValue::from_str(&like), JsValue::from_f64(limit as f64)])?;
         let rows = stmt.all().await?.results::<SocialCommentRow>()?;
         results.extend(rows.into_iter().map(|row| {
@@ -522,20 +727,20 @@ async fn handle_social_search(req: Request, ctx: RouteContext<()>) -> Result<Res
 async fn handle_social_submolts_list(_: Request, ctx: RouteContext<()>) -> Result<Response> {
     let db = ctx.d1("SOCIAL_DB")?;
     let stmt = db.prepare(
-        "SELECT submolt AS name, COUNT(*) as post_count FROM moltbook_posts WHERE submolt IS NOT NULL GROUP BY submolt ORDER BY post_count DESC LIMIT 200",
+        "SELECT name, display_name, description, subscriber_count, avatar_url, banner_url FROM social_submolts UNION ALL SELECT submolt AS name, NULL as display_name, NULL as description, COUNT(*) as subscriber_count, NULL as avatar_url, NULL as banner_url FROM moltbook_posts WHERE submolt IS NOT NULL GROUP BY submolt",
     );
-    let rows = stmt.all().await?.results::<SocialSubmoltRow>()?;
+    let rows = stmt.all().await?.results::<serde_json::Value>()?;
     let submolts: Vec<serde_json::Value> = rows
         .into_iter()
         .map(|row| {
             serde_json::json!({
-                "name": row.name,
-                "display_name": null,
-                "description": null,
-                "subscriber_count": row.post_count,
+                "name": row.get("name"),
+                "display_name": row.get("display_name"),
+                "description": row.get("description"),
+                "subscriber_count": row.get("subscriber_count"),
                 "your_role": null,
-                "avatar_url": null,
-                "banner_url": null
+                "avatar_url": row.get("avatar_url"),
+                "banner_url": row.get("banner_url")
             })
         })
         .collect();
@@ -551,20 +756,24 @@ async fn handle_social_submolts_get(
 ) -> Result<Response> {
     let db = ctx.d1("SOCIAL_DB")?;
     let stmt = db
-        .prepare(
-            "SELECT submolt AS name, COUNT(*) as post_count FROM moltbook_posts WHERE submolt = ?1 GROUP BY submolt LIMIT 1",
-        )
+        .prepare("SELECT name, display_name, description, subscriber_count, avatar_url, banner_url FROM social_submolts WHERE name = ?1")
         .bind(&[JsValue::from_str(submolt_name)])?;
-    let row = stmt.first::<SocialSubmoltRow>(None).await?;
+    let mut row = stmt.first::<serde_json::Value>(None).await?;
+    if row.is_none() {
+        let stmt = db
+            .prepare("SELECT submolt AS name, NULL as display_name, NULL as description, COUNT(*) as subscriber_count, NULL as avatar_url, NULL as banner_url FROM moltbook_posts WHERE submolt = ?1 GROUP BY submolt LIMIT 1")
+            .bind(&[JsValue::from_str(submolt_name)])?;
+        row = stmt.first::<serde_json::Value>(None).await?;
+    }
     let mut response = if let Some(row) = row {
         Response::from_json(&serde_json::json!({
-            "name": row.name,
-            "display_name": null,
-            "description": null,
-            "subscriber_count": row.post_count,
+            "name": row.get("name"),
+            "display_name": row.get("display_name"),
+            "description": row.get("description"),
+            "subscriber_count": row.get("subscriber_count"),
             "your_role": null,
-            "avatar_url": null,
-            "banner_url": null
+            "avatar_url": row.get("avatar_url"),
+            "banner_url": row.get("banner_url")
         }))?
     } else {
         Response::from_json(&ApiResponse::<serde_json::Value> {
@@ -612,9 +821,15 @@ async fn handle_social_agents_profile(req: Request, ctx: RouteContext<()>) -> Re
     };
     let db = ctx.d1("SOCIAL_DB")?;
     let stmt = db
-        .prepare("SELECT name FROM moltbook_authors WHERE name = ?1 LIMIT 1")
+        .prepare("SELECT name, description, created_at, last_active, karma, is_claimed, claimed_at, owner_x_handle, owner_x_name FROM social_agents WHERE name = ?1 LIMIT 1")
         .bind(&[JsValue::from_str(&name)])?;
-    let author = stmt.first::<serde_json::Value>(None).await?;
+    let mut author = stmt.first::<serde_json::Value>(None).await?;
+    if author.is_none() {
+        let stmt = db
+            .prepare("SELECT name FROM moltbook_authors WHERE name = ?1 LIMIT 1")
+            .bind(&[JsValue::from_str(&name)])?;
+        author = stmt.first::<serde_json::Value>(None).await?;
+    }
     if author.is_none() {
         let mut response = Response::from_json(&ApiResponse::<serde_json::Value> {
             ok: false,
@@ -627,7 +842,7 @@ async fn handle_social_agents_profile(req: Request, ctx: RouteContext<()>) -> Re
     }
     let posts_stmt = db
         .prepare(
-            "SELECT id, created_at, submolt, title, content, url, author_name, author_id, score, comment_count FROM moltbook_posts WHERE author_name = ?1 ORDER BY created_at DESC LIMIT 10",
+            "SELECT id, created_at, submolt, title, content, url, author_name, NULL as author_id, score, comment_count FROM social_posts WHERE author_name = ?1 UNION ALL SELECT id, created_at, submolt, title, content, url, author_name, author_id, score, comment_count FROM moltbook_posts WHERE author_name = ?1 ORDER BY created_at DESC LIMIT 10",
         )
         .bind(&[JsValue::from_str(&name)])?;
     let posts = posts_stmt.all().await?.results::<SocialPostRow>()?;
@@ -636,18 +851,573 @@ async fn handle_social_agents_profile(req: Request, ctx: RouteContext<()>) -> Re
         "success": true,
         "agent": {
             "name": name,
-            "description": null,
-            "karma": null,
+            "description": author.as_ref().and_then(|a| a.get("description").cloned()).unwrap_or(serde_json::Value::Null),
+            "karma": author.as_ref().and_then(|a| a.get("karma").cloned()).unwrap_or(serde_json::Value::Null),
             "follower_count": null,
             "following_count": null,
-            "is_claimed": null,
+            "is_claimed": author.as_ref().and_then(|a| a.get("is_claimed").cloned()).unwrap_or(serde_json::Value::Null),
             "is_active": null,
-            "created_at": null,
-            "last_active": null,
-            "owner": null
+            "created_at": author.as_ref().and_then(|a| a.get("created_at").cloned()).unwrap_or(serde_json::Value::Null),
+            "last_active": author.as_ref().and_then(|a| a.get("last_active").cloned()).unwrap_or(serde_json::Value::Null),
+            "owner": {
+                "xHandle": author.as_ref().and_then(|a| a.get("owner_x_handle").cloned()).unwrap_or(serde_json::Value::Null),
+                "xName": author.as_ref().and_then(|a| a.get("owner_x_name").cloned()).unwrap_or(serde_json::Value::Null)
+            }
         },
         "recentPosts": recent
     }))?;
+    apply_cors(&mut response)?;
+    Ok(response)
+}
+
+async fn handle_social_agents_register(mut req: Request, ctx: RouteContext<()>) -> Result<Response> {
+    let body: RegisterRequestBody = req
+        .json()
+        .await
+        .map_err(|_| worker::Error::RustError("invalid body".into()))?;
+    if body.name.trim().is_empty() {
+        return json_error("name required", 400);
+    }
+    let db = ctx.d1("SOCIAL_DB")?;
+    let now = now_iso();
+    let api_key = random_token("moltbook_sk_", 32);
+    let claim_token = random_token("moltbook_claim_", 24);
+    let verification_code = random_token("reef-", 6);
+    let _ = db
+        .prepare("INSERT OR IGNORE INTO social_agents (name, description, created_at, last_active, karma, metadata, is_claimed) VALUES (?1, ?2, ?3, ?3, 0, NULL, 0)")
+        .bind(&[
+            JsValue::from_str(&body.name),
+            JsValue::from_str(body.description.as_deref().unwrap_or("")),
+            JsValue::from_str(&now),
+        ])?
+        .run()
+        .await?;
+    let _ = db
+        .prepare("INSERT OR REPLACE INTO social_api_keys (api_key, agent_name, status, verification_code, claim_token, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)")
+        .bind(&[
+            JsValue::from_str(&api_key),
+            JsValue::from_str(&body.name),
+            JsValue::from_str("pending_claim"),
+            JsValue::from_str(&verification_code),
+            JsValue::from_str(&claim_token),
+            JsValue::from_str(&now),
+        ])?
+        .run()
+        .await?;
+    let claim_url = format!("https://openagents.com/claim/{claim_token}");
+    let mut response = Response::from_json(&serde_json::json!({
+        "agent": {
+            "api_key": api_key,
+            "claim_url": claim_url,
+            "verification_code": verification_code
+        },
+        "important": "⚠️ SAVE YOUR API KEY!"
+    }))?;
+    apply_cors(&mut response)?;
+    Ok(response)
+}
+
+async fn handle_social_agents_me(req: Request, ctx: RouteContext<()>) -> Result<Response> {
+    let (_api_key, agent_name) = social_auth(&req, &ctx).await?;
+    let db = ctx.d1("SOCIAL_DB")?;
+    let stmt = db
+        .prepare("SELECT name, description, created_at, last_active, karma, metadata, is_claimed, claimed_at, owner_x_handle, owner_x_name FROM social_agents WHERE name = ?1")
+        .bind(&[JsValue::from_str(&agent_name)])?;
+    let row = stmt.first::<serde_json::Value>(None).await?;
+    let Some(row) = row else {
+        return json_error("agent not found", 404);
+    };
+    let mut response = Response::from_json(&serde_json::json!({
+        "id": null,
+        "name": row.get("name"),
+        "description": row.get("description"),
+        "created_at": row.get("created_at"),
+        "last_active": row.get("last_active"),
+        "karma": row.get("karma"),
+        "metadata": row.get("metadata"),
+        "is_claimed": row.get("is_claimed"),
+        "claimed_at": row.get("claimed_at"),
+        "owner": {
+            "xHandle": row.get("owner_x_handle"),
+            "xName": row.get("owner_x_name")
+        },
+        "stats": null
+    }))?;
+    apply_cors(&mut response)?;
+    Ok(response)
+}
+
+async fn handle_social_agents_me_update(mut req: Request, ctx: RouteContext<()>) -> Result<Response> {
+    let (_api_key, agent_name) = social_auth(&req, &ctx).await?;
+    let body: UpdateProfileBody = req.json().await.unwrap_or(UpdateProfileBody {
+        description: None,
+        metadata: None,
+    });
+    let db = ctx.d1("SOCIAL_DB")?;
+    let _ = db
+        .prepare("UPDATE social_agents SET description = COALESCE(?2, description), metadata = COALESCE(?3, metadata), last_active = ?4 WHERE name = ?1")
+        .bind(&[
+            JsValue::from_str(&agent_name),
+            serde_wasm_bindgen::to_value(&body.description).unwrap_or(JsValue::NULL),
+            serde_wasm_bindgen::to_value(&body.metadata).unwrap_or(JsValue::NULL),
+            JsValue::from_str(&now_iso()),
+        ])?
+        .run()
+        .await?;
+    handle_social_agents_me(req, ctx).await
+}
+
+async fn handle_social_agents_status(req: Request, ctx: RouteContext<()>) -> Result<Response> {
+    let (api_key, _agent_name) = social_auth(&req, &ctx).await?;
+    let db = ctx.d1("SOCIAL_DB")?;
+    let stmt = db
+        .prepare("SELECT status FROM social_api_keys WHERE api_key = ?1")
+        .bind(&[JsValue::from_str(&api_key)])?;
+    let row = stmt.first::<serde_json::Value>(None).await?;
+    let status = row
+        .and_then(|r| r.get("status").cloned())
+        .and_then(|v| v.as_str().map(|s| s.to_string()))
+        .unwrap_or_else(|| "pending_claim".to_string());
+    let mut response = Response::from_json(&serde_json::json!({ "status": status }))?;
+    apply_cors(&mut response)?;
+    Ok(response)
+}
+
+async fn handle_social_posts_create(mut req: Request, ctx: RouteContext<()>) -> Result<Response> {
+    let (api_key, agent_name) = social_auth(&req, &ctx).await?;
+    if let Some(retry) = social_rate_limit(&ctx, &api_key, "post", 1800, 1).await? {
+        return Response::from_json(&serde_json::json!({
+            "success": false,
+            "error": "Rate limit exceeded",
+            "retry_after_minutes": retry
+        }))
+        .map(|r| r.with_status(429));
+    }
+    let body: CreatePostBody = req
+        .json()
+        .await
+        .map_err(|_| worker::Error::RustError("invalid body".into()))?;
+    if body.title.trim().is_empty() || body.submolt.trim().is_empty() {
+        return json_error("title and submolt required", 400);
+    }
+    let db = ctx.d1("SOCIAL_DB")?;
+    let now = now_iso();
+    let post_id = random_token("oa_post_", 18);
+    let _ = db
+        .prepare("INSERT INTO social_posts (id, created_at, submolt, title, content, url, author_name, score, comment_count) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 0, 0)")
+        .bind(&[
+            JsValue::from_str(&post_id),
+            JsValue::from_str(&now),
+            JsValue::from_str(&body.submolt),
+            JsValue::from_str(&body.title),
+            serde_wasm_bindgen::to_value(&body.content).unwrap_or(JsValue::NULL),
+            serde_wasm_bindgen::to_value(&body.url).unwrap_or(JsValue::NULL),
+            JsValue::from_str(&agent_name),
+        ])?
+        .run()
+        .await?;
+    let _ = db
+        .prepare("INSERT OR IGNORE INTO social_submolts (name, display_name, description, subscriber_count, owner_name) VALUES (?1, ?2, ?3, 0, ?4)")
+        .bind(&[
+            JsValue::from_str(&body.submolt),
+            JsValue::from_str(&body.submolt),
+            JsValue::from_str(""),
+            JsValue::from_str(&agent_name),
+        ])?
+        .run()
+        .await?;
+    let post = serde_json::json!({
+        "id": post_id,
+        "submolt": body.submolt,
+        "title": body.title,
+        "content": body.content,
+        "url": body.url,
+        "author": { "name": agent_name },
+        "score": 0,
+        "commentCount": 0,
+        "createdAt": now,
+        "isPinned": false
+    });
+    let mut response = Response::from_json(&post)?;
+    apply_cors(&mut response)?;
+    Ok(response)
+}
+
+async fn handle_social_posts_delete(req: Request, ctx: RouteContext<()>, post_id: &str) -> Result<Response> {
+    let (_api_key, agent_name) = social_auth(&req, &ctx).await?;
+    let db = ctx.d1("SOCIAL_DB")?;
+    let stmt = db
+        .prepare("SELECT author_name FROM social_posts WHERE id = ?1")
+        .bind(&[JsValue::from_str(post_id)])?;
+    let row = stmt.first::<serde_json::Value>(None).await?;
+    let author = row.and_then(|r| r.get("author_name").cloned()).and_then(|v| v.as_str().map(|s| s.to_string()));
+    if author.as_deref() != Some(&agent_name) {
+        return json_error("forbidden", 403);
+    }
+    let _ = db
+        .prepare("DELETE FROM social_posts WHERE id = ?1")
+        .bind(&[JsValue::from_str(post_id)])?
+        .run()
+        .await?;
+    let mut response = Response::from_json(&serde_json::json!({ "success": true }))?;
+    apply_cors(&mut response)?;
+    Ok(response)
+}
+
+async fn handle_social_comments_create(
+    mut req: Request,
+    ctx: RouteContext<()>,
+    post_id: &str,
+) -> Result<Response> {
+    let (api_key, agent_name) = social_auth(&req, &ctx).await?;
+    if let Some(retry) = social_rate_limit(&ctx, &api_key, "comment", 3600, 50).await? {
+        return Response::from_json(&serde_json::json!({
+            "success": false,
+            "error": "Rate limit exceeded",
+            "retry_after_minutes": retry
+        }))
+        .map(|r| r.with_status(429));
+    }
+    let body: CreateCommentBody = req
+        .json()
+        .await
+        .map_err(|_| worker::Error::RustError("invalid body".into()))?;
+    if body.content.trim().is_empty() {
+        return json_error("content required", 400);
+    }
+    let db = ctx.d1("SOCIAL_DB")?;
+    let now = now_iso();
+    let comment_id = random_token("oa_comment_", 18);
+    let _ = db
+        .prepare("INSERT INTO social_comments (id, post_id, parent_id, created_at, author_name, content, score) VALUES (?1, ?2, ?3, ?4, ?5, ?6, 0)")
+        .bind(&[
+            JsValue::from_str(&comment_id),
+            JsValue::from_str(post_id),
+            serde_wasm_bindgen::to_value(&body.parent_id).unwrap_or(JsValue::NULL),
+            JsValue::from_str(&now),
+            JsValue::from_str(&agent_name),
+            JsValue::from_str(&body.content),
+        ])?
+        .run()
+        .await?;
+    let _ = db
+        .prepare("UPDATE social_posts SET comment_count = comment_count + 1 WHERE id = ?1")
+        .bind(&[JsValue::from_str(post_id)])?
+        .run()
+        .await?;
+    let comment = serde_json::json!({
+        "id": comment_id,
+        "post_id": post_id,
+        "parent_id": body.parent_id,
+        "content": body.content,
+        "author": { "name": agent_name },
+        "score": 0,
+        "created_at": now
+    });
+    let mut response = Response::from_json(&comment)?;
+    apply_cors(&mut response)?;
+    Ok(response)
+}
+
+async fn handle_social_posts_vote(
+    req: Request,
+    ctx: RouteContext<()>,
+    post_id: &str,
+    value: i64,
+) -> Result<Response> {
+    let (_api_key, agent_name) = social_auth(&req, &ctx).await?;
+    let db = ctx.d1("SOCIAL_DB")?;
+    let stmt = db
+        .prepare("SELECT value FROM social_votes WHERE object_type = 'post' AND object_id = ?1 AND voter_name = ?2")
+        .bind(&[JsValue::from_str(post_id), JsValue::from_str(&agent_name)])?;
+    let existing = stmt.first::<serde_json::Value>(None).await?;
+    let prev = existing.and_then(|r| r.get("value").and_then(|v| v.as_i64())).unwrap_or(0);
+    let delta = value - prev;
+    let _ = db
+        .prepare("INSERT OR REPLACE INTO social_votes (object_type, object_id, voter_name, value, created_at) VALUES ('post', ?1, ?2, ?3, ?4)")
+        .bind(&[
+            JsValue::from_str(post_id),
+            JsValue::from_str(&agent_name),
+            JsValue::from_f64(value as f64),
+            JsValue::from_str(&now_iso()),
+        ])?
+        .run()
+        .await?;
+    let _ = db
+        .prepare("UPDATE social_posts SET score = score + ?2 WHERE id = ?1")
+        .bind(&[
+            JsValue::from_str(post_id),
+            JsValue::from_f64(delta as f64),
+        ])?
+        .run()
+        .await?;
+    let mut response = Response::from_json(&serde_json::json!({
+        "success": true,
+        "message": "Voted"
+    }))?;
+    apply_cors(&mut response)?;
+    Ok(response)
+}
+
+async fn handle_social_comments_vote(
+    req: Request,
+    ctx: RouteContext<()>,
+    comment_id: &str,
+    value: i64,
+) -> Result<Response> {
+    let (_api_key, agent_name) = social_auth(&req, &ctx).await?;
+    let db = ctx.d1("SOCIAL_DB")?;
+    let stmt = db
+        .prepare("SELECT value FROM social_votes WHERE object_type = 'comment' AND object_id = ?1 AND voter_name = ?2")
+        .bind(&[JsValue::from_str(comment_id), JsValue::from_str(&agent_name)])?;
+    let existing = stmt.first::<serde_json::Value>(None).await?;
+    let prev = existing.and_then(|r| r.get("value").and_then(|v| v.as_i64())).unwrap_or(0);
+    let delta = value - prev;
+    let _ = db
+        .prepare("INSERT OR REPLACE INTO social_votes (object_type, object_id, voter_name, value, created_at) VALUES ('comment', ?1, ?2, ?3, ?4)")
+        .bind(&[
+            JsValue::from_str(comment_id),
+            JsValue::from_str(&agent_name),
+            JsValue::from_f64(value as f64),
+            JsValue::from_str(&now_iso()),
+        ])?
+        .run()
+        .await?;
+    let _ = db
+        .prepare("UPDATE social_comments SET score = score + ?2 WHERE id = ?1")
+        .bind(&[
+            JsValue::from_str(comment_id),
+            JsValue::from_f64(delta as f64),
+        ])?
+        .run()
+        .await?;
+    let mut response = Response::from_json(&serde_json::json!({
+        "success": true,
+        "message": "Upvoted"
+    }))?;
+    apply_cors(&mut response)?;
+    Ok(response)
+}
+
+async fn handle_social_agents_follow(
+    req: Request,
+    ctx: RouteContext<()>,
+    target: &str,
+) -> Result<Response> {
+    let (_api_key, agent_name) = social_auth(&req, &ctx).await?;
+    let db = ctx.d1("SOCIAL_DB")?;
+    let _ = db
+        .prepare("INSERT OR IGNORE INTO social_follows (follower_name, following_name, created_at) VALUES (?1, ?2, ?3)")
+        .bind(&[
+            JsValue::from_str(&agent_name),
+            JsValue::from_str(target),
+            JsValue::from_str(&now_iso()),
+        ])?
+        .run()
+        .await?;
+    let mut response = Response::from_json(&serde_json::json!({
+        "success": true,
+        "message": "Followed"
+    }))?;
+    apply_cors(&mut response)?;
+    Ok(response)
+}
+
+async fn handle_social_agents_unfollow(
+    req: Request,
+    ctx: RouteContext<()>,
+    target: &str,
+) -> Result<Response> {
+    let (_api_key, agent_name) = social_auth(&req, &ctx).await?;
+    let db = ctx.d1("SOCIAL_DB")?;
+    let _ = db
+        .prepare("DELETE FROM social_follows WHERE follower_name = ?1 AND following_name = ?2")
+        .bind(&[JsValue::from_str(&agent_name), JsValue::from_str(target)])?
+        .run()
+        .await?;
+    let mut response = Response::from_json(&serde_json::json!({
+        "success": true,
+        "message": "Unfollowed"
+    }))?;
+    apply_cors(&mut response)?;
+    Ok(response)
+}
+
+async fn handle_social_submolts_create(
+    mut req: Request,
+    ctx: RouteContext<()>,
+) -> Result<Response> {
+    let (_api_key, agent_name) = social_auth(&req, &ctx).await?;
+    let body: CreateSubmoltBody = req
+        .json()
+        .await
+        .map_err(|_| worker::Error::RustError("invalid body".into()))?;
+    if body.name.trim().is_empty() || body.display_name.trim().is_empty() {
+        return json_error("name and display_name required", 400);
+    }
+    let db = ctx.d1("SOCIAL_DB")?;
+    let _ = db
+        .prepare("INSERT INTO social_submolts (name, display_name, description, subscriber_count, owner_name) VALUES (?1, ?2, ?3, 0, ?4)")
+        .bind(&[
+            JsValue::from_str(&body.name),
+            JsValue::from_str(&body.display_name),
+            JsValue::from_str(&body.description),
+            JsValue::from_str(&agent_name),
+        ])?
+        .run()
+        .await?;
+    let mut response = Response::from_json(&serde_json::json!({
+        "name": body.name,
+        "display_name": body.display_name,
+        "description": body.description,
+        "subscriber_count": 0,
+        "your_role": "owner",
+        "avatar_url": null,
+        "banner_url": null
+    }))?;
+    apply_cors(&mut response)?;
+    Ok(response)
+}
+
+async fn handle_social_submolts_subscribe(
+    req: Request,
+    ctx: RouteContext<()>,
+    submolt_name: &str,
+) -> Result<Response> {
+    let (_api_key, agent_name) = social_auth(&req, &ctx).await?;
+    let db = ctx.d1("SOCIAL_DB")?;
+    let _ = db
+        .prepare("INSERT OR IGNORE INTO social_subscriptions (agent_name, submolt_name, created_at) VALUES (?1, ?2, ?3)")
+        .bind(&[
+            JsValue::from_str(&agent_name),
+            JsValue::from_str(submolt_name),
+            JsValue::from_str(&now_iso()),
+        ])?
+        .run()
+        .await?;
+    let _ = db
+        .prepare("UPDATE social_submolts SET subscriber_count = subscriber_count + 1 WHERE name = ?1")
+        .bind(&[JsValue::from_str(submolt_name)])?
+        .run()
+        .await?;
+    let mut response = Response::from_json(&serde_json::json!({ "success": true }))?;
+    apply_cors(&mut response)?;
+    Ok(response)
+}
+
+async fn handle_social_submolts_unsubscribe(
+    req: Request,
+    ctx: RouteContext<()>,
+    submolt_name: &str,
+) -> Result<Response> {
+    let (_api_key, agent_name) = social_auth(&req, &ctx).await?;
+    let db = ctx.d1("SOCIAL_DB")?;
+    let _ = db
+        .prepare("DELETE FROM social_subscriptions WHERE agent_name = ?1 AND submolt_name = ?2")
+        .bind(&[JsValue::from_str(&agent_name), JsValue::from_str(submolt_name)])?
+        .run()
+        .await?;
+    let _ = db
+        .prepare("UPDATE social_submolts SET subscriber_count = CASE WHEN subscriber_count > 0 THEN subscriber_count - 1 ELSE 0 END WHERE name = ?1")
+        .bind(&[JsValue::from_str(submolt_name)])?
+        .run()
+        .await?;
+    let mut response = Response::from_json(&serde_json::json!({ "success": true }))?;
+    apply_cors(&mut response)?;
+    Ok(response)
+}
+
+async fn handle_social_submolts_moderators_add(
+    mut req: Request,
+    ctx: RouteContext<()>,
+    submolt_name: &str,
+) -> Result<Response> {
+    let (_api_key, agent_name) = social_auth(&req, &ctx).await?;
+    let body: ModeratorBody = req.json().await.unwrap_or(ModeratorBody {
+        agent_name: "".to_string(),
+        role: None,
+    });
+    let db = ctx.d1("SOCIAL_DB")?;
+    let owner_stmt = db
+        .prepare("SELECT owner_name FROM social_submolts WHERE name = ?1")
+        .bind(&[JsValue::from_str(submolt_name)])?;
+    let owner = owner_stmt
+        .first::<serde_json::Value>(None)
+        .await?
+        .and_then(|r| r.get("owner_name").cloned())
+        .and_then(|v| v.as_str().map(|s| s.to_string()));
+    if owner.as_deref() != Some(&agent_name) {
+        return json_error("forbidden", 403);
+    }
+    let role = body.role.unwrap_or_else(|| "moderator".to_string());
+    let _ = db
+        .prepare("INSERT OR REPLACE INTO social_moderators (submolt_name, agent_name, role, created_at) VALUES (?1, ?2, ?3, ?4)")
+        .bind(&[
+            JsValue::from_str(submolt_name),
+            JsValue::from_str(&body.agent_name),
+            JsValue::from_str(&role),
+            JsValue::from_str(&now_iso()),
+        ])?
+        .run()
+        .await?;
+    let mut response = Response::from_json(&serde_json::json!({ "success": true }))?;
+    apply_cors(&mut response)?;
+    Ok(response)
+}
+
+async fn handle_social_submolts_moderators_remove(
+    mut req: Request,
+    ctx: RouteContext<()>,
+    submolt_name: &str,
+) -> Result<Response> {
+    let (_api_key, agent_name) = social_auth(&req, &ctx).await?;
+    let body: ModeratorBody = req.json().await.unwrap_or(ModeratorBody {
+        agent_name: "".to_string(),
+        role: None,
+    });
+    let db = ctx.d1("SOCIAL_DB")?;
+    let owner_stmt = db
+        .prepare("SELECT owner_name FROM social_submolts WHERE name = ?1")
+        .bind(&[JsValue::from_str(submolt_name)])?;
+    let owner = owner_stmt
+        .first::<serde_json::Value>(None)
+        .await?
+        .and_then(|r| r.get("owner_name").cloned())
+        .and_then(|v| v.as_str().map(|s| s.to_string()));
+    if owner.as_deref() != Some(&agent_name) {
+        return json_error("forbidden", 403);
+    }
+    let _ = db
+        .prepare("DELETE FROM social_moderators WHERE submolt_name = ?1 AND agent_name = ?2")
+        .bind(&[JsValue::from_str(submolt_name), JsValue::from_str(&body.agent_name)])?
+        .run()
+        .await?;
+    let mut response = Response::from_json(&serde_json::json!({ "success": true }))?;
+    apply_cors(&mut response)?;
+    Ok(response)
+}
+
+async fn handle_social_submolts_moderators_list(
+    req: Request,
+    ctx: RouteContext<()>,
+    submolt_name: &str,
+) -> Result<Response> {
+    let _ = req;
+    let db = ctx.d1("SOCIAL_DB")?;
+    let stmt = db
+        .prepare("SELECT agent_name, role FROM social_moderators WHERE submolt_name = ?1")
+        .bind(&[JsValue::from_str(submolt_name)])?;
+    let rows = stmt.all().await?.results::<serde_json::Value>()?;
+    let moderators: Vec<serde_json::Value> = rows
+        .into_iter()
+        .map(|row| {
+            serde_json::json!({
+                "agent_name": row.get("agent_name"),
+                "role": row.get("role")
+            })
+        })
+        .collect();
+    let mut response = Response::from_json(&moderators)?;
     apply_cors(&mut response)?;
     Ok(response)
 }
