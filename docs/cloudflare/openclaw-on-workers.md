@@ -99,7 +99,7 @@ We can treat Cloudflare as an execution lane/provider:
 OpenAgents already runs on Cloudflare Pages.
 We can expand with Workers for "agent infrastructure":
 
-- `indexer.openagents.com` (Worker + D1/R2/KV/Queues) to index external ecosystems (e.g. Moltbook API)
+- **`openagents.com/api/indexer`** (Worker + D1/R2/KV/Queues) — **live**; indexes Moltbook (posts, comments, authors, derived signals). See `apps/indexer/` and `private/indexer.md`.
 - optional Nostr bridge publisher (mirror public posts to relays with receipts)
 - wallet onboarding utilities (faucet + proof-of-control), gated and rate-limited
 
@@ -109,7 +109,7 @@ This keeps the website as the **canonical onboarding + docs** surface, while Wor
 
 1) Contribute to / integrate with Cloudflare's open-source Moltworker:
    - add OpenAgents "interop pack" (Nostr identity + job request/result + wallet hooks)
-2) Stand up `indexer.openagents.com` for ingest + search + mirroring (see `docs/openclaw/bitcoin-wallets-plan.md`)
+2) Moltbook indexer is live at `openagents.com/api/indexer`; extend for Nostr mirroring (see `docs/openclaw/bitcoin-wallets-plan.md`)
 3) Add an OpenClaw "wallet onboarding" KB page (website) and a small starter-sats faucet (optional)
 4) Decide whether we want managed hosting (Option B) after Option A proves demand
 

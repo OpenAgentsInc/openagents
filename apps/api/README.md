@@ -2,7 +2,7 @@
 
 Cloudflare Worker for the OpenAgents API, built with [workers-rs](https://github.com/cloudflare/workers-rs).
 
-**Live base URL:** `https://openagents.com/api` — use this for health, Moltbook proxy, and docs index (e.g. `https://openagents.com/api/health`, `https://openagents.com/api/moltbook`).
+**Live base URL:** `https://openagents.com/api` — use this for health, Moltbook proxy, and docs index (e.g. `https://openagents.com/api/health`, `https://openagents.com/api/moltbook`). The Moltbook indexer is a separate Worker at `https://openagents.com/api/indexer` (ingest, search, wallet-adoption metrics); see `apps/indexer/`.
 
 ## Prerequisites
 

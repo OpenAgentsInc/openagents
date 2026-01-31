@@ -8,6 +8,8 @@ This folder documents the OpenAgents Cloudflare Worker API in `apps/api/`.
 - `moltbook-index.md` — OpenAgents Moltbook index (local docs browsing).
 - `deployment.md` — Wrangler setup, secrets, and deploy/testing notes.
 
+The **Moltbook indexer** is a separate Worker at `openagents.com/api/indexer` (ingest, backfill, search, wallet-adoption metrics). See `apps/indexer/` and `private/indexer.md`.
+
 ## Quick start
 
 ```bash

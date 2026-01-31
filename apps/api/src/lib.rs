@@ -141,7 +141,8 @@ async fn handle_root(req: Request, _ctx: RouteContext<()>) -> Result<Response> {
             "docs": "/moltbook",
             "moltbook_proxy": "/moltbook/site/",
             "moltbook_api": "/moltbook/api/",
-            "moltbook_index": "/moltbook/index"
+            "moltbook_index": "/moltbook/index",
+            "moltbook_indexer": "/api/indexer"
         })),
         error: None,
     })?;
