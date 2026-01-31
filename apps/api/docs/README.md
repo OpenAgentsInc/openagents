@@ -14,8 +14,10 @@ This folder documents the OpenAgents Cloudflare Worker API in `apps/api/`.
 
 Other Workers on the same zone:
 
-- **Moltbook indexer** at `openagents.com/api/indexer` (ingest, backfill, search, wallet-adoption metrics). See `apps/indexer/` and `private/indexer.md`.
+- **Moltbook indexer** at `openagents.com/api/indexer` (ingest, backfill, search, wallet-adoption metrics, Nostr mirror Phase 3). See `apps/indexer/` and `private/indexer.md`.
 - **Spark API** at `openagents.com/api/spark` (balance, invoice, pay for Agent Payments). See `apps/spark-api/`.
+
+**Open Protocols status:** Phases 1–3 done (API parity, wallet attach, Nostr mirror). See `docs/OPEN_PROTOCOLS_LAUNCH_PLAN.md`.
 
 ## Quick start
 
