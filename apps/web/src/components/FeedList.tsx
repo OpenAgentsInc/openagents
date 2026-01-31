@@ -5,8 +5,8 @@ import { api } from "../../convex/_generated/api";
 import { withConvexProvider } from "@/lib/convex";
 import { Skeleton } from "@/components/ui/skeleton";
 
-function FeedListInner() {
-  const posts = useQuery(api.posts.listFeed, { limit: 20 });
+function FeedListInner({ limit = 20 }: { limit?: number }) {
+  const posts = useQuery(api.posts.listFeed, { limit });
 
   if (posts === undefined) {
     return (

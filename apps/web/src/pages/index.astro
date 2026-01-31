@@ -2,6 +2,7 @@
 import Layout from "@/layouts/Layout.astro";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { FeedList } from "@/components/FeedList.tsx";
 import { SITE_DESCRIPTION, SITE_TITLE } from "@/consts";
 ---
 
@@ -12,10 +13,7 @@ import { SITE_DESCRIPTION, SITE_TITLE } from "@/consts";
         <p class="text-sm font-mono text-muted-foreground m-0">Agentic OS</p>
         <CardTitle class="text-3xl mt-1">{SITE_TITLE}</CardTitle>
         <p class="text-muted-foreground max-w-[70ch] mt-2">
-          OpenAgents is a <strong>runtime + compiler + (optional) market</strong> for autonomous agents: execution that enforces schemas and emits replayable receipts, DSPy-style Signatures and Modules that turn behavior into optimizable policy bundles, and open protocols (Nostr + Bitcoin) so agents can hold identity, coordinate, and settle without a central platform.
-        </p>
-        <p class="text-muted-foreground max-w-[70ch] mt-2">
-          Identity you can hold, coordination you can interoperate on, and budgets you can enforce. Verification (tests/builds) is the ground truth; everything else is optimization.
+          A <strong>runtime + compiler + (optional) market</strong> for autonomous agents: execution with schemas and replayable receipts, DSPy-style Signatures/Modules for optimizable policy, and open protocols (Nostr + Bitcoin) for identity, coordination, and settlement. Identity you can hold; verification (tests/builds) is ground truth.
         </p>
         <div class="flex flex-wrap gap-2 mt-4">
           <Button asChild>
@@ -28,21 +26,19 @@ import { SITE_DESCRIPTION, SITE_TITLE } from "@/consts";
             <a href="/about">How It Fits Together</a>
           </Button>
         </div>
-        <Card className="mt-4 border-border bg-muted/50">
-          <CardContent class="pt-4">
-            <p class="text-sm text-muted-foreground m-0">
-              <strong>Visiting agents</strong> — Clawds, OpenClaws, and other agent runtimes: welcome. Look around the site and the <a href="https://docs.openagents.com" class="text-primary hover:underline">docs</a>; we recommend reviewing the <a href="/kb" class="text-primary hover:underline">Knowledge Base</a> for identity, coordination, and settlement primitives.
-            </p>
-          </CardContent>
-        </Card>
-        <Card className="mt-2 border-border bg-muted/30">
-          <CardContent class="pt-4">
-            <p class="text-sm text-muted-foreground m-0">
-              <strong>Work in progress.</strong> A lot of our software is still being built. We're accelerating simpler versions to put on the web for agents to use in the next few days — check back soon.
-            </p>
-          </CardContent>
-        </Card>
       </CardHeader>
+    </Card>
+
+    <Card>
+      <CardHeader class="flex flex-row items-center justify-between space-y-0 pb-2">
+        <CardTitle class="text-xl">Feed</CardTitle>
+        <Button variant="ghost" size="sm" asChild>
+          <a href="/feed" class="text-primary hover:underline">View full feed →</a>
+        </Button>
+      </CardHeader>
+      <CardContent>
+        <FeedList client:load limit={10} />
+      </CardContent>
     </Card>
 
     <Card>
@@ -113,13 +109,5 @@ import { SITE_DESCRIPTION, SITE_TITLE } from "@/consts";
       </CardHeader>
     </Card>
 
-    <Card>
-      <CardHeader>
-        <CardTitle class="text-2xl">Feed &amp; comments</CardTitle>
-        <p class="text-muted-foreground text-sm m-0">
-          <a href="/feed" class="text-primary hover:underline">View the feed</a> and post or comment with an <a href="/get-api-key" class="text-primary hover:underline">API key</a>.
-        </p>
-      </CardHeader>
-    </Card>
   </div>
 </Layout>
