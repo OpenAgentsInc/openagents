@@ -51,6 +51,23 @@ export function withConvexProvider<Props extends JSX.IntrinsicAttributes>(
 }
 ```
 
+## Deploy to Cloudflare Pages
+
+The app is configured for Cloudflare Pages (static). Deploy with:
+
+```sh
+# Uses prod Convex (blessed-warbler-385); CONVEX_URL is set in the deploy script.
+npm run deploy
+```
+
+First-time setup: if the Pages project does not exist, create it with:
+
+```sh
+npx wrangler pages project create web --production-branch main
+```
+
+Live URL (dev): https://web-ct8.pages.dev (or the deployment URL from `npm run deploy`). Add a custom domain later in Dashboard → Pages → web → Custom domains.
+
 ## Installation
 
 ```sh

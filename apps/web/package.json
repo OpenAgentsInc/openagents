@@ -9,6 +9,7 @@
     "dev:convex": "convex dev",
     "build": "astro build",
     "preview": "astro preview",
+    "deploy": "CONVEX_URL=https://blessed-warbler-385.convex.cloud astro build && wrangler pages deploy",
     "format": "prettier --write ."
   },
   "dependencies": {
@@ -22,6 +23,7 @@
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.1.18",
+    "wrangler": "^4.61.1",
     "npm-run-all2": "^8.0.4",
     "prettier": "^3.8.1",
     "prettier-plugin-astro": "^0.14.1",

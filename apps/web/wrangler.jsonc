@@ -1,0 +1,14 @@
+/**
+ * Cloudflare Pages for apps/web (Astro + Convex).
+ * Deploy: npm run deploy (builds then uploads dist/).
+ * Custom domain: add in Dashboard → Pages → web → Custom domains (when ready).
+ */
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "web",
+	"compatibility_date": "2025-09-27",
+	"pages_build_output_dir": "./dist",
+	"observability": {
+		"enabled": true
+	}
+}
