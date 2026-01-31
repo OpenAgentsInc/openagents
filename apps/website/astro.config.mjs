@@ -15,6 +15,9 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export default defineConfig({
   site: 'https://openagents.com',
   integrations: [mdx(), sitemap()],
+  redirects: {
+    '/sign-in': '/login',
+  },
   vite: {
     resolve: {
       // better-auth 1.4.x ships Kysely adapter but does not export "adapters/kysely" in package.json

@@ -2,6 +2,7 @@
 
 The OpenAgents website uses [Better Auth](https://better-auth.com) for sign-in and sessions. It supports:
 
+- **Email/password** — sign up and sign in with email (stored in DB); `emailAndPassword.enabled: true`.
 - **GitHub OAuth** (“Sign in with GitHub”)
 - **Cloudflare D1** for user/session storage when deployed (binding `DB` in `wrangler.jsonc`)
 - **Optional URL-based DB** for local dev when D1 is not available (`BETTER_AUTH_DATABASE_URL`)
@@ -53,11 +54,16 @@ BETTER_AUTH_DATABASE_URL=
 
 - **Server**: `src/lib/auth.ts` — `createAuth(db)` for D1 (Kysely + kysely-d1), default `auth` for URL-based or no DB. Used in the API route.
 - **API route**: `src/pages/api/auth/[...all].ts` — mounts Better Auth at `/api/auth/*`; uses `createAuth(runtime.env.DB)` when `DB` is present, else default `auth`.
-- **Client**: `src/lib/auth-client.ts` — `createAuthClient` with `baseURL` from `PUBLIC_SITE_URL`; exports `signIn`, `signOut`, `getSession` for use in browser scripts.
+- **Client**: `src/lib/auth-client.ts` — `createAuthClient` with `baseURL` from `PUBLIC_SITE_URL`; exports `signIn`, `signOut`, `signUp`, `getSession` for use in browser scripts.
+
+## Sign-in / sign-up pages
+
+- **`/login`** — Email/password form + "Log in with GitHub". Uses `signIn.email()` and `signIn.social({ provider: 'github' })`.
+- **`/sign-up`** — Name, email, password form + "Sign up with GitHub". Uses `signUp.email()` and `signIn.social()` for GitHub.
 
 ## Header sign-in / sign-out
 
-The header uses a client script that calls `getSession()`. If there is a session, it shows “Sign out” (calls `signOut()` then reloads). If not, it shows “Sign in with GitHub” linking to `/api/auth/signin/github`.
+The header uses a client script that calls `getSession()`. If there is a session, it shows “Sign out” (calls `signOut()` then reloads). If not, it shows “Sign in with GitHub” linking to `/login`.
 
 ## References
 

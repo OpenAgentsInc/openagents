@@ -42,6 +42,7 @@ export function createAuth(db: D1Database) {
     secret,
     trustedOrigins,
     socialProviders,
+    emailAndPassword: { enabled: true },
     database: kyselyAdapter(kysely, {
       type: "sqlite",
       transaction: false, // D1 does not support transactions in kysely-d1
@@ -56,6 +57,7 @@ export const auth = betterAuth({
   secret,
   trustedOrigins,
   socialProviders,
+  emailAndPassword: { enabled: true },
   database: getDatabaseConfig(),
 });
 

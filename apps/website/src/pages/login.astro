@@ -1,0 +1,80 @@
+---
+import BaseHead from '../components/BaseHead.astro';
+import Footer from '../components/Footer.astro';
+import Header from '../components/Header.astro';
+import { SITE_TITLE } from '../consts';
+---
+
+<!doctype html>
+<html lang="en">
+	<head>
+		<BaseHead title={`Log in · ${SITE_TITLE}`} description="Log in to OpenAgents with email or GitHub." />
+	</head>
+	<body>
+		<Header />
+		<main class="auth-main">
+			<h1>Log in</h1>
+			<form id="login-form" class="auth-form">
+				<label for="email">Email</label>
+				<input id="email" name="email" type="email" required autocomplete="email" />
+				<label for="password">Password</label>
+				<input id="password" name="password" type="password" required autocomplete="current-password" />
+				<p id="login-error" class="auth-error" hidden></p>
+				<button type="submit">Log in with email</button>
+			</form>
+			<p class="auth-divider">or</p>
+			<button type="button" id="github-signin" class="auth-social">Log in with GitHub</button>
+			<p class="auth-footer">No account? <a href="/signup">Sign up</a></p>
+		</main>
+		<Footer />
+		<script>
+			import { signIn } from '../lib/auth-client';
+			const form = document.getElementById('login-form') as HTMLFormElement;
+			const errorEl = document.getElementById('login-error');
+			const githubBtn = document.getElementById('github-signin');
+			function showError(msg: string) {
+				if (errorEl) {
+					errorEl.textContent = msg;
+					errorEl.hidden = false;
+				}
+			}
+			if (form) {
+				form.addEventListener('submit', async (e) => {
+					e.preventDefault();
+					const email = (form.querySelector('#email') as HTMLInputElement)?.value?.trim();
+					const password = (form.querySelector('#password') as HTMLInputElement)?.value;
+					if (!email || !password) return;
+					const btn = form.querySelector('button[type="submit"]');
+					if (btn) (btn as HTMLButtonElement).disabled = true;
+					if (errorEl) errorEl.hidden = true;
+					const { data, error } = await signIn.email({ email, password, callbackURL: '/' });
+					if (error) {
+						showError(error.message ?? 'Log in failed');
+						if (btn) (btn as HTMLButtonElement).disabled = false;
+						return;
+					}
+					window.location.href = data?.url ?? '/';
+				});
+			}
+			if (githubBtn) {
+				githubBtn.addEventListener('click', async () => {
+					const { data } = await signIn.social({ provider: 'github', callbackURL: window.location.origin + '/' });
+					if (data?.url) window.location.href = data.url;
+				});
+			}
+		</script>
+		<style>
+			.auth-main { padding: 2em 1em; max-width: 360px; margin: 0 auto; }
+			.auth-main h1 { margin: 0 0 1rem 0; }
+			.auth-form { display: flex; flex-direction: column; gap: 0.75rem; margin-bottom: 1rem; }
+			.auth-form label { font-weight: 600; }
+			.auth-form input { padding: 0.5rem; border: 1px solid var(--panel-border); border-radius: 4px; }
+			.auth-form button { padding: 0.5rem 1rem; cursor: pointer; }
+			.auth-error { color: var(--text-error, #c00); font-size: 0.9rem; margin: 0; }
+			.auth-divider { text-align: center; color: var(--text-muted); margin: 1rem 0; }
+			.auth-social { padding: 0.5rem 1rem; cursor: pointer; width: 100%; }
+			.auth-footer { margin-top: 1.5rem; color: var(--text-secondary); }
+			.auth-footer a { color: var(--accent); }
+		</style>
+	</body>
+</html>
