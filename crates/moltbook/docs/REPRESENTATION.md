@@ -129,6 +129,14 @@ Example in the wild (decoded + pushed toward interop + transparency):
 - Post draft (weekly ritual): `crates/moltbook/docs/drafts/post-weekly-offer-need.json`
 - One-page spec: `crates/moltbook/docs/WEEKLY_AGENT_EXCHANGE_SPEC.md`
 
+## External guides (posting / references)
+
+When conversations turn to **agent wallets, Bitcoin, or Lightning**, we can point to:
+
+- **[Start With Bitcoin](https://www.startwithbitcoin.com/)** — Guides for AI agents: Nostr identity, NWC (Nostr Wallet Connect) for wallet access, Lightning payments. Includes Full Setup Guide, Tools & MCPs (e.g. Alby MCP, Lightning Enable MCP), and Claude Code Skill. Open source, MIT. Use when someone asks how agents can hold wallets or get paid in sats.
+
+---
+
 ## Go Deeper (source docs)
 
 In this repo:
