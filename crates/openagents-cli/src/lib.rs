@@ -1,9 +1,9 @@
 use clap::Parser;
 
-mod nostr_cli;
-mod spark_cli;
 mod citrea_cli;
 mod moltbook_cli;
+mod nostr_cli;
+mod spark_cli;
 
 #[derive(Parser)]
 #[command(name = "openagents")]

@@ -565,14 +565,28 @@ pub fn run(args: MoltbookArgs) -> Result<()> {
 
 async fn run_async(args: MoltbookArgs) -> Result<()> {
     match args.command {
-        MoltbookCommand::Register(cmd) => register_command(args.api_key, args.credentials_file, cmd).await,
-        MoltbookCommand::Agents(cmd) => agents_command(args.api_key, args.credentials_file, cmd).await,
-        MoltbookCommand::Posts(cmd) => posts_command(args.api_key, args.credentials_file, cmd).await,
-        MoltbookCommand::Comments(cmd) => comments_command(args.api_key, args.credentials_file, cmd).await,
+        MoltbookCommand::Register(cmd) => {
+            register_command(args.api_key, args.credentials_file, cmd).await
+        }
+        MoltbookCommand::Agents(cmd) => {
+            agents_command(args.api_key, args.credentials_file, cmd).await
+        }
+        MoltbookCommand::Posts(cmd) => {
+            posts_command(args.api_key, args.credentials_file, cmd).await
+        }
+        MoltbookCommand::Comments(cmd) => {
+            comments_command(args.api_key, args.credentials_file, cmd).await
+        }
         MoltbookCommand::Feed(cmd) => feed_command(args.api_key, args.credentials_file, cmd).await,
-        MoltbookCommand::Search(cmd) => search_command(args.api_key, args.credentials_file, cmd).await,
-        MoltbookCommand::Submolts(cmd) => submolts_command(args.api_key, args.credentials_file, cmd).await,
-        MoltbookCommand::Watch(cmd) => watch_command(args.api_key, args.credentials_file, cmd).await,
+        MoltbookCommand::Search(cmd) => {
+            search_command(args.api_key, args.credentials_file, cmd).await
+        }
+        MoltbookCommand::Submolts(cmd) => {
+            submolts_command(args.api_key, args.credentials_file, cmd).await
+        }
+        MoltbookCommand::Watch(cmd) => {
+            watch_command(args.api_key, args.credentials_file, cmd).await
+        }
     }
 }
 
@@ -628,7 +642,10 @@ async fn agents_command(
             }
         }
         AgentsCommand::Status => {
-            let status = client.agents_status().await.context("agents/status failed")?;
+            let status = client
+                .agents_status()
+                .await
+                .context("agents/status failed")?;
             if args.output.json {
                 #[derive(Serialize)]
                 struct StatusOut {
@@ -795,7 +812,10 @@ async fn posts_command(
             }
         }
         PostsCommand::Get(p) => {
-            let post = client.posts_get(&p.post_id).await.context("post get failed")?;
+            let post = client
+                .posts_get(&p.post_id)
+                .await
+                .context("post get failed")?;
             if args.output.json {
                 print_json(&post_to_summary(post, 500))
             } else {
@@ -852,7 +872,10 @@ async fn posts_command(
             }
         }
         PostsCommand::Pin(p) => {
-            client.posts_pin(&p.post_id).await.context("post pin failed")?;
+            client
+                .posts_pin(&p.post_id)
+                .await
+                .context("post pin failed")?;
             if args.output.json {
                 #[derive(Serialize)]
                 struct OkOut {
@@ -1093,7 +1116,10 @@ async fn submolts_command(
             }
         }
         SubmoltsCommand::List => {
-            let list = client.submolts_list().await.context("submolt list failed")?;
+            let list = client
+                .submolts_list()
+                .await
+                .context("submolt list failed")?;
             if args.output.json {
                 let out = list.into_iter().map(submolt_to_output).collect::<Vec<_>>();
                 print_json(&out)
@@ -1322,10 +1348,16 @@ async fn watch_command(
         }
 
         let posts_res = if args.personal {
-            client.feed(args.sort.to_post_sort(), Some(args.limit)).await
+            client
+                .feed(args.sort.to_post_sort(), Some(args.limit))
+                .await
         } else {
             client
-                .posts_feed(args.sort.to_post_sort(), Some(args.limit), args.submolt.as_deref())
+                .posts_feed(
+                    args.sort.to_post_sort(),
+                    Some(args.limit),
+                    args.submolt.as_deref(),
+                )
                 .await
         };
 
@@ -1364,7 +1396,9 @@ async fn watch_command(
                     io::Write::flush(&mut io::stdout()).ok();
                 }
             }
-            Err(MoltbookError::RateLimited { retry_after_minutes }) => {
+            Err(MoltbookError::RateLimited {
+                retry_after_minutes,
+            }) => {
                 let delay = Duration::from_secs(retry_after_minutes.saturating_mul(60) as u64);
                 eprintln!("Rate limited; sleeping {}s", delay.as_secs());
                 tokio::time::sleep(delay).await;
@@ -1384,7 +1418,10 @@ async fn watch_command(
     }
 }
 
-fn authenticated_client(api_key: Option<String>, credentials_file: Option<PathBuf>) -> Result<MoltbookClient> {
+fn authenticated_client(
+    api_key: Option<String>,
+    credentials_file: Option<PathBuf>,
+) -> Result<MoltbookClient> {
     let api_key = resolve_api_key(api_key, credentials_file)?;
     MoltbookClient::new(api_key).context("Failed to create authenticated Moltbook client")
 }
@@ -1403,9 +1440,9 @@ fn resolve_api_key(explicit: Option<String>, credentials_file: Option<PathBuf>) 
         }
     }
     let path = credentials_file.unwrap_or_else(default_credentials_path);
-    let data = fs::read_to_string(&path).with_context(|| format!("Read credentials {}", path.display()))?;
-    let json: serde_json::Value =
-        serde_json::from_str(&data).context("Parse credentials JSON")?;
+    let data = fs::read_to_string(&path)
+        .with_context(|| format!("Read credentials {}", path.display()))?;
+    let json: serde_json::Value = serde_json::from_str(&data).context("Parse credentials JSON")?;
     let key = json
         .get("api_key")
         .and_then(|v| v.as_str())
@@ -1417,14 +1454,12 @@ fn resolve_api_key(explicit: Option<String>, credentials_file: Option<PathBuf>) 
 
 fn default_credentials_path() -> PathBuf {
     let home = env::var("HOME").unwrap_or_else(|_| ".".to_string());
-    Path::new(&home)
-        .join(".config/moltbook/credentials.json")
+    Path::new(&home).join(".config/moltbook/credentials.json")
 }
 
 fn write_credentials(path: &Path, api_key: &str, agent_name: &str) -> Result<()> {
     if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)
-            .with_context(|| format!("Create {}", parent.display()))?;
+        fs::create_dir_all(parent).with_context(|| format!("Create {}", parent.display()))?;
     }
     let obj = serde_json::json!({
         "api_key": api_key,
@@ -1437,19 +1472,24 @@ fn write_credentials(path: &Path, api_key: &str, agent_name: &str) -> Result<()>
 
 fn read_stdin() -> Result<String> {
     let mut buf = String::new();
-    io::stdin()
-        .read_to_string(&mut buf)
-        .context("Read stdin")?;
+    io::stdin().read_to_string(&mut buf).context("Read stdin")?;
     Ok(buf)
 }
 
-fn derive_title_and_content(title: Option<String>, content: Option<String>) -> (String, Option<String>) {
+fn derive_title_and_content(
+    title: Option<String>,
+    content: Option<String>,
+) -> (String, Option<String>) {
     if let Some(t) = title {
         let t = t.trim().to_string();
         if !t.is_empty() {
             let content = content.and_then(|c| {
                 let trimmed = c.trim().to_string();
-                if trimmed.is_empty() { None } else { Some(trimmed) }
+                if trimmed.is_empty() {
+                    None
+                } else {
+                    Some(trimmed)
+                }
             });
             return (t, content);
         }
@@ -1465,13 +1505,24 @@ fn derive_title_and_content(title: Option<String>, content: Option<String>) -> (
         let first = first.trim();
         if !first.is_empty() {
             let rest = rest.trim();
-            let content = if rest.is_empty() { None } else { Some(rest.to_string()) };
+            let content = if rest.is_empty() {
+                None
+            } else {
+                Some(rest.to_string())
+            };
             return (first.to_string(), content);
         }
     }
 
     let title = raw.chars().take(80).collect::<String>().trim().to_string();
-    (if title.is_empty() { "Update".to_string() } else { title }, None)
+    (
+        if title.is_empty() {
+            "Update".to_string()
+        } else {
+            title
+        },
+        None,
+    )
 }
 
 fn read_file_bytes(path: &Path) -> Result<(Vec<u8>, String)> {
@@ -1583,7 +1634,10 @@ fn format_post_line(p: &PostSummaryOutput, preview_chars: usize) -> String {
     let created = p.created_at.as_deref().unwrap_or("-");
     let submolt = p.submolt.as_deref().unwrap_or("-");
     let author = p.author.as_deref().unwrap_or("?");
-    let score = p.score.map(|s| s.to_string()).unwrap_or_else(|| "—".to_string());
+    let score = p
+        .score
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| "—".to_string());
     let comments = p
         .comment_count
         .map(|c| c.to_string())

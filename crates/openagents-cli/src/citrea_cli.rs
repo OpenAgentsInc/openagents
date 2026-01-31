@@ -1,12 +1,12 @@
 use anyhow::{Context, Result};
 use bip39::Mnemonic;
-use clap::{Args, Parser, Subcommand, ValueEnum};
 use citrea::{
-    address_from_uncompressed_pubkey, create2_address, derive_keypair_full,
-    eoa_address_from_secret, erc20_balance_of_data, format_address, parse_hex_bytes,
-    parse_hex_u128, parse_hex_vec, sign_schnorr, strip_0x, verify_schnorr,
-    xonly_pubkey_from_secret, BlockTag, RpcCallRequest, RpcClient,
+    BlockTag, RpcCallRequest, RpcClient, address_from_uncompressed_pubkey, create2_address,
+    derive_keypair_full, eoa_address_from_secret, erc20_balance_of_data, format_address,
+    parse_hex_bytes, parse_hex_u128, parse_hex_vec, sign_schnorr, strip_0x, verify_schnorr,
+    xonly_pubkey_from_secret,
 };
+use clap::{Args, Parser, Subcommand, ValueEnum};
 use rand::RngCore;
 use serde::Serialize;
 use std::env;
@@ -506,7 +506,11 @@ fn new_keypair(args: NewArgs) -> Result<()> {
     };
 
     let output = KeypairOutput {
-        mnemonic: if args.no_mnemonic { None } else { Some(mnemonic) },
+        mnemonic: if args.no_mnemonic {
+            None
+        } else {
+            Some(mnemonic)
+        },
         account,
         agent,
         public_key_hex: keypair.public_key_hex(),
@@ -568,8 +572,7 @@ fn derive_seed(args: SeedArgs) -> Result<()> {
 
 fn derive_pubkey(args: PubkeyArgs) -> Result<()> {
     let secret = resolve_secret_key(args.secret_hex, &args.input)?;
-    let pubkey = xonly_pubkey_from_secret(&secret)
-        .map_err(|e| anyhow::anyhow!(e.to_string()))?;
+    let pubkey = xonly_pubkey_from_secret(&secret).map_err(|e| anyhow::anyhow!(e.to_string()))?;
     let eoa_address = eoa_address_from_secret(&secret)
         .ok()
         .map(|addr| format_address(&addr));
@@ -583,10 +586,8 @@ fn derive_pubkey(args: PubkeyArgs) -> Result<()> {
 fn sign_hash(args: SignArgs) -> Result<()> {
     let hash = read_hash_input(args.hash, args.hash_file, args.hash_stdin)?;
     let secret = resolve_secret_key(args.secret_hex, &args.input)?;
-    let signature = sign_schnorr(&secret, &hash)
-        .map_err(|e| anyhow::anyhow!(e.to_string()))?;
-    let pubkey = xonly_pubkey_from_secret(&secret)
-        .map_err(|e| anyhow::anyhow!(e.to_string()))?;
+    let signature = sign_schnorr(&secret, &hash).map_err(|e| anyhow::anyhow!(e.to_string()))?;
+    let pubkey = xonly_pubkey_from_secret(&secret).map_err(|e| anyhow::anyhow!(e.to_string()))?;
     let output = SignOutput {
         signature_hex: hex::encode(signature),
         public_key_hex: hex::encode(pubkey),
@@ -596,12 +597,11 @@ fn sign_hash(args: SignArgs) -> Result<()> {
 
 fn verify_hash(args: VerifyArgs) -> Result<()> {
     let hash = read_hash_input(args.hash, args.hash_file, args.hash_stdin)?;
-    let pubkey = parse_hex_bytes::<32>(&args.pubkey)
-        .map_err(|e| anyhow::anyhow!(e.to_string()))?;
-    let signature = parse_hex_bytes::<64>(&args.signature)
-        .map_err(|e| anyhow::anyhow!(e.to_string()))?;
-    let valid = verify_schnorr(&pubkey, &hash, &signature)
-        .map_err(|e| anyhow::anyhow!(e.to_string()))?;
+    let pubkey = parse_hex_bytes::<32>(&args.pubkey).map_err(|e| anyhow::anyhow!(e.to_string()))?;
+    let signature =
+        parse_hex_bytes::<64>(&args.signature).map_err(|e| anyhow::anyhow!(e.to_string()))?;
+    let valid =
+        verify_schnorr(&pubkey, &hash, &signature).map_err(|e| anyhow::anyhow!(e.to_string()))?;
     let output = VerifyOutput { valid };
     print_output(&output, args.output.json)
 }
@@ -616,8 +616,7 @@ fn address_command(args: AddressArgs) -> Result<()> {
 
 fn address_eoa(args: AddressEoaArgs) -> Result<()> {
     let secret = resolve_secret_key(args.secret_hex, &args.input)?;
-    let address = eoa_address_from_secret(&secret)
-        .map_err(|e| anyhow::anyhow!(e.to_string()))?;
+    let address = eoa_address_from_secret(&secret).map_err(|e| anyhow::anyhow!(e.to_string()))?;
     let output = AddressOutput {
         address: format_address(&address),
     };
@@ -625,12 +624,11 @@ fn address_eoa(args: AddressEoaArgs) -> Result<()> {
 }
 
 fn address_create2(args: AddressCreate2Args) -> Result<()> {
-    let factory = parse_hex_bytes::<20>(&args.factory)
-        .map_err(|e| anyhow::anyhow!(e.to_string()))?;
-    let salt = parse_hex_bytes::<32>(&args.salt)
-        .map_err(|e| anyhow::anyhow!(e.to_string()))?;
-    let init_code_hash = parse_hex_bytes::<32>(&args.init_code_hash)
-        .map_err(|e| anyhow::anyhow!(e.to_string()))?;
+    let factory =
+        parse_hex_bytes::<20>(&args.factory).map_err(|e| anyhow::anyhow!(e.to_string()))?;
+    let salt = parse_hex_bytes::<32>(&args.salt).map_err(|e| anyhow::anyhow!(e.to_string()))?;
+    let init_code_hash =
+        parse_hex_bytes::<32>(&args.init_code_hash).map_err(|e| anyhow::anyhow!(e.to_string()))?;
     let address = create2_address(&factory, &salt, &init_code_hash);
     let output = AddressOutput {
         address: format_address(&address),
@@ -640,8 +638,8 @@ fn address_create2(args: AddressCreate2Args) -> Result<()> {
 
 fn address_pubkey(args: AddressPubkeyArgs) -> Result<()> {
     let bytes = parse_hex_vec(&args.public_key).map_err(|e| anyhow::anyhow!(e.to_string()))?;
-    let address = address_from_uncompressed_pubkey(&bytes)
-        .map_err(|e| anyhow::anyhow!(e.to_string()))?;
+    let address =
+        address_from_uncompressed_pubkey(&bytes).map_err(|e| anyhow::anyhow!(e.to_string()))?;
     let output = AddressOutput {
         address: format_address(&address),
     };
@@ -656,7 +654,10 @@ async fn chain_command(args: ChainArgs) -> Result<()> {
 
 async fn chain_info(args: ChainInfoArgs) -> Result<()> {
     let rpc = resolve_rpc(&args.rpc)?;
-    let chain_id = rpc.chain_id().await.map_err(|e| anyhow::anyhow!(e.to_string()))?;
+    let chain_id = rpc
+        .chain_id()
+        .await
+        .map_err(|e| anyhow::anyhow!(e.to_string()))?;
     let block_number = rpc
         .block_number()
         .await
@@ -671,13 +672,13 @@ async fn chain_info(args: ChainInfoArgs) -> Result<()> {
 
 async fn balance_command(args: BalanceArgs) -> Result<()> {
     let rpc = resolve_rpc(&args.rpc)?;
-    let address = parse_hex_bytes::<20>(&args.address)
-        .map_err(|e| anyhow::anyhow!(e.to_string()))?;
+    let address =
+        parse_hex_bytes::<20>(&args.address).map_err(|e| anyhow::anyhow!(e.to_string()))?;
     let block = resolve_block_tag(&args.block);
 
     let (balance_hex, token) = if let Some(token) = args.token {
-        let token_address = parse_hex_bytes::<20>(&token)
-            .map_err(|e| anyhow::anyhow!(e.to_string()))?;
+        let token_address =
+            parse_hex_bytes::<20>(&token).map_err(|e| anyhow::anyhow!(e.to_string()))?;
         let data = erc20_balance_of_data(&address);
         let request = RpcCallRequest {
             to: format_address(&token_address),
@@ -713,8 +714,8 @@ async fn balance_command(args: BalanceArgs) -> Result<()> {
 
 async fn nonce_command(args: NonceArgs) -> Result<()> {
     let rpc = resolve_rpc(&args.rpc)?;
-    let address = parse_hex_bytes::<20>(&args.address)
-        .map_err(|e| anyhow::anyhow!(e.to_string()))?;
+    let address =
+        parse_hex_bytes::<20>(&args.address).map_err(|e| anyhow::anyhow!(e.to_string()))?;
     let block = resolve_block_tag(&args.block);
     let nonce = rpc
         .get_transaction_count(&address, block)
@@ -736,7 +737,10 @@ async fn call_command(args: CallArgs) -> Result<()> {
         data: Some(ensure_hex_prefixed(&args.data)),
         value: args.value.as_ref().map(|value| ensure_hex_prefixed(value)),
         gas: args.gas.as_ref().map(|value| ensure_hex_prefixed(value)),
-        gas_price: args.gas_price.as_ref().map(|value| ensure_hex_prefixed(value)),
+        gas_price: args
+            .gas_price
+            .as_ref()
+            .map(|value| ensure_hex_prefixed(value)),
     };
     let block = resolve_block_tag(&args.block);
     let result = rpc
