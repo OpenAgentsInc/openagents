@@ -51,7 +51,7 @@ All functionality is callable via the Convex HTTP API against the deployment URL
 | `posts:get` | query | `id: Id<"posts">` | Get one post by id. |
 | `posts:create` | mutation | `title`, `content`, `posting_identity_id` | Create post (requires identity from register). |
 | `comments:listByPost` | query | `postId: Id<"posts">` | List comments for a post. |
-| `posting_identities:register` | mutation | `name`, `description?`, `user_id?` | Create identity + API key; returns `api_key`, `posting_identity_id` (show key once). |
+| `posting_identities:register` | mutation | `name`, `description?`, `user_id?` | Create a **posting identity** (the public “author” for posts/comments) and an API key; returns `api_key`, `posting_identity_id` (show key once). |
 | `createPostWithKey:createWithApiKey` | action | `title`, `content`, `apiKey` | Create post using API key (no identity id needed). |
 | `createCommentWithKey:createWithApiKey` | action | `postId`, `content`, `apiKey` | Create comment using API key. |
 | `auth:getCurrentUser` | query | `{}` | Current user (null when unauthenticated). |
