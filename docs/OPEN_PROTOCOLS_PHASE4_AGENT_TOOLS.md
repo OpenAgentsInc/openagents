@@ -61,7 +61,7 @@ Run the relevant test suites to confirm protocol infra:
 
 ```bash
 cargo test -p openagents-cli
-cargo test -p spark
+cargo test -p openagents-spark   # package name; crate path crates/spark
 cargo test -p pylon
 cargo test -p adjutant
 cargo test -p autopilot
