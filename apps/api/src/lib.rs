@@ -177,6 +177,8 @@ async fn main(mut req: Request, env: Env, _ctx: Context) -> Result<Response> {
         .get_async("/social/v1", handle_social_root)
         .get_async("/social/v1/", handle_social_root)
         .on_async("/social/v1/*path", handle_social_router)
+        .get_async("/claim/:token", handle_social_claim_get)
+        .post_async("/claim/:token", handle_social_claim_post)
         .get_async("/moltbook", handle_moltbook_root)
         .get_async("/moltbook/", handle_moltbook_root)
         .on_async("/moltbook/*path", handle_moltbook_router)
@@ -953,6 +955,18 @@ async fn handle_social_agents_register(mut req: Request, ctx: RouteContext<()>) 
         ])?
         .run()
         .await?;
+    let _ = db
+        .prepare("INSERT OR REPLACE INTO social_claims (claim_token, api_key, agent_name, verification_code, created_at, status) VALUES (?1, ?2, ?3, ?4, ?5, ?6)")
+        .bind(&[
+            JsValue::from_str(&claim_token),
+            JsValue::from_str(&api_key),
+            JsValue::from_str(&body.name),
+            JsValue::from_str(&verification_code),
+            JsValue::from_str(&now),
+            JsValue::from_str("pending_claim"),
+        ])?
+        .run()
+        .await?;
     let claim_url = format!("https://openagents.com/claim/{claim_token}");
     let mut response = Response::from_json(&serde_json::json!({
         "agent": {
@@ -1656,6 +1670,88 @@ async fn handle_social_media_get(req: Request, ctx: RouteContext<()>, key: &str)
     if let Some(content_type) = obj.http_metadata().content_type {
         response.headers_mut().set("content-type", &content_type)?;
     }
+    Ok(response)
+}
+
+async fn handle_social_claim_get(req: Request, ctx: RouteContext<()>) -> Result<Response> {
+    let token = ctx.param("token").map(|v| v.to_string()).unwrap_or_default();
+    if token.is_empty() {
+        return json_error("token required", 400);
+    }
+    let db = ctx.d1("SOCIAL_DB")?;
+    let stmt = db
+        .prepare("SELECT status, agent_name, verification_code, created_at, claimed_at FROM social_claims WHERE claim_token = ?1")
+        .bind(&[JsValue::from_str(&token)])?;
+    let row = stmt.first::<serde_json::Value>(None).await?;
+    let Some(row) = row else {
+        return json_error("claim not found", 404);
+    };
+    if wants_html(&req) {
+        let html = format!(
+            "<!doctype html><html><head><meta charset=\"utf-8\"><title>Claim</title></head><body><h1>Claim status</h1><p>Agent: {}</p><p>Status: {}</p><p>Verification code: {}</p></body></html>",
+            row.get("agent_name").and_then(|v| v.as_str()).unwrap_or(""),
+            row.get("status").and_then(|v| v.as_str()).unwrap_or(""),
+            row.get("verification_code").and_then(|v| v.as_str()).unwrap_or("")
+        );
+        let mut response = Response::from_html(html)?;
+        response
+            .headers_mut()
+            .set("content-type", "text/html; charset=utf-8")?;
+        return Ok(response);
+    }
+    let mut response = Response::from_json(&serde_json::json!({
+        "status": row.get("status"),
+        "agent_name": row.get("agent_name"),
+        "verification_code": row.get("verification_code"),
+        "created_at": row.get("created_at"),
+        "claimed_at": row.get("claimed_at")
+    }))?;
+    apply_cors(&mut response)?;
+    Ok(response)
+}
+
+async fn handle_social_claim_post(req: Request, ctx: RouteContext<()>) -> Result<Response> {
+    let token = ctx.param("token").map(|v| v.to_string()).unwrap_or_default();
+    if token.is_empty() {
+        return json_error("token required", 400);
+    }
+    let auth_key = social_api_key_from_request(&req)
+        .ok_or_else(|| worker::Error::RustError("missing api key".into()))?;
+    let db = ctx.d1("SOCIAL_DB")?;
+    let stmt = db
+        .prepare("SELECT api_key, agent_name FROM social_claims WHERE claim_token = ?1")
+        .bind(&[JsValue::from_str(&token)])?;
+    let row = stmt.first::<serde_json::Value>(None).await?;
+    let Some(row) = row else {
+        return json_error("claim not found", 404);
+    };
+    let claim_key = row.get("api_key").and_then(|v| v.as_str()).unwrap_or("");
+    if claim_key != auth_key {
+        return json_error("forbidden", 403);
+    }
+    let agent_name = row
+        .get("agent_name")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    let now = now_iso();
+    let _ = db
+        .prepare("UPDATE social_claims SET status = 'claimed', claimed_at = ?2 WHERE claim_token = ?1")
+        .bind(&[JsValue::from_str(&token), JsValue::from_str(&now)])?
+        .run()
+        .await?;
+    let _ = db
+        .prepare("UPDATE social_api_keys SET status = 'claimed', claimed_at = ?2 WHERE api_key = ?1")
+        .bind(&[JsValue::from_str(&auth_key), JsValue::from_str(&now)])?
+        .run()
+        .await?;
+    let _ = db
+        .prepare("UPDATE social_agents SET is_claimed = 1, claimed_at = ?2 WHERE name = ?1")
+        .bind(&[JsValue::from_str(&agent_name), JsValue::from_str(&now)])?
+        .run()
+        .await?;
+    let mut response = Response::from_json(&serde_json::json!({ "status": "claimed" }))?;
+    apply_cors(&mut response)?;
     Ok(response)
 }
 
