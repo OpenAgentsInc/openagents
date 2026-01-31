@@ -4,7 +4,7 @@
 //! guardrail enforcement and decision parsing utilities.
 
 use dsrs::signatures::GuidanceDecisionSignature;
-use dsrs::{example, Example, LM, Predict, Predictor};
+use dsrs::{Example, LM, Predict, Predictor, example};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::env;
@@ -144,8 +144,8 @@ impl GuidanceInputs {
     pub fn to_example(&self) -> Example {
         let summary_json = serde_json::to_string_pretty(&self.summary)
             .unwrap_or_else(|_| self.summary.to_string());
-        let state_json = serde_json::to_string_pretty(&self.state)
-            .unwrap_or_else(|_| "{}".to_string());
+        let state_json =
+            serde_json::to_string_pretty(&self.state).unwrap_or_else(|_| "{}".to_string());
         let success_json = serde_json::to_string_pretty(&self.goal.success_criteria)
             .unwrap_or_else(|_| "[]".to_string());
         example! {
@@ -497,10 +497,6 @@ fn read_prediction_confidence(
             ),
         },
         Value::Null => (0.0, None, Some("confidence missing".to_string())),
-        other => (
-            0.0,
-            Some(other),
-            Some("confidence not numeric".to_string()),
-        ),
+        other => (0.0, Some(other), Some("confidence not numeric".to_string())),
     }
 }

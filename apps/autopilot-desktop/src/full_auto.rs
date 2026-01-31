@@ -333,10 +333,7 @@ impl FullAutoState {
                 .clone()
                 .unwrap_or_else(|| "completed".to_string()),
             turn_error: state.last_turn_error.clone().unwrap_or_else(String::new),
-            last_agent_message: state
-                .last_agent_message
-                .clone()
-                .unwrap_or_else(String::new),
+            last_agent_message: state.last_agent_message.clone().unwrap_or_else(String::new),
             last_guidance_directive: state
                 .last_guidance_directive
                 .clone()

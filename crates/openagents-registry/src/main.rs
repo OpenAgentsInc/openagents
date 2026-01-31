@@ -5,8 +5,8 @@ use axum::http::{HeaderMap, HeaderValue, StatusCode};
 use axum::response::{Html, IntoResponse, Response};
 use axum::routing::get;
 use clap::Parser;
-use nostr::encode_npub;
 use nostr::Event;
+use nostr::encode_npub;
 use nostr::nip_sa::profile::{AgentProfileContent, AutonomyLevel, KIND_AGENT_PROFILE};
 use nostr::nsec_to_private_key;
 use nostr_client::{RelayConnection, RelayMessage};
@@ -30,7 +30,10 @@ struct Args {
     bind: String,
 
     /// Comma-separated relay URLs to index
-    #[arg(long, default_value = "wss://nexus.openagents.com,wss://relay.damus.io,wss://nos.lol")]
+    #[arg(
+        long,
+        default_value = "wss://nexus.openagents.com,wss://relay.damus.io,wss://nos.lol"
+    )]
     relays: String,
 
     /// Max events to request per relay
@@ -208,9 +211,10 @@ async fn fetch_profiles_from_relays(
     let mut handles = Vec::new();
     for url in relays.iter().cloned() {
         let key = auth_key;
-        let handle = tokio::spawn(async move {
-            fetch_profile_events(&url, limit, per_relay_timeout, key).await
-        });
+        let handle =
+            tokio::spawn(
+                async move { fetch_profile_events(&url, limit, per_relay_timeout, key).await },
+            );
         handles.push(handle);
     }
 
@@ -391,8 +395,8 @@ fn first_tag_value(tags: &[Vec<String>], key: &str) -> Option<String> {
 }
 
 fn npub_from_hex_pubkey(pubkey_hex: &str) -> Result<String> {
-    let raw = hex::decode(pubkey_hex)
-        .with_context(|| format!("invalid pubkey hex: {}", pubkey_hex))?;
+    let raw =
+        hex::decode(pubkey_hex).with_context(|| format!("invalid pubkey hex: {}", pubkey_hex))?;
     let bytes: [u8; 32] = raw
         .as_slice()
         .try_into()
@@ -437,15 +441,34 @@ async fn api_agents(
     let cache = state.cache.read().await;
     let mut agents = cache.agents.clone();
 
-    if let Some(cap) = query.capability.as_ref().map(|s| s.trim().to_lowercase()).filter(|s| !s.is_empty()) {
-        agents.retain(|a| a.capabilities.iter().any(|c| c.to_lowercase().contains(&cap)));
+    if let Some(cap) = query
+        .capability
+        .as_ref()
+        .map(|s| s.trim().to_lowercase())
+        .filter(|s| !s.is_empty())
+    {
+        agents.retain(|a| {
+            a.capabilities
+                .iter()
+                .any(|c| c.to_lowercase().contains(&cap))
+        });
     }
 
-    if let Some(aut) = query.autonomy.as_ref().map(|s| s.trim().to_lowercase()).filter(|s| !s.is_empty()) {
+    if let Some(aut) = query
+        .autonomy
+        .as_ref()
+        .map(|s| s.trim().to_lowercase())
+        .filter(|s| !s.is_empty())
+    {
         agents.retain(|a| format!("{:?}", a.autonomy_level).to_lowercase() == aut);
     }
 
-    if let Some(q) = query.q.as_ref().map(|s| s.trim().to_lowercase()).filter(|s| !s.is_empty()) {
+    if let Some(q) = query
+        .q
+        .as_ref()
+        .map(|s| s.trim().to_lowercase())
+        .filter(|s| !s.is_empty())
+    {
         agents.retain(|a| {
             let hay = format!(
                 "{} {} {} {} {}",
@@ -499,13 +522,9 @@ mod tests {
 
     #[test]
     fn agent_profile_event_parses_into_entry() {
-        let content = AgentProfileContent::new(
-            "TestBot",
-            "Does tests",
-            AutonomyLevel::Bounded,
-            "1.2.3",
-        )
-        .with_capabilities(vec!["research".to_string(), "summarization".to_string()]);
+        let content =
+            AgentProfileContent::new("TestBot", "Does tests", AutonomyLevel::Bounded, "1.2.3")
+                .with_capabilities(vec!["research".to_string(), "summarization".to_string()]);
 
         let json_content = match content.to_json() {
             Ok(v) => v,

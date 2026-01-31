@@ -1,9 +1,9 @@
 use wgpui::components::{Component, ComponentId, EventResult};
+use wgpui::text::FontStyle;
 use wgpui::{
     Bounds, Cursor, EventContext, Hsla, InputEvent, Key, MouseButton, NamedKey, PaintContext,
     Point, Quad, copy_to_clipboard, theme,
 };
-use wgpui::text::FontStyle;
 
 use crate::caret::Position;
 use crate::display_map::DisplayMap;
@@ -220,12 +220,13 @@ impl EditorElement {
         let viewport_height = (bounds.size.height - self.padding * 2.0).max(0.0);
         self.scroll.set_viewport(viewport_height);
 
-        let text_width = (bounds.size.width
-            - self.padding * 2.0
-            - self.gutter_width
-            - self.gutter_gap)
-            .max(0.0);
-        let wrap_width = if self.wrap_lines { Some(text_width) } else { None };
+        let text_width =
+            (bounds.size.width - self.padding * 2.0 - self.gutter_width - self.gutter_gap).max(0.0);
+        let wrap_width = if self.wrap_lines {
+            Some(text_width)
+        } else {
+            None
+        };
         self.display_map.update(
             self.editor.buffer(),
             self.editor.revision(),
@@ -429,8 +430,8 @@ impl Component for EditorElement {
         } else {
             0
         };
-        let visible_end = (visible_start + visible_lines)
-            .min(self.display_map.display_line_count());
+        let visible_end =
+            (visible_start + visible_lines).min(self.display_map.display_line_count());
 
         if let Some(syntax) = &mut self.syntax {
             syntax.update(self.editor.buffer(), self.editor.revision());
@@ -442,8 +443,7 @@ impl Component for EditorElement {
                     if display_line_idx < visible_start || display_line_idx >= visible_end {
                         continue;
                     }
-                    let y = self.text_origin.y
-                        + display_line_idx as f32 * self.line_height
+                    let y = self.text_origin.y + display_line_idx as f32 * self.line_height
                         - self.scroll.offset;
                     let highlight_bounds = Bounds::new(
                         self.text_origin.x,
@@ -499,8 +499,7 @@ impl Component for EditorElement {
                         continue;
                     }
 
-                    let y = self.text_origin.y
-                        + display_line_idx as f32 * self.line_height
+                    let y = self.text_origin.y + display_line_idx as f32 * self.line_height
                         - self.scroll.offset;
                     let x = self.text_origin.x
                         + (highlight_start - display_line.start_col) as f32 * self.char_width;
@@ -513,8 +512,9 @@ impl Component for EditorElement {
                         continue;
                     }
 
-                    cx.scene
-                        .draw_quad(Quad::new(selection_bounds).with_background(self.selection_color));
+                    cx.scene.draw_quad(
+                        Quad::new(selection_bounds).with_background(self.selection_color),
+                    );
                 }
             }
         }
@@ -523,8 +523,7 @@ impl Component for EditorElement {
             let Some(display_line) = self.display_map.line(display_line_idx) else {
                 continue;
             };
-            let y = self.text_origin.y
-                + display_line_idx as f32 * self.line_height
+            let y = self.text_origin.y + display_line_idx as f32 * self.line_height
                 - self.scroll.offset;
             if y + self.line_height < bounds.origin.y || y > bounds.origin.y + bounds.size.height {
                 continue;
@@ -565,9 +564,7 @@ impl Component for EditorElement {
 
             if display_line.start_col == 0 {
                 let line_number = (display_line.buffer_line + 1).to_string();
-                let number_x = bounds.origin.x
-                    + self.padding
-                    + self.gutter_width
+                let number_x = bounds.origin.x + self.padding + self.gutter_width
                     - self.gutter_padding
                     - (line_number.chars().count() as f32 * self.char_width);
                 let number_run = cx.text.layout_mono(
@@ -582,10 +579,8 @@ impl Component for EditorElement {
 
         if self.focused {
             if let Some(composition) = &self.composition {
-                let display_line_idx =
-                    self.display_line_index_for_position(composition.base);
-                let y = self.text_origin.y
-                    + display_line_idx as f32 * self.line_height
+                let display_line_idx = self.display_line_index_for_position(composition.base);
+                let y = self.text_origin.y + display_line_idx as f32 * self.line_height
                     - self.scroll.offset;
                 let Some(display_line) = self.display_map.line(display_line_idx) else {
                     return;
@@ -612,18 +607,17 @@ impl Component for EditorElement {
                     );
                     cx.scene.draw_text(run);
                     let underline_bounds = Bounds::new(x, y + self.line_height - 2.0, width, 2.0);
-                    cx.scene
-                        .draw_quad(Quad::new(underline_bounds).with_background(theme::accent::PRIMARY));
+                    cx.scene.draw_quad(
+                        Quad::new(underline_bounds).with_background(theme::accent::PRIMARY),
+                    );
                     let caret_x = x + (composition.text.chars().count() as f32 * self.char_width);
-                    let caret_bounds =
-                        Bounds::new(caret_x, y + 2.0, 2.0, self.line_height - 4.0);
+                    let caret_bounds = Bounds::new(caret_x, y + 2.0, 2.0, self.line_height - 4.0);
                     cx.scene
                         .draw_quad(Quad::new(caret_bounds).with_background(self.caret_color));
                 }
             } else {
                 for cursor in self.editor.cursors() {
-                    let display_line_idx =
-                        self.display_line_index_for_position(cursor.position);
+                    let display_line_idx = self.display_line_index_for_position(cursor.position);
                     if display_line_idx < visible_start || display_line_idx >= visible_end {
                         continue;
                     }
@@ -633,8 +627,7 @@ impl Component for EditorElement {
                     let col = cursor.position.column;
                     let x = self.text_origin.x
                         + (col - display_line.start_col) as f32 * self.char_width;
-                    let y = self.text_origin.y
-                        + display_line_idx as f32 * self.line_height
+                    let y = self.text_origin.y + display_line_idx as f32 * self.line_height
                         - self.scroll.offset;
                     let caret_bounds = Bounds::new(x, y + 2.0, 2.0, self.line_height - 4.0);
                     cx.scene

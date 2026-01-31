@@ -4,8 +4,8 @@ use std::path::PathBuf;
 
 use anyhow::Context;
 use autopilot_core::guidance::{
-    GuidanceGoal, GuidanceGuardrailConfig, GuidanceGuardrailContext, GuidanceInputs,
-    GuidanceMode, GuidanceNetwork, GuidancePermissions, GuidanceState, apply_guidance_guardrails,
+    GuidanceGoal, GuidanceGuardrailConfig, GuidanceGuardrailContext, GuidanceInputs, GuidanceMode,
+    GuidanceNetwork, GuidancePermissions, GuidanceState, apply_guidance_guardrails,
     ensure_guidance_demo_lm, guidance_demo_model, run_guidance_decision,
 };
 use clap::{Parser, Subcommand};
@@ -67,8 +67,7 @@ async fn run_demo(args: GuidanceDemoArgs) -> anyhow::Result<()> {
         let summary_value = if let Some(path) = args.summary {
             let raw = std::fs::read_to_string(&path)
                 .with_context(|| format!("Failed to read summary file: {path:?}"))?;
-            serde_json::from_str::<Value>(&raw)
-                .with_context(|| "Failed to parse summary JSON")?
+            serde_json::from_str::<Value>(&raw).with_context(|| "Failed to parse summary JSON")?
         } else {
             demo_summary()
         };
@@ -126,7 +125,9 @@ async fn run_demo(args: GuidanceDemoArgs) -> anyhow::Result<()> {
     };
 
     if GuidanceMode::from_env() == GuidanceMode::Legacy {
-        eprintln!("Note: OPENAGENTS_GUIDANCE_MODE=legacy, but CLI demo always runs Guidance Modules.");
+        eprintln!(
+            "Note: OPENAGENTS_GUIDANCE_MODE=legacy, but CLI demo always runs Guidance Modules."
+        );
     }
 
     let decision_result = run_guidance_decision(&inputs, &lm)
@@ -174,7 +175,10 @@ async fn run_demo(args: GuidanceDemoArgs) -> anyhow::Result<()> {
         }
         if let Some(guardrail) = decision.guardrail.as_ref() {
             if guardrail.triggered {
-                println!("- guardrail: {}", guardrail.rule.clone().unwrap_or_default());
+                println!(
+                    "- guardrail: {}",
+                    guardrail.rule.clone().unwrap_or_default()
+                );
             }
         }
     }
