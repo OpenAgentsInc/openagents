@@ -2,6 +2,11 @@ import { useMutation } from "convex/react";
 import { useState } from "react";
 import { api } from "../../convex/_generated/api";
 import { withConvexProvider } from "../lib/convex.tsx";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 
 export default withConvexProvider(function CommentForm() {
   const createComment = useMutation(api.comments.create);
@@ -9,7 +14,8 @@ export default withConvexProvider(function CommentForm() {
   const [content, setContent] = useState("");
   const [error, setError] = useState<string>();
 
-  const handleSubmit = async () => {
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
     if (!author.trim() || !content.trim()) {
       setError("You must provide an author and content");
       return;
@@ -20,34 +26,41 @@ export default withConvexProvider(function CommentForm() {
       await createComment({ author, content });
       setAuthor("");
       setContent("");
-    } catch (error) {
-      console.error(error);
+    } catch {
       setError("Submission failed, try again.");
     }
   };
 
   return (
-    <form action={handleSubmit} className="mb-8 space-y-4">
-      <input
-        type="text"
-        placeholder="Your name"
-        value={author}
-        onChange={(e) => setAuthor(e.target.value)}
-        className="w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-      />
-      <textarea
-        placeholder="Leave a comment..."
-        value={content}
-        onChange={(e) => setContent(e.target.value)}
-        className="min-h-[100px] w-full resize-y rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-      />
-      <button
-        type="submit"
-        className="w-full rounded-md bg-indigo-600 px-4 py-2 text-white transition-colors hover:bg-indigo-700 focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 focus:outline-none md:w-auto"
-      >
+    <form onSubmit={handleSubmit} className="mb-8 space-y-4">
+      <div className="space-y-2">
+        <Label htmlFor="comment-author">Your name</Label>
+        <Input
+          id="comment-author"
+          type="text"
+          placeholder="Your name"
+          value={author}
+          onChange={(e) => setAuthor(e.target.value)}
+        />
+      </div>
+      <div className="space-y-2">
+        <Label htmlFor="comment-content">Comment</Label>
+        <Textarea
+          id="comment-content"
+          placeholder="Leave a comment..."
+          value={content}
+          onChange={(e) => setContent(e.target.value)}
+          className="min-h-[100px] resize-y"
+        />
+      </div>
+      {error && (
+        <Alert variant="destructive">
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
+      <Button type="submit" className="w-full md:w-auto">
         Post Comment
-      </button>
-      {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
+      </Button>
     </form>
   );
 });

@@ -12,9 +12,11 @@ import AuthUI from "../components/AuthUI.tsx";
     <meta name="generator" content={Astro.generator} />
     <title>Astro Basics</title>
   </head>
-  <body>
-    <header class="border-b border-gray-200 px-4 py-2 flex justify-between items-center">
-      <a href="/" class="text-lg font-semibold text-gray-900">Web</a>
+  <body class="min-h-screen bg-background text-foreground">
+    <header class="border-b border-border bg-background px-4 py-2 flex justify-between items-center">
+      <a href="/" class="text-lg font-semibold text-foreground hover:text-primary transition-colors">
+        Web
+      </a>
       <AuthUI client:load />
     </header>
     <slot />

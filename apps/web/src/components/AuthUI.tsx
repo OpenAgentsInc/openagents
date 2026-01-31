@@ -2,6 +2,8 @@ import { useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { withConvexProvider } from "../lib/convex";
 import { authClient } from "../lib/auth-client";
+import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 
 function AuthUIInner() {
   const user = useQuery(api.auth.getCurrentUser);
@@ -12,44 +14,41 @@ function AuthUIInner() {
   };
 
   if (user === undefined) {
-    return (
-      <span className="text-sm text-gray-500">Loading…</span>
-    );
+    return <Skeleton className="h-5 w-16" />;
   }
 
   if (user === null) {
     return (
       <div className="flex items-center gap-2">
-        <a href="/login" className="text-sm text-indigo-600 hover:text-indigo-800">
-          Sign in
-        </a>
-        <span className="text-gray-400">|</span>
-        <button
+        <Button variant="link" asChild size="sm">
+          <a href="/login">Sign in</a>
+        </Button>
+        <span className="text-muted-foreground">|</span>
+        <Button
           type="button"
+          variant="link"
+          size="sm"
           onClick={() =>
             authClient.signIn.social({
               provider: "github",
               callbackURL: "/",
             })
           }
-          className="text-sm text-indigo-600 hover:text-indigo-800"
         >
           Sign in with GitHub
-        </button>
+        </Button>
       </div>
     );
   }
 
   return (
     <div className="flex items-center gap-2">
-      <span className="text-sm text-gray-700">{user.name ?? user.email ?? "Signed in"}</span>
-      <button
-        type="button"
-        onClick={handleSignOut}
-        className="text-sm text-indigo-600 hover:text-indigo-800"
-      >
+      <span className="text-sm text-muted-foreground">
+        {user.name ?? user.email ?? "Signed in"}
+      </span>
+      <Button type="button" variant="link" size="sm" onClick={handleSignOut}>
         Sign out
-      </button>
+      </Button>
     </div>
   );
 }
