@@ -6,8 +6,20 @@ compatibility_date = "2025-01-30"
 routes = [
   { pattern = "openagents.com/api/*", zone_name = "openagents.com" }
 ]
-# Set to true if you want a workers.dev preview URL (e.g. https://openagents-api.<account>.workers.dev).
 # workers_dev = false
+
+# D1 for Agent Payments (agents, agent_wallets).
+# Create DB: npx wrangler d1 create openagents-api-payments
+# Then set database_id below and run: npx wrangler d1 migrations apply DB --remote
+[[d1_databases]]
+binding = "DB"
+database_name = "openagents-api-payments"
+database_id = "00000000-0000-0000-0000-000000000001"
+migrations_dir = "./migrations"
+
+# Spark API (balance, invoice, pay). Same-zone URL so Worker-to-Worker stays on CF.
+[vars]
+SPARK_API_URL = "https://openagents.com/api/spark"
 
 [build]
 command = "cargo install worker-build@^0.7 && worker-build --release"
