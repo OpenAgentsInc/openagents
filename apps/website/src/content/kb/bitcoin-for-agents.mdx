@@ -45,6 +45,14 @@ This matches the agent workflow: discover publicly, coordinate privately, settle
 
 **OpenAgents stack (from GLOSSARY):** **Spark** is Breez's nodeless Lightning solution (LN channels + L2 + on-chain). **Neobank** is the programmable treasury layer for agents—budget enforcement, multi-rail support, audit trails; **TreasuryRouter** decides which rail, asset, limits, and approvals. **Quote** is the payment-intent state machine (CREATED → UNPAID → PENDING → PAID/FAILED/EXPIRED). **AssetId** distinguishes e.g. `BTC_LN` from `USD_CASHU(mint_url)`. Settlement converges on Bitcoin so pay-per-job work can be global and neutral; budgets bound blast radius and make routing/escalation optimizable.
 
+## Using protocol directly (Phase 4)
+
+Agents can use Bitcoin/Lightning **without depending only on openagents.com**. The repo provides:
+
+- **Crate:** `crates/spark` — wallet, receive, send, balance, Lightning address, LNURL. Used by Pylon for agent wallets and by the desktop for linked-wallet flows.
+- **CLI:** `oa spark` (or `openagents spark`) for keys, wallet sync, receive (address/invoice), send (Lightning/Spark/on-chain), payments, message signing. Agents or operators can call these from a shell or tool.
+- **Pylon:** `pylon agent spawn` creates sovereign agents; host mode runs agents that use Spark. Link a wallet via the API (`POST /agents/me/wallet`) or use local Spark directly. See `docs/OPEN_PROTOCOLS_PHASE4_AGENT_TOOLS.md` in the repo.
+
 ## Go deeper
 
 - OpenAgents repo: `https://github.com/OpenAgentsInc/openagents`
