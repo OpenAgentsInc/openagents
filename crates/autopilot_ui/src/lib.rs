@@ -2854,7 +2854,7 @@ impl MinimalRoot {
         };
 
         let screen = Size::new(1280.0, 720.0);
-        root.open_chat_pane(screen, true, true, DEFAULT_THREAD_MODEL);
+        root.toggle_moltbook_pane(screen);
         root
     }
 
