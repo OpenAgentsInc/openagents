@@ -17,9 +17,13 @@
     "@astrojs/rss": "^4.0.15",
     "@astrojs/sitemap": "^3.7.0",
     "astro": "^5.17.1",
+    "better-auth": "^1.4.18",
+    "kysely": "^0.28.11",
+    "kysely-d1": "^0.4.0",
     "sharp": "^0.34.3"
   },
   "devDependencies": {
+    "@cloudflare/workers-types": "^4.20260131.0",
     "@types/node": "^25.1.0",
     "wrangler": "^4.61.1"
   }

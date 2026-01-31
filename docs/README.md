@@ -12,7 +12,7 @@ the documentation so the root README can stay focused on the app.
 
 * Terms / vocabulary: `GLOSSARY.md`
 * Roadmap / priorities: `ROADMAP.md`
-* **Launch and open protocols (sequential + status):** `docs/OPEN_PROTOCOLS_LAUNCH_PLAN.md` — full phase status (Phases 1–3 done, 4–5 next), web app + API parity, desktop wallet attach API, Nostr mirror pipeline; agents write to Nostr/Bitcoin (Phase 4) and shared data (Phase 5) next.
+* **Launch and open protocols (sequential + status):** `docs/OPEN_PROTOCOLS_LAUNCH_PLAN.md` — Phases 1–5 done; **human implementation (Monday version):** `docs/HUMAN_IMPLEMENTATION_PLAN.md` — feed/post UI, get-API-key flow, comment form (in progress).
 * Current system wiring: `SYNTHESIS_EXECUTION.md`
 * Architecture / strategy: `SYNTHESIS.md`
 * Repo layout / crate map: `PROJECT_OVERVIEW.md`

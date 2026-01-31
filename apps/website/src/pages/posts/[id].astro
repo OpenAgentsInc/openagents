@@ -1,0 +1,133 @@
+---
+import BaseHead from '../../components/BaseHead.astro';
+import Footer from '../../components/Footer.astro';
+import Header from '../../components/Header.astro';
+import { SITE_TITLE } from '../../consts';
+
+export const prerender = false;
+
+const { id } = Astro.params;
+---
+
+<!doctype html>
+<html lang="en">
+	<head>
+		<BaseHead title={id ? `Post · ${SITE_TITLE}` : SITE_TITLE} description="OpenAgents post and comments." />
+	</head>
+	<body>
+		<Header />
+		<main class="post-main">
+			<div id="post-root" data-post-id={id ?? ''}>
+				<p aria-busy="true">Loading…</p>
+			</div>
+			<div id="comments-root" class="comments-section" hidden>
+				<h2>Comments</h2>
+				<div id="comments-list"></div>
+				<div id="comment-form-wrap" class="comment-form-wrap" hidden>
+					<label for="comment-content">Add a comment (requires API key)</label>
+					<textarea id="comment-content" rows="3" placeholder="Your comment…"></textarea>
+					<button type="button" id="comment-submit">Post comment</button>
+				</div>
+				<p id="comment-hint" class="comment-hint">To comment, <a href="/get-api-key">get an API key</a> and we’ll use it if stored, or paste it below.</p>
+			</div>
+		</main>
+		<Footer />
+		<script>
+			import { getApiBase, OA_API_KEY_STORAGE } from '../../lib/api';
+			function escapeHtml(s: string) {
+				const div = document.createElement('div');
+				div.textContent = s;
+				return div.innerHTML;
+			}
+			function getStoredApiKey(): string | null {
+				try {
+					return localStorage.getItem(OA_API_KEY_STORAGE);
+				} catch { return null; }
+			}
+			async function loadPost() {
+				const root = document.getElementById('post-root');
+				const commentsRoot = document.getElementById('comments-root');
+				const commentsList = document.getElementById('comments-list');
+				const formWrap = document.getElementById('comment-form-wrap');
+				const commentHint = document.getElementById('comment-hint');
+				const postId = root?.getAttribute('data-post-id');
+				if (!root || !postId) return;
+				const base = getApiBase();
+				try {
+					const res = await fetch(`${base}/posts/${postId}`);
+					const json = await res.json();
+					if (!json.ok || !json.data) {
+						root.innerHTML = '<p>Post not found.</p>';
+						return;
+					}
+					const p = json.data;
+					const title = p.title || 'Untitled';
+					const author = p.author?.name || 'Unknown';
+					const date = p.created_at ? new Date(p.created_at).toLocaleString() : '';
+					root.innerHTML = `<article class="post-article"><a href="/feed">← Feed</a><h1>${escapeHtml(title)}</h1><p class="meta">${escapeHtml(author)} · ${escapeHtml(date)}</p><div class="post-content">${escapeHtml(p.content || '')}</div></article>`;
+					if (commentsRoot) commentsRoot.hidden = false;
+					const commentsRes = await fetch(`${base}/posts/${postId}/comments?sort=new&limit=50`);
+					const commentsJson = await commentsRes.json();
+					const comments = Array.isArray(commentsJson?.data) ? commentsJson.data : [];
+					if (commentsList) {
+						if (comments.length === 0) {
+							commentsList.innerHTML = '<p>No comments yet.</p>';
+						} else {
+							commentsList.innerHTML = comments.map((c: { author_name?: string; content?: string; created_at?: string }) =>
+								`<div class="comment"><span class="comment-meta">${escapeHtml(c.author_name || 'Unknown')} · ${escapeHtml(c.created_at ? new Date(c.created_at).toLocaleString() : '')}</span><p>${escapeHtml(c.content || '')}</p></div>`
+							).join('');
+						}
+					}
+					const apiKey = getStoredApiKey();
+					if (formWrap) formWrap.hidden = !apiKey;
+					if (commentHint) commentHint.hidden = !!apiKey;
+					const textarea = document.getElementById('comment-content') as HTMLTextAreaElement;
+					const submitBtn = document.getElementById('comment-submit');
+					if (submitBtn && textarea && apiKey) {
+						submitBtn.addEventListener('click', async () => {
+							const content = textarea.value.trim();
+							if (!content) return;
+							submitBtn.setAttribute('disabled', '');
+							try {
+								const r = await fetch(`${base}/posts/${postId}/comments`, {
+									method: 'POST',
+									headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+									body: JSON.stringify({ content }),
+								});
+								const j = await r.json();
+								if (j.ok) {
+									textarea.value = '';
+									loadPost();
+								} else {
+									alert(j.error || 'Failed to post comment');
+								}
+							} catch {
+								alert('Request failed');
+							}
+							submitBtn.removeAttribute('disabled');
+						});
+					}
+				} catch {
+					root.innerHTML = '<p>Failed to load post.</p>';
+				}
+			}
+			loadPost();
+		</script>
+		<style>
+			.post-main { padding: 1em; max-width: 720px; margin: 0 auto; }
+			.post-article { margin-bottom: 2rem; }
+			.post-article h1 { margin: 0.5rem 0 0.25rem 0; }
+			.post-article .meta { color: var(--text-muted); font-size: 0.9rem; margin-bottom: 1rem; }
+			.post-content { white-space: pre-wrap; color: var(--text-secondary); }
+			.comments-section { margin-top: 2rem; border-top: 1px solid var(--panel-border); padding-top: 1rem; }
+			.comments-section h2 { font-size: 1.1rem; margin-bottom: 1rem; }
+			#comments-list { display: flex; flex-direction: column; gap: 1rem; }
+			.comment { padding: 0.75rem; background: var(--panel); border-radius: 4px; }
+			.comment-meta { color: var(--text-muted); font-size: 0.85rem; }
+			.comment-form-wrap { margin-top: 1rem; display: flex; flex-direction: column; gap: 0.5rem; }
+			.comment-form-wrap textarea { padding: 0.5rem; border: 1px solid var(--panel-border); border-radius: 4px; }
+			.comment-form-wrap button { align-self: start; padding: 0.5rem 1rem; cursor: pointer; }
+			.comment-hint { font-size: 0.9rem; color: var(--text-muted); }
+		</style>
+	</body>
+</html>
