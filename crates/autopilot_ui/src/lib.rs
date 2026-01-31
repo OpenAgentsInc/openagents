@@ -52,7 +52,7 @@ const COMPOSER_HEIGHT: f32 = 56.0;
 const STATUS_LINE_HEIGHT: f32 = 22.0;
 const STATUS_SECTION_GAP: f32 = 10.0;
 const ACCENT_BAR_WIDTH: f32 = 3.0;
-const DEFAULT_THREAD_MODEL: &str = "gpt-5.2-codex";
+const DEFAULT_THREAD_MODEL: &str = "gpt-5.2";
 const BOTTOM_BAR_MIN_HEIGHT: f32 = 64.0;
 const INPUT_MIN_LINES: usize = 1;
 const INPUT_MAX_LINES: Option<usize> = None;
@@ -121,11 +121,11 @@ const HOTBAR_CHAT_SLOT_START: u8 = 7;
 const HOTBAR_SLOT_MAX: u8 = 9;
 const GRID_DOT_DISTANCE: f32 = 32.0;
 const MODEL_OPTIONS: [(&str, &str); 4] = [
-    ("gpt-5.2-codex", "Latest frontier agentic coding model."),
     (
         "gpt-5.2",
         "Latest frontier model with improvements across knowledge, reasoning and coding.",
     ),
+    ("gpt-5.2-codex", "Latest frontier agentic coding model."),
     (
         "gpt-5.1-codex-max",
         "Codex-optimized flagship for deep and fast reasoning.",
