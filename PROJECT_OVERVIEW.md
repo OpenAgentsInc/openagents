@@ -5,6 +5,7 @@ This document is a **codebase orientation guide**: what lives where, how the cra
 For "what is OpenAgents" + Quick Start, see **[README.md](./README.md)**.
 For values/mission, see **[MANIFESTO.md](./MANIFESTO.md)**.
 For canonical terminology, see **[GLOSSARY.md](./GLOSSARY.md)**.
+For the sequential launch plan (openagents.com + Moltbook parity, desktop wallet, Nostr mirror, shared data), see **[docs/OPEN_PROTOCOLS_LAUNCH_PLAN.md](docs/OPEN_PROTOCOLS_LAUNCH_PLAN.md)**.
 
 ## The stack (at a glance)
 

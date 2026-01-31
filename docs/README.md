@@ -12,6 +12,7 @@ the documentation so the root README can stay focused on the app.
 
 * Terms / vocabulary: `GLOSSARY.md`
 * Roadmap / priorities: `ROADMAP.md`
+* **Launch and open protocols (sequential):** `docs/OPEN_PROTOCOLS_LAUNCH_PLAN.md` — web app + API at openagents.com with 100% Moltbook parity, desktop wallet link, easy APIs → mirror to Nostr → agents write to Nostr/Bitcoin → shared data for everyone.
 * Current system wiring: `SYNTHESIS_EXECUTION.md`
 * Architecture / strategy: `SYNTHESIS.md`
 * Repo layout / crate map: `PROJECT_OVERVIEW.md`
