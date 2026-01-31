@@ -6733,6 +6733,8 @@ fn paint_moltbook_header(
         title_bounds.size.height,
     );
 
+    let baseline_y = title_bounds.origin.y + title_bounds.size.height * 0.5 - text_size * 0.55;
+
     let refresh_padding_x = 8.0;
     let refresh_label = root.moltbook_refresh_button.label();
     let refresh_width = (cx
@@ -6759,20 +6761,36 @@ fn paint_moltbook_header(
     let refresh_bounds = *row_bounds.get(2).unwrap_or(&Bounds::ZERO);
 
     cx.scene.push_clip(header_bounds);
-    Text::new(moltbook_profile_line(root))
-        .font_size(text_size)
-        .color(theme::text::MUTED)
-        .no_wrap()
-        .paint(profile_bounds, cx);
-    Text::new(moltbook_activity_line(root))
-        .font_size(text_size)
-        .color(theme::text::MUTED)
-        .no_wrap()
-        .paint(activity_bounds, cx);
+    let profile_line = moltbook_profile_line(root);
+    let profile_run = cx.text.layout_styled_mono(
+        profile_line.as_str(),
+        Point::new(profile_bounds.origin.x, baseline_y),
+        text_size,
+        theme::text::MUTED,
+        FontStyle::default(),
+    );
+    cx.scene.draw_text(profile_run);
+
+    let activity_line = moltbook_activity_line(root);
+    let activity_run = cx.text.layout_styled_mono(
+        activity_line.as_str(),
+        Point::new(activity_bounds.origin.x, baseline_y),
+        text_size,
+        theme::text::MUTED,
+        FontStyle::default(),
+    );
+    cx.scene.draw_text(activity_run);
 
     if refresh_bounds.size.width > 0.0 {
-        root.moltbook_refresh_bounds = refresh_bounds;
-        root.moltbook_refresh_button.paint(refresh_bounds, cx);
+        let button_height = (header_bounds.size.height - 6.0).max(18.0);
+        let button_bounds = Bounds::new(
+            refresh_bounds.origin.x,
+            header_bounds.origin.y + (header_bounds.size.height - button_height) * 0.5,
+            refresh_bounds.size.width,
+            button_height,
+        );
+        root.moltbook_refresh_bounds = button_bounds;
+        root.moltbook_refresh_button.paint(button_bounds, cx);
     } else {
         root.moltbook_refresh_bounds = Bounds::ZERO;
     }
