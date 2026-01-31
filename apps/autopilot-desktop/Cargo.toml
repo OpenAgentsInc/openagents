@@ -41,6 +41,8 @@ moltbook = { path = "../../crates/moltbook" }
 clap = { workspace = true }
 rustls = "0.23"
 arboard = "3.4"
+rusqlite = { version = "0.31", features = ["bundled"] }
+dirs = "5"
 
 [package.metadata.bundle]
 name = "Autopilot"
