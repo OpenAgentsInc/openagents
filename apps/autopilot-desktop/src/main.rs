@@ -7,6 +7,7 @@ use std::process::Command;
 use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, mpsc};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::{Context, Result};
 use arboard::Clipboard;
@@ -43,6 +44,7 @@ use pylon::PylonConfig;
 use pylon::db::{PylonDb, jobs::JobStatus};
 use pylon::provider::{ProviderError, PylonProvider};
 use reqwest::Client as HttpClient;
+use rusqlite::{Connection, params};
 use serde_json::{Value, json};
 use tracing_subscriber::EnvFilter;
 use wgpui::renderer::Renderer;
@@ -73,6 +75,8 @@ const DEFAULT_GUIDANCE_GOAL_INTENT: &str =
 const DEFAULT_MOLTBOOK_PROXY_BASE: &str = "https://openagents.com/api/moltbook/api";
 const DEFAULT_MOLTBOOK_LIVE_BASE: &str = "https://www.moltbook.com/api/v1";
 const DEFAULT_OPENAGENTS_INDEXER_BASE: &str = "https://openagents.com/api/indexer";
+const MOLTBOOK_CACHE_LIMIT: usize = 200;
+const MOLTBOOK_CACHE_DB: &str = "moltbook.db";
 const ZOOM_MIN: f32 = 0.5;
 const ZOOM_MAX: f32 = 2.5;
 const ZOOM_STEP_KEY: f32 = 0.1;
@@ -780,6 +784,15 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
             let app = AutopilotApp::new(AppConfig {
                 event_buffer: EVENT_BUFFER,
             });
+
+            if let Ok(cached) = load_moltbook_cache(MOLTBOOK_CACHE_LIMIT) {
+                if !cached.is_empty() {
+                    let _ = proxy.send_event(AppEvent::MoltbookFeedUpdated { posts: cached.clone() });
+                    let _ = proxy.send_event(AppEvent::MoltbookLog {
+                        message: format!("Loaded {} cached Moltbook posts.", cached.len()),
+                    });
+                }
+            }
 
             let mut recorder = std::env::var("AUTOPILOT_REPLAY_PATH")
                 .ok()
@@ -2305,9 +2318,17 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
                                                 submolt: p.submolt,
                                             })
                                             .collect();
-                                        let n = summaries.len();
-                                        let _ = proxy.send_event(AppEvent::MoltbookFeedUpdated { posts: summaries });
-                                        log(format!("Loaded {n} posts"));
+                                        let new_count = summaries.len();
+                                        let cached = load_moltbook_cache(MOLTBOOK_CACHE_LIMIT)
+                                            .unwrap_or_default();
+                                        let merged = merge_moltbook_posts(summaries, cached);
+                                        let total = merged.len();
+                                        if let Err(err) = store_moltbook_cache(&merged) {
+                                            log(format!("Moltbook cache error: {err}"));
+                                        }
+                                        let _ = proxy
+                                            .send_event(AppEvent::MoltbookFeedUpdated { posts: merged });
+                                        log(format!("Loaded {new_count} posts (total {total})"));
                                     }
                                     Err(e) => log(format!("Feed error: {e}")),
                                 }
@@ -2405,6 +2426,146 @@ fn guidance_goal_intent() -> String {
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty())
         .unwrap_or_else(|| DEFAULT_GUIDANCE_GOAL_INTENT.to_string())
+}
+
+fn unix_timestamp() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0)
+}
+
+fn moltbook_cache_path() -> Result<PathBuf> {
+    let config_root = dirs::config_dir().or_else(|| {
+        env::var("HOME")
+            .ok()
+            .map(|home| PathBuf::from(home).join(".config"))
+    });
+    let config_root = config_root.context("missing config dir")?;
+    let dir = config_root.join("openagents").join("autopilot-desktop");
+    fs::create_dir_all(&dir).context("create moltbook cache dir")?;
+    Ok(dir.join(MOLTBOOK_CACHE_DB))
+}
+
+fn moltbook_cache_connection() -> Result<Connection> {
+    let path = moltbook_cache_path()?;
+    let conn = Connection::open(path).context("open moltbook cache db")?;
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS moltbook_posts (
+            id TEXT PRIMARY KEY,
+            title TEXT,
+            content_preview TEXT,
+            author_name TEXT,
+            score INTEGER,
+            comment_count INTEGER,
+            created_at TEXT,
+            submolt TEXT,
+            ingested_at INTEGER
+        );
+        CREATE INDEX IF NOT EXISTS idx_moltbook_posts_created ON moltbook_posts(created_at);
+        CREATE INDEX IF NOT EXISTS idx_moltbook_posts_ingested ON moltbook_posts(ingested_at);",
+    )
+    .context("init moltbook cache schema")?;
+    Ok(conn)
+}
+
+fn load_moltbook_cache(limit: usize) -> Result<Vec<MoltbookPostSummary>> {
+    let conn = moltbook_cache_connection()?;
+    let mut stmt = conn.prepare(
+        "SELECT id, title, content_preview, author_name, score, comment_count, created_at, submolt
+         FROM moltbook_posts
+         ORDER BY
+           CASE WHEN created_at IS NULL OR created_at = '' THEN 1 ELSE 0 END,
+           created_at DESC,
+           ingested_at DESC
+         LIMIT ?1",
+    )?;
+    let rows = stmt.query_map(params![limit as i64], |row| {
+        Ok(MoltbookPostSummary {
+            id: row.get(0)?,
+            title: row.get(1)?,
+            content_preview: row.get(2)?,
+            author_name: row.get(3)?,
+            score: row.get(4)?,
+            comment_count: row.get(5)?,
+            created_at: row.get(6)?,
+            submolt: row.get(7)?,
+        })
+    })?;
+    let mut results = Vec::new();
+    for row in rows {
+        results.push(row?);
+    }
+    Ok(results)
+}
+
+fn store_moltbook_cache(posts: &[MoltbookPostSummary]) -> Result<()> {
+    if posts.is_empty() {
+        return Ok(());
+    }
+    let mut conn = moltbook_cache_connection()?;
+    let tx = conn.transaction()?;
+    let now = unix_timestamp();
+    {
+        let mut stmt = tx.prepare(
+            "INSERT INTO moltbook_posts
+                (id, title, content_preview, author_name, score, comment_count, created_at, submolt, ingested_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+             ON CONFLICT(id) DO UPDATE SET
+                title = excluded.title,
+                content_preview = excluded.content_preview,
+                author_name = excluded.author_name,
+                score = excluded.score,
+                comment_count = excluded.comment_count,
+                created_at = excluded.created_at,
+                submolt = excluded.submolt,
+                ingested_at = excluded.ingested_at",
+        )?;
+        for post in posts {
+            stmt.execute(params![
+                post.id,
+                post.title,
+                post.content_preview,
+                post.author_name,
+                post.score,
+                post.comment_count,
+                post.created_at,
+                post.submolt,
+                now
+            ])?;
+        }
+    }
+    tx.commit()?;
+    Ok(())
+}
+
+fn merge_moltbook_posts(
+    mut fresh: Vec<MoltbookPostSummary>,
+    cached: Vec<MoltbookPostSummary>,
+) -> Vec<MoltbookPostSummary> {
+    let mut map: HashMap<String, MoltbookPostSummary> = HashMap::new();
+    for post in cached {
+        map.entry(post.id.clone()).or_insert(post);
+    }
+    for post in fresh.drain(..) {
+        map.insert(post.id.clone(), post);
+    }
+    let mut merged: Vec<MoltbookPostSummary> = map.into_values().collect();
+    merged.sort_by(|a, b| {
+        let a_key = (
+            a.created_at.is_none(),
+            a.created_at.clone().unwrap_or_default(),
+        );
+        let b_key = (
+            b.created_at.is_none(),
+            b.created_at.clone().unwrap_or_default(),
+        );
+        b_key.cmp(&a_key)
+    });
+    if merged.len() > MOLTBOOK_CACHE_LIMIT {
+        merged.truncate(MOLTBOOK_CACHE_LIMIT);
+    }
+    merged
 }
 
 fn trimmed_env_url(key: &str) -> Option<String> {
