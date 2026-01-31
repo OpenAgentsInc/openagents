@@ -12,6 +12,13 @@ const siteUrl = process.env.SITE_URL;
 
 export const authComponent = createClient<DataModel>(components.betterAuth);
 
+/** Origins allowed for CORS (frontend that calls Convex auth). */
+const trustedOrigins = [
+  siteUrl,
+  "http://localhost:4321",
+  "http://127.0.0.1:4321",
+].filter((o): o is string => Boolean(o));
+
 export const createAuthOptions = (ctx: GenericCtx<DataModel>): BetterAuthOptions => ({
   baseURL: siteUrl,
   secret: process.env.BETTER_AUTH_SECRET,
@@ -19,6 +26,7 @@ export const createAuthOptions = (ctx: GenericCtx<DataModel>): BetterAuthOptions
   emailAndPassword: {
     enabled: true,
   },
+  trustedOrigins,
   plugins: [convex({ authConfig })],
 });
 
