@@ -6683,8 +6683,7 @@ fn paint_moltbook_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintCon
     let text_size = theme::font_size::XS;
     let row_height = 20.0;
 
-    let mut content_width = (bounds.size.width * 0.9).min(520.0).max(320.0);
-    content_width = content_width.min(bounds.size.width - padding * 2.0);
+    let content_width = (bounds.size.width - padding * 2.0).max(320.0);
     let content_bounds = centered_column_bounds(bounds, content_width, padding);
 
     root.moltbook_refresh_bounds = Bounds::ZERO;
