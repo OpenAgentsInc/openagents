@@ -2214,7 +2214,7 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
                                     let _ = proxy.send_event(AppEvent::MoltbookLog { message: msg });
                                 };
                                 let Some(api_key) = moltbook_api_key() else {
-                                    log("Moltbook: no API key. Set MOLTBOOK_API_KEY or ~/.config/moltbook/credentials.json".to_string());
+                                    log("Moltbook: no API key. Set MOLTBOOK_API_KEY or ~/.config/moltbook/credentials.json (or ~/.config/moltbook)".to_string());
                                     return;
                                 };
                                 let proxy_base = moltbook_proxy_base();
@@ -2447,9 +2447,13 @@ fn moltbook_api_key() -> Option<String> {
         }
     }
     let home = env::var("HOME").ok()?;
-    let path = Path::new(&home).join(".config/moltbook/credentials.json");
-    let data = fs::read_to_string(&path).ok()?;
-    let json: Value = serde_json::from_str(&data).ok()?;
+    let config_dir = Path::new(&home).join(".config/moltbook");
+    let json: Value = match fs::read_to_string(config_dir.join("credentials.json"))
+        .or_else(|_| fs::read_to_string(&config_dir))
+    {
+        Ok(data) => serde_json::from_str(&data).ok()?,
+        Err(_) => return None,
+    };
     json.get("api_key")
         .and_then(|v| v.as_str())
         .map(|s| s.to_string())
