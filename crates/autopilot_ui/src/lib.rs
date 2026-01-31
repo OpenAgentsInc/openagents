@@ -6831,7 +6831,8 @@ impl MoltbookPostView {
 impl Component for MoltbookPostView {
     fn paint(&mut self, bounds: Bounds, cx: &mut PaintContext) {
         let padding = 16.0;
-        let gap = 6.0;
+        let title_gap = 6.0;
+        let meta_gap = 12.0;
         let title_size = theme::font_size::SM;
         let meta_size = theme::font_size::XS;
 
@@ -6847,7 +6848,7 @@ impl Component for MoltbookPostView {
         let title_h = title_h.unwrap_or(title_size + 6.0);
         let title_bounds = Bounds::new(inner_x, y, inner_width, title_h);
         title_text.paint(title_bounds, cx);
-        y += title_h + gap;
+        y += title_h + title_gap;
 
         if !self.meta.is_empty() {
             let mut meta_text = Text::new(self.meta.as_str())
@@ -6857,7 +6858,7 @@ impl Component for MoltbookPostView {
             let meta_h = meta_h.unwrap_or(meta_size + 4.0);
             let meta_bounds = Bounds::new(inner_x, y, inner_width, meta_h);
             meta_text.paint(meta_bounds, cx);
-            y += meta_h + gap;
+            y += meta_h + meta_gap;
         }
 
         let renderer = MarkdownRenderer::with_config(self.markdown_config.clone());
@@ -7196,7 +7197,8 @@ fn paint_moltbook_post_pane(
     };
 
     let padding = 16.0;
-    let gap = 6.0;
+    let title_gap = 6.0;
+    let meta_gap = 12.0;
     let title_size = theme::font_size::SM;
     let meta_size = theme::font_size::XS;
     let inner_width = (bounds.size.width - padding * 2.0).max(0.0);
@@ -7220,9 +7222,9 @@ fn paint_moltbook_post_pane(
     let renderer = MarkdownRenderer::with_config(post_pane.markdown_config.clone());
     let body_size = renderer.measure(&post_pane.markdown, inner_width, &mut cx.text);
 
-    let mut content_height = padding + title_h + gap;
+    let mut content_height = padding + title_h + title_gap;
     if meta_h > 0.0 {
-        content_height += meta_h + gap;
+        content_height += meta_h + meta_gap;
     }
     content_height += body_size.height + padding;
     let content_height = content_height.max(bounds.size.height);
