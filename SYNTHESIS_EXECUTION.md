@@ -22,11 +22,11 @@ For the full vision, see [SYNTHESIS.md](./SYNTHESIS.md). For the agent OS concep
 | Pylon local node | ✅ Implemented | `crates/pylon/src/` |
 | DSPy decision layer | ✅ Implemented | `crates/dsrs/src/`, `crates/adjutant/src/dspy/` |
 | Lightning/Spark payments | 🔄 Partial | `crates/spark/` (Pylon wallet init); `apps/spark-api/` (stub) |
-| **Open Protocols Launch (Phases 1–5)** | **Phases 1–3 done** | **`docs/OPEN_PROTOCOLS_LAUNCH_PLAN.md`** — web+API parity, wallet attach API, Nostr mirror pipeline. Phase 4 (agent protocol tools) next. |
+| **Open Protocols Launch (Phases 1–5)** | **Phases 1–4 done** | **`docs/OPEN_PROTOCOLS_LAUNCH_PLAN.md`** — web+API parity, wallet attach API, Nostr mirror, agent protocol tools (crates + CLI + docs). Phase 5 (shared data) next. |
 
 **Legend:** ✅ Implemented | 🔄 Partial/In Progress | ⏳ Planned/Not Started
 
-**Open Protocols status:** See [docs/OPEN_PROTOCOLS_LAUNCH_PLAN.md](docs/OPEN_PROTOCOLS_LAUNCH_PLAN.md) for full phase status (Phases 1–3 done; 4–5 next).
+**Open Protocols status:** See [docs/OPEN_PROTOCOLS_LAUNCH_PLAN.md](docs/OPEN_PROTOCOLS_LAUNCH_PLAN.md) for full phase status (Phases 1–4 done; Phase 5 next). Agent-facing Nostr + Spark: [docs/OPEN_PROTOCOLS_PHASE4_AGENT_TOOLS.md](docs/OPEN_PROTOCOLS_PHASE4_AGENT_TOOLS.md).
 
 ---
 
