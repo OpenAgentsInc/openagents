@@ -930,6 +930,7 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
             let workspace_id_full_auto = workspace_id.clone();
             let reply_targets_notifications = moltbook_reply_targets.clone();
             let proxy_reply = proxy.clone();
+            let client_reply = client.clone();
             tokio::spawn(async move {
                 let mut notification_rx = channels.notifications;
                 while let Some(notification) = notification_rx.recv().await {
@@ -1037,18 +1038,58 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
                             };
                             if let Some(target) = target {
                                 let proxy = proxy_reply.clone();
+                                let client = client_reply.clone();
+                                let thread_id = thread_id.to_string();
                                 tokio::spawn(async move {
-                                    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
-                                    if let Err(err) =
-                                        load_moltbook_comments(proxy.clone(), &target.post_id)
+                                    let mut reply_text = None;
+                                    for _ in 0..5 {
+                                        match fetch_moltbook_reply_text(client.as_ref(), &thread_id)
                                             .await
-                                    {
-                                        let _ = proxy.send_event(AppEvent::MoltbookLog {
-                                            message: format!(
-                                                "Moltbook reply refresh failed: {err}"
-                                            ),
-                                        });
+                                        {
+                                            Ok(Some(text)) => {
+                                                reply_text = Some(text);
+                                                break;
+                                            }
+                                            Ok(None) => {}
+                                            Err(err) => {
+                                                let _ = proxy.send_event(AppEvent::MoltbookLog {
+                                                    message: format!(
+                                                        "Moltbook reply fetch failed: {err}"
+                                                    ),
+                                                });
+                                                break;
+                                            }
+                                        }
+                                        tokio::time::sleep(std::time::Duration::from_secs(1))
+                                            .await;
                                     }
+
+                                    if let Some(text) = reply_text {
+                                        let reply_body = extract_moltbook_reply_body(&text)
+                                            .unwrap_or_else(|| sanitize_moltbook_reply(&text));
+                                        if looks_like_refusal(&reply_body) {
+                                            let _ = proxy.send_event(AppEvent::MoltbookLog {
+                                                message: "Moltbook reply was not posted (assistant refused).".to_string(),
+                                            });
+                                        } else if !reply_body.trim().is_empty() {
+                                            if let Err(err) = post_moltbook_reply_comment(
+                                                proxy.clone(),
+                                                &target.post_id,
+                                                &reply_body,
+                                            )
+                                            .await
+                                            {
+                                                let _ = proxy.send_event(AppEvent::MoltbookLog {
+                                                    message: format!(
+                                                        "Moltbook reply post failed: {err}"
+                                                    ),
+                                                });
+                                            }
+                                        }
+                                    }
+
+                                    let _ = load_moltbook_comments(proxy.clone(), &target.post_id)
+                                        .await;
                                 });
                             }
                         }
@@ -2968,6 +3009,173 @@ fn moltbook_comment_summary(comment: moltbook::Comment) -> MoltbookCommentSummar
     }
 }
 
+fn extract_message_text(item: &Value) -> Option<String> {
+    if let Some(text) = item.get("text").and_then(|t| t.as_str()) {
+        return Some(text.to_string());
+    }
+
+    if let Some(content) = item.get("content").and_then(|c| c.as_array()) {
+        for entry in content {
+            if let Some(text) = entry.get("text").and_then(|t| t.as_str()) {
+                return Some(text.to_string());
+            }
+        }
+    }
+
+    None
+}
+
+fn extract_assistant_reply(thread: &codex_client::ThreadSnapshot) -> Option<String> {
+    for turn in thread.turns.iter().rev() {
+        for item in turn.items.iter().rev() {
+            let item_type = item.get("type").and_then(|v| v.as_str()).unwrap_or("");
+            let role = item.get("role").and_then(|v| v.as_str()).unwrap_or("");
+            if matches!(
+                item_type,
+                "AgentMessage" | "agentMessage" | "assistantMessage" | "assistant"
+            ) || role == "assistant"
+            {
+                if let Some(text) = extract_message_text(item) {
+                    let trimmed = text.trim();
+                    if !trimmed.is_empty() {
+                        return Some(trimmed.to_string());
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
+fn sanitize_moltbook_reply(text: &str) -> String {
+    let mut trimmed = text.trim().to_string();
+    if trimmed.starts_with("```") {
+        trimmed = trimmed.trim_matches('`').trim().to_string();
+    }
+    trimmed
+}
+
+fn extract_moltbook_reply_body(text: &str) -> Option<String> {
+    let markers = [
+        "CONTENT:",
+        "Draft comment content I attempted to post:",
+        "Draft comment content:",
+    ];
+    for marker in markers {
+        if let Some(index) = text.find(marker) {
+            let mut slice = &text[index + marker.len()..];
+            slice = slice.trim_start_matches([':', ' ', '\n']);
+            let mut out = slice.trim().to_string();
+            if out.starts_with("```") {
+                out = out.trim_matches('`').trim().to_string();
+            }
+            if out.starts_with('"') && out.ends_with('"') && out.len() >= 2 {
+                out = out.trim_matches('"').to_string();
+            }
+            if !out.is_empty() {
+                return Some(out);
+            }
+        }
+    }
+    None
+}
+
+fn looks_like_refusal(text: &str) -> bool {
+    let lower = text.to_lowercase();
+    lower.contains("i can't")
+        || lower.contains("i cannot")
+        || lower.contains("i’m sorry")
+        || lower.contains("i am sorry")
+        || lower.contains("cannot retrieve")
+}
+
+async fn fetch_moltbook_reply_text(
+    client: &AppServerClient,
+    thread_id: &str,
+) -> Result<Option<String>> {
+    let response = client
+        .thread_resume(ThreadResumeParams {
+            thread_id: thread_id.to_string(),
+            ..Default::default()
+        })
+        .await?;
+    Ok(extract_assistant_reply(&response.thread))
+}
+
+async fn resolve_moltbook_post_url(
+    post_id: &str,
+    proxy_client: Option<&MoltbookClient>,
+    live_client: Option<&MoltbookClient>,
+) -> Option<String> {
+    if let Some(client) = proxy_client {
+        if let Ok(post) = client.posts_get(post_id).await {
+            if let Some(url) = post.url {
+                return Some(url);
+            }
+        }
+    }
+    if let Some(client) = live_client {
+        if let Ok(post) = client.posts_get(post_id).await {
+            if let Some(url) = post.url {
+                return Some(url);
+            }
+        }
+    }
+    None
+}
+
+async fn post_moltbook_reply_comment(
+    proxy: EventLoopProxy<AppEvent>,
+    post_id: &str,
+    reply_text: &str,
+) -> Result<()> {
+    let Some(api_key) = moltbook_api_key() else {
+        let _ = proxy.send_event(AppEvent::MoltbookLog {
+            message: "Moltbook reply failed: missing API key.".to_string(),
+        });
+        return Ok(());
+    };
+    let proxy_client =
+        MoltbookClient::with_base_url(moltbook_proxy_base(), Some(api_key.clone())).ok();
+    let live_client =
+        MoltbookClient::with_base_url(moltbook_live_base(), Some(api_key.clone())).ok();
+
+    let request = CreateCommentRequest {
+        content: reply_text.to_string(),
+        parent_id: None,
+    };
+    let comment = if let Some(client) = proxy_client.as_ref() {
+        client.comments_create(post_id, request.clone()).await
+    } else if let Some(client) = live_client.as_ref() {
+        client.comments_create(post_id, request.clone()).await
+    } else {
+        Err(MoltbookError::Api {
+            status: 0,
+            error: "No Moltbook client".to_string(),
+            hint: None,
+        })
+    }?;
+
+    let post_url = resolve_moltbook_post_url(
+        post_id,
+        proxy_client.as_ref(),
+        live_client.as_ref(),
+    )
+    .await
+    .unwrap_or_else(|| format!("https://www.moltbook.com/posts/{post_id}"));
+
+    let _ = proxy.send_event(AppEvent::MoltbookLog {
+        message: format!(
+            "Posted reply on Moltbook: {post_url} (comment {}).",
+            comment.id
+        ),
+    });
+
+    let _ = load_moltbook_comments(proxy, post_id).await;
+
+    Ok(())
+}
+
 async fn load_moltbook_comments(proxy: EventLoopProxy<AppEvent>, post_id: &str) -> Result<()> {
     let api_key = moltbook_api_key();
     let proxy_client = MoltbookClient::with_base_url(moltbook_proxy_base(), api_key.clone()).ok();
@@ -3027,50 +3235,17 @@ fn build_moltbook_reply_prompt(
     comments: &[MoltbookCommentSummary],
 ) -> String {
     let mut prompt = String::new();
-    prompt.push_str("You are drafting AND POSTING a public Moltbook reply.\n");
-    prompt.push_str("Use exactly TWO tool calls:\n");
-    prompt.push_str("1) curl -fsSL https://raw.githubusercontent.com/OpenAgentsInc/openagents/refs/heads/main/MOLTBOOK.md\n");
-    prompt.push_str("2) Run ONE python script that reads the API key, posts the comment, and prints the post URL.\n");
-    prompt.push_str("Do not run ls/rg/cat or other commands.\n");
-    prompt.push_str("You MUST look up the API key and perform the POST yourself.\n");
-    prompt.push_str("Use API base $OPENAGENTS_MOLTBOOK_API_BASE if set, otherwise https://openagents.com/api/moltbook/api.\n");
-    prompt.push_str("Use this template and fill in CONTENT only:\n");
-    prompt.push_str("python - <<'PY'\n");
-    prompt.push_str("import json, os, pathlib, urllib.request\n");
-    prompt.push_str(&format!("post_id = \"{}\"\n", post_id));
-    prompt.push_str("base = os.environ.get(\"OPENAGENTS_MOLTBOOK_API_BASE\") or \"https://openagents.com/api/moltbook/api\"\n");
-    prompt.push_str("key = os.environ.get(\"MOLTBOOK_API_KEY\")\n");
-    prompt.push_str("if not key:\n");
-    prompt.push_str("    cred = pathlib.Path(\"~/.config/moltbook/credentials.json\").expanduser()\n");
-    prompt.push_str("    if cred.exists():\n");
-    prompt.push_str("        key = json.loads(cred.read_text()).get(\"api_key\", \"\")\n");
-    prompt.push_str("    else:\n");
-    prompt.push_str("        fallback = pathlib.Path(\"~/.config/moltbook\").expanduser()\n");
-    prompt.push_str("        if fallback.is_file():\n");
-    prompt.push_str("            key = json.loads(fallback.read_text()).get(\"api_key\", \"\")\n");
-    prompt.push_str("if not key:\n");
-    prompt.push_str("    raise SystemExit(\"Missing MOLTBOOK_API_KEY; set env var or create ~/.config/moltbook/credentials.json\")\n");
-    prompt.push_str("def request(method, url, payload=None):\n");
-    prompt.push_str("    req = urllib.request.Request(url, method=method)\n");
-    prompt.push_str("    req.add_header(\"Authorization\", f\"Bearer {key}\")\n");
-    prompt.push_str("    if payload is not None:\n");
-    prompt.push_str("        data = json.dumps(payload).encode()\n");
-    prompt.push_str("        req.add_header(\"Content-Type\", \"application/json\")\n");
-    prompt.push_str("        req.data = data\n");
-    prompt.push_str("    with urllib.request.urlopen(req) as resp:\n");
-    prompt.push_str("        return json.loads(resp.read().decode())\n");
-    prompt.push_str("post = request(\"GET\", f\"{base}/posts/{post_id}\")\n");
-    prompt.push_str("post_url = post.get(\"url\") or f\"https://www.moltbook.com/posts/{post_id}\"\n");
-    prompt.push_str(
-        "comment = request(\"POST\", f\"{base}/posts/{post_id}/comments\", {\"content\": \"CONTENT\"})\n",
-    );
-    prompt.push_str("print(f\"Posted {post_url} (comment {comment.get('id')})\")\n");
-    prompt.push_str("PY\n");
+    prompt.push_str("You are drafting a public Moltbook reply.\n");
+    prompt.push_str("Use at most ONE tool call, only for this:\n");
+    prompt.push_str("curl -fsSL https://raw.githubusercontent.com/OpenAgentsInc/openagents/refs/heads/main/MOLTBOOK.md\n");
+    prompt.push_str("Do not run any other commands.\n");
+    prompt.push_str("After reading, output ONLY the reply text (no extra commentary).\n");
+    prompt.push_str("Do not mention tools, keys, or APIs.\n");
     prompt.push_str("Do not pause or ask for confirmation.\n");
     prompt.push_str("Keep it concise, helpful, and aligned with the post.\n\n");
 
+    prompt.push_str(&format!("Post ID: {post_id}\n"));
     if let Some(post) = post {
-        prompt.push_str(&format!("Post ID: {}\n", post.id));
         let title = post.title.as_deref().unwrap_or("(no title)");
         let author = post.author_name.as_deref().unwrap_or("?");
         let submolt = post.submolt.as_deref().unwrap_or("");
