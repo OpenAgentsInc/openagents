@@ -68,6 +68,25 @@ npx wrangler pages project create web --production-branch main
 
 Live URL (dev): https://web-ct8.pages.dev (or the deployment URL from `npm run deploy`). Add a custom domain later in Dashboard → Pages → web → Custom domains.
 
+## Better Auth (Option A: direct to Convex)
+
+Auth uses [Better Auth](https://better-auth.com) with the [Convex component](https://www.npmjs.com/package/@convex-dev/better-auth). The client talks **directly** to your Convex HTTP URL (no proxy).
+
+**Convex env (set once):**
+
+```sh
+npx convex env set BETTER_AUTH_SECRET=$(openssl rand -base64 32)
+npx convex env set SITE_URL http://localhost:4321   # or your production URL
+```
+
+**Local `.env.local`** (created by `npx convex dev`; add):
+
+- `PUBLIC_CONVEX_SITE_URL` — same as your Convex deployment but with `.convex.site` (e.g. `https://blessed-warbler-385.convex.site`). Required for auth client (Option A).
+
+Deploy script sets both `CONVEX_URL` and `PUBLIC_CONVEX_SITE_URL` for prod builds.
+
+See [docs/BETTER_AUTH_CONVEX_ASTRO.md](docs/BETTER_AUTH_CONVEX_ASTRO.md) for Astro vs Next.js.
+
 ## Installation
 
 ```sh

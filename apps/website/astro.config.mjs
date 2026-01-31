@@ -22,7 +22,11 @@ export default defineConfig({
   redirects: {
     '/sign-in': '/login',
     '/login/': '/login',
-    '/signup/': '/signup',
+    '/sign-up': '/register',
+    '/sign-up/': '/register',
+    '/signup': '/register',
+    '/signup/': '/register',
+    '/register/': '/register',
   },
   vite: {
     resolve: {

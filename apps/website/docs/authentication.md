@@ -55,12 +55,12 @@ BETTER_AUTH_DATABASE_URL=
 - **API route**: `src/pages/api/auth/[...all].ts` — mounts Better Auth at `/api/auth/*`; uses `createAuth(runtime.env.DB)` when `DB` is present, else default `auth`.
 - **Client**: `src/lib/auth-client.ts` — `createAuthClient` with `baseURL` from `PUBLIC_SITE_URL`; exports `signIn`, `signOut`, `signUp`, `getSession` for use in browser scripts.
 
-## Sign-in / sign-up pages
+## Login / register pages
 
 - **`/login`** — Email/password form + "Log in with GitHub". Uses `signIn.email()` and `signIn.social({ provider: 'github' })`.
-- **`/sign-up`** — Name, email, password form + "Sign up with GitHub". Uses `signUp.email()` and `signIn.social()` for GitHub.
+- **`/register`** — Name, email, password form + "Register with GitHub". Uses `signUp.email()` and `signIn.social()` for GitHub.
 
-## Header sign-in / sign-out
+## Header login / sign-out
 
 The header uses a client script that calls `getSession()`. If there is a session, it shows “Sign out” (calls `signOut()` then reloads). If not, it shows “Sign in with GitHub” linking to `/login`.
 

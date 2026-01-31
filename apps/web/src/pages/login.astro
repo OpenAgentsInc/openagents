@@ -1,0 +1,14 @@
+---
+import Layout from "../layouts/Layout.astro";
+import SignInForm from "../components/SignInForm.tsx";
+---
+
+<Layout>
+  <main class="max-w-md mx-auto px-4 py-12">
+    <h1 class="text-2xl font-bold mb-6">Sign in</h1>
+    <SignInForm client:load />
+    <p class="mt-4 text-sm text-gray-600">
+      No account? <a href="/register" class="text-indigo-600 hover:text-indigo-800">Sign up</a>
+    </p>
+  </main>
+</Layout>
