@@ -31,8 +31,8 @@ use wgpui::scroll::{ScrollContainer, ScrollDirection, ScrollRegion};
 use wgpui::{
     Bounds, Button, ButtonVariant, Component, Cursor, Dropdown, DropdownOption, EventResult, Hsla,
     LayoutEngine, LayoutStyle, MarkdownConfig, MarkdownDocument, MarkdownView, MouseButton,
-    PaintContext, Point, Quad, ScrollView, Size, StreamingMarkdown, copy_to_clipboard, length, px,
-    text::FontStyle, theme,
+    PaintContext, Point, Quad, ScrollView, Size, StreamingMarkdown, copy_to_clipboard, grid_bounds,
+    length, px, text::FontStyle, theme,
 };
 
 pub mod shortcuts;
@@ -6549,31 +6549,25 @@ fn paint_nip90_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintContex
 #[derive(Clone, Debug)]
 struct MoltbookFeedRow {
     title: String,
+    meta: String,
     preview: String,
-    title_height: f32,
-    preview_height: f32,
-    preview_gap: f32,
-}
-
-impl MoltbookFeedRow {
-    fn block_height(&self) -> f32 {
-        self.title_height + self.preview_height + self.preview_gap
-    }
 }
 
 struct MoltbookFeedView {
     rows: Vec<MoltbookFeedRow>,
+    card_size: f32,
+    gap: f32,
     font_size: f32,
-    row_gap: f32,
     empty_message: String,
 }
 
 impl MoltbookFeedView {
-    fn new(rows: Vec<MoltbookFeedRow>, font_size: f32, row_gap: f32) -> Self {
+    fn new(rows: Vec<MoltbookFeedRow>, card_size: f32, gap: f32, font_size: f32) -> Self {
         Self {
             rows,
+            card_size,
+            gap,
             font_size,
-            row_gap,
             empty_message: "Refresh to load feed.".to_string(),
         }
     }
@@ -6589,34 +6583,97 @@ impl Component for MoltbookFeedView {
             return;
         }
 
-        let mut y = bounds.origin.y;
-        for (idx, row) in self.rows.iter().enumerate() {
-            let header_bounds =
-                Bounds::new(bounds.origin.x, y, bounds.size.width, row.title_height);
-            Text::new(row.title.as_str())
+        let card_size = self.card_size.max(0.0);
+        if card_size <= 0.0 {
+            return;
+        }
+        let card_bounds = grid_bounds(
+            bounds,
+            Size::new(card_size, card_size),
+            self.rows.len(),
+            self.gap,
+        );
+        let padding = 10.0;
+        let title_gap = 4.0;
+        let meta_gap = 6.0;
+
+        for (row, card) in self.rows.iter().zip(card_bounds.iter()) {
+            cx.scene.draw_quad(
+                Quad::new(*card)
+                    .with_background(theme::bg::CODE)
+                    .with_border(theme::border::DEFAULT, 1.0)
+                    .with_corner_radius(10.0),
+            );
+            cx.scene.push_clip(*card);
+
+            let inner_width = (card.size.width - padding * 2.0).max(0.0);
+            let inner_height = (card.size.height - padding * 2.0).max(0.0);
+            let mut y = card.origin.y + padding;
+            let inner_x = card.origin.x + padding;
+            let inner_bottom = card.origin.y + padding + inner_height;
+
+            let mut title_text = Text::new(row.title.as_str())
                 .font_size(self.font_size)
                 .color(theme::text::PRIMARY)
-                .paint(header_bounds, cx);
+                .bold();
+            let (_, title_h) = title_text.size_hint_with_width(inner_width);
+            let title_h = title_h.unwrap_or(self.font_size + 6.0).min(inner_height);
+            let title_bounds = Bounds::new(inner_x, y, inner_width, title_h);
+            title_text.paint(title_bounds, cx);
+            y += title_h + title_gap;
 
-            if !row.preview.is_empty() {
-                let preview_bounds = Bounds::new(
-                    bounds.origin.x,
-                    y + row.title_height + row.preview_gap,
-                    bounds.size.width,
-                    row.preview_height,
-                );
+            let mut meta_text = Text::new(row.meta.as_str())
+                .font_size(self.font_size)
+                .color(theme::text::MUTED);
+            let (_, meta_h) = meta_text.size_hint_with_width(inner_width);
+            let meta_h = meta_h.unwrap_or(self.font_size + 4.0);
+            let meta_bounds = Bounds::new(inner_x, y, inner_width, meta_h);
+            meta_text.paint(meta_bounds, cx);
+            y += meta_h + meta_gap;
+
+            if y < inner_bottom && !row.preview.is_empty() {
+                let preview_bounds = Bounds::new(inner_x, y, inner_width, inner_bottom - y);
                 Text::new(row.preview.as_str())
                     .font_size(self.font_size)
-                    .color(theme::text::MUTED)
+                    .color(theme::text::SECONDARY)
                     .paint(preview_bounds, cx);
             }
 
-            y += row.block_height();
-            if idx + 1 < self.rows.len() {
-                y += self.row_gap;
-            }
+            cx.scene.pop_clip();
         }
     }
+}
+
+fn moltbook_card_layout(
+    available_width: f32,
+    count: usize,
+    min_size: f32,
+    max_size: f32,
+    gap: f32,
+) -> (f32, f32) {
+    if count == 0 {
+        return (min_size, 0.0);
+    }
+    let available = available_width.max(0.0);
+    let mut columns = ((available + gap) / (min_size + gap)).floor() as usize;
+    if columns == 0 {
+        columns = 1;
+    }
+    let mut card_size = (available - gap * (columns.saturating_sub(1) as f32)) / columns as f32;
+    if card_size > max_size {
+        let alt_columns = ((available + gap) / (max_size + gap)).floor() as usize;
+        if alt_columns > columns {
+            columns = alt_columns;
+            card_size = (available - gap * (columns.saturating_sub(1) as f32)) / columns as f32;
+        }
+    }
+    let rows = (count + columns - 1) / columns;
+    let height = if rows == 0 {
+        0.0
+    } else {
+        rows as f32 * card_size + gap * (rows.saturating_sub(1) as f32)
+    };
+    (card_size.max(0.0), height)
 }
 
 fn paint_moltbook_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintContext) {
@@ -6642,34 +6699,26 @@ fn paint_moltbook_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintCon
                 .score
                 .map(|s| s.to_string())
                 .unwrap_or_else(|| "—".to_string());
-            let header = format!("{author} · {title} · {score} ↑");
+            let comments = post
+                .comment_count
+                .map(|c| c.to_string())
+                .unwrap_or_else(|| "—".to_string());
+            let header = format!("{author} · {title}");
+            let meta = format!("{score} ↑ · {comments} comments");
             let preview = post
                 .content_preview
                 .as_deref()
                 .unwrap_or("")
                 .chars()
-                .take(140)
+                .take(200)
                 .collect::<String>();
-            let mut header_text = Text::new(header.as_str()).font_size(text_size);
-            let (_, header_h) = header_text.size_hint_with_width(content_bounds.size.width);
-            let title_height = header_h.unwrap_or(row_height).max(row_height);
-            let (preview_height, preview_gap) = if preview.is_empty() {
-                (0.0, 0.0)
-            } else {
-                let mut preview_text = Text::new(preview.as_str()).font_size(text_size);
-                let (_, preview_h) = preview_text.size_hint_with_width(content_bounds.size.width);
-                (preview_h.unwrap_or(row_height).max(row_height), 4.0)
-            };
             MoltbookFeedRow {
                 title: header,
+                meta,
                 preview,
-                title_height,
-                preview_height,
-                preview_gap,
             }
         })
         .collect::<Vec<_>>();
-    let feed_row_gap = 6.0;
 
     let mut steps: Vec<(MoltStep, f32)> = vec![
         (MoltStep::EngagementHeader, label_height),
@@ -6762,20 +6811,27 @@ fn paint_moltbook_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintCon
             }
             MoltStep::FeedItem => {
                 root.moltbook_feed_scroll_bounds = bounds;
-                let content_height = if feed_rows.is_empty() {
-                    row_height
-                } else {
-                    let rows_height: f32 =
-                        feed_rows.iter().map(MoltbookFeedRow::block_height).sum();
-                    rows_height + feed_row_gap * (feed_rows.len().saturating_sub(1) as f32)
-                };
+                let card_gap = 12.0;
+                let min_card = 220.0;
+                let max_card = 320.0;
+                let (card_size, mut content_height) = moltbook_card_layout(
+                    bounds.size.width,
+                    feed_rows.len(),
+                    min_card,
+                    max_card,
+                    card_gap,
+                );
+                if feed_rows.is_empty() {
+                    content_height = row_height;
+                }
                 let content_height = content_height.max(bounds.size.height);
                 root.moltbook_feed_scroll
                     .set_content_size(Size::new(bounds.size.width, content_height));
                 root.moltbook_feed_scroll.set_content(MoltbookFeedView::new(
                     feed_rows.clone(),
+                    card_size,
+                    card_gap,
                     text_size,
-                    feed_row_gap,
                 ));
                 root.moltbook_feed_scroll.paint(bounds, cx);
             }
