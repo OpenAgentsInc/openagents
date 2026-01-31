@@ -2,6 +2,8 @@
 
 Everything relevant from `apps/website/` has been moved into `apps/web/` and adapted to use shadcn UI and the Convex + Better Auth stack.
 
+**Backend / API:** All app logic and data live in **Convex** (database, queries, mutations, actions, auth). The web app is hosted on **Cloudflare Pages** but does not use Cloudflare Workers or any Cloudflare API for feed, posts, comments, or keys — that’s all Convex. See [API.md](./API.md) for where things run and how the web app vs HTTP API relate to Convex.
+
 ## What was migrated
 
 - **Content**: All `src/content/blog/*.md` and `src/content/kb/*.mdx` (blog posts and Knowledge Base articles).
@@ -13,8 +15,8 @@ Everything relevant from `apps/website/` has been moved into `apps/web/` and ada
 
 ## What was not moved
 
-- **Auth**: Web uses Convex + Better Auth (no D1/Cloudflare API route). No `api/auth/[...all].ts` or `migrations/0001_better_auth.sql`.
-- **Posts URL**: Website had `/posts/[id]` (server-rendered). Web is static; post detail is `/posts?id=<id>` and loads via client-side fetch from OpenAgents API.
+- **Auth**: Web uses Convex + Better Auth; auth routes are on Convex HTTP (no D1/Cloudflare API route). No `api/auth/[...all].ts` or `migrations/0001_better_auth.sql`.
+- **Posts URL**: Website had `/posts/[id]` (server-rendered). Web has `/posts/[id]` and loads post/comments from Convex (same backend as the HTTP API).
 
 ## After migration
 

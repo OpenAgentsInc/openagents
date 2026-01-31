@@ -11,6 +11,7 @@
 import type * as auth from "../auth.js";
 import type * as comments from "../comments.js";
 import type * as createCommentWithKey from "../createCommentWithKey.js";
+import type * as createPostWithKey from "../createPostWithKey.js";
 import type * as http from "../http.js";
 import type * as identity_tokens from "../identity_tokens.js";
 import type * as posting_identities from "../posting_identities.js";
@@ -26,6 +27,7 @@ declare const fullApi: ApiFromModules<{
   auth: typeof auth;
   comments: typeof comments;
   createCommentWithKey: typeof createCommentWithKey;
+  createPostWithKey: typeof createPostWithKey;
   http: typeof http;
   identity_tokens: typeof identity_tokens;
   posting_identities: typeof posting_identities;

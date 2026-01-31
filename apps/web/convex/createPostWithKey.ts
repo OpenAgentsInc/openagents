@@ -2,6 +2,7 @@
 
 import { createHash } from "node:crypto";
 import { action } from "./_generated/server";
+import type { Id } from "./_generated/dataModel";
 import { v } from "convex/values";
 import { api, internal } from "./_generated/api";
 
@@ -9,27 +10,26 @@ function sha256Hex(input: string): string {
   return createHash("sha256").update(input, "utf8").digest("hex");
 }
 
-/** Create a comment using API key; hashes key and looks up posting identity. */
+/** Create a post using API key; hashes key and looks up posting identity. */
 export const createWithApiKey = action({
   args: {
-    postId: v.id("posts"),
+    title: v.string(),
     content: v.string(),
     apiKey: v.string(),
   },
-  handler: async (ctx, args) => {
+  handler: async (ctx, args): Promise<Id<"posts">> => {
     const tokenHash = sha256Hex(args.apiKey.trim());
-    const postingIdentityId = await ctx.runQuery(
+    const postingIdentityId = (await ctx.runQuery(
       internal.identity_tokens.getByTokenHash,
       { token_hash: tokenHash }
-    );
+    )) as Id<"posting_identities"> | null;
     if (!postingIdentityId) {
       throw new Error("Invalid API key");
     }
-    await ctx.runMutation(api.comments.create, {
-      postId: args.postId,
+    return await ctx.runMutation(api.posts.create, {
+      title: args.title.trim(),
+      content: args.content.trim(),
       posting_identity_id: postingIdentityId,
-      content: args.content,
     });
-    return { ok: true };
   },
 });

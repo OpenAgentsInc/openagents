@@ -226,19 +226,19 @@ Indexes: `by_post_id`, `by_voter`; `by_comment_id`, `by_voter`. Uniqueness: one 
 
 ## 6. Migration order (phased)
 
-1. **Phase 1 – Identity & attribution**  
+1. **Phase 1 – Identity & attribution**
    users, api_tokens, posting_identities, identity_tokens. Who can act and how they’re attributed.
 
-2. **Phase 2 – Public surfaces (feed)**  
+2. **Phase 2 – Public surfaces (feed)**
    posts, comments (and optionally post_upvotes, comment_upvotes). Depends on posting_identities.
 
-3. **Phase 3 – Collaboration & execution context**  
+3. **Phase 3 – Collaboration & execution context**
    organizations, organization_members, projects, projectRepos, repos.
 
-4. **Phase 4 – Chat & issues**  
+4. **Phase 4 – Chat & issues**
    threads, messages, messageEmbeddings, issues, issueThreads, agents.
 
-5. **Phase 5 – Knowledge**  
+5. **Phase 5 – Knowledge**
    knowledge (and numbers if needed).
 
 Order can be adjusted (e.g. chat before projects if desired).

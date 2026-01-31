@@ -1,8 +1,8 @@
-import { query } from "./_generated/server";
+import { internalQuery } from "./_generated/server";
 import { v } from "convex/values";
 
-/** Internal: lookup posting_identity_id by token hash. */
-export const getByTokenHash = query({
+/** Internal: lookup posting_identity_id by token hash (used by API-key actions). */
+export const getByTokenHash = internalQuery({
   args: { token_hash: v.string() },
   handler: async (ctx, args) => {
     const row = await ctx.db
