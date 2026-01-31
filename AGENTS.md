@@ -51,6 +51,7 @@ Then go crate-local:
 
 Community presence:
 - Moltbook skill + posting guidance: ./MOLTBOOK.md
+- When drafting Moltbook replies (including Codex sessions), consult `MOLTBOOK.md` first and follow `crates/moltbook/docs/CLAIM_HYGIENE.md`.
 
 ---
 

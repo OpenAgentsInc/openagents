@@ -1033,148 +1033,36 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
                         }
 
                         if let Some(thread_id) = thread_id_value.as_deref() {
-                            let target = {
-                                let mut guard = reply_targets_notifications.lock().await;
-                                guard.remove(thread_id)
+                            let has_target = {
+                                let guard = reply_targets_notifications.lock().await;
+                                guard.contains_key(thread_id)
                             };
-                            if let Some(target) = target {
+                            if has_target {
+                                let reply_targets = reply_targets_notifications.clone();
                                 let proxy = proxy_reply.clone();
                                 let client = client_reply.clone();
+                                let thread_id = thread_id.to_string();
                                 tokio::spawn(async move {
-                                    let response = client
-                                        .thread_resume(ThreadResumeParams {
-                                            thread_id: target.thread_id.clone(),
-                                            ..Default::default()
-                                        })
-                                        .await;
-                                    let thread = match response {
-                                        Ok(resp) => resp.thread,
+                                    match try_post_moltbook_reply(
+                                        reply_targets,
+                                        proxy.clone(),
+                                        client.as_ref(),
+                                        &thread_id,
+                                    )
+                                    .await
+                                    {
+                                        Ok(true) => {}
+                                        Ok(false) => {
+                                            let _ = proxy.send_event(AppEvent::MoltbookLog {
+                                                message:
+                                                    "Moltbook reply not ready yet; retrying..."
+                                                        .to_string(),
+                                            });
+                                        }
                                         Err(err) => {
                                             let _ = proxy.send_event(AppEvent::MoltbookLog {
                                                 message: format!(
                                                     "Moltbook reply thread error: {err}"
-                                                ),
-                                            });
-                                            return;
-                                        }
-                                    };
-                                    let Some(reply_text) = extract_assistant_reply(&thread) else {
-                                        let _ = proxy.send_event(AppEvent::MoltbookLog {
-                                            message: "Moltbook reply missing assistant text."
-                                                .to_string(),
-                                        });
-                                        return;
-                                    };
-                                    let api_key = moltbook_api_key();
-                                    let Some(api_key) = api_key else {
-                                        let _ = proxy.send_event(AppEvent::MoltbookLog {
-                                            message: "Moltbook reply failed: missing API key."
-                                                .to_string(),
-                                        });
-                                        return;
-                                    };
-                                    let proxy_client = MoltbookClient::with_base_url(
-                                        moltbook_proxy_base(),
-                                        Some(api_key.clone()),
-                                    )
-                                    .ok();
-                                    let live_client = MoltbookClient::with_base_url(
-                                        moltbook_live_base(),
-                                        Some(api_key.clone()),
-                                    )
-                                    .ok();
-
-                                    let reply_text = sanitize_moltbook_reply(&reply_text);
-                                    let request = CreateCommentRequest {
-                                        content: reply_text.clone(),
-                                        parent_id: None,
-                                    };
-
-                                    let post_result = if let Some(client) = proxy_client.as_ref() {
-                                        client
-                                            .comments_create(&target.post_id, request.clone())
-                                            .await
-                                            .map(Some)
-                                    } else {
-                                        Ok(None)
-                                    };
-                                    let comment = match post_result {
-                                        Ok(Some(comment)) => Ok(comment),
-                                        Ok(None) | Err(_) => {
-                                            if let Some(client) = live_client.as_ref() {
-                                                client
-                                                    .comments_create(
-                                                        &target.post_id,
-                                                        request.clone(),
-                                                    )
-                                                    .await
-                                            } else if let Err(err) = post_result {
-                                                Err(err)
-                                            } else {
-                                                Err(MoltbookError::Api {
-                                                    status: 0,
-                                                    error: "No Moltbook client available"
-                                                        .to_string(),
-                                                    hint: None,
-                                                })
-                                            }
-                                        }
-                                    };
-
-                                    match comment {
-                                        Ok(comment) => {
-                                            let _ = proxy.send_event(AppEvent::MoltbookLog {
-                                                message: format!(
-                                                    "Posted reply on Moltbook (comment {}).",
-                                                    comment.id
-                                                ),
-                                            });
-                                            if let Some(client) = proxy_client.as_ref() {
-                                                if let Ok(list) = client
-                                                    .comments_list(
-                                                        &target.post_id,
-                                                        CommentSort::Top,
-                                                        Some(200),
-                                                    )
-                                                    .await
-                                                {
-                                                    let summaries = list
-                                                        .into_iter()
-                                                        .map(moltbook_comment_summary)
-                                                        .collect::<Vec<_>>();
-                                                    let _ = proxy.send_event(
-                                                        AppEvent::MoltbookCommentsLoaded {
-                                                            post_id: target.post_id.clone(),
-                                                            comments: summaries,
-                                                        },
-                                                    );
-                                                }
-                                            } else if let Some(client) = live_client.as_ref() {
-                                                if let Ok(list) = client
-                                                    .comments_list(
-                                                        &target.post_id,
-                                                        CommentSort::Top,
-                                                        Some(200),
-                                                    )
-                                                    .await
-                                                {
-                                                    let summaries = list
-                                                        .into_iter()
-                                                        .map(moltbook_comment_summary)
-                                                        .collect::<Vec<_>>();
-                                                    let _ = proxy.send_event(
-                                                        AppEvent::MoltbookCommentsLoaded {
-                                                            post_id: target.post_id.clone(),
-                                                            comments: summaries,
-                                                        },
-                                                    );
-                                                }
-                                            }
-                                        }
-                                        Err(err) => {
-                                            let _ = proxy.send_event(AppEvent::MoltbookLog {
-                                                message: format!(
-                                                    "Moltbook reply post failed: {err}"
                                                 ),
                                             });
                                         }
@@ -1802,8 +1690,9 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
                                     return;
                                 }
 
+                                let thread_id_for_turn = thread_id.clone();
                                 let params = TurnStartParams {
-                                    thread_id,
+                                    thread_id: thread_id_for_turn,
                                     input: vec![UserInput::Text { text }],
                                     model,
                                     effort: reasoning.as_deref().and_then(parse_reasoning_effort),
@@ -2803,8 +2692,9 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
                                     message: "Generating Moltbook reply via Codex...".to_string(),
                                 });
 
+                                let thread_id_for_turn = thread_id.clone();
                                 let params = TurnStartParams {
-                                    thread_id,
+                                    thread_id: thread_id_for_turn,
                                     input: vec![UserInput::Text { text: prompt }],
                                     model: Some(DEFAULT_THREAD_MODEL.to_string()),
                                     effort: None,
@@ -2819,7 +2709,67 @@ fn spawn_event_bridge(proxy: EventLoopProxy<AppEvent>, action_rx: mpsc::Receiver
                                             "Moltbook reply start failed: {err}"
                                         ),
                                     });
+                                    let mut guard = reply_targets.lock().await;
+                                    guard.remove(&thread_id);
+                                    return;
                                 }
+
+                                let reply_targets_poll = reply_targets.clone();
+                                let proxy_poll = proxy.clone();
+                                let client_poll = client.clone();
+                                let thread_id_poll = thread_id.clone();
+                                tokio::spawn(async move {
+                                    let max_attempts = 15;
+                                    let mut attempts = 0;
+                                    loop {
+                                        tokio::time::sleep(std::time::Duration::from_secs(2))
+                                            .await;
+                                        attempts += 1;
+                                        let pending = {
+                                            let guard = reply_targets_poll.lock().await;
+                                            guard.contains_key(&thread_id_poll)
+                                        };
+                                        if !pending {
+                                            break;
+                                        }
+
+                                        match try_post_moltbook_reply(
+                                            reply_targets_poll.clone(),
+                                            proxy_poll.clone(),
+                                            client_poll.as_ref(),
+                                            &thread_id_poll,
+                                        )
+                                        .await
+                                        {
+                                            Ok(true) => return,
+                                            Ok(false) => {}
+                                            Err(err) => {
+                                                let _ = proxy_poll
+                                                    .send_event(AppEvent::MoltbookLog {
+                                                        message: format!(
+                                                            "Moltbook reply retry failed: {err}"
+                                                        ),
+                                                    });
+                                            }
+                                        }
+
+                                        if attempts >= max_attempts {
+                                            let removed = {
+                                                let mut guard = reply_targets_poll.lock().await;
+                                                guard.remove(&thread_id_poll)
+                                            };
+                                            if removed.is_some() {
+                                                let _ = proxy_poll
+                                                    .send_event(AppEvent::MoltbookLog {
+                                                        message:
+                                                            "Moltbook reply timed out; please retry."
+                                                                .to_string(),
+                                                    });
+                                            }
+                                            break;
+                                        }
+                                    }
+                                });
                             });
                         }
                         UserAction::MoltbookComment { post_id, text } => {
@@ -3169,7 +3119,12 @@ fn extract_assistant_reply(thread: &codex_client::ThreadSnapshot) -> Option<Stri
     for turn in thread.turns.iter().rev() {
         for item in turn.items.iter().rev() {
             let item_type = item.get("type").and_then(|v| v.as_str()).unwrap_or("");
-            if matches!(item_type, "AgentMessage" | "agentMessage" | "assistantMessage") {
+            let role = item.get("role").and_then(|v| v.as_str()).unwrap_or("");
+            if matches!(
+                item_type,
+                "AgentMessage" | "agentMessage" | "assistantMessage" | "assistant"
+            ) || role == "assistant"
+            {
                 if let Some(text) = extract_message_text(item) {
                     let trimmed = text.trim();
                     if !trimmed.is_empty() {
@@ -3190,6 +3145,116 @@ fn sanitize_moltbook_reply(text: &str) -> String {
     trimmed
 }
 
+async fn fetch_moltbook_reply_text(
+    client: &AppServerClient,
+    thread_id: &str,
+) -> Result<Option<String>> {
+    let response = client
+        .thread_resume(ThreadResumeParams {
+            thread_id: thread_id.to_string(),
+            ..Default::default()
+        })
+        .await?;
+    Ok(extract_assistant_reply(&response.thread))
+}
+
+async fn post_moltbook_reply_comment(
+    proxy: EventLoopProxy<AppEvent>,
+    post_id: String,
+    reply_text: String,
+) -> Result<()> {
+    let Some(api_key) = moltbook_api_key() else {
+        let _ = proxy.send_event(AppEvent::MoltbookLog {
+            message: "Moltbook reply failed: missing API key.".to_string(),
+        });
+        return Ok(());
+    };
+    let proxy_client =
+        MoltbookClient::with_base_url(moltbook_proxy_base(), Some(api_key.clone())).ok();
+    let live_client =
+        MoltbookClient::with_base_url(moltbook_live_base(), Some(api_key.clone())).ok();
+
+    let request = CreateCommentRequest {
+        content: reply_text.clone(),
+        parent_id: None,
+    };
+    let comment = if let Some(client) = proxy_client.as_ref() {
+        client.comments_create(&post_id, request.clone()).await
+    } else if let Some(client) = live_client.as_ref() {
+        client.comments_create(&post_id, request.clone()).await
+    } else {
+        Err(MoltbookError::Api {
+            status: 0,
+            error: "No Moltbook client".to_string(),
+            hint: None,
+        })
+    }?;
+
+    let _ = proxy.send_event(AppEvent::MoltbookLog {
+        message: format!("Posted reply on Moltbook (comment {}).", comment.id),
+    });
+
+    let comments = if let Some(client) = proxy_client.as_ref() {
+        client
+            .comments_list(&post_id, CommentSort::Top, Some(200))
+            .await
+    } else if let Some(client) = live_client.as_ref() {
+        client
+            .comments_list(&post_id, CommentSort::Top, Some(200))
+            .await
+    } else {
+        Err(MoltbookError::Api {
+            status: 0,
+            error: "No Moltbook client".to_string(),
+            hint: None,
+        })
+    };
+
+    if let Ok(list) = comments {
+        let summaries = list
+            .into_iter()
+            .map(moltbook_comment_summary)
+            .collect::<Vec<_>>();
+        let _ = proxy.send_event(AppEvent::MoltbookCommentsLoaded {
+            post_id,
+            comments: summaries,
+        });
+    }
+
+    Ok(())
+}
+
+async fn try_post_moltbook_reply(
+    reply_targets: Arc<tokio::sync::Mutex<HashMap<String, MoltbookReplyTarget>>>,
+    proxy: EventLoopProxy<AppEvent>,
+    client: &AppServerClient,
+    thread_id: &str,
+) -> Result<bool> {
+    let target = {
+        let guard = reply_targets.lock().await;
+        guard.get(thread_id).cloned()
+    };
+    let Some(target) = target else {
+        return Ok(false);
+    };
+
+    match fetch_moltbook_reply_text(client, &target.thread_id).await? {
+        Some(reply_text) => {
+            let reply_text = sanitize_moltbook_reply(&reply_text);
+            let removed = {
+                let mut guard = reply_targets.lock().await;
+                guard.remove(thread_id)
+            };
+            if removed.is_none() {
+                return Ok(false);
+            }
+            post_moltbook_reply_comment(proxy, target.post_id, reply_text).await?;
+            Ok(true)
+        }
+        None => Ok(false),
+    }
+}
+
 fn build_moltbook_reply_prompt(
     post: Option<&MoltbookPostSummary>,
     comments: &[MoltbookCommentSummary],
@@ -3197,6 +3262,7 @@ fn build_moltbook_reply_prompt(
     let mut prompt = String::new();
     prompt.push_str("You are drafting a public Moltbook reply.\n");
     prompt.push_str("Use this repo if needed to understand Moltbook reply behavior.\n");
+    prompt.push_str("If you need guidance, read MOLTBOOK.md first.\n");
     prompt.push_str("The app will post your reply via the Moltbook API after you respond.\n");
     prompt.push_str("Output ONLY the reply text with no extra commentary.\n");
     prompt.push_str("Keep it concise, helpful, and aligned with the post.\n\n");
