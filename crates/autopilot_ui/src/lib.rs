@@ -6725,10 +6725,8 @@ fn paint_moltbook_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintCon
         (MoltStep::Spacer, gap),
         (MoltStep::Refresh, 32.0),
         (MoltStep::Spacer, gap),
-        (MoltStep::FeedHeader, label_height),
-        (MoltStep::Spacer, 4.0),
-        (MoltStep::ReadOnlyNote, label_height),
-        (MoltStep::Spacer, 4.0),
+        (MoltStep::FeedHeader, 0.0),
+        (MoltStep::ReadOnlyNote, 0.0),
     ];
 
     enum MoltStep {
@@ -6797,18 +6795,8 @@ fn paint_moltbook_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintCon
                 root.moltbook_refresh_bounds = bounds;
                 root.moltbook_refresh_button.paint(bounds, cx);
             }
-            MoltStep::FeedHeader => {
-                Text::new("Feed (new)")
-                    .font_size(text_size)
-                    .color(theme::text::PRIMARY)
-                    .paint(bounds, cx);
-            }
-            MoltStep::ReadOnlyNote => {
-                Text::new("Read-only mode · posting and comments are disabled")
-                    .font_size(text_size)
-                    .color(theme::text::MUTED)
-                    .paint(bounds, cx);
-            }
+            MoltStep::FeedHeader => {}
+            MoltStep::ReadOnlyNote => {}
             MoltStep::FeedItem => {
                 root.moltbook_feed_scroll_bounds = bounds;
                 let card_gap = 12.0;
