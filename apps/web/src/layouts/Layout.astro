@@ -64,7 +64,7 @@ const canonicalURL = new URL(Astro.url.pathname, Astro.site ?? "https://web-ct8.
     {image && <meta property="twitter:image" content={new URL(image.src, siteOrigin).toString()} />}
   </head>
   <body class="bg-background text-foreground">
-    <div class="flex h-svh w-full flex-col overflow-hidden" transition:persist="app-shell">
+    <div class="flex h-svh w-full flex-col overflow-hidden">
       <AppShell client:load>
         <slot />
         <Footer />
