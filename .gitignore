@@ -157,6 +157,7 @@ docs/moltbook/state/*.txt
 crates/moltbook/docs/queue.jsonl
 crates/moltbook/docs/burst-*.txt
 crates/moltbook/docs/state/*.txt
+crates/moltbook/docs/state/*.list
 
 # Proptest regression files (generated during property-based testing)
 proptest-regressions/
