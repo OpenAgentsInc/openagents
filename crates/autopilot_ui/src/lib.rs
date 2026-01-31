@@ -2715,10 +2715,10 @@ impl MinimalRoot {
 
         let pending_moltbook_refresh = Rc::new(RefCell::new(false));
         let pending_moltbook_refresh_click = pending_moltbook_refresh.clone();
-        let moltbook_refresh_button = Button::new("Refresh feed")
+        let moltbook_refresh_button = Button::new("Refresh")
             .variant(ButtonVariant::Secondary)
             .font_size(theme::font_size::XS)
-            .padding(10.0, 6.0)
+            .padding(8.0, 4.0)
             .corner_radius(6.0)
             .on_click(move || {
                 *pending_moltbook_refresh_click.borrow_mut() = true;
@@ -5018,6 +5018,8 @@ impl Component for MinimalRoot {
         self.threads_load_more_bounds = Bounds::ZERO;
         self.event_scroll_bounds = Bounds::ZERO;
         self.keygen_bounds = Bounds::ZERO;
+        self.moltbook_refresh_bounds = Bounds::ZERO;
+        self.moltbook_feed_scroll_bounds = Bounds::ZERO;
         self.file_editor.path_bounds = Bounds::ZERO;
         self.file_editor.open_bounds = Bounds::ZERO;
         self.file_editor.reload_bounds = Bounds::ZERO;
@@ -5058,17 +5060,22 @@ impl Component for MinimalRoot {
             self.pane_bounds.insert(pane.id.clone(), pane_bounds);
 
             cx.scene.push_clip(pane_bounds);
-            let frame = self
-                .pane_frames
-                .entry(pane.id.clone())
-                .or_insert_with(PaneFrame::new);
-            frame.set_title(pane.title.clone());
-            frame.set_active(self.pane_store.is_active(&pane.id));
-            frame.set_dismissable(pane.dismissable);
-            frame.set_title_height(PANE_TITLE_HEIGHT);
-            frame.paint(pane_bounds, cx);
+            let (title_bounds, close_bounds, content_bounds) = {
+                let frame = self
+                    .pane_frames
+                    .entry(pane.id.clone())
+                    .or_insert_with(PaneFrame::new);
+                frame.set_title(pane.title.clone());
+                frame.set_active(self.pane_store.is_active(&pane.id));
+                frame.set_dismissable(pane.dismissable);
+                frame.set_title_height(PANE_TITLE_HEIGHT);
+                frame.paint(pane_bounds, cx);
+                (frame.title_bounds(), frame.close_bounds(), frame.content_bounds())
+            };
 
-            let content_bounds = frame.content_bounds();
+            if let PaneKind::Moltbook = pane.kind {
+                paint_moltbook_header(self, &pane.title, title_bounds, close_bounds, cx);
+            }
             match pane.kind {
                 PaneKind::Chat => {
                     if let Some(chat) = self.chat_panes.get_mut(&pane.id) {
@@ -6676,17 +6683,109 @@ fn moltbook_card_layout(
     (card_size.max(0.0), height)
 }
 
+fn moltbook_profile_line(root: &MinimalRoot) -> String {
+    root.moltbook_profile
+        .as_ref()
+        .map(|p| {
+            format!(
+                "{} · {} posts · {} comments",
+                p.agent_name, p.posts_count, p.comments_count
+            )
+        })
+        .unwrap_or_else(|| "Moltbook · 2 posts/hr · 50 comments/hr (strategy)".to_string())
+}
+
+fn moltbook_activity_line(root: &MinimalRoot) -> String {
+    root.moltbook_log
+        .last()
+        .cloned()
+        .unwrap_or_else(|| "No Moltbook activity yet.".to_string())
+}
+
+fn paint_moltbook_header(
+    root: &mut MinimalRoot,
+    pane_title: &str,
+    title_bounds: Bounds,
+    close_bounds: Bounds,
+    cx: &mut PaintContext,
+) {
+    let text_size = theme::font_size::XS;
+    let padding = 8.0;
+    let gap = 8.0;
+
+    let title_width = cx
+        .text
+        .measure_styled_mono(pane_title, text_size, FontStyle::default());
+    let left = title_bounds.origin.x + padding + title_width + gap;
+    let mut right = title_bounds.origin.x + title_bounds.size.width - padding;
+    if close_bounds.size.width > 0.0 {
+        right = close_bounds.origin.x - gap;
+    }
+    if right <= left + 8.0 {
+        root.moltbook_refresh_bounds = Bounds::ZERO;
+        return;
+    }
+
+    let header_bounds = Bounds::new(
+        left,
+        title_bounds.origin.y,
+        (right - left).max(0.0),
+        title_bounds.size.height,
+    );
+
+    let refresh_padding_x = 8.0;
+    let refresh_label = root.moltbook_refresh_button.label();
+    let refresh_width = (cx
+        .text
+        .measure_styled_mono(refresh_label, text_size, FontStyle::default())
+        + refresh_padding_x * 2.0)
+        .max(64.0);
+
+    let row_items = [
+        wgpui::RowItem::flex(1.0),
+        wgpui::RowItem::flex(1.0),
+        wgpui::RowItem::fixed(refresh_width),
+    ];
+    let row_bounds = aligned_row_bounds(
+        header_bounds,
+        header_bounds.size.height,
+        &row_items,
+        gap,
+        JustifyContent::FlexStart,
+        AlignItems::Center,
+    );
+    let profile_bounds = *row_bounds.get(0).unwrap_or(&header_bounds);
+    let activity_bounds = *row_bounds.get(1).unwrap_or(&header_bounds);
+    let refresh_bounds = *row_bounds.get(2).unwrap_or(&Bounds::ZERO);
+
+    cx.scene.push_clip(header_bounds);
+    Text::new(moltbook_profile_line(root))
+        .font_size(text_size)
+        .color(theme::text::MUTED)
+        .no_wrap()
+        .paint(profile_bounds, cx);
+    Text::new(moltbook_activity_line(root))
+        .font_size(text_size)
+        .color(theme::text::MUTED)
+        .no_wrap()
+        .paint(activity_bounds, cx);
+
+    if refresh_bounds.size.width > 0.0 {
+        root.moltbook_refresh_bounds = refresh_bounds;
+        root.moltbook_refresh_button.paint(refresh_bounds, cx);
+    } else {
+        root.moltbook_refresh_bounds = Bounds::ZERO;
+    }
+    cx.scene.pop_clip();
+}
+
 fn paint_moltbook_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintContext) {
     let padding = 16.0;
-    let label_height = 16.0;
-    let gap = 8.0;
     let text_size = theme::font_size::XS;
     let row_height = 20.0;
 
     let content_width = (bounds.size.width - padding * 2.0).max(320.0);
     let content_bounds = centered_column_bounds(bounds, content_width, padding);
-
-    root.moltbook_refresh_bounds = Bounds::ZERO;
 
     let feed_rows = root
         .moltbook_feed
@@ -6719,123 +6818,30 @@ fn paint_moltbook_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintCon
         })
         .collect::<Vec<_>>();
 
-    let mut steps: Vec<(MoltStep, f32)> = vec![
-        (MoltStep::EngagementHeader, label_height),
-        (MoltStep::Spacer, gap),
-        (MoltStep::Refresh, 32.0),
-        (MoltStep::Spacer, gap),
-        (MoltStep::FeedHeader, 0.0),
-        (MoltStep::ReadOnlyNote, 0.0),
-    ];
-
-    enum MoltStep {
-        EngagementHeader,
-        Spacer,
-        Refresh,
-        FeedHeader,
-        ReadOnlyNote,
-        FeedItem,
-        LogTitle,
-        Log(String),
+    root.moltbook_feed_scroll_bounds = content_bounds;
+    let card_gap = 12.0;
+    let min_card = 220.0;
+    let max_card = 320.0;
+    let (card_size, mut content_height) = moltbook_card_layout(
+        content_bounds.size.width,
+        feed_rows.len(),
+        min_card,
+        max_card,
+        card_gap,
+    );
+    if feed_rows.is_empty() {
+        content_height = row_height;
     }
-
-    steps.push((MoltStep::FeedItem, 0.0));
-    steps.push((MoltStep::Spacer, gap));
-    steps.push((MoltStep::LogTitle, label_height));
-    steps.push((MoltStep::Spacer, 6.0));
-
-    let log_content = if root.moltbook_log.is_empty() {
-        "No Moltbook activity yet.".to_string()
-    } else {
-        root.moltbook_log
-            .iter()
-            .rev()
-            .take(8)
-            .rev()
-            .cloned()
-            .collect::<Vec<_>>()
-            .join("\n")
-    };
-    let log_height = (log_content.lines().count().max(1) as f32) * row_height;
-    steps.push((MoltStep::Log(log_content), log_height));
-
-    let heights: Vec<ColumnItem> = steps
-        .iter()
-        .map(|(step, h)| match step {
-            MoltStep::FeedItem => ColumnItem::Flex(1.0),
-            _ => ColumnItem::Fixed(*h),
-        })
-        .collect();
-    let bounds_list = column_bounds(content_bounds, &heights, 0.0);
-
-    for ((step, _), step_bounds) in steps.iter().zip(bounds_list.iter()) {
-        let bounds = *step_bounds;
-        match step {
-            MoltStep::EngagementHeader => {
-                let profile_line = root
-                    .moltbook_profile
-                    .as_ref()
-                    .map(|p| {
-                        format!(
-                            "{} · {} posts · {} comments",
-                            p.agent_name, p.posts_count, p.comments_count
-                        )
-                    })
-                    .unwrap_or_else(|| {
-                        "Moltbook · 2 posts/hr · 50 comments/hr (strategy)".to_string()
-                    });
-                Text::new(profile_line.as_str())
-                    .font_size(text_size)
-                    .color(theme::text::MUTED)
-                    .paint(bounds, cx);
-            }
-            MoltStep::Spacer => {}
-            MoltStep::Refresh => {
-                root.moltbook_refresh_bounds = bounds;
-                root.moltbook_refresh_button.paint(bounds, cx);
-            }
-            MoltStep::FeedHeader => {}
-            MoltStep::ReadOnlyNote => {}
-            MoltStep::FeedItem => {
-                root.moltbook_feed_scroll_bounds = bounds;
-                let card_gap = 12.0;
-                let min_card = 220.0;
-                let max_card = 320.0;
-                let (card_size, mut content_height) = moltbook_card_layout(
-                    bounds.size.width,
-                    feed_rows.len(),
-                    min_card,
-                    max_card,
-                    card_gap,
-                );
-                if feed_rows.is_empty() {
-                    content_height = row_height;
-                }
-                let content_height = content_height.max(bounds.size.height);
-                root.moltbook_feed_scroll
-                    .set_content_size(Size::new(bounds.size.width, content_height));
-                root.moltbook_feed_scroll.set_content(MoltbookFeedView::new(
-                    feed_rows.clone(),
-                    card_size,
-                    card_gap,
-                    text_size,
-                ));
-                root.moltbook_feed_scroll.paint(bounds, cx);
-            }
-            MoltStep::LogTitle => {
-                Text::new("Activity")
-                    .font_size(text_size)
-                    .color(theme::text::PRIMARY)
-                    .paint(bounds, cx);
-            }
-            MoltStep::Log(text) => {
-                Text::new(text.as_str())
-                    .font_size(text_size)
-                    .color(theme::text::MUTED)
-                    .paint(bounds, cx);
-            }
-        }
-    }
+    let content_height = content_height.max(content_bounds.size.height);
+    root.moltbook_feed_scroll
+        .set_content_size(Size::new(content_bounds.size.width, content_height));
+    root.moltbook_feed_scroll.set_content(MoltbookFeedView::new(
+        feed_rows.clone(),
+        card_size,
+        card_gap,
+        text_size,
+    ));
+    root.moltbook_feed_scroll.paint(content_bounds, cx);
 }
 
 fn paint_events_pane(root: &mut MinimalRoot, bounds: Bounds, cx: &mut PaintContext) {
