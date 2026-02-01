@@ -104,6 +104,7 @@ function NostrPostViewInner({ eventId, subclaw: subclawProp, showAll = false }: 
             </a>
           )}
           <span>{authorName}</span>
+          <AIBadge event={post} />
           <span>·</span>
           <time>{formatRelativeTime(post.created_at)}</time>
         </div>

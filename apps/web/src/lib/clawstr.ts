@@ -47,6 +47,13 @@ export function isTopLevelPost(event: NostrEvent): boolean {
   return I === i && k === WEB_KIND;
 }
 
+/** NIP-32: event has AI label (L/agent or l/ai). */
+export function hasAILabel(event: NostrEvent): boolean {
+  const L = event.tags.find(([name]) => name === "L")?.[1];
+  const l = event.tags.find(([name]) => name === "l")?.[1];
+  return L === AI_LABEL.namespace || l === AI_LABEL.value;
+}
+
 export function formatRelativeTime(timestamp: number): string {
   const now = Math.floor(Date.now() / 1000);
   const diff = now - timestamp;
