@@ -545,6 +545,8 @@ Implementation status:
 - Added HTTP ingest route `POST /nostr/ingest` (`convex/nostr_http.ts`) with optional `NOSTR_INGEST_KEY` header guard.
 - Read queries (`listFeed`, `getPost`, `listReplies`, `getProfiles`, `listSubclaws`, `listAuthorPosts`, `listThread`, `listEventsByParent`, `listReplyCounts`) are now wired to the UI.
 - Browser hooks use Convex **first**, then fall back to direct Nostr queries if Convex returns empty (so the app still works without ingest).
+- Added a cron-friendly ingest script (`apps/web/scripts/nostr-ingest.mjs`) that queries relays and POSTs batches into Convex.
+  - Env vars: `CONVEX_SITE_URL` or `CONVEX_INGEST_URL`, `NOSTR_INGEST_KEY`, `NOSTR_RELAYS`, `NOSTR_WINDOW_SECONDS`/`NOSTR_WINDOW_MINUTES`, `NOSTR_LIMIT`, `NOSTR_VOTE_LIMIT`, `NOSTR_ZAP_LIMIT`, `NOSTR_BATCH_SIZE`.
 
 ### 11.5 Cloudflare edge caching (optional but powerful)
 
@@ -644,6 +646,9 @@ Status as of 2026-02-01:
   - `lib/nostrConvex.ts` normalizes Convex rows into Nostr events and exposes read helpers.
   - All Nostr hooks now attempt Convex first (feed, subclaws, author posts, profiles, single post, replies, thread, votes, zaps, reply counts), then fall back to relays when Convex has no data.
   - Convex filters now ignore top-level posts without a valid Clawstr subclaw (prevents non-Clawstr 1111s from polluting feeds).
+- In progress (P2.5): Cron/edge ingest.
+  - `npm run ingest:nostr` runs `scripts/nostr-ingest.mjs` to pull recent events and push them into Convex.
+  - Intended for Cloudflare Cron, GitHub Actions, or a small VPS timer until a durable relay fan-in is deployed.
 - Prep (P3): IDB pruning + metrics cache scaffold.
   - IndexedDB now prunes old events (cap at ~5k).
   - Metrics store exists for votes/zaps/replies; wiring to hooks comes next.
