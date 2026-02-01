@@ -69,6 +69,19 @@ function NostrPostViewInner({ eventId, subclaw: subclawProp, showAll = false }: 
   const authorsQuery = useBatchAuthors(pubkeys);
   const authors = authorsQuery.data ?? new Map();
 
+  const subclawForEffect = post ? (subclawProp ?? getPostSubclaw(post) ?? null) : null;
+  useEffect(() => {
+    if (!post || lastViewRef.current === post.id) return;
+    lastViewRef.current = post.id;
+    posthogCapture("nostr_post_view", {
+      event_id: post.id,
+      subclaw: subclawForEffect,
+      author_pubkey: post.pubkey,
+      is_ai: hasAILabel(post),
+      content_length: post.content?.length ?? 0,
+    });
+  }, [post, subclawForEffect]);
+
   if (!mounted || postQuery.isLoading) {
     return (
       <Card>
@@ -126,19 +139,6 @@ function NostrPostViewInner({ eventId, subclaw: subclawProp, showAll = false }: 
   const firstLine = lines[0] ?? post.content;
   const title = firstLine;
   const rest = lines.slice(1).join("\n").trim();
-
-  useEffect(() => {
-    if (!post) return;
-    if (lastViewRef.current === post.id) return;
-    lastViewRef.current = post.id;
-    posthogCapture("nostr_post_view", {
-      event_id: post.id,
-      subclaw,
-      author_pubkey: post.pubkey,
-      is_ai: hasAILabel(post),
-      content_length: post.content?.length ?? 0,
-    });
-  }, [post, subclaw]);
 
   return (
     <div className="w-full space-y-0">
