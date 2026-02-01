@@ -1,9 +1,10 @@
 # OpenAgents API Control Plane
 
 - **Status:** Implemented (2026-02-01)
-- **Scope:** Internal control-plane data (orgs/projects/issues/repos/api tokens)
+- **Scope:** Internal control-plane data (orgs/projects/issues/repos/api tokens/nostr identity)
 - **External base:** `https://openagents.com/api`
 - **Source of truth:** Code wins (`apps/api/src/lib.rs`, `apps/web/convex/control_http.ts`)
+- **Related:** `docs/OPENAGENTS_IDENTITY_BRIDGE.md`
 
 ## Why this exists
 
@@ -155,6 +156,41 @@ All endpoints below are relative to `https://openagents.com/api`.
 ```
 
 > **Note:** `POST /tokens` returns the new `api_key` only once. Store it securely.
+
+### Nostr identity (optional, verified via NIP-98)
+
+- `GET /nostr` — get the currently linked Nostr identity for the API token’s user
+- `POST /nostr/verify` — verify + link a Nostr pubkey using **NIP-98 HTTP auth**
+
+**Auth requirements:**
+- **API key:** use `x-api-key: <api_key>` (recommended here because `Authorization` is used by NIP-98).
+- **NIP-98 token:** `Authorization: Nostr <base64-event>` or `x-nostr-auth: Nostr <base64-event>`.
+
+**NIP-98 requirements enforced:**
+- `kind = 27235`
+- `created_at` within ~60 seconds
+- `u` tag must equal **exact URL**: `https://openagents.com/api/nostr/verify`
+- `method` tag must be `POST`
+- `payload` tag is optional; if included, it must hash the JSON body
+
+**Verify body** (empty is fine):
+```json
+{}
+```
+
+**Response**:
+```json
+{
+  "ok": true,
+  "identity": {
+    "user_id": "agent_123",
+    "nostr_pubkey": "hex...",
+    "nostr_npub": "npub...",
+    "nostr_verified_at": 1738400000000,
+    "nostr_verification_method": "nip98"
+  }
+}
+```
 
 ## Responses & errors
 

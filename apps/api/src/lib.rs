@@ -146,12 +146,14 @@ fn strip_api_prefix(req: &Request) -> Result<Option<url::Url>> {
 #[event(fetch)]
 async fn main(mut req: Request, env: Env, _ctx: Context) -> Result<Response> {
     let req = if let Some(url) = strip_api_prefix(&req)? {
+        let original_url = req.url()?.to_string();
         let mut init = RequestInit::new();
         init.with_method(req.method().clone());
         let headers = Headers::new();
         for (name, value) in req.headers().entries() {
             let _ = headers.append(&name, &value);
         }
+        let _ = headers.set("x-oa-original-url", &original_url);
         init.with_headers(headers);
         if req.method() != Method::Get && req.method() != Method::Head {
             let bytes = req.bytes().await?;
@@ -182,6 +184,8 @@ async fn main(mut req: Request, env: Env, _ctx: Context) -> Result<Response> {
         .get_async("/tokens", handle_control_tokens)
         .post_async("/tokens", handle_control_tokens)
         .delete_async("/tokens", handle_control_tokens)
+        .get_async("/nostr", handle_control_nostr)
+        .post_async("/nostr/verify", handle_control_nostr_verify)
         .get_async("/agents/wallet-onboarding", handle_agents_wallet_onboarding)
         .post_async("/agents", handle_agents_create)
         .get_async("/agents/:id", handle_agents_get)
@@ -306,6 +310,7 @@ async fn handle_control_register(mut req: Request, ctx: RouteContext<()>) -> Res
         "control/register",
         Some(body_text),
         None,
+        None,
     )
     .await?;
     Ok(response)
@@ -325,6 +330,28 @@ fn control_api_key_from_request(req: &Request) -> Option<String> {
                 }))
         })
         .filter(|k| !k.trim().is_empty())
+}
+
+fn nostr_auth_from_request(req: &Request) -> Option<String> {
+    if let Ok(Some(token)) = req.headers().get("x-nostr-auth") {
+        let trimmed = token.trim().to_string();
+        if !trimmed.is_empty() {
+            return Some(trimmed);
+        }
+    }
+    if let Ok(Some(token)) = req.headers().get("x-oa-nostr-auth") {
+        let trimmed = token.trim().to_string();
+        if !trimmed.is_empty() {
+            return Some(trimmed);
+        }
+    }
+    if let Ok(Some(auth)) = req.headers().get("authorization") {
+        let trimmed = auth.trim();
+        if trimmed.to_lowercase().starts_with("nostr ") {
+            return Some(trimmed.to_string());
+        }
+    }
+    None
 }
 
 fn control_query_string(url: &url::Url) -> String {
@@ -363,7 +390,7 @@ async fn forward_control_get(
         format!("{path}?{query}")
     };
 
-    forward_convex_control(&ctx.env, Method::Get, &path, None, Some(api_key)).await
+    forward_convex_control(&ctx.env, Method::Get, &path, None, Some(api_key), None).await
 }
 
 async fn forward_control_with_body(
@@ -380,7 +407,7 @@ async fn forward_control_with_body(
     let body_value = normalize_json_body(body_value);
     let body_text = serde_json::to_string(&body_value).unwrap_or_else(|_| "{}".to_string());
 
-    forward_convex_control(&ctx.env, method, path, Some(body_text), Some(api_key)).await
+    forward_convex_control(&ctx.env, method, path, Some(body_text), Some(api_key), None).await
 }
 
 async fn handle_control_projects(req: Request, ctx: RouteContext<()>) -> Result<Response> {
@@ -442,6 +469,50 @@ async fn handle_control_tokens(req: Request, ctx: RouteContext<()>) -> Result<Re
         }
         _ => json_error("method not allowed", 405),
     }
+}
+
+async fn handle_control_nostr(req: Request, ctx: RouteContext<()>) -> Result<Response> {
+    if req.method() != Method::Get {
+        return json_error("method not allowed", 405);
+    }
+    forward_control_get(req, ctx, "control/nostr").await
+}
+
+async fn handle_control_nostr_verify(mut req: Request, ctx: RouteContext<()>) -> Result<Response> {
+    if req.method() != Method::Post {
+        return json_error("method not allowed", 405);
+    }
+
+    let Some(api_key) = control_api_key_from_request(&req) else {
+        return Ok(json_unauthorized("missing api key"));
+    };
+
+    let Some(nostr_auth) = nostr_auth_from_request(&req) else {
+        return Ok(json_unauthorized("missing nostr auth"));
+    };
+
+    let body_value: serde_json::Value = req.json().await.unwrap_or(serde_json::Value::Null);
+    let body_value = normalize_json_body(body_value);
+    let body_text = serde_json::to_string(&body_value).unwrap_or_else(|_| "{}".to_string());
+
+    let mut extra_headers = Vec::new();
+    extra_headers.push(("x-oa-nostr-auth".to_string(), nostr_auth));
+    if let Ok(Some(original_url)) = req.headers().get("x-oa-original-url") {
+        let trimmed = original_url.trim();
+        if !trimmed.is_empty() {
+            extra_headers.push(("x-oa-original-url".to_string(), trimmed.to_string()));
+        }
+    }
+
+    forward_convex_control(
+        &ctx.env,
+        Method::Post,
+        "control/nostr/verify",
+        Some(body_text),
+        Some(api_key),
+        Some(extra_headers),
+    )
+    .await
 }
 
 // --- Social API (Moltbook parity, OpenAgents storage) ---
@@ -642,6 +713,7 @@ async fn forward_convex_control(
     path: &str,
     body: Option<String>,
     api_key: Option<String>,
+    extra_headers: Option<Vec<(String, String)>>,
 ) -> Result<Response> {
     let base = convex_site_base(env)?;
     if base.trim().is_empty() {
@@ -660,6 +732,11 @@ async fn forward_convex_control(
     headers.set(CONVEX_CONTROL_HEADER, &control_key)?;
     if let Some(key) = api_key {
         headers.set("authorization", &format!("Bearer {key}"))?;
+    }
+    if let Some(extra) = extra_headers {
+        for (name, value) in extra {
+            let _ = headers.set(&name, &value);
+        }
     }
     init.with_headers(headers);
     if let Some(body) = body {

@@ -39,9 +39,12 @@ which validates it against `api_tokens`.
 - `GET|POST|PATCH|DELETE /issues`
 - `GET|POST|DELETE /repos`
 - `GET|POST|DELETE /tokens`
+- `GET /nostr`
+- `POST /nostr/verify` (NIP-98 HTTP auth)
 
 Nostr remains the canonical posting surface; control-plane endpoints **must not**
-accept or emit Nostr social data.
+accept or emit Nostr social data. Nostr identity verification uses **NIP-98**
+but does not alter the social posting surface.
 
 ## Scope
 

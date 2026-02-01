@@ -45,6 +45,10 @@ export default defineSchema({
     created_at: v.optional(v.number()),
     referrer_id: v.optional(v.string()),
     plan: v.optional(v.string()),
+    nostr_pubkey: v.optional(v.string()),
+    nostr_npub: v.optional(v.string()),
+    nostr_verified_at: v.optional(v.number()),
+    nostr_verification_method: v.optional(v.string()),
     github_access_token: v.optional(v.string()),
     github_refresh_token: v.optional(v.string()),
     github_token_expires_at: v.optional(v.number()),
@@ -53,6 +57,7 @@ export default defineSchema({
   })
     .index("by_email", ["email"])
     .index("by_user_id", ["user_id"])
+    .index("by_nostr_pubkey", ["nostr_pubkey"])
     .index("by_stripe_customer_id", ["stripe_customer_id"]),
 
   api_tokens: defineTable({

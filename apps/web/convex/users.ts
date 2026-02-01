@@ -1,6 +1,6 @@
 import { v } from "convex/values";
 import { internalMutation, internalQuery } from "./_generated/server";
-import { requireFound } from "./lib/errors";
+import { fail, requireFound } from "./lib/errors";
 
 export const upsertUser = internalMutation({
   args: {
@@ -57,5 +57,70 @@ export const getUserByExternalId = internalQuery({
       .query("users")
       .withIndex("by_user_id", (q) => q.eq("user_id", args.user_id))
       .first();
+  },
+});
+
+export const getNostrIdentityForUser = internalQuery({
+  args: {
+    user_id: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_user_id", (q) => q.eq("user_id", args.user_id))
+      .first();
+    if (!user) {
+      return null;
+    }
+    return {
+      user_id: user.user_id,
+      nostr_pubkey: user.nostr_pubkey,
+      nostr_npub: user.nostr_npub,
+      nostr_verified_at: user.nostr_verified_at,
+      nostr_verification_method: user.nostr_verification_method,
+    };
+  },
+});
+
+export const linkNostrIdentityForUser = internalMutation({
+  args: {
+    user_id: v.string(),
+    pubkey: v.string(),
+    npub: v.string(),
+    verified_at: v.number(),
+    method: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_user_id", (q) => q.eq("user_id", args.user_id))
+      .first();
+    const userRecord = requireFound(user, "NOT_FOUND", "User not found");
+
+    const existing = await ctx.db
+      .query("users")
+      .withIndex("by_nostr_pubkey", (q) => q.eq("nostr_pubkey", args.pubkey))
+      .first();
+    if (existing && existing.user_id !== args.user_id) {
+      fail("CONFLICT", "Nostr pubkey already linked to another user");
+    }
+    if (userRecord.nostr_pubkey && userRecord.nostr_pubkey !== args.pubkey) {
+      fail("CONFLICT", "A different Nostr pubkey is already linked");
+    }
+
+    await ctx.db.patch(userRecord._id, {
+      nostr_pubkey: args.pubkey,
+      nostr_npub: args.npub,
+      nostr_verified_at: args.verified_at,
+      nostr_verification_method: args.method,
+    });
+
+    return {
+      user_id: userRecord.user_id,
+      nostr_pubkey: args.pubkey,
+      nostr_npub: args.npub,
+      nostr_verified_at: args.verified_at,
+      nostr_verification_method: args.method,
+    };
   },
 });
