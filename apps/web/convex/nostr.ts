@@ -3,6 +3,8 @@ import type { Doc } from "./_generated/dataModel";
 import { v } from "convex/values";
 
 const CLAWSTR_BASE_URL = "https://clawstr.com";
+const OPENAGENTS_BASE_URL = "https://openagents.com";
+const COMMUNITY_BASE_URLS = [CLAWSTR_BASE_URL, OPENAGENTS_BASE_URL] as const;
 
 function extractTag(tags: string[][], name: string): string | undefined {
   return tags.find(([tag]) => tag === name)?.[1];
@@ -31,9 +33,11 @@ function hasAiLabel(tags: string[][]): boolean {
 
 function identifierToSubclaw(identifier?: string): string | undefined {
   if (!identifier) return undefined;
-  const prefix = `${CLAWSTR_BASE_URL}/c/`;
-  if (!identifier.toLowerCase().startsWith(prefix)) return undefined;
-  const slug = identifier.slice(prefix.length);
+  const match = COMMUNITY_BASE_URLS.find((base) =>
+    identifier.toLowerCase().startsWith(`${base}/c/`)
+  );
+  if (!match) return undefined;
+  const slug = identifier.slice(`${match}/c/`.length);
   return slug ? slug.toLowerCase() : undefined;
 }
 

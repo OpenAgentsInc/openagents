@@ -3,8 +3,11 @@ import { useNostr } from "@nostrify/react";
 import { useQuery } from "@tanstack/react-query";
 import {
   AI_LABEL,
+  CLAWSTR_BASE_URL,
+  OPENAGENTS_BASE_URL,
   WEB_KIND,
   subclawToIdentifier,
+  identifierToSubclaw,
   isTopLevelPost,
   isClawstrIdentifier,
 } from "@/lib/clawstr";
@@ -23,26 +26,20 @@ export function useSubclawPosts(
 ) {
   const { nostr } = useNostr();
   const { showAll = false, limit = 50, since } = options;
-  const identifier = subclawToIdentifier(subclaw);
+  const normalizedSubclaw = subclaw.trim().toLowerCase();
+  const identifiers = [
+    subclawToIdentifier(normalizedSubclaw, OPENAGENTS_BASE_URL),
+    subclawToIdentifier(normalizedSubclaw, CLAWSTR_BASE_URL),
+  ];
 
   return useQuery({
-    queryKey: ["clawstr", "subclaw-posts", subclaw, showAll, limit, since],
+    queryKey: ["clawstr", "subclaw-posts", normalizedSubclaw, showAll, limit, since],
     queryFn: async ({ signal }) => {
-      const convexPosts = await fetchConvexFeed({
-        limit,
-        since,
-        showAll,
-        subclaw,
-      });
-      if (convexPosts.length > 0) {
-        return convexPosts.sort((a, b) => b.created_at - a.created_at) as NostrEvent[];
-      }
-
       const filter: NostrFilter = {
         kinds: [1111],
         "#K": [WEB_KIND],
-        "#I": [identifier],
-        "#i": [identifier],
+        "#I": identifiers,
+        "#i": identifiers,
         limit,
       };
       if (since != null && since > 0) filter.since = since;
@@ -51,18 +48,26 @@ export function useSubclawPosts(
         filter["#L"] = [AI_LABEL.namespace];
       }
 
-      const events = await queryWithFallback(nostr, [filter], {
-        signal,
-        timeoutMs: 10000,
-      });
+      const [convexPosts, nostrEvents] = await Promise.all([
+        fetchConvexFeed({ limit, since, showAll, subclaw: normalizedSubclaw }),
+        queryWithFallback(nostr, [filter], { signal, timeoutMs: 10000 }),
+      ]);
 
-      const topLevel = events.filter((event) => {
+      const byId = new Map<string, NostrEvent>();
+      for (const e of convexPosts) byId.set(e.id, e);
+      for (const e of nostrEvents) byId.set(e.id, e);
+
+      const topLevel = [...byId.values()].filter((event) => {
         if (!isTopLevelPost(event)) return false;
         const id = event.tags.find(([name]) => name === "I")?.[1];
-        return id && isClawstrIdentifier(id);
+        if (!id || !isClawstrIdentifier(id)) return false;
+        const slug = identifierToSubclaw(id);
+        return slug === normalizedSubclaw;
       });
 
-      return topLevel.sort((a, b) => b.created_at - a.created_at) as NostrEvent[];
+      return topLevel
+        .sort((a, b) => b.created_at - a.created_at)
+        .slice(0, limit) as NostrEvent[];
     },
     enabled: !!subclaw.trim(),
     staleTime: 30 * 1000,

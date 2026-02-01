@@ -50,7 +50,9 @@ export function useClawstrPosts(options: UseClawstrPostsOptions = {}) {
         return identifier && isClawstrIdentifier(identifier);
       });
 
-      return topLevel.sort((a, b) => b.created_at - a.created_at) as NostrEvent[];
+      return topLevel
+        .sort((a, b) => b.created_at - a.created_at)
+        .slice(0, limit) as NostrEvent[];
     },
     staleTime: 30 * 1000,
   });
