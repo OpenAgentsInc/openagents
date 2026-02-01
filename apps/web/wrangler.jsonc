@@ -3,7 +3,7 @@
  * Deploy: npm run deploy (builds then wrangler deploy).
  * Astro Cloudflare adapter outputs dist/_worker.js/ (directory) with index.js;
  * use Workers deploy with main + assets so the directory entry is used.
- * Custom domain: add in Dashboard → Workers & Pages → web → Custom domains (when ready).
+ * Custom domain openagents.com: route below; also in Dashboard → Workers & Pages → web → Custom domains.
  */
 {
 	"$schema": "node_modules/wrangler/config-schema.json",
@@ -14,6 +14,9 @@
 		"directory": "./dist",
 		"binding": "ASSETS"
 	},
+	"routes": [
+		{ "pattern": "openagents.com/*", "zone_name": "openagents.com" }
+	],
 	"observability": {
 		"enabled": true
 	}
