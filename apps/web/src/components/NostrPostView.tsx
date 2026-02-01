@@ -1,12 +1,23 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSinglePost } from "@/hooks/useSinglePost";
-import { usePostReplies } from "@/hooks/usePostReplies";
+import { usePostRepliesThread, type ThreadNode } from "@/hooks/usePostRepliesThread";
 import { useBatchAuthors } from "@/hooks/useBatchAuthors";
 import { useBatchPostVotes } from "@/hooks/useBatchPostVotes";
 import { getPostSubclaw, formatRelativeTime } from "@/lib/clawstr";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { VoteScore } from "@/components/VoteScore";
+import { ThreadedReplyList } from "@/components/ThreadedReply";
+
+function collectPubkeysFromThread(nodes: ThreadNode[]): string[] {
+  const keys = new Set<string>();
+  function walk(n: ThreadNode) {
+    keys.add(n.event.pubkey);
+    n.children.forEach(walk);
+  }
+  nodes.forEach(walk);
+  return [...keys];
+}
 
 interface NostrPostViewProps {
   eventId: string;
@@ -19,18 +30,20 @@ function NostrPostViewInner({ eventId, subclaw: subclawProp, showAll = false }: 
   useEffect(() => setMounted(true), []);
 
   const postQuery = useSinglePost(eventId);
-  const repliesQuery = usePostReplies(eventId, showAll);
+  const threadQuery = usePostRepliesThread(eventId, showAll);
   const votesQuery = useBatchPostVotes([eventId]);
   const post = postQuery.data ?? null;
-  const replies = repliesQuery.data ?? [];
+  const threadNodes = threadQuery.data ?? [];
   const voteSummary = votesQuery.data?.get(eventId) ?? { score: 0, up: 0, down: 0 };
 
   const pubkeys = useMemo(() => {
     const keys = new Set<string>();
     if (post) keys.add(post.pubkey);
-    replies.forEach((r) => keys.add(r.pubkey));
+    collectPubkeysFromThread(threadNodes).forEach((k) => keys.add(k));
     return [...keys];
-  }, [post, replies]);
+  }, [post, threadNodes]);
+
+  const replyCount = useMemo(() => countThreadNodes(threadNodes), [threadNodes]);
 
   const authorsQuery = useBatchAuthors(pubkeys);
   const authors = authorsQuery.data ?? new Map();
@@ -100,34 +113,17 @@ function NostrPostViewInner({ eventId, subclaw: subclawProp, showAll = false }: 
         ) : null}
       </article>
 
-      {/* Replies — flat list like feed, border between items */}
-      {replies.length > 0 && (
+      {/* Replies — nested thread (NIP-22) */}
+      {threadNodes.length > 0 && (
         <div className="mt-2">
           <h2 className="text-sm font-medium text-muted-foreground mb-2">
-            {replies.length} reply{replies.length !== 1 ? "s" : ""}
+            {replyCount} reply{replyCount !== 1 ? "s" : ""}
           </h2>
-          <div className="space-y-0 border-t border-border">
-            {replies.map((reply) => {
-              const replyAuthor = authors.get(reply.pubkey)?.name ?? reply.pubkey.slice(0, 12) + "…";
-              return (
-                <article
-                  key={reply.id}
-                  className="border-b border-border py-4 last:border-b-0"
-                >
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground mb-1">
-                    <span>{replyAuthor}</span>
-                    <span>·</span>
-                    <time>{formatRelativeTime(reply.created_at)}</time>
-                  </div>
-                  <p className="whitespace-pre-wrap text-sm">{reply.content}</p>
-                </article>
-              );
-            })}
-          </div>
+          <ThreadedReplyList nodes={threadNodes} authors={authors} />
         </div>
       )}
 
-      {repliesQuery.isLoading && replies.length === 0 && (
+      {threadQuery.isLoading && threadNodes.length === 0 && (
         <div className="border-t border-border pt-4">
           <Skeleton className="h-16 w-full" />
         </div>
