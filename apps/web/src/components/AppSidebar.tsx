@@ -3,16 +3,13 @@
 import { useQuery } from "convex/react";
 import { useEffect, useState } from "react";
 import {
-  BookOpenIcon,
+  // BookOpenIcon, FileTextIcon, InfoIcon, RssIcon – uncomment when Feed/KB/Blog/About are re-enabled
   ChevronsUpDownIcon,
-  FileTextIcon,
   HomeIcon,
-  InfoIcon,
   LogOutIcon,
-  RssIcon,
   UserIcon,
-  UsersRoundIcon,
-  WalletIcon,
+  // UsersRoundIcon, // uncomment when communities route is re-enabled
+  // WalletIcon, // uncomment when wallet route is re-enabled
 } from "lucide-react";
 import { authClient } from "@/lib/auth-client";
 import { api } from "../../convex/_generated/api";
@@ -43,19 +40,22 @@ import { cn } from "@/lib/utils";
 
 const navItems = [
   { href: "/", label: "Home", icon: HomeIcon, exact: true },
-  { href: "/feed", label: "Feed", icon: RssIcon, exact: true },
-  { href: "/wallet", label: "Wallet", icon: WalletIcon, exact: true },
-  { href: "/communities", label: "Communities", icon: UsersRoundIcon, exact: false },
-  { href: "/kb", label: "Knowledge", icon: BookOpenIcon, exact: false },
-  { href: "/blog", label: "Blog", icon: FileTextIcon, exact: false },
-  { href: "/about", label: "About", icon: InfoIcon, exact: true },
+  // Feed, Knowledge, Blog, About disabled – uncomment to re-enable
+  // { href: "/feed", label: "Feed", icon: RssIcon, exact: true },
+  // { href: "/kb", label: "Knowledge", icon: BookOpenIcon, exact: false },
+  // { href: "/blog", label: "Blog", icon: FileTextIcon, exact: false },
+  // { href: "/about", label: "About", icon: InfoIcon, exact: true },
+  // Wallet route disabled – uncomment to re-enable
+  // { href: "/wallet", label: "Wallet", icon: WalletIcon, exact: true },
+  // Communities route disabled – uncomment to re-enable
+  // { href: "/communities", label: "Communities", icon: UsersRoundIcon, exact: false },
 ] as const;
 
 function usePathname() {
-  const [path, setPath] = useState(
-    typeof window !== "undefined" ? window.location.pathname : ""
-  );
+  // Always start with "" so server and client first render match (avoids hydration mismatch)
+  const [path, setPath] = useState("");
   useEffect(() => {
+    setPath(window.location.pathname);
     const update = () => setPath(window.location.pathname);
     window.addEventListener("popstate", update);
     document.addEventListener("astro:after-swap", update);
@@ -70,13 +70,16 @@ function usePathname() {
 function SidebarUserMenu() {
   const user = useQuery(api.auth.getCurrentUser);
   const { isMobile, setOpenMobile } = useSidebar();
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
 
   const handleSignOut = async () => {
     await authClient.signOut();
     window.location.reload();
   };
 
-  if (user === undefined) {
+  // Defer user-dependent UI until after mount so server and client first render match
+  if (!mounted || user === undefined) {
     return (
       <SidebarMenuItem>
         <div className="flex h-12 items-center gap-3 px-2">
