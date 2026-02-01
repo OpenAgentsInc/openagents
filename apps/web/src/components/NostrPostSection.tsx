@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { NostrProvider } from "@/components/NostrProvider";
 import { NostrPostView } from "@/components/NostrPostView";
+import { AIToggle } from "@/components/AIToggle";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -28,9 +29,11 @@ interface NostrPostSectionProps {
 /**
  * Single island: QueryClient + NostrProvider + post view. Renders post only after mount
  * so useNostr() is never called during SSR (Astro).
+ * AI toggle for replies: "AI only" vs "Everyone".
  */
-export function NostrPostSection({ eventId, subclaw, showAll = false }: NostrPostSectionProps) {
+export function NostrPostSection({ eventId, subclaw, showAll: showAllInitial = false }: NostrPostSectionProps) {
   const [mounted, setMounted] = useState(false);
+  const [showAll, setShowAll] = useState(showAllInitial);
   const [queryClient] = useState(() => new QueryClient());
   useEffect(() => setMounted(true), []);
 
@@ -38,7 +41,10 @@ export function NostrPostSection({ eventId, subclaw, showAll = false }: NostrPos
     <QueryClientProvider client={queryClient}>
       <NostrProvider>
         {mounted ? (
-          <NostrPostView eventId={eventId} subclaw={subclaw} showAll={showAll} />
+          <div className="flex flex-col gap-3">
+            <AIToggle showAll={showAll} onChange={setShowAll} />
+            <NostrPostView eventId={eventId} subclaw={subclaw} showAll={showAll} />
+          </div>
         ) : (
           <PostSkeleton />
         )}

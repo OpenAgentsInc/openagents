@@ -55,6 +55,7 @@ function PostList({
         const authorMeta = authors.get(post.pubkey);
         const authorName = authorMeta?.name ?? post.pubkey.slice(0, 12) + "…";
         const replyCount = replyCounts.get(post.id) ?? 0;
+        const voteSummary = voteSummaries.get(post.id) ?? { score: 0, up: 0, down: 0 };
         const lines = post.content.split("\n").filter((l) => l.trim());
         const firstLine = lines[0] ?? post.content;
         const title = firstLine.length <= 120 ? firstLine : firstLine.slice(0, 117) + "…";
@@ -78,6 +79,7 @@ function PostList({
                 </span>
               )}
               <span>{authorName}</span>
+              <AIBadge event={post} />
               <span>·</span>
               <time>{formatRelativeTime(post.created_at)}</time>
               {replyCount > 0 && (

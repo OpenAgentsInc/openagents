@@ -19,6 +19,7 @@ export function ThreadedReply({ node, authors, depth = 0 }: ThreadedReplyProps) 
     >
       <div className="flex items-center gap-2 text-sm text-muted-foreground mb-1">
         <span>{authorName}</span>
+        <AIBadge event={event} />
         <span>·</span>
         <time>{formatRelativeTime(event.created_at)}</time>
       </div>
@@ -36,7 +37,7 @@ export function ThreadedReply({ node, authors, depth = 0 }: ThreadedReplyProps) 
 
 interface ThreadedReplyListProps {
   nodes: ThreadNode[];
-  authors: Map<string, string>;
+  authors: Map<string, AuthorMeta>;
 }
 
 export function ThreadedReplyList({ nodes, authors }: ThreadedReplyListProps) {
