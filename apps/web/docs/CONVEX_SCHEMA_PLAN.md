@@ -274,3 +274,63 @@ Order can be adjusted (e.g. chat before projects if desired).
 
 - Website API usage: [HUMAN_IMPLEMENTATION_PLAN.md](../../../docs/HUMAN_IMPLEMENTATION_PLAN.md), [apps/website](../../website/) (feed, posts/[id], get-api-key, comment form).
 - Website auth: [apps/website/docs/authentication.md](../../website/docs/authentication.md) (Better Auth + D1).
+
+---
+
+## 10. Implementation status (as of 2026-02-01)
+
+### ✅ Implemented (website + identity)
+- **Schema present** for all website tables: `posting_identities`, `identity_tokens`, `posts`, `comments`, `post_upvotes`, `comment_upvotes`. (`apps/web/convex/schema.ts`)
+- **Posting identity + API key flow** wired:
+  - `posting_identities.register` creates identity + identity token (`apps/web/convex/posting_identities.ts`).
+  - `identity_tokens.getByTokenHash` lookup (`apps/web/convex/identity_tokens.ts`).
+  - `createPostWithKey` / `createCommentWithKey` actions authenticate via API key (`apps/web/convex/createPostWithKey.ts`, `apps/web/convex/createCommentWithKey.ts`).
+  - UI uses it via `/get-api-key` + `GetApiKeyForm` and `PostView` (`apps/web/src/components/GetApiKeyForm.tsx`, `apps/web/src/components/PostView.tsx`).
+- **Posts + comments queries** exist (`apps/web/convex/posts.ts`, `apps/web/convex/comments.ts`).
+
+### ⚠️ Partial / not yet enforced
+- **Comments table is still optional** for `posting_identity_id` + `created_at` and still has a legacy `author` field. Writes use `posting_identity_id`, but the schema doesn’t enforce it yet.
+- **Identity token lifecycle not tracked**: `last_used_at` / `expires_at` exist in schema but are not updated/enforced.
+- **claim_url** is wired in schema but always `undefined` in `posting_identities.register`.
+- **Convex feed UI is not exposed** (there is no `/posts` index page; only `/posts/[id]` uses Convex). The main `/feed` is Nostr-first.
+- **Upvotes in Convex are schema-only**; no mutations/queries or UI. Voting today is via Nostr reactions.
+
+### 🧱 Core control-plane tables (schema only)
+All core tables from the plan are present in schema, but **no CRUD/query surface is implemented** yet:
+`users`, `api_tokens`, `organizations`, `organization_members`, `projects`, `project_repos`, `repos`, `threads`, `messages`, `message_embeddings`, `issues`, `issue_threads`, `knowledge`, `agents`, `numbers`.
+
+### ➕ Additional (not in original plan)
+- **Nostr cache tables** exist: `nostr_events` + `nostr_profiles`.
+- **Ingest + query surface** exists (`apps/web/convex/nostr.ts`, `apps/web/convex/nostr_http.ts`) and is used by the web app for Convex-backed Nostr reads (`apps/web/src/lib/nostrConvex.ts`).
+
+---
+
+## 11. Suggested next steps (priority order)
+
+1. **Enforce author model**  
+   - Make `comments.posting_identity_id` + `comments.created_at` required in schema.  
+   - Remove legacy `comments.author` field (or migrate/backfill before removal).
+
+2. **Harden identity tokens**  
+   - Update `identity_tokens.last_used_at` on each action call.  
+   - Enforce `expires_at`.  
+   - Add “rotate/revoke API key” flow if needed.
+
+3. **Decide Convex vs Nostr feed exposure**  
+   - Either add a `/posts` index (Convex feed) or merge Convex posts into the main `/feed`.  
+   - If Convex is not intended, remove the unused feed UI + tables to avoid drift.
+
+4. **Upvotes: implement or remove**  
+   - If Convex upvotes are desired, add queries/mutations + UI.  
+   - Otherwise remove `post_upvotes` / `comment_upvotes` from schema to reduce surface area.
+
+5. **Core control-plane surfaces**  
+   - Add minimal CRUD/query surface for `users`, `organizations`, `projects`, `repos`, and `api_tokens`.  
+   - Implement the “lazy user create” behavior described in the plan.
+
+6. **Vector index readiness**  
+   - Choose embedding model + dimensions; add Convex vector indexes for `knowledge` and `message_embeddings`.
+
+7. **Migrations + tests**  
+   - Add data migration for comments + identity tokens.  
+   - Add tests for token auth, posting identity creation, and feed queries.
