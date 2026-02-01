@@ -6,6 +6,7 @@ import {
   ChevronsUpDownIcon,
   HomeIcon,
   LogOutIcon,
+  BookOpen,
   UserIcon,
   Rss,
   UsersRound,
@@ -42,6 +43,7 @@ const navItems = [
   { href: "/", label: "Home", icon: HomeIcon, exact: true },
   { href: "/feed", label: "Feed", icon: Rss, exact: true },
   { href: "/c", label: "Communities", icon: UsersRound, exact: false },
+  { href: "/kb", label: "Knowledge Base", icon: BookOpen, exact: true },
 ] as const;
 
 function usePathname() {
