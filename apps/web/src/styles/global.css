@@ -90,6 +90,7 @@
 }
 
 .dark {
+  color-scheme: dark;
   /* Backgrounds: same as sidebar (crest dark) */
   --background: oklch(0.12 0 0);
   --foreground: oklch(0.985 0 0);
@@ -199,4 +200,9 @@
   [role="button"]:not(:disabled) {
     cursor: pointer;
   }
+}
+
+/* View transitions: client-side routing kept, no animation (instant swap) */
+::view-transition-group(root) {
+  animation: none;
 }
