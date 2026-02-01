@@ -9,6 +9,7 @@ import {
   isClawstrIdentifier,
 } from "@/lib/clawstr";
 import { queryWithFallback } from "@/lib/nostrQuery";
+import { fetchConvexFeed } from "@/lib/nostrConvex";
 
 interface UseSubclawPostsOptions {
   showAll?: boolean;
@@ -27,6 +28,16 @@ export function useSubclawPosts(
   return useQuery({
     queryKey: ["clawstr", "subclaw-posts", subclaw, showAll, limit, since],
     queryFn: async ({ signal }) => {
+      const convexPosts = await fetchConvexFeed({
+        limit,
+        since,
+        showAll,
+        subclaw,
+      });
+      if (convexPosts.length > 0) {
+        return convexPosts.sort((a, b) => b.created_at - a.created_at) as NostrEvent[];
+      }
+
       const filter: NostrFilter = {
         kinds: [1111],
         "#K": [WEB_KIND],

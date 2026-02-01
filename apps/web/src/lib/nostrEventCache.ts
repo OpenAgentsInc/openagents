@@ -3,13 +3,26 @@ import { matchFilters } from "nostr-tools";
 
 const DB_NAME = "clawstr-events-v1";
 const STORE_NAME = "events";
-const DB_VERSION = 1;
+const METRICS_STORE = "metrics";
+const DB_VERSION = 2;
 const DEFAULT_LIMIT = 200;
+const MAX_EVENT_COUNT = 5000;
+const MAX_METRIC_COUNT = 4000;
 
 type CachedEvent = NostrEvent & {
   identifier?: string;
   parent_id?: string;
 };
+
+type MetricEntry = {
+  key: string;
+  event_id: string;
+  type: "votes" | "zaps" | "replies";
+  data: unknown;
+  updated_at: number;
+};
+
+let pruneInFlight = false;
 
 let dbPromise: Promise<IDBDatabase | null> | null = null;
 
@@ -31,6 +44,10 @@ function openDb(): Promise<IDBDatabase | null> {
         store.createIndex("kind_pubkey", ["kind", "pubkey"], { unique: false });
         store.createIndex("kind_parent", ["kind", "parent_id"], { unique: false });
         store.createIndex("kind_created_at", ["kind", "created_at"], { unique: false });
+      }
+      if (!db.objectStoreNames.contains(METRICS_STORE)) {
+        const metrics = db.createObjectStore(METRICS_STORE, { keyPath: "key" });
+        metrics.createIndex("updated_at", "updated_at", { unique: false });
       }
     };
     request.onsuccess = () => resolve(request.result);
@@ -84,6 +101,40 @@ export async function storeEvents(events: NostrEvent[]): Promise<void> {
     store.put(toCachedEvent(event));
   }
   await waitForTx(tx);
+  void pruneEvents();
+}
+
+async function pruneEvents() {
+  if (pruneInFlight) return;
+  pruneInFlight = true;
+  try {
+    const db = await openDb();
+    if (!db) return;
+    const tx = db.transaction(STORE_NAME, "readwrite");
+    const store = tx.objectStore(STORE_NAME);
+    const count = await new Promise<number>((resolve) => {
+      const req = store.count();
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => resolve(0);
+    });
+    if (count <= MAX_EVENT_COUNT) {
+      await waitForTx(tx);
+      return;
+    }
+    let toDelete = count - MAX_EVENT_COUNT;
+    const index = store.index("created_at");
+    const cursorReq = index.openCursor(null, "next");
+    cursorReq.onsuccess = () => {
+      const cursor = cursorReq.result;
+      if (!cursor || toDelete <= 0) return;
+      cursor.delete();
+      toDelete -= 1;
+      cursor.continue();
+    };
+    await waitForTx(tx);
+  } finally {
+    pruneInFlight = false;
+  }
 }
 
 async function collectFromIndex(
@@ -185,4 +236,87 @@ export async function queryCachedEvents(filters: NostrFilter[]): Promise<NostrEv
 
   await waitForTx(tx);
   return [...results.values()];
+}
+
+export async function getCachedMetrics<T>(
+  eventIds: string[],
+  type: MetricEntry["type"],
+  maxAgeMs: number
+): Promise<{ data: Map<string, T>; missing: string[] }> {
+  const db = await openDb();
+  if (!db || eventIds.length === 0) {
+    return { data: new Map(), missing: eventIds };
+  }
+  const tx = db.transaction(METRICS_STORE, "readonly");
+  const store = tx.objectStore(METRICS_STORE);
+  const now = Date.now();
+  const data = new Map<string, T>();
+  const missing: string[] = [];
+
+  for (const id of eventIds) {
+    const key = `${type}:${id}`;
+    const entry = await new Promise<MetricEntry | undefined>((resolve) => {
+      const req = store.get(key);
+      req.onsuccess = () => resolve(req.result as MetricEntry | undefined);
+      req.onerror = () => resolve(undefined);
+    });
+    if (entry && now - entry.updated_at <= maxAgeMs) {
+      data.set(id, entry.data as T);
+    } else {
+      missing.push(id);
+    }
+  }
+
+  await waitForTx(tx);
+  return { data, missing };
+}
+
+export async function storeMetrics<T>(
+  type: MetricEntry["type"],
+  entries: Map<string, T>
+): Promise<void> {
+  const db = await openDb();
+  if (!db || entries.size === 0) return;
+  const tx = db.transaction(METRICS_STORE, "readwrite");
+  const store = tx.objectStore(METRICS_STORE);
+  const now = Date.now();
+  for (const [id, value] of entries) {
+    const entry: MetricEntry = {
+      key: `${type}:${id}`,
+      event_id: id,
+      type,
+      data: value,
+      updated_at: now,
+    };
+    store.put(entry);
+  }
+  await waitForTx(tx);
+  void pruneMetrics();
+}
+
+async function pruneMetrics() {
+  const db = await openDb();
+  if (!db) return;
+  const tx = db.transaction(METRICS_STORE, "readwrite");
+  const store = tx.objectStore(METRICS_STORE);
+  const count = await new Promise<number>((resolve) => {
+    const req = store.count();
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => resolve(0);
+  });
+  if (count <= MAX_METRIC_COUNT) {
+    await waitForTx(tx);
+    return;
+  }
+  let toDelete = count - MAX_METRIC_COUNT;
+  const index = store.index("updated_at");
+  const cursorReq = index.openCursor(null, "next");
+  cursorReq.onsuccess = () => {
+    const cursor = cursorReq.result;
+    if (!cursor || toDelete <= 0) return;
+    cursor.delete();
+    toDelete -= 1;
+    cursor.continue();
+  };
+  await waitForTx(tx);
 }

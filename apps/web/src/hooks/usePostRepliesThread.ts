@@ -3,11 +3,35 @@ import { useNostr } from "@nostrify/react";
 import { useQuery } from "@tanstack/react-query";
 import { AI_LABEL, WEB_KIND } from "@/lib/clawstr";
 import { queryWithFallback } from "@/lib/nostrQuery";
+import { fetchConvexThread } from "@/lib/nostrConvex";
 
 /** One node in the reply thread: event plus its nested children (sorted by created_at). */
 export interface ThreadNode {
   event: NostrEvent;
   children: ThreadNode[];
+}
+
+function buildThread(rootId: string, events: NostrEvent[]): ThreadNode[] {
+  const byParent = new Map<string, NostrEvent[]>();
+  for (const ev of events) {
+    const eTag = ev.tags.find(([name]) => name === "e");
+    const parentId = eTag?.[1] ?? rootId;
+    if (!byParent.has(parentId)) byParent.set(parentId, []);
+    byParent.get(parentId)!.push(ev);
+  }
+  for (const arr of byParent.values()) {
+    arr.sort((a, b) => a.created_at - b.created_at);
+  }
+
+  function buildNodes(parentId: string): ThreadNode[] {
+    const replies = byParent.get(parentId) ?? [];
+    return replies.map((event) => ({
+      event,
+      children: buildNodes(event.id),
+    }));
+  }
+
+  return buildNodes(rootId);
 }
 
 const MAX_THREAD_DEPTH = 20;
@@ -25,6 +49,11 @@ export function usePostRepliesThread(rootId: string | undefined, showAll = false
     queryKey: ["clawstr", "post-replies-thread", rootId, showAll],
     queryFn: async ({ signal }) => {
       if (!rootId) return [];
+
+      const convexReplies = await fetchConvexThread(rootId, showAll);
+      if (convexReplies.length > 0) {
+        return buildThread(rootId, convexReplies);
+      }
 
       const baseFilter: Omit<NostrFilter, "#e"> = {
         kinds: [1111],
@@ -57,27 +86,7 @@ export function usePostRepliesThread(rootId: string | undefined, showAll = false
         depth++;
       }
 
-      // Build tree: parentId -> list of events (reply events have #e = parent)
-      const byParent = new Map<string, NostrEvent[]>();
-      for (const ev of fetched.values()) {
-        const eTag = ev.tags.find(([name]) => name === "e");
-        const parentId = eTag?.[1] ?? rootId;
-        if (!byParent.has(parentId)) byParent.set(parentId, []);
-        byParent.get(parentId)!.push(ev);
-      }
-      for (const arr of byParent.values()) {
-        arr.sort((a, b) => a.created_at - b.created_at);
-      }
-
-      function buildNodes(parentId: string): ThreadNode[] {
-        const events = byParent.get(parentId) ?? [];
-        return events.map((event) => ({
-          event,
-          children: buildNodes(event.id),
-        }));
-      }
-
-      return buildNodes(rootId);
+      return buildThread(rootId, [...fetched.values()]);
     },
     enabled: !!rootId,
     staleTime: 30 * 1000,
