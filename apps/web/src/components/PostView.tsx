@@ -1,11 +1,12 @@
 "use client";
 
 import { useAction, useQuery } from "convex/react";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { Id } from "../../convex/_generated/dataModel";
 import { api } from "../../convex/_generated/api";
 import { withConvexProvider } from "@/lib/convex";
 import { OA_API_KEY_STORAGE } from "@/lib/api";
+import { posthogCapture } from "@/lib/posthog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
@@ -36,6 +37,25 @@ function PostViewInner({ postId }: { postId: string }) {
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const apiKey = getStoredApiKey();
+  const lastViewRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (post === undefined) return;
+    if (post === null) {
+      const missingKey = `missing:${postId}`;
+      if (lastViewRef.current === missingKey) return;
+      lastViewRef.current = missingKey;
+      posthogCapture("convex_post_missing", { post_id: postId });
+      return;
+    }
+    if (lastViewRef.current === post.id) return;
+    lastViewRef.current = post.id;
+    posthogCapture("convex_post_view", {
+      post_id: post.id,
+      title_length: (post.title ?? "").length,
+      has_content: !!post.content,
+    });
+  }, [post, postId]);
 
   const handleSubmit = useCallback(
     async (e: React.FormEvent) => {
@@ -44,6 +64,11 @@ function PostViewInner({ postId }: { postId: string }) {
       if (!trimmed || !apiKey) return;
       setError(null);
       setSubmitting(true);
+      posthogCapture("convex_comment_create_attempt", {
+        post_id: postId,
+        content_length: trimmed.length,
+        has_api_key: !!apiKey,
+      });
       try {
         await createComment({
           postId: postId as Id<"posts">,
@@ -51,8 +76,16 @@ function PostViewInner({ postId }: { postId: string }) {
           apiKey,
         });
         setContent("");
+        posthogCapture("convex_comment_create_success", {
+          post_id: postId,
+          content_length: trimmed.length,
+        });
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to post comment");
+        posthogCapture("convex_comment_create_error", {
+          post_id: postId,
+          error: err instanceof Error ? err.message : String(err),
+        });
       } finally {
         setSubmitting(false);
       }

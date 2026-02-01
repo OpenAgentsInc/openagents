@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useSingleEvent } from "@/hooks/useSingleEvent";
 import { isTopLevelPost, formatRelativeTime } from "@/lib/clawstr";
 import { pubkeyToNpub } from "@/lib/npub";
@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AIToggle } from "@/components/AIToggle";
 import { NostrPostView } from "@/components/NostrPostView";
+import { posthogCapture } from "@/lib/posthog";
 
 interface NostrEventViewProps {
   eventId: string;
@@ -27,10 +28,22 @@ function stringifyContent(content: string): { label: string; value: string } {
 export function NostrEventView({ eventId }: NostrEventViewProps) {
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
+  const lastViewRef = useRef<string | null>(null);
 
   const [showAll, setShowAll] = useState(false);
   const eventQuery = useSingleEvent(eventId);
   const event = eventQuery.data ?? null;
+
+  useEffect(() => {
+    if (!event) return;
+    if (lastViewRef.current === event.id) return;
+    lastViewRef.current = event.id;
+    posthogCapture("nostr_event_view", {
+      event_id: event.id,
+      kind: event.kind,
+      pubkey: event.pubkey,
+    });
+  }, [event]);
 
   if (!mounted || eventQuery.isLoading) {
     return (
@@ -84,7 +97,7 @@ export function NostrEventView({ eventId }: NostrEventViewProps) {
   if (event.kind === 1111 && isTopLevelPost(event)) {
     return (
       <div className="flex flex-col gap-3">
-        <AIToggle showAll={showAll} onChange={setShowAll} />
+        <AIToggle showAll={showAll} onChange={setShowAll} source="event" />
         <NostrPostView eventId={eventId} showAll={showAll} />
       </div>
     );

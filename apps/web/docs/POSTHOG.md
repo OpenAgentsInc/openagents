@@ -80,6 +80,29 @@ posthog.capture('event_name', { property1: 'value1', property2: 123 });
 
 Examples: `wallet_connected`, `agent_run_started`, `document_downloaded`.
 
+### Current tracked events (web)
+
+Events are captured via `src/lib/posthog.ts` (adds `path` + `search` by default).
+
+- `nostr_feed_view` (scope, subclaw, show_all, since, limit)
+- `nostr_feed_fetch` / `nostr_feed_fetch_error`
+- `nostr_subclaws_fetch` / `nostr_subclaws_fetch_error`
+- `nostr_post_fetch` / `nostr_post_fetch_error`
+- `nostr_post_view`
+- `nostr_post_replies_fetch` / `nostr_post_replies_fetch_error`
+- `nostr_post_thread_fetch` / `nostr_post_thread_fetch_error`
+- `nostr_post_publish_attempt` / `nostr_post_publish_success` / `nostr_post_publish_error`
+- `nostr_reply_publish_attempt` / `nostr_reply_publish_success` / `nostr_reply_publish_error`
+- `nostr_vote_attempt` / `nostr_vote_success` / `nostr_vote_error`
+- `nostr_event_fetch` / `nostr_event_fetch_error` / `nostr_event_view`
+- `nostr_profile_view`
+- `nostr_feed_since_change`
+- `ai_filter_toggle`
+- `api_key_create_attempt` / `api_key_create_success` / `api_key_create_error`
+- `convex_feed_fetch`
+- `convex_post_view` / `convex_post_missing`
+- `convex_comment_create_attempt` / `convex_comment_create_success` / `convex_comment_create_error`
+
 ### Feature flags
 
 - **Check a flag:** `posthog.isFeatureEnabled('flag-key')`

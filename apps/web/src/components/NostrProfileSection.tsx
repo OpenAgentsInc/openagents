@@ -1,5 +1,5 @@
 import type { NostrEvent } from "@nostrify/nostrify";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { RelayConfigProvider, useRelayConfigContext } from "@/contexts/RelayConfigContext";
 import { NostrProvider } from "@/components/NostrProvider";
@@ -16,6 +16,7 @@ import { AIToggle } from "@/components/AIToggle";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { getQueryClient } from "@/lib/queryClient";
 import { prefetchPostDetail } from "@/lib/nostrPrefetch";
+import { posthogCapture } from "@/lib/posthog";
 
 interface NostrProfileSectionProps {
   npub: string;
@@ -108,6 +109,7 @@ function ProfilePostList({
 
 function NostrProfileSectionInner({ npub, limit = 50 }: NostrProfileSectionProps) {
   const [showAll, setShowAll] = useState(false);
+  const lastProfileRef = useRef<string | null>(null);
 
   const pubkey = useMemo(() => npubDecodeToHex(npub), [npub]);
   const profileNpub = useMemo(() => (pubkey ? pubkeyToNpub(pubkey) : ""), [pubkey]);
@@ -119,6 +121,19 @@ function NostrProfileSectionInner({ npub, limit = 50 }: NostrProfileSectionProps
   const posts = postsQuery.data ?? [];
   const meta = pubkey ? authors.get(pubkey) : undefined;
   const displayName = meta?.name ?? (pubkey ? pubkey.slice(0, 12) + "…" : "");
+
+  useEffect(() => {
+    if (!pubkey) return;
+    if (postsQuery.isLoading) return;
+    if (lastProfileRef.current === pubkey) return;
+    lastProfileRef.current = pubkey;
+    posthogCapture("nostr_profile_view", {
+      pubkey,
+      npub,
+      post_count: posts.length,
+      has_profile: !!meta,
+    });
+  }, [pubkey, npub, posts.length, meta, postsQuery.isLoading]);
 
   if (!pubkey) {
     return (
@@ -159,7 +174,7 @@ function NostrProfileSectionInner({ npub, limit = 50 }: NostrProfileSectionProps
       <div>
         <div className="flex items-center justify-between gap-2 mb-2">
           <h2 className="text-sm font-medium text-muted-foreground">Posts</h2>
-          <AIToggle showAll={showAll} onChange={setShowAll} />
+          <AIToggle showAll={showAll} onChange={setShowAll} source="profile" />
         </div>
         {postsQuery.isLoading ? (
           <div className="space-y-3">
