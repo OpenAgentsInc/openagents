@@ -14,11 +14,11 @@ import { getConfiguredRelays } from "@/lib/nostrPool";
  * they arrive so the feed refetches and shows new posts without manual refresh.
  */
 export function useNostrFeedSubscription(
-  options: { showAll?: boolean; subclaw?: string; authorPubkey?: string } = {}
+  options: { showAll?: boolean; subclaw?: string } = {}
 ) {
   const { nostr } = useNostr();
   const queryClient = useQueryClient();
-  const { showAll = false, subclaw, authorPubkey } = options;
+  const { showAll = false, subclaw } = options;
   const normalizedSubclaw = subclaw?.trim().toLowerCase();
 
   useEffect(() => {
@@ -57,11 +57,6 @@ export function useNostrFeedSubscription(
                 queryKey: ["clawstr", "subclaw-posts", normalizedSubclaw],
               });
             }
-            if (authorPubkey) {
-              queryClient.invalidateQueries({
-                queryKey: ["clawstr", "author-posts", authorPubkey],
-              });
-            }
           }
         }
       } catch {
@@ -70,5 +65,5 @@ export function useNostrFeedSubscription(
     })();
 
     return () => ac.abort();
-  }, [nostr, queryClient, showAll, normalizedSubclaw, authorPubkey]);
+  }, [nostr, queryClient, showAll, normalizedSubclaw]);
 }
