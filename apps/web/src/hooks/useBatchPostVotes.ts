@@ -3,6 +3,9 @@ import { useNostr } from "@nostrify/react";
 import { useQuery } from "@tanstack/react-query";
 import { queryWithFallback } from "@/lib/nostrQuery";
 import { fetchConvexEventsByParent } from "@/lib/nostrConvex";
+import { getCachedMetrics, storeMetrics } from "@/lib/nostrEventCache";
+
+const METRIC_TTL_MS = 2 * 60 * 1000;
 
 /** NIP-25: +1 for positive reaction (+ or 👍 etc), -1 for negative (- or 👎). */
 function reactionToDelta(content: string): 1 | -1 | 0 {
@@ -68,18 +71,29 @@ export function useBatchPostVotes(eventIds: string[]) {
     queryFn: async ({ signal }) => {
       if (eventIds.length === 0) return new Map<string, PostVoteSummary>();
 
-      const convexEventsByParent = await fetchConvexEventsByParent(7, eventIds, 2000);
+      const { data: cached, missing } = await getCachedMetrics<PostVoteSummary>(
+        eventIds,
+        "votes",
+        METRIC_TTL_MS
+      );
+      if (missing.length === 0) return cached;
+
+      const convexEventsByParent = await fetchConvexEventsByParent(7, missing, 2000);
       const convexEvents: NostrEvent[] = [];
       for (const events of convexEventsByParent.values()) {
         convexEvents.push(...events);
       }
       if (convexEvents.length > 0) {
-        return summarizeVotes(convexEvents, eventIds);
+        const summary = summarizeVotes(convexEvents, missing);
+        await storeMetrics("votes", summary);
+        const merged = new Map(cached);
+        for (const [id, value] of summary) merged.set(id, value);
+        return merged;
       }
 
       const filter: NostrFilter = {
         kinds: [7],
-        "#e": eventIds,
+        "#e": missing,
         limit: 5000,
       };
 
@@ -88,7 +102,11 @@ export function useBatchPostVotes(eventIds: string[]) {
         timeoutMs: 5000,
       });
 
-      return summarizeVotes(events as NostrEvent[], eventIds);
+      const summary = summarizeVotes(events as NostrEvent[], missing);
+      await storeMetrics("votes", summary);
+      const merged = new Map(cached);
+      for (const [id, value] of summary) merged.set(id, value);
+      return merged;
     },
     enabled: eventIds.length > 0,
     staleTime: 60 * 1000,
