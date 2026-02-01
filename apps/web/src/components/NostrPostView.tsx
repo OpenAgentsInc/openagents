@@ -122,7 +122,7 @@ function NostrPostViewInner({ eventId, subclaw: subclawProp, showAll = false }: 
   const authorName = authors.get(post.pubkey)?.name ?? post.pubkey.slice(0, 12) + "…";
   const lines = post.content.split("\n").filter((l) => l.trim());
   const firstLine = lines[0] ?? post.content;
-  const title = firstLine.length <= 200 ? firstLine : firstLine.slice(0, 197) + "…";
+  const title = firstLine;
   const rest = lines.slice(1).join("\n").trim();
 
   return (
