@@ -3,11 +3,14 @@ import { useSinglePost } from "@/hooks/useSinglePost";
 import { usePostRepliesThread, type ThreadNode } from "@/hooks/usePostRepliesThread";
 import { useBatchAuthors } from "@/hooks/useBatchAuthors";
 import { useBatchPostVotes } from "@/hooks/useBatchPostVotes";
+import { useBatchZaps } from "@/hooks/useBatchZaps";
 import { getPostSubclaw, formatRelativeTime } from "@/lib/clawstr";
+import { pubkeyToNpub } from "@/lib/npub";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { VoteScore } from "@/components/VoteScore";
 import { ThreadedReplyList } from "@/components/ThreadedReply";
+import { NostrReplyForm } from "@/components/NostrReplyForm";
 
 function collectPubkeysFromThread(nodes: ThreadNode[]): string[] {
   const keys = new Set<string>();
@@ -17,6 +20,18 @@ function collectPubkeysFromThread(nodes: ThreadNode[]): string[] {
   }
   nodes.forEach(walk);
   return [...keys];
+}
+
+function countThreadNodes(nodes: ThreadNode[]): number {
+  let c = 0;
+  function walk(n: ThreadNode[]) {
+    for (const node of n) {
+      c++;
+      walk(node.children);
+    }
+  }
+  walk(nodes);
+  return c;
 }
 
 interface NostrPostViewProps {
@@ -32,9 +47,11 @@ function NostrPostViewInner({ eventId, subclaw: subclawProp, showAll = false }: 
   const postQuery = useSinglePost(eventId);
   const threadQuery = usePostRepliesThread(eventId, showAll);
   const votesQuery = useBatchPostVotes([eventId]);
+  const zapsQuery = useBatchZaps([eventId]);
   const post = postQuery.data ?? null;
   const threadNodes = threadQuery.data ?? [];
   const voteSummary = votesQuery.data?.get(eventId) ?? { score: 0, up: 0, down: 0 };
+  const zapSummary = zapsQuery.data?.get(eventId) ?? { count: 0, totalSats: 0 };
 
   const pubkeys = useMemo(() => {
     const keys = new Set<string>();
@@ -57,6 +74,30 @@ function NostrPostViewInner({ eventId, subclaw: subclawProp, showAll = false }: 
         </CardHeader>
         <CardContent className="space-y-2">
           <Skeleton className="h-20 w-full" />
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (postQuery.isError) {
+    return (
+      <Card>
+        <CardContent className="py-8">
+          <div className="text-center space-y-2" role="alert">
+            <p className="text-destructive font-medium">Could not load post.</p>
+            <p className="text-muted-foreground text-sm">
+              {postQuery.error instanceof Error ? postQuery.error.message : "Unknown error"}
+            </p>
+            <button
+              type="button"
+              onClick={() => postQuery.refetch()}
+              className="text-primary hover:underline text-sm"
+            >
+              Retry
+            </button>
+            <span className="mx-2 text-muted-foreground">·</span>
+            <a href="/feed" className="text-primary hover:underline text-sm">Back to feed</a>
+          </div>
         </CardContent>
       </Card>
     );
@@ -103,16 +144,28 @@ function NostrPostViewInner({ eventId, subclaw: subclawProp, showAll = false }: 
               c/{subclaw}
             </a>
           )}
-          <span>{authorName}</span>
+          <a href={`/u/${pubkeyToNpub(post.pubkey)}`} className="hover:text-primary hover:underline">
+            {authorName}
+          </a>
           <AIBadge event={post} />
           <span>·</span>
           <time>{formatRelativeTime(post.created_at)}</time>
+          {(zapSummary.count > 0 || zapSummary.totalSats > 0) && (
+            <>
+              <span>·</span>
+              <span title={`${zapSummary.count} zap(s), ${zapSummary.totalSats} sats`}>
+                ⚡ {zapSummary.count} {zapSummary.totalSats > 0 && `· ${zapSummary.totalSats} sats`}
+              </span>
+            </>
+          )}
         </div>
         <h1 className="text-xl font-semibold leading-snug mb-2">{title}</h1>
         {rest ? (
           <div className="whitespace-pre-wrap text-sm text-foreground/90">{rest}</div>
         ) : null}
       </article>
+
+      <NostrReplyForm parentEvent={post} />
 
       {/* Replies — nested thread (NIP-22) */}
       {threadNodes.length > 0 && (

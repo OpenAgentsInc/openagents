@@ -5,7 +5,10 @@ import { useSubclawPosts } from "@/hooks/useSubclawPosts";
 import { useBatchAuthors } from "@/hooks/useBatchAuthors";
 import { useBatchReplyCountsGlobal } from "@/hooks/useBatchReplyCountsGlobal";
 import { useBatchPostVotes } from "@/hooks/useBatchPostVotes";
+import { useBatchZaps } from "@/hooks/useBatchZaps";
+import { AIBadge } from "@/components/AIBadge";
 import { getPostSubclaw, formatRelativeTime } from "@/lib/clawstr";
+import { pubkeyToNpub } from "@/lib/npub";
 import { Skeleton } from "@/components/ui/skeleton";
 import { VoteScore } from "@/components/VoteScore";
 
@@ -23,6 +26,8 @@ interface NostrFeedListInnerProps {
   subclaw?: string;
   limit?: number;
   showAll?: boolean;
+  /** Optional: only posts since this Unix timestamp (for time range). */
+  since?: number;
 }
 
 function PostList({
@@ -39,9 +44,11 @@ function PostList({
   const authorsQuery = useBatchAuthors(pubkeys);
   const repliesQuery = useBatchReplyCountsGlobal(postIds, showAll);
   const votesQuery = useBatchPostVotes(postIds);
+  const zapsQuery = useBatchZaps(postIds);
   const authors = authorsQuery.data ?? new Map();
   const replyCounts = repliesQuery.data ?? new Map();
   const voteSummaries = votesQuery.data ?? new Map();
+  const zapSummaries = zapsQuery.data ?? new Map();
 
   if (posts.length === 0) {
     return <p className="text-muted-foreground text-sm">{emptyMessage}</p>;
@@ -56,6 +63,7 @@ function PostList({
         const authorName = authorMeta?.name ?? post.pubkey.slice(0, 12) + "…";
         const replyCount = replyCounts.get(post.id) ?? 0;
         const voteSummary = voteSummaries.get(post.id) ?? { score: 0, up: 0, down: 0 };
+        const zapSummary = zapSummaries.get(post.id) ?? { count: 0, totalSats: 0 };
         const lines = post.content.split("\n").filter((l) => l.trim());
         const firstLine = lines[0] ?? post.content;
         const title = firstLine.length <= 120 ? firstLine : firstLine.slice(0, 117) + "…";
@@ -78,7 +86,9 @@ function PostList({
                   c/{subclaw}
                 </span>
               )}
-              <span>{authorName}</span>
+              <a href={`/u/${pubkeyToNpub(post.pubkey)}`} className="hover:text-primary hover:underline">
+                {authorName}
+              </a>
               <AIBadge event={post} />
               <span>·</span>
               <time>{formatRelativeTime(post.created_at)}</time>
@@ -86,6 +96,14 @@ function PostList({
                 <>
                   <span>·</span>
                   <span>{replyCount} reply{replyCount !== 1 ? "s" : ""}</span>
+                </>
+              )}
+              {(zapSummary.count > 0 || zapSummary.totalSats > 0) && (
+                <>
+                  <span>·</span>
+                  <span title={`${zapSummary.count} zap(s), ${zapSummary.totalSats} sats`}>
+                    ⚡ {zapSummary.count} {zapSummary.totalSats > 0 && `· ${zapSummary.totalSats} sats`}
+                  </span>
                 </>
               )}
             </div>
@@ -96,12 +114,35 @@ function PostList({
   );
 }
 
-function NostrFeedListGlobal({ limit = 50, showAll = false }: { limit?: number; showAll?: boolean }) {
+function NostrFeedListGlobal({
+  limit = 50,
+  showAll = false,
+  since,
+}: {
+  limit?: number;
+  showAll?: boolean;
+  since?: number;
+}) {
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
-  const postsQuery = useClawstrPosts({ limit, showAll });
+  const postsQuery = useClawstrPosts({ limit, showAll, since });
   const posts = postsQuery.data ?? [];
   if (!mounted || postsQuery.isLoading) return skeletonEl();
+  if (postsQuery.isError) {
+    return (
+      <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-4 text-sm" role="alert">
+        <p className="text-destructive font-medium">Could not load feed.</p>
+        <p className="text-muted-foreground mt-1">{postsQuery.error instanceof Error ? postsQuery.error.message : "Unknown error"}</p>
+        <button
+          type="button"
+          onClick={() => postsQuery.refetch()}
+          className="mt-2 text-primary hover:underline"
+        >
+          Retry
+        </button>
+      </div>
+    );
+  }
   return (
     <PostList
       posts={posts}
@@ -115,16 +156,28 @@ function NostrFeedListSubclaw({
   subclaw,
   limit = 50,
   showAll = false,
+  since,
 }: {
   subclaw: string;
   limit?: number;
   showAll?: boolean;
+  since?: number;
 }) {
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
-  const postsQuery = useSubclawPosts(subclaw, { limit, showAll });
+  const postsQuery = useSubclawPosts(subclaw, { limit, showAll, since });
   const posts = postsQuery.data ?? [];
   if (!mounted || postsQuery.isLoading) return skeletonEl();
+  if (postsQuery.isError) {
+    return (
+      <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-4 text-sm" role="alert">
+        <p className="text-destructive font-medium">Could not load feed.</p>
+        <button type="button" onClick={() => postsQuery.refetch()} className="mt-2 text-primary hover:underline">
+          Retry
+        </button>
+      </div>
+    );
+  }
   return (
     <PostList
       posts={posts}
@@ -134,13 +187,13 @@ function NostrFeedListSubclaw({
   );
 }
 
-function NostrFeedListInner({ subclaw, limit = 50, showAll = false }: NostrFeedListInnerProps) {
+function NostrFeedListInner({ subclaw, limit = 50, showAll = false, since }: NostrFeedListInnerProps) {
   if (subclaw?.trim()) {
-    return <NostrFeedListSubclaw subclaw={subclaw.trim()} limit={limit} showAll={showAll} />;
+    return <NostrFeedListSubclaw subclaw={subclaw.trim()} limit={limit} showAll={showAll} since={since} />;
   }
-  return <NostrFeedListGlobal limit={limit} showAll={showAll} />;
+  return <NostrFeedListGlobal limit={limit} showAll={showAll} since={since} />;
 }
 
-export function NostrFeedList({ subclaw, limit = 50, showAll = false }: NostrFeedListInnerProps) {
-  return <NostrFeedListInner subclaw={subclaw} limit={limit} showAll={showAll} />;
+export function NostrFeedList({ subclaw, limit = 50, showAll = false, since }: NostrFeedListInnerProps) {
+  return <NostrFeedListInner subclaw={subclaw} limit={limit} showAll={showAll} since={since} />;
 }
