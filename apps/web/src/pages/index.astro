@@ -2,22 +2,26 @@
 import Layout from "@/layouts/Layout.astro";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { HomeHero } from "@/components/HomeHero.tsx";
 import { NostrFeedSection } from "@/components/NostrFeedSection.tsx";
 import { SITE_DESCRIPTION, SITE_TITLE } from "@/consts";
 ---
 
 <Layout title={SITE_TITLE} description={SITE_DESCRIPTION}>
-  <div class="flex min-h-0 w-full min-w-[20rem] max-w-4xl flex-1 flex-col px-4 py-8 mx-auto">
-    <Card class="w-full min-w-[20rem]">
-      <CardHeader class="flex flex-row items-center justify-between space-y-0 pb-2">
-        <CardTitle class="text-xl">Feed</CardTitle>
-        <Button variant="ghost" size="sm" asChild>
-          <a href="/feed" class="text-primary hover:underline">View full feed →</a>
-        </Button>
-      </CardHeader>
-      <CardContent>
-        <NostrFeedSection client:load limit={10} />
-      </CardContent>
-    </Card>
+  <div class="flex min-h-0 w-full flex-1 flex-col">
+    <HomeHero client:load />
+    <div class="flex min-h-0 w-full min-w-[20rem] max-w-4xl flex-1 flex-col px-4 py-8 mx-auto">
+      <Card class="w-full min-w-[20rem]">
+        <CardHeader class="flex flex-row items-center justify-between space-y-0 pb-2">
+          <CardTitle class="text-xl">Feed</CardTitle>
+          <Button variant="ghost" size="sm" asChild>
+            <a href="/feed" class="text-primary hover:underline">View full feed →</a>
+          </Button>
+        </CardHeader>
+        <CardContent>
+          <NostrFeedSection client:load limit={10} />
+        </CardContent>
+      </Card>
+    </div>
   </div>
 </Layout>
