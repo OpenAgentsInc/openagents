@@ -15,6 +15,38 @@ type QueryOptions = {
   fallbackOnEmpty?: boolean;
 };
 
+const DAY_SECONDS = 86400;
+const DEFAULT_FALLBACK_WINDOW = 7 * DAY_SECONDS;
+const VOTE_FALLBACK_WINDOW = 2 * DAY_SECONDS;
+const PROFILE_FALLBACK_WINDOW = 30 * DAY_SECONDS;
+
+function getFallbackWindowSeconds(filters: NostrFilter[]): number {
+  const kinds = new Set<number>();
+  for (const filter of filters) {
+    if (filter.kinds) filter.kinds.forEach((kind) => kinds.add(kind));
+  }
+  if (kinds.has(7) || kinds.has(9735)) return VOTE_FALLBACK_WINDOW;
+  if (kinds.has(0)) return PROFILE_FALLBACK_WINDOW;
+  return DEFAULT_FALLBACK_WINDOW;
+}
+
+function getLatestSeen(events: NostrEvent[]): number | null {
+  if (events.length === 0) return null;
+  let latest = 0;
+  for (const event of events) {
+    if (event.created_at > latest) latest = event.created_at;
+  }
+  return latest > 0 ? latest : null;
+}
+
+function shouldEscalateFallback(events: NostrEvent[], filters: NostrFilter[]): boolean {
+  const latest = getLatestSeen(events);
+  if (!latest) return false;
+  const windowSeconds = getFallbackWindowSeconds(filters);
+  const now = Math.floor(Date.now() / 1000);
+  return now - latest <= windowSeconds;
+}
+
 function combineSignals(signal?: AbortSignal, timeoutMs?: number): AbortSignal | undefined {
   const signals: AbortSignal[] = [];
   if (signal) signals.push(signal);
@@ -55,6 +87,9 @@ export async function queryWithFallback(
   }
 
   if (options.fallbackOnEmpty === false) {
+    return cached.length > 0 ? cached : primary;
+  }
+  if (!shouldEscalateFallback(cached, filters)) {
     return cached.length > 0 ? cached : primary;
   }
 
