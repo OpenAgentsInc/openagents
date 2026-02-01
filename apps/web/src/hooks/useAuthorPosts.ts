@@ -80,6 +80,9 @@ export function useAuthorPosts(
       }
     },
     enabled: !!pubkey,
-    staleTime: 30 * 1000,
+    staleTime: 5 * 1000,
+    refetchOnMount: "always",
+    refetchOnWindowFocus: true,
+    refetchOnReconnect: true,
   });
 }

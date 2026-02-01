@@ -17,8 +17,20 @@ type PersistedCache = {
   entries: PersistedEntry[];
 };
 
+const PERSIST_DENYLIST = new Set([
+  "posts",
+  "subclaw-posts",
+  "author-posts",
+  "discovered-subclaws",
+  "post-replies",
+  "post-replies-thread",
+  "batch-reply-counts-global",
+]);
+
 function isClawstrKey(key: unknown): key is unknown[] {
-  return Array.isArray(key) && key[0] === "clawstr";
+  if (!Array.isArray(key) || key[0] !== "clawstr") return false;
+  const scope = typeof key[1] === "string" ? key[1] : "";
+  return !PERSIST_DENYLIST.has(scope);
 }
 
 function serializeData(data: unknown): unknown {
