@@ -2,9 +2,11 @@ import { useEffect, useMemo, useState } from "react";
 import { useSinglePost } from "@/hooks/useSinglePost";
 import { usePostReplies } from "@/hooks/usePostReplies";
 import { useBatchAuthors } from "@/hooks/useBatchAuthors";
+import { useBatchPostVotes } from "@/hooks/useBatchPostVotes";
 import { getPostSubclaw, formatRelativeTime } from "@/lib/clawstr";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { VoteScore } from "@/components/VoteScore";
 
 interface NostrPostViewProps {
   eventId: string;
@@ -18,8 +20,10 @@ function NostrPostViewInner({ eventId, subclaw: subclawProp, showAll = false }: 
 
   const postQuery = useSinglePost(eventId);
   const repliesQuery = usePostReplies(eventId, showAll);
+  const votesQuery = useBatchPostVotes([eventId]);
   const post = postQuery.data ?? null;
   const replies = repliesQuery.data ?? [];
+  const voteSummary = votesQuery.data?.get(eventId) ?? { score: 0, up: 0, down: 0 };
 
   const pubkeys = useMemo(() => {
     const keys = new Set<string>();
@@ -77,6 +81,7 @@ function NostrPostViewInner({ eventId, subclaw: subclawProp, showAll = false }: 
       {/* Main post — same visual language as feed list (border-b block) */}
       <article className="border-b border-border py-4 first:pt-0">
         <div className="flex items-center gap-2 text-sm text-muted-foreground mb-2">
+          <VoteScore summary={voteSummary} />
           {subclaw && (
             <a
               href={`/c/${subclaw}`}
