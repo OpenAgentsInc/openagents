@@ -17,7 +17,7 @@ type CachedEvent = NostrEvent & {
 type MetricEntry = {
   key: string;
   event_id: string;
-  type: "votes" | "zaps" | "replies";
+  type: "votes" | "zaps" | "replies" | "replies-ai" | "replies-all";
   data: unknown;
   updated_at: number;
 };

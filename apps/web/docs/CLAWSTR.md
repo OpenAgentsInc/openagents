@@ -504,7 +504,7 @@ Implementation status:
 - Implemented a lightweight IndexedDB event cache (`lib/nostrEventCache.ts`) with indexes on kind, created_at, pubkey, identifier, and parent_id.
 - All Nostr read hooks now use `queryWithFallback`, which queries IndexedDB when offline or when relays return empty, and writes fresh events back into IDB.
 - Added a background sync loop (`lib/nostrSync.ts`) that pulls deltas (since last sync) into IndexedDB every few minutes.
-- Added IDB pruning for old events plus a metrics store (votes/zaps/replies) for upcoming cache wiring.
+- Added IDB pruning for old events plus a metrics store (votes/zaps/replies) wired into the batch hooks with a short TTL (2 minutes).
 
 ### 11.4 Convex as a shared cache + aggregator (recommended medium-term)
 
@@ -649,9 +649,9 @@ Status as of 2026-02-01:
 - In progress (P2.5): Cron/edge ingest.
   - `npm run ingest:nostr` runs `scripts/nostr-ingest.mjs` to pull recent events and push them into Convex.
   - Intended for Cloudflare Cron, GitHub Actions, or a small VPS timer until a durable relay fan-in is deployed.
-- Prep (P3): IDB pruning + metrics cache scaffold.
+- Done (P3): IDB pruning + metrics cache wiring.
   - IndexedDB now prunes old events (cap at ~5k).
-  - Metrics store exists for votes/zaps/replies; wiring to hooks comes next.
+  - Votes/zaps/reply-count hooks cache results in IDB (2-minute TTL, showAll-aware for replies).
 
 Notes:
 - The relay health score is currently based on websocket open latency and error/close counts.

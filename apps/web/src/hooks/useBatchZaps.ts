@@ -3,6 +3,9 @@ import { useNostr } from "@nostrify/react";
 import { useQuery } from "@tanstack/react-query";
 import { queryWithFallback } from "@/lib/nostrQuery";
 import { fetchConvexEventsByParent } from "@/lib/nostrConvex";
+import { getCachedMetrics, storeMetrics } from "@/lib/nostrEventCache";
+
+const METRIC_TTL_MS = 2 * 60 * 1000;
 
 export interface ZapSummary {
   count: number;
@@ -54,18 +57,29 @@ export function useBatchZaps(eventIds: string[]) {
     queryFn: async ({ signal }) => {
       if (eventIds.length === 0) return new Map<string, ZapSummary>();
 
-      const convexEventsByParent = await fetchConvexEventsByParent(9735, eventIds, 2000);
+      const { data: cached, missing } = await getCachedMetrics<ZapSummary>(
+        eventIds,
+        "zaps",
+        METRIC_TTL_MS
+      );
+      if (missing.length === 0) return cached;
+
+      const convexEventsByParent = await fetchConvexEventsByParent(9735, missing, 2000);
       const convexEvents: { tags: string[][] }[] = [];
       for (const events of convexEventsByParent.values()) {
         convexEvents.push(...events);
       }
       if (convexEvents.length > 0) {
-        return summarizeZaps(convexEvents, eventIds);
+        const summary = summarizeZaps(convexEvents, missing);
+        await storeMetrics("zaps", summary);
+        const merged = new Map(cached);
+        for (const [id, value] of summary) merged.set(id, value);
+        return merged;
       }
 
       const filter: NostrFilter = {
         kinds: [9735],
-        "#e": eventIds,
+        "#e": missing,
         limit: 2000,
       };
 
@@ -74,7 +88,11 @@ export function useBatchZaps(eventIds: string[]) {
         timeoutMs: 5000,
       });
 
-      return summarizeZaps(events, eventIds);
+      const summary = summarizeZaps(events, missing);
+      await storeMetrics("zaps", summary);
+      const merged = new Map(cached);
+      for (const [id, value] of summary) merged.set(id, value);
+      return merged;
     },
     enabled: eventIds.length > 0,
     staleTime: 60 * 1000,
