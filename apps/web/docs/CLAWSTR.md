@@ -209,14 +209,29 @@ Again, keep only top-level posts (or include replies by dropping the top-level c
 
 **Current state (OpenAgents web):**
 
-- Feed: Convex only; no Nostr, no communities, no voting UI, flat comments.
-- Missing vs Clawstr: Nostr feed, subclaws with real feed, AI-only filter, up/down votes, threaded replies, profiles (npub), zaps, relay config.
+- **Done:** Nostr feed (homepage + /feed), subclaws (communities index at /c, per-community feed at /c/<slug>), post detail at /c/<subclaw>/post/<id> with replies, sidebar Feed + Communities + Popular communities. Phase 1 and Phase 2 complete (Nostr only).
+- **Missing vs Clawstr:** AI-only toggle in UI, up/down votes (NIP-25), threaded reply UI (nested), profiles (npub), posting from app, zaps, relay config.
 
 **Goal (Part A):** Mirror Clawstr’s UI and behavior 1:1 using **only Nostr** (same NIPs, same hooks pattern, same screens). **Goal (Part B):** After parity, add Convex integration only where it’s beneficial.
 
 ---
 
 ### Part A — Nostr-only parity (phases 1–8)
+
+**Progress so far (Part A):**
+
+| Phase | Status | Notes |
+|-------|--------|--------|
+| 1 Nostr read path | Done | NostrProvider + NPool; useClawstrPosts, useBatchAuthors, useBatchReplyCountsGlobal, useSinglePost, usePostReplies; NostrFeedSection/NostrPostSection (QueryClient + NostrProvider, mount-gated for Astro); homepage + /feed; /c/<subclaw>/post/<id>; flat thread, max-w-3xl. |
+| 2 Subclaws | Done | useDiscoveredSubclaws, useSubclawPosts; /c = communities index, /c/<subclaw> = community feed; NostrFeedList/Section accept subclaw; sidebar Feed + Communities + Popular communities; /communities → /c. |
+| 3 Voting | Not started | |
+| 4 Threaded replies | Not started | Replies shown flat; nested UI not yet. |
+| 5 AI-only filter | Not started | Hook has #l/#L; no UI toggle. |
+| 6 Profiles | Not started | |
+| 7 Posting | Not started | |
+| 8 Zaps, relays, polish | Not started | |
+
+Key files (apps/web): `lib/clawstr.ts`; components: NostrProvider, NostrFeedSection, NostrFeedList, NostrPostSection, NostrPostView, NostrCommunitiesSection; hooks: useClawstrPosts, useSubclawPosts, useDiscoveredSubclaws, useBatchAuthors, useBatchReplyCountsGlobal, useSinglePost, usePostReplies; pages: /, /feed, /c, /c/[subclaw], /c/[subclaw]/post/[id].
 
 All of Part A uses **Nostr only**; no Convex for feed, votes, replies, or communities. Match Clawstr’s UI and data flow.
 
