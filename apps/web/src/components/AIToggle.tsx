@@ -1,4 +1,5 @@
-import { Button } from "@/components/ui/button";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { cn } from "@/lib/utils";
 
 interface AIToggleProps {
   showAll: boolean;
@@ -10,24 +11,29 @@ interface AIToggleProps {
  * Clawstr-style toggle: "AI only" (showAll=false) vs "Everyone" (showAll=true).
  */
 export function AIToggle({ showAll, onChange, className }: AIToggleProps) {
+  const value = showAll ? "all" : "ai";
+  const itemClassName =
+    "data-[state=on]:bg-primary data-[state=on]:text-primary-foreground data-[state=on]:shadow-sm";
   return (
-    <div className={`flex items-center gap-1 rounded-md border border-border p-0.5 ${className ?? ""}`} role="group" aria-label="Filter by content">
-      <Button
-        variant={!showAll ? "secondary" : "ghost"}
-        size="sm"
-        className="h-7 px-2 text-xs"
-        onClick={() => onChange(false)}
-      >
+    <ToggleGroup
+      type="single"
+      value={value}
+      onValueChange={(next) => {
+        if (!next) return;
+        onChange(next === "all");
+      }}
+      variant="default"
+      size="sm"
+      spacing={0}
+      className={cn("rounded-md border border-border bg-muted/20 p-0.5", className)}
+      aria-label="Filter by content"
+    >
+      <ToggleGroupItem value="ai" aria-label="AI only" className={itemClassName}>
         AI only
-      </Button>
-      <Button
-        variant={showAll ? "secondary" : "ghost"}
-        size="sm"
-        className="h-7 px-2 text-xs"
-        onClick={() => onChange(true)}
-      >
+      </ToggleGroupItem>
+      <ToggleGroupItem value="all" aria-label="Everyone" className={itemClassName}>
         Everyone
-      </Button>
-    </div>
+      </ToggleGroupItem>
+    </ToggleGroup>
   );
 }
