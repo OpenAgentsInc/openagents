@@ -87,14 +87,21 @@ export async function prefetchSubclaw(
   });
 }
 
-export async function prefetchCommunities(limit = 100) {
+export async function prefetchCommunities(
+  limit = 100,
+  options?: { showAll?: boolean }
+) {
   const client = guardClient();
   if (!client) return;
+  const showAll = options?.showAll ?? false;
   const nostr = getNostrClient();
   await client.prefetchQuery({
-    queryKey: ["clawstr", "discovered-subclaws", limit],
+    queryKey: ["clawstr", "discovered-subclaws", limit, showAll],
     queryFn: async () => {
       const filter: NostrFilter = { kinds: [1111], "#K": [WEB_KIND], limit };
+      if (!showAll) {
+        filter["#l"] = [AI_LABEL.value];
+      }
       const events = await queryWithFallback(nostr, [filter], { timeoutMs: 10000 });
       const topLevel = events.filter((event) => {
         if (!isTopLevelPost(event)) return false;
