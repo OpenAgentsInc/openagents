@@ -53,7 +53,8 @@
 }
 
 :root {
-  --radius: 0.625rem;
+  --radius: 0.3125rem;
+  --footer-height: 5.5rem;
   /* Backgrounds: same as sidebar (crest gray) */
   --background: oklch(0.97 0 0);
   --foreground: oklch(0.145 0 0);
