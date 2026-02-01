@@ -221,8 +221,8 @@ export function AppSidebar() {
           </SidebarMenu>
         </SidebarGroup>
       </SidebarContent>
-      <SidebarFooter className="border-t border-sidebar-border">
-        <SidebarMenu>
+      <SidebarFooter className="border-t border-sidebar-border flex shrink-0 items-center" style={{ height: "var(--footer-height)", minHeight: "var(--footer-height)" }}>
+        <SidebarMenu className="w-full">
           <SidebarUserMenu />
         </SidebarMenu>
       </SidebarFooter>
