@@ -1,0 +1,39 @@
+---
+import "../styles/global.css";
+import { SITE_TITLE } from "@/consts";
+
+interface Props {
+  title?: string;
+  description?: string;
+}
+
+const { title = `Wallet | ${SITE_TITLE}`, description = "Self-custodial Lightning wallet powered by Breez SDK." } = Astro.props;
+---
+<script is:inline>
+  (function() {
+    var theme = typeof localStorage !== 'undefined' && localStorage.getItem('theme');
+    var isDark = theme === 'dark' || (theme !== 'light' && typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    document.documentElement.classList.toggle('dark', isDark);
+  })();
+</script>
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" type="image/x-icon" href="/favicon.ico" />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+  </head>
+  <body class="bg-background text-foreground min-h-screen">
+    <div class="flex min-h-screen flex-col">
+      <header class="flex shrink-0 items-center justify-between border-b border-border bg-background px-4 py-3">
+        <a href="/" class="text-sm font-medium text-muted-foreground hover:text-foreground">← Back to site</a>
+      </header>
+      <main class="min-h-0 flex-1">
+        <slot />
+      </main>
+    </div>
+  </body>
+</html>
