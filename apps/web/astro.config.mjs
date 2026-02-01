@@ -21,9 +21,10 @@ export default defineConfig({
   integrations: [react(), mdx(), sitemap()],
   redirects: {
     "/posts": "/feed",
-    "/sign-in": "/login",
-    "/sign-up": "/signup",
-    "/register": "/signup",
+    // Login/signup disabled – no one can sign in. Restore to /login, /signup when re-enabling.
+    // "/sign-in": "/login",
+    // "/sign-up": "/signup",
+    // "/register": "/signup",
     // Wallet route disabled – remove this redirect to re-enable /wallet
     "/wallet": "/",
     "/communities": "/c",
