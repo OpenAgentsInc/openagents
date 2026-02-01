@@ -22,6 +22,7 @@ const trustedOrigins = [
   "http://127.0.0.1:4321",
   "https://web-ct8.pages.dev",
   "https://bfd1a6db.web-ct8.pages.dev",
+  "https://web.openagents.workers.dev",
   ...extraOrigins,
 ].filter((o): o is string => Boolean(o));
 
