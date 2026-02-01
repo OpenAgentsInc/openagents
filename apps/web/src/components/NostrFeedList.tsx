@@ -3,12 +3,13 @@ import { useEffect, useMemo, useState } from "react";
 import { useClawstrPosts } from "@/hooks/useClawstrPosts";
 import { useNostrFeedSubscription } from "@/hooks/useNostrFeedSubscription";
 import { useSubclawPosts } from "@/hooks/useSubclawPosts";
+import { useAuthorPosts } from "@/hooks/useAuthorPosts";
 import { useBatchAuthors } from "@/hooks/useBatchAuthors";
 import { useBatchReplyCountsGlobal } from "@/hooks/useBatchReplyCountsGlobal";
 import { useBatchPostVotes } from "@/hooks/useBatchPostVotes";
 import { useBatchZaps } from "@/hooks/useBatchZaps";
 import { AIBadge } from "@/components/AIBadge";
-import { getPostSubclaw, formatRelativeTime } from "@/lib/clawstr";
+import { getPostSubclaw, formatRelativeTime, getPostIdentifier, identifierToSubclaw } from "@/lib/clawstr";
 import { pubkeyToNpub } from "@/lib/npub";
 import { Skeleton } from "@/components/ui/skeleton";
 import { VoteScore } from "@/components/VoteScore";
@@ -30,6 +31,7 @@ interface NostrFeedListInnerProps {
   showAll?: boolean;
   /** Optional: only posts since this Unix timestamp (for time range). */
   since?: number;
+  authorPubkey?: string;
 }
 
 function PostList({
@@ -125,25 +127,29 @@ function NostrFeedListGlobal({
   limit = 50,
   showAll = false,
   since,
+  authorPubkey,
 }: {
   limit?: number;
   showAll?: boolean;
   since?: number;
+  authorPubkey?: string;
 }) {
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
-  useNostrFeedSubscription({ showAll });
+  useNostrFeedSubscription({ showAll, authorPubkey });
+  const authorQuery = useAuthorPosts(authorPubkey, { showAll: true, limit });
   const postsQuery = useClawstrPosts({ limit, showAll, since });
-  const posts = postsQuery.data ?? [];
-  if (!mounted || postsQuery.isLoading) return skeletonEl();
-  if (postsQuery.isError) {
+  const activeQuery = authorPubkey ? authorQuery : postsQuery;
+  const posts = activeQuery.data ?? [];
+  if (!mounted || activeQuery.isLoading) return skeletonEl();
+  if (activeQuery.isError) {
     return (
       <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-4 text-sm" role="alert">
         <p className="text-destructive font-medium">Could not load feed.</p>
-        <p className="text-muted-foreground mt-1">{postsQuery.error instanceof Error ? postsQuery.error.message : "Unknown error"}</p>
+        <p className="text-muted-foreground mt-1">{activeQuery.error instanceof Error ? activeQuery.error.message : "Unknown error"}</p>
         <button
           type="button"
-          onClick={() => postsQuery.refetch()}
+          onClick={() => activeQuery.refetch()}
           className="mt-2 text-primary hover:underline"
         >
           Retry
@@ -155,7 +161,7 @@ function NostrFeedListGlobal({
     <PostList
       posts={posts}
       showAll={showAll}
-      emptyMessage="No posts yet. Clawstr feed (Nostr) — try other relays or check back later."
+      emptyMessage={authorPubkey ? "No posts yet from your key." : "No posts yet. Clawstr feed (Nostr) — try other relays or check back later."}
     />
   );
 }
@@ -165,23 +171,33 @@ function NostrFeedListSubclaw({
   limit = 50,
   showAll = false,
   since,
+  authorPubkey,
 }: {
   subclaw: string;
   limit?: number;
   showAll?: boolean;
   since?: number;
+  authorPubkey?: string;
 }) {
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
-  useNostrFeedSubscription({ showAll, subclaw });
+  useNostrFeedSubscription({ showAll, subclaw, authorPubkey });
+  const authorQuery = useAuthorPosts(authorPubkey, { showAll: true, limit: Math.max(limit, 50) });
   const postsQuery = useSubclawPosts(subclaw, { limit, showAll, since });
-  const posts = postsQuery.data ?? [];
-  if (!mounted || postsQuery.isLoading) return skeletonEl();
-  if (postsQuery.isError) {
+  const activeQuery = authorPubkey ? authorQuery : postsQuery;
+  const filteredPosts = authorPubkey
+    ? (activeQuery.data ?? []).filter((post) => {
+        const identifier = getPostIdentifier(post);
+        const slug = identifier ? identifierToSubclaw(identifier) : null;
+        return slug === subclaw.trim().toLowerCase();
+      })
+    : activeQuery.data ?? [];
+  if (!mounted || activeQuery.isLoading) return skeletonEl();
+  if (activeQuery.isError) {
     return (
       <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-4 text-sm" role="alert">
         <p className="text-destructive font-medium">Could not load feed.</p>
-        <button type="button" onClick={() => postsQuery.refetch()} className="mt-2 text-primary hover:underline">
+        <button type="button" onClick={() => activeQuery.refetch()} className="mt-2 text-primary hover:underline">
           Retry
         </button>
       </div>
@@ -189,20 +205,54 @@ function NostrFeedListSubclaw({
   }
   return (
     <PostList
-      posts={posts}
+      posts={filteredPosts}
       showAll={showAll}
-      emptyMessage={`No posts yet in c/${subclaw}. Try other relays or check back later.`}
+      emptyMessage={
+        authorPubkey
+          ? `No posts yet from your key in c/${subclaw}.`
+          : `No posts yet in c/${subclaw}. Try other relays or check back later.`
+      }
     />
   );
 }
 
-function NostrFeedListInner({ subclaw, limit = 50, showAll = false, since }: NostrFeedListInnerProps) {
+function NostrFeedListInner({
+  subclaw,
+  limit = 50,
+  showAll = false,
+  since,
+  authorPubkey,
+}: NostrFeedListInnerProps) {
   if (subclaw?.trim()) {
-    return <NostrFeedListSubclaw subclaw={subclaw.trim()} limit={limit} showAll={showAll} since={since} />;
+    return (
+      <NostrFeedListSubclaw
+        subclaw={subclaw.trim()}
+        limit={limit}
+        showAll={showAll}
+        since={since}
+        authorPubkey={authorPubkey}
+      />
+    );
   }
-  return <NostrFeedListGlobal limit={limit} showAll={showAll} since={since} />;
+  return (
+    <NostrFeedListGlobal limit={limit} showAll={showAll} since={since} authorPubkey={authorPubkey} />
+  );
 }
 
-export function NostrFeedList({ subclaw, limit = 50, showAll = false, since }: NostrFeedListInnerProps) {
-  return <NostrFeedListInner subclaw={subclaw} limit={limit} showAll={showAll} since={since} />;
+export function NostrFeedList({
+  subclaw,
+  limit = 50,
+  showAll = false,
+  since,
+  authorPubkey,
+}: NostrFeedListInnerProps) {
+  return (
+    <NostrFeedListInner
+      subclaw={subclaw}
+      limit={limit}
+      showAll={showAll}
+      since={since}
+      authorPubkey={authorPubkey}
+    />
+  );
 }
