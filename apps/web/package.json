@@ -11,6 +11,7 @@
     "preview": "astro preview",
     "deploy": "CONVEX_URL=https://blessed-warbler-385.convex.cloud PUBLIC_CONVEX_SITE_URL=https://blessed-warbler-385.convex.site astro build && wrangler pages deploy",
     "test:api": "node scripts/test-api.mjs",
+    "test:site": "node scripts/test-site-api.mjs",
     "format": "prettier --write ."
   },
   "dependencies": {
