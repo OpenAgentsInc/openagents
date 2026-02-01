@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { NostrProvider } from "@/components/NostrProvider";
 import { NostrFeedList } from "@/components/NostrFeedList";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -14,21 +15,25 @@ function FeedSkeleton() {
 }
 
 interface NostrFeedSectionProps {
+  subclaw?: string;
   limit?: number;
   showAll?: boolean;
 }
 
 /**
- * Single island: NostrProvider + feed list. Renders feed only after mount
+ * Single island: QueryClient + NostrProvider + feed list. Renders feed only after mount
  * so useNostr() is never called during SSR/prerender (Astro).
  */
-export function NostrFeedSection({ limit = 50, showAll = false }: NostrFeedSectionProps) {
+export function NostrFeedSection({ subclaw, limit = 50, showAll = false }: NostrFeedSectionProps) {
   const [mounted, setMounted] = useState(false);
+  const [queryClient] = useState(() => new QueryClient());
   useEffect(() => setMounted(true), []);
 
   return (
-    <NostrProvider>
-      {mounted ? <NostrFeedList limit={limit} showAll={showAll} /> : <FeedSkeleton />}
-    </NostrProvider>
+    <QueryClientProvider client={queryClient}>
+      <NostrProvider>
+        {mounted ? <NostrFeedList subclaw={subclaw} limit={limit} showAll={showAll} /> : <FeedSkeleton />}
+      </NostrProvider>
+    </QueryClientProvider>
   );
 }

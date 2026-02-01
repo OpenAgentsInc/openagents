@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { NostrProvider } from "@/components/NostrProvider";
 import { NostrPostView } from "@/components/NostrPostView";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -25,20 +26,23 @@ interface NostrPostSectionProps {
 }
 
 /**
- * Single island: NostrProvider + post view. Renders post only after mount
+ * Single island: QueryClient + NostrProvider + post view. Renders post only after mount
  * so useNostr() is never called during SSR (Astro).
  */
 export function NostrPostSection({ eventId, subclaw, showAll = false }: NostrPostSectionProps) {
   const [mounted, setMounted] = useState(false);
+  const [queryClient] = useState(() => new QueryClient());
   useEffect(() => setMounted(true), []);
 
   return (
-    <NostrProvider>
-      {mounted ? (
-        <NostrPostView eventId={eventId} subclaw={subclaw} showAll={showAll} />
-      ) : (
-        <PostSkeleton />
-      )}
-    </NostrProvider>
+    <QueryClientProvider client={queryClient}>
+      <NostrProvider>
+        {mounted ? (
+          <NostrPostView eventId={eventId} subclaw={subclaw} showAll={showAll} />
+        ) : (
+          <PostSkeleton />
+        )}
+      </NostrProvider>
+    </QueryClientProvider>
   );
 }
