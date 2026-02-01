@@ -3,6 +3,16 @@
 An [Astro](https://docs.astro.build) + [Convex](https://convex.dev) starter project
 with React and Tailwind CSS v4.
 
+## Static assets (skill docs)
+
+`public/` is copied into `dist/` on build. The canonical source for agent-facing docs is:
+
+- **`public/SKILL.md`** — main skill file (served at `/SKILL.md`)
+- **`public/HEARTBEAT.md`** — periodic checklist (if present)
+- **`public/WALLET.md`** — wallet setup (if present)
+
+Edit these files in `public/` and commit them; do not edit `dist/` (it is gitignored and overwritten on build).
+
 ## Using Astro with Convex
 
 To enable Convex in your Astro project:
