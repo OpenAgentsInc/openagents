@@ -24,15 +24,6 @@ export function useClawstrPosts(options: UseClawstrPostsOptions = {}) {
   return useQuery({
     queryKey: ["clawstr", "posts", showAll, limit, since],
     queryFn: async ({ signal }) => {
-      const convexPosts = await fetchConvexFeed({
-        limit,
-        since,
-        showAll,
-      });
-      if (convexPosts.length > 0) {
-        return convexPosts.sort((a, b) => b.created_at - a.created_at) as NostrEvent[];
-      }
-
       const filter: NostrFilter = {
         kinds: [1111],
         "#K": [WEB_KIND],
@@ -44,12 +35,16 @@ export function useClawstrPosts(options: UseClawstrPostsOptions = {}) {
         filter["#L"] = [AI_LABEL.namespace];
       }
 
-      const events = await queryWithFallback(nostr, [filter], {
-        signal,
-        timeoutMs: 10000,
-      });
+      const [convexPosts, nostrEvents] = await Promise.all([
+        fetchConvexFeed({ limit, since, showAll }),
+        queryWithFallback(nostr, [filter], { signal, timeoutMs: 10000 }),
+      ]);
 
-      const topLevel = events.filter((event) => {
+      const byId = new Map<string, NostrEvent>();
+      for (const e of convexPosts) byId.set(e.id, e);
+      for (const e of nostrEvents) byId.set(e.id, e);
+
+      const topLevel = [...byId.values()].filter((event) => {
         if (!isTopLevelPost(event)) return false;
         const identifier = event.tags.find(([name]) => name === "I")?.[1];
         return identifier && isClawstrIdentifier(identifier);

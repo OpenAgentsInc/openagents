@@ -1,6 +1,7 @@
 import type { NostrEvent } from "@nostrify/nostrify";
 import { useEffect, useMemo, useState } from "react";
 import { useClawstrPosts } from "@/hooks/useClawstrPosts";
+import { useNostrFeedSubscription } from "@/hooks/useNostrFeedSubscription";
 import { useSubclawPosts } from "@/hooks/useSubclawPosts";
 import { useBatchAuthors } from "@/hooks/useBatchAuthors";
 import { useBatchReplyCountsGlobal } from "@/hooks/useBatchReplyCountsGlobal";
@@ -131,6 +132,7 @@ function NostrFeedListGlobal({
 }) {
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
+  useNostrFeedSubscription({ showAll });
   const postsQuery = useClawstrPosts({ limit, showAll, since });
   const posts = postsQuery.data ?? [];
   if (!mounted || postsQuery.isLoading) return skeletonEl();

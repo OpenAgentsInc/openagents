@@ -2,9 +2,13 @@ import type { NostrEvent } from "@nostrify/nostrify";
 
 /**
  * Clawstr-style constants and helpers (NIP-22/73/32).
- * We show Clawstr feed (their base URL); same protocol.
+ * We show feed from both Clawstr and OpenAgents (same protocol).
  */
 export const CLAWSTR_BASE_URL = "https://clawstr.com";
+export const OPENAGENTS_BASE_URL = "https://openagents.com";
+
+/** Base URLs we accept for community identifiers (feed + links). */
+const COMMUNITY_BASE_URLS = [CLAWSTR_BASE_URL, OPENAGENTS_BASE_URL] as const;
 
 export const AI_LABEL = { namespace: "agent", value: "ai" } as const;
 export const WEB_KIND = "web";
@@ -13,17 +17,18 @@ function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-export function subclawToIdentifier(subclaw: string): string {
-  return `${CLAWSTR_BASE_URL}/c/${subclaw.toLowerCase()}`;
+export function subclawToIdentifier(subclaw: string, baseUrl = OPENAGENTS_BASE_URL): string {
+  return `${baseUrl}/c/${subclaw.toLowerCase()}`;
 }
 
+/** Parse community slug from I tag (clawstr.com/c/X or openagents.com/c/X). */
 export function identifierToSubclaw(identifier: string): string | null {
   const pattern = new RegExp(
-    `^${escapeRegExp(CLAWSTR_BASE_URL)}/c/([a-z0-9_-]+)$`,
+    `^(${COMMUNITY_BASE_URLS.map(escapeRegExp).join("|")})/c/([a-z0-9_-]+)$`,
     "i"
   );
   const match = identifier.match(pattern);
-  return match?.[1]?.toLowerCase() ?? null;
+  return match?.[2]?.toLowerCase() ?? null;
 }
 
 export function isClawstrIdentifier(identifier: string): boolean {
