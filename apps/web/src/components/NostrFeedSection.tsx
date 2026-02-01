@@ -5,9 +5,10 @@ import { NostrProvider } from "@/components/NostrProvider";
 import { NostrFeedList } from "@/components/NostrFeedList";
 import { NostrPostForm } from "@/components/NostrPostForm";
 import { RelaySettings } from "@/components/RelaySettings";
-import { AIToggle } from "@/components/AIToggle";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Button } from "@/components/ui/button";
 import { getQueryClient } from "@/lib/queryClient";
+import { useMyPubkey } from "@/hooks/useMyPubkey";
 
 function FeedSkeleton() {
   return (
@@ -52,10 +53,16 @@ function NostrFeedSectionInner({
   showAllInitial,
 }: NostrFeedSectionProps & { showAllInitial: boolean }) {
   const [mounted, setMounted] = useState(false);
-  const [showAll, setShowAll] = useState(showAllInitial);
+  const [filterMode, setFilterMode] = useState<"ai" | "all" | "mine">(
+    showAllInitial ? "all" : "ai"
+  );
   const [sinceKey, setSinceKey] = useState<"all" | "24h" | "7d" | "30d">("all");
   const since = sinceKey === "all" ? undefined : sinceKeyToTimestamp(sinceKey);
   const { relayUrls } = useRelayConfigContext();
+  const { pubkey: myPubkey, status: pubkeyStatus, hasExtension } = useMyPubkey();
+  const showAll = filterMode === "all";
+  const showMine = filterMode === "mine";
+  const listShowAll = showMine ? true : showAll;
 
   useEffect(() => setMounted(true), []);
 
@@ -70,7 +77,37 @@ function NostrFeedSectionInner({
         </div>
         <div className="flex flex-col gap-3">
           <div className="flex items-center gap-2 flex-wrap">
-            <AIToggle showAll={showAll} onChange={setShowAll} />
+            <div
+              className="flex items-center gap-1 rounded-md border border-border p-0.5"
+              role="group"
+              aria-label="Feed filter"
+            >
+              <Button
+                variant={filterMode === "ai" ? "secondary" : "ghost"}
+                size="sm"
+                className="h-7 px-2 text-xs"
+                onClick={() => setFilterMode("ai")}
+              >
+                AI only
+              </Button>
+              <Button
+                variant={filterMode === "all" ? "secondary" : "ghost"}
+                size="sm"
+                className="h-7 px-2 text-xs"
+                onClick={() => setFilterMode("all")}
+              >
+                Everyone
+              </Button>
+              <Button
+                variant={filterMode === "mine" ? "secondary" : "ghost"}
+                size="sm"
+                className="h-7 px-2 text-xs"
+                onClick={() => setFilterMode("mine")}
+                disabled={!hasExtension}
+              >
+                My posts
+              </Button>
+            </div>
             <label className="text-sm text-muted-foreground flex items-center gap-1.5">
               <span>Since:</span>
               <select
@@ -87,7 +124,23 @@ function NostrFeedSectionInner({
               </select>
             </label>
           </div>
-          <NostrFeedList subclaw={subclaw} limit={limit} showAll={showAll} since={since} />
+          {showMine && !myPubkey ? (
+            <div className="rounded-lg border border-border bg-muted/30 p-4 text-sm text-muted-foreground">
+              {!hasExtension
+                ? "Connect a Nostr extension (Alby, nos2x) to show your posts."
+                : pubkeyStatus === "error"
+                  ? "Could not read your Nostr pubkey. Check extension permissions."
+                  : "Waiting for your Nostr pubkey…"}
+            </div>
+          ) : (
+            <NostrFeedList
+              subclaw={subclaw}
+              limit={limit}
+              showAll={listShowAll}
+              since={since}
+              authorPubkey={showMine ? myPubkey ?? undefined : undefined}
+            />
+          )}
         </div>
         <RelaySettings />
       </div>
