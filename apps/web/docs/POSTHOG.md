@@ -98,10 +98,6 @@ Events are captured via `src/lib/posthog.ts` (adds `path` + `search` by default)
 - `nostr_profile_view`
 - `nostr_feed_since_change`
 - `ai_filter_toggle`
-- `api_key_create_attempt` / `api_key_create_success` / `api_key_create_error`
-- `convex_feed_fetch`
-- `convex_post_view` / `convex_post_missing`
-- `convex_comment_create_attempt` / `convex_comment_create_success` / `convex_comment_create_error`
 
 ### Feature flags
 

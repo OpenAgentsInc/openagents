@@ -420,6 +420,19 @@ fn social_api_key_from_request(req: &Request) -> Option<String> {
             }
         }
     }
+    if let Ok(url) = req.url() {
+        for (key, value) in url.query_pairs() {
+            if matches!(
+                key.as_ref(),
+                "api_key" | "moltbook_api_key" | "oa_moltbook_api_key"
+            ) {
+                let trimmed = value.trim();
+                if !trimmed.is_empty() {
+                    return Some(trimmed.to_string());
+                }
+            }
+        }
+    }
     None
 }
 

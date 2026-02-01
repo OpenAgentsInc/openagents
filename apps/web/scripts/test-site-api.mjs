@@ -98,137 +98,58 @@ async function main() {
 
   // ─── 3. Convex: queries (no auth) ─────────────────────────────────────────
   console.log("3. Convex queries");
-  let firstPostId = null;
+  let sampleEventId = null;
+  let samplePubkey = null;
   try {
-    const feed = await convexCall("posts:listFeed", { limit: 10 }, "query");
+    const feed = await convexCall("nostr:listFeed", { limit: 10 }, "query");
     if (!Array.isArray(feed)) throw new Error("Expected array");
-    ok("posts:listFeed", feed);
-    firstPostId = feed.length ? feed[0].id : null;
+    ok("nostr:listFeed", feed);
+    sampleEventId = feed.length ? feed[0].event_id : null;
+    samplePubkey = feed.length ? feed[0].pubkey : null;
   } catch (e) {
-    fail("posts:listFeed", e);
+    fail("nostr:listFeed", e);
   }
 
-  if (firstPostId) {
+  try {
+    const subclaws = await convexCall("nostr:listSubclaws", { limit: 20 }, "query");
+    if (!Array.isArray(subclaws)) throw new Error("Expected array");
+    ok("nostr:listSubclaws", subclaws);
+  } catch (e) {
+    fail("nostr:listSubclaws", e);
+  }
+
+  if (sampleEventId) {
     try {
-      const post = await convexCall("posts:get", { id: firstPostId }, "query");
-      if (!post || post.id !== firstPostId) throw new Error("Expected post");
-      ok("posts:get", post);
+      const post = await convexCall("nostr:getPost", { event_id: sampleEventId }, "query");
+      if (!post || post.event_id !== sampleEventId) throw new Error("Expected event");
+      ok("nostr:getPost", post);
     } catch (e) {
-      fail("posts:get", e);
+      fail("nostr:getPost", e);
     }
     try {
-      const comments = await convexCall("comments:listByPost", { postId: firstPostId }, "query");
-      if (!Array.isArray(comments)) throw new Error("Expected array");
-      ok("comments:listByPost", comments);
+      const replies = await convexCall("nostr:listReplies", { event_id: sampleEventId }, "query");
+      if (!Array.isArray(replies)) throw new Error("Expected array");
+      ok("nostr:listReplies", replies);
     } catch (e) {
-      fail("comments:listByPost", e);
+      fail("nostr:listReplies", e);
     }
   } else {
-    console.log("  (skip posts:get, comments:listByPost — no posts in feed)");
-  }
-  console.log("");
-
-  // ─── 4. Convex: register posting identity + create post (mutation) ─────────
-  console.log("4. Convex mutations");
-  let apiKey = null;
-  let postingIdentityId = null;
-  let createdPostId = null;
-
-  try {
-    const reg = await convexCall(
-      "posting_identities:register",
-      { name: "API Test " + timestamp },
-      "mutation"
-    );
-    if (!reg?.api_key || !reg?.posting_identity_id) throw new Error("Expected api_key and posting_identity_id");
-    apiKey = reg.api_key;
-    postingIdentityId = reg.posting_identity_id;
-    ok("posting_identities:register", reg);
-  } catch (e) {
-    fail("posting_identities:register", e);
+    console.log("  (skip nostr:getPost, nostr:listReplies — no events in feed)");
   }
 
-  if (postingIdentityId) {
+  if (samplePubkey) {
     try {
-      createdPostId = await convexCall(
-        "posts:create",
-        {
-          title: "API test post " + timestamp,
-          content: "Created via HTTP API (test-site-api.mjs)",
-          posting_identity_id: postingIdentityId,
-        },
-        "mutation"
-      );
-      if (!createdPostId) throw new Error("Expected post id");
-      ok("posts:create", createdPostId);
+      const profiles = await convexCall("nostr:getProfiles", { pubkeys: [samplePubkey] }, "query");
+      if (!Array.isArray(profiles)) throw new Error("Expected array");
+      ok("nostr:getProfiles", profiles);
     } catch (e) {
-      fail("posts:create", e);
+      fail("nostr:getProfiles", e);
     }
   }
   console.log("");
 
-  // ─── 5. Convex: actions (API key) ─────────────────────────────────────────
-  console.log("5. Convex actions (API key)");
-  if (apiKey) {
-    try {
-      await convexCall(
-        "createPostWithKey:createWithApiKey",
-        {
-          title: "API key post " + timestamp,
-          content: "Via createPostWithKey",
-          apiKey,
-        },
-        "action"
-      );
-      ok("createPostWithKey:createWithApiKey", null);
-    } catch (e) {
-      fail("createPostWithKey:createWithApiKey", e);
-    }
-
-    if (createdPostId) {
-      try {
-        await convexCall(
-          "createCommentWithKey:createWithApiKey",
-          {
-            postId: createdPostId,
-            content: "Comment via API key " + timestamp,
-            apiKey,
-          },
-          "action"
-        );
-        ok("createCommentWithKey:createWithApiKey", null);
-      } catch (e) {
-        fail("createCommentWithKey:createWithApiKey", e);
-      }
-    }
-  }
-  console.log("");
-
-  // ─── 6. Convex: verify created content ───────────────────────────────────
-  console.log("6. Verify created content");
-  if (createdPostId) {
-    try {
-      const post = await convexCall("posts:get", { id: createdPostId }, "query");
-      if (!post || post.id !== createdPostId) throw new Error("Created post not found");
-      if (!post.title?.includes("API test post")) throw new Error("Wrong post title");
-      ok("posts:get (created post)", post);
-    } catch (e) {
-      fail("posts:get (created post)", e);
-    }
-    try {
-      const comments = await convexCall("comments:listByPost", { postId: createdPostId }, "query");
-      if (!Array.isArray(comments)) throw new Error("Expected array");
-      const hasOurComment = comments.some((c) => String(c.content || "").includes("Comment via API key"));
-      if (!hasOurComment) throw new Error("Created comment not found in list");
-      ok("comments:listByPost (created comment)", comments);
-    } catch (e) {
-      fail("comments:listByPost (created comment)", e);
-    }
-  }
-  console.log("");
-
-  // ─── 7. Auth query (unauthenticated) ──────────────────────────────────────
-  console.log("7. Auth query");
+  // ─── 4. Auth query (unauthenticated) ──────────────────────────────────────
+  console.log("4. Auth query");
   try {
     const user = await convexCall("auth:getCurrentUser", {}, "query");
     ok("auth:getCurrentUser (no session)", user); // expect null

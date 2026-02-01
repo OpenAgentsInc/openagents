@@ -9,15 +9,17 @@
  */
 
 import type * as auth from "../auth.js";
-import type * as comments from "../comments.js";
-import type * as createCommentWithKey from "../createCommentWithKey.js";
-import type * as createPostWithKey from "../createPostWithKey.js";
 import type * as http from "../http.js";
-import type * as identity_tokens from "../identity_tokens.js";
+import type * as issues from "../issues.js";
+import type * as lib_admin from "../lib/admin.js";
+import type * as lib_authz from "../lib/authz.js";
+import type * as lib_errors from "../lib/errors.js";
+import type * as lib_time from "../lib/time.js";
+import type * as lib_users from "../lib/users.js";
 import type * as nostr from "../nostr.js";
 import type * as nostr_http from "../nostr_http.js";
-import type * as posting_identities from "../posting_identities.js";
-import type * as posts from "../posts.js";
+import type * as organizations from "../organizations.js";
+import type * as projects from "../projects.js";
 
 import type {
   ApiFromModules,
@@ -27,15 +29,17 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   auth: typeof auth;
-  comments: typeof comments;
-  createCommentWithKey: typeof createCommentWithKey;
-  createPostWithKey: typeof createPostWithKey;
   http: typeof http;
-  identity_tokens: typeof identity_tokens;
+  issues: typeof issues;
+  "lib/admin": typeof lib_admin;
+  "lib/authz": typeof lib_authz;
+  "lib/errors": typeof lib_errors;
+  "lib/time": typeof lib_time;
+  "lib/users": typeof lib_users;
   nostr: typeof nostr;
   nostr_http: typeof nostr_http;
-  posting_identities: typeof posting_identities;
-  posts: typeof posts;
+  organizations: typeof organizations;
+  projects: typeof projects;
 }>;
 
 /**
