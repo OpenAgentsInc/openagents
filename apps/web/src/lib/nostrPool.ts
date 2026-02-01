@@ -1,6 +1,7 @@
 import type { NostrEvent, NostrFilter } from "@nostrify/nostrify";
 import { NPool, NRelay1 } from "@nostrify/nostrify";
 import { DEFAULT_RELAYS } from "@/lib/relayConfig";
+import { pickReadRelays, recordRelayClose, recordRelayError, recordRelayOpen } from "@/lib/relayHealth";
 
 const POOL_CACHE_KEY = "__OA_NOSTR_POOL_CACHE__";
 
@@ -32,11 +33,28 @@ export function getNostrPool(relayUrls: string[]): NPool {
 
   const pool = new NPool({
     open(url: string) {
-      return new NRelay1(url);
+      const createdAt = Date.now();
+      return new NRelay1(url, {
+        log: (log) => {
+          if (log.ns === "relay.ws.state") {
+            const state = (log as { state?: string }).state;
+            if (state === "open") {
+              recordRelayOpen(url, Date.now() - createdAt);
+            } else if (state === "close") {
+              recordRelayClose(url);
+            }
+          } else if (log.ns === "relay.ws.error") {
+            recordRelayError(url);
+          } else if (log.ns === "relay.ws.retry") {
+            recordRelayError(url);
+          }
+        },
+      });
     },
     reqRouter(_filters: NostrFilter[]) {
       const routes = new Map<string, NostrFilter[]>();
-      for (const url of relays) {
+      const readRelays = pickReadRelays(relays);
+      for (const url of readRelays) {
         routes.set(url, _filters);
       }
       return routes;

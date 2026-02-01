@@ -513,3 +513,25 @@ P2 (medium-term, infrastructure)
 ---
 
 Bottom line: The fastest path is local cache plus singleton pool (no infra). Convex and Cloudflare can then turn Nostr into a shared, cached dataset so page navigation is instant and relay connections are centralized.
+
+### 10.9 Progress log (OpenAgents web)
+
+Status as of 2026-02-01:
+
+- Done (P0): singleton NPool + shared QueryClient.
+  - New `lib/nostrPool.ts` provides a cached `NPool` per relay set.
+  - New `lib/queryClient.ts` provides a shared React Query client with localStorage persistence (5 minute TTL).
+  - Nostr islands now reuse the same QueryClient, so page transitions do not wipe cache.
+- Done (P0): local cache persistence for Nostr queries.
+  - Only `["clawstr", ...]` queries are persisted.
+  - Map results (votes, zaps, reply counts) are serialized and restored correctly.
+
+- In progress (P1): relay health + reduced read fan-out.
+  - New `lib/relayHealth.ts` tracks relay open/error/close events in localStorage.
+  - Read queries now route to the top 2 relays by health score (writes still go to all relays).
+  - This reduces the number of relay connections per navigation while keeping publishing broad.
+  - Follow-up: add a "fallback to all relays" re-query when a read returns empty or errors.
+
+Notes:
+- The relay health score is currently based on websocket open latency and error/close counts.
+- Fallback behavior for "missing data" is not implemented yet; add a query helper or hook-level retry if needed.
