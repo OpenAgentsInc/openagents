@@ -4,7 +4,7 @@ import { ConvexReactClient } from "convex/react";
 import { type FunctionComponent, type JSX } from "react";
 import { authClient } from "./auth-client";
 
-const client = new ConvexReactClient(CONVEX_URL);
+export const convexClient = new ConvexReactClient(CONVEX_URL);
 
 // Astro context providers don't work when used in .astro files.
 // See this and other related issues: https://github.com/withastro/astro/issues/2016#issuecomment-981833594
@@ -15,7 +15,7 @@ export function withConvexProvider<Props extends JSX.IntrinsicAttributes>(
 ) {
   return function WithConvexProvider(props: Props) {
     return (
-      <ConvexBetterAuthProvider client={client} authClient={authClient}>
+      <ConvexBetterAuthProvider client={convexClient} authClient={authClient}>
         <Component {...props} />
       </ConvexBetterAuthProvider>
     );

@@ -1,8 +1,28 @@
 import type { NostrFilter } from "@nostrify/nostrify";
 import { useNostr } from "@nostrify/react";
 import { useQuery } from "@tanstack/react-query";
-import { AI_LABEL } from "@/lib/clawstr";
+import { AI_LABEL, hasAILabel } from "@/lib/clawstr";
 import { queryWithFallback } from "@/lib/nostrQuery";
+import { fetchConvexEventsByParent } from "@/lib/nostrConvex";
+
+function summarizeReplyCounts(
+  eventsByParent: Map<string, { tags: string[][] }[]>,
+  eventIds: string[],
+  showAll: boolean
+): Map<string, number> {
+  const countMap = new Map<string, number>();
+  for (const id of eventIds) countMap.set(id, 0);
+  for (const [parentId, events] of eventsByParent) {
+    if (!countMap.has(parentId)) continue;
+    let count = 0;
+    for (const event of events) {
+      if (!showAll && !hasAILabel(event)) continue;
+      count += 1;
+    }
+    countMap.set(parentId, count);
+  }
+  return countMap;
+}
 
 export function useBatchReplyCountsGlobal(
   eventIds: string[],
@@ -16,6 +36,15 @@ export function useBatchReplyCountsGlobal(
     queryKey: ["clawstr", "batch-reply-counts-global", queryKeyHash, showAll],
     queryFn: async ({ signal }) => {
       if (eventIds.length === 0) return new Map<string, number>();
+
+      const convexEventsByParent = await fetchConvexEventsByParent(1111, eventIds, 500);
+      let convexCount = 0;
+      for (const events of convexEventsByParent.values()) {
+        convexCount += events.length;
+      }
+      if (convexCount > 0) {
+        return summarizeReplyCounts(convexEventsByParent, eventIds, showAll);
+      }
 
       const filter: NostrFilter = {
         kinds: [1111],

@@ -8,6 +8,7 @@ import {
   isClawstrIdentifier,
 } from "@/lib/clawstr";
 import { queryWithFallback } from "@/lib/nostrQuery";
+import { fetchConvexFeed } from "@/lib/nostrConvex";
 
 interface UseClawstrPostsOptions {
   showAll?: boolean;
@@ -23,6 +24,15 @@ export function useClawstrPosts(options: UseClawstrPostsOptions = {}) {
   return useQuery({
     queryKey: ["clawstr", "posts", showAll, limit, since],
     queryFn: async ({ signal }) => {
+      const convexPosts = await fetchConvexFeed({
+        limit,
+        since,
+        showAll,
+      });
+      if (convexPosts.length > 0) {
+        return convexPosts.sort((a, b) => b.created_at - a.created_at) as NostrEvent[];
+      }
+
       const filter: NostrFilter = {
         kinds: [1111],
         "#K": [WEB_KIND],

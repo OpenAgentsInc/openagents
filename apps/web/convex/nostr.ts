@@ -163,6 +163,59 @@ export const listFeed = query({
     const filtered = rows.filter((row) => {
       if (row.kind !== 1111) return false;
       if (!row.is_top_level) return false;
+      if (!row.subclaw) return false;
+      if (!showAll && row.is_ai !== true) return false;
+      if (args.since && row.created_at < args.since) return false;
+      return true;
+    });
+
+    return filtered.slice(0, limit);
+  },
+});
+
+export const listSubclaws = query({
+  args: { limit: v.optional(v.number()) },
+  handler: async (ctx, args) => {
+    const limit = args.limit ?? 200;
+    const rows = await ctx.db
+      .query("nostr_events")
+      .withIndex("by_kind_created_at", (q) => q.eq("kind", 1111))
+      .order("desc")
+      .take(limit * 2);
+
+    const countBySlug = new Map<string, number>();
+    for (const row of rows) {
+      if (!row.subclaw) continue;
+      if (!row.is_top_level) continue;
+      countBySlug.set(row.subclaw, (countBySlug.get(row.subclaw) ?? 0) + 1);
+    }
+
+    return [...countBySlug.entries()]
+      .map(([slug, count]) => ({ slug, count }))
+      .sort((a, b) => b.count - a.count);
+  },
+});
+
+export const listAuthorPosts = query({
+  args: {
+    pubkey: v.string(),
+    limit: v.optional(v.number()),
+    since: v.optional(v.number()),
+    showAll: v.optional(v.boolean()),
+  },
+  handler: async (ctx, args) => {
+    const limit = args.limit ?? 50;
+    const showAll = args.showAll ?? false;
+    const rows = await ctx.db
+      .query("nostr_events")
+      .withIndex("by_pubkey_created_at", (q) => q.eq("pubkey", args.pubkey))
+      .order("desc")
+      .take(limit * 2);
+
+    const filtered = rows.filter((row) => {
+      if (row.kind !== 1111) return false;
+      if (!row.is_top_level) return false;
+      if (!row.subclaw) return false;
       if (!showAll && row.is_ai !== true) return false;
       if (args.since && row.created_at < args.since) return false;
       return true;
@@ -196,6 +249,86 @@ export const listReplies = query({
       if (!showAll && row.is_ai !== true) return false;
       return true;
     });
+  },
+});
+
+export const listThread = query({
+  args: { root_id: v.string(), showAll: v.optional(v.boolean()) },
+  handler: async (ctx, args) => {
+    const showAll = args.showAll ?? false;
+    const MAX_DEPTH = 20;
+    const LIMIT_PER_QUERY = 200;
+
+    const fetched = new Map<string, Doc<"nostr_events">>();
+    const queriedParents = new Set<string>();
+    let toQuery: string[] = [args.root_id];
+    let depth = 0;
+
+    while (toQuery.length > 0 && depth < MAX_DEPTH) {
+      const next: string[] = [];
+      for (const parentId of toQuery) {
+        const rows = await ctx.db
+          .query("nostr_events")
+          .withIndex("by_parent_id", (q) => q.eq("parent_id", parentId))
+          .take(LIMIT_PER_QUERY);
+        for (const row of rows) {
+          if (row.kind !== 1111) continue;
+          if (!showAll && row.is_ai !== true) continue;
+          if (!fetched.has(row.event_id)) {
+            fetched.set(row.event_id, row);
+            next.push(row.event_id);
+          }
+        }
+        queriedParents.add(parentId);
+      }
+      toQuery = [...new Set(next.filter((id) => !queriedParents.has(id)))];
+      depth += 1;
+    }
+
+    return [...fetched.values()];
+  },
+});
+
+export const listEventsByParent = query({
+  args: {
+    parentIds: v.array(v.string()),
+    kind: v.number(),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const limit = args.limit ?? 200;
+    const result: Record<string, Doc<"nostr_events">[]> = {};
+    for (const parentId of args.parentIds) {
+      const rows = await ctx.db
+        .query("nostr_events")
+        .withIndex("by_kind_parent_id", (q) =>
+          q.eq("kind", args.kind).eq("parent_id", parentId)
+        )
+        .take(limit);
+      result[parentId] = rows;
+    }
+    return result;
+  },
+});
+
+export const listReplyCounts = query({
+  args: { parentIds: v.array(v.string()), showAll: v.optional(v.boolean()) },
+  handler: async (ctx, args) => {
+    const showAll = args.showAll ?? false;
+    const result: Record<string, number> = {};
+    for (const parentId of args.parentIds) {
+      const rows = await ctx.db
+        .query("nostr_events")
+        .withIndex("by_parent_id", (q) => q.eq("parent_id", parentId))
+        .collect();
+      const count = rows.filter((row) => {
+        if (row.kind !== 1111) return false;
+        if (!showAll && row.is_ai !== true) return false;
+        return true;
+      }).length;
+      result[parentId] = count;
+    }
+    return result;
   },
 });
 

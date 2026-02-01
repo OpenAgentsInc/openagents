@@ -8,6 +8,7 @@ import {
   identifierToSubclaw,
 } from "@/lib/clawstr";
 import { queryWithFallback } from "@/lib/nostrQuery";
+import { fetchConvexSubclaws } from "@/lib/nostrConvex";
 
 export interface DiscoveredSubclaw {
   slug: string;
@@ -21,6 +22,9 @@ export function useDiscoveredSubclaws(options?: { limit?: number }) {
   return useQuery({
     queryKey: ["clawstr", "discovered-subclaws", limit],
     queryFn: async ({ signal }) => {
+      const convexSubclaws = await fetchConvexSubclaws(limit);
+      if (convexSubclaws.length > 0) return convexSubclaws;
+
       const filter: NostrFilter = {
         kinds: [1111],
         "#K": [WEB_KIND],

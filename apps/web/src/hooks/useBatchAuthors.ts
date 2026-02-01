@@ -2,6 +2,7 @@ import type { NostrEvent } from "@nostrify/nostrify";
 import { useNostr } from "@nostrify/react";
 import { useQuery } from "@tanstack/react-query";
 import { queryWithFallback } from "@/lib/nostrQuery";
+import { fetchConvexProfiles } from "@/lib/nostrConvex";
 
 export interface AuthorMeta {
   name?: string;
@@ -19,13 +20,16 @@ export function useBatchAuthors(pubkeys: string[]) {
     queryFn: async ({ signal }): Promise<Map<string, AuthorMeta>> => {
       if (stable.length === 0) return new Map();
 
+      const map = await fetchConvexProfiles(stable);
+      const missing = stable.filter((pubkey) => !map.has(pubkey));
+      if (missing.length === 0) return map;
+
       const events = await queryWithFallback(
         nostr,
-        [{ kinds: [0], authors: stable, limit: stable.length }],
+        [{ kinds: [0], authors: missing, limit: missing.length }],
         { signal, timeoutMs: 5000 }
       );
 
-      const map = new Map<string, AuthorMeta>();
       for (const event of events as NostrEvent[]) {
         try {
           const meta = JSON.parse(event.content) as AuthorMeta;

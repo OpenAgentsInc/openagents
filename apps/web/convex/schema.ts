@@ -82,6 +82,7 @@ export default defineSchema({
     .index("by_event_id", ["event_id"])
     .index("by_created_at", ["created_at"])
     .index("by_kind_created_at", ["kind", "created_at"])
+    .index("by_kind_parent_id", ["kind", "parent_id"])
     .index("by_subclaw_created_at", ["subclaw", "created_at"])
     .index("by_pubkey_created_at", ["pubkey", "created_at"])
     .index("by_parent_id", ["parent_id"]),
