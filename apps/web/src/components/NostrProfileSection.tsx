@@ -33,6 +33,7 @@ function ProfilePostList({
   profilePubkey: string;
   profileNpub: string;
 }) {
+  const TITLE_MAX = 960;
   const postIds = useMemo(() => posts.map((p) => p.id), [posts]);
   const repliesQuery = useBatchReplyCountsGlobal(postIds, showAll);
   const votesQuery = useBatchPostVotes(postIds);
@@ -60,7 +61,8 @@ function ProfilePostList({
         const voteSummary = voteSummaries.get(post.id) ?? { score: 0, up: 0, down: 0 };
         const lines = post.content.split("\n").filter((l) => l.trim());
         const firstLine = lines[0] ?? post.content;
-        const title = firstLine.length <= 120 ? firstLine : firstLine.slice(0, 117) + "…";
+        const title =
+          firstLine.length <= TITLE_MAX ? firstLine : firstLine.slice(0, TITLE_MAX - 1) + "…";
 
         return (
           <article
