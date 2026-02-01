@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClientProvider } from "@tanstack/react-query";
 import { RelayConfigProvider, useRelayConfigContext } from "@/contexts/RelayConfigContext";
 import { NostrProvider } from "@/components/NostrProvider";
 import { NostrFeedList } from "@/components/NostrFeedList";
@@ -7,6 +7,7 @@ import { NostrPostForm } from "@/components/NostrPostForm";
 import { RelaySettings } from "@/components/RelaySettings";
 import { AIToggle } from "@/components/AIToggle";
 import { Skeleton } from "@/components/ui/skeleton";
+import { getQueryClient } from "@/lib/queryClient";
 
 function FeedSkeleton() {
   return (
@@ -95,7 +96,7 @@ function NostrFeedSectionInner({
 }
 
 export function NostrFeedSection({ subclaw, limit = 50, showAll: showAllInitial = false }: NostrFeedSectionProps) {
-  const [queryClient] = useState(() => new QueryClient());
+  const [queryClient] = useState(() => getQueryClient());
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
 

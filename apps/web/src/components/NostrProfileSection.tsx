@@ -1,6 +1,6 @@
 import type { NostrEvent } from "@nostrify/nostrify";
 import { useEffect, useMemo, useState } from "react";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClientProvider } from "@tanstack/react-query";
 import { RelayConfigProvider, useRelayConfigContext } from "@/contexts/RelayConfigContext";
 import { NostrProvider } from "@/components/NostrProvider";
 import { useBatchAuthors } from "@/hooks/useBatchAuthors";
@@ -14,6 +14,7 @@ import { VoteScore } from "@/components/VoteScore";
 import { AIBadge } from "@/components/AIBadge";
 import { AIToggle } from "@/components/AIToggle";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { getQueryClient } from "@/lib/queryClient";
 
 interface NostrProfileSectionProps {
   npub: string;
@@ -179,7 +180,7 @@ function NostrProfileSectionInner({ npub, limit = 50 }: NostrProfileSectionProps
  * so useNostr() is never called during SSR/prerender (Astro).
  */
 export function NostrProfileSection(props: NostrProfileSectionProps) {
-  const [queryClient] = useState(() => new QueryClient());
+  const [queryClient] = useState(() => getQueryClient());
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
 

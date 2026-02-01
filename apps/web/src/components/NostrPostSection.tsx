@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClientProvider } from "@tanstack/react-query";
 import { RelayConfigProvider, useRelayConfigContext } from "@/contexts/RelayConfigContext";
 import { NostrProvider } from "@/components/NostrProvider";
 import { NostrPostView } from "@/components/NostrPostView";
 import { AIToggle } from "@/components/AIToggle";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { getQueryClient } from "@/lib/queryClient";
 
 function PostSkeleton() {
   return (
@@ -52,7 +53,7 @@ function NostrPostSectionInner({
 export function NostrPostSection({ eventId, subclaw, showAll: showAllInitial = false }: NostrPostSectionProps) {
   const [mounted, setMounted] = useState(false);
   const [showAll, setShowAll] = useState(showAllInitial);
-  const [queryClient] = useState(() => new QueryClient());
+  const [queryClient] = useState(() => getQueryClient());
   useEffect(() => setMounted(true), []);
 
   return (
