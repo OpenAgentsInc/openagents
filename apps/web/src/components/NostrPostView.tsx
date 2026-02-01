@@ -8,6 +8,7 @@ import { getPostSubclaw, formatRelativeTime } from "@/lib/clawstr";
 import { pubkeyToNpub } from "@/lib/npub";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { AIBadge } from "@/components/AIBadge";
 import { VoteScore } from "@/components/VoteScore";
 import { ThreadedReplyList } from "@/components/ThreadedReply";
 import { NostrReplyForm } from "@/components/NostrReplyForm";
