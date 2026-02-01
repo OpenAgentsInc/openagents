@@ -1,19 +1,11 @@
 "use client";
 
-import { useQuery } from "convex/react";
 import { useEffect, useState } from "react";
-import {
-  ChevronsUpDownIcon,
-  HomeIcon,
-  LogOutIcon,
-  BookOpen,
-  UserIcon,
-  Rss,
-  UsersRound,
-} from "lucide-react";
+import { HomeIcon, BookOpen, Rss, UsersRound } from "lucide-react";
 import { NostrCommunitiesSection } from "@/components/NostrCommunitiesSection";
-import { authClient } from "@/lib/auth-client";
-import { api } from "../../convex/_generated/api";
+// Auth disabled for this version.
+// import { authClient } from "@/lib/auth-client";
+// import { api } from "../../convex/_generated/api";
 import { SITE_TITLE } from "@/consts";
 import {
   Sidebar,
@@ -25,17 +17,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarTrigger,
-  useSidebar,
 } from "@/components/ui/sidebar";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { prefetchCommunities, prefetchFeed } from "@/lib/nostrPrefetch";
 
@@ -63,105 +45,107 @@ function usePathname() {
 }
 
 function SidebarUserMenu() {
-  const user = useQuery(api.auth.getCurrentUser);
-  const { isMobile, setOpenMobile } = useSidebar();
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
+  // Auth disabled for this version — no get-session / CORS to Convex site.
+  // const user = useQuery(api.auth.getCurrentUser);
+  // const { isMobile, setOpenMobile } = useSidebar();
+  // const [mounted, setMounted] = useState(false);
+  // useEffect(() => setMounted(true), []);
 
-  const handleSignOut = async () => {
-    await authClient.signOut();
-    window.location.reload();
-  };
+  // const handleSignOut = async () => {
+  //   await authClient.signOut();
+  //   window.location.reload();
+  // };
 
   // Defer user-dependent UI until after mount so server and client first render match
-  if (!mounted || user === undefined) {
-    return (
-      <SidebarMenuItem>
-        <div className="flex h-12 items-center gap-3 px-2">
-          <Skeleton className="size-8 rounded-full" />
-          <div className="flex flex-1 flex-col gap-1 group-data-[collapsible=icon]:hidden">
-            <Skeleton className="h-4 w-24" />
-            <Skeleton className="h-3 w-16" />
-          </div>
-        </div>
-      </SidebarMenuItem>
-    );
-  }
+  // if (!mounted || user === undefined) {
+  //   return (
+  //     <SidebarMenuItem>
+  //       <div className="flex h-12 items-center gap-3 px-2">
+  //         <Skeleton className="size-8 rounded-full" />
+  //         <div className="flex flex-1 flex-col gap-1 group-data-[collapsible=icon]:hidden">
+  //           <Skeleton className="h-4 w-24" />
+  //           <Skeleton className="h-3 w-16" />
+  //         </div>
+  //       </div>
+  //     </SidebarMenuItem>
+  //   );
+  // }
 
-  if (user === null) {
-    return null;
-  }
+  // if (user === null) {
+  //   return null;
+  // }
 
-  const initials = getInitials(user.name ?? "", user.email ?? "");
-  const displayName = user.name ?? user.email ?? "Signed in";
+  // const initials = getInitials(user.name ?? "", user.email ?? "");
+  // const displayName = user.name ?? user.email ?? "Signed in";
 
-  return (
-    <SidebarMenuItem>
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <SidebarMenuButton
-            size="lg"
-            className="h-12 gap-3 data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
-          >
-            <div className="flex size-8 items-center justify-center rounded-full border border-sidebar-border bg-sidebar text-sm font-medium">
-              {initials}
-            </div>
-            <div className="flex min-w-0 flex-1 flex-col text-left leading-tight group-data-[collapsible=icon]:hidden">
-              <span className="truncate text-sm font-medium">{displayName}</span>
-              <span className="truncate text-xs text-sidebar-foreground/70">
-                Account
-              </span>
-            </div>
-            <ChevronsUpDownIcon className="ml-auto size-4 text-sidebar-foreground/70 group-data-[collapsible=icon]:hidden" />
-          </SidebarMenuButton>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="start" side="top" className="w-60">
-          <DropdownMenuLabel className="p-2 text-foreground">
-            <div className="flex items-center gap-2">
-              <div className="flex size-8 items-center justify-center rounded-full border border-border bg-muted text-sm font-medium">
-                {initials}
-              </div>
-              <div className="min-w-0 text-left">
-                <div className="truncate text-sm font-medium">{displayName}</div>
-                <div className="truncate text-sm text-muted-foreground">
-                  {user.email}
-                </div>
-              </div>
-            </div>
-          </DropdownMenuLabel>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem
-            onClick={() => {
-              if (isMobile) setOpenMobile(false);
-              window.location.href = "/get-api-key";
-            }}
-          >
-            <UserIcon className="size-4" />
-            API key
-          </DropdownMenuItem>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem onClick={() => void handleSignOut()}>
-            <LogOutIcon className="size-4" />
-            Sign out
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
-    </SidebarMenuItem>
-  );
+  // return (
+  //   <SidebarMenuItem>
+  //     <DropdownMenu>
+  //       <DropdownMenuTrigger asChild>
+  //         <SidebarMenuButton
+  //           size="lg"
+  //           className="h-12 gap-3 data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
+  //         >
+  //           <div className="flex size-8 items-center justify-center rounded-full border border-sidebar-border bg-sidebar text-sm font-medium">
+  //             {initials}
+  //           </div>
+  //           <div className="flex min-w-0 flex-1 flex-col text-left leading-tight group-data-[collapsible=icon]:hidden">
+  //             <span className="truncate text-sm font-medium">{displayName}</span>
+  //             <span className="truncate text-xs text-sidebar-foreground/70">
+  //               Account
+  //             </span>
+  //           </div>
+  //           <ChevronsUpDownIcon className="ml-auto size-4 text-sidebar-foreground/70 group-data-[collapsible=icon]:hidden" />
+  //         </SidebarMenuButton>
+  //       </DropdownMenuTrigger>
+  //       <DropdownMenuContent align="start" side="top" className="w-60">
+  //         <DropdownMenuLabel className="p-2 text-foreground">
+  //           <div className="flex items-center gap-2">
+  //             <div className="flex size-8 items-center justify-center rounded-full border border-border bg-muted text-sm font-medium">
+  //               {initials}
+  //             </div>
+  //             <div className="min-w-0 text-left">
+  //               <div className="truncate text-sm font-medium">{displayName}</div>
+  //               <div className="truncate text-sm text-muted-foreground">
+  //                 {user.email}
+  //               </div>
+  //             </div>
+  //           </div>
+  //         </DropdownMenuLabel>
+  //         <DropdownMenuSeparator />
+  //         <DropdownMenuItem
+  //           onClick={() => {
+  //             if (isMobile) setOpenMobile(false);
+  //             window.location.href = "/get-api-key";
+  //           }}
+  //         >
+  //           <UserIcon className="size-4" />
+  //           API key
+  //         </DropdownMenuItem>
+  //         <DropdownMenuSeparator />
+  //         <DropdownMenuItem onClick={() => void handleSignOut()}>
+  //           <LogOutIcon className="size-4" />
+  //           Sign out
+  //         </DropdownMenuItem>
+  //       </DropdownMenuContent>
+  //     </DropdownMenu>
+  //   </SidebarMenuItem>
+  // );
+  return null;
 }
 
-function getInitials(name: string, email: string) {
-  const trimmed = name.trim();
-  if (trimmed) {
-    const parts = trimmed.split(/\s+/);
-    return parts
-      .slice(0, 2)
-      .map((p) => p[0]?.toUpperCase())
-      .join("");
-  }
-  if (email) return email.slice(0, 2).toUpperCase();
-  return "U";
-}
+// function getInitials(name: string, email: string) {
+//   const trimmed = name.trim();
+//   if (trimmed) {
+//     const parts = trimmed.split(/\s+/);
+//     return parts
+//       .slice(0, 2)
+//       .map((p) => p[0]?.toUpperCase())
+//       .join("");
+//   }
+//   if (email) return email.slice(0, 2).toUpperCase();
+//   return "U";
+// }
 
 export function AppSidebar() {
   const pathname = usePathname();
