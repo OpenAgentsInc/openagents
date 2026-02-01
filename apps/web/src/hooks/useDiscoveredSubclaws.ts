@@ -99,6 +99,9 @@ export function useDiscoveredSubclaws(options?: { limit?: number; showAll?: bool
         throw err;
       }
     },
-    staleTime: 60 * 1000,
+    staleTime: 10 * 1000,
+    refetchOnMount: "always",
+    refetchOnWindowFocus: true,
+    refetchOnReconnect: true,
   });
 }
