@@ -1,5 +1,6 @@
 import type { NostrEvent, NostrFilter } from "@nostrify/nostrify";
 import { getConfiguredRelays } from "@/lib/nostrPool";
+import { queryCachedEvents, storeEvents } from "@/lib/nostrEventCache";
 
 type NostrQueryClient = {
   query(
@@ -31,11 +32,44 @@ export async function queryWithFallback(
   options: QueryOptions = {}
 ): Promise<NostrEvent[]> {
   const signal = combineSignals(options.signal, options.timeoutMs);
-  const primary = await nostr.query(filters, { signal });
-  if (primary.length > 0 || options.fallbackOnEmpty === false) return primary;
+  let cached: NostrEvent[] = [];
+  try {
+    cached = await queryCachedEvents(filters);
+  } catch {
+    cached = [];
+  }
+
+  const offline = typeof navigator !== "undefined" && navigator.onLine === false;
+  if (offline && cached.length > 0) return cached;
+
+  let primary: NostrEvent[] = [];
+  try {
+    primary = await nostr.query(filters, { signal });
+  } catch {
+    return cached.length > 0 ? cached : [];
+  }
+
+  if (primary.length > 0) {
+    void storeEvents(primary);
+    return primary;
+  }
+
+  if (options.fallbackOnEmpty === false) {
+    return cached.length > 0 ? cached : primary;
+  }
 
   const allRelays = getConfiguredRelays(nostr);
-  if (allRelays.length <= 1) return primary;
-  const fallback = await nostr.query(filters, { signal, relays: allRelays });
-  return fallback.length > 0 ? fallback : primary;
+  if (allRelays.length <= 1) return cached.length > 0 ? cached : primary;
+  let fallback: NostrEvent[] = [];
+  try {
+    fallback = await nostr.query(filters, { signal, relays: allRelays });
+  } catch {
+    fallback = [];
+  }
+  if (fallback.length > 0) {
+    void storeEvents(fallback);
+    return fallback;
+  }
+
+  return cached.length > 0 ? cached : primary;
 }

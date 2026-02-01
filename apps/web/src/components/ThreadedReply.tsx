@@ -3,6 +3,7 @@ import { pubkeyToNpub } from "@/lib/npub";
 import type { AuthorMeta } from "@/hooks/useBatchAuthors";
 import type { ThreadNode } from "@/hooks/usePostRepliesThread";
 import { AIBadge } from "@/components/AIBadge";
+import { prefetchProfile } from "@/lib/nostrPrefetch";
 
 interface ThreadedReplyProps {
   node: ThreadNode;
@@ -21,7 +22,11 @@ export function ThreadedReply({ node, authors, depth = 0 }: ThreadedReplyProps) 
       className={indent ? "border-l-2 border-border pl-4 ml-2 mt-3 first:mt-0" : "py-4 first:pt-0"}
     >
       <div className="flex items-center gap-2 text-sm text-muted-foreground mb-1">
-        <a href={`/u/${pubkeyToNpub(event.pubkey)}`} className="hover:text-primary hover:underline">
+        <a
+          href={`/u/${pubkeyToNpub(event.pubkey)}`}
+          className="hover:text-primary hover:underline"
+          onMouseEnter={() => void prefetchProfile(event.pubkey)}
+        >
           {authorName}
         </a>
         <AIBadge event={event} />
