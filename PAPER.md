@@ -6,114 +6,114 @@ We present **OpenAgents**, a systems and learning framework for building **self-
 
 ## Table of Contents
 
-- 1. **Introduction**
-  - 1.1 Motivation: Agents as Real Software Actors
-  - 1.2 From Prompting to Compiled Agent Behavior
-  - 1.3 Contributions
+1. **Introduction**
+   - 1.1 Motivation: Agents as Real Software Actors
+   - 1.2 From Prompting to Compiled Agent Behavior
+   - 1.3 Contributions
 
-- 2. **Background and Related Work**
-  - 2.1 Declarative LM Programming and Compilation
-  - 2.2 Auto-Curricula and Interestingness in Open-Ended Learning
-  - 2.3 Self-Improving Agents via Empirical Validation
-  - 2.4 Long-Horizon Inference and Externalized Context
-  - 2.5 Markets, Identity, and Verification for Agent Economies
-  - 2.6 Crypto Identity and Threshold Signing
-  - 2.7 Decentralized Job Markets and DVMs
-  - 2.8 Pay-per-Call and Lightning-Native Payments
-  - 2.9 Agent Wallets, Receipts, and Verifiable Work
+2. **Background and Related Work**
+   - 2.1 Declarative LM Programming and Compilation
+   - 2.2 Auto-Curricula and Interestingness in Open-Ended Learning
+   - 2.3 Self-Improving Agents via Empirical Validation
+   - 2.4 Long-Horizon Inference and Externalized Context
+   - 2.5 Markets, Identity, and Verification for Agent Economies
+   - 2.6 Crypto Identity and Threshold Signing
+   - 2.7 Decentralized Job Markets and DVMs
+   - 2.8 Pay-per-Call and Lightning-Native Payments
+   - 2.9 Agent Wallets, Receipts, and Verifiable Work
 
-- 3. **System Overview**
-  - 3.1 OpenAgents Stack and Design Principles
-    - 3.1.1 Agentic OS primitives
-    - 3.1.2 Protocol substrate
-    - 3.1.3 Identity and payments unification
-  - 3.2 Threat Model and Assumptions
-  - 3.3 Execution Substrates: Local, Cloud, Swarm
-  - 3.4 Agent Execution Flow
-  - 3.5 Data Products: Trajectories, Datasets, and Policy Bundles
-  - 3.6 Summary
+3. **System Overview**
+   - 3.1 OpenAgents Stack and Design Principles
+     - 3.1.1 Agentic OS primitives
+     - 3.1.2 Protocol substrate
+     - 3.1.3 Identity and payments unification
+   - 3.2 Threat Model and Assumptions
+   - 3.3 Execution Substrates: Local, Cloud, Swarm
+   - 3.4 Agent Execution Flow
+   - 3.5 Data Products: Trajectories, Datasets, and Policy Bundles
+   - 3.6 Summary
 
-- 4. **Programming Model**
-  - 4.1 Signatures: Typed Contracts for Agent Cognition
-  - 4.2 Modules: Composable Policies (Plan → Act → Verify → Synthesize)
-  - 4.3 Metrics: From Format Correctness to Outcome-Coupled Utility
-  - 4.4 Optimizers: MIPROv2 and Beyond
-  - 4.5 Policy Bundles, Versioning, and Reproducibility
-  - 4.6 Design Implications
+4. **Programming Model**
+   - 4.1 Signatures: Typed Contracts for Agent Cognition
+   - 4.2 Modules: Composable Policies (Plan → Act → Verify → Synthesize)
+   - 4.3 Metrics: From Format Correctness to Outcome-Coupled Utility
+   - 4.4 Optimizers: MIPROv2 and Beyond
+   - 4.5 Policy Bundles, Versioning, and Reproducibility
+   - 4.6 Design Implications
 
-- 5. **Agent Runtime**
-  - 5.1 Tick Model and State Surfaces
-  - 5.2 Tooling and Sandboxed Execution
-  - 5.3 Verification Harnesses and Objective Checks
-  - 5.4 Trajectory Logging and Provenance
-  - 5.5 Runtime–Compiler Interface
-  - 5.6 Summary
+5. **Agent Runtime**
+   - 5.1 Tick Model and State Surfaces
+   - 5.2 Tooling and Sandboxed Execution
+   - 5.3 Verification Harnesses and Objective Checks
+   - 5.4 Trajectory Logging and Provenance
+   - 5.5 Runtime–Compiler Interface
+   - 5.6 Summary
 
-- 6. **Decision Pipelines and Routing**
-  - 6.1 Complexity Classification
-  - 6.2 Delegation Decisions
-  - 6.3 RLM Triggering
-  - 6.4 Provider Lane Selection and Fallback Strategies
-  - 6.5 Economic Routing
-  - 6.6 Counterfactual Recording and Shadow Mode
-  - 6.7 Outcome-Coupled Labeling of Decisions
-  - 6.8 Summary
+6. **Decision Pipelines and Routing**
+   - 6.1 Complexity Classification
+   - 6.2 Delegation Decisions
+   - 6.3 RLM Triggering
+   - 6.4 Provider Lane Selection and Fallback Strategies
+   - 6.5 Economic Routing
+   - 6.6 Counterfactual Recording and Shadow Mode
+   - 6.7 Outcome-Coupled Labeling of Decisions
+   - 6.8 Summary
 
-- 7. **Recursive Language Models in OpenAgents**
-  - 7.1 RLM as an Execution Substrate
-  - 7.2 Context Externalization and REPL Environments
-  - 7.3 FRLM: Federated Recursion Across Providers
-  - 7.4 Cost/Latency Tradeoffs and Stopping Criteria
-  - 7.5 RLM–DSPy Integration Patterns
-  - 7.6 Failure Modes and Mitigations
-  - 7.7 Summary
+7. **Recursive Language Models in OpenAgents**
+   - 7.1 RLM as an Execution Substrate
+   - 7.2 Context Externalization and REPL Environments
+   - 7.3 FRLM: Federated Recursion Across Providers
+   - 7.4 Cost/Latency Tradeoffs and Stopping Criteria
+   - 7.5 RLM–DSPy Integration Patterns
+   - 7.6 Failure Modes and Mitigations
+   - 7.7 Summary
 
-- 8. **Self-Improvement Loop**
-  - 8.1 SessionStore and Outcome Labeling
-  - 8.2 Outcome Feedback: Turning Runs into Labeled Examples
-  - 8.3 Performance Tracking: Rolling Accuracy and Drift
-  - 8.4 Auto-Optimization: When to Recompile and What to Target
-  - 8.5 Avoiding Goodhart Pathologies
-  - 8.6 Archives and Stepping Stones: Toward Open-Ended Improvement
-  - 8.8 Canary + Progressive Rollout
-  - 8.9 APM and Fleet KPIs
-  - 8.10 Summary
+8. **Self-Improvement Loop**
+   - 8.1 SessionStore and Outcome Labeling
+   - 8.2 Outcome Feedback: Turning Runs into Labeled Examples
+   - 8.3 Performance Tracking: Rolling Accuracy and Drift
+   - 8.4 Auto-Optimization: When to Recompile and What to Target
+   - 8.5 Avoiding Goodhart Pathologies
+   - 8.6 Archives and Stepping Stones: Toward Open-Ended Improvement
+   - 8.8 Canary + Progressive Rollout
+   - 8.9 APM and Fleet KPIs
+   - 8.10 Summary
 
-- 9. **Marketplace and Economic Constraints**
-  - 9.0 Motivation: Economics as Control Surface
-  - 9.1 Neobank: Treasury OS for Agent Fleets
-  - 9.2 Compute Marketplace: Verified Jobs and Demand Floor
-  - 9.3 Exchange: Liquidity and FX Routing for Agents
-  - 9.4 End-to-End Payment-Linked Autonomy
-  - 9.5 Summary
+9. **Marketplace and Economic Constraints**
+   - 9.0 Motivation: Economics as Control Surface
+   - 9.1 Neobank: Treasury OS for Agent Fleets
+   - 9.2 Compute Marketplace: Verified Jobs and Demand Floor
+   - 9.3 Exchange: Liquidity and FX Routing for Agents
+   - 9.4 End-to-End Payment-Linked Autonomy
+   - 9.5 Summary
 
-- 10. **Evaluation**
-  - 10.1 Evaluation Questions
-  - 10.2 Task Suites
-  - 10.3 Experimental Conditions (Ablations)
-  - 10.4 Metrics (Explicit Definitions)
-  - 10.5 Tables and Figures to Add
-  - 10.6 Methodology Details
-  - 10.7 Case Studies
-  - 10.8 Summary
+10. **Evaluation**
+    - 10.1 Evaluation Questions
+    - 10.2 Task Suites
+    - 10.3 Experimental Conditions (Ablations)
+    - 10.4 Metrics (Explicit Definitions)
+    - 10.5 Tables and Figures to Add
+    - 10.6 Methodology Details
+    - 10.7 Case Studies
+    - 10.8 Summary
 
-- 11. **Safety and Governance**
-  - 11.1 Sandboxing and Capability Containment
-  - 11.2 Objective Hacking and Robust Evaluation Design
-  - 11.3 Provider and Marketplace Safety
-  - 11.4 Privacy, Redaction, and Data Sharing Policies
-  - 11.5 Human Oversight and Intervention Points
-  - 11.6 Governance for Self-Improvement
-  - 11.7 Summary
+11. **Safety and Governance**
+    - 11.1 Sandboxing and Capability Containment
+    - 11.2 Objective Hacking and Robust Evaluation Design
+    - 11.3 Provider and Marketplace Safety
+    - 11.4 Privacy, Redaction, and Data Sharing Policies
+    - 11.5 Human Oversight and Intervention Points
+    - 11.6 Governance for Self-Improvement
+    - 11.7 Summary
 
-- 12. **Discussion**
-  - 12.1 Why Compiled Agents + Markets Changes the Scaling Story
-  - 12.2 Limits and Practical Constraints
-  - 12.3 Open Problems and Research Directions
-  - 12.4 Implications
-  - 12.5 Summary
+12. **Discussion**
+    - 12.1 Why Compiled Agents + Markets Changes the Scaling Story
+    - 12.2 Limits and Practical Constraints
+    - 12.3 Open Problems and Research Directions
+    - 12.4 Implications
+    - 12.5 Summary
 
-- 13. **Conclusion**
+13. **Conclusion**
 
 **References**
 
