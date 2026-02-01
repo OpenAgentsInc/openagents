@@ -404,11 +404,3 @@ A valid envelope (39242) SHOULD include:
 * NIP-90: Data Vending Machines
 * NIP-98: HTTP Auth
 * NIP-SA: Sovereign Agents (proposed)
-
----
-
-If you want, I can also produce the **exact diffs** you’d apply to your NIP-SA doc:
-
-* add the new kinds table rows
-* add a “Credit” section under Wallet / Budget Constraints
-* add examples showing a tick that opens an envelope then spends it via NIP-90
