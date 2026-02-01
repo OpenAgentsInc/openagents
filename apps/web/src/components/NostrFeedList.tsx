@@ -83,7 +83,7 @@ function PostList({
               {title}
             </a>
             <div className="mt-1 flex items-center gap-2 text-sm text-muted-foreground">
-              <VoteScore summary={voteSummary} />
+              <VoteScore summary={voteSummary} target={{ id: post.id, pubkey: post.pubkey }} />
               {subclaw && (
                 <span className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">
                   c/{subclaw}

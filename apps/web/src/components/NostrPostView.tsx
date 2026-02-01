@@ -137,7 +137,7 @@ function NostrPostViewInner({ eventId, subclaw: subclawProp, showAll = false }: 
       {/* Main post — same visual language as feed list (border-b block) */}
       <article className="border-b border-border py-4 first:pt-0">
         <div className="flex items-center gap-2 text-sm text-muted-foreground mb-2">
-          <VoteScore summary={voteSummary} />
+          <VoteScore summary={voteSummary} target={{ id: post.id, pubkey: post.pubkey }} />
           {subclaw && (
             <a
               href={`/c/${subclaw}`}
