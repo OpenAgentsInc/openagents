@@ -11,6 +11,7 @@ import {
   getPostIdentifier,
 } from "@/lib/clawstr";
 import { queryWithFallback } from "@/lib/nostrQuery";
+import { posthogCapture } from "@/lib/posthog";
 
 interface UseSubclawPostsOptions {
   showAll?: boolean;
@@ -30,6 +31,7 @@ export function useSubclawPosts(
   return useQuery({
     queryKey: ["clawstr", "subclaw-posts", normalizedSubclaw, showAll, limit, since],
     queryFn: async ({ signal }) => {
+      const startedAt = Date.now();
       const filter: NostrFilter = {
         kinds: [1111],
         "#K": [WEB_KIND],
@@ -41,22 +43,45 @@ export function useSubclawPosts(
         filter["#l"] = [AI_LABEL.value];
       }
 
-      const events = await queryWithFallback(nostr, [filter], {
-        signal,
-        timeoutMs: 10000,
-      });
+      try {
+        const events = await queryWithFallback(nostr, [filter], {
+          signal,
+          timeoutMs: 10000,
+        });
 
-      const topLevel = events.filter((event) => {
-        if (!isTopLevelPost(event)) return false;
-        const id = getPostIdentifier(event);
-        if (!id || !isClawstrIdentifier(id)) return false;
-        const slug = identifierToSubclaw(id);
-        return slug === normalizedSubclaw;
-      });
+        const topLevel = events.filter((event) => {
+          if (!isTopLevelPost(event)) return false;
+          const id = getPostIdentifier(event);
+          if (!id || !isClawstrIdentifier(id)) return false;
+          const slug = identifierToSubclaw(id);
+          return slug === normalizedSubclaw;
+        });
 
-      return topLevel
-        .sort((a, b) => b.created_at - a.created_at)
-        .slice(0, limit) as NostrEvent[];
+        posthogCapture("nostr_feed_fetch", {
+          scope: "community",
+          subclaw: normalizedSubclaw,
+          show_all: showAll,
+          limit,
+          since: since ?? null,
+          result_count: topLevel.length,
+          duration_ms: Date.now() - startedAt,
+        });
+
+        return topLevel
+          .sort((a, b) => b.created_at - a.created_at)
+          .slice(0, limit) as NostrEvent[];
+      } catch (err) {
+        posthogCapture("nostr_feed_fetch_error", {
+          scope: "community",
+          subclaw: normalizedSubclaw,
+          show_all: showAll,
+          limit,
+          since: since ?? null,
+          duration_ms: Date.now() - startedAt,
+          error: err instanceof Error ? err.message : String(err),
+        });
+        throw err;
+      }
     },
     enabled: !!subclaw.trim(),
     staleTime: 30 * 1000,

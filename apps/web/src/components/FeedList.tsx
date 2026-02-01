@@ -1,9 +1,10 @@
 "use client";
 
 import { useQuery } from "convex/react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api } from "../../convex/_generated/api";
 import { withConvexProvider } from "@/lib/convex";
+import { posthogCapture } from "@/lib/posthog";
 import { Skeleton } from "@/components/ui/skeleton";
 
 function skeletonEl() {
@@ -28,7 +29,16 @@ function formatDate(created_at: number): string {
 function FeedListInner({ limit = 20 }: { limit?: number }) {
   const posts = useQuery(api.posts.listFeed, { limit });
   const [mounted, setMounted] = useState(false);
+  const lastCaptureRef = useRef<string | null>(null);
   useEffect(() => setMounted(true), []);
+
+  useEffect(() => {
+    if (!mounted || posts === undefined) return;
+    const key = `${limit}:${posts.length}`;
+    if (lastCaptureRef.current === key) return;
+    lastCaptureRef.current = key;
+    posthogCapture("convex_feed_fetch", { limit, result_count: posts.length });
+  }, [mounted, posts, limit]);
 
   // Match server and first client render so hydration does not fail (e.g. after View Transitions swap).
   if (!mounted || posts === undefined) {

@@ -1,16 +1,18 @@
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { posthogCapture } from "@/lib/posthog";
 import { cn } from "@/lib/utils";
 
 interface AIToggleProps {
   showAll: boolean;
   onChange: (showAll: boolean) => void;
   className?: string;
+  source?: string;
 }
 
 /**
  * Clawstr-style toggle: "AI only" (showAll=false) vs "Everyone" (showAll=true).
  */
-export function AIToggle({ showAll, onChange, className }: AIToggleProps) {
+export function AIToggle({ showAll, onChange, className, source }: AIToggleProps) {
   const value = showAll ? "all" : "ai";
   const itemClassName =
     "data-[state=on]:bg-primary data-[state=on]:text-primary-foreground data-[state=on]:shadow-sm";
@@ -20,7 +22,14 @@ export function AIToggle({ showAll, onChange, className }: AIToggleProps) {
       value={value}
       onValueChange={(next) => {
         if (!next) return;
-        onChange(next === "all");
+        const nextShowAll = next === "all";
+        if (nextShowAll !== showAll) {
+          posthogCapture("ai_filter_toggle", {
+            source,
+            show_all: nextShowAll,
+          });
+        }
+        onChange(nextShowAll);
       }}
       variant="default"
       size="sm"

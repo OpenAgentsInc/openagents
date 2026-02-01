@@ -43,7 +43,7 @@ function NostrPostSectionInner({
   return (
     <NostrProvider relayUrls={relayUrls}>
       <div className="flex flex-col gap-3">
-        <AIToggle showAll={showAll} onChange={setShowAll} />
+        <AIToggle showAll={showAll} onChange={setShowAll} source="post" />
         <NostrPostView eventId={eventId} subclaw={subclaw} showAll={showAll} />
       </div>
     </NostrProvider>

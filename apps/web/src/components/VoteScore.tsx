@@ -5,6 +5,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import type { PostVoteSummary } from "@/hooks/useBatchPostVotes";
 import { publishReaction } from "@/lib/publishReaction";
 import { hasNostrExtension } from "@/lib/publishKind1111";
+import { posthogCapture } from "@/lib/posthog";
 
 export function VoteScore({
   summary,
@@ -30,11 +31,26 @@ export function VoteScore({
     if (!target || !hasExtension) return;
     if (pending) return;
     setPending(direction);
+    posthogCapture("nostr_vote_attempt", {
+      direction,
+      target_id: target.id,
+      target_pubkey: target.pubkey,
+    });
     try {
       const content = direction === "up" ? "+" : "-";
       await publishReaction(nostr, target, content);
       await queryClient.invalidateQueries({ queryKey: ["clawstr", "batch-post-votes"] });
+      posthogCapture("nostr_vote_success", {
+        direction,
+        target_id: target.id,
+        target_pubkey: target.pubkey,
+      });
     } catch {
+      posthogCapture("nostr_vote_error", {
+        direction,
+        target_id: target.id,
+        target_pubkey: target.pubkey,
+      });
       // ignore publish errors (extension rejection, relay failure)
     } finally {
       setPending(null);

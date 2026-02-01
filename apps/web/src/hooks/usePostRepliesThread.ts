@@ -3,6 +3,7 @@ import { useNostr } from "@nostrify/react";
 import { useQuery } from "@tanstack/react-query";
 import { AI_LABEL } from "@/lib/clawstr";
 import { queryWithFallback } from "@/lib/nostrQuery";
+import { posthogCapture } from "@/lib/posthog";
 
 /** One node in the reply thread: event plus its nested children (sorted by created_at). */
 export interface ThreadNode {
@@ -48,6 +49,7 @@ export function usePostRepliesThread(rootId: string | undefined, showAll = false
     queryKey: ["clawstr", "post-replies-thread", rootId, showAll],
     queryFn: async ({ signal }) => {
       if (!rootId) return [];
+      const startedAt = Date.now();
 
       const baseFilter: Omit<NostrFilter, "#e"> = {
         kinds: [1111],
@@ -62,23 +64,41 @@ export function usePostRepliesThread(rootId: string | undefined, showAll = false
       let toQuery: string[] = [rootId];
       let depth = 0;
 
-      while (toQuery.length > 0 && depth < MAX_THREAD_DEPTH) {
-        const filter: NostrFilter = { ...baseFilter, "#e": toQuery };
-        const events = await queryWithFallback(nostr, [filter], {
-          signal,
-          timeoutMs: 10000,
-        });
+      try {
+        while (toQuery.length > 0 && depth < MAX_THREAD_DEPTH) {
+          const filter: NostrFilter = { ...baseFilter, "#e": toQuery };
+          const events = await queryWithFallback(nostr, [filter], {
+            signal,
+            timeoutMs: 10000,
+          });
 
-        for (const id of toQuery) queriedParents.add(id);
-        for (const ev of events) {
-          fetched.set(ev.id, ev);
+          for (const id of toQuery) queriedParents.add(id);
+          for (const ev of events) {
+            fetched.set(ev.id, ev);
+          }
+          // Next: fetch replies to the events we just got (only ids we haven't queried as parents yet)
+          toQuery = [...new Set(events.map((e) => e.id).filter((id) => !queriedParents.has(id)))];
+          depth++;
         }
-        // Next: fetch replies to the events we just got (only ids we haven't queried as parents yet)
-        toQuery = [...new Set(events.map((e) => e.id).filter((id) => !queriedParents.has(id)))];
-        depth++;
-      }
 
-      return buildThread(rootId, [...fetched.values()]);
+        const nodes = buildThread(rootId, [...fetched.values()]);
+        posthogCapture("nostr_post_thread_fetch", {
+          event_id: rootId,
+          show_all: showAll,
+          result_count: fetched.size,
+          depth,
+          duration_ms: Date.now() - startedAt,
+        });
+        return nodes;
+      } catch (err) {
+        posthogCapture("nostr_post_thread_fetch_error", {
+          event_id: rootId,
+          show_all: showAll,
+          duration_ms: Date.now() - startedAt,
+          error: err instanceof Error ? err.message : String(err),
+        });
+        throw err;
+      }
     },
     enabled: !!rootId,
     staleTime: 30 * 1000,

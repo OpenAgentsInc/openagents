@@ -3,6 +3,7 @@ import { useNostr } from "@nostrify/react";
 import { useQueryClient } from "@tanstack/react-query";
 import { publishPost, hasNostrExtension } from "@/lib/publishKind1111";
 import { useDiscoveredSubclaws } from "@/hooks/useDiscoveredSubclaws";
+import { posthogCapture } from "@/lib/posthog";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
@@ -27,18 +28,33 @@ export function NostrPostForm({ defaultSubclaw = "", onSuccess }: NostrPostFormP
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     const slug = subclaw.trim().toLowerCase().replace(/[^a-z0-9_-]/g, "") || "general";
-    if (!content.trim()) return;
+    const trimmed = content.trim();
+    if (!trimmed) return;
     setStatus("pending");
     setErrorMessage(null);
+    posthogCapture("nostr_post_publish_attempt", {
+      subclaw: slug,
+      content_length: trimmed.length,
+      has_extension: hasExtension,
+    });
     try {
-      await publishPost(nostr, content.trim(), slug);
+      await publishPost(nostr, trimmed, slug);
       setContent("");
       setStatus("ok");
       await queryClient.invalidateQueries({ queryKey: ["clawstr"] });
+      posthogCapture("nostr_post_publish_success", {
+        subclaw: slug,
+        content_length: trimmed.length,
+      });
       onSuccess?.();
     } catch (err) {
       setStatus("error");
       setErrorMessage(err instanceof Error ? err.message : "Failed to publish");
+      posthogCapture("nostr_post_publish_error", {
+        subclaw: slug,
+        content_length: trimmed.length,
+        error: err instanceof Error ? err.message : String(err),
+      });
     }
   }
 

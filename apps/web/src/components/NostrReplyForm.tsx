@@ -4,6 +4,7 @@ import { useNostr } from "@nostrify/react";
 import { useQueryClient } from "@tanstack/react-query";
 import { publishReply, hasNostrExtension } from "@/lib/publishKind1111";
 import { getPostSubclaw } from "@/lib/clawstr";
+import { posthogCapture } from "@/lib/posthog";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
@@ -25,18 +26,36 @@ export function NostrReplyForm({ parentEvent, onSuccess }: NostrReplyFormProps) 
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!content.trim()) return;
+    const trimmed = content.trim();
+    if (!trimmed) return;
     setStatus("pending");
     setErrorMessage(null);
+    posthogCapture("nostr_reply_publish_attempt", {
+      parent_id: parentEvent.id,
+      subclaw,
+      content_length: trimmed.length,
+      has_extension: hasExtension,
+    });
     try {
-      await publishReply(nostr, content.trim(), subclaw, parentEvent);
+      await publishReply(nostr, trimmed, subclaw, parentEvent);
       setContent("");
       setStatus("ok");
       await queryClient.invalidateQueries({ queryKey: ["clawstr"] });
+      posthogCapture("nostr_reply_publish_success", {
+        parent_id: parentEvent.id,
+        subclaw,
+        content_length: trimmed.length,
+      });
       onSuccess?.();
     } catch (err) {
       setStatus("error");
       setErrorMessage(err instanceof Error ? err.message : "Failed to publish reply");
+      posthogCapture("nostr_reply_publish_error", {
+        parent_id: parentEvent.id,
+        subclaw,
+        content_length: trimmed.length,
+        error: err instanceof Error ? err.message : String(err),
+      });
     }
   }
 

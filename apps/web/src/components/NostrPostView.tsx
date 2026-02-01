@@ -1,10 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useSinglePost } from "@/hooks/useSinglePost";
 import { usePostRepliesThread, type ThreadNode } from "@/hooks/usePostRepliesThread";
 import { useBatchAuthors } from "@/hooks/useBatchAuthors";
 import { useBatchPostVotes } from "@/hooks/useBatchPostVotes";
 import { useBatchZaps } from "@/hooks/useBatchZaps";
-import { getPostSubclaw, formatRelativeTime } from "@/lib/clawstr";
+import { getPostSubclaw, formatRelativeTime, hasAILabel } from "@/lib/clawstr";
 import { pubkeyToNpub } from "@/lib/npub";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -13,6 +13,7 @@ import { VoteScore } from "@/components/VoteScore";
 import { ThreadedReplyList } from "@/components/ThreadedReply";
 import { NostrReplyForm } from "@/components/NostrReplyForm";
 import { prefetchProfile, prefetchSubclaw } from "@/lib/nostrPrefetch";
+import { posthogCapture } from "@/lib/posthog";
 
 function collectPubkeysFromThread(nodes: ThreadNode[]): string[] {
   const keys = new Set<string>();
@@ -45,6 +46,7 @@ interface NostrPostViewProps {
 function NostrPostViewInner({ eventId, subclaw: subclawProp, showAll = false }: NostrPostViewProps) {
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
+  const lastViewRef = useRef<string | null>(null);
 
   const postQuery = useSinglePost(eventId);
   const threadQuery = usePostRepliesThread(eventId, showAll);
@@ -124,6 +126,19 @@ function NostrPostViewInner({ eventId, subclaw: subclawProp, showAll = false }: 
   const firstLine = lines[0] ?? post.content;
   const title = firstLine;
   const rest = lines.slice(1).join("\n").trim();
+
+  useEffect(() => {
+    if (!post) return;
+    if (lastViewRef.current === post.id) return;
+    lastViewRef.current = post.id;
+    posthogCapture("nostr_post_view", {
+      event_id: post.id,
+      subclaw,
+      author_pubkey: post.pubkey,
+      is_ai: hasAILabel(post),
+      content_length: post.content?.length ?? 0,
+    });
+  }, [post, subclaw]);
 
   return (
     <div className="w-full space-y-0">

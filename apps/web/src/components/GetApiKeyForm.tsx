@@ -5,6 +5,7 @@ import { useState } from "react";
 import { api } from "../../convex/_generated/api";
 import { withConvexProvider } from "@/lib/convex";
 import { OA_API_KEY_STORAGE } from "@/lib/api";
+import { posthogCapture } from "@/lib/posthog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -29,6 +30,10 @@ function GetApiKeyFormInner() {
     if (!trimmedName) return;
     setError(null);
     setSubmitting(true);
+    posthogCapture("api_key_create_attempt", {
+      name_length: trimmedName.length,
+      has_description: !!description.trim(),
+    });
     try {
       const data = await register({
         name: trimmedName,
@@ -39,6 +44,10 @@ function GetApiKeyFormInner() {
         claim_url: data.claim_url,
         posting_identity_id: data.posting_identity_id,
       });
+      posthogCapture("api_key_create_success", {
+        posting_identity_id: data.posting_identity_id,
+        has_claim_url: !!data.claim_url,
+      });
       try {
         if (typeof window !== "undefined") {
           window.localStorage.setItem(OA_API_KEY_STORAGE, data.api_key);
@@ -46,6 +55,9 @@ function GetApiKeyFormInner() {
       } catch {}
     } catch (err) {
       setError(err instanceof Error ? err.message : "Registration failed");
+      posthogCapture("api_key_create_error", {
+        error: err instanceof Error ? err.message : String(err),
+      });
     } finally {
       setSubmitting(false);
     }

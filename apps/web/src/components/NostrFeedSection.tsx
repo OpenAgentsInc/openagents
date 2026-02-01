@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { RelayConfigProvider, useRelayConfigContext } from "@/contexts/RelayConfigContext";
 import { NostrProvider } from "@/components/NostrProvider";
@@ -8,6 +8,7 @@ import { RelaySettings } from "@/components/RelaySettings";
 import { AIToggle } from "@/components/AIToggle";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getQueryClient } from "@/lib/queryClient";
+import { posthogCapture } from "@/lib/posthog";
 
 function FeedSkeleton() {
   return (
@@ -56,8 +57,37 @@ function NostrFeedSectionInner({
   const [sinceKey, setSinceKey] = useState<"all" | "24h" | "7d" | "30d">("all");
   const since = sinceKey === "all" ? undefined : sinceKeyToTimestamp(sinceKey);
   const { relayUrls } = useRelayConfigContext();
+  const lastViewRef = useRef<string | null>(null);
+  const lastSinceRef = useRef<string | null>(null);
 
   useEffect(() => setMounted(true), []);
+  useEffect(() => {
+    if (!mounted) return;
+    const scope = subclaw ? "community" : "global";
+    const key = `${scope}:${subclaw ?? "all"}`;
+    if (lastViewRef.current === key) return;
+    lastViewRef.current = key;
+    posthogCapture("nostr_feed_view", {
+      scope,
+      subclaw: subclaw ?? null,
+      show_all: showAll,
+      since: sinceKey,
+      limit,
+    });
+  }, [mounted, subclaw, showAll, sinceKey, limit]);
+
+  useEffect(() => {
+    if (!mounted) return;
+    if (lastSinceRef.current === sinceKey) return;
+    if (lastSinceRef.current !== null) {
+      posthogCapture("nostr_feed_since_change", {
+        scope: subclaw ? "community" : "global",
+        subclaw: subclaw ?? null,
+        since: sinceKey,
+      });
+    }
+    lastSinceRef.current = sinceKey;
+  }, [mounted, sinceKey, subclaw]);
 
   if (!mounted) return <FeedSkeleton />;
 
@@ -70,7 +100,11 @@ function NostrFeedSectionInner({
         </div>
         <div className="flex flex-col gap-3">
           <div className="flex items-center gap-2 flex-wrap">
-            <AIToggle showAll={showAll} onChange={setShowAll} />
+            <AIToggle
+              showAll={showAll}
+              onChange={setShowAll}
+              source={subclaw ? "community_feed" : "feed"}
+            />
             <label className="text-sm text-muted-foreground flex items-center gap-1.5">
               <span>Since:</span>
               <select
