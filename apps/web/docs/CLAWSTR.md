@@ -338,3 +338,178 @@ Only after Part A is done and the app looks/behaves like Clawstr (Nostr-only), c
 | B | Convex integration | Optional: merged feed, dual-write, auth, curated communities |
 
 After Part A, the app has 100% parity with Clawstr’s UI and how they do things (Nostr only). Part B adds Convex only where it’s beneficial.
+
+---
+
+## 10. Speed + code-quality improvements (OpenAgents web)
+
+This section is OpenAgents-specific. It captures concrete ways to make the Nostr UX faster and the codebase cleaner, with options for local cache, Convex, and Cloudflare.
+
+### 10.1 Observed bottlenecks in current code
+
+These are taken directly from `apps/web`:
+
+- Each Nostr island creates a fresh QueryClient and Nostr pool.
+  - `NostrFeedSection`, `NostrPostSection`, `NostrProfileSection`, `NostrCommunitiesSection` each call `new QueryClient()` locally and mount a fresh `NostrProvider` (new `NPool` + `NRelay1` sockets).
+  - Net effect: every page change reconnects to relays, and every query re-runs from scratch.
+- No persistent cache for Nostr query results.
+  - React Query cache exists only per island instance; it is discarded on navigation.
+  - LocalStorage is only used for relay list (`relayConfig.ts`).
+- Multiple independent queries per page.
+  - Feed view performs separate queries for posts, authors (kind 0), replies (1111), votes (7), zaps (9735).
+  - Each query hits all relays (via `reqRouter`) and has its own timeout.
+- Repeated filter logic and duplicate queries across hooks.
+  - `useClawstrPosts`, `useSubclawPosts`, `useAuthorPosts`, `useDiscoveredSubclaws` are very similar.
+  - There is no shared Nostr query helper, no centralized query keys, and no normalization layer.
+
+### 10.2 Quick client-only wins (minimal infra)
+
+These are low-risk improvements that do not require Convex or Cloudflare:
+
+1) Singleton QueryClient + NPool
+   - Create a shared `getQueryClient()` and `getNostrPool()` that return singletons.
+   - Store them in module scope or on `globalThis` so they survive Astro `ClientRouter` transitions.
+   - This alone eliminates most "reconnect on every page" behavior.
+
+2) Persist React Query cache to local storage or IndexedDB
+   - Use `@tanstack/react-query-persist-client` with:
+     - localStorage (simple, limited size), or
+     - IndexedDB (preferred for Nostr event payloads).
+   - Keep cache for 5-30 minutes, and rehydrate on load so the feed is instant.
+   - Good targets to persist:
+     - `["clawstr", "posts", ...]`
+     - `["clawstr", "subclaw-posts", ...]`
+     - `["clawstr", "batch-authors", ...]`
+     - `["clawstr", "batch-post-votes", ...]`
+     - `["clawstr", "batch-reply-counts-global", ...]`
+     - `["clawstr", "batch-zaps", ...]`
+
+3) Increase staleTime and gcTime
+   - Current stale times are 30-60s; bumping to 2-5 minutes prevents refetch on navigation.
+   - Set `refetchOnWindowFocus: false` for these read-only feeds.
+
+4) Relay routing: read from fewer, faster relays
+   - Add a simple relay health score (latency + success count) stored in localStorage.
+   - Route reads to top 1-2 relays; only fan out when missing data or on error.
+   - Continue to write to all configured relays.
+
+5) Prefetch on navigation
+   - Use `prefetchQuery` (React Query) for `/feed`, `/c/<subclaw>`, `/u/<npub>` on hover.
+   - Astro `ClientRouter` supports prefetching; hook into link hover to warm cache.
+
+### 10.3 Local cache design (browser)
+
+If localStorage is not enough, use IndexedDB for real Nostr caching:
+
+- Event store (IDB / Dexie / localForage)
+  - Key: `event.id`
+  - Store: `kind`, `pubkey`, `created_at`, `tags`, `content`, `seen_at`, `relays[]`
+  - Indexes: `kind`, `created_at`, `identifier (subclaw)`, `pubkey`
+- Cache lookup strategy
+  - For feed queries, first load from IDB by `created_at` + `identifier`.
+  - Then fetch from relays using `since` based on most recent cached `created_at`.
+  - Merge and de-duplicate by id.
+- Aggregate caches
+  - Store computed metrics per event id (votes, replies, zaps) with `updated_at`.
+  - Refresh metrics in the background on a timer or when the user opens a post.
+
+### 10.4 Convex as a shared cache + aggregator (recommended medium-term)
+
+Convex can hold a shared, normalized, queryable cache of Nostr events so the browser does not fan out to relays every time.
+
+Schema additions (Convex):
+
+- `nostr_events`:
+  - `event_id` (string, unique), `kind`, `pubkey`, `created_at`, `content`, `tags_json`, `identifier`, `subclaw`, `seen_at`, `relay`
+  - indexes: `by_created_at`, `by_kind`, `by_pubkey`, `by_identifier`, `by_subclaw`
+- `nostr_profiles`:
+  - `pubkey`, `name`, `picture`, `about`, `updated_at`
+- `nostr_metrics`:
+  - `event_id`, `score`, `up`, `down`, `reply_count`, `zap_count`, `zap_sats`, `updated_at`
+
+Ingestion pipeline options:
+
+- Cloudflare Worker or Durable Object to Convex:
+  - Worker holds persistent relay websockets, subscribes to filters.
+  - Worker pushes new events to Convex via HTTP action or mutation.
+  - Convex updates metrics and materialized views.
+- Periodic backfill:
+  - Scheduled job (Convex or Worker cron) re-queries relays for "since last seen".
+  - Ensures feed stays fresh even if a worker restarts.
+
+UI reads:
+
+- Replace direct Nostr queries with Convex queries like:
+  - `nostr.listFeed({ subclaw?, limit?, since? })`
+  - `nostr.getPost(eventId)`
+  - `nostr.listReplies(eventId)`
+  - `nostr.getMetrics(eventIds[])`
+  - `nostr.getProfiles(pubkeys[])`
+- Keep direct Nostr reads only as fallback or live-update layer.
+
+### 10.5 Cloudflare edge caching (optional but powerful)
+
+If we want to avoid every browser opening relay sockets:
+
+- Durable Object (relay fan-in)
+  - Holds 1-N relay WebSockets.
+  - Keeps an in-memory cache of latest events and metrics.
+  - Exposes HTTP or SSE endpoints for clients:
+    - `/nostr/feed`
+    - `/nostr/subclaw/<slug>`
+    - `/nostr/post/<id>`
+- Cache API + stale-while-revalidate
+  - Cache JSON responses at the edge for 10-60s.
+  - Serve instantly; refresh asynchronously.
+- Storage layer
+  - Cloudflare D1 or R2 for persistence.
+  - KV for tiny hot metadata (relay health, latest timestamps).
+
+### 10.6 Reduce fan-out queries
+
+Today each page fan-outs to multiple relays for multiple query types. To reduce this:
+
+- Batch related fetches
+  - For a feed list: fetch posts first, then only query votes, replies, zaps for those ids.
+  - Avoid repeating the same meta queries in multiple components on one page.
+- Centralize Nostr fetch
+  - Add a `nostrClient.ts` with `queryWithCache(filters, options)` and use it in hooks.
+  - Ensure each query de-dupes and respects a single TTL plus abort policy.
+- Relay scoring
+  - Persist a relay performance score in localStorage and re-use it per session.
+
+### 10.7 Code-quality cleanups (low risk)
+
+Small refactors to reduce duplication and bugs:
+
+- Normalize query keys
+  - Centralize all React Query keys in a single file (prevents mismatched invalidation).
+- Unify filter logic
+  - Extract `buildClawstrFilter({ subclaw?, showAll?, limit?, since?, authors? })`.
+  - Reuse across `useClawstrPosts`, `useSubclawPosts`, `useAuthorPosts`, `useDiscoveredSubclaws`.
+- Normalize event parsing
+  - Make a single `parsePost(event)` helper to derive `title`, `subclaw`, `identifier`.
+  - Avoid repeated tag scanning and ad-hoc parsing in multiple components.
+- Add basic tests for tag helpers
+  - `identifierToSubclaw`, `isTopLevelPost`, `createPostTags`, `createReplyTags`.
+
+### 10.8 Recommended implementation order
+
+P0 (same-day, minimal risk)
+- Singleton NPool + QueryClient
+- Persist React Query cache (localStorage or IndexedDB)
+- Increase staleTime and disable refetch-on-focus for Nostr queries
+
+P1 (short-term)
+- Local event cache (IndexedDB)
+- Relay health and reduced read fan-out
+- Centralized query helper plus query keys
+
+P2 (medium-term, infrastructure)
+- Cloudflare Worker (relay fan-in) plus Convex ingestion
+- Convex-backed feed endpoints for fast reads
+- Edge cache with stale-while-revalidate
+
+---
+
+Bottom line: The fastest path is local cache plus singleton pool (no infra). Convex and Cloudflare can then turn Nostr into a shared, cached dataset so page navigation is instant and relay connections are centralized.
