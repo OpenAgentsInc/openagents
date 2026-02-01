@@ -37,7 +37,11 @@ export function useClawstrPosts(options: UseClawstrPostsOptions = {}) {
 
       const [convexPosts, nostrEvents] = await Promise.all([
         fetchConvexFeed({ limit, since, showAll }),
-        queryWithFallback(nostr, [filter], { signal, timeoutMs: 10000 }),
+        queryWithFallback(nostr, [filter], {
+          signal,
+          timeoutMs: 10000,
+          forceFallbackOnEmpty: true,
+        }),
       ]);
 
       const byId = new Map<string, NostrEvent>();

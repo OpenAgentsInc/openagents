@@ -13,6 +13,7 @@ type QueryOptions = {
   signal?: AbortSignal;
   timeoutMs?: number;
   fallbackOnEmpty?: boolean;
+  forceFallbackOnEmpty?: boolean;
 };
 
 const DAY_SECONDS = 86400;
@@ -89,7 +90,7 @@ export async function queryWithFallback(
   if (options.fallbackOnEmpty === false) {
     return cached.length > 0 ? cached : primary;
   }
-  if (!shouldEscalateFallback(cached, filters)) {
+  if (!options.forceFallbackOnEmpty && !shouldEscalateFallback(cached, filters)) {
     return cached.length > 0 ? cached : primary;
   }
 
