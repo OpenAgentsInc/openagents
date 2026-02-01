@@ -1,13 +1,19 @@
 /**
- * Cloudflare Pages for apps/web (Astro + Convex).
- * Deploy: npm run deploy (builds then uploads dist/).
- * Custom domain: add in Dashboard → Pages → web → Custom domains (when ready).
+ * Cloudflare for apps/web (Astro + Convex).
+ * Deploy: npm run deploy (builds then wrangler deploy).
+ * Astro Cloudflare adapter outputs dist/_worker.js/ (directory) with index.js;
+ * use Workers deploy with main + assets so the directory entry is used.
+ * Custom domain: add in Dashboard → Workers & Pages → web → Custom domains (when ready).
  */
 {
 	"$schema": "node_modules/wrangler/config-schema.json",
 	"name": "web",
 	"compatibility_date": "2025-09-27",
-	"pages_build_output_dir": "./dist",
+	"main": "dist/_worker.js/index.js",
+	"assets": {
+		"directory": "./dist",
+		"binding": "ASSETS"
+	},
 	"observability": {
 		"enabled": true
 	}
