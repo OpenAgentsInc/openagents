@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useRelayConfigContext } from "@/contexts/RelayConfigContext";
+import { getQueryClient } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
 import {
   Collapsible,
@@ -13,6 +14,7 @@ export function RelaySettings() {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<string[]>(relayUrls);
   const [dirty, setDirty] = useState(false);
+  const [resetting, setResetting] = useState(false);
 
   useEffect(() => {
     if (open && !dirty) setEditing(relayUrls);
@@ -42,6 +44,22 @@ export function RelaySettings() {
     setRelayUrls(valid.length > 0 ? valid : relayUrls);
     setDirty(false);
     setOpen(false);
+  }
+
+  async function resetCache() {
+    setResetting(true);
+    try {
+      if (typeof indexedDB !== "undefined") {
+        indexedDB.deleteDatabase("clawstr-events-v1");
+      }
+      if (typeof localStorage !== "undefined") {
+        localStorage.removeItem("clawstr-query-cache-v1");
+      }
+      const client = getQueryClient();
+      client.clear();
+    } finally {
+      setResetting(false);
+    }
   }
 
   return (
@@ -82,9 +100,17 @@ export function RelaySettings() {
               </Button>
             )}
           </div>
-          <p className="text-xs text-muted-foreground">
-            Relays are stored in this browser. Refresh to use new list.
-          </p>
+          <div className="flex items-center justify-between text-xs text-muted-foreground">
+            <span>Relays are stored in this browser. Refresh to use new list.</span>
+            <button
+              type="button"
+              onClick={() => void resetCache()}
+              disabled={resetting}
+              className="text-xs text-muted-foreground hover:text-foreground underline-offset-2 hover:underline disabled:opacity-50"
+            >
+              {resetting ? "Resetting…" : "Reset cache"}
+            </button>
+          </div>
         </div>
       </CollapsibleContent>
     </Collapsible>
