@@ -36,6 +36,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
+import { prefetchCommunities, prefetchFeed } from "@/lib/nostrPrefetch";
 
 const navItems = [
   { href: "/", label: "Home", icon: HomeIcon, exact: true },
@@ -191,6 +192,10 @@ export function AppSidebar() {
                     <a
                       href={href}
                       className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium text-sidebar-foreground hover:bg-sidebar-accent"
+                      onMouseEnter={() => {
+                        if (href === "/feed") void prefetchFeed();
+                        if (href === "/c") void prefetchCommunities();
+                      }}
                     >
                       <Icon className="size-4 shrink-0" />
                       <span className="truncate">{label}</span>

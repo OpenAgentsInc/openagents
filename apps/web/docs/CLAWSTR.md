@@ -396,6 +396,7 @@ These are low-risk improvements that do not require Convex or Cloudflare:
 5) Prefetch on navigation
    - Use `prefetchQuery` (React Query) for `/feed`, `/c/<subclaw>`, `/u/<npub>` on hover.
    - Astro `ClientRouter` supports prefetching; hook into link hover to warm cache.
+   - Implemented prefetch helpers in `lib/nostrPrefetch.ts` and wired to feed, community, profile, and post detail links.
 
 ### 10.3 Local cache design (browser)
 
@@ -412,6 +413,10 @@ If localStorage is not enough, use IndexedDB for real Nostr caching:
 - Aggregate caches
   - Store computed metrics per event id (votes, replies, zaps) with `updated_at`.
   - Refresh metrics in the background on a timer or when the user opens a post.
+
+Implementation status:
+- Implemented a lightweight IndexedDB event cache (`lib/nostrEventCache.ts`) with indexes on kind, created_at, pubkey, identifier, and parent_id.
+- All Nostr read hooks now use `queryWithFallback`, which queries IndexedDB when offline or when relays return empty, and writes fresh events back into IDB.
 
 ### 10.4 Convex as a shared cache + aggregator (recommended medium-term)
 
@@ -526,7 +531,7 @@ Status as of 2026-02-01:
   - Only `["clawstr", ...]` queries are persisted.
   - Map results (votes, zaps, reply counts) are serialized and restored correctly.
 
-- In progress (P1): relay health + reduced read fan-out.
+- Done (P1): relay health + reduced read fan-out.
   - New `lib/relayHealth.ts` tracks relay open/error/close events in localStorage.
   - Read queries now route to the top 2 relays by health score (writes still go to all relays).
   - This reduces the number of relay connections per navigation while keeping publishing broad.
@@ -534,7 +539,10 @@ Status as of 2026-02-01:
   - New `lib/nostrQuery.ts` wraps `nostr.query` with timeout handling and relay fallback.
   - Hooks now use `queryWithFallback`, so missing data on fast relays re-queries all configured relays.
   - The relay list is stored on the pool instance for consistent fallback.
+- Done (P1): IndexedDB cache and hover prefetch.
+  - `lib/nostrEventCache.ts` stores events with indexes and serves offline/empty-cache fallbacks.
+  - `lib/nostrPrefetch.ts` prefetches feed, communities, profiles, and post detail data on hover.
 
 Notes:
 - The relay health score is currently based on websocket open latency and error/close counts.
-- Fallback behavior for "missing data" is not implemented yet; add a query helper or hook-level retry if needed.
+- Fallback behavior for "missing data" is implemented via `queryWithFallback` across all read hooks.

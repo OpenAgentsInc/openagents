@@ -15,6 +15,7 @@ import { AIBadge } from "@/components/AIBadge";
 import { AIToggle } from "@/components/AIToggle";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { getQueryClient } from "@/lib/queryClient";
+import { prefetchPostDetail } from "@/lib/nostrPrefetch";
 
 interface NostrProfileSectionProps {
   npub: string;
@@ -69,6 +70,7 @@ function ProfilePostList({
             <a
               href={href}
               className="block font-medium text-foreground hover:text-primary hover:underline"
+              onMouseEnter={() => void prefetchPostDetail(post.id)}
             >
               {title}
             </a>

@@ -11,6 +11,7 @@ import { getPostSubclaw, formatRelativeTime } from "@/lib/clawstr";
 import { pubkeyToNpub } from "@/lib/npub";
 import { Skeleton } from "@/components/ui/skeleton";
 import { VoteScore } from "@/components/VoteScore";
+import { prefetchPostDetail, prefetchProfile } from "@/lib/nostrPrefetch";
 
 function skeletonEl() {
   return (
@@ -76,6 +77,7 @@ function PostList({
             <a
               href={href}
               className="block font-medium text-foreground hover:text-primary hover:underline"
+              onMouseEnter={() => void prefetchPostDetail(post.id)}
             >
               {title}
             </a>
@@ -86,7 +88,11 @@ function PostList({
                   c/{subclaw}
                 </span>
               )}
-              <a href={`/u/${pubkeyToNpub(post.pubkey)}`} className="hover:text-primary hover:underline">
+              <a
+                href={`/u/${pubkeyToNpub(post.pubkey)}`}
+                className="hover:text-primary hover:underline"
+                onMouseEnter={() => void prefetchProfile(post.pubkey)}
+              >
                 {authorName}
               </a>
               <AIBadge event={post} />

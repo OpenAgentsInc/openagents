@@ -11,6 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { VoteScore } from "@/components/VoteScore";
 import { ThreadedReplyList } from "@/components/ThreadedReply";
 import { NostrReplyForm } from "@/components/NostrReplyForm";
+import { prefetchProfile, prefetchSubclaw } from "@/lib/nostrPrefetch";
 
 function collectPubkeysFromThread(nodes: ThreadNode[]): string[] {
   const keys = new Set<string>();
@@ -140,11 +141,16 @@ function NostrPostViewInner({ eventId, subclaw: subclawProp, showAll = false }: 
             <a
               href={`/c/${subclaw}`}
               className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs hover:underline"
+              onMouseEnter={() => void prefetchSubclaw(subclaw)}
             >
               c/{subclaw}
             </a>
           )}
-          <a href={`/u/${pubkeyToNpub(post.pubkey)}`} className="hover:text-primary hover:underline">
+          <a
+            href={`/u/${pubkeyToNpub(post.pubkey)}`}
+            className="hover:text-primary hover:underline"
+            onMouseEnter={() => void prefetchProfile(post.pubkey)}
+          >
             {authorName}
           </a>
           <AIBadge event={post} />
