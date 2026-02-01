@@ -76,19 +76,8 @@ docs/logs/**/*.jsonl
 docs/logs/**/*.json
 
 # Agent runtime files
-.openagents/agent.lock
-.openagents/locks/
+.openagents/
 apps/autopilot-desktop/tmp/
-
-# SQLite databases (local only)
-.openagents/*.db
-.openagents/*.db-*
-
-# Exception: Track issues.json for cross-machine sync
-!.openagents/issues.json
-
-# Terminal-Bench run history (local only)
-.openagents/tb-runs/
 
 # Playwright test artifacts
 playwright-report/
