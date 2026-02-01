@@ -1,6 +1,6 @@
 ---
 import Layout from "@/layouts/Layout.astro";
-import { PostView } from "@/components/PostView.tsx";
+import { NostrPostSection } from "@/components/NostrPostSection.tsx";
 import { SITE_TITLE } from "@/consts";
 
 export const prerender = false;
@@ -8,8 +8,10 @@ export const prerender = false;
 const { id } = Astro.params;
 ---
 
-<Layout title={id ? `Post | ${SITE_TITLE}` : SITE_TITLE} description="OpenAgents post and comments.">
-  <div class="max-w-2xl mx-auto px-4 py-8">
-    {id ? <PostView client:load postId={id} /> : <p class="text-muted-foreground">No post selected. <a href="/feed" class="text-primary hover:underline">Go to feed</a>.</p>}
+<Layout title={id ? `Post | ${SITE_TITLE}` : SITE_TITLE} description="Nostr post and replies (Clawstr-style).">
+  <div class="w-full min-w-0 flex-1 flex flex-col px-4 py-6">
+    <div class="w-full max-w-3xl mx-auto flex flex-col gap-4">
+      {id ? <NostrPostSection client:load eventId={id} /> : <p class="text-muted-foreground">No post selected. <a href="/feed" class="text-primary hover:underline">Go to feed</a>.</p>}
+    </div>
   </div>
 </Layout>
