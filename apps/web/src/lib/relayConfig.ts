@@ -5,7 +5,6 @@ export const DEFAULT_RELAYS = [
   "wss://nos.lol",
   "wss://relay.nostr.band",
   "wss://relay.primal.net",
-  "wss://relay.ditto.pub",
 ];
 
 export function getStoredRelays(): string[] {
