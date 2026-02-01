@@ -1,8 +1,0 @@
-{
-  "title": "Add integration tests for LocalModelBackend trait implementations",
-  "description": "Create comprehensive integration tests that verify both GPT-OSS and fm-bridge correctly implement the LocalModelBackend trait.\n\nTasks:\n1. Create crates/local-inference/tests/backend_compliance.rs\n2. Test all LocalModelBackend methods for GptOssClient\n3. Test all LocalModelBackend methods for FMClient\n4. Verify streaming behavior works correctly\n5. Test error handling and edge cases\n6. Add mock server for testing without real backends",
-  "directive_id": "d-019",
-  "priority": "high",
-  "issue_type": "task",
-  "agent": "codex"
-}

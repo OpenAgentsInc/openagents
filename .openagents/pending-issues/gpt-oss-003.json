@@ -1,8 +1,0 @@
-{
-  "title": "Add GPT-OSS support to autopilot CLI and GUI",
-  "description": "Integrate GPT-OSS as a selectable agent in both the autopilot CLI and GUI interfaces (d-019 Phase 5).\n\nTasks:\n1. Add --agent gpt-oss flag to autopilot CLI\n2. Add gpt-oss to agent selection dropdown in GUI\n3. Create /api/local-inference/config endpoint for model configuration\n4. Add model download/status endpoints\n5. Update GUI to show local model status\n6. Add configuration UI for llama.cpp server URL and model selection",
-  "directive_id": "d-019",
-  "priority": "medium",
-  "issue_type": "feature",
-  "agent": "codex"
-}
