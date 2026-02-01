@@ -1,6 +1,7 @@
 import type { NostrEvent } from "@nostrify/nostrify";
 import { useNostr } from "@nostrify/react";
 import { useQuery } from "@tanstack/react-query";
+import { queryWithFallback } from "@/lib/nostrQuery";
 
 export function useSinglePost(eventId: string | undefined) {
   const { nostr } = useNostr();
@@ -9,9 +10,10 @@ export function useSinglePost(eventId: string | undefined) {
     queryKey: ["clawstr", "post", eventId],
     queryFn: async ({ signal }) => {
       if (!eventId) return null;
-      const events = await nostr.query(
+      const events = await queryWithFallback(
+        nostr,
         [{ kinds: [1111], ids: [eventId], limit: 1 }],
-        { signal: AbortSignal.any([signal!, AbortSignal.timeout(10000)]) }
+        { signal, timeoutMs: 10000 }
       );
       return (events[0] as NostrEvent) ?? null;
     },

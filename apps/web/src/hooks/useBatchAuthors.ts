@@ -1,6 +1,7 @@
 import type { NostrEvent } from "@nostrify/nostrify";
 import { useNostr } from "@nostrify/react";
 import { useQuery } from "@tanstack/react-query";
+import { queryWithFallback } from "@/lib/nostrQuery";
 
 export interface AuthorMeta {
   name?: string;
@@ -18,9 +19,10 @@ export function useBatchAuthors(pubkeys: string[]) {
     queryFn: async ({ signal }): Promise<Map<string, AuthorMeta>> => {
       if (stable.length === 0) return new Map();
 
-      const events = await nostr.query(
+      const events = await queryWithFallback(
+        nostr,
         [{ kinds: [0], authors: stable, limit: stable.length }],
-        { signal: AbortSignal.any([signal, AbortSignal.timeout(5000)]) }
+        { signal, timeoutMs: 5000 }
       );
 
       const map = new Map<string, AuthorMeta>();

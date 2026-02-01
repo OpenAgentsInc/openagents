@@ -2,6 +2,7 @@ import type { NostrEvent, NostrFilter } from "@nostrify/nostrify";
 import { useNostr } from "@nostrify/react";
 import { useQuery } from "@tanstack/react-query";
 import { AI_LABEL, WEB_KIND } from "@/lib/clawstr";
+import { queryWithFallback } from "@/lib/nostrQuery";
 
 /** One node in the reply thread: event plus its nested children (sorted by created_at). */
 export interface ThreadNode {
@@ -42,8 +43,9 @@ export function usePostRepliesThread(rootId: string | undefined, showAll = false
 
       while (toQuery.length > 0 && depth < MAX_THREAD_DEPTH) {
         const filter: NostrFilter = { ...baseFilter, "#e": toQuery };
-        const events = await nostr.query([filter], {
-          signal: AbortSignal.any([signal!, AbortSignal.timeout(10000)]),
+        const events = await queryWithFallback(nostr, [filter], {
+          signal,
+          timeoutMs: 10000,
         });
 
         for (const id of toQuery) queriedParents.add(id);

@@ -1,6 +1,7 @@
 import type { NostrFilter } from "@nostrify/nostrify";
 import { useNostr } from "@nostrify/react";
 import { useQuery } from "@tanstack/react-query";
+import { queryWithFallback } from "@/lib/nostrQuery";
 
 export interface ZapSummary {
   count: number;
@@ -28,8 +29,9 @@ export function useBatchZaps(eventIds: string[]) {
         limit: 2000,
       };
 
-      const events = await nostr.query([filter], {
-        signal: AbortSignal.any([signal, AbortSignal.timeout(5000)]),
+      const events = await queryWithFallback(nostr, [filter], {
+        signal,
+        timeoutMs: 5000,
       });
 
       const summaryByPost = new Map<string, { count: number; totalSats: number }>();

@@ -7,6 +7,7 @@ import {
   isTopLevelPost,
   isClawstrIdentifier,
 } from "@/lib/clawstr";
+import { queryWithFallback } from "@/lib/nostrQuery";
 
 interface UseClawstrPostsOptions {
   showAll?: boolean;
@@ -33,8 +34,9 @@ export function useClawstrPosts(options: UseClawstrPostsOptions = {}) {
         filter["#L"] = [AI_LABEL.namespace];
       }
 
-      const events = await nostr.query([filter], {
-        signal: AbortSignal.any([signal, AbortSignal.timeout(10000)]),
+      const events = await queryWithFallback(nostr, [filter], {
+        signal,
+        timeoutMs: 10000,
       });
 
       const topLevel = events.filter((event) => {
