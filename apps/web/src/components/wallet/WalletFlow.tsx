@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useCallback, useRef } from "react";
 import type { Config, GetInfoResponse, Network, Payment, SdkEvent } from "@breeztech/breez-sdk-spark";
 import { defaultConfig } from "@breeztech/breez-sdk-spark";
+import { VITE_BREEZ_API_KEY } from "astro:env/client";
 import { useWallet } from "./WalletContext";
 import { useWalletToast } from "./WalletToastContext";
 import { getSettings } from "@/lib/wallet/settings";
@@ -88,8 +89,13 @@ export default function WalletFlow() {
       (async () => {
         try {
           setIsLoading(true);
-          await connectWallet(saved, true);
-          setScreen("wallet");
+          const ok = await connectWallet(saved, true);
+          if (ok) setScreen("wallet");
+          else {
+            setError("Failed to connect with saved phrase.");
+            wallet.clearMnemonic();
+            setScreen("home");
+          }
         } catch (e) {
           walletLogger.error(LogCategory.SDK, "Auto-connect failed", {
             error: e instanceof Error ? e.message : String(e),
@@ -107,13 +113,14 @@ export default function WalletFlow() {
     }
   }, []);
 
-  const connectWallet = async (mnemonic: string, restore: boolean, overrideNetwork?: Network) => {
-    const apiKey = import.meta.env.VITE_BREEZ_API_KEY as string | undefined;
+  const connectWallet = async (mnemonic: string, restore: boolean, overrideNetwork?: Network): Promise<boolean> => {
+    const apiKey = VITE_BREEZ_API_KEY as string | undefined;
     if (!apiKey) {
-      showToast("error", "Missing API Key", "Set VITE_BREEZ_API_KEY in .env for local dev, or configure for deploy.");
-      throw new Error("VITE_BREEZ_API_KEY not set");
+      showToast("error", "Missing API Key", "Set VITE_BREEZ_API_KEY in .env for local dev, or in build env for deploy.");
+      setError("Wallet cannot connect: Breez API key not configured. Set VITE_BREEZ_API_KEY.");
+      return false;
     }
-    if (wallet.connected()) return;
+    if (wallet.connected()) return true;
     setIsLoading(true);
     setIsRestoring(restore);
     setError(null);
@@ -177,12 +184,21 @@ export default function WalletFlow() {
     );
   }
 
+  const goToRestore = useCallback(() => {
+    console.log("[WalletFlow] goToRestore");
+    setScreen("restore");
+  }, []);
+  const goToGenerate = useCallback(() => {
+    console.log("[WalletFlow] goToGenerate");
+    setScreen("generate");
+  }, []);
+
   switch (screen) {
     case "home":
       return (
         <WalletHomePage
-          onRestore={() => setScreen("restore")}
-          onCreate={() => setScreen("generate")}
+          onRestoreWallet={goToRestore}
+          onCreateNewWallet={goToGenerate}
         />
       );
     case "restore":

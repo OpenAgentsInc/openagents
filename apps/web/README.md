@@ -79,11 +79,15 @@ npx convex env set BETTER_AUTH_SECRET=$(openssl rand -base64 32)
 npx convex env set SITE_URL http://localhost:4321   # or your production URL
 ```
 
-**Local `.env.local`** (created by `npx convex dev`; add):
+**Local `.env.local`** — `npx convex dev` writes `CONVEX_URL` and `CONVEX_SITE_URL`. To avoid "Found multiple CONVEX_SITE_URL" warnings: have **only one** `CONVEX_SITE_URL` line (and no `PUBLIC_CONVEX_SITE_URL`); the app uses `CONVEX_SITE_URL` for auth.
 
-- `PUBLIC_CONVEX_SITE_URL` — same as your Convex deployment but with `.convex.site` (e.g. `https://blessed-warbler-385.convex.site`). Required for auth client (Option A).
+Deploy script passes `CONVEX_URL`, `CONVEX_SITE_URL`, and `VITE_BREEZ_API_KEY` from the environment (with Convex defaults). Vite loads `.env` then `.env.local` (`.env.local` overrides). Put Convex vars in `.env.local` (written by `convex dev`); put `VITE_BREEZ_API_KEY` in **`.env`** so it doesn’t collide with Convex-only `.env.local`. For Cloudflare deploy, set build-time env vars in the dashboard.
 
-Deploy script sets both `CONVEX_URL` and `PUBLIC_CONVEX_SITE_URL` for prod builds.
+**Wallet (Breez SDK)** — The `/wallet` route needs a Breez API key. Request one at [breez.technology/request-api-key](https://breez.technology/request-api-key/#contact-us-form-sdk). Put it in **`.env`** (same file, no collision with `.env.local`):
+
+- **`.env`** (project root): `VITE_BREEZ_API_KEY=your_key` — loaded by Vite for both `npm run dev` and `npm run deploy` (build reads `.env`).
+- **`.env.local`** — reserve for Convex (`CONVEX_URL`, `CONVEX_SITE_URL`). If you add `VITE_BREEZ_API_KEY` here too, it overrides `.env`.
+- **Deploy (Cloudflare):** set `VITE_BREEZ_API_KEY` in Pages → Environment variables (Build-time), or the build will use `.env` when you run `npm run deploy` locally.
 
 See [docs/BETTER_AUTH_CONVEX_ASTRO.md](docs/BETTER_AUTH_CONVEX_ASTRO.md) for Astro vs Next.js.
 
