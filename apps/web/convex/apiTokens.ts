@@ -1,5 +1,5 @@
 import { v } from "convex/values";
-import { internalMutation, mutation, query } from "./_generated/server";
+import { internalMutation, internalQuery, mutation, query } from "./_generated/server";
 import { getUser, requireUser } from "./lib/users";
 import { fail, requireFound } from "./lib/errors";
 import { isAdminEmail } from "./lib/admin";
@@ -145,6 +145,64 @@ export const updateApiTokenLastUsed = internalMutation({
     }
 
     return null;
+  },
+});
+
+export const issueApiTokenForUser = internalMutation({
+  args: {
+    user_id: v.string(),
+    name: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_user_id", (q) => q.eq("user_id", args.user_id))
+      .first();
+    if (!user) {
+      throw new Error(`User with user_id ${args.user_id} not found`);
+    }
+
+    const token = generateToken();
+    const tokenHash = await hashToken(token);
+
+    const tokenId = await ctx.db.insert("api_tokens", {
+      user_id: user.user_id,
+      token_hash: tokenHash,
+      name: args.name,
+      created_at: Date.now(),
+    });
+
+    return {
+      token,
+      tokenId,
+      tokenHash,
+    };
+  },
+});
+
+export const resolveApiToken = internalQuery({
+  args: {
+    token: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const tokenHash = await hashToken(args.token);
+    const token = await ctx.db
+      .query("api_tokens")
+      .withIndex("by_token_hash", (q) => q.eq("token_hash", tokenHash))
+      .first();
+
+    if (!token) {
+      return null;
+    }
+    if (token.expires_at && token.expires_at < Date.now()) {
+      return null;
+    }
+
+    return {
+      tokenId: token._id,
+      tokenHash,
+      user_id: token.user_id,
+    };
   },
 });
 
