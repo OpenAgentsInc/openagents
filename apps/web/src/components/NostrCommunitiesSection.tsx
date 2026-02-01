@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClientProvider } from "@tanstack/react-query";
 import { RelayConfigProvider, useRelayConfigContext } from "@/contexts/RelayConfigContext";
 import { NostrProvider } from "@/components/NostrProvider";
 import { useDiscoveredSubclaws } from "@/hooks/useDiscoveredSubclaws";
 import { Skeleton } from "@/components/ui/skeleton";
+import { getQueryClient } from "@/lib/queryClient";
 
 function CommunitiesSkeleton() {
   return (
@@ -56,7 +57,7 @@ function NostrCommunitiesList() {
  */
 export function NostrCommunitiesSection() {
   const [mounted, setMounted] = useState(false);
-  const [queryClient] = useState(() => new QueryClient());
+  const [queryClient] = useState(() => getQueryClient());
   useEffect(() => setMounted(true), []);
 
   if (!mounted) return <CommunitiesSkeleton />;
