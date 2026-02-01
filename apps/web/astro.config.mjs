@@ -4,6 +4,8 @@ import cloudflare from "@astrojs/cloudflare";
 import mdx from "@astrojs/mdx";
 import sitemap from "@astrojs/sitemap";
 import tailwindcss from "@tailwindcss/vite";
+import wasm from "vite-plugin-wasm";
+import topLevelAwait from "vite-plugin-top-level-await";
 import { defineConfig, envField } from "astro/config";
 
 // https://astro.build/config
@@ -35,6 +37,18 @@ export default defineConfig({
     },
   },
   vite: {
-    plugins: [tailwindcss()],
+    plugins: [tailwindcss(), wasm(), topLevelAwait()],
+    optimizeDeps: {
+      exclude: ["@breeztech/breez-sdk-spark"],
+    },
+    build: {
+      target: "esnext",
+    },
+    server: {
+      headers: {
+        "Cross-Origin-Embedder-Policy": "require-corp",
+        "Cross-Origin-Opener-Policy": "same-origin",
+      },
+    },
   },
 });
