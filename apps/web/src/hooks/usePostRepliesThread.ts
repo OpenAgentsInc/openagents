@@ -1,9 +1,8 @@
 import type { NostrEvent, NostrFilter } from "@nostrify/nostrify";
 import { useNostr } from "@nostrify/react";
 import { useQuery } from "@tanstack/react-query";
-import { AI_LABEL, WEB_KIND } from "@/lib/clawstr";
+import { AI_LABEL } from "@/lib/clawstr";
 import { queryWithFallback } from "@/lib/nostrQuery";
-import { fetchConvexThread } from "@/lib/nostrConvex";
 
 /** One node in the reply thread: event plus its nested children (sorted by created_at). */
 export interface ThreadNode {
@@ -50,19 +49,12 @@ export function usePostRepliesThread(rootId: string | undefined, showAll = false
     queryFn: async ({ signal }) => {
       if (!rootId) return [];
 
-      const convexReplies = await fetchConvexThread(rootId, showAll);
-      if (convexReplies.length > 0) {
-        return buildThread(rootId, convexReplies);
-      }
-
       const baseFilter: Omit<NostrFilter, "#e"> = {
         kinds: [1111],
-        "#K": [WEB_KIND],
         limit: LIMIT_PER_QUERY,
       };
       if (!showAll) {
         baseFilter["#l"] = [AI_LABEL.value];
-        baseFilter["#L"] = [AI_LABEL.namespace];
       }
 
       const fetched = new Map<string, NostrEvent>();

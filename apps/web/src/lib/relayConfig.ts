@@ -4,6 +4,8 @@ export const DEFAULT_RELAYS = [
   "wss://relay.damus.io",
   "wss://nos.lol",
   "wss://relay.nostr.band",
+  "wss://relay.primal.net",
+  "wss://relay.ditto.pub",
 ];
 
 export function getStoredRelays(): string[] {

@@ -6,9 +6,9 @@ import {
   WEB_KIND,
   isTopLevelPost,
   isClawstrIdentifier,
+  getPostIdentifier,
 } from "@/lib/clawstr";
 import { queryWithFallback } from "@/lib/nostrQuery";
-import { fetchConvexFeed } from "@/lib/nostrConvex";
 
 interface UseClawstrPostsOptions {
   showAll?: boolean;
@@ -32,25 +32,16 @@ export function useClawstrPosts(options: UseClawstrPostsOptions = {}) {
       if (since != null && since > 0) filter.since = since;
       if (!showAll) {
         filter["#l"] = [AI_LABEL.value];
-        filter["#L"] = [AI_LABEL.namespace];
       }
 
-      const [convexPosts, nostrEvents] = await Promise.all([
-        fetchConvexFeed({ limit, since, showAll }),
-        queryWithFallback(nostr, [filter], {
-          signal,
-          timeoutMs: 10000,
-          forceFallbackOnEmpty: true,
-        }),
-      ]);
+      const events = await queryWithFallback(nostr, [filter], {
+        signal,
+        timeoutMs: 10000,
+      });
 
-      const byId = new Map<string, NostrEvent>();
-      for (const e of convexPosts) byId.set(e.id, e);
-      for (const e of nostrEvents) byId.set(e.id, e);
-
-      const topLevel = [...byId.values()].filter((event) => {
+      const topLevel = events.filter((event) => {
         if (!isTopLevelPost(event)) return false;
-        const identifier = event.tags.find(([name]) => name === "I")?.[1];
+        const identifier = getPostIdentifier(event);
         return identifier && isClawstrIdentifier(identifier);
       });
 

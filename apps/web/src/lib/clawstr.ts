@@ -21,10 +21,20 @@ export function subclawToIdentifier(subclaw: string, baseUrl = OPENAGENTS_BASE_U
   return `${baseUrl}/c/${subclaw.toLowerCase()}`;
 }
 
+export function subclawToIdentifiers(subclaw: string): string[] {
+  const normalized = subclaw.trim().toLowerCase();
+  if (!normalized) return [];
+  const ids = COMMUNITY_BASE_URLS.flatMap((base) => {
+    const id = subclawToIdentifier(normalized, base);
+    return [id, `${id}/`];
+  });
+  return [...new Set(ids)];
+}
+
 /** Parse community slug from I tag (clawstr.com/c/X or openagents.com/c/X). */
 export function identifierToSubclaw(identifier: string): string | null {
   const pattern = new RegExp(
-    `^(${COMMUNITY_BASE_URLS.map(escapeRegExp).join("|")})/c/([a-z0-9_-]+)$`,
+    `^(${COMMUNITY_BASE_URLS.map(escapeRegExp).join("|")})/c/([a-z0-9_-]+)/?$`,
     "i"
   );
   const match = identifier.match(pattern);
@@ -36,7 +46,7 @@ export function isClawstrIdentifier(identifier: string): boolean {
 }
 
 export function getPostIdentifier(event: NostrEvent): string | null {
-  const tag = event.tags.find(([name]) => name === "I");
+  const tag = event.tags.find(([name]) => name === "I") ?? event.tags.find(([name]) => name === "i");
   return tag?.[1] ?? null;
 }
 
@@ -48,10 +58,14 @@ export function getPostSubclaw(event: NostrEvent): string | null {
 export function isTopLevelPost(event: NostrEvent): boolean {
   const I = event.tags.find(([name]) => name === "I")?.[1];
   const i = event.tags.find(([name]) => name === "i")?.[1];
+  const e = event.tags.find(([name]) => name === "e")?.[1];
   const k =
     event.tags.find(([name]) => name === "k")?.[1] ??
     event.tags.find(([name]) => name === "K")?.[1];
-  return I === i && k === WEB_KIND;
+  if (!I || e) return false;
+  if (k !== WEB_KIND) return false;
+  if (i && i !== I) return false;
+  return true;
 }
 
 /** NIP-32: event has AI label (L/agent or l/ai). */

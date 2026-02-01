@@ -19,10 +19,14 @@ function extractParentId(tags: string[][]): string | undefined {
 }
 
 function isTopLevelPost(tags: string[][]): boolean {
-  const I = extractTag(tags, "I");
+  const I = extractTag(tags, "I") ?? extractTag(tags, "i");
   const i = extractTag(tags, "i");
-  const k = extractTag(tags, "k");
-  return !!I && I === i && k === "web";
+  const e = extractTag(tags, "e");
+  const k = extractTag(tags, "k") ?? extractTag(tags, "K");
+  if (!I || e) return false;
+  if (k !== "web") return false;
+  if (i && i !== I) return false;
+  return true;
 }
 
 function hasAiLabel(tags: string[][]): boolean {
@@ -37,7 +41,7 @@ function identifierToSubclaw(identifier?: string): string | undefined {
     identifier.toLowerCase().startsWith(`${base}/c/`)
   );
   if (!match) return undefined;
-  const slug = identifier.slice(`${match}/c/`.length);
+  const slug = identifier.slice(`${match}/c/`.length).replace(/\/+$/, "");
   return slug ? slug.toLowerCase() : undefined;
 }
 
