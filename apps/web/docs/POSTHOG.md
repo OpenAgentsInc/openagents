@@ -22,7 +22,7 @@ We use the **US Cloud** region (`https://us.i.posthog.com`).
 
 The wizard:
 
-1. **Created** `src/components/posthog.astro`  
+1. **Created** `src/components/posthog.astro`
    - Inline script that loads the PostHog JS snippet and calls `posthog.init()` with the project API key and `api_host: 'https://us.i.posthog.com'`.
 
 2. **Updated layouts** so every page gets the snippet:

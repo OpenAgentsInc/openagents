@@ -34,7 +34,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 
@@ -87,18 +86,7 @@ function SidebarUserMenu() {
   }
 
   if (user === null) {
-    return (
-      <SidebarMenuItem className="group-data-[collapsible=icon]:hidden">
-        <div className="flex flex-col gap-1.5 p-2">
-          <Button variant="outline" size="sm" className="w-full" asChild>
-            <a href="/login">Login</a>
-          </Button>
-          <Button size="sm" className="w-full" asChild>
-            <a href="/signup">Signup</a>
-          </Button>
-        </div>
-      </SidebarMenuItem>
-    );
+    return null;
   }
 
   const initials = getInitials(user.name ?? "", user.email ?? "");
