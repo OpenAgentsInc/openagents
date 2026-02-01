@@ -1,6 +1,9 @@
 import { httpAction, type ActionCtx } from "./_generated/server";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
+import { npubEncode } from "nostr-tools/nip19";
+import * as nip98 from "nostr-tools/nip98";
+import { verifyEvent } from "nostr-tools/pure";
 
 const CONTROL_HEADER = "x-oa-control-key";
 
@@ -37,6 +40,20 @@ function extractApiKey(request: Request, payload?: Record<string, unknown>): str
     return bodyValue.trim();
   }
   return null;
+}
+
+function extractNostrAuth(request: Request): string | null {
+  const forwarded = request.headers.get("x-oa-nostr-auth")?.trim();
+  if (forwarded) return forwarded;
+  const headerAuth = request.headers.get("authorization")?.trim();
+  if (headerAuth && headerAuth.toLowerCase().startsWith("nostr ")) {
+    return headerAuth;
+  }
+  return null;
+}
+
+function getOriginalUrl(request: Request): string {
+  return request.headers.get("x-oa-original-url")?.trim() || request.url;
 }
 
 async function requireApiKey(
@@ -764,6 +781,106 @@ export const revokeToken = httpAction(async (ctx, request) => {
   await touchApiToken(ctx, resolved.tokenHash);
 
   return new Response(JSON.stringify({ ok: true }), {
+    status: 200,
+    headers: { "content-type": "application/json" },
+  });
+});
+
+export const getNostrIdentity = httpAction(async (ctx, request) => {
+  if (request.method !== "GET") {
+    return new Response("Method Not Allowed", { status: 405 });
+  }
+
+  const authError = requireControlKey(request);
+  if (authError) return authError;
+
+  const resolved = await requireApiKey(ctx, request);
+  if (resolved instanceof Response) return resolved;
+
+  const identity = await ctx.runQuery(internal.users.getNostrIdentityForUser, {
+    user_id: resolved.user_id,
+  });
+
+  await touchApiToken(ctx, resolved.tokenHash);
+
+  return new Response(JSON.stringify({ ok: true, identity }), {
+    status: 200,
+    headers: { "content-type": "application/json" },
+  });
+});
+
+export const verifyNostrIdentity = httpAction(async (ctx, request) => {
+  if (request.method !== "POST") {
+    return new Response("Method Not Allowed", { status: 405 });
+  }
+
+  const authError = requireControlKey(request);
+  if (authError) return authError;
+
+  let payload: Record<string, unknown> = {};
+  try {
+    payload = (await request.json()) as Record<string, unknown>;
+  } catch {
+    return badRequest("Invalid JSON");
+  }
+
+  const resolved = await requireApiKey(ctx, request, payload);
+  if (resolved instanceof Response) return resolved;
+
+  const nostrAuth = extractNostrAuth(request);
+  if (!nostrAuth) {
+    return unauthorized("Missing Nostr auth");
+  }
+
+  let event: any;
+  try {
+    event = await nip98.unpackEventFromToken(nostrAuth);
+  } catch {
+    return unauthorized("Invalid Nostr auth");
+  }
+
+  if (!verifyEvent(event)) {
+    return unauthorized("Invalid Nostr signature");
+  }
+  if (!nip98.validateEventKind(event)) {
+    return unauthorized("Invalid Nostr auth kind");
+  }
+  if (!nip98.validateEventTimestamp(event)) {
+    return unauthorized("Expired Nostr auth");
+  }
+
+  const originalUrl = getOriginalUrl(request);
+  if (!nip98.validateEventUrlTag(event, originalUrl)) {
+    return unauthorized("Invalid Nostr auth url");
+  }
+  if (!nip98.validateEventMethodTag(event, request.method)) {
+    return unauthorized("Invalid Nostr auth method");
+  }
+
+  const payloadTag = event.tags.find((tag) => tag[0] === "payload");
+  if (payloadTag && !nip98.validateEventPayloadTag(event, payload)) {
+    return unauthorized("Invalid Nostr auth payload");
+  }
+
+  const nostr_pubkey = event.pubkey;
+  let nostr_npub = "";
+  try {
+    nostr_npub = npubEncode(nostr_pubkey);
+  } catch {
+    return badRequest("Invalid Nostr pubkey");
+  }
+
+  const identity = await ctx.runMutation(internal.users.linkNostrIdentityForUser, {
+    user_id: resolved.user_id,
+    pubkey: nostr_pubkey,
+    npub: nostr_npub,
+    verified_at: Date.now(),
+    method: "nip98",
+  });
+
+  await touchApiToken(ctx, resolved.tokenHash);
+
+  return new Response(JSON.stringify({ ok: true, identity }), {
     status: 200,
     headers: { "content-type": "application/json" },
   });

@@ -17,6 +17,8 @@ import {
   listTokens as controlListTokens,
   createToken as controlCreateToken,
   revokeToken as controlRevokeToken,
+  getNostrIdentity as controlGetNostrIdentity,
+  verifyNostrIdentity as controlVerifyNostrIdentity,
 } from "./control_http";
 
 const http = httpRouter();
@@ -117,6 +119,18 @@ http.route({
   path: "/control/tokens",
   method: "DELETE",
   handler: controlRevokeToken,
+});
+
+http.route({
+  path: "/control/nostr",
+  method: "GET",
+  handler: controlGetNostrIdentity,
+});
+
+http.route({
+  path: "/control/nostr/verify",
+  method: "POST",
+  handler: controlVerifyNostrIdentity,
 });
 
 export default http;
