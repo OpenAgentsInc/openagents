@@ -125,6 +125,64 @@
   --sidebar-ring: oklch(0.627 0 0);
 }
 
+/* Wallet (Breez Spark) theme: map spark-* to our design tokens */
+:root {
+  --spark-primary: var(--primary);
+  --spark-primary-light: oklch(0.35 0 0);
+  --spark-void: var(--background);
+  --spark-dark: var(--card);
+  --spark-surface: var(--card);
+  --spark-border: var(--border);
+  --spark-border-light: var(--border);
+  --spark-text-primary: var(--foreground);
+  --spark-text-secondary: var(--muted-foreground);
+  --spark-text-muted: var(--muted-foreground);
+  --spark-success: var(--chart-2);
+  --spark-error: var(--destructive);
+  --spark-warning: var(--chart-1);
+}
+.dark {
+  --spark-primary-light: oklch(0.75 0 0);
+}
+
+/* Wallet UI utilities */
+.glass-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 1.25rem;
+}
+.bottom-bar {
+  border-top: 1px solid var(--border);
+  padding: 0.75rem 1rem;
+  gap: 0.5rem;
+}
+.action-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.875rem 1rem;
+  border-radius: 0.75rem;
+  font-weight: 600;
+  border: none;
+  cursor: pointer;
+  flex: 1;
+}
+.action-button-send {
+  background: var(--chart-3);
+  color: var(--primary-foreground);
+}
+.action-button-receive {
+  background: var(--chart-2);
+  color: var(--primary-foreground);
+}
+.scrollbar-hidden {
+  scrollbar-width: none;
+}
+.scrollbar-hidden::-webkit-scrollbar {
+  display: none;
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
