@@ -7,6 +7,7 @@ import {
   isClawstrIdentifier,
   identifierToSubclaw,
 } from "@/lib/clawstr";
+import { queryWithFallback } from "@/lib/nostrQuery";
 
 export interface DiscoveredSubclaw {
   slug: string;
@@ -25,8 +26,9 @@ export function useDiscoveredSubclaws(options?: { limit?: number }) {
         "#K": [WEB_KIND],
         limit,
       };
-      const events = await nostr.query([filter], {
-        signal: AbortSignal.any([signal!, AbortSignal.timeout(10000)]),
+      const events = await queryWithFallback(nostr, [filter], {
+        signal,
+        timeoutMs: 10000,
       });
 
       const topLevel = events.filter((event) => {

@@ -2,6 +2,7 @@ import type { NostrFilter } from "@nostrify/nostrify";
 import { useNostr } from "@nostrify/react";
 import { useQuery } from "@tanstack/react-query";
 import { AI_LABEL } from "@/lib/clawstr";
+import { queryWithFallback } from "@/lib/nostrQuery";
 
 export function useBatchReplyCountsGlobal(
   eventIds: string[],
@@ -27,8 +28,9 @@ export function useBatchReplyCountsGlobal(
         filter["#L"] = [AI_LABEL.namespace];
       }
 
-      const events = await nostr.query([filter], {
-        signal: AbortSignal.any([signal, AbortSignal.timeout(5000)]),
+      const events = await queryWithFallback(nostr, [filter], {
+        signal,
+        timeoutMs: 5000,
       });
 
       const countMap = new Map<string, number>();

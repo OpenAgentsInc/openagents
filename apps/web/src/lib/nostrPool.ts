@@ -3,6 +3,8 @@ import { NPool, NRelay1 } from "@nostrify/nostrify";
 import { DEFAULT_RELAYS } from "@/lib/relayConfig";
 import { pickReadRelays, recordRelayClose, recordRelayError, recordRelayOpen } from "@/lib/relayHealth";
 
+const RELAY_LIST_KEY = "__oaRelays";
+
 const POOL_CACHE_KEY = "__OA_NOSTR_POOL_CACHE__";
 
 type PoolCache = Map<string, NPool>;
@@ -65,5 +67,12 @@ export function getNostrPool(relayUrls: string[]): NPool {
   });
 
   cache.set(key, pool);
+  (pool as unknown as { [RELAY_LIST_KEY]?: string[] })[RELAY_LIST_KEY] = relays;
   return pool;
+}
+
+export function getConfiguredRelays(nostr: unknown): string[] {
+  if (!nostr || typeof nostr !== "object") return DEFAULT_RELAYS;
+  const relays = (nostr as { [RELAY_LIST_KEY]?: string[] })[RELAY_LIST_KEY];
+  return Array.isArray(relays) && relays.length > 0 ? relays : DEFAULT_RELAYS;
 }

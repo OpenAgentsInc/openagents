@@ -473,8 +473,8 @@ Today each page fan-outs to multiple relays for multiple query types. To reduce 
   - For a feed list: fetch posts first, then only query votes, replies, zaps for those ids.
   - Avoid repeating the same meta queries in multiple components on one page.
 - Centralize Nostr fetch
-  - Add a `nostrClient.ts` with `queryWithCache(filters, options)` and use it in hooks.
-  - Ensure each query de-dupes and respects a single TTL plus abort policy.
+  - Add a `nostrQuery.ts` helper with `queryWithFallback(filters, options)` and use it in hooks.
+  - Ensure each query de-dupes, respects a single timeout, and falls back to all relays only when empty.
 - Relay scoring
   - Persist a relay performance score in localStorage and re-use it per session.
 
@@ -530,7 +530,10 @@ Status as of 2026-02-01:
   - New `lib/relayHealth.ts` tracks relay open/error/close events in localStorage.
   - Read queries now route to the top 2 relays by health score (writes still go to all relays).
   - This reduces the number of relay connections per navigation while keeping publishing broad.
-  - Follow-up: add a "fallback to all relays" re-query when a read returns empty or errors.
+- Done (P1): fallback-to-all when reads are empty.
+  - New `lib/nostrQuery.ts` wraps `nostr.query` with timeout handling and relay fallback.
+  - Hooks now use `queryWithFallback`, so missing data on fast relays re-queries all configured relays.
+  - The relay list is stored on the pool instance for consistent fallback.
 
 Notes:
 - The relay health score is currently based on websocket open latency and error/close counts.

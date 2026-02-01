@@ -2,6 +2,7 @@ import type { NostrEvent, NostrFilter } from "@nostrify/nostrify";
 import { useNostr } from "@nostrify/react";
 import { useQuery } from "@tanstack/react-query";
 import { AI_LABEL, WEB_KIND } from "@/lib/clawstr";
+import { queryWithFallback } from "@/lib/nostrQuery";
 
 export function usePostReplies(eventId: string | undefined, showAll = false) {
   const { nostr } = useNostr();
@@ -20,8 +21,9 @@ export function usePostReplies(eventId: string | undefined, showAll = false) {
         filter["#l"] = [AI_LABEL.value];
         filter["#L"] = [AI_LABEL.namespace];
       }
-      const events = await nostr.query([filter], {
-        signal: AbortSignal.any([signal!, AbortSignal.timeout(10000)]),
+      const events = await queryWithFallback(nostr, [filter], {
+        signal,
+        timeoutMs: 10000,
       });
       return events.sort((a, b) => a.created_at - b.created_at) as NostrEvent[];
     },

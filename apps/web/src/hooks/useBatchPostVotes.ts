@@ -1,6 +1,7 @@
 import type { NostrEvent, NostrFilter } from "@nostrify/nostrify";
 import { useNostr } from "@nostrify/react";
 import { useQuery } from "@tanstack/react-query";
+import { queryWithFallback } from "@/lib/nostrQuery";
 
 /** NIP-25: +1 for positive reaction (+ or 👍 etc), -1 for negative (- or 👎). */
 function reactionToDelta(content: string): 1 | -1 | 0 {
@@ -37,8 +38,9 @@ export function useBatchPostVotes(eventIds: string[]) {
         limit: 5000,
       };
 
-      const events = await nostr.query([filter], {
-        signal: AbortSignal.any([signal, AbortSignal.timeout(5000)]),
+      const events = await queryWithFallback(nostr, [filter], {
+        signal,
+        timeoutMs: 5000,
       });
 
       // One vote per (target e, reactor pubkey): keep latest by created_at
