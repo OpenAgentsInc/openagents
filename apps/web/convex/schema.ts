@@ -2,67 +2,6 @@ import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 
 export default defineSchema({
-  // ─── Website (feed, posting identity) ─────────────────────────────────────
-  // Posting identity = the public "author" for feed posts and comments (name shown on each post/comment).
-  // Created when someone gets an API key (e.g. /get-api-key). Can represent a person, bot, or agent.
-  // identity_tokens (hashed API keys) authenticate as a posting_identity.
-  posting_identities: defineTable({
-    name: v.string(),
-    description: v.optional(v.string()),
-    user_id: v.optional(v.string()),
-    claim_url: v.optional(v.string()),
-    created_at: v.number(),
-  })
-    .index("by_user_id", ["user_id"])
-    .index("by_created_at", ["created_at"]),
-
-  identity_tokens: defineTable({
-    posting_identity_id: v.id("posting_identities"),
-    token_hash: v.string(),
-    name: v.optional(v.string()),
-    last_used_at: v.optional(v.number()),
-    created_at: v.number(),
-    expires_at: v.optional(v.number()),
-  })
-    .index("by_posting_identity_id", ["posting_identity_id"])
-    .index("by_token_hash", ["token_hash"]),
-
-  posts: defineTable({
-    title: v.string(),
-    content: v.string(),
-    posting_identity_id: v.id("posting_identities"),
-    created_at: v.number(),
-    updated_at: v.optional(v.number()),
-  })
-    .index("by_posting_identity_id", ["posting_identity_id"])
-    .index("by_created_at", ["created_at"]),
-
-  comments: defineTable({
-    post_id: v.optional(v.id("posts")),
-    posting_identity_id: v.optional(v.id("posting_identities")),
-    content: v.string(),
-    created_at: v.optional(v.number()),
-    author: v.optional(v.string()), // legacy field
-  })
-    .index("by_post_id", ["post_id"])
-    .index("by_post_id_and_created_at", ["post_id", "created_at"]),
-
-  post_upvotes: defineTable({
-    post_id: v.id("posts"),
-    voter_id: v.id("posting_identities"),
-    created_at: v.number(),
-  })
-    .index("by_post_id", ["post_id"])
-    .index("by_voter", ["voter_id"]),
-
-  comment_upvotes: defineTable({
-    comment_id: v.id("comments"),
-    voter_id: v.id("posting_identities"),
-    created_at: v.number(),
-  })
-    .index("by_comment_id", ["comment_id"])
-    .index("by_voter", ["voter_id"]),
-
   // ─── Nostr cache (read-optimized) ─────────────────────────────────────────
   nostr_events: defineTable({
     event_id: v.string(),
@@ -153,7 +92,7 @@ export default defineSchema({
     organization_id: v.optional(v.id("organizations")),
     system_prompt: v.optional(v.string()),
     default_model: v.optional(v.string()),
-    default_tools: v.optional(v.string()),
+    default_tools: v.optional(v.array(v.string())),
     autopilot_spec: v.optional(v.string()),
     autopilot_plan: v.optional(v.string()),
     autopilot_plan_updated_at: v.optional(v.number()),
@@ -217,7 +156,8 @@ export default defineSchema({
     embedding_id: v.optional(v.string()),
   })
     .index("by_thread_id", ["thread_id"])
-    .index("by_thread_and_created_at", ["thread_id", "created_at"]),
+    .index("by_thread_and_created_at", ["thread_id", "created_at"])
+    .index("by_organization_id", ["organization_id"]),
 
   message_embeddings: defineTable({
     message_id: v.string(),
@@ -227,7 +167,9 @@ export default defineSchema({
     organization_id: v.optional(v.id("organizations")),
     user_id: v.string(),
     created_at: v.number(),
-  }).index("by_message_id", ["message_id"]),
+  })
+    .index("by_message_id", ["message_id"])
+    .index("by_organization_id", ["organization_id"]),
 
   issues: defineTable({
     user_id: v.string(),

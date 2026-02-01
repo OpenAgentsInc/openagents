@@ -10,5 +10,3 @@ export function getApiBase(): string {
   }
   return "https://openagents.com/api";
 }
-
-export const OA_API_KEY_STORAGE = "openagents_api_key";

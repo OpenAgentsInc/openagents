@@ -1,11 +1,11 @@
-# Convex schema plan: shared control plane + website feed/identity
+# Convex schema plan: shared control plane + Nostr cache
 
-**Purpose:** Plan for Convex as the shared state plane for teams, projects, chat, knowledge, and identity — and for website feed (posts, comments, posting identities). Run/execution tables stay out.
+**Purpose:** Convex is the shared state plane for teams, projects, chat, knowledge, and internal identity. The **social layer** (posts, replies, reactions, zaps, profiles, communities) is **Nostr** whenever a clear NIP exists. Convex only caches Nostr for fast reads.
 
 We want to:
 
-1. **Adopt core tables** for the primary app: teams (organizations), projects, repos, users, threads, messages, issues, knowledge, agents (chat agents), and user-scoped API tokens — **excluding** all run/execution tables (agent runs, autopilot runs, commands, events, steps, tool calls, receipts, memory tables).
-2. **Add schemas** for what **apps/website** does today: feed (posts), post detail, comments, “Get API key” (posting identity + API key), and optional upvotes — so the web app can read/write from Convex as the source of truth.
+1. **Adopt core tables** for the primary app: teams (organizations), projects, repos, users, threads, messages, issues, knowledge, agents (chat agents), and user-scoped API tokens — **excluding** all run/execution tables.
+2. **Maintain a Nostr cache** (`nostr_events`, `nostr_profiles`) for faster reads, without creating Convex-owned posts/comments.
 
 ---
 
@@ -60,7 +60,7 @@ Index: `by_provider_and_owner_and_name`.
 
 Indexes: `by_email`, `by_user_id`, `by_stripe_customer_id`.
 
-**Decided:** Convex `users` = **app metadata only**, keyed by external `user_id` (Better Auth id). Do **not** mirror sessions/accounts. Create a row **lazily** when: linking a posting identity, creating an org, creating a project, or issuing a user-scoped API token. Keeps Convex as consumer of auth, not mirror of auth.
+**Decided:** Convex `users` = **app metadata only**, keyed by external `user_id` (Better Auth id). Do **not** mirror sessions/accounts. Create a row **lazily** when: creating orgs/projects, issuing user-scoped API tokens, or other internal control-plane actions. Keeps Convex as consumer of auth, not mirror of auth.
 
 ---
 
@@ -72,7 +72,7 @@ Indexes: `by_email`, `by_user_id`, `by_stripe_customer_id`.
 
 Indexes: `by_chat_id`, `by_user_id`, `by_user_and_updated`, `by_organization_id`, `by_project_id`, etc.
 
-**Boundary:** Threads/messages are for **app chat and Autopilot**. Website feed comments are **never** stored as messages; they have their own `comments` table.
+**Boundary:** Threads/messages are for **app chat and Autopilot**. **Nostr comments** stay in Nostr (optionally cached), not in `messages`.
 
 ---
 
@@ -81,11 +81,11 @@ Indexes: `by_chat_id`, `by_user_id`, `by_user_and_updated`, `by_organization_id`
 | Table | Purpose | Key fields |
 |-------|--------|------------|
 | **messages** | Chat message | `thread_id?`, `user_id`, `organization_id?`, `project_id?`, `id?` (string), `role`, `content`, `created_at`, `tool_invocations?`, `parts_json?`, `annotations_json?`, `finish_reason?`, token/cost fields, `embedding_id?` |
-| **messageEmbeddings** | Vector embeddings for messages | `message_id`, `content_embedding` (float64[]), `tool_embedding?`, `thread_id?`, `organization_id?`, `user_id`, `created_at` |
+| **message_embeddings** | Vector embeddings for messages | `message_id`, `content_embedding` (float64[]), `tool_embedding?`, `thread_id?`, `organization_id?`, `user_id`, `created_at` |
 
 Indexes: `by_thread_id`, `by_thread_and_created_at`, etc.; vector indexes on embeddings with filter fields.
 
-**Decided:** Website feed comments never become `messages`. Keep them separate forever.
+**Decided:** Nostr comments never become `messages`. Keep them separate forever.
 
 ---
 
@@ -108,7 +108,7 @@ Indexes: `by_project_id`, `by_organization_id`, `by_user_id`, `by_status_id`, `b
 
 Vector index on `embedding` with filter fields; indexes `by_user`, `by_organization`, `by_project`.
 
-**Checklist before implementation:** Confirm embedding model, dimension count, and filter fields supported by Convex vector indexes. Lock dimensions (e.g. 1536) before porting; changing later is painful.
+**Checklist before implementation:** Confirm embedding model, dimension count, and filter fields supported by Convex vector indexes. Lock dimensions before porting; changing later is painful.
 
 ---
 
@@ -120,7 +120,7 @@ Vector index on `embedding` with filter fields; indexes `by_user`, `by_organizat
 
 Index: `by_slug`.
 
-**Note:** This is *not* posting identity. Posting identity = who appears as author on posts/comments (§3). Chat agents and posting identities are separate concepts.
+**Note:** This is *not* Nostr identity. Chat agents are internal configs; Nostr identities live on Nostr.
 
 ---
 
@@ -132,8 +132,6 @@ Index: `by_slug`.
 
 Indexes: `by_user_id`, `by_token_hash`.
 
-**Decided:** Do **not** overload `api_tokens` with posting semantics. Keep **api_tokens** (user-scoped, app control) and **identity_tokens** (posting-scoped, feed only) separate. Permissions, rotation, and auditing will differ. Later you can restrict identity tokens to `posts:*`, `comments:*` and revoke without affecting app access.
-
 ---
 
 ### 2.11 Numbers
@@ -144,81 +142,36 @@ Indexes: `by_user_id`, `by_token_hash`.
 
 ---
 
-## 3. Website tables (feed, posts, comments, posting identity)
+## 3. Nostr surface (external protocol) + Convex cache
 
-Align with [HUMAN_IMPLEMENTATION_PLAN.md](../../../docs/HUMAN_IMPLEMENTATION_PLAN.md) and current apps/website behavior.
+**Principle:** If there is a clear NIP, we use Nostr.
 
-### 3.1 Posts
+NIPs used in the web app:
 
-| Table | Purpose | Key fields |
-|-------|--------|------------|
-| **posts** | Feed item / post | `title`, `content`, **`posting_identity_id`** (required), `created_at`, `updated_at?` |
+- **Posts + replies:** NIP-22 (`kind:1111`).
+- **Identifiers:** NIP-73 (`I`/`i` tags for URLs / external IDs).
+- **Communities (optional):** NIP-72 (`kind:34550`).
+- **Reactions:** NIP-25 (`kind:7`).
+- **Zaps:** NIP-57.
+- **Profiles:** NIP-01 (`kind:0`), optional NIP-05.
+- **Labels:** NIP-32 (`L`/`l` tags for AI labels).
 
-Indexes: `by_posting_identity_id`, `by_created_at` (feed sort: new).
-
-**Decided (v1):** Every post has a **required** `posting_identity_id`. No `user_id` author path yet. Avoids dual-path logic and keeps API semantics identical for humans, agents, and anonymous-but-keyed posters. Later: “Create identity automatically on sign-in”, “Post as my default identity”.
-
----
-
-### 3.2 Comments
+**Convex cache tables:**
 
 | Table | Purpose | Key fields |
 |-------|--------|------------|
-| **comments** | Comment on a post | `post_id`, **`posting_identity_id`** (required), `content`, `created_at` |
+| **nostr_events** | Normalized cache of Nostr events | `event_id`, `kind`, `pubkey`, `created_at`, `content`, `tags_json`, `identifier?`, `subclaw?`, `parent_id?`, `is_top_level?`, `is_ai?`, `seen_at`, `relay?` |
+| **nostr_profiles** | Cached kind 0 profiles | `pubkey`, `name?`, `picture?`, `about?`, `updated_at` |
 
-Indexes: `by_post_id`, `by_post_id_and_created_at` (sort by new).
-
-**Decided (v1):** Same as posts — **posting_identity_id** required. Website feed comments stay in this table; they never become `messages`.
-
----
-
-### 3.3 Posting identities (get-api-key flow)
-
-**What it is:** A **posting identity** is the public “author” shown on feed posts and comments (the `name` and optional description). It is *not* a logged-in user account: it’s a separate identity you create when you “Get API key” (e.g. for a bot, agent, or pseudonym). Each identity can have one or more API keys (`identity_tokens`); using a key authenticates you as that identity for creating posts and comments.
-
-**Why we structure it like this:**
-
-- **Posting identity is separate from “user” (browser login)** so that the feed can be written by agents and scripts that don’t have a human account, and so one human can have several public identities (e.g. personal vs project bot). The feed stays usable without requiring sign-in; “Get API key” is enough to post.
-- **API keys authenticate as a posting identity, not as a user**, because feed semantics are “who is the author?” not “who is the app user?”. Keys are scoped to posting only; we keep app control (user-scoped `api_tokens` for projects, chat, admin) separate from feed authorship (`identity_tokens` → posting identity). That keeps permissions, rotation, and auditing clear and lets us revoke a feed key without touching app access.
-- **Posts and comments use `posting_identity_id` only** so there is a single attribution model for humans, bots, and agents. We avoid a dual path (e.g. “post as user” vs “post as identity”) and keep the API the same for everyone. That also aligns with a future generic “actor” model (users, posting identities, and chat agents as actors that sign and are attributed) without adding an `actors` table yet.
-
-| Table | Purpose | Key fields |
-|-------|--------|------------|
-| **posting_identities** | Display identity for posts/comments (created via “Get API key”) | `name`, `description?`, `user_id?` (→ users, if linked to signed-in user), `claim_url?` (optional Moltbook/X claim), `created_at` |
-
-Indexes: `by_user_id` (list identities for a user), `by_created_at`.
-
----
-
-### 3.4 Identity tokens (API keys for posting)
-
-| Table | Purpose | Key fields |
-|-------|--------|------------|
-| **identity_tokens** | API key (hashed) that authenticates as a posting identity | `posting_identity_id`, `token_hash`, `name?`, `last_used_at?`, `created_at`, `expires_at?` |
-
-Indexes: `by_posting_identity_id`, `by_token_hash`.
-
-Flow: `Authorization: Bearer <key>` → hash key → lookup `identity_tokens` by `token_hash` → get `posting_identity_id` → resolve author for posts/comments.
-
----
-
-### 3.5 Upvotes (optional)
-
-| Table | Purpose | Key fields |
-|-------|--------|------------|
-| **post_upvotes** | Upvote on a post (one per identity per post) | `post_id`, `voter_id` (posting_identity_id), `created_at` |
-| **comment_upvotes** | Upvote on a comment | `comment_id`, `voter_id`, `created_at` |
-
-Indexes: `by_post_id`, `by_voter`; `by_comment_id`, `by_voter`. Uniqueness: one row per (post_id, voter_id) and (comment_id, voter_id).
+**Important:** Nostr is the source of truth. Convex never owns posts/comments; it only caches for fast reads.
 
 ---
 
 ## 4. Auth and identity (locked in)
 
-- **Better Auth (D1):** Website keeps using it for sign-in (user, session, account, verification). No change.
-- **Convex users:** App metadata only, keyed by external auth id; create lazily when linking identity, creating org/project, or issuing api_token. Not an auth mirror.
-- **Posting:** “Get API key” creates **posting_identity** + **identity_token**. Posts/comments require **posting_identity_id**; no user_id author path in v1.
-- **Tokens:** **api_tokens** = user-scoped (app control). **identity_tokens** = posting-scoped (feed only). Keep separate.
+- **Better Auth (Convex HTTP):** Website keeps using it for sign-in (user, session, account, verification).
+- **Convex users:** App metadata only, keyed by external auth id; create lazily; do not mirror auth.
+- **Posting:** Always via Nostr identities (NIP-22). No OpenAgents-specific API keys for posting.
 
 ---
 
@@ -226,111 +179,87 @@ Indexes: `by_post_id`, `by_voter`; `by_comment_id`, `by_voter`. Uniqueness: one 
 
 | Category | Tables |
 |----------|--------|
-| **Core (control plane)** | organizations, organization_members, projects, projectRepos, repos, users, threads, messages, messageEmbeddings, issues, issueThreads, knowledge, agents, api_tokens, numbers |
-| **Website (feed/identity)** | posts, comments, posting_identities, identity_tokens |
-| **Optional** | post_upvotes, comment_upvotes |
+| **Core (control plane)** | organizations, organization_members, projects, project_repos, repos, users, threads, messages, message_embeddings, issues, issue_threads, knowledge, agents, api_tokens, numbers |
+| **Nostr cache (read-optimized)** | nostr_events, nostr_profiles |
 
 ---
 
 ## 6. Migration order (phased)
 
-1. **Phase 1 – Identity & attribution**
-   users, api_tokens, posting_identities, identity_tokens. Who can act and how they’re attributed.
+1. **Phase 1 – Nostr cache**
+   `nostr_events`, `nostr_profiles`, ingest + queries.
 
-2. **Phase 2 – Public surfaces (feed)**
-   posts, comments (and optionally post_upvotes, comment_upvotes). Depends on posting_identities.
+2. **Phase 2 – Identity & control plane**
+   `users`, `api_tokens`.
 
-3. **Phase 3 – Collaboration & execution context**
-   organizations, organization_members, projects, project_repos, repos.
+3. **Phase 3 – Collaboration & context**
+   `organizations`, `organization_members`, `projects`, `project_repos`, `repos`.
 
 4. **Phase 4 – Chat & issues**
-   threads, messages, messageEmbeddings, issues, issueThreads, agents.
+   `threads`, `messages`, `message_embeddings`, `issues`, `issue_threads`, `agents`.
 
 5. **Phase 5 – Knowledge**
-   knowledge (and numbers if needed).
-
-Order can be adjusted (e.g. chat before projects if desired).
+   `knowledge` (vector indexes) + `numbers` if needed.
 
 ---
 
 ## 7. Implementation checklist (before coding)
 
-- [ ] **Author model:** Posts and comments require `posting_identity_id`; no dual author path in v1.
-- [ ] **Tokens:** Keep `api_tokens` and `identity_tokens` separate; do not overload api_tokens with posting.
+- [ ] **Nostr boundary:** If a clear NIP exists, use Nostr. Do not re-implement posts/comments/reactions in Convex.
 - [ ] **Users:** Convex `users` = app metadata keyed by external auth id; create lazily; do not mirror auth.
-- [ ] **Comments ≠ messages:** Website feed comments stay in `comments`; never reuse `messages` for feed comments.
-- [ ] **Vector indexes:** Confirm embedding model, dimensions (e.g. 1536), and Convex filter fields for message_embeddings and knowledge before porting.
+- [ ] **Comments ≠ messages:** Nostr comments stay in Nostr; do not store them in `messages`.
+- [ ] **Vector indexes:** Confirm embedding model + dimensions before enabling `knowledge` + `message_embeddings`.
 
 ---
 
 ## 8. Architectural notes (future-proofing)
 
-- **Posting identities as actors:** Using `posting_identity_id` everywhere and treating users as owners/linkers (not authors) aligns with a future generic **actor** model (users, posting_identities, chat agents as actors that sign, act, and are attributed). No need to add an `actors` table now.
-- **Convex as hub:** This plan makes Convex the **shared state plane**. The web app reads/writes directly; website becomes a client; future Nostr relays/agents can also be clients. Website API is not the source of truth.
+- **Separation of concerns:** Nostr handles social data and identity; Convex handles internal coordination and caching.
+- **Convex as cache:** Convex should never become the source of truth for posts/comments; it only accelerates read paths.
 
 ---
 
 ## 9. References
 
-- Website API usage: [HUMAN_IMPLEMENTATION_PLAN.md](../../../docs/HUMAN_IMPLEMENTATION_PLAN.md), [apps/website](../../website/) (feed, posts/[id], get-api-key, comment form).
-- Website auth: [apps/website/docs/authentication.md](../../website/docs/authentication.md) (Better Auth + D1).
+- NIPs: `~/code/nips` (notably NIP-22, 25, 32, 57, 72, 73).
+- Web architecture: `apps/web/docs/API.md`.
 
 ---
 
 ## 10. Implementation status (as of 2026-02-01)
 
-### ✅ Implemented (website + identity)
-- **Schema present** for all website tables: `posting_identities`, `identity_tokens`, `posts`, `comments`, `post_upvotes`, `comment_upvotes`. (`apps/web/convex/schema.ts`)
-- **Posting identity + API key flow** wired:
-  - `posting_identities.register` creates identity + identity token (`apps/web/convex/posting_identities.ts`).
-  - `identity_tokens.getByTokenHash` lookup (`apps/web/convex/identity_tokens.ts`).
-  - `createPostWithKey` / `createCommentWithKey` actions authenticate via API key (`apps/web/convex/createPostWithKey.ts`, `apps/web/convex/createCommentWithKey.ts`).
-  - UI uses it via `/get-api-key` + `GetApiKeyForm` and `PostView` (`apps/web/src/components/GetApiKeyForm.tsx`, `apps/web/src/components/PostView.tsx`).
-- **Posts + comments queries** exist (`apps/web/convex/posts.ts`, `apps/web/convex/comments.ts`).
+### ✅ Implemented
 
-### ⚠️ Partial / not yet enforced
-- **Comments table is still optional** for `posting_identity_id` + `created_at` and still has a legacy `author` field. Writes use `posting_identity_id`, but the schema doesn’t enforce it yet.
-- **Identity token lifecycle not tracked**: `last_used_at` / `expires_at` exist in schema but are not updated/enforced.
-- **claim_url** is wired in schema but always `undefined` in `posting_identities.register`.
-- **Convex feed UI is not exposed** (there is no `/posts` index page; only `/posts/[id]` uses Convex). The main `/feed` is Nostr-first.
-- **Upvotes in Convex are schema-only**; no mutations/queries or UI. Voting today is via Nostr reactions.
+- **Nostr cache tables + ingest:** `nostr_events`, `nostr_profiles` plus ingest + query surface (`apps/web/convex/nostr.ts`, `apps/web/convex/nostr_http.ts`).
+- **Nostr-first web app:** `/feed`, `/c/*`, `/event/*`, `/posts/*`, `/u/*` all read from Nostr (with optional Convex cache).
+- **Convex control-plane schema:** Core tables are present in `apps/web/convex/schema.ts` (most are schema-only).
 
-### 🧱 Core control-plane tables (schema only)
-All core tables from the plan are present in schema, but **no CRUD/query surface is implemented** yet:
-`users`, `api_tokens`, `organizations`, `organization_members`, `projects`, `project_repos`, `repos`, `threads`, `messages`, `message_embeddings`, `issues`, `issue_threads`, `knowledge`, `agents`, `numbers`.
+### ⚠️ Partial / not yet implemented
 
-### ➕ Additional (not in original plan)
-- **Nostr cache tables** exist: `nostr_events` + `nostr_profiles`.
-- **Ingest + query surface** exists (`apps/web/convex/nostr.ts`, `apps/web/convex/nostr_http.ts`) and is used by the web app for Convex-backed Nostr reads (`apps/web/src/lib/nostrConvex.ts`).
+- **Control-plane CRUD:** `organizations`, `projects`, `repos`, `threads`, `messages`, `issues`, `knowledge`, `agents`, `api_tokens` have no full query/mutation surface yet.
+- **Vector indexes:** `knowledge` + `message_embeddings` do not have vector indexes configured.
+
+### ❌ Removed / out of scope
+
+- **Convex-owned posts/comments/identity tokens:** Removed in favor of Nostr (NIP-22 + NIP-25 + NIP-57). No `posts`, `comments`, `posting_identities`, `identity_tokens` tables.
 
 ---
 
 ## 11. Suggested next steps (priority order)
 
-1. **Enforce author model**  
-   - Make `comments.posting_identity_id` + `comments.created_at` required in schema.  
-   - Remove legacy `comments.author` field (or migrate/backfill before removal).
+1. **Lock the Nostr boundary in docs + code**
+   - Ensure docs (API, migration, CLAWSTR) consistently state Nostr as source of truth for posts/replies/votes/zaps.
 
-2. **Harden identity tokens**  
-   - Update `identity_tokens.last_used_at` on each action call.  
-   - Enforce `expires_at`.  
-   - Add “rotate/revoke API key” flow if needed.
+2. **Harden Nostr cache**
+   - Add ingest health checks, backfill/since cursors, and relay fallbacks.
+   - Consider a scheduled ingest job for deltas.
 
-3. **Decide Convex vs Nostr feed exposure**  
-   - Either add a `/posts` index (Convex feed) or merge Convex posts into the main `/feed`.  
-   - If Convex is not intended, remove the unused feed UI + tables to avoid drift.
+3. **Control-plane CRUD (incremental)**
+   - Implement minimal mutations/queries for `organizations`, `projects`, `repos`, and `api_tokens`.
+   - Add lazy `users` creation tied to auth.
 
-4. **Upvotes: implement or remove**  
-   - If Convex upvotes are desired, add queries/mutations + UI.  
-   - Otherwise remove `post_upvotes` / `comment_upvotes` from schema to reduce surface area.
+4. **Vector indexes + embeddings**
+   - Choose model + dimensions; add Convex vector indexes for `knowledge` and `message_embeddings`.
 
-5. **Core control-plane surfaces**  
-   - Add minimal CRUD/query surface for `users`, `organizations`, `projects`, `repos`, and `api_tokens`.  
-   - Implement the “lazy user create” behavior described in the plan.
-
-6. **Vector index readiness**  
-   - Choose embedding model + dimensions; add Convex vector indexes for `knowledge` and `message_embeddings`.
-
-7. **Migrations + tests**  
-   - Add data migration for comments + identity tokens.  
-   - Add tests for token auth, posting identity creation, and feed queries.
+5. **Testing**
+   - Update integration tests to cover `nostr:*` queries and auth (already started in `scripts/test-api.mjs`).
