@@ -24,9 +24,9 @@ We present **OpenAgents**, a systems and learning framework for building **self-
 
 3. **System Overview**
    3.1 OpenAgents Stack and Design Principles
-   3.1.1 Agentic OS primitives
-   3.1.2 Protocol substrate
-   3.1.3 Identity and payments unification
+      3.1.1 Agentic OS primitives
+      3.1.2 Protocol substrate
+      3.1.3 Identity and payments unification
    3.2 Threat Model and Assumptions
    3.3 Execution Substrates: Local, Cloud, Swarm
    3.4 Agent Execution Flow
