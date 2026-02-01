@@ -170,6 +170,18 @@ async fn main(mut req: Request, env: Env, _ctx: Context) -> Result<Response> {
         .post_async("/register", handle_control_register)
         .get_async("/projects", handle_control_projects)
         .post_async("/projects", handle_control_projects)
+        .get_async("/organizations", handle_control_organizations)
+        .post_async("/organizations", handle_control_organizations)
+        .get_async("/issues", handle_control_issues)
+        .post_async("/issues", handle_control_issues)
+        .patch_async("/issues", handle_control_issues)
+        .delete_async("/issues", handle_control_issues)
+        .get_async("/repos", handle_control_repos)
+        .post_async("/repos", handle_control_repos)
+        .delete_async("/repos", handle_control_repos)
+        .get_async("/tokens", handle_control_tokens)
+        .post_async("/tokens", handle_control_tokens)
+        .delete_async("/tokens", handle_control_tokens)
         .get_async("/agents/wallet-onboarding", handle_agents_wallet_onboarding)
         .post_async("/agents", handle_agents_create)
         .get_async("/agents/:id", handle_agents_get)
@@ -299,13 +311,8 @@ async fn handle_control_register(mut req: Request, ctx: RouteContext<()>) -> Res
     Ok(response)
 }
 
-async fn handle_control_projects(mut req: Request, ctx: RouteContext<()>) -> Result<Response> {
-    let method = req.method().clone();
-    if method != Method::Get && method != Method::Post {
-        return json_error("method not allowed", 405);
-    }
-
-    let api_key = social_api_key_from_request(&req)
+fn control_api_key_from_request(req: &Request) -> Option<String> {
+    social_api_key_from_request(req)
         .or_else(|| {
             req.url()
                 .ok()
@@ -317,42 +324,124 @@ async fn handle_control_projects(mut req: Request, ctx: RouteContext<()>) -> Res
                     }
                 }))
         })
-        .filter(|k| !k.trim().is_empty());
-    let Some(api_key) = api_key else {
+        .filter(|k| !k.trim().is_empty())
+}
+
+fn control_query_string(url: &url::Url) -> String {
+    let mut query_pairs: Vec<(String, String)> = Vec::new();
+    for (k, v) in url.query_pairs() {
+        if k == "api_key" || k == "moltbook_api_key" {
+            continue;
+        }
+        query_pairs.push((k.to_string(), v.to_string()));
+    }
+    build_query_string(&query_pairs)
+}
+
+fn normalize_json_body(value: serde_json::Value) -> serde_json::Value {
+    if value.is_null() {
+        serde_json::json!({})
+    } else {
+        value
+    }
+}
+
+async fn forward_control_get(
+    req: Request,
+    ctx: RouteContext<()>,
+    path: &str,
+) -> Result<Response> {
+    let Some(api_key) = control_api_key_from_request(&req) else {
         return Ok(json_unauthorized("missing api key"));
     };
 
-    if method == Method::Get {
-        let url = req.url()?;
-        let mut query_pairs: Vec<(String, String)> = Vec::new();
-        for (k, v) in url.query_pairs() {
-            if k == "api_key" || k == "moltbook_api_key" {
-                continue;
-            }
-            query_pairs.push((k.to_string(), v.to_string()));
-        }
-        let query = build_query_string(&query_pairs);
-        let path = if query.is_empty() {
-            "control/projects".to_string()
-        } else {
-            format!("control/projects?{query}")
-        };
-        let response =
-            forward_convex_control(&ctx.env, Method::Get, &path, None, Some(api_key)).await?;
-        return Ok(response);
+    let url = req.url()?;
+    let query = control_query_string(&url);
+    let path = if query.is_empty() {
+        path.to_string()
+    } else {
+        format!("{path}?{query}")
+    };
+
+    forward_convex_control(&ctx.env, Method::Get, &path, None, Some(api_key)).await
+}
+
+async fn forward_control_with_body(
+    mut req: Request,
+    ctx: RouteContext<()>,
+    method: Method,
+    path: &str,
+) -> Result<Response> {
+    let Some(api_key) = control_api_key_from_request(&req) else {
+        return Ok(json_unauthorized("missing api key"));
+    };
+
+    let body_value: serde_json::Value = req.json().await.unwrap_or(serde_json::Value::Null);
+    let body_value = normalize_json_body(body_value);
+    let body_text = serde_json::to_string(&body_value).unwrap_or_else(|_| "{}".to_string());
+
+    forward_convex_control(&ctx.env, method, path, Some(body_text), Some(api_key)).await
+}
+
+async fn handle_control_projects(req: Request, ctx: RouteContext<()>) -> Result<Response> {
+    let method = req.method().clone();
+    if method != Method::Get && method != Method::Post {
+        return json_error("method not allowed", 405);
     }
 
-    let body: serde_json::Value = req.json().await.unwrap_or(serde_json::Value::Null);
-    let body_text = serde_json::to_string(&body).unwrap_or_else(|_| "{}".to_string());
-    let response = forward_convex_control(
-        &ctx.env,
-        Method::Post,
-        "control/projects",
-        Some(body_text),
-        Some(api_key),
-    )
-    .await?;
-    Ok(response)
+    if method == Method::Get {
+        return forward_control_get(req, ctx, "control/projects").await;
+    }
+
+    forward_control_with_body(req, ctx, Method::Post, "control/projects").await
+}
+
+async fn handle_control_organizations(req: Request, ctx: RouteContext<()>) -> Result<Response> {
+    let method = req.method().clone();
+    if method == Method::Get {
+        return forward_control_get(req, ctx, "control/organizations").await;
+    }
+    if method == Method::Post {
+        return forward_control_with_body(req, ctx, Method::Post, "control/organizations").await;
+    }
+    json_error("method not allowed", 405)
+}
+
+async fn handle_control_issues(req: Request, ctx: RouteContext<()>) -> Result<Response> {
+    let method = req.method().clone();
+    match method {
+        Method::Get => forward_control_get(req, ctx, "control/issues").await,
+        Method::Post => forward_control_with_body(req, ctx, Method::Post, "control/issues").await,
+        Method::Patch => forward_control_with_body(req, ctx, Method::Patch, "control/issues").await,
+        Method::Delete => {
+            forward_control_with_body(req, ctx, Method::Delete, "control/issues").await
+        }
+        _ => json_error("method not allowed", 405),
+    }
+}
+
+async fn handle_control_repos(req: Request, ctx: RouteContext<()>) -> Result<Response> {
+    let method = req.method().clone();
+    match method {
+        Method::Get => forward_control_get(req, ctx, "control/repos").await,
+        Method::Post => forward_control_with_body(req, ctx, Method::Post, "control/repos").await,
+        Method::Delete => {
+            forward_control_with_body(req, ctx, Method::Delete, "control/repos").await
+        }
+        _ => json_error("method not allowed", 405),
+    }
+}
+
+async fn handle_control_tokens(req: Request, ctx: RouteContext<()>) -> Result<Response> {
+    let method = req.method().clone();
+    match method {
+        Method::Get => forward_control_get(req, ctx, "control/tokens").await,
+        Method::Post => forward_control_with_body(req, ctx, Method::Post, "control/tokens").await,
+        Method::Delete => {
+            forward_control_with_body(req, ctx, Method::Delete, "control/tokens").await
+        }
+        _ => json_error("method not allowed", 405),
+    }
 }
 
 // --- Social API (Moltbook parity, OpenAgents storage) ---

@@ -1,5 +1,5 @@
 import { v } from "convex/values";
-import { mutation, query } from "./_generated/server";
+import { internalMutation, internalQuery, mutation, query } from "./_generated/server";
 import type { Doc } from "./_generated/dataModel";
 import type { DatabaseReader } from "./_generated/server";
 import { isAdminUser } from "./lib/admin";
@@ -589,5 +589,72 @@ export const getOrganizationBalance = query({
     );
 
     return organization.credits ?? 0;
+  },
+});
+
+export const listOrganizationsForUser = internalQuery({
+  args: {
+    user_id: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const memberships = await ctx.db
+      .query("organization_members")
+      .withIndex("by_user", (q) => q.eq("user_id", args.user_id))
+      .collect();
+
+    const organizations = await Promise.all(
+      memberships.map(async (membership) => {
+        const organization = await ctx.db.get(membership.organization_id);
+        if (!organization) {
+          return null;
+        }
+        return {
+          ...organization,
+          role: membership.role,
+        };
+      }),
+    );
+
+    return organizations.filter(
+      (organization): organization is NonNullable<typeof organization> =>
+        organization !== null,
+    );
+  },
+});
+
+export const createOrganizationForUser = internalMutation({
+  args: {
+    user_id: v.string(),
+    name: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_user_id", (q) => q.eq("user_id", args.user_id))
+      .first();
+    const userRecord = requireFound(user, "NOT_FOUND", "User not found");
+
+    const now = Date.now();
+    const organizationId = await ctx.db.insert("organizations", {
+      name: args.name,
+      owner_id: userRecord.user_id,
+      plan: "startup",
+      credits: 0,
+      created_at: now,
+    });
+
+    await ctx.db.insert("organization_members", {
+      organization_id: organizationId,
+      user_id: userRecord.user_id,
+      role: "owner",
+      joined_at: now,
+    });
+
+    const organization = await ctx.db.get(organizationId);
+    return requireFound(
+      organization,
+      "NOT_FOUND",
+      "Organization not found after creation",
+    );
   },
 });

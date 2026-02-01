@@ -353,3 +353,109 @@ export const createProjectForUser = internalMutation({
     return requireFound(project, "NOT_FOUND", "Project not found after creation");
   },
 });
+
+export const getProjectReposForUser = internalQuery({
+  args: {
+    user_id: v.string(),
+    projectId: v.id("projects"),
+  },
+  handler: async (ctx, { user_id, projectId }) => {
+    await requireProjectAccess(ctx.db, projectId, user_id);
+
+    const links = await ctx.db
+      .query("project_repos")
+      .withIndex("by_project_id", (q) => q.eq("project_id", projectId))
+      .collect();
+
+    const repos = [];
+    for (const link of links) {
+      const repo = await ctx.db.get(link.repo_id);
+      if (repo) {
+        repos.push(repo);
+      }
+    }
+
+    return repos;
+  },
+});
+
+export const connectProjectRepoForUser = internalMutation({
+  args: {
+    user_id: v.string(),
+    projectId: v.id("projects"),
+    repo: projectRepoInput,
+  },
+  handler: async (ctx, { user_id, projectId, repo }) => {
+    await requireProjectAccess(ctx.db, projectId, user_id);
+
+    const existingRepo = await ctx.db
+      .query("repos")
+      .withIndex("by_provider_and_owner_and_name", (q) =>
+        q.eq("provider", repo.provider).eq("owner", repo.owner).eq("name", repo.name),
+      )
+      .unique();
+
+    const repoId =
+      existingRepo?._id ??
+      (await ctx.db.insert("repos", {
+        name: repo.name,
+        provider: repo.provider,
+        owner: repo.owner,
+        default_branch: repo.default_branch,
+        url: repo.url,
+        created_at: Date.now(),
+      }));
+
+    if (existingRepo) {
+      const shouldPatch = repo.default_branch !== undefined || repo.url !== undefined;
+      if (shouldPatch) {
+        await ctx.db.patch(repoId, {
+          default_branch: repo.default_branch ?? existingRepo.default_branch,
+          url: repo.url ?? existingRepo.url,
+        });
+      }
+    }
+
+    const existingLink = await ctx.db
+      .query("project_repos")
+      .withIndex("by_project_id_and_repo_id", (q) =>
+        q.eq("project_id", projectId).eq("repo_id", repoId),
+      )
+      .unique();
+
+    if (!existingLink) {
+      await ctx.db.insert("project_repos", {
+        project_id: projectId,
+        repo_id: repoId,
+        created_at: Date.now(),
+      });
+    }
+
+    const connectedRepo = await ctx.db.get(repoId);
+    return requireFound(connectedRepo, "NOT_FOUND", "Repo not found after connection");
+  },
+});
+
+export const disconnectProjectRepoForUser = internalMutation({
+  args: {
+    user_id: v.string(),
+    projectId: v.id("projects"),
+    repoId: v.id("repos"),
+  },
+  handler: async (ctx, { user_id, projectId, repoId }) => {
+    await requireProjectAccess(ctx.db, projectId, user_id);
+
+    const link = await ctx.db
+      .query("project_repos")
+      .withIndex("by_project_id_and_repo_id", (q) =>
+        q.eq("project_id", projectId).eq("repo_id", repoId),
+      )
+      .unique();
+
+    if (link) {
+      await ctx.db.delete(link._id);
+    }
+
+    return null;
+  },
+});
