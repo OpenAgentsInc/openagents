@@ -28,12 +28,12 @@ function SignInFormInner() {
         callbackURL: "/",
       });
       if (result.error) {
-        setError(result.error.message ?? "Sign in failed");
+        setError(result.error.message ?? "Log in failed");
         return;
       }
       window.location.href = "/";
     } catch {
-      setError("Sign in failed");
+      setError("Log in failed");
     } finally {
       setLoading(false);
     }
@@ -68,7 +68,7 @@ function SignInFormInner() {
           </Alert>
         )}
         <Button type="submit" disabled={loading} className="w-full">
-          {loading ? "Signing in…" : "Sign in with email"}
+          {loading ? "Logging in…" : "Log in with email"}
         </Button>
       </form>
       <div className="relative">
@@ -88,7 +88,7 @@ function SignInFormInner() {
           })
         }
       >
-        Sign in with GitHub
+        Log in with GitHub
       </Button>
     </div>
   );

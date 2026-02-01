@@ -21,7 +21,7 @@ function AuthUIInner() {
     return (
       <div className="flex items-center gap-2">
         <Button variant="link" asChild size="sm">
-          <a href="/login">Sign in</a>
+          <a href="/login">Log in</a>
         </Button>
         <span className="text-muted-foreground">|</span>
         <Button
@@ -35,7 +35,7 @@ function AuthUIInner() {
             })
           }
         >
-          Sign in with GitHub
+          Log in with GitHub
         </Button>
       </div>
     );
@@ -44,7 +44,7 @@ function AuthUIInner() {
   return (
     <div className="flex items-center gap-2">
       <span className="text-sm text-muted-foreground">
-        {user.name ?? user.email ?? "Signed in"}
+        {user.name ?? user.email ?? "Logged in"}
       </span>
       <Button type="button" variant="link" size="sm" onClick={handleSignOut}>
         Sign out

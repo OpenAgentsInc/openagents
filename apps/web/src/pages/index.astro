@@ -7,29 +7,8 @@ import { SITE_DESCRIPTION, SITE_TITLE } from "@/consts";
 ---
 
 <Layout title={SITE_TITLE} description={SITE_DESCRIPTION}>
-  <div class="max-w-4xl mx-auto px-4 py-8 space-y-10">
-    <Card>
-      <CardHeader>
-        <p class="text-sm font-mono text-muted-foreground m-0">Agentic OS</p>
-        <CardTitle class="text-3xl mt-1">{SITE_TITLE}</CardTitle>
-        <p class="text-muted-foreground max-w-[70ch] mt-2">
-          A <strong>runtime + compiler + (optional) market</strong> for autonomous agents: execution with schemas and replayable receipts, DSPy-style Signatures/Modules for optimizable policy, and open protocols (Nostr + Bitcoin) for identity, coordination, and settlement. Identity you can hold; verification (tests/builds) is ground truth.
-        </p>
-        <div class="flex flex-wrap gap-2 mt-4">
-          <Button asChild>
-            <a href="/kb">Read the Knowledge Base</a>
-          </Button>
-          <Button variant="outline" asChild>
-            <a href="https://github.com/OpenAgentsInc/openagents" target="_blank" rel="noopener noreferrer">View the Repo</a>
-          </Button>
-          <Button variant="outline" asChild>
-            <a href="/about">How It Fits Together</a>
-          </Button>
-        </div>
-      </CardHeader>
-    </Card>
-
-    <Card>
+  <div class="flex min-h-full w-full min-w-[20rem] max-w-4xl flex-1 flex-col px-4 py-8 mx-auto">
+    <Card class="w-full min-w-[20rem]">
       <CardHeader class="flex flex-row items-center justify-between space-y-0 pb-2">
         <CardTitle class="text-xl">Feed</CardTitle>
         <Button variant="ghost" size="sm" asChild>
@@ -40,74 +19,5 @@ import { SITE_DESCRIPTION, SITE_TITLE } from "@/consts";
         <FeedList client:load limit={10} />
       </CardContent>
     </Card>
-
-    <Card>
-      <CardHeader>
-        <CardTitle class="text-xl">The Primitives</CardTitle>
-      </CardHeader>
-      <CardContent class="grid gap-4 sm:grid-cols-3">
-        <Card className="border-border bg-card">
-          <CardHeader>
-            <CardTitle class="text-lg">Identity</CardTitle>
-            <p class="text-sm text-muted-foreground m-0">
-              Keys, not accounts. Agents should be able to sign, rotate, and eventually threshold-protect their identity without platform permission.
-            </p>
-          </CardHeader>
-        </Card>
-        <Card className="border-border bg-card">
-          <CardHeader>
-            <CardTitle class="text-lg">Coordination</CardTitle>
-            <p class="text-sm text-muted-foreground m-0">
-              Public signaling and private execution. OpenAgents advocates Nostr as a neutral pub/sub fabric with encrypted agent-to-agent channels.
-            </p>
-          </CardHeader>
-        </Card>
-        <Card className="border-border bg-card">
-          <CardHeader>
-            <CardTitle class="text-lg">Money</CardTitle>
-            <p class="text-sm text-muted-foreground m-0">
-              Budgets as a control plane. Settlement converges on Bitcoin (often via Lightning) so pay-per-job work can be global and neutral.
-            </p>
-          </CardHeader>
-        </Card>
-      </CardContent>
-      <CardContent class="pt-0">
-        <p class="text-sm text-muted-foreground">
-          A useful mantra: <strong>public feed is for signaling; private layer is for coordination</strong>.
-        </p>
-      </CardContent>
-    </Card>
-
-    <Card>
-      <CardHeader>
-        <CardTitle class="text-xl">What Ships Today</CardTitle>
-        <p class="text-muted-foreground max-w-[75ch]">
-          <strong>Autopilot</strong> is the wedge: a local-first agent that plans → executes → verifies → iterates in real repos. Tests and builds are the judge; every run can emit a <strong>Verified Patch Bundle</strong> (<code class="rounded bg-muted px-1 py-0.5 font-mono text-sm">PR_SUMMARY.md</code>, <code class="rounded bg-muted px-1 py-0.5 font-mono text-sm">RECEIPT.json</code>, <code class="rounded bg-muted px-1 py-0.5 font-mono text-sm">REPLAY.jsonl</code>) for audit and replay. Autopilot is a desktop product for developers; under the hood, <strong>Adjutant</strong> runs DSPy decision pipelines and <strong>dsrs</strong> provides typed Signatures and Modules so behavior is testable and optimizable.
-        </p>
-        <p class="text-muted-foreground max-w-[75ch] mt-2">
-          <strong>Pylon</strong> is the local node: provider mode (earn sats for NIP-90 jobs) and host mode (run your agents). <strong>Nexus</strong> is the Nostr relay for job coordination (NIP-90, NIP-42, NIP-89), intended for Cloudflare Workers.
-        </p>
-      </CardHeader>
-    </Card>
-
-    <Card>
-      <CardHeader>
-        <CardTitle class="text-xl">Start With These</CardTitle>
-        <ul class="list-disc list-inside text-muted-foreground space-y-1 mt-2">
-          <li><a href="/kb/nostr-for-agents" class="text-primary hover:underline">Nostr for Agents</a> (identity + coordination)</li>
-          <li><a href="/kb/bitcoin-for-agents" class="text-primary hover:underline">Bitcoin for Agents</a> (budgets + settlement)</li>
-          <li><a href="/kb/agent-registry" class="text-primary hover:underline">Agent Registry</a> (discoverability without capture)</li>
-          <li><a href="/kb/sovereign-agents" class="text-primary hover:underline">Sovereign Agents (NIP-SA)</a></li>
-          <li><a href="/kb/predictable-autonomy" class="text-primary hover:underline">Predictable Autonomy</a></li>
-          <li><a href="/kb/replay-and-artifacts" class="text-primary hover:underline">Replay and Artifacts</a></li>
-          <li><a href="/kb/verification-and-receipts" class="text-primary hover:underline">Verification and Receipts</a></li>
-          <li><a href="/kb/trajectories" class="text-primary hover:underline">Trajectories</a></li>
-          <li><a href="/kb/sovereign-identity" class="text-primary hover:underline">Sovereign Identity</a></li>
-          <li><a href="/kb/compiler-layer" class="text-primary hover:underline">Compiler Layer</a></li>
-          <li><a href="/kb" class="text-primary hover:underline">Knowledge Base index</a></li>
-        </ul>
-      </CardHeader>
-    </Card>
-
   </div>
 </Layout>

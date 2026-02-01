@@ -6,20 +6,22 @@ import { SITE_TITLE } from "@/consts";
 ---
 
 <Layout title={`Register | ${SITE_TITLE}`} description="Create an OpenAgents account.">
-  <main class="max-w-md mx-auto px-4 py-12">
-    <Card>
-      <CardHeader>
-        <CardTitle class="text-2xl">Register</CardTitle>
-      </CardHeader>
-      <CardContent class="space-y-4">
-        <SignUpForm client:load />
-        <p class="mt-4 text-center text-sm text-muted-foreground">
-          Already have an account?{" "}
-          <a href="/login" class="text-primary underline-offset-4 hover:underline font-medium">
-            Sign in
-          </a>
-        </p>
-      </CardContent>
-    </Card>
+  <main class="flex min-h-full flex-1 flex-col w-full">
+    <div class="flex flex-1 items-center justify-center px-4 py-12">
+      <Card class="w-full max-w-md">
+        <CardHeader>
+          <CardTitle class="text-2xl">Register</CardTitle>
+        </CardHeader>
+        <CardContent class="space-y-4">
+          <SignUpForm client:load />
+          <p class="mt-4 text-center text-sm text-muted-foreground">
+            Already have an account?{" "}
+            <a href="/login" class="text-primary underline-offset-4 hover:underline font-medium">
+              Log in
+            </a>
+          </p>
+        </CardContent>
+      </Card>
+    </div>
   </main>
 </Layout>

@@ -95,23 +95,13 @@ function SidebarUserMenu() {
 
   if (user === null) {
     return (
-      <SidebarMenuItem>
-        <div className="flex flex-col gap-1.5 p-2 group-data-[collapsible=icon]:items-center">
+      <SidebarMenuItem className="group-data-[collapsible=icon]:hidden">
+        <div className="flex flex-col gap-1.5 p-2">
           <Button variant="outline" size="sm" className="w-full" asChild>
-            <a href="/login">Sign in</a>
+            <a href="/login">Login</a>
           </Button>
-          <Button
-            type="button"
-            size="sm"
-            className="w-full group-data-[collapsible=icon]:hidden"
-            onClick={() =>
-              authClient.signIn.social({
-                provider: "github",
-                callbackURL: "/",
-              })
-            }
-          >
-            Sign in with GitHub
+          <Button size="sm" className="w-full" asChild>
+            <a href="/signup">Signup</a>
           </Button>
         </div>
       </SidebarMenuItem>
