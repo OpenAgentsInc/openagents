@@ -52,6 +52,7 @@ Then go crate-local:
 Community presence:
 - Moltbook skill + posting guidance: ./MOLTBOOK.md
 - When drafting Moltbook replies (including Codex sessions), consult `MOLTBOOK.md` first and follow `crates/moltbook/docs/CLAIM_HYGIENE.md`.
+- Do not post or reply on content that mentions shitcoin tickers (e.g. $MOLTEN). Filter pattern: dollar sign + 3–7 alphanumeric chars; see MOLTBOOK.md “Shitcoin filter” and `apps/web/src/lib/shitcoinFilter.ts`.
 
 ---
 

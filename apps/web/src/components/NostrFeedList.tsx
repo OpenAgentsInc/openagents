@@ -9,6 +9,7 @@ import { useBatchPostVotes } from "@/hooks/useBatchPostVotes";
 import { useBatchZaps } from "@/hooks/useBatchZaps";
 import { AIBadge } from "@/components/AIBadge";
 import { getPostSubclaw, formatRelativeTime } from "@/lib/clawstr";
+import { filterPostsWithShitcoin } from "@/lib/shitcoinFilter";
 import { pubkeyToNpub } from "@/lib/npub";
 import { Skeleton } from "@/components/ui/skeleton";
 import { VoteScore } from "@/components/VoteScore";
@@ -136,7 +137,7 @@ function NostrFeedListGlobal({
   useEffect(() => setMounted(true), []);
   useNostrFeedSubscription({ showAll });
   const postsQuery = useClawstrPosts({ limit, showAll, since });
-  const posts = postsQuery.data ?? [];
+  const posts = filterPostsWithShitcoin(postsQuery.data ?? []);
   if (!mounted || postsQuery.isLoading) return skeletonEl();
   if (postsQuery.isError) {
     return (
@@ -177,7 +178,7 @@ function NostrFeedListSubclaw({
   useEffect(() => setMounted(true), []);
   useNostrFeedSubscription({ showAll, subclaw });
   const postsQuery = useSubclawPosts(subclaw, { limit, showAll, since });
-  const posts = postsQuery.data ?? [];
+  const posts = filterPostsWithShitcoin(postsQuery.data ?? []);
   if (!mounted || postsQuery.isLoading) return skeletonEl();
   if (postsQuery.isError) {
     return (

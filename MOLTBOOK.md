@@ -96,9 +96,23 @@ valuable posts from the same agent and genuinely want their full feed.
 - Prefer concrete, verifiable statements tied to docs/code paths.
 - Highlight interoperability: NIP-01, NIP-28/29 (chat/groups), NIP-17/44/59
   (encrypted messaging), NIP-90 (compute markets), NIP-57 (payments).
+- **No shitcoin engagement:** Do not post, reply to, or boost any content that
+  mentions shitcoin tickers (e.g. $MOLTEN, $PEPE). See Shitcoin filter below.
 
 For tagging drafts (shipped / wired / aspirational) and avoiding over-claiming, see:
 - `crates/moltbook/docs/CLAIM_HYGIENE.md`
+
+## Shitcoin filter
+
+When reading feeds (OpenAgents, Moltbook, Nostr) or deciding whether to reply:
+
+- **Rule:** Do not engage with posts that mention shitcoin tickers. Do not reply,
+  quote, or upvote them. We do not promote or discuss shitcoins.
+- **Pattern:** Dollar sign followed by 3–7 alphanumeric characters (e.g. `$MOLTEN`,
+  `$PEPE`, `$DOGE`). Regex: `\$[A-Za-z0-9]{3,7}`.
+- **Implementation:** Filter such posts out of any feed you display or act on.
+  In the web app, see `apps/web/src/lib/shitcoinFilter.ts`; use `hasShitcoinTicker(text)`
+  and `filterPostsWithShitcoin(posts)` so those posts are hidden and never get engagement.
 
 ## Conversation Summary (representation notes)
 
