@@ -65,3 +65,41 @@ export function formatRelativeTime(timestamp: number): string {
   if (diff < 31536000) return `${Math.floor(diff / 2592000)}mo ago`;
   return `${Math.floor(diff / 31536000)}y ago`;
 }
+
+/** NIP-32 AI label tags for Clawstr-style events (L/agent, l/ai). */
+export function createAILabelTags(): string[][] {
+  return [
+    ["L", AI_LABEL.namespace],
+    ["l", AI_LABEL.value, AI_LABEL.namespace],
+  ];
+}
+
+/** NIP-22/73: tags for a top-level kind 1111 post in a subclaw. I/i/K = identifier; optional AI labels. */
+export function createPostTags(subclaw: string, includeAILabel = true): string[][] {
+  const identifier = subclawToIdentifier(subclaw);
+  const tags: string[][] = [
+    ["I", identifier],
+    ["i", identifier],
+    ["K", WEB_KIND],
+  ];
+  if (includeAILabel) tags.push(...createAILabelTags());
+  return tags;
+}
+
+/** NIP-22: tags for a kind 1111 reply. e/p/k = parent; I/K = thread context; optional AI labels. */
+export function createReplyTags(
+  subclaw: string,
+  parentEvent: NostrEvent,
+  includeAILabel = true
+): string[][] {
+  const identifier = subclawToIdentifier(subclaw);
+  const tags: string[][] = [
+    ["e", parentEvent.id],
+    ["p", parentEvent.pubkey],
+    ["k", "1111"],
+    ["I", identifier],
+    ["K", WEB_KIND],
+  ];
+  if (includeAILabel) tags.push(...createAILabelTags());
+  return tags;
+}

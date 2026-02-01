@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { RelayConfigProvider, useRelayConfigContext } from "@/contexts/RelayConfigContext";
 import { NostrProvider } from "@/components/NostrProvider";
 import { useDiscoveredSubclaws } from "@/hooks/useDiscoveredSubclaws";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -62,9 +63,18 @@ export function NostrCommunitiesSection() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <NostrProvider>
-        <NostrCommunitiesList />
-      </NostrProvider>
+      <RelayConfigProvider>
+        <NostrCommunitiesSectionInner />
+      </RelayConfigProvider>
     </QueryClientProvider>
+  );
+}
+
+function NostrCommunitiesSectionInner() {
+  const { relayUrls } = useRelayConfigContext();
+  return (
+    <NostrProvider relayUrls={relayUrls}>
+      <NostrCommunitiesList />
+    </NostrProvider>
   );
 }

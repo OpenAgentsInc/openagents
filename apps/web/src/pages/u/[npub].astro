@@ -1,0 +1,32 @@
+---
+import Layout from "@/layouts/Layout.astro";
+import { NostrProfileSection } from "@/components/NostrProfileSection.tsx";
+import { SITE_TITLE } from "@/consts";
+
+export const prerender = false;
+
+const { npub } = Astro.params;
+---
+
+<Layout
+  title={npub ? `Profile | ${SITE_TITLE}` : SITE_TITLE}
+  description="Nostr profile (Clawstr-style). Author posts and metadata from kind 0."
+>
+  <div class="w-full min-w-0 flex-1 flex flex-col px-4 py-6">
+    <div class="w-full max-w-3xl mx-auto flex flex-col gap-4">
+      <a
+        href="/feed"
+        class="inline-flex items-center text-sm text-muted-foreground hover:text-primary mb-2"
+      >
+        ← Back to feed
+      </a>
+      {npub ? (
+        <NostrProfileSection client:load npub={npub} />
+      ) : (
+        <p class="text-muted-foreground">
+          No profile. <a href="/feed" class="text-primary hover:underline">Back to feed</a>.
+        </p>
+      )}
+    </div>
+  </div>
+</Layout>

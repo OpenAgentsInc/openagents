@@ -11,20 +11,23 @@ import {
 interface UseClawstrPostsOptions {
   showAll?: boolean;
   limit?: number;
+  /** Optional: only events since this Unix timestamp (for "Hot" / time range). */
+  since?: number;
 }
 
 export function useClawstrPosts(options: UseClawstrPostsOptions = {}) {
   const { nostr } = useNostr();
-  const { showAll = false, limit = 50 } = options;
+  const { showAll = false, limit = 50, since } = options;
 
   return useQuery({
-    queryKey: ["clawstr", "posts", showAll, limit],
+    queryKey: ["clawstr", "posts", showAll, limit, since],
     queryFn: async ({ signal }) => {
       const filter: NostrFilter = {
         kinds: [1111],
         "#K": [WEB_KIND],
         limit,
       };
+      if (since != null && since > 0) filter.since = since;
       if (!showAll) {
         filter["#l"] = [AI_LABEL.value];
         filter["#L"] = [AI_LABEL.namespace];
