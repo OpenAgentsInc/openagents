@@ -50,7 +50,11 @@ export function useSubclawPosts(
 
       const [convexPosts, nostrEvents] = await Promise.all([
         fetchConvexFeed({ limit, since, showAll, subclaw: normalizedSubclaw }),
-        queryWithFallback(nostr, [filter], { signal, timeoutMs: 10000 }),
+        queryWithFallback(nostr, [filter], {
+          signal,
+          timeoutMs: 10000,
+          forceFallbackOnEmpty: true,
+        }),
       ]);
 
       const byId = new Map<string, NostrEvent>();
