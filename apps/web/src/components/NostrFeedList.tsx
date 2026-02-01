@@ -173,6 +173,7 @@ function NostrFeedListSubclaw({
 }) {
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
+  useNostrFeedSubscription({ showAll, subclaw });
   const postsQuery = useSubclawPosts(subclaw, { limit, showAll, since });
   const posts = postsQuery.data ?? [];
   if (!mounted || postsQuery.isLoading) return skeletonEl();

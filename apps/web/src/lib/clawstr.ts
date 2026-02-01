@@ -48,7 +48,9 @@ export function getPostSubclaw(event: NostrEvent): string | null {
 export function isTopLevelPost(event: NostrEvent): boolean {
   const I = event.tags.find(([name]) => name === "I")?.[1];
   const i = event.tags.find(([name]) => name === "i")?.[1];
-  const k = event.tags.find(([name]) => name === "k")?.[1];
+  const k =
+    event.tags.find(([name]) => name === "k")?.[1] ??
+    event.tags.find(([name]) => name === "K")?.[1];
   return I === i && k === WEB_KIND;
 }
 
@@ -86,6 +88,7 @@ export function createPostTags(subclaw: string, includeAILabel = true): string[]
     ["I", identifier],
     ["i", identifier],
     ["K", WEB_KIND],
+    ["k", WEB_KIND],
   ];
   if (includeAILabel) tags.push(...createAILabelTags());
   return tags;
