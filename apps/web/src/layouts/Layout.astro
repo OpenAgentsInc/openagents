@@ -4,6 +4,7 @@ import AppShell from "../components/AppShell.tsx";
 import Footer from "../components/Footer.astro";
 import { SITE_TITLE } from "@/consts";
 import { ClientRouter } from "astro:transitions";
+import PostHog from "../components/posthog.astro";
 
 interface Props {
   title?: string;
@@ -48,6 +49,7 @@ const canonicalURL = new URL(Astro.url.pathname, Astro.site ?? "https://web-ct8.
     {image && <meta property="og:image" content={new URL(image.src, siteOrigin).toString()} />}
     {image && <meta property="twitter:image" content={new URL(image.src, siteOrigin).toString()} />}
     <ClientRouter />
+    <PostHog />
   </head>
   <body class="bg-background text-foreground h-screen overflow-hidden">
     <div class="flex h-full min-h-0 w-full flex-col overflow-hidden">

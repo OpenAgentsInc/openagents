@@ -1,6 +1,7 @@
 ---
 import "../styles/global.css";
 import { SITE_TITLE } from "@/consts";
+import PostHog from "../components/posthog.astro";
 
 interface Props {
   title?: string;
@@ -24,6 +25,7 @@ const { title = `Wallet | ${SITE_TITLE}`, description = "Self-custodial Lightnin
     <link rel="icon" type="image/x-icon" href="/favicon.ico" />
     <title>{title}</title>
     <meta name="description" content={description} />
+    <PostHog />
   </head>
   <body class="bg-background text-foreground min-h-screen">
     <div class="flex min-h-screen flex-col">
