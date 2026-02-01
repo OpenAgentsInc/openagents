@@ -15,7 +15,8 @@ export default defineConfig({
   build: { format: "file" },
   adapter: cloudflare({
     platformProxy: { enabled: true },
-    imageService: "compile",
+    // passthrough: no Sharp (Sharp is native and fails on Workers publish)
+    imageService: "passthrough",
   }),
   integrations: [react(), mdx(), sitemap()],
   redirects: {
@@ -23,6 +24,10 @@ export default defineConfig({
     "/sign-in": "/login",
     "/sign-up": "/signup",
     "/register": "/signup",
+    // Wallet route disabled – remove this redirect to re-enable /wallet
+    "/wallet": "/",
+    // Communities route disabled – remove this redirect to re-enable /communities
+    "/communities": "/",
   },
   env: {
     schema: {
