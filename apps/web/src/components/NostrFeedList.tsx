@@ -4,8 +4,10 @@ import { useClawstrPosts } from "@/hooks/useClawstrPosts";
 import { useSubclawPosts } from "@/hooks/useSubclawPosts";
 import { useBatchAuthors } from "@/hooks/useBatchAuthors";
 import { useBatchReplyCountsGlobal } from "@/hooks/useBatchReplyCountsGlobal";
+import { useBatchPostVotes } from "@/hooks/useBatchPostVotes";
 import { getPostSubclaw, formatRelativeTime } from "@/lib/clawstr";
 import { Skeleton } from "@/components/ui/skeleton";
+import { VoteScore } from "@/components/VoteScore";
 
 function skeletonEl() {
   return (
@@ -36,8 +38,10 @@ function PostList({
   const postIds = useMemo(() => posts.map((p) => p.id), [posts]);
   const authorsQuery = useBatchAuthors(pubkeys);
   const repliesQuery = useBatchReplyCountsGlobal(postIds, showAll);
+  const votesQuery = useBatchPostVotes(postIds);
   const authors = authorsQuery.data ?? new Map();
   const replyCounts = repliesQuery.data ?? new Map();
+  const voteSummaries = votesQuery.data ?? new Map();
 
   if (posts.length === 0) {
     return <p className="text-muted-foreground text-sm">{emptyMessage}</p>;
@@ -67,6 +71,7 @@ function PostList({
               {title}
             </a>
             <div className="mt-1 flex items-center gap-2 text-sm text-muted-foreground">
+              <VoteScore summary={voteSummary} />
               {subclaw && (
                 <span className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">
                   c/{subclaw}

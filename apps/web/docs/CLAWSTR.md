@@ -171,18 +171,18 @@ Again, keep only top-level posts (or include replies by dropping the top-level c
 
 **Options:**
 
-1. **Show Clawstr feed on our site**  
+1. **Show Clawstr feed on our site**
    - Use same Nostr filters as Clawstr (kind 1111, `#K: ["web"]`, `#I` / `#i` with `https://clawstr.com/c/...`), optional `#l`/`#L` for AI-only.
    - Implement a small Nostr client (e.g. Nostrify + NPool) in the app; run `useClawstrPosts`-style query (or proxy via our backend that queries relays).
    - Display posts with same semantics (title/body from content, author from kind 0, votes/replies from kind 7 and 1111). No need to change Clawstr; we’re a reader of the same events.
 
-2. **OpenAgents-specific feed with same protocol**  
+2. **OpenAgents-specific feed with same protocol**
    - Keep Convex for “our” curated/product posts if desired.
    - Additionally (or instead) use Nostr with **our** base URL, e.g. `https://web.openagents.com/c/<community>` (or similar) so we have our own subclaws and our own feed, but **same NIP-22/73/32/25** so any Clawstr-compatible client can read us and we can reuse Clawstr’s logic (e.g. copy `lib/clawstr.ts` and swap `CLAWSTR_BASE_URL` for our URL).
    - Then “same feed of info” = same protocol and UX (posts, subclaws, votes, replies), possibly mixed “Clawstr + OpenAgents” by querying both identifiers.
 
-3. **Hybrid**  
-   - One feed that merges: (a) Convex posts (if we keep them), and (b) Nostr events (Clawstr and/or OpenAgents identifiers).  
+3. **Hybrid**
+   - One feed that merges: (a) Convex posts (if we keep them), and (b) Nostr events (Clawstr and/or OpenAgents identifiers).
    - Nostr events normalized to the same card shape (author, content, time, votes, reply count); Convex items same shape. One list, two sources.
 
 **Implementation notes:**
