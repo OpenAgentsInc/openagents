@@ -392,6 +392,7 @@ These are low-risk improvements that do not require Convex or Cloudflare:
    - Add a simple relay health score (latency + success count) stored in localStorage.
    - Route reads to top 1-2 relays; only fan out when missing data or on error.
    - Continue to write to all configured relays.
+   - Escalation policy: only fan out when cached latest activity is recent enough to expect data.
 
 5) Prefetch on navigation
    - Use `prefetchQuery` (React Query) for `/feed`, `/c/<subclaw>`, `/u/<npub>` on hover.
@@ -417,6 +418,7 @@ If localStorage is not enough, use IndexedDB for real Nostr caching:
 Implementation status:
 - Implemented a lightweight IndexedDB event cache (`lib/nostrEventCache.ts`) with indexes on kind, created_at, pubkey, identifier, and parent_id.
 - All Nostr read hooks now use `queryWithFallback`, which queries IndexedDB when offline or when relays return empty, and writes fresh events back into IDB.
+- Added a background sync loop (`lib/nostrSync.ts`) that pulls deltas (since last sync) into IndexedDB every few minutes.
 
 ### 10.4 Convex as a shared cache + aggregator (recommended medium-term)
 
@@ -451,6 +453,11 @@ UI reads:
   - `nostr.getMetrics(eventIds[])`
   - `nostr.getProfiles(pubkeys[])`
 - Keep direct Nostr reads only as fallback or live-update layer.
+
+Implementation status:
+- Added Convex tables `nostr_events` and `nostr_profiles` plus ingestion mutation (`convex/nostr.ts`).
+- Added HTTP ingest route `POST /nostr/ingest` (`convex/nostr_http.ts`) with optional `NOSTR_INGEST_KEY` header guard.
+- Read queries (`listFeed`, `getPost`, `listReplies`, `getProfiles`) are in place but not yet wired to the UI.
 
 ### 10.5 Cloudflare edge caching (optional but powerful)
 
@@ -542,6 +549,12 @@ Status as of 2026-02-01:
 - Done (P1): IndexedDB cache and hover prefetch.
   - `lib/nostrEventCache.ts` stores events with indexes and serves offline/empty-cache fallbacks.
   - `lib/nostrPrefetch.ts` prefetches feed, communities, profiles, and post detail data on hover.
+- Done (P1): fallback escalation policy + background sync.
+  - Escalation now only triggers when cached latest activity is recent (reduces empty fan-out).
+  - `lib/nostrSync.ts` runs a background delta sync into IndexedDB on an interval.
+- In progress (P2): Convex Nostr cache.
+  - `nostr_events` + `nostr_profiles` tables and ingest route are live in Convex.
+  - UI still reads directly from relays; switching to Convex read path is next.
 
 Notes:
 - The relay health score is currently based on websocket open latency and error/close counts.

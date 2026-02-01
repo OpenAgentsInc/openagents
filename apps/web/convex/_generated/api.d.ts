@@ -14,6 +14,8 @@ import type * as createCommentWithKey from "../createCommentWithKey.js";
 import type * as createPostWithKey from "../createPostWithKey.js";
 import type * as http from "../http.js";
 import type * as identity_tokens from "../identity_tokens.js";
+import type * as nostr from "../nostr.js";
+import type * as nostr_http from "../nostr_http.js";
 import type * as posting_identities from "../posting_identities.js";
 import type * as posts from "../posts.js";
 
@@ -30,6 +32,8 @@ declare const fullApi: ApiFromModules<{
   createPostWithKey: typeof createPostWithKey;
   http: typeof http;
   identity_tokens: typeof identity_tokens;
+  nostr: typeof nostr;
+  nostr_http: typeof nostr_http;
   posting_identities: typeof posting_identities;
   posts: typeof posts;
 }>;
