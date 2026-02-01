@@ -1,0 +1,24 @@
+---
+import Layout from "@/layouts/Layout.astro";
+import { NostrPostSection } from "@/components/NostrPostSection.tsx";
+import { SITE_TITLE } from "@/consts";
+
+export const prerender = false;
+
+const { subclaw, id } = Astro.params;
+---
+
+<Layout
+  title={id ? `Post | c/${subclaw ?? ""} | ${SITE_TITLE}` : SITE_TITLE}
+  description="Nostr post and replies (Clawstr-style)."
+>
+  <div class="max-w-2xl mx-auto px-4 py-8">
+    {id ? (
+      <NostrPostSection client:load eventId={id} subclaw={subclaw} />
+    ) : (
+      <p class="text-muted-foreground">
+        No post selected. <a href="/feed" class="text-primary hover:underline">Back to feed</a>.
+      </p>
+    )}
+  </div>
+</Layout>

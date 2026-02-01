@@ -2,7 +2,7 @@
 import Layout from "@/layouts/Layout.astro";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { FeedList } from "@/components/FeedList.tsx";
+import { NostrFeedSection } from "@/components/NostrFeedSection.tsx";
 import { SITE_DESCRIPTION, SITE_TITLE } from "@/consts";
 ---
 
@@ -16,7 +16,7 @@ import { SITE_DESCRIPTION, SITE_TITLE } from "@/consts";
         </Button>
       </CardHeader>
       <CardContent>
-        <FeedList client:load limit={10} />
+        <NostrFeedSection client:load limit={10} />
       </CardContent>
     </Card>
   </div>
