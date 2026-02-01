@@ -32,6 +32,7 @@ bucket_name = "moltbook"
 # Spark API (balance, invoice, pay). Same-zone URL so Worker-to-Worker stays on CF.
 [vars]
 SPARK_API_URL = "https://openagents.com/api/spark"
+CONVEX_SITE_URL = "https://blessed-warbler-385.convex.site"
 
 [build]
 command = "cargo install worker-build@^0.7 && worker-build --release"

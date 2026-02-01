@@ -10,6 +10,7 @@
 
 import type * as apiTokens from "../apiTokens.js";
 import type * as auth from "../auth.js";
+import type * as control_http from "../control_http.js";
 import type * as http from "../http.js";
 import type * as issues from "../issues.js";
 import type * as lib_admin from "../lib/admin.js";
@@ -21,6 +22,7 @@ import type * as nostr from "../nostr.js";
 import type * as nostr_http from "../nostr_http.js";
 import type * as organizations from "../organizations.js";
 import type * as projects from "../projects.js";
+import type * as users from "../users.js";
 
 import type {
   ApiFromModules,
@@ -31,6 +33,7 @@ import type {
 declare const fullApi: ApiFromModules<{
   apiTokens: typeof apiTokens;
   auth: typeof auth;
+  control_http: typeof control_http;
   http: typeof http;
   issues: typeof issues;
   "lib/admin": typeof lib_admin;
@@ -42,6 +45,7 @@ declare const fullApi: ApiFromModules<{
   nostr_http: typeof nostr_http;
   organizations: typeof organizations;
   projects: typeof projects;
+  users: typeof users;
 }>;
 
 /**

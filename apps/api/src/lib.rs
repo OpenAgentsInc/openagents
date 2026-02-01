@@ -17,6 +17,7 @@ const MOLTBOOK_API_DEFAULT: &str = "https://www.moltbook.com/api/v1";
 const INDEX_LIMIT_DEFAULT: usize = 100;
 const INDEX_LIMIT_MAX: usize = 500;
 const WATCH_SEEN_CAP: usize = 2000;
+const CONVEX_CONTROL_HEADER: &str = "x-oa-control-key";
 
 static MOLTBOOK_DOCS: Dir = include_dir!("$CARGO_MANIFEST_DIR/../../crates/moltbook/docs");
 
@@ -113,6 +114,7 @@ struct CreateSubmoltBody {
     description: String,
 }
 
+
 #[derive(Debug, Deserialize)]
 struct ModeratorBody {
     agent_name: String,
@@ -165,6 +167,9 @@ async fn main(mut req: Request, env: Env, _ctx: Context) -> Result<Response> {
     Router::new()
         .get_async("/", handle_root)
         .get_async("/health", handle_health)
+        .post_async("/register", handle_control_register)
+        .get_async("/projects", handle_control_projects)
+        .post_async("/projects", handle_control_projects)
         .get_async("/agents/wallet-onboarding", handle_agents_wallet_onboarding)
         .post_async("/agents", handle_agents_create)
         .get_async("/agents/:id", handle_agents_get)
@@ -261,6 +266,92 @@ async fn handle_health(_: Request, _: RouteContext<()>) -> Result<Response> {
         error: None,
     })?;
     apply_cors(&mut response)?;
+    Ok(response)
+}
+
+async fn handle_control_register(mut req: Request, ctx: RouteContext<()>) -> Result<Response> {
+    if req.method() != Method::Post {
+        return json_error("method not allowed", 405);
+    }
+
+    let body: serde_json::Value = req.json().await.unwrap_or(serde_json::Value::Null);
+    let user_id = body
+        .get("user_id")
+        .or_else(|| body.get("userId"))
+        .or_else(|| body.get("subject"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .trim()
+        .to_string();
+    if user_id.is_empty() {
+        return json_error("user_id required", 400);
+    }
+
+    let body_text = serde_json::to_string(&body).unwrap_or_else(|_| "{}".to_string());
+    let response = forward_convex_control(
+        &ctx.env,
+        Method::Post,
+        "control/register",
+        Some(body_text),
+        None,
+    )
+    .await?;
+    Ok(response)
+}
+
+async fn handle_control_projects(mut req: Request, ctx: RouteContext<()>) -> Result<Response> {
+    let method = req.method().clone();
+    if method != Method::Get && method != Method::Post {
+        return json_error("method not allowed", 405);
+    }
+
+    let api_key = social_api_key_from_request(&req)
+        .or_else(|| {
+            req.url()
+                .ok()
+                .and_then(|url| url.query_pairs().find_map(|(k, v)| {
+                    if k == "api_key" || k == "moltbook_api_key" {
+                        Some(v.to_string())
+                    } else {
+                        None
+                    }
+                }))
+        })
+        .filter(|k| !k.trim().is_empty());
+    let Some(api_key) = api_key else {
+        return Ok(json_unauthorized("missing api key"));
+    };
+
+    if method == Method::Get {
+        let url = req.url()?;
+        let mut query_pairs: Vec<(String, String)> = Vec::new();
+        for (k, v) in url.query_pairs() {
+            if k == "api_key" || k == "moltbook_api_key" {
+                continue;
+            }
+            query_pairs.push((k.to_string(), v.to_string()));
+        }
+        let query = build_query_string(&query_pairs);
+        let path = if query.is_empty() {
+            "control/projects".to_string()
+        } else {
+            format!("control/projects?{query}")
+        };
+        let response =
+            forward_convex_control(&ctx.env, Method::Get, &path, None, Some(api_key)).await?;
+        return Ok(response);
+    }
+
+    let body: serde_json::Value = req.json().await.unwrap_or(serde_json::Value::Null);
+    let body_text = serde_json::to_string(&body).unwrap_or_else(|_| "{}".to_string());
+    let response = forward_convex_control(
+        &ctx.env,
+        Method::Post,
+        "control/projects",
+        Some(body_text),
+        Some(api_key),
+    )
+    .await?;
     Ok(response)
 }
 
@@ -434,6 +525,82 @@ fn social_api_key_from_request(req: &Request) -> Option<String> {
         }
     }
     None
+}
+
+fn convex_site_base(env: &Env) -> Result<String> {
+    if let Ok(var) = env.var("CONVEX_SITE_URL") {
+        let value = var.to_string();
+        if !value.trim().is_empty() {
+            return Ok(value);
+        }
+    }
+    Ok("".to_string())
+}
+
+fn convex_control_key(env: &Env) -> Result<String> {
+    if let Ok(var) = env.var("CONVEX_CONTROL_KEY") {
+        let value = var.to_string();
+        if !value.trim().is_empty() {
+            return Ok(value);
+        }
+    }
+    Ok("".to_string())
+}
+
+async fn forward_convex_control(
+    env: &Env,
+    method: Method,
+    path: &str,
+    body: Option<String>,
+    api_key: Option<String>,
+) -> Result<Response> {
+    let base = convex_site_base(env)?;
+    if base.trim().is_empty() {
+        return json_error("CONVEX_SITE_URL not configured", 500);
+    }
+    let control_key = convex_control_key(env)?;
+    if control_key.trim().is_empty() {
+        return json_error("CONVEX_CONTROL_KEY not configured", 500);
+    }
+
+    let url = join_url(&base, path, "");
+    let mut init = RequestInit::new();
+    init.with_method(method);
+    let headers = Headers::new();
+    headers.set("content-type", "application/json")?;
+    headers.set(CONVEX_CONTROL_HEADER, &control_key)?;
+    if let Some(key) = api_key {
+        headers.set("authorization", &format!("Bearer {key}"))?;
+    }
+    init.with_headers(headers);
+    if let Some(body) = body {
+        if !body.is_empty() {
+            init.with_body(Some(JsValue::from_str(&body)));
+        }
+    }
+
+    let outbound = match Request::new_with_init(&url, &init) {
+        Ok(req) => req,
+        Err(err) => {
+            return json_error(&format!("convex request error: {err}"), 500);
+        }
+    };
+    let mut response = match Fetch::Request(outbound).send().await {
+        Ok(resp) => resp,
+        Err(err) => {
+            return json_error(&format!("convex fetch error: {err}"), 502);
+        }
+    };
+
+    let status = response.status_code();
+    let content_type = response.headers().get("content-type").ok().flatten();
+    let bytes = response.bytes().await.unwrap_or_default();
+    let mut out = Response::from_bytes(bytes)?.with_status(status);
+    if let Some(ct) = content_type {
+        let _ = out.headers_mut().set("content-type", &ct);
+    }
+    apply_cors(&mut out)?;
+    Ok(out)
 }
 
 /// Returns (api_key, agent_name) or a 401 Response. Callers should return Ok(err) on Err.

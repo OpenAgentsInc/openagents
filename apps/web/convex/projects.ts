@@ -1,5 +1,5 @@
 import { v } from "convex/values";
-import { mutation, query } from "./_generated/server";
+import { internalMutation, internalQuery, mutation, query } from "./_generated/server";
 import { getUser, requireUser } from "./lib/users";
 import { getOrgMembership, requireOrgMember, requireProjectAccess } from "./lib/authz";
 import { requireFound } from "./lib/errors";
@@ -292,5 +292,64 @@ export const disconnectProjectRepo = mutation({
     }
 
     return null;
+  },
+});
+
+export const listProjectsForUser = internalQuery({
+  args: {
+    user_id: v.string(),
+    organizationId: v.optional(v.id("organizations")),
+  },
+  handler: async (ctx, { user_id, organizationId }) => {
+    if (!organizationId) {
+      const projects = await ctx.db
+        .query("projects")
+        .withIndex("by_user", (q) => q.eq("user_id", user_id))
+        .collect();
+      return projects.filter((project) => project.is_archived === false);
+    }
+
+    const membership = await getOrgMembership(ctx.db, organizationId, user_id);
+    if (!membership) {
+      return [];
+    }
+
+    const projects = await ctx.db
+      .query("projects")
+      .withIndex("by_organization", (q) => q.eq("organization_id", organizationId))
+      .collect();
+    return projects.filter((project) => project.is_archived === false);
+  },
+});
+
+export const createProjectForUser = internalMutation({
+  args: {
+    user_id: v.string(),
+    name: v.string(),
+    description: v.optional(v.string()),
+    organizationId: v.optional(v.id("organizations")),
+    system_prompt: v.optional(v.string()),
+    default_model: v.optional(v.string()),
+    default_tools: v.optional(v.array(v.string())),
+  },
+  handler: async (ctx, args) => {
+    const { organizationId, user_id, ...rest } = args;
+
+    if (organizationId) {
+      await requireOrgMember(ctx.db, organizationId, user_id);
+    }
+
+    const now = Date.now();
+    const projectId = await ctx.db.insert("projects", {
+      ...rest,
+      organization_id: organizationId,
+      user_id: organizationId ? undefined : user_id,
+      created_at: now,
+      updated_at: now,
+      is_archived: false,
+    });
+
+    const project = await ctx.db.get(projectId);
+    return requireFound(project, "NOT_FOUND", "Project not found after creation");
   },
 });
