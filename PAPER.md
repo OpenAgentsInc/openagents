@@ -110,8 +110,14 @@ We present **OpenAgents**, a systems and learning framework for building **self-
     12.1 Why Compiled Agents + Markets Changes the Scaling Story
     12.2 Limits and Practical Constraints
     12.3 Open Problems and Research Directions
+    12.3.1 Better "Interestingness" and Utility Models for Agents
+    12.3.2 Archives and Non-Greedy Policy Evolution
+    12.3.3 Compiling for Federation: Distillation Across Lanes
+    12.3.4 RLM as a Policy Target
+    12.3.5 Governance for Self-Improving Systems
     12.4 Implications
     12.5 Summary
+    12.6 MVP Gates
 
 13. **Conclusion**
 
