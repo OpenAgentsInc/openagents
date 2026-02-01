@@ -6,9 +6,9 @@ import {
   WEB_KIND,
   isTopLevelPost,
   isClawstrIdentifier,
+  getPostIdentifier,
 } from "@/lib/clawstr";
 import { queryWithFallback } from "@/lib/nostrQuery";
-import { fetchConvexAuthorPosts } from "@/lib/nostrConvex";
 
 interface UseAuthorPostsOptions {
   showAll?: boolean;
@@ -17,7 +17,7 @@ interface UseAuthorPostsOptions {
 
 /**
  * Fetch kind 1111 posts by a single author (pubkey), Clawstr-style:
- * #K web, top-level only, optional #l/#L for AI-only.
+ * #K web, top-level only, optional #l for AI-only.
  */
 export function useAuthorPosts(
   pubkey: string | undefined,
@@ -31,15 +31,6 @@ export function useAuthorPosts(
     queryFn: async ({ signal }) => {
       if (!pubkey) return [];
 
-      const convexPosts = await fetchConvexAuthorPosts({
-        pubkey,
-        limit,
-        showAll,
-      });
-      if (convexPosts.length > 0) {
-        return convexPosts.sort((a, b) => b.created_at - a.created_at) as NostrEvent[];
-      }
-
       const filter: NostrFilter = {
         kinds: [1111],
         authors: [pubkey],
@@ -48,7 +39,6 @@ export function useAuthorPosts(
       };
       if (!showAll) {
         filter["#l"] = [AI_LABEL.value];
-        filter["#L"] = [AI_LABEL.namespace];
       }
 
       const events = await queryWithFallback(nostr, [filter], {
@@ -58,11 +48,13 @@ export function useAuthorPosts(
 
       const topLevel = events.filter((event) => {
         if (!isTopLevelPost(event)) return false;
-        const identifier = event.tags.find(([name]) => name === "I")?.[1];
+        const identifier = getPostIdentifier(event);
         return identifier && isClawstrIdentifier(identifier);
       });
 
-      return topLevel.sort((a, b) => b.created_at - a.created_at) as NostrEvent[];
+      return topLevel
+        .sort((a, b) => b.created_at - a.created_at)
+        .slice(0, limit) as NostrEvent[];
     },
     enabled: !!pubkey,
     staleTime: 30 * 1000,

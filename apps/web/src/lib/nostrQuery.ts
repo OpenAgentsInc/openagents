@@ -1,5 +1,6 @@
 import type { NostrEvent, NostrFilter } from "@nostrify/nostrify";
 import { getConfiguredRelays } from "@/lib/nostrPool";
+import { DEFAULT_RELAYS } from "@/lib/relayConfig";
 import { queryCachedEvents, storeEvents } from "@/lib/nostrEventCache";
 
 type NostrQueryClient = {
@@ -14,6 +15,7 @@ type QueryOptions = {
   timeoutMs?: number;
   fallbackOnEmpty?: boolean;
   forceFallbackOnEmpty?: boolean;
+  minResults?: number;
 };
 
 const DAY_SECONDS = 86400;
@@ -82,19 +84,31 @@ export async function queryWithFallback(
     return cached.length > 0 ? cached : [];
   }
 
+  const minResults =
+    typeof options.minResults === "number" && options.minResults > 0
+      ? options.minResults
+      : undefined;
+  const primaryTooSmall = minResults != null && primary.length < minResults;
+
   if (primary.length > 0) {
     void storeEvents(primary);
-    return primary;
+    if (!primaryTooSmall) {
+      return primary;
+    }
   }
 
   if (options.fallbackOnEmpty === false) {
     return cached.length > 0 ? cached : primary;
   }
-  if (!options.forceFallbackOnEmpty && !shouldEscalateFallback(cached, filters)) {
+  if (!options.forceFallbackOnEmpty && !primaryTooSmall && !shouldEscalateFallback(cached, filters)) {
     return cached.length > 0 ? cached : primary;
   }
 
-  const allRelays = getConfiguredRelays(nostr);
+  const configuredRelays = getConfiguredRelays(nostr);
+  const allRelays =
+    configuredRelays.length <= 1
+      ? [...new Set([...configuredRelays, ...DEFAULT_RELAYS])]
+      : configuredRelays;
   if (allRelays.length <= 1) return cached.length > 0 ? cached : primary;
   let fallback: NostrEvent[] = [];
   try {

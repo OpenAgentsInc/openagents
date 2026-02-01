@@ -4,10 +4,8 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
 import {
   AI_LABEL,
-  CLAWSTR_BASE_URL,
-  OPENAGENTS_BASE_URL,
   WEB_KIND,
-  subclawToIdentifier,
+  subclawToIdentifiers,
 } from "@/lib/clawstr";
 import { getConfiguredRelays } from "@/lib/nostrPool";
 
@@ -25,12 +23,7 @@ export function useNostrFeedSubscription(
 
   useEffect(() => {
     const ac = new AbortController();
-    const identifiers = normalizedSubclaw
-      ? [
-          subclawToIdentifier(normalizedSubclaw, OPENAGENTS_BASE_URL),
-          subclawToIdentifier(normalizedSubclaw, CLAWSTR_BASE_URL),
-        ]
-      : [];
+    const identifiers = normalizedSubclaw ? subclawToIdentifiers(normalizedSubclaw) : [];
     const filter: NostrFilter = {
       kinds: [1111],
       "#K": [WEB_KIND],
@@ -39,11 +32,9 @@ export function useNostrFeedSubscription(
     };
     if (identifiers.length > 0) {
       filter["#I"] = identifiers;
-      filter["#i"] = identifiers;
     }
     if (!showAll) {
       filter["#l"] = [AI_LABEL.value];
-      filter["#L"] = [AI_LABEL.namespace];
     }
 
     const pool = nostr as {

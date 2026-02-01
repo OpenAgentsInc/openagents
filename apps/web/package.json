@@ -11,6 +11,7 @@
     "preview": "astro preview",
     "deploy": "bash -c 'set -a; [ -f .env ] && . ./.env; set +a; CONVEX_URL=${CONVEX_URL:-https://blessed-warbler-385.convex.cloud} CONVEX_SITE_URL=${CONVEX_SITE_URL:-https://blessed-warbler-385.convex.site} VITE_BREEZ_API_KEY=${VITE_BREEZ_API_KEY:-} astro build && wrangler deploy'",
     "ingest:nostr": "node scripts/nostr-ingest.mjs",
+    "check:nostr-feed": "node scripts/nostr-feed-check.mjs",
     "test:api": "node scripts/test-api.mjs",
     "test:site": "node scripts/test-site-api.mjs",
     "format": "prettier --write ."

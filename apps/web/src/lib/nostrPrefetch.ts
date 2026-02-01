@@ -8,7 +8,7 @@ import {
   isClawstrIdentifier,
   isTopLevelPost,
   identifierToSubclaw,
-  subclawToIdentifier,
+  subclawToIdentifiers,
 } from "@/lib/clawstr";
 import { queryWithFallback } from "@/lib/nostrQuery";
 
@@ -34,9 +34,12 @@ export async function prefetchFeed(options?: { showAll?: boolean; limit?: number
       if (since != null && since > 0) filter.since = since;
       if (!showAll) {
         filter["#l"] = [AI_LABEL.value];
-        filter["#L"] = [AI_LABEL.namespace];
       }
-      const events = await queryWithFallback(nostr, [filter], { timeoutMs: 10000 });
+      const events = await queryWithFallback(nostr, [filter], {
+        timeoutMs: 10000,
+        forceFallbackOnEmpty: true,
+        minResults: Math.min(limit, 10),
+      });
       const topLevel = events.filter((event) => {
         if (!isTopLevelPost(event)) return false;
         const identifier = event.tags.find(([name]) => name === "I")?.[1];
@@ -55,23 +58,25 @@ export async function prefetchSubclaw(
   if (!client || !subclaw.trim()) return;
   const { showAll = false, limit = 50, since } = options ?? {};
   const nostr = getNostrClient();
-  const identifier = subclawToIdentifier(subclaw);
+  const identifiers = subclawToIdentifiers(subclaw);
   await client.prefetchQuery({
     queryKey: ["clawstr", "subclaw-posts", subclaw, showAll, limit, since],
     queryFn: async () => {
       const filter: NostrFilter = {
         kinds: [1111],
         "#K": [WEB_KIND],
-        "#I": [identifier],
-        "#i": [identifier],
+        "#I": identifiers,
         limit,
       };
       if (since != null && since > 0) filter.since = since;
       if (!showAll) {
         filter["#l"] = [AI_LABEL.value];
-        filter["#L"] = [AI_LABEL.namespace];
       }
-      const events = await queryWithFallback(nostr, [filter], { timeoutMs: 10000 });
+      const events = await queryWithFallback(nostr, [filter], {
+        timeoutMs: 10000,
+        forceFallbackOnEmpty: true,
+        minResults: Math.min(limit, 10),
+      });
       const topLevel = events.filter((event) => {
         if (!isTopLevelPost(event)) return false;
         const id = event.tags.find(([name]) => name === "I")?.[1];
@@ -130,9 +135,12 @@ export async function prefetchProfile(
       };
       if (!showAll) {
         filter["#l"] = [AI_LABEL.value];
-        filter["#L"] = [AI_LABEL.namespace];
       }
-      const events = await queryWithFallback(nostr, [filter], { timeoutMs: 10000 });
+      const events = await queryWithFallback(nostr, [filter], {
+        timeoutMs: 10000,
+        forceFallbackOnEmpty: true,
+        minResults: Math.min(limit, 10),
+      });
       const topLevel = events.filter((event) => {
         if (!isTopLevelPost(event)) return false;
         const identifier = event.tags.find(([name]) => name === "I")?.[1];
