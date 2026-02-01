@@ -206,6 +206,38 @@ export const resolveApiToken = internalQuery({
   },
 });
 
+export const listApiTokensForUser = internalQuery({
+  args: {
+    user_id: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const tokens = await ctx.db
+      .query("api_tokens")
+      .withIndex("by_user_id", (q) => q.eq("user_id", args.user_id))
+      .collect();
+
+    return tokens.map(({ token_hash, ...rest }) => rest);
+  },
+});
+
+export const revokeApiTokenForUser = internalMutation({
+  args: {
+    user_id: v.string(),
+    tokenId: v.id("api_tokens"),
+  },
+  handler: async (ctx, args) => {
+    const token = await ctx.db.get(args.tokenId);
+    const tokenRecord = requireFound(token, "NOT_FOUND", "Token not found");
+
+    if (tokenRecord.user_id !== args.user_id) {
+      fail("UNAUTHORIZED", "Unauthorized");
+    }
+
+    await ctx.db.delete(args.tokenId);
+    return null;
+  },
+});
+
 export const createDevToken = internalMutation({
   args: {
     email: v.string(),
