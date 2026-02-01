@@ -53,7 +53,6 @@ const canonicalURL = new URL(Astro.url.pathname, Astro.site ?? "https://web-ct8.
     <div class="flex h-full min-h-0 w-full flex-col overflow-hidden">
       <AppShell client:load>
         <slot />
-        <Footer />
       </AppShell>
     </div>
   </body>

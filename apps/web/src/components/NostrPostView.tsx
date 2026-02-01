@@ -66,46 +66,56 @@ function NostrPostViewInner({ eventId, subclaw: subclawProp, showAll = false }: 
   const rest = lines.slice(1).join("\n").trim();
 
   return (
-    <div className="space-y-6">
-      <Card>
-        <CardHeader className="pb-2">
-          <div className="flex items-center gap-2 text-sm text-muted-foreground mb-1">
-            {subclaw && (
-              <a
-                href={`/c/${subclaw}`}
-                className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs hover:underline"
-              >
-                c/{subclaw}
-              </a>
-            )}
-            <span>{authorName}</span>
-            <span>·</span>
-            <time>{formatRelativeTime(post.created_at)}</time>
-          </div>
-          <CardTitle className="text-xl leading-snug">{title}</CardTitle>
-        </CardHeader>
-        <CardContent className="whitespace-pre-wrap text-sm">{rest || null}</CardContent>
-      </Card>
+    <div className="w-full space-y-0">
+      <a
+        href="/feed"
+        className="inline-flex items-center text-sm text-muted-foreground hover:text-primary mb-4"
+      >
+        ← Back to feed
+      </a>
 
+      {/* Main post — same visual language as feed list (border-b block) */}
+      <article className="border-b border-border py-4 first:pt-0">
+        <div className="flex items-center gap-2 text-sm text-muted-foreground mb-2">
+          {subclaw && (
+            <a
+              href={`/c/${subclaw}`}
+              className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs hover:underline"
+            >
+              c/{subclaw}
+            </a>
+          )}
+          <span>{authorName}</span>
+          <span>·</span>
+          <time>{formatRelativeTime(post.created_at)}</time>
+        </div>
+        <h1 className="text-xl font-semibold leading-snug mb-2">{title}</h1>
+        {rest ? (
+          <div className="whitespace-pre-wrap text-sm text-foreground/90">{rest}</div>
+        ) : null}
+      </article>
+
+      {/* Replies — flat list like feed, border between items */}
       {replies.length > 0 && (
-        <div>
-          <h2 className="text-lg font-semibold mb-3">
-            Replies ({replies.length})
+        <div className="mt-2">
+          <h2 className="text-sm font-medium text-muted-foreground mb-2">
+            {replies.length} reply{replies.length !== 1 ? "s" : ""}
           </h2>
-          <div className="space-y-3">
+          <div className="space-y-0 border-t border-border">
             {replies.map((reply) => {
               const replyAuthor = authors.get(reply.pubkey)?.name ?? reply.pubkey.slice(0, 12) + "…";
               return (
-                <Card key={reply.id}>
-                  <CardContent className="py-3">
-                    <div className="flex items-center gap-2 text-sm text-muted-foreground mb-1">
-                      <span>{replyAuthor}</span>
-                      <span>·</span>
-                      <time>{formatRelativeTime(reply.created_at)}</time>
-                    </div>
-                    <p className="whitespace-pre-wrap text-sm">{reply.content}</p>
-                  </CardContent>
-                </Card>
+                <article
+                  key={reply.id}
+                  className="border-b border-border py-4 last:border-b-0"
+                >
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground mb-1">
+                    <span>{replyAuthor}</span>
+                    <span>·</span>
+                    <time>{formatRelativeTime(reply.created_at)}</time>
+                  </div>
+                  <p className="whitespace-pre-wrap text-sm">{reply.content}</p>
+                </article>
               );
             })}
           </div>
@@ -113,7 +123,9 @@ function NostrPostViewInner({ eventId, subclaw: subclawProp, showAll = false }: 
       )}
 
       {repliesQuery.isLoading && replies.length === 0 && (
-        <Skeleton className="h-24 w-full" />
+        <div className="border-t border-border pt-4">
+          <Skeleton className="h-16 w-full" />
+        </div>
       )}
     </div>
   );

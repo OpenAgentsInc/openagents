@@ -26,8 +26,7 @@ export default defineConfig({
     "/register": "/signup",
     // Wallet route disabled – remove this redirect to re-enable /wallet
     "/wallet": "/",
-    // Communities route disabled – remove this redirect to re-enable /communities
-    "/communities": "/",
+    "/communities": "/c",
   },
   env: {
     schema: {

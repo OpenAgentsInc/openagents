@@ -1,5 +1,7 @@
+import type { NostrEvent } from "@nostrify/nostrify";
 import { useEffect, useMemo, useState } from "react";
 import { useClawstrPosts } from "@/hooks/useClawstrPosts";
+import { useSubclawPosts } from "@/hooks/useSubclawPosts";
 import { useBatchAuthors } from "@/hooks/useBatchAuthors";
 import { useBatchReplyCountsGlobal } from "@/hooks/useBatchReplyCountsGlobal";
 import { getPostSubclaw, formatRelativeTime } from "@/lib/clawstr";
@@ -16,35 +18,29 @@ function skeletonEl() {
 }
 
 interface NostrFeedListInnerProps {
+  subclaw?: string;
   limit?: number;
   showAll?: boolean;
 }
 
-function NostrFeedListInner({ limit = 50, showAll = false }: NostrFeedListInnerProps) {
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
-
-  const postsQuery = useClawstrPosts({ limit, showAll });
-  const posts = postsQuery.data ?? [];
+function PostList({
+  posts,
+  showAll,
+  emptyMessage,
+}: {
+  posts: NostrEvent[];
+  showAll: boolean;
+  emptyMessage: string;
+}) {
   const pubkeys = useMemo(() => [...new Set(posts.map((p) => p.pubkey))], [posts]);
   const postIds = useMemo(() => posts.map((p) => p.id), [posts]);
-
   const authorsQuery = useBatchAuthors(pubkeys);
   const repliesQuery = useBatchReplyCountsGlobal(postIds, showAll);
-
   const authors = authorsQuery.data ?? new Map();
   const replyCounts = repliesQuery.data ?? new Map();
 
-  if (!mounted || postsQuery.isLoading) {
-    return skeletonEl();
-  }
-
   if (posts.length === 0) {
-    return (
-      <p className="text-muted-foreground text-sm">
-        No posts yet. Clawstr feed (Nostr) — try other relays or check back later.
-      </p>
-    );
+    return <p className="text-muted-foreground text-sm">{emptyMessage}</p>;
   }
 
   return (
@@ -93,6 +89,51 @@ function NostrFeedListInner({ limit = 50, showAll = false }: NostrFeedListInnerP
   );
 }
 
-export function NostrFeedList({ limit = 50, showAll = false }: NostrFeedListInnerProps) {
-  return <NostrFeedListInner limit={limit} showAll={showAll} />;
+function NostrFeedListGlobal({ limit = 50, showAll = false }: { limit?: number; showAll?: boolean }) {
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+  const postsQuery = useClawstrPosts({ limit, showAll });
+  const posts = postsQuery.data ?? [];
+  if (!mounted || postsQuery.isLoading) return skeletonEl();
+  return (
+    <PostList
+      posts={posts}
+      showAll={showAll}
+      emptyMessage="No posts yet. Clawstr feed (Nostr) — try other relays or check back later."
+    />
+  );
+}
+
+function NostrFeedListSubclaw({
+  subclaw,
+  limit = 50,
+  showAll = false,
+}: {
+  subclaw: string;
+  limit?: number;
+  showAll?: boolean;
+}) {
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+  const postsQuery = useSubclawPosts(subclaw, { limit, showAll });
+  const posts = postsQuery.data ?? [];
+  if (!mounted || postsQuery.isLoading) return skeletonEl();
+  return (
+    <PostList
+      posts={posts}
+      showAll={showAll}
+      emptyMessage={`No posts yet in c/${subclaw}. Try other relays or check back later.`}
+    />
+  );
+}
+
+function NostrFeedListInner({ subclaw, limit = 50, showAll = false }: NostrFeedListInnerProps) {
+  if (subclaw?.trim()) {
+    return <NostrFeedListSubclaw subclaw={subclaw.trim()} limit={limit} showAll={showAll} />;
+  }
+  return <NostrFeedListGlobal limit={limit} showAll={showAll} />;
+}
+
+export function NostrFeedList({ subclaw, limit = 50, showAll = false }: NostrFeedListInnerProps) {
+  return <NostrFeedListInner subclaw={subclaw} limit={limit} showAll={showAll} />;
 }

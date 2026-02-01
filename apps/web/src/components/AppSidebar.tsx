@@ -3,14 +3,14 @@
 import { useQuery } from "convex/react";
 import { useEffect, useState } from "react";
 import {
-  // BookOpenIcon, FileTextIcon, InfoIcon, RssIcon – uncomment when Feed/KB/Blog/About are re-enabled
   ChevronsUpDownIcon,
   HomeIcon,
   LogOutIcon,
   UserIcon,
-  // UsersRoundIcon, // uncomment when communities route is re-enabled
-  // WalletIcon, // uncomment when wallet route is re-enabled
+  Rss,
+  UsersRound,
 } from "lucide-react";
+import { NostrCommunitiesSection } from "@/components/NostrCommunitiesSection";
 import { authClient } from "@/lib/auth-client";
 import { api } from "../../convex/_generated/api";
 import { SITE_TITLE } from "@/consts";
@@ -40,15 +40,8 @@ import { cn } from "@/lib/utils";
 
 const navItems = [
   { href: "/", label: "Home", icon: HomeIcon, exact: true },
-  // Feed, Knowledge, Blog, About disabled – uncomment to re-enable
-  // { href: "/feed", label: "Feed", icon: RssIcon, exact: true },
-  // { href: "/kb", label: "Knowledge", icon: BookOpenIcon, exact: false },
-  // { href: "/blog", label: "Blog", icon: FileTextIcon, exact: false },
-  // { href: "/about", label: "About", icon: InfoIcon, exact: true },
-  // Wallet route disabled – uncomment to re-enable
-  // { href: "/wallet", label: "Wallet", icon: WalletIcon, exact: true },
-  // Communities route disabled – uncomment to re-enable
-  // { href: "/communities", label: "Communities", icon: UsersRoundIcon, exact: false },
+  { href: "/feed", label: "Feed", icon: Rss, exact: true },
+  { href: "/c", label: "Communities", icon: UsersRound, exact: false },
 ] as const;
 
 function usePathname() {
@@ -219,6 +212,14 @@ export function AppSidebar() {
               );
             })}
           </SidebarMenu>
+        </SidebarGroup>
+        <SidebarGroup>
+          <h3 className="mb-1 px-2 text-xs font-semibold text-sidebar-foreground/70">
+            Popular communities
+          </h3>
+          <div className="px-1">
+            <NostrCommunitiesSection />
+          </div>
         </SidebarGroup>
       </SidebarContent>
       <SidebarFooter className="border-t border-sidebar-border flex shrink-0 items-center" style={{ height: "var(--footer-height)", minHeight: "var(--footer-height)" }}>

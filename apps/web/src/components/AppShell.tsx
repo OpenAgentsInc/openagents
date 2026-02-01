@@ -24,7 +24,7 @@ function AppShellInner({
     >
       <AppSidebar />
       <SidebarInset className="flex min-h-0 flex-1 flex-col overflow-hidden">
-        <header className="flex h-14 shrink-0 items-center justify-end gap-2 border-b border-border bg-background px-3 md:px-4">
+        <header className="sticky top-0 z-10 flex h-14 shrink-0 items-center justify-end gap-2 border-b border-border bg-background/80 px-3 md:px-4 backdrop-blur-md supports-[backdrop-filter]:bg-background/70">
           <ModeToggle />
         </header>
         <main className="flex min-h-0 flex-1 flex-col overflow-hidden">
