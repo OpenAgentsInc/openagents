@@ -41,6 +41,7 @@ function PostList({
   showAll: boolean;
   emptyMessage: string;
 }) {
+  const TITLE_MAX = 960;
   const pubkeys = useMemo(() => [...new Set(posts.map((p) => p.pubkey))], [posts]);
   const postIds = useMemo(() => posts.map((p) => p.id), [posts]);
   const authorsQuery = useBatchAuthors(pubkeys);
@@ -68,7 +69,8 @@ function PostList({
         const zapSummary = zapSummaries.get(post.id) ?? { count: 0, totalSats: 0 };
         const lines = post.content.split("\n").filter((l) => l.trim());
         const firstLine = lines[0] ?? post.content;
-        const title = firstLine.length <= 120 ? firstLine : firstLine.slice(0, 117) + "…";
+        const title =
+          firstLine.length <= TITLE_MAX ? firstLine : firstLine.slice(0, TITLE_MAX - 1) + "…";
 
         return (
           <article
