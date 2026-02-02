@@ -1,13 +1,14 @@
 import { useQuery } from "convex/react";
-import { api } from "../../convex/_generated/api";
+import { api } from "../../../convex/_generated/api";
 import { withConvexProvider } from "@/lib/convex";
 import { authClient } from "@/lib/auth-client";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 
-function AuthUIInner() {
-  const user = useQuery(api.auth.getCurrentUser);
+export type AuthUIUserState = undefined | null | { name?: string; email?: string };
 
+/** Presentational auth UI for a given user state. Use in Storybook without Convex. */
+export function AuthUIView({ user }: { user: AuthUIUserState }) {
   const handleSignOut = async () => {
     await authClient.signOut();
     window.location.reload();
@@ -51,6 +52,11 @@ function AuthUIInner() {
       </Button>
     </div>
   );
+}
+
+function AuthUIInner() {
+  const user = useQuery(api.auth.getCurrentUser);
+  return <AuthUIView user={user} />;
 }
 
 export default withConvexProvider(AuthUIInner);
