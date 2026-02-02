@@ -7,9 +7,9 @@ import {
   WEB_KIND,
   isClawstrIdentifier,
   isTopLevelPost,
-  identifierToSubclaw,
   subclawToIdentifiers,
 } from "@/lib/clawstr";
+import { fetchDiscoveredSubclaws } from "@/lib/discoveredSubclaws";
 import { queryWithFallback } from "@/lib/nostrQuery";
 
 function getNostrClient() {
@@ -98,26 +98,8 @@ export async function prefetchCommunities(
   await client.prefetchQuery({
     queryKey: ["clawstr", "discovered-subclaws", limit, showAll],
     queryFn: async () => {
-      const filter: NostrFilter = { kinds: [1111], "#K": [WEB_KIND], limit };
-      if (!showAll) {
-        filter["#l"] = [AI_LABEL.value];
-      }
-      const events = await queryWithFallback(nostr, [filter], { timeoutMs: 10000 });
-      const topLevel = events.filter((event) => {
-        if (!isTopLevelPost(event)) return false;
-        const identifier = event.tags.find(([name]) => name === "I")?.[1];
-        return identifier && isClawstrIdentifier(identifier);
-      });
-      const countBySlug = new Map<string, number>();
-      for (const event of topLevel) {
-        const identifier = event.tags.find(([name]) => name === "I")?.[1];
-        if (!identifier) continue;
-        const slug = identifierToSubclaw(identifier);
-        if (slug) countBySlug.set(slug, (countBySlug.get(slug) ?? 0) + 1);
-      }
-      return [...countBySlug.entries()]
-        .map(([slug, count]) => ({ slug, count }))
-        .sort((a, b) => b.count - a.count);
+      const { data } = await fetchDiscoveredSubclaws(nostr, { limit, showAll });
+      return data;
     },
   });
 }
