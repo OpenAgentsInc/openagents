@@ -79,8 +79,8 @@ Base path: `/v1`
 
 Endpoints:
 - `GET /v1/status`
-- `POST /v1/restart`
-- `POST /v1/backup`
+- `POST /v1/gateway/restart`
+- `POST /v1/storage/backup`
 - `GET /v1/devices`
 - `POST /v1/devices/:requestId/approve`
 
@@ -88,20 +88,18 @@ All endpoints:
 - require service-token auth
 - return JSON envelope:
   - `{ "ok": true, "data": ... }`
-  - `{ "ok": false, "error": "..." }`
+  - `{ "ok": false, "error": { "code": "...", "message": "...", "details": { ... } } }`
 
 No other routes should be exposed.
 
 ### 3.1 Auth
 Implement:
-- `Authorization: Bearer <OPENAGENTS_SERVICE_TOKEN>`
-
-Also accept (for flexibility with existing code):
-- `X-OpenAgents-Service-Token: <token>`
+- `X-OpenAgents-Service-Token: <token>` (primary)
+- `Authorization: Bearer <OPENAGENTS_SERVICE_TOKEN>` (compat)
 
 Reject with 401:
 ```json
-{ "ok": false, "error": "unauthorized" }
+{ "ok": false, "error": { "code": "unauthorized", "message": "unauthorized", "details": null } }
 ```
 
 ---
@@ -200,3 +198,14 @@ Note: avoid putting secrets in logs.
 - All `/v1/*` endpoints work with service token.
 - No UI routes exist.
 - Cron backup runs without errors when R2 is configured.
+
+---
+
+## Work log (2026-02-02)
+- Added `apps/openclaw-runtime/` scaffold (Worker + container) with `wrangler.jsonc`, `Dockerfile`, `tsconfig.json`, and README.
+- Implemented `/v1/*` routes with service-token auth and contract-compliant response envelopes.
+- Added sandbox helpers for gateway lifecycle, device CLI actions, and version reporting.
+- Implemented backup/restore to R2 using rsync + tar archives and cron-triggered backups.
+- Added unit tests for auth and response envelope helpers.
+- Aligned endpoint paths + auth/error envelope with `instance-runtime-api-contract.md`.
+- Installed dependencies, ran `npm test`, and deployed via `wrangler deploy` (workers.dev enabled by default warning).
