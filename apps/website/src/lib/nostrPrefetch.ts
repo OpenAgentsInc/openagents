@@ -9,7 +9,8 @@ import {
   isTopLevelPost,
   subclawToIdentifiers,
 } from "@/lib/clawstr";
-import { fetchDiscoveredSubclaws } from "@/lib/discoveredSubclaws";
+import type { DiscoveredSubclaw } from "@/lib/discoveredSubclaws";
+import { fetchDiscoveredSubclaws, mergeSubclawCounts } from "@/lib/discoveredSubclaws";
 import { queryWithFallback } from "@/lib/nostrQuery";
 
 function getNostrClient() {
@@ -99,6 +100,15 @@ export async function prefetchCommunities(
     queryKey: ["clawstr", "discovered-subclaws", limit, showAll],
     queryFn: async () => {
       const { data } = await fetchDiscoveredSubclaws(nostr, { limit, showAll });
+      const existing = client.getQueryData<DiscoveredSubclaw[]>([
+        "clawstr",
+        "discovered-subclaws",
+        limit,
+        showAll,
+      ]);
+      if (existing && existing.length > 0) {
+        return mergeSubclawCounts(existing, data, limit);
+      }
       return data;
     },
   });

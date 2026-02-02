@@ -60,6 +60,29 @@ export function dedupeEvents(events: NostrEvent[]): NostrEvent[] {
   return result;
 }
 
+export function mergeSubclawCounts(
+  previous: DiscoveredSubclaw[],
+  next: DiscoveredSubclaw[],
+  limit: number
+): DiscoveredSubclaw[] {
+  const countBySlug = new Map<string, number>();
+  for (const entry of previous) {
+    countBySlug.set(entry.slug, entry.count);
+  }
+  for (const entry of next) {
+    const current = countBySlug.get(entry.slug);
+    if (current == null) {
+      countBySlug.set(entry.slug, entry.count);
+    } else if (entry.count > current) {
+      countBySlug.set(entry.slug, entry.count);
+    }
+  }
+  return [...countBySlug.entries()]
+    .map(([slug, count]) => ({ slug, count }))
+    .sort((a, b) => (b.count - a.count) || a.slug.localeCompare(b.slug))
+    .slice(0, limit);
+}
+
 export async function fetchDiscoveredSubclaws(
   nostr: NostrQueryClient,
   options?: {
