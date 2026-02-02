@@ -5,6 +5,8 @@ import viteReact from '@vitejs/plugin-react'
 import viteTsConfigPaths from 'vite-tsconfig-paths'
 import tailwindcss from '@tailwindcss/vite'
 import { cloudflare } from '@cloudflare/vite-plugin'
+import wasm from 'vite-plugin-wasm'
+import topLevelAwait from 'vite-plugin-top-level-await'
 
 const config = defineConfig({
   plugins: [
@@ -15,9 +17,24 @@ const config = defineConfig({
       projects: ['./tsconfig.json'],
     }),
     tailwindcss(),
+    wasm(),
+    topLevelAwait(),
     tanstackStart(),
     viteReact(),
   ],
+  envPrefix: ['VITE_', 'CONVEX_', 'PUBLIC_'],
+  optimizeDeps: {
+    exclude: ['@breeztech/breez-sdk-spark'],
+  },
+  build: {
+    target: 'esnext',
+  },
+  server: {
+    headers: {
+      'Cross-Origin-Embedder-Policy': 'require-corp',
+      'Cross-Origin-Opener-Policy': 'same-origin',
+    },
+  },
 })
 
 export default config
