@@ -1,7 +1,7 @@
 # Managed OpenClaw implementation log (2026-02-02)
 
 ## Scope
-End-to-end MVP wiring for managed OpenClaw across Convex (data + secrets + billing), Rust API worker (`/api/openclaw/*`), runtime template (service-token-gated instance API), and OpenAgents website UI + tests. Includes follow-up rename of runtime env vars to remove all `CLAWDBOT` references.
+End-to-end MVP wiring for managed OpenClaw across Convex (data + secrets + billing), Rust API worker (`/api/openclaw/*`), runtime template (service-token-gated instance API), and OpenAgents website UI + tests. Includes follow-up rename of runtime env vars to remove all legacy env references.
 
 ---
 
@@ -123,7 +123,7 @@ File: `/home/christopherdavid/code/moltworker/src/routes/runtime.ts`
 - `POST /v1/devices/:requestId/approve`
 
 ### Env + doc updates (rename to OPENCLAW_*)
-- No `CLAWDBOT` strings remain.
+- No legacy env strings remain.
 - Replaced env names:
   - `OPENCLAW_GATEWAY_TOKEN`
   - `OPENCLAW_DEV_MODE`
