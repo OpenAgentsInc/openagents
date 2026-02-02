@@ -42,7 +42,6 @@ function RouteComponent() {
     <SiteLayout>
       <BlogPostLayout
         title={post.data.title}
-        description={post.data.description}
         pubDate={post.data.pubDate}
         updatedDate={post.data.updatedDate}
         heroImage={post.data.heroImage}

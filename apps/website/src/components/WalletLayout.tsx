@@ -1,6 +1,6 @@
-import React from "react";
+import type { ReactNode } from "react";
 
-export function WalletLayout({ children }: { children: React.ReactNode }) {
+export function WalletLayout({ children }: { children: ReactNode }) {
   return (
     <div className="flex min-h-screen flex-col">
       <header className="flex shrink-0 items-center justify-between border-b border-border bg-background px-4 py-3">

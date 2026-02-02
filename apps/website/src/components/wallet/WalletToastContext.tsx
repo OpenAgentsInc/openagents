@@ -1,4 +1,5 @@
-import React, { createContext, useContext, useState, useCallback } from "react";
+import { createContext, useContext, useState, useCallback } from "react";
+import type { ReactNode, FC } from "react";
 
 type ToastType = "success" | "error" | "info";
 interface Toast {
@@ -14,7 +15,7 @@ const WalletToastContext = createContext<{
 
 let toastId = 0;
 
-export const WalletToastProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+export const WalletToastProvider: FC<{ children: ReactNode }> = ({ children }) => {
   const [toasts, setToasts] = useState<Toast[]>([]);
   const showToast = useCallback((type: ToastType, message: string, detail?: string) => {
     const id = ++toastId;

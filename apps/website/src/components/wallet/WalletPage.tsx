@@ -1,6 +1,5 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import type { GetInfoResponse, Payment, Rate, FiatCurrency, DepositInfo } from "@breeztech/breez-sdk-spark";
-import { useWallet } from "./WalletContext";
 import { Button } from "@/components/ui/button";
 import { mergeDepositsWithTransactions } from "@/lib/wallet/depositHelpers";
 import SendPaymentDialog from "./SendPaymentDialog";
@@ -37,7 +36,7 @@ export default function WalletPage({
   const [receiveOpen, setReceiveOpen] = useState(false);
 
   const list = mergeDepositsWithTransactions(transactions, unclaimedDeposits);
-  const balanceSats = walletInfo?.balance ?? 0n;
+  const balanceSats = walletInfo?.balanceSats ?? 0;
 
   return (
     <div className="flex flex-col min-h-[70vh]">

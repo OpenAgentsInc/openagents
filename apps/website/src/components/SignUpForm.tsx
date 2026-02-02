@@ -24,7 +24,7 @@ function SignUpFormInner() {
     setLoading(true);
     try {
       const result = await authClient.signUp.email({
-        name: name.trim() || undefined,
+        name: name.trim(),
         email: email.trim(),
         password,
         callbackURL: "/",

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import type { SendPaymentOptions } from "@breeztech/breez-sdk-spark";
 import { useWallet } from "./WalletContext";
 import type { SendInput } from "@/lib/wallet/domain";
@@ -53,7 +53,9 @@ export default function SendPaymentDialog({ open, onOpenChange, onClose }: Props
       const parsed = await wallet.parseInput(raw);
       setPaymentInput({ rawInput: raw, parsedInput: parsed });
       if (parsed.type === "bolt11Invoice" && parsed.amountMsat && parsed.amountMsat > 0n) {
-        const sats = Number(parsed.amountMsat / 1000n);
+        const msat = parsed.amountMsat;
+        const sats =
+          typeof msat === "bigint" ? Number(msat / 1000n) : Math.floor(msat / 1000);
         setAmount(String(sats));
         await doPrepare(raw, sats);
       } else if (parsed.type === "bitcoinAddress" || parsed.type === "sparkAddress") {

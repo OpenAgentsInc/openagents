@@ -13,12 +13,8 @@ function getEffectiveDark(): boolean {
 }
 
 export function ModeToggle() {
-  const [isDark, setIsDark] = React.useState(true);
-  React.useEffect(() => setIsDark(getEffectiveDark()), []);
-
   const handleToggle = React.useCallback(() => {
     const nextDark = !getEffectiveDark();
-    setIsDark(nextDark);
     document.documentElement.classList[nextDark ? "add" : "remove"]("dark");
     document.documentElement.style.colorScheme = nextDark ? "dark" : "light";
     localStorage.setItem("theme", nextDark ? "dark" : "light");

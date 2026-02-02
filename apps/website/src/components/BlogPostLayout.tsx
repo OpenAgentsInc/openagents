@@ -1,19 +1,17 @@
-import React from "react";
+import type { ReactNode } from "react";
 import FormattedDate from "@/components/FormattedDate";
 
 interface BlogPostLayoutProps {
   title: string;
-  description: string;
   pubDate: Date;
   updatedDate?: Date;
   heroImage?: string;
   tags?: string[];
-  children: React.ReactNode;
+  children: ReactNode;
 }
 
 export function BlogPostLayout({
   title,
-  description,
   pubDate,
   updatedDate,
   heroImage,
