@@ -3,7 +3,7 @@
 import * as React from "react";
 import { AppSidebar } from "@/components/AppSidebar";
 import { ModeToggle } from "@/components/ModeToggle";
-import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
+import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { withConvexProvider } from "@/lib/convex";
 import { cn } from "@/lib/utils";
 
@@ -24,7 +24,8 @@ function AppShellInner({
     >
       <AppSidebar />
       <SidebarInset className="flex min-h-0 flex-1 flex-col overflow-hidden">
-        <header className="sticky top-0 z-10 flex h-14 shrink-0 items-center justify-end gap-2 border-b border-border bg-background/80 px-3 md:px-4 backdrop-blur-md supports-[backdrop-filter]:bg-background/70">
+        <header className="sticky top-0 z-10 flex h-14 shrink-0 items-center justify-between gap-2 border-b border-border bg-background/80 px-3 md:px-4 backdrop-blur-md supports-[backdrop-filter]:bg-background/70">
+          <SidebarTrigger className="md:hidden" />
           <ModeToggle />
         </header>
         <main className="flex min-h-0 flex-1 flex-col overflow-hidden">
