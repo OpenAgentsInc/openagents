@@ -52,6 +52,36 @@ function extractNostrAuth(request: Request): string | null {
   return null;
 }
 
+function extractUserId(request: Request, payload?: Record<string, unknown>): string | null {
+  const header = request.headers.get("x-oa-user-id")?.trim();
+  if (header) return header;
+  const url = new URL(request.url);
+  const queryUserId = url.searchParams.get("user_id") ?? url.searchParams.get("userId");
+  if (queryUserId && queryUserId.trim()) {
+    return queryUserId.trim();
+  }
+  const bodyValue =
+    payload?.user_id ?? payload?.userId ?? payload?.subject ?? payload?.user;
+  if (typeof bodyValue === "string" && bodyValue.trim()) {
+    return bodyValue.trim();
+  }
+  return null;
+}
+
+function sanitizeOpenclawInstance(instance: Record<string, unknown> | null) {
+  if (!instance) return null;
+  const {
+    service_token_encrypted: _serviceTokenEncrypted,
+    service_token_iv: _serviceTokenIv,
+    service_token_alg: _serviceTokenAlg,
+    provider_keys_encrypted: _providerKeysEncrypted,
+    provider_keys_iv: _providerKeysIv,
+    provider_keys_alg: _providerKeysAlg,
+    ...rest
+  } = instance;
+  return rest;
+}
+
 function getOriginalUrl(request: Request): string {
   return request.headers.get("x-oa-original-url")?.trim() || request.url;
 }
@@ -881,6 +911,206 @@ export const verifyNostrIdentity = httpAction(async (ctx, request) => {
   await touchApiToken(ctx, resolved.tokenHash);
 
   return new Response(JSON.stringify({ ok: true, identity }), {
+    status: 200,
+    headers: { "content-type": "application/json" },
+  });
+});
+
+export const getOpenclawInstance = httpAction(async (ctx, request) => {
+  if (request.method !== "GET") {
+    return new Response("Method Not Allowed", { status: 405 });
+  }
+
+  const authError = requireControlKey(request);
+  if (authError) return authError;
+
+  const user_id = extractUserId(request);
+  if (!user_id) {
+    return badRequest("user_id is required");
+  }
+
+  const instance = await ctx.runQuery(internal.openclaw.getInstanceForUser, {
+    user_id,
+  });
+
+  return new Response(
+    JSON.stringify({ ok: true, data: sanitizeOpenclawInstance(instance as any) }),
+    {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    },
+  );
+});
+
+export const upsertOpenclawInstance = httpAction(async (ctx, request) => {
+  if (request.method !== "POST") {
+    return new Response("Method Not Allowed", { status: 405 });
+  }
+
+  const authError = requireControlKey(request);
+  if (authError) return authError;
+
+  let payload: Record<string, unknown> = {};
+  try {
+    payload = (await request.json()) as Record<string, unknown>;
+  } catch {
+    return badRequest("Invalid JSON");
+  }
+
+  const user_id = extractUserId(request, payload);
+  if (!user_id) {
+    return badRequest("user_id is required");
+  }
+
+  const instance = await ctx.runMutation(internal.openclaw.upsertInstance, {
+    user_id,
+    status: typeof payload.status === "string" ? payload.status : undefined,
+    runtime_url: typeof payload.runtime_url === "string" ? payload.runtime_url : undefined,
+    runtime_name: typeof payload.runtime_name === "string" ? payload.runtime_name : undefined,
+    cf_account_id: typeof payload.cf_account_id === "string" ? payload.cf_account_id : undefined,
+    cf_worker_name: typeof payload.cf_worker_name === "string" ? payload.cf_worker_name : undefined,
+    cf_worker_id: typeof payload.cf_worker_id === "string" ? payload.cf_worker_id : undefined,
+    cf_container_app_id:
+      typeof payload.cf_container_app_id === "string" ? payload.cf_container_app_id : undefined,
+    cf_container_app_name:
+      typeof payload.cf_container_app_name === "string" ? payload.cf_container_app_name : undefined,
+    r2_bucket_name: typeof payload.r2_bucket_name === "string" ? payload.r2_bucket_name : undefined,
+  });
+
+  return new Response(
+    JSON.stringify({ ok: true, data: sanitizeOpenclawInstance(instance as any) }),
+    {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    },
+  );
+});
+
+export const setOpenclawStatus = httpAction(async (ctx, request) => {
+  if (request.method !== "POST") {
+    return new Response("Method Not Allowed", { status: 405 });
+  }
+
+  const authError = requireControlKey(request);
+  if (authError) return authError;
+
+  let payload: Record<string, unknown> = {};
+  try {
+    payload = (await request.json()) as Record<string, unknown>;
+  } catch {
+    return badRequest("Invalid JSON");
+  }
+
+  const user_id = extractUserId(request, payload);
+  if (!user_id) {
+    return badRequest("user_id is required");
+  }
+  const status = typeof payload.status === "string" ? payload.status : "";
+  if (!status.trim()) {
+    return badRequest("status is required");
+  }
+
+  const instance = await ctx.runMutation(internal.openclaw.setInstanceStatus, {
+    user_id,
+    status,
+  });
+
+  return new Response(
+    JSON.stringify({ ok: true, data: sanitizeOpenclawInstance(instance as any) }),
+    {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    },
+  );
+});
+
+export const storeOpenclawSecret = httpAction(async (ctx, request) => {
+  if (request.method !== "POST") {
+    return new Response("Method Not Allowed", { status: 405 });
+  }
+
+  const authError = requireControlKey(request);
+  if (authError) return authError;
+
+  let payload: Record<string, unknown> = {};
+  try {
+    payload = (await request.json()) as Record<string, unknown>;
+  } catch {
+    return badRequest("Invalid JSON");
+  }
+
+  const user_id = extractUserId(request, payload);
+  if (!user_id) {
+    return badRequest("user_id is required");
+  }
+  const key = typeof payload.key === "string" ? payload.key : "";
+  const value = typeof payload.value === "string" ? payload.value : "";
+  if (!key.trim()) {
+    return badRequest("key is required");
+  }
+  if (!value.trim()) {
+    return badRequest("value is required");
+  }
+
+  await ctx.runMutation(internal.openclaw.storeEncryptedSecret, {
+    user_id,
+    key,
+    value,
+  });
+
+  return new Response(JSON.stringify({ ok: true, data: { stored: true } }), {
+    status: 200,
+    headers: { "content-type": "application/json" },
+  });
+});
+
+export const getOpenclawSecret = httpAction(async (ctx, request) => {
+  if (request.method !== "GET") {
+    return new Response("Method Not Allowed", { status: 405 });
+  }
+
+  const authError = requireControlKey(request);
+  if (authError) return authError;
+
+  const user_id = extractUserId(request);
+  if (!user_id) {
+    return badRequest("user_id is required");
+  }
+  const url = new URL(request.url);
+  const key = url.searchParams.get("key") ?? "";
+  if (!key.trim()) {
+    return badRequest("key is required");
+  }
+
+  const secret = await ctx.runQuery(internal.openclaw.getDecryptedSecret, {
+    user_id,
+    key,
+  });
+
+  return new Response(JSON.stringify({ ok: true, data: { secret } }), {
+    status: 200,
+    headers: { "content-type": "application/json" },
+  });
+});
+
+export const getOpenclawBillingSummary = httpAction(async (ctx, request) => {
+  if (request.method !== "GET") {
+    return new Response("Method Not Allowed", { status: 405 });
+  }
+
+  const authError = requireControlKey(request);
+  if (authError) return authError;
+
+  const user_id = extractUserId(request);
+  if (!user_id) {
+    return badRequest("user_id is required");
+  }
+
+  const summary = await ctx.runQuery(internal.billing.getCreditBalance, {
+    user_id,
+  });
+
+  return new Response(JSON.stringify({ ok: true, data: summary }), {
     status: 200,
     headers: { "content-type": "application/json" },
   });

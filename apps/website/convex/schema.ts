@@ -60,6 +60,41 @@ export default defineSchema({
     .index("by_nostr_pubkey", ["nostr_pubkey"])
     .index("by_stripe_customer_id", ["stripe_customer_id"]),
 
+  openclaw_instances: defineTable({
+    user_id: v.string(),
+    status: v.string(),
+    runtime_url: v.optional(v.string()),
+    runtime_name: v.optional(v.string()),
+    cf_account_id: v.optional(v.string()),
+    cf_worker_name: v.optional(v.string()),
+    cf_worker_id: v.optional(v.string()),
+    cf_container_app_id: v.optional(v.string()),
+    cf_container_app_name: v.optional(v.string()),
+    r2_bucket_name: v.optional(v.string()),
+    service_token_encrypted: v.optional(v.string()),
+    service_token_iv: v.optional(v.string()),
+    service_token_alg: v.optional(v.string()),
+    provider_keys_encrypted: v.optional(v.string()),
+    provider_keys_iv: v.optional(v.string()),
+    provider_keys_alg: v.optional(v.string()),
+    created_at: v.number(),
+    updated_at: v.number(),
+    last_ready_at: v.optional(v.number()),
+  })
+    .index("by_user_id", ["user_id"])
+    .index("by_status", ["status"]),
+
+  credit_ledger: defineTable({
+    user_id: v.string(),
+    kind: v.string(),
+    amount_usd: v.number(),
+    meta: v.optional(v.any()),
+    created_at: v.number(),
+  })
+    .index("by_user_id", ["user_id"])
+    .index("by_user_id_created_at", ["user_id", "created_at"])
+    .index("by_user_id_kind", ["user_id", "kind"]),
+
   api_tokens: defineTable({
     user_id: v.string(),
     token_hash: v.string(),

@@ -1,7 +1,7 @@
 "use client";
 
 import { Link, useRouterState } from "@tanstack/react-router";
-import { HomeIcon, BookOpen, Rss, UsersRound } from "lucide-react";
+import { HomeIcon, BookOpen, Rss, UsersRound, Bot } from "lucide-react";
 import { NostrCommunitiesSection } from "@/components/NostrCommunitiesSection";
 // Auth disabled for this version.
 // import { authClient } from "@/lib/auth-client";
@@ -26,6 +26,7 @@ const navItems = [
   { href: "/feed", label: "Feed", icon: Rss, exact: true },
   { href: "/c", label: "Communities", icon: UsersRound, exact: false },
   { href: "/kb", label: "Knowledge Base", icon: BookOpen, exact: true },
+  { href: "/openclaw", label: "OpenClaw", icon: Bot, exact: true },
 ] as const;
 
 function usePathname() {

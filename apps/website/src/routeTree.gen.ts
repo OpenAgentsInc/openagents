@@ -15,6 +15,7 @@ import { Route as RegisterRouteImport } from './routes/register'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as AppRouteRouteImport } from './routes/_app/route'
 import { Route as AppIndexRouteImport } from './routes/_app/index'
+import { Route as AppOpenclawRouteImport } from './routes/_app/openclaw'
 import { Route as AppGetApiKeyRouteImport } from './routes/_app/get-api-key'
 import { Route as AppFeedRouteImport } from './routes/_app/feed'
 import { Route as AppAboutRouteImport } from './routes/_app/about'
@@ -25,7 +26,11 @@ import { Route as AppCIndexRouteImport } from './routes/_app/c/index'
 import { Route as AppBlogIndexRouteImport } from './routes/_app/blog/index'
 import { Route as AppUNpubRouteImport } from './routes/_app/u/$npub'
 import { Route as AppPostsIdRouteImport } from './routes/_app/posts/$id'
+import { Route as AppOpenclawUsageRouteImport } from './routes/_app/openclaw.usage'
+import { Route as AppOpenclawSecurityRouteImport } from './routes/_app/openclaw.security'
 import { Route as AppOpenclawEarnRouteImport } from './routes/_app/openclaw/earn'
+import { Route as AppOpenclawCreateRouteImport } from './routes/_app/openclaw.create'
+import { Route as AppOpenclawBillingRouteImport } from './routes/_app/openclaw.billing'
 import { Route as AppKbSplatRouteImport } from './routes/_app/kb/$'
 import { Route as AppEventIdRouteImport } from './routes/_app/event/$id'
 import { Route as AppCommunitiesSlugRouteImport } from './routes/_app/communities/$slug'
@@ -60,6 +65,11 @@ const AppRouteRoute = AppRouteRouteImport.update({
 const AppIndexRoute = AppIndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => AppRouteRoute,
+} as any)
+const AppOpenclawRoute = AppOpenclawRouteImport.update({
+  id: '/openclaw',
+  path: '/openclaw',
   getParentRoute: () => AppRouteRoute,
 } as any)
 const AppGetApiKeyRoute = AppGetApiKeyRouteImport.update({
@@ -112,10 +122,30 @@ const AppPostsIdRoute = AppPostsIdRouteImport.update({
   path: '/posts/$id',
   getParentRoute: () => AppRouteRoute,
 } as any)
+const AppOpenclawUsageRoute = AppOpenclawUsageRouteImport.update({
+  id: '/usage',
+  path: '/usage',
+  getParentRoute: () => AppOpenclawRoute,
+} as any)
+const AppOpenclawSecurityRoute = AppOpenclawSecurityRouteImport.update({
+  id: '/security',
+  path: '/security',
+  getParentRoute: () => AppOpenclawRoute,
+} as any)
 const AppOpenclawEarnRoute = AppOpenclawEarnRouteImport.update({
-  id: '/openclaw/earn',
-  path: '/openclaw/earn',
-  getParentRoute: () => AppRouteRoute,
+  id: '/earn',
+  path: '/earn',
+  getParentRoute: () => AppOpenclawRoute,
+} as any)
+const AppOpenclawCreateRoute = AppOpenclawCreateRouteImport.update({
+  id: '/create',
+  path: '/create',
+  getParentRoute: () => AppOpenclawRoute,
+} as any)
+const AppOpenclawBillingRoute = AppOpenclawBillingRouteImport.update({
+  id: '/billing',
+  path: '/billing',
+  getParentRoute: () => AppOpenclawRoute,
 } as any)
 const AppKbSplatRoute = AppKbSplatRouteImport.update({
   id: '/kb/$',
@@ -157,11 +187,16 @@ export interface FileRoutesByFullPath {
   '/about': typeof AppAboutRoute
   '/feed': typeof AppFeedRoute
   '/get-api-key': typeof AppGetApiKeyRoute
+  '/openclaw': typeof AppOpenclawRouteWithChildren
   '/blog/$slug': typeof AppBlogSlugRoute
   '/communities/$slug': typeof AppCommunitiesSlugRoute
   '/event/$id': typeof AppEventIdRoute
   '/kb/$': typeof AppKbSplatRoute
+  '/openclaw/billing': typeof AppOpenclawBillingRoute
+  '/openclaw/create': typeof AppOpenclawCreateRoute
   '/openclaw/earn': typeof AppOpenclawEarnRoute
+  '/openclaw/security': typeof AppOpenclawSecurityRoute
+  '/openclaw/usage': typeof AppOpenclawUsageRoute
   '/posts/$id': typeof AppPostsIdRoute
   '/u/$npub': typeof AppUNpubRoute
   '/blog/': typeof AppBlogIndexRoute
@@ -180,12 +215,17 @@ export interface FileRoutesByTo {
   '/about': typeof AppAboutRoute
   '/feed': typeof AppFeedRoute
   '/get-api-key': typeof AppGetApiKeyRoute
+  '/openclaw': typeof AppOpenclawRouteWithChildren
   '/': typeof AppIndexRoute
   '/blog/$slug': typeof AppBlogSlugRoute
   '/communities/$slug': typeof AppCommunitiesSlugRoute
   '/event/$id': typeof AppEventIdRoute
   '/kb/$': typeof AppKbSplatRoute
+  '/openclaw/billing': typeof AppOpenclawBillingRoute
+  '/openclaw/create': typeof AppOpenclawCreateRoute
   '/openclaw/earn': typeof AppOpenclawEarnRoute
+  '/openclaw/security': typeof AppOpenclawSecurityRoute
+  '/openclaw/usage': typeof AppOpenclawUsageRoute
   '/posts/$id': typeof AppPostsIdRoute
   '/u/$npub': typeof AppUNpubRoute
   '/blog': typeof AppBlogIndexRoute
@@ -206,12 +246,17 @@ export interface FileRoutesById {
   '/_app/about': typeof AppAboutRoute
   '/_app/feed': typeof AppFeedRoute
   '/_app/get-api-key': typeof AppGetApiKeyRoute
+  '/_app/openclaw': typeof AppOpenclawRouteWithChildren
   '/_app/': typeof AppIndexRoute
   '/_app/blog/$slug': typeof AppBlogSlugRoute
   '/_app/communities/$slug': typeof AppCommunitiesSlugRoute
   '/_app/event/$id': typeof AppEventIdRoute
   '/_app/kb/$': typeof AppKbSplatRoute
+  '/_app/openclaw/billing': typeof AppOpenclawBillingRoute
+  '/_app/openclaw/create': typeof AppOpenclawCreateRoute
   '/_app/openclaw/earn': typeof AppOpenclawEarnRoute
+  '/_app/openclaw/security': typeof AppOpenclawSecurityRoute
+  '/_app/openclaw/usage': typeof AppOpenclawUsageRoute
   '/_app/posts/$id': typeof AppPostsIdRoute
   '/_app/u/$npub': typeof AppUNpubRoute
   '/_app/blog/': typeof AppBlogIndexRoute
@@ -233,11 +278,16 @@ export interface FileRouteTypes {
     | '/about'
     | '/feed'
     | '/get-api-key'
+    | '/openclaw'
     | '/blog/$slug'
     | '/communities/$slug'
     | '/event/$id'
     | '/kb/$'
+    | '/openclaw/billing'
+    | '/openclaw/create'
     | '/openclaw/earn'
+    | '/openclaw/security'
+    | '/openclaw/usage'
     | '/posts/$id'
     | '/u/$npub'
     | '/blog/'
@@ -256,12 +306,17 @@ export interface FileRouteTypes {
     | '/about'
     | '/feed'
     | '/get-api-key'
+    | '/openclaw'
     | '/'
     | '/blog/$slug'
     | '/communities/$slug'
     | '/event/$id'
     | '/kb/$'
+    | '/openclaw/billing'
+    | '/openclaw/create'
     | '/openclaw/earn'
+    | '/openclaw/security'
+    | '/openclaw/usage'
     | '/posts/$id'
     | '/u/$npub'
     | '/blog'
@@ -281,12 +336,17 @@ export interface FileRouteTypes {
     | '/_app/about'
     | '/_app/feed'
     | '/_app/get-api-key'
+    | '/_app/openclaw'
     | '/_app/'
     | '/_app/blog/$slug'
     | '/_app/communities/$slug'
     | '/_app/event/$id'
     | '/_app/kb/$'
+    | '/_app/openclaw/billing'
+    | '/_app/openclaw/create'
     | '/_app/openclaw/earn'
+    | '/_app/openclaw/security'
+    | '/_app/openclaw/usage'
     | '/_app/posts/$id'
     | '/_app/u/$npub'
     | '/_app/blog/'
@@ -348,6 +408,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof AppIndexRouteImport
+      parentRoute: typeof AppRouteRoute
+    }
+    '/_app/openclaw': {
+      id: '/_app/openclaw'
+      path: '/openclaw'
+      fullPath: '/openclaw'
+      preLoaderRoute: typeof AppOpenclawRouteImport
       parentRoute: typeof AppRouteRoute
     }
     '/_app/get-api-key': {
@@ -420,12 +487,40 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppPostsIdRouteImport
       parentRoute: typeof AppRouteRoute
     }
+    '/_app/openclaw/usage': {
+      id: '/_app/openclaw/usage'
+      path: '/usage'
+      fullPath: '/openclaw/usage'
+      preLoaderRoute: typeof AppOpenclawUsageRouteImport
+      parentRoute: typeof AppOpenclawRoute
+    }
+    '/_app/openclaw/security': {
+      id: '/_app/openclaw/security'
+      path: '/security'
+      fullPath: '/openclaw/security'
+      preLoaderRoute: typeof AppOpenclawSecurityRouteImport
+      parentRoute: typeof AppOpenclawRoute
+    }
     '/_app/openclaw/earn': {
       id: '/_app/openclaw/earn'
-      path: '/openclaw/earn'
+      path: '/earn'
       fullPath: '/openclaw/earn'
       preLoaderRoute: typeof AppOpenclawEarnRouteImport
-      parentRoute: typeof AppRouteRoute
+      parentRoute: typeof AppOpenclawRoute
+    }
+    '/_app/openclaw/create': {
+      id: '/_app/openclaw/create'
+      path: '/create'
+      fullPath: '/openclaw/create'
+      preLoaderRoute: typeof AppOpenclawCreateRouteImport
+      parentRoute: typeof AppOpenclawRoute
+    }
+    '/_app/openclaw/billing': {
+      id: '/_app/openclaw/billing'
+      path: '/billing'
+      fullPath: '/openclaw/billing'
+      preLoaderRoute: typeof AppOpenclawBillingRouteImport
+      parentRoute: typeof AppOpenclawRoute
     }
     '/_app/kb/$': {
       id: '/_app/kb/$'
@@ -472,16 +567,36 @@ declare module '@tanstack/react-router' {
   }
 }
 
+interface AppOpenclawRouteChildren {
+  AppOpenclawBillingRoute: typeof AppOpenclawBillingRoute
+  AppOpenclawCreateRoute: typeof AppOpenclawCreateRoute
+  AppOpenclawEarnRoute: typeof AppOpenclawEarnRoute
+  AppOpenclawSecurityRoute: typeof AppOpenclawSecurityRoute
+  AppOpenclawUsageRoute: typeof AppOpenclawUsageRoute
+}
+
+const AppOpenclawRouteChildren: AppOpenclawRouteChildren = {
+  AppOpenclawBillingRoute: AppOpenclawBillingRoute,
+  AppOpenclawCreateRoute: AppOpenclawCreateRoute,
+  AppOpenclawEarnRoute: AppOpenclawEarnRoute,
+  AppOpenclawSecurityRoute: AppOpenclawSecurityRoute,
+  AppOpenclawUsageRoute: AppOpenclawUsageRoute,
+}
+
+const AppOpenclawRouteWithChildren = AppOpenclawRoute._addFileChildren(
+  AppOpenclawRouteChildren,
+)
+
 interface AppRouteRouteChildren {
   AppAboutRoute: typeof AppAboutRoute
   AppFeedRoute: typeof AppFeedRoute
   AppGetApiKeyRoute: typeof AppGetApiKeyRoute
+  AppOpenclawRoute: typeof AppOpenclawRouteWithChildren
   AppIndexRoute: typeof AppIndexRoute
   AppBlogSlugRoute: typeof AppBlogSlugRoute
   AppCommunitiesSlugRoute: typeof AppCommunitiesSlugRoute
   AppEventIdRoute: typeof AppEventIdRoute
   AppKbSplatRoute: typeof AppKbSplatRoute
-  AppOpenclawEarnRoute: typeof AppOpenclawEarnRoute
   AppPostsIdRoute: typeof AppPostsIdRoute
   AppUNpubRoute: typeof AppUNpubRoute
   AppBlogIndexRoute: typeof AppBlogIndexRoute
@@ -497,12 +612,12 @@ const AppRouteRouteChildren: AppRouteRouteChildren = {
   AppAboutRoute: AppAboutRoute,
   AppFeedRoute: AppFeedRoute,
   AppGetApiKeyRoute: AppGetApiKeyRoute,
+  AppOpenclawRoute: AppOpenclawRouteWithChildren,
   AppIndexRoute: AppIndexRoute,
   AppBlogSlugRoute: AppBlogSlugRoute,
   AppCommunitiesSlugRoute: AppCommunitiesSlugRoute,
   AppEventIdRoute: AppEventIdRoute,
   AppKbSplatRoute: AppKbSplatRoute,
-  AppOpenclawEarnRoute: AppOpenclawEarnRoute,
   AppPostsIdRoute: AppPostsIdRoute,
   AppUNpubRoute: AppUNpubRoute,
   AppBlogIndexRoute: AppBlogIndexRoute,
