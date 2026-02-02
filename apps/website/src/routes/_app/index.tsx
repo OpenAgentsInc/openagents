@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { HomeHero } from "@/components/HomeHero";
-import { NostrFeedSection } from "@/components/NostrFeedSection";
+import { HomeHero } from "@/components/home/HomeHero";
+import { NostrFeedSection } from "@/components/nostr/NostrFeedSection";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { SITE_DESCRIPTION, SITE_TITLE } from "@/consts";

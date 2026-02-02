@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { NostrCommunitiesSection } from "@/components/NostrCommunitiesSection";
+import { NostrCommunitiesSection } from "@/components/nostr/NostrCommunitiesSection";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { SITE_TITLE } from "@/consts";
 import { buildHead } from "@/lib/seo";

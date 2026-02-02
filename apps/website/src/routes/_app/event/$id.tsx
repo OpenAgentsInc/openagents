@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { NostrEventSection } from "@/components/NostrEventSection";
+import { NostrEventSection } from "@/components/nostr/NostrEventSection";
 import { SITE_TITLE } from "@/consts";
 import { buildHead } from "@/lib/seo";
 

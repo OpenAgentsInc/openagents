@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
-import FormattedDate from "@/components/FormattedDate";
+import FormattedDate from "@/components/blog/FormattedDate";
 import { SITE_DESCRIPTION, SITE_TITLE } from "@/consts";
 import { buildHead } from "@/lib/seo";
 import { getKbEntries } from "@/lib/content";
