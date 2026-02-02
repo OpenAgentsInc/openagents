@@ -89,6 +89,13 @@ export const Approving: Story = {
   },
 }
 
+export const ReadOnly: Story = {
+  args: {
+    devices: withPending,
+    onApprove: undefined,
+  },
+}
+
 export const NoData: Story = {
   args: { devices: null },
 }

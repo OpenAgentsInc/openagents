@@ -39,6 +39,14 @@ const errorInstance: InstanceSummary = {
   last_ready_at: null,
 }
 
+const deletedInstance: InstanceSummary = {
+  status: 'deleted',
+  runtime_name: null,
+  created_at: now - 86400000,
+  updated_at: now - 60000,
+  last_ready_at: null,
+}
+
 export const NotCreated: Story = {
   args: { instance: null },
 }
@@ -55,9 +63,20 @@ export const Error: Story = {
   args: { instance: errorInstance },
 }
 
+export const Deleted: Story = {
+  args: { instance: deletedInstance },
+}
+
 export const Creating: Story = {
   args: {
     instance: null,
     isCreating: true,
+  },
+}
+
+export const ReadOnlyEmpty: Story = {
+  args: {
+    instance: null,
+    onCreate: undefined,
   },
 }
