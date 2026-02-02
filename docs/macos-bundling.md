@@ -3,7 +3,7 @@
 This doc is the definitive guide for building, signing, notarizing, and distributing the WGPU Autopilot desktop app.
 
 ## What exists today
-- Build script: `script/bundle-mac` (Zed-style flow).
+- Build script: `scripts/bundle-mac` (Zed-style flow).
 - Bundle metadata: `apps/autopilot-desktop/Cargo.toml` under `[package.metadata.bundle]`.
 - Icon assets: `apps/autopilot-desktop/resources/icon.icns` and `icon.png` (pulled from the legacy Tauri app).
 - Entitlements: `apps/autopilot-desktop/resources/autopilot.entitlements` (minimal, GPU-safe).
@@ -17,11 +17,11 @@ This doc is the definitive guide for building, signing, notarizing, and distribu
   - App Store Connect API key (`.p8`).
 
 Optional:
-- Node + `npm` if you want DMG license UI (see `script/terms/terms.json`).
+- Node + `npm` if you want DMG license UI (see `scripts/terms/terms.json`).
 
 ## Quick start (unsigned, local use)
 ```bash
-script/bundle-mac
+scripts/bundle-mac
 ```
 Outputs:
 - `.app`: `target/<arch>/release/bundle/osx/Autopilot.app`
@@ -40,7 +40,7 @@ export APPLE_NOTARIZATION_ISSUER_ID="<issuer id>"
 # optional: override signing identity
 export MACOS_SIGNING_IDENTITY="Developer ID Application: OpenAgents, Inc. (HQWSG26L43)"
 
-script/bundle-mac
+scripts/bundle-mac
 ```
 The script will:
 1) Build the app for your host arch.
@@ -57,7 +57,7 @@ The script will:
 ```
 You can also pass a target triple as an argument:
 ```bash
-script/bundle-mac aarch64-apple-darwin
+scripts/bundle-mac aarch64-apple-darwin
 ```
 
 ## Gatekeeper (local testing)
@@ -81,16 +81,16 @@ Add additional entitlements here if the app needs access to user files, micropho
 - **cargo-bundle wrong version**: the script auto-installs `cargo-bundle v0.6.1-zed` if needed.
 - **Signing fails**: verify `MACOS_CERTIFICATE` and `MACOS_CERTIFICATE_PASSWORD`, and that the identity matches.
 - **Notarization fails**: verify `APPLE_NOTARIZATION_KEY`, `APPLE_NOTARIZATION_KEY_ID`, `APPLE_NOTARIZATION_ISSUER_ID`.
-- **DMG too small / broken**: re-run `script/bundle-mac` (it recreates the DMG directory).
+- **DMG too small / broken**: re-run `scripts/bundle-mac` (it recreates the DMG directory).
 
 ## Optional: DMG license UI
 If you want a license prompt in the DMG:
-1) Add `script/terms/terms.json` (format compatible with `dmg-license`).
+1) Add `scripts/terms/terms.json` (format compatible with `dmg-license`).
 2) Ensure `npm` is available.
-3) Re-run `script/bundle-mac`.
+3) Re-run `scripts/bundle-mac`.
 
 ## Related files
-- `script/bundle-mac`
+- `scripts/bundle-mac`
 - `apps/autopilot-desktop/Cargo.toml`
 - `apps/autopilot-desktop/resources/icon.icns`
 - `apps/autopilot-desktop/resources/icon.png`

@@ -156,10 +156,10 @@ function sign_app_bundle() {
         echo "Removing symlink to /Applications from ${dmg_source_directory}"
         rm ${dmg_source_directory}/Applications
 
-        if [[ -f script/terms/terms.json ]]; then
+        if [[ -f scripts/terms/terms.json ]]; then
             echo "Adding license agreement to DMG"
             npm install --global dmg-license minimist
-            dmg-license script/terms/terms.json "${dmg_file_path}"
+            dmg-license scripts/terms/terms.json "${dmg_file_path}"
         fi
 
         if [[ $can_code_sign = true ]]; then

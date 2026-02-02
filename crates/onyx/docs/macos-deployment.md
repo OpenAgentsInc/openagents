@@ -95,7 +95,7 @@ Create `crates/onyx/resources/onyx.entitlements`:
 
 ## Step 4: Build Script
 
-Create `script/bundle-mac`:
+Create `scripts/bundle-mac`:
 
 ```bash
 #!/bin/bash
@@ -170,17 +170,17 @@ echo "  open /Applications/${APP_NAME}.app"
 
 Make it executable:
 ```bash
-chmod +x script/bundle-mac
+chmod +x scripts/bundle-mac
 ```
 
 ## Step 5: Build and Install
 
 ```bash
 # Build release bundle
-./script/bundle-mac
+./scripts/bundle-mac
 
 # Or with ad-hoc signing (recommended for personal use)
-./script/bundle-mac --sign
+./scripts/bundle-mac --sign
 
 # Install to Applications
 cp -r target/release/bundle/osx/Onyx.app /Applications/
@@ -235,7 +235,7 @@ launchctl unload ~/Library/LaunchAgents/com.openagents.onyx.plist
 
 ## Quick Install Script
 
-For convenience, create `script/install-mac`:
+For convenience, create `scripts/install-mac`:
 
 ```bash
 #!/bin/bash
@@ -244,7 +244,7 @@ set -euo pipefail
 echo "Building and installing Onyx..."
 
 # Build
-./script/bundle-mac --sign
+./scripts/bundle-mac --sign
 
 # Remove old installation
 rm -rf /Applications/Onyx.app
@@ -362,4 +362,4 @@ Key secrets needed:
 - [cargo-bundle documentation](https://github.com/burtonageo/cargo-bundle)
 - [Apple Code Signing Guide](https://developer.apple.com/library/archive/documentation/Security/Conceptual/CodeSigningGuide/)
 - [Apple Notarization Guide](https://developer.apple.com/documentation/security/notarizing_macos_software_before_distribution)
-- [Zed's bundle-mac script](https://github.com/zed-industries/zed/blob/main/script/bundle-mac)
+- [Zed's bundle-mac script](https://github.com/zed-industries/zed/blob/main/scripts/bundle-mac)
