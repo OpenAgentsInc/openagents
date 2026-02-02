@@ -13,23 +13,24 @@ import { Route as WalletRouteImport } from './routes/wallet'
 import { Route as SignupRouteImport } from './routes/signup'
 import { Route as RegisterRouteImport } from './routes/register'
 import { Route as LoginRouteImport } from './routes/login'
-import { Route as GetApiKeyRouteImport } from './routes/get-api-key'
-import { Route as FeedRouteImport } from './routes/feed'
-import { Route as AboutRouteImport } from './routes/about'
-import { Route as IndexRouteImport } from './routes/index'
-import { Route as PostsIndexRouteImport } from './routes/posts/index'
-import { Route as KbIndexRouteImport } from './routes/kb/index'
-import { Route as CommunitiesIndexRouteImport } from './routes/communities/index'
-import { Route as CIndexRouteImport } from './routes/c/index'
-import { Route as BlogIndexRouteImport } from './routes/blog/index'
-import { Route as UNpubRouteImport } from './routes/u/$npub'
-import { Route as PostsIdRouteImport } from './routes/posts/$id'
-import { Route as KbSplatRouteImport } from './routes/kb/$'
-import { Route as EventIdRouteImport } from './routes/event/$id'
-import { Route as CommunitiesSlugRouteImport } from './routes/communities/$slug'
-import { Route as BlogSlugRouteImport } from './routes/blog/$slug'
-import { Route as CSubclawIndexRouteImport } from './routes/c/$subclaw/index'
-import { Route as CSubclawPostIdRouteImport } from './routes/c/$subclaw/post/$id'
+import { Route as AppRouteRouteImport } from './routes/_app/route'
+import { Route as AppIndexRouteImport } from './routes/_app/index'
+import { Route as AppGetApiKeyRouteImport } from './routes/_app/get-api-key'
+import { Route as AppFeedRouteImport } from './routes/_app/feed'
+import { Route as AppAboutRouteImport } from './routes/_app/about'
+import { Route as AppPostsIndexRouteImport } from './routes/_app/posts/index'
+import { Route as AppKbIndexRouteImport } from './routes/_app/kb/index'
+import { Route as AppCommunitiesIndexRouteImport } from './routes/_app/communities/index'
+import { Route as AppCIndexRouteImport } from './routes/_app/c/index'
+import { Route as AppBlogIndexRouteImport } from './routes/_app/blog/index'
+import { Route as AppUNpubRouteImport } from './routes/_app/u/$npub'
+import { Route as AppPostsIdRouteImport } from './routes/_app/posts/$id'
+import { Route as AppKbSplatRouteImport } from './routes/_app/kb/$'
+import { Route as AppEventIdRouteImport } from './routes/_app/event/$id'
+import { Route as AppCommunitiesSlugRouteImport } from './routes/_app/communities/$slug'
+import { Route as AppBlogSlugRouteImport } from './routes/_app/blog/$slug'
+import { Route as AppCSubclawIndexRouteImport } from './routes/_app/c/$subclaw/index'
+import { Route as AppCSubclawPostIdRouteImport } from './routes/_app/c/$subclaw/post/$id'
 
 const WalletRoute = WalletRouteImport.update({
   id: '/wallet',
@@ -51,173 +52,178 @@ const LoginRoute = LoginRouteImport.update({
   path: '/login',
   getParentRoute: () => rootRouteImport,
 } as any)
-const GetApiKeyRoute = GetApiKeyRouteImport.update({
-  id: '/get-api-key',
-  path: '/get-api-key',
+const AppRouteRoute = AppRouteRouteImport.update({
+  id: '/_app',
   getParentRoute: () => rootRouteImport,
 } as any)
-const FeedRoute = FeedRouteImport.update({
-  id: '/feed',
-  path: '/feed',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AboutRoute = AboutRouteImport.update({
-  id: '/about',
-  path: '/about',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const IndexRoute = IndexRouteImport.update({
+const AppIndexRoute = AppIndexRouteImport.update({
   id: '/',
   path: '/',
-  getParentRoute: () => rootRouteImport,
+  getParentRoute: () => AppRouteRoute,
 } as any)
-const PostsIndexRoute = PostsIndexRouteImport.update({
+const AppGetApiKeyRoute = AppGetApiKeyRouteImport.update({
+  id: '/get-api-key',
+  path: '/get-api-key',
+  getParentRoute: () => AppRouteRoute,
+} as any)
+const AppFeedRoute = AppFeedRouteImport.update({
+  id: '/feed',
+  path: '/feed',
+  getParentRoute: () => AppRouteRoute,
+} as any)
+const AppAboutRoute = AppAboutRouteImport.update({
+  id: '/about',
+  path: '/about',
+  getParentRoute: () => AppRouteRoute,
+} as any)
+const AppPostsIndexRoute = AppPostsIndexRouteImport.update({
   id: '/posts/',
   path: '/posts/',
-  getParentRoute: () => rootRouteImport,
+  getParentRoute: () => AppRouteRoute,
 } as any)
-const KbIndexRoute = KbIndexRouteImport.update({
+const AppKbIndexRoute = AppKbIndexRouteImport.update({
   id: '/kb/',
   path: '/kb/',
-  getParentRoute: () => rootRouteImport,
+  getParentRoute: () => AppRouteRoute,
 } as any)
-const CommunitiesIndexRoute = CommunitiesIndexRouteImport.update({
+const AppCommunitiesIndexRoute = AppCommunitiesIndexRouteImport.update({
   id: '/communities/',
   path: '/communities/',
-  getParentRoute: () => rootRouteImport,
+  getParentRoute: () => AppRouteRoute,
 } as any)
-const CIndexRoute = CIndexRouteImport.update({
+const AppCIndexRoute = AppCIndexRouteImport.update({
   id: '/c/',
   path: '/c/',
-  getParentRoute: () => rootRouteImport,
+  getParentRoute: () => AppRouteRoute,
 } as any)
-const BlogIndexRoute = BlogIndexRouteImport.update({
+const AppBlogIndexRoute = AppBlogIndexRouteImport.update({
   id: '/blog/',
   path: '/blog/',
-  getParentRoute: () => rootRouteImport,
+  getParentRoute: () => AppRouteRoute,
 } as any)
-const UNpubRoute = UNpubRouteImport.update({
+const AppUNpubRoute = AppUNpubRouteImport.update({
   id: '/u/$npub',
   path: '/u/$npub',
-  getParentRoute: () => rootRouteImport,
+  getParentRoute: () => AppRouteRoute,
 } as any)
-const PostsIdRoute = PostsIdRouteImport.update({
+const AppPostsIdRoute = AppPostsIdRouteImport.update({
   id: '/posts/$id',
   path: '/posts/$id',
-  getParentRoute: () => rootRouteImport,
+  getParentRoute: () => AppRouteRoute,
 } as any)
-const KbSplatRoute = KbSplatRouteImport.update({
+const AppKbSplatRoute = AppKbSplatRouteImport.update({
   id: '/kb/$',
   path: '/kb/$',
-  getParentRoute: () => rootRouteImport,
+  getParentRoute: () => AppRouteRoute,
 } as any)
-const EventIdRoute = EventIdRouteImport.update({
+const AppEventIdRoute = AppEventIdRouteImport.update({
   id: '/event/$id',
   path: '/event/$id',
-  getParentRoute: () => rootRouteImport,
+  getParentRoute: () => AppRouteRoute,
 } as any)
-const CommunitiesSlugRoute = CommunitiesSlugRouteImport.update({
+const AppCommunitiesSlugRoute = AppCommunitiesSlugRouteImport.update({
   id: '/communities/$slug',
   path: '/communities/$slug',
-  getParentRoute: () => rootRouteImport,
+  getParentRoute: () => AppRouteRoute,
 } as any)
-const BlogSlugRoute = BlogSlugRouteImport.update({
+const AppBlogSlugRoute = AppBlogSlugRouteImport.update({
   id: '/blog/$slug',
   path: '/blog/$slug',
-  getParentRoute: () => rootRouteImport,
+  getParentRoute: () => AppRouteRoute,
 } as any)
-const CSubclawIndexRoute = CSubclawIndexRouteImport.update({
+const AppCSubclawIndexRoute = AppCSubclawIndexRouteImport.update({
   id: '/c/$subclaw/',
   path: '/c/$subclaw/',
-  getParentRoute: () => rootRouteImport,
+  getParentRoute: () => AppRouteRoute,
 } as any)
-const CSubclawPostIdRoute = CSubclawPostIdRouteImport.update({
+const AppCSubclawPostIdRoute = AppCSubclawPostIdRouteImport.update({
   id: '/c/$subclaw/post/$id',
   path: '/c/$subclaw/post/$id',
-  getParentRoute: () => rootRouteImport,
+  getParentRoute: () => AppRouteRoute,
 } as any)
 
 export interface FileRoutesByFullPath {
-  '/': typeof IndexRoute
-  '/about': typeof AboutRoute
-  '/feed': typeof FeedRoute
-  '/get-api-key': typeof GetApiKeyRoute
+  '/': typeof AppIndexRoute
   '/login': typeof LoginRoute
   '/register': typeof RegisterRoute
   '/signup': typeof SignupRoute
   '/wallet': typeof WalletRoute
-  '/blog/$slug': typeof BlogSlugRoute
-  '/communities/$slug': typeof CommunitiesSlugRoute
-  '/event/$id': typeof EventIdRoute
-  '/kb/$': typeof KbSplatRoute
-  '/posts/$id': typeof PostsIdRoute
-  '/u/$npub': typeof UNpubRoute
-  '/blog/': typeof BlogIndexRoute
-  '/c/': typeof CIndexRoute
-  '/communities/': typeof CommunitiesIndexRoute
-  '/kb/': typeof KbIndexRoute
-  '/posts/': typeof PostsIndexRoute
-  '/c/$subclaw/': typeof CSubclawIndexRoute
-  '/c/$subclaw/post/$id': typeof CSubclawPostIdRoute
+  '/about': typeof AppAboutRoute
+  '/feed': typeof AppFeedRoute
+  '/get-api-key': typeof AppGetApiKeyRoute
+  '/blog/$slug': typeof AppBlogSlugRoute
+  '/communities/$slug': typeof AppCommunitiesSlugRoute
+  '/event/$id': typeof AppEventIdRoute
+  '/kb/$': typeof AppKbSplatRoute
+  '/posts/$id': typeof AppPostsIdRoute
+  '/u/$npub': typeof AppUNpubRoute
+  '/blog/': typeof AppBlogIndexRoute
+  '/c/': typeof AppCIndexRoute
+  '/communities/': typeof AppCommunitiesIndexRoute
+  '/kb/': typeof AppKbIndexRoute
+  '/posts/': typeof AppPostsIndexRoute
+  '/c/$subclaw/': typeof AppCSubclawIndexRoute
+  '/c/$subclaw/post/$id': typeof AppCSubclawPostIdRoute
 }
 export interface FileRoutesByTo {
-  '/': typeof IndexRoute
-  '/about': typeof AboutRoute
-  '/feed': typeof FeedRoute
-  '/get-api-key': typeof GetApiKeyRoute
   '/login': typeof LoginRoute
   '/register': typeof RegisterRoute
   '/signup': typeof SignupRoute
   '/wallet': typeof WalletRoute
-  '/blog/$slug': typeof BlogSlugRoute
-  '/communities/$slug': typeof CommunitiesSlugRoute
-  '/event/$id': typeof EventIdRoute
-  '/kb/$': typeof KbSplatRoute
-  '/posts/$id': typeof PostsIdRoute
-  '/u/$npub': typeof UNpubRoute
-  '/blog': typeof BlogIndexRoute
-  '/c': typeof CIndexRoute
-  '/communities': typeof CommunitiesIndexRoute
-  '/kb': typeof KbIndexRoute
-  '/posts': typeof PostsIndexRoute
-  '/c/$subclaw': typeof CSubclawIndexRoute
-  '/c/$subclaw/post/$id': typeof CSubclawPostIdRoute
+  '/about': typeof AppAboutRoute
+  '/feed': typeof AppFeedRoute
+  '/get-api-key': typeof AppGetApiKeyRoute
+  '/': typeof AppIndexRoute
+  '/blog/$slug': typeof AppBlogSlugRoute
+  '/communities/$slug': typeof AppCommunitiesSlugRoute
+  '/event/$id': typeof AppEventIdRoute
+  '/kb/$': typeof AppKbSplatRoute
+  '/posts/$id': typeof AppPostsIdRoute
+  '/u/$npub': typeof AppUNpubRoute
+  '/blog': typeof AppBlogIndexRoute
+  '/c': typeof AppCIndexRoute
+  '/communities': typeof AppCommunitiesIndexRoute
+  '/kb': typeof AppKbIndexRoute
+  '/posts': typeof AppPostsIndexRoute
+  '/c/$subclaw': typeof AppCSubclawIndexRoute
+  '/c/$subclaw/post/$id': typeof AppCSubclawPostIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
-  '/': typeof IndexRoute
-  '/about': typeof AboutRoute
-  '/feed': typeof FeedRoute
-  '/get-api-key': typeof GetApiKeyRoute
+  '/_app': typeof AppRouteRouteWithChildren
   '/login': typeof LoginRoute
   '/register': typeof RegisterRoute
   '/signup': typeof SignupRoute
   '/wallet': typeof WalletRoute
-  '/blog/$slug': typeof BlogSlugRoute
-  '/communities/$slug': typeof CommunitiesSlugRoute
-  '/event/$id': typeof EventIdRoute
-  '/kb/$': typeof KbSplatRoute
-  '/posts/$id': typeof PostsIdRoute
-  '/u/$npub': typeof UNpubRoute
-  '/blog/': typeof BlogIndexRoute
-  '/c/': typeof CIndexRoute
-  '/communities/': typeof CommunitiesIndexRoute
-  '/kb/': typeof KbIndexRoute
-  '/posts/': typeof PostsIndexRoute
-  '/c/$subclaw/': typeof CSubclawIndexRoute
-  '/c/$subclaw/post/$id': typeof CSubclawPostIdRoute
+  '/_app/about': typeof AppAboutRoute
+  '/_app/feed': typeof AppFeedRoute
+  '/_app/get-api-key': typeof AppGetApiKeyRoute
+  '/_app/': typeof AppIndexRoute
+  '/_app/blog/$slug': typeof AppBlogSlugRoute
+  '/_app/communities/$slug': typeof AppCommunitiesSlugRoute
+  '/_app/event/$id': typeof AppEventIdRoute
+  '/_app/kb/$': typeof AppKbSplatRoute
+  '/_app/posts/$id': typeof AppPostsIdRoute
+  '/_app/u/$npub': typeof AppUNpubRoute
+  '/_app/blog/': typeof AppBlogIndexRoute
+  '/_app/c/': typeof AppCIndexRoute
+  '/_app/communities/': typeof AppCommunitiesIndexRoute
+  '/_app/kb/': typeof AppKbIndexRoute
+  '/_app/posts/': typeof AppPostsIndexRoute
+  '/_app/c/$subclaw/': typeof AppCSubclawIndexRoute
+  '/_app/c/$subclaw/post/$id': typeof AppCSubclawPostIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
-    | '/about'
-    | '/feed'
-    | '/get-api-key'
     | '/login'
     | '/register'
     | '/signup'
     | '/wallet'
+    | '/about'
+    | '/feed'
+    | '/get-api-key'
     | '/blog/$slug'
     | '/communities/$slug'
     | '/event/$id'
@@ -233,14 +239,14 @@ export interface FileRouteTypes {
     | '/c/$subclaw/post/$id'
   fileRoutesByTo: FileRoutesByTo
   to:
-    | '/'
-    | '/about'
-    | '/feed'
-    | '/get-api-key'
     | '/login'
     | '/register'
     | '/signup'
     | '/wallet'
+    | '/about'
+    | '/feed'
+    | '/get-api-key'
+    | '/'
     | '/blog/$slug'
     | '/communities/$slug'
     | '/event/$id'
@@ -256,51 +262,36 @@ export interface FileRouteTypes {
     | '/c/$subclaw/post/$id'
   id:
     | '__root__'
-    | '/'
-    | '/about'
-    | '/feed'
-    | '/get-api-key'
+    | '/_app'
     | '/login'
     | '/register'
     | '/signup'
     | '/wallet'
-    | '/blog/$slug'
-    | '/communities/$slug'
-    | '/event/$id'
-    | '/kb/$'
-    | '/posts/$id'
-    | '/u/$npub'
-    | '/blog/'
-    | '/c/'
-    | '/communities/'
-    | '/kb/'
-    | '/posts/'
-    | '/c/$subclaw/'
-    | '/c/$subclaw/post/$id'
+    | '/_app/about'
+    | '/_app/feed'
+    | '/_app/get-api-key'
+    | '/_app/'
+    | '/_app/blog/$slug'
+    | '/_app/communities/$slug'
+    | '/_app/event/$id'
+    | '/_app/kb/$'
+    | '/_app/posts/$id'
+    | '/_app/u/$npub'
+    | '/_app/blog/'
+    | '/_app/c/'
+    | '/_app/communities/'
+    | '/_app/kb/'
+    | '/_app/posts/'
+    | '/_app/c/$subclaw/'
+    | '/_app/c/$subclaw/post/$id'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
-  IndexRoute: typeof IndexRoute
-  AboutRoute: typeof AboutRoute
-  FeedRoute: typeof FeedRoute
-  GetApiKeyRoute: typeof GetApiKeyRoute
+  AppRouteRoute: typeof AppRouteRouteWithChildren
   LoginRoute: typeof LoginRoute
   RegisterRoute: typeof RegisterRoute
   SignupRoute: typeof SignupRoute
   WalletRoute: typeof WalletRoute
-  BlogSlugRoute: typeof BlogSlugRoute
-  CommunitiesSlugRoute: typeof CommunitiesSlugRoute
-  EventIdRoute: typeof EventIdRoute
-  KbSplatRoute: typeof KbSplatRoute
-  PostsIdRoute: typeof PostsIdRoute
-  UNpubRoute: typeof UNpubRoute
-  BlogIndexRoute: typeof BlogIndexRoute
-  CIndexRoute: typeof CIndexRoute
-  CommunitiesIndexRoute: typeof CommunitiesIndexRoute
-  KbIndexRoute: typeof KbIndexRoute
-  PostsIndexRoute: typeof PostsIndexRoute
-  CSubclawIndexRoute: typeof CSubclawIndexRoute
-  CSubclawPostIdRoute: typeof CSubclawPostIdRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -333,150 +324,185 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LoginRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/get-api-key': {
-      id: '/get-api-key'
-      path: '/get-api-key'
-      fullPath: '/get-api-key'
-      preLoaderRoute: typeof GetApiKeyRouteImport
+    '/_app': {
+      id: '/_app'
+      path: ''
+      fullPath: '/'
+      preLoaderRoute: typeof AppRouteRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/feed': {
-      id: '/feed'
-      path: '/feed'
-      fullPath: '/feed'
-      preLoaderRoute: typeof FeedRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/about': {
-      id: '/about'
-      path: '/about'
-      fullPath: '/about'
-      preLoaderRoute: typeof AboutRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/': {
-      id: '/'
+    '/_app/': {
+      id: '/_app/'
       path: '/'
       fullPath: '/'
-      preLoaderRoute: typeof IndexRouteImport
-      parentRoute: typeof rootRouteImport
+      preLoaderRoute: typeof AppIndexRouteImport
+      parentRoute: typeof AppRouteRoute
     }
-    '/posts/': {
-      id: '/posts/'
+    '/_app/get-api-key': {
+      id: '/_app/get-api-key'
+      path: '/get-api-key'
+      fullPath: '/get-api-key'
+      preLoaderRoute: typeof AppGetApiKeyRouteImport
+      parentRoute: typeof AppRouteRoute
+    }
+    '/_app/feed': {
+      id: '/_app/feed'
+      path: '/feed'
+      fullPath: '/feed'
+      preLoaderRoute: typeof AppFeedRouteImport
+      parentRoute: typeof AppRouteRoute
+    }
+    '/_app/about': {
+      id: '/_app/about'
+      path: '/about'
+      fullPath: '/about'
+      preLoaderRoute: typeof AppAboutRouteImport
+      parentRoute: typeof AppRouteRoute
+    }
+    '/_app/posts/': {
+      id: '/_app/posts/'
       path: '/posts'
       fullPath: '/posts/'
-      preLoaderRoute: typeof PostsIndexRouteImport
-      parentRoute: typeof rootRouteImport
+      preLoaderRoute: typeof AppPostsIndexRouteImport
+      parentRoute: typeof AppRouteRoute
     }
-    '/kb/': {
-      id: '/kb/'
+    '/_app/kb/': {
+      id: '/_app/kb/'
       path: '/kb'
       fullPath: '/kb/'
-      preLoaderRoute: typeof KbIndexRouteImport
-      parentRoute: typeof rootRouteImport
+      preLoaderRoute: typeof AppKbIndexRouteImport
+      parentRoute: typeof AppRouteRoute
     }
-    '/communities/': {
-      id: '/communities/'
+    '/_app/communities/': {
+      id: '/_app/communities/'
       path: '/communities'
       fullPath: '/communities/'
-      preLoaderRoute: typeof CommunitiesIndexRouteImport
-      parentRoute: typeof rootRouteImport
+      preLoaderRoute: typeof AppCommunitiesIndexRouteImport
+      parentRoute: typeof AppRouteRoute
     }
-    '/c/': {
-      id: '/c/'
+    '/_app/c/': {
+      id: '/_app/c/'
       path: '/c'
       fullPath: '/c/'
-      preLoaderRoute: typeof CIndexRouteImport
-      parentRoute: typeof rootRouteImport
+      preLoaderRoute: typeof AppCIndexRouteImport
+      parentRoute: typeof AppRouteRoute
     }
-    '/blog/': {
-      id: '/blog/'
+    '/_app/blog/': {
+      id: '/_app/blog/'
       path: '/blog'
       fullPath: '/blog/'
-      preLoaderRoute: typeof BlogIndexRouteImport
-      parentRoute: typeof rootRouteImport
+      preLoaderRoute: typeof AppBlogIndexRouteImport
+      parentRoute: typeof AppRouteRoute
     }
-    '/u/$npub': {
-      id: '/u/$npub'
+    '/_app/u/$npub': {
+      id: '/_app/u/$npub'
       path: '/u/$npub'
       fullPath: '/u/$npub'
-      preLoaderRoute: typeof UNpubRouteImport
-      parentRoute: typeof rootRouteImport
+      preLoaderRoute: typeof AppUNpubRouteImport
+      parentRoute: typeof AppRouteRoute
     }
-    '/posts/$id': {
-      id: '/posts/$id'
+    '/_app/posts/$id': {
+      id: '/_app/posts/$id'
       path: '/posts/$id'
       fullPath: '/posts/$id'
-      preLoaderRoute: typeof PostsIdRouteImport
-      parentRoute: typeof rootRouteImport
+      preLoaderRoute: typeof AppPostsIdRouteImport
+      parentRoute: typeof AppRouteRoute
     }
-    '/kb/$': {
-      id: '/kb/$'
+    '/_app/kb/$': {
+      id: '/_app/kb/$'
       path: '/kb/$'
       fullPath: '/kb/$'
-      preLoaderRoute: typeof KbSplatRouteImport
-      parentRoute: typeof rootRouteImport
+      preLoaderRoute: typeof AppKbSplatRouteImport
+      parentRoute: typeof AppRouteRoute
     }
-    '/event/$id': {
-      id: '/event/$id'
+    '/_app/event/$id': {
+      id: '/_app/event/$id'
       path: '/event/$id'
       fullPath: '/event/$id'
-      preLoaderRoute: typeof EventIdRouteImport
-      parentRoute: typeof rootRouteImport
+      preLoaderRoute: typeof AppEventIdRouteImport
+      parentRoute: typeof AppRouteRoute
     }
-    '/communities/$slug': {
-      id: '/communities/$slug'
+    '/_app/communities/$slug': {
+      id: '/_app/communities/$slug'
       path: '/communities/$slug'
       fullPath: '/communities/$slug'
-      preLoaderRoute: typeof CommunitiesSlugRouteImport
-      parentRoute: typeof rootRouteImport
+      preLoaderRoute: typeof AppCommunitiesSlugRouteImport
+      parentRoute: typeof AppRouteRoute
     }
-    '/blog/$slug': {
-      id: '/blog/$slug'
+    '/_app/blog/$slug': {
+      id: '/_app/blog/$slug'
       path: '/blog/$slug'
       fullPath: '/blog/$slug'
-      preLoaderRoute: typeof BlogSlugRouteImport
-      parentRoute: typeof rootRouteImport
+      preLoaderRoute: typeof AppBlogSlugRouteImport
+      parentRoute: typeof AppRouteRoute
     }
-    '/c/$subclaw/': {
-      id: '/c/$subclaw/'
+    '/_app/c/$subclaw/': {
+      id: '/_app/c/$subclaw/'
       path: '/c/$subclaw'
       fullPath: '/c/$subclaw/'
-      preLoaderRoute: typeof CSubclawIndexRouteImport
-      parentRoute: typeof rootRouteImport
+      preLoaderRoute: typeof AppCSubclawIndexRouteImport
+      parentRoute: typeof AppRouteRoute
     }
-    '/c/$subclaw/post/$id': {
-      id: '/c/$subclaw/post/$id'
+    '/_app/c/$subclaw/post/$id': {
+      id: '/_app/c/$subclaw/post/$id'
       path: '/c/$subclaw/post/$id'
       fullPath: '/c/$subclaw/post/$id'
-      preLoaderRoute: typeof CSubclawPostIdRouteImport
-      parentRoute: typeof rootRouteImport
+      preLoaderRoute: typeof AppCSubclawPostIdRouteImport
+      parentRoute: typeof AppRouteRoute
     }
   }
 }
 
+interface AppRouteRouteChildren {
+  AppAboutRoute: typeof AppAboutRoute
+  AppFeedRoute: typeof AppFeedRoute
+  AppGetApiKeyRoute: typeof AppGetApiKeyRoute
+  AppIndexRoute: typeof AppIndexRoute
+  AppBlogSlugRoute: typeof AppBlogSlugRoute
+  AppCommunitiesSlugRoute: typeof AppCommunitiesSlugRoute
+  AppEventIdRoute: typeof AppEventIdRoute
+  AppKbSplatRoute: typeof AppKbSplatRoute
+  AppPostsIdRoute: typeof AppPostsIdRoute
+  AppUNpubRoute: typeof AppUNpubRoute
+  AppBlogIndexRoute: typeof AppBlogIndexRoute
+  AppCIndexRoute: typeof AppCIndexRoute
+  AppCommunitiesIndexRoute: typeof AppCommunitiesIndexRoute
+  AppKbIndexRoute: typeof AppKbIndexRoute
+  AppPostsIndexRoute: typeof AppPostsIndexRoute
+  AppCSubclawIndexRoute: typeof AppCSubclawIndexRoute
+  AppCSubclawPostIdRoute: typeof AppCSubclawPostIdRoute
+}
+
+const AppRouteRouteChildren: AppRouteRouteChildren = {
+  AppAboutRoute: AppAboutRoute,
+  AppFeedRoute: AppFeedRoute,
+  AppGetApiKeyRoute: AppGetApiKeyRoute,
+  AppIndexRoute: AppIndexRoute,
+  AppBlogSlugRoute: AppBlogSlugRoute,
+  AppCommunitiesSlugRoute: AppCommunitiesSlugRoute,
+  AppEventIdRoute: AppEventIdRoute,
+  AppKbSplatRoute: AppKbSplatRoute,
+  AppPostsIdRoute: AppPostsIdRoute,
+  AppUNpubRoute: AppUNpubRoute,
+  AppBlogIndexRoute: AppBlogIndexRoute,
+  AppCIndexRoute: AppCIndexRoute,
+  AppCommunitiesIndexRoute: AppCommunitiesIndexRoute,
+  AppKbIndexRoute: AppKbIndexRoute,
+  AppPostsIndexRoute: AppPostsIndexRoute,
+  AppCSubclawIndexRoute: AppCSubclawIndexRoute,
+  AppCSubclawPostIdRoute: AppCSubclawPostIdRoute,
+}
+
+const AppRouteRouteWithChildren = AppRouteRoute._addFileChildren(
+  AppRouteRouteChildren,
+)
+
 const rootRouteChildren: RootRouteChildren = {
-  IndexRoute: IndexRoute,
-  AboutRoute: AboutRoute,
-  FeedRoute: FeedRoute,
-  GetApiKeyRoute: GetApiKeyRoute,
+  AppRouteRoute: AppRouteRouteWithChildren,
   LoginRoute: LoginRoute,
   RegisterRoute: RegisterRoute,
   SignupRoute: SignupRoute,
   WalletRoute: WalletRoute,
-  BlogSlugRoute: BlogSlugRoute,
-  CommunitiesSlugRoute: CommunitiesSlugRoute,
-  EventIdRoute: EventIdRoute,
-  KbSplatRoute: KbSplatRoute,
-  PostsIdRoute: PostsIdRoute,
-  UNpubRoute: UNpubRoute,
-  BlogIndexRoute: BlogIndexRoute,
-  CIndexRoute: CIndexRoute,
-  CommunitiesIndexRoute: CommunitiesIndexRoute,
-  KbIndexRoute: KbIndexRoute,
-  PostsIndexRoute: PostsIndexRoute,
-  CSubclawIndexRoute: CSubclawIndexRoute,
-  CSubclawPostIdRoute: CSubclawPostIdRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

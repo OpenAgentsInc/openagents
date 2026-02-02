@@ -2,17 +2,15 @@ import { createFileRoute } from "@tanstack/react-router";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { SITE_DESCRIPTION, SITE_TITLE } from "@/consts";
 import { buildHead } from "@/lib/seo";
-import { SiteLayout } from "@/components/SiteLayout";
 
-export const Route = createFileRoute("/about")({
+export const Route = createFileRoute("/_app/about")({
   component: RouteComponent,
   head: () => buildHead({ title: `About | ${SITE_TITLE}`, description: SITE_DESCRIPTION }),
 });
 
 function RouteComponent() {
   return (
-    <SiteLayout>
-      <div className="max-w-3xl mx-auto px-4 py-8 space-y-8">
+    <div className="max-w-3xl mx-auto px-4 py-8 space-y-8">
         <Card>
           <CardHeader>
             <CardTitle className="text-2xl">About OpenAgents</CardTitle>
@@ -154,7 +152,6 @@ function RouteComponent() {
             </ul>
           </CardHeader>
         </Card>
-      </div>
-    </SiteLayout>
+    </div>
   );
 }
