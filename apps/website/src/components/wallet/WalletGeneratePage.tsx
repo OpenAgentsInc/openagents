@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import * as bip39 from "bip39";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -22,7 +22,7 @@ export default function WalletGeneratePage({
   const [copied, setCopied] = useState(false);
   const [genError, setGenError] = useState<string | null>(null);
 
-  const runGenerate = React.useCallback(() => {
+  const runGenerate = useCallback(() => {
     setGenError(null);
     setLoading(true);
     setMnemonic("");

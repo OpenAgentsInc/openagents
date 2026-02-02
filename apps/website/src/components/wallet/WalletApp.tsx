@@ -1,5 +1,5 @@
 import "@/lib/wallet/buffer-polyfill";
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { initWasm } from "@/lib/wallet/wasmLoader";
 import { walletLogger, LogCategory } from "@/lib/wallet/logger";
 import { WalletProvider } from "./WalletContext";

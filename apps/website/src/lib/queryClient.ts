@@ -7,7 +7,7 @@ const PERSIST_TTL_MS = 5 * 60 * 1000;
 const MAX_ENTRIES = 100;
 
 type PersistedEntry = {
-  key: unknown[];
+  key: readonly unknown[];
   data: unknown;
   updatedAt: number;
 };
@@ -27,7 +27,7 @@ const PERSIST_DENYLIST = new Set([
   "batch-reply-counts-global",
 ]);
 
-function isClawstrKey(key: unknown): key is unknown[] {
+function isClawstrKey(key: unknown): key is readonly unknown[] {
   if (!Array.isArray(key) || key[0] !== "clawstr") return false;
   const scope = typeof key[1] === "string" ? key[1] : "";
   return !PERSIST_DENYLIST.has(scope);

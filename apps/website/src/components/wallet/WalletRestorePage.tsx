@@ -1,14 +1,13 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
 interface Props {
   onConnect: (mnemonic: string) => void;
   onBack: () => void;
-  onClearError: () => void;
 }
 
-export default function WalletRestorePage({ onConnect, onBack, onClearError }: Props) {
+export default function WalletRestorePage({ onConnect, onBack }: Props) {
   const [mnemonic, setMnemonic] = useState("");
   const [error, setError] = useState<string | null>(null);
 

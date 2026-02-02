@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import type { Config, GetInfoResponse, Network, Payment, SdkEvent } from "@breeztech/breez-sdk-spark";
 import { defaultConfig } from "@breeztech/breez-sdk-spark";
 import { useWallet } from "./WalletContext";
@@ -147,11 +147,12 @@ export default function WalletFlow() {
       setIsConnected(true);
       setScreen("wallet");
       showToast("success", "Wallet connected");
+      return true;
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       walletLogger.error(LogCategory.SDK, "Connect failed", { error: msg });
       setError("Failed to connect. Check your phrase and try again.");
-      throw e;
+      return false;
     } finally {
       setIsLoading(false);
       setIsRestoring(false);
@@ -207,7 +208,6 @@ export default function WalletFlow() {
         <WalletRestorePage
           onConnect={(mnemonic) => connectWallet(mnemonic, true)}
           onBack={() => setScreen("home")}
-          onClearError={() => setError(null)}
         />
       );
     case "generate":

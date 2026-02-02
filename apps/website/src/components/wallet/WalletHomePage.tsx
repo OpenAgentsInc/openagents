@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from "react";
+import { useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 
 interface Props {
@@ -71,7 +71,7 @@ export default function WalletHomePage({ onRestoreWallet, onCreateNewWallet }: P
 
   // Render into document.body so no layout parent can capture or block events
   if (typeof document !== "undefined") {
-    return createPortal(content, document.body, "wallet-home-portal") as React.ReactElement;
+    return createPortal(content, document.body, "wallet-home-portal");
   }
   return content;
 }

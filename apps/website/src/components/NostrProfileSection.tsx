@@ -111,7 +111,7 @@ function NostrProfileSectionInner({ npub, limit = 50 }: NostrProfileSectionProps
   const [showAll, setShowAll] = useState(false);
   const lastProfileRef = useRef<string | null>(null);
 
-  const pubkey = useMemo(() => npubDecodeToHex(npub), [npub]);
+  const pubkey = useMemo(() => npubDecodeToHex(npub) ?? undefined, [npub]);
   const profileNpub = useMemo(() => (pubkey ? pubkeyToNpub(pubkey) : ""), [pubkey]);
 
   const authorsQuery = useBatchAuthors(pubkey ? [pubkey] : []);

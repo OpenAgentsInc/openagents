@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { useWallet } from "./WalletContext";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -97,13 +97,6 @@ export default function ReceivePaymentDialog({ open, onOpenChange, onClose }: Pr
   useEffect(() => {
     if (open && tab === "bitcoin" && !bitcoinAddress && !loading) generateBitcoin();
   }, [open, tab]);
-
-  const displayValue =
-    tab === "lightning"
-      ? paymentRequest
-      : tab === "spark"
-        ? sparkAddress
-        : bitcoinAddress;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

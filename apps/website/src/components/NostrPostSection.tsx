@@ -52,7 +52,6 @@ function NostrPostSectionInner({
 
 export function NostrPostSection({ eventId, subclaw, showAll: showAllInitial = false }: NostrPostSectionProps) {
   const [mounted, setMounted] = useState(false);
-  const [showAll, setShowAll] = useState(showAllInitial);
   const [queryClient] = useState(() => getQueryClient());
   useEffect(() => setMounted(true), []);
 
@@ -60,7 +59,7 @@ export function NostrPostSection({ eventId, subclaw, showAll: showAllInitial = f
     <QueryClientProvider client={queryClient}>
       <RelayConfigProvider>
         {mounted ? (
-          <NostrPostSectionInner eventId={eventId} subclaw={subclaw} showAllInitial={showAll} />
+          <NostrPostSectionInner eventId={eventId} subclaw={subclaw} showAllInitial={showAllInitial} />
         ) : (
           <PostSkeleton />
         )}

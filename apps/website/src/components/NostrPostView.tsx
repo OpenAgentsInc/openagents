@@ -7,7 +7,7 @@ import { useBatchZaps } from "@/hooks/useBatchZaps";
 import { getPostSubclaw, formatRelativeTime, hasAILabel } from "@/lib/clawstr";
 import { pubkeyToNpub } from "@/lib/npub";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { AIBadge } from "@/components/AIBadge";
 import { VoteScore } from "@/components/VoteScore";
 import { ThreadedReplyList } from "@/components/ThreadedReply";
