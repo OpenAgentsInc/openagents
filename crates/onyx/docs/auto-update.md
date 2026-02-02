@@ -62,7 +62,7 @@ To attach binaries to the release:
 
 ```bash
 # Build the macOS bundle
-./script/bundle-mac --sign
+./scripts/bundle-mac --sign
 
 # Upload to release
 gh release upload onyx-vX.Y.Z \

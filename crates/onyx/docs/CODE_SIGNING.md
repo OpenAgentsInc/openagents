@@ -83,13 +83,13 @@ export APPLE_NOTARIZATION_ISSUER_ID="12345678-1234-1234-1234-123456789012"
 No certificates needed, just sign with ad-hoc:
 
 ```bash
-./script/bundle-mac --sign --install
+./scripts/bundle-mac --sign --install
 ```
 
 ### Release Build with DMG
 
 ```bash
-./script/bundle-mac --sign --dmg
+./scripts/bundle-mac --sign --dmg
 ```
 
 Output: `target/aarch64-apple-darwin/release/Onyx-aarch64.dmg`
@@ -97,7 +97,7 @@ Output: `target/aarch64-apple-darwin/release/Onyx-aarch64.dmg`
 ### Full Release with Notarization
 
 ```bash
-./script/bundle-mac --sign --dmg --notarize
+./scripts/bundle-mac --sign --dmg --notarize
 ```
 
 This will:
