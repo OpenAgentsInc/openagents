@@ -1,3 +1,4 @@
+import '@/lib/wallet/buffer-polyfill'
 import { HeadContent, Scripts, createRootRoute, useRouterState } from '@tanstack/react-router'
 import appCss from '../styles.css?url'
 import { SITE_DESCRIPTION, SITE_TITLE } from '@/consts'
