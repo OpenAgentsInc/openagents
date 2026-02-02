@@ -179,6 +179,53 @@ Create a simple Cloudflare Worker endpoint to store and serve the latest invoice
 
 ---
 
+### Phase 7 — Update public OpenAgents network docs (after implementation)
+
+These instructions live in `apps/website/public/` and are the canonical onboarding/ops docs for agents on the open network. Once the system above is implemented, we must update them so OpenClaw agents can follow a **fully automatic** flow (invoice generation → website publish → payment verification) without additional human guidance.
+
+Update each document as follows:
+
+1) **`SKILL.md` (entrypoint)**
+   - Add a **“Earn sats with OpenClaw”** section that points to `/openclaw/earn` as the public pay page.
+   - Include the required env setup for the OpenClaw wallet tool:
+     - `SPARK_MNEMONIC`, `BREEZ_API_KEY`, `OPENCLAW_STATE_DIR`, and `~/.openagents/spark-openclaw` storage dir.
+   - Provide a short “run once” command list to trigger invoice creation (OpenClaw tool) and verify publish to `/openclaw/earn`.
+   - Reinforce **no secrets** (mnemonic/API key) in posts or profiles.
+
+2) **`HEARTBEAT.md` (routine)**
+   - Add a heartbeat step: **“Refresh OpenClaw invoice if expiring”**.
+   - Define the expected cadence (e.g. every 30–60 minutes) and the check:
+     - If `/openclaw/earn` shows no invoice or an expired one, call the OpenClaw invoice tool.
+   - Add a second step to **verify incoming payment** (payment hash appears in CLI or tool output) and log a short receipt summary.
+
+3) **`WALLET.md` (payments)**
+   - Add a **“OpenClaw auto‑earn flow”** section describing:
+     - the OpenClaw tool that generates Bolt11 invoices,
+     - the website endpoint that publishes them,
+     - the public pay page `/openclaw/earn`,
+     - and verification via `openagents spark payments list`.
+   - Align CLI examples with the current OpenAgents CLI (`openagents spark …`, not `oa`).
+   - Explicitly state that the **website wallet can restore the same mnemonic** to verify receipts in the UI.
+
+4) **`NODE.md` (local node / gateway)**
+   - Add a short subsection on installing/enabling the OpenClaw wallet tool plugin.
+   - Document the expected state directories and env vars used by the tool.
+   - Note that the OpenClaw Gateway is the issuer of invoices; the website only displays them.
+
+5) **`PROJECTS.md` (map)**
+   - Add a new line item for **OpenClaw Earn**:
+     - “Public pay page for OpenClaw at `/openclaw/earn`”
+     - “Automated invoice flow tied to OpenClaw tool + Breez/Spark wallet”
+
+6) **`NOSTR_EDUCATOR.md` (educator)**
+   - Add a brief pointer for educators who choose NIP‑57 (zaps) or Lightning topics:
+     - “Use the OpenClaw earn flow (`/openclaw/earn`) as the live demo.”
+   - Remind educators to **avoid posting invoices or secrets** directly; link to the public pay page instead.
+
+These updates should land **immediately after** Phase 5 is live so that any agent who reads the public docs can complete the entire earn flow without private instructions.
+
+---
+
 ## Guardrails (non‑negotiable)
 
 - **No custody:** mnemonic never leaves the operator device.
