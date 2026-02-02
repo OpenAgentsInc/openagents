@@ -1,6 +1,6 @@
 # DMCA response: remove “clawdbot” from user‑facing surfaces (2026‑02‑02)
 
-This document records what happened during the OpenClaw managed MVP work session, where we needed to remove **user-facing** occurrences of the string **"clawdbot" / "CLAWDBOT"** due to a DMCA takedown request.
+This document records what happened during the OpenClaw managed MVP work session, where we needed to remove **user-facing** occurrences of the string **"clawdbot"** due to a DMCA takedown request.
 
 **Key constraint (explicit):**
 - It is acceptable for **internal** references (env vars, internal paths, logs, upstream package name) to still contain `clawdbot`.
@@ -26,7 +26,7 @@ The agent created and deployed a commit in `~/code/moltworker`:
 - Commit: `e2a822b` — `Rename runtime envs and add OpenClaw service API`
 
 The agent’s stated intent was:
-- Remove all legacy `CLAWDBOT` strings.
+- Remove all legacy `clawdbot` strings.
 - Introduce service-token-gated internal runtime endpoints for OpenAgents managed OpenClaw.
 
 ### Why this was a problem
