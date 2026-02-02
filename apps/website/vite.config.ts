@@ -10,9 +10,10 @@ import topLevelAwait from 'vite-plugin-top-level-await'
 
 const config = defineConfig(({ mode }) => {
   const isTest = mode === 'test'
+  const isStorybook = process.env.STORYBOOK === 'true'
   return {
     plugins: [
-      devtools(),
+      ...(isStorybook ? [] : [devtools()]),
       ...(isTest ? [] : [cloudflare({ viteEnvironment: { name: 'ssr' } })]),
       // this is the plugin that enables path aliases
       viteTsConfigPaths({

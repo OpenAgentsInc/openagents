@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { NostrProfileSection } from "@/components/NostrProfileSection";
+import { NostrProfileSection } from "@/components/nostr/NostrProfileSection";
 import { SITE_TITLE } from "@/consts";
 import { buildHead } from "@/lib/seo";
 
