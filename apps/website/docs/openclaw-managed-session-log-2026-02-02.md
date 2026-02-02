@@ -206,15 +206,30 @@ File: `apps/website/vite.config.ts`
 
 ---
 
+## Website dependency update
+- Added `tslib` to `apps/website/package.json` + `apps/website/pnpm-lock.yaml` to satisfy runtime helper import requirements during deploy.
+
+---
+
 ## Git operations
 
 ### openagents repo
-- Commit: **Add managed OpenClaw API, Convex, and UI**
+- Commits:
+  - **Add managed OpenClaw API, Convex, and UI**
+  - **Add tslib dependency and update OpenClaw session log**
 - Pushed to `main`
 
 ### moltworker repo
 - Commit: **Rename runtime envs and add OpenClaw service API**
 - Push **failed** due to missing GitHub credentials (manual push required)
+- Retried push after deploy; failure persists
+
+---
+
+## Deployments
+- `apps/api`: `npm run deploy` (success; warning about unused fields in `runtime_client.rs`)
+- `apps/website`: `pnpm run deploy` (success; `punycode` deprecation warning)
+- `/home/christopherdavid/code/moltworker`: `npm run deploy` (success; `punycode` deprecation warning)
 
 ---
 
