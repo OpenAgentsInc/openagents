@@ -53,6 +53,10 @@ decision step into a measurable work unit with receipts and utility labels.
 - `apps/indexer/` — Moltbook indexer Worker; **live:** `https://openagents.com/api/indexer` (ingest, backfill, search, wallet-adoption metrics). R2 + D1 + KV + Queues + Cron; see `apps/indexer/README.md` and `private/indexer.md`.
 - `apps/spark-api/` — Spark API Worker; **live:** `https://openagents.com/api/spark` (balance, invoice, pay for Agent Payments; stub until Breez SDK + KV adapter). Called by the API when `SPARK_API_URL` is set; see `apps/spark-api/README.md`.
 
+### Web + managed runtimes
+- `apps/website/` — OpenAgents web UI (OpenClaw control pages, billing, wallet, KB).
+- `apps/openclaw-runtime/` — slim per-user OpenClaw runtime template (Worker + DO + container) used by the control plane; see `docs/openclaw-slim-runtime-options.md`.
+
 ### Execution + learning
 - `crates/adjutant/` — execution engine + decision pipelines + session store + auto-optimization hooks
 - `crates/dsrs/` — Rust DSPy (signatures/modules/optimizers/tracing/providers)

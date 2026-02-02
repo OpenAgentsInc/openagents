@@ -45,6 +45,9 @@ how Autopilot turns *vibes* into *predictability*.
 The CLI and other agent surfaces live in the same repo but are not the primary path here.
 If you need them, use the docs index below to navigate the relevant crates and guides.
 
+OpenAgents.com (web UI) lives in `apps/website` and includes the managed OpenClaw control surfaces.
+The slim per-user runtime template lives in `apps/openclaw-runtime`.
+
 ## Documentation
 
 Start with:
@@ -53,3 +56,4 @@ Start with:
 * **Docs index (everything else)**: [docs/README.md](docs/README.md)
 * **Repo map / ownership**: [PROJECT_OVERVIEW.md](./PROJECT_OVERVIEW.md)
 * **Agent contract / contribution norms**: [AGENTS.md](./AGENTS.md)
+* **OpenClaw runtime (managed)**: [docs/openclaw-slim-runtime-options.md](docs/openclaw-slim-runtime-options.md)
