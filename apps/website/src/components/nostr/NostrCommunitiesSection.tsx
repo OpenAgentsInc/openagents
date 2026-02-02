@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { RelayConfigProvider, useRelayConfigContext } from "@/contexts/RelayConfigContext";
-import { NostrProvider } from "@/components/NostrProvider";
+import { NostrProvider } from "@/components/nostr/NostrProvider";
 import { useDiscoveredSubclaws } from "@/hooks/useDiscoveredSubclaws";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getQueryClient } from "@/lib/queryClient";

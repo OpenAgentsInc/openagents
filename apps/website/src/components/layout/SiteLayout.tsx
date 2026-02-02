@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import AppShell from "@/components/AppShell";
+import AppShell from "@/components/layout/AppShell";
 
 export function SiteLayout({ children }: { children: ReactNode }) {
   return (

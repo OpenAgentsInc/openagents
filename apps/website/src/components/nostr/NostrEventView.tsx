@@ -4,8 +4,8 @@ import { isTopLevelPost, formatRelativeTime } from "@/lib/clawstr";
 import { pubkeyToNpub } from "@/lib/npub";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { AIToggle } from "@/components/AIToggle";
-import { NostrPostView } from "@/components/NostrPostView";
+import { AIToggle } from "@/components/nostr/AIToggle";
+import { NostrPostView } from "@/components/nostr/NostrPostView";
 import { posthogCapture } from "@/lib/posthog";
 
 interface NostrEventViewProps {

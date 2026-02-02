@@ -1,8 +1,8 @@
 "use client";
 
 import * as React from "react";
-import { AppSidebar } from "@/components/AppSidebar";
-import { ModeToggle } from "@/components/ModeToggle";
+import { AppSidebar } from "@/components/layout/AppSidebar";
+import { ModeToggle } from "@/components/layout/ModeToggle";
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { withConvexProvider } from "@/lib/convex";
 import { cn } from "@/lib/utils";

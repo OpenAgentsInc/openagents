@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import WalletApp from "@/components/wallet/WalletApp";
-import { WalletLayout } from "@/components/WalletLayout";
+import { WalletLayout } from "@/components/wallet/WalletLayout";
 import { SITE_TITLE } from "@/consts";
 import { buildHead } from "@/lib/seo";
 

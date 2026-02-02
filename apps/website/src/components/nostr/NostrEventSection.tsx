@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { RelayConfigProvider, useRelayConfigContext } from "@/contexts/RelayConfigContext";
-import { NostrProvider } from "@/components/NostrProvider";
-import { NostrEventView } from "@/components/NostrEventView";
+import { NostrProvider } from "@/components/nostr/NostrProvider";
+import { NostrEventView } from "@/components/nostr/NostrEventView";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getQueryClient } from "@/lib/queryClient";

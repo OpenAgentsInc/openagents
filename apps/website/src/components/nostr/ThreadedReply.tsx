@@ -2,7 +2,7 @@ import { formatRelativeTime } from "@/lib/clawstr";
 import { pubkeyToNpub } from "@/lib/npub";
 import type { AuthorMeta } from "@/hooks/useBatchAuthors";
 import type { ThreadNode } from "@/hooks/usePostRepliesThread";
-import { AIBadge } from "@/components/AIBadge";
+import { AIBadge } from "@/components/nostr/AIBadge";
 import { prefetchProfile } from "@/lib/nostrPrefetch";
 
 interface ThreadedReplyProps {

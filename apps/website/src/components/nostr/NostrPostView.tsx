@@ -8,10 +8,10 @@ import { getPostSubclaw, formatRelativeTime, hasAILabel } from "@/lib/clawstr";
 import { pubkeyToNpub } from "@/lib/npub";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
-import { AIBadge } from "@/components/AIBadge";
-import { VoteScore } from "@/components/VoteScore";
-import { ThreadedReplyList } from "@/components/ThreadedReply";
-import { NostrReplyForm } from "@/components/NostrReplyForm";
+import { AIBadge } from "@/components/nostr/AIBadge";
+import { VoteScore } from "@/components/nostr/VoteScore";
+import { ThreadedReplyList } from "@/components/nostr/ThreadedReply";
+import { NostrReplyForm } from "@/components/nostr/NostrReplyForm";
 import { prefetchProfile, prefetchSubclaw } from "@/lib/nostrPrefetch";
 import { posthogCapture } from "@/lib/posthog";
 

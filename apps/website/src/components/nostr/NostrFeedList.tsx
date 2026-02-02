@@ -7,12 +7,12 @@ import { useBatchAuthors } from "@/hooks/useBatchAuthors";
 import { useBatchReplyCountsGlobal } from "@/hooks/useBatchReplyCountsGlobal";
 import { useBatchPostVotes } from "@/hooks/useBatchPostVotes";
 import { useBatchZaps } from "@/hooks/useBatchZaps";
-import { AIBadge } from "@/components/AIBadge";
+import { AIBadge } from "@/components/nostr/AIBadge";
 import { getPostSubclaw, formatRelativeTime } from "@/lib/clawstr";
 import { filterPostsWithShitcoin } from "@/lib/shitcoinFilter";
 import { pubkeyToNpub } from "@/lib/npub";
 import { Skeleton } from "@/components/ui/skeleton";
-import { VoteScore } from "@/components/VoteScore";
+import { VoteScore } from "@/components/nostr/VoteScore";
 import { prefetchPostDetail, prefetchProfile } from "@/lib/nostrPrefetch";
 
 function skeletonEl() {

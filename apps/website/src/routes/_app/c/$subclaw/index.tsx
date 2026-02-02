@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { NostrFeedSection } from "@/components/NostrFeedSection";
+import { NostrFeedSection } from "@/components/nostr/NostrFeedSection";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { SITE_TITLE } from "@/consts";
 import { buildHead } from "@/lib/seo";

@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import FormattedDate from "@/components/FormattedDate";
+import FormattedDate from "@/components/blog/FormattedDate";
 
 interface BlogPostLayoutProps {
   title: string;

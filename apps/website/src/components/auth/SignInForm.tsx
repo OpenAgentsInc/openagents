@@ -1,20 +1,19 @@
 import { useState } from "react";
-import { authClient } from "../lib/auth-client";
-import { withConvexProvider } from "../lib/convex";
+import { authClient } from "@/lib/auth-client";
+import { withConvexProvider } from "@/lib/convex";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Separator } from "@/components/ui/separator";
 
-function SignUpFormInner() {
-  const [name, setName] = useState("");
+function SignInFormInner() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string>();
   const [loading, setLoading] = useState(false);
 
-  const handleSignUp = async (e: React.FormEvent) => {
+  const handleEmailSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email.trim() || !password) {
       setError("Email and password required");
@@ -23,19 +22,18 @@ function SignUpFormInner() {
     setError(undefined);
     setLoading(true);
     try {
-      const result = await authClient.signUp.email({
-        name: name.trim(),
+      const result = await authClient.signIn.email({
         email: email.trim(),
         password,
         callbackURL: "/",
       });
       if (result.error) {
-        setError(result.error.message ?? "Sign up failed");
+        setError(result.error.message ?? "Log in failed");
         return;
       }
       window.location.href = "/";
     } catch {
-      setError("Sign up failed");
+      setError("Log in failed");
     } finally {
       setLoading(false);
     }
@@ -43,17 +41,7 @@ function SignUpFormInner() {
 
   return (
     <div className="space-y-6">
-      <form onSubmit={handleSignUp} className="space-y-4">
-        <div className="space-y-2">
-          <Label htmlFor="name">Name (optional)</Label>
-          <Input
-            id="name"
-            type="text"
-            autoComplete="name"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-          />
-        </div>
+      <form onSubmit={handleEmailSignIn} className="space-y-4">
         <div className="space-y-2">
           <Label htmlFor="email">Email</Label>
           <Input
@@ -69,7 +57,7 @@ function SignUpFormInner() {
           <Input
             id="password"
             type="password"
-            autoComplete="new-password"
+            autoComplete="current-password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
           />
@@ -80,7 +68,7 @@ function SignUpFormInner() {
           </Alert>
         )}
         <Button type="submit" disabled={loading} className="w-full">
-          {loading ? "Signing up…" : "Sign up with email"}
+          {loading ? "Logging in…" : "Log in with email"}
         </Button>
       </form>
       <div className="relative">
@@ -100,10 +88,10 @@ function SignUpFormInner() {
           })
         }
       >
-        Sign up with GitHub
+        Log in with GitHub
       </Button>
     </div>
   );
 }
 
-export default withConvexProvider(SignUpFormInner);
+export default withConvexProvider(SignInFormInner);
