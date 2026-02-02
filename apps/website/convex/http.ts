@@ -19,6 +19,12 @@ import {
   revokeToken as controlRevokeToken,
   getNostrIdentity as controlGetNostrIdentity,
   verifyNostrIdentity as controlVerifyNostrIdentity,
+  getOpenclawInstance as controlGetOpenclawInstance,
+  upsertOpenclawInstance as controlUpsertOpenclawInstance,
+  setOpenclawStatus as controlSetOpenclawStatus,
+  storeOpenclawSecret as controlStoreOpenclawSecret,
+  getOpenclawSecret as controlGetOpenclawSecret,
+  getOpenclawBillingSummary as controlGetOpenclawBillingSummary,
 } from "./control_http";
 
 const http = httpRouter();
@@ -131,6 +137,42 @@ http.route({
   path: "/control/nostr/verify",
   method: "POST",
   handler: controlVerifyNostrIdentity,
+});
+
+http.route({
+  path: "/control/openclaw/instance",
+  method: "GET",
+  handler: controlGetOpenclawInstance,
+});
+
+http.route({
+  path: "/control/openclaw/instance",
+  method: "POST",
+  handler: controlUpsertOpenclawInstance,
+});
+
+http.route({
+  path: "/control/openclaw/instance/status",
+  method: "POST",
+  handler: controlSetOpenclawStatus,
+});
+
+http.route({
+  path: "/control/openclaw/instance/secret",
+  method: "POST",
+  handler: controlStoreOpenclawSecret,
+});
+
+http.route({
+  path: "/control/openclaw/instance/secret",
+  method: "GET",
+  handler: controlGetOpenclawSecret,
+});
+
+http.route({
+  path: "/control/openclaw/billing/summary",
+  method: "GET",
+  handler: controlGetOpenclawBillingSummary,
 });
 
 export default http;

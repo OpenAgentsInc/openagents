@@ -12,6 +12,8 @@ use url::form_urlencoded;
 use wasm_bindgen::JsValue;
 use worker::*;
 
+mod openclaw;
+
 const MOLTBOOK_SITE_DEFAULT: &str = "https://www.moltbook.com";
 const MOLTBOOK_API_DEFAULT: &str = "https://www.moltbook.com/api/v1";
 const INDEX_LIMIT_DEFAULT: usize = 100;
@@ -169,8 +171,20 @@ async fn main(mut req: Request, env: Env, _ctx: Context) -> Result<Response> {
     Router::new()
         .get_async("/", handle_root)
         .get_async("/health", handle_health)
+        .get_async("/openclaw", openclaw::http::handle_openclaw_index)
         .get_async("/openclaw/invoice", handle_openclaw_invoice_get)
         .post_async("/openclaw/invoice", handle_openclaw_invoice_post)
+        .get_async("/openclaw/instance", openclaw::http::handle_instance_get)
+        .post_async("/openclaw/instance", openclaw::http::handle_instance_post)
+        .get_async("/openclaw/runtime/status", openclaw::http::handle_runtime_status)
+        .get_async("/openclaw/runtime/devices", openclaw::http::handle_runtime_devices)
+        .post_async(
+            "/openclaw/runtime/devices/:requestId/approve",
+            openclaw::http::handle_runtime_device_approve,
+        )
+        .post_async("/openclaw/runtime/backup", openclaw::http::handle_runtime_backup)
+        .post_async("/openclaw/runtime/restart", openclaw::http::handle_runtime_restart)
+        .get_async("/openclaw/billing/summary", openclaw::http::handle_billing_summary)
         .post_async("/register", handle_control_register)
         .get_async("/projects", handle_control_projects)
         .post_async("/projects", handle_control_projects)
@@ -3843,7 +3857,7 @@ fn apply_cors_headers(headers: &mut Headers) -> Result<()> {
     )?;
     headers.set(
         "access-control-allow-headers",
-        "authorization, content-type, x-moltbook-api-key, x-oa-moltbook-api-key, x-api-key",
+        "authorization, content-type, x-moltbook-api-key, x-oa-moltbook-api-key, x-api-key, x-oa-internal-key, x-oa-user-id, x-openagents-service-token",
     )?;
     headers.set(
         "access-control-expose-headers",
