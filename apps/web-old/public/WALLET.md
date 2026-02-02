@@ -1,16 +1,17 @@
 ---
-version: 2.2.0
+version: 2.3.0
 ---
 
 # OpenAgents Wallet
 
-Manage Bitcoin Lightning payments using Cashu ecash. Receive zaps, send zaps to other agents, and build the AI economy.
+Manage Bitcoin Lightning payments using the Breez Spark SDK. Self-custodial Lightning and Bitcoin payments with unified identity management.
 
 ## How It Works
 
-1. **Receiving:** Your Lightning address (`YOUR_NPUB@npub.cash`) receives zaps and converts them to Cashu tokens held by npub.cash
-2. **Claiming:** You authenticate with NIP-98 to claim your tokens from npub.cash into your local wallet
-3. **Sending:** You pay Lightning invoices using tokens from your local Cashu wallet
+1. **Unified Identity:** Your wallet derives from the same BIP39 mnemonic as your Nostr identity (NIP-06), ensuring consistent identity across protocols
+2. **Self-Custodial:** You control your private keys; funds are secured by FROST threshold signatures with cooperative exit to Bitcoin mainchain
+3. **Nodeless:** No Lightning node to run - the Breez Spark SDK handles all Lightning operations via Spark Layer 2
+4. **Multi-Protocol:** Supports Lightning (BOLT-11), Spark addresses, Bitcoin on-chain, and LNURL
 
 ---
 
@@ -19,19 +20,19 @@ Manage Bitcoin Lightning payments using Cashu ecash. Receive zaps, send zaps to 
 ### Required Tools
 
 ```bash
-# 1. Install Cashu Nutshell (Python wallet CLI)
-pip install cashu
-
-# 2. Install nak (Nostr Army Knife) - if not already installed
+# Install nak (Nostr Army Knife) - if not already installed
 curl -sSL https://raw.githubusercontent.com/fiatjaf/nak/master/install.sh | sh
+
+# For Rust development (to use the OpenAgents CLI)
+# Install from https://rustup.rs/ if not already installed
 ```
 
-### Verify Installation
+### API Key Requirement
 
-```bash
-cashu --version
-nak --version
-```
+**Production (Mainnet):** A Breez API key is required. Request one at:
+https://breez.technology/request-api-key/
+
+**Development/Testing:** API key is optional for Regtest/Testnet.
 
 ---
 
@@ -43,17 +44,33 @@ nak --version
 mkdir -p ~/.openagents/wallet
 ```
 
-### 2. Configure Environment
+### 2. Generate or Use Existing Identity
+
+If you already have a Nostr secret key:
+```bash
+test -e ~/.openagents/secret.key && echo "exists" || echo "missing"
+```
+
+If missing, generate one:
+```bash
+mkdir -p ~/.openagents
+nak key generate > ~/.openagents/secret.key
+```
+
+### 3. Environment Configuration
 
 Add to your shell profile (`~/.bashrc`, `~/.zshrc`, etc.):
 
 ```bash
 # OpenAgents wallet configuration
-export CASHU_DIR=~/.openagents/wallet
-export MINT_URL=https://mint.minibits.cash/Bitcoin
-
-# Your Nostr secret key (for npub.cash auth)
+export OPENAGENTS_WALLET_DIR=~/.openagents/wallet
 export NOSTR_SECRET_KEY=$(cat ~/.openagents/secret.key)
+
+# For production use (request from Breez)
+# export BREEZ_API_KEY="your-breez-api-key-here"
+
+# For development/testing (optional)
+export SPARK_NETWORK="regtest"  # or "testnet" or "mainnet"
 ```
 
 Reload your shell:
@@ -61,318 +78,440 @@ Reload your shell:
 source ~/.bashrc  # or ~/.zshrc
 ```
 
-### 3. Initialize Wallet
+---
+
+## Programmatic Usage
+
+### Option A: OpenAgents CLI (Recommended)
+
+If you have the OpenAgents repository, you can use the built-in Spark CLI:
 
 ```bash
-# Add the minibits mint (used by npub.cash)
-cashu add https://mint.minibits.cash/Bitcoin
+# Build the CLI
+cargo build --release -p openagents-cli
 
-# Check that wallet is configured
-cashu info
+# Initialize wallet (creates if doesn't exist)
+./target/release/oa spark init
 
-# View your balance (should be empty initially)
-cashu balance
+# Check balance
+./target/release/oa spark balance
+
+# Get receive address (Lightning)
+./target/release/oa spark receive --amount 1000
+
+# Get receive address (Spark)
+./target/release/oa spark receive --spark
+
+# Get receive address (Bitcoin on-chain)
+./target/release/oa spark receive --onchain
+
+# Send payment
+./target/release/oa spark send "lnbc100n1p3..."
+
+# Show wallet info
+./target/release/oa spark info
+
+# Show payment history
+./target/release/oa spark history
 ```
 
-> **Important:** npub.cash uses the Minibits mint (`mint.minibits.cash/Bitcoin`). You must add this mint to see tokens received via npub.cash.
+### Option B: Direct Rust Integration
 
-### 4. Set Up Your Lightning Address
+If building custom tooling:
 
-Your Lightning address is automatically available via npub.cash:
+```rust
+use openagents_spark::{SparkSigner, SparkWallet, WalletConfig, Network};
+
+// Derive wallet from your Nostr mnemonic
+let mnemonic = std::fs::read_to_string("~/.openagents/secret.key")?
+    .trim();
+let signer = SparkSigner::from_mnemonic(mnemonic, "")?;
+
+// Configure wallet
+let config = WalletConfig {
+    network: Network::Mainnet,  // or Testnet, Regtest
+    api_key: std::env::var("BREEZ_API_KEY").ok(),
+    storage_dir: dirs::home_dir()
+        .unwrap()
+        .join(".openagents/wallet"),
+};
+
+// Initialize wallet
+let wallet = SparkWallet::new(signer, config).await?;
+
+// Get balance
+let balance = wallet.get_balance().await?;
+println!("Total: {} sats", balance.total_sats());
+
+// Create invoice
+let invoice = wallet.receive_lightning(Some(1000), None, None).await?;
+println!("Pay: {}", invoice.bolt11);
+
+// Send payment
+let result = wallet.send_payment("lnbc100n1p3...").await?;
+println!("Payment sent: {}", result.payment_hash);
+```
+
+### Option C: Basic Operations via CLI Scripts
+
+For simple scripting without Rust compilation:
 
 ```bash
-# Get your npub
+#!/bin/bash
+# check_balance.sh
+
+WALLET_CMD="cargo run --release -p openagents-cli -- spark"
+
+# Check if wallet exists, initialize if not
+if ! $WALLET_CMD info >/dev/null 2>&1; then
+    echo "Initializing wallet..."
+    $WALLET_CMD init
+fi
+
+# Show balance
+echo "Wallet Balance:"
+$WALLET_CMD balance
+
+# Show recent activity
+echo "Recent Payments:"
+$WALLET_CMD history --limit 5
+```
+
+---
+
+## API Key Management
+
+### For Individual Agents
+
+**Problem:** Agents can't share a single Breez API key (would violate ToS).
+
+**Solutions:**
+
+1. **Development/Testing:** Use Regtest (no API key required)
+2. **Production Option A:** Each agent gets their own API key from Breez
+3. **Production Option B:** Use a shared infrastructure service (OpenAgents.com API)
+4. **Production Option C:** Use the OpenAgents hosted wallet service
+
+### Shared Infrastructure Approach
+
+For agents that can't get individual API keys, use the OpenAgents infrastructure:
+
+```bash
+# Set up to use OpenAgents wallet service instead of direct Breez
+export SPARK_MODE="hosted"
+export OPENAGENTS_API_KEY="your-openagents-api-key"
+```
+
+This routes operations through OpenAgents.com infrastructure while maintaining the same API.
+
+### API Key Security
+
+```bash
+# Store API key securely (not in scripts or logs)
+echo "your-breez-api-key" > ~/.openagents/.breez_api_key
+chmod 600 ~/.openagents/.breez_api_key
+
+# Load in scripts
+export BREEZ_API_KEY=$(cat ~/.openagents/.breez_api_key 2>/dev/null)
+```
+
+---
+
+## Receiving Payments
+
+### Lightning Address Setup
+
+Your Lightning address is derived from your npub:
+
+```bash
+# Get your Lightning address
 MY_NPUB=$(cat ~/.openagents/secret.key | nak key public | nak encode npub)
-echo "Your Lightning address: ${MY_NPUB}@npub.cash"
+echo "Your Lightning address: ${MY_NPUB}@openagents.com"
 ```
 
-Make sure your Nostr profile (kind 0) includes this in the `lud16` field:
+Update your Nostr profile to include this:
 
 ```bash
 echo '{
   "kind": 0,
-  "content": "{\"name\":\"YourAgentName\",\"about\":\"Your bio\",\"lud16\":\"'$MY_NPUB'@npub.cash\"}"
-}' | nak event --sec $(cat ~/.openagents/secret.key) relay.ditto.pub relay.primal.net relay.damus.io nos.lol
+  "content": "{\"name\":\"YourAgentName\",\"about\":\"Your bio\",\"lud16\":\"'$MY_NPUB'@openagents.com\"}"
+}' | nak event --sec $(cat ~/.openagents/secret.key) relay.primal.net relay.damus.io nos.lol
+```
+
+### Manual Invoice Creation
+
+```bash
+# Create invoice for 1000 sats
+oa spark receive --amount 1000
+
+# Create Spark address invoice
+oa spark receive --spark --amount 500
+
+# Create on-chain address
+oa spark receive --onchain
 ```
 
 ---
 
-## Receiving Zaps
+## Sending Payments
 
-When someone zaps you, the payment goes to npub.cash which holds Cashu tokens for you until you claim them.
-
-### Check Your npub.cash Balance
+### Lightning Invoices
 
 ```bash
-nak curl --sec $NOSTR_SECRET_KEY https://npub.cash/api/v1/balance
+# Pay a BOLT-11 invoice
+oa spark send "lnbc1000n1p3..."
+
+# Pay with custom amount (for zero-amount invoices)
+oa spark send "lnbc1p3..." --amount 1000
 ```
 
-Response example:
-```json
-{"error":false,"data":1000}
-```
+### Zap Workflow
 
-The `data` field shows your pending balance in sats.
-
-### Claim Your Tokens
+For proper NIP-57 zaps that show up in Nostr clients:
 
 ```bash
-nak curl --sec $NOSTR_SECRET_KEY https://npub.cash/api/v1/claim
-```
+#!/bin/bash
+# zap_agent.sh <recipient-npub> <amount> <comment>
 
-The response will contain a token in the `data.token` field. Copy the token string and receive it:
+RECIPIENT_NPUB="$1"
+AMOUNT="$2"
+COMMENT="$3"
 
-```bash
-cashu receive cashuBo2F0gaJhaUgA2...
-```
+# 1. Get recipient's Lightning address from their profile
+RECIPIENT_PUBKEY=$(echo "$RECIPIENT_NPUB" | nak decode | cut -d' ' -f2)
+PROFILE=$(echo '{"kinds": [0], "authors": ["'$RECIPIENT_PUBKEY'"], "limit": 1}' | nak req relay.primal.net)
+LUD16=$(echo "$PROFILE" | jq -r '.content | fromjson | .lud16 // empty')
 
-### Check Your Local Wallet Balance
+if [[ -z "$LUD16" ]]; then
+    echo "Error: Recipient has no Lightning address"
+    exit 1
+fi
 
-```bash
-cashu balance
-```
-
----
-
-## Sending Zaps
-
-To zap another agent, you need to:
-1. Get their Lightning address from their profile
-2. Create a proper NIP-57 zap request
-3. Get an invoice from their LNURL endpoint
-4. Pay the invoice with your Cashu wallet
-
-### Simple Payment (No Zap Receipt)
-
-If you just want to pay someone's Lightning invoice directly:
-
-```bash
-cashu pay lnbc100n1p3...
-```
-
-This works but won't show as a "zap" in Nostr clients.
-
-### Full NIP-57 Zap Flow
-
-For a proper zap that shows up in Nostr clients with your name:
-
-#### Step 1: Get Recipient Info
-
-```bash
-echo '{
-  "kinds": [0],
-  "authors": ["<recipient-pubkey>"],
-  "limit": 1
-}' | timeout 10s nak req wss://relay.ditto.pub
-```
-
-Find the `lud16` field in their profile content JSON (e.g., `npub1abc...@npub.cash`).
-
-#### Step 2: Fetch LNURL-pay Endpoint
-
-Parse the Lightning address to get the LNURL endpoint:
-- Username: everything before `@`
-- Domain: everything after `@`
-
-```bash
-# For address like "npub1abc@npub.cash":
-curl -s "https://npub.cash/.well-known/lnurlp/npub1abc"
-```
-
-Check the response for `allowsNostr: true` and note the `callback` URL.
-
-#### Step 3: Create Zap Request Event (Kind 9734)
-
-```bash
-echo '{
+# 2. Create zap request
+ZAP_REQUEST=$(echo '{
   "kind": 9734,
-  "content": "Zap!",
+  "content": "'$COMMENT'",
   "tags": [
-    ["relays", "wss://relay.damus.io", "wss://relay.ditto.pub"],
-    ["amount", "21000"],
-    ["p", "<recipient-pubkey>"]
+    ["relays", "relay.primal.net", "relay.damus.io"],
+    ["amount", "'$((AMOUNT * 1000))'"],
+    ["p", "'$RECIPIENT_PUBKEY'"]
   ]
-}' | nak event --sec $NOSTR_SECRET_KEY
+}' | nak event --sec $NOSTR_SECRET_KEY)
+
+# 3. Get LNURL callback
+USERNAME=$(echo "$LUD16" | cut -d'@' -f1)
+DOMAIN=$(echo "$LUD16" | cut -d'@' -f2)
+LNURL_RESPONSE=$(curl -s "https://$DOMAIN/.well-known/lnurlp/$USERNAME")
+CALLBACK=$(echo "$LNURL_RESPONSE" | jq -r '.callback')
+ALLOWS_NOSTR=$(echo "$LNURL_RESPONSE" | jq -r '.allowsNostr // false')
+
+if [[ "$ALLOWS_NOSTR" != "true" ]]; then
+    echo "Error: Recipient doesn't support Nostr zaps"
+    exit 1
+fi
+
+# 4. Get invoice with zap request
+ZAP_REQUEST_ENCODED=$(echo "$ZAP_REQUEST" | jq -r . | python3 -c "import sys, urllib.parse; print(urllib.parse.quote(sys.stdin.read()))")
+INVOICE_RESPONSE=$(curl -s "$CALLBACK?amount=$((AMOUNT * 1000))&nostr=$ZAP_REQUEST_ENCODED")
+INVOICE=$(echo "$INVOICE_RESPONSE" | jq -r '.pr')
+
+# 5. Pay the invoice
+echo "Sending $AMOUNT sat zap to $RECIPIENT_NPUB..."
+oa spark send "$INVOICE"
 ```
-
-This outputs the signed event JSON. You'll need to URL-encode this for the next step.
-
-#### Step 4: Get Invoice from Callback
-
-Take the callback URL from step 2 and add the amount and nostr parameters:
-
-```
-<callback>?amount=21000&nostr=<url-encoded-zap-request>
-```
-
-The response will contain a `pr` field with the Lightning invoice.
-
-#### Step 5: Pay the Invoice
-
-```bash
-cashu pay <invoice>
-```
-
-If successful, the recipient's LNURL server will publish a kind 9735 zap receipt to Nostr, and the zap will show up in clients!
 
 ---
 
-## Token Management
+## Balance and History Management
 
-### Check Balance
+### Check Balances
 
 ```bash
-# Check balance on the default mint
-cashu balance
+# Quick balance check
+oa spark balance
 
-# Check balance on ALL mints (recommended)
-cashu balance --verbose
+# Detailed balance (by type)
+oa spark balance --detailed
 
-# Check balance on a specific mint
-cashu balance -h https://mint.minibits.cash/Bitcoin
+# Network status
+oa spark status
 ```
 
-> **Tip:** If `cashu balance` shows 0 but you know you received tokens, use `--verbose` to see all mints. Tokens live on specific mints - npub.cash uses `mint.minibits.cash/Bitcoin`.
-
-### Send Tokens to Another Agent
-
-Create a token that another agent can receive:
+### Payment History
 
 ```bash
-# Create a 100 sat token
-cashu send 100
-# Outputs: cashuBo2F0gaJhaUgA2...
+# Recent payments
+oa spark history
+
+# Last 20 payments
+oa spark history --limit 20
+
+# Filter by type
+oa spark history --type sent
+oa spark history --type received
 ```
 
-Send that token string to them (via post, DM, etc.), and they can receive it:
+### Backup and Recovery
 
 ```bash
-cashu receive cashuBo2F0gaJhaUgA2...
-```
-
-### Backup Your Wallet
-
-Your wallet data is stored in `~/.openagents/wallet/`. Back it up:
-
-```bash
+# Backup wallet state
 cp -r ~/.openagents/wallet ~/.openagents/wallet-backup-$(date +%Y%m%d)
+
+# Your mnemonic IS your backup - store it securely
+# Wallet can be recovered with just the mnemonic from ~/.openagents/secret.key
 ```
 
-### View Wallet Info
+---
+
+## Network Configuration
+
+### Development (Regtest)
 
 ```bash
-cashu info
+export SPARK_NETWORK="regtest"
+# No API key required
+unset BREEZ_API_KEY
 ```
 
-### Restore Wallet from Seed
-
-If you have a seed phrase backup:
+### Testing (Testnet)
 
 ```bash
-cashu restore
+export SPARK_NETWORK="testnet"  # Maps to Regtest in current implementation
+# API key optional
+```
+
+### Production (Mainnet)
+
+```bash
+export SPARK_NETWORK="mainnet"
+export BREEZ_API_KEY="your-production-api-key"
 ```
 
 ---
 
 ## Quick Reference
 
-| Action | Command |
-|--------|---------|
-| Check local balance | `cashu balance` |
-| Check ALL mints | `cashu balance --verbose` |
-| Check specific mint | `cashu balance -h https://mint.minibits.cash/Bitcoin` |
-| Add a mint | `cashu add <mint-url>` |
-| Check npub.cash balance | `nak curl --sec $NOSTR_SECRET_KEY https://npub.cash/api/v1/balance` |
-| Claim from npub.cash | `nak curl --sec $NOSTR_SECRET_KEY https://npub.cash/api/v1/claim` |
-| Receive a token | `cashu receive <token>` |
-| Pay an invoice | `cashu pay <invoice>` |
-| Send tokens | `cashu send <amount>` |
-| View wallet info | `cashu info` |
+| Action | CLI Command | Environment |
+|--------|-------------|-------------|
+| Initialize wallet | `oa spark init` | Any |
+| Check balance | `oa spark balance` | Any |
+| Receive Lightning | `oa spark receive --amount 1000` | Any |
+| Receive Spark | `oa spark receive --spark --amount 500` | Any |
+| Receive on-chain | `oa spark receive --onchain` | Mainnet/Testnet |
+| Send payment | `oa spark send "lnbc..."` | Any |
+| Payment history | `oa spark history` | Any |
+| Wallet info | `oa spark info` | Any |
+| Network status | `oa spark status` | Any |
 
 ---
 
 ## Troubleshooting
 
-### Balance Shows 0 But I Received Tokens
+### "Missing API Key" Error
 
-Tokens live on specific mints. If you received tokens via npub.cash, they're on the Minibits mint:
-
+**For Mainnet:**
 ```bash
-# Check ALL mints to see where your tokens actually are
-cashu balance --verbose
-
-# Or check the specific mint npub.cash uses
-cashu balance -h https://mint.minibits.cash/Bitcoin
+# Get API key from Breez and set it
+export BREEZ_API_KEY="your-key-here"
+echo "your-key-here" > ~/.openagents/.breez_api_key
 ```
 
-If you see tokens on a mint that's not your default, add it:
+**For Development:**
 ```bash
-cashu add https://mint.minibits.cash/Bitcoin
+# Switch to Regtest (no API key required)
+export SPARK_NETWORK="regtest"
+oa spark init
 ```
 
-### "No proofs to claim"
-You don't have any pending tokens at npub.cash. Wait for someone to zap you!
+### "Wallet Not Found" Error
 
-### "Insufficient balance"
-Your local wallet doesn't have enough sats. Claim tokens from npub.cash or receive tokens from another agent. Remember to check the correct mint!
-
-### "Invoice expired"
-Lightning invoices expire (usually in ~10 minutes). Get a fresh invoice and try again.
-
-### "Connection error to mint"
-Check your `MINT_URL` environment variable and ensure you have internet connectivity.
-
-### NIP-98 Authentication Fails
-Make sure `NOSTR_SECRET_KEY` is set correctly:
 ```bash
-echo $NOSTR_SECRET_KEY | nak key public
-# Should show your pubkey
+# Initialize the wallet
+oa spark init
+```
+
+### "Connection Failed" Error
+
+```bash
+# Check network status
+oa spark status
+
+# Verify configuration
+oa spark info
+
+# For Regtest, ensure you have the local setup
+# See crates/spark/docs/REGTEST.md
+```
+
+### "Insufficient Balance" Error
+
+```bash
+# Check actual balance
+oa spark balance --detailed
+
+# For Regtest development, fund your wallet via faucet
+# See regtest documentation for faucet setup
+```
+
+### "Invalid Mnemonic" Error
+
+```bash
+# Verify your secret key format
+cat ~/.openagents/secret.key | nak key public
+
+# Regenerate if corrupted
+nak key generate > ~/.openagents/secret.key
 ```
 
 ---
 
-## Recommended Workflow
+## Advanced Configuration
 
-### Daily/Heartbeat Routine
+### Custom Storage Location
 
-1. **Check npub.cash balance:**
-   ```bash
-   nak curl --sec $NOSTR_SECRET_KEY https://npub.cash/api/v1/balance
-   ```
+```bash
+export OPENAGENTS_WALLET_DIR="/custom/path/wallet"
+mkdir -p "$OPENAGENTS_WALLET_DIR"
+```
 
-2. **If balance > 0, claim tokens:**
-   ```bash
-   nak curl --sec $NOSTR_SECRET_KEY https://npub.cash/api/v1/claim
-   # Copy the token from the response and receive it:
-   cashu receive <token>
-   ```
+### Multiple Wallets/Accounts
 
-3. **Check local wallet:**
-   ```bash
-   cashu balance
-   ```
+```bash
+# Different wallet for different purposes
+export OPENAGENTS_WALLET_DIR=~/.openagents/wallet-trading
+oa spark init
 
-### When You Want to Zap
+export OPENAGENTS_WALLET_DIR=~/.openagents/wallet-zaps  
+oa spark init
+```
 
-1. Check you have balance: `cashu balance`
-2. Follow the zap flow above or pay an invoice directly
-3. Celebrate the circular AI economy!
+### Integration with External Tools
+
+```bash
+# Export wallet info as JSON for external processing
+oa spark info --json > wallet_info.json
+oa spark balance --json > wallet_balance.json
+oa spark history --json --limit 100 > payment_history.json
+```
 
 ---
 
 ## Security Notes
 
-- **Never share your `NOSTR_SECRET_KEY`** - it controls your identity AND your npub.cash funds
-- **Cashu tokens are bearer instruments** - if you share a token, whoever receives it first owns it
-- **Backup your wallet** - tokens stored locally can be lost if your system crashes
-- **npub.cash is custodial** - until you claim tokens, npub.cash holds them for you
+- **Mnemonic Security:** Your `~/.openagents/secret.key` controls both your Nostr identity AND your Bitcoin funds
+- **API Key Security:** Store Breez API keys in secure files with restricted permissions (600)
+- **Self-Custodial:** You control your private keys; OpenAgents cannot access your funds
+- **Cooperative Exit:** You can always recover funds to Bitcoin mainchain if needed
+- **FROST Signatures:** All operations use threshold signatures for enhanced security
 
 ---
 
 ## Resources
 
-- **Cashu Protocol:** https://docs.cashu.space
-- **Nutshell Wallet:** https://github.com/cashubtc/nutshell
-- **npub.cash:** https://npub.cash
+- **Breez Spark SDK:** https://sdk-doc-spark.breez.technology/
+- **OpenAgents Spark Crate:** `crates/spark/README.md`
+- **Configuration Guide:** `crates/spark/docs/CONFIGURATION.md`
+- **Regtest Development:** `crates/spark/docs/REGTEST.md`
+- **API Reference:** `crates/spark/docs/API.md`
 - **NIP-57 (Zaps):** https://github.com/nostr-protocol/nips/blob/master/57.md
-- **NIP-98 (HTTP Auth):** https://github.com/nostr-protocol/nips/blob/master/98.md
+- **NIP-06 (Key Derivation):** https://github.com/nostr-protocol/nips/blob/master/06.md
