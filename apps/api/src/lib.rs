@@ -169,6 +169,8 @@ async fn main(mut req: Request, env: Env, _ctx: Context) -> Result<Response> {
     Router::new()
         .get_async("/", handle_root)
         .get_async("/health", handle_health)
+        .get_async("/openclaw/invoice", handle_openclaw_invoice_get)
+        .post_async("/openclaw/invoice", handle_openclaw_invoice_post)
         .post_async("/register", handle_control_register)
         .get_async("/projects", handle_control_projects)
         .post_async("/projects", handle_control_projects)
@@ -643,6 +645,36 @@ fn now_iso() -> String {
     js_sys::Date::new_0().to_string().into()
 }
 
+fn now_ms() -> i64 {
+    js_sys::Date::now() as i64
+}
+
+fn iso_from_ms(ms: i64) -> String {
+    js_sys::Date::new(&JsValue::from_f64(ms as f64))
+        .to_iso_string()
+        .as_string()
+        .unwrap_or_else(|| now_iso())
+}
+
+fn parse_epoch_ms(value: &str) -> Option<i64> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    if let Ok(raw) = trimmed.parse::<i64>() {
+        if raw <= 0 {
+            return None;
+        }
+        let ms = if raw < 1_000_000_000_000 { raw.saturating_mul(1000) } else { raw };
+        return Some(ms);
+    }
+    let ms = js_sys::Date::new(&JsValue::from_str(trimmed)).get_time();
+    if ms.is_finite() {
+        return Some(ms as i64);
+    }
+    None
+}
+
 fn random_token(prefix: &str, len: usize) -> String {
     let mut out = String::with_capacity(prefix.len() + len);
     out.push_str(prefix);
@@ -681,6 +713,29 @@ fn social_api_key_from_request(req: &Request) -> Option<String> {
                 if !trimmed.is_empty() {
                     return Some(trimmed.to_string());
                 }
+            }
+        }
+    }
+    None
+}
+
+fn openclaw_invoice_token(env: &Env) -> Result<String> {
+    if let Ok(var) = env.var("OPENCLAW_INVOICE_TOKEN") {
+        let value = var.to_string();
+        if !value.trim().is_empty() {
+            return Ok(value);
+        }
+    }
+    Ok("".to_string())
+}
+
+fn openclaw_token_from_request(req: &Request) -> Option<String> {
+    if let Ok(Some(auth)) = req.headers().get("authorization") {
+        let trimmed = auth.trim();
+        if let Some(rest) = trimmed.strip_prefix("Bearer ") {
+            let value = rest.trim();
+            if !value.is_empty() {
+                return Some(value.to_string());
             }
         }
     }
@@ -2887,6 +2942,26 @@ struct CreateInvoiceBody {
     description: Option<String>,
 }
 
+#[derive(Debug, Deserialize)]
+struct OpenclawInvoiceBody {
+    payment_request: String,
+    amount_sats: u64,
+    description: Option<String>,
+    expires_at: String,
+    created_at: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct OpenclawInvoiceRow {
+    payment_request: String,
+    amount_sats: i64,
+    description: Option<String>,
+    expires_at: String,
+    expires_at_ms: i64,
+    created_at: String,
+    updated_at: String,
+}
+
 async fn handle_payments_invoice(mut req: Request, ctx: RouteContext<()>) -> Result<Response> {
     let body: CreateInvoiceBody = req.json().await.map_err(|_| worker::Error::RustError("invalid body".into()))?;
     if let Ok(spark_url) = ctx.var("SPARK_API_URL") {
@@ -2948,6 +3023,103 @@ async fn handle_payments_pay(mut req: Request, ctx: RouteContext<()>) -> Result<
         return Ok(out);
     }
     json_error("SPARK_API_URL not set; pay requires Spark API backend", 501)
+}
+
+async fn handle_openclaw_invoice_get(_: Request, ctx: RouteContext<()>) -> Result<Response> {
+    let db = ctx.d1("DB")?;
+    let stmt = db
+        .prepare(
+            "SELECT payment_request, amount_sats, description, expires_at, expires_at_ms, created_at, updated_at FROM openclaw_invoices WHERE key = ?1 LIMIT 1",
+        )
+        .bind(&[JsValue::from_str("current")])?;
+    let row = stmt.first::<OpenclawInvoiceRow>(None).await?;
+    let Some(row) = row else {
+        return json_error("invoice not found", 404);
+    };
+    let now = now_ms();
+    if row.expires_at_ms <= now {
+        return json_error("invoice expired", 410);
+    }
+
+    let mut response = Response::from_json(&ApiResponse {
+        ok: true,
+        data: Some(serde_json::json!({
+            "payment_request": row.payment_request,
+            "amount_sats": row.amount_sats,
+            "description": row.description,
+            "expires_at": row.expires_at,
+            "expires_at_ms": row.expires_at_ms,
+            "created_at": row.created_at,
+            "updated_at": row.updated_at
+        })),
+        error: None,
+    })?;
+    response.headers_mut().set("cache-control", "no-store")?;
+    apply_cors(&mut response)?;
+    Ok(response)
+}
+
+async fn handle_openclaw_invoice_post(mut req: Request, ctx: RouteContext<()>) -> Result<Response> {
+    let token = match openclaw_invoice_token(&ctx.env) {
+        Ok(value) if !value.trim().is_empty() => value,
+        _ => return json_error("OPENCLAW_INVOICE_TOKEN not configured", 500),
+    };
+    let provided = openclaw_token_from_request(&req).unwrap_or_default();
+    if provided != token {
+        return Ok(json_unauthorized("missing or invalid token"));
+    }
+
+    let body: OpenclawInvoiceBody = req.json().await.map_err(|_| worker::Error::RustError("invalid body".into()))?;
+    let payment_request = body.payment_request.trim();
+    if payment_request.is_empty() {
+        return json_error("payment_request required", 400);
+    }
+    if body.amount_sats == 0 {
+        return json_error("amount_sats required", 400);
+    }
+    let expires_at_ms = match parse_epoch_ms(&body.expires_at) {
+        Some(ms) => ms,
+        None => return json_error("expires_at invalid", 400),
+    };
+    let expires_at = iso_from_ms(expires_at_ms);
+    let created_at_ms = body
+        .created_at
+        .as_deref()
+        .and_then(parse_epoch_ms)
+        .unwrap_or_else(now_ms);
+    let created_at = iso_from_ms(created_at_ms);
+    let updated_at = iso_from_ms(now_ms());
+
+    let db = ctx.d1("DB")?;
+    db.prepare("INSERT OR REPLACE INTO openclaw_invoices (key, payment_request, amount_sats, description, expires_at, expires_at_ms, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)")
+        .bind(&[
+            JsValue::from_str("current"),
+            JsValue::from_str(payment_request),
+            JsValue::from_f64(body.amount_sats as f64),
+            serde_wasm_bindgen::to_value(&body.description).unwrap_or(JsValue::NULL),
+            JsValue::from_str(&expires_at),
+            JsValue::from_f64(expires_at_ms as f64),
+            JsValue::from_str(&created_at),
+            JsValue::from_str(&updated_at),
+        ])?
+        .run()
+        .await?;
+
+    let mut response = Response::from_json(&ApiResponse {
+        ok: true,
+        data: Some(serde_json::json!({
+            "payment_request": payment_request,
+            "amount_sats": body.amount_sats,
+            "description": body.description,
+            "expires_at": expires_at,
+            "expires_at_ms": expires_at_ms,
+            "created_at": created_at,
+            "updated_at": updated_at
+        })),
+        error: None,
+    })?;
+    apply_cors(&mut response)?;
+    Ok(response)
 }
 
 async fn handle_moltbook_root(_: Request, _: RouteContext<()>) -> Result<Response> {

@@ -28,6 +28,15 @@ const config = defineConfig({
   },
   build: {
     target: 'esnext',
+    chunkSizeWarningLimit: 1500,
+    rollupOptions: {
+      onwarn(warning, warn) {
+        if (warning.code === 'EVAL' && warning.id?.includes('gray-matter')) {
+          return
+        }
+        warn(warning)
+      },
+    },
   },
   server: {
     headers: {

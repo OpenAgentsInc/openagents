@@ -25,6 +25,7 @@ import { Route as AppCIndexRouteImport } from './routes/_app/c/index'
 import { Route as AppBlogIndexRouteImport } from './routes/_app/blog/index'
 import { Route as AppUNpubRouteImport } from './routes/_app/u/$npub'
 import { Route as AppPostsIdRouteImport } from './routes/_app/posts/$id'
+import { Route as AppOpenclawEarnRouteImport } from './routes/_app/openclaw/earn'
 import { Route as AppKbSplatRouteImport } from './routes/_app/kb/$'
 import { Route as AppEventIdRouteImport } from './routes/_app/event/$id'
 import { Route as AppCommunitiesSlugRouteImport } from './routes/_app/communities/$slug'
@@ -111,6 +112,11 @@ const AppPostsIdRoute = AppPostsIdRouteImport.update({
   path: '/posts/$id',
   getParentRoute: () => AppRouteRoute,
 } as any)
+const AppOpenclawEarnRoute = AppOpenclawEarnRouteImport.update({
+  id: '/openclaw/earn',
+  path: '/openclaw/earn',
+  getParentRoute: () => AppRouteRoute,
+} as any)
 const AppKbSplatRoute = AppKbSplatRouteImport.update({
   id: '/kb/$',
   path: '/kb/$',
@@ -155,6 +161,7 @@ export interface FileRoutesByFullPath {
   '/communities/$slug': typeof AppCommunitiesSlugRoute
   '/event/$id': typeof AppEventIdRoute
   '/kb/$': typeof AppKbSplatRoute
+  '/openclaw/earn': typeof AppOpenclawEarnRoute
   '/posts/$id': typeof AppPostsIdRoute
   '/u/$npub': typeof AppUNpubRoute
   '/blog/': typeof AppBlogIndexRoute
@@ -178,6 +185,7 @@ export interface FileRoutesByTo {
   '/communities/$slug': typeof AppCommunitiesSlugRoute
   '/event/$id': typeof AppEventIdRoute
   '/kb/$': typeof AppKbSplatRoute
+  '/openclaw/earn': typeof AppOpenclawEarnRoute
   '/posts/$id': typeof AppPostsIdRoute
   '/u/$npub': typeof AppUNpubRoute
   '/blog': typeof AppBlogIndexRoute
@@ -203,6 +211,7 @@ export interface FileRoutesById {
   '/_app/communities/$slug': typeof AppCommunitiesSlugRoute
   '/_app/event/$id': typeof AppEventIdRoute
   '/_app/kb/$': typeof AppKbSplatRoute
+  '/_app/openclaw/earn': typeof AppOpenclawEarnRoute
   '/_app/posts/$id': typeof AppPostsIdRoute
   '/_app/u/$npub': typeof AppUNpubRoute
   '/_app/blog/': typeof AppBlogIndexRoute
@@ -228,6 +237,7 @@ export interface FileRouteTypes {
     | '/communities/$slug'
     | '/event/$id'
     | '/kb/$'
+    | '/openclaw/earn'
     | '/posts/$id'
     | '/u/$npub'
     | '/blog/'
@@ -251,6 +261,7 @@ export interface FileRouteTypes {
     | '/communities/$slug'
     | '/event/$id'
     | '/kb/$'
+    | '/openclaw/earn'
     | '/posts/$id'
     | '/u/$npub'
     | '/blog'
@@ -275,6 +286,7 @@ export interface FileRouteTypes {
     | '/_app/communities/$slug'
     | '/_app/event/$id'
     | '/_app/kb/$'
+    | '/_app/openclaw/earn'
     | '/_app/posts/$id'
     | '/_app/u/$npub'
     | '/_app/blog/'
@@ -408,6 +420,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppPostsIdRouteImport
       parentRoute: typeof AppRouteRoute
     }
+    '/_app/openclaw/earn': {
+      id: '/_app/openclaw/earn'
+      path: '/openclaw/earn'
+      fullPath: '/openclaw/earn'
+      preLoaderRoute: typeof AppOpenclawEarnRouteImport
+      parentRoute: typeof AppRouteRoute
+    }
     '/_app/kb/$': {
       id: '/_app/kb/$'
       path: '/kb/$'
@@ -462,6 +481,7 @@ interface AppRouteRouteChildren {
   AppCommunitiesSlugRoute: typeof AppCommunitiesSlugRoute
   AppEventIdRoute: typeof AppEventIdRoute
   AppKbSplatRoute: typeof AppKbSplatRoute
+  AppOpenclawEarnRoute: typeof AppOpenclawEarnRoute
   AppPostsIdRoute: typeof AppPostsIdRoute
   AppUNpubRoute: typeof AppUNpubRoute
   AppBlogIndexRoute: typeof AppBlogIndexRoute
@@ -482,6 +502,7 @@ const AppRouteRouteChildren: AppRouteRouteChildren = {
   AppCommunitiesSlugRoute: AppCommunitiesSlugRoute,
   AppEventIdRoute: AppEventIdRoute,
   AppKbSplatRoute: AppKbSplatRoute,
+  AppOpenclawEarnRoute: AppOpenclawEarnRoute,
   AppPostsIdRoute: AppPostsIdRoute,
   AppUNpubRoute: AppUNpubRoute,
   AppBlogIndexRoute: AppBlogIndexRoute,
