@@ -1,7 +1,7 @@
 import { createFileRoute, redirect } from "@tanstack/react-router";
 
-export const Route = createFileRoute("/communities/")({
+export const Route = createFileRoute("/_app/posts/")({
   beforeLoad: () => {
-    throw redirect({ to: "/c" });
+    throw redirect({ to: "/feed" });
   },
 });

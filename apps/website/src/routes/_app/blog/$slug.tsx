@@ -1,12 +1,11 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { SiteLayout } from "@/components/SiteLayout";
 import { BlogPostLayout } from "@/components/BlogPostLayout";
 import { MarkdownContent } from "@/components/MarkdownContent";
 import { SITE_DESCRIPTION, SITE_TITLE } from "@/consts";
 import { buildHead } from "@/lib/seo";
 import { getBlogPostBySlug } from "@/lib/content";
 
-export const Route = createFileRoute("/blog/$slug")({
+export const Route = createFileRoute("/_app/blog/$slug")({
   component: RouteComponent,
   head: ({ params }) => {
     const post = params?.slug ? getBlogPostBySlug(params.slug) : undefined;
@@ -24,31 +23,27 @@ function RouteComponent() {
 
   if (!post) {
     return (
-      <SiteLayout>
-        <div className="mx-auto max-w-3xl px-4 py-8">
-          <p className="text-muted-foreground">
-            Post not found.{" "}
-            <a href="/blog" className="text-primary hover:underline">
-              Back to blog
-            </a>
-            .
-          </p>
-        </div>
-      </SiteLayout>
+      <div className="mx-auto max-w-3xl px-4 py-8">
+        <p className="text-muted-foreground">
+          Post not found.{" "}
+          <a href="/blog" className="text-primary hover:underline">
+            Back to blog
+          </a>
+          .
+        </p>
+      </div>
     );
   }
 
   return (
-    <SiteLayout>
-      <BlogPostLayout
-        title={post.data.title}
-        pubDate={post.data.pubDate}
-        updatedDate={post.data.updatedDate}
-        heroImage={post.data.heroImage}
-        tags={post.data.tags}
-      >
-        <MarkdownContent content={post.body} />
-      </BlogPostLayout>
-    </SiteLayout>
+    <BlogPostLayout
+      title={post.data.title}
+      pubDate={post.data.pubDate}
+      updatedDate={post.data.updatedDate}
+      heroImage={post.data.heroImage}
+      tags={post.data.tags}
+    >
+      <MarkdownContent content={post.body} />
+    </BlogPostLayout>
   );
 }
