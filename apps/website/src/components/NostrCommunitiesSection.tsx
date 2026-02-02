@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Link } from "@tanstack/react-router";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { RelayConfigProvider, useRelayConfigContext } from "@/contexts/RelayConfigContext";
 import { NostrProvider } from "@/components/NostrProvider";
@@ -39,14 +40,15 @@ function NostrCommunitiesList() {
     <ul className="space-y-0">
       {list.map(({ slug, count }) => (
         <li key={slug}>
-          <a
-            href={`/c/${slug}`}
+          <Link
+            to="/c/$subclaw"
+            params={{ subclaw: slug }}
             className="flex items-center justify-between rounded-md px-2 py-1.5 text-sm font-medium text-sidebar-foreground hover:bg-sidebar-accent"
             onMouseEnter={() => void prefetchSubclaw(slug)}
           >
             <span className="font-mono text-xs">c/{slug}</span>
             <span className="text-muted-foreground text-xs">{count}</span>
-          </a>
+          </Link>
         </li>
       ))}
     </ul>

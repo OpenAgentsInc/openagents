@@ -1,6 +1,6 @@
 "use client";
 
-import { useRouterState } from "@tanstack/react-router";
+import { Link, useRouterState } from "@tanstack/react-router";
 import { HomeIcon, BookOpen, Rss, UsersRound } from "lucide-react";
 import { NostrCommunitiesSection } from "@/components/NostrCommunitiesSection";
 // Auth disabled for this version.
@@ -142,15 +142,15 @@ export function AppSidebar() {
     <Sidebar collapsible="icon">
       <SidebarHeader className="relative flex h-14 shrink-0 flex-row items-center gap-2 border-b border-sidebar-border px-3">
         <SidebarTrigger className="absolute left-2 z-50" />
-        <a
-          href="/"
+        <Link
+          to="/"
           className={cn(
             "flex h-8 flex-1 items-center justify-center text-md font-semibold text-foreground transition-opacity duration-200 ease-linear",
             "group-data-[collapsible=icon]:opacity-0 group-data-[collapsible=icon]:w-0 group-data-[collapsible=icon]:overflow-hidden"
           )}
         >
           {SITE_TITLE}
-        </a>
+        </Link>
       </SidebarHeader>
       <div className="hidden flex-1 group-data-[collapsible=icon]:block" />
       <SidebarContent className="group-data-[collapsible=icon]:hidden">
@@ -163,8 +163,8 @@ export function AppSidebar() {
               return (
                 <SidebarMenuItem key={href}>
                   <SidebarMenuButton asChild isActive={isActive}>
-                    <a
-                      href={href}
+                    <Link
+                      to={href}
                       className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium text-sidebar-foreground hover:bg-sidebar-accent"
                       onMouseEnter={() => {
                         if (href === "/feed") void prefetchFeed();
@@ -173,7 +173,7 @@ export function AppSidebar() {
                     >
                       <Icon className="size-4 shrink-0" />
                       <span className="truncate">{label}</span>
-                    </a>
+                    </Link>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               );
