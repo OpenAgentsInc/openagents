@@ -2,7 +2,7 @@
 
 import { Link, useRouterState } from "@tanstack/react-router";
 import { HomeIcon, BookOpen, Rss, UsersRound, Bot } from "lucide-react";
-import { NostrCommunitiesSection } from "@/components/NostrCommunitiesSection";
+import { NostrCommunitiesSection } from "@/components/nostr/NostrCommunitiesSection";
 // Auth disabled for this version.
 // import { authClient } from "@/lib/auth-client";
 // import { api } from "../../convex/_generated/api";

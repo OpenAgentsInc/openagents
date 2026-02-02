@@ -1,7 +1,7 @@
 import { useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
-import { withConvexProvider } from "../lib/convex";
-import { authClient } from "../lib/auth-client";
+import { withConvexProvider } from "@/lib/convex";
+import { authClient } from "@/lib/auth-client";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 

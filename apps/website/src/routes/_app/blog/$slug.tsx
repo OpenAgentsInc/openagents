@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { BlogPostLayout } from "@/components/BlogPostLayout";
-import { MarkdownContent } from "@/components/MarkdownContent";
+import { BlogPostLayout } from "@/components/blog/BlogPostLayout";
+import { MarkdownContent } from "@/components/blog/MarkdownContent";
 import { SITE_DESCRIPTION, SITE_TITLE } from "@/consts";
 import { buildHead } from "@/lib/seo";
 import { getBlogPostBySlug } from "@/lib/content";

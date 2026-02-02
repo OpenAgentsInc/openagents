@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { RelayConfigProvider, useRelayConfigContext } from "@/contexts/RelayConfigContext";
-import { NostrProvider } from "@/components/NostrProvider";
-import { NostrFeedList } from "@/components/NostrFeedList";
-import { NostrPostForm } from "@/components/NostrPostForm";
-import { RelaySettings } from "@/components/RelaySettings";
-import { AIToggle } from "@/components/AIToggle";
+import { NostrProvider } from "@/components/nostr/NostrProvider";
+import { NostrFeedList } from "@/components/nostr/NostrFeedList";
+import { NostrPostForm } from "@/components/nostr/NostrPostForm";
+import { RelaySettings } from "@/components/nostr/RelaySettings";
+import { AIToggle } from "@/components/nostr/AIToggle";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getQueryClient } from "@/lib/queryClient";
 import { posthogCapture } from "@/lib/posthog";
