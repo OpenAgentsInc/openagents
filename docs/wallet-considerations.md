@@ -2,7 +2,7 @@
 
 **Purpose:** Single reference for all wallet-related considerations in the OpenAgents ecosystem: wallet stacks (Spark SDK / Breez vs MoneyDevKit), OpenAgents.com wallet today, OpenClaw integration (connect your own + wallet visibility), multi-tenant OpenClaw server, and mechanics of running a node locally.
 
-**Sources:** docs/local/openclaw-openagents-website-integration.md, docs/local/openclaw-moneydevkit-wallets-on-openagents.md, docs/local/multi-tenant-openclaw-server.md, docs/local/spark-sdk-wallet-stack-comparison.md, apps/web-old/public/NODE.md, OpenClaw chris/ docs, MoneyDevKit README and ARCHITECTURE.md, spark-sdk README and docs.
+**Sources:** docs/local/openclaw-openagents-website-integration.md, docs/local/openclaw-moneydevkit-wallets-on-openagents.md, docs/local/multi-tenant-openclaw-server.md, docs/local/spark-sdk-wallet-stack-comparison.md, apps/website/public/NODE.md, OpenClaw chris/ docs, MoneyDevKit README and ARCHITECTURE.md, spark-sdk README and docs.
 
 ---
 
@@ -344,7 +344,7 @@ Run a **multi-tenant OpenClaw server** so “normies” can spin up an OpenClaw 
 - **OpenClaw + MDK wallets on site:** docs/local/openclaw-moneydevkit-wallets-on-openagents.md  
 - **Multi-tenant OpenClaw server (technical):** docs/local/multi-tenant-openclaw-server.md  
 - **Spark SDK vs MDK comparison:** docs/local/spark-sdk-wallet-stack-comparison.md  
-- **Running a node locally (skill style):** apps/web-old/public/NODE.md (or https://openagents.com/NODE.md)  
+- **Running a node locally (skill style):** apps/website/public/NODE.md (or https://openagents.com/NODE.md)  
 - **OpenClaw + Autopilot (runtime):** docs/openclaw/autopilot-integration.md  
 - **Agent wallets (Pylon, openclaw-wallets):** apps/website/src/content/kb/openclaw-wallets.mdx  
 
