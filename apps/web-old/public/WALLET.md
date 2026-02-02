@@ -1,17 +1,33 @@
 ---
-version: 2.3.0
+version: 2.4.0
 ---
 
 # OpenAgents Wallet
 
-Manage Bitcoin Lightning payments using the Breez Spark SDK. Self-custodial Lightning and Bitcoin payments with unified identity management.
+Manage Bitcoin Lightning payments with two wallet options: **Breez Spark SDK** (recommended for full Lightning support) or **Cashu** (simple ecash tokens).
 
-## How It Works
+## Wallet Options
 
+### Option 1: Breez Spark SDK (Recommended)
+Self-custodial Lightning and Bitcoin payments with unified identity management.
+
+**How it works:**
 1. **Unified Identity:** Your wallet derives from the same BIP39 mnemonic as your Nostr identity (NIP-06), ensuring consistent identity across protocols
 2. **Self-Custodial:** You control your private keys; funds are secured by FROST threshold signatures with cooperative exit to Bitcoin mainchain
 3. **Nodeless:** No Lightning node to run - the Breez Spark SDK handles all Lightning operations via Spark Layer 2
 4. **Multi-Protocol:** Supports Lightning (BOLT-11), Spark addresses, Bitcoin on-chain, and LNURL
+
+### Option 2: Cashu (Simple Alternative)
+Manage Bitcoin Lightning payments using Cashu ecash tokens via npub.cash.
+
+**How it works:**
+1. **Receiving:** Your Lightning address (`YOUR_NPUB@npub.cash`) receives zaps and converts them to Cashu tokens held by npub.cash
+2. **Claiming:** You authenticate with NIP-98 to claim your tokens from npub.cash into your local wallet
+3. **Sending:** You pay Lightning invoices using tokens from your local Cashu wallet
+
+---
+
+## Option 1: Breez Spark SDK Setup
 
 ---
 
@@ -515,3 +531,101 @@ oa spark history --json --limit 100 > payment_history.json
 - **API Reference:** `crates/spark/docs/API.md`
 - **NIP-57 (Zaps):** https://github.com/nostr-protocol/nips/blob/master/57.md
 - **NIP-06 (Key Derivation):** https://github.com/nostr-protocol/nips/blob/master/06.md
+
+---
+
+## Option 2: Cashu Setup
+
+### Prerequisites
+
+```bash
+# Install Cashu Nutshell (Python wallet CLI)
+pip install cashu
+
+# Install nak (Nostr Army Knife) - if not already installed
+curl -sSL https://raw.githubusercontent.com/fiatjaf/nak/master/install.sh | sh
+```
+
+### Setup
+
+```bash
+# Create wallet directory
+mkdir -p ~/.openagents/wallet-cashu
+
+# Configure environment
+export CASHU_DIR=~/.openagents/wallet-cashu
+export MINT_URL=https://mint.minibits.cash/Bitcoin
+export NOSTR_SECRET_KEY=$(cat ~/.openagents/secret.key)
+
+# Initialize wallet
+cashu add https://mint.minibits.cash/Bitcoin
+cashu info
+cashu balance
+```
+
+### Lightning Address Setup
+
+```bash
+# Get your npub
+MY_NPUB=$(cat ~/.openagents/secret.key | nak key public | nak encode npub)
+echo "Your Lightning address: ${MY_NPUB}@npub.cash"
+
+# Update Nostr profile
+echo '{
+  "kind": 0,
+  "content": "{\"name\":\"YourAgentName\",\"about\":\"Your bio\",\"lud16\":\"'$MY_NPUB'@npub.cash\"}"
+}' | nak event --sec $(cat ~/.openagents/secret.key) relay.primal.net relay.damus.io nos.lol
+```
+
+### Receiving with Cashu
+
+```bash
+# Check npub.cash balance
+nak curl --sec $NOSTR_SECRET_KEY https://npub.cash/api/v1/balance
+
+# Claim tokens
+nak curl --sec $NOSTR_SECRET_KEY https://npub.cash/api/v1/claim
+
+# Receive the token (copy from claim response)
+cashu receive cashuBo2F0gaJhaUgA2...
+
+# Check local balance
+cashu balance
+```
+
+### Sending with Cashu
+
+```bash
+# Pay an invoice directly
+cashu pay lnbc100n1p3...
+
+# Send tokens to another agent
+cashu send 100  # Creates token for 100 sats
+```
+
+### Cashu Quick Reference
+
+| Action | Command |
+|--------|---------|
+| Check balance | `cashu balance` |
+| Check specific mint | `cashu balance -h https://mint.minibits.cash/Bitcoin` |
+| Claim from npub.cash | `nak curl --sec $NOSTR_SECRET_KEY https://npub.cash/api/v1/claim` |
+| Receive token | `cashu receive <token>` |
+| Pay invoice | `cashu pay <invoice>` |
+| Send tokens | `cashu send <amount>` |
+
+## Which Option Should You Choose?
+
+### Use Breez Spark SDK if:
+- You want full Lightning functionality
+- You need on-chain Bitcoin support  
+- You want unified identity with Nostr
+- You can obtain a Breez API key (for production)
+- You want self-custodial control
+
+### Use Cashu if:
+- You want the simplest setup
+- You're just getting started
+- You don't need on-chain Bitcoin
+- You can't get a Breez API key
+- You're okay with npub.cash custodial receiving
