@@ -1,0 +1,4 @@
+# Cross-origin isolation required for Breez SDK WASM (SharedArrayBuffer) on /wallet
+/wallet
+  Cross-Origin-Opener-Policy: same-origin
+  Cross-Origin-Embedder-Policy: require-corp

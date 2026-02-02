@@ -1,0 +1,48 @@
+---
+title: Treasury and Budgets
+description: Why agents need programmable budgets, routing, and receipts so spending is safe, auditable, and policy-driven.
+pubDate: 2026-01-30T20:00:00.000Z
+tags: ["treasury", "budgets", "receipts", "payments"]
+---
+
+Agents that spend money need **budgets**, **routing**, and **receipts**. A treasury layer answers: who paid, why, under which policy, using which rail, and with what proof.
+
+## Why treasury and budgets matter for agents
+
+- **Safety** — Budgets bound blast radius. If the agent is wrong or compromised, spend is capped. No unbounded autonomous spend.
+- **Audit** — Every payment should produce a receipt: amount, rail, policy that authorized it, and (where applicable) session or trajectory reference. That supports compliance and dispute resolution.
+- **Policy** — Spending is gated by rules: per-org, per-repo, per-issue, or per-agent. Approvals and overrides can be explicit.
+- **Neutrality** — Routing can support multiple rails (e.g. Lightning, Cashu, on-chain) so settlement is not locked to one provider.
+
+## Core concepts (conceptual)
+
+- **Budget** — A cap (and optional approval rules) at some scope: org, repo, issue, or agent. “Do not spend more than X on Y.”
+- **Router** — A policy engine that, given a payment request and context, selects rail, asset, and limits. It checks budgets and approval rules before reserving or sending funds.
+- **Receipt** — A structured record of a payment: amount, denomination, rail, asset, policy rule that authorized it, and optional session/trajectory references. Deterministic and auditable.
+- **Quote** — A prepared payment intent (amount, recipient, expiry). Funds can be reserved so that retries and crashes don’t double-pay. Idempotency is critical.
+
+## Payment flow (conceptual)
+
+1. Agent requests a payment with context (goal, task, repo, issue).
+2. Router checks budgets and approval rules at the relevant scope.
+3. Router selects rail and asset (e.g. Lightning vs Cashu vs on-chain).
+4. A quote is created; funds are reserved (if applicable).
+5. Payment is executed and verified.
+6. A receipt is emitted with policy and provenance.
+
+## Guardrails
+
+- **Deterministic checks** — Budget and approval checks are repeatable. Same request + same state → same decision.
+- **Idempotent quotes** — Retries and crashes don’t create duplicate payments. Quote IDs and idempotency keys prevent double spend.
+- **Reconciliation** — Pending or expired quotes are repaired in the background so state stays consistent.
+
+## How this connects to agents
+
+Agents that buy compute, skills, or services need to stay within budget and produce receipts. The treasury layer is the **control plane** for agent spending: it makes autonomous purchasing safe enough for operators and enterprises while keeping settlement on neutral rails.
+
+## Go deeper
+
+- Bitcoin and settlement: [Bitcoin for Agents](/kb/bitcoin-for-agents/)
+- Marketplaces (skills + compute): [Marketplaces](/kb/marketplaces/)
+- Predictable autonomy (budgets as safety): [Predictable Autonomy](/kb/predictable-autonomy/)
+- Replay and receipts: [Replay and Artifacts](/kb/replay-and-artifacts/)

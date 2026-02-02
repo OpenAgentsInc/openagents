@@ -9,133 +9,351 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as WalletRouteImport } from './routes/wallet'
+import { Route as SignupRouteImport } from './routes/signup'
+import { Route as RegisterRouteImport } from './routes/register'
+import { Route as LoginRouteImport } from './routes/login'
+import { Route as GetApiKeyRouteImport } from './routes/get-api-key'
+import { Route as FeedRouteImport } from './routes/feed'
+import { Route as AboutRouteImport } from './routes/about'
 import { Route as IndexRouteImport } from './routes/index'
-import { Route as DemoStartServerFuncsRouteImport } from './routes/demo/start.server-funcs'
-import { Route as DemoStartApiRequestRouteImport } from './routes/demo/start.api-request'
-import { Route as DemoApiNamesRouteImport } from './routes/demo/api.names'
-import { Route as DemoStartSsrIndexRouteImport } from './routes/demo/start.ssr.index'
-import { Route as DemoStartSsrSpaModeRouteImport } from './routes/demo/start.ssr.spa-mode'
-import { Route as DemoStartSsrFullSsrRouteImport } from './routes/demo/start.ssr.full-ssr'
-import { Route as DemoStartSsrDataOnlyRouteImport } from './routes/demo/start.ssr.data-only'
+import { Route as PostsIndexRouteImport } from './routes/posts/index'
+import { Route as KbIndexRouteImport } from './routes/kb/index'
+import { Route as CommunitiesIndexRouteImport } from './routes/communities/index'
+import { Route as CIndexRouteImport } from './routes/c/index'
+import { Route as BlogIndexRouteImport } from './routes/blog/index'
+import { Route as UNpubRouteImport } from './routes/u/$npub'
+import { Route as PostsIdRouteImport } from './routes/posts/$id'
+import { Route as KbSplatRouteImport } from './routes/kb/$'
+import { Route as EventIdRouteImport } from './routes/event/$id'
+import { Route as CommunitiesSlugRouteImport } from './routes/communities/$slug'
+import { Route as BlogSlugRouteImport } from './routes/blog/$slug'
+import { Route as CSubclawIndexRouteImport } from './routes/c/$subclaw/index'
+import { Route as CSubclawPostIdRouteImport } from './routes/c/$subclaw/post/$id'
 
+const WalletRoute = WalletRouteImport.update({
+  id: '/wallet',
+  path: '/wallet',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SignupRoute = SignupRouteImport.update({
+  id: '/signup',
+  path: '/signup',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const RegisterRoute = RegisterRouteImport.update({
+  id: '/register',
+  path: '/register',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LoginRoute = LoginRouteImport.update({
+  id: '/login',
+  path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const GetApiKeyRoute = GetApiKeyRouteImport.update({
+  id: '/get-api-key',
+  path: '/get-api-key',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const FeedRoute = FeedRouteImport.update({
+  id: '/feed',
+  path: '/feed',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AboutRoute = AboutRouteImport.update({
+  id: '/about',
+  path: '/about',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
-const DemoStartServerFuncsRoute = DemoStartServerFuncsRouteImport.update({
-  id: '/demo/start/server-funcs',
-  path: '/demo/start/server-funcs',
+const PostsIndexRoute = PostsIndexRouteImport.update({
+  id: '/posts/',
+  path: '/posts/',
   getParentRoute: () => rootRouteImport,
 } as any)
-const DemoStartApiRequestRoute = DemoStartApiRequestRouteImport.update({
-  id: '/demo/start/api-request',
-  path: '/demo/start/api-request',
+const KbIndexRoute = KbIndexRouteImport.update({
+  id: '/kb/',
+  path: '/kb/',
   getParentRoute: () => rootRouteImport,
 } as any)
-const DemoApiNamesRoute = DemoApiNamesRouteImport.update({
-  id: '/demo/api/names',
-  path: '/demo/api/names',
+const CommunitiesIndexRoute = CommunitiesIndexRouteImport.update({
+  id: '/communities/',
+  path: '/communities/',
   getParentRoute: () => rootRouteImport,
 } as any)
-const DemoStartSsrIndexRoute = DemoStartSsrIndexRouteImport.update({
-  id: '/demo/start/ssr/',
-  path: '/demo/start/ssr/',
+const CIndexRoute = CIndexRouteImport.update({
+  id: '/c/',
+  path: '/c/',
   getParentRoute: () => rootRouteImport,
 } as any)
-const DemoStartSsrSpaModeRoute = DemoStartSsrSpaModeRouteImport.update({
-  id: '/demo/start/ssr/spa-mode',
-  path: '/demo/start/ssr/spa-mode',
+const BlogIndexRoute = BlogIndexRouteImport.update({
+  id: '/blog/',
+  path: '/blog/',
   getParentRoute: () => rootRouteImport,
 } as any)
-const DemoStartSsrFullSsrRoute = DemoStartSsrFullSsrRouteImport.update({
-  id: '/demo/start/ssr/full-ssr',
-  path: '/demo/start/ssr/full-ssr',
+const UNpubRoute = UNpubRouteImport.update({
+  id: '/u/$npub',
+  path: '/u/$npub',
   getParentRoute: () => rootRouteImport,
 } as any)
-const DemoStartSsrDataOnlyRoute = DemoStartSsrDataOnlyRouteImport.update({
-  id: '/demo/start/ssr/data-only',
-  path: '/demo/start/ssr/data-only',
+const PostsIdRoute = PostsIdRouteImport.update({
+  id: '/posts/$id',
+  path: '/posts/$id',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const KbSplatRoute = KbSplatRouteImport.update({
+  id: '/kb/$',
+  path: '/kb/$',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const EventIdRoute = EventIdRouteImport.update({
+  id: '/event/$id',
+  path: '/event/$id',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CommunitiesSlugRoute = CommunitiesSlugRouteImport.update({
+  id: '/communities/$slug',
+  path: '/communities/$slug',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const BlogSlugRoute = BlogSlugRouteImport.update({
+  id: '/blog/$slug',
+  path: '/blog/$slug',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CSubclawIndexRoute = CSubclawIndexRouteImport.update({
+  id: '/c/$subclaw/',
+  path: '/c/$subclaw/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CSubclawPostIdRoute = CSubclawPostIdRouteImport.update({
+  id: '/c/$subclaw/post/$id',
+  path: '/c/$subclaw/post/$id',
   getParentRoute: () => rootRouteImport,
 } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
-  '/demo/api/names': typeof DemoApiNamesRoute
-  '/demo/start/api-request': typeof DemoStartApiRequestRoute
-  '/demo/start/server-funcs': typeof DemoStartServerFuncsRoute
-  '/demo/start/ssr/data-only': typeof DemoStartSsrDataOnlyRoute
-  '/demo/start/ssr/full-ssr': typeof DemoStartSsrFullSsrRoute
-  '/demo/start/ssr/spa-mode': typeof DemoStartSsrSpaModeRoute
-  '/demo/start/ssr/': typeof DemoStartSsrIndexRoute
+  '/about': typeof AboutRoute
+  '/feed': typeof FeedRoute
+  '/get-api-key': typeof GetApiKeyRoute
+  '/login': typeof LoginRoute
+  '/register': typeof RegisterRoute
+  '/signup': typeof SignupRoute
+  '/wallet': typeof WalletRoute
+  '/blog/$slug': typeof BlogSlugRoute
+  '/communities/$slug': typeof CommunitiesSlugRoute
+  '/event/$id': typeof EventIdRoute
+  '/kb/$': typeof KbSplatRoute
+  '/posts/$id': typeof PostsIdRoute
+  '/u/$npub': typeof UNpubRoute
+  '/blog/': typeof BlogIndexRoute
+  '/c/': typeof CIndexRoute
+  '/communities/': typeof CommunitiesIndexRoute
+  '/kb/': typeof KbIndexRoute
+  '/posts/': typeof PostsIndexRoute
+  '/c/$subclaw/': typeof CSubclawIndexRoute
+  '/c/$subclaw/post/$id': typeof CSubclawPostIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/demo/api/names': typeof DemoApiNamesRoute
-  '/demo/start/api-request': typeof DemoStartApiRequestRoute
-  '/demo/start/server-funcs': typeof DemoStartServerFuncsRoute
-  '/demo/start/ssr/data-only': typeof DemoStartSsrDataOnlyRoute
-  '/demo/start/ssr/full-ssr': typeof DemoStartSsrFullSsrRoute
-  '/demo/start/ssr/spa-mode': typeof DemoStartSsrSpaModeRoute
-  '/demo/start/ssr': typeof DemoStartSsrIndexRoute
+  '/about': typeof AboutRoute
+  '/feed': typeof FeedRoute
+  '/get-api-key': typeof GetApiKeyRoute
+  '/login': typeof LoginRoute
+  '/register': typeof RegisterRoute
+  '/signup': typeof SignupRoute
+  '/wallet': typeof WalletRoute
+  '/blog/$slug': typeof BlogSlugRoute
+  '/communities/$slug': typeof CommunitiesSlugRoute
+  '/event/$id': typeof EventIdRoute
+  '/kb/$': typeof KbSplatRoute
+  '/posts/$id': typeof PostsIdRoute
+  '/u/$npub': typeof UNpubRoute
+  '/blog': typeof BlogIndexRoute
+  '/c': typeof CIndexRoute
+  '/communities': typeof CommunitiesIndexRoute
+  '/kb': typeof KbIndexRoute
+  '/posts': typeof PostsIndexRoute
+  '/c/$subclaw': typeof CSubclawIndexRoute
+  '/c/$subclaw/post/$id': typeof CSubclawPostIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
-  '/demo/api/names': typeof DemoApiNamesRoute
-  '/demo/start/api-request': typeof DemoStartApiRequestRoute
-  '/demo/start/server-funcs': typeof DemoStartServerFuncsRoute
-  '/demo/start/ssr/data-only': typeof DemoStartSsrDataOnlyRoute
-  '/demo/start/ssr/full-ssr': typeof DemoStartSsrFullSsrRoute
-  '/demo/start/ssr/spa-mode': typeof DemoStartSsrSpaModeRoute
-  '/demo/start/ssr/': typeof DemoStartSsrIndexRoute
+  '/about': typeof AboutRoute
+  '/feed': typeof FeedRoute
+  '/get-api-key': typeof GetApiKeyRoute
+  '/login': typeof LoginRoute
+  '/register': typeof RegisterRoute
+  '/signup': typeof SignupRoute
+  '/wallet': typeof WalletRoute
+  '/blog/$slug': typeof BlogSlugRoute
+  '/communities/$slug': typeof CommunitiesSlugRoute
+  '/event/$id': typeof EventIdRoute
+  '/kb/$': typeof KbSplatRoute
+  '/posts/$id': typeof PostsIdRoute
+  '/u/$npub': typeof UNpubRoute
+  '/blog/': typeof BlogIndexRoute
+  '/c/': typeof CIndexRoute
+  '/communities/': typeof CommunitiesIndexRoute
+  '/kb/': typeof KbIndexRoute
+  '/posts/': typeof PostsIndexRoute
+  '/c/$subclaw/': typeof CSubclawIndexRoute
+  '/c/$subclaw/post/$id': typeof CSubclawPostIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
-    | '/demo/api/names'
-    | '/demo/start/api-request'
-    | '/demo/start/server-funcs'
-    | '/demo/start/ssr/data-only'
-    | '/demo/start/ssr/full-ssr'
-    | '/demo/start/ssr/spa-mode'
-    | '/demo/start/ssr/'
+    | '/about'
+    | '/feed'
+    | '/get-api-key'
+    | '/login'
+    | '/register'
+    | '/signup'
+    | '/wallet'
+    | '/blog/$slug'
+    | '/communities/$slug'
+    | '/event/$id'
+    | '/kb/$'
+    | '/posts/$id'
+    | '/u/$npub'
+    | '/blog/'
+    | '/c/'
+    | '/communities/'
+    | '/kb/'
+    | '/posts/'
+    | '/c/$subclaw/'
+    | '/c/$subclaw/post/$id'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
-    | '/demo/api/names'
-    | '/demo/start/api-request'
-    | '/demo/start/server-funcs'
-    | '/demo/start/ssr/data-only'
-    | '/demo/start/ssr/full-ssr'
-    | '/demo/start/ssr/spa-mode'
-    | '/demo/start/ssr'
+    | '/about'
+    | '/feed'
+    | '/get-api-key'
+    | '/login'
+    | '/register'
+    | '/signup'
+    | '/wallet'
+    | '/blog/$slug'
+    | '/communities/$slug'
+    | '/event/$id'
+    | '/kb/$'
+    | '/posts/$id'
+    | '/u/$npub'
+    | '/blog'
+    | '/c'
+    | '/communities'
+    | '/kb'
+    | '/posts'
+    | '/c/$subclaw'
+    | '/c/$subclaw/post/$id'
   id:
     | '__root__'
     | '/'
-    | '/demo/api/names'
-    | '/demo/start/api-request'
-    | '/demo/start/server-funcs'
-    | '/demo/start/ssr/data-only'
-    | '/demo/start/ssr/full-ssr'
-    | '/demo/start/ssr/spa-mode'
-    | '/demo/start/ssr/'
+    | '/about'
+    | '/feed'
+    | '/get-api-key'
+    | '/login'
+    | '/register'
+    | '/signup'
+    | '/wallet'
+    | '/blog/$slug'
+    | '/communities/$slug'
+    | '/event/$id'
+    | '/kb/$'
+    | '/posts/$id'
+    | '/u/$npub'
+    | '/blog/'
+    | '/c/'
+    | '/communities/'
+    | '/kb/'
+    | '/posts/'
+    | '/c/$subclaw/'
+    | '/c/$subclaw/post/$id'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
-  DemoApiNamesRoute: typeof DemoApiNamesRoute
-  DemoStartApiRequestRoute: typeof DemoStartApiRequestRoute
-  DemoStartServerFuncsRoute: typeof DemoStartServerFuncsRoute
-  DemoStartSsrDataOnlyRoute: typeof DemoStartSsrDataOnlyRoute
-  DemoStartSsrFullSsrRoute: typeof DemoStartSsrFullSsrRoute
-  DemoStartSsrSpaModeRoute: typeof DemoStartSsrSpaModeRoute
-  DemoStartSsrIndexRoute: typeof DemoStartSsrIndexRoute
+  AboutRoute: typeof AboutRoute
+  FeedRoute: typeof FeedRoute
+  GetApiKeyRoute: typeof GetApiKeyRoute
+  LoginRoute: typeof LoginRoute
+  RegisterRoute: typeof RegisterRoute
+  SignupRoute: typeof SignupRoute
+  WalletRoute: typeof WalletRoute
+  BlogSlugRoute: typeof BlogSlugRoute
+  CommunitiesSlugRoute: typeof CommunitiesSlugRoute
+  EventIdRoute: typeof EventIdRoute
+  KbSplatRoute: typeof KbSplatRoute
+  PostsIdRoute: typeof PostsIdRoute
+  UNpubRoute: typeof UNpubRoute
+  BlogIndexRoute: typeof BlogIndexRoute
+  CIndexRoute: typeof CIndexRoute
+  CommunitiesIndexRoute: typeof CommunitiesIndexRoute
+  KbIndexRoute: typeof KbIndexRoute
+  PostsIndexRoute: typeof PostsIndexRoute
+  CSubclawIndexRoute: typeof CSubclawIndexRoute
+  CSubclawPostIdRoute: typeof CSubclawPostIdRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/wallet': {
+      id: '/wallet'
+      path: '/wallet'
+      fullPath: '/wallet'
+      preLoaderRoute: typeof WalletRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/signup': {
+      id: '/signup'
+      path: '/signup'
+      fullPath: '/signup'
+      preLoaderRoute: typeof SignupRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/register': {
+      id: '/register'
+      path: '/register'
+      fullPath: '/register'
+      preLoaderRoute: typeof RegisterRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/login': {
+      id: '/login'
+      path: '/login'
+      fullPath: '/login'
+      preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/get-api-key': {
+      id: '/get-api-key'
+      path: '/get-api-key'
+      fullPath: '/get-api-key'
+      preLoaderRoute: typeof GetApiKeyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/feed': {
+      id: '/feed'
+      path: '/feed'
+      fullPath: '/feed'
+      preLoaderRoute: typeof FeedRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/about': {
+      id: '/about'
+      path: '/about'
+      fullPath: '/about'
+      preLoaderRoute: typeof AboutRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -143,53 +361,95 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/demo/start/server-funcs': {
-      id: '/demo/start/server-funcs'
-      path: '/demo/start/server-funcs'
-      fullPath: '/demo/start/server-funcs'
-      preLoaderRoute: typeof DemoStartServerFuncsRouteImport
+    '/posts/': {
+      id: '/posts/'
+      path: '/posts'
+      fullPath: '/posts/'
+      preLoaderRoute: typeof PostsIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/demo/start/api-request': {
-      id: '/demo/start/api-request'
-      path: '/demo/start/api-request'
-      fullPath: '/demo/start/api-request'
-      preLoaderRoute: typeof DemoStartApiRequestRouteImport
+    '/kb/': {
+      id: '/kb/'
+      path: '/kb'
+      fullPath: '/kb/'
+      preLoaderRoute: typeof KbIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/demo/api/names': {
-      id: '/demo/api/names'
-      path: '/demo/api/names'
-      fullPath: '/demo/api/names'
-      preLoaderRoute: typeof DemoApiNamesRouteImport
+    '/communities/': {
+      id: '/communities/'
+      path: '/communities'
+      fullPath: '/communities/'
+      preLoaderRoute: typeof CommunitiesIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/demo/start/ssr/': {
-      id: '/demo/start/ssr/'
-      path: '/demo/start/ssr'
-      fullPath: '/demo/start/ssr/'
-      preLoaderRoute: typeof DemoStartSsrIndexRouteImport
+    '/c/': {
+      id: '/c/'
+      path: '/c'
+      fullPath: '/c/'
+      preLoaderRoute: typeof CIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/demo/start/ssr/spa-mode': {
-      id: '/demo/start/ssr/spa-mode'
-      path: '/demo/start/ssr/spa-mode'
-      fullPath: '/demo/start/ssr/spa-mode'
-      preLoaderRoute: typeof DemoStartSsrSpaModeRouteImport
+    '/blog/': {
+      id: '/blog/'
+      path: '/blog'
+      fullPath: '/blog/'
+      preLoaderRoute: typeof BlogIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/demo/start/ssr/full-ssr': {
-      id: '/demo/start/ssr/full-ssr'
-      path: '/demo/start/ssr/full-ssr'
-      fullPath: '/demo/start/ssr/full-ssr'
-      preLoaderRoute: typeof DemoStartSsrFullSsrRouteImport
+    '/u/$npub': {
+      id: '/u/$npub'
+      path: '/u/$npub'
+      fullPath: '/u/$npub'
+      preLoaderRoute: typeof UNpubRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/demo/start/ssr/data-only': {
-      id: '/demo/start/ssr/data-only'
-      path: '/demo/start/ssr/data-only'
-      fullPath: '/demo/start/ssr/data-only'
-      preLoaderRoute: typeof DemoStartSsrDataOnlyRouteImport
+    '/posts/$id': {
+      id: '/posts/$id'
+      path: '/posts/$id'
+      fullPath: '/posts/$id'
+      preLoaderRoute: typeof PostsIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/kb/$': {
+      id: '/kb/$'
+      path: '/kb/$'
+      fullPath: '/kb/$'
+      preLoaderRoute: typeof KbSplatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/event/$id': {
+      id: '/event/$id'
+      path: '/event/$id'
+      fullPath: '/event/$id'
+      preLoaderRoute: typeof EventIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/communities/$slug': {
+      id: '/communities/$slug'
+      path: '/communities/$slug'
+      fullPath: '/communities/$slug'
+      preLoaderRoute: typeof CommunitiesSlugRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/blog/$slug': {
+      id: '/blog/$slug'
+      path: '/blog/$slug'
+      fullPath: '/blog/$slug'
+      preLoaderRoute: typeof BlogSlugRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/c/$subclaw/': {
+      id: '/c/$subclaw/'
+      path: '/c/$subclaw'
+      fullPath: '/c/$subclaw/'
+      preLoaderRoute: typeof CSubclawIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/c/$subclaw/post/$id': {
+      id: '/c/$subclaw/post/$id'
+      path: '/c/$subclaw/post/$id'
+      fullPath: '/c/$subclaw/post/$id'
+      preLoaderRoute: typeof CSubclawPostIdRouteImport
       parentRoute: typeof rootRouteImport
     }
   }
@@ -197,13 +457,26 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
-  DemoApiNamesRoute: DemoApiNamesRoute,
-  DemoStartApiRequestRoute: DemoStartApiRequestRoute,
-  DemoStartServerFuncsRoute: DemoStartServerFuncsRoute,
-  DemoStartSsrDataOnlyRoute: DemoStartSsrDataOnlyRoute,
-  DemoStartSsrFullSsrRoute: DemoStartSsrFullSsrRoute,
-  DemoStartSsrSpaModeRoute: DemoStartSsrSpaModeRoute,
-  DemoStartSsrIndexRoute: DemoStartSsrIndexRoute,
+  AboutRoute: AboutRoute,
+  FeedRoute: FeedRoute,
+  GetApiKeyRoute: GetApiKeyRoute,
+  LoginRoute: LoginRoute,
+  RegisterRoute: RegisterRoute,
+  SignupRoute: SignupRoute,
+  WalletRoute: WalletRoute,
+  BlogSlugRoute: BlogSlugRoute,
+  CommunitiesSlugRoute: CommunitiesSlugRoute,
+  EventIdRoute: EventIdRoute,
+  KbSplatRoute: KbSplatRoute,
+  PostsIdRoute: PostsIdRoute,
+  UNpubRoute: UNpubRoute,
+  BlogIndexRoute: BlogIndexRoute,
+  CIndexRoute: CIndexRoute,
+  CommunitiesIndexRoute: CommunitiesIndexRoute,
+  KbIndexRoute: KbIndexRoute,
+  PostsIndexRoute: PostsIndexRoute,
+  CSubclawIndexRoute: CSubclawIndexRoute,
+  CSubclawPostIdRoute: CSubclawPostIdRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
