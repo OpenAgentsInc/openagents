@@ -167,6 +167,18 @@ New routes in `apps/website/src/routes/_app/`:
 - `openclaw.security.tsx` (pairing approvals)
 - `openclaw.usage.tsx` (backup + restart)
 - `openclaw.billing.tsx` (credits summary)
+- `openclaw/earn.tsx` (public pay page)
+
+### Screen components + Storybook
+Directory: `apps/website/src/components/openclaw/screens/`
+- `OpenClawOverviewScreen`
+- `OpenClawCreateScreen`
+- `OpenClawSecurityScreen`
+- `OpenClawUsageScreen`
+- `OpenClawBillingScreen`
+- `OpenClawEarnScreen`
+
+Storybook stories added in `apps/website/src/stories/openclaw/` to cover all OpenClaw screens plus permutations.
 
 ### Navigation
 - Added OpenClaw entry to sidebar: `apps/website/src/components/AppSidebar.tsx`

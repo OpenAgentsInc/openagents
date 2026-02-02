@@ -87,7 +87,7 @@ We will add a dedicated page that **always** shows a live payment coordinate com
 
 1) **New route**
    - Create the route:
-     - `apps/website/src/routes/openclaw/earn.tsx`
+     - `apps/website/src/routes/_app/openclaw/earn.tsx`
    - This page should:
      - Render a “Pay OpenClaw” header.
      - Display a live Lightning invoice (Bolt11) from OpenClaw.
