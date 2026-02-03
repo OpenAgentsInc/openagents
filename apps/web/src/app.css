@@ -152,17 +152,7 @@
   --sidebar-border: var(--bg-border-color);
   --sidebar-accent: var(--bg-base-color);
 }
-/* Hide all scrollbars in sidebars while preserving scroll */
-[data-sidebar='sidebar'],
-[data-sidebar='sidebar'] *,
-[data-sidebar='content'] {
-  scrollbar-width: none;
-}
-[data-sidebar='sidebar']::-webkit-scrollbar,
-[data-sidebar='sidebar'] *::-webkit-scrollbar,
-[data-sidebar='content']::-webkit-scrollbar {
-  display: none;
-}
+
 
 html,
 body {
