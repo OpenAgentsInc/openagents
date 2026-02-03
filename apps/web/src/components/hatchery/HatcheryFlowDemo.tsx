@@ -16,6 +16,7 @@ import {
   type FlowNode,
 } from '@/components/flow';
 import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
 
 const HOME_TREE: FlowNode = {
   id: 'root',
@@ -326,19 +327,34 @@ export function HatcheryFlowDemo() {
         defaultZoom={0.95}
         overlay={
           <>
-            <div className="pointer-events-auto absolute left-4 top-4 rounded-lg border border-border bg-card/80 px-3 py-2 text-xs text-muted-foreground shadow-lg backdrop-blur-md">
+            <div
+              className="pointer-events-auto absolute inset-0 z-0 bg-black/50"
+              aria-hidden
+            />
+            <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
+              <Card className="pointer-events-none px-8 py-6 shadow-lg">
+                <CardContent className="p-0 text-center text-lg font-medium">
+                  Coming Soon
+                </CardContent>
+              </Card>
+            </div>
+            <div className="pointer-events-auto absolute left-4 top-4 z-20 rounded-lg border border-border bg-card/80 px-3 py-2 text-xs text-muted-foreground shadow-lg backdrop-blur-md">
               <div className="font-medium text-card-foreground">Hatchery (demo)</div>
               <div>Pan/zoom the graph. Click a node to inspect.</div>
             </div>
-            <NodeDetailsPanel
-              node={selectedNode}
-              onClose={() => setSelectedNode(null)}
-              renderActions={renderNodeActions}
-            />
-            <DevTreeGenerator
-              onGenerate={setGeneratedTree}
-              onReset={() => setGeneratedTree(null)}
-            />
+            <div className="z-20">
+              <NodeDetailsPanel
+                node={selectedNode}
+                onClose={() => setSelectedNode(null)}
+                renderActions={renderNodeActions}
+              />
+            </div>
+            <div className="z-20">
+              <DevTreeGenerator
+                onGenerate={setGeneratedTree}
+                onReset={() => setGeneratedTree(null)}
+              />
+            </div>
           </>
         }
       >
