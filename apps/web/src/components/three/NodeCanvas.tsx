@@ -1,14 +1,47 @@
-'use client'
-
-import { useState, createRef } from 'react'
-import { Canvas } from '@react-three/fiber'
-import { Nodes, Node } from './Nodes'
+import { useState, createRef, useEffect } from 'react'
 import type * as THREE from 'three'
 
+function WebGLFallback() {
+  return (
+    <div className="flex h-full w-full items-center justify-center">
+      <h1 className="text-4xl font-bold">Welcome to OpenAgents</h1>
+    </div>
+  )
+}
+
+function checkWebGLSupport(): boolean {
+  if (typeof window === 'undefined') return false
+  try {
+    const canvas = document.createElement('canvas')
+    const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl')
+    return !!gl
+  } catch {
+    return false
+  }
+}
+
 export function NodeCanvas() {
+  const [mounted, setMounted] = useState(false)
+  const [hasWebGL, setHasWebGL] = useState(false)
   const [[a, b, c, d, e]] = useState(() =>
     [...Array(5)].map(() => createRef<THREE.Mesh>()),
   )
+
+  useEffect(() => {
+    setMounted(true)
+    setHasWebGL(checkWebGLSupport())
+  }, [])
+
+  if (!mounted) {
+    return <div className="flex-1 bg-background" />
+  }
+
+  if (!hasWebGL) {
+    return <WebGLFallback />
+  }
+
+  const { Canvas } = require('@react-three/fiber')
+  const { Nodes, Node } = require('./Nodes')
 
   return (
     <Canvas orthographic camera={{ zoom: 80 }}>
