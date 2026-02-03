@@ -1,55 +1,76 @@
 @import 'tailwindcss';
 
+@custom-variant dark (&:is(.dark *));
+
+@layer base {
+  button:not(:disabled),
+  [role='button']:not(:disabled) {
+    cursor: pointer;
+  }
+}
+
 @theme {
-  --font-display: 'Instrument Serif', serif;
-  --font-sans: 'Inter', system-ui, sans-serif;
+  --font-sans: "Instrument Sans", ui-sans-serif, system-ui, sans-serif;
+}
 
-  --color-mauve-50: oklch(98.5% 0 0);
-  --color-mauve-100: oklch(96% 0.003 325.6);
-  --color-mauve-200: oklch(92.2% 0.005 325.62);
-  --color-mauve-300: oklch(86.5% 0.012 325.68);
-  --color-mauve-400: oklch(71.1% 0.019 323.02);
-  --color-mauve-500: oklch(54.2% 0.034 322.5);
-  --color-mauve-600: oklch(43.5% 0.029 321.78);
-  --color-mauve-700: oklch(36.4% 0.029 323.89);
-  --color-mauve-800: oklch(26.3% 0.024 320.12);
-  --color-mauve-900: oklch(21.2% 0.019 322.12);
-  --color-mauve-950: oklch(14.5% 0.008 326);
-
+@theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
 }
 
 :root {
-  --background: #f5f4f6;
-  --foreground: #1c1917;
+  --background: oklch(0.97 0 0);
+  --foreground: oklch(0.145 0 0);
+  --footer-height: 3rem;
+  --sidebar: oklch(0.97 0 0);
+  --sidebar-foreground: oklch(0.18 0.005 285.823);
+  --sidebar-primary: oklch(0.21 0.006 285.885);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.967 0.001 286.375);
+  --sidebar-accent-foreground: oklch(0.21 0.006 285.885);
+  --sidebar-border: oklch(0.92 0.004 286.32);
+  --sidebar-ring: oklch(0.705 0.015 286.067);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #1c1917;
-    --foreground: #f5f4f6;
-  }
+.dark {
+  color-scheme: dark;
+  --background: #000;
+  --foreground: #fff;
+  --sidebar: oklch(0.12 0 0);
+  --sidebar-foreground: oklch(0.88 0 0);
+  --sidebar-primary: oklch(0.88 0 0);
+  --sidebar-primary-foreground: oklch(0.145 0 0);
+  --sidebar-accent: oklch(0.218 0 0);
+  --sidebar-accent-foreground: oklch(1 0 0);
+  --sidebar-border: oklch(0.18 0 0);
+  --sidebar-ring: oklch(0.627 0 0);
 }
 
-@layer base {
-  html {
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
-    background-color: var(--color-mauve-100);
-    --scroll-padding-top: 0;
-    scroll-padding-top: var(--scroll-padding-top);
-  }
+/* Sidebar: force background and text from theme (Tailwind bg-sidebar can fail to apply) */
+[data-sidebar='sidebar'],
+[data-slot='sidebar-inner'] {
+  background-color: var(--sidebar) !important;
+  color: var(--sidebar-foreground);
+}
+/* Sidebar wrapper when variant=inset */
+[data-slot='sidebar-wrapper']:has([data-variant='inset']) {
+  background-color: var(--sidebar);
+}
 
-  @variant dark {
-    html {
-      background-color: var(--color-mauve-950);
-    }
-  }
-
-  body {
-    color: var(--foreground);
-    background: var(--background);
-    font-family: var(--font-sans), system-ui, sans-serif;
-  }
+html,
+body {
+  margin: 0;
+  padding: 0;
+  min-height: 100%;
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
 }
