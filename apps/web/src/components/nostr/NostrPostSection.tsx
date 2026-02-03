@@ -37,9 +37,9 @@ function NostrPostSectionInner({
   showAllInitial,
 }: NostrPostSectionProps & { showAllInitial: boolean }) {
   const [showAll, setShowAll] = useState(showAllInitial);
-  const { relayUrls } = useRelayConfigContext();
+  const { relayMetadata } = useRelayConfigContext();
   return (
-    <NostrProvider relayUrls={relayUrls}>
+    <NostrProvider relayMetadata={relayMetadata}>
       <div className="flex flex-col gap-3">
         <AIToggle showAll={showAll} onChange={setShowAll} source="post" />
         <NostrPostView

@@ -42,6 +42,17 @@ export function identifierToCommunity(identifier: string): string | null {
   return match?.[2]?.toLowerCase() ?? null;
 }
 
+export function subclawToIdentifier(
+  subclaw: string,
+  baseUrl = OPENAGENTS_BASE_URL,
+): string {
+  return `${baseUrl}/c/${subclaw.toLowerCase()}`;
+}
+
+export function identifierToSubclaw(identifier: string): string | null {
+  return identifierToCommunity(identifier);
+}
+
 export function isClawstrIdentifier(identifier: string): boolean {
   return identifierToCommunity(identifier) !== null;
 }
@@ -69,11 +80,18 @@ export function isTopLevelPost(event: NostrEvent): boolean {
   return true;
 }
 
-/** NIP-32: event has AI label (L/agent or l/ai). */
+/** NIP-32: event has AI label (requires both L/agent + l/ai). */
 export function hasAILabel(event: NostrEvent): boolean {
-  const L = event.tags.find(([name]) => name === 'L')?.[1];
-  const l = event.tags.find(([name]) => name === 'l')?.[1];
-  return L === AI_LABEL.namespace || l === AI_LABEL.value;
+  const hasNamespace = event.tags.some(
+    ([name, value]) => name === 'L' && value === AI_LABEL.namespace,
+  );
+  const hasLabel = event.tags.some(
+    ([name, value, namespace]) =>
+      name === 'l' &&
+      value === AI_LABEL.value &&
+      namespace === AI_LABEL.namespace,
+  );
+  return hasNamespace && hasLabel;
 }
 
 export function formatRelativeTime(timestamp: number): string {
@@ -86,6 +104,20 @@ export function formatRelativeTime(timestamp: number): string {
   if (diff < 2592000) return `${Math.floor(diff / 604800)}w ago`;
   if (diff < 31536000) return `${Math.floor(diff / 2592000)}mo ago`;
   return `${Math.floor(diff / 31536000)}y ago`;
+}
+
+export function formatCount(count: number): string {
+  const abs = Math.abs(count);
+  if (abs < 1000) return count.toString();
+  const sign = count < 0 ? '-' : '';
+  if (abs < 1_000_000) return `${sign}${(abs / 1000).toFixed(1)}k`;
+  return `${sign}${(abs / 1_000_000).toFixed(1)}M`;
+}
+
+export function formatSats(sats: number): string {
+  if (sats < 1000) return sats.toLocaleString();
+  if (sats < 1_000_000) return `${(sats / 1000).toFixed(1)}k`;
+  return `${(sats / 1_000_000).toFixed(1)}M`;
 }
 
 /** NIP-32 AI label tags for Clawstr-style events (L/agent, l/ai). */
@@ -101,8 +133,8 @@ export function createPostTags(community: string, includeAILabel = true): string
   const identifier = communityToIdentifier(community);
   const tags: string[][] = [
     ['I', identifier],
-    ['i', identifier],
     ['K', WEB_KIND],
+    ['i', identifier],
     ['k', WEB_KIND],
   ];
   if (includeAILabel) tags.push(...createAILabelTags());
@@ -117,7 +149,7 @@ export function createReplyTags(
 ): string[][] {
   const identifier = communityToIdentifier(community);
   const tags: string[][] = [
-    ['e', parentEvent.id],
+    ['e', parentEvent.id, '', parentEvent.pubkey],
     ['p', parentEvent.pubkey],
     ['k', '1111'],
     ['I', identifier],

@@ -1,48 +1,63 @@
-import { useState, useEffect } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import {
-  getStoredRelays,
-  setStoredRelays,
-  DEFAULT_RELAYS,
+  buildRelayMetadataFromUrls,
+  getStoredRelayMetadata,
+  setStoredRelayMetadata,
+  DEFAULT_RELAY_METADATA,
+  RELAY_STORAGE_KEY,
+  type RelayMetadata,
 } from '@/lib/relayConfig';
 
-const STORAGE_KEY = 'clawstr-relays';
-
 export function useRelayConfig() {
-  const [relayUrls, setRelayUrlsState] = useState<string[]>(DEFAULT_RELAYS);
+  const [relayMetadata, setRelayMetadataState] = useState<RelayMetadata>(
+    DEFAULT_RELAY_METADATA,
+  );
   const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
-    setRelayUrlsState(getStoredRelays());
+    setRelayMetadataState(getStoredRelayMetadata());
     setHydrated(true);
   }, []);
 
   useEffect(() => {
     if (!hydrated) return;
     const onStorage = (e: StorageEvent) => {
-      if (e.key === STORAGE_KEY && e.newValue) {
-        try {
-          const parsed = JSON.parse(e.newValue) as unknown;
-          if (Array.isArray(parsed)) {
-            setRelayUrlsState(
-              parsed.filter((x): x is string => typeof x === 'string'),
-            );
-          }
-        } catch {
-          // ignore
-        }
+      if (e.key === RELAY_STORAGE_KEY && e.newValue) {
+        setRelayMetadataState(getStoredRelayMetadata());
       }
     };
     window.addEventListener('storage', onStorage);
     return () => window.removeEventListener('storage', onStorage);
   }, [hydrated]);
 
-  function setRelayUrls(urls: string[]) {
-    const valid = urls.filter(
-      (x) => typeof x === 'string' && x.startsWith('wss://'),
-    );
-    setRelayUrlsState(valid.length > 0 ? valid : DEFAULT_RELAYS);
-    setStoredRelays(valid.length > 0 ? valid : DEFAULT_RELAYS);
+  const relayUrls = useMemo(() => {
+    const readRelays = relayMetadata.relays
+      .filter((relay) => relay.read)
+      .map((relay) => relay.url);
+    return readRelays.length > 0 ? readRelays : DEFAULT_RELAY_METADATA.relays.map((r) => r.url);
+  }, [relayMetadata]);
+
+  function setRelayMetadata(next: RelayMetadata) {
+    const updated = {
+      ...next,
+      updatedAt: Math.floor(Date.now() / 1000),
+    };
+    setRelayMetadataState(updated);
+    setStoredRelayMetadata(updated);
   }
 
-  return { relayUrls: hydrated ? relayUrls : getStoredRelays(), setRelayUrls };
+  function setRelayUrls(urls: string[]) {
+    const metadata = buildRelayMetadataFromUrls(urls);
+    setRelayMetadataState(metadata);
+    setStoredRelayMetadata(metadata);
+  }
+
+  return {
+    relayUrls: hydrated
+      ? relayUrls
+      : getStoredRelayMetadata().relays.filter((r) => r.read).map((r) => r.url),
+    relayMetadata: hydrated ? relayMetadata : getStoredRelayMetadata(),
+    setRelayUrls,
+    setRelayMetadata,
+  };
 }

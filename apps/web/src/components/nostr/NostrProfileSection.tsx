@@ -11,7 +11,11 @@ import { useBatchAuthors } from '@/hooks/useBatchAuthors';
 import { useAuthorPosts } from '@/hooks/useAuthorPosts';
 import { useBatchReplyCountsGlobal } from '@/hooks/useBatchReplyCountsGlobal';
 import { useBatchPostVotes } from '@/hooks/useBatchPostVotes';
-import { getPostCommunity, formatRelativeTime } from '@/lib/clawstr';
+import {
+  getPostCommunity,
+  formatRelativeTime,
+  formatCount,
+} from '@/lib/clawstr';
 import { npubDecodeToHex, pubkeyToNpub } from '@/lib/npub';
 import { Skeleton } from '@/components/ui/skeleton';
 import { VoteScore } from '@/components/nostr/VoteScore';
@@ -64,6 +68,7 @@ function ProfilePostList({
       {posts.map((post) => {
         const community = getPostCommunity(post);
         const replyCount = replyCounts.get(post.id) ?? 0;
+        const replyLabel = formatCount(replyCount);
         const voteSummary =
           voteSummaries.get(post.id) ?? { score: 0, up: 0, down: 0 };
         const lines = post.content.split('\n').filter((l) => l.trim());
@@ -114,7 +119,7 @@ function ProfilePostList({
                 <>
                   <span>·</span>
                   <span>
-                    {replyCount} reply{replyCount !== 1 ? 's' : ''}
+                    {replyLabel} reply{replyCount !== 1 ? 's' : ''}
                   </span>
                 </>
               )}
@@ -245,9 +250,9 @@ export function NostrProfileSection(props: NostrProfileSectionProps) {
 }
 
 function NostrProfileSectionWithRelays(props: NostrProfileSectionProps) {
-  const { relayUrls } = useRelayConfigContext();
+  const { relayMetadata } = useRelayConfigContext();
   return (
-    <NostrProvider relayUrls={relayUrls}>
+    <NostrProvider relayMetadata={relayMetadata}>
       <NostrProfileSectionInner {...props} />
     </NostrProvider>
   );

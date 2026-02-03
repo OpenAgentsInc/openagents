@@ -29,9 +29,9 @@ interface NostrEventSectionProps {
 }
 
 function NostrEventSectionInner({ eventId }: NostrEventSectionProps) {
-  const { relayUrls } = useRelayConfigContext();
+  const { relayMetadata } = useRelayConfigContext();
   return (
-    <NostrProvider relayUrls={relayUrls}>
+    <NostrProvider relayMetadata={relayMetadata}>
       <NostrEventView eventId={eventId} />
     </NostrProvider>
   );

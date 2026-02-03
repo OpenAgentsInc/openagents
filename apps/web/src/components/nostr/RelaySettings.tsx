@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useRelayConfigContext } from '@/contexts/RelayConfigContext';
 import { getQueryClient } from '@/lib/queryClient';
+import { normalizeRelayUrl, type RelayEntry } from '@/lib/relayConfig';
 import { Button } from '@/components/ui/button';
 import {
   Collapsible,
@@ -12,18 +13,21 @@ import { ChevronDown, ChevronRight, Plus, Trash2 } from 'lucide-react';
 const INDEXED_DB_NAME = 'openagents-events-v1';
 
 export function RelaySettings() {
-  const { relayUrls, setRelayUrls } = useRelayConfigContext();
+  const { relayMetadata, setRelayMetadata } = useRelayConfigContext();
   const [open, setOpen] = useState(false);
-  const [editing, setEditing] = useState<string[]>(relayUrls);
+  const [editing, setEditing] = useState<RelayEntry[]>(relayMetadata.relays);
   const [dirty, setDirty] = useState(false);
   const [resetting, setResetting] = useState(false);
 
   useEffect(() => {
-    if (open && !dirty) setEditing(relayUrls);
-  }, [open, relayUrls, dirty]);
+    if (open && !dirty) setEditing(relayMetadata.relays);
+  }, [open, relayMetadata.relays, dirty]);
 
   function addRow() {
-    setEditing((prev) => [...prev, 'wss://']);
+    setEditing((prev) => [
+      ...prev,
+      { url: 'wss://', read: true, write: true },
+    ]);
     setDirty(true);
   }
 
@@ -35,17 +39,44 @@ export function RelaySettings() {
   function changeRow(i: number, value: string) {
     setEditing((prev) => {
       const next = [...prev];
-      next[i] = value;
+      next[i] = { ...next[i], url: value };
+      return next;
+    });
+    setDirty(true);
+  }
+
+  function toggleMode(i: number, mode: 'read' | 'write') {
+    setEditing((prev) => {
+      const next = [...prev];
+      const entry = next[i];
+      if (!entry) return prev;
+      const updated = { ...entry, [mode]: !entry[mode] };
+      if (!updated.read && !updated.write) {
+        updated.read = true;
+      }
+      next[i] = updated;
       return next;
     });
     setDirty(true);
   }
 
   function save() {
-    const valid = editing.filter(
-      (u) => u.startsWith('wss://') && u.length > 6,
-    );
-    setRelayUrls(valid.length > 0 ? valid : relayUrls);
+    const deduped = new Map<string, RelayEntry>();
+    for (const entry of editing) {
+      const normalized = normalizeRelayUrl(entry.url);
+      if (!normalized) continue;
+      const hasMode = entry.read || entry.write;
+      deduped.set(normalized, {
+        url: normalized,
+        read: hasMode ? entry.read : true,
+        write: hasMode ? entry.write : true,
+      });
+    }
+    const relays = [...deduped.values()];
+    setRelayMetadata({
+      relays: relays.length > 0 ? relays : relayMetadata.relays,
+      updatedAt: Math.floor(Date.now() / 1000),
+    });
     setDirty(false);
     setOpen(false);
   }
@@ -82,15 +113,39 @@ export function RelaySettings() {
       </CollapsibleTrigger>
       <CollapsibleContent>
         <div className="border-t border-border p-3 space-y-2">
-          {editing.map((url, i) => (
-            <div key={i} className="flex gap-2">
+          {editing.map((relay, i) => (
+            <div key={i} className="flex flex-wrap items-center gap-2">
               <input
                 type="url"
-                value={url}
+                value={relay.url}
                 onChange={(e) => changeRow(i, e.target.value)}
                 placeholder="wss://..."
-                className="border-input bg-background flex-1 rounded-md border px-2 py-1.5 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="border-input bg-background flex-1 min-w-[180px] rounded-md border px-2 py-1.5 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
               />
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => toggleMode(i, 'read')}
+                  className={`rounded-md border px-2 py-1 text-xs font-medium ${
+                    relay.read
+                      ? 'border-primary/40 bg-primary/10 text-primary'
+                      : 'border-border text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  Read
+                </button>
+                <button
+                  type="button"
+                  onClick={() => toggleMode(i, 'write')}
+                  className={`rounded-md border px-2 py-1 text-xs font-medium ${
+                    relay.write
+                      ? 'border-primary/40 bg-primary/10 text-primary'
+                      : 'border-border text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  Write
+                </button>
+              </div>
               <Button
                 type="button"
                 variant="ghost"
@@ -114,7 +169,7 @@ export function RelaySettings() {
           </div>
           <div className="flex items-center justify-between text-xs text-muted-foreground">
             <span>
-              Relays are stored in this browser. Refresh to use new list.
+              Read relays are used for fetching; write relays for publishing.
             </span>
             <button
               type="button"
