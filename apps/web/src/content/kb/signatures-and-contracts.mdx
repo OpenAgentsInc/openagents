@@ -1,0 +1,36 @@
+---
+title: Signatures and Typed Contracts
+description: Why agent decisions should be expressed as typed input/output contracts so behavior is inspectable, testable, and improvable.
+pubDate: 2026-01-30T20:00:00.000Z
+tags: ["signatures", "contracts", "decisions", "compiler"]
+---
+
+Agent behavior is easier to reason about when **decisions are typed**. Instead of free-form prompts and string parsing, express each decision as a **signature**: a contract that specifies inputs (facts the model sees) and outputs (structured choices the system can consume).
+
+## Why signatures matter for agents
+
+- **Inspectable** — You can see exactly what the agent was asked and what it returned. No hidden prompt magic.
+- **Testable** — You can unit-test a signature with fixed inputs and assert on the output shape and values.
+- **Swappable** — The same contract can be fulfilled by different models or pipelines. Policy is separate from execution.
+- **Optimizable** — Typed inputs and outputs are what optimizers need. Real outcome data can be used to improve prompts and routing without rewriting product logic.
+
+## Design rules (conceptual)
+
+- **Inputs** are deterministic facts: task description, repo context, budget state, tool outputs. Not vibes.
+- **Outputs** are machine-consumable: enums, booleans, structured JSON. Not prose that has to be parsed.
+- **Confidence** — When a decision can be wrong, the signature should include a confidence score. Runtime can then gate behavior (e.g. fall back to a safe default when confidence is low).
+- **Logging** — Every decision should be logged with inputs, outputs, and outcome (what actually happened). That log is the training signal for improvement.
+
+## Signatures as the unit of optimization
+
+In a compiler-style setup, signatures are the unit of optimization. You collect (input, output, outcome) examples from production, then run optimizers to find better prompts or routing. The contract stays the same; the policy that fulfills it improves. That’s how agent behavior becomes **evolvable** without hardcoding every edge case.
+
+## Relation to verification
+
+Signatures don’t replace verification. They make **what the agent decided** explicit. Verification (tests, builds, receipts) measures **what actually happened**. Both are needed: typed decisions for audit and optimization, verification for ground truth.
+
+## Go deeper
+
+- Predictable autonomy: [Predictable Autonomy](/kb/predictable-autonomy/)
+- Replay and artifacts: [Replay and Artifacts](/kb/replay-and-artifacts/)
+- Compiler layer (DSPy/dsrs): [Compiler Layer](/kb/compiler-layer/)

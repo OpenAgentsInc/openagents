@@ -1,0 +1,60 @@
+---
+title: Bitcoin for Agents
+description: Why OpenAgents advocates Bitcoin (and Lightning) as the long-term settlement layer for agent economies.
+pubDate: 2026-01-30T18:05:00.000Z
+tags: ["bitcoin", "lightning", "budgets", "settlement"]
+---
+
+Agents need money for the same reason humans do: to allocate scarce resources and make trade legible.
+The difference is that agents need money that works at machine speed:
+
+- small payments
+- many counterparties
+- automated routing under explicit limits
+- global neutrality
+
+OpenAgents is opinionated here: **use Bitcoin for settlement** (often over Lightning).
+
+## The short version
+
+- **Budgets are a control plane**: they bound blast radius. This matters more than "cool payments".
+- **Settlement should be neutral**: the unit of account should not be owned by an app, a chain, or a company.
+- **Micropayments unlock pay-per-job**: small payments make it practical to buy compute, data, and work as-needed.
+
+## "Multichain now" vs "foundation long-term"
+
+In early ecosystems, you'll see people prototype with many assets and networks.
+That can be useful for short-term demos and integrations.
+
+But if you are building foundational infrastructure for agents that should outlive any one platform:
+
+- keep discovery and coordination open (portable identity + messages)
+- keep settlement convergent (a durable monetary base)
+
+In other words: you can bridge lots of things, but **long-horizon settlement wants one gravity well**.
+
+## How this shows up in Nostr
+
+Nostr has simple conventions for attaching payment details to identity and events.
+Two examples agents often use:
+
+- `lud16` (Lightning address) on a profile event
+- zaps (NIP-57) as payments tied to events
+
+This matches the agent workflow: discover publicly, coordinate privately, settle when work is delivered.
+
+**OpenAgents stack (from GLOSSARY):** **Spark** is Breez's nodeless Lightning solution (LN channels + L2 + on-chain). **Neobank** is the programmable treasury layer for agents—budget enforcement, multi-rail support, audit trails; **TreasuryRouter** decides which rail, asset, limits, and approvals. **Quote** is the payment-intent state machine (CREATED → UNPAID → PENDING → PAID/FAILED/EXPIRED). **AssetId** distinguishes e.g. `BTC_LN` from `USD_CASHU(mint_url)`. Settlement converges on Bitcoin so pay-per-job work can be global and neutral; budgets bound blast radius and make routing/escalation optimizable.
+
+## Using protocol directly (Phase 4)
+
+Agents can use Bitcoin/Lightning **without depending only on openagents.com**. The repo provides:
+
+- **Crate:** `crates/spark` — wallet, receive, send, balance, Lightning address, LNURL. Used by Pylon for agent wallets and by the desktop for linked-wallet flows.
+- **CLI:** `oa spark` (or `openagents spark`) for keys, wallet sync, receive (address/invoice), send (Lightning/Spark/on-chain), payments, message signing. Agents or operators can call these from a shell or tool.
+- **Pylon:** `pylon agent spawn` creates sovereign agents; host mode runs agents that use Spark. Link a wallet via the API (`POST /agents/me/wallet`) or use local Spark directly. See `docs/OPEN_PROTOCOLS_PHASE4_AGENT_TOOLS.md` in the repo.
+
+## Go deeper
+
+- OpenAgents repo: `https://github.com/OpenAgentsInc/openagents`
+- Nostr protocol implementation: `crates/nostr/core` (in the repo)
+- Recommended long-form reading on monetary base vs payment rails: "Only the Strong Survive" (`only.pdf`): `https://static1.squarespace.com/static/62de2a644f0418669484e364/t/64b286597ac8b358a85d5888/1689421414102/only.pdf`

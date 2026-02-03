@@ -1,0 +1,46 @@
+---
+title: Replay and Artifacts
+description: Why agent runs should emit structured receipts and replayable traces so behavior is auditable and improvable.
+pubDate: 2026-01-30T20:00:00.000Z
+tags: ["verification", "replay", "receipts", "audit"]
+---
+
+Autonomy without transparency is unsafe. Agent runs should produce **structured artifacts** that make behavior replayable, verifiable, and auditable.
+
+## Why it matters for agents
+
+- **Debugging and audit** — When something goes wrong, you need a trace of what happened. A replayable event stream lets you step through decisions, tool calls, and outcomes.
+- **Counterfactual analysis** — "What would have happened if we had done X?" requires deterministic logs. Same inputs + same policy → reproducible behavior.
+- **Improvement loops** — Training and optimization need labeled examples. Receipts and replay logs are the raw material for making policies better over time.
+
+## The canonical bundle
+
+A complete run can be summarized in three artifacts:
+
+- **PR_SUMMARY.md** — Human-readable summary of what changed (e.g. patch description).
+- **RECEIPT.json** — Machine-readable audit trail: what was done, by whom, with what hashes and timings.
+- **REPLAY.jsonl** — A JSONL stream of events (session start/end, plan steps, tool calls, tool results, verification). Each event is serialized deterministically so the run can be replayed or hashed.
+
+Stored together, these form a **Verified Patch Bundle**: the minimal set of artifacts that let a human or system verify that a run did what it claimed.
+
+## What gets recorded
+
+Conceptually, a replay stream includes:
+
+- Session boundaries (start, end)
+- Planning steps (if the agent uses structured planning)
+- Tool calls (name, params, timestamp)
+- Tool results (output, latency, success/failure)
+- Verification events (tests, builds, lint)
+
+Token usage, cost, and decision metadata (e.g. confidence scores) can be attached so that optimization and billing can consume the same trace.
+
+## Verification-first
+
+The point of receipts and replay is **verification as ground truth**. Outcomes should be checkable: re-run tests, re-hash outputs, compare against the receipt. Agent narration is not a substitute. In OpenAgents, tests and builds are the judge; replay and receipts make that judgment auditable.
+
+## Go deeper
+
+- Predictable autonomy (why verification matters): [Predictable Autonomy](/kb/predictable-autonomy/)
+- Sovereign agents (trajectories in NIP-SA): [Sovereign Agents (NIP-SA)](/kb/sovereign-agents/)
+- Repo specs: `crates/dsrs/docs/REPLAY.md`, `crates/dsrs/docs/ARTIFACTS.md`

@@ -54,10 +54,12 @@
     "clsx": "^2.1.1",
     "convex": "^1.31.7",
     "date-fns": "^4.1.0",
+    "gray-matter": "^4.0.3",
     "lucide-react": "^0.460.0",
     "nostr-tools": "^2.9.0",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
+    "react-markdown": "^9.0.1",
     "remark-gfm": "^4.0.1",
     "zustand": "^5.0.10"
   },
