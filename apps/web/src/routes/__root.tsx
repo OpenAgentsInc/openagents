@@ -6,7 +6,7 @@ import {
   useRouteContext,
 } from '@tanstack/react-router';
 import { createServerFn } from '@tanstack/react-start';
-import { getAuth, getSignInUrl } from '@workos/authkit-tanstack-react-start';
+import { getAuth } from '@workos/authkit-tanstack-react-start';
 import { AuthKitProvider } from '@workos/authkit-tanstack-react-start/client';
 import { ConvexProviderWithAuth } from 'convex/react';
 import appCssUrl from '../app.css?url';
@@ -65,7 +65,6 @@ export const Route = createRootRouteWithContext<{
   notFoundComponent: () => <div>Not Found</div>,
   beforeLoad: async (ctx) => {
     const { userId, token } = await fetchWorkosAuth();
-    const signInUrl = await getSignInUrl().catch(() => '/callback');
 
     // During SSR only (the only time serverHttpClient exists),
     // set the WorkOS auth token to make HTTP queries with.
@@ -73,7 +72,8 @@ export const Route = createRootRouteWithContext<{
       ctx.context.convexQueryClient.serverHttpClient?.setAuth(token);
     }
 
-    return { userId, token, signInUrl };
+    // In-app login path only; no WorkOS hosted redirect from root.
+    return { userId, token, signInUrl: '/login' };
   },
 });
 
