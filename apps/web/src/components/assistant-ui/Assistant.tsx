@@ -19,7 +19,7 @@ export function Assistant({ layout = true }: { layout?: boolean }) {
     useState<HTMLElement | null>(null);
   const runtime = useChatRuntime({
     transport: new AssistantChatTransport({
-      api: '/api/chat',
+      api: '/chat',
     }),
   });
 

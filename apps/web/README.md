@@ -62,6 +62,23 @@ After the initial setup (<2 minutes) you'll have a working full-stack app using:
 
 ## Deploying (Cloudflare Workers)
 
+### Managed OpenClaw (chat tools) configuration
+The chat endpoint (`/chat`) includes server-side tools that call the Rust API worker at `/api/openclaw/*`.
+
+**Beta auth:** `apps/web` must send internal headers to the Rust worker:
+- `X-OA-Internal-Key`
+- `X-OA-User-Id` (WorkOS user id)
+
+To enable this, configure the secret on the `openagents-web-app` Worker:
+
+```bash
+cd apps/web
+npx wrangler secret put OA_INTERNAL_KEY
+```
+
+Without `OA_INTERNAL_KEY`, OpenClaw tools will return HTTP 500 from the `/chat` endpoint.
+
+
 The app deploys to the **openagents-web-app** Worker (does not overwrite "web" or "openagents-web"). Live URL:
 
 **https://openagents-web-app.openagents.workers.dev**

@@ -13,7 +13,7 @@ This doc updates the implementation plan to reflect that reality and explains wh
 Your legacy Rust API Worker is served at `https://openagents.com/api/*` (path prefix `/api`).
 
 In the new `apps/web/` app, the chat endpoint is currently defined at:
-- `apps/web/src/routes/api/chat.ts` → route `/api/chat`
+- `apps/web/src/routes/api/chat.ts` → route `/chat` (IMPORTANT: avoid `/api/*` in prod)
 
 If production routing stays the same (Rust worker owns `/api/*`), then **`/api/chat` will be handled by the Rust worker, not the web app**.
 
