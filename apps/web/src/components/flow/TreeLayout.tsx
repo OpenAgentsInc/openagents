@@ -7,6 +7,7 @@ import {
 } from './layout-engine';
 import type { FlowNode } from './types';
 import { NODE_SIZES } from './types';
+import type { AnimationConfig } from './TreeConnectionLine';
 import { TreeConnectionLine } from './TreeConnectionLine';
 import { TreeElementNode } from './TreeElementNode';
 
@@ -16,6 +17,7 @@ type TreeLayoutProps = {
   layoutConfig?: Omit<LayoutConfig, 'spacing' | 'direction'> & {
     direction?: 'vertical' | 'horizontal';
   };
+  connectionAnimation?: AnimationConfig;
   onNodeClick?: (node: FlowNode) => void;
   renderNode: (node: FlowNode, parent?: FlowNode) => React.ReactNode;
   renderConnection?: (
@@ -29,6 +31,7 @@ export function TreeLayout({
   data,
   nodeSpacing = { x: 50, y: 50 },
   layoutConfig,
+  connectionAnimation,
   renderNode,
   renderConnection,
   onNodeClick,
@@ -98,6 +101,7 @@ export function TreeLayout({
           <TreeConnectionLine
             key={`${conn.parent.id}-${conn.child.id}`}
             path={conn.path}
+            animation={connectionAnimation}
           />
         ),
       )}

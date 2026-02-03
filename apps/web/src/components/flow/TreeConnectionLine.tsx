@@ -12,8 +12,67 @@ import {
 
 const CORNER_RADIUS = 32;
 
+/** Preset names for connection line animation. */
+export type PresetName = 'dots' | 'dashes' | 'dots-slow' | 'dashes-fast' | 'pulse';
+
+/** Resolved animation values used for SVG stroke/dash. */
+type ResolvedAnimation = {
+  dashLength: number;
+  gapLength: number;
+  speed: number;
+  strokeWidth: number;
+  color?: string;
+};
+
+/** Either a preset (with optional color override) or fully custom values. */
+export type AnimationConfig =
+  | { preset: PresetName; color?: string }
+  | {
+      custom: Partial<{
+        dashLength: number;
+        gapLength: number;
+        speed: number;
+        strokeWidth: number;
+        color: string;
+      }>;
+    };
+
+export const ANIMATION_PRESETS: Record<
+  PresetName,
+  { dashLength: number; gapLength: number; speed: number; strokeWidth: number; color: string }
+> = {
+  dots: { dashLength: 2, gapLength: 8, speed: 2, strokeWidth: 2.5, color: 'hsl(var(--muted-foreground) / 0.6)' },
+  dashes: { dashLength: 8, gapLength: 6, speed: 2, strokeWidth: 2.5, color: 'hsl(var(--muted-foreground) / 0.6)' },
+  'dots-slow': { dashLength: 2, gapLength: 8, speed: 3.5, strokeWidth: 2.5, color: 'hsl(var(--muted-foreground) / 0.6)' },
+  'dashes-fast': { dashLength: 8, gapLength: 6, speed: 1, strokeWidth: 2.5, color: 'hsl(var(--muted-foreground) / 0.6)' },
+  pulse: { dashLength: 4, gapLength: 4, speed: 1.5, strokeWidth: 2.5, color: 'hsl(var(--muted-foreground) / 0.6)' },
+};
+
+const DEFAULT_PRESET: PresetName = 'dots';
+
+function resolveAnimation(config?: AnimationConfig): ResolvedAnimation {
+  if (!config) {
+    const p = ANIMATION_PRESETS[DEFAULT_PRESET];
+    return { ...p };
+  }
+  if ('preset' in config) {
+    const p = ANIMATION_PRESETS[config.preset];
+    return { ...p, ...(config.color != null ? { color: config.color } : {}) };
+  }
+  const base = ANIMATION_PRESETS[DEFAULT_PRESET];
+  const c = config.custom ?? {};
+  return {
+    dashLength: c.dashLength ?? base.dashLength,
+    gapLength: c.gapLength ?? base.gapLength,
+    speed: c.speed ?? base.speed,
+    strokeWidth: c.strokeWidth ?? base.strokeWidth,
+    color: c.color ?? base.color,
+  };
+}
+
 type TreeConnectionLineProps = {
   path: Point[];
+  animation?: AnimationConfig;
 };
 
 function buildPath(points: Point[]): string {
@@ -79,18 +138,17 @@ function buildRoundedCorner(current: Point, corner: Point, next: Point): [LineTo
   return [line(entryPoint), curve(corner, exitPoint)];
 }
 
-export function TreeConnectionLine({ path }: TreeConnectionLineProps) {
+export function TreeConnectionLine({ path, animation }: TreeConnectionLineProps) {
   const pathD = useMemo(() => buildPath(path), [path]);
-
-  const dashLength = 0.1;
-  const gapLength = 8;
+  const resolved = useMemo(() => resolveAnimation(animation), [animation]);
+  const { dashLength, gapLength, speed, strokeWidth, color } = resolved;
   const dashTotal = dashLength + gapLength;
 
   return (
     <path
       d={pathD}
-      className="stroke-muted-foreground/60"
-      strokeWidth={2.5}
+      stroke={color}
+      strokeWidth={strokeWidth}
       fill="none"
       strokeLinecap="round"
       strokeDasharray={`${dashLength} ${gapLength}`}
@@ -99,7 +157,7 @@ export function TreeConnectionLine({ path }: TreeConnectionLineProps) {
         attributeName="stroke-dashoffset"
         to={`-${dashTotal}`}
         from="0"
-        dur="2s"
+        dur={`${speed}s`}
         repeatCount="indefinite"
       />
     </path>
