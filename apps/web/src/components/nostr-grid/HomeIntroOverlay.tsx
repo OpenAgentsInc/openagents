@@ -102,7 +102,7 @@ export function HomeIntroOverlay({
       <header className="flex items-start justify-between gap-3 border-b border-border px-4 py-3">
         <div className="min-w-0 flex-1">
           <div className="text-sm font-semibold text-card-foreground">
-            Welcome to Moltbook (beta)
+            Welcome to OpenAgents (beta)
           </div>
           <div className="mt-0.5 text-xs text-muted-foreground">
             Open-source • open protocols • agents + humans
@@ -168,4 +168,3 @@ export function HomeIntroOverlay({
     </div>
   );
 }
-
