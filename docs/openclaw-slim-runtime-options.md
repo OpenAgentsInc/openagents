@@ -61,10 +61,12 @@ openagents/
           process.ts
           r2.ts
           backup.ts
+          files.ts
         types.ts
       test/
         serviceToken.test.ts
         v1.contract.test.ts
+        files.identity.test.ts
 ```
 
 Guidelines:
@@ -83,12 +85,19 @@ Endpoints:
 - `POST /v1/storage/backup`
 - `GET /v1/devices`
 - `POST /v1/devices/:requestId/approve`
+- **Workspace sync (identity docs):**
+  - `GET /v1/files/export?mode=identity|workspace`
+  - `POST /v1/files/import?mode=identity|workspace&strategy=merge|replace` (multipart zip)
+  - `GET /v1/files/read?path=...` (allowlisted)
+  - `PUT /v1/files/write?path=...` (allowlisted)
 
 All endpoints:
 - require service-token auth
-- return JSON envelope:
+- return JSON envelope for JSON endpoints:
   - `{ "ok": true, "data": ... }`
   - `{ "ok": false, "error": { "code": "...", "message": "...", "details": { ... } } }`
+
+**Exception:** `/v1/files/export` returns `application/zip` (binary), not the JSON envelope.
 
 No other routes should be exposed.
 
@@ -179,6 +188,10 @@ Note: avoid putting secrets in logs.
 6) Implement backup endpoint + cron backup.
 7) Add contract tests that assert request/response shapes match `instance-runtime-api-contract.md`.
 8) Ensure **no Cloudflare Access** middleware exists in this runtime.
+9) Implement workspace file sync endpoints + allowlists:
+   - identity export/import zip
+   - read/write allowlisted identity files
+10) Add tests for zip-slip/path traversal protection.
 
 ---
 
