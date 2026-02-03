@@ -1,5 +1,7 @@
 /**
  * Cloudflare Workers config for apps/web.
+ * Custom domain openagents.com: add in Dashboard → Workers & Pages → openagents-web-app → Settings → Domains & routes
+ * (remove openagents.com from the old "web" worker first, then add route for openagents.com/* to this worker).
  * https://developers.cloudflare.com/workers/wrangler/configuration/
  */
 {
