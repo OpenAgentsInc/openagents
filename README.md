@@ -2,10 +2,22 @@
 
 **Autopilot** is the primary product in this repo: a local-first desktop agent that plans → executes → verifies → produces replayable artifacts. It runs on your machine, works in your repo, and keeps the full trace of what happened.
 
-OpenAgents also contains the broader runtime/compiler/market stack used by Autopilot.
+OpenAgents also ships a **web app** ([openagents.com](https://openagents.com)) and the broader runtime/compiler/market stack used by Autopilot.
 If you're looking for the philosophy / "why open", start with **[MANIFESTO.md](./MANIFESTO.md)**.
 
-## Quick Start (Desktop)
+## Quick Start
+
+### Web app
+
+The main web UI (openagents.com) lives in **[apps/web/](apps/web/)** — TanStack Start + Convex + WorkOS, deployed on Cloudflare Workers. To run locally:
+
+```bash
+cd apps/web
+npm install
+npm run dev
+```
+
+### Desktop app (Autopilot)
 
 ```bash
 git clone https://github.com/OpenAgentsInc/openagents.git
@@ -45,13 +57,13 @@ how Autopilot turns *vibes* into *predictability*.
 The CLI and other agent surfaces live in the same repo but are not the primary path here.
 If you need them, use the docs index below to navigate the relevant crates and guides.
 
-OpenAgents.com (web UI) lives in `apps/website` and includes the managed OpenClaw control surfaces.
 The slim per-user runtime template lives in `apps/openclaw-runtime`.
 
 ## Documentation
 
 Start with:
 
+* **Web app**: [apps/web/](apps/web/)
 * **Desktop docs**: [apps/autopilot-desktop/docs/migration/EFFUSE_TO_WGPUI_PLAN.md](apps/autopilot-desktop/docs/migration/EFFUSE_TO_WGPUI_PLAN.md)
 * **Docs index (everything else)**: [docs/README.md](docs/README.md)
 * **Repo map / ownership**: [PROJECT_OVERVIEW.md](./PROJECT_OVERVIEW.md)
