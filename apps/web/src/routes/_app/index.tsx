@@ -2,13 +2,17 @@ import { useState } from 'react';
 import { createFileRoute } from '@tanstack/react-router';
 import {
   InfiniteCanvas,
+  isLeafNode,
+  isRootNode,
   isSkeletonNode,
+  LeafNode,
   NodeDetailsPanel,
+  RootNode,
   SKELETON_TREE,
+  SkeletonNode,
   TreeLayout,
   type FlowNode,
 } from '@/components/flow';
-import { Skeleton } from '@/components/ui/skeleton';
 
 export const Route = createFileRoute('/_app/')({
   component: Home,
@@ -38,6 +42,17 @@ const HOME_TREE: FlowNode = {
   ],
 };
 
+function renderFlowNode(node: FlowNode) {
+  if (isRootNode(node)) return <RootNode node={node} />;
+  if (isLeafNode(node)) return <LeafNode node={node} />;
+  if (isSkeletonNode(node)) return <SkeletonNode node={node} />;
+  return (
+    <div className="rounded-lg border border-border bg-card px-4 py-2 text-sm font-medium text-card-foreground shadow-sm">
+      {node.label}
+    </div>
+  );
+}
+
 function Home() {
   const [selectedNode, setSelectedNode] = useState<FlowNode | null>(null);
   const generatedTree: FlowNode | null = null;
@@ -58,17 +73,7 @@ function Home() {
           nodeSpacing={{ x: 24, y: 60 }}
           layoutConfig={{ direction: 'vertical' }}
           onNodeClick={isShowingSkeleton ? undefined : (node) => setSelectedNode(node)}
-          renderNode={(node) =>
-            isSkeletonNode(node) ? (
-              <div className="rounded-lg border border-border bg-card px-4 py-2 shadow-sm">
-                <Skeleton className="h-4 w-24 rounded" />
-              </div>
-            ) : (
-              <div className="rounded-lg border border-border bg-card px-4 py-2 text-sm font-medium text-card-foreground shadow-sm">
-                {node.label}
-              </div>
-            )
-          }
+          renderNode={renderFlowNode}
         />
       </InfiniteCanvas>
     </div>
