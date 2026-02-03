@@ -32,6 +32,7 @@ npm run deploy
 
 - `GET /` — service info
 - `GET /health` — health check
+- `POST /auth/agent/register` — agent quick signup (returns API token)
 - `POST /register` — create user + API key (control plane)
 - `GET /organizations`, `POST /organizations` — list/create orgs (control plane)
 - `GET /projects`, `POST /projects` — list/create projects (control plane)

@@ -47,7 +47,12 @@ fn service_token_from_env(env: &Env) -> Option<String> {
         })
 }
 
-fn require_internal_auth(req: &Request, env: &Env) -> std::result::Result<String, Response> {
+fn resolve_internal_user(req: &Request, env: &Env) -> std::result::Result<Option<String>, Response> {
+    let provided = req.headers().get(INTERNAL_KEY_HEADER).ok().flatten();
+    let Some(provided) = provided else {
+        return Ok(None);
+    };
+
     let expected = match internal_key(env) {
         Some(value) => value,
         None => {
@@ -57,13 +62,7 @@ fn require_internal_auth(req: &Request, env: &Env) -> std::result::Result<String
         }
     };
 
-    let provided = req
-        .headers()
-        .get(INTERNAL_KEY_HEADER)
-        .ok()
-        .flatten()
-        .unwrap_or_default();
-    if provided.trim().is_empty() || provided.trim() != expected {
+    if provided.trim() != expected {
         return Err(crate::json_unauthorized("unauthorized"));
     }
 
@@ -79,7 +78,30 @@ fn require_internal_auth(req: &Request, env: &Env) -> std::result::Result<String
         return Err(response);
     }
 
-    Ok(user_id)
+    Ok(Some(user_id))
+}
+
+async fn require_openclaw_user(req: &Request, env: &Env) -> std::result::Result<String, Response> {
+    match resolve_internal_user(req, env) {
+        Ok(Some(user_id)) => return Ok(user_id),
+        Ok(None) => {}
+        Err(response) => return Err(response),
+    }
+
+    let token = match crate::api_token_from_request(req) {
+        Some(value) => value,
+        None => return Err(crate::json_unauthorized("missing api token")),
+    };
+
+    match crate::resolve_api_token(env, &token).await {
+        Ok(Some(resolved)) => Ok(resolved.user_id),
+        Ok(None) => Err(crate::json_unauthorized("invalid api token")),
+        Err(err) => {
+            let response = crate::json_error(&err.to_string(), 502)
+                .unwrap_or_else(|_| Response::error("auth resolution failed", 502).unwrap());
+            Err(response)
+        }
+    }
 }
 
 fn json_ok<T: Serialize>(data: Option<T>) -> Result<Response> {
@@ -136,7 +158,7 @@ async fn runtime_client_for_user(env: &Env, user_id: &str) -> Result<RuntimeClie
 }
 
 pub async fn handle_instance_get(req: Request, ctx: RouteContext<()>) -> Result<Response> {
-    let user_id = match require_internal_auth(&req, &ctx.env) {
+    let user_id = match require_openclaw_user(&req, &ctx.env).await {
         Ok(value) => value,
         Err(response) => return Ok(response),
     };
@@ -147,7 +169,7 @@ pub async fn handle_instance_get(req: Request, ctx: RouteContext<()>) -> Result<
 }
 
 pub async fn handle_instance_post(req: Request, ctx: RouteContext<()>) -> Result<Response> {
-    let user_id = match require_internal_auth(&req, &ctx.env) {
+    let user_id = match require_openclaw_user(&req, &ctx.env).await {
         Ok(value) => value,
         Err(response) => return Ok(response),
     };
@@ -200,7 +222,7 @@ pub async fn handle_instance_post(req: Request, ctx: RouteContext<()>) -> Result
 }
 
 pub async fn handle_runtime_status(req: Request, ctx: RouteContext<()>) -> Result<Response> {
-    let user_id = match require_internal_auth(&req, &ctx.env) {
+    let user_id = match require_openclaw_user(&req, &ctx.env).await {
         Ok(value) => value,
         Err(response) => return Ok(response),
     };
@@ -214,7 +236,7 @@ pub async fn handle_runtime_status(req: Request, ctx: RouteContext<()>) -> Resul
 }
 
 pub async fn handle_runtime_devices(req: Request, ctx: RouteContext<()>) -> Result<Response> {
-    let user_id = match require_internal_auth(&req, &ctx.env) {
+    let user_id = match require_openclaw_user(&req, &ctx.env).await {
         Ok(value) => value,
         Err(response) => return Ok(response),
     };
@@ -231,7 +253,7 @@ pub async fn handle_runtime_device_approve(
     req: Request,
     ctx: RouteContext<()>,
 ) -> Result<Response> {
-    let user_id = match require_internal_auth(&req, &ctx.env) {
+    let user_id = match require_openclaw_user(&req, &ctx.env).await {
         Ok(value) => value,
         Err(response) => return Ok(response),
     };
@@ -253,7 +275,7 @@ pub async fn handle_runtime_device_approve(
 }
 
 pub async fn handle_runtime_backup(req: Request, ctx: RouteContext<()>) -> Result<Response> {
-    let user_id = match require_internal_auth(&req, &ctx.env) {
+    let user_id = match require_openclaw_user(&req, &ctx.env).await {
         Ok(value) => value,
         Err(response) => return Ok(response),
     };
@@ -267,7 +289,7 @@ pub async fn handle_runtime_backup(req: Request, ctx: RouteContext<()>) -> Resul
 }
 
 pub async fn handle_runtime_restart(req: Request, ctx: RouteContext<()>) -> Result<Response> {
-    let user_id = match require_internal_auth(&req, &ctx.env) {
+    let user_id = match require_openclaw_user(&req, &ctx.env).await {
         Ok(value) => value,
         Err(response) => return Ok(response),
     };
@@ -281,7 +303,7 @@ pub async fn handle_runtime_restart(req: Request, ctx: RouteContext<()>) -> Resu
 }
 
 pub async fn handle_billing_summary(req: Request, ctx: RouteContext<()>) -> Result<Response> {
-    let user_id = match require_internal_auth(&req, &ctx.env) {
+    let user_id = match require_openclaw_user(&req, &ctx.env).await {
         Ok(value) => value,
         Err(response) => return Ok(response),
     };
