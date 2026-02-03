@@ -1,4 +1,5 @@
 export { CanvasBoundary } from './CanvasBoundary';
+export { DevTreeGenerator } from './DevTreeGenerator';
 export { InfiniteCanvas } from './InfiniteCanvas';
 export { NodeDetailsPanel } from './NodeDetailsPanel';
 export { GridPattern } from './GridPattern';
