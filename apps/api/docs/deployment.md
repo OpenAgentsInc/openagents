@@ -45,6 +45,15 @@ npx wrangler d1 migrations apply openagents-api-payments --remote
 
 ## Secrets and vars
 
+**Convex control bridge (required):**
+
+- `CONVEX_SITE_URL` (vars in `wrangler.toml`)
+- `CONVEX_CONTROL_KEY` (secret) — must match `OA_CONTROL_KEY` in Convex
+
+**Agent quick signup (optional):**
+
+- `OA_REGISTER_KEY` (secret) — when set, `/auth/agent/register` requires `X-OA-Register-Key`
+
 Set the default Moltbook API key (optional):
 
 ```bash

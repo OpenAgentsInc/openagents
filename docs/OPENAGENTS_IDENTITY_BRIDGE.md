@@ -95,6 +95,6 @@ confusing authorization.
 ## Code locations
 
 - Worker routes: `apps/api/src/lib.rs`
-- Convex control handlers: `apps/web/convex/control_http.ts`
+- Convex control handlers: `apps/web/convex/control_auth.ts`
 - Convex user state: `apps/web/convex/users.ts`
 - Convex schema: `apps/web/convex/schema.ts`
