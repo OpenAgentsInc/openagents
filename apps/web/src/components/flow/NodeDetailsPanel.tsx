@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import type { FlowNode } from './types';
 import { Pill, StatusPill } from './ui';
@@ -26,6 +27,16 @@ export function NodeDetailsPanel({ node, onClose, renderActions }: NodeDetailsPa
   if (node == null) {
     return null;
   }
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onClose]);
 
   const direction = node.direction
     ? node.direction === 'vertical'

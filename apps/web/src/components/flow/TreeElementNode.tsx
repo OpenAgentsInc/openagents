@@ -11,6 +11,7 @@ export function TreeElementNode({ id, position, children }: TreeElementNodeProps
     <foreignObject x={position.x} y={position.y} width={1} height={1} overflow="visible">
       <div
         data-node-id={id}
+        className="select-none"
         style={{
           position: 'absolute',
           left: 0,
