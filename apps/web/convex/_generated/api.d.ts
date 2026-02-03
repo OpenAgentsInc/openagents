@@ -8,10 +8,13 @@
  * @module
  */
 
+import type * as billing from "../billing.js";
 import type * as http from "../http.js";
+import type * as lib_errors from "../lib/errors.js";
 import type * as myFunctions from "../myFunctions.js";
 import type * as nostr from "../nostr.js";
 import type * as nostr_http from "../nostr_http.js";
+import type * as openclaw from "../openclaw.js";
 
 import type {
   ApiFromModules,
@@ -20,10 +23,13 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  billing: typeof billing;
   http: typeof http;
+  "lib/errors": typeof lib_errors;
   myFunctions: typeof myFunctions;
   nostr: typeof nostr;
   nostr_http: typeof nostr_http;
+  openclaw: typeof openclaw;
 }>;
 
 /**

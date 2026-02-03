@@ -86,7 +86,7 @@ const getEncryptionKey = async (): Promise<CryptoKey> => {
   }
   const key = await crypto.subtle.importKey(
     'raw',
-    keyBytes,
+    keyBytes as unknown as BufferSource,
     { name: ENCRYPTION_ALGO },
     false,
     ['encrypt', 'decrypt'],
@@ -125,9 +125,9 @@ const decryptValue = async (payload: EncryptedPayload): Promise<string> => {
   const iv = decodeBase64(payload.iv);
   const ciphertext = decodeBase64(payload.ciphertext);
   const decrypted = await crypto.subtle.decrypt(
-    { name: ENCRYPTION_ALGO, iv },
+    { name: ENCRYPTION_ALGO, iv: iv as unknown as BufferSource },
     key,
-    ciphertext,
+    ciphertext as unknown as BufferSource,
   );
   return new TextDecoder().decode(new Uint8Array(decrypted));
 };
@@ -272,12 +272,13 @@ export const storeEncryptedSecret = internalMutation({
     if (!fields) {
       fail('BAD_REQUEST', `Unsupported secret key: ${args.key}`);
     }
+    const f = fields!;
 
     const encrypted = await encryptValue(args.value);
     const patch = {
-      [fields.cipher]: encrypted.ciphertext,
-      [fields.iv]: encrypted.iv,
-      [fields.alg]: encrypted.alg,
+      [f.cipher]: encrypted.ciphertext,
+      [f.iv]: encrypted.iv,
+      [f.alg]: encrypted.alg,
       updated_at: Date.now(),
     } as Record<string, unknown>;
 
@@ -300,11 +301,12 @@ export const getDecryptedSecret = internalQuery({
     if (!fields) {
       return null;
     }
+    const f = fields!;
 
-    const record = instance as Record<string, string | null | undefined>;
-    const ciphertext = record[fields.cipher];
-    const iv = record[fields.iv];
-    const alg = record[fields.alg] ?? ENCRYPTION_ALGO;
+    const record = instance as unknown as Record<string, string | null | undefined>;
+    const ciphertext = record[f.cipher];
+    const iv = record[f.iv];
+    const alg = record[f.alg] ?? ENCRYPTION_ALGO;
 
     if (!ciphertext || !iv) {
       return null;

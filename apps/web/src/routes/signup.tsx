@@ -10,8 +10,7 @@ export const Route = createFileRoute('/signup')({
     const { user } = await getAuth();
     if (user) throw redirect({ to: '/' });
     // GitHub-only: no WorkOS hosted page; user stays in app until they choose GitHub.
-    const githubSignUpUrl = await getSignUpUrl({
-      provider: 'GitHubOAuth',
+    const githubSignUpUrl = await (getSignUpUrl as (opts?: { data?: string }) => Promise<string>)({
       data: '/',
     }).catch(() => '/callback');
     return { githubSignUpUrl };
@@ -34,7 +33,7 @@ function SignupPage() {
       </div>
       <p className="auth-footer mt-6 text-center text-muted-foreground text-sm">
         Already have an account?{' '}
-        <Link to="/login" className="text-primary underline underline-offset-4 hover:no-underline">
+        <Link to="/login" search={{ redirect: '/' }} className="text-primary underline underline-offset-4 hover:no-underline">
           Log in
         </Link>
       </p>
