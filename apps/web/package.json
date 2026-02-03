@@ -68,6 +68,7 @@
     "@cloudflare/vite-plugin": "^1.13.8",
     "@convex-dev/eslint-plugin": "^1.1.1",
     "@tailwindcss/postcss": "^4.1.18",
+    "@tailwindcss/typography": "^0.5.19",
     "@tanstack/eslint-config": "^0.3.4",
     "@tanstack/react-router-devtools": "^1.157.18",
     "@types/node": "^24.10.9",

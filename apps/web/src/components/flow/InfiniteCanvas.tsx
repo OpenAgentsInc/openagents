@@ -146,42 +146,6 @@ export function InfiniteCanvas({
     }
   }, [animate]);
 
-  const handleWheel = useCallback(
-    (e: React.WheelEvent<SVGSVGElement>) => {
-      e.preventDefault();
-      e.stopPropagation();
-
-      if (animationFrameRef.current !== null) {
-        cancelAnimationFrame(animationFrameRef.current);
-        animationFrameRef.current = null;
-      }
-      velocityRef.current = { x: 0, y: 0 };
-
-      const svg = svgRef.current;
-      if (!svg) return;
-
-      const rect = svg.getBoundingClientRect();
-      const mouseX = e.clientX - rect.left;
-      const mouseY = e.clientY - rect.top;
-
-      setCanvas((prev) => {
-        const delta = e.deltaY * -zoomSpeed;
-        const newScale = Math.min(Math.max(minZoom, prev.scale + delta), maxZoom);
-
-        if (newScale === prev.scale) return prev;
-
-        const scaleRatio = newScale / prev.scale;
-        const newOffset = {
-          x: mouseX - (mouseX - prev.offset.x) * scaleRatio,
-          y: mouseY - (mouseY - prev.offset.y) * scaleRatio,
-        };
-
-        return { scale: newScale, offset: newOffset };
-      });
-    },
-    [minZoom, maxZoom, zoomSpeed],
-  );
-
   useEffect(() => {
     return () => {
       if (animationFrameRef.current !== null) {
@@ -196,11 +160,34 @@ export function InfiniteCanvas({
 
     const handleWheelNative = (e: WheelEvent) => {
       e.preventDefault();
+      e.stopPropagation();
+
+      if (animationFrameRef.current !== null) {
+        cancelAnimationFrame(animationFrameRef.current);
+        animationFrameRef.current = null;
+      }
+      velocityRef.current = { x: 0, y: 0 };
+
+      const rect = svg.getBoundingClientRect();
+      const mouseX = e.clientX - rect.left;
+      const mouseY = e.clientY - rect.top;
+
+      setCanvas((prev) => {
+        const delta = e.deltaY * -zoomSpeed;
+        const newScale = Math.min(Math.max(minZoom, prev.scale + delta), maxZoom);
+        if (newScale === prev.scale) return prev;
+        const scaleRatio = newScale / prev.scale;
+        const newOffset = {
+          x: mouseX - (mouseX - prev.offset.x) * scaleRatio,
+          y: mouseY - (mouseY - prev.offset.y) * scaleRatio,
+        };
+        return { scale: newScale, offset: newOffset };
+      });
     };
 
     svg.addEventListener('wheel', handleWheelNative, { passive: false });
     return () => svg.removeEventListener('wheel', handleWheelNative);
-  }, []);
+  }, [minZoom, maxZoom, zoomSpeed]);
 
   return (
     <div className="relative w-full h-full">
@@ -211,7 +198,6 @@ export function InfiniteCanvas({
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
-        onWheel={handleWheel}
       >
         <g transform={transform}>
           {showGrid && (

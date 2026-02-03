@@ -66,6 +66,15 @@ export function HomeIntroOverlay({
     }
   }, []);
 
+  useEffect(() => {
+    if (dismissed) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') dismiss();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [dismissed, dismiss]);
+
   const copyLabel = useMemo(() => (isCopied ? 'Copied' : 'Copy'), [isCopied]);
 
   if (dismissed) {
