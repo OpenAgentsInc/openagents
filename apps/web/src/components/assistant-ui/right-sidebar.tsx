@@ -50,6 +50,24 @@ function RightSidebarNav() {
   );
 }
 
+function DiscoveredSection() {
+  const { state } = useSidebar();
+  const isCollapsed = state === 'collapsed';
+  return (
+    <div
+      className={cn(
+        'mt-2 border-t border-sidebar-border pt-2 transition-opacity duration-200 ease-linear',
+        isCollapsed ? 'opacity-0' : 'opacity-100 delay-200',
+      )}
+    >
+      <p className="px-2 text-xs font-medium text-sidebar-foreground/80 mb-1">
+        Discovered
+      </p>
+      <NostrCommunitiesSection />
+    </div>
+  );
+}
+
 /**
  * Renders the right sidebar trigger into a header slot so it's visible on mobile.
  * Must be used inside the right SidebarProvider. Pass the container element
@@ -91,12 +109,7 @@ export function RightSidebar(
       <div className="hidden flex-1 group-data-[collapsible=icon]:block" />
       <SidebarContent className="px-2 py-3 group-data-[collapsible=icon]:hidden">
         <RightSidebarNav />
-        <div className="mt-2 border-t border-sidebar-border pt-2 transition-opacity duration-200 ease-linear group-data-[collapsible=icon]:opacity-0">
-          <p className="px-2 text-xs font-medium text-sidebar-foreground/80 mb-1">
-            Discovered
-          </p>
-          <NostrCommunitiesSection />
-        </div>
+        <DiscoveredSection />
       </SidebarContent>
       <SidebarRail />
       <SidebarFooter className="border-t border-sidebar-border group-data-[collapsible=icon]:hidden" />
