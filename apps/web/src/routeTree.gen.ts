@@ -20,6 +20,7 @@ import { Route as AppIndexRouteImport } from './routes/_app/index'
 import { Route as AuthenticatedAuthenticatedRouteImport } from './routes/_authenticated/authenticated'
 import { Route as AppFeedRouteImport } from './routes/_app/feed'
 import { Route as AppCRouteImport } from './routes/_app/c'
+import { Route as AppAssistantRouteImport } from './routes/_app/assistant'
 import { Route as AppCIndexRouteImport } from './routes/_app/c.index'
 import { Route as AppUNpubRouteImport } from './routes/_app/u.$npub'
 import { Route as AppPostsIdRouteImport } from './routes/_app/posts.$id'
@@ -80,6 +81,11 @@ const AppCRoute = AppCRouteImport.update({
   path: '/c',
   getParentRoute: () => AppRoute,
 } as any)
+const AppAssistantRoute = AppAssistantRouteImport.update({
+  id: '/assistant',
+  path: '/assistant',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppCIndexRoute = AppCIndexRouteImport.update({
   id: '/',
   path: '/',
@@ -113,6 +119,7 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/setup': typeof SetupRoute
   '/signup': typeof SignupRoute
+  '/assistant': typeof AppAssistantRoute
   '/c': typeof AppCRouteWithChildren
   '/feed': typeof AppFeedRoute
   '/authenticated': typeof AuthenticatedAuthenticatedRoute
@@ -129,6 +136,7 @@ export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/setup': typeof SetupRoute
   '/signup': typeof SignupRoute
+  '/assistant': typeof AppAssistantRoute
   '/feed': typeof AppFeedRoute
   '/authenticated': typeof AuthenticatedAuthenticatedRoute
   '/c/$community': typeof AppCCommunityRoute
@@ -146,6 +154,7 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/setup': typeof SetupRoute
   '/signup': typeof SignupRoute
+  '/_app/assistant': typeof AppAssistantRoute
   '/_app/c': typeof AppCRouteWithChildren
   '/_app/feed': typeof AppFeedRoute
   '/_authenticated/authenticated': typeof AuthenticatedAuthenticatedRoute
@@ -165,6 +174,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/setup'
     | '/signup'
+    | '/assistant'
     | '/c'
     | '/feed'
     | '/authenticated'
@@ -181,6 +191,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/setup'
     | '/signup'
+    | '/assistant'
     | '/feed'
     | '/authenticated'
     | '/c/$community'
@@ -197,6 +208,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/setup'
     | '/signup'
+    | '/_app/assistant'
     | '/_app/c'
     | '/_app/feed'
     | '/_authenticated/authenticated'
@@ -297,6 +309,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppCRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/assistant': {
+      id: '/_app/assistant'
+      path: '/assistant'
+      fullPath: '/assistant'
+      preLoaderRoute: typeof AppAssistantRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/c/': {
       id: '/_app/c/'
       path: '/'
@@ -348,6 +367,7 @@ const AppCRouteChildren: AppCRouteChildren = {
 const AppCRouteWithChildren = AppCRoute._addFileChildren(AppCRouteChildren)
 
 interface AppRouteChildren {
+  AppAssistantRoute: typeof AppAssistantRoute
   AppCRoute: typeof AppCRouteWithChildren
   AppFeedRoute: typeof AppFeedRoute
   AppIndexRoute: typeof AppIndexRoute
@@ -357,6 +377,7 @@ interface AppRouteChildren {
 }
 
 const AppRouteChildren: AppRouteChildren = {
+  AppAssistantRoute: AppAssistantRoute,
   AppCRoute: AppCRouteWithChildren,
   AppFeedRoute: AppFeedRoute,
   AppIndexRoute: AppIndexRoute,
