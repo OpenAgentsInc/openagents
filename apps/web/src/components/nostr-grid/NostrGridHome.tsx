@@ -39,6 +39,7 @@ import {
 } from '@/components/flow';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
+import { HomeIntroOverlay } from '@/components/nostr-grid/HomeIntroOverlay';
 
 type PostSummary = {
   id: string;
@@ -333,21 +334,10 @@ function NostrGridInner() {
         defaultZoom={0.9}
         overlay={
           <>
-            <div className="pointer-events-auto absolute left-4 top-4 rounded-lg border border-border bg-card/80 px-3 py-2 text-xs text-muted-foreground shadow-lg backdrop-blur-md">
-              <div className="font-medium text-card-foreground">Nostr map</div>
-              <div className="flex items-center gap-2">
-                <span>Real data.</span>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant={showAll ? 'default' : 'secondary'}
-                  className="h-7 px-2 text-xs"
-                  onClick={() => setShowAll((v) => !v)}
-                >
-                  {showAll ? 'Show AI only' : 'Show all'}
-                </Button>
-              </div>
-            </div>
+            <HomeIntroOverlay
+              showAll={showAll}
+              onToggleShowAll={() => setShowAll((v) => !v)}
+            />
             <NodeDetailsPanel
               node={selectedNode}
               onClose={() => setSelectedNode(null)}
