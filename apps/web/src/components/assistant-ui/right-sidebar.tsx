@@ -91,7 +91,7 @@ export function RightSidebar(
       <div className="hidden flex-1 group-data-[collapsible=icon]:block" />
       <SidebarContent className="px-2 py-3 group-data-[collapsible=icon]:hidden">
         <RightSidebarNav />
-        <div className="mt-2 border-t border-sidebar-border pt-2">
+        <div className="mt-2 border-t border-sidebar-border pt-2 transition-opacity duration-200 group-data-[collapsible=icon]:opacity-0">
           <p className="px-2 text-xs font-medium text-sidebar-foreground/80 mb-1">
             Discovered
           </p>
