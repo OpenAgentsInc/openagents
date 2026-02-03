@@ -266,7 +266,8 @@ Changes:
     - include `X-OA-Internal-Key` and `X-OA-User-Id`
   - else fall back to the current in-process `streamText()`
 - Make thread identity explicit:
-  - Recommended: add a thread route like `/_app/t/$threadId` so the server can derive `threadId` from the URL.
+  - MVP: use the assistant UI transport `id` field as `threadId` (prefix with `userId` for uniqueness).
+  - Later: add a thread route like `/_app/t/$threadId` so the URL is the canonical source of the active thread.
 
 Acceptance criteria:
 - With `AGENT_WORKER_URL` unset, behavior is unchanged.
