@@ -53,6 +53,11 @@ function buildBreadcrumbSegments(
 
   if (parts.length === 0) return segments;
 
+  if (parts[0] === 'hatchery') {
+    segments.push({ label: 'Hatchery', href: '/hatchery' });
+    return segments;
+  }
+
   if (parts[0] === 'feed') {
     segments.push({ label: 'Feed', href: '/feed' });
     return segments;

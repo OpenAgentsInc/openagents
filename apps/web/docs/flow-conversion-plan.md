@@ -254,13 +254,13 @@ The goal is to make the **Flow canvas** the primary UI across the app:
 
 ### Phase 1 — Homepage demo (fake but believable)
 
-- [ ] Replace the tiny 3-node tree with a representative “OpenAgents on Cloudflare + OpenClaw” graph.
-- [ ] Add node selection + overlay inspector (click node → details).
-- [ ] Add realistic “live” cues: statuses, timestamps, and “needs approval” badges.
+- [x] Replace the tiny 3-node tree with a representative “OpenAgents on Cloudflare + OpenClaw” graph.
+- [x] Add node selection + overlay inspector (click node → details).
+- [x] Add realistic “live” cues: statuses, timestamps, and “needs approval” badges.
 
 ### Phase 2 — Hatchery becomes the primary navigation surface
 
-- [ ] Make the `/hatchery` link real and route it to the flow canvas.
+- [x] Make the `/hatchery` link real and route it to the flow canvas.
 - [ ] Show “Your workspace graph”: Chats, Projects, OpenClaw Cloud, Community.
 - [ ] Persist focus/selection in the URL (e.g. `?focus=thread:...`) so links are shareable.
 

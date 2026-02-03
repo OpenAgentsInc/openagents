@@ -50,6 +50,16 @@ Today’s gap: we do **not** yet provide a first-class “OpenClaw WebChat” th
 
 ## Product surface: what users should experience on openagents.com
 
+### Primary UI: Hatchery (Flow canvas)
+
+The center of the app should be a **Flow-first canvas** (SVG graph) that users can pan/zoom and click into:
+- nodes represent *things* (Chats, Projects, OpenClaw Cloud, Sessions, Approvals, Community)
+- edges represent *relationships and execution* (agent runs, tool calls, approvals, streaming progress)
+- the right sidebar becomes an **inspector** (details + actions for the selected node)
+
+Implementation details and parity notes live in:
+- `apps/web/docs/flow-conversion-plan.md`
+
 ### Core “OpenClaw Cloud” UX (ship-first)
 
 1. **OpenClaw tab / sidebar entry**
@@ -282,6 +292,7 @@ Changes:
   - `thread_id`, `user_id`, `title`, `created_at`, `updated_at`, `archived`
   - optional: `kind` (`chat` | `project` | `openclaw`)
 - Update `apps/web/src/components/assistant-ui/threadlist-sidebar.tsx` to render the Convex list.
+- Add a Hatchery graph query/view that uses the same index to render “Your workspace graph” in the Flow canvas.
 - Add an “OpenClaw” section in the left sidebar that:
   - shows OpenClaw Cloud status + actions
   - links to OpenClaw sessions/chat views
