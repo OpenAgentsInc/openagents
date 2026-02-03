@@ -1,5 +1,6 @@
-import { useState } from 'react';
-import { Outlet } from '@tanstack/react-router';
+import { useEffect, useState } from 'react';
+import { Outlet, useRouterState } from '@tanstack/react-router';
+import { posthogCapture } from '@/lib/posthog';
 import { AssistantRuntimeProvider } from '@assistant-ui/react';
 import {
   useChatRuntime,
@@ -24,9 +25,14 @@ import { AppBreadcrumb } from '@/components/assistant-ui/AppBreadcrumb';
 export function AppLayout() {
   const [rightTriggerContainer, setRightTriggerContainer] =
     useState<HTMLElement | null>(null);
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
   const runtime = useChatRuntime({
     transport: new AssistantChatTransport({ api: '/api/chat' }),
   });
+
+  useEffect(() => {
+    posthogCapture('page_view', { path: pathname });
+  }, [pathname]);
 
   return (
     <AssistantRuntimeProvider runtime={runtime}>

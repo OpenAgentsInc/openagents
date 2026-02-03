@@ -1,5 +1,7 @@
+import { useEffect } from 'react';
 import { createFileRoute, Link, redirect } from '@tanstack/react-router';
 import { getAuth, getSignUpUrl } from '@workos/authkit-tanstack-react-start';
+import { posthogCapture } from '@/lib/posthog';
 
 const SITE_TITLE = 'OpenAgents';
 
@@ -27,6 +29,7 @@ function SignupPage() {
         <a
           href={githubSignUpUrl}
           className="auth-primary inline-flex justify-center rounded-md bg-primary px-4 py-2.5 font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+          onClick={() => posthogCapture('signup_attempt', { provider: 'github' })}
         >
           Sign up with GitHub
         </a>
