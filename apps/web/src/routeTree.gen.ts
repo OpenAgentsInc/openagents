@@ -15,8 +15,16 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as ChatRouteImport } from './routes/chat'
 import { Route as CallbackRouteImport } from './routes/callback'
 import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
-import { Route as IndexRouteImport } from './routes/index'
+import { Route as AppRouteImport } from './routes/_app'
+import { Route as AppIndexRouteImport } from './routes/_app/index'
 import { Route as AuthenticatedAuthenticatedRouteImport } from './routes/_authenticated/authenticated'
+import { Route as AppFeedRouteImport } from './routes/_app/feed'
+import { Route as AppCRouteImport } from './routes/_app/c'
+import { Route as AppCIndexRouteImport } from './routes/_app/c.index'
+import { Route as AppUNpubRouteImport } from './routes/_app/u.$npub'
+import { Route as AppPostsIdRouteImport } from './routes/_app/posts.$id'
+import { Route as AppEventIdRouteImport } from './routes/_app/event.$id'
+import { Route as AppCCommunityRouteImport } from './routes/_app/c.$community'
 
 const SignupRoute = SignupRouteImport.update({
   id: '/signup',
@@ -47,10 +55,14 @@ const AuthenticatedRoute = AuthenticatedRouteImport.update({
   id: '/_authenticated',
   getParentRoute: () => rootRouteImport,
 } as any)
-const IndexRoute = IndexRouteImport.update({
+const AppRoute = AppRouteImport.update({
+  id: '/_app',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AppIndexRoute = AppIndexRouteImport.update({
   id: '/',
   path: '/',
-  getParentRoute: () => rootRouteImport,
+  getParentRoute: () => AppRoute,
 } as any)
 const AuthenticatedAuthenticatedRoute =
   AuthenticatedAuthenticatedRouteImport.update({
@@ -58,35 +70,91 @@ const AuthenticatedAuthenticatedRoute =
     path: '/authenticated',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
+const AppFeedRoute = AppFeedRouteImport.update({
+  id: '/feed',
+  path: '/feed',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppCRoute = AppCRouteImport.update({
+  id: '/c',
+  path: '/c',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppCIndexRoute = AppCIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => AppCRoute,
+} as any)
+const AppUNpubRoute = AppUNpubRouteImport.update({
+  id: '/u/$npub',
+  path: '/u/$npub',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppPostsIdRoute = AppPostsIdRouteImport.update({
+  id: '/posts/$id',
+  path: '/posts/$id',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppEventIdRoute = AppEventIdRouteImport.update({
+  id: '/event/$id',
+  path: '/event/$id',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppCCommunityRoute = AppCCommunityRouteImport.update({
+  id: '/$community',
+  path: '/$community',
+  getParentRoute: () => AppCRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
-  '/': typeof IndexRoute
+  '/': typeof AppIndexRoute
   '/callback': typeof CallbackRoute
   '/chat': typeof ChatRoute
   '/login': typeof LoginRoute
   '/setup': typeof SetupRoute
   '/signup': typeof SignupRoute
+  '/c': typeof AppCRouteWithChildren
+  '/feed': typeof AppFeedRoute
   '/authenticated': typeof AuthenticatedAuthenticatedRoute
+  '/c/$community': typeof AppCCommunityRoute
+  '/event/$id': typeof AppEventIdRoute
+  '/posts/$id': typeof AppPostsIdRoute
+  '/u/$npub': typeof AppUNpubRoute
+  '/c/': typeof AppCIndexRoute
 }
 export interface FileRoutesByTo {
-  '/': typeof IndexRoute
+  '/': typeof AppIndexRoute
   '/callback': typeof CallbackRoute
   '/chat': typeof ChatRoute
   '/login': typeof LoginRoute
   '/setup': typeof SetupRoute
   '/signup': typeof SignupRoute
+  '/feed': typeof AppFeedRoute
   '/authenticated': typeof AuthenticatedAuthenticatedRoute
+  '/c/$community': typeof AppCCommunityRoute
+  '/event/$id': typeof AppEventIdRoute
+  '/posts/$id': typeof AppPostsIdRoute
+  '/u/$npub': typeof AppUNpubRoute
+  '/c': typeof AppCIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
-  '/': typeof IndexRoute
+  '/_app': typeof AppRouteWithChildren
   '/_authenticated': typeof AuthenticatedRouteWithChildren
   '/callback': typeof CallbackRoute
   '/chat': typeof ChatRoute
   '/login': typeof LoginRoute
   '/setup': typeof SetupRoute
   '/signup': typeof SignupRoute
+  '/_app/c': typeof AppCRouteWithChildren
+  '/_app/feed': typeof AppFeedRoute
   '/_authenticated/authenticated': typeof AuthenticatedAuthenticatedRoute
+  '/_app/': typeof AppIndexRoute
+  '/_app/c/$community': typeof AppCCommunityRoute
+  '/_app/event/$id': typeof AppEventIdRoute
+  '/_app/posts/$id': typeof AppPostsIdRoute
+  '/_app/u/$npub': typeof AppUNpubRoute
+  '/_app/c/': typeof AppCIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -97,7 +165,14 @@ export interface FileRouteTypes {
     | '/login'
     | '/setup'
     | '/signup'
+    | '/c'
+    | '/feed'
     | '/authenticated'
+    | '/c/$community'
+    | '/event/$id'
+    | '/posts/$id'
+    | '/u/$npub'
+    | '/c/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -106,21 +181,35 @@ export interface FileRouteTypes {
     | '/login'
     | '/setup'
     | '/signup'
+    | '/feed'
     | '/authenticated'
+    | '/c/$community'
+    | '/event/$id'
+    | '/posts/$id'
+    | '/u/$npub'
+    | '/c'
   id:
     | '__root__'
-    | '/'
+    | '/_app'
     | '/_authenticated'
     | '/callback'
     | '/chat'
     | '/login'
     | '/setup'
     | '/signup'
+    | '/_app/c'
+    | '/_app/feed'
     | '/_authenticated/authenticated'
+    | '/_app/'
+    | '/_app/c/$community'
+    | '/_app/event/$id'
+    | '/_app/posts/$id'
+    | '/_app/u/$npub'
+    | '/_app/c/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
-  IndexRoute: typeof IndexRoute
+  AppRoute: typeof AppRouteWithChildren
   AuthenticatedRoute: typeof AuthenticatedRouteWithChildren
   CallbackRoute: typeof CallbackRoute
   ChatRoute: typeof ChatRoute
@@ -173,12 +262,19 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/': {
-      id: '/'
+    '/_app': {
+      id: '/_app'
+      path: ''
+      fullPath: '/'
+      preLoaderRoute: typeof AppRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/_app/': {
+      id: '/_app/'
       path: '/'
       fullPath: '/'
-      preLoaderRoute: typeof IndexRouteImport
-      parentRoute: typeof rootRouteImport
+      preLoaderRoute: typeof AppIndexRouteImport
+      parentRoute: typeof AppRoute
     }
     '/_authenticated/authenticated': {
       id: '/_authenticated/authenticated'
@@ -187,8 +283,89 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAuthenticatedRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_app/feed': {
+      id: '/_app/feed'
+      path: '/feed'
+      fullPath: '/feed'
+      preLoaderRoute: typeof AppFeedRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/c': {
+      id: '/_app/c'
+      path: '/c'
+      fullPath: '/c'
+      preLoaderRoute: typeof AppCRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/c/': {
+      id: '/_app/c/'
+      path: '/'
+      fullPath: '/c/'
+      preLoaderRoute: typeof AppCIndexRouteImport
+      parentRoute: typeof AppCRoute
+    }
+    '/_app/u/$npub': {
+      id: '/_app/u/$npub'
+      path: '/u/$npub'
+      fullPath: '/u/$npub'
+      preLoaderRoute: typeof AppUNpubRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/posts/$id': {
+      id: '/_app/posts/$id'
+      path: '/posts/$id'
+      fullPath: '/posts/$id'
+      preLoaderRoute: typeof AppPostsIdRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/event/$id': {
+      id: '/_app/event/$id'
+      path: '/event/$id'
+      fullPath: '/event/$id'
+      preLoaderRoute: typeof AppEventIdRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/c/$community': {
+      id: '/_app/c/$community'
+      path: '/$community'
+      fullPath: '/c/$community'
+      preLoaderRoute: typeof AppCCommunityRouteImport
+      parentRoute: typeof AppCRoute
+    }
   }
 }
+
+interface AppCRouteChildren {
+  AppCCommunityRoute: typeof AppCCommunityRoute
+  AppCIndexRoute: typeof AppCIndexRoute
+}
+
+const AppCRouteChildren: AppCRouteChildren = {
+  AppCCommunityRoute: AppCCommunityRoute,
+  AppCIndexRoute: AppCIndexRoute,
+}
+
+const AppCRouteWithChildren = AppCRoute._addFileChildren(AppCRouteChildren)
+
+interface AppRouteChildren {
+  AppCRoute: typeof AppCRouteWithChildren
+  AppFeedRoute: typeof AppFeedRoute
+  AppIndexRoute: typeof AppIndexRoute
+  AppEventIdRoute: typeof AppEventIdRoute
+  AppPostsIdRoute: typeof AppPostsIdRoute
+  AppUNpubRoute: typeof AppUNpubRoute
+}
+
+const AppRouteChildren: AppRouteChildren = {
+  AppCRoute: AppCRouteWithChildren,
+  AppFeedRoute: AppFeedRoute,
+  AppIndexRoute: AppIndexRoute,
+  AppEventIdRoute: AppEventIdRoute,
+  AppPostsIdRoute: AppPostsIdRoute,
+  AppUNpubRoute: AppUNpubRoute,
+}
+
+const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
 
 interface AuthenticatedRouteChildren {
   AuthenticatedAuthenticatedRoute: typeof AuthenticatedAuthenticatedRoute
@@ -203,7 +380,7 @@ const AuthenticatedRouteWithChildren = AuthenticatedRoute._addFileChildren(
 )
 
 const rootRouteChildren: RootRouteChildren = {
-  IndexRoute: IndexRoute,
+  AppRoute: AppRouteWithChildren,
   AuthenticatedRoute: AuthenticatedRouteWithChildren,
   CallbackRoute: CallbackRoute,
   ChatRoute: ChatRoute,
