@@ -1,7 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router';
-import { HatcheryFlowDemo } from '@/components/hatchery/HatcheryFlowDemo';
+import { NostrGridHome } from '@/components/nostr-grid/NostrGridHome';
 
 export const Route = createFileRoute('/_app/')({
-  component: HatcheryFlowDemo,
+  component: NostrGridHome,
 });
-
