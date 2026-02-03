@@ -10,6 +10,18 @@ export type FlowNode = TreeNode & {
   metadata?: { type: FlowNodeType };
 };
 
+export function isRootNode(
+  node: FlowNode,
+): node is FlowNode & { metadata: { type: 'root' } } {
+  return node.metadata?.type === 'root';
+}
+
+export function isLeafNode(
+  node: FlowNode,
+): node is FlowNode & { metadata: { type: 'leaf' } } {
+  return node.metadata?.type === 'leaf';
+}
+
 export function isSkeletonNode(
   node: FlowNode,
 ): node is FlowNode & { metadata: { type: 'skeleton' } } {
