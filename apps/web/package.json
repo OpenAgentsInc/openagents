@@ -1,0 +1,53 @@
+{
+  "name": "web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "homepage": "https://github.com/workos/template-convex-tanstack-start-authkit/#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/workos/template-convex-tanstack-start-authkit.git"
+  },
+  "bugs": {
+    "url": "https://github.com/workos/template-convex-tanstack-start-authkit/issues"
+  },
+  "scripts": {
+    "dev": "npm-run-all --parallel dev:frontend dev:backend",
+    "dev:frontend": "vite dev",
+    "dev:backend": "convex dev",
+    "predev": "convex dev --until-success && convex dashboard",
+    "build": "vite build",
+    "start": "vite start",
+    "format": "prettier --write .",
+    "lint": "tsc && eslint .  --ext ts,tsx --report-unused-disable-directives --max-warnings 0"
+  },
+  "dependencies": {
+    "@convex-dev/react-query": "^0.1.0",
+    "@tanstack/react-query": "^5.90.20",
+    "@tanstack/react-router": "^1.157.18",
+    "@tanstack/react-router-ssr-query": "^1.157.18",
+    "@tanstack/react-start": "^1.157.18",
+    "@workos/authkit-tanstack-react-start": "0.5.0",
+    "convex": "^1.31.7",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4"
+  },
+  "devDependencies": {
+    "@convex-dev/eslint-plugin": "^1.1.1",
+    "@tailwindcss/postcss": "^4.1.18",
+    "@tanstack/eslint-config": "^0.3.4",
+    "@tanstack/react-router-devtools": "^1.157.18",
+    "@types/node": "^24.10.9",
+    "@types/react": "^19.2.10",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^5.1.3",
+    "dotenv": "^17.2.3",
+    "npm-run-all2": "^8.0.4",
+    "prettier": "^3.8.1",
+    "tailwindcss": "^4.1.18",
+    "typescript": "^5.9.3",
+    "vite": "^7.3.1",
+    "vite-tsconfig-paths": "^6.0.5"
+  }
+}
