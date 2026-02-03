@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { createFileRoute } from '@tanstack/react-router';
 import {
+  DevTreeGenerator,
   InfiniteCanvas,
   isLeafNode,
   isRootNode,
@@ -55,7 +56,7 @@ function renderFlowNode(node: FlowNode) {
 
 function Home() {
   const [selectedNode, setSelectedNode] = useState<FlowNode | null>(null);
-  const generatedTree: FlowNode | null = null;
+  const [generatedTree, setGeneratedTree] = useState<FlowNode | null>(null);
   const apiTree: FlowNode | null = HOME_TREE;
   const currentTree = generatedTree ?? apiTree ?? SKELETON_TREE;
   const isShowingSkeleton = currentTree === SKELETON_TREE;
@@ -65,7 +66,13 @@ function Home() {
       <InfiniteCanvas
         defaultZoom={1}
         overlay={
-          <NodeDetailsPanel node={selectedNode} onClose={() => setSelectedNode(null)} />
+          <>
+            <NodeDetailsPanel node={selectedNode} onClose={() => setSelectedNode(null)} />
+            <DevTreeGenerator
+              onGenerate={setGeneratedTree}
+              onReset={() => setGeneratedTree(null)}
+            />
+          </>
         }
       >
         <TreeLayout
