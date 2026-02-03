@@ -22,6 +22,7 @@
     "build:prod": "bash -c 'set -a; [ -f .env ] && . ./.env; [ -f .env.production ] && . ./.env.production; set +a; VITE_CONVEX_URL=${VITE_CONVEX_URL:-https://successful-mongoose-647.convex.cloud} vite build'",
     "start": "vite start",
     "deploy": "bash -c 'set -a; [ -f .env ] && . ./.env; [ -f .env.production ] && . ./.env.production; set +a; VITE_CONVEX_URL=${VITE_CONVEX_URL:-https://successful-mongoose-647.convex.cloud} npm run build && wrangler deploy'",
+    "deploy:convex": "bash -c 'set -a; [ -f .env.production ] && . ./.env.production; set +a; npx convex deploy --yes'",
     "cf-typegen": "wrangler types",
     "format": "prettier --write .",
     "lint": "tsc && eslint .  --ext ts,tsx --report-unused-disable-directives --max-warnings 0"
