@@ -15,6 +15,7 @@ import {
   RightSidebar,
   RightSidebarTriggerPortal,
 } from '@/components/assistant-ui/right-sidebar';
+import { AppBreadcrumb } from '@/components/assistant-ui/AppBreadcrumb';
 
 /**
  * App chrome: left sidebar (thread list), center (header + Outlet), right sidebar (community).
@@ -35,6 +36,7 @@ export function AppLayout() {
         <SidebarInset className="flex min-h-0 flex-1 flex-col overflow-hidden">
           <header className="sticky top-0 z-10 flex h-12 shrink-0 items-center gap-2 border-b border-border bg-background/80 px-3 md:px-4 backdrop-blur-md supports-[backdrop-filter]:bg-background/70">
             <SidebarTrigger className="md:hidden" />
+            <AppBreadcrumb />
             <div
               ref={(el) => setRightTriggerContainer(el ?? null)}
               className="ml-auto flex md:hidden"
