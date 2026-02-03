@@ -8,10 +8,12 @@
  * @module
  */
 
-import type * as billing from "../billing.js";
 import type * as apiTokens from "../apiTokens.js";
+import type * as billing from "../billing.js";
+import type * as control_auth from "../control_auth.js";
 import type * as http from "../http.js";
 import type * as lib_errors from "../lib/errors.js";
+import type * as lib_users from "../lib/users.js";
 import type * as myFunctions from "../myFunctions.js";
 import type * as nostr from "../nostr.js";
 import type * as nostr_http from "../nostr_http.js";
@@ -27,8 +29,10 @@ import type {
 declare const fullApi: ApiFromModules<{
   apiTokens: typeof apiTokens;
   billing: typeof billing;
+  control_auth: typeof control_auth;
   http: typeof http;
   "lib/errors": typeof lib_errors;
+  "lib/users": typeof lib_users;
   myFunctions: typeof myFunctions;
   nostr: typeof nostr;
   nostr_http: typeof nostr_http;
