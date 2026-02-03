@@ -77,3 +77,9 @@ curl -X POST "$CONVEX_SITE_URL/control/auth/resolve-token" \
 
 ### Verification
 - `npm -C apps/api run build` (succeeded; warning about unused fields in `RuntimeError` from existing code).
+
+## 2026-02-03 00:03:59 -0600
+### Git
+- Commit: `57e4178c0` (Add API token auth and agent signup flow)
+- Push: `git push origin api`
+- PR: https://github.com/OpenAgentsInc/openagents/pull/1560
