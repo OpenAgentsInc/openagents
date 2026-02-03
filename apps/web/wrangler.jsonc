@@ -14,5 +14,10 @@
 	"vars": {
 		"WORKOS_REDIRECT_URI": "https://openagents-web-app.openagents.workers.dev/callback"
 	}
-	// Set secrets for production: wrangler secret put WORKOS_CLIENT_ID; wrangler secret put WORKOS_API_KEY; wrangler secret put WORKOS_COOKIE_PASSWORD
+	// Set secrets for production:
+	// - wrangler secret put WORKOS_CLIENT_ID
+	// - wrangler secret put WORKOS_API_KEY
+	// - wrangler secret put WORKOS_COOKIE_PASSWORD
+	// Managed OpenClaw (chat tools):
+	// - wrangler secret put OA_INTERNAL_KEY   # used to call /api/openclaw/* (beta internal auth)
 }
