@@ -13,4 +13,4 @@ export {
 export type { Point, TreeNode, LayoutConfig, PositionedNode } from './layout-engine';
 export { LayoutEngine, invariant } from './layout-engine';
 export type { FlowNode, FlowNodeType } from './types';
-export { NODE_SIZES } from './types';
+export { NODE_SIZES, SKELETON_TREE, isSkeletonNode } from './types';
