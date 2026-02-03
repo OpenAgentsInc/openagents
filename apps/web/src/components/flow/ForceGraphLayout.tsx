@@ -108,16 +108,57 @@ function initializePositions(nodes: SimNode[]) {
   }
 }
 
+function seedNewNodes(nodes: SimNode[], previous: Map<string, SimNode>) {
+  if (previous.size === 0) {
+    initializePositions(nodes);
+    return;
+  }
+
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+  const root = nodes.find((n) => n.depth === 0) ?? nodes[0];
+
+  for (const n of nodes) {
+    if (previous.has(n.id)) continue;
+    if (n.depth === 0) {
+      n.x = 0;
+      n.y = 0;
+      n.vx = 0;
+      n.vy = 0;
+      continue;
+    }
+
+    const parent =
+      (n.parentId ? byId.get(n.parentId) : undefined) ?? root ?? undefined;
+    const angle = Math.random() * TAU;
+    const radius = parent
+      ? idealEdgeLength(parent, n) * (0.85 + Math.random() * 0.25)
+      : 420;
+    const px = parent?.x ?? 0;
+    const py = parent?.y ?? 0;
+    n.x = px + Math.cos(angle) * radius;
+    n.y = py + Math.sin(angle) * radius;
+    n.vx = 0;
+    n.vy = 0;
+  }
+
+  if (root) {
+    root.x = 0;
+    root.y = 0;
+    root.vx = 0;
+    root.vy = 0;
+  }
+}
+
 function stepSimulation(nodes: SimNode[], edges: Edge[]) {
   const byId = new Map(nodes.map((n) => [n.id, n]));
   const root = nodes.find((n) => n.depth === 0) ?? nodes[0];
 
-  const centerStrength = 0.0012;
-  const springK = 0.012;
-  const charge = 6200;
-  const collisionPadding = 18;
-  const damping = 0.86;
-  const maxSpeed = 10;
+  const centerStrength = 0.0009;
+  const springK = 0.0075;
+  const charge = 3600;
+  const collisionPadding = 14;
+  const damping = 0.8;
+  const maxSpeed = 6;
 
   // Gentle center pull (keeps the blob from drifting).
   for (const n of nodes) {
@@ -281,9 +322,14 @@ export function ForceGraphLayout({
   const frameCountRef = useRef(0);
 
   useEffect(() => {
+    const previous = byIdRef.current;
     // Use a fresh clone so we don't mutate memoized objects across renders.
-    const fresh = seedNodes.map((n) => ({ ...n }));
-    initializePositions(fresh);
+    const fresh = seedNodes.map((n) => {
+      const prev = previous.get(n.id);
+      if (!prev) return { ...n };
+      return { ...n, x: prev.x, y: prev.y, vx: prev.vx, vy: prev.vy };
+    });
+    seedNewNodes(fresh, previous);
     nodesRef.current = fresh;
     byIdRef.current = new Map(fresh.map((n) => [n.id, n]));
 
@@ -302,11 +348,11 @@ export function ForceGraphLayout({
       // Re-render every other frame (~30fps) to keep UI responsive.
       if (frameCountRef.current % 2 === 0) setTick((t) => t + 1);
 
-      if (energy < 0.09) stableFramesRef.current += 1;
+      if (energy < 0.06) stableFramesRef.current += 1;
       else stableFramesRef.current = 0;
 
-      // Stop once stable for ~1.5s (at ~60fps), or after a hard cap.
-      if (stableFramesRef.current >= 90 || frameCountRef.current >= 900) {
+      // Stop once stable for ~1.2s (at ~60fps), or after a hard cap.
+      if (stableFramesRef.current >= 72 || frameCountRef.current >= 720) {
         frameRef.current = null;
         return;
       }
@@ -366,4 +412,3 @@ export function ForceGraphLayout({
     </g>
   );
 }
-
