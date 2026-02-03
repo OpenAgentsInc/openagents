@@ -102,7 +102,7 @@ function PostList({
                   params={{ community }}
                   className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs hover:bg-muted/80"
                 >
-                  c/{community}
+                  {community}
                 </Link>
               )}
               <Link
@@ -228,7 +228,7 @@ function NostrFeedListCommunity({
     <PostList
       posts={posts}
       showAll={showAll}
-      emptyMessage={`No posts yet in c/${community}. Try other relays or check back later.`}
+      emptyMessage={`No posts yet in ${community}. Try other relays or check back later.`}
     />
   );
 }

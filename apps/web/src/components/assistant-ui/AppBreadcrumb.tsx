@@ -62,7 +62,7 @@ function buildBreadcrumbSegments(
     segments.push({ label: 'Communities', href: '/c' });
     if (parts[1]) {
       const community = params.community ?? parts[1];
-      segments.push({ label: `c/${community}`, href: `/c/${community}` });
+      segments.push({ label: community, href: `/c/${community}` });
     }
     return segments;
   }
