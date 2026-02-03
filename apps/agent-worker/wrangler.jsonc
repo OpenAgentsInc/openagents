@@ -1,0 +1,25 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "openagents-agent-worker",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-05-06",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": {
+    "enabled": true
+  },
+  "durable_objects": {
+    "bindings": [
+      {
+        "class_name": "ThreadAgent",
+        "name": "ThreadAgent"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "new_classes": ["ThreadAgent"],
+      "tag": "v1"
+    }
+  ]
+}
+
