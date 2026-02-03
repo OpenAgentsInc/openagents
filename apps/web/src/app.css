@@ -153,6 +153,13 @@
   width: var(--scrollbar-width);
   height: var(--scrollbar-width);
 }
+/* Hide scrollbar in SidebarContent while preserving scroll */
+[data-sidebar='content'] {
+  scrollbar-width: none;
+}
+[data-sidebar='content']::-webkit-scrollbar {
+  display: none;
+}
 
 html,
 body {
