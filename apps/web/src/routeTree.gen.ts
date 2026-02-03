@@ -9,6 +9,7 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as SignupRouteImport } from './routes/signup'
 import { Route as SetupRouteImport } from './routes/setup'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as CallbackRouteImport } from './routes/callback'
@@ -17,6 +18,11 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as ApiChatRouteImport } from './routes/api/chat'
 import { Route as AuthenticatedAuthenticatedRouteImport } from './routes/_authenticated/authenticated'
 
+const SignupRoute = SignupRouteImport.update({
+  id: '/signup',
+  path: '/signup',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SetupRoute = SetupRouteImport.update({
   id: '/setup',
   path: '/setup',
@@ -58,6 +64,7 @@ export interface FileRoutesByFullPath {
   '/callback': typeof CallbackRoute
   '/login': typeof LoginRoute
   '/setup': typeof SetupRoute
+  '/signup': typeof SignupRoute
   '/authenticated': typeof AuthenticatedAuthenticatedRoute
   '/api/chat': typeof ApiChatRoute
 }
@@ -66,6 +73,7 @@ export interface FileRoutesByTo {
   '/callback': typeof CallbackRoute
   '/login': typeof LoginRoute
   '/setup': typeof SetupRoute
+  '/signup': typeof SignupRoute
   '/authenticated': typeof AuthenticatedAuthenticatedRoute
   '/api/chat': typeof ApiChatRoute
 }
@@ -76,6 +84,7 @@ export interface FileRoutesById {
   '/callback': typeof CallbackRoute
   '/login': typeof LoginRoute
   '/setup': typeof SetupRoute
+  '/signup': typeof SignupRoute
   '/_authenticated/authenticated': typeof AuthenticatedAuthenticatedRoute
   '/api/chat': typeof ApiChatRoute
 }
@@ -86,10 +95,18 @@ export interface FileRouteTypes {
     | '/callback'
     | '/login'
     | '/setup'
+    | '/signup'
     | '/authenticated'
     | '/api/chat'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/callback' | '/login' | '/setup' | '/authenticated' | '/api/chat'
+  to:
+    | '/'
+    | '/callback'
+    | '/login'
+    | '/setup'
+    | '/signup'
+    | '/authenticated'
+    | '/api/chat'
   id:
     | '__root__'
     | '/'
@@ -97,6 +114,7 @@ export interface FileRouteTypes {
     | '/callback'
     | '/login'
     | '/setup'
+    | '/signup'
     | '/_authenticated/authenticated'
     | '/api/chat'
   fileRoutesById: FileRoutesById
@@ -107,11 +125,19 @@ export interface RootRouteChildren {
   CallbackRoute: typeof CallbackRoute
   LoginRoute: typeof LoginRoute
   SetupRoute: typeof SetupRoute
+  SignupRoute: typeof SignupRoute
   ApiChatRoute: typeof ApiChatRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/signup': {
+      id: '/signup'
+      path: '/signup'
+      fullPath: '/signup'
+      preLoaderRoute: typeof SignupRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/setup': {
       id: '/setup'
       path: '/setup'
@@ -182,6 +208,7 @@ const rootRouteChildren: RootRouteChildren = {
   CallbackRoute: CallbackRoute,
   LoginRoute: LoginRoute,
   SetupRoute: SetupRoute,
+  SignupRoute: SignupRoute,
   ApiChatRoute: ApiChatRoute,
 }
 export const routeTree = rootRouteImport

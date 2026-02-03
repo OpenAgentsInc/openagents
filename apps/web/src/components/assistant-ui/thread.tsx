@@ -101,14 +101,14 @@ const ThreadWelcome: FC = () => {
 
 const SUGGESTIONS = [
   {
-    title: "Set up an OpenClaw",
+    title: "Help me set up OpenClaw",
     label: "Local or managed",
-    prompt: "What's the weather in San Francisco?",
+    prompt: "Help me set up OpenClaw.",
   },
   {
-    title: "Explain React hooks",
-    label: "like useState and useEffect",
-    prompt: "Explain React hooks like useState and useEffect",
+    title: "What is Nostr?",
+    label: "ELI5",
+    prompt: "Explain what Nostr is",
   },
 ] as const;
 

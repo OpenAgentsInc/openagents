@@ -1,45 +1,41 @@
 import { createFileRoute, Link, redirect } from '@tanstack/react-router';
-import { getAuth, getSignInUrl } from '@workos/authkit-tanstack-react-start';
+import { getAuth, getSignUpUrl } from '@workos/authkit-tanstack-react-start';
 
 const SITE_TITLE = 'OpenAgents';
 
-export const Route = createFileRoute('/login')({
-  component: LoginPage,
-  head: () => ({ meta: [{ title: `Log in · ${SITE_TITLE}` }] }),
-  validateSearch: (search: Record<string, unknown>) => ({
-    redirect: typeof search.redirect === 'string' ? search.redirect : '/',
-  }),
-  loader: async ({ search }) => {
+export const Route = createFileRoute('/signup')({
+  component: SignupPage,
+  head: () => ({ meta: [{ title: `Sign up · ${SITE_TITLE}` }] }),
+  loader: async () => {
     const { user } = await getAuth();
-    if (user) throw redirect({ to: search.redirect });
+    if (user) throw redirect({ to: '/' });
     // GitHub-only: no WorkOS hosted page; user stays in app until they choose GitHub.
-    const returnPath = search.redirect;
-    const githubSignInUrl = await getSignInUrl({
+    const githubSignUpUrl = await getSignUpUrl({
       provider: 'GitHubOAuth',
-      data: { returnPathname: returnPath },
+      data: '/',
     }).catch(() => '/callback');
-    return { githubSignInUrl };
+    return { githubSignUpUrl };
   },
 });
 
-function LoginPage() {
-  const { githubSignInUrl } = Route.useLoaderData();
+function SignupPage() {
+  const { githubSignUpUrl } = Route.useLoaderData();
 
   return (
     <main className="auth-main mx-auto max-w-[360px] px-4 py-8">
-      <h1 className="auth-heading mb-4 text-xl font-semibold">Log in</h1>
+      <h1 className="auth-heading mb-4 text-xl font-semibold">Sign up</h1>
       <div className="auth-form mb-4 flex flex-col gap-3">
         <a
-          href={githubSignInUrl}
+          href={githubSignUpUrl}
           className="auth-primary inline-flex justify-center rounded-md bg-primary px-4 py-2.5 font-medium text-primary-foreground transition-colors hover:bg-primary/90"
         >
-          Log in with GitHub
+          Sign up with GitHub
         </a>
       </div>
       <p className="auth-footer mt-6 text-center text-muted-foreground text-sm">
-        No account?{' '}
-        <Link to="/signup" className="text-primary underline underline-offset-4 hover:no-underline">
-          Sign up
+        Already have an account?{' '}
+        <Link to="/login" className="text-primary underline underline-offset-4 hover:no-underline">
+          Log in
         </Link>
       </p>
       <p className="auth-back mt-4 text-center text-sm">
