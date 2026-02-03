@@ -1,8 +1,24 @@
 # Pi plugins support plan
 
-Plan to add support for pi-coding-agent–style extensions (“pi plugins”) in OpenAgents: map pi extension capabilities to our stack (Adjutant, Autopilot, dsrs, Pylon) and outline how we can support equivalent or bridged behavior.
+Plan to add support for pi-coding-agent–style extensions (“pi plugins”) in OpenAgents and to deepen integration with pi, **the coding agent that powers OpenClaw**. Pi is already the conversational and tool-execution engine behind OpenClaw (gateway, tools, pairing); OpenClaw Cloud on openagents.com runs pi inside the OpenClaw runtime. This doc maps pi extension capabilities to our stack (Adjutant, Autopilot, OpenClaw runtime, dsrs, Pylon) and outlines how we can support equivalent or bridged behavior so pi plugins work both in OpenClaw and, where desired, in native OpenAgents surfaces (Autopilot/Adjutant).
 
 **Reference:** [pi-mono/packages/coding-agent](https://github.com/badlogic/pi-mono/tree/main/packages/coding-agent) README and [docs/extensions.md](https://github.com/badlogic/pi-mono/blob/main/packages/coding-agent/docs/extensions.md), plus [examples/extensions/](https://github.com/badlogic/pi-mono/tree/main/packages/coding-agent/examples/extensions).
+
+---
+
+## 0. Context: Pi and OpenClaw
+
+**Pi is the coding agent powering OpenClaw.** OpenClaw is gateway-centric (WebSocket, tools, device/DM pairing); the agent that handles chat, tool calls, and session state inside that gateway is pi. On openagents.com, when we run “OpenClaw Cloud,” we run the OpenClaw runtime (see [openclaw-on-openagents-com.md](./openclaw-on-openagents-com.md)), which starts the OpenClaw gateway — and that gateway uses pi as its coding agent.
+
+**Implications for this plan:**
+
+- **Existing integration:** We already depend on pi for the OpenClaw experience (web chat, tools, sessions). Supporting “pi plugins” is not only adding a new capability; it’s extending the same agent our users already get via OpenClaw.
+- **Deeper integration opportunities:**
+  - **OpenClaw runtime:** Load pi extensions inside the OpenClaw runtime container (e.g. from a mounted volume or config-driven list) so that OpenClaw Cloud sessions can use the same pi packages (plan mode, sandbox, subagent, custom providers) that desktop pi users use.
+  - **Unified plugin story:** Allow one set of pi extensions or config (e.g. `~/.pi/agent/extensions/` or a project `.pi/extensions/`) to be used by both (1) OpenClaw/pi in the cloud and (2) Autopilot/Adjutant locally, via a bridge or native parity, so users don’t maintain two plugin ecosystems.
+  - **Event and tool parity:** Add hooks and tool-extension points in Adjutant so that behavior (permission gates, sandbox, plan mode) can be implemented once and used in both pi (OpenClaw) and Adjutant (Autopilot) execution paths, or so a pi extension can drive both via a bridge.
+
+The rest of this doc details pi’s extension model, maps it to OpenAgents, and proposes a phased path that includes **deeper integration with the pi-powered OpenClaw runtime** as well as native and bridge options for Autopilot/Adjutant.
 
 ---
 
@@ -54,16 +70,17 @@ From pi’s `examples/extensions/` and docs:
 
 | Layer | Where | What we have |
 |-------|--------|----------------|
+| **OpenClaw / pi** | `apps/openclaw-runtime`, OpenClaw Gateway | **Pi is the coding agent inside OpenClaw.** The runtime runs the OpenClaw gateway (tools, sessions, pairing); the agent that executes tools and handles chat is pi. Today we do not yet load pi extensions in the runtime container. |
 | **Tools** | `crates/adjutant/src/tools.rs` | `ToolRegistry`: fixed set (read_file, edit_file, write_file, bash, glob_file, grep). No plugin registration; schemas and execution are Rust. |
 | **Execution** | Adjutant, coding_agent_loop | Single loop: DSPy decisions → tool calls → receipts. No event hooks for “before tool” / “after tool” or context mutation. |
-| **Session** | Autopilot / Codex | Thread/turn state in app-server; session files in pi/Codex world, not yet a unified “session manager” in Rust with fork/tree. |
-| **UI** | Autopilot (wgpui), apps/web | No extension-defined commands/shortcuts/widgets; no `ctx.ui` abstraction. |
-| **Model / provider** | lm-router, model registry | Provider/model selection in Rust; no dynamic `registerProvider` from scripts. |
-| **Sandbox / remote** | Autopilot container mode (partial), Pylon | No OS-level sandbox (bubblewrap/sandbox-exec) or SSH tool operations in Adjutant. |
-| **Plan mode / presets** | — | No plan mode or saveable presets. |
-| **Subagents** | — | No “spawn another agent” tool; RLM/tiered executor is internal. |
+| **Session** | Autopilot / Codex; OpenClaw (pi) | Thread/turn state in app-server; session files in pi/Codex world. OpenClaw sessions are pi-native. No unified “session manager” in Rust with fork/tree. |
+| **UI** | Autopilot (wgpui), apps/web | No extension-defined commands/shortcuts/widgets; no `ctx.ui` abstraction. OpenClaw WebChat is backed by pi (Mode B in openclaw-on-openagents-com.md). |
+| **Model / provider** | lm-router, model registry | Provider/model selection in Rust; no dynamic `registerProvider` from scripts. Pi in OpenClaw can use its own provider/extensions if we load them. |
+| **Sandbox / remote** | Autopilot container mode (partial), Pylon | No OS-level sandbox (bubblewrap/sandbox-exec) or SSH tool operations in Adjutant. Pi sandbox/SSH extensions could run inside OpenClaw runtime if we load pi extensions there. |
+| **Plan mode / presets** | — | No plan mode or saveable presets. Pi plan-mode extension could run in OpenClaw if we load extensions. |
+| **Subagents** | — | No “spawn another agent” tool; RLM/tiered executor is internal. Pi subagent extension could run in OpenClaw if we load extensions. |
 
-So today we have a closed tool set and no pi-style extension API.
+So today: **pi powers OpenClaw** but we don’t yet load pi extensions in the OpenClaw runtime; Autopilot/Adjutant have a closed tool set and no pi-style extension API.
 
 ---
 
@@ -209,41 +226,46 @@ Recommendation: **A** when session ownership is clear; **B** for bridge parity.
 
 ### 5.1 Principle
 
-- **Native first:** Reimplement high-value behaviors (sandbox, SSH, plan mode, subagent, permission gates) in Rust/Adjutant/Autopilot so we don’t depend on Node for core safety or UX.
-- **Bridge optional:** A “pi compatibility” bridge can run pi extensions in a Node/TS process, translate our events and tool calls to pi’s API, and push UI/provider/command updates back. Use this for maximum pi package compatibility, not for core security.
+- **Pi powers OpenClaw:** The coding agent in OpenClaw is pi; supporting pi plugins is a direct way to extend what OpenClaw Cloud can do (plan mode, sandbox, custom tools, providers) and to unify with the desktop pi ecosystem.
+- **Deeper integration first:** Load pi extensions inside the OpenClaw runtime container so OpenClaw Cloud sessions get the same pi packages (extensions, skills, prompts) that desktop pi users use. This is the lowest-friction path to “pi plugins on openagents.com.”
+- **Native parity where it matters:** Reimplement high-value behaviors (sandbox, SSH, plan mode, permission gates) in Rust/Adjutant/Autopilot so we don’t depend on Node for core safety or UX when running Autopilot; optional parity with pi’s behavior so one config can drive both.
+- **Bridge optional:** A “pi compatibility” bridge can run pi extensions in a Node/TS process alongside Adjutant, translate events and tool calls, and push UI/provider/command updates to Autopilot. Use for maximum pi package compatibility in the desktop stack, not for core security.
 
 ### 5.2 Phased implementation
 
 | Phase | Scope | Deliverables |
 |-------|--------|--------------|
-| **1 – Hooks and tools** | Tool pre-hook; optional “plugin tools” via config or bridge | `tool_call` pre-hook in coding_agent_loop; design for dynamic tool registration (config schema or RPC) |
-| **2 – Native parity** | Sandbox, SSH, plan mode, permission gates | Sandbox (bubblewrap/sandbox-exec) in `ToolRegistry::bash`; SSH operations trait; plan mode (tool subset + step parsing + widget); tool_call hook used by a “gate” (e.g. block list) |
-| **3 – Commands and UI slots** | Commands and shortcuts; status/widget/overlay | Config-driven commands/shortcuts; extension status line and one widget slot in Autopilot; overlay slot if needed for Q&A/plan |
-| **4 – Session and events** | Session events; compaction/tree hooks | Internal event bus (session_start, turn_start/end, before_compact, before_tree); session name/labels and append entry API |
-| **5 – Provider and model** | Custom providers without pi | Config-driven provider registration (baseUrl, apiKey, OAuth, models) consumed by lm-router / UI |
-| **6 – Bridge (optional)** | Run pi extensions as plugins | Node/TS process that loads pi extensions; stdio or RPC to Adjutant; translates tool calls, events, UI updates, provider reg; document “pi package compatibility” |
+| **0 – OpenClaw runtime (pi extensions)** | Load pi extensions in OpenClaw | In `apps/openclaw-runtime` (or container image): discover and load pi extensions from a mounted volume or config (e.g. `extensions/` or `~/.pi/agent/extensions/`); pass extension paths into the pi process so OpenClaw Cloud sessions run with the same pi packages (plan mode, sandbox, custom tools, providers). Enables deeper integration with the agent that already powers OpenClaw. |
+| **1 – Hooks and tools** | Tool pre-hook; optional “plugin tools” via config or bridge | `tool_call` pre-hook in coding_agent_loop; design for dynamic tool registration (config schema or RPC). |
+| **2 – Native parity** | Sandbox, SSH, plan mode, permission gates | Sandbox (bubblewrap/sandbox-exec) in `ToolRegistry::bash`; SSH operations trait; plan mode (tool subset + step parsing + widget); tool_call hook used by a “gate” (e.g. block list). |
+| **3 – Commands and UI slots** | Commands and shortcuts; status/widget/overlay | Config-driven commands/shortcuts; extension status line and one widget slot in Autopilot; overlay slot if needed for Q&A/plan. |
+| **4 – Session and events** | Session events; compaction/tree hooks | Internal event bus (session_start, turn_start/end, before_compact, before_tree); session name/labels and append entry API. |
+| **5 – Provider and model** | Custom providers without pi | Config-driven provider registration (baseUrl, apiKey, OAuth, models) consumed by lm-router / UI. |
+| **6 – Bridge (optional)** | Run pi extensions as plugins next to Adjutant | Node/TS process that loads pi extensions; stdio or RPC to Adjutant; translates tool calls, events, UI updates, provider reg; document “pi package compatibility” for Autopilot/Adjutant. |
 
 ### 5.3 File and ownership (suggested)
 
+- **OpenClaw runtime:** Container image and/or `apps/openclaw-runtime`: extension discovery (e.g. from R2 or mounted volume); pass `--extension` or extension dir into the pi process so OpenClaw Gateway runs pi with extensions. Optional: unified plugin config (e.g. per-tenant extension list) so OpenClaw Cloud and desktop pi can share the same pi packages.
 - **Adjutant:** `tools.rs` (sandbox/SSH ops); `coding_agent_loop.rs` (tool pre-hook, event emit); new `events.rs` or `plugin.rs` for event bus and optional plugin trait.
 - **Autopilot:** Config for commands/shortcuts; UI slots (status, widget, overlay); plan mode state and widget.
-- **Config:** `~/.openagents/` or `.openagents/` — `tools.json` (plugin tool list or bridge endpoint), `commands.json`, `providers.json`, `sandbox.json`.
+- **Config:** `~/.openagents/` or `.openagents/` — `tools.json` (plugin tool list or bridge endpoint), `commands.json`, `providers.json`, `sandbox.json`. For OpenClaw Cloud: tenant-level or instance-level pi extension list (e.g. in Convex or runtime env).
 - **Bridge (if built):** New repo or `apps/pi-bridge/` — Node app that loads pi extensions, talks to Adjutant via RPC/stdio, and pushes UI/provider updates to Autopilot or a small API.
 
 ### 5.4 Summary table
 
 | Pi capability | OpenAgents approach |
 |--------------|---------------------|
-| Custom tools | Config or RPC for “plugin tools”; bridge can expose pi tools |
-| Tool interception | Pre-hook in coding_agent_loop; gate (e.g. block list) in Rust |
-| Commands / shortcuts | Config-driven in Autopilot; bridge can emulate pi.registerCommand |
-| Lifecycle events | Internal event bus in Rust; bridge can subscribe and call pi handlers |
-| UI (status, widget, overlay) | Reserved slots in Autopilot; bridge fills from pi ctx.ui |
-| Providers | Config-driven provider registration; bridge can call registerProvider |
-| Sandbox / SSH | Native in Rust (ToolRegistry ops) |
-| Plan mode | Native (tool subset + parsing + widget) |
-| Subagents | Native “delegate” tool or tiered step |
-| Compaction / tree | Events + optional custom summary when we own session |
-| Messages / session metadata | Session API (append entry, name, labels) when we own session |
+| **OpenClaw (pi as coding agent)** | Pi already powers OpenClaw; load pi extensions in the OpenClaw runtime container so OpenClaw Cloud sessions get the same pi packages (plan mode, sandbox, custom tools, providers). Deepest integration: one agent, one extension story for cloud. |
+| Custom tools | In OpenClaw: pi extensions loaded in runtime. In Adjutant: config or RPC for “plugin tools”; bridge can expose pi tools. |
+| Tool interception | Pre-hook in coding_agent_loop; gate (e.g. block list) in Rust. In OpenClaw: pi’s `on("tool_call")` when extensions are loaded. |
+| Commands / shortcuts | Config-driven in Autopilot; bridge can emulate pi.registerCommand. In OpenClaw: pi commands/shortcuts when extensions are loaded. |
+| Lifecycle events | Internal event bus in Rust; bridge can subscribe and call pi handlers. In OpenClaw: pi events when extensions are loaded. |
+| UI (status, widget, overlay) | Reserved slots in Autopilot; bridge fills from pi ctx.ui. OpenClaw WebChat can surface pi extension UI when we proxy or extend the chat surface. |
+| Providers | Config-driven provider registration; bridge can call registerProvider. In OpenClaw: pi extensions can register providers when loaded. |
+| Sandbox / SSH | Native in Rust (ToolRegistry ops); in OpenClaw, pi sandbox/SSH extensions when loaded. |
+| Plan mode | Native (tool subset + parsing + widget); in OpenClaw, pi plan-mode extension when loaded. |
+| Subagents | Native “delegate” tool or tiered step; in OpenClaw, pi subagent extension when loaded. |
+| Compaction / tree | Events + optional custom summary when we own session; in OpenClaw, pi compaction/tree when extensions are loaded. |
+| Messages / session metadata | Session API (append entry, name, labels) when we own session; in OpenClaw, pi session APIs when extensions are loaded. |
 
-This gives a single plan: native parity for safety and UX, optional bridge for pi package compatibility, and a clear sequence (hooks → native features → UI/commands → session/events → providers → bridge).
+This gives a single plan: **pi is the coding agent powering OpenClaw**; load pi extensions in the OpenClaw runtime for deeper integration on openagents.com; add native parity and optional bridge for Autopilot/Adjutant; clear sequence (OpenClaw runtime extensions → hooks → native features → UI/commands → session/events → providers → bridge).
