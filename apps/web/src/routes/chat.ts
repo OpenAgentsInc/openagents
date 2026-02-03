@@ -3,6 +3,19 @@ import { openai } from '@ai-sdk/openai';
 import { streamText, convertToModelMessages, type UIMessage } from 'ai';
 import { z } from 'zod';
 import { getAuth } from '@workos/authkit-tanstack-react-start';
+import {
+  approveRuntimeDevice,
+  backupRuntime,
+  createOpenclawInstance,
+  getBillingSummary,
+  getOpenclawInstance,
+  getRuntimeDevices,
+  getRuntimeStatus,
+  resolveApiBase,
+  resolveInternalKey,
+  restartRuntime,
+  type OpenclawApiConfig,
+} from '@/lib/openclawApi';
 
 /**
  * Chat endpoint for apps/web.
@@ -17,13 +30,15 @@ export const Route = createFileRoute('/chat')({
         const auth = await getAuth().catch(() => null);
         const userId = auth?.user?.id;
 
-        const internalKey = (process.env.OA_INTERNAL_KEY ?? '').trim();
-        if (!internalKey) {
+        let internalKey = '';
+        try {
+          internalKey = resolveInternalKey();
+        } catch (error) {
           // Fail fast: without this we can't call /api/openclaw/* in beta.
           return new Response(
             JSON.stringify({
               ok: false,
-              error: 'OA_INTERNAL_KEY not configured on apps/web',
+              error: error instanceof Error ? error.message : 'OA_INTERNAL_KEY not configured',
             }),
             { status: 500, headers: { 'content-type': 'application/json' } },
           );
@@ -39,31 +54,12 @@ export const Route = createFileRoute('/chat')({
 
         // Call the Rust API worker on the same apex domain.
         const origin = new URL(request.url).origin;
-        const oaApiBase = `${origin}/api`;
-
-        async function callOpenclaw<T>(
-          path: string,
-          init: RequestInit = {},
-        ): Promise<T> {
-          const headers = new Headers(init.headers);
-          headers.set('accept', 'application/json');
-          headers.set('X-OA-Internal-Key', internalKey);
-          headers.set('X-OA-User-Id', userIdStr);
-          if (init.body && !headers.has('content-type')) {
-            headers.set('content-type', 'application/json');
-          }
-
-          const res = await fetch(`${oaApiBase}${path}`, {
-            ...init,
-            headers,
-          });
-          const json = (await res.json().catch(() => null)) as any;
-          if (!res.ok || !json?.ok) {
-            const msg = json?.error ?? `OpenClaw request failed (${res.status})`;
-            throw new Error(msg);
-          }
-          return json.data as T;
-        }
+        const apiBase = resolveApiBase(origin);
+        const apiConfig: OpenclawApiConfig = {
+          apiBase,
+          internalKey,
+          userId: userIdStr,
+        };
 
         const result = streamText({
           model: openai.responses('gpt-4o-mini'),
@@ -74,46 +70,43 @@ export const Route = createFileRoute('/chat')({
             'openclaw.getInstance': {
               description: "Get the current user's OpenClaw instance summary (or null if none).",
               parameters: z.object({}),
-              execute: async () => callOpenclaw('/openclaw/instance', { method: 'GET' }),
+              execute: async () => getOpenclawInstance(apiConfig),
             },
             'openclaw.provision': {
               description: 'Provision an OpenClaw instance for the current user.',
               parameters: z.object({}),
-              execute: async () => callOpenclaw('/openclaw/instance', { method: 'POST' }),
+              execute: async () => createOpenclawInstance(apiConfig),
             },
             'openclaw.getStatus': {
               description: "Get runtime status for the current user's OpenClaw instance.",
               parameters: z.object({}),
-              execute: async () => callOpenclaw('/openclaw/runtime/status', { method: 'GET' }),
+              execute: async () => getRuntimeStatus(apiConfig),
             },
             'openclaw.listDevices': {
               description: "List pending and paired devices for the current user's OpenClaw instance.",
               parameters: z.object({}),
-              execute: async () => callOpenclaw('/openclaw/runtime/devices', { method: 'GET' }),
+              execute: async () => getRuntimeDevices(apiConfig),
             },
             'openclaw.approveDevice': {
               description: 'Approve a pending device by requestId.',
               parameters: z.object({ requestId: z.string().min(1) }),
               execute: async ({ requestId }: { requestId: string }) =>
-                callOpenclaw(
-                  `/openclaw/runtime/devices/${encodeURIComponent(requestId)}/approve`,
-                  { method: 'POST' },
-                ),
+                approveRuntimeDevice(apiConfig, requestId),
             },
             'openclaw.backupNow': {
               description: "Trigger a backup/sync for the current user's OpenClaw instance.",
               parameters: z.object({}),
-              execute: async () => callOpenclaw('/openclaw/runtime/backup', { method: 'POST' }),
+              execute: async () => backupRuntime(apiConfig),
             },
             'openclaw.restart': {
               description: 'Restart the OpenClaw gateway process.',
               parameters: z.object({}),
-              execute: async () => callOpenclaw('/openclaw/runtime/restart', { method: 'POST' }),
+              execute: async () => restartRuntime(apiConfig),
             },
             'openclaw.getBillingSummary': {
               description: 'Get current credit balance summary.',
               parameters: z.object({}),
-              execute: async () => callOpenclaw('/openclaw/billing/summary', { method: 'GET' }),
+              execute: async () => getBillingSummary(apiConfig),
             },
           } as any,
         });

@@ -103,7 +103,8 @@ const SUGGESTIONS = [
   {
     title: "Help me set up OpenClaw",
     label: "Local or managed",
-    prompt: "Help me set up OpenClaw.",
+    prompt:
+      "Help me set up OpenClaw in this account. If I don't have an instance, provision one. Then help me pair my device.",
   },
   {
     title: "What tools do you have?",
