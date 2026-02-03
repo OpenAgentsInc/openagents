@@ -17,7 +17,7 @@ export function Assistant() {
   const [rightTriggerContainer, setRightTriggerContainer] = useState<HTMLElement | null>(null);
   const runtime = useChatRuntime({
     transport: new AssistantChatTransport({
-      api: '/api/chat',
+      api: '/chat',
     }),
   });
 
