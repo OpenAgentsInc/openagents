@@ -1,6 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router';
 import { openai } from '@ai-sdk/openai';
-import { streamText, convertToModelMessages, type UIMessage } from 'ai';
+import { convertToModelMessages, streamText } from 'ai';
+import type { UIMessage } from 'ai';
 import { z } from 'zod';
 import { getAuth } from '@workos/authkit-tanstack-react-start';
 import {
@@ -14,8 +15,8 @@ import {
   resolveApiBase,
   resolveInternalKey,
   restartRuntime,
-  type OpenclawApiConfig,
 } from '@/lib/openclawApi';
+import type { OpenclawApiConfig } from '@/lib/openclawApi';
 
 /**
  * Chat endpoint for apps/web.
@@ -25,7 +26,16 @@ export const Route = createFileRoute('/chat')({
   server: {
     handlers: {
       POST: async ({ request }) => {
-        const { messages } = (await request.json()) as { messages: UIMessage[] };
+        const body = (await request.json().catch(() => null)) as
+          | { id?: unknown; messages?: Array<UIMessage>; [key: string]: unknown }
+          | null;
+        const messages = body?.messages;
+        if (!body || !Array.isArray(messages)) {
+          return new Response(
+            JSON.stringify({ ok: false, error: 'invalid request body' }),
+            { status: 400, headers: { 'content-type': 'application/json' } },
+          );
+        }
 
         const auth = await getAuth().catch(() => null);
         const userId = auth?.user?.id;
@@ -51,6 +61,26 @@ export const Route = createFileRoute('/chat')({
         }
         // TS narrowing helper
         const userIdStr: string = userId;
+
+        const agentWorkerUrl = process.env.AGENT_WORKER_URL?.trim();
+        if (agentWorkerUrl) {
+          const threadIdRaw = typeof body.id === 'string' ? body.id.trim() : '';
+          const threadId = threadIdRaw ? `${userIdStr}:${threadIdRaw}` : `user:${userIdStr}`;
+
+          const headers = new Headers();
+          headers.set('content-type', 'application/json');
+          headers.set('accept', request.headers.get('accept') ?? 'text/plain');
+          headers.set('X-OA-Internal-Key', internalKey);
+          headers.set('X-OA-User-Id', userIdStr);
+          headers.set('X-OA-Thread-Id', threadId);
+
+          const target = `${agentWorkerUrl.replace(/\/$/, '')}/internal/chat`;
+          return fetch(target, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify(body),
+          });
+        }
 
         // Call the Rust API worker on the same apex domain.
         const origin = new URL(request.url).origin;
