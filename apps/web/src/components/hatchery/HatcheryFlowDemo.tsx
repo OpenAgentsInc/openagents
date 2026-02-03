@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from '@tanstack/react-router';
+import { posthogCapture } from '@/lib/posthog';
 import {
   DevTreeGenerator,
   InfiniteCanvas,
@@ -263,6 +264,10 @@ export function HatcheryFlowDemo() {
   const currentTree = generatedTree ?? apiTree ?? SKELETON_TREE;
   const isShowingSkeleton = currentTree === SKELETON_TREE;
 
+  useEffect(() => {
+    posthogCapture('hatchery_view');
+  }, []);
+
   function renderFlowNode(node: FlowNode) {
     const selected = selectedNode?.id === node.id;
     if (isRootNode(node)) return <RootNode node={node} selected={selected} />;
@@ -344,8 +349,13 @@ export function HatcheryFlowDemo() {
           onNodeClick={
             isShowingSkeleton
               ? undefined
-              : (node) =>
-                  setSelectedNode((prev) => (prev?.id === node.id ? null : node))
+              : (node) => {
+                  posthogCapture('flow_node_click', {
+                    node_id: node.id,
+                    node_kind: node.metadata?.kind ?? 'unknown',
+                  });
+                  setSelectedNode((prev) => (prev?.id === node.id ? null : node));
+                }
           }
           renderNode={renderFlowNode}
         />

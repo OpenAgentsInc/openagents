@@ -41,6 +41,7 @@ import {
   isRootNode,
   isSkeletonNode,
 } from '@/components/flow';
+import { posthogCapture } from '@/lib/posthog';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { HomeIntroOverlay } from '@/components/nostr-grid/HomeIntroOverlay';
@@ -257,6 +258,10 @@ function NostrGridInner() {
 
   const isShowingSkeleton = communities.length === 0 && communitiesQuery.isLoading;
 
+  useEffect(() => {
+    posthogCapture('home_view', { view: 'nostr_grid' });
+  }, []);
+
   function renderFlowNode(node: FlowNode) {
     const selected = selectedNode?.id === node.id;
     const kind = node.metadata?.kind;
@@ -372,6 +377,13 @@ function NostrGridInner() {
               ? undefined
               : (node) => {
                   if (node.metadata?.type === 'skeleton') return;
+                  const kind = node.metadata?.kind;
+                  posthogCapture('grid_node_click', {
+                    node_id: node.id,
+                    node_type: kind ?? 'unknown',
+                    community: typeof node.metadata?.community === 'string' ? node.metadata.community : undefined,
+                    post_id: typeof node.metadata?.postId === 'string' ? node.metadata.postId : node.id.startsWith('post:') ? node.id.replace(/^post:/, '') : undefined,
+                  });
                   setSelectedNode((prev) => (prev?.id === node.id ? null : node));
                 }
           }
