@@ -94,5 +94,15 @@ function buildBreadcrumbSegments(
     return segments;
   }
 
+  if (parts[0] === 'kb') {
+    segments.push({ label: 'Knowledge Base', href: '/kb' });
+    if (parts[1]) {
+      const slug = params.slug ?? parts[1];
+      const label = slug.replace(/-/g, ' ');
+      segments.push({ label, href: `/kb/${slug}` });
+    }
+    return segments;
+  }
+
   return segments;
 }

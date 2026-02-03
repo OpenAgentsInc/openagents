@@ -125,6 +125,14 @@ export function ThreadListSidebar(
               </Link>
             </SidebarMenuButton>
           </SidebarMenuItem>
+          <SidebarMenuItem>
+            <SidebarMenuButton asChild isActive={useIsActive('/kb')}>
+              <Link to="/kb">
+                <span className="text-base">📚</span>
+                <span>Knowledge Base</span>
+              </Link>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
         </SidebarMenu>
         <ThreadList />
       </SidebarContent>

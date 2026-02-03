@@ -18,13 +18,16 @@ import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
 import { Route as AppRouteImport } from './routes/_app'
 import { Route as AppIndexRouteImport } from './routes/_app/index'
 import { Route as AuthenticatedAuthenticatedRouteImport } from './routes/_authenticated/authenticated'
+import { Route as AppKbRouteImport } from './routes/_app/kb'
 import { Route as AppHatcheryRouteImport } from './routes/_app/hatchery'
 import { Route as AppFeedRouteImport } from './routes/_app/feed'
 import { Route as AppCRouteImport } from './routes/_app/c'
 import { Route as AppAssistantRouteImport } from './routes/_app/assistant'
+import { Route as AppKbIndexRouteImport } from './routes/_app/kb/index'
 import { Route as AppCIndexRouteImport } from './routes/_app/c.index'
 import { Route as AppUNpubRouteImport } from './routes/_app/u.$npub'
 import { Route as AppPostsIdRouteImport } from './routes/_app/posts.$id'
+import { Route as AppKbSlugRouteImport } from './routes/_app/kb/$slug'
 import { Route as AppEventIdRouteImport } from './routes/_app/event.$id'
 import { Route as AppCCommunityRouteImport } from './routes/_app/c.$community'
 
@@ -72,6 +75,11 @@ const AuthenticatedAuthenticatedRoute =
     path: '/authenticated',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
+const AppKbRoute = AppKbRouteImport.update({
+  id: '/kb',
+  path: '/kb',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppHatcheryRoute = AppHatcheryRouteImport.update({
   id: '/hatchery',
   path: '/hatchery',
@@ -92,6 +100,11 @@ const AppAssistantRoute = AppAssistantRouteImport.update({
   path: '/assistant',
   getParentRoute: () => AppRoute,
 } as any)
+const AppKbIndexRoute = AppKbIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => AppKbRoute,
+} as any)
 const AppCIndexRoute = AppCIndexRouteImport.update({
   id: '/',
   path: '/',
@@ -106,6 +119,11 @@ const AppPostsIdRoute = AppPostsIdRouteImport.update({
   id: '/posts/$id',
   path: '/posts/$id',
   getParentRoute: () => AppRoute,
+} as any)
+const AppKbSlugRoute = AppKbSlugRouteImport.update({
+  id: '/$slug',
+  path: '/$slug',
+  getParentRoute: () => AppKbRoute,
 } as any)
 const AppEventIdRoute = AppEventIdRouteImport.update({
   id: '/event/$id',
@@ -129,12 +147,15 @@ export interface FileRoutesByFullPath {
   '/c': typeof AppCRouteWithChildren
   '/feed': typeof AppFeedRoute
   '/hatchery': typeof AppHatcheryRoute
+  '/kb': typeof AppKbRouteWithChildren
   '/authenticated': typeof AuthenticatedAuthenticatedRoute
   '/c/$community': typeof AppCCommunityRoute
   '/event/$id': typeof AppEventIdRoute
+  '/kb/$slug': typeof AppKbSlugRoute
   '/posts/$id': typeof AppPostsIdRoute
   '/u/$npub': typeof AppUNpubRoute
   '/c/': typeof AppCIndexRoute
+  '/kb/': typeof AppKbIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof AppIndexRoute
@@ -149,9 +170,11 @@ export interface FileRoutesByTo {
   '/authenticated': typeof AuthenticatedAuthenticatedRoute
   '/c/$community': typeof AppCCommunityRoute
   '/event/$id': typeof AppEventIdRoute
+  '/kb/$slug': typeof AppKbSlugRoute
   '/posts/$id': typeof AppPostsIdRoute
   '/u/$npub': typeof AppUNpubRoute
   '/c': typeof AppCIndexRoute
+  '/kb': typeof AppKbIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -166,13 +189,16 @@ export interface FileRoutesById {
   '/_app/c': typeof AppCRouteWithChildren
   '/_app/feed': typeof AppFeedRoute
   '/_app/hatchery': typeof AppHatcheryRoute
+  '/_app/kb': typeof AppKbRouteWithChildren
   '/_authenticated/authenticated': typeof AuthenticatedAuthenticatedRoute
   '/_app/': typeof AppIndexRoute
   '/_app/c/$community': typeof AppCCommunityRoute
   '/_app/event/$id': typeof AppEventIdRoute
+  '/_app/kb/$slug': typeof AppKbSlugRoute
   '/_app/posts/$id': typeof AppPostsIdRoute
   '/_app/u/$npub': typeof AppUNpubRoute
   '/_app/c/': typeof AppCIndexRoute
+  '/_app/kb/': typeof AppKbIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -187,12 +213,15 @@ export interface FileRouteTypes {
     | '/c'
     | '/feed'
     | '/hatchery'
+    | '/kb'
     | '/authenticated'
     | '/c/$community'
     | '/event/$id'
+    | '/kb/$slug'
     | '/posts/$id'
     | '/u/$npub'
     | '/c/'
+    | '/kb/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -207,9 +236,11 @@ export interface FileRouteTypes {
     | '/authenticated'
     | '/c/$community'
     | '/event/$id'
+    | '/kb/$slug'
     | '/posts/$id'
     | '/u/$npub'
     | '/c'
+    | '/kb'
   id:
     | '__root__'
     | '/_app'
@@ -223,13 +254,16 @@ export interface FileRouteTypes {
     | '/_app/c'
     | '/_app/feed'
     | '/_app/hatchery'
+    | '/_app/kb'
     | '/_authenticated/authenticated'
     | '/_app/'
     | '/_app/c/$community'
     | '/_app/event/$id'
+    | '/_app/kb/$slug'
     | '/_app/posts/$id'
     | '/_app/u/$npub'
     | '/_app/c/'
+    | '/_app/kb/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -307,6 +341,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAuthenticatedRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_app/kb': {
+      id: '/_app/kb'
+      path: '/kb'
+      fullPath: '/kb'
+      preLoaderRoute: typeof AppKbRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/hatchery': {
       id: '/_app/hatchery'
       path: '/hatchery'
@@ -335,6 +376,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppAssistantRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/kb/': {
+      id: '/_app/kb/'
+      path: '/'
+      fullPath: '/kb/'
+      preLoaderRoute: typeof AppKbIndexRouteImport
+      parentRoute: typeof AppKbRoute
+    }
     '/_app/c/': {
       id: '/_app/c/'
       path: '/'
@@ -355,6 +403,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/posts/$id'
       preLoaderRoute: typeof AppPostsIdRouteImport
       parentRoute: typeof AppRoute
+    }
+    '/_app/kb/$slug': {
+      id: '/_app/kb/$slug'
+      path: '/$slug'
+      fullPath: '/kb/$slug'
+      preLoaderRoute: typeof AppKbSlugRouteImport
+      parentRoute: typeof AppKbRoute
     }
     '/_app/event/$id': {
       id: '/_app/event/$id'
@@ -385,11 +440,24 @@ const AppCRouteChildren: AppCRouteChildren = {
 
 const AppCRouteWithChildren = AppCRoute._addFileChildren(AppCRouteChildren)
 
+interface AppKbRouteChildren {
+  AppKbSlugRoute: typeof AppKbSlugRoute
+  AppKbIndexRoute: typeof AppKbIndexRoute
+}
+
+const AppKbRouteChildren: AppKbRouteChildren = {
+  AppKbSlugRoute: AppKbSlugRoute,
+  AppKbIndexRoute: AppKbIndexRoute,
+}
+
+const AppKbRouteWithChildren = AppKbRoute._addFileChildren(AppKbRouteChildren)
+
 interface AppRouteChildren {
   AppAssistantRoute: typeof AppAssistantRoute
   AppCRoute: typeof AppCRouteWithChildren
   AppFeedRoute: typeof AppFeedRoute
   AppHatcheryRoute: typeof AppHatcheryRoute
+  AppKbRoute: typeof AppKbRouteWithChildren
   AppIndexRoute: typeof AppIndexRoute
   AppEventIdRoute: typeof AppEventIdRoute
   AppPostsIdRoute: typeof AppPostsIdRoute
@@ -401,6 +469,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppCRoute: AppCRouteWithChildren,
   AppFeedRoute: AppFeedRoute,
   AppHatcheryRoute: AppHatcheryRoute,
+  AppKbRoute: AppKbRouteWithChildren,
   AppIndexRoute: AppIndexRoute,
   AppEventIdRoute: AppEventIdRoute,
   AppPostsIdRoute: AppPostsIdRoute,
