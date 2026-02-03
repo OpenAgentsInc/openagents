@@ -49,7 +49,7 @@ function NostrCommunitiesList() {
             className="flex items-center justify-between rounded-md px-2 py-1.5 text-sm font-medium text-sidebar-foreground hover:bg-sidebar-accent"
             onMouseEnter={() => void prefetchCommunity(slug)}
           >
-            <span className="font-mono text-xs">c/{slug}</span>
+            <span className="font-mono text-xs">{slug}</span>
             <span className="text-muted-foreground text-xs">{count}</span>
           </Link>
         </li>

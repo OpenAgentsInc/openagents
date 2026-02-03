@@ -186,7 +186,7 @@ function NostrPostViewInner({
               className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs hover:underline"
               onMouseEnter={() => void prefetchCommunity(community)}
             >
-              c/{community}
+              {community}
             </Link>
           )}
           <Link

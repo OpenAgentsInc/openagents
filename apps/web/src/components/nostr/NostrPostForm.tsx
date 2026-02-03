@@ -79,7 +79,7 @@ export function NostrPostForm({
     <form onSubmit={handleSubmit} className="space-y-3">
       <div>
         <Label htmlFor="post-community" className="text-xs text-muted-foreground">
-          Community (c/)
+          Community
         </Label>
         <div className="mt-1 flex gap-2">
           <input
