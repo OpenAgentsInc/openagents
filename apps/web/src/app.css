@@ -145,18 +145,14 @@
   --sidebar-border: var(--bg-border-color);
   --sidebar-accent: var(--bg-base-color);
 }
-/* Hide scrollbar in sidebar when --scrollbar-width: 0 */
-[data-sidebar='sidebar'] [data-slot='sidebar-inner'] {
-  scrollbar-width: var(--scrollbar-width);
-}
-[data-sidebar='sidebar'] [data-slot='sidebar-inner']::-webkit-scrollbar {
-  width: var(--scrollbar-width);
-  height: var(--scrollbar-width);
-}
-/* Hide scrollbar in SidebarContent while preserving scroll */
+/* Hide all scrollbars in sidebars while preserving scroll */
+[data-sidebar='sidebar'],
+[data-sidebar='sidebar'] *,
 [data-sidebar='content'] {
   scrollbar-width: none;
 }
+[data-sidebar='sidebar']::-webkit-scrollbar,
+[data-sidebar='sidebar'] *::-webkit-scrollbar,
 [data-sidebar='content']::-webkit-scrollbar {
   display: none;
 }
