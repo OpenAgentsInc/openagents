@@ -68,17 +68,18 @@ function SidebarNavUser() {
     );
   }
 
-  if (!user) {
-    return (
-      <SidebarMenuItem>
-        <SidebarMenuButton size="lg" asChild className="h-11">
-          <Link to="/login" search={{ redirect: '/' }}>
-            <span className="group-data-[collapsible=icon]:hidden">Log in</span>
-          </Link>
-        </SidebarMenuButton>
-      </SidebarMenuItem>
-    );
-  }
+  // if (!user) {
+  //   return (
+  //     <SidebarMenuItem>
+  //       <SidebarMenuButton size="lg" asChild className="h-11">
+  //         <Link to="/login" search={{ redirect: '/' }}>
+  //           <span className="group-data-[collapsible=icon]:hidden">Log in</span>
+  //         </Link>
+  //       </SidebarMenuButton>
+  //     </SidebarMenuItem>
+  //   );
+  // }
+  if (!user) return null;
 
   const initials = getInitials(user.firstName ?? '', user.email ?? '');
   const displayName =
@@ -150,7 +151,7 @@ export function ThreadListSidebar(
         <ThreadList />
       </SidebarContent>
       <SidebarRail />
-      <SidebarFooter className="aui-sidebar-footer border-t border-sidebar-border group-data-[collapsible=icon]:hidden">
+      <SidebarFooter className="aui-sidebar-footer group-data-[collapsible=icon]:hidden">
         <SidebarMenu className="w-full">
           <SidebarNavUser />
         </SidebarMenu>
