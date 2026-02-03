@@ -87,10 +87,10 @@ const ThreadWelcome: FC = () => {
       <div className="aui-thread-welcome-center flex w-full grow flex-col items-center justify-center">
         <div className="aui-thread-welcome-message flex size-full flex-col justify-center px-4">
           <h1 className="aui-thread-welcome-message-inner fade-in slide-in-from-bottom-1 animate-in font-semibold text-2xl duration-200">
-            Hello there!
+            Welcome to OpenAgents!
           </h1>
-          <p className="aui-thread-welcome-message-inner fade-in slide-in-from-bottom-1 animate-in text-muted-foreground text-xl delay-75 duration-200">
-            How can I help you today?
+          <p className="mt-1 aui-thread-welcome-message-inner fade-in slide-in-from-bottom-1 animate-in text-muted-foreground text-xl delay-75 duration-200">
+            How can we help you?
           </p>
         </div>
       </div>
@@ -101,24 +101,24 @@ const ThreadWelcome: FC = () => {
 
 const SUGGESTIONS = [
   {
-    title: "What tools do you have?",
-    label: "And what can you do",
-    prompt: "What tools do you have and what can you do?",
-  },
-  {
     title: "Help me set up OpenClaw",
     label: "Local or managed",
     prompt: "Help me set up OpenClaw.",
   },
   {
-    title: "Help me set up a bitcoin wallet",
-    label: "So my agent can earn and spend",
-    prompt: "Help me set up a bitcoin wallet so my agent can earn and spend",
+    title: "What tools do you have?",
+    label: "And what can you do",
+    prompt: "What tools do you have and what can you do?",
   },
   {
     title: "Explain the Nostr protocol",
     label: "Why does it matter",
     prompt: "Explain the Nostr protocol and why it matters",
+  },
+  {
+    title: "Help me set up a bitcoin wallet",
+    label: "So my agent can earn and spend",
+    prompt: "Help me set up a bitcoin wallet so my agent can earn and spend",
   },
 ] as const;
 
