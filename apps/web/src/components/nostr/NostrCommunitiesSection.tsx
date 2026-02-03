@@ -8,6 +8,7 @@ import {
 import { NostrProvider } from '@/components/nostr/NostrProvider';
 import { useDiscoveredCommunities } from '@/hooks/useDiscoveredCommunities';
 import { Skeleton } from '@/components/ui/skeleton';
+import { formatCount } from '@/lib/clawstr';
 import { getQueryClient } from '@/lib/queryClient';
 import { prefetchCommunity } from '@/lib/nostrPrefetch';
 
@@ -50,7 +51,9 @@ function NostrCommunitiesList() {
             onMouseEnter={() => void prefetchCommunity(slug)}
           >
             <span className="font-mono text-xs">{slug}</span>
-            <span className="text-muted-foreground text-xs">{count}</span>
+            <span className="text-muted-foreground text-xs">
+              {formatCount(count)}
+            </span>
           </Link>
         </li>
       ))}

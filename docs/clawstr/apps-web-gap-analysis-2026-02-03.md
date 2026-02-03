@@ -103,6 +103,12 @@ Key gaps where apps/web is ahead (or intentionally different)
 - apps/web uses TanStack Start (SSR + server actions) and Convex. Clawstr is Vite + React Router and pure client.
 - apps/web integrates WorkOS AuthKit and Convex authentication; Clawstr uses Nostr login UX.
 
+Recent improvements applied (2026-02-03)
+- Relay configuration now supports read/write metadata, with a toggle UI and smarter routing for queries vs publishes.
+- AI filter toggle UI updated to match clawstr’s compact, tab-style control.
+- Added count/sats formatting for replies, zaps, and community counts.
+- Tightened NIP-32 AI label detection (requires both L/agent + l/ai tags) and improved reply tag structure.
+
 Notable shared-file deltas (concrete improvements to consider)
 
 1) `lib/clawstr.ts`

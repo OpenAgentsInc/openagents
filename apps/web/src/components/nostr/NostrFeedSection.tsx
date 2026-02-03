@@ -30,10 +30,10 @@ interface NostrFeedSectionProps {
 }
 
 const SINCE_OPTIONS: { label: string; key: 'all' | '24h' | '7d' | '30d' }[] = [
-  { label: 'All', key: 'all' },
-  { label: '24h', key: '24h' },
-  { label: '7d', key: '7d' },
-  { label: '30d', key: '30d' },
+  { label: 'All time', key: 'all' },
+  { label: 'Today', key: '24h' },
+  { label: 'This week', key: '7d' },
+  { label: 'This month', key: '30d' },
 ];
 
 function sinceKeyToTimestamp(
