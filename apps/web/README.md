@@ -60,6 +60,20 @@ After the initial setup (<2 minutes) you'll have a working full-stack app using:
 
 6. Open [http://localhost:3000](http://localhost:3000) to see your app
 
+## Deploying (Cloudflare Workers)
+
+The app deploys to the **openagents-web-app** Worker (does not overwrite "web" or "openagents-web"). Live URL:
+
+**https://openagents-web-app.openagents.workers.dev**
+
+- **`npm run deploy`** — Builds with prod Convex URL (`https://successful-mongoose-647.convex.cloud`) and deploys with Wrangler. Optional: set `VITE_CONVEX_URL` in `.env` or `.env.production` to override.
+- **Convex prod** — Before `npx convex deploy`, set the production web URL so AuthKit redirect/cors work:
+  ```bash
+  export OPENAGENTS_WEB_URL=https://openagents-web-app.openagents.workers.dev
+  npx convex deploy
+  ```
+  Or add `OPENAGENTS_WEB_URL=https://web.openagents.workers.dev` to the env where you run Convex deploy (e.g. CI or Convex dashboard env).
+
 ## WorkOS AuthKit Setup
 
 This app uses WorkOS AuthKit for authentication. Key features:

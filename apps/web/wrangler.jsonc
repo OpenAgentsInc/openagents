@@ -1,0 +1,18 @@
+/**
+ * Cloudflare Workers config for apps/web.
+ * https://developers.cloudflare.com/workers/wrangler/configuration/
+ */
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "openagents-web-app",
+	"compatibility_date": "2025-09-02",
+	"compatibility_flags": ["nodejs_compat"],
+	"main": "@tanstack/react-start/server-entry",
+	"observability": {
+		"enabled": true
+	},
+	"vars": {
+		"WORKOS_REDIRECT_URI": "https://openagents-web-app.openagents.workers.dev/callback"
+	}
+	// Set secrets for production: wrangler secret put WORKOS_CLIENT_ID; wrangler secret put WORKOS_API_KEY; wrangler secret put WORKOS_COOKIE_PASSWORD
+}
