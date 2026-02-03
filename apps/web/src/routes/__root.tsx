@@ -6,7 +6,7 @@ import {
   useRouteContext,
 } from '@tanstack/react-router';
 import { createServerFn } from '@tanstack/react-start';
-import { getAuth } from '@workos/authkit-tanstack-react-start';
+import { getAuth, getSignInUrl } from '@workos/authkit-tanstack-react-start';
 import { AuthKitProvider } from '@workos/authkit-tanstack-react-start/client';
 import { ConvexProviderWithAuth } from 'convex/react';
 import appCssUrl from '../app.css?url';
@@ -55,16 +55,17 @@ export const Route = createRootRouteWithContext<{
       { rel: 'preconnect', href: 'https://fonts.gstatic.com', crossOrigin: 'anonymous' },
       {
         rel: 'stylesheet',
-        href: 'https://fonts.googleapis.com/css2?family=Instrument+Sans:ital,wght@0,400..700;1,400..700&display=swap',
+        href: 'https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap',
       },
       { rel: 'stylesheet', href: appCssUrl },
-      { rel: 'icon', href: '/convex.svg' },
+      { rel: 'icon', href: '/favicon.ico' },
     ],
   }),
   component: RootComponent,
   notFoundComponent: () => <div>Not Found</div>,
   beforeLoad: async (ctx) => {
     const { userId, token } = await fetchWorkosAuth();
+    const signInUrl = await getSignInUrl().catch(() => '/callback');
 
     // During SSR only (the only time serverHttpClient exists),
     // set the WorkOS auth token to make HTTP queries with.
@@ -72,7 +73,7 @@ export const Route = createRootRouteWithContext<{
       ctx.context.convexQueryClient.serverHttpClient?.setAuth(token);
     }
 
-    return { userId, token };
+    return { userId, token, signInUrl };
   },
 });
 

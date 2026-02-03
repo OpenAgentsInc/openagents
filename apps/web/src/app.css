@@ -23,7 +23,7 @@
 }
 
 @theme {
-  --font-sans: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif;
+  --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
@@ -60,6 +60,14 @@
 }
 
 :root {
+  /* Sidebar custom theme (override via --sidebar-width-custom etc. if needed) */
+  --bg-sidebar-color: lch(2.467% 0 272 / 1);
+  --bg-base-color: lch(4.8% 0.7 272);
+  --bg-border-color: lch(14.74% 3.54 272 / 1);
+  --sidebar-width-custom: 244px;
+  --scrollbar-width: 0px;
+  --bg-color: lch(2.467% 0 272 / 1);
+
   --radius: 0.625rem;
   --background: oklch(0.97 0 0);
   --foreground: oklch(0.145 0 0);
@@ -119,22 +127,56 @@
   --sidebar-ring: oklch(0.552 0.016 285.938);
 }
 
-/* Sidebar: force background and text from theme */
+/* Sidebar: custom background, border, width */
 [data-sidebar='sidebar'],
 [data-slot='sidebar-inner'] {
-  background-color: var(--sidebar) !important;
+  background-color: var(--bg-sidebar-color) !important;
   color: var(--sidebar-foreground);
 }
 [data-slot='sidebar-wrapper']:has([data-variant='inset']) {
-  background-color: var(--sidebar);
+  background-color: var(--bg-sidebar-color);
+}
+[data-sidebar='sidebar'] {
+  border-color: var(--bg-border-color);
+}
+[data-slot='sidebar-wrapper'] {
+  --sidebar-width: var(--sidebar-width-custom);
+  --sidebar: var(--bg-sidebar-color);
+  --sidebar-border: var(--bg-border-color);
+  --sidebar-accent: var(--bg-base-color);
+}
+/* Hide scrollbar in sidebar when --scrollbar-width: 0 */
+[data-sidebar='sidebar'] [data-slot='sidebar-inner'] {
+  scrollbar-width: var(--scrollbar-width);
+}
+[data-sidebar='sidebar'] [data-slot='sidebar-inner']::-webkit-scrollbar {
+  width: var(--scrollbar-width);
+  height: var(--scrollbar-width);
 }
 
 html,
 body {
   margin: 0;
   padding: 0;
-  min-height: 100%;
+  height: 100dvh;
+  max-height: 100dvh;
+  overflow: hidden;
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-sans);
+}
+
+/* Root outlet fills viewport so sidebar layout doesn't cause window scroll */
+body > div {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* Main chat scroll area: exact height, no overscroll bounce */
+.aui-thread-viewport {
+  min-height: 0; /* allow flex shrink so height = available space, no stray scrollbar */
+  overscroll-behavior: none;
 }

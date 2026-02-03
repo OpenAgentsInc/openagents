@@ -10,15 +10,6 @@ import {
   SidebarTrigger,
 } from '@/components/ui/sidebar';
 import { ThreadListSidebar } from '@/components/assistant-ui/threadlist-sidebar';
-import { Separator } from '@/components/ui/separator';
-import {
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbLink,
-  BreadcrumbList,
-  BreadcrumbPage,
-  BreadcrumbSeparator,
-} from '@/components/ui/breadcrumb';
 
 export function Assistant() {
   const runtime = useChatRuntime({
@@ -29,32 +20,18 @@ export function Assistant() {
 
   return (
     <AssistantRuntimeProvider runtime={runtime}>
-      <SidebarProvider>
-        <div className="flex h-dvh w-full pr-0.5">
+      <SidebarProvider className="h-dvh max-h-dvh min-h-0 overflow-hidden">
+        <div className="flex h-full min-h-0 w-full flex-1 pr-0.5">
           <ThreadListSidebar />
-          <SidebarInset>
-            <header className="flex h-16 shrink-0 items-center gap-2 border-b px-4">
-              <SidebarTrigger />
-              <Separator orientation="vertical" className="mr-2 h-4" />
-              <Breadcrumb>
-                <BreadcrumbList>
-                  <BreadcrumbItem className="hidden md:block">
-                    <BreadcrumbLink
-                      href="https://www.assistant-ui.com/docs/getting-started"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                    >
-                      Build Your Own ChatGPT UX
-                    </BreadcrumbLink>
-                  </BreadcrumbItem>
-                  <BreadcrumbSeparator className="hidden md:block" />
-                  <BreadcrumbItem>
-                    <BreadcrumbPage>Starter Template</BreadcrumbPage>
-                  </BreadcrumbItem>
-                </BreadcrumbList>
-              </Breadcrumb>
+          <SidebarInset className="flex min-h-0 flex-1 flex-col overflow-hidden">
+            <header className="sticky top-0 z-10 flex h-12 shrink-0 items-center gap-2 border-b border-border bg-background/80 px-3 md:px-4 backdrop-blur-md supports-[backdrop-filter]:bg-background/70">
+              <SidebarTrigger className="md:hidden" />
+              {/* Breadcrumb / nav title – commented out; OpenAgents is in sidebar */}
+              {/* <Link to="/" className="text-md font-semibold text-foreground md:ml-0">
+                OpenAgents
+              </Link> */}
             </header>
-            <div className="flex-1 overflow-hidden">
+            <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
               <Thread />
             </div>
           </SidebarInset>
