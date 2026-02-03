@@ -86,21 +86,24 @@ function initializePositions(nodes: SimNode[]) {
   const ring = Math.max(320, root.r + 260);
   for (let i = 0; i < depth1.length; i++) {
     const n = depth1[i]!;
-    const angle = (i / Math.max(1, depth1.length)) * TAU + (Math.random() - 0.5) * 0.5;
-    const radius = ring * (0.75 + Math.random() * 0.5);
+    const angle = (i / Math.max(1, depth1.length)) * TAU;
+    const radius = ring * 0.95;
     n.x = Math.cos(angle) * radius;
     n.y = Math.sin(angle) * radius;
     n.vx = 0;
     n.vy = 0;
   }
 
-  // Seed deeper nodes near their parent, with a bit of angular spread.
+  // Seed deeper nodes near their parent with regular spacing.
   for (const n of nodes) {
     if (n.depth <= 1) continue;
     const parent = n.parentId ? byId.get(n.parentId) : undefined;
     if (!parent) continue;
-    const angle = Math.random() * TAU;
-    const radius = idealEdgeLength(parent, n) * (0.65 + Math.random() * 0.5);
+    const siblings = nodes.filter((m) => m.parentId === n.parentId);
+    const idx = siblings.indexOf(n);
+    const angleStep = TAU / Math.max(1, siblings.length);
+    const angle = -Math.PI / 2 + idx * angleStep;
+    const radius = idealEdgeLength(parent, n) * 0.85;
     n.x = parent.x + Math.cos(angle) * radius;
     n.y = parent.y + Math.sin(angle) * radius;
     n.vx = 0;
@@ -153,12 +156,12 @@ function stepSimulation(nodes: SimNode[], edges: Edge[]) {
   const byId = new Map(nodes.map((n) => [n.id, n]));
   const root = nodes.find((n) => n.depth === 0) ?? nodes[0];
 
-  const centerStrength = 0.0009;
-  const springK = 0.0075;
-  const charge = 3600;
+  const centerStrength = 0.0006;
+  const springK = 0.012;
+  const charge = 1400;
   const collisionPadding = 14;
-  const damping = 0.8;
-  const maxSpeed = 6;
+  const damping = 0.9;
+  const maxSpeed = 2.5;
 
   // Gentle center pull (keeps the blob from drifting).
   for (const n of nodes) {
@@ -348,11 +351,11 @@ export function ForceGraphLayout({
       // Re-render every other frame (~30fps) to keep UI responsive.
       if (frameCountRef.current % 2 === 0) setTick((t) => t + 1);
 
-      if (energy < 0.06) stableFramesRef.current += 1;
+      if (energy < 0.04) stableFramesRef.current += 1;
       else stableFramesRef.current = 0;
 
-      // Stop once stable for ~1.2s (at ~60fps), or after a hard cap.
-      if (stableFramesRef.current >= 72 || frameCountRef.current >= 720) {
+      // Stop once stable for ~0.8s (at ~60fps), or after a hard cap.
+      if (stableFramesRef.current >= 48 || frameCountRef.current >= 480) {
         frameRef.current = null;
         return;
       }

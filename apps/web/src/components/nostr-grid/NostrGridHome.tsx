@@ -83,8 +83,8 @@ function toPostSummary(event: NostrEvent, community: string): PostSummary {
 }
 
 function NostrGridInner() {
-  const COMMUNITY_LIMIT = 12;
-  const POSTS_PER_COMMUNITY = 3;
+  const COMMUNITY_LIMIT = 8;
+  const POSTS_PER_COMMUNITY = 2;
   const COMMUNITY_POST_FETCH_LIMIT = 30;
   const [selectedNode, setSelectedNode] = useState<FlowNode | null>(null);
   const [showAll, setShowAll] = useState(true);
