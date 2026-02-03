@@ -1,11 +1,23 @@
-import { HeadContent, Outlet, Scripts, createRootRouteWithContext } from '@tanstack/react-router';
+import {
+  HeadContent,
+  Outlet,
+  Scripts,
+  createRootRouteWithContext,
+  useRouteContext,
+} from '@tanstack/react-router';
 import { createServerFn } from '@tanstack/react-start';
 import { getAuth } from '@workos/authkit-tanstack-react-start';
+import { AuthKitProvider } from '@workos/authkit-tanstack-react-start/client';
+import { ConvexProviderWithAuth } from 'convex/react';
 import appCssUrl from '../app.css?url';
 import type { QueryClient } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 import type { ConvexReactClient } from 'convex/react';
 import type { ConvexQueryClient } from '@convex-dev/react-query';
+import { useAuthFromWorkOS } from '@/lib/convex-auth';
+
+// Theme: sync with localStorage/system before paint to avoid flash
+const THEME_SCRIPT = `(function(){var theme=typeof localStorage!=='undefined'&&localStorage.getItem('theme');var isDark=true;if(theme==='light')isDark=false;else if(theme==='dark')isDark=true;else if(theme==='system'&&typeof window!=='undefined')isDark=window.matchMedia('(prefers-color-scheme: dark)').matches;else if(typeof window!=='undefined')isDark=window.matchMedia('(prefers-color-scheme: dark)').matches;document.documentElement.classList[isDark?'add':'remove']('dark');document.documentElement.style.colorScheme=isDark?'dark':'light';})();`;
 
 const fetchWorkosAuth = createServerFn({ method: 'GET' }).handler(async () => {
   try {
@@ -39,12 +51,14 @@ export const Route = createRootRouteWithContext<{
       },
     ],
     links: [
-      { rel: 'stylesheet', href: appCssUrl },
-      { rel: 'icon', href: '/convex.svg' },
+      { rel: 'preconnect', href: 'https://fonts.googleapis.com' },
+      { rel: 'preconnect', href: 'https://fonts.gstatic.com', crossOrigin: 'anonymous' },
       {
         rel: 'stylesheet',
-        href: 'https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter:wght@400;500;600;700&display=swap',
+        href: 'https://fonts.googleapis.com/css2?family=Instrument+Sans:ital,wght@0,400..700;1,400..700&display=swap',
       },
+      { rel: 'stylesheet', href: appCssUrl },
+      { rel: 'icon', href: '/convex.svg' },
     ],
   }),
   component: RootComponent,
@@ -62,18 +76,30 @@ export const Route = createRootRouteWithContext<{
   },
 });
 
+function ConvexWithAuthOutlet() {
+  const { convexClient } = useRouteContext({ from: '__root__' });
+  return (
+    <ConvexProviderWithAuth client={convexClient} useAuth={useAuthFromWorkOS}>
+      <Outlet />
+    </ConvexProviderWithAuth>
+  );
+}
+
 function RootComponent() {
   return (
     <RootDocument>
-      <Outlet />
+      <AuthKitProvider>
+        <ConvexWithAuthOutlet />
+      </AuthKitProvider>
     </RootDocument>
   );
 }
 
 function RootDocument({ children }: Readonly<{ children: ReactNode }>) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <head>
+        <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
         <HeadContent />
       </head>
       <body>
