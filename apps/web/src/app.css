@@ -1,24 +1,55 @@
 @import 'tailwindcss';
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+@theme {
+  --font-display: 'Instrument Serif', serif;
+  --font-sans: 'Inter', system-ui, sans-serif;
 
-@theme inline {
+  --color-mauve-50: oklch(98.5% 0 0);
+  --color-mauve-100: oklch(96% 0.003 325.6);
+  --color-mauve-200: oklch(92.2% 0.005 325.62);
+  --color-mauve-300: oklch(86.5% 0.012 325.68);
+  --color-mauve-400: oklch(71.1% 0.019 323.02);
+  --color-mauve-500: oklch(54.2% 0.034 322.5);
+  --color-mauve-600: oklch(43.5% 0.029 321.78);
+  --color-mauve-700: oklch(36.4% 0.029 323.89);
+  --color-mauve-800: oklch(26.3% 0.024 320.12);
+  --color-mauve-900: oklch(21.2% 0.019 322.12);
+  --color-mauve-950: oklch(14.5% 0.008 326);
+
   --color-background: var(--background);
   --color-foreground: var(--foreground);
 }
 
+:root {
+  --background: #f5f4f6;
+  --foreground: #1c1917;
+}
+
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --background: #1c1917;
+    --foreground: #f5f4f6;
   }
 }
 
-body {
-  color: var(--foreground);
-  background: var(--background);
-  font-family: Arial, Helvetica, sans-serif;
+@layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    background-color: var(--color-mauve-100);
+    --scroll-padding-top: 0;
+    scroll-padding-top: var(--scroll-padding-top);
+  }
+
+  @variant dark {
+    html {
+      background-color: var(--color-mauve-950);
+    }
+  }
+
+  body {
+    color: var(--foreground);
+    background: var(--background);
+    font-family: var(--font-sans), system-ui, sans-serif;
+  }
 }
