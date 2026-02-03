@@ -101,14 +101,24 @@ const ThreadWelcome: FC = () => {
 
 const SUGGESTIONS = [
   {
+    title: "What tools do you have?",
+    label: "And what can you do",
+    prompt: "What tools do you have and what can you do?",
+  },
+  {
     title: "Help me set up OpenClaw",
     label: "Local or managed",
     prompt: "Help me set up OpenClaw.",
   },
   {
-    title: "What is Nostr?",
-    label: "ELI5",
-    prompt: "Explain what Nostr is",
+    title: "Help me set up a bitcoin wallet",
+    label: "So my agent can earn and spend",
+    prompt: "Help me set up a bitcoin wallet so my agent can earn and spend",
+  },
+  {
+    title: "Explain the Nostr protocol",
+    label: "Why does it matter",
+    prompt: "Explain the Nostr protocol and why it matters",
   },
 ] as const;
 
