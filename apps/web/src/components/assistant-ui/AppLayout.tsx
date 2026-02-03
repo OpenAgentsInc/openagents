@@ -43,7 +43,7 @@ export function AppLayout() {
               aria-hidden
             />
           </header>
-          <div className="flex min-h-0 flex-1 flex-col overflow-auto">
+          <div className="flex min-h-0 flex-1 flex-col overflow-auto scrollbar-none">
             <Outlet />
           </div>
         </SidebarInset>
