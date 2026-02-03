@@ -13,13 +13,25 @@ import {
 import { ThreadListSidebar } from '@/components/assistant-ui/threadlist-sidebar';
 import { RightSidebar, RightSidebarTriggerPortal } from '@/components/assistant-ui/right-sidebar';
 
-export function Assistant() {
-  const [rightTriggerContainer, setRightTriggerContainer] = useState<HTMLElement | null>(null);
+/** When false, only render runtime provider + Thread (no sidebars). Used by _app layout. */
+export function Assistant({ layout = true }: { layout?: boolean }) {
+  const [rightTriggerContainer, setRightTriggerContainer] =
+    useState<HTMLElement | null>(null);
   const runtime = useChatRuntime({
     transport: new AssistantChatTransport({
       api: '/api/chat',
     }),
   });
+
+  if (!layout) {
+    return (
+      <AssistantRuntimeProvider runtime={runtime}>
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          <Thread />
+        </div>
+      </AssistantRuntimeProvider>
+    );
+  }
 
   return (
     <AssistantRuntimeProvider runtime={runtime}>
@@ -34,18 +46,20 @@ export function Assistant() {
                 className="ml-auto flex md:hidden"
                 aria-hidden
               />
-              {/* Breadcrumb / nav title – commented out; OpenAgents is in sidebar */}
-              {/* <Link to="/" className="text-md font-semibold text-foreground md:ml-0">
-                OpenAgents
-              </Link> */}
             </header>
             <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
               <Thread />
             </div>
           </SidebarInset>
-          <SidebarProvider cookieName="sidebar_right_state" className="w-auto shrink-0">
+          <SidebarProvider
+            cookieName="sidebar_right_state"
+            className="w-auto shrink-0"
+          >
             <RightSidebar />
-            <RightSidebarTriggerPortal container={rightTriggerContainer} className="md:hidden" />
+            <RightSidebarTriggerPortal
+              container={rightTriggerContainer}
+              className="md:hidden"
+            />
           </SidebarProvider>
         </div>
       </SidebarProvider>
