@@ -56,7 +56,7 @@ function DiscoveredSection() {
   return (
     <div
       className={cn(
-        'mt-2 border-t border-sidebar-border pt-2 transition-opacity duration-200 ease-linear',
+        'mt-2 pt-2 transition-opacity duration-200 ease-linear',
         isCollapsed ? 'opacity-0' : 'opacity-100 delay-200',
       )}
     >
@@ -112,7 +112,7 @@ export function RightSidebar(
         <DiscoveredSection />
       </SidebarContent>
       <SidebarRail />
-      <SidebarFooter className="border-t border-sidebar-border group-data-[collapsible=icon]:hidden" />
+      <SidebarFooter className="group-data-[collapsible=icon]:hidden" />
     </Sidebar>
   );
 }
