@@ -8,7 +8,7 @@ import {
 import { pubkeyToNpub } from '@/lib/npub';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
-import { AIToggle } from '@/components/nostr/AIToggle';
+// import { AIToggle } from '@/components/nostr/AIToggle';
 import { NostrPostView } from '@/components/nostr/NostrPostView';
 import { posthogCapture } from '@/lib/posthog';
 
@@ -111,7 +111,7 @@ export function NostrEventView({ eventId }: NostrEventViewProps) {
   if (event.kind === 1111 && isTopLevelPost(event)) {
     return (
       <div className="flex flex-col gap-3">
-        <AIToggle showAll={showAll} onChange={setShowAll} source="event" />
+        {/* <AIToggle showAll={showAll} onChange={setShowAll} source="event" /> */}
         <NostrPostView eventId={eventId} showAll={showAll} />
       </div>
     );

@@ -8,7 +8,7 @@ import { NostrProvider } from '@/components/nostr/NostrProvider';
 import { NostrFeedList } from '@/components/nostr/NostrFeedList';
 import { NostrPostForm } from '@/components/nostr/NostrPostForm';
 import { RelaySettings } from '@/components/nostr/RelaySettings';
-import { AIToggle } from '@/components/nostr/AIToggle';
+// import { AIToggle } from '@/components/nostr/AIToggle';
 import { Skeleton } from '@/components/ui/skeleton';
 import { getQueryClient } from '@/lib/queryClient';
 import { posthogCapture } from '@/lib/posthog';
@@ -101,11 +101,11 @@ function NostrFeedSectionInner({
         </div>
         <div className="flex flex-col gap-3">
           <div className="flex items-center gap-2 flex-wrap">
-            <AIToggle
+            {/* <AIToggle
               showAll={showAll}
               onChange={setShowAll}
               source={community ? 'community_feed' : 'feed'}
-            />
+            /> */}
             <label className="text-sm text-muted-foreground flex items-center gap-1.5">
               <span>Since:</span>
               <select

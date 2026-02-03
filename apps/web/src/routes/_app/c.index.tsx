@@ -1,5 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router';
-import { NostrCommunitiesSection } from '@/components/nostr/NostrCommunitiesSection';
+import { CommunitiesGraph } from '@/components/nostr-grid/CommunitiesGraph';
 
 export const Route = createFileRoute('/_app/c/')({
   component: CommunitiesPage,
@@ -7,9 +7,8 @@ export const Route = createFileRoute('/_app/c/')({
 
 function CommunitiesPage() {
   return (
-    <div className="p-4 md:p-6">
-      <h1 className="text-xl font-semibold mb-4">Communities</h1>
-      <NostrCommunitiesSection />
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+      <CommunitiesGraph />
     </div>
   );
 }
