@@ -1,50 +1,59 @@
-import { useState, createRef, useEffect } from 'react'
+import { useState, createRef, useEffect, useMemo } from 'react'
+import { Canvas } from '@react-three/fiber'
+import { Nodes, Node } from './Nodes'
 import type * as THREE from 'three'
-
-function WebGLFallback() {
-  return (
-    <div className="flex h-full w-full items-center justify-center">
-      <h1 className="text-4xl font-bold">Welcome to OpenAgents</h1>
-    </div>
-  )
-}
-
-function checkWebGLSupport(): boolean {
-  if (typeof window === 'undefined') return false
-  try {
-    const canvas = document.createElement('canvas')
-    const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl')
-    return !!gl
-  } catch {
-    return false
-  }
-}
 
 export function NodeCanvas() {
   const [mounted, setMounted] = useState(false)
-  const [hasWebGL, setHasWebGL] = useState(false)
+  const [webglReady, setWebglReady] = useState(false)
   const [[a, b, c, d, e]] = useState(() =>
     [...Array(5)].map(() => createRef<THREE.Mesh>()),
   )
 
+  const glConfig = useMemo(
+    () => ({
+      antialias: false,
+      alpha: false,
+      depth: true,
+      stencil: false,
+      premultipliedAlpha: false,
+      preserveDrawingBuffer: false,
+      powerPreference: 'high-performance' as const,
+      failIfMajorPerformanceCaveat: false,
+    }),
+    [],
+  )
+
   useEffect(() => {
     setMounted(true)
-    setHasWebGL(checkWebGLSupport())
-  }, [])
+    const supported = checkWebGLSupport(glConfig)
+    if (!supported) {
+      console.warn('[three] WebGL not available; falling back to static hero')
+    } else {
+      console.info('[three] WebGL available; mounting canvas')
+    }
+    setWebglReady(supported)
+  }, [glConfig])
 
-  if (!mounted) {
-    return <div className="flex-1 bg-background" />
-  }
+  const fallback = useMemo(
+    () => (
+      <div className="flex h-full w-full items-center justify-center">
+        <h1 className="text-4xl font-bold">Welcome to OpenAgents</h1>
+      </div>
+    ),
+    [],
+  )
 
-  if (!hasWebGL) {
-    return <WebGLFallback />
-  }
-
-  const { Canvas } = require('@react-three/fiber')
-  const { Nodes, Node } = require('./Nodes')
+  if (!mounted) return <div className="flex-1 bg-background" />
+  if (!webglReady) return fallback
 
   return (
-    <Canvas orthographic camera={{ zoom: 80 }}>
+    <Canvas
+      orthographic
+      camera={{ zoom: 80 }}
+      gl={glConfig}
+      fallback={fallback}
+    >
       <Nodes>
         <Node ref={a} name="a" color="#204090" position={[-2, 2, 0]} connectedTo={[b, c, e]} />
         <Node ref={b} name="b" color="#904020" position={[2, -3, 0]} connectedTo={[d, a]} />
@@ -54,4 +63,26 @@ export function NodeCanvas() {
       </Nodes>
     </Canvas>
   )
+}
+
+function checkWebGLSupport(contextAttributes: WebGLContextAttributes) {
+  if (typeof document === 'undefined') return false
+  const canvas = document.createElement('canvas')
+  try {
+    const webgl2 = canvas.getContext('webgl2', contextAttributes)
+    if (webgl2) {
+      console.info('[three] WebGL2 context created')
+      return true
+    }
+    const webgl1 = canvas.getContext('webgl', contextAttributes)
+    if (webgl1) {
+      console.info('[three] WebGL1 context created')
+      return true
+    }
+    console.warn('[three] Failed to create WebGL context', { contextAttributes })
+    return false
+  } catch {
+    console.warn('[three] Exception while creating WebGL context', { contextAttributes })
+    return false
+  }
 }
