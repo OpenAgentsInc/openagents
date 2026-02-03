@@ -10,7 +10,7 @@ export const Route = createFileRoute('/api/chat')({
         const { messages } = (await request.json()) as { messages: UIMessage[] };
 
         const result = streamText({
-          model: openai.responses('gpt-5-nano'),
+          model: openai.responses('gpt-4o-mini'),
           messages: await convertToModelMessages(messages),
         });
 
