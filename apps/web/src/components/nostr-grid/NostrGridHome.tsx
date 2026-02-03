@@ -4,6 +4,7 @@ import { useNostr } from '@nostrify/react';
 import { useQueries } from '@tanstack/react-query';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
+import { pubkeyToNpub } from '@/lib/npub';
 import {
   RelayConfigProvider,
   useRelayConfigContext,
@@ -83,8 +84,9 @@ function toPostSummary(event: NostrEvent, community: string): PostSummary {
 function NostrGridInner() {
   const COMMUNITY_LIMIT = 12;
   const POSTS_PER_COMMUNITY = 3;
+  const COMMUNITY_POST_FETCH_LIMIT = 30;
   const [selectedNode, setSelectedNode] = useState<FlowNode | null>(null);
-  const [showAll, setShowAll] = useState(false);
+  const [showAll, setShowAll] = useState(true);
 
   const { nostr } = useNostr();
   useNostrFeedSubscription({ showAll });
@@ -118,7 +120,7 @@ function NostrGridInner() {
           kinds: [1111],
           '#K': [WEB_KIND],
           '#I': identifiers,
-          limit: POSTS_PER_COMMUNITY,
+          limit: COMMUNITY_POST_FETCH_LIMIT,
         };
         if (!showAll) {
           filter['#l'] = [AI_LABEL.value];
@@ -200,21 +202,7 @@ function NostrGridInner() {
         }
 
         const posts = (postQuery.data ?? []) as PostSummary[];
-        if (posts.length === 0) {
-          return [
-            {
-              id: `post-empty:${c.slug}`,
-              label: 'No posts yet',
-              metadata: {
-                type: 'leaf',
-                kind: 'empty',
-                status: 'pending',
-                subtitle: c.slug,
-                detail: 'No top-level posts found for this community yet.',
-              },
-            },
-          ];
-        }
+        if (posts.length === 0) return [];
 
         return posts.map((p) => ({
           id: `post:${p.id}`,
@@ -325,6 +313,7 @@ function NostrGridInner() {
       const postId = typeof node.metadata?.postId === 'string' ? node.metadata.postId : node.id.replace(/^post:/, '');
       const community = typeof node.metadata?.community === 'string' ? node.metadata.community : null;
       const pubkey = typeof node.metadata?.pubkey === 'string' ? node.metadata.pubkey : '';
+      const npub = pubkey ? pubkeyToNpub(pubkey) : '';
       return (
         <>
           <Button asChild size="sm" variant="default">
@@ -339,9 +328,9 @@ function NostrGridInner() {
               </Link>
             </Button>
           ) : null}
-          {pubkey ? (
+          {npub ? (
             <Button asChild size="sm" variant="secondary">
-              <Link to="/u/$npub" params={{ npub: pubkey }}>
+              <Link to="/u/$npub" params={{ npub }}>
                 {shortPubkey(pubkey)}
               </Link>
             </Button>
