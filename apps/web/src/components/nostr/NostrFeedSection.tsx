@@ -57,7 +57,7 @@ function NostrFeedSectionInner({
   const [sinceKey, setSinceKey] = useState<'all' | '24h' | '7d' | '30d'>('all');
   const since =
     sinceKey === 'all' ? undefined : sinceKeyToTimestamp(sinceKey);
-  const { relayUrls } = useRelayConfigContext();
+  const { relayMetadata } = useRelayConfigContext();
   const lastViewRef = useRef<string | null>(null);
   const lastSinceRef = useRef<string | null>(null);
 
@@ -93,7 +93,7 @@ function NostrFeedSectionInner({
   if (!mounted) return <FeedSkeleton />;
 
   return (
-    <NostrProvider relayUrls={relayUrls}>
+    <NostrProvider relayMetadata={relayMetadata}>
       <div className="flex flex-col gap-4">
         <div className="rounded-lg border border-border bg-muted/20 p-4">
           <h3 className="text-sm font-medium mb-2">New post</h3>

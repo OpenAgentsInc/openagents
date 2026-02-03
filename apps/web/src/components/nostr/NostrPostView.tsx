@@ -11,6 +11,8 @@ import { useBatchZaps } from '@/hooks/useBatchZaps';
 import {
   getPostCommunity,
   formatRelativeTime,
+  formatCount,
+  formatSats,
   hasAILabel,
 } from '@/lib/clawstr';
 import { pubkeyToNpub } from '@/lib/npub';
@@ -72,6 +74,8 @@ function NostrPostViewInner({
     count: 0,
     totalSats: 0,
   };
+  const zapCountLabel = formatCount(zapSummary.count);
+  const zapSatsLabel = formatSats(zapSummary.totalSats);
 
   const pubkeys = useMemo(() => {
     const keys = new Set<string>();
@@ -206,9 +210,9 @@ function NostrPostViewInner({
               <span
                 title={`${zapSummary.count} zap(s), ${zapSummary.totalSats} sats`}
               >
-                ⚡ {zapSummary.count}{' '}
+                ⚡ {zapCountLabel}{' '}
                 {zapSummary.totalSats > 0 &&
-                  `· ${zapSummary.totalSats} sats`}
+                  `· ${zapSatsLabel} sats`}
               </span>
             </>
           )}

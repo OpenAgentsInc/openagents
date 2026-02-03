@@ -3,6 +3,7 @@ import { useMemo, useState } from 'react';
 import { useNostr } from '@nostrify/react';
 import { useQueryClient } from '@tanstack/react-query';
 import type { PostVoteSummary } from '@/hooks/useBatchPostVotes';
+import { formatCount } from '@/lib/clawstr';
 import { publishReaction } from '@/lib/publishReaction';
 import { hasNostrExtension } from '@/lib/publishKind1111';
 import { posthogCapture } from '@/lib/posthog';
@@ -21,6 +22,7 @@ export function VoteScore({
   const [pending, setPending] = useState<null | 'up' | 'down'>(null);
   const hasExtension = hasNostrExtension();
   const canVote = !!target && hasExtension;
+  const displayScore = formatCount(summary.score);
   const title = useMemo(() => {
     if (!target) return `${summary.up} up, ${summary.down} down`;
     if (!hasExtension) return 'Connect a Nostr extension to vote';
@@ -73,7 +75,7 @@ export function VoteScore({
         <ChevronUp className="size-3.5 text-muted-foreground" aria-hidden />
       </button>
       <span className="min-w-[1.25rem] text-center text-xs font-medium tabular-nums">
-        {summary.score}
+        {displayScore}
       </span>
       <button
         type="button"

@@ -9,7 +9,12 @@ import { useBatchReplyCountsGlobal } from '@/hooks/useBatchReplyCountsGlobal';
 import { useBatchPostVotes } from '@/hooks/useBatchPostVotes';
 import { useBatchZaps } from '@/hooks/useBatchZaps';
 import { AIBadge } from '@/components/nostr/AIBadge';
-import { getPostCommunity, formatRelativeTime } from '@/lib/clawstr';
+import {
+  getPostCommunity,
+  formatRelativeTime,
+  formatCount,
+  formatSats,
+} from '@/lib/clawstr';
 import { filterPostsWithShitcoin } from '@/lib/shitcoinFilter';
 import { pubkeyToNpub } from '@/lib/npub';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -64,12 +69,15 @@ function PostList({
         const authorMeta = authors.get(post.pubkey);
         const authorName = authorMeta?.name ?? post.pubkey.slice(0, 12) + '…';
         const replyCount = replyCounts.get(post.id) ?? 0;
+        const replyLabel = formatCount(replyCount);
         const voteSummary =
           voteSummaries.get(post.id) ?? { score: 0, up: 0, down: 0 };
         const zapSummary = zapSummaries.get(post.id) ?? {
           count: 0,
           totalSats: 0,
         };
+        const zapCountLabel = formatCount(zapSummary.count);
+        const zapSatsLabel = formatSats(zapSummary.totalSats);
         const lines = post.content.split('\n').filter((l) => l.trim());
         const firstLine = lines[0] ?? post.content;
         const TITLE_MAX = 960;
@@ -120,7 +128,7 @@ function PostList({
                 <>
                   <span>·</span>
                   <span>
-                    {replyCount} reply{replyCount !== 1 ? 's' : ''}
+                    {replyLabel} reply{replyCount !== 1 ? 's' : ''}
                   </span>
                 </>
               )}
@@ -130,9 +138,9 @@ function PostList({
                   <span
                     title={`${zapSummary.count} zap(s), ${zapSummary.totalSats} sats`}
                   >
-                    ⚡ {zapSummary.count}{' '}
+                    ⚡ {zapCountLabel}{' '}
                     {zapSummary.totalSats > 0 &&
-                      `· ${zapSummary.totalSats} sats`}
+                      `· ${zapSatsLabel} sats`}
                   </span>
                 </>
               )}

@@ -75,9 +75,9 @@ export function NostrCommunitiesSection() {
 }
 
 function NostrCommunitiesSectionInner() {
-  const { relayUrls } = useRelayConfigContext();
+  const { relayMetadata } = useRelayConfigContext();
   return (
-    <NostrProvider relayUrls={relayUrls}>
+    <NostrProvider relayMetadata={relayMetadata}>
       <NostrCommunitiesList />
     </NostrProvider>
   );

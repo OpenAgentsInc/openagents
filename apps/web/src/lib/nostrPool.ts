@@ -1,6 +1,6 @@
 import type { NostrEvent, NostrFilter } from '@nostrify/nostrify';
 import { NPool, NRelay1 } from '@nostrify/nostrify';
-import { DEFAULT_RELAYS } from '@/lib/relayConfig';
+import { DEFAULT_RELAYS, type RelayEntry } from '@/lib/relayConfig';
 import {
   pickReadRelays,
   recordRelayClose,
@@ -22,16 +22,55 @@ function getPoolCache(): PoolCache {
   return scope[POOL_CACHE_KEY];
 }
 
-function normalizeRelays(relayUrls: string[]): string[] {
-  const relays = relayUrls.length > 0 ? relayUrls : DEFAULT_RELAYS;
-  const unique = [...new Set(relays)];
-  unique.sort();
-  return unique;
+type RelayInput = RelayEntry[] | string[];
+
+function isRelayEntry(value: RelayEntry | string): value is RelayEntry {
+  return typeof value === 'object' && value !== null;
 }
 
-export function getNostrPool(relayUrls: string[]): NPool {
-  const relays = normalizeRelays(relayUrls);
-  const key = relays.join('|');
+function normalizeRelayInput(relayInput: RelayInput): {
+  readRelays: string[];
+  writeRelays: string[];
+  allRelays: string[];
+  key: string;
+} {
+  const entries: RelayEntry[] = relayInput.length
+    ? relayInput.map((entry) =>
+        isRelayEntry(entry)
+          ? entry
+          : { url: entry, read: true, write: true },
+      )
+    : DEFAULT_RELAYS.map((url) => ({ url, read: true, write: true }));
+
+  const readRelays = [
+    ...new Set(
+      entries.filter((entry) => entry.read).map((entry) => entry.url),
+    ),
+  ];
+  const writeRelays = [
+    ...new Set(
+      entries.filter((entry) => entry.write).map((entry) => entry.url),
+    ),
+  ];
+  const allRelays = [...new Set([...readRelays, ...writeRelays])];
+  const fallbackRelays = allRelays.length > 0 ? allRelays : DEFAULT_RELAYS;
+  const normalizedRead = readRelays.length > 0 ? readRelays : fallbackRelays;
+  const normalizedWrite = writeRelays.length > 0 ? writeRelays : fallbackRelays;
+  const key = [
+    `r:${[...normalizedRead].sort().join(',')}`,
+    `w:${[...normalizedWrite].sort().join(',')}`,
+  ].join('|');
+
+  return {
+    readRelays: normalizedRead,
+    writeRelays: normalizedWrite,
+    allRelays: fallbackRelays,
+    key,
+  };
+}
+
+export function getNostrPool(relayInput: RelayInput): NPool {
+  const { readRelays, writeRelays, key } = normalizeRelayInput(relayInput);
   const cache = getPoolCache();
   const existing = cache.get(key);
   if (existing) return existing;
@@ -58,19 +97,20 @@ export function getNostrPool(relayUrls: string[]): NPool {
     },
     reqRouter(_filters: NostrFilter[]) {
       const routes = new Map<string, NostrFilter[]>();
-      const readRelays = pickReadRelays(relays);
-      for (const url of readRelays) {
+      const selected = pickReadRelays(readRelays);
+      for (const url of selected) {
         routes.set(url, _filters);
       }
       return routes;
     },
     eventRouter(_event: NostrEvent) {
-      return [...relays];
+      return [...writeRelays];
     },
   });
 
   cache.set(key, pool);
-  (pool as unknown as { [RELAY_LIST_KEY]?: string[] })[RELAY_LIST_KEY] = relays;
+  (pool as unknown as { [RELAY_LIST_KEY]?: string[] })[RELAY_LIST_KEY] =
+    readRelays;
   return pool;
 }
 
