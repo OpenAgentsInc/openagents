@@ -6,8 +6,9 @@
 use include_dir::{include_dir, Dir};
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
-use std::collections::{BTreeMap, HashSet, VecDeque};
+use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::path::Path;
+use std::sync::Mutex;
 use url::form_urlencoded;
 use wasm_bindgen::JsValue;
 use worker::*;
@@ -20,11 +21,16 @@ const INDEX_LIMIT_DEFAULT: usize = 100;
 const INDEX_LIMIT_MAX: usize = 500;
 const WATCH_SEEN_CAP: usize = 2000;
 const CONVEX_CONTROL_HEADER: &str = "x-oa-control-key";
+const AGENT_REGISTER_LIMIT: usize = 5;
+const AGENT_REGISTER_WINDOW_MS: i64 = 60_000;
+const REGISTER_KEY_HEADER: &str = "x-oa-register-key";
 
 static MOLTBOOK_DOCS: Dir = include_dir!("$CARGO_MANIFEST_DIR/../../crates/moltbook/docs");
 
 static DOC_INDEX: Lazy<Vec<DocEntry>> = Lazy::new(build_doc_index);
 static DOC_CATEGORIES: Lazy<Vec<CategorySummary>> = Lazy::new(|| summarize_categories(&DOC_INDEX));
+static AGENT_REGISTER_RATE_LIMIT: Lazy<Mutex<HashMap<String, VecDeque<i64>>>> =
+    Lazy::new(|| Mutex::new(HashMap::new()));
 
 #[derive(Debug, Deserialize, Serialize)]
 struct ApiResponse<T> {
@@ -116,6 +122,31 @@ struct CreateSubmoltBody {
     description: String,
 }
 
+#[derive(Debug, Deserialize)]
+struct AgentRegisterRequest {
+    name: Option<String>,
+    metadata: Option<serde_json::Value>,
+    nostr: Option<AgentRegisterNostr>,
+}
+
+#[derive(Debug, Deserialize)]
+struct AgentRegisterNostr {
+    pubkey: Option<String>,
+    nip98: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ResolvedApiToken {
+    user_id: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct ConvexAgentRegisterData {
+    user_id: String,
+    api_token: String,
+    created: bool,
+}
+
 
 #[derive(Debug, Deserialize)]
 struct ModeratorBody {
@@ -185,6 +216,7 @@ async fn main(mut req: Request, env: Env, _ctx: Context) -> Result<Response> {
         .post_async("/openclaw/runtime/backup", openclaw::http::handle_runtime_backup)
         .post_async("/openclaw/runtime/restart", openclaw::http::handle_runtime_restart)
         .get_async("/openclaw/billing/summary", openclaw::http::handle_billing_summary)
+        .post_async("/auth/agent/register", handle_auth_agent_register)
         .post_async("/register", handle_control_register)
         .get_async("/projects", handle_control_projects)
         .post_async("/projects", handle_control_projects)
@@ -299,6 +331,92 @@ async fn handle_health(_: Request, _: RouteContext<()>) -> Result<Response> {
     })?;
     apply_cors(&mut response)?;
     Ok(response)
+}
+
+async fn handle_auth_agent_register(mut req: Request, ctx: RouteContext<()>) -> Result<Response> {
+    if req.method() != Method::Post {
+        return json_error("method not allowed", 405);
+    }
+
+    if let Some(limit_response) = agent_register_rate_limit(&req) {
+        return Ok(limit_response);
+    }
+
+    if let Some(required) = agent_register_key(&ctx.env) {
+        let provided = req
+            .headers()
+            .get(REGISTER_KEY_HEADER)
+            .ok()
+            .flatten()
+            .unwrap_or_default();
+        if provided.trim().is_empty() || provided.trim() != required {
+            return Ok(json_unauthorized("unauthorized"));
+        }
+    }
+
+    let body: AgentRegisterRequest = req
+        .json()
+        .await
+        .map_err(|_| worker::Error::RustError("invalid body".into()))?;
+
+    let user_id = random_token("oa_agent_", 20);
+    let token_name = body
+        .name
+        .clone()
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| "agent".to_string());
+
+    let payload = serde_json::json!({
+        "user_id": user_id,
+        "name": body.name,
+        "metadata": body.metadata,
+        "nostr": {
+            "pubkey": body.nostr.as_ref().and_then(|nostr| nostr.pubkey.clone()),
+            "nip98": body.nostr.as_ref().and_then(|nostr| nostr.nip98.clone()),
+        },
+        "token_name": token_name,
+    });
+    let body_text = serde_json::to_string(&payload).unwrap_or_else(|_| "{}".to_string());
+
+    let mut response = forward_convex_control(
+        &ctx.env,
+        Method::Post,
+        "control/auth/agent/register",
+        Some(body_text),
+        None,
+        None,
+    )
+    .await?;
+
+    let status = response.status_code();
+    if !(200..=299).contains(&status) {
+        let text = response.text().await.unwrap_or_default();
+        return json_error(&format!("agent register failed: {text}"), status);
+    }
+
+    let payload: ApiResponse<ConvexAgentRegisterData> = response.json().await?;
+    if !payload.ok {
+        return json_error(
+            payload.error.as_deref().unwrap_or("agent register failed"),
+            502,
+        );
+    }
+    let data = match payload.data {
+        Some(value) => value,
+        None => return json_error("agent register failed", 502),
+    };
+
+    let mut out = Response::from_json(&ApiResponse {
+        ok: true,
+        data: Some(serde_json::json!({
+            "user_id": data.user_id,
+            "api_token": data.api_token,
+            "created": data.created,
+        })),
+        error: None,
+    })?;
+    apply_cors(&mut out)?;
+    Ok(out)
 }
 
 async fn handle_control_register(mut req: Request, ctx: RouteContext<()>) -> Result<Response> {
@@ -753,6 +871,119 @@ fn openclaw_token_from_request(req: &Request) -> Option<String> {
             }
         }
     }
+    None
+}
+
+fn api_token_from_request(req: &Request) -> Option<String> {
+    if let Ok(Some(auth)) = req.headers().get("authorization") {
+        let trimmed = auth.trim();
+        let mut parts = trimmed.splitn(2, ' ');
+        if let (Some(scheme), Some(token)) = (parts.next(), parts.next()) {
+            if scheme.eq_ignore_ascii_case("bearer") {
+                let value = token.trim();
+                if !value.is_empty() {
+                    return Some(value.to_string());
+                }
+            }
+        }
+    }
+    if let Ok(Some(value)) = req.headers().get("x-api-key") {
+        let trimmed = value.trim();
+        if !trimmed.is_empty() {
+            return Some(trimmed.to_string());
+        }
+    }
+    None
+}
+
+async fn resolve_api_token(env: &Env, token: &str) -> Result<Option<ResolvedApiToken>> {
+    let payload = serde_json::json!({ "token": token });
+    let body_text = serde_json::to_string(&payload).unwrap_or_else(|_| "{}".to_string());
+    let mut response = forward_convex_control(
+        env,
+        Method::Post,
+        "control/auth/resolve-token",
+        Some(body_text),
+        None,
+        None,
+    )
+    .await?;
+
+    let status = response.status_code();
+    if status == 401 {
+        return Ok(None);
+    }
+    if !(200..=299).contains(&status) {
+        let text = response.text().await.unwrap_or_default();
+        return Err(worker::Error::RustError(format!(
+            "convex resolve-token error {status}: {text}"
+        )));
+    }
+
+    let payload: ApiResponse<ResolvedApiToken> = response.json().await?;
+    if !payload.ok {
+        return Ok(None);
+    }
+    Ok(payload.data)
+}
+
+fn agent_register_key(env: &Env) -> Option<String> {
+    env.var("OA_REGISTER_KEY")
+        .ok()
+        .map(|v| v.to_string())
+        .filter(|v| !v.trim().is_empty())
+}
+
+fn request_ip(req: &Request) -> Option<String> {
+    if let Ok(Some(value)) = req.headers().get("cf-connecting-ip") {
+        let trimmed = value.trim();
+        if !trimmed.is_empty() {
+            return Some(trimmed.to_string());
+        }
+    }
+    if let Ok(Some(value)) = req.headers().get("x-forwarded-for") {
+        let trimmed = value.trim();
+        if !trimmed.is_empty() {
+            let first = trimmed.split(',').next().unwrap_or(trimmed).trim();
+            if !first.is_empty() {
+                return Some(first.to_string());
+            }
+        }
+    }
+    if let Ok(Some(value)) = req.headers().get("x-real-ip") {
+        let trimmed = value.trim();
+        if !trimmed.is_empty() {
+            return Some(trimmed.to_string());
+        }
+    }
+    None
+}
+
+fn agent_register_rate_limit(req: &Request) -> Option<Response> {
+    let ip = request_ip(req)?;
+    let now = now_ms();
+    let mut guard = AGENT_REGISTER_RATE_LIMIT.lock().unwrap();
+    let entry = guard.entry(ip).or_insert_with(VecDeque::new);
+
+    while let Some(front) = entry.front().cloned() {
+        if now - front > AGENT_REGISTER_WINDOW_MS {
+            entry.pop_front();
+        } else {
+            break;
+        }
+    }
+
+    if entry.len() >= AGENT_REGISTER_LIMIT {
+        let oldest = entry.front().cloned().unwrap_or(now);
+        let remaining_ms = AGENT_REGISTER_WINDOW_MS - (now - oldest);
+        let retry_minutes = ((remaining_ms as f64) / 60000.0).ceil() as i64;
+        return Some(
+            rate_limit_429(retry_minutes.max(1))
+                .unwrap_or_else(|_| Response::error("Rate limit exceeded", 429).unwrap()),
+        );
+    }
+
+    entry.push_back(now);
     None
 }
 
@@ -3857,7 +4088,7 @@ fn apply_cors_headers(headers: &mut Headers) -> Result<()> {
     )?;
     headers.set(
         "access-control-allow-headers",
-        "authorization, content-type, x-moltbook-api-key, x-oa-moltbook-api-key, x-api-key, x-oa-internal-key, x-oa-user-id, x-openagents-service-token",
+        "authorization, content-type, x-moltbook-api-key, x-oa-moltbook-api-key, x-api-key, x-oa-internal-key, x-oa-user-id, x-openagents-service-token, x-oa-register-key",
     )?;
     headers.set(
         "access-control-expose-headers",

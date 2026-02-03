@@ -6,6 +6,29 @@ export default defineSchema({
     value: v.number(),
   }),
 
+  users: defineTable({
+    user_id: v.string(),
+    kind: v.string(),
+    name: v.optional(v.string()),
+    email: v.optional(v.string()),
+    image: v.optional(v.string()),
+    metadata: v.optional(v.any()),
+    nostr_pubkey: v.optional(v.string()),
+    created_at: v.number(),
+    updated_at: v.number(),
+  }).index('by_user_id', ['user_id']),
+
+  api_tokens: defineTable({
+    user_id: v.string(),
+    token_hash: v.string(),
+    name: v.string(),
+    created_at: v.number(),
+    last_used_at: v.optional(v.number()),
+    expires_at: v.optional(v.number()),
+  })
+    .index('by_user_id', ['user_id'])
+    .index('by_token_hash', ['token_hash']),
+
   openclaw_instances: defineTable({
     user_id: v.string(),
     status: v.string(),

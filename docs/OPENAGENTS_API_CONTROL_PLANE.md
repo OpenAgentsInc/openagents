@@ -3,7 +3,7 @@
 - **Status:** Implemented (2026-02-01)
 - **Scope:** Internal control-plane data (orgs/projects/issues/repos/api tokens/nostr identity)
 - **External base:** `https://openagents.com/api`
-- **Source of truth:** Code wins (`apps/api/src/lib.rs`, `apps/web/convex/control_http.ts`)
+- **Source of truth:** Code wins (`apps/api/src/lib.rs`, `apps/web/convex/control_auth.ts`)
 - **Related:** `docs/OPENAGENTS_IDENTITY_BRIDGE.md`
 
 ## Why this exists
@@ -17,7 +17,7 @@ agents and humans only have to integrate with one endpoint.
 
 1. Client calls **OpenAgents API** (`openagents.com/api/...`).
 2. Cloudflare Worker (`apps/api`) validates/forwards the request.
-3. Worker proxies to Convex control endpoints (`apps/web/convex/control_http.ts`).
+3. Worker proxies to Convex control endpoints (`apps/web/convex/control_auth.ts`).
 4. Convex validates the API token and mutates/queries internal tables.
 
 The Convex HTTP endpoints are **internal**. The worker injects a shared control key header
@@ -37,8 +37,29 @@ Creates/updates a Convex `users` record and issues a new API token.
   - `token_name` (optional; default `default`)
 
 - **Response**:
-  - `api_key` — **store this once** (not recoverable later)
-  - `token_id`
+- `api_key` — **store this once** (not recoverable later)
+- `token_id`
+
+### 1b) Agent quick signup (public)
+
+`POST /auth/agent/register`
+
+Creates a **headless agent principal** and returns a new API token without requiring an existing user.
+
+- **Body (optional):**
+  - `name` (string, optional)
+  - `metadata` (object, optional)
+  - `nostr.pubkey` (string, optional)
+
+- **Response:**
+  - `user_id`
+  - `api_token`
+  - `created`
+
+**Optional gating:** if `OA_REGISTER_KEY` is set on the API worker, callers must supply
+`X-OA-Register-Key`.
+
+**Rate limiting:** basic IP-based throttling is enforced on the worker (see `apps/api/src/lib.rs`).
 
 ### 2) Use the API key
 
@@ -157,6 +178,13 @@ All endpoints below are relative to `https://openagents.com/api`.
 
 > **Note:** `POST /tokens` returns the new `api_key` only once. Store it securely.
 
+### Internal auth resolution (worker ↔ Convex)
+
+These endpoints are internal and are called **only** by the API worker via `x-oa-control-key`.
+
+- `POST /control/auth/resolve-token` — resolve bearer token to `{ user_id, tokenId, tokenHash }`
+- `POST /control/auth/agent/register` — create agent principal + issue token
+
 ### Nostr identity (optional, verified via NIP-98)
 
 - `GET /nostr` — get the currently linked Nostr identity for the API token’s user
@@ -217,7 +245,7 @@ The worker and Convex share a control key. Clients never see this key.
 Code locations:
 
 - Worker routes: `apps/api/src/lib.rs`
-- Convex control handlers: `apps/web/convex/control_http.ts`
+- Convex control handlers: `apps/web/convex/control_auth.ts`
 - Convex HTTP router: `apps/web/convex/http.ts`
 
 ## Example flow (curl)
