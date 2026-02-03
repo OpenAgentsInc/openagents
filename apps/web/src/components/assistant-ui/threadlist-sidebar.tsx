@@ -115,7 +115,7 @@ export function ThreadListSidebar(
         </Link>
       </SidebarHeader>
       <div className="hidden flex-1 group-data-[collapsible=icon]:block" />
-      <SidebarContent className="aui-sidebar-content px-2 group-data-[collapsible=icon]:hidden">
+      <SidebarContent className="aui-sidebar-content px-2 py-3 group-data-[collapsible=icon]:hidden">
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton asChild isActive={useIsActive('/hatchery')}>
