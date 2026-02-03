@@ -138,24 +138,3 @@ body {
   color: var(--foreground);
   font-family: var(--font-sans);
 }
-
-/* Sidebar: force background and text from theme (Tailwind bg-sidebar can fail to apply) */
-[data-sidebar='sidebar'],
-[data-slot='sidebar-inner'] {
-  background-color: var(--sidebar) !important;
-  color: var(--sidebar-foreground);
-}
-/* Sidebar wrapper when variant=inset */
-[data-slot='sidebar-wrapper']:has([data-variant='inset']) {
-  background-color: var(--sidebar);
-}
-
-html,
-body {
-  margin: 0;
-  padding: 0;
-  min-height: 100%;
-  background: var(--background);
-  color: var(--foreground);
-  font-family: var(--font-sans);
-}
