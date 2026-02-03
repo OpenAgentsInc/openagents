@@ -4,8 +4,8 @@
 
 Make **OpenClaw** usable “like the real thing” from **openagents.com**: users can chat, see sessions, connect/pair devices, and (eventually) connect channels — while we run a bunch of Cloudflare-native infrastructure alongside it (Durable Objects via Agents SDK, Containers/Sandbox, R2 persistence, backups, progress streaming, human approvals).
 
-This is the OpenClaw-specific complement to:
-- `apps/web/docs/cloudflare-agents-sdk-openagents-com.md`
+This doc is the **canonical roadmap** for Cloudflare + OpenClaw on openagents.com.
+`apps/web/docs/cloudflare-agents-sdk-openagents-com.md` is supporting/background context; if they conflict, this doc wins.
 
 ## What OpenClaw actually is (from `/Users/christopherdavid/code/openclaw`)
 
@@ -212,41 +212,155 @@ We need two approval layers:
 2. **Website approvals** (product level)
    - Anything that spends credits, connects accounts, or changes privacy/security posture should require explicit UI confirmation.
 
-## Roadmap tied to OpenClaw (what we implement first)
+## Unified roadmap (Cloudflare + OpenClaw)
 
-### Milestone 0: align naming + UX in the site
+This is the “single roadmap” for:
+- OpenClaw Cloud (hosted/managed OpenClaw)
+- the `openagents-agent-worker` (Agents SDK durable orchestration)
+- the website UI (`apps/web`)
+- the stable API surface (`apps/api`)
+- the OpenClaw runtime substrate (`apps/openclaw-runtime`)
 
-- Left sidebar: add “OpenClaw” section (instance + sessions)
-- Center: OpenClaw chat view (even if initial is Mode A)
-- Right sidebar: keep community/collaboration
+### MVP definition (“important 80%”)
 
-### Milestone 1: Mode A end-to-end (OpenClaw tools behind a durable agent)
+Ship these first:
 
-- Build `openagents-agent-worker` and wire `apps/web /chat` to it (per the general plan).
-- Add runtime tool proxy endpoints (`/v1/tools/invoke`, sessions list/history/send).
-- In the agent, expose “OpenClaw tools” as function tools:
-  - status, provision, devices, approve, restart, backup
-  - sessions list/history/send
-  - (optional) browser/canvas/nodes tools once we proxy them safely
+1. **Durable chat threads** on the website (persisted across reloads/devices).
+2. **OpenClaw Cloud controls** in the UI (provision/status/devices/approve/backup/restart/billing).
+3. **One “OpenClaw chat” experience** in the site that is durable + streaming:
+   - Mode A first (website agent + OpenClaw tool proxy), then
+   - Mode B as the follow-up (true OpenClaw WebChat via OpenResponses).
+4. **Human approvals** for the risky actions (provision, device approve, restart; later DM pairing / exec approvals).
 
-Result: users can “use OpenClaw” from the website and the agent can operate OpenClaw capabilities, with durable background work + progress streaming + approvals.
+Defer (post-MVP):
+- full multi-client state sync (Agent SDK client hooks)
+- channel onboarding UX beyond 1–2 easiest (Telegram/Discord first)
+- heavy long-running orchestration (Workflows/Queues) beyond basic DO alarms
 
-### Milestone 2: True OpenClaw WebChat (Mode B)
+### Milestone 1: Stand up `openagents-agent-worker` (durable orchestration core)
 
-- Enable gateway OpenResponses `/v1/responses`.
-- Proxy streaming through runtime → API → web.
-- UI switches OpenClaw chat to use this backend (OpenClaw is the conversational source of truth).
+**Goal:** A dedicated Cloudflare Worker using the Cloudflare Agents SDK that can own durable “threads” and stream responses.
 
-### Milestone 3: Pairing + channels
+Changes:
+- Add `apps/agent-worker/` (new Worker app)
+  - DO class: `ThreadAgent` (keyed by `threadId`)
+  - Internal endpoints (server-to-server only):
+    - `POST /internal/chat` (streams AI SDK UI messages)
+    - `POST /internal/approval/respond`
+- Auth (server-to-server):
+  - `X-OA-Internal-Key`
+  - `X-OA-User-Id` (WorkOS user id)
 
-- DM pairing endpoints + UI.
-- Start with one or two channels that have clear hosted onboarding (Telegram/Discord) before tackling WhatsApp.
+Acceptance criteria:
+- `POST /internal/chat` streams and persists state across calls.
+- `threadId` deterministically maps to a DO instance.
 
-### Milestone 4: Cloudflare extras that make it “feel unfair”
+### Milestone 2: Wire the website (`apps/web`) to the agent worker (no UI rewrite)
 
-- AI Gateway integration for provider routing, cost tracking, fallbacks
-- Browser Rendering integration for web automation at scale (reduce load on Sandbox)
-- Workflows/Queues for long tasks + resumability + audit logs
+**Goal:** Keep the current chat UI, but run it through the durable agent when enabled.
+
+Changes:
+- Update `apps/web/src/routes/chat.ts`:
+  - if `process.env.AGENT_WORKER_URL` is set:
+    - forward to `${AGENT_WORKER_URL}/internal/chat`
+    - include `X-OA-Internal-Key` and `X-OA-User-Id`
+  - else fall back to the current in-process `streamText()`
+- Make thread identity explicit:
+  - Recommended: add a thread route like `/_app/t/$threadId` so the server can derive `threadId` from the URL.
+
+Acceptance criteria:
+- With `AGENT_WORKER_URL` unset, behavior is unchanged.
+- With `AGENT_WORKER_URL` set, chat is durable + streaming and still works with `@assistant-ui/*`.
+
+### Milestone 3: Make the left sidebar real (thread index + “OpenClaw” section)
+
+**Goal:** The UI matches the product plan: chats/projects/OpenClaw on the left; community on the right.
+
+Changes:
+- Add a Convex-backed thread index:
+  - `thread_id`, `user_id`, `title`, `created_at`, `updated_at`, `archived`
+  - optional: `kind` (`chat` | `project` | `openclaw`)
+- Update `apps/web/src/components/assistant-ui/threadlist-sidebar.tsx` to render the Convex list.
+- Add an “OpenClaw” section in the left sidebar that:
+  - shows OpenClaw Cloud status + actions
+  - links to OpenClaw sessions/chat views
+
+Acceptance criteria:
+- Threads persist across refresh/devices.
+- “OpenClaw” is always reachable from the left sidebar.
+
+### Milestone 4: Mode A — OpenClaw tools behind the durable agent (bridge without WS)
+
+**Goal:** Users can “use OpenClaw” from the website even before we proxy the full Gateway WS surface.
+
+Changes (runtime worker):
+- Extend `apps/openclaw-runtime` to proxy OpenClaw Gateway HTTP surfaces:
+  - `POST /v1/tools/invoke` → gateway `POST /tools/invoke`
+  - `GET /v1/sessions` (via `sessions_list`)
+  - `GET /v1/sessions/:sessionKey/history` (via `sessions_history`)
+  - `POST /v1/sessions/:sessionKey/send` (via `sessions_send`)
+
+Changes (API worker):
+- Promote stable endpoints in `apps/api`:
+  - `POST /api/openclaw/tools/invoke` → runtime `/v1/tools/invoke`
+  - `GET /api/openclaw/sessions` + history → runtime endpoints
+
+Changes (agent worker):
+- Add “OpenClaw tools” as function tools:
+  - instance/status/devices/approve/backup/restart/billing (already exist in `apps/api`)
+  - sessions list/history/send (new)
+  - (optional) selected “cool” tools once we proxy safely (browser/canvas/nodes/cron)
+
+Acceptance criteria:
+- From the website, user can browse OpenClaw sessions, open one, and send a message into it.
+- No OpenClaw gateway tokens ever hit the browser.
+
+### Milestone 5: Mode B — True OpenClaw WebChat (OpenResponses streaming)
+
+**Goal:** The website can be a real OpenClaw WebChat client, backed by the OpenClaw Gateway session model and streaming semantics.
+
+Changes (runtime worker):
+- Enable OpenClaw Gateway OpenResponses endpoint in the container config:
+  - set `gateway.http.endpoints.responses.enabled=true` in the config written by `apps/openclaw-runtime/start-openclaw.sh`
+- Add runtime proxy:
+  - `POST /v1/responses` → gateway `POST /v1/responses` (SSE streaming)
+
+Changes (API worker):
+- Add a stable streaming endpoint:
+  - `POST /api/openclaw/chat` → runtime `/v1/responses` (stream back to callers)
+
+Changes (web UI):
+- Add an “OpenClaw Chat” route that uses `/api/openclaw/chat` as its transport.
+
+Acceptance criteria:
+- Streaming works end-to-end (site ↔ api ↔ runtime ↔ gateway).
+- OpenClaw sessions are the source of truth for transcript/history in this mode.
+
+### Milestone 6: Human approvals (end-to-end)
+
+**Goal:** “Pause for approval” is a first-class website feature across:
+- OpenClaw Cloud (device pairing, DM pairing, exec approvals)
+- website-driven actions (cost/spend/account connects)
+
+Changes:
+- Agent worker emits `approval.requested` events and blocks until resolved.
+- Website shows an approval modal and sends `approval.respond` (server-to-server).
+- Extend OpenClaw surfaces:
+  - device approve (already present)
+  - DM pairing list/approve endpoints (add)
+  - exec approval queue endpoints (add; may require WS integration if not tool-invokable)
+
+Acceptance criteria:
+- Provision/device approve/restart are gated by explicit UI approval.
+
+### Milestone 7: Cloudflare “unfair advantages”
+
+Add the Cloudflare-native pieces that make hosted OpenClaw feel better than self-hosting:
+
+- **AI Gateway** for centralized visibility/cost control and provider failover.
+- **Browser Rendering** to offload heavy browser automation from Sandbox containers.
+- **Workflows/Queues** for long-running tasks with retries and auditable logs.
+- Better **observability**: per-user run logs, tool receipts, latency/cost dashboards.
 
 ## Notes on security and trust
 
@@ -254,4 +368,3 @@ Result: users can “use OpenClaw” from the website and the agent can operate 
 - Keep all `/internal/*` or runtime control endpoints server-to-server only.
 - Treat any inbound channel message as untrusted input; keep pairing/allowlists as first-class UI.
 - Use strict per-tenant sandbox ids + R2 prefixes to prevent cross-user data access.
-
