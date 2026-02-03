@@ -88,6 +88,7 @@ function NostrPostViewInner({
     () => countThreadNodes(threadNodes),
     [threadNodes],
   );
+  const replyLabel = formatCount(replyCount);
 
   const authorsQuery = useBatchAuthors(pubkeys);
   const authors = authorsQuery.data ?? new Map();
@@ -230,7 +231,7 @@ function NostrPostViewInner({
       {threadNodes.length > 0 && (
         <div className="mt-2">
           <h2 className="text-sm font-medium text-muted-foreground mb-2">
-            {replyCount} reply{replyCount !== 1 ? 's' : ''}
+            {replyLabel} reply{replyCount !== 1 ? 's' : ''}
           </h2>
           <ThreadedReplyList nodes={threadNodes} authors={authors} />
         </div>
