@@ -1,3 +1,4 @@
+export { CanvasBoundary } from './CanvasBoundary';
 export { InfiniteCanvas } from './InfiniteCanvas';
 export { GridPattern } from './GridPattern';
 export { TreeLayout } from './TreeLayout';
