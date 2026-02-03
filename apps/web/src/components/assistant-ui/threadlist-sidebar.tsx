@@ -15,8 +15,19 @@ import {
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
+import { BookOpen } from 'lucide-react';
 import { ThreadList } from '@/components/assistant-ui/thread-list';
 import { cn } from '@/lib/utils';
+
+/** Renders Lucide icon only after mount to avoid SSR/client hydration mismatch. */
+function SidebarIcon({ children }: { children: React.ReactNode }) {
+  const [mounted, setMounted] = React.useState(false);
+  React.useEffect(() => setMounted(true), []);
+  if (!mounted) {
+    return <span className="size-4 shrink-0" aria-hidden />;
+  }
+  return <>{children}</>;
+}
 
 function useIsActive(path: string) {
   const { location } = useRouterState();
@@ -128,7 +139,9 @@ export function ThreadListSidebar(
           <SidebarMenuItem>
             <SidebarMenuButton asChild isActive={useIsActive('/kb')}>
               <Link to="/kb">
-                <span className="text-base">📚</span>
+                <SidebarIcon>
+                  <BookOpen className="size-4" />
+                </SidebarIcon>
                 <span>Knowledge Base</span>
               </Link>
             </SidebarMenuButton>

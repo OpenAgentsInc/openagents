@@ -38,11 +38,6 @@ export function NodeDetailsPanel({ node, onClose, renderActions }: NodeDetailsPa
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [onClose]);
 
-  const direction = node.direction
-    ? node.direction === 'vertical'
-      ? 'Vertical'
-      : 'Horizontal'
-    : '—';
   const childCount = node.children?.length ?? 0;
   const childLabel = childCount === 1 ? '1 child' : `${childCount} children`;
 
@@ -89,7 +84,6 @@ export function NodeDetailsPanel({ node, onClose, renderActions }: NodeDetailsPa
 
         <div className="rounded-md border border-border/60 bg-muted/20 px-3 py-2">
           <DetailRow label="ID" value={node.id} />
-          <DetailRow label="Direction" value={direction} />
           <DetailRow label="Children" value={childLabel} />
         </div>
 

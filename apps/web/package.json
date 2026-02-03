@@ -50,6 +50,7 @@
     "@use-gesture/react": "^10.3.1",
     "@workos/authkit-tanstack-react-start": "0.5.0",
     "ai": "^6.0.50",
+    "buffer": "^6.0.3",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "convex": "^1.31.7",
