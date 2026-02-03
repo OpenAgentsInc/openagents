@@ -48,7 +48,7 @@ function SetupContent({
         {user && <UserMenu user={user} />}
       </header>
       <main className="p-8 flex flex-col gap-8">
-        <h1 className="text-4xl font-bold text-center">Convex + TanStack Start + WorkOS AuthKit</h1>
+        <h1 className="text-4xl font-bold text-center">OpenAgents</h1>
         <Authenticated>
           <Content />
         </Authenticated>
