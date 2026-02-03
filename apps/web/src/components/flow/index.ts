@@ -21,3 +21,5 @@ export {
   isSkeletonNode,
 } from './types';
 export { RootNode, LeafNode, SkeletonNode } from './nodes';
+export { buildFlowTree, PRESETS } from './tree-generate';
+export type { TreeGenerateConfig } from './tree-generate';
