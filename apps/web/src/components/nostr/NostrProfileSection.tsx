@@ -20,7 +20,7 @@ import { npubDecodeToHex, pubkeyToNpub } from '@/lib/npub';
 import { Skeleton } from '@/components/ui/skeleton';
 import { VoteScore } from '@/components/nostr/VoteScore';
 import { AIBadge } from '@/components/nostr/AIBadge';
-import { AIToggle } from '@/components/nostr/AIToggle';
+// import { AIToggle } from '@/components/nostr/AIToggle';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { getQueryClient } from '@/lib/queryClient';
 import { prefetchPostDetail } from '@/lib/nostrPrefetch';
@@ -207,11 +207,11 @@ function NostrProfileSectionInner({
       <div>
         <div className="flex items-center justify-between gap-2 mb-2">
           <h2 className="text-sm font-medium text-muted-foreground">Posts</h2>
-          <AIToggle
+          {/* <AIToggle
             showAll={showAll}
             onChange={setShowAll}
             source="profile"
-          />
+          /> */}
         </div>
         {postsQuery.isLoading ? (
           <div className="space-y-3">
