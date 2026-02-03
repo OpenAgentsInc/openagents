@@ -19,6 +19,7 @@ import type * as nostr from "../nostr.js";
 import type * as nostr_http from "../nostr_http.js";
 import type * as openclaw from "../openclaw.js";
 import type * as users from "../users.js";
+import type * as waitlist from "../waitlist.js";
 
 import type {
   ApiFromModules,
@@ -38,6 +39,7 @@ declare const fullApi: ApiFromModules<{
   nostr_http: typeof nostr_http;
   openclaw: typeof openclaw;
   users: typeof users;
+  waitlist: typeof waitlist;
 }>;
 
 /**

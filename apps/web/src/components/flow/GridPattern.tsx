@@ -2,7 +2,9 @@ const ANIMATION_DURATION = 4;
 const MAX_RADIUS_MULTIPLIER = 1.1;
 const MIN_OPACITY = 0.5;
 const MAX_OPACITY = 0.8;
-const RANDOM_DELAY_MAX = 2;
+/** Stagger the two animations; fixed values to avoid SSR/client hydration mismatch. */
+const BEGIN_R = '0s';
+const BEGIN_OPACITY = '1s';
 const GRID_OFFSET = -5000;
 const GRID_DIMENSION = 10000;
 
@@ -29,14 +31,14 @@ export function GridPattern({ gridSize, dotRadius, dotClassName }: GridPatternPr
               attributeName="r"
               values={`${dotRadius};${dotRadius * MAX_RADIUS_MULTIPLIER};${dotRadius}`}
               dur={`${ANIMATION_DURATION}s`}
-              begin={`${Math.random() * RANDOM_DELAY_MAX}s`}
+              begin={BEGIN_R}
               repeatCount="indefinite"
             />
             <animate
               attributeName="opacity"
               values={`${MIN_OPACITY};${MAX_OPACITY};${MIN_OPACITY}`}
               dur={`${ANIMATION_DURATION}s`}
-              begin={`${Math.random() * RANDOM_DELAY_MAX}s`}
+              begin={BEGIN_OPACITY}
               repeatCount="indefinite"
             />
           </circle>

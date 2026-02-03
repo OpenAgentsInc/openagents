@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import { Link } from '@tanstack/react-router';
+import { useMutation } from 'convex/react';
+import { api } from '../../../convex/_generated/api';
 import { posthogCapture } from '@/lib/posthog';
 import {
-  DevTreeGenerator,
   InfiniteCanvas,
   isLeafNode,
   isRootNode,
@@ -17,6 +18,7 @@ import {
 } from '@/components/flow';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import { MessageSquareIcon, ServerIcon, CpuIcon, ListChecksIcon } from 'lucide-react';
 
 const HOME_TREE: FlowNode = {
   id: 'root',
@@ -258,16 +260,28 @@ const HOME_TREE: FlowNode = {
   ],
 };
 
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 export function HatcheryFlowDemo() {
   const [selectedNode, setSelectedNode] = useState<FlowNode | null>(null);
-  const [generatedTree, setGeneratedTree] = useState<FlowNode | null>(null);
+  const [showOverlay, setShowOverlay] = useState(true);
+  const [email, setEmail] = useState('');
+  const [waitlistStatus, setWaitlistStatus] = useState<'idle' | 'submitting' | 'success' | 'error'>('idle');
+  const [waitlistError, setWaitlistError] = useState<string | null>(null);
+  const joinWaitlistMutation = useMutation(api.waitlist.joinWaitlist);
   const apiTree: FlowNode | null = HOME_TREE;
-  const currentTree = generatedTree ?? apiTree ?? SKELETON_TREE;
+  const currentTree = apiTree ?? SKELETON_TREE;
   const isShowingSkeleton = currentTree === SKELETON_TREE;
 
   useEffect(() => {
     posthogCapture('hatchery_view');
   }, []);
+
+  useEffect(() => {
+    if (showOverlay) {
+      posthogCapture('hatchery_overlay_view', { source: 'hatchery' });
+    }
+  }, []); // fire once on mount when overlay is visible (showOverlay initial true)
 
   function renderFlowNode(node: FlowNode) {
     const selected = selectedNode?.id === node.id;
@@ -322,60 +336,250 @@ export function HatcheryFlowDemo() {
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <InfiniteCanvas
-        defaultZoom={0.95}
-        overlay={
-          <>
-            <div
-              className="pointer-events-auto absolute inset-0 z-0 bg-black/50"
-              aria-hidden
+    <div className="relative flex min-h-0 flex-1 flex-col">
+      {/* Overlay: Join the waitlist or sneak peek */}
+      {showOverlay && (
+        <>
+          <div
+            className="pointer-events-auto absolute inset-0 z-20 bg-black/80"
+            aria-hidden
+          />
+          <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center p-4">
+            <Card className="pointer-events-auto w-full max-w-md border border-[#1a1525] bg-[#0d0a14]/95 px-10 py-8 shadow-xl ring-1 ring-[#252030]/50">
+              <CardContent className="flex flex-col items-center gap-6 p-0 text-center">
+                {waitlistStatus === 'success' ? (
+                  <>
+                    <div className="flex flex-col items-center gap-3">
+                      <span className="font-square721 text-xl font-medium text-zinc-100">
+                        You're on the list
+                      </span>
+                      <span className="font-square721 text-base text-zinc-300">
+                        Thanks! We'll email you in the next few days to create your account.
+                      </span>
+                    </div>
+                    <Button
+                      type="button"
+                      size="default"
+                      variant="secondary"
+                      onClick={() => setShowOverlay(false)}
+                      className="font-square721 border-[#1e1830] bg-[#12101a] text-base text-zinc-100 hover:bg-[#1a1622]"
+                    >
+                      Continue to Hatchery
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    <div className="flex flex-col items-center gap-3">
+                      <span className="font-square721 text-xl font-medium text-zinc-100">
+                        Coming Soon: The Hatchery
+                      </span>
+                      <span className="font-square721 text-base text-zinc-300">
+                        Create your OpenClaw with a few easy clicks
+                      </span>
+                    </div>
+                    <form
+                      className="flex w-full flex-col gap-3"
+                      onSubmit={async (e) => {
+                        e.preventDefault();
+                        const trimmed = email.trim();
+                        if (!trimmed) {
+                          setWaitlistError('Enter your email');
+                          return;
+                        }
+                        if (!EMAIL_RE.test(trimmed)) {
+                          setWaitlistError('Enter a valid email');
+                          return;
+                        }
+                        setWaitlistError(null);
+                        setWaitlistStatus('submitting');
+                        posthogCapture('hatchery_waitlist_submit', { source: 'hatchery' });
+                        try {
+                          const result = await joinWaitlistMutation({ email: trimmed, source: 'hatchery' });
+                          posthogCapture('hatchery_waitlist_success', {
+                            source: 'hatchery',
+                            joined: result.joined,
+                          });
+                          setWaitlistStatus('success');
+                        } catch (err) {
+                          const message = err instanceof Error ? err.message : 'Something went wrong';
+                          posthogCapture('hatchery_waitlist_error', { source: 'hatchery', message });
+                          setWaitlistStatus('error');
+                          setWaitlistError(message);
+                        }
+                      }}
+                    >
+                      <input
+                        type="email"
+                        placeholder="you@example.com"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        disabled={waitlistStatus === 'submitting'}
+                        className="font-square721 w-full rounded-md border border-[#1e1830] bg-[#12101a] px-4 py-3 text-base text-zinc-100 placeholder:text-zinc-500 focus:border-[#252030] focus:outline-none focus:ring-1 focus:ring-[#252030] disabled:opacity-60"
+                        autoComplete="email"
+                      />
+                      <Button
+                        type="submit"
+                        size="default"
+                        variant="secondary"
+                        disabled={waitlistStatus === 'submitting'}
+                        className="font-square721 border-[#1e1830] bg-[#12101a] text-base text-zinc-100 hover:bg-[#1a1622] disabled:opacity-60"
+                      >
+                        {waitlistStatus === 'submitting' ? 'Joining…' : 'Join the waitlist'}
+                      </Button>
+                      {waitlistError && (
+                        <p className="font-square721 text-sm text-red-400">{waitlistError}</p>
+                      )}
+                    </form>
+                  </>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        </>
+      )}
+
+      <div className="grid min-h-0 flex-1 grid-cols-1 grid-rows-4 gap-3 p-4 md:grid-cols-2 md:grid-rows-2">
+        {/* Panel 1: Workspace graph */}
+      <div className="relative min-h-[240px] min-h-0 overflow-hidden rounded-lg border border-border bg-card md:min-h-0">
+        <div className="absolute inset-0">
+          <InfiniteCanvas
+            defaultZoom={0.95}
+            overlay={
+              selectedNode ? (
+                <div className="pointer-events-none absolute inset-0 z-10 flex justify-end p-4">
+                  <div className="pointer-events-auto">
+                    <NodeDetailsPanel
+                      node={selectedNode}
+                      onClose={() => setSelectedNode(null)}
+                      renderActions={renderNodeActions}
+                    />
+                  </div>
+                </div>
+              ) : null
+            }
+          >
+            <TreeLayout
+              data={currentTree}
+              nodeSpacing={{ x: 24, y: 60 }}
+              layoutConfig={{ direction: 'vertical' }}
+              onNodeClick={
+                isShowingSkeleton
+                  ? undefined
+                  : (node) => {
+                      posthogCapture('flow_node_click', {
+                        node_id: node.id,
+                        node_kind: node.metadata?.kind ?? 'unknown',
+                      });
+                      setSelectedNode((prev) => (prev?.id === node.id ? null : node));
+                    }
+              }
+              renderNode={renderFlowNode}
             />
-            <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
-              <Card className="pointer-events-none px-8 py-6 shadow-lg">
-                <CardContent className="p-0 text-center text-lg font-medium">
-                  Coming Soon
-                </CardContent>
-              </Card>
+          </InfiniteCanvas>
+        </div>
+        <div className="absolute left-2 top-2 rounded bg-background/80 px-2 py-1 text-xs font-medium text-muted-foreground backdrop-blur-sm">
+          Workspace graph
+        </div>
+      </div>
+
+      {/* Panel 2: Create your OpenClaw */}
+      <div className="flex min-h-0 flex-col overflow-hidden rounded-lg border border-border bg-card">
+        <div className="flex items-center gap-2 border-b border-border px-4 py-3">
+          <ServerIcon className="h-4 w-4 text-muted-foreground" />
+          <span className="text-sm font-semibold text-card-foreground">Create your OpenClaw</span>
+        </div>
+        <CardContent className="flex min-h-0 flex-1 flex-col gap-4 p-4">
+          <p className="text-xs leading-relaxed text-muted-foreground">
+            Provision a managed OpenClaw instance on openagents.com. One gateway per user; tools, sessions, and pairing in one place.
+          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="rounded-md border border-border bg-muted/50 px-2 py-0.5 font-mono text-xs text-muted-foreground">
+              Instance: Standard
+            </span>
+            <span className="rounded-md border border-border bg-muted/50 px-2 py-0.5 text-xs text-muted-foreground">
+              No instance yet
+            </span>
+          </div>
+          <div className="mt-auto flex flex-wrap gap-2">
+            <Button size="sm" disabled>
+              Provision OpenClaw
+            </Button>
+            <Button asChild size="sm" variant="secondary">
+              <Link to="/kb/openclaw-wallets">Learn more</Link>
+            </Button>
+          </div>
+        </CardContent>
+      </div>
+
+      {/* Panel 3: OpenClaw chat (representative UI) */}
+      <div className="flex min-h-0 flex-col overflow-hidden rounded-lg border border-border bg-card">
+        <div className="flex items-center gap-2 border-b border-border px-4 py-3">
+          <MessageSquareIcon className="h-4 w-4 text-muted-foreground" />
+          <span className="text-sm font-semibold text-card-foreground">OpenClaw Chat</span>
+        </div>
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden p-3">
+          <div className="aui-thread-viewport flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto rounded-md bg-muted/20 p-3">
+            <div className="flex justify-end">
+              <div className="max-w-[85%] rounded-lg bg-primary px-3 py-2 text-xs text-primary-foreground">
+                Start a session — list my devices
+              </div>
             </div>
-            <div className="pointer-events-auto absolute left-4 top-4 z-20 rounded-lg border border-border bg-card/80 px-3 py-2 text-xs text-muted-foreground shadow-lg backdrop-blur-md">
-              <div className="font-medium text-card-foreground">Hatchery (demo)</div>
-              <div>Pan/zoom the graph. Click a node to inspect.</div>
+            <div className="flex justify-start">
+              <div className="max-w-[85%] rounded-lg border border-border bg-background px-3 py-2 text-xs text-foreground">
+                Session: main. Devices: none paired yet. Pair a node from the Devices panel.
+              </div>
             </div>
-            <div className="z-20">
-              <NodeDetailsPanel
-                node={selectedNode}
-                onClose={() => setSelectedNode(null)}
-                renderActions={renderNodeActions}
-              />
+            <div className="flex justify-end">
+              <div className="max-w-[85%] rounded-lg bg-primary px-3 py-2 text-xs text-primary-foreground">
+                Run the browser tool and open docs.openagents.com
+              </div>
             </div>
-            <div className="z-20">
-              <DevTreeGenerator
-                onGenerate={setGeneratedTree}
-                onReset={() => setGeneratedTree(null)}
-              />
-            </div>
-          </>
-        }
-      >
-        <TreeLayout
-          data={currentTree}
-          nodeSpacing={{ x: 24, y: 60 }}
-          layoutConfig={{ direction: 'vertical' }}
-          onNodeClick={
-            isShowingSkeleton
-              ? undefined
-              : (node) => {
-                  posthogCapture('flow_node_click', {
-                    node_id: node.id,
-                    node_kind: node.metadata?.kind ?? 'unknown',
-                  });
-                  setSelectedNode((prev) => (prev?.id === node.id ? null : node));
-                }
-          }
-          renderNode={renderFlowNode}
-        />
-      </InfiniteCanvas>
+          </div>
+          <div className="mt-2 flex gap-2">
+            <textarea
+              readOnly
+              placeholder="Chat with your OpenClaw (streaming when connected)..."
+              className="min-h-[72px] w-full resize-none rounded-md border border-input bg-background px-3 py-2 text-xs text-muted-foreground placeholder:text-muted-foreground focus:outline-none disabled:cursor-not-allowed"
+              rows={2}
+            />
+            <Button size="sm" className="shrink-0" disabled>
+              Send
+            </Button>
+          </div>
+        </div>
+      </div>
+
+      {/* Panel 4: Sessions & devices (representative UI) */}
+      <div className="flex min-h-0 flex-col overflow-hidden rounded-lg border border-border bg-card">
+        <div className="flex items-center gap-2 border-b border-border px-4 py-3">
+          <ListChecksIcon className="h-4 w-4 text-muted-foreground" />
+          <span className="text-sm font-semibold text-card-foreground">Sessions & devices</span>
+        </div>
+        <CardContent className="flex min-h-0 flex-1 flex-col gap-4 p-4">
+          <div>
+            <div className="text-xs font-medium text-card-foreground">Sessions</div>
+            <ul className="mt-1 space-y-1">
+              <li className="flex items-center gap-2 rounded border border-border/60 bg-muted/20 px-3 py-2 font-mono text-xs">
+                <CpuIcon className="h-3.5 w-3.5 text-muted-foreground" />
+                main
+              </li>
+              <li className="rounded border border-dashed border-border/60 px-3 py-2 text-xs text-muted-foreground">
+                No channel sessions yet
+              </li>
+            </ul>
+          </div>
+          <div>
+            <div className="text-xs font-medium text-card-foreground">Devices (nodes)</div>
+            <p className="mt-1 text-xs text-muted-foreground">
+              No devices paired. Pair a node from your OpenClaw instance to see it here.
+            </p>
+          </div>
+          <Button asChild size="sm" variant="outline" className="mt-auto">
+            <Link to="/assistant">Open full assistant</Link>
+          </Button>
+        </CardContent>
+      </div>
+      </div>
     </div>
   );
 }

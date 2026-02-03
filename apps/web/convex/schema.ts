@@ -95,4 +95,12 @@ export default defineSchema({
     about: v.optional(v.string()),
     updated_at: v.number(),
   }).index('by_pubkey', ['pubkey']),
+
+  waitlist: defineTable({
+    email: v.string(),
+    source: v.optional(v.string()),
+    created_at: v.number(),
+  })
+    .index('by_email', ['email'])
+    .index('by_created_at', ['created_at']),
 });

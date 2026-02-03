@@ -38,8 +38,9 @@ export function NodeDetailsPanel({ node, onClose, renderActions }: NodeDetailsPa
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [onClose]);
 
-  const childCount = node.children?.length ?? 0;
-  const childLabel = childCount === 1 ? '1 child' : `${childCount} children`;
+  const commentCount = node.children?.length ?? 0;
+  const commentLabel =
+    commentCount === 1 ? '1 comment' : `${commentCount} comments`;
 
   const status = node.metadata?.status;
   const badge = node.metadata?.badge;
@@ -84,7 +85,7 @@ export function NodeDetailsPanel({ node, onClose, renderActions }: NodeDetailsPa
 
         <div className="rounded-md border border-border/60 bg-muted/20 px-3 py-2">
           <DetailRow label="ID" value={node.id} />
-          <DetailRow label="Children" value={childLabel} />
+          <DetailRow label="Comments" value={commentLabel} />
         </div>
 
         {renderActions ? (
@@ -95,12 +96,6 @@ export function NodeDetailsPanel({ node, onClose, renderActions }: NodeDetailsPa
             <div className="flex flex-wrap gap-2">{renderActions(node)}</div>
           </div>
         ) : null}
-
-        <div className="border-t border-border pt-3">
-          <p className="text-xs text-muted-foreground">
-            Metrics & receipts (placeholder)
-          </p>
-        </div>
       </div>
     </div>
   );
