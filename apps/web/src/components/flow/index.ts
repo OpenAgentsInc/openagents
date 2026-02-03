@@ -3,7 +3,12 @@ export { InfiniteCanvas } from './InfiniteCanvas';
 export { GridPattern } from './GridPattern';
 export { TreeLayout } from './TreeLayout';
 export { TreeElementNode } from './TreeElementNode';
-export { TreeConnectionLine } from './TreeConnectionLine';
+export {
+  TreeConnectionLine,
+  ANIMATION_PRESETS,
+  type AnimationConfig,
+  type PresetName,
+} from './TreeConnectionLine';
 export type { Point, TreeNode, LayoutConfig, PositionedNode } from './layout-engine';
 export { LayoutEngine, invariant } from './layout-engine';
 export type { FlowNode, FlowNodeType } from './types';
