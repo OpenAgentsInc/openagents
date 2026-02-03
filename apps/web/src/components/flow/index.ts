@@ -21,6 +21,7 @@ export { DevTreeGenerator } from './DevTreeGenerator';
 
 // Tree layout and connection
 export { TreeLayout } from './TreeLayout';
+export { ForceGraphLayout } from './ForceGraphLayout';
 export { TreeElementNode } from './TreeElementNode';
 export {
   TreeConnectionLine,
