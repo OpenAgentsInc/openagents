@@ -10,6 +10,7 @@ import {
 } from '@/contexts/RelayConfigContext';
 import { NostrProvider } from '@/components/nostr/NostrProvider';
 import { useDiscoveredCommunities } from '@/hooks/useDiscoveredCommunities';
+import { useNostrFeedSubscription } from '@/hooks/useNostrFeedSubscription';
 import {
   AI_LABEL,
   WEB_KIND,
@@ -24,6 +25,8 @@ import {
 } from '@/lib/clawstr';
 import { queryWithFallback } from '@/lib/nostrQuery';
 import { getQueryClient } from '@/lib/queryClient';
+import { filterPostsWithShitcoin } from '@/lib/shitcoinFilter';
+import { prefetchCommunity, prefetchPostDetail } from '@/lib/nostrPrefetch';
 import {
   InfiniteCanvas,
   ForceGraphLayout,
@@ -84,6 +87,7 @@ function NostrGridInner() {
   const [showAll, setShowAll] = useState(false);
 
   const { nostr } = useNostr();
+  useNostrFeedSubscription({ showAll });
   const communitiesQuery = useDiscoveredCommunities({
     limit: COMMUNITY_LIMIT,
     showAll,
@@ -134,7 +138,7 @@ function NostrGridInner() {
           return slug === c.slug;
         });
 
-        return topLevel
+        return filterPostsWithShitcoin(topLevel)
           .sort((a, b) => b.created_at - a.created_at)
           .slice(0, POSTS_PER_COMMUNITY)
           .map((event) => toPostSummary(event, c.slug));
@@ -267,10 +271,35 @@ function NostrGridInner() {
 
   function renderFlowNode(node: FlowNode) {
     const selected = selectedNode?.id === node.id;
-    if (isRootNode(node)) return <RootNode node={node} selected={selected} />;
-    if (isSkeletonNode(node)) return <SkeletonNode node={node} selected={selected} />;
-    if (isLeafNode(node)) return <LeafNode node={node} selected={selected} />;
-    return <LeafNode node={{ ...node, metadata: { type: 'leaf' } }} selected={selected} />;
+    const kind = node.metadata?.kind;
+    const community =
+      typeof node.metadata?.community === 'string'
+        ? node.metadata.community
+        : null;
+    const postId =
+      typeof node.metadata?.postId === 'string'
+        ? node.metadata.postId
+        : node.id.startsWith('post:')
+          ? node.id.replace(/^post:/, '')
+          : null;
+    const handlePrefetch = () => {
+      if (kind === 'community' && community) {
+        void prefetchCommunity(community, { showAll, limit: 50 });
+      }
+      if (kind === 'post' && postId) {
+        void prefetchPostDetail(postId);
+      }
+    };
+
+    const rendered = (() => {
+      if (isRootNode(node)) return <RootNode node={node} selected={selected} />;
+      if (isSkeletonNode(node)) return <SkeletonNode node={node} selected={selected} />;
+      if (isLeafNode(node)) return <LeafNode node={node} selected={selected} />;
+      return <LeafNode node={{ ...node, metadata: { type: 'leaf' } }} selected={selected} />;
+    })();
+
+    if (!kind) return rendered;
+    return <div onMouseEnter={handlePrefetch}>{rendered}</div>;
   }
 
   function renderNodeActions(node: FlowNode) {

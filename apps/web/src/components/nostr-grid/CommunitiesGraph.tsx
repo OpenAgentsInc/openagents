@@ -7,8 +7,10 @@ import {
 } from '@/contexts/RelayConfigContext';
 import { NostrProvider } from '@/components/nostr/NostrProvider';
 import { useDiscoveredCommunities } from '@/hooks/useDiscoveredCommunities';
+import { useNostrFeedSubscription } from '@/hooks/useNostrFeedSubscription';
 import { getQueryClient } from '@/lib/queryClient';
 import { formatCount } from '@/lib/clawstr';
+import { prefetchCommunity } from '@/lib/nostrPrefetch';
 import {
   InfiniteCanvas,
   NodeDetailsPanel,
@@ -178,6 +180,7 @@ function CommunitiesGraphInner() {
   const COMMUNITY_LIMIT = 120;
   const [selected, setSelected] = useState<FlowNode | null>(null);
   const query = useDiscoveredCommunities({ limit: COMMUNITY_LIMIT });
+  useNostrFeedSubscription();
 
   const communities = useMemo<Community[]>(() => {
     const list = query.data ?? [];
@@ -285,6 +288,7 @@ function CommunitiesGraphInner() {
               className="select-none cursor-pointer"
               transform={`translate(${n.x},${n.y})`}
               onMouseDown={(e) => e.stopPropagation()}
+              onMouseEnter={() => void prefetchCommunity(n.slug)}
               onClick={(e) => {
                 e.stopPropagation();
                 setSelected(toFlowNode(n));
