@@ -83,3 +83,7 @@ curl -X POST "$CONVEX_SITE_URL/control/auth/resolve-token" \
 - Commit: `57e4178c0` (Add API token auth and agent signup flow)
 - Push: `git push origin api`
 - PR: https://github.com/OpenAgentsInc/openagents/pull/1560
+
+## 2026-02-02 23:55:09 -0600
+- Updated control-plane and deployment docs to reflect new auth endpoints and register-key gating.
+- Updated identity-bridge doc to point at the new control auth handler.
