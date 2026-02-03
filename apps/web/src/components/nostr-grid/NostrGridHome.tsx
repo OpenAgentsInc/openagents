@@ -26,12 +26,12 @@ import { queryWithFallback } from '@/lib/nostrQuery';
 import { getQueryClient } from '@/lib/queryClient';
 import {
   InfiniteCanvas,
+  ForceGraphLayout,
   LeafNode,
   NodeDetailsPanel,
   RootNode,
   SKELETON_TREE,
   SkeletonNode,
-  TreeLayout,
   type FlowNode,
   isLeafNode,
   isRootNode,
@@ -346,10 +346,9 @@ function NostrGridInner() {
           </>
         }
       >
-        <TreeLayout
+        <ForceGraphLayout
           data={tree}
-          nodeSpacing={{ x: 24, y: 60 }}
-          layoutConfig={{ direction: 'vertical' }}
+          connectionAnimation={{ preset: 'dots-slow' }}
           onNodeClick={
             isShowingSkeleton
               ? undefined
