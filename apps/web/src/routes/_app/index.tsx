@@ -7,7 +7,9 @@ import {
   isRootNode,
   isSkeletonNode,
   LeafNode,
+  LiveIndicator,
   NodeDetailsPanel,
+  ProjectDetails,
   RootNode,
   SKELETON_TREE,
   SkeletonNode,
@@ -68,6 +70,8 @@ function Home() {
         overlay={
           <>
             <NodeDetailsPanel node={selectedNode} onClose={() => setSelectedNode(null)} />
+            <ProjectDetails projectId={undefined} />
+            <LiveIndicator />
             <DevTreeGenerator
               onGenerate={setGeneratedTree}
               onReset={() => setGeneratedTree(null)}

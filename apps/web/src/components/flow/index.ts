@@ -1,7 +1,9 @@
 export { CanvasBoundary } from './CanvasBoundary';
 export { DevTreeGenerator } from './DevTreeGenerator';
 export { InfiniteCanvas } from './InfiniteCanvas';
+export { LiveIndicator } from './LiveIndicator';
 export { NodeDetailsPanel } from './NodeDetailsPanel';
+export { ProjectDetails } from './ProjectDetails';
 export { GridPattern } from './GridPattern';
 export { TreeLayout } from './TreeLayout';
 export { TreeElementNode } from './TreeElementNode';
