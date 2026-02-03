@@ -8,13 +8,16 @@ import type { ConvexReactClient } from 'convex/react';
 import type { ConvexQueryClient } from '@convex-dev/react-query';
 
 const fetchWorkosAuth = createServerFn({ method: 'GET' }).handler(async () => {
-  const auth = await getAuth();
-  const { user } = auth;
-
-  return {
-    userId: user?.id ?? null,
-    token: user ? auth.accessToken : null,
-  };
+  try {
+    const auth = await getAuth();
+    const { user } = auth;
+    return {
+      userId: user?.id ?? null,
+      token: user ? auth.accessToken : null,
+    };
+  } catch {
+    return { userId: null, token: null };
+  }
 });
 
 export const Route = createRootRouteWithContext<{

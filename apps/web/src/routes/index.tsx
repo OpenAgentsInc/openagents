@@ -10,11 +10,18 @@ import type { User } from '@workos/authkit-tanstack-react-start';
 export const Route = createFileRoute('/')({
   component: Home,
   loader: async () => {
-    const { user } = await getAuth();
-    const signInUrl = await getSignInUrl();
-    const signUpUrl = await getSignUpUrl();
-
-    return { user, signInUrl, signUpUrl };
+    try {
+      const { user } = await getAuth();
+      const signInUrl = await getSignInUrl();
+      const signUpUrl = await getSignUpUrl();
+      return { user, signInUrl, signUpUrl };
+    } catch {
+      return {
+        user: null,
+        signInUrl: '/callback',
+        signUpUrl: '/callback',
+      };
+    }
   },
 });
 
