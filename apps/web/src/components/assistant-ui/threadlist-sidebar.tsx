@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { Link } from '@tanstack/react-router';
+import { Link, useRouterState } from '@tanstack/react-router';
 import { useAuth } from '@workos/authkit-tanstack-react-start/client';
 import {
   Sidebar,
@@ -17,6 +17,14 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ThreadList } from '@/components/assistant-ui/thread-list';
 import { cn } from '@/lib/utils';
+
+function useIsActive(path: string) {
+  const { location } = useRouterState();
+  return (
+    location.pathname === path ||
+    (path !== '/' && location.pathname.startsWith(path + '/'))
+  );
+}
 
 const SITE_TITLE = 'OpenAgents';
 
@@ -107,7 +115,17 @@ export function ThreadListSidebar(
         </Link>
       </SidebarHeader>
       <div className="hidden flex-1 group-data-[collapsible=icon]:block" />
-      <SidebarContent className="aui-sidebar-content px-2 group-data-[collapsible=icon]:hidden">
+      <SidebarContent className="aui-sidebar-content px-2 py-3 group-data-[collapsible=icon]:hidden">
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton asChild isActive={useIsActive('/hatchery')}>
+              <Link to="/hatchery">
+                <span className="text-base">🦞</span>
+                <span>Hatchery</span>
+              </Link>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
         <ThreadList />
       </SidebarContent>
       <SidebarRail />

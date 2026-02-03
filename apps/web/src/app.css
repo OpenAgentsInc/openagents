@@ -3,6 +3,13 @@
 
 @custom-variant dark (&:is(.dark *));
 
+@utility scrollbar-none {
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
 @layer base {
   button:not(:disabled),
   [role='button']:not(:disabled) {
@@ -145,14 +152,7 @@
   --sidebar-border: var(--bg-border-color);
   --sidebar-accent: var(--bg-base-color);
 }
-/* Hide scrollbar in sidebar when --scrollbar-width: 0 */
-[data-sidebar='sidebar'] [data-slot='sidebar-inner'] {
-  scrollbar-width: var(--scrollbar-width);
-}
-[data-sidebar='sidebar'] [data-slot='sidebar-inner']::-webkit-scrollbar {
-  width: var(--scrollbar-width);
-  height: var(--scrollbar-width);
-}
+
 
 html,
 body {
