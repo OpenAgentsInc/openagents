@@ -2,12 +2,37 @@ import type { TreeNode } from './layout-engine';
 
 export type FlowNodeType = 'root' | 'leaf' | 'skeleton';
 
+export type FlowNodeStatus = 'ok' | 'live' | 'running' | 'pending' | 'error';
+
+export type FlowNodeBadgeTone =
+  | 'neutral'
+  | 'info'
+  | 'success'
+  | 'warning'
+  | 'destructive';
+
+export type FlowNodeBadge = {
+  label: string;
+  tone?: FlowNodeBadgeTone;
+};
+
+export type FlowNodeMetadata = {
+  type: FlowNodeType;
+  kind?: string;
+  subtitle?: string;
+  detail?: string;
+  status?: FlowNodeStatus;
+  updatedAt?: string;
+  badge?: FlowNodeBadge;
+  [key: string]: unknown;
+};
+
 export type FlowNode = TreeNode & {
   id: string;
   label: string;
   direction?: 'vertical' | 'horizontal';
   children?: FlowNode[];
-  metadata?: { type: FlowNodeType };
+  metadata?: FlowNodeMetadata;
 };
 
 export function isRootNode(

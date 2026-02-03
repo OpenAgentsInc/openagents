@@ -18,6 +18,7 @@ import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
 import { Route as AppRouteImport } from './routes/_app'
 import { Route as AppIndexRouteImport } from './routes/_app/index'
 import { Route as AuthenticatedAuthenticatedRouteImport } from './routes/_authenticated/authenticated'
+import { Route as AppHatcheryRouteImport } from './routes/_app/hatchery'
 import { Route as AppFeedRouteImport } from './routes/_app/feed'
 import { Route as AppCRouteImport } from './routes/_app/c'
 import { Route as AppAssistantRouteImport } from './routes/_app/assistant'
@@ -71,6 +72,11 @@ const AuthenticatedAuthenticatedRoute =
     path: '/authenticated',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
+const AppHatcheryRoute = AppHatcheryRouteImport.update({
+  id: '/hatchery',
+  path: '/hatchery',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppFeedRoute = AppFeedRouteImport.update({
   id: '/feed',
   path: '/feed',
@@ -122,6 +128,7 @@ export interface FileRoutesByFullPath {
   '/assistant': typeof AppAssistantRoute
   '/c': typeof AppCRouteWithChildren
   '/feed': typeof AppFeedRoute
+  '/hatchery': typeof AppHatcheryRoute
   '/authenticated': typeof AuthenticatedAuthenticatedRoute
   '/c/$community': typeof AppCCommunityRoute
   '/event/$id': typeof AppEventIdRoute
@@ -138,6 +145,7 @@ export interface FileRoutesByTo {
   '/signup': typeof SignupRoute
   '/assistant': typeof AppAssistantRoute
   '/feed': typeof AppFeedRoute
+  '/hatchery': typeof AppHatcheryRoute
   '/authenticated': typeof AuthenticatedAuthenticatedRoute
   '/c/$community': typeof AppCCommunityRoute
   '/event/$id': typeof AppEventIdRoute
@@ -157,6 +165,7 @@ export interface FileRoutesById {
   '/_app/assistant': typeof AppAssistantRoute
   '/_app/c': typeof AppCRouteWithChildren
   '/_app/feed': typeof AppFeedRoute
+  '/_app/hatchery': typeof AppHatcheryRoute
   '/_authenticated/authenticated': typeof AuthenticatedAuthenticatedRoute
   '/_app/': typeof AppIndexRoute
   '/_app/c/$community': typeof AppCCommunityRoute
@@ -177,6 +186,7 @@ export interface FileRouteTypes {
     | '/assistant'
     | '/c'
     | '/feed'
+    | '/hatchery'
     | '/authenticated'
     | '/c/$community'
     | '/event/$id'
@@ -193,6 +203,7 @@ export interface FileRouteTypes {
     | '/signup'
     | '/assistant'
     | '/feed'
+    | '/hatchery'
     | '/authenticated'
     | '/c/$community'
     | '/event/$id'
@@ -211,6 +222,7 @@ export interface FileRouteTypes {
     | '/_app/assistant'
     | '/_app/c'
     | '/_app/feed'
+    | '/_app/hatchery'
     | '/_authenticated/authenticated'
     | '/_app/'
     | '/_app/c/$community'
@@ -295,6 +307,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAuthenticatedRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_app/hatchery': {
+      id: '/_app/hatchery'
+      path: '/hatchery'
+      fullPath: '/hatchery'
+      preLoaderRoute: typeof AppHatcheryRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/feed': {
       id: '/_app/feed'
       path: '/feed'
@@ -370,6 +389,7 @@ interface AppRouteChildren {
   AppAssistantRoute: typeof AppAssistantRoute
   AppCRoute: typeof AppCRouteWithChildren
   AppFeedRoute: typeof AppFeedRoute
+  AppHatcheryRoute: typeof AppHatcheryRoute
   AppIndexRoute: typeof AppIndexRoute
   AppEventIdRoute: typeof AppEventIdRoute
   AppPostsIdRoute: typeof AppPostsIdRoute
@@ -380,6 +400,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppAssistantRoute: AppAssistantRoute,
   AppCRoute: AppCRouteWithChildren,
   AppFeedRoute: AppFeedRoute,
+  AppHatcheryRoute: AppHatcheryRoute,
   AppIndexRoute: AppIndexRoute,
   AppEventIdRoute: AppEventIdRoute,
   AppPostsIdRoute: AppPostsIdRoute,
