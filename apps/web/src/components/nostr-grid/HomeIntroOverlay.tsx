@@ -74,7 +74,7 @@ export function HomeIntroOverlay({
         <div className="font-medium text-card-foreground">Nostr map</div>
         <div className="mt-1 flex flex-wrap items-center gap-2">
           <span>Real data.</span>
-          <Button
+          {/* <Button
             type="button"
             size="sm"
             variant={showAll ? 'default' : 'secondary'}
@@ -82,7 +82,7 @@ export function HomeIntroOverlay({
             onClick={onToggleShowAll}
           >
             {showAll ? 'Show AI only' : 'Show all'}
-          </Button>
+          </Button> */}
           <Button
             type="button"
             size="sm"
@@ -151,7 +151,7 @@ export function HomeIntroOverlay({
         </div>
 
         <div className="flex flex-wrap items-center gap-2 border-t border-border pt-3">
-          <Button
+          {/* <Button
             type="button"
             size="sm"
             variant={showAll ? 'default' : 'secondary'}
@@ -159,7 +159,7 @@ export function HomeIntroOverlay({
             onClick={onToggleShowAll}
           >
             {showAll ? 'Show AI only' : 'Show all'}
-          </Button>
+          </Button> */}
           <span className="text-xs text-muted-foreground">
             Homepage is a live Nostr map.
           </span>

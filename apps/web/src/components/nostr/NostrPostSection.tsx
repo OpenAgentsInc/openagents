@@ -6,7 +6,7 @@ import {
 } from '@/contexts/RelayConfigContext';
 import { NostrProvider } from '@/components/nostr/NostrProvider';
 import { NostrPostView } from '@/components/nostr/NostrPostView';
-import { AIToggle } from '@/components/nostr/AIToggle';
+// import { AIToggle } from '@/components/nostr/AIToggle';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { getQueryClient } from '@/lib/queryClient';
@@ -41,7 +41,7 @@ function NostrPostSectionInner({
   return (
     <NostrProvider relayMetadata={relayMetadata}>
       <div className="flex flex-col gap-3">
-        <AIToggle showAll={showAll} onChange={setShowAll} source="post" />
+        {/* <AIToggle showAll={showAll} onChange={setShowAll} source="post" /> */}
         <NostrPostView
           eventId={eventId}
           community={community}
