@@ -6,7 +6,8 @@ export const startInstance = createStart(() => {
   const safeAuthkit = createMiddleware({ type: 'request' }).server(async (opts) => {
     try {
       if (authkit.options?.server) {
-        return await (authkit.options.server as (o: typeof opts) => Promise<unknown>)(opts);
+        const result = await (authkit.options.server as (o: typeof opts) => Promise<unknown>)(opts);
+        return result as Awaited<ReturnType<typeof opts.next>>;
       }
       return opts.next();
     } catch (err) {

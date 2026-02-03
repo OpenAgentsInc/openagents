@@ -9,13 +9,13 @@ export const Route = createFileRoute('/login')({
   validateSearch: (search: Record<string, unknown>) => ({
     redirect: typeof search.redirect === 'string' ? search.redirect : '/',
   }),
-  loader: async ({ search }) => {
+  loader: async (ctx) => {
+    const search = 'search' in ctx ? (ctx as { search: { redirect: string } }).search : { redirect: '/' };
     const { user } = await getAuth();
     if (user) throw redirect({ to: search.redirect });
     // GitHub-only: no WorkOS hosted page; user stays in app until they choose GitHub.
     const returnPath = search.redirect;
-    const githubSignInUrl = await getSignInUrl({
-      provider: 'GitHubOAuth',
+    const githubSignInUrl = await (getSignInUrl as (opts?: { data?: { returnPathname?: string } }) => Promise<string>)({
       data: { returnPathname: returnPath },
     }).catch(() => '/callback');
     return { githubSignInUrl };

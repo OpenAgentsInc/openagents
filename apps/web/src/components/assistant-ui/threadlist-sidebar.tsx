@@ -53,7 +53,7 @@ function SidebarNavUser() {
     return (
       <SidebarMenuItem>
         <SidebarMenuButton size="lg" asChild className="h-11">
-          <Link to="/login">
+          <Link to="/login" search={{ redirect: '/' }}>
             <span className="group-data-[collapsible=icon]:hidden">Log in</span>
           </Link>
         </SidebarMenuButton>
