@@ -111,6 +111,29 @@ Current gap: there is no OAuth or bot setup flow in the web app to create pairin
 4. Add Sessions UI (list, history, send) using the existing API endpoints.
 5. Build pairing onboarding for devices and DM channels so users can create pairing requests from the UI.
 
+**Why “unauthorized” (401) from Hatchery / Convex actions**
+The 401 is returned by the **API worker** when Convex actions call it. Convex actions run inside the Convex deployment and **do not read `apps/web/.env.local`**. So even if you set `OA_INTERNAL_KEY` locally, the Convex deployment still uses whatever is set in **Convex** (or nothing). If your dev Convex deployment hits the prod API (`https://openagents.com/api`), the key Convex sends must match the API worker’s `OA_INTERNAL_KEY`.
+
+**Fix (same key + URL everywhere):**
+1. **Convex (dev deployment)** – set env in Convex, not in .env:
+   ```bash
+   cd apps/web
+   npx convex env set OA_INTERNAL_KEY "<same key as API worker>" --deployment-name dev:effervescent-anteater-82
+   npx convex env set PUBLIC_API_URL "https://openagents.com/api" --deployment-name dev:effervescent-anteater-82
+   ```
+2. **API worker** – ensure it has the same internal key:
+   ```bash
+   cd apps/api
+   npx wrangler secret put OA_INTERNAL_KEY
+   ```
+3. **Web worker** (if server routes call the API with the key):
+   ```bash
+   cd apps/web
+   npx wrangler secret put OA_INTERNAL_KEY
+   npx wrangler secret put PUBLIC_API_URL
+   ```
+For prod Convex, set the same variables in the prod Convex deployment (Dashboard or `npx convex env set ...` without `--deployment-name` or with the prod deployment name).
+
 **Appendix: Key Files**
 - Hatchery UI: `apps/web/src/components/hatchery/HatcheryFlowDemo.tsx`
 - OpenClaw Chat: `apps/web/src/routes/_app/openclaw.chat.tsx`

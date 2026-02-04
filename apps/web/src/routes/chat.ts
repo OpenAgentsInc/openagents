@@ -64,8 +64,8 @@ const defaultApprovalSummary = (toolName: string, toolInput: unknown): string =>
  */
 export const Route = createFileRoute('/chat')({
   beforeLoad: () => {
-    // GET /chat has no UI; send users to the assistant.
-    throw redirect({ to: '/assistant' });
+    // GET /chat has no UI; send users to the chat surface.
+    throw redirect({ to: '/chat/$chatId', params: { chatId: 'new' } });
   },
   server: {
     handlers: {

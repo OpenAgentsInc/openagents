@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef } from 'react';
 import { useChat, type UIMessage } from '@ai-sdk/react';
 import type { ChatTransport } from 'ai';
-import { useConvex } from 'convex/react';
+import { useConvex, useMutation, useQuery } from 'convex/react';
 import {
   AssistantRuntime,
   useAuiState,
@@ -69,11 +69,33 @@ const useChatThreadRuntime = <UI_MESSAGE extends UIMessage = UIMessage>(
     transportOptions ?? new AssistantChatTransport(),
   );
 
-  const id = useAuiState(({ threadListItem }) => threadListItem.id);
+  const id = useAuiState(({ threadListItem }) => threadListItem.id) as ThreadId | undefined;
+  const savedMessages = useQuery(
+    api.threadMessages.list,
+    id ? { threadId: id } : 'skip',
+  );
+  const setMessagesMutation = useMutation(api.threadMessages.setMessages);
+
+  const initialMessages = (savedMessages ?? []) as UI_MESSAGE[];
+
   const chat = useChat({
     ...chatOptions,
-    id,
+    id: id ?? '',
     transport,
+    messages: initialMessages,
+    onFinish: async ({ messages }) => {
+      if (id && Array.isArray(messages) && messages.length > 0) {
+        await setMessagesMutation({
+          threadId: id,
+          messages: messages.map((m) => ({
+            id: m.id,
+            role: m.role,
+            parts: m.parts ?? [],
+            metadata: m.metadata,
+          })),
+        });
+      }
+    },
   });
 
   const runtime = useAISDKRuntime(chat, {
