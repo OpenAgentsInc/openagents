@@ -14,7 +14,7 @@
 		"enabled": true
 	},
 	"vars": {
-		"WORKOS_REDIRECT_URI": "https://openagents-web-app.openagents.workers.dev/callback",
+		"WORKOS_REDIRECT_URI": "https://openagents.com/callback",
 		"OA_ADMIN_EMAILS": "chris@openagents.com"
 	}
 	// Set secrets for production:

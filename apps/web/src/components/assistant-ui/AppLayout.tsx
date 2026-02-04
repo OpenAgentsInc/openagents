@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Outlet, useRouterState } from '@tanstack/react-router';
 import { posthogCapture } from '@/lib/posthog';
 import { AssistantRuntimeProvider } from '@assistant-ui/react';
@@ -17,6 +17,7 @@ import {
   RightSidebarTriggerPortal,
 } from '@/components/assistant-ui/right-sidebar';
 import { AppBreadcrumb } from '@/components/assistant-ui/AppBreadcrumb';
+import { useChatSource } from '@/components/assistant-ui/chat-source-context';
 import { useOpenAgentsChatRuntime } from '@/components/assistant-ui/openagents-chat-runtime';
 
 /**
@@ -31,8 +32,17 @@ export function AppLayout() {
   const { user, loading } = useAuth();
   const ensureUser = useMutation(api.users.ensureUser);
   const ensuredUserId = useRef<string | null>(null);
+  const { createFetchWithSourceTracking } = useChatSource();
+  const transport = useMemo(
+    () =>
+      new AssistantChatTransport({
+        api: '/chat',
+        fetch: createFetchWithSourceTracking(),
+      }),
+    [createFetchWithSourceTracking],
+  );
   const runtime = useOpenAgentsChatRuntime({
-    transport: new AssistantChatTransport({ api: '/chat' }),
+    transport,
   });
 
   useEffect(() => {

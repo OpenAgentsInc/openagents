@@ -119,11 +119,17 @@ export const Route = createFileRoute('/chat')({
           headers.set('X-OA-Thread-Id', threadId);
 
           const target = `${agentWorkerUrl.replace(/\/$/, '')}/internal/chat`;
-          return fetch(target, {
+          const proxyResponse = await fetch(target, {
             method: 'POST',
             headers,
             body: JSON.stringify(body),
           });
+          // If agent worker returns 401 (e.g. OA_INTERNAL_KEY mismatch), fall back to local chat so logged-in users still get a response.
+          if (proxyResponse.status !== 401) {
+            const h = new Headers(proxyResponse.headers);
+            h.set('X-Chat-Source', 'agent-worker');
+            return new Response(proxyResponse.body, { status: proxyResponse.status, headers: h });
+          }
         }
 
         // OpenClaw API base must be explicit so server-side tool calls never hit the TanStack app.
@@ -331,7 +337,13 @@ export const Route = createFileRoute('/chat')({
           } as any,
         });
 
-        return result.toUIMessageStreamResponse();
+        const res = result.toUIMessageStreamResponse({
+          messageMetadata: ({ part }) =>
+            part.type === 'start' ? { chatSource: 'local-fallback' } : undefined,
+        });
+        const h = new Headers(res.headers);
+        h.set('X-Chat-Source', 'local-fallback');
+        return new Response(res.body, { status: res.status, headers: h });
       },
     },
   },

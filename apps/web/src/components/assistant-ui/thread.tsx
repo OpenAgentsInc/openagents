@@ -1,15 +1,4 @@
 import {
-  ComposerAddAttachment,
-  ComposerAttachments,
-  UserMessageAttachments,
-} from "@/components/assistant-ui/attachment";
-import { MarkdownText } from "@/components/assistant-ui/markdown-text";
-import { Reasoning, ReasoningGroup } from "@/components/assistant-ui/reasoning";
-import { ToolFallback } from "@/components/assistant-ui/tool-fallback";
-import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
-import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
-import {
   ActionBarMorePrimitive,
   ActionBarPrimitive,
   AssistantIf,
@@ -18,6 +7,7 @@ import {
   ErrorPrimitive,
   MessagePrimitive,
   ThreadPrimitive,
+  useAuiState,
 } from "@assistant-ui/react";
 import {
   ArrowDownIcon,
@@ -27,12 +17,25 @@ import {
   ChevronRightIcon,
   CopyIcon,
   DownloadIcon,
+  InfoIcon,
   MoreHorizontalIcon,
   PencilIcon,
   RefreshCwIcon,
   SquareIcon,
 } from "lucide-react";
 import type { FC } from "react";
+import {
+  ComposerAddAttachment,
+  ComposerAttachments,
+  UserMessageAttachments,
+} from "@/components/assistant-ui/attachment";
+import { useChatSource } from "@/components/assistant-ui/chat-source-context";
+import { MarkdownText } from "@/components/assistant-ui/markdown-text";
+import { Reasoning, ReasoningGroup } from "@/components/assistant-ui/reasoning";
+import { ToolFallback } from "@/components/assistant-ui/tool-fallback";
+import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
 export const Thread: FC = () => {
   return (
@@ -244,6 +247,29 @@ const AssistantMessage: FC = () => {
   );
 };
 
+const MessageSourceLabel: FC = () => {
+  const message = useAuiState((s) => s.message);
+  const messages = useAuiState((s) => s.thread.messages);
+  const { lastSource } = useChatSource();
+  const meta = message.metadata as { chatSource?: string } | undefined;
+  const streamSource = meta?.chatSource;
+  const assistantMessages = messages.filter((m: { role: string }) => m.role === 'assistant');
+  const lastAssistant = assistantMessages[assistantMessages.length - 1] as { id: string } | undefined;
+  const isLastAssistant = lastAssistant != null && message.id === lastAssistant.id;
+  const source = streamSource ?? (isLastAssistant ? lastSource : null);
+  const label =
+    source === 'agent-worker'
+      ? 'Source: agent-worker'
+      : source === 'local-fallback'
+        ? 'Source: local fallback'
+        : 'Source: Unknown (older message)';
+  return (
+    <TooltipIconButton tooltip={label} side="top">
+      <InfoIcon className="size-3.5" />
+    </TooltipIconButton>
+  );
+}
+
 const AssistantActionBar: FC = () => {
   return (
     <ActionBarPrimitive.Root
@@ -267,6 +293,7 @@ const AssistantActionBar: FC = () => {
           <RefreshCwIcon />
         </TooltipIconButton>
       </ActionBarPrimitive.Reload>
+      <MessageSourceLabel />
       <ActionBarMorePrimitive.Root>
         <ActionBarMorePrimitive.Trigger asChild>
           <TooltipIconButton
