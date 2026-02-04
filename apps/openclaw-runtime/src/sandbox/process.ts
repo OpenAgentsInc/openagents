@@ -30,6 +30,13 @@ function buildGatewayEnv(env: OpenClawEnv): Record<string, string> {
       envVars[key] = value;
     }
   }
+  const hasProviderKey =
+    typeof envVars.OPENAI_API_KEY === 'string' ||
+    typeof envVars.OPENROUTER_API_KEY === 'string' ||
+    typeof envVars.ANTHROPIC_API_KEY === 'string';
+  if (!hasProviderKey && typeof envVars.OPENCLAW_DEV_MODE !== 'string') {
+    envVars.OPENCLAW_DEV_MODE = '1';
+  }
   return envVars;
 }
 
@@ -41,7 +48,16 @@ function isGatewayCommand(command: string): boolean {
   return false;
 }
 
+async function ensureContainerStarted(sandbox: Sandbox): Promise<void> {
+  const starter = sandbox as unknown as {
+    start?: (startOptions?: unknown, waitOptions?: { portToCheck?: number }) => Promise<void>;
+  };
+  if (typeof starter.start !== 'function') return;
+  await starter.start(undefined, { portToCheck: 3000 });
+}
+
 export async function findGatewayProcess(sandbox: Sandbox): Promise<Process | null> {
+  await ensureContainerStarted(sandbox);
   const processes = await sandbox.listProcesses();
   for (const proc of processes) {
     if (!isGatewayCommand(proc.command)) continue;
@@ -65,6 +81,7 @@ export async function getGatewayStatus(sandbox: Sandbox): Promise<'running' | 's
 }
 
 export async function ensureGateway(sandbox: Sandbox, env: OpenClawEnv): Promise<Process> {
+  await ensureContainerStarted(sandbox);
   const existing = await findGatewayProcess(sandbox);
   if (existing) {
     await existing.waitForPort(GATEWAY_PORT, { mode: 'tcp', timeout: STARTUP_TIMEOUT_MS });
@@ -82,7 +99,22 @@ export async function ensureGateway(sandbox: Sandbox, env: OpenClawEnv): Promise
     env: Object.keys(envVars).length > 0 ? envVars : undefined,
   });
 
-  await proc.waitForPort(GATEWAY_PORT, { mode: 'tcp', timeout: STARTUP_TIMEOUT_MS });
+  try {
+    await proc.waitForPort(GATEWAY_PORT, { mode: 'tcp', timeout: STARTUP_TIMEOUT_MS });
+  } catch (error) {
+    try {
+      const logs = await proc.getLogs();
+      if (logs.stdout.trim()) {
+        console.log('Gateway start stdout:', logs.stdout.trim().slice(0, 1500));
+      }
+      if (logs.stderr.trim()) {
+        console.log('Gateway start stderr:', logs.stderr.trim().slice(0, 1500));
+      }
+    } catch (logError) {
+      console.log('Failed to read gateway logs:', logError instanceof Error ? logError.message : logError);
+    }
+    throw error;
+  }
   return proc;
 }
 

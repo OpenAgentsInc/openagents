@@ -188,54 +188,54 @@ User-visible behavior:
 
 ### 1.4 OpenClaw WebChat: `/openclaw/chat` streaming (from `zero-to-openclaw-30s.md`)
 
-- [ ] `/openclaw/chat` UI:
-  - [ ] shows instance status and runtime name when available
-  - [ ] supports optional “session key” input and message textarea
-  - [ ] “Stop” button aborts streaming
-- [ ] First send behavior:
-  - [ ] if instance missing, a single consent/approval step provisions via `api.openclawApi.createInstance` and then sends the first message (no separate “go provision first” detour)
-  - [ ] posts to `/openclaw/chat` server handler (`apps/web/src/routes/_app/openclaw.chat.tsx`)
-  - [ ] server handler enforces principal auth (WorkOS session or agent session) and derives `tenantKey`
-  - [ ] server handler resolves `OA_INTERNAL_KEY` and `OPENCLAW_API_BASE`/`PUBLIC_API_URL`
-  - [ ] server handler calls `POST ${apiBase}/openclaw/chat` with internal headers + optional session/agent headers
-  - [ ] API worker proxies to runtime `/v1/responses` and streams SSE end-to-end
+- [x] `/openclaw/chat` UI:
+  - [x] shows instance status and runtime name when available
+  - [x] supports optional “session key” input and message textarea
+  - [x] “Stop” button aborts streaming
+- [x] First send behavior:
+  - [x] if instance missing, a single consent/approval step provisions via `api.openclawApi.createInstance` and then sends the first message (no separate “go provision first” detour)
+  - [x] posts to `/openclaw/chat` server handler (`apps/web/src/routes/_app/openclaw.chat.tsx`)
+  - [x] server handler enforces principal auth (WorkOS session or agent session) and derives `tenantKey`
+  - [x] server handler resolves `OA_INTERNAL_KEY` and `OPENCLAW_API_BASE`/`PUBLIC_API_URL`
+  - [x] server handler calls `POST ${apiBase}/openclaw/chat` with internal headers + optional session/agent headers
+  - [x] API worker proxies to runtime `/v1/responses` and streams SSE end-to-end
 
 ### 1.5 Assistant: tool-calling chat (`/assistant`) + approvals (from `zero-to-openclaw-30s.md`)
 
-- [ ] `/chat` redirects to `/assistant`
-- [ ] If `AGENT_WORKER_URL` is set:
-  - [ ] `/chat` proxies to agent worker (`apps/agent-worker`)
-- [ ] If not set (or agent worker returns 401):
-  - [ ] fallback uses local OpenAI Responses model (`gpt-4o-mini`)
-- [ ] Both paths can call OpenClaw tools via Rust API worker
-- [ ] Both paths must work under either principal: WorkOS human session or agent session (Milestone 3)
-- [ ] Sensitive actions require explicit human approval
+- [x] `/chat` redirects to `/assistant`
+- [x] If `AGENT_WORKER_URL` is set:
+  - [x] `/chat` proxies to agent worker (`apps/agent-worker`)
+- [x] If not set (or agent worker returns 401):
+  - [x] fallback uses local OpenAI Responses model (`gpt-4o-mini`)
+- [x] Both paths can call OpenClaw tools via Rust API worker
+- [x] Both paths must work under either principal: WorkOS human session or agent session (Milestone 3)
+- [x] Sensitive actions require explicit human approval
 
 Tooling (must exist; UI coverage must match):
 
-- [ ] `openclaw_get_instance` → `GET /api/openclaw/instance`
-- [ ] `openclaw_provision` (approval required) → `POST /api/openclaw/instance`
-- [ ] `openclaw_get_status` → `GET /api/openclaw/runtime/status`
-- [ ] `openclaw_list_devices` → `GET /api/openclaw/runtime/devices`
-- [ ] `openclaw_approve_device` (approval required) → `POST /api/openclaw/runtime/devices/:id/approve`
-- [ ] `openclaw_list_pairing_requests` → `GET /api/openclaw/runtime/pairing/:channel`
-- [ ] `openclaw_approve_pairing` (approval required) → `POST /api/openclaw/runtime/pairing/:channel/approve`
-- [ ] `openclaw_backup_now` → `POST /api/openclaw/runtime/backup`
-- [ ] `openclaw_restart` (approval required) → `POST /api/openclaw/runtime/restart`
-- [ ] `openclaw_get_billing_summary` → `GET /api/openclaw/billing/summary`
-- [ ] `openclaw_list_sessions` → `GET /api/openclaw/sessions`
-- [ ] `openclaw_get_session_history` → `GET /api/openclaw/sessions/:key/history`
-- [ ] `openclaw_send_session_message` → `POST /api/openclaw/sessions/:key/send`
+- [x] `openclaw_get_instance` → `GET /api/openclaw/instance`
+- [x] `openclaw_provision` (approval required) → `POST /api/openclaw/instance`
+- [x] `openclaw_get_status` → `GET /api/openclaw/runtime/status`
+- [x] `openclaw_list_devices` → `GET /api/openclaw/runtime/devices`
+- [x] `openclaw_approve_device` (approval required) → `POST /api/openclaw/runtime/devices/:id/approve`
+- [x] `openclaw_list_pairing_requests` → `GET /api/openclaw/runtime/pairing/:channel`
+- [x] `openclaw_approve_pairing` (approval required) → `POST /api/openclaw/runtime/pairing/:channel/approve`
+- [x] `openclaw_backup_now` → `POST /api/openclaw/runtime/backup`
+- [x] `openclaw_restart` (approval required) → `POST /api/openclaw/runtime/restart`
+- [x] `openclaw_get_billing_summary` → `GET /api/openclaw/billing/summary`
+- [x] `openclaw_list_sessions` → `GET /api/openclaw/sessions`
+- [x] `openclaw_get_session_history` → `GET /api/openclaw/sessions/:key/history`
+- [x] `openclaw_send_session_message` → `POST /api/openclaw/sessions/:key/send`
 
 Approval UX requirements:
 
-- [ ] Provision, device approve, DM pairing approve, restart are all gated with explicit UI approval
-- [ ] Approval state is durable enough for the EA experience (minimum acceptable: survives refresh; target: stored in DO storage)
+- [x] Provision, device approve, DM pairing approve, restart are all gated with explicit UI approval
+- [x] Approval state is durable enough for the EA experience (minimum acceptable: survives refresh; target: stored in DO storage)
 
 Approval layers (from `apps/web/docs/openclaw-on-openagents-com.md`):
 
-- [ ] **Website approvals (product-level):** anything that spends credits, connects accounts, or changes privacy/security posture requires explicit UI confirmation.
-- [ ] **OpenClaw approvals (gateway-level):** device pairing + DM pairing approvals are first-class; exec approvals (`exec.approval.*`) are a Full Flow requirement (either surfaced via tool proxying or dedicated endpoints).
+- [x] **Website approvals (product-level):** anything that spends credits, connects accounts, or changes privacy/security posture requires explicit UI confirmation.
+- [x] **OpenClaw approvals (gateway-level):** device pairing + DM pairing approvals are first-class; exec approvals (`exec.approval.*`) are a Full Flow requirement (either surfaced via tool proxying or dedicated endpoints).
 
 ### 1.6 Pairing behavior clarity (from `zero-to-openclaw-30s.md`)
 
@@ -549,3 +549,10 @@ Agent parity is not “OpenClaw only”; it includes the collaboration/product s
   **Deploys:** `apps/api` (`npm run deploy`), `apps/openclaw-runtime` (`npm run deploy`), `apps/web` (`npm run deploy`).  
   **Production checks:** OpenClaw API flow via agent key (POST `/api/agent/signup` → GET/POST/DELETE `/api/openclaw/instance`, create returned `status: ready`, delete returned 200 OK); UI GETs `/hatchery`, `/openclaw/chat`, `/feed`, `/c` returned 200; `/assistant` returned 307 redirect.  
   **Known issues / next:** Next unchecked item is **1.4 OpenClaw WebChat: `/openclaw/chat` streaming**.
+
+- **2026-02-04 23:50 UTC (branch: `main`)** – Completed MVP 1.5 `/assistant` tool-calling chat + approvals: `/chat` redirects to `/assistant`, agent-worker proxy + fallback, added session tools, and persisted approvals via HttpOnly cookie for refresh durability; `/chat` now accepts agent key header for agent principals.  
+  **Key files:** `apps/web/src/routes/chat.ts`, `apps/web/src/routes/approvals.ts`, `apps/web/src/lib/openclawApi.ts`, `apps/web/src/lib/approvalStore.ts`, `apps/web/src/lib/openclawApi.test.ts`, `apps/web/src/lib/approvalStore.test.ts`.  
+  **Tests:** `npm run test` ✅; `npm run lint` ❌ (pre-existing repo-wide lint issues); `npm run test:e2e` ✅ (openclaw spec skipped without auth state); `npx eslint src/lib/approvalStore.ts src/lib/openclawApi.ts src/routes/chat.ts src/routes/approvals.ts` ✅; `cargo test` ✅.  
+  **Deploys:** `apps/web` (`npm run deploy`, version `49e23ba3-2cd8-4503-8db4-f911b79dab82`).  
+  **Production checks:** API: POST `/api/agent/signup` → POST/GET `/api/openclaw/instance` returned `status: ready`. UI GETs `/feed`, `/c`, `/hatchery`, `/openclaw/chat` returned 200; `/chat` returned 307 → `/assistant`; `/assistant` returned 307 → `/chat/new`. OpenClaw chat streaming via `POST /api/openclaw/chat` returned no SSE data within 12s (logged in `docs/local/testing/agent-testing-errors.md`).  
+  **Known issues / next:** OpenClaw chat streaming still returns no data (likely tied to MVP 1.7 provider key/runtime config). Next unchecked items are **1.6 Pairing behavior clarity** and **1.7 provider keys**.

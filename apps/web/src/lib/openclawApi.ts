@@ -55,14 +55,44 @@ export type BillingSummary = {
   balance_usd: number;
 };
 
-export type OpenclawApiConfig = {
+export type SessionListParams = {
+  limit?: number;
+  activeMinutes?: number;
+  messageLimit?: number;
+  kinds?: Array<string>;
+};
+
+export type SessionHistoryParams = {
+  sessionKey: string;
+  limit?: number;
+  includeTools?: boolean;
+};
+
+export type SessionSendParams = {
+  sessionKey: string;
+  message: string;
+  timeoutSeconds?: number;
+};
+
+export type OpenclawInternalConfig = {
   apiBase: string;
   internalKey: string;
   userId: string;
+  agentKey?: never;
 };
+
+export type OpenclawAgentConfig = {
+  apiBase: string;
+  agentKey: string;
+  internalKey?: never;
+  userId?: never;
+};
+
+export type OpenclawApiConfig = OpenclawInternalConfig | OpenclawAgentConfig;
 
 export const INTERNAL_KEY_HEADER = 'X-OA-Internal-Key';
 export const USER_ID_HEADER = 'X-OA-User-Id';
+export const AGENT_KEY_HEADER = 'X-OA-Agent-Key';
 export const SERVICE_TOKEN_HEADER = 'X-OpenAgents-Service-Token';
 
 export const roundUsd = (value: number): number => {
@@ -77,6 +107,25 @@ export const buildInternalHeaders = (internalKey: string, userId: string) => ({
 export const buildServiceTokenHeader = (token: string) => ({
   [SERVICE_TOKEN_HEADER]: token,
 });
+
+const isAgentConfig = (config: OpenclawApiConfig): config is OpenclawAgentConfig =>
+  'agentKey' in config && typeof config.agentKey === 'string';
+
+const buildAuthHeaders = (config: OpenclawApiConfig): Record<string, string> => {
+  if (isAgentConfig(config)) {
+    const key = config.agentKey.trim();
+    if (!key) {
+      throw new Error('OpenClaw agent key not configured');
+    }
+    return { [AGENT_KEY_HEADER]: key };
+  }
+  const internalKey = config.internalKey.trim();
+  const userId = config.userId.trim();
+  if (!internalKey || !userId) {
+    throw new Error('OpenClaw internal auth not configured');
+  }
+  return buildInternalHeaders(internalKey, userId);
+};
 
 export const resolveInternalKey = (): string => {
   const key = process.env.OA_INTERNAL_KEY ?? process.env.OPENAGENTS_INTERNAL_KEY ?? '';
@@ -117,6 +166,11 @@ export const resolveApiBase = (): string => {
   return normalized;
 };
 
+const toQueryString = (params: URLSearchParams): string => {
+  const query = params.toString();
+  return query ? `?${query}` : '';
+};
+
 export async function openclawRequest<T>(
   config: OpenclawApiConfig,
   path: string,
@@ -124,8 +178,8 @@ export async function openclawRequest<T>(
 ): Promise<T | null> {
   const headers = new Headers(options.headers);
   headers.set('accept', 'application/json');
-  const internalHeaders = buildInternalHeaders(config.internalKey, config.userId);
-  Object.entries(internalHeaders).forEach(([key, value]) => headers.set(key, value));
+  const authHeaders = buildAuthHeaders(config);
+  Object.entries(authHeaders).forEach(([key, value]) => headers.set(key, value));
 
   if (options.body && !headers.has('content-type')) {
     headers.set('content-type', 'application/json');
@@ -198,3 +252,66 @@ export const restartRuntime = (config: OpenclawApiConfig) =>
 
 export const getBillingSummary = (config: OpenclawApiConfig) =>
   openclawRequest<BillingSummary>(config, '/openclaw/billing/summary');
+
+export const listSessions = (config: OpenclawApiConfig, params?: SessionListParams) => {
+  const search = new URLSearchParams();
+  if (typeof params?.limit === 'number' && Number.isFinite(params.limit) && params.limit > 0) {
+    search.set('limit', String(Math.floor(params.limit)));
+  }
+  if (
+    typeof params?.activeMinutes === 'number' &&
+    Number.isFinite(params.activeMinutes) &&
+    params.activeMinutes > 0
+  ) {
+    search.set('activeMinutes', String(Math.floor(params.activeMinutes)));
+  }
+  if (
+    typeof params?.messageLimit === 'number' &&
+    Number.isFinite(params.messageLimit) &&
+    params.messageLimit >= 0
+  ) {
+    search.set('messageLimit', String(Math.floor(params.messageLimit)));
+  }
+  if (Array.isArray(params?.kinds)) {
+    params.kinds
+      .map((kind) => (typeof kind === 'string' ? kind.trim() : ''))
+      .filter(Boolean)
+      .forEach((kind) => {
+        search.append('kinds', kind);
+      });
+  }
+  return openclawRequest<unknown>(config, `/openclaw/sessions${toQueryString(search)}`);
+};
+
+export const getSessionHistory = (config: OpenclawApiConfig, params: SessionHistoryParams) => {
+  const search = new URLSearchParams();
+  if (typeof params.limit === 'number' && Number.isFinite(params.limit) && params.limit > 0) {
+    search.set('limit', String(Math.floor(params.limit)));
+  }
+  if (typeof params.includeTools === 'boolean') {
+    search.set('includeTools', params.includeTools ? 'true' : 'false');
+  }
+  return openclawRequest<unknown>(
+    config,
+    `/openclaw/sessions/${encodeURIComponent(params.sessionKey)}/history${toQueryString(search)}`,
+  );
+};
+
+export const sendSessionMessage = (config: OpenclawApiConfig, params: SessionSendParams) => {
+  const payload: Record<string, unknown> = { message: params.message };
+  if (
+    typeof params.timeoutSeconds === 'number' &&
+    Number.isFinite(params.timeoutSeconds) &&
+    params.timeoutSeconds >= 0
+  ) {
+    payload.timeoutSeconds = Math.floor(params.timeoutSeconds);
+  }
+  return openclawRequest<unknown>(
+    config,
+    `/openclaw/sessions/${encodeURIComponent(params.sessionKey)}/send`,
+    {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    },
+  );
+};

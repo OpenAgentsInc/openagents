@@ -5,7 +5,15 @@ import { useAction, useQuery } from 'convex/react';
 import { api } from '../../../convex/_generated/api';
 import { OpenClawSetupCards } from '@/components/openclaw/openclaw-setup-cards';
 import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
+import { extractAgentKey } from '@/lib/openclawAuth';
 import { cn } from '@/lib/utils';
 import { resolveApiBase, resolveInternalKey } from '@/lib/openclawApi';
 import { consumeOpenClawStream } from '@/lib/openclawStream';
@@ -29,25 +37,14 @@ export const Route = createFileRoute('/_app/openclaw/chat')({
         }
 
         const auth = await getAuth().catch(() => null);
-        const userId = auth?.user?.id;
-        if (!userId) {
+        const rawUserId = auth?.user?.id;
+        const userId = typeof rawUserId === 'string' ? rawUserId.trim() : '';
+        const agentKey = extractAgentKey(request.headers);
+        if (!userId && !agentKey) {
           return new Response(JSON.stringify({ ok: false, error: 'not authenticated' }), {
             status: 401,
             headers: { 'content-type': 'application/json' },
           });
-        }
-
-        let internalKey = '';
-        try {
-          internalKey = resolveInternalKey();
-        } catch (error) {
-          return new Response(
-            JSON.stringify({
-              ok: false,
-              error: error instanceof Error ? error.message : 'OA_INTERNAL_KEY not configured',
-            }),
-            { status: 500, headers: { 'content-type': 'application/json' } },
-          );
         }
 
         let apiBase = '';
@@ -66,6 +63,65 @@ export const Route = createFileRoute('/_app/openclaw/chat')({
           );
         }
 
+        let tenantKey = userId;
+        if (!tenantKey && agentKey) {
+          const principalResponse = await fetch(`${apiBase}/openclaw/principal`, {
+            method: 'GET',
+            headers: {
+              'content-type': 'application/json',
+              'X-OA-Agent-Key': agentKey,
+            },
+            signal: request.signal,
+          });
+          if (!principalResponse.ok) {
+            const message = await principalResponse.text().catch(() => '');
+            return new Response(
+              JSON.stringify({
+                ok: false,
+                error: message || `OpenClaw principal failed (${principalResponse.status})`,
+              }),
+              { status: principalResponse.status || 500, headers: { 'content-type': 'application/json' } },
+            );
+          }
+          const principalPayload = (await principalResponse
+            .json()
+            .catch(() => null)) as
+            | { ok?: boolean; data?: { tenant_id?: string | null }; error?: string | null }
+            | null;
+          if (!principalPayload?.ok) {
+            return new Response(
+              JSON.stringify({
+                ok: false,
+                error: principalPayload?.error ?? 'OpenClaw principal failed',
+              }),
+              { status: 502, headers: { 'content-type': 'application/json' } },
+            );
+          }
+          const principalTenant = principalPayload.data?.tenant_id ?? '';
+          if (!principalTenant || typeof principalTenant !== 'string') {
+            return new Response(
+              JSON.stringify({ ok: false, error: 'OpenClaw principal missing tenant id' }),
+              { status: 502, headers: { 'content-type': 'application/json' } },
+            );
+          }
+          tenantKey = principalTenant;
+        }
+
+        let internalKey = '';
+        if (userId) {
+          try {
+            internalKey = resolveInternalKey();
+          } catch (error) {
+            return new Response(
+              JSON.stringify({
+                ok: false,
+                error: error instanceof Error ? error.message : 'OA_INTERNAL_KEY not configured',
+              }),
+              { status: 500, headers: { 'content-type': 'application/json' } },
+            );
+          }
+        }
+
         const sessionKey = typeof body?.sessionKey === 'string' ? body.sessionKey.trim() : '';
         const agentId = typeof body?.agentId === 'string' ? body.agentId.trim() : '';
 
@@ -73,14 +129,18 @@ export const Route = createFileRoute('/_app/openclaw/chat')({
           model: `openclaw:${agentId || DEFAULT_AGENT_ID}`,
           input,
           stream: true,
-          user: userId,
+          user: tenantKey,
         };
 
         const headers = new Headers();
         headers.set('content-type', 'application/json');
         headers.set('accept', 'text/event-stream');
-        headers.set('X-OA-Internal-Key', internalKey);
-        headers.set('X-OA-User-Id', userId);
+        if (userId) {
+          headers.set('X-OA-Internal-Key', internalKey);
+          headers.set('X-OA-User-Id', userId);
+        } else if (agentKey) {
+          headers.set('X-OA-Agent-Key', agentKey);
+        }
         if (sessionKey) headers.set('x-openclaw-session-key', sessionKey);
         if (agentId) headers.set('x-openclaw-agent-id', agentId);
 
@@ -121,6 +181,14 @@ type ChatMessage = {
   content: string;
 };
 
+type ApprovalDialogState = {
+  title: string;
+  description: string;
+  confirmLabel: string;
+  confirmVariant?: 'default' | 'destructive';
+  action: () => Promise<void>;
+};
+
 function OpenClawChatPage() {
   const [messages, setMessages] = useState<Array<ChatMessage>>([]);
   const [input, setInput] = useState('');
@@ -133,6 +201,9 @@ function OpenClawChatPage() {
     status: string;
     runtime_name?: string | null;
   } | null>(null);
+  const [approvalDialog, setApprovalDialog] = useState<ApprovalDialogState | null>(null);
+  const [approvalBusy, setApprovalBusy] = useState(false);
+  const [approvalError, setApprovalError] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
   const instanceQuery = useQuery(api.openclaw.getInstanceForCurrentUser);
@@ -143,7 +214,9 @@ function OpenClawChatPage() {
   const canSend =
     status !== 'streaming' &&
     input.trim().length > 0 &&
-    instanceBusy !== 'deleting';
+    instanceBusy !== 'deleting' &&
+    instanceBusy !== 'creating' &&
+    !approvalDialog;
 
   const threadTitle = useMemo(() => {
     if (sessionKey.trim()) return `Session: ${sessionKey.trim()}`;
@@ -160,14 +233,33 @@ function OpenClawChatPage() {
     );
   };
 
-  const ensureInstanceReady = async (): Promise<boolean> => {
+  const openApprovalDialog = (config: ApprovalDialogState) => {
+    setApprovalError(null);
+    setApprovalDialog(config);
+  };
+
+  const handleApprovalConfirm = async () => {
+    if (!approvalDialog) return;
+    setApprovalBusy(true);
+    setApprovalError(null);
+    try {
+      await approvalDialog.action();
+      setApprovalDialog(null);
+    } catch (err) {
+      setApprovalError(err instanceof Error ? err.message : 'Approval failed');
+    } finally {
+      setApprovalBusy(false);
+    }
+  };
+
+  const provisionInstance = async (): Promise<boolean> => {
     if (instance?.status === 'ready') return true;
     setInstanceError(null);
     setInstanceBusy('creating');
     try {
       const created = await createInstance();
-      setInstanceOverride(created ?? null);
-      if (created?.status === 'ready') {
+      setInstanceOverride(created);
+      if (created.status === 'ready') {
         return true;
       }
       setInstanceError('OpenClaw is still provisioning. Try again in a moment.');
@@ -182,9 +274,12 @@ function OpenClawChatPage() {
 
   const handleDelete = async () => {
     if (!instance) return;
-    const confirmed = globalThis.confirm?.(
-      'Delete your OpenClaw instance? This stops the gateway, removes the record, and clears secrets. You can re-provision later.',
-    );
+    const confirmFn = typeof globalThis.confirm === 'function' ? globalThis.confirm : null;
+    const confirmed = confirmFn
+      ? confirmFn(
+          'Delete your OpenClaw instance? This stops the gateway, removes the record, and clears secrets. You can re-provision later.',
+        )
+      : true;
     if (!confirmed) return;
     setInstanceError(null);
     setInstanceBusy('deleting');
@@ -200,14 +295,8 @@ function OpenClawChatPage() {
     }
   };
 
-  const handleSend = async () => {
-    if (!canSend) return;
+  const sendMessage = async (trimmed: string) => {
     setError(null);
-
-    const ready = await ensureInstanceReady();
-    if (!ready) return;
-
-    const trimmed = input.trim();
     setInput('');
 
     const userMessage: ChatMessage = {
@@ -262,6 +351,30 @@ function OpenClawChatPage() {
     }
   };
 
+  const handleSend = async () => {
+    if (!canSend) return;
+    const trimmed = input.trim();
+    if (!trimmed) return;
+
+    if (instance?.status !== 'ready') {
+      openApprovalDialog({
+        title: 'Approve OpenClaw provisioning',
+        description:
+          'Provisioning creates a managed OpenClaw gateway for your account. This may allocate compute resources and start billing.',
+        confirmLabel: 'Provision & Send',
+        action: async () => {
+          const ready = await provisionInstance();
+          if (ready) {
+            await sendMessage(trimmed);
+          }
+        },
+      });
+      return;
+    }
+
+    await sendMessage(trimmed);
+  };
+
   const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     void handleSend();
@@ -273,6 +386,41 @@ function OpenClawChatPage() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+      <Dialog
+        open={!!approvalDialog}
+        onOpenChange={(open) => {
+          if (!open) {
+            setApprovalDialog(null);
+            setApprovalError(null);
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{approvalDialog?.title ?? 'Approve action'}</DialogTitle>
+            <DialogDescription>
+              {approvalDialog?.description ?? 'Confirm this action to proceed.'}
+            </DialogDescription>
+          </DialogHeader>
+          {approvalError && <p className="text-sm text-red-400">{approvalError}</p>}
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button
+              variant="secondary"
+              onClick={() => setApprovalDialog(null)}
+              disabled={approvalBusy}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant={approvalDialog?.confirmVariant ?? 'default'}
+              onClick={() => void handleApprovalConfirm()}
+              disabled={approvalBusy}
+            >
+              {approvalBusy ? 'Working…' : approvalDialog?.confirmLabel ?? 'Approve'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
       <div className="flex items-center justify-between border-b border-border px-4 py-3">
         <div>
           <h1 className="text-lg font-semibold text-foreground">OpenClaw Chat</h1>
@@ -286,8 +434,18 @@ function OpenClawChatPage() {
           {!instance ? (
             <Button
               size="sm"
-              onClick={() => void ensureInstanceReady()}
-              disabled={instanceBusy === 'creating'}
+              onClick={() =>
+                openApprovalDialog({
+                  title: 'Approve OpenClaw provisioning',
+                  description:
+                    'Provisioning creates a managed OpenClaw gateway for your account. This may allocate compute resources and start billing.',
+                  confirmLabel: 'Provision OpenClaw',
+                  action: async () => {
+                    await provisionInstance();
+                  },
+                })
+              }
+              disabled={instanceBusy === 'creating' || !!approvalDialog}
             >
               {instanceBusy === 'creating' ? 'Provisioning…' : 'Create OpenClaw'}
             </Button>
