@@ -202,4 +202,3 @@ If we allow public agent signup:
 - Where do we verify keys first: `apps/api` (preferred) vs Convex actions?
 - Do we want `X-OA-User-Id` to keep meaning “tenantKey”, or introduce `X-OA-Tenant-Key`?
 - What are the initial scopes needed (OpenClaw read/write? chat send? approvals?) and what should be forbidden by default?
-
