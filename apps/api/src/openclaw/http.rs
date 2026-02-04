@@ -24,6 +24,12 @@ struct InstanceSummary {
     last_ready_at: Option<i64>,
 }
 
+#[derive(Debug, Serialize)]
+struct PrincipalSummary {
+    tenant_id: String,
+    principal_type: String,
+}
+
 fn instance_summary(instance: &convex::OpenclawInstance) -> InstanceSummary {
     InstanceSummary {
         status: instance.status.clone(),
@@ -497,6 +503,22 @@ pub async fn handle_instance_delete(req: Request, ctx: RouteContext<()>) -> Resu
     json_ok(Some(result))
 }
 
+pub async fn handle_openclaw_principal(req: Request, ctx: RouteContext<()>) -> Result<Response> {
+    let tenant_id = match require_openclaw_user(&req, &ctx.env).await {
+        Ok(value) => value,
+        Err(response) => return Ok(response),
+    };
+    let principal_type = if tenant_id.starts_with("agent:") {
+        "agent".to_string()
+    } else {
+        "human".to_string()
+    };
+    json_ok(Some(PrincipalSummary {
+        tenant_id,
+        principal_type,
+    }))
+}
+
 pub async fn handle_runtime_status(req: Request, ctx: RouteContext<()>) -> Result<Response> {
     let user_id = match require_openclaw_user(&req, &ctx.env).await {
         Ok(value) => value,
@@ -754,6 +776,7 @@ pub async fn handle_openclaw_index(req: Request, _ctx: RouteContext<()>) -> Resu
         ok: true,
         data: Some(serde_json::json!({
             "instance": "/api/openclaw/instance",
+            "principal": "/api/openclaw/principal",
             "runtime_status": "/api/openclaw/runtime/status",
             "runtime_devices": "/api/openclaw/runtime/devices",
             "runtime_backup": "/api/openclaw/runtime/backup",

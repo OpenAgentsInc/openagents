@@ -3,10 +3,10 @@ import { jsonSchema } from '@ai-sdk/provider-utils';
 import { createFileRoute, redirect } from '@tanstack/react-router';
 import { getAuth } from '@workos/authkit-tanstack-react-start';
 import { convertToModelMessages, stepCountIs, streamText } from 'ai';
-import { z } from 'zod';
 import type { UIMessage } from 'ai';
 import type { OpenclawApiConfig } from '@/lib/openclawApi';
-import { createApproval, getApproval } from '@/lib/approvalStore';
+import { createApproval, getApproval, getApprovalFromCookie } from '@/lib/approvalStore';
+import { extractAgentKey } from '@/lib/openclawAuth';
 import {
   approvePairingRequest,
   approveRuntimeDevice,
@@ -16,10 +16,13 @@ import {
   getOpenclawInstance,
   getRuntimeDevices,
   getRuntimeStatus,
+  getSessionHistory,
   listPairingRequests,
+  listSessions,
   resolveApiBase,
   resolveInternalKey,
   restartRuntime,
+  sendSessionMessage,
 } from '@/lib/openclawApi';
 
 type ApprovalGateResult = {
@@ -65,7 +68,7 @@ const defaultApprovalSummary = (toolName: string, toolInput: unknown): string =>
 export const Route = createFileRoute('/chat')({
   beforeLoad: () => {
     // GET /chat has no UI; send users to the chat surface.
-    throw redirect({ to: '/chat/$chatId', params: { chatId: 'new' } });
+    throw redirect({ to: '/assistant' });
   },
   server: {
     handlers: {
@@ -82,54 +85,14 @@ export const Route = createFileRoute('/chat')({
         }
 
         const auth = await getAuth().catch(() => null);
-        const userId = auth?.user?.id;
-
-        let internalKey = '';
-        try {
-          internalKey = resolveInternalKey();
-        } catch (error) {
-          // Fail fast: without this we can't call /api/openclaw/* in beta.
-          return new Response(
-            JSON.stringify({
-              ok: false,
-              error: error instanceof Error ? error.message : 'OA_INTERNAL_KEY not configured',
-            }),
-            { status: 500, headers: { 'content-type': 'application/json' } },
-          );
-        }
-        if (!userId) {
+        const rawUserId = auth?.user?.id;
+        const userId = typeof rawUserId === 'string' ? rawUserId.trim() : '';
+        const agentKey = extractAgentKey(request.headers);
+        if (!userId && !agentKey) {
           return new Response(
             JSON.stringify({ ok: false, error: 'not authenticated' }),
             { status: 401, headers: { 'content-type': 'application/json' } },
           );
-        }
-        // TS narrowing helper
-        const userIdStr: string = userId;
-
-        const agentWorkerUrl = process.env.AGENT_WORKER_URL?.trim();
-        if (agentWorkerUrl) {
-          const threadIdRaw = typeof body.id === 'string' ? body.id.trim() : '';
-          const threadId = threadIdRaw ? `${userIdStr}:${threadIdRaw}` : `user:${userIdStr}`;
-
-          const headers = new Headers();
-          headers.set('content-type', 'application/json');
-          headers.set('accept', request.headers.get('accept') ?? 'text/plain');
-          headers.set('X-OA-Internal-Key', internalKey);
-          headers.set('X-OA-User-Id', userIdStr);
-          headers.set('X-OA-Thread-Id', threadId);
-
-          const target = `${agentWorkerUrl.replace(/\/$/, '')}/internal/chat`;
-          const proxyResponse = await fetch(target, {
-            method: 'POST',
-            headers,
-            body: JSON.stringify(body),
-          });
-          // If agent worker returns 401 (e.g. OA_INTERNAL_KEY mismatch), fall back to local chat so logged-in users still get a response.
-          if (proxyResponse.status !== 401) {
-            const h = new Headers(proxyResponse.headers);
-            h.set('X-Chat-Source', 'agent-worker');
-            return new Response(proxyResponse.body, { status: proxyResponse.status, headers: h });
-          }
         }
 
         // OpenClaw API base must be explicit so server-side tool calls never hit the TanStack app.
@@ -148,11 +111,104 @@ export const Route = createFileRoute('/chat')({
             { status: 500, headers: { 'content-type': 'application/json' } },
           );
         }
-        const apiConfig: OpenclawApiConfig = {
-          apiBase,
-          internalKey,
-          userId: userIdStr,
-        };
+
+        let tenantKey = userId;
+        if (!tenantKey && agentKey) {
+          const principalResponse = await fetch(`${apiBase}/openclaw/principal`, {
+            method: 'GET',
+            headers: {
+              'content-type': 'application/json',
+              'X-OA-Agent-Key': agentKey,
+            },
+            signal: request.signal,
+          });
+          if (!principalResponse.ok) {
+            const message = await principalResponse.text().catch(() => '');
+            return new Response(
+              JSON.stringify({
+                ok: false,
+                error: message || `OpenClaw principal failed (${principalResponse.status})`,
+              }),
+              { status: principalResponse.status || 500, headers: { 'content-type': 'application/json' } },
+            );
+          }
+          const principalPayload = (await principalResponse
+            .json()
+            .catch(() => null)) as
+            | { ok?: boolean; data?: { tenant_id?: string | null }; error?: string | null }
+            | null;
+          if (!principalPayload?.ok) {
+            return new Response(
+              JSON.stringify({
+                ok: false,
+                error: principalPayload?.error ?? 'OpenClaw principal failed',
+              }),
+              { status: 502, headers: { 'content-type': 'application/json' } },
+            );
+          }
+          const principalTenant = principalPayload.data?.tenant_id ?? '';
+          if (!principalTenant || typeof principalTenant !== 'string') {
+            return new Response(
+              JSON.stringify({ ok: false, error: 'OpenClaw principal missing tenant id' }),
+              { status: 502, headers: { 'content-type': 'application/json' } },
+            );
+          }
+          tenantKey = principalTenant;
+        }
+
+        const principalId = tenantKey;
+
+        let internalKey = '';
+        let internalKeyError: string | null = null;
+        try {
+          internalKey = resolveInternalKey();
+        } catch (error) {
+          internalKeyError =
+            error instanceof Error ? error.message : 'OA_INTERNAL_KEY not configured';
+        }
+        if (userId && internalKeyError) {
+          // Fail fast: without this we can't call /api/openclaw/* in beta.
+          return new Response(
+            JSON.stringify({
+              ok: false,
+              error: internalKeyError,
+            }),
+            { status: 500, headers: { 'content-type': 'application/json' } },
+          );
+        }
+
+        const agentWorkerUrl = process.env.AGENT_WORKER_URL?.trim();
+        if (agentWorkerUrl && internalKey && principalId) {
+          const threadIdRaw = typeof body.id === 'string' ? body.id.trim() : '';
+          const threadId = threadIdRaw ? `${principalId}:${threadIdRaw}` : `user:${principalId}`;
+
+          const headers = new Headers();
+          headers.set('content-type', 'application/json');
+          headers.set('accept', request.headers.get('accept') ?? 'text/plain');
+          headers.set('X-OA-Internal-Key', internalKey);
+          headers.set('X-OA-User-Id', principalId);
+          headers.set('X-OA-Thread-Id', threadId);
+
+          const target = `${agentWorkerUrl.replace(/\/$/, '')}/internal/chat`;
+          const proxyResponse = await fetch(target, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify(body),
+          });
+          // If agent worker returns 401 (e.g. OA_INTERNAL_KEY mismatch), fall back to local chat so logged-in users still get a response.
+          if (proxyResponse.status !== 401) {
+            const h = new Headers(proxyResponse.headers);
+            h.set('X-Chat-Source', 'agent-worker');
+            return new Response(proxyResponse.body, { status: proxyResponse.status, headers: h });
+          }
+        }
+
+        const apiConfig: OpenclawApiConfig =
+          !userId && agentKey
+            ? { apiBase, agentKey }
+            : { apiBase, internalKey, userId: principalId };
+
+        const cookieHeader = request.headers.get('cookie');
 
         const requireApproval = async <T,>({
           toolName,
@@ -167,7 +223,13 @@ export const Route = createFileRoute('/chat')({
         }): Promise<T | ApprovalGateResult> => {
           const summary = defaultApprovalSummary(toolName, toolInput);
           if (approvalId) {
-            const existing = getApproval(userIdStr, approvalId);
+            const existing =
+              getApproval(principalId, approvalId) ??
+              getApprovalFromCookie({
+                userId: principalId,
+                approvalId,
+                cookieHeader,
+              });
             if (existing) {
               if (existing.status === 'approved') return action();
               if (existing.status === 'rejected') {
@@ -187,10 +249,17 @@ export const Route = createFileRoute('/chat')({
                 toolInput,
               };
             }
+            return {
+              status: 'approval_pending',
+              approvalId,
+              summary,
+              toolName,
+              toolInput,
+            };
           }
 
           const record = createApproval({
-            userId: userIdStr,
+            userId: principalId,
             summary,
             toolName,
             toolInput,
@@ -333,6 +402,90 @@ export const Route = createFileRoute('/chat')({
               description: 'Get current credit balance summary.',
               inputSchema: emptySchema,
               execute: async () => getBillingSummary(apiConfig),
+            },
+            openclaw_list_sessions: {
+              description: 'List OpenClaw sessions for the current user.',
+              inputSchema: jsonSchema({
+                type: 'object',
+                properties: {
+                  limit: { type: 'integer', minimum: 1 },
+                  activeMinutes: { type: 'integer', minimum: 1 },
+                  messageLimit: { type: 'integer', minimum: 0 },
+                  kinds: {
+                    type: 'array',
+                    items: { type: 'string', minLength: 1 },
+                  },
+                },
+              }),
+              execute: async ({
+                limit,
+                activeMinutes,
+                messageLimit,
+                kinds,
+              }: {
+                limit?: number;
+                activeMinutes?: number;
+                messageLimit?: number;
+                kinds?: Array<string>;
+              }) =>
+                listSessions(apiConfig, {
+                  limit,
+                  activeMinutes,
+                  messageLimit,
+                  kinds,
+                }),
+            },
+            openclaw_get_session_history: {
+              description: 'Fetch session history for a given OpenClaw session key.',
+              inputSchema: jsonSchema({
+                type: 'object',
+                properties: {
+                  sessionKey: { type: 'string', minLength: 1 },
+                  limit: { type: 'integer', minimum: 1 },
+                  includeTools: { type: 'boolean' },
+                },
+                required: ['sessionKey'],
+              }),
+              execute: async ({
+                sessionKey,
+                limit,
+                includeTools,
+              }: {
+                sessionKey: string;
+                limit?: number;
+                includeTools?: boolean;
+              }) =>
+                getSessionHistory(apiConfig, {
+                  sessionKey,
+                  limit,
+                  includeTools,
+                }),
+            },
+            openclaw_send_session_message: {
+              description: 'Send a message into an existing OpenClaw session.',
+              inputSchema: jsonSchema({
+                type: 'object',
+                properties: {
+                  sessionKey: { type: 'string', minLength: 1 },
+                  message: { type: 'string', minLength: 1 },
+                  timeoutSeconds: { type: 'number', minimum: 0 },
+                },
+                required: ['sessionKey', 'message'],
+              }),
+              execute: async ({
+                sessionKey,
+                message,
+                timeoutSeconds,
+              }: {
+                sessionKey: string;
+                message: string;
+                timeoutSeconds?: number;
+              }) =>
+                sendSessionMessage(apiConfig, {
+                  sessionKey,
+                  message,
+                  timeoutSeconds,
+                }),
             },
           } as any,
         });

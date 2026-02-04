@@ -1,5 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createApproval, getApproval, resolveApproval } from './approvalStore';
+import {
+  buildApprovalCookie,
+  createApproval,
+  getApproval,
+  getApprovalFromCookie,
+  recordApprovalDecision,
+  resolveApproval,
+} from './approvalStore';
 
 describe('approvalStore', () => {
   afterEach(() => {
@@ -31,5 +38,31 @@ describe('approvalStore', () => {
     });
     expect(resolved?.status).toBe('approved');
     expect(resolved?.resolvedAtMs).toBe(123456);
+  });
+
+  it('persists approval decisions in cookies', () => {
+    vi.spyOn(Date, 'now').mockReturnValue(456789);
+    recordApprovalDecision({
+      userId: 'user-2',
+      approvalId: 'approval-1',
+      decision: 'approved',
+    });
+
+    const setCookie = buildApprovalCookie({
+      userId: 'user-2',
+      approvalId: 'approval-1',
+      decision: 'approved',
+      cookieHeader: null,
+      secure: false,
+    });
+    const cookieHeader = setCookie.split(';')[0] ?? '';
+    const stored = getApprovalFromCookie({
+      userId: 'user-2',
+      approvalId: 'approval-1',
+      cookieHeader,
+    });
+
+    expect(stored?.status).toBe('approved');
+    expect(stored?.resolvedAtMs).toBe(456789);
   });
 });

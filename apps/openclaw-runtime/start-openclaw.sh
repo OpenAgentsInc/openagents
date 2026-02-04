@@ -10,7 +10,7 @@ CONFIG_DIR="/root/.clawdbot"
 CONFIG_FILE="$CONFIG_DIR/clawdbot.json"
 WORKSPACE_DIR="/root/clawd"
 SKILLS_DIR="$WORKSPACE_DIR/skills"
-BIND_MODE="${OPENCLAW_BIND_MODE:-127.0.0.1}"
+BIND_MODE="${OPENCLAW_BIND_MODE:-loopback}"
 
 mkdir -p "$CONFIG_DIR" "$WORKSPACE_DIR" "$SKILLS_DIR" "/data/openclaw"
 

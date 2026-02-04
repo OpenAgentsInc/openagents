@@ -1,5 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { deleteOpenclawInstance, resolveApiBase, resolveInternalKey } from './openclawApi';
+import {
+  deleteOpenclawInstance,
+  getBillingSummary,
+  resolveApiBase,
+  resolveInternalKey,
+} from './openclawApi';
 
 const ORIGINAL_ENV = { ...process.env };
 
@@ -81,6 +86,32 @@ describe('openclawApi', () => {
       const headers = new Headers(init?.headers as HeadersInit);
       expect(headers.get('X-OA-Internal-Key')).toBe('internal-key');
       expect(headers.get('X-OA-User-Id')).toBe('user-123');
+    });
+  });
+
+  describe('agent key auth', () => {
+    it('uses X-OA-Agent-Key when provided', async () => {
+      const fetchMock = vi.fn(() => {
+        return new Response(JSON.stringify({ ok: true, data: { balance_usd: 0 } }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      });
+      vi.stubGlobal('fetch', fetchMock);
+
+      await getBillingSummary({
+        apiBase: 'https://api.example.com',
+        agentKey: 'agent-secret',
+      });
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      const calls = fetchMock.mock.calls as unknown as Array<
+        [RequestInfo | URL, RequestInit | undefined]
+      >;
+      const [, init] = calls[0] ?? [];
+      const headers = new Headers(init?.headers as HeadersInit);
+      expect(headers.get('X-OA-Agent-Key')).toBe('agent-secret');
+      expect(headers.get('X-OA-Internal-Key')).toBeNull();
     });
   });
 
