@@ -1167,6 +1167,9 @@ export function HatcheryFlowDemo() {
 
                     <div className="space-y-2">
                       <p className="text-xs font-semibold text-card-foreground">Pending device approvals</p>
+                      <p className="text-[11px] text-muted-foreground">
+                        Approvals only: device-side pairing requests must already exist. Device onboarding is post-EA.
+                      </p>
                       {pendingDevices.length ? (
                         <div className="space-y-2">
                           {pendingDevices.map((device) => (
@@ -1239,6 +1242,9 @@ export function HatcheryFlowDemo() {
                             : 'Select a channel'}
                         </span>
                       </div>
+                      <p className="text-[11px] text-muted-foreground">
+                        Approvals only: OAuth/bot setup to create requests is post-EA.
+                      </p>
                       <div className="flex flex-wrap items-center gap-2">
                         <Input
                           value={pairingChannel}
