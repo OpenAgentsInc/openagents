@@ -245,9 +245,9 @@ Ordered by dependency; see `openclaw-on-openagents-com.md` for full roadmap.
    - Confirm Hatchery gates on `access.getStatus.allowed`: show waitlist overlay when not allowed, “Create your OpenClaw” / Provision when allowed.  
    - Confirm `/admin` can toggle `access_enabled` and approve/revoke waitlist; admin list shows users and waitlist state.
 
-3. **Milestone 3 (sidebar + OpenClaw section)** — **Partially done.**  
-   - **Done:** “OpenClaw Cloud” section in the left sidebar (`threadlist-sidebar.tsx`): shows status via `openclaw.getInstanceForCurrentUser`, link to Hatchery, link to Chat when instance is ready. Convex-backed `threads` table and `threads.list` / `threads.create` / `threads.updateTitle` / `threads.archive`; “Chats” section in sidebar with “New chat” (creates thread, navigates to /assistant) and list of Convex threads (links to /assistant?threadId=…). Public query `openclaw.getInstanceForCurrentUser` for sidebar.  
-   - **Remaining:** Flow canvas / Hatchery graph “Your workspace graph” from Convex thread index; optional threadId handling on /assistant to load a Convex thread.
+3. **Milestone 3 (sidebar + OpenClaw section)** — **Done.**  
+   - “OpenClaw Cloud” section in the left sidebar (`threadlist-sidebar.tsx`): shows status via `openclaw.getInstanceForCurrentUser`, link to Hatchery, link to Chat when instance is ready. Convex-backed `threads` table and `threads.list` / `threads.create` / `threads.updateTitle` / `threads.archive`; “Chats” section in sidebar with “New chat” (creates thread, navigates to /assistant) and list of Convex threads (links to /assistant?threadId=…). Public query `openclaw.getInstanceForCurrentUser` for sidebar.  
+   - Hatchery workspace graph now uses Convex threads + OpenClaw status and persists focus in `?focus=...`.
 
 4. **Milestone 1 + 2 (durable chat)**  
    - Stand up `openagents-agent-worker` (DO + internal chat endpoint).  
