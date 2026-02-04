@@ -98,6 +98,29 @@ Implementation details and parity notes live in:
      - group sessions, etc.
    - Click a session to view transcript and continue chatting in that session.
 
+### MVP loop: Create → Chat → Delete
+
+This is the fastest end-to-end flow users should be able to complete in one visit:
+
+1. **Create OpenClaw**
+   - Button in Hatchery and OpenClaw Chat triggers `/api/openclaw/instance` (POST).
+   - Instance becomes `ready` quickly (record + runtime URL configured).
+2. **Chat + get a response**
+   - OpenClaw Chat streams from `/api/openclaw/chat`.
+   - Requires a **server-owned LLM key** (no user setup).
+3. **See status**
+   - Show instance status + runtime name in Hatchery and Chat header.
+   - Add light status line for gateway + last backup (if available).
+4. **Delete**
+   - “Delete OpenClaw” button calls `/api/openclaw/instance` (DELETE).
+   - Record is removed (or status set to `deleted`), and secrets are cleared.
+   - UI resets to “No instance yet” with an easy re-provision option.
+
+**Default AI provider (no user keys):**
+- Set a server-owned key on `openclaw-runtime` (e.g., `OPENAI_API_KEY`, `OPENROUTER_API_KEY`, or `ANTHROPIC_API_KEY`).
+- OpenClaw gateway inherits these env vars at startup via the runtime allowlist.
+- This ensures OpenClaw Chat responds out of the box for all users.
+
 ### Advanced (after ship-first)
 
 - Channels onboarding flows (WhatsApp QR, Slack OAuth, Telegram bot token, etc.)

@@ -1,6 +1,7 @@
 import { v } from 'convex/values';
-import { internalMutation, internalQuery, type MutationCtx, type QueryCtx } from './_generated/server';
+import { internalMutation, internalQuery } from './_generated/server';
 import { fail } from './lib/errors';
+import type { MutationCtx, QueryCtx } from './_generated/server';
 
 const roundUsd = (value: number): number => {
   return Math.round((value + Number.EPSILON) * 100) / 100;

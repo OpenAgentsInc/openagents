@@ -1,6 +1,6 @@
+import { fail, requireFound } from './errors';
 import type { Doc } from '../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../_generated/server';
-import { fail, requireFound } from './errors';
 
 type UserDoc = Doc<'users'>;
 
@@ -72,9 +72,9 @@ export const requireUser = async (ctx: MutationCtx): Promise<UserDoc> => {
       updates.image = identityValue.pictureUrl;
     }
     if (Object.keys(updates).length > 1) {
-      await ctx.db.patch(existing._id, updates);
+      await ctx.db.patch('users', existing._id, updates);
     }
-    return (await ctx.db.get(existing._id)) ?? existing;
+    return (await ctx.db.get('users', existing._id)) ?? existing;
   }
 
   const newUser: {
@@ -103,6 +103,6 @@ export const requireUser = async (ctx: MutationCtx): Promise<UserDoc> => {
   }
 
   const userId = await ctx.db.insert('users', newUser);
-  const created = await ctx.db.get(userId);
+  const created = await ctx.db.get('users', userId);
   return requireFound(created, 'NOT_FOUND', 'User not found after creation');
 };

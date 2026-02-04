@@ -271,6 +271,23 @@ pub async fn handle_instance_post(req: Request, ctx: RouteContext<()>) -> Result
     json_ok(Some(instance_summary(&updated)))
 }
 
+pub async fn handle_instance_delete(req: Request, ctx: RouteContext<()>) -> Result<Response> {
+    let user_id = match require_openclaw_user(&req, &ctx.env).await {
+        Ok(value) => value,
+        Err(response) => return Ok(response),
+    };
+
+    let result = match convex::delete_instance(&ctx.env, &user_id).await {
+        Ok(res) => res,
+        Err(err) => {
+            let msg = format!("openclaw deleteInstance: {}", err);
+            return crate::json_error(&msg, 500);
+        }
+    };
+
+    json_ok(Some(result))
+}
+
 pub async fn handle_runtime_status(req: Request, ctx: RouteContext<()>) -> Result<Response> {
     let user_id = match require_openclaw_user(&req, &ctx.env).await {
         Ok(value) => value,
@@ -532,6 +549,7 @@ pub async fn handle_openclaw_index(req: Request, _ctx: RouteContext<()>) -> Resu
             "runtime_devices": "/api/openclaw/runtime/devices",
             "runtime_backup": "/api/openclaw/runtime/backup",
             "runtime_restart": "/api/openclaw/runtime/restart",
+            "instance_delete": "/api/openclaw/instance",
             "tools_invoke": "/api/openclaw/tools/invoke",
             "sessions": "/api/openclaw/sessions",
             "sessions_history": "/api/openclaw/sessions/:key/history",

@@ -1,6 +1,7 @@
-import type { NostrEvent, NostrFilter } from '@nostrify/nostrify';
 import { NPool, NRelay1 } from '@nostrify/nostrify';
-import { DEFAULT_RELAYS, type RelayEntry } from '@/lib/relayConfig';
+import type { NostrEvent, NostrFilter } from '@nostrify/nostrify';
+import type { RelayEntry } from '@/lib/relayConfig';
+import { DEFAULT_RELAYS } from '@/lib/relayConfig';
 import {
   pickReadRelays,
   recordRelayClose,
@@ -22,19 +23,19 @@ function getPoolCache(): PoolCache {
   return scope[POOL_CACHE_KEY];
 }
 
-type RelayInput = RelayEntry[] | string[];
+type RelayInput = Array<RelayEntry> | Array<string>;
 
 function isRelayEntry(value: RelayEntry | string): value is RelayEntry {
-  return typeof value === 'object' && value !== null;
+  return typeof value !== 'string';
 }
 
 function normalizeRelayInput(relayInput: RelayInput): {
-  readRelays: string[];
-  writeRelays: string[];
-  allRelays: string[];
+  readRelays: Array<string>;
+  writeRelays: Array<string>;
+  allRelays: Array<string>;
   key: string;
 } {
-  const entries: RelayEntry[] = relayInput.length
+  const entries: Array<RelayEntry> = relayInput.length
     ? relayInput.map((entry) =>
         isRelayEntry(entry)
           ? entry
@@ -95,8 +96,8 @@ export function getNostrPool(relayInput: RelayInput): NPool {
         },
       });
     },
-    reqRouter(_filters: NostrFilter[]) {
-      const routes = new Map<string, NostrFilter[]>();
+    reqRouter(_filters: Array<NostrFilter>) {
+      const routes = new Map<string, Array<NostrFilter>>();
       const selected = pickReadRelays(readRelays);
       for (const url of selected) {
         routes.set(url, _filters);
@@ -109,13 +110,13 @@ export function getNostrPool(relayInput: RelayInput): NPool {
   });
 
   cache.set(key, pool);
-  (pool as unknown as { [RELAY_LIST_KEY]?: string[] })[RELAY_LIST_KEY] =
+  (pool as unknown as { [RELAY_LIST_KEY]?: Array<string> })[RELAY_LIST_KEY] =
     readRelays;
   return pool;
 }
 
-export function getConfiguredRelays(nostr: unknown): string[] {
+export function getConfiguredRelays(nostr: unknown): Array<string> {
   if (!nostr || typeof nostr !== 'object') return DEFAULT_RELAYS;
-  const relays = (nostr as { [RELAY_LIST_KEY]?: string[] })[RELAY_LIST_KEY];
+  const relays = (nostr as { [RELAY_LIST_KEY]?: Array<string> })[RELAY_LIST_KEY];
   return Array.isArray(relays) && relays.length > 0 ? relays : DEFAULT_RELAYS;
 }

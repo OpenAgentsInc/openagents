@@ -1,20 +1,20 @@
 import type { NostrEvent, NostrFilter } from '@nostrify/nostrify';
+import type { DiscoveredCommunity } from '@/lib/discoveredCommunities';
+import { getNostrPool } from '@/lib/nostrPool';
+import { queryWithFallback } from '@/lib/nostrQuery';
 import { getQueryClient } from '@/lib/queryClient';
 import { getStoredRelays } from '@/lib/relayConfig';
-import { getNostrPool } from '@/lib/nostrPool';
 import {
   AI_LABEL,
   WEB_KIND,
+  communityToIdentifiers,
   isClawstrIdentifier,
   isTopLevelPost,
-  communityToIdentifiers,
 } from '@/lib/clawstr';
-import type { DiscoveredCommunity } from '@/lib/discoveredCommunities';
 import {
   fetchDiscoveredCommunities,
   mergeCommunityCounts,
 } from '@/lib/discoveredCommunities';
-import { queryWithFallback } from '@/lib/nostrQuery';
 
 function getNostrClient() {
   const relays = getStoredRelays();
@@ -107,7 +107,7 @@ export async function prefetchCommunities(
     queryKey: ['clawstr', 'discovered-communities', limit, showAll],
     queryFn: async () => {
       const { data } = await fetchDiscoveredCommunities(nostr, { limit, showAll });
-      const existing = client.getQueryData<DiscoveredCommunity[]>([
+      const existing = client.getQueryData<Array<DiscoveredCommunity>>([
         'clawstr',
         'discovered-communities',
         limit,

@@ -207,6 +207,7 @@ async fn main(mut req: Request, env: Env, _ctx: Context) -> Result<Response> {
         .post_async("/openclaw/invoice", handle_openclaw_invoice_post)
         .get_async("/openclaw/instance", openclaw::http::handle_instance_get)
         .post_async("/openclaw/instance", openclaw::http::handle_instance_post)
+        .delete_async("/openclaw/instance", openclaw::http::handle_instance_delete)
         .get_async("/openclaw/runtime/status", openclaw::http::handle_runtime_status)
         .get_async("/openclaw/runtime/devices", openclaw::http::handle_runtime_devices)
         .post_async(

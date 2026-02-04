@@ -5,6 +5,7 @@ import { ConvexHttpClient } from 'convex/browser';
 import { api } from '../../convex/_generated/api';
 import {
   createOpenclawInstance,
+  deleteOpenclawInstance,
   getOpenclawInstance,
   resolveApiBase,
   resolveInternalKey,
@@ -122,6 +123,19 @@ export const Route = createFileRoute('/openclaw/instance')({
           return json(500, {
             ok: false,
             error: error instanceof Error ? error.message : 'failed to provision instance',
+          });
+        }
+      },
+      DELETE: async ({ request }) => {
+        try {
+          const gate = await requireAccessFromRequest(request);
+          if (gate instanceof Response) return gate;
+          const data = await deleteOpenclawInstance(gate.config);
+          return json(200, { ok: true, data });
+        } catch (error) {
+          return json(500, {
+            ok: false,
+            error: error instanceof Error ? error.message : 'failed to delete instance',
           });
         }
       },

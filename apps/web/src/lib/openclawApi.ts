@@ -12,6 +12,10 @@ export type InstanceSummary = {
   last_ready_at?: number | null;
 };
 
+export type DeleteInstanceResult = {
+  deleted: boolean;
+};
+
 export type RuntimeStatusData = {
   gateway: { status: 'running' | 'starting' | 'stopped' | 'error' };
   lastBackup: string | null;
@@ -144,6 +148,9 @@ export const getOpenclawInstance = (config: OpenclawApiConfig) =>
 
 export const createOpenclawInstance = (config: OpenclawApiConfig) =>
   openclawRequest<InstanceSummary>(config, '/openclaw/instance', { method: 'POST' });
+
+export const deleteOpenclawInstance = (config: OpenclawApiConfig) =>
+  openclawRequest<DeleteInstanceResult>(config, '/openclaw/instance', { method: 'DELETE' });
 
 export const getRuntimeStatus = (config: OpenclawApiConfig) =>
   openclawRequest<RuntimeStatusData>(config, '/openclaw/runtime/status');

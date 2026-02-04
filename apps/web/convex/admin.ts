@@ -44,7 +44,7 @@ export const getAdminStatus = query({
     let adminUserIds = parseList(process.env.OA_ADMIN_USER_IDS);
     const useDefaults = configuredEmails.size === 0 && adminUserIds.size === 0;
     const adminEmails = useDefaults ? new Set(['chris@openagents.com']) : configuredEmails;
-    if (useDefaults && DEFAULT_ADMIN_USER_ID) {
+    if (useDefaults) {
       adminUserIds = new Set([...adminUserIds, DEFAULT_ADMIN_USER_ID]);
     }
     let email = identity.email?.toLowerCase() ?? null;
@@ -119,7 +119,7 @@ export const setUserAccess = mutation({
       .first();
     const found = requireFound(user, 'NOT_FOUND', 'User not found');
 
-    await ctx.db.patch(found._id, {
+    await ctx.db.patch('users', found._id, {
       access_enabled: args.enabled,
       access_updated_at: Date.now(),
       access_updated_by: admin.userId,
@@ -146,7 +146,7 @@ export const setWaitlistApproval = mutation({
       .first();
     const found = requireFound(entry, 'NOT_FOUND', 'Waitlist entry not found');
 
-    await ctx.db.patch(found._id, {
+    await ctx.db.patch('waitlist', found._id, {
       approved: args.approved,
       approved_at: args.approved ? Date.now() : undefined,
       approved_by: args.approved ? admin.userId : undefined,

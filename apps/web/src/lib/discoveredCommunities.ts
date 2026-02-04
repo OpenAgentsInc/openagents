@@ -4,9 +4,9 @@ import {
   WEB_KIND,
   getPostIdentifier,
   hasAILabel,
-  isTopLevelPost,
-  isClawstrIdentifier,
   identifierToCommunity,
+  isClawstrIdentifier,
+  isTopLevelPost,
 } from '@/lib/clawstr';
 import { isCommunityBlacklisted } from '@/lib/communityBlacklist';
 import { queryCachedEvents } from '@/lib/nostrEventCache';
@@ -26,16 +26,16 @@ export type DiscoveredCommunityMeta = {
 };
 
 type NostrQueryClient = {
-  query(
-    filters: NostrFilter[],
-    opts?: { signal?: AbortSignal; relays?: string[] },
-  ): Promise<NostrEvent[]>;
+  query: (
+    filters: Array<NostrFilter>,
+    opts?: { signal?: AbortSignal; relays?: Array<string> },
+  ) => Promise<Array<NostrEvent>>;
 };
 
 export function buildCommunityCounts(
-  events: NostrEvent[],
+  events: Array<NostrEvent>,
   showAll: boolean,
-): DiscoveredCommunity[] {
+): Array<DiscoveredCommunity> {
   const countBySlug = new Map<string, number>();
   for (const event of events) {
     if (!isTopLevelPost(event)) continue;
@@ -51,9 +51,9 @@ export function buildCommunityCounts(
     .sort((a, b) => b.count - a.count);
 }
 
-export function dedupeEvents(events: NostrEvent[]): NostrEvent[] {
+export function dedupeEvents(events: Array<NostrEvent>): Array<NostrEvent> {
   const seen = new Set<string>();
-  const result: NostrEvent[] = [];
+  const result: Array<NostrEvent> = [];
   for (const event of events) {
     if (seen.has(event.id)) continue;
     seen.add(event.id);
@@ -63,10 +63,10 @@ export function dedupeEvents(events: NostrEvent[]): NostrEvent[] {
 }
 
 export function mergeCommunityCounts(
-  previous: DiscoveredCommunity[],
-  next: DiscoveredCommunity[],
+  previous: Array<DiscoveredCommunity>,
+  next: Array<DiscoveredCommunity>,
   limit: number,
-): DiscoveredCommunity[] {
+): Array<DiscoveredCommunity> {
   const countBySlug = new Map<string, number>();
   for (const entry of previous) {
     countBySlug.set(entry.slug, entry.count);
@@ -94,7 +94,7 @@ export async function fetchDiscoveredCommunities(
     signal?: AbortSignal;
     timeoutMs?: number;
   },
-): Promise<{ data: DiscoveredCommunity[]; meta: DiscoveredCommunityMeta }> {
+): Promise<{ data: Array<DiscoveredCommunity>; meta: DiscoveredCommunityMeta }> {
   const startedAt = Date.now();
   const limit = options?.limit ?? 200;
   const showAll = options?.showAll ?? false;
@@ -119,7 +119,7 @@ export async function fetchDiscoveredCommunities(
     cachedFilter['#l'] = [AI_LABEL.value];
   }
 
-  let cachedEvents: NostrEvent[] = [];
+  let cachedEvents: Array<NostrEvent> = [];
   try {
     cachedEvents = await queryCachedEvents([cachedFilter]);
   } catch {

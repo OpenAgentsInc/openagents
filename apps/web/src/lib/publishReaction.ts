@@ -1,11 +1,13 @@
-import type { NostrEvent } from '@nostrify/nostrify';
 import { NBrowserSigner } from '@nostrify/nostrify';
-import type { NPool } from '@nostrify/nostrify';
+import type { NPool, NostrEvent } from '@nostrify/nostrify';
+
+type Tag = Array<string>;
+type Tags = Array<Tag>;
 
 function buildUnsignedEvent(
   kind: 7,
   content: string,
-  tags: string[][],
+  tags: Tags,
 ): Omit<NostrEvent, 'id' | 'pubkey' | 'sig'> {
   return {
     kind,
@@ -25,7 +27,7 @@ export async function publishReaction(
   content: string,
 ): Promise<NostrEvent> {
   const signer = new NBrowserSigner();
-  const tags: string[][] = [
+  const tags: Tags = [
     ['e', target.id],
     ['p', target.pubkey],
   ];

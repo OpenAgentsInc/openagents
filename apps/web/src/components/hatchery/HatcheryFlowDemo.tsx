@@ -321,6 +321,7 @@ export function HatcheryFlowDemo() {
   const [instance, setInstance] = useState<InstanceSummary | null>(null);
   const [instanceStatus, setInstanceStatus] = useState<'idle' | 'loading' | 'creating' | 'ready' | 'error'>('idle');
   const [instanceError, setInstanceError] = useState<string | null>(null);
+  const [deleteBusy, setDeleteBusy] = useState(false);
   const [runtimeStatus, setRuntimeStatus] = useState<RuntimeStatusData | null>(null);
   const [runtimeDevices, setRuntimeDevices] = useState<RuntimeDevicesData | null>(null);
   const [runtimeLoading, setRuntimeLoading] = useState(false);
@@ -355,6 +356,7 @@ export function HatcheryFlowDemo() {
 
   const getOpenclawInstance = useAction(api.openclawApi.getInstance);
   const createOpenclawInstance = useAction(api.openclawApi.createInstance);
+  const deleteOpenclawInstance = useAction(api.openclawApi.deleteInstance);
   const getRuntimeStatus = useAction(api.openclawApi.getRuntimeStatus);
   const getRuntimeDevices = useAction(api.openclawApi.getRuntimeDevices);
   const approveRuntimeDevice = useAction(api.openclawApi.approveRuntimeDevice);
@@ -437,6 +439,26 @@ export function HatcheryFlowDemo() {
       setInstanceError(error instanceof Error ? error.message : 'Failed to provision');
       setInstanceStatus('error');
       throw error;
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!instance) return;
+    setDeleteBusy(true);
+    setInstanceError(null);
+    try {
+      await deleteOpenclawInstance();
+      setInstance(null);
+      setInstanceStatus('idle');
+      setRuntimeStatus(null);
+      setRuntimeDevices(null);
+      setPairingRequests(null);
+      setPairingChannel('');
+    } catch (error) {
+      setInstanceError(error instanceof Error ? error.message : 'Failed to delete');
+      throw error;
+    } finally {
+      setDeleteBusy(false);
     }
   };
 
@@ -1046,7 +1068,7 @@ export function HatcheryFlowDemo() {
                   <div className="mt-auto flex flex-wrap gap-2">
                     <Button
                       size="sm"
-                      disabled={instanceStatus === 'creating' || instanceStatus === 'loading' || !!instance}
+                      disabled={instanceStatus === 'creating' || instanceStatus === 'loading' || !!instance || deleteBusy}
                       onClick={() =>
                         openApprovalDialog({
                           title: 'Approve OpenClaw provisioning',
@@ -1059,6 +1081,25 @@ export function HatcheryFlowDemo() {
                     >
                       {instance ? 'Provisioned' : instanceStatus === 'creating' ? 'Provisioning…' : 'Provision OpenClaw'}
                     </Button>
+                    {instance ? (
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        disabled={deleteBusy || instanceStatus === 'creating' || instanceStatus === 'loading'}
+                        onClick={() =>
+                          openApprovalDialog({
+                            title: 'Delete OpenClaw instance',
+                            description:
+                              'Deleting removes your OpenClaw record and clears secrets. You can re-provision later.',
+                            confirmLabel: 'Delete OpenClaw',
+                            confirmVariant: 'destructive',
+                            action: handleDelete,
+                          })
+                        }
+                      >
+                        {deleteBusy ? 'Deleting…' : 'Delete OpenClaw'}
+                      </Button>
+                    ) : null}
                     <Button asChild size="sm" variant="secondary">
                       <Link to="/kb/$slug" params={{ slug: 'openclaw-wallets' }}>Learn more</Link>
                     </Button>

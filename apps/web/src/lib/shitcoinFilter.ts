@@ -21,7 +21,7 @@ export function hasShitcoinTicker(text: string): boolean {
  * Use when displaying feeds so such posts are hidden and never get engagement.
  */
 export function filterPostsWithShitcoin<T extends { content?: string | null }>(
-  posts: T[],
-): T[] {
+  posts: Array<T>,
+): Array<T> {
   return posts.filter((p) => !hasShitcoinTicker(p.content ?? ''));
 }

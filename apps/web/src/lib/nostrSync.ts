@@ -8,10 +8,10 @@ const SYNC_INTERVAL_MS = 2 * 60 * 1000;
 const DEFAULT_LOOKBACK_SECONDS = 60 * 60;
 
 type NostrQueryClient = {
-  query(
-    filters: NostrFilter[],
-    opts?: { signal?: AbortSignal; relays?: string[] },
-  ): Promise<NostrEvent[]>;
+  query: (
+    filters: Array<NostrFilter>,
+    opts?: { signal?: AbortSignal; relays?: Array<string> },
+  ) => Promise<Array<NostrEvent>>;
 };
 
 type SyncState = {
@@ -23,7 +23,7 @@ type SyncState = {
 function getState(): SyncState {
   const scope = globalThis as typeof globalThis & { [SYNC_KEY]?: SyncState };
   if (!scope[SYNC_KEY]) scope[SYNC_KEY] = {};
-  return scope[SYNC_KEY]!;
+  return scope[SYNC_KEY];
 }
 
 function loadLastSync(): number | null {
