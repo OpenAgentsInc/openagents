@@ -14,6 +14,7 @@ import { Route as SetupRouteImport } from './routes/setup'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as ChatRouteImport } from './routes/chat'
 import { Route as CallbackRouteImport } from './routes/callback'
+import { Route as ApprovalsRouteImport } from './routes/approvals'
 import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
 import { Route as AppRouteImport } from './routes/_app'
 import { Route as AppIndexRouteImport } from './routes/_app/index'
@@ -57,6 +58,11 @@ const ChatRoute = ChatRouteImport.update({
 const CallbackRoute = CallbackRouteImport.update({
   id: '/callback',
   path: '/callback',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApprovalsRoute = ApprovalsRouteImport.update({
+  id: '/approvals',
+  path: '/approvals',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AuthenticatedRoute = AuthenticatedRouteImport.update({
@@ -156,6 +162,7 @@ const AppCCommunityRoute = AppCCommunityRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof AppIndexRoute
+  '/approvals': typeof ApprovalsRoute
   '/callback': typeof CallbackRoute
   '/chat': typeof ChatRoute
   '/login': typeof LoginRoute
@@ -180,6 +187,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof AppIndexRoute
+  '/approvals': typeof ApprovalsRoute
   '/callback': typeof CallbackRoute
   '/chat': typeof ChatRoute
   '/login': typeof LoginRoute
@@ -204,6 +212,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_app': typeof AppRouteWithChildren
   '/_authenticated': typeof AuthenticatedRouteWithChildren
+  '/approvals': typeof ApprovalsRoute
   '/callback': typeof CallbackRoute
   '/chat': typeof ChatRoute
   '/login': typeof LoginRoute
@@ -231,6 +240,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/approvals'
     | '/callback'
     | '/chat'
     | '/login'
@@ -255,6 +265,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/approvals'
     | '/callback'
     | '/chat'
     | '/login'
@@ -278,6 +289,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/_app'
     | '/_authenticated'
+    | '/approvals'
     | '/callback'
     | '/chat'
     | '/login'
@@ -305,6 +317,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   AppRoute: typeof AppRouteWithChildren
   AuthenticatedRoute: typeof AuthenticatedRouteWithChildren
+  ApprovalsRoute: typeof ApprovalsRoute
   CallbackRoute: typeof CallbackRoute
   ChatRoute: typeof ChatRoute
   LoginRoute: typeof LoginRoute
@@ -348,6 +361,13 @@ declare module '@tanstack/react-router' {
       path: '/callback'
       fullPath: '/callback'
       preLoaderRoute: typeof CallbackRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/approvals': {
+      id: '/approvals'
+      path: '/approvals'
+      fullPath: '/approvals'
+      preLoaderRoute: typeof ApprovalsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_authenticated': {
@@ -555,6 +575,7 @@ const AuthenticatedRouteWithChildren = AuthenticatedRoute._addFileChildren(
 const rootRouteChildren: RootRouteChildren = {
   AppRoute: AppRouteWithChildren,
   AuthenticatedRoute: AuthenticatedRouteWithChildren,
+  ApprovalsRoute: ApprovalsRoute,
   CallbackRoute: CallbackRoute,
   ChatRoute: ChatRoute,
   LoginRoute: LoginRoute,

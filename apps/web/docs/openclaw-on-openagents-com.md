@@ -52,7 +52,7 @@ Today’s gap: we do **not** yet provide a first-class “OpenClaw WebChat” th
 
 As of the last update, the following is implemented and deployed:
 
-- **Hatchery:** “Create your OpenClaw” panel (when access is allowed). Calls Convex actions `openclawApi.getInstance` and `openclawApi.createInstance`; shows instance status, Provision button, and when status is `ready` a “Provisioning complete” blurb with a link to the main Chat. No TanStack server function for instance (avoids “Only HTML” issues).
+- **Hatchery:** “Create your OpenClaw” panel (when access is allowed). Calls Convex actions `openclawApi.getInstance` and `openclawApi.createInstance`; shows instance status, Provision button, and when status is `ready` a “Provisioning complete” blurb with a link to the main Chat. When ready, a controls card appears (runtime status, devices, backup, restart) with approval gating for sensitive actions. No TanStack server function for instance (avoids “Only HTML” issues).
 - **Convex:** Actions in `openclawApi.ts` that `fetch(PUBLIC_API_URL/openclaw/instance)` with internal key and user id; HTTP routes in `http.ts` for `/control/openclaw/instance`, `/control/openclaw/instance/status`, `/control/openclaw/instance/secret`, `/control/openclaw/billing/summary`; handlers in `openclaw_control_http.ts` that verify `x-oa-control-key` and call internal openclaw/billing functions. Env: `OA_INTERNAL_KEY`, `OA_CONTROL_KEY`, `PUBLIC_API_URL`, `OPENCLAW_ENCRYPTION_KEY`.
 - **API worker (Rust):** GET/POST `/openclaw/instance` with `X-OA-Internal-Key` and `X-OA-User-Id`; all Convex calls go to `CONVEX_SITE_URL` with `CONVEX_CONTROL_KEY` (must match the same Convex deployment as the web app). Explicit error handling with prefixed messages (e.g. `openclaw getInstance: ...`). Env: `OA_INTERNAL_KEY`, `CONVEX_SITE_URL`, `CONVEX_CONTROL_KEY`, `OPENCLAW_RUNTIME_URL`.
 - **What “ready” means:** Instance row in Convex with `status: ready` and `runtime_url` from API env. No per-user container is started; provision only records metadata. OpenClaw Chat (streaming) is now available via `/openclaw/chat`; device pairing remains a later milestone.
@@ -404,8 +404,8 @@ Status:
 - website-driven actions (cost/spend/account connects)
 
 Changes:
-- Agent worker emits `approval.requested` events and blocks until resolved.
-- Website shows an approval modal and sends `approval.respond` (server-to-server).
+- Agent worker/tool layer emits approval requests (tool results with `approval_required`) and blocks execution until approved.
+- Website shows an approval modal (Hatchery) and approval cards in chat tool output; server sends `approval.respond` (server-to-server).
 - Extend OpenClaw surfaces:
   - device approve (already present)
   - DM pairing list/approve endpoints (add)
@@ -413,6 +413,8 @@ Changes:
 
 Acceptance criteria:
 - Provision/device approve/restart are gated by explicit UI approval.
+Status:
+- Hatchery approval modal now gates provisioning, device approvals, and gateway restart; chat tool calls return `approval_required` payloads with follow-up `/approvals` server route. DM pairing + exec approvals still pending.
 
 ### Milestone 7: Cloudflare “unfair advantages”
 

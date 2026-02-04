@@ -4,7 +4,7 @@ import { useAction, useMutation, useQuery } from 'convex/react';
 import { useAuth } from '@workos/authkit-tanstack-react-start/client';
 import { api } from '../../../convex/_generated/api';
 import { posthogCapture } from '@/lib/posthog';
-import type { InstanceSummary } from '@/lib/openclawApi';
+import type { InstanceSummary, RuntimeDevicesData, RuntimeStatusData } from '@/lib/openclawApi';
 import {
   InfiniteCanvas,
   isLeafNode,
@@ -20,6 +20,13 @@ import {
 } from '@/components/flow';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { MessageSquareIcon, ServerIcon, CpuIcon, ListChecksIcon } from 'lucide-react';
 
 const HOME_TREE: FlowNode = {
@@ -264,6 +271,14 @@ const HOME_TREE: FlowNode = {
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+type ApprovalDialogState = {
+  title: string;
+  description: string;
+  confirmLabel: string;
+  confirmVariant?: 'default' | 'destructive';
+  action: () => Promise<void>;
+};
+
 export function HatcheryFlowDemo() {
   const { user, loading: authLoading } = useAuth();
   const accessStatus = useQuery(api.access.getStatus);
@@ -275,6 +290,13 @@ export function HatcheryFlowDemo() {
   const [instance, setInstance] = useState<InstanceSummary | null>(null);
   const [instanceStatus, setInstanceStatus] = useState<'idle' | 'loading' | 'creating' | 'ready' | 'error'>('idle');
   const [instanceError, setInstanceError] = useState<string | null>(null);
+  const [runtimeStatus, setRuntimeStatus] = useState<RuntimeStatusData | null>(null);
+  const [runtimeDevices, setRuntimeDevices] = useState<RuntimeDevicesData | null>(null);
+  const [runtimeLoading, setRuntimeLoading] = useState(false);
+  const [runtimeError, setRuntimeError] = useState<string | null>(null);
+  const [approvalDialog, setApprovalDialog] = useState<ApprovalDialogState | null>(null);
+  const [approvalBusy, setApprovalBusy] = useState(false);
+  const [approvalError, setApprovalError] = useState<string | null>(null);
   const overlaySeen = useRef(false);
   const apiTree: FlowNode | null = HOME_TREE;
   const currentTree = apiTree ?? SKELETON_TREE;
@@ -284,13 +306,100 @@ export function HatcheryFlowDemo() {
   const waitlistEntry = accessStatus?.waitlistEntry ?? null;
   const waitlistApproved = accessStatus?.waitlistApproved === true;
   const overlayVisible = !accessAllowed;
+  const pendingDevices = runtimeDevices?.pending ?? [];
+  const pairedDevices = runtimeDevices?.paired ?? [];
 
   const getOpenclawInstance = useAction(api.openclawApi.getInstance);
   const createOpenclawInstance = useAction(api.openclawApi.createInstance);
+  const getRuntimeStatus = useAction(api.openclawApi.getRuntimeStatus);
+  const getRuntimeDevices = useAction(api.openclawApi.getRuntimeDevices);
+  const approveRuntimeDevice = useAction(api.openclawApi.approveRuntimeDevice);
+  const backupRuntime = useAction(api.openclawApi.backupRuntime);
+  const restartRuntime = useAction(api.openclawApi.restartRuntime);
 
   useEffect(() => {
     posthogCapture('hatchery_view');
   }, []);
+
+  const openApprovalDialog = (next: ApprovalDialogState) => {
+    setApprovalError(null);
+    setApprovalDialog(next);
+  };
+
+  const handleApprovalConfirm = async () => {
+    if (!approvalDialog) return;
+    setApprovalBusy(true);
+    setApprovalError(null);
+    try {
+      await approvalDialog.action();
+      setApprovalDialog(null);
+    } catch (error) {
+      setApprovalError(error instanceof Error ? error.message : 'Action failed');
+    } finally {
+      setApprovalBusy(false);
+    }
+  };
+
+  const loadRuntime = async () => {
+    if (!instance || instance.status !== 'ready') return;
+    setRuntimeLoading(true);
+    setRuntimeError(null);
+    try {
+      const [status, devices] = await Promise.all([
+        getRuntimeStatus(),
+        getRuntimeDevices(),
+      ]);
+      setRuntimeStatus(status);
+      setRuntimeDevices(devices);
+    } catch (error) {
+      setRuntimeError(error instanceof Error ? error.message : 'Failed to load runtime');
+    } finally {
+      setRuntimeLoading(false);
+    }
+  };
+
+  const handleProvision = async () => {
+    setInstanceStatus('creating');
+    setInstanceError(null);
+    try {
+      const data = await createOpenclawInstance();
+      setInstance(data ?? null);
+      setInstanceStatus('ready');
+    } catch (error) {
+      setInstanceError(error instanceof Error ? error.message : 'Failed to provision');
+      setInstanceStatus('error');
+      throw error;
+    }
+  };
+
+  const handleBackup = async () => {
+    try {
+      await backupRuntime();
+      await loadRuntime();
+    } catch (error) {
+      setRuntimeError(error instanceof Error ? error.message : 'Failed to run backup');
+    }
+  };
+
+  const handleRestart = async () => {
+    try {
+      await restartRuntime();
+      await loadRuntime();
+    } catch (error) {
+      setRuntimeError(error instanceof Error ? error.message : 'Failed to restart');
+      throw error;
+    }
+  };
+
+  const handleApproveDevice = async (requestId: string) => {
+    try {
+      await approveRuntimeDevice({ requestId });
+      await loadRuntime();
+    } catch (error) {
+      setRuntimeError(error instanceof Error ? error.message : 'Failed to approve device');
+      throw error;
+    }
+  };
 
   useEffect(() => {
     if (overlayVisible && !overlaySeen.current) {
@@ -321,6 +430,16 @@ export function HatcheryFlowDemo() {
       active = false;
     };
   }, [accessAllowed]);
+
+  useEffect(() => {
+    if (!accessAllowed) return;
+    if (instance?.status === 'ready') {
+      void loadRuntime();
+      return;
+    }
+    setRuntimeStatus(null);
+    setRuntimeDevices(null);
+  }, [accessAllowed, instance?.status]);
 
   function renderFlowNode(node: FlowNode) {
     const selected = selectedNode?.id === node.id;
@@ -376,6 +495,43 @@ export function HatcheryFlowDemo() {
 
   return (
     <div className="relative flex min-h-0 flex-1 flex-col">
+      <Dialog
+        open={!!approvalDialog}
+        onOpenChange={(open) => {
+          if (!open) {
+            setApprovalDialog(null);
+            setApprovalError(null);
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{approvalDialog?.title ?? 'Approve action'}</DialogTitle>
+            <DialogDescription>
+              {approvalDialog?.description ?? 'Confirm this action to proceed.'}
+            </DialogDescription>
+          </DialogHeader>
+          {approvalError && (
+            <p className="text-sm text-red-400">{approvalError}</p>
+          )}
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button
+              variant="secondary"
+              onClick={() => setApprovalDialog(null)}
+              disabled={approvalBusy}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant={approvalDialog?.confirmVariant ?? 'default'}
+              onClick={() => void handleApprovalConfirm()}
+              disabled={approvalBusy}
+            >
+              {approvalBusy ? 'Working…' : approvalDialog?.confirmLabel ?? 'Approve'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
       {/* Overlay: Join the waitlist or sneak peek */}
       {overlayVisible && (
         <>
@@ -486,67 +642,188 @@ export function HatcheryFlowDemo() {
       {/* Logged in: only Create your OpenClaw pane */}
       {accessAllowed && (
         <div className="flex min-h-0 flex-1 flex-col p-4">
-          <div className="mx-auto w-full max-w-lg flex min-h-0 flex-col overflow-hidden rounded-lg border border-border bg-card">
-            <div className="flex items-center gap-2 border-b border-border px-4 py-3">
-              <ServerIcon className="h-4 w-4 text-muted-foreground" />
-              <span className="text-sm font-semibold text-card-foreground">Create your OpenClaw</span>
-            </div>
-            <CardContent className="flex min-h-0 flex-1 flex-col gap-4 p-4">
-              <p className="text-xs leading-relaxed text-muted-foreground">
-                Provision a managed OpenClaw instance on openagents.com. One gateway per user; tools, sessions, and pairing in one place.
-              </p>
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="rounded-md border border-border bg-muted/50 px-2 py-0.5 font-mono text-xs text-muted-foreground">
-                  Instance: Standard
-                </span>
-                <span className="rounded-md border border-border bg-muted/50 px-2 py-0.5 text-xs text-muted-foreground">
-                  {instance
-                    ? `Status: ${instance.status}`
-                    : instanceStatus === 'loading'
-                      ? 'Checking instance…'
-                      : 'No instance yet'}
-                </span>
-                {instance?.runtime_name && (
+          <div className="mx-auto flex w-full max-w-2xl flex-col gap-4">
+            <div className="flex min-h-0 flex-col overflow-hidden rounded-lg border border-border bg-card">
+              <div className="flex items-center gap-2 border-b border-border px-4 py-3">
+                <ServerIcon className="h-4 w-4 text-muted-foreground" />
+                <span className="text-sm font-semibold text-card-foreground">Create your OpenClaw</span>
+              </div>
+              <CardContent className="flex min-h-0 flex-1 flex-col gap-4 p-4">
+                <p className="text-xs leading-relaxed text-muted-foreground">
+                  Provision a managed OpenClaw instance on openagents.com. One gateway per user; tools, sessions, and pairing in one place.
+                </p>
+                <div className="flex flex-wrap items-center gap-2">
                   <span className="rounded-md border border-border bg-muted/50 px-2 py-0.5 font-mono text-xs text-muted-foreground">
-                    {instance.runtime_name}
+                    Instance: Standard
                   </span>
-                )}
-              </div>
-              {instance?.status === 'ready' && (
-                <div className="rounded-md border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
-                  <p className="font-medium text-card-foreground mb-1">Provisioning complete</p>
-                  <p className="leading-relaxed">
-                    Your OpenClaw instance is recorded and the runtime URL is configured. OpenClaw Chat now streams directly from your gateway — head to <Link to="/openclaw/chat" className="text-primary hover:underline">OpenClaw Chat</Link> to start a session. Device pairing is coming next.
-                  </p>
+                  <span className="rounded-md border border-border bg-muted/50 px-2 py-0.5 text-xs text-muted-foreground">
+                    {instance
+                      ? `Status: ${instance.status}`
+                      : instanceStatus === 'loading'
+                        ? 'Checking instance…'
+                        : 'No instance yet'}
+                  </span>
+                  {instance?.runtime_name && (
+                    <span className="rounded-md border border-border bg-muted/50 px-2 py-0.5 font-mono text-xs text-muted-foreground">
+                      {instance.runtime_name}
+                    </span>
+                  )}
                 </div>
-              )}
-              <div className="mt-auto flex flex-wrap gap-2">
-                <Button
-                  size="sm"
-                  disabled={instanceStatus === 'creating' || instanceStatus === 'loading' || !!instance}
-                  onClick={async () => {
-                    setInstanceStatus('creating');
-                    setInstanceError(null);
-                try {
-                  const data = await createOpenclawInstance();
-                  setInstance(data ?? null);
-                  setInstanceStatus('ready');
-                } catch (error) {
-                      setInstanceError(error instanceof Error ? error.message : 'Failed to provision');
-                      setInstanceStatus('error');
+                {instance?.status === 'ready' && (
+                  <div className="rounded-md border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+                    <p className="font-medium text-card-foreground mb-1">Provisioning complete</p>
+                    <p className="leading-relaxed">
+                      Your OpenClaw instance is recorded and the runtime URL is configured. OpenClaw Chat now streams directly from your gateway — head to <Link to="/openclaw/chat" className="text-primary hover:underline">OpenClaw Chat</Link> to start a session. Device pairing is now gated by approvals below.
+                    </p>
+                  </div>
+                )}
+                <div className="mt-auto flex flex-wrap gap-2">
+                  <Button
+                    size="sm"
+                    disabled={instanceStatus === 'creating' || instanceStatus === 'loading' || !!instance}
+                    onClick={() =>
+                      openApprovalDialog({
+                        title: 'Approve OpenClaw provisioning',
+                        description:
+                          'Provisioning creates a managed OpenClaw gateway for your account. This may allocate compute resources and start billing.',
+                        confirmLabel: 'Provision OpenClaw',
+                        action: handleProvision,
+                      })
                     }
-                  }}
-                >
-                  {instance ? 'Provisioned' : instanceStatus === 'creating' ? 'Provisioning…' : 'Provision OpenClaw'}
-                </Button>
-                <Button asChild size="sm" variant="secondary">
-                  <Link to="/kb/$slug" params={{ slug: 'openclaw-wallets' }}>Learn more</Link>
-                </Button>
+                  >
+                    {instance ? 'Provisioned' : instanceStatus === 'creating' ? 'Provisioning…' : 'Provision OpenClaw'}
+                  </Button>
+                  <Button asChild size="sm" variant="secondary">
+                    <Link to="/kb/$slug" params={{ slug: 'openclaw-wallets' }}>Learn more</Link>
+                  </Button>
+                </div>
+                {instanceError && (
+                  <p className="text-xs text-red-400">{instanceError}</p>
+                )}
+              </CardContent>
+            </div>
+
+            {instance?.status === 'ready' && (
+              <div className="flex min-h-0 flex-col overflow-hidden rounded-lg border border-border bg-card">
+                <div className="flex items-center justify-between gap-2 border-b border-border px-4 py-3">
+                  <div className="flex items-center gap-2">
+                    <ListChecksIcon className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-sm font-semibold text-card-foreground">OpenClaw controls</span>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => void loadRuntime()}
+                    disabled={runtimeLoading}
+                  >
+                    {runtimeLoading ? 'Refreshing…' : 'Refresh'}
+                  </Button>
+                </div>
+                <CardContent className="flex min-h-0 flex-1 flex-col gap-4 p-4">
+                  <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                    <span className="rounded-md border border-border bg-muted/50 px-2 py-0.5">
+                      Gateway: {runtimeStatus?.gateway?.status ?? 'unknown'}
+                    </span>
+                    <span className="rounded-md border border-border bg-muted/50 px-2 py-0.5">
+                      Last backup: {runtimeStatus?.lastBackup ?? 'unknown'}
+                    </span>
+                    <span className="rounded-md border border-border bg-muted/50 px-2 py-0.5">
+                      Instance type: {runtimeStatus?.container?.instanceType ?? 'standard'}
+                    </span>
+                  </div>
+
+                  <div className="flex flex-wrap gap-2">
+                    <Button size="sm" variant="secondary" onClick={() => void handleBackup()} disabled={runtimeLoading}>
+                      Backup now
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      onClick={() =>
+                        openApprovalDialog({
+                          title: 'Approve gateway restart',
+                          description:
+                            'Restarting the gateway will interrupt active sessions and connected devices.',
+                          confirmLabel: 'Restart gateway',
+                          confirmVariant: 'destructive',
+                          action: handleRestart,
+                        })
+                      }
+                      disabled={runtimeLoading}
+                    >
+                      Restart gateway
+                    </Button>
+                  </div>
+
+                  <div className="space-y-2">
+                    <p className="text-xs font-semibold text-card-foreground">Pending device approvals</p>
+                    {pendingDevices.length ? (
+                      <div className="space-y-2">
+                        {pendingDevices.map((device) => (
+                          <div
+                            key={device.requestId}
+                            className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-border px-3 py-2 text-xs"
+                          >
+                            <div>
+                              <div className="font-mono text-xs">{device.requestId}</div>
+                              <div className="text-muted-foreground">
+                                {device.client?.platform ?? 'Unknown'} {device.client?.mode ? `· ${device.client.mode}` : ''}
+                              </div>
+                            </div>
+                            <Button
+                              size="sm"
+                              onClick={() =>
+                                openApprovalDialog({
+                                  title: 'Approve device pairing',
+                                  description:
+                                    'Approving this device will grant it access to your OpenClaw gateway.',
+                                  confirmLabel: 'Approve device',
+                                  action: () => handleApproveDevice(device.requestId),
+                                })
+                              }
+                            >
+                              Approve
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-xs text-muted-foreground">No pending devices.</p>
+                    )}
+                  </div>
+
+                  <div className="space-y-2">
+                    <p className="text-xs font-semibold text-card-foreground">Paired devices</p>
+                    {pairedDevices.length ? (
+                      <div className="space-y-2">
+                        {pairedDevices.map((device) => (
+                          <div
+                            key={device.deviceId}
+                            className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-border px-3 py-2 text-xs"
+                          >
+                            <div>
+                              <div className="font-mono text-xs">{device.deviceId}</div>
+                              <div className="text-muted-foreground">
+                                {device.client?.platform ?? 'Unknown'} {device.client?.mode ? `· ${device.client.mode}` : ''}
+                              </div>
+                            </div>
+                            {device.pairedAt ? (
+                              <span className="text-xs text-muted-foreground">
+                                Paired {new Date(device.pairedAt).toLocaleString()}
+                              </span>
+                            ) : null}
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-xs text-muted-foreground">No devices paired yet.</p>
+                    )}
+                  </div>
+
+                  {runtimeError && <p className="text-xs text-red-400">{runtimeError}</p>}
+                </CardContent>
               </div>
-              {instanceError && (
-                <p className="text-xs text-red-400">{instanceError}</p>
-              )}
-            </CardContent>
+            )}
           </div>
         </div>
       )}
