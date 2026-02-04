@@ -3,6 +3,8 @@
 **For:** The next agent working on the OpenAgents web app (`apps/web`) and OpenClaw integration.  
 **Date:** 2026-02-04
 
+**Update:** The OpenClaw tool-call fix has been implemented in code (explicit API base required; same-origin fallback removed). Ensure `PUBLIC_API_URL` (or `OPENCLAW_API_BASE`) is set and verify the `/chat` tool flow end-to-end.
+
 ---
 
 ## 1. Read this first

@@ -32,9 +32,10 @@ The **OpenAgents** web app — [openagents.com](https://openagents.com). Public 
    cp .env.local.example .env.local
    ```
 
-   Then set WorkOS and Convex values in `.env.local`:
+   Then set WorkOS, Convex, and API values in `.env.local`:
    - WorkOS: Client ID, API Key, Cookie password (min 32 chars), Redirect URI `http://localhost:3000/callback`
    - Get keys from [WorkOS dashboard](https://workos.com/); add `http://localhost:3000/callback` as a redirect URI there
+   - OpenClaw API base: `PUBLIC_API_URL` (must point at the Rust API worker/gateway and include `/api`)
 
 3. **Convex**
 
@@ -79,9 +80,10 @@ The **OpenAgents** web app — [openagents.com](https://openagents.com). Public 
 
 ### OpenClaw chat (beta)
 
-`/chat` uses server-side tools that call the Rust API at `/api/openclaw/*`. To enable them, set the internal auth secret on the Worker:
+`/chat` uses server-side tools that call the Rust API at `/api/openclaw/*`. To enable them, set the API base and internal auth secret on the Worker:
 
 ```bash
+npx wrangler secret put PUBLIC_API_URL
 npx wrangler secret put OA_INTERNAL_KEY
 ```
 

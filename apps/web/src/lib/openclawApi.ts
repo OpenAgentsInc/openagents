@@ -68,14 +68,35 @@ export const resolveInternalKey = (): string => {
   return key.trim();
 };
 
-export const resolveApiBase = (origin?: string): string => {
-  if (process.env.PUBLIC_API_URL) {
-    return process.env.PUBLIC_API_URL.replace(/\/$/, '');
+const resolveApiBaseEnv = (): string => {
+  return (
+    process.env.OPENCLAW_API_BASE ??
+    process.env.OPENAGENTS_API_URL ??
+    process.env.PUBLIC_API_URL ??
+    ''
+  );
+};
+
+const normalizeApiBase = (value: string): string => {
+  const trimmed = value.trim().replace(/\/$/, '');
+  if (!trimmed) return '';
+  if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+    return trimmed;
   }
-  if (origin) {
-    return `${origin.replace(/\/$/, '')}/api`;
+  if (/\/api(\/|$)/.test(trimmed)) {
+    return `https://${trimmed}`;
   }
-  throw new Error('OpenClaw API base not configured');
+  return `https://${trimmed}/api`;
+};
+
+export const resolveApiBase = (): string => {
+  const normalized = normalizeApiBase(resolveApiBaseEnv());
+  if (!normalized) {
+    throw new Error(
+      'OpenClaw API base not configured. Set OPENCLAW_API_BASE, OPENAGENTS_API_URL, or PUBLIC_API_URL.',
+    );
+  }
+  return normalized;
 };
 
 export async function openclawRequest<T>(

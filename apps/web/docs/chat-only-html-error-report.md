@@ -1,7 +1,7 @@
 # OpenClaw Tool Flow: "Only HTML requests are supported here" – Full Report
 
 **Date:** 2026-02-04
-**Status:** Unresolved — multi-step tool calls work; tool *results* fail with HTML error
+**Status:** Fix implemented (explicit API base required); verification pending
 **Constraint:** Do not use `/api/chat`; chat endpoint must remain at **POST `/chat`**.
 
 ---
@@ -9,6 +9,8 @@
 ## Executive summary
 
 The assistant correctly uses multiple OpenClaw tools in sequence (`openclaw_get_instance`, `openclaw_provision`, etc.), but every tool execution returns `{"error": "Only HTML requests are supported here"}`. The cause is not the chat endpoint (POST `/chat` works) but the fact that **tool code runs on the server and calls same-origin `/api/openclaw/*`**. Those paths have no server route in the TanStack app, so requests fall through to the document (HTML) handler, which rejects non-HTML `Accept` headers. **Fix:** Point server-side OpenClaw calls at the real API via `PUBLIC_API_URL`, or add TanStack server routes that proxy `/api/openclaw/*` to the real API.
+
+**Update:** `resolveApiBase` now requires an explicit API base (`OPENCLAW_API_BASE`, `OPENAGENTS_API_URL`, or `PUBLIC_API_URL`) and no longer falls back to `${origin}/api`, so misconfiguration fails fast instead of hitting the HTML handler. Set the env var in the web worker and local dev before verifying the flow.
 
 ---
 

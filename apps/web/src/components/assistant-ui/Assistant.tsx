@@ -1,9 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { AssistantRuntimeProvider } from '@assistant-ui/react';
-import {
-  useChatRuntime,
-  AssistantChatTransport,
-} from '@assistant-ui/react-ai-sdk';
+import { AssistantChatTransport } from '@assistant-ui/react-ai-sdk';
+import { useRouterState } from '@tanstack/react-router';
 import { Thread } from '@/components/assistant-ui/thread';
 import {
   SidebarInset,
@@ -12,16 +10,26 @@ import {
 } from '@/components/ui/sidebar';
 import { ThreadListSidebar } from '@/components/assistant-ui/threadlist-sidebar';
 import { RightSidebar, RightSidebarTriggerPortal } from '@/components/assistant-ui/right-sidebar';
+import { useOpenAgentsChatRuntime } from '@/components/assistant-ui/openagents-chat-runtime';
 
 /** When false, only render runtime provider + Thread (no sidebars). Used by _app layout. */
 export function Assistant({ layout = true }: { layout?: boolean }) {
   const [rightTriggerContainer, setRightTriggerContainer] =
     useState<HTMLElement | null>(null);
-  const runtime = useChatRuntime({
+  const location = useRouterState({ select: (s) => s.location });
+  const runtime = useOpenAgentsChatRuntime({
     transport: new AssistantChatTransport({
       api: '/chat',
     }),
   });
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search ?? '');
+    const threadId = params.get('threadId');
+    if (threadId) {
+      void runtime.switchToThread(threadId);
+    }
+  }, [location.search, runtime]);
 
   if (!layout) {
     return (

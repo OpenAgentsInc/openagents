@@ -2,10 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Outlet, useRouterState } from '@tanstack/react-router';
 import { posthogCapture } from '@/lib/posthog';
 import { AssistantRuntimeProvider } from '@assistant-ui/react';
-import {
-  useChatRuntime,
-  AssistantChatTransport,
-} from '@assistant-ui/react-ai-sdk';
+import { AssistantChatTransport } from '@assistant-ui/react-ai-sdk';
 import { useMutation } from 'convex/react';
 import { useAuth } from '@workos/authkit-tanstack-react-start/client';
 import { api } from '../../../convex/_generated/api';
@@ -20,6 +17,7 @@ import {
   RightSidebarTriggerPortal,
 } from '@/components/assistant-ui/right-sidebar';
 import { AppBreadcrumb } from '@/components/assistant-ui/AppBreadcrumb';
+import { useOpenAgentsChatRuntime } from '@/components/assistant-ui/openagents-chat-runtime';
 
 /**
  * App chrome: left sidebar (thread list), center (header + Outlet), right sidebar (community).
@@ -29,12 +27,22 @@ export function AppLayout() {
   const [rightTriggerContainer, setRightTriggerContainer] =
     useState<HTMLElement | null>(null);
   const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const location = useRouterState({ select: (s) => s.location });
   const { user, loading } = useAuth();
   const ensureUser = useMutation(api.users.ensureUser);
   const ensuredUserId = useRef<string | null>(null);
-  const runtime = useChatRuntime({
+  const runtime = useOpenAgentsChatRuntime({
     transport: new AssistantChatTransport({ api: '/chat' }),
   });
+
+  useEffect(() => {
+    if (!pathname.startsWith('/assistant')) return;
+    const params = new URLSearchParams(location.search ?? '');
+    const threadId = params.get('threadId');
+    if (threadId) {
+      void runtime.switchToThread(threadId);
+    }
+  }, [location.search, pathname, runtime]);
 
   useEffect(() => {
     posthogCapture('page_view', { path: pathname });
@@ -56,34 +64,34 @@ export function AppLayout() {
   return (
     <AssistantRuntimeProvider runtime={runtime}>
       <SidebarProvider className="h-dvh max-h-dvh min-h-0 overflow-hidden">
-      <div className="flex h-full min-h-0 w-full flex-1">
-        <ThreadListSidebar />
-        <SidebarInset className="flex min-h-0 flex-1 flex-col overflow-hidden">
-          <header className="sticky top-0 z-10 flex h-12 shrink-0 items-center gap-2 border-b border-border bg-background/80 px-3 md:px-4 backdrop-blur-md supports-[backdrop-filter]:bg-background/70">
-            <SidebarTrigger className="md:hidden" />
-            <AppBreadcrumb />
-            <div
-              ref={(el) => setRightTriggerContainer(el ?? null)}
-              className="ml-auto flex md:hidden"
-              aria-hidden
+        <div className="flex h-full min-h-0 w-full flex-1">
+          <ThreadListSidebar />
+          <SidebarInset className="flex min-h-0 flex-1 flex-col overflow-hidden">
+            <header className="sticky top-0 z-10 flex h-12 shrink-0 items-center gap-2 border-b border-border bg-background/80 px-3 md:px-4 backdrop-blur-md supports-[backdrop-filter]:bg-background/70">
+              <SidebarTrigger className="md:hidden" />
+              <AppBreadcrumb />
+              <div
+                ref={(el) => setRightTriggerContainer(el ?? null)}
+                className="ml-auto flex md:hidden"
+                aria-hidden
+              />
+            </header>
+            <div className="flex min-h-0 flex-1 flex-col overflow-auto">
+              <Outlet />
+            </div>
+          </SidebarInset>
+          <SidebarProvider
+            cookieName="sidebar_right_state"
+            className="w-auto shrink-0"
+          >
+            <RightSidebar />
+            <RightSidebarTriggerPortal
+              container={rightTriggerContainer}
+              className="md:hidden"
             />
-          </header>
-          <div className="flex min-h-0 flex-1 flex-col overflow-auto">
-            <Outlet />
-          </div>
-        </SidebarInset>
-        <SidebarProvider
-          cookieName="sidebar_right_state"
-          className="w-auto shrink-0"
-        >
-          <RightSidebar />
-          <RightSidebarTriggerPortal
-            container={rightTriggerContainer}
-            className="md:hidden"
-          />
-        </SidebarProvider>
-      </div>
-    </SidebarProvider>
+          </SidebarProvider>
+        </div>
+      </SidebarProvider>
     </AssistantRuntimeProvider>
   );
 }
