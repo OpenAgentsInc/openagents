@@ -32,7 +32,8 @@ bucket_name = "moltbook"
 # Spark API (balance, invoice, pay). Same-zone URL so Worker-to-Worker stays on CF.
 [vars]
 SPARK_API_URL = "https://openagents.com/api/spark"
-CONVEX_SITE_URL = "https://blessed-warbler-385.convex.site"
+# Must match the Convex deployment used by apps/web (where /control/openclaw/* HTTP routes live). Get from Convex dashboard or `npx convex dashboard` in apps/web.
+CONVEX_SITE_URL = "https://effervescent-anteater-82.convex.site"
 # OpenClaw runtime (containers/DO). Set to your openclaw-runtime worker URL, e.g. https://openclaw-runtime.<your-subdomain>.workers.dev
 OPENCLAW_RUNTIME_URL = "https://openclaw-runtime.openagents.workers.dev"
 

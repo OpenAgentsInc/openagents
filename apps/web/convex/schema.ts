@@ -109,4 +109,17 @@ export default defineSchema({
   })
     .index('by_email', ['email'])
     .index('by_created_at', ['created_at']),
+
+  // Thread index (chats/projects); optional kind for OpenClaw later
+  threads: defineTable({
+    user_id: v.string(),
+    title: v.string(),
+    kind: v.optional(v.union(v.literal('chat'), v.literal('project'), v.literal('openclaw'))),
+    archived: v.optional(v.boolean()),
+    created_at: v.number(),
+    updated_at: v.number(),
+  })
+    .index('by_user_id', ['user_id'])
+    .index('by_user_id_updated_at', ['user_id', 'updated_at'])
+    .index('by_user_id_archived', ['user_id', 'archived']),
 });

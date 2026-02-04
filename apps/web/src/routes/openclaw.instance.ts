@@ -90,6 +90,9 @@ export const createOpenclawInstanceServer = createServerFn({ method: 'POST' })
   .handler(async (opts): Promise<{ ok: true; data: InstanceSummary }> => {
     const config = await requireAccess(opts.data.origin);
     const instance = await createOpenclawInstance(config);
+    if (!instance) {
+      throw new Error('No instance returned from API');
+    }
     return { ok: true, data: instance };
   });
 

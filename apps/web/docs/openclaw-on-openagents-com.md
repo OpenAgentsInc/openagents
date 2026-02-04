@@ -48,6 +48,18 @@ We already have “Managed OpenClaw” primitives (provisioning + status):
 
 Today’s gap: we do **not** yet provide a first-class “OpenClaw WebChat” that is actually backed by the OpenClaw Gateway session model — we only have a website chat that can *manage* OpenClaw.
 
+## Current implementation status (Hatchery ↔ OpenClaw get/create)
+
+As of the last update, the following is implemented and deployed:
+
+- **Hatchery:** “Create your OpenClaw” panel (when access is allowed). Calls Convex actions `openclawApi.getInstance` and `openclawApi.createInstance`; shows instance status, Provision button, and when status is `ready` a “Provisioning complete” blurb with a link to the main Chat. No TanStack server function for instance (avoids “Only HTML” issues).
+- **Convex:** Actions in `openclawApi.ts` that `fetch(PUBLIC_API_URL/openclaw/instance)` with internal key and user id; HTTP routes in `http.ts` for `/control/openclaw/instance`, `/control/openclaw/instance/status`, `/control/openclaw/instance/secret`, `/control/openclaw/billing/summary`; handlers in `openclaw_control_http.ts` that verify `x-oa-control-key` and call internal openclaw/billing functions. Env: `OA_INTERNAL_KEY`, `OA_CONTROL_KEY`, `PUBLIC_API_URL`, `OPENCLAW_ENCRYPTION_KEY`.
+- **API worker (Rust):** GET/POST `/openclaw/instance` with `X-OA-Internal-Key` and `X-OA-User-Id`; all Convex calls go to `CONVEX_SITE_URL` with `CONVEX_CONTROL_KEY` (must match the same Convex deployment as the web app). Explicit error handling with prefixed messages (e.g. `openclaw getInstance: ...`). Env: `OA_INTERNAL_KEY`, `CONVEX_SITE_URL`, `CONVEX_CONTROL_KEY`, `OPENCLAW_RUNTIME_URL`.
+- **What “ready” means:** Instance row in Convex with `status: ready` and `runtime_url` from API env. No per-user container is started; provision only records metadata. OpenClaw Chat (streaming) and device pairing are planned for later milestones.
+- **Docs:** Full architecture, env vars, flows, and debugging: `apps/web/docs/openclaw-hatchery-architecture.md`.
+
+**Milestone 3 (sidebar + OpenClaw) — partially done:** Left sidebar has an “OpenClaw Cloud” section (status from Convex, link to Hatchery, link to Chat when ready) and a “Chats” section backed by Convex `threads` (list, “New chat” creates a thread and navigates to /assistant). Threads table: `user_id`, `title`, `kind` (chat/project/openclaw), `archived`, `created_at`, `updated_at`. Remaining: Hatchery “Your workspace graph” from Convex threads; /assistant loading a thread by `threadId` search param.
+
 ## Product surface: what users should experience on openagents.com
 
 ### Primary UI: Hatchery (Flow canvas)

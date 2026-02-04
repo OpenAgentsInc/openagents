@@ -272,7 +272,11 @@ The goal is to make the **Flow canvas** the primary UI across the app:
 
 ### Phase 4 — OpenClaw subgraph
 
-- [ ] OpenClaw Cloud node with status/provision/restart/backup/devices.
+**Current (Hatchery OpenClaw):** When the user has access, Hatchery shows a “Create your OpenClaw” panel that calls Convex actions to get/create instance via the API. Provision works: instance is stored in Convex with status `ready` and runtime URL; “Provisioning complete” blurb and link to main Chat are shown. No per-user container is started yet. See `openclaw-hatchery-architecture.md` and `openclaw-on-openagents-com.md` for architecture and status.
+
+- [x] Provision/get instance from Hatchery (Convex actions → API → Convex HTTP); status and “Provisioning complete” copy when ready.
+- [x] “OpenClaw Cloud” section in the left sidebar (status, link to Hatchery, link to Chat when ready); Convex-backed “Chats” section (threads list + “New chat”).
+- [ ] OpenClaw Cloud as a **node** in the flow graph with status/provision/restart/backup/devices.
 - [ ] Sessions list/history as nodes; click → transcript viewer + send.
 - [ ] Approvals unify: device pairing + risky actions through the same approval UI.
 

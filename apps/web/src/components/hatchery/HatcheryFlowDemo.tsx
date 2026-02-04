@@ -506,7 +506,20 @@ export function HatcheryFlowDemo() {
                       ? 'Checking instance…'
                       : 'No instance yet'}
                 </span>
+                {instance?.runtime_name && (
+                  <span className="rounded-md border border-border bg-muted/50 px-2 py-0.5 font-mono text-xs text-muted-foreground">
+                    {instance.runtime_name}
+                  </span>
+                )}
               </div>
+              {instance?.status === 'ready' && (
+                <div className="rounded-md border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+                  <p className="font-medium text-card-foreground mb-1">Provisioning complete</p>
+                  <p className="leading-relaxed">
+                    Your OpenClaw instance is recorded and the runtime URL is configured. OpenClaw Chat (streaming with your gateway) and device pairing are coming in a future update. For now you can use the main <Link to="/assistant" className="text-primary hover:underline">Chat</Link> for assistant-style conversations.
+                  </p>
+                </div>
+              )}
               <div className="mt-auto flex flex-wrap gap-2">
                 <Button
                   size="sm"
@@ -527,7 +540,7 @@ export function HatcheryFlowDemo() {
                   {instance ? 'Provisioned' : instanceStatus === 'creating' ? 'Provisioning…' : 'Provision OpenClaw'}
                 </Button>
                 <Button asChild size="sm" variant="secondary">
-                  <Link to="/kb/openclaw-wallets">Learn more</Link>
+                  <Link to="/kb/$slug" params={{ slug: 'openclaw-wallets' }}>Learn more</Link>
                 </Button>
               </div>
               {instanceError && (
@@ -598,7 +611,7 @@ export function HatcheryFlowDemo() {
             Sign in and get access to provision your instance.
           </div>
           <Button asChild size="sm" variant="secondary" className="mt-auto">
-            <Link to="/kb/openclaw-wallets">Learn more</Link>
+            <Link to="/kb/$slug" params={{ slug: 'openclaw-wallets' }}>Learn more</Link>
           </Button>
         </CardContent>
       </div>

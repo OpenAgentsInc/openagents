@@ -6,6 +6,15 @@ This doc explains how OpenClaw instance get/create works from the Hatchery UI th
 
 ---
 
+## Current status (as of last update)
+
+- **Implemented and working:** Hatchery “Create your OpenClaw” panel; Convex actions `openclawApi.getInstance` / `openclawApi.createInstance`; Convex HTTP routes `/control/openclaw/*`; API worker GET/POST `/openclaw/instance` with Convex bridge; access gating (`access.getStatus`); admin panel at `/admin`; env vars and secrets (Convex + API); error logging and prefixed API error messages; TS fixes (openclaw.instance null check, Hatchery `/kb/$slug` links).
+- **What “ready” means today:** Instance row is stored in Convex with `status: ready` and `runtime_url` (from API’s `OPENCLAW_RUNTIME_URL`). No per-user container is started; provision only writes metadata. OpenClaw Chat (streaming) and device pairing are not built yet; Hatchery shows a “Provisioning complete” blurb and links to main Chat.
+- **Critical:** API worker `CONVEX_SITE_URL` must point at the **same** Convex deployment that serves the web app (e.g. `https://effervescent-anteater-82.convex.site`). If it pointed at a different deployment, getInstance returned 500; that was fixed and the API was redeployed.
+- **Verify end-to-end / TS:** Done (Convex + API deployed; TS passes). Remaining work is in “What needs to be done next” below.
+
+---
+
 ## 1. Architecture overview
 
 ```
@@ -226,19 +235,15 @@ For server-side or other callers that hit the API with the internal key: `OA_INT
 
 Ordered by dependency; see `openclaw-on-openagents-com.md` for full roadmap.
 
-1. **Verify end-to-end**  
-   - Deploy Convex (dev/prod) and API worker with all env vars.  
-   - From Hatchery: load (getInstance) and click Provision (createInstance).  
-   - Confirm `OPENCLAW_RUNTIME_URL` in the API points to a real deployed `openclaw-runtime` worker (or accept that “provision” only writes metadata until the runtime is multi-tenant).  
-   - Fix any remaining TS errors (e.g. HatcheryFlowDemo route types, openclaw.instance null) if they block the build.
+1. **Verify end-to-end** — **Done.** Convex and API worker deployed; `CONVEX_SITE_URL` in API set to the same Convex deployment as the web app; TS errors fixed (Hatchery `/kb/$slug` params, openclaw.instance null check). Provision flow works; “ready” = metadata stored, no per-user container.
 
 2. **Milestone 2.5 (onboarding + access)**  
    - Confirm Hatchery gates on `access.getStatus.allowed`: show waitlist overlay when not allowed, “Create your OpenClaw” / Provision when allowed.  
    - Confirm `/admin` can toggle `access_enabled` and approve/revoke waitlist; admin list shows users and waitlist state.
 
-3. **Milestone 3 (sidebar + OpenClaw section)**  
-   - Convex-backed thread index and “OpenClaw” section in the left sidebar (status, actions, link to sessions/chat).  
-   - Flow canvas / Hatchery graph can show OpenClaw node and workspace graph from the same index.
+3. **Milestone 3 (sidebar + OpenClaw section)** — **Partially done.**  
+   - **Done:** “OpenClaw Cloud” section in the left sidebar (`threadlist-sidebar.tsx`): shows status via `openclaw.getInstanceForCurrentUser`, link to Hatchery, link to Chat when instance is ready. Convex-backed `threads` table and `threads.list` / `threads.create` / `threads.updateTitle` / `threads.archive`; “Chats” section in sidebar with “New chat” (creates thread, navigates to /assistant) and list of Convex threads (links to /assistant?threadId=…). Public query `openclaw.getInstanceForCurrentUser` for sidebar.  
+   - **Remaining:** Flow canvas / Hatchery graph “Your workspace graph” from Convex thread index; optional threadId handling on /assistant to load a Convex thread.
 
 4. **Milestone 1 + 2 (durable chat)**  
    - Stand up `openagents-agent-worker` (DO + internal chat endpoint).  
