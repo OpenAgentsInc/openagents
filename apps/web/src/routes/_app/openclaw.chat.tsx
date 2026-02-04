@@ -2,12 +2,13 @@ import { useMemo, useRef, useState } from 'react';
 import { createFileRoute } from '@tanstack/react-router';
 import { getAuth } from '@workos/authkit-tanstack-react-start';
 import { useAction, useQuery } from 'convex/react';
+import { api } from '../../../convex/_generated/api';
+import { OpenClawSetupCards } from '@/components/openclaw/openclaw-setup-cards';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
 import { resolveApiBase, resolveInternalKey } from '@/lib/openclawApi';
 import { consumeOpenClawStream } from '@/lib/openclawStream';
-import { api } from '../../../convex/_generated/api';
 
 const DEFAULT_AGENT_ID = 'main';
 
@@ -316,8 +317,15 @@ function OpenClawChatPage() {
         ) : null}
         {messages.length === 0 ? (
           <div className="rounded-lg border border-dashed border-border p-4 text-sm text-muted-foreground">
-            Start a conversation with your OpenClaw gateway. Messages are stored in OpenClaw
-            sessions (user-scoped by default).
+            <p className="text-sm text-foreground">Need help getting started?</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Choose a local or managed OpenClaw path. Managed instances provision automatically on
+              first send.
+            </p>
+            <OpenClawSetupCards className="mt-4" showChatCta={false} />
+            <p className="mt-4 text-xs text-muted-foreground">
+              Messages are stored in OpenClaw sessions (user-scoped by default).
+            </p>
           </div>
         ) : null}
 
