@@ -174,3 +174,57 @@ pub async fn delete_instance(env: &Env, user_id: &str) -> Result<DeleteInstanceR
         .data
         .ok_or_else(|| worker::Error::RustError("missing delete result".to_string()))
 }
+
+// --- Agent login (API-key auth) ---
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct AgentSignupResult {
+    pub agent_user_id: String,
+    pub api_key: String,
+    pub key_id: String,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct AgentByKeyHashResult {
+    pub agent_user_id: String,
+    pub scopes: Vec<String>,
+}
+
+pub async fn agent_signup(
+    env: &Env,
+    payload: serde_json::Value,
+) -> Result<AgentSignupResult> {
+    let response: ApiResponse<AgentSignupResult> =
+        convex_json(env, Method::Post, "control/agent/signup", Some(payload)).await?;
+    if !response.ok {
+        return Err(worker::Error::RustError(
+            response.error.unwrap_or_else(|| "convex agent signup error".to_string()),
+        ));
+    }
+    response
+        .data
+        .ok_or_else(|| worker::Error::RustError("missing agent signup result".to_string()))
+}
+
+pub async fn get_agent_by_key_hash(env: &Env, key_hash: &str) -> Result<Option<AgentByKeyHashResult>> {
+    let query = encode_query(&[("key_hash".to_string(), key_hash.to_string())]);
+    let path = format!("control/agent/by-key-hash?{query}");
+    let response: ApiResponse<AgentByKeyHashResult> =
+        convex_json(env, Method::Get, &path, None).await?;
+    if !response.ok {
+        return Ok(None);
+    }
+    Ok(response.data)
+}
+
+pub async fn touch_agent_key_last_used(env: &Env, key_hash: &str) -> Result<()> {
+    let payload = serde_json::json!({ "key_hash": key_hash });
+    let response: ApiResponse<serde_json::Value> =
+        convex_json(env, Method::Post, "control/agent/touch", Some(payload)).await?;
+    if !response.ok {
+        return Err(worker::Error::RustError(
+            response.error.unwrap_or_else(|| "convex touch error".to_string()),
+        ));
+    }
+    Ok(())
+}

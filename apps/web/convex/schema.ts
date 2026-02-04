@@ -133,4 +133,26 @@ export default defineSchema({
     created_at: v.number(),
   })
     .index('by_thread_id_order', ['thread_id', 'order']),
+
+  // Agent principals (API-key auth, no WorkOS)
+  agent_users: defineTable({
+    handle: v.optional(v.string()),
+    owner_workos_user_id: v.optional(v.string()),
+    status: v.union(v.literal('active'), v.literal('disabled')),
+    created_at: v.number(),
+    updated_at: v.number(),
+  }).index('by_status', ['status']),
+
+  agent_api_keys: defineTable({
+    agent_user_id: v.id('agent_users'),
+    key_id: v.string(),
+    key_hash: v.string(),
+    scopes: v.array(v.string()),
+    description: v.optional(v.string()),
+    created_at: v.number(),
+    last_used_at: v.optional(v.number()),
+    revoked_at: v.optional(v.number()),
+  })
+    .index('by_key_hash', ['key_hash'])
+    .index('by_agent_user_id', ['agent_user_id']),
 });
