@@ -6,12 +6,14 @@ import { err, ok } from './response';
 import { isInternalKeyValid } from './auth/internalKey';
 import type { OpenclawApiConfig } from './openclawApi';
 import {
+  approvePairingRequest,
   approveRuntimeDevice,
   backupRuntime,
   buildApiConfig,
   createOpenclawInstance,
   getBillingSummary,
   getOpenclawInstance,
+  listPairingRequests,
   getRuntimeDevices,
   getRuntimeStatus,
   getSessionHistory,
@@ -78,6 +80,19 @@ const defaultApprovalSummary = (toolName: string, toolInput: unknown): string =>
       }
     }
     return 'Approve a pending device pairing request.';
+  }
+  if (toolName === 'openclaw_approve_pairing') {
+    if (toolInput && typeof toolInput === 'object') {
+      const channel = (toolInput as { channel?: unknown }).channel;
+      const code = (toolInput as { code?: unknown }).code;
+      if (typeof channel === 'string' && channel.trim().length > 0) {
+        if (typeof code === 'string' && code.trim().length > 0) {
+          return `Approve DM pairing ${channel.trim()} code ${code.trim()}.`;
+        }
+        return `Approve DM pairing request for ${channel.trim()}.`;
+      }
+    }
+    return 'Approve a DM pairing request.';
   }
   return `Approve ${toolName}.`;
 };
@@ -329,7 +344,7 @@ export class ThreadAgent {
       model: openai.responses('gpt-4o-mini'),
       system: [
         'You are OpenAgents. Be concise.',
-        'Sensitive actions (provisioning, device approvals, restarts) require explicit human approval.',
+        'Sensitive actions (provisioning, pairing approvals, restarts) require explicit human approval.',
         'If a tool response includes status approval_required, ask the user to approve or reject.',
         'After approval, call the same tool again with the provided approvalId to continue.',
       ].join(' '),
@@ -383,6 +398,48 @@ export class ThreadAgent {
               toolInput: { requestId },
               approvalId,
               action: () => approveRuntimeDevice(apiConfig, requestId),
+            }),
+        },
+        openclaw_list_pairing_requests: {
+          description: 'List pending DM pairing requests for a channel.',
+          inputSchema: jsonSchema({
+            type: 'object',
+            properties: {
+              channel: { type: 'string', minLength: 1 },
+            },
+            required: ['channel'],
+          }),
+          execute: async ({ channel }: { channel: string }) => listPairingRequests(apiConfig, channel),
+        },
+        openclaw_approve_pairing: {
+          description: 'Approve a DM pairing request by channel + code.',
+          inputSchema: jsonSchema({
+            type: 'object',
+            properties: {
+              channel: { type: 'string', minLength: 1 },
+              code: { type: 'string', minLength: 1 },
+              notify: { type: 'boolean' },
+              approvalId: { type: 'string', minLength: 1 },
+            },
+            required: ['channel', 'code'],
+          }),
+          execute: async ({
+            channel,
+            code,
+            notify,
+            approvalId,
+          }: {
+            channel: string;
+            code: string;
+            notify?: boolean;
+            approvalId?: string;
+          }) =>
+            this.requireApproval({
+              userId,
+              toolName: 'openclaw_approve_pairing',
+              toolInput: { channel, code, notify },
+              approvalId,
+              action: () => approvePairingRequest(apiConfig, { channel, code, notify }),
             }),
         },
         openclaw_backup_now: {

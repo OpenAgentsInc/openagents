@@ -4,7 +4,12 @@ import { useAction, useMutation, useQuery } from 'convex/react';
 import { useAuth } from '@workos/authkit-tanstack-react-start/client';
 import { api } from '../../../convex/_generated/api';
 import { posthogCapture } from '@/lib/posthog';
-import type { InstanceSummary, RuntimeDevicesData, RuntimeStatusData } from '@/lib/openclawApi';
+import type {
+  InstanceSummary,
+  PairingRequestsData,
+  RuntimeDevicesData,
+  RuntimeStatusData,
+} from '@/lib/openclawApi';
 import {
   InfiniteCanvas,
   isLeafNode,
@@ -27,6 +32,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
 import { MessageSquareIcon, ServerIcon, CpuIcon, ListChecksIcon } from 'lucide-react';
 
 const HOME_TREE: FlowNode = {
@@ -319,6 +325,11 @@ export function HatcheryFlowDemo() {
   const [runtimeDevices, setRuntimeDevices] = useState<RuntimeDevicesData | null>(null);
   const [runtimeLoading, setRuntimeLoading] = useState(false);
   const [runtimeError, setRuntimeError] = useState<string | null>(null);
+  const [pairingChannel, setPairingChannel] = useState('');
+  const [pairingRequests, setPairingRequests] = useState<PairingRequestsData | null>(null);
+  const [pairingLoading, setPairingLoading] = useState(false);
+  const [pairingError, setPairingError] = useState<string | null>(null);
+  const [pairingNotify, setPairingNotify] = useState(false);
   const [approvalDialog, setApprovalDialog] = useState<ApprovalDialogState | null>(null);
   const [approvalBusy, setApprovalBusy] = useState(false);
   const [approvalError, setApprovalError] = useState<string | null>(null);
@@ -333,6 +344,8 @@ export function HatcheryFlowDemo() {
   const overlayVisible = !accessAllowed;
   const pendingDevices = runtimeDevices?.pending ?? [];
   const pairedDevices = runtimeDevices?.paired ?? [];
+  const pendingPairingRequests = pairingRequests?.requests ?? [];
+  const refreshBusy = runtimeLoading || pairingLoading;
   const navigate = useNavigate();
   const { location } = useRouterState();
   const focusParam = useMemo(() => {
@@ -345,6 +358,8 @@ export function HatcheryFlowDemo() {
   const getRuntimeStatus = useAction(api.openclawApi.getRuntimeStatus);
   const getRuntimeDevices = useAction(api.openclawApi.getRuntimeDevices);
   const approveRuntimeDevice = useAction(api.openclawApi.approveRuntimeDevice);
+  const listPairingRequests = useAction(api.openclawApi.listPairingRequests);
+  const approvePairingRequest = useAction(api.openclawApi.approvePairingRequest);
   const backupRuntime = useAction(api.openclawApi.backupRuntime);
   const restartRuntime = useAction(api.openclawApi.restartRuntime);
 
@@ -389,6 +404,28 @@ export function HatcheryFlowDemo() {
     }
   };
 
+  const loadPairingRequests = async (channelOverride?: string) => {
+    if (!instance || instance.status !== 'ready') return;
+    const channel = (channelOverride ?? pairingChannel).trim();
+    if (!channel) {
+      setPairingRequests(null);
+      return;
+    }
+    setPairingLoading(true);
+    setPairingError(null);
+    try {
+      const data = await listPairingRequests({ channel });
+      setPairingRequests(data);
+      if (data.channel && data.channel !== pairingChannel) {
+        setPairingChannel(data.channel);
+      }
+    } catch (error) {
+      setPairingError(error instanceof Error ? error.message : 'Failed to load pairing requests');
+    } finally {
+      setPairingLoading(false);
+    }
+  };
+
   const handleProvision = async () => {
     setInstanceStatus('creating');
     setInstanceError(null);
@@ -428,6 +465,16 @@ export function HatcheryFlowDemo() {
       await loadRuntime();
     } catch (error) {
       setRuntimeError(error instanceof Error ? error.message : 'Failed to approve device');
+      throw error;
+    }
+  };
+
+  const handleApprovePairing = async (channel: string, code: string) => {
+    try {
+      await approvePairingRequest({ channel, code, notify: pairingNotify });
+      await loadPairingRequests(channel);
+    } catch (error) {
+      setPairingError(error instanceof Error ? error.message : 'Failed to approve pairing request');
       throw error;
     }
   };
@@ -553,7 +600,7 @@ export function HatcheryFlowDemo() {
         kind: 'openclaw',
         status: mapOpenclawStatus(instance?.status),
         subtitle: instance ? `Status: ${instance.status}` : 'Not provisioned',
-        detail: 'Gateway-backed tools, sessions, and device pairing.',
+        detail: 'Gateway-backed tools, sessions, and device/DM pairing.',
         updatedAt: formatRelativeTime(instance?.updated_at),
       },
       children: openclawChildren,
@@ -650,11 +697,16 @@ export function HatcheryFlowDemo() {
     if (!accessAllowed) return;
     if (instance?.status === 'ready') {
       void loadRuntime();
+      if (pairingChannel.trim()) {
+        void loadPairingRequests();
+      }
       return;
     }
     setRuntimeStatus(null);
     setRuntimeDevices(null);
-  }, [accessAllowed, instance?.status]);
+    setPairingRequests(null);
+    setPairingError(null);
+  }, [accessAllowed, instance?.status, pairingChannel]);
 
   useEffect(() => {
     if (!focusParam) {
@@ -1027,10 +1079,13 @@ export function HatcheryFlowDemo() {
                     <Button
                       size="sm"
                       variant="ghost"
-                      onClick={() => void loadRuntime()}
-                      disabled={runtimeLoading}
+                      onClick={() => {
+                        void loadRuntime();
+                        void loadPairingRequests();
+                      }}
+                      disabled={refreshBusy}
                     >
-                      {runtimeLoading ? 'Refreshing…' : 'Refresh'}
+                      {refreshBusy ? 'Refreshing…' : 'Refresh'}
                     </Button>
                   </div>
                   <CardContent className="flex min-h-0 flex-1 flex-col gap-4 p-4">
@@ -1132,6 +1187,88 @@ export function HatcheryFlowDemo() {
                       ) : (
                         <p className="text-xs text-muted-foreground">No devices paired yet.</p>
                       )}
+                    </div>
+
+                    <div className="space-y-2">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <p className="text-xs font-semibold text-card-foreground">DM pairing requests</p>
+                        <span className="text-[11px] text-muted-foreground">
+                          {pairingRequests?.channel
+                            ? `${pendingPairingRequests.length} pending`
+                            : 'Select a channel'}
+                        </span>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Input
+                          value={pairingChannel}
+                          onChange={(event) => setPairingChannel(event.target.value)}
+                          placeholder="channel (e.g. telegram)"
+                          className="h-8 w-full min-w-[180px] flex-1 text-xs"
+                        />
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          onClick={() => void loadPairingRequests()}
+                          disabled={pairingLoading || !pairingChannel.trim()}
+                        >
+                          {pairingLoading ? 'Loading…' : 'Load'}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant={pairingNotify ? 'default' : 'secondary'}
+                          onClick={() => setPairingNotify((prev) => !prev)}
+                        >
+                          {pairingNotify ? 'Notify on' : 'Notify off'}
+                        </Button>
+                      </div>
+                      {pairingChannel.trim() ? (
+                        pendingPairingRequests.length ? (
+                          <div className="space-y-2">
+                            {pendingPairingRequests.map((request) => (
+                              <div
+                                key={`${pairingRequests?.channel ?? pairingChannel}-${request.code}`}
+                                className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-border px-3 py-2 text-xs"
+                              >
+                                <div>
+                                  <div className="font-mono text-xs">{request.code}</div>
+                                  <div className="text-muted-foreground">
+                                    {request.id}
+                                  </div>
+                                </div>
+                                <Button
+                                  size="sm"
+                                  onClick={() =>
+                                    openApprovalDialog({
+                                      title: 'Approve DM pairing',
+                                      description:
+                                        'Approving this request will allow the sender to DM your OpenClaw gateway.',
+                                      confirmLabel: 'Approve pairing',
+                                      action: () =>
+                                        handleApprovePairing(
+                                          pairingRequests?.channel ?? pairingChannel,
+                                          request.code,
+                                        ),
+                                    })
+                                  }
+                                >
+                                  Approve
+                                </Button>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="text-xs text-muted-foreground">
+                            {pairingLoading
+                              ? 'Loading pairing requests…'
+                              : 'No pending pairing requests.'}
+                          </p>
+                        )
+                      ) : (
+                        <p className="text-xs text-muted-foreground">
+                          Enter a channel to view pending pairing requests.
+                        </p>
+                      )}
+                      {pairingError && <p className="text-xs text-red-400">{pairingError}</p>}
                     </div>
 
                     {runtimeError && <p className="text-xs text-red-400">{runtimeError}</p>}

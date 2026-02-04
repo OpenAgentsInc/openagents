@@ -7,11 +7,13 @@ import { backupToR2 } from '../sandbox/backup';
 import { getLastBackup } from '../sandbox/r2';
 import {
   approveDevice,
+  approvePairingRequest,
   ensureGateway,
   getClawdbotVersion,
   getGatewayStatus,
   invokeGatewayTool,
   listDevices,
+  listPairingRequests,
   restartGateway,
   streamGatewayResponses,
 } from '../sandbox/process';
@@ -147,6 +149,51 @@ v1.post('/devices/:requestId/approve', async (c) => {
     return c.json(ok({ approved: result.approved, requestId: result.requestId }));
   } catch (error) {
     return c.json(err('internal_error', 'failed to approve device', { message: String(error) }), 500);
+  }
+});
+
+v1.get('/pairing/:channel', async (c) => {
+  const sandbox = getOpenClawSandbox(c.env);
+  const channel = c.req.param('channel');
+
+  if (!channel) {
+    return c.json(err('invalid_request', 'channel is required'), 400);
+  }
+
+  try {
+    const requests = await listPairingRequests(sandbox, c.env, channel);
+    return c.json(ok(requests));
+  } catch (error) {
+    return c.json(
+      err('internal_error', 'failed to list pairing requests', { message: String(error) }),
+      500,
+    );
+  }
+});
+
+v1.post('/pairing/:channel/approve', async (c) => {
+  const sandbox = getOpenClawSandbox(c.env);
+  const channel = c.req.param('channel');
+
+  if (!channel) {
+    return c.json(err('invalid_request', 'channel is required'), 400);
+  }
+
+  const body = (await c.req.json().catch(() => null)) as Record<string, unknown> | null;
+  const code = typeof body?.code === 'string' ? body.code.trim() : '';
+  if (!code) {
+    return c.json(err('invalid_request', 'code is required'), 400);
+  }
+  const notify = typeof body?.notify === 'boolean' ? body.notify : undefined;
+
+  try {
+    const result = await approvePairingRequest(sandbox, c.env, channel, code, notify);
+    return c.json(ok(result));
+  } catch (error) {
+    return c.json(
+      err('internal_error', 'failed to approve pairing request', { message: String(error) }),
+      500,
+    );
   }
 });
 

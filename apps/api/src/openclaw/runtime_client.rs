@@ -53,6 +53,30 @@ impl RuntimeClient {
         self.request_json(Method::Post, &path, None).await
     }
 
+    pub async fn pairing_list(
+        &self,
+        channel: &str,
+    ) -> Result<RuntimeResult<serde_json::Value>> {
+        let encoded = encode_path_segment(channel);
+        let path = format!("/v1/pairing/{encoded}");
+        self.request_json(Method::Get, &path, None).await
+    }
+
+    pub async fn pairing_approve(
+        &self,
+        channel: &str,
+        code: &str,
+        notify: Option<bool>,
+    ) -> Result<RuntimeResult<serde_json::Value>> {
+        let encoded = encode_path_segment(channel);
+        let path = format!("/v1/pairing/{encoded}/approve");
+        let mut body = serde_json::json!({ "code": code });
+        if let Some(value) = notify {
+            body["notify"] = serde_json::Value::Bool(value);
+        }
+        self.request_json(Method::Post, &path, Some(body)).await
+    }
+
     pub async fn backup(&self) -> Result<RuntimeResult<serde_json::Value>> {
         self.request_json(Method::Post, "/v1/storage/backup", None).await
     }

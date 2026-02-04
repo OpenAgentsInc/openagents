@@ -34,6 +34,19 @@ export type RuntimeDevicesData = {
   }>;
 };
 
+export type PairingRequest = {
+  id: string;
+  code: string;
+  createdAt: string;
+  lastSeenAt: string;
+  meta?: Record<string, string>;
+};
+
+export type PairingRequestsData = {
+  channel: string;
+  requests: PairingRequest[];
+};
+
 export type BillingSummary = {
   user_id: string;
   balance_usd: number;
@@ -150,6 +163,28 @@ export const approveRuntimeDevice = (config: OpenclawApiConfig, requestId: strin
     config,
     `/openclaw/runtime/devices/${encodeURIComponent(requestId)}/approve`,
     { method: 'POST' },
+  );
+
+export const listPairingRequests = (config: OpenclawApiConfig, channel: string) =>
+  openclawRequest<PairingRequestsData>(
+    config,
+    `/openclaw/runtime/pairing/${encodeURIComponent(channel)}`,
+  );
+
+export const approvePairingRequest = (
+  config: OpenclawApiConfig,
+  args: { channel: string; code: string; notify?: boolean },
+) =>
+  openclawRequest<{ approved: boolean; channel: string; code: string }>(
+    config,
+    `/openclaw/runtime/pairing/${encodeURIComponent(args.channel)}/approve`,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        code: args.code,
+        ...(typeof args.notify === 'boolean' ? { notify: args.notify } : {}),
+      }),
+    },
   );
 
 export const backupRuntime = (config: OpenclawApiConfig) =>

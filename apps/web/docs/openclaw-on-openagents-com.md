@@ -52,10 +52,10 @@ Today’s gap: we do **not** yet provide a first-class “OpenClaw WebChat” th
 
 As of the last update, the following is implemented and deployed:
 
-- **Hatchery:** “Create your OpenClaw” panel (when access is allowed). Calls Convex actions `openclawApi.getInstance` and `openclawApi.createInstance`; shows instance status, Provision button, and when status is `ready` a “Provisioning complete” blurb with a link to the main Chat. When ready, a controls card appears (runtime status, devices, backup, restart) with approval gating for sensitive actions. No TanStack server function for instance (avoids “Only HTML” issues).
+- **Hatchery:** “Create your OpenClaw” panel (when access is allowed). Calls Convex actions `openclawApi.getInstance` and `openclawApi.createInstance`; shows instance status, Provision button, and when status is `ready` a “Provisioning complete” blurb with a link to the main Chat. When ready, a controls card appears (runtime status, devices, DM pairing, backup, restart) with approval gating for sensitive actions. No TanStack server function for instance (avoids “Only HTML” issues).
 - **Convex:** Actions in `openclawApi.ts` that `fetch(PUBLIC_API_URL/openclaw/instance)` with internal key and user id; HTTP routes in `http.ts` for `/control/openclaw/instance`, `/control/openclaw/instance/status`, `/control/openclaw/instance/secret`, `/control/openclaw/billing/summary`; handlers in `openclaw_control_http.ts` that verify `x-oa-control-key` and call internal openclaw/billing functions. Env: `OA_INTERNAL_KEY`, `OA_CONTROL_KEY`, `PUBLIC_API_URL`, `OPENCLAW_ENCRYPTION_KEY`.
 - **API worker (Rust):** GET/POST `/openclaw/instance` with `X-OA-Internal-Key` and `X-OA-User-Id`; all Convex calls go to `CONVEX_SITE_URL` with `CONVEX_CONTROL_KEY` (must match the same Convex deployment as the web app). Explicit error handling with prefixed messages (e.g. `openclaw getInstance: ...`). Env: `OA_INTERNAL_KEY`, `CONVEX_SITE_URL`, `CONVEX_CONTROL_KEY`, `OPENCLAW_RUNTIME_URL`.
-- **What “ready” means:** Instance row in Convex with `status: ready` and `runtime_url` from API env. No per-user container is started; provision only records metadata. OpenClaw Chat (streaming) is now available via `/openclaw/chat`; device pairing remains a later milestone.
+- **What “ready” means:** Instance row in Convex with `status: ready` and `runtime_url` from API env. No per-user container is started; provision only records metadata. OpenClaw Chat (streaming) is now available via `/openclaw/chat`; device pairing approvals and DM pairing requests are now surfaced in Hatchery.
 - **Docs:** Full architecture, env vars, flows, and debugging: `apps/web/docs/openclaw-hatchery-architecture.md`.
 
 **Milestone 3 (sidebar + OpenClaw) — done:** Left sidebar has an “OpenClaw Cloud” section (status from Convex, link to Hatchery, link to Chat when ready) and a “Chats” section backed by Convex `threads` (list, “New chat” creates a thread and navigates to `/assistant?threadId=...`). `/assistant` now switches to the requested threadId. Threads table: `user_id`, `title`, `kind` (chat/project/openclaw), `archived`, `created_at`, `updated_at`. Hatchery now shows “Your workspace graph” using Convex threads + OpenClaw status, with focus persisted in `?focus=...`.
@@ -89,7 +89,7 @@ Implementation details and parity notes live in:
 
 3. **Pairing**
    - Device pairing UI (nodes)
-   - DM pairing UI (channels) once we expose it
+   - DM pairing UI (channels) now exposed in Hatchery controls (per-channel list + approve)
 
 4. **Sessions list (OpenClaw-native)**
    - A “Sessions” view that mirrors OpenClaw’s session model:
@@ -408,13 +408,13 @@ Changes:
 - Website shows an approval modal (Hatchery) and approval cards in chat tool output; server sends `approval.respond` (server-to-server).
 - Extend OpenClaw surfaces:
   - device approve (already present)
-  - DM pairing list/approve endpoints (add)
+  - DM pairing list/approve endpoints (done)
   - exec approval queue endpoints (add; may require WS integration if not tool-invokable)
 
 Acceptance criteria:
 - Provision/device approve/restart are gated by explicit UI approval.
 Status:
-- Hatchery approval modal now gates provisioning, device approvals, and gateway restart; chat tool calls return `approval_required` payloads with follow-up `/approvals` server route. DM pairing + exec approvals still pending.
+- Hatchery approval modal now gates provisioning, device approvals, DM pairing approvals, and gateway restart; chat tool calls return `approval_required` payloads with follow-up `/approvals` server route. DM pairing list/approve endpoints are live via `/openclaw/runtime/pairing/:channel`. Exec approvals still pending.
 
 ### Milestone 7: Cloudflare “unfair advantages”
 

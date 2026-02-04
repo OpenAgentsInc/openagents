@@ -213,6 +213,14 @@ async fn main(mut req: Request, env: Env, _ctx: Context) -> Result<Response> {
             "/openclaw/runtime/devices/:requestId/approve",
             openclaw::http::handle_runtime_device_approve,
         )
+        .get_async(
+            "/openclaw/runtime/pairing/:channel",
+            openclaw::http::handle_runtime_pairing_list,
+        )
+        .post_async(
+            "/openclaw/runtime/pairing/:channel/approve",
+            openclaw::http::handle_runtime_pairing_approve,
+        )
         .post_async("/openclaw/runtime/backup", openclaw::http::handle_runtime_backup)
         .post_async("/openclaw/runtime/restart", openclaw::http::handle_runtime_restart)
         .post_async("/openclaw/tools/invoke", openclaw::http::handle_tools_invoke)
