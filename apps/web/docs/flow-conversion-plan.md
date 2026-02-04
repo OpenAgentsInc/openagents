@@ -261,8 +261,8 @@ The goal is to make the **Flow canvas** the primary UI across the app:
 ### Phase 2 — Hatchery becomes the primary navigation surface
 
 - [x] Make the `/hatchery` link real and route it to the flow canvas.
-- [ ] Show “Your workspace graph”: Chats, Projects, OpenClaw Cloud, Community.
-- [ ] Persist focus/selection in the URL (e.g. `?focus=thread:...`) so links are shareable.
+- [x] Show “Your workspace graph”: Chats, Projects, OpenClaw Cloud, Community (Convex-backed threads + OpenClaw status).
+- [x] Persist focus/selection in the URL (e.g. `?focus=thread:...`) so links are shareable.
 
 ### Phase 3 — Flow-native assistant view (chat as a subgraph)
 

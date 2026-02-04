@@ -147,7 +147,7 @@ function SidebarOpenClawSection() {
       </div>
       <SidebarMenuItem>
         <SidebarMenuButton asChild isActive={hatcheryActive}>
-          <Link to="/hatchery">
+          <Link to="/hatchery" search={{ focus: undefined }}>
             <SidebarIcon>
               <ServerIcon className="size-4" />
             </SidebarIcon>
@@ -244,7 +244,7 @@ export function ThreadListSidebar(
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton asChild isActive={useIsActive('/hatchery')}>
-              <Link to="/hatchery">
+              <Link to="/hatchery" search={{ focus: undefined }}>
                 <span className="text-base">🦞</span>
                 <span>Hatchery</span>
               </Link>
