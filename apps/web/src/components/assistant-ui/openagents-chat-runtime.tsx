@@ -20,6 +20,18 @@ import type { Id } from '../../../convex/_generated/dataModel';
 
 type ThreadId = Id<'threads'>;
 
+const LOCAL_THREAD_ID_PREFIX = '__LOCALID_';
+
+function isLocalThreadId(id: string | undefined): boolean {
+  return typeof id === 'string' && id.startsWith(LOCAL_THREAD_ID_PREFIX);
+}
+
+/** Only pass to Convex when id is a real Convex thread id (not a local temp id). */
+function convexThreadId(id: string | undefined): ThreadId | null {
+  if (!id || isLocalThreadId(id)) return null;
+  return id as ThreadId;
+}
+
 const DEFAULT_NEW_TITLE = 'New Chat';
 const TITLE_LIMIT = 60;
 
@@ -70,9 +82,10 @@ const useChatThreadRuntime = <UI_MESSAGE extends UIMessage = UIMessage>(
   );
 
   const id = useAuiState(({ threadListItem }) => threadListItem.id) as ThreadId | undefined;
+  const convexId = convexThreadId(id);
   const savedMessages = useQuery(
     api.threadMessages.list,
-    id ? { threadId: id } : 'skip',
+    convexId ? { threadId: convexId } : 'skip',
   );
   const setMessagesMutation = useMutation(api.threadMessages.setMessages);
 
@@ -84,9 +97,10 @@ const useChatThreadRuntime = <UI_MESSAGE extends UIMessage = UIMessage>(
     transport,
     messages: initialMessages,
     onFinish: async ({ messages }) => {
-      if (id && Array.isArray(messages) && messages.length > 0) {
+      const tid = convexThreadId(id);
+      if (tid && Array.isArray(messages) && messages.length > 0) {
         await setMessagesMutation({
-          threadId: id,
+          threadId: tid,
           messages: messages.map((m) => ({
             id: m.id,
             role: m.role,
@@ -172,6 +186,9 @@ const useConvexThreadListAdapter = (): unstable_RemoteThreadListAdapter => {
         });
       },
       fetch: async (threadId) => {
+        if (isLocalThreadId(threadId)) {
+          throw new Error('Thread not found');
+        }
         const thread = await convex.query(api.threads.get, {
           threadId: asThreadId(threadId),
         });

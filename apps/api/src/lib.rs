@@ -4126,6 +4126,17 @@ fn json_error(message: &str, status: u16) -> Result<Response> {
     })?
     .with_status(status);
     apply_cors(&mut response)?;
+    let _ = response
+        .headers_mut()
+        .set("X-OA-Worker-Version", "openagents-api-2026-02-04");
+    let _ = response.headers_mut().set(
+        "Cache-Control",
+        "private, no-store, no-cache, must-revalidate",
+    );
+    let _ = response.headers_mut().set("CDN-Cache-Control", "no-store");
+    let _ = response.headers_mut().set("Surrogate-Control", "no-store");
+    let _ = response.headers_mut().set("Pragma", "no-cache");
+    let _ = response.headers_mut().set("Expires", "0");
     Ok(response)
 }
 
@@ -4142,6 +4153,7 @@ fn rate_limit_429(retry_after_minutes: i64) -> Result<Response> {
 }
 
 /// Returns a 401 Response for auth failures (caller returns Ok(this)).
+/// Sets Cache-Control: private, no-store so 401s are never cached (avoids stuck 401s on openclaw paths).
 fn json_unauthorized(message: &str) -> Response {
     let mut response = Response::from_json(&ApiResponse::<serde_json::Value> {
         ok: false,
@@ -4151,6 +4163,17 @@ fn json_unauthorized(message: &str) -> Response {
     .expect("401 json")
     .with_status(401);
     let _ = apply_cors(&mut response);
+    let _ = response
+        .headers_mut()
+        .set("X-OA-Worker-Version", "openagents-api-2026-02-04");
+    let _ = response.headers_mut().set(
+        "Cache-Control",
+        "private, no-store, no-cache, must-revalidate",
+    );
+    let _ = response.headers_mut().set("CDN-Cache-Control", "no-store");
+    let _ = response.headers_mut().set("Surrogate-Control", "no-store");
+    let _ = response.headers_mut().set("Pragma", "no-cache");
+    let _ = response.headers_mut().set("Expires", "0");
     response
 }
 
