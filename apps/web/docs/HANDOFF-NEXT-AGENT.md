@@ -41,6 +41,8 @@ That file explains what’s going on, what was tried, root cause, and what to tr
 
 **Constraint:** Do **not** use `/api/chat`. Chat must remain at **POST `/chat`** (see report).
 
+**Deploy and test yourself:** You are allowed (and expected) to run deploys. Use `npm run deploy` in `apps/web` for the main website; check `package.json` in `apps/api`, `apps/agent-worker`, `apps/indexer`, `apps/spark-api`, `apps/openclaw-runtime` for equivalent deploy scripts. Fix, deploy, then re-test. Do not wait for a human unless they ask you to slow down.
+
 ---
 
 ## 3. Continue with the roadmap where we left off
