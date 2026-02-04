@@ -42,7 +42,7 @@ export type PairingRequest = {
 
 export type PairingRequestsData = {
   channel: string;
-  requests: PairingRequest[];
+  requests: Array<PairingRequest>;
 };
 
 export type BillingSummary = {
