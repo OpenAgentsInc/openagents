@@ -266,7 +266,7 @@ Ordered by dependency; see `openclaw-on-openagents-com.md` for full roadmap.
 7. **Milestone 6 (human approvals)** — **In progress.**  
    - Approval modal gating for provision/device approve/restart is now wired in Hatchery.  
    - Chat tool calls return `approval_required` payloads and can be resolved via `/approvals`.  
-   - DM pairing + exec approvals are still pending.
+   - DM pairing list/approve is now wired via runtime/API endpoints; exec approvals are still pending.
 
 8. **Multi-tenant runtime (from openclaw-on-openagents-com)**  
    - `openclaw-runtime`: accept tenant key (e.g. WorkOS user id), use it as sandbox id; per-user R2 prefix; no single shared sandbox for all users.

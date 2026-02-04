@@ -85,3 +85,13 @@ Next logical steps after the fix:
 3. **Fix** by pointing tool calls at the real API (Option A) or adding proxy routes (Option B) or failing fast when env is unset (Option D).
 4. **Verify** the assistant flow so tool results are real JSON.
 5. **Continue** with `ROADMAP.md` and `apps/web/docs/openclaw-on-openagents-com.md` (e.g. end-to-end provision + pairing, then WebChat/Gateway milestones).
+
+## 6. Agents SDK alignment (new)
+
+We reviewed `~/code/agents` (Cloudflare Agents SDK). The agent worker is still a **custom DO**, not `Agent`/`AIChatAgent`. That means:
+
+- no built-in state sync or resumable streaming
+- no `agents/react` client hooks
+- approvals are stored manually (no SDK workflow approvals yet)
+
+See `apps/web/docs/cloudflare-agents-sdk-openagents-com.md` for a full gap/opportunity list.

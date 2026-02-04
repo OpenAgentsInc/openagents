@@ -284,6 +284,10 @@ Acceptance criteria:
 - `POST /internal/chat` streams and persists state across calls.
 - `threadId` deterministically maps to a DO instance.
 
+Notes (Agents SDK review):
+- Current ThreadAgent is a **custom DO** (not `Agent` / `AIChatAgent`). This works, but it does **not** provide resumable streaming or state sync.  
+- If we want SDK-level guarantees, migrate ThreadAgent → `AIChatAgent` and add a `new_sqlite_classes` migration in `apps/agent-worker/wrangler.jsonc`.
+
 ### Milestone 2: Wire the website (`apps/web`) to the agent worker (no UI rewrite)
 
 **Goal:** Keep the current chat UI, but run it through the durable agent when enabled.
