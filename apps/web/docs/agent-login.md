@@ -193,6 +193,7 @@ If we allow public agent signup:
 - **Convex:** `agent_users` and `agent_api_keys` tables; `agentUsers.createAgentUserAndKey`, `getAgentByKeyHash`, `touchAgentKeyLastUsed`; HTTP routes `/control/agent/signup`, `/control/agent/by-key-hash`, `/control/agent/touch` (all require `x-oa-control-key`).
 - **API worker:** `POST /agent/signup` (body: `handle?`, `owner_workos_user_id?`, `scopes?`, `description?`) → returns `agentUserId`, `apiKey`, `keyId`. Auth: `X-OA-Agent-Key` or `Authorization: Agent <key>`; resolved principal is tenant id `agent:<id>` for OpenClaw and Convex lookups.
 - **Required env:** Convex: `OA_AGENT_KEY_HMAC_SECRET`, `OA_CONTROL_KEY`. API worker: `OA_AGENT_KEY_HMAC_SECRET` (same value), `CONVEX_SITE_URL`, `CONVEX_CONTROL_KEY`.
+- **Local setup and test:** Generated configs and full runbook are in `docs/local/` (gitignored): see `docs/local/agent-login-local-setup.md` and `docs/local/secrets.generated.txt`.
 
 ## Migration plan
 
