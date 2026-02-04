@@ -193,6 +193,16 @@ bun install
 bun run deploy
 ```
 
+Convex (apps/web):
+
+- **Never run `npx convex deploy` (or `npx convex deploy --yes`) raw.** It uses dev env (e.g. CONVEX_DEPLOYMENT / .env) and can push the wrong config or hit WorkOS env mismatches against prod.
+- Use the app deploy script, which loads production env and deploys Convex with the correct vars:
+  ```bash
+  cd apps/web
+  npm run deploy
+  ```
+  For Convex-only deploy: `npm run deploy:convex` (uses `.env.production` then `npx convex deploy --yes`).
+
 ---
 
 ## Artifact expectations (when you finish an agent session)

@@ -94,6 +94,14 @@ function getInternalKey(): string {
   return key.trim();
 }
 
+function buildOpenclawUrl(apiBase: string, path: string, internalKey: string): string {
+  const url = new URL(`${apiBase}${path}`);
+  url.searchParams.set('oa_internal_key', internalKey);
+  // Bust any edge caches that might be serving stale 401s.
+  url.searchParams.set('oa_cache_bust', Date.now().toString());
+  return url.toString();
+}
+
 async function requestOpenclaw<T>(params: {
   apiBase: string;
   internalKey: string;
@@ -103,17 +111,33 @@ async function requestOpenclaw<T>(params: {
   body?: string;
   label: string;
 }): Promise<T> {
-  const res = await fetch(`${params.apiBase}${params.path}`, {
+  const url = buildOpenclawUrl(params.apiBase, params.path, params.internalKey);
+  const redactedUrl = new URL(url);
+  if (redactedUrl.searchParams.has('oa_internal_key')) {
+    redactedUrl.searchParams.set('oa_internal_key', 'REDACTED');
+  }
+  console.log(
+    `[openclawApi ${params.label}] fetch key_len=${params.internalKey.length} url=${redactedUrl.toString()}`,
+  );
+  // Send key in both headers and query params: Convex's fetch may strip custom headers.
+  const res = await fetch(url, {
     method: params.method ?? 'GET',
+    redirect: 'manual',
     headers: {
       Accept: 'application/json',
       ...(params.body ? { 'Content-Type': 'application/json' } : {}),
       'X-OA-Internal-Key': params.internalKey,
+      Authorization: `Bearer ${params.internalKey}`,
       'X-OA-User-Id': params.userId,
     },
     body: params.body,
   });
   const text = await res.text();
+  if (res.status >= 300 && res.status < 400) {
+    throw new Error(
+      `OpenClaw API returned redirect (${res.status}). Set PUBLIC_API_URL to the final API base (e.g. https://openagents.com/api) with no trailing slash.`,
+    );
+  }
   if (res.status >= 500) {
     const detail = text.slice(0, 500);
     console.error(`[openclawApi ${params.label}] API 5xx:`, res.status, detail);
@@ -134,6 +158,16 @@ async function requestOpenclaw<T>(params: {
   if (!res.ok || !body.ok) {
     const msg = body.error ?? `Request failed (${res.status})`;
     console.error(`[openclawApi ${params.label}] API error response:`, res.status, msg);
+    const cacheStatus = res.headers.get('cf-cache-status') ?? 'unknown';
+    const age = res.headers.get('age') ?? 'unknown';
+    const workerVersion = res.headers.get('x-oa-worker-version') ?? 'unknown';
+    const cfRay = res.headers.get('cf-ray') ?? 'unknown';
+    console.error(
+      `[openclawApi ${params.label}] cache status: cf-cache-status=${cacheStatus} age=${age}`,
+    );
+    console.error(
+      `[openclawApi ${params.label}] worker: x-oa-worker-version=${workerVersion} cf-ray=${cfRay}`,
+    );
     if (res.status === 401) {
       throw new Error(
         `${msg} Convex actions do not read .env.local. Set OA_INTERNAL_KEY and PUBLIC_API_URL in this Convex deployment (Dashboard → Environment Variables, or npx convex env set OA_INTERNAL_KEY "<same as API worker>" and npx convex env set PUBLIC_API_URL "https://openagents.com/api"). API worker must have the same OA_INTERNAL_KEY (npx wrangler secret put OA_INTERNAL_KEY in apps/api).`,
@@ -177,15 +211,22 @@ export const getInstance = action({
     const apiBase = getApiBase();
     const internalKey = getInternalKey();
     const userId = identity.subject;
-    const res = await fetch(`${apiBase}/openclaw/instance`, {
+    const url = buildOpenclawUrl(apiBase, '/openclaw/instance', internalKey);
+    const res = await fetch(url, {
       method: 'GET',
+      redirect: 'manual',
       headers: {
         Accept: 'application/json',
         'X-OA-Internal-Key': internalKey,
+        Authorization: `Bearer ${internalKey}`,
         'X-OA-User-Id': userId,
       },
     });
     const text = await res.text();
+    if (res.status >= 300 && res.status < 400) {
+      console.error('[openclawApi getInstance] API redirect:', res.status);
+      return null;
+    }
     // 5xx or non-JSON: treat as unavailable, return null so UI can show "unavailable" / retry
     if (res.status >= 500) {
       console.error('[openclawApi getInstance] API 5xx:', res.status, text.slice(0, 500));
@@ -243,12 +284,15 @@ export const createInstance = action({
     const apiBase = getApiBase();
     const internalKey = getInternalKey();
     const userId = identity.subject;
-    const res = await fetch(`${apiBase}/openclaw/instance`, {
+    const url = buildOpenclawUrl(apiBase, '/openclaw/instance', internalKey);
+    const res = await fetch(url, {
       method: 'POST',
+      redirect: 'manual',
       headers: {
         Accept: 'application/json',
         'Content-Type': 'application/json',
         'X-OA-Internal-Key': internalKey,
+        Authorization: `Bearer ${internalKey}`,
         'X-OA-User-Id': userId,
       },
       body: '{}',

@@ -47,9 +47,34 @@ fn service_token_from_env(env: &Env) -> Option<String> {
         })
 }
 
+/// Internal key can come from X-OA-Internal-Key or Authorization: Bearer <key> (Convex may strip custom headers).
+fn internal_key_from_request(req: &Request) -> Option<String> {
+    if let Ok(Some(v)) = req.headers().get(INTERNAL_KEY_HEADER) {
+        return Some(v);
+    }
+    if let Ok(Some(auth)) = req.headers().get("authorization") {
+        let auth = auth.trim();
+        if auth.len() > 7 && auth[..7].eq_ignore_ascii_case("bearer ") {
+            return Some(auth[7..].trim().to_string());
+        }
+    }
+    if let Ok(url) = req.url() {
+        for (key, value) in url.query_pairs() {
+            if key == "oa_internal_key" || key == "internal_key" {
+                return Some(value.to_string());
+            }
+        }
+    }
+    None
+}
+
 fn resolve_internal_user(req: &Request, env: &Env) -> std::result::Result<Option<String>, Response> {
-    let provided = req.headers().get(INTERNAL_KEY_HEADER).ok().flatten();
+    let provided = internal_key_from_request(req);
     let Some(provided) = provided else {
+        worker::console_log!(
+            "openclaw auth: no internal key header path={}",
+            req.path(),
+        );
         return Ok(None);
     };
 
@@ -62,7 +87,15 @@ fn resolve_internal_user(req: &Request, env: &Env) -> std::result::Result<Option
         }
     };
 
-    if provided.trim() != expected {
+    let provided_trimmed = provided.trim();
+    let expected_trimmed = expected.trim();
+    if provided_trimmed != expected_trimmed {
+        worker::console_log!(
+            "openclaw auth 401: path={} provided_len={} expected_len={}",
+            req.path(),
+            provided_trimmed.len(),
+            expected_trimmed.len(),
+        );
         return Err(crate::json_unauthorized("unauthorized"));
     }
 
@@ -78,6 +111,11 @@ fn resolve_internal_user(req: &Request, env: &Env) -> std::result::Result<Option
         return Err(response);
     }
 
+    worker::console_log!(
+        "openclaw auth ok path={} key_len={}",
+        req.path(),
+        expected_trimmed.len(),
+    );
     Ok(Some(user_id))
 }
 
@@ -111,6 +149,17 @@ fn json_ok<T: Serialize>(data: Option<T>) -> Result<Response> {
         error: None,
     })?;
     crate::apply_cors(&mut response)?;
+    let _ = response
+        .headers_mut()
+        .set("X-OA-Worker-Version", "openagents-api-2026-02-04");
+    let _ = response.headers_mut().set(
+        "Cache-Control",
+        "private, no-store, no-cache, must-revalidate",
+    );
+    let _ = response.headers_mut().set("CDN-Cache-Control", "no-store");
+    let _ = response.headers_mut().set("Surrogate-Control", "no-store");
+    let _ = response.headers_mut().set("Pragma", "no-cache");
+    let _ = response.headers_mut().set("Expires", "0");
     Ok(response)
 }
 
@@ -173,9 +222,13 @@ async fn runtime_client_for_user(env: &Env, user_id: &str) -> Result<RuntimeClie
     let runtime_url = instance
         .runtime_url
         .ok_or_else(|| worker::Error::RustError("runtime url not set".to_string()))?;
-    let service_token = convex::get_secret(env, user_id, "service_token")
-        .await?
-        .ok_or_else(|| worker::Error::RustError("service token not set".to_string()))?;
+    let service_token = if let Some(token) = service_token_from_env(env) {
+        token
+    } else {
+        convex::get_secret(env, user_id, "service_token")
+            .await?
+            .ok_or_else(|| worker::Error::RustError("service token not set".to_string()))?
+    };
     Ok(RuntimeClient::new(runtime_url, service_token))
 }
 
