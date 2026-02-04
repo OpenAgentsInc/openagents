@@ -10,6 +10,13 @@ Give every user a durable **Autopilot** (Cloudflare Agents SDK agent) that can:
 
 Canonical OpenClaw + Cloudflare plan lives in `apps/web/docs/openclaw-on-openagents-com.md`.
 
+## Repo naming (keep as-is)
+
+Do **not** rename the existing Cloudflare worker app right now:
+
+- Folder stays `apps/agent-worker/`
+- Worker name stays `openagents-agent-worker`
+
 ## Non-goals (for this split)
 
 - Re-implement OpenClaw Gateway semantics inside Autopilot (we keep the gateway process inside containers).
@@ -77,7 +84,7 @@ To support multiple instances per user, we need:
 
 ### Milestone A — Autopilot becomes the owner of “upgrade + attach”
 
-- Create/rename the agent worker conceptually to Autopilot (still a Worker + DO).
+- Use the existing `apps/agent-worker` as the durable Autopilot orchestrator (still a Worker + DO).
 - Autopilot exposes internal endpoints (server-to-server) to:
   - create/list/update OpenClaw instances for a user
   - attach/detach an OpenClaw instance to a project/thread
