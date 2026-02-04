@@ -148,9 +148,9 @@ MVP requirement:
 
 ### 1.1 Layout + Navigation (by **2026-02-05**)
 
-- [ ] Left sidebar shows: **Chats**, **Projects**, **OpenClaw** (status + link(s))
-- [ ] Right sidebar shows: **Community posts & collaboration** (Moltbook/Nostr surfaces)
-- [ ] `/assistant`, `/hatchery`, and `/openclaw/chat` are discoverable and feel like one product
+- [x] Left sidebar shows: **Chats**, **Projects**, **OpenClaw** (status + link(s))
+- [x] Right sidebar shows: **Community posts & collaboration** (Moltbook/Nostr surfaces)
+- [x] `/assistant`, `/hatchery`, and `/openclaw/chat` are discoverable and feel like one product
 
 ### 1.2 “Easy chat instructions” onboarding (local vs managed)
 
@@ -524,3 +524,14 @@ Agent parity is not “OpenClaw only”; it includes the collaboration/product s
 - No full OAuth/bot onboarding for channels (DM pairing approvals only)
 - No full multi-instance support (can be 1 instance per user in EA if isolation is safe)
 - No fully Agents SDK-native client integration required (proxying via `AGENT_WORKER_URL` is acceptable in EA)
+
+---
+
+## Work Log
+
+- **2026-02-04 22:17 UTC (branch: `main`)** – Completed MVP 1.1 layout/nav updates: Projects section in left sidebar, OpenClaw chat link always visible, Chats header links to `/assistant`.  
+  **Key files:** `apps/web/src/components/assistant-ui/threadlist-sidebar.tsx`, `apps/web/src/routes/login.tsx`, `apps/web/src/routes/signup.tsx`, `apps/web/src/lib/approvalStore.test.ts`, `apps/web/src/lib/nostrQuery.test.ts`, `apps/web/src/lib/openclawApi.test.ts`, `apps/web/src/lib/posthog.test.ts`, `apps/web/src/lib/publishKind1111.test.ts`.  
+  **Tests:** `npm run test` ✅; `npm run lint` ❌ (fails with pre-existing repo-wide lint issues; see latest output); `npm run test:e2e` ✅ (openclaw spec skipped without auth state).  
+  **Deploys:** none.  
+  **Production checks:** OpenClaw API flow via agent key (POST `/api/agent/signup` → POST/GET `/api/openclaw/instance`), social UI routes `/feed` + `/c` + `/hatchery` returned 200.  
+  **Known issues / next:** Next unchecked item is **1.2 “Easy chat instructions” onboarding**.

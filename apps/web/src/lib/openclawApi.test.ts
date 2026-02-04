@@ -53,7 +53,7 @@ describe('openclawApi', () => {
 
   describe('deleteOpenclawInstance', () => {
     it('issues a DELETE request with internal headers', async () => {
-      const fetchMock = vi.fn(async () => {
+      const fetchMock = vi.fn(() => {
         return new Response(JSON.stringify({ ok: true, data: { deleted: true } }), {
           status: 200,
           headers: { 'content-type': 'application/json' },
@@ -67,10 +67,16 @@ describe('openclawApi', () => {
         userId: 'user-123',
       });
 
+      if (!result) {
+        throw new Error('Expected deleteOpenclawInstance to return a result');
+      }
       expect(result.deleted).toBe(true);
       expect(fetchMock).toHaveBeenCalledTimes(1);
-      const [url, init] = fetchMock.mock.calls[0];
-      expect(url).toBe('https://api.example.com/openclaw/instance');
+      const calls = fetchMock.mock.calls as unknown as Array<
+        [RequestInfo | URL, RequestInit | undefined]
+      >;
+      const [url, init] = calls[0] ?? [];
+      expect(String(url)).toBe('https://api.example.com/openclaw/instance');
       expect(init?.method).toBe('DELETE');
       const headers = new Headers(init?.headers as HeadersInit);
       expect(headers.get('X-OA-Internal-Key')).toBe('internal-key');
@@ -80,7 +86,7 @@ describe('openclawApi', () => {
 
   describe('openclawRequest error handling', () => {
     it('throws when API returns ok:false', async () => {
-      const fetchMock = vi.fn(async () => {
+      const fetchMock = vi.fn(() => {
         return new Response(JSON.stringify({ ok: false, error: 'nope' }), {
           status: 200,
           headers: { 'content-type': 'application/json' },
@@ -98,7 +104,7 @@ describe('openclawApi', () => {
     });
 
     it('throws when API response is non-200', async () => {
-      const fetchMock = vi.fn(async () => {
+      const fetchMock = vi.fn(() => {
         return new Response(JSON.stringify({ ok: true, data: null, error: 'nope' }), {
           status: 500,
           headers: { 'content-type': 'application/json' },

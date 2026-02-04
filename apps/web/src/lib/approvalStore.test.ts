@@ -4,15 +4,12 @@ import { createApproval, getApproval, resolveApproval } from './approvalStore';
 describe('approvalStore', () => {
   afterEach(() => {
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
   });
 
   it('creates and resolves approvals', () => {
-    if (!globalThis.crypto) {
-      // @ts-expect-error test shim
-      globalThis.crypto = { randomUUID: () => 'id-123' };
-    } else {
-      vi.spyOn(globalThis.crypto, 'randomUUID').mockReturnValue('id-123');
-    }
+    const uuid = '123e4567-e89b-12d3-a456-426614174000';
+    vi.stubGlobal('crypto', { randomUUID: () => uuid });
     vi.spyOn(Date, 'now').mockReturnValue(123456);
 
     const record = createApproval({
@@ -21,15 +18,15 @@ describe('approvalStore', () => {
       toolName: 'tool',
       toolInput: { a: 1 },
     });
-    expect(record.id).toBe('id-123');
+    expect(record.id).toBe(uuid);
     expect(record.status).toBe('pending');
 
-    const fetched = getApproval('user-1', 'id-123');
+    const fetched = getApproval('user-1', uuid);
     expect(fetched?.summary).toBe('Test');
 
     const resolved = resolveApproval({
       userId: 'user-1',
-      approvalId: 'id-123',
+      approvalId: uuid,
       decision: 'approved',
     });
     expect(resolved?.status).toBe('approved');
