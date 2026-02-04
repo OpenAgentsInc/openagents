@@ -150,6 +150,8 @@ Separate worker (Containers + Durable Objects). Referenced by `OPENCLAW_RUNTIME_
 
 For server-side or other callers that hit the API with the internal key: `OA_INTERNAL_KEY` (secret) if needed. Hatchery uses Convex actions, so the key lives in Convex, not necessarily in the web worker.
 
+For `/chat` tool calls in `apps/web`, the web worker must also have the OpenClaw API base configured (e.g. `PUBLIC_API_URL=https://openagents.com/api` or `OPENCLAW_API_BASE=...`) so server-side tool execution does not fall back to same-origin `/api`.
+
 ---
 
 ## 5. What was implemented / fixed

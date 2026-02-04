@@ -18,7 +18,6 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { BookOpen, MessageSquarePlus, ServerIcon, Shield } from 'lucide-react';
-import { ThreadList } from '@/components/assistant-ui/thread-list';
 import { cn } from '@/lib/utils';
 
 /** Renders Lucide icon only after mount to avoid SSR/client hydration mismatch. */
@@ -37,6 +36,12 @@ function useIsActive(path: string) {
     location.pathname === path ||
     (path !== '/' && location.pathname.startsWith(path + '/'))
   );
+}
+
+function useAssistantThreadId(): string | null {
+  const { location } = useRouterState();
+  const params = new URLSearchParams(location.search ?? '');
+  return params.get('threadId');
 }
 
 const SITE_TITLE = 'OpenAgents';
@@ -174,11 +179,12 @@ function SidebarChatsSection() {
   const createThread = useMutation(api.threads.create);
   const navigate = useNavigate();
   const assistantActive = useIsActive('/assistant');
+  const activeThreadId = useAssistantThreadId();
 
   const handleNewChat = async () => {
     try {
-      await createThread({ title: 'New Chat', kind: 'chat' });
-      navigate({ to: '/assistant' });
+      const threadId = await createThread({ title: 'New Chat', kind: 'chat' });
+      navigate({ to: '/assistant', search: { threadId } });
     } catch {
       // ignore
     }
@@ -201,7 +207,10 @@ function SidebarChatsSection() {
       {threads?.length ? (
         threads.slice(0, 10).map((t) => (
           <SidebarMenuItem key={t._id}>
-            <SidebarMenuButton asChild isActive={assistantActive}>
+            <SidebarMenuButton
+              asChild
+              isActive={assistantActive && activeThreadId === t._id}
+            >
               <Link to="/assistant" search={{ threadId: t._id }}>
                 <span className="truncate text-sm">{t.title}</span>
               </Link>
@@ -254,7 +263,6 @@ export function ThreadListSidebar(
         </SidebarMenu>
         <SidebarOpenClawSection />
         <SidebarChatsSection />
-        <ThreadList />
       </SidebarContent>
       <SidebarRail />
       <SidebarFooter className="aui-sidebar-footer group-data-[collapsible=icon]:hidden">

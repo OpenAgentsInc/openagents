@@ -58,7 +58,7 @@ As of the last update, the following is implemented and deployed:
 - **What “ready” means:** Instance row in Convex with `status: ready` and `runtime_url` from API env. No per-user container is started; provision only records metadata. OpenClaw Chat (streaming) and device pairing are planned for later milestones.
 - **Docs:** Full architecture, env vars, flows, and debugging: `apps/web/docs/openclaw-hatchery-architecture.md`.
 
-**Milestone 3 (sidebar + OpenClaw) — partially done:** Left sidebar has an “OpenClaw Cloud” section (status from Convex, link to Hatchery, link to Chat when ready) and a “Chats” section backed by Convex `threads` (list, “New chat” creates a thread and navigates to /assistant). Threads table: `user_id`, `title`, `kind` (chat/project/openclaw), `archived`, `created_at`, `updated_at`. Remaining: Hatchery “Your workspace graph” from Convex threads; /assistant loading a thread by `threadId` search param.
+**Milestone 3 (sidebar + OpenClaw) — mostly done:** Left sidebar has an “OpenClaw Cloud” section (status from Convex, link to Hatchery, link to Chat when ready) and a “Chats” section backed by Convex `threads` (list, “New chat” creates a thread and navigates to `/assistant?threadId=...`). `/assistant` now switches to the requested threadId. Threads table: `user_id`, `title`, `kind` (chat/project/openclaw), `archived`, `created_at`, `updated_at`. Remaining: Hatchery “Your workspace graph” from Convex threads.
 
 ## Product surface: what users should experience on openagents.com
 
@@ -341,6 +341,7 @@ Changes:
 Acceptance criteria:
 - Threads persist across refresh/devices.
 - “OpenClaw” is always reachable from the left sidebar.
+- `/assistant` switches to the requested `threadId` (search param).
 
 ### Milestone 4: Mode A — OpenClaw tools behind the durable agent (bridge without WS)
 

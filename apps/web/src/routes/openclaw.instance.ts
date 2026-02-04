@@ -32,7 +32,7 @@ function resolveConvexUrl(): string {
   return url;
 }
 
-async function requireAccess(origin: string): Promise<OpenclawApiConfig> {
+async function requireAccess(): Promise<OpenclawApiConfig> {
   const auth = await getAuth().catch(() => null);
   const user = auth?.user;
   if (!user) {
@@ -45,7 +45,7 @@ async function requireAccess(origin: string): Promise<OpenclawApiConfig> {
   }
 
   const internalKey = resolveInternalKey();
-  const apiBase = resolveApiBase(origin);
+  const apiBase = resolveApiBase();
 
   const convex = new ConvexHttpClient(resolveConvexUrl());
   convex.setAuth(token);
@@ -61,12 +61,12 @@ async function requireAccess(origin: string): Promise<OpenclawApiConfig> {
   };
 }
 
-async function requireAccessFromRequest(request: Request): Promise<{
+async function requireAccessFromRequest(_request: Request): Promise<{
   config: OpenclawApiConfig;
 } | Response> {
   try {
-    const origin = new URL(request.url).origin;
-    const config = await requireAccess(origin);
+    void _request;
+    const config = await requireAccess();
     return { config };
   } catch (err) {
     const message = err instanceof Error ? err.message : 'unauthorized';
@@ -77,18 +77,18 @@ async function requireAccessFromRequest(request: Request): Promise<{
 
 /** Server function: bypasses router HTML check so Hatchery can load instance data. */
 export const getOpenclawInstanceServer = createServerFn({ method: 'POST' })
-  .inputValidator((data: { origin: string }) => data)
-  .handler(async (opts): Promise<{ ok: true; data: InstanceSummary | null }> => {
-    const config = await requireAccess(opts.data.origin);
+  .inputValidator((data: { origin?: string }) => data)
+  .handler(async (): Promise<{ ok: true; data: InstanceSummary | null }> => {
+    const config = await requireAccess();
     const instance = await getOpenclawInstance(config);
     return { ok: true, data: instance };
   });
 
 /** Server function: bypasses router HTML check so Hatchery can provision instance. */
 export const createOpenclawInstanceServer = createServerFn({ method: 'POST' })
-  .inputValidator((data: { origin: string }) => data)
-  .handler(async (opts): Promise<{ ok: true; data: InstanceSummary }> => {
-    const config = await requireAccess(opts.data.origin);
+  .inputValidator((data: { origin?: string }) => data)
+  .handler(async (): Promise<{ ok: true; data: InstanceSummary }> => {
+    const config = await requireAccess();
     const instance = await createOpenclawInstance(config);
     if (!instance) {
       throw new Error('No instance returned from API');

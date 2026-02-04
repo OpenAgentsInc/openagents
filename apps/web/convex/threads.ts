@@ -35,6 +35,28 @@ export const list = query({
   },
 });
 
+export const get = query({
+  args: {
+    threadId: v.id('threads'),
+  },
+  handler: async (ctx, args) => {
+    const identity = (await ctx.auth.getUserIdentity()) as { subject?: string } | null;
+    if (!identity?.subject) return null;
+    const doc = await ctx.db.get(args.threadId);
+    if (!doc || doc.user_id !== identity.subject) return null;
+    return {
+      _id: doc._id,
+      _creationTime: doc._creationTime,
+      user_id: doc.user_id,
+      title: doc.title,
+      kind: doc.kind ?? undefined,
+      archived: doc.archived ?? false,
+      created_at: doc.created_at,
+      updated_at: doc.updated_at,
+    };
+  },
+});
+
 export const create = mutation({
   args: {
     title: v.optional(v.string()),

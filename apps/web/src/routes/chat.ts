@@ -87,9 +87,22 @@ export const Route = createFileRoute('/chat')({
           });
         }
 
-        // Call the Rust API worker on the same apex domain.
-        const origin = new URL(request.url).origin;
-        const apiBase = resolveApiBase(origin);
+        // OpenClaw API base must be explicit so server-side tool calls never hit the TanStack app.
+        let apiBase = '';
+        try {
+          apiBase = resolveApiBase();
+        } catch (error) {
+          return new Response(
+            JSON.stringify({
+              ok: false,
+              error:
+                error instanceof Error
+                  ? error.message
+                  : 'OpenClaw API base not configured',
+            }),
+            { status: 500, headers: { 'content-type': 'application/json' } },
+          );
+        }
         const apiConfig: OpenclawApiConfig = {
           apiBase,
           internalKey,
