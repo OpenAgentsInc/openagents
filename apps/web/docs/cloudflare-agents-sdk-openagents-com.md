@@ -230,6 +230,10 @@ Pattern:
 
 Implementation note: this is much easier if the agent owns a durable event log and the UI connects via WebSocket.
 
+Status (apps/web + agent-worker):
+- Sensitive OpenClaw tools now return `approval_required` payloads, and the web UI renders approval cards/modals.
+- `/approvals` server route forwards `approval.respond` to the agent worker (or local fallback when `AGENT_WORKER_URL` is unset).
+
 ## Background work (minutes to days)
 
 For long-running tasks (research, migrations, batch processing), we should:

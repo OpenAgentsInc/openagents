@@ -21,12 +21,21 @@ import {
 } from './openclawApi';
 
 type ApprovalDecision = 'approved' | 'rejected';
+type ApprovalStatus = 'pending' | ApprovalDecision;
 
 type StoredApproval = {
   id: string;
   createdAtMs: number;
-  status: 'pending' | ApprovalDecision;
+  status: ApprovalStatus;
   resolvedAtMs?: number;
+  summary?: string;
+  toolName?: string;
+  toolInput?: unknown;
+};
+
+type ApprovalGateResult = {
+  status: 'approval_required' | 'approval_rejected' | 'approval_pending';
+  approvalId: string;
   summary?: string;
   toolName?: string;
   toolInput?: unknown;
@@ -52,6 +61,25 @@ type ApprovalRespondBody = {
   threadId?: string;
   approvalId: string;
   decision: ApprovalDecision;
+};
+
+const defaultApprovalSummary = (toolName: string, toolInput: unknown): string => {
+  if (toolName === 'openclaw_provision') {
+    return 'Provision a managed OpenClaw instance.';
+  }
+  if (toolName === 'openclaw_restart') {
+    return 'Restart the OpenClaw gateway.';
+  }
+  if (toolName === 'openclaw_approve_device') {
+    if (toolInput && typeof toolInput === 'object' && 'requestId' in toolInput) {
+      const requestId = (toolInput as { requestId?: unknown }).requestId;
+      if (typeof requestId === 'string' && requestId.trim().length > 0) {
+        return `Approve device pairing request ${requestId.trim()}.`;
+      }
+    }
+    return 'Approve a pending device pairing request.';
+  }
+  return `Approve ${toolName}.`;
 };
 
 function jsonError(status: number, code: string, message: string, details?: Record<string, unknown> | null) {
@@ -165,6 +193,78 @@ export class ThreadAgent {
     await this.state.storage.put('state', next);
   }
 
+  private async requireApproval<T>({
+    userId,
+    toolName,
+    toolInput,
+    approvalId,
+    summary,
+    action,
+  }: {
+    userId: string;
+    toolName: string;
+    toolInput: unknown;
+    approvalId?: string;
+    summary?: string;
+    action: () => Promise<T>;
+  }): Promise<T | ApprovalGateResult> {
+    let decision: ApprovalStatus = 'pending';
+    let resolvedId = '';
+    let resolvedSummary = summary ?? defaultApprovalSummary(toolName, toolInput);
+    let usedExisting = false;
+
+    await this.state.blockConcurrencyWhile(async () => {
+      const state = await this.loadState(userId);
+      let approval: StoredApproval | undefined;
+
+      if (approvalId) {
+        approval = state.approvals[approvalId];
+        usedExisting = Boolean(approval);
+      }
+
+      if (!approval) {
+        const id = crypto.randomUUID();
+        approval = {
+          id,
+          createdAtMs: Date.now(),
+          status: 'pending',
+          summary: resolvedSummary,
+          toolName,
+          toolInput,
+        };
+        state.approvals[id] = approval;
+      }
+
+      decision = approval.status;
+      resolvedId = approval.id;
+      resolvedSummary = approval.summary ?? resolvedSummary;
+      state.updatedAtMs = Date.now();
+      await this.saveState(state);
+    });
+
+    if ((decision as ApprovalDecision) === 'approved') {
+      return action();
+    }
+
+    if ((decision as ApprovalDecision) === 'rejected') {
+      return {
+        status: 'approval_rejected',
+        approvalId: resolvedId,
+        summary: resolvedSummary,
+        toolName,
+        toolInput,
+      };
+    }
+
+    return {
+      status: usedExisting ? 'approval_pending' : 'approval_required',
+      approvalId: resolvedId,
+      summary: resolvedSummary,
+      toolName,
+      toolInput,
+    };
+  }
+
   private async handleChat(request: Request, userId: string): Promise<Response> {
     const body = await readJson<ChatRequestBody>(request);
     if (!body) {
@@ -227,8 +327,12 @@ export class ThreadAgent {
 
     const result = streamText({
       model: openai.responses('gpt-4o-mini'),
-      system:
-        'You are OpenAgents. Be concise. If you need to take a sensitive action, ask for approval first.',
+      system: [
+        'You are OpenAgents. Be concise.',
+        'Sensitive actions (provisioning, device approvals, restarts) require explicit human approval.',
+        'If a tool response includes status approval_required, ask the user to approve or reject.',
+        'After approval, call the same tool again with the provided approvalId to continue.',
+      ].join(' '),
       messages: await convertToModelMessages(conversationMessages),
       stopWhen: stepCountIs(10),
       tools: {
@@ -239,8 +343,18 @@ export class ThreadAgent {
         },
         openclaw_provision: {
           description: 'Provision an OpenClaw instance for the current user.',
-          inputSchema: jsonSchema({ type: 'object', properties: {} }),
-          execute: async () => createOpenclawInstance(apiConfig),
+          inputSchema: jsonSchema({
+            type: 'object',
+            properties: { approvalId: { type: 'string', minLength: 1 } },
+          }),
+          execute: async ({ approvalId }: { approvalId?: string }) =>
+            this.requireApproval({
+              userId,
+              toolName: 'openclaw_provision',
+              toolInput: {},
+              approvalId,
+              action: () => createOpenclawInstance(apiConfig),
+            }),
         },
         openclaw_get_status: {
           description: "Get runtime status for the current user's OpenClaw instance.",
@@ -256,11 +370,20 @@ export class ThreadAgent {
           description: 'Approve a pending device by requestId.',
           inputSchema: jsonSchema({
             type: 'object',
-            properties: { requestId: { type: 'string', minLength: 1 } },
+            properties: {
+              requestId: { type: 'string', minLength: 1 },
+              approvalId: { type: 'string', minLength: 1 },
+            },
             required: ['requestId'],
           }),
-          execute: async ({ requestId }: { requestId: string }) =>
-            approveRuntimeDevice(apiConfig, requestId),
+          execute: async ({ requestId, approvalId }: { requestId: string; approvalId?: string }) =>
+            this.requireApproval({
+              userId,
+              toolName: 'openclaw_approve_device',
+              toolInput: { requestId },
+              approvalId,
+              action: () => approveRuntimeDevice(apiConfig, requestId),
+            }),
         },
         openclaw_backup_now: {
           description: "Trigger a backup/sync for the current user's OpenClaw instance.",
@@ -269,8 +392,18 @@ export class ThreadAgent {
         },
         openclaw_restart: {
           description: 'Restart the OpenClaw gateway process.',
-          inputSchema: jsonSchema({ type: 'object', properties: {} }),
-          execute: async () => restartRuntime(apiConfig),
+          inputSchema: jsonSchema({
+            type: 'object',
+            properties: { approvalId: { type: 'string', minLength: 1 } },
+          }),
+          execute: async ({ approvalId }: { approvalId?: string }) =>
+            this.requireApproval({
+              userId,
+              toolName: 'openclaw_restart',
+              toolInput: {},
+              approvalId,
+              action: () => restartRuntime(apiConfig),
+            }),
         },
         openclaw_get_billing_summary: {
           description: 'Get current credit balance summary.',

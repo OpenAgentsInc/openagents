@@ -1,10 +1,10 @@
-import { createFileRoute, redirect } from '@tanstack/react-router';
 import { openai } from '@ai-sdk/openai';
 import { jsonSchema } from '@ai-sdk/provider-utils';
-import { convertToModelMessages, streamText, stepCountIs } from 'ai';
+import { createFileRoute, redirect } from '@tanstack/react-router';
+import { getAuth } from '@workos/authkit-tanstack-react-start';
+import { convertToModelMessages, stepCountIs, streamText } from 'ai';
 import type { UIMessage } from 'ai';
 import { z } from 'zod';
-import { getAuth } from '@workos/authkit-tanstack-react-start';
 import {
   approveRuntimeDevice,
   backupRuntime,
@@ -18,6 +18,30 @@ import {
   restartRuntime,
 } from '@/lib/openclawApi';
 import type { OpenclawApiConfig } from '@/lib/openclawApi';
+import { createApproval, getApproval } from '@/lib/approvalStore';
+
+type ApprovalGateResult = {
+  status: 'approval_required' | 'approval_pending' | 'approval_rejected';
+  approvalId: string;
+  summary?: string;
+  toolName?: string;
+  toolInput?: unknown;
+};
+
+const defaultApprovalSummary = (toolName: string, toolInput: unknown): string => {
+  if (toolName === 'openclaw_provision') return 'Provision a managed OpenClaw instance.';
+  if (toolName === 'openclaw_restart') return 'Restart the OpenClaw gateway.';
+  if (toolName === 'openclaw_approve_device') {
+    if (toolInput && typeof toolInput === 'object' && 'requestId' in toolInput) {
+      const requestId = (toolInput as { requestId?: unknown }).requestId;
+      if (typeof requestId === 'string' && requestId.trim().length > 0) {
+        return `Approve device pairing request ${requestId.trim()}.`;
+      }
+    }
+    return 'Approve a pending device pairing request.';
+  }
+  return `Approve ${toolName}.`;
+};
 
 /**
  * Chat endpoint for apps/web.
@@ -109,17 +133,76 @@ export const Route = createFileRoute('/chat')({
           userId: userIdStr,
         };
 
+        const requireApproval = async <T,>({
+          toolName,
+          toolInput,
+          approvalId,
+          action,
+        }: {
+          toolName: string;
+          toolInput: unknown;
+          approvalId?: string;
+          action: () => Promise<T>;
+        }): Promise<T | ApprovalGateResult> => {
+          const summary = defaultApprovalSummary(toolName, toolInput);
+          if (approvalId) {
+            const existing = getApproval(userIdStr, approvalId);
+            if (existing) {
+              if (existing.status === 'approved') return action();
+              if (existing.status === 'rejected') {
+                return {
+                  status: 'approval_rejected',
+                  approvalId: existing.id,
+                  summary: existing.summary,
+                  toolName,
+                  toolInput,
+                };
+              }
+              return {
+                status: 'approval_pending',
+                approvalId: existing.id,
+                summary: existing.summary,
+                toolName,
+                toolInput,
+              };
+            }
+          }
+
+          const record = createApproval({
+            userId: userIdStr,
+            summary,
+            toolName,
+            toolInput,
+          });
+          return {
+            status: 'approval_required',
+            approvalId: record.id,
+            summary: record.summary,
+            toolName,
+            toolInput,
+          };
+        };
+
         // OpenAI Responses API requires parameters to be JSON Schema with type: "object".
         // Explicit jsonSchema() ensures type: "object" (Zod empty object can emit type: "None").
         const emptySchema = jsonSchema({ type: 'object', properties: {} });
         const approveDeviceSchema = jsonSchema({
           type: 'object',
-          properties: { requestId: { type: 'string', minLength: 1 } },
+          properties: {
+            requestId: { type: 'string', minLength: 1 },
+            approvalId: { type: 'string', minLength: 1 },
+          },
           required: ['requestId'],
         });
 
         const result = streamText({
           model: openai.responses('gpt-4o-mini'),
+          system: [
+            'You are OpenAgents. Be concise.',
+            'Sensitive actions (provisioning, device approvals, restarts) require explicit human approval.',
+            'If a tool response includes status approval_required, ask the user to approve or reject.',
+            'After approval, call the same tool again with the provided approvalId to continue.',
+          ].join(' '),
           messages: await convertToModelMessages(messages),
           // Allow multiple tool-call rounds (default is 1) so model can e.g. get instance → provision → list devices → approve.
           stopWhen: stepCountIs(10),
@@ -132,8 +215,17 @@ export const Route = createFileRoute('/chat')({
             },
             openclaw_provision: {
               description: 'Provision an OpenClaw instance for the current user.',
-              inputSchema: emptySchema,
-              execute: async () => createOpenclawInstance(apiConfig),
+              inputSchema: jsonSchema({
+                type: 'object',
+                properties: { approvalId: { type: 'string', minLength: 1 } },
+              }),
+              execute: async ({ approvalId }: { approvalId?: string }) =>
+                requireApproval({
+                  toolName: 'openclaw_provision',
+                  toolInput: {},
+                  approvalId,
+                  action: () => createOpenclawInstance(apiConfig),
+                }),
             },
             openclaw_get_status: {
               description: "Get runtime status for the current user's OpenClaw instance.",
@@ -148,8 +240,13 @@ export const Route = createFileRoute('/chat')({
             openclaw_approve_device: {
               description: 'Approve a pending device by requestId.',
               inputSchema: approveDeviceSchema,
-              execute: async ({ requestId }: { requestId: string }) =>
-                approveRuntimeDevice(apiConfig, requestId),
+              execute: async ({ requestId, approvalId }: { requestId: string; approvalId?: string }) =>
+                requireApproval({
+                  toolName: 'openclaw_approve_device',
+                  toolInput: { requestId },
+                  approvalId,
+                  action: () => approveRuntimeDevice(apiConfig, requestId),
+                }),
             },
             openclaw_backup_now: {
               description: "Trigger a backup/sync for the current user's OpenClaw instance.",
@@ -158,8 +255,17 @@ export const Route = createFileRoute('/chat')({
             },
             openclaw_restart: {
               description: 'Restart the OpenClaw gateway process.',
-              inputSchema: emptySchema,
-              execute: async () => restartRuntime(apiConfig),
+              inputSchema: jsonSchema({
+                type: 'object',
+                properties: { approvalId: { type: 'string', minLength: 1 } },
+              }),
+              execute: async ({ approvalId }: { approvalId?: string }) =>
+                requireApproval({
+                  toolName: 'openclaw_restart',
+                  toolInput: {},
+                  approvalId,
+                  action: () => restartRuntime(apiConfig),
+                }),
             },
             openclaw_get_billing_summary: {
               description: 'Get current credit balance summary.',

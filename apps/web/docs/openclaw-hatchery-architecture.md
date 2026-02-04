@@ -8,8 +8,8 @@ This doc explains how OpenClaw instance get/create works from the Hatchery UI th
 
 ## Current status (as of last update)
 
-- **Implemented and working:** Hatchery “Create your OpenClaw” panel; Convex actions `openclawApi.getInstance` / `openclawApi.createInstance`; Convex HTTP routes `/control/openclaw/*`; API worker GET/POST `/openclaw/instance` with Convex bridge; access gating (`access.getStatus`); admin panel at `/admin`; env vars and secrets (Convex + API); error logging and prefixed API error messages; TS fixes (openclaw.instance null check, Hatchery `/kb/$slug` links).
-- **What “ready” means today:** Instance row is stored in Convex with `status: ready` and `runtime_url` (from API’s `OPENCLAW_RUNTIME_URL`). No per-user container is started; provision only writes metadata. OpenClaw Chat (streaming) is now live at `/openclaw/chat`; device pairing is still pending. Hatchery shows a “Provisioning complete” blurb and links to OpenClaw Chat.
+- **Implemented and working:** Hatchery “Create your OpenClaw” panel; OpenClaw controls card (runtime status, devices, backup, restart); approval modal gating provisioning/device approvals/restart; Convex actions `openclawApi.getInstance` / `openclawApi.createInstance` plus runtime actions; Convex HTTP routes `/control/openclaw/*`; API worker GET/POST `/openclaw/instance` with Convex bridge; access gating (`access.getStatus`); admin panel at `/admin`; env vars and secrets (Convex + API); error logging and prefixed API error messages; TS fixes (openclaw.instance null check, Hatchery `/kb/$slug` links).
+- **What “ready” means today:** Instance row is stored in Convex with `status: ready` and `runtime_url` (from API’s `OPENCLAW_RUNTIME_URL`). No per-user container is started; provision only writes metadata. OpenClaw Chat (streaming) is now live at `/openclaw/chat`. Hatchery shows a “Provisioning complete” blurb, links to OpenClaw Chat, and exposes device pairing approvals with explicit UI confirmation.
 - **Critical:** API worker `CONVEX_SITE_URL` must point at the **same** Convex deployment that serves the web app (e.g. `https://effervescent-anteater-82.convex.site`). If it pointed at a different deployment, getInstance returned 500; that was fixed and the API was redeployed.
 - **Verify end-to-end / TS:** Done (Convex + API deployed; TS passes). Remaining work is in “What needs to be done next” below.
 
@@ -71,7 +71,9 @@ So: **Hatchery → Convex actions → API (Rust) → Convex HTTP control → Con
 
 | Location | Purpose |
 |----------|---------|
-| `convex/openclawApi.ts` | Convex **actions** `getInstance` and `createInstance`. Called by Hatchery. They `fetch(PUBLIC_API_URL/openclaw/instance)` with `X-OA-Internal-Key` and `X-OA-User-Id`. Return instance summary or null (get) / throw with real API error (create). |
+| `convex/openclawApi.ts` | Convex **actions** `getInstance` / `createInstance` plus runtime helpers (`getRuntimeStatus`, `getRuntimeDevices`, `approveRuntimeDevice`, `backupRuntime`, `restartRuntime`). Called by Hatchery. They `fetch(PUBLIC_API_URL/openclaw/*)` with `X-OA-Internal-Key` and `X-OA-User-Id`. |
+| `src/routes/approvals.ts` | Server route that forwards `approval.respond` to the agent worker (or local fallback when `AGENT_WORKER_URL` is unset). |
+| `src/lib/approvalStore.ts` | In-memory approval store used when the agent worker is not configured. |
 | `convex/http.ts` | Convex HTTP router. Registers `/control/openclaw/instance`, `/control/openclaw/instance/status`, `/control/openclaw/instance/secret`, `/control/openclaw/billing/summary` (GET/POST as needed). |
 | `convex/openclaw_control_http.ts` | HTTP **handlers** for those routes. Each checks `x-oa-control-key` against `OA_CONTROL_KEY`, then calls `internal.openclaw.*` or `internal.billing.getCreditBalance`. Return JSON `{ ok, data?, error? }`. |
 | `convex/openclaw.ts` | **Internal** Convex functions: `getInstanceForUser`, `upsertInstance`, `setInstanceStatus`, `storeEncryptedSecret`, `getDecryptedSecret`. Persist to `openclaw_instances` (and encrypted secret fields). Require `OPENCLAW_ENCRYPTION_KEY` for secrets. |
@@ -261,8 +263,10 @@ Ordered by dependency; see `openclaw-on-openagents-com.md` for full roadmap.
    - API: `POST /api/openclaw/chat` streaming endpoint.  
    - Web UI: `/openclaw/chat` route wired to `/api/openclaw/chat`.
 
-7. **Milestone 6 (human approvals)**  
-   - Approval flow for provision, device approve, restart (and later DM pairing / exec approvals).
+7. **Milestone 6 (human approvals)** — **In progress.**  
+   - Approval modal gating for provision/device approve/restart is now wired in Hatchery.  
+   - Chat tool calls return `approval_required` payloads and can be resolved via `/approvals`.  
+   - DM pairing + exec approvals are still pending.
 
 8. **Multi-tenant runtime (from openclaw-on-openagents-com)**  
    - `openclaw-runtime`: accept tenant key (e.g. WorkOS user id), use it as sandbox id; per-user R2 prefix; no single shared sandbox for all users.
