@@ -82,6 +82,7 @@ apps/autopilot-desktop/tmp/
 # Playwright test artifacts
 playwright-report/
 test-results/
+apps/web/.auth/
 
 results
 

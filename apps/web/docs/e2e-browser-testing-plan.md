@@ -36,6 +36,22 @@ CI E2E:
 - Pros: true end-to-end auth.
 - Cons: slower, brittle, requires credentials in CI.
 
+#### Recommended local workflow (storage state)
+- Log in once manually and save browser storage state locally (gitignored).
+- Use that state for all Playwright tests.
+- Example env file: `apps/web/e2e.env.example` (copy to `.env.e2e.local` or export directly).
+- Command:
+  ```bash
+  cd apps/web
+  E2E_BASE_URL=https://openagents.com \
+  E2E_STORAGE_STATE=./.auth/storageState.json \
+  npm run test:e2e:auth
+  ```
+- Then run:
+  ```bash
+  npm run test:e2e
+  ```
+
 ### Option B: Test-Only Auth Bypass (recommended)
 Implement a small auth shim that bypasses WorkOS when `E2E_AUTH_BYPASS=1`.
 - Server-side: a wrapper around `getAuth()` that returns a synthetic user when E2E mode is enabled.
@@ -54,6 +70,7 @@ Implement a small auth shim that bypasses WorkOS when `E2E_AUTH_BYPASS=1`.
 Proposed structure:
 - `apps/web/playwright.config.ts`
 - `apps/web/e2e/`
+- `apps/web/e2e/save-auth-state.mjs` (manual login → storage state)
 
 Baseline smoke tests:
 - Home page loads and primary nav links work.
@@ -114,6 +131,53 @@ Phase 4: Expand coverage
 - `npm run test:e2e` passes locally with `E2E_AUTH_BYPASS=1`.
 - A CI run can execute at least the `@smoke` suite reliably.
 - At least one `@cloudflare` test runs against a real API Worker with the bypass user.
+
+## Full Local Instructions (Production Credential Flow)
+
+This is the recommended path for testing against production as a real user.
+
+### 1) Install deps
+```bash
+cd apps/web
+npm install
+```
+
+### 2) Create local storage state (manual login)
+This opens a real browser, lets you log in, then saves cookies/token locally.
+
+```bash
+cd apps/web
+E2E_BASE_URL=https://openagents.com \
+E2E_STORAGE_STATE=./.auth/storageState.json \
+npm run test:e2e:auth
+```
+
+- The storage file is **gitignored**: `apps/web/.auth/storageState.json`.
+- You can delete it anytime to re‑auth.
+
+### 3) Run E2E tests
+```bash
+cd apps/web
+E2E_BASE_URL=https://openagents.com \
+E2E_STORAGE_STATE=./.auth/storageState.json \
+npm run test:e2e
+```
+
+### 4) Optional: UI mode
+```bash
+cd apps/web
+E2E_BASE_URL=https://openagents.com \
+E2E_STORAGE_STATE=./.auth/storageState.json \
+npm run test:e2e:ui
+```
+
+### 5) Troubleshooting
+- **Auth missing / redirects to login:** delete `.auth/storageState.json` and re‑run `test:e2e:auth`.
+- **No OpenClaw instance:** tests should pass but runtime data may be empty. Create an instance in the UI first.
+- **Auth changes (WorkOS):** re‑run `test:e2e:auth` after password reset or re‑auth.
+
+## Test What I Can Run Now
+- `npm run test:e2e` will run smoke tests and skip any test that needs storage state if it doesn’t exist.
 
 ## Open Questions
 - Should E2E mode skip Convex `access.getStatus` checks, or should we provision a WorkOS token and a real Convex user?

@@ -45,6 +45,12 @@ function LoginPage() {
           Sign up
         </Link>
       </p>
+      <p className="mt-3 text-center text-muted-foreground text-sm">
+        Building an agent?{' '}
+        <Link to="/kb/agent-login" className="text-primary underline underline-offset-4 hover:no-underline">
+          Agent login instructions
+        </Link>
+      </p>
       <p className="auth-back mt-4 text-center text-sm">
         <Link to="/" className="text-muted-foreground underline underline-offset-4 hover:text-foreground">
           ← Back to OpenAgents
