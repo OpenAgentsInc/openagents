@@ -1,7 +1,7 @@
 # OpenClaw Tool Flow: "Only HTML requests are supported here" – Full Report
 
-**Date:** 2026-02-04  
-**Status:** Unresolved — multi-step tool calls work; tool *results* fail with HTML error  
+**Date:** 2026-02-04
+**Status:** Unresolved — multi-step tool calls work; tool *results* fail with HTML error
 **Constraint:** Do not use `/api/chat`; chat endpoint must remain at **POST `/chat`**.
 
 ---
@@ -20,7 +20,7 @@ The assistant correctly uses multiple OpenClaw tools in sequence (`openclaw_get_
 - **POST `/chat`** is handled correctly by the TanStack Start server route in `src/routes/chat.ts` (streaming, tools, multi-step).
 - The model calls tools in sequence (e.g. `openclaw_get_instance`, then `openclaw_provision`, then `openclaw_get_instance` again).
 - Each tool’s **execute** function runs on the server and performs an HTTP request.
-- Those requests return:  
+- Those requests return:
   **`{"error": "Only HTML requests are supported here"}`**
 
 So: the **chat** request is fine; the **outbound requests made inside tool execution** are what hit the “Only HTML” response.
@@ -29,7 +29,7 @@ So: the **chat** request is fine; the **outbound requests made inside tool execu
 
 - TanStack Start’s request pipeline in `@tanstack/start-server-core`:
   - For a request that is **not** handled by a server route handler, it falls through to **executeRouter** (document/HTML render path).
-  - That path only allows `Accept: */*` or `Accept: text/html`.  
+  - That path only allows `Accept: */*` or `Accept: text/html`.
     See `createStartHandler.ts`:
 
   ```ts
@@ -46,8 +46,8 @@ So: the **chat** request is fine; the **outbound requests made inside tool execu
   ```
 
 - So any request that:
-  - Reaches the document handler (no matching server route), and  
-  - Has an `Accept` header that is neither `*/*` nor `text/html`  
+  - Reaches the document handler (no matching server route), and
+  - Has an `Accept` header that is neither `*/*` nor `text/html`
 
   gets that JSON error.
 
@@ -65,7 +65,7 @@ So: the **chat** request is fine; the **outbound requests made inside tool execu
   - If `process.env.PUBLIC_API_URL` is set → uses that.
   - Else if `origin` is passed → returns **`${origin}/api`** (e.g. `http://localhost:3000/api`).
 
-- So when `PUBLIC_API_URL` is **not** set (e.g. in dev), **apiBase** is **same-origin `/api`**:  
+- So when `PUBLIC_API_URL` is **not** set (e.g. in dev), **apiBase** is **same-origin `/api`**:
   `http://localhost:3000/api`.
 
 - Tool execute functions (e.g. `getOpenclawInstance`, `createOpenclawInstance`) call:
@@ -123,7 +123,7 @@ These are correct and unrelated to the “Only HTML” response.
 
 - **Idea:** Ensure tool executions **never** call same-origin `/api`; they should call the actual OpenClaw/Rust API.
 - **How:**
-  - Set **`PUBLIC_API_URL`** (or whatever `resolveApiBase` reads in your env) to the **real** OpenClaw API base URL (e.g. Rust worker or gateway), e.g.  
+  - Set **`PUBLIC_API_URL`** (or whatever `resolveApiBase` reads in your env) to the **real** OpenClaw API base URL (e.g. Rust worker or gateway), e.g.
     `https://api.openagents.com/api` or your deployed worker URL.
   - In **local** dev, either:
     - Run the Rust/OpenClaw API locally and set `PUBLIC_API_URL=http://localhost:<port>/api` (or similar), or
