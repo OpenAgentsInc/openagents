@@ -31,11 +31,11 @@ describe('queryWithFallback', () => {
 
   afterEach(() => {
     vi.clearAllMocks();
-    delete (globalThis as { navigator?: { onLine?: boolean } }).navigator;
+    vi.unstubAllGlobals();
   });
 
   it('returns cached results when offline', async () => {
-    (globalThis as { navigator?: { onLine?: boolean } }).navigator = { onLine: false };
+    vi.stubGlobal('navigator', { onLine: false });
     const cached: TestEvent[] = [{ created_at: 100 }];
     mockQueryCachedEvents.mockResolvedValue(cached);
     const nostr = { query: vi.fn().mockResolvedValue([]) };

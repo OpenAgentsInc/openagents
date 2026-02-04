@@ -9,7 +9,10 @@ const KEY = '__OA_CONVEX_HTTP_CLIENT__';
 export function getConvexHttpClient(): ConvexHttpClient {
   const scope = globalThis as typeof globalThis & { [KEY]?: ConvexHttpClient };
   if (!scope[KEY]) {
-    const url = (import.meta as any).env?.VITE_CONVEX_URL;
+    const processUrl =
+      typeof process !== 'undefined' ? process.env.VITE_CONVEX_URL : undefined;
+    const envUrl = (import.meta as any).env?.VITE_CONVEX_URL;
+    const url = processUrl ?? envUrl;
     if (!url) throw new Error('VITE_CONVEX_URL is required for ConvexHttpClient');
     scope[KEY] = new ConvexHttpClient(url);
   }

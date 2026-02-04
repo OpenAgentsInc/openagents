@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('convex/browser', () => ({
   ConvexHttpClient: class ConvexHttpClient {
@@ -16,16 +16,19 @@ function resetClient() {
 }
 
 describe('convexHttpClient', () => {
-  it('throws when VITE_CONVEX_URL is missing', async () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
     resetClient();
-    (import.meta as { env?: Record<string, string> }).env = {};
+  });
+
+  it('throws when VITE_CONVEX_URL is missing', async () => {
+    vi.stubEnv('VITE_CONVEX_URL', '');
     const { getConvexHttpClient } = await import('./convexHttpClient');
     expect(() => getConvexHttpClient()).toThrow('VITE_CONVEX_URL is required');
   });
 
   it('returns a singleton client', async () => {
-    resetClient();
-    (import.meta as { env?: Record<string, string> }).env = { VITE_CONVEX_URL: 'https://convex.dev' };
+    vi.stubEnv('VITE_CONVEX_URL', 'https://convex.dev');
     const { getConvexHttpClient } = await import('./convexHttpClient');
     const first = getConvexHttpClient() as { url: string };
     const second = getConvexHttpClient() as { url: string };
