@@ -98,6 +98,12 @@ export async function restartGateway(sandbox: Sandbox, env: OpenClawEnv): Promis
   await ensureGateway(sandbox, env);
 }
 
+export async function stopGateway(sandbox: Sandbox): Promise<void> {
+  const existing = await findGatewayProcess(sandbox);
+  if (!existing) return;
+  await existing.kill();
+}
+
 type DeviceListResult = {
   pending: unknown[];
   paired: unknown[];

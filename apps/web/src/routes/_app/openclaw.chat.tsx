@@ -183,7 +183,7 @@ function OpenClawChatPage() {
   const handleDelete = async () => {
     if (!instance) return;
     const confirmed = globalThis.confirm?.(
-      'Delete your OpenClaw instance? This removes the record and clears secrets. You can re-provision later.',
+      'Delete your OpenClaw instance? This stops the gateway, removes the record, and clears secrets. You can re-provision later.',
     );
     if (!confirmed) return;
     setInstanceError(null);

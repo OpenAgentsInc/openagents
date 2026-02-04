@@ -163,28 +163,28 @@ MVP requirement:
 
 User-visible behavior:
 
-- [ ] `/hatchery` loads: flow canvas (“Workspace graph”), sidebar links, right-side inspector
-- [ ] If access is not allowed:
-  - [ ] waitlist overlay appears and blocks provisioning
-  - [ ] waitlist form works (`api.waitlist.joinWaitlist`)
-  - [ ] admin workflow exists to approve/deny waitlist and toggle access (e.g. `/admin`)
-- [ ] If access is allowed:
-  - [ ] page fetches instance via Convex action `api.openclawApi.getInstance`
-  - [ ] if no instance: show **Provision OpenClaw** + “No instance yet” status chip
-  - [ ] clicking **Provision OpenClaw** triggers an explicit approval dialog; confirm calls `api.openclawApi.createInstance`
-- [ ] When instance status is `ready`:
-  - [ ] show “Provisioning complete” card linking to `/openclaw/chat`
-  - [ ] show “OpenClaw controls” card with:
-    - [ ] runtime status + refresh
-    - [ ] instance type + last backup timestamp (when available)
-    - [ ] devices list (pending/paired) + approve device requests (approval required)
-    - [ ] DM pairing list + approve (approval required)
-    - [ ] backup now
-    - [ ] restart gateway (approval required)
-    - [ ] billing summary (at least visible via assistant; UI optional for EA)
-- [ ] Delete flow:
-  - [ ] “Delete OpenClaw” asks for approval and calls `api.openclawApi.deleteInstance`
-  - [ ] EA requirement: delete must **teardown/disable** the runtime (not only delete the row)
+- [x] `/hatchery` loads: flow canvas (“Workspace graph”), sidebar links, right-side inspector
+- [x] If access is not allowed:
+  - [x] waitlist overlay appears and blocks provisioning
+  - [x] waitlist form works (`api.waitlist.joinWaitlist`)
+  - [x] admin workflow exists to approve/deny waitlist and toggle access (e.g. `/admin`)
+- [x] If access is allowed:
+  - [x] page fetches instance via Convex action `api.openclawApi.getInstance`
+  - [x] if no instance: show **Provision OpenClaw** + “No instance yet” status chip
+  - [x] clicking **Provision OpenClaw** triggers an explicit approval dialog; confirm calls `api.openclawApi.createInstance`
+- [x] When instance status is `ready`:
+  - [x] show “Provisioning complete” card linking to `/openclaw/chat`
+  - [x] show “OpenClaw controls” card with:
+    - [x] runtime status + refresh
+    - [x] instance type + last backup timestamp (when available)
+    - [x] devices list (pending/paired) + approve device requests (approval required)
+    - [x] DM pairing list + approve (approval required)
+    - [x] backup now
+    - [x] restart gateway (approval required)
+    - [x] billing summary (at least visible via assistant; UI optional for EA)
+- [x] Delete flow:
+  - [x] “Delete OpenClaw” asks for approval and calls `api.openclawApi.deleteInstance`
+  - [x] EA requirement: delete must **teardown/disable** the runtime (not only delete the row)
 
 ### 1.4 OpenClaw WebChat: `/openclaw/chat` streaming (from `zero-to-openclaw-30s.md`)
 
@@ -542,3 +542,10 @@ Agent parity is not “OpenClaw only”; it includes the collaboration/product s
   **Deploys:** none.  
   **Production checks:** OpenClaw API flow via agent key (POST `/api/agent/signup` → POST/GET `/api/openclaw/instance`), UI GETs `/openclaw/chat`, `/hatchery`, `/feed`, `/c` returned 200; `/assistant` returned 307 redirect.  
   **Known issues / next:** Next unchecked item is **1.3 Hatchery: create + control OpenClaw**.
+
+- **2026-02-04 22:46 UTC (branch: `main`)** – Completed MVP 1.3 Hatchery create + control OpenClaw: delete now stops runtime before removing instance; refreshed delete copy in Hatchery and OpenClaw chat.  
+  **Key files:** `apps/openclaw-runtime/src/sandbox/process.ts`, `apps/openclaw-runtime/src/routes/v1.ts`, `apps/api/src/openclaw/runtime_client.rs`, `apps/api/src/openclaw/http.rs`, `apps/web/src/lib/openclawApi.ts`, `apps/web/src/components/hatchery/HatcheryFlowDemo.tsx`, `apps/web/src/routes/_app/openclaw.chat.tsx`.  
+  **Tests:** `npm run test` ✅; `npm run lint` ❌ (pre-existing repo-wide lint issues); `npm run test:e2e` ✅ (openclaw spec skipped without auth state); `cargo test` ⏱️ timed out after 300s.  
+  **Deploys:** `apps/api` (`npm run deploy`), `apps/openclaw-runtime` (`npm run deploy`), `apps/web` (`npm run deploy`).  
+  **Production checks:** OpenClaw API flow via agent key (POST `/api/agent/signup` → GET/POST/DELETE `/api/openclaw/instance`, create returned `status: ready`, delete returned 200 OK); UI GETs `/hatchery`, `/openclaw/chat`, `/feed`, `/c` returned 200; `/assistant` returned 307 redirect.  
+  **Known issues / next:** Next unchecked item is **1.4 OpenClaw WebChat: `/openclaw/chat` streaming**.
