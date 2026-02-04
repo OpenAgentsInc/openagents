@@ -23,6 +23,7 @@ import type * as nostr_http from "../nostr_http.js";
 import type * as openclaw from "../openclaw.js";
 import type * as openclawApi from "../openclawApi.js";
 import type * as openclaw_control_http from "../openclaw_control_http.js";
+import type * as threadMessages from "../threadMessages.js";
 import type * as threads from "../threads.js";
 import type * as users from "../users.js";
 import type * as waitlist from "../waitlist.js";
@@ -49,6 +50,7 @@ declare const fullApi: ApiFromModules<{
   openclaw: typeof openclaw;
   openclawApi: typeof openclawApi;
   openclaw_control_http: typeof openclaw_control_http;
+  threadMessages: typeof threadMessages;
   threads: typeof threads;
   users: typeof users;
   waitlist: typeof waitlist;

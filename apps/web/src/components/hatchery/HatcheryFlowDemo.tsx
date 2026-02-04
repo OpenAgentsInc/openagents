@@ -763,7 +763,7 @@ export function HatcheryFlowDemo() {
     if ((kind === 'thread' || kind === 'chat') && node.metadata?.threadId) {
       return (
         <Button asChild size="sm" variant="default">
-          <Link to="/assistant" search={{ threadId: node.metadata.threadId as string }}>
+          <Link to="/chat/$chatId" params={{ chatId: node.metadata.threadId as string }}>
             Open thread
           </Link>
         </Button>
@@ -774,7 +774,7 @@ export function HatcheryFlowDemo() {
       return (
         <>
           <Button asChild size="sm" variant="default">
-            <Link to="/assistant">Open chat</Link>
+            <Link to="/chat/$chatId" params={{ chatId: 'new' }}>Open chat</Link>
           </Button>
           <Button size="sm" variant="secondary" disabled>
             New thread
@@ -799,7 +799,7 @@ export function HatcheryFlowDemo() {
     if (kind === 'ui') {
       return (
         <Button asChild size="sm" variant="default">
-          <Link to="/assistant">Start chatting</Link>
+          <Link to="/chat/$chatId" params={{ chatId: 'new' }}>Start chatting</Link>
         </Button>
       );
     }
@@ -1450,7 +1450,7 @@ export function HatcheryFlowDemo() {
             </p>
           </div>
           <Button asChild size="sm" variant="outline" className="mt-auto">
-            <Link to="/assistant">Open full assistant</Link>
+            <Link to="/chat/$chatId" params={{ chatId: 'new' }}>Open full assistant</Link>
           </Button>
         </CardContent>
       </div>

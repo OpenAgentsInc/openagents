@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { Link, useNavigate, useRouterState } from '@tanstack/react-router';
 import { useAuth } from '@workos/authkit-tanstack-react-start/client';
-import { useMutation, useQuery } from 'convex/react';
+import { useQuery } from 'convex/react';
 import { api } from '../../../convex/_generated/api';
 import {
   Sidebar,
@@ -40,6 +40,9 @@ function useIsActive(path: string) {
 
 function useAssistantThreadId(): string | null {
   const { location } = useRouterState();
+  const pathname = location.pathname ?? '';
+  const chatMatch = pathname.match(/^\/chat\/([^/]+)$/);
+  if (chatMatch && chatMatch[1] !== 'new') return chatMatch[1];
   const params = new URLSearchParams(location.search ?? '');
   return params.get('threadId');
 }
@@ -176,18 +179,12 @@ function SidebarOpenClawSection() {
 
 function SidebarChatsSection() {
   const threads = useQuery(api.threads.list, { archived: false, limit: 20 });
-  const createThread = useMutation(api.threads.create);
   const navigate = useNavigate();
-  const assistantActive = useIsActive('/assistant');
+  const chatActive = useIsActive('/chat') || useIsActive('/assistant');
   const activeThreadId = useAssistantThreadId();
 
-  const handleNewChat = async () => {
-    try {
-      const threadId = await createThread({ title: 'New Chat', kind: 'chat' });
-      navigate({ to: '/assistant', search: { threadId } });
-    } catch {
-      // ignore
-    }
+  const handleNewChat = () => {
+    navigate({ to: '/chat/$chatId', params: { chatId: 'new' } });
   };
 
   return (
@@ -209,9 +206,9 @@ function SidebarChatsSection() {
           <SidebarMenuItem key={t._id}>
             <SidebarMenuButton
               asChild
-              isActive={assistantActive && activeThreadId === t._id}
+              isActive={chatActive && activeThreadId === t._id}
             >
-              <Link to="/assistant" search={{ threadId: t._id }}>
+              <Link to="/chat/$chatId" params={{ chatId: t._id }}>
                 <span className="truncate text-sm">{t.title}</span>
               </Link>
             </SidebarMenuButton>

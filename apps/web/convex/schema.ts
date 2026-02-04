@@ -122,4 +122,15 @@ export default defineSchema({
     .index('by_user_id', ['user_id'])
     .index('by_user_id_updated_at', ['user_id', 'updated_at'])
     .index('by_user_id_archived', ['user_id', 'archived']),
+
+  // Chat messages per thread (for rehydration)
+  thread_messages: defineTable({
+    thread_id: v.id('threads'),
+    message_id: v.string(),
+    role: v.string(),
+    parts_json: v.string(),
+    order: v.number(),
+    created_at: v.number(),
+  })
+    .index('by_thread_id_order', ['thread_id', 'order']),
 });

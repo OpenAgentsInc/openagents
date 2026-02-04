@@ -87,7 +87,9 @@ function getInternalKey(): string {
   const key =
     process.env.OA_INTERNAL_KEY ?? process.env.OPENAGENTS_INTERNAL_KEY ?? '';
   if (!key.trim()) {
-    throw new Error('OA_INTERNAL_KEY not configured in Convex');
+    throw new Error(
+      'OA_INTERNAL_KEY not set in this Convex deployment. Convex actions do not read .env.local. Set it in Convex: Dashboard → Settings → Environment Variables, or run: npx convex env set OA_INTERNAL_KEY "<same value as API worker>"',
+    );
   }
   return key.trim();
 }
@@ -134,7 +136,7 @@ async function requestOpenclaw<T>(params: {
     console.error(`[openclawApi ${params.label}] API error response:`, res.status, msg);
     if (res.status === 401) {
       throw new Error(
-        `${msg} (check OA_INTERNAL_KEY in Convex matches the API worker, and PUBLIC_API_URL/OPENCLAW_API_BASE points to the same API)`,
+        `${msg} Convex actions do not read .env.local. Set OA_INTERNAL_KEY and PUBLIC_API_URL in this Convex deployment (Dashboard → Environment Variables, or npx convex env set OA_INTERNAL_KEY "<same as API worker>" and npx convex env set PUBLIC_API_URL "https://openagents.com/api"). API worker must have the same OA_INTERNAL_KEY (npx wrangler secret put OA_INTERNAL_KEY in apps/api).`,
       );
     }
     throw new Error(msg);
@@ -205,7 +207,7 @@ export const getInstance = action({
       const msg = body.error ?? `Request failed (${res.status})`;
       if (res.status === 401) {
         throw new Error(
-          `${msg} (check OA_INTERNAL_KEY in Convex matches the API worker, and PUBLIC_API_URL/OPENCLAW_API_BASE points to the same API)`,
+          `${msg} Convex actions do not read .env.local. Set OA_INTERNAL_KEY and PUBLIC_API_URL in this Convex deployment (Dashboard → Environment Variables, or npx convex env set ...). API worker must have the same OA_INTERNAL_KEY (npx wrangler secret put OA_INTERNAL_KEY in apps/api).`,
         );
       }
       throw new Error(msg);
@@ -274,7 +276,7 @@ export const createInstance = action({
       console.error('[openclawApi createInstance] API error response:', res.status, msg);
       if (res.status === 401) {
         throw new Error(
-          `${msg} (check OA_INTERNAL_KEY in Convex matches the API worker, and PUBLIC_API_URL/OPENCLAW_API_BASE points to the same API)`,
+          `${msg} Convex actions do not read .env.local. Set OA_INTERNAL_KEY and PUBLIC_API_URL in this Convex deployment (Dashboard → Environment Variables, or npx convex env set ...). API worker must have the same OA_INTERNAL_KEY (npx wrangler secret put OA_INTERNAL_KEY in apps/api).`,
         );
       }
       throw new Error(msg);

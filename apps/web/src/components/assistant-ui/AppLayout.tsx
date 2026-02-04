@@ -46,13 +46,19 @@ export function AppLayout() {
   });
 
   useEffect(() => {
-    if (!pathname.startsWith('/assistant')) return;
-    const params = new URLSearchParams(location.search ?? '');
-    const threadId = params.get('threadId');
-    if (threadId) {
-      void runtime.switchToThread(threadId);
+    // Sync thread from URL: /chat/:chatId or /assistant?threadId=
+    if (pathname.startsWith('/chat/')) {
+      const match = pathname.match(/^\/chat\/([^/]+)$/);
+      const chatId = match?.[1];
+      if (chatId && chatId !== 'new') void runtime.switchToThread(chatId);
+      return;
     }
-  }, [location.search, pathname, runtime]);
+    if (pathname.startsWith('/assistant')) {
+      const params = new URLSearchParams(location.search ?? '');
+      const threadId = params.get('threadId');
+      if (threadId) void runtime.switchToThread(threadId);
+    }
+  }, [pathname, location.search, runtime]);
 
   useEffect(() => {
     posthogCapture('page_view', { path: pathname });
