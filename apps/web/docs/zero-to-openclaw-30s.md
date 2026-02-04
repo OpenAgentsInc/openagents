@@ -1,212 +1,122 @@
-# Zero to OpenClaw in 30 Seconds — Current State (as of 2026-02-04)
+**Zero to OpenClaw**
+As of February 4, 2026, this document describes the exact, current state of the “Zero to OpenClaw in 30 seconds” flow in `apps/web`, including what users see, what happens in code, what is implemented, what is only planned, and the gaps to close next.
 
-This doc captures the **exact current status** of the “Zero to OpenClaw in 30 seconds” flow:
+**Goal**
+A first‑time user should be able to: land on `/hatchery`, create an OpenClaw instance, send a message, receive a response without configuring any API keys, and delete the instance.
 
-- What happens today when a user visits `/hatchery`
-- What they see, and which clicks actually provision OpenClaw
-- What is **implemented now**
-- What is **designed but not implemented**
-- The **gaps** that block a truly frictionless 30‑second flow
+**Current Entry Points**
+1. `/hatchery` is the primary “create + control” surface.
+2. `/openclaw/chat` is the OpenClaw WebChat surface backed by the OpenClaw Gateway.
+3. `/assistant` is the “OpenAgents assistant” surface that can call OpenClaw tools (tool calling) and show tool lists like the screenshot.
 
-Sources referenced: actual code paths in `apps/web`, `apps/api`, `apps/openclaw-runtime` (not future docs).
+**/hatchery: What The User Sees And What Actually Happens**
+1. The page loads a flow canvas (“Workspace graph”), sidebar links, and a right‑side inspector.
+2. A waitlist overlay is shown when access is not allowed. The form uses `api.waitlist.joinWaitlist` and blocks provisioning until access is granted.
+3. If access is allowed, the page calls `api.openclawApi.getInstance` (Convex action), which calls the Rust API worker at `/api/openclaw/instance` using internal headers.
+4. If no instance exists, the user sees “Provision OpenClaw” and a status chip saying “No instance yet.”
+5. Clicking “Provision OpenClaw” opens an approval dialog. On confirm it calls `api.openclawApi.createInstance`.
+6. What “Provision” does today: it writes a row in Convex `openclaw_instances` and sets `status: ready`. The runtime URL is pulled from `OPENCLAW_RUNTIME_URL` or `OPENCLAW_RUNTIME_URL_TEMPLATE`. A service token is stored in Convex (generated if not provided via `OPENCLAW_SERVICE_TOKEN`). No Cloudflare resources are created. This is a record‑only provision step.
+7. When `status === ready`, a “Provisioning complete” card appears with a link to `/openclaw/chat`.
+8. The “OpenClaw controls” card appears and can show runtime status, last backup, instance type, refresh status/devices, trigger backup, trigger restart (approval required), list pending and paired devices, approve device requests (approval required), list DM pairing requests, and approve DM pairing requests (approval required).
+9. “Delete OpenClaw” opens an approval dialog and calls `api.openclawApi.deleteInstance`.
+10. What “Delete” does today: deletes the Convex record only. It does not shut down any runtime or Cloudflare resources.
 
----
+**/openclaw/chat: What The User Sees And What Actually Happens**
+1. The header shows instance status and runtime name when available.
+2. The page includes an optional “session key” input and a message textarea.
+3. On first send, it calls `api.openclawApi.createInstance` if the instance is missing. This auto‑provisions without a manual approval dialog.
+4. The browser posts to `/openclaw/chat` (TanStack server handler in `apps/web/src/routes/_app/openclaw.chat.tsx`).
+5. The server handler confirms WorkOS auth, resolves `OA_INTERNAL_KEY` and `OPENCLAW_API_BASE` or `PUBLIC_API_URL`, then sends `POST ${apiBase}/openclaw/chat` with `X-OA-Internal-Key`, `X-OA-User-Id`, and optional `x-openclaw-session-key` and `x-openclaw-agent-id`.
+6. The API worker proxies to the OpenClaw runtime `/v1/responses` endpoint, which streams SSE from the OpenClaw Gateway.
+7. The browser parses the SSE stream with `consumeOpenClawStream` and appends `delta` text to the assistant bubble.
+8. The “Stop” button aborts the streaming fetch.
 
-## TL;DR (Current Reality)
+**/assistant: Tool‑Calling Chat**
+1. `/chat` redirects to `/assistant` for UI.
+2. If `AGENT_WORKER_URL` is set, `/chat` proxies to the agent worker.
+3. If not set (or agent worker returns 401), it falls back to a local OpenAI Responses model (`gpt-4o-mini`).
+4. Both the agent worker and local fallback can call OpenClaw tools via the Rust API worker. Sensitive actions require explicit approval.
 
-**Yes, a user can provision OpenClaw and chat today.**  
-But:
+**Tool Status: Are Those Tools Implemented?**
+The tools shown in the screenshot come from the agent worker tool set. All tools listed below are wired to API worker endpoints, but only some have UI coverage.
 
-- Provisioning is **record-only** (no per-user container is created; runtime URL is taken from env).
-- Access gating still applies (WorkOS auth + Convex `access.getStatus`).
-- Chat **auto‑provisions** without an approval dialog (Hatchery does require approval).
-- Delete removes the Convex record + secrets, but **does not tear down runtime**.
-- Session list / transcripts / channel onboarding are not shipped in the UI.
+| Tool | Where It Exists | Backing Endpoint | Requires Approval | UI Coverage |
+| --- | --- | --- | --- | --- |
+| `openclaw_get_instance` | Agent worker + local fallback | `GET /api/openclaw/instance` | No | Hatchery + assistant |
+| `openclaw_provision` | Agent worker + local fallback | `POST /api/openclaw/instance` | Yes | Hatchery + assistant |
+| `openclaw_get_status` | Agent worker + local fallback | `GET /api/openclaw/runtime/status` | No | Hatchery + assistant |
+| `openclaw_list_devices` | Agent worker + local fallback | `GET /api/openclaw/runtime/devices` | No | Hatchery + assistant |
+| `openclaw_approve_device` | Agent worker + local fallback | `POST /api/openclaw/runtime/devices/:id/approve` | Yes | Hatchery + assistant |
+| `openclaw_list_pairing_requests` | Agent worker + local fallback | `GET /api/openclaw/runtime/pairing/:channel` | No | Hatchery + assistant |
+| `openclaw_approve_pairing` | Agent worker + local fallback | `POST /api/openclaw/runtime/pairing/:channel/approve` | Yes | Hatchery + assistant |
+| `openclaw_backup_now` | Agent worker + local fallback | `POST /api/openclaw/runtime/backup` | No | Hatchery + assistant |
+| `openclaw_restart` | Agent worker + local fallback | `POST /api/openclaw/runtime/restart` | Yes | Hatchery + assistant |
+| `openclaw_get_billing_summary` | Agent worker + local fallback | `GET /api/openclaw/billing/summary` | No | Assistant only |
+| `openclaw_list_sessions` | Agent worker only | `GET /api/openclaw/sessions` | No | Assistant only |
+| `openclaw_get_session_history` | Agent worker only | `GET /api/openclaw/sessions/:key/history` | No | Assistant only |
+| `openclaw_send_session_message` | Agent worker only | `POST /api/openclaw/sessions/:key/send` | No | Assistant only |
 
----
+**Device Pairing: What It Means And How It Works Today**
+Device pairing is for OpenClaw “node” clients that want to connect to your gateway (mobile/desktop/headless).
 
-## Exact Current Flow: `/hatchery`
+1. A device connects to the OpenClaw Gateway and creates a pending pairing request.
+2. Hatchery calls `openclaw devices list` via the runtime and surfaces the pending request ID.
+3. You click “Approve,” which runs `openclaw devices approve <requestId>` in the runtime sandbox.
+4. After approval, the device is considered paired and can connect to the gateway.
 
-### 1) User visits `/hatchery`
-Route: `apps/web/src/routes/_app/hatchery.tsx` → `HatcheryFlowDemo`.
+Current gap: there is no UI flow to generate device pairing requests or guide a user through pairing. The UI only approves requests that already exist.
 
-What the user sees:
-- A flow‑graph “workspace” canvas + right panel UI.
-- If not logged in or not approved, an **overlay gate** is shown (waitlist + sign‑in prompts).
-- The **“Create your OpenClaw”** card is always present, but actionability depends on auth/access.
+**DM Pairing: What It Means And How It Works Today**
+DM pairing allows a messaging channel (Telegram/Slack/etc.) to deliver messages into your OpenClaw gateway.
 
-Auth/access gating:
-- `access.getStatus` (Convex) checks WorkOS identity + waitlist/user access.
-- If `access.allowed !== true`, the OpenClaw action flow is gated visually and by action errors.
+1. A channel integration creates a pairing request with a code.
+2. Hatchery lets you enter a channel name and load pending requests.
+3. You click “Approve,” which runs `openclaw pairing approve <channel> <code>` in the runtime sandbox.
 
-### 2) “Create your OpenClaw” card (panel)
-UI copy:  
-“Provision a managed OpenClaw instance on openagents.com. One gateway per user; tools, sessions, and pairing in one place.”
+Current gap: there is no OAuth or bot setup flow in the web app to create pairing requests. Only approvals exist.
 
-Current UI states (from `HatcheryFlowDemo`):
-- **No instance** → shows “No instance yet” + “Provision OpenClaw” button.
-- **Provisioning** → shows “Provisioning…” while action runs.
-- **Ready** → shows status badges + “Provisioning complete” callout + link to `/openclaw/chat`.
+**Data And Control Plane (End‑to‑End)**
+1. Web app (`apps/web`) uses WorkOS AuthKit for identity, calls Convex for access gating and instance status, and uses server routes to proxy chat and instance actions.
+2. Convex stores `openclaw_instances` and encrypted secrets, and provides actions that call the Rust API worker with `X-OA-Internal-Key` plus `X-OA-User-Id`.
+3. Rust API worker (`apps/api`) authorizes internal requests with `OA_INTERNAL_KEY`, looks up instance and service token in Convex, and proxies to the runtime worker with `X-OpenAgents-Service-Token`.
+4. OpenClaw runtime (`apps/openclaw-runtime`) runs the OpenClaw Gateway in a container and proxies `/v1/responses` (SSE), `/v1/tools/invoke`, device/pairing commands, and sessions tools.
 
-### 3) Clicking “Provision OpenClaw”
-Click action:
-- Opens a **confirmation dialog** (approval gate).
-- On confirm → calls Convex action `openclawApi.createInstance`.
+**What Is Implemented Today (Factually True In Code)**
+1. Hatchery waitlist gating and access checks.
+2. Instance get/create/delete via Convex → API worker.
+3. Runtime status, devices list, backup, restart.
+4. Device approval and DM pairing approvals.
+5. OpenClaw WebChat via `/openclaw/chat` streaming SSE.
+6. Agent worker tool set for OpenClaw (including sessions APIs).
 
-What **actually happens** on the backend:
-1. **Convex action** `openclawApi.createInstance`:
-   - Requires WorkOS user identity.
-   - Requires `access.getStatus.allowed === true`.
-   - Calls the API worker: `POST /api/openclaw/instance`
-   - Uses `X-OA-Internal-Key` + `X-OA-User-Id`.
+**What Is Designed But Not Implemented**
+1. Real per‑user Cloudflare provisioning. The current provision step is record‑only.
+2. Runtime teardown on delete.
+3. Sessions UI (list/history/send) in the web app.
+4. DM and device pairing onboarding flows (OAuth, QR codes, device tokens).
+5. A single CTA “Create and chat now” that unifies Hatchery + OpenClaw Chat flow.
+6. Persisted approvals in storage. Approval state is in memory only for assistant tool calls.
 
-2. **API worker** `POST /openclaw/instance`:
-   - Validates internal auth (or API token).
-   - Calls Convex control routes to set instance status.
-   - **Provisioning is env-driven**:
-     - `cf::provision_instance` only reads env variables (e.g. `OPENCLAW_RUNTIME_URL`).
-     - **No per-user container is created** here.
-   - Generates/stores a **service token** in Convex secrets.
-   - Marks the instance as `ready`.
+**Gaps Blocking “Zero to OpenClaw in 30 Seconds”**
+1. Auto‑provision consistency. Hatchery requires manual approval, but `/openclaw/chat` auto‑provisions. The flow feels inconsistent and slow.
+2. Provider keys. The runtime must have a server‑owned model key. Without it, chat fails.
+3. Record‑only provisioning. There is no real runtime allocation per user.
+4. Delete does not teardown. Only the Convex row is removed.
+5. No pairing onboarding. You can approve requests, but cannot create them.
 
-3. **UI updates**:
-   - Instance status becomes `ready`.
-   - Runtime name may appear (if configured in env).
-   - “Provisioning complete” message appears.
+**What We Should Do Next**
+1. Make the first‑time flow one click: a single CTA that provisions (or reuses) and sends the first chat message.
+2. Ensure OpenClaw runtime has a server‑owned model key in prod so chat always answers.
+3. Decide multi‑tenant vs per‑user runtime. If per‑user, wire real Cloudflare provisioning and teardown.
+4. Add Sessions UI (list, history, send) using the existing API endpoints.
+5. Build pairing onboarding for devices and DM channels so users can create pairing requests from the UI.
 
-### 4) OpenClaw Controls (visible when ready)
-Shown only when instance status is `ready`.
-
-Controls available:
-- **Refresh**: pulls runtime status + devices + pairing list.
-- **Backup now**: calls runtime backup.
-- **Restart gateway**: approval‑gated.
-- **Device approvals**: list + approve pending devices.
-- **DM pairing approvals**: per‑channel list + approve.
-
-These call Convex actions → API worker → runtime worker:
-- `/openclaw/runtime/status`
-- `/openclaw/runtime/devices`
-- `/openclaw/runtime/pairing/:channel`
-- `/openclaw/runtime/backup`
-- `/openclaw/runtime/restart`
-
-### 5) Delete OpenClaw (Hatchery)
-Button: “Delete OpenClaw” (approval‑gated).
-
-What happens:
-- Convex action `openclawApi.deleteInstance`.
-- API worker `DELETE /openclaw/instance`.
-- Convex internal mutation deletes the `openclaw_instances` record and secrets.
-
-**Important:** This does **not** shut down any runtime container or revoke any existing runtime worker.
-
----
-
-## Exact Current Flow: `/openclaw/chat`
-
-Route: `apps/web/src/routes/_app/openclaw.chat.tsx`
-
-What the user sees:
-- “OpenClaw Chat” header with instance status.
-- **Create OpenClaw** button if no instance.
-- **Delete OpenClaw** button if instance exists.
-- Chat form with optional session key.
-
-### Sending a message
-When user clicks “Send”:
-1. If instance is missing/not ready → **auto‑provisions** via `createOpenclawInstance`.
-   - **No approval dialog** here (unlike Hatchery).
-2. Sends request to `/openclaw/chat` (server route).
-3. Server route verifies WorkOS auth, resolves internal key + API base.
-4. Calls API worker `/api/openclaw/chat` (SSE stream).
-5. UI consumes SSE via `consumeOpenClawStream`.
-
-Session behavior:
-- Optional `sessionKey` is forwarded as `x-openclaw-session-key`.
-- No UI for listing sessions yet.
-
-### “Delete OpenClaw” in Chat
-Same delete flow as Hatchery (Convex + API delete); UI clears messages and session key.
-
----
-
-## Implemented Today (Confirmed in Code)
-
-### Core
-- `/hatchery` route with OpenClaw provisioning UI + controls.
-- `/openclaw/chat` streaming UI.
-- OpenClaw instance **create** (Convex → API worker → runtime URL + service token).
-- OpenClaw instance **delete** (Convex record + secret removal).
-- Runtime status, devices, pairing list/approve, backup, restart.
-
-### Infrastructure
-- API worker routes: `/openclaw/instance`, `/openclaw/chat`, `/openclaw/runtime/*`, `/openclaw/tools`, `/openclaw/sessions`.
-- Runtime worker routes: `/v1/status`, `/v1/devices`, `/v1/pairing/*`, `/v1/storage/backup`, `/v1/gateway/restart`, `/v1/responses`.
-- Gateway responses endpoint enabled in `start-openclaw.sh`.
-
----
-
-## Designed but Not Implemented (Documented Intent)
-
-From `openclaw-on-openagents-com.md` + Hatchery notes:
-- **Sessions list UI** (OpenClaw-native sessions, transcript view, and navigation).
-- **Channel onboarding flows** (Slack/Telegram/WhatsApp).
-- **Canvas/A2UI viewer** embedded in site.
-- **BYO OpenClaw** linking flow (self-hosted gateway + scopes).
-- **Mode A vs Mode B UX unification** (single UI for web‑agent vs OpenClaw‑native).
-- **OpenClaw tools surface in UI** (beyond runtime controls).
-
----
-
-## Missing Gaps for “Zero to OpenClaw in 30 Seconds”
-
-### 1) Access/Approval Friction
-- Hatchery requires explicit approval for provisioning.
-- Chat auto‑provisions without approval.
-- No single “instant start” CTA or one‑click flow.
-
-### 2) Provisioning Is Record‑Only
-- `createInstance` does **not** create a per‑user container.
-- Runtime URL is fixed from env; service token stored in Convex.
-- If a real per‑user runtime is required, this is missing.
-
-### 3) Default AI Key Dependency
-- Chat only responds if **server‑owned provider keys** are set in runtime env:
-  - `OPENAI_API_KEY`, `OPENROUTER_API_KEY`, or `ANTHROPIC_API_KEY`.
-- If not set, OpenClaw chat will not respond (error from gateway).
-
-### 4) Deletion Is Incomplete
-- Deleting an instance removes **Convex record + secrets only**.
-- No runtime teardown or deprovision step.
-
-### 5) Sessions UX Is Missing
-- No session list, transcript browsing, or persistent session navigation.
-
----
-
-## What “Zero to OpenClaw in 30 Seconds” Would Require
-
-1. **Instant entry point** (CTA + direct `/openclaw/chat` entry).
-2. **Auto‑provision** from first visit (no approval gate).
-3. **Guaranteed runtime key** (server‑owned LLM key set).
-4. **Per‑user runtime provisioning** (if required) or clear multi‑tenant story.
-5. **Clear success confirmation** + “Start chatting now” moment.
-6. **Deletion that actually deprovisions** (optional, but consistent).
-
----
-
-## Appendix: Key Paths
-
-- UI:
-  - `apps/web/src/components/hatchery/HatcheryFlowDemo.tsx`
-  - `apps/web/src/routes/_app/openclaw.chat.tsx`
-
-- API worker:
-  - `apps/api/src/openclaw/http.rs`
-  - `apps/api/src/openclaw/convex.rs`
-
-- Runtime worker:
-  - `apps/openclaw-runtime/src/routes/v1.ts`
-  - `apps/openclaw-runtime/start-openclaw.sh`
-
+**Appendix: Key Files**
+- Hatchery UI: `apps/web/src/components/hatchery/HatcheryFlowDemo.tsx`
+- OpenClaw Chat: `apps/web/src/routes/_app/openclaw.chat.tsx`
+- Assistant tools: `apps/web/src/routes/chat.ts`
+- Agent worker tool set: `apps/agent-worker/src/threadAgent.ts`
+- Convex actions: `apps/web/convex/openclawApi.ts`
+- API worker: `apps/api/src/openclaw/http.rs`
+- Runtime worker: `apps/openclaw-runtime/src/routes/v1.ts`
+- Runtime startup: `apps/openclaw-runtime/start-openclaw.sh`
