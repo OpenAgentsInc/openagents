@@ -324,6 +324,59 @@ pub async fn handle_runtime_device_approve(
     json_runtime_result(result)
 }
 
+pub async fn handle_runtime_pairing_list(req: Request, ctx: RouteContext<()>) -> Result<Response> {
+    let user_id = match require_openclaw_user(&req, &ctx.env).await {
+        Ok(value) => value,
+        Err(response) => return Ok(response),
+    };
+
+    let channel = ctx.param("channel").map(|value| value.as_str()).unwrap_or("");
+    if channel.trim().is_empty() {
+        return crate::json_error("missing channel", 400);
+    }
+
+    let client = match runtime_client_for_user(&ctx.env, &user_id).await {
+        Ok(client) => client,
+        Err(err) => return runtime_setup_error(err),
+    };
+    let result = client.pairing_list(channel).await?;
+    json_runtime_result(result)
+}
+
+pub async fn handle_runtime_pairing_approve(
+    mut req: Request,
+    ctx: RouteContext<()>,
+) -> Result<Response> {
+    let user_id = match require_openclaw_user(&req, &ctx.env).await {
+        Ok(value) => value,
+        Err(response) => return Ok(response),
+    };
+
+    let channel = ctx.param("channel").map(|value| value.as_str()).unwrap_or("");
+    if channel.trim().is_empty() {
+        return crate::json_error("missing channel", 400);
+    }
+
+    let body: serde_json::Value = req.json().await.unwrap_or(serde_json::Value::Null);
+    let code = body
+        .get("code")
+        .and_then(|value| value.as_str())
+        .unwrap_or("")
+        .trim()
+        .to_string();
+    if code.is_empty() {
+        return crate::json_error("missing code", 400);
+    }
+    let notify = body.get("notify").and_then(|value| value.as_bool());
+
+    let client = match runtime_client_for_user(&ctx.env, &user_id).await {
+        Ok(client) => client,
+        Err(err) => return runtime_setup_error(err),
+    };
+    let result = client.pairing_approve(channel, &code, notify).await?;
+    json_runtime_result(result)
+}
+
 pub async fn handle_runtime_backup(req: Request, ctx: RouteContext<()>) -> Result<Response> {
     let user_id = match require_openclaw_user(&req, &ctx.env).await {
         Ok(value) => value,

@@ -106,6 +106,22 @@ type DeviceListResult = {
   parseError?: string;
 };
 
+type PairingRequest = {
+  id?: string;
+  code?: string;
+  createdAt?: string;
+  lastSeenAt?: string;
+  meta?: Record<string, string>;
+};
+
+type PairingListResult = {
+  channel: string;
+  requests: PairingRequest[];
+  raw?: string;
+  stderr?: string;
+  parseError?: string;
+};
+
 function parseDeviceJson(stdout: string, stderr: string): DeviceListResult {
   const jsonMatch = stdout.match(/\{[\s\S]*\}/);
   if (!jsonMatch) {
@@ -119,6 +135,22 @@ function parseDeviceJson(stdout: string, stderr: string): DeviceListResult {
     };
   } catch {
     return { pending: [], paired: [], raw: stdout, stderr, parseError: 'Failed to parse JSON payload' };
+  }
+}
+
+function parsePairingJson(stdout: string, stderr: string): PairingListResult {
+  const jsonMatch = stdout.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) {
+    return { channel: '', requests: [], raw: stdout, stderr, parseError: 'No JSON payload found' };
+  }
+  try {
+    const parsed = JSON.parse(jsonMatch[0]);
+    return {
+      channel: typeof parsed.channel === 'string' ? parsed.channel : '',
+      requests: Array.isArray(parsed.requests) ? (parsed.requests as PairingRequest[]) : [],
+    };
+  } catch {
+    return { channel: '', requests: [], raw: stdout, stderr, parseError: 'Failed to parse JSON payload' };
   }
 }
 
@@ -145,6 +177,58 @@ export async function approveDevice(sandbox: Sandbox, env: OpenClawEnv, requestI
   const stderr = result.stderr ?? '';
   const approved = result.exitCode === 0 || stdout.toLowerCase().includes('approved');
   return { approved, requestId, stdout, stderr };
+}
+
+export async function listPairingRequests(
+  sandbox: Sandbox,
+  env: OpenClawEnv,
+  channel: string,
+): Promise<{ channel: string; requests: PairingRequest[] }> {
+  const trimmed = channel.trim();
+  if (!trimmed) {
+    throw new Error('channel is required');
+  }
+  await ensureGateway(sandbox, env);
+  const result = await execCli(sandbox, `openclaw pairing list ${escapeShellArg(trimmed)} --json`);
+  const stdout = result.stdout ?? '';
+  const stderr = result.stderr ?? '';
+  const parsed = parsePairingJson(stdout, stderr);
+  if (parsed.parseError) {
+    throw new Error(parsed.parseError);
+  }
+  return {
+    channel: parsed.channel || trimmed,
+    requests: parsed.requests,
+  };
+}
+
+export async function approvePairingRequest(
+  sandbox: Sandbox,
+  env: OpenClawEnv,
+  channel: string,
+  code: string,
+  notify?: boolean,
+): Promise<{ approved: boolean; channel: string; code: string; stdout?: string; stderr?: string }> {
+  const trimmedChannel = channel.trim();
+  if (!trimmedChannel) {
+    throw new Error('channel is required');
+  }
+  const trimmedCode = code.trim();
+  if (!trimmedCode) {
+    throw new Error('code is required');
+  }
+  await ensureGateway(sandbox, env);
+  const notifyFlag = notify ? ' --notify' : '';
+  const result = await execCli(
+    sandbox,
+    `openclaw pairing approve ${escapeShellArg(trimmedChannel)} ${escapeShellArg(trimmedCode)}${notifyFlag}`,
+  );
+  const stdout = result.stdout ?? '';
+  const stderr = result.stderr ?? '';
+  if (result.exitCode !== 0) {
+    throw new Error(stderr || stdout || 'pairing approve failed');
+  }
+  return { approved: true, channel: trimmedChannel, code: trimmedCode, stdout, stderr };
 }
 
 type GatewayInvokeOk = { ok: true; result: unknown };

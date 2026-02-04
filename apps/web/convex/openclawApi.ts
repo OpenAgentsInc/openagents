@@ -36,9 +36,28 @@ type RuntimeDevicesResult = {
   }>;
 };
 
+type PairingRequestResult = {
+  id: string;
+  code: string;
+  createdAt: string;
+  lastSeenAt: string;
+  meta?: Record<string, string>;
+};
+
+type PairingRequestsResult = {
+  channel: string;
+  requests: PairingRequestResult[];
+};
+
 type ApproveDeviceResult = {
   approved: boolean;
   requestId: string;
+};
+
+type ApprovePairingResult = {
+  approved: boolean;
+  channel: string;
+  code: string;
 };
 
 type BackupResult = {
@@ -354,6 +373,78 @@ export const approveRuntimeDevice = action({
       method: 'POST',
       body: '{}',
       label: 'approveRuntimeDevice',
+    });
+  },
+});
+
+export const listPairingRequests = action({
+  args: {
+    channel: v.string(),
+  },
+  returns: v.object({
+    channel: v.string(),
+    requests: v.array(
+      v.object({
+        id: v.string(),
+        code: v.string(),
+        createdAt: v.string(),
+        lastSeenAt: v.string(),
+        meta: v.optional(v.record(v.string(), v.string())),
+      }),
+    ),
+  }),
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity?.subject) {
+      throw new Error('not authenticated');
+    }
+    const access = await ctx.runQuery(api.access.getStatus, {});
+    if (!access.allowed) {
+      throw new Error('access denied');
+    }
+    const encoded = encodeURIComponent(args.channel);
+    return requestOpenclaw<PairingRequestsResult>({
+      apiBase: getApiBase(),
+      internalKey: getInternalKey(),
+      userId: identity.subject,
+      path: `/openclaw/runtime/pairing/${encoded}`,
+      label: 'listPairingRequests',
+    });
+  },
+});
+
+export const approvePairingRequest = action({
+  args: {
+    channel: v.string(),
+    code: v.string(),
+    notify: v.optional(v.boolean()),
+  },
+  returns: v.object({
+    approved: v.boolean(),
+    channel: v.string(),
+    code: v.string(),
+  }),
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity?.subject) {
+      throw new Error('not authenticated');
+    }
+    const access = await ctx.runQuery(api.access.getStatus, {});
+    if (!access.allowed) {
+      throw new Error('access denied');
+    }
+    const encoded = encodeURIComponent(args.channel);
+    return requestOpenclaw<ApprovePairingResult>({
+      apiBase: getApiBase(),
+      internalKey: getInternalKey(),
+      userId: identity.subject,
+      path: `/openclaw/runtime/pairing/${encoded}/approve`,
+      method: 'POST',
+      body: JSON.stringify({
+        code: args.code,
+        ...(typeof args.notify === 'boolean' ? { notify: args.notify } : {}),
+      }),
+      label: 'approvePairingRequest',
     });
   },
 });
