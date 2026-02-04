@@ -12,4 +12,5 @@ export const BACKUP_ARCHIVE = `${BACKUP_DIR}/backup.tar.gz`;
 
 export const CLI_TIMEOUT_MS = 20_000;
 export const GATEWAY_HTTP_TIMEOUT_MS = 45_000;
+export const GATEWAY_STREAM_TIMEOUT_MS = 120_000;
 export const STARTUP_TIMEOUT_MS = 90_000;

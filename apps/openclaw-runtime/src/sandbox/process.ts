@@ -5,6 +5,7 @@ import {
   GATEWAY_HTTP_TIMEOUT_MS,
   GATEWAY_HTTP_URL,
   GATEWAY_PORT,
+  GATEWAY_STREAM_TIMEOUT_MS,
   GATEWAY_WS_URL,
   STARTUP_TIMEOUT_MS,
 } from '../config';
@@ -152,6 +153,12 @@ export type GatewayInvokeResponse = GatewayInvokeOk | GatewayInvokeErr;
 
 const GATEWAY_STATUS_MARKER = '__OPENCLAW_GATEWAY_STATUS__';
 const GATEWAY_HEADER_ALLOWLIST = new Set(['x-openclaw-message-channel', 'x-openclaw-account-id']);
+const GATEWAY_RESPONSE_HEADER_ALLOWLIST = new Set([
+  'x-openclaw-message-channel',
+  'x-openclaw-account-id',
+  'x-openclaw-session-key',
+  'x-openclaw-agent-id',
+]);
 
 function escapeShellArg(value: string): string {
   return `'${value.replace(/'/g, `'\\''`)}'`;
@@ -166,6 +173,21 @@ function normalizeGatewayHeaders(
     const headerKey = key.trim().toLowerCase();
     if (!GATEWAY_HEADER_ALLOWLIST.has(headerKey)) continue;
     if (typeof value !== 'string') continue;
+    const headerValue = value.trim();
+    if (!headerValue) continue;
+    normalized[headerKey] = headerValue;
+  }
+  return normalized;
+}
+
+function normalizeGatewayResponseHeaders(
+  headers: Record<string, string> | undefined,
+): Record<string, string> {
+  if (!headers) return {};
+  const normalized: Record<string, string> = {};
+  for (const [key, value] of Object.entries(headers)) {
+    const headerKey = key.trim().toLowerCase();
+    if (!GATEWAY_RESPONSE_HEADER_ALLOWLIST.has(headerKey)) continue;
     const headerValue = value.trim();
     if (!headerValue) continue;
     normalized[headerKey] = headerValue;
@@ -264,6 +286,107 @@ export async function invokeGatewayTool(
   }
 
   return { response: parsed, status };
+}
+
+export async function streamGatewayResponses(
+  sandbox: Sandbox,
+  env: OpenClawEnv,
+  opts: {
+    body: string;
+    headers?: Record<string, string>;
+    timeoutMs?: number;
+    signal?: AbortSignal;
+  },
+): Promise<ReadableStream<Uint8Array>> {
+  await ensureGateway(sandbox, env);
+
+  const headers = normalizeGatewayResponseHeaders(opts.headers);
+  const headerArgs: string[] = [
+    '-H',
+    escapeShellArg('content-type: application/json'),
+    '-H',
+    escapeShellArg('accept: text/event-stream'),
+  ];
+
+  if (env.OPENCLAW_GATEWAY_TOKEN && env.OPENCLAW_GATEWAY_TOKEN.trim()) {
+    headerArgs.push('-H', escapeShellArg(`authorization: Bearer ${env.OPENCLAW_GATEWAY_TOKEN.trim()}`));
+  }
+
+  for (const [key, value] of Object.entries(headers)) {
+    headerArgs.push('-H', escapeShellArg(`${key}: ${value}`));
+  }
+
+  const cmd = [
+    'curl',
+    '-sS',
+    '-N',
+    '-X',
+    'POST',
+    `${GATEWAY_HTTP_URL}/v1/responses`,
+    ...headerArgs,
+    '--data',
+    escapeShellArg(opts.body),
+  ].join(' ');
+
+  const encoder = new TextEncoder();
+  let controller: ReadableStreamDefaultController<Uint8Array> | null = null;
+  const abortController = new AbortController();
+  if (opts.signal) {
+    opts.signal.addEventListener('abort', () => abortController.abort());
+  }
+
+  const stream = new ReadableStream<Uint8Array>({
+    start(controllerArg) {
+      controller = controllerArg;
+      const safeEnqueue = (chunk: Uint8Array) => {
+        try {
+          controller?.enqueue(chunk);
+        } catch {
+          // ignore
+        }
+      };
+
+      sandbox
+        .exec(cmd, {
+          timeout: opts.timeoutMs ?? GATEWAY_STREAM_TIMEOUT_MS,
+          stream: true,
+          signal: abortController.signal,
+          onOutput: (streamName, data) => {
+            if (streamName === 'stderr') {
+              if (data.trim()) console.log('gateway responses stderr:', data);
+              return;
+            }
+            safeEnqueue(encoder.encode(data));
+          },
+          onError: (error) => {
+            try {
+              controller?.error(error);
+            } catch {
+              // ignore
+            }
+          },
+          onComplete: () => {
+            try {
+              controller?.close();
+            } catch {
+              // ignore
+            }
+          },
+        })
+        .catch((error) => {
+          try {
+            controller?.error(error);
+          } catch {
+            // ignore
+          }
+        });
+    },
+    cancel() {
+      abortController.abort();
+    },
+  });
+
+  return stream;
 }
 
 let cachedVersion: string | null = null;

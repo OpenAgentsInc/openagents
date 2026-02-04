@@ -139,7 +139,7 @@ function SidebarAdminLink() {
 function SidebarOpenClawSection() {
   const instance = useQuery(api.openclaw.getInstanceForCurrentUser);
   const hatcheryActive = useIsActive('/hatchery');
-  const assistantActive = useIsActive('/assistant');
+  const openclawChatActive = useIsActive('/openclaw/chat');
   return (
     <SidebarMenu className="pt-2">
       <div className="px-2 pb-1">
@@ -163,9 +163,9 @@ function SidebarOpenClawSection() {
       </SidebarMenuItem>
       {instance?.status === 'ready' && (
         <SidebarMenuItem>
-          <SidebarMenuButton asChild isActive={assistantActive}>
-            <Link to="/assistant">
-              <span className="pl-6 text-sm text-sidebar-foreground/80">Chat</span>
+          <SidebarMenuButton asChild isActive={openclawChatActive}>
+            <Link to="/openclaw/chat">
+              <span className="pl-6 text-sm text-sidebar-foreground/80">OpenClaw Chat</span>
             </Link>
           </SidebarMenuButton>
         </SidebarMenuItem>

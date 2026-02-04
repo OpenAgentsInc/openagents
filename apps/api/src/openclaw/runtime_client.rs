@@ -97,6 +97,30 @@ impl RuntimeClient {
         self.request_json(Method::Post, &path, Some(body)).await
     }
 
+    pub async fn responses_stream(
+        &self,
+        body: String,
+        extra_headers: &[(String, String)],
+    ) -> Result<worker::Response> {
+        let url = crate::join_url(&self.base_url, "/v1/responses", "");
+        let mut init = RequestInit::new();
+        init.with_method(Method::Post);
+        let headers = Headers::new();
+        headers.set("accept", "text/event-stream")?;
+        headers.set("content-type", "application/json")?;
+        headers.set(SERVICE_TOKEN_HEADER, &self.service_token)?;
+        for (name, value) in extra_headers {
+            headers.set(name, value)?;
+        }
+        init.with_headers(headers);
+        if !body.is_empty() {
+            init.with_body(Some(body.into()));
+        }
+
+        let outbound = Request::new_with_init(&url, &init)?;
+        worker::Fetch::Request(outbound).send().await
+    }
+
     async fn request_json(
         &self,
         method: Method,

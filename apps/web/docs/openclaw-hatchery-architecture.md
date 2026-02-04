@@ -9,7 +9,7 @@ This doc explains how OpenClaw instance get/create works from the Hatchery UI th
 ## Current status (as of last update)
 
 - **Implemented and working:** Hatchery “Create your OpenClaw” panel; Convex actions `openclawApi.getInstance` / `openclawApi.createInstance`; Convex HTTP routes `/control/openclaw/*`; API worker GET/POST `/openclaw/instance` with Convex bridge; access gating (`access.getStatus`); admin panel at `/admin`; env vars and secrets (Convex + API); error logging and prefixed API error messages; TS fixes (openclaw.instance null check, Hatchery `/kb/$slug` links).
-- **What “ready” means today:** Instance row is stored in Convex with `status: ready` and `runtime_url` (from API’s `OPENCLAW_RUNTIME_URL`). No per-user container is started; provision only writes metadata. OpenClaw Chat (streaming) and device pairing are not built yet; Hatchery shows a “Provisioning complete” blurb and links to main Chat.
+- **What “ready” means today:** Instance row is stored in Convex with `status: ready` and `runtime_url` (from API’s `OPENCLAW_RUNTIME_URL`). No per-user container is started; provision only writes metadata. OpenClaw Chat (streaming) is now live at `/openclaw/chat`; device pairing is still pending. Hatchery shows a “Provisioning complete” blurb and links to OpenClaw Chat.
 - **Critical:** API worker `CONVEX_SITE_URL` must point at the **same** Convex deployment that serves the web app (e.g. `https://effervescent-anteater-82.convex.site`). If it pointed at a different deployment, getInstance returned 500; that was fixed and the API was redeployed.
 - **Verify end-to-end / TS:** Done (Convex + API deployed; TS passes). Remaining work is in “What needs to be done next” below.
 
@@ -256,10 +256,10 @@ Ordered by dependency; see `openclaw-on-openagents-com.md` for full roadmap.
    - API exposes stable endpoints for tools + sessions.  
    - Agent worker includes OpenClaw tools (instance/status/devices/approve/backup/restart/billing + sessions).
 
-6. **Milestone 5 (Mode B — true WebChat)**  
-   - Runtime: enable OpenResponses, proxy `POST /v1/responses`.  
-   - API: `POST /api/openclaw/chat` → runtime streaming.  
-   - Web UI: OpenClaw Chat route using that endpoint.
+6. **Milestone 5 (Mode B — true WebChat)** — **Done.**  
+   - Runtime: OpenResponses enabled + `POST /v1/responses` proxy.  
+   - API: `POST /api/openclaw/chat` streaming endpoint.  
+   - Web UI: `/openclaw/chat` route wired to `/api/openclaw/chat`.
 
 7. **Milestone 6 (human approvals)**  
    - Approval flow for provision, device approve, restart (and later DM pairing / exec approvals).

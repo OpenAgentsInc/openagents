@@ -516,7 +516,7 @@ export function HatcheryFlowDemo() {
                 <div className="rounded-md border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
                   <p className="font-medium text-card-foreground mb-1">Provisioning complete</p>
                   <p className="leading-relaxed">
-                    Your OpenClaw instance is recorded and the runtime URL is configured. OpenClaw Chat (streaming with your gateway) and device pairing are coming in a future update. For now you can use the main <Link to="/assistant" className="text-primary hover:underline">Chat</Link> for assistant-style conversations.
+                    Your OpenClaw instance is recorded and the runtime URL is configured. OpenClaw Chat now streams directly from your gateway — head to <Link to="/openclaw/chat" className="text-primary hover:underline">OpenClaw Chat</Link> to start a session. Device pairing is coming next.
                   </p>
                 </div>
               )}
