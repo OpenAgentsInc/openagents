@@ -3,8 +3,10 @@ import { jsonSchema } from '@ai-sdk/provider-utils';
 import { createFileRoute, redirect } from '@tanstack/react-router';
 import { getAuth } from '@workos/authkit-tanstack-react-start';
 import { convertToModelMessages, stepCountIs, streamText } from 'ai';
-import type { UIMessage } from 'ai';
 import { z } from 'zod';
+import type { UIMessage } from 'ai';
+import type { OpenclawApiConfig } from '@/lib/openclawApi';
+import { createApproval, getApproval } from '@/lib/approvalStore';
 import {
   approvePairingRequest,
   approveRuntimeDevice,
@@ -12,15 +14,13 @@ import {
   createOpenclawInstance,
   getBillingSummary,
   getOpenclawInstance,
-  listPairingRequests,
   getRuntimeDevices,
   getRuntimeStatus,
+  listPairingRequests,
   resolveApiBase,
   resolveInternalKey,
   restartRuntime,
 } from '@/lib/openclawApi';
-import type { OpenclawApiConfig } from '@/lib/openclawApi';
-import { createApproval, getApproval } from '@/lib/approvalStore';
 
 type ApprovalGateResult = {
   status: 'approval_required' | 'approval_pending' | 'approval_rejected';

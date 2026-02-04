@@ -2,9 +2,9 @@
  * Convex actions that proxy OpenClaw instance get/create to the Rust API.
  * Used by Hatchery to avoid TanStack server-function path that can hit "Only HTML requests" error.
  */
-import { action } from './_generated/server';
-import { api } from './_generated/api';
 import { v } from 'convex/values';
+import { api } from './_generated/api';
+import { action } from './_generated/server';
 
 const DEFAULT_API_BASE = 'https://openagents.com/api';
 
@@ -46,7 +46,7 @@ type PairingRequestResult = {
 
 type PairingRequestsResult = {
   channel: string;
-  requests: PairingRequestResult[];
+  requests: Array<PairingRequestResult>;
 };
 
 type ApproveDeviceResult = {
