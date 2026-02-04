@@ -34,6 +34,7 @@ import { MarkdownText } from "@/components/assistant-ui/markdown-text";
 import { Reasoning, ReasoningGroup } from "@/components/assistant-ui/reasoning";
 import { ToolFallback } from "@/components/assistant-ui/tool-fallback";
 import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
+import { OpenClawSetupCards } from "@/components/openclaw/openclaw-setup-cards";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -95,6 +96,12 @@ const ThreadWelcome: FC = () => {
           <p className="mt-1 aui-thread-welcome-message-inner fade-in slide-in-from-bottom-1 animate-in text-muted-foreground text-xl delay-75 duration-200">
             How can we help you?
           </p>
+        </div>
+        <div className="mt-6 w-full px-4">
+          <p className="text-sm text-muted-foreground">
+            Choose your OpenClaw setup path:
+          </p>
+          <OpenClawSetupCards className="mt-3" />
         </div>
       </div>
       <ThreadSuggestions />

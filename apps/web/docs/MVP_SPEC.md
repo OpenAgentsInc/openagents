@@ -154,10 +154,10 @@ MVP requirement:
 
 ### 1.2 “Easy chat instructions” onboarding (local vs managed)
 
-- [ ] In-product guidance explains two paths:
-  - [ ] **Local OpenClaw**: steps to run gateway locally and connect
-  - [ ] **Managed OpenClaw**: steps to provision/spawn in Hatchery and chat immediately
-- [ ] The instructions are accessible from chat (not hidden in docs-only)
+- [x] In-product guidance explains two paths:
+  - [x] **Local OpenClaw**: steps to run gateway locally and connect
+  - [x] **Managed OpenClaw**: steps to provision/spawn in Hatchery and chat immediately
+- [x] The instructions are accessible from chat (not hidden in docs-only)
 
 ### 1.3 Hatchery: create + control OpenClaw (from `zero-to-openclaw-30s.md`)
 
@@ -535,3 +535,10 @@ Agent parity is not “OpenClaw only”; it includes the collaboration/product s
   **Deploys:** none.  
   **Production checks:** OpenClaw API flow via agent key (POST `/api/agent/signup` → POST/GET `/api/openclaw/instance`), social UI routes `/feed` + `/c` + `/hatchery` returned 200.  
   **Known issues / next:** Next unchecked item is **1.2 “Easy chat instructions” onboarding**.
+
+- **2026-02-04 22:26 UTC (branch: `main`)** – Completed MVP 1.2 onboarding guidance: added Local vs Managed OpenClaw setup cards to `/assistant` empty state and `/openclaw/chat` empty state.  
+  **Key files:** `apps/web/src/components/openclaw/openclaw-setup-cards.tsx`, `apps/web/src/components/assistant-ui/thread.tsx`, `apps/web/src/routes/_app/openclaw.chat.tsx`.  
+  **Tests:** `npm run test` ✅; `npm run lint` ❌ (fails with pre-existing repo-wide lint issues); `npm run test:e2e` ✅ (openclaw spec skipped without auth state).  
+  **Deploys:** none.  
+  **Production checks:** OpenClaw API flow via agent key (POST `/api/agent/signup` → POST/GET `/api/openclaw/instance`), UI GETs `/openclaw/chat`, `/hatchery`, `/feed`, `/c` returned 200; `/assistant` returned 307 redirect.  
+  **Known issues / next:** Next unchecked item is **1.3 Hatchery: create + control OpenClaw**.
