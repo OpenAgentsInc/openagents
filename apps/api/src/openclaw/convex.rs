@@ -27,6 +27,11 @@ pub struct BillingSummary {
     pub balance_usd: f64,
 }
 
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct DeleteInstanceResult {
+    pub deleted: bool,
+}
+
 #[derive(Debug, Deserialize, Serialize)]
 struct SecretResponse {
     secret: Option<String>,
@@ -147,4 +152,25 @@ pub async fn get_billing_summary(env: &Env, user_id: &str) -> Result<BillingSumm
     response
         .data
         .ok_or_else(|| worker::Error::RustError("missing billing summary".to_string()))
+}
+
+pub async fn delete_instance(env: &Env, user_id: &str) -> Result<DeleteInstanceResult> {
+    let payload = serde_json::json!({
+        "user_id": user_id,
+    });
+    let response: ApiResponse<DeleteInstanceResult> = convex_json(
+        env,
+        Method::Post,
+        "control/openclaw/instance/delete",
+        Some(payload),
+    )
+    .await?;
+    if !response.ok {
+        return Err(worker::Error::RustError(
+            response.error.unwrap_or_else(|| "convex error".to_string()),
+        ));
+    }
+    response
+        .data
+        .ok_or_else(|| worker::Error::RustError("missing delete result".to_string()))
 }

@@ -1,5 +1,5 @@
-import type { MutationCtx, QueryCtx } from '../_generated/server';
 import { fail } from './errors';
+import type { MutationCtx, QueryCtx } from '../_generated/server';
 
 type Identity = {
   subject: string;
@@ -37,7 +37,7 @@ export async function requireAdmin(ctx: QueryCtx | MutationCtx) {
   let adminUserIds = parseList(process.env.OA_ADMIN_USER_IDS);
   const useDefaults = configuredEmails.size === 0 && adminUserIds.size === 0;
   const adminEmails = useDefaults ? new Set(['chris@openagents.com']) : configuredEmails;
-  if (useDefaults && DEFAULT_ADMIN_USER_ID) {
+  if (useDefaults) {
     adminUserIds = new Set([...adminUserIds, DEFAULT_ADMIN_USER_ID]);
   }
   let email = safeIdentity.email?.toLowerCase() ?? null;

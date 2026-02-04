@@ -1,6 +1,9 @@
-import type { NostrEvent } from '@nostrify/nostrify';
 import { api } from '../../convex/_generated/api';
+import type { NostrEvent } from '@nostrify/nostrify';
 import { getConvexHttpClient } from '@/lib/convexHttpClient';
+
+type Tag = Array<string>;
+type Tags = Array<Tag>;
 
 type NostrRow = {
   event_id: string;
@@ -11,11 +14,11 @@ type NostrRow = {
   tags_json: string;
 };
 
-function safeParseTags(tagsJson: string): string[][] {
+function safeParseTags(tagsJson: string): Tags {
   try {
     const parsed = JSON.parse(tagsJson) as unknown;
     if (Array.isArray(parsed)) {
-      return parsed.filter((tag): tag is string[] => Array.isArray(tag));
+      return parsed.filter((tag): tag is Tag => Array.isArray(tag));
     }
     return [];
   } catch {
@@ -44,7 +47,7 @@ export async function fetchConvexFeed(args: {
   community?: string;
   since?: number;
   showAll?: boolean;
-}): Promise<NostrEvent[]> {
+}): Promise<Array<NostrEvent>> {
   if (!isBrowser()) return [];
   try {
     const client = getConvexHttpClient();
@@ -70,7 +73,7 @@ export async function fetchConvexAuthorPosts(args: {
   limit?: number;
   since?: number;
   showAll?: boolean;
-}): Promise<NostrEvent[]> {
+}): Promise<Array<NostrEvent>> {
   if (!isBrowser()) return [];
   try {
     const client = getConvexHttpClient();
@@ -95,7 +98,7 @@ export async function fetchConvexPost(eventId: string): Promise<NostrEvent | nul
 export async function fetchConvexReplies(
   eventId: string,
   showAll = false,
-): Promise<NostrEvent[]> {
+): Promise<Array<NostrEvent>> {
   if (!isBrowser()) return [];
   try {
     const client = getConvexHttpClient();
@@ -112,7 +115,7 @@ export async function fetchConvexReplies(
 export async function fetchConvexThread(
   eventId: string,
   showAll = false,
-): Promise<NostrEvent[]> {
+): Promise<Array<NostrEvent>> {
   if (!isBrowser()) return [];
   try {
     const client = getConvexHttpClient();
@@ -126,7 +129,7 @@ export async function fetchConvexThread(
   }
 }
 
-export async function fetchConvexProfiles(pubkeys: string[]) {
+export async function fetchConvexProfiles(pubkeys: Array<string>) {
   if (!isBrowser())
     return new Map<string, { name?: string; picture?: string; about?: string }>();
   try {
@@ -143,9 +146,9 @@ export async function fetchConvexProfiles(pubkeys: string[]) {
         about?: string;
       };
       map.set(row.pubkey, {
-        name: profile?.name,
-        picture: profile?.picture,
-        about: profile?.about,
+        name: profile.name,
+        picture: profile.picture,
+        about: profile.about,
       });
     }
     return map;
@@ -156,11 +159,11 @@ export async function fetchConvexProfiles(pubkeys: string[]) {
 
 export async function fetchConvexEventsByParent(
   kind: number,
-  parentIds: string[],
+  parentIds: Array<string>,
   limit = 200,
 ) {
   if (!isBrowser() || parentIds.length === 0)
-    return new Map<string, NostrEvent[]>();
+    return new Map<string, Array<NostrEvent>>();
   try {
     const client = getConvexHttpClient();
     const rows = await client.query(api.nostr.listEventsByParent, {
@@ -168,7 +171,7 @@ export async function fetchConvexEventsByParent(
       parentIds,
       limit,
     });
-    const map = new Map<string, NostrEvent[]>();
+    const map = new Map<string, Array<NostrEvent>>();
     for (const parentId of parentIds) {
       const events = rows[parentId] ?? [];
       map.set(parentId, events.map(rowToEvent));
@@ -180,7 +183,7 @@ export async function fetchConvexEventsByParent(
 }
 
 export async function fetchConvexReplyCounts(
-  parentIds: string[],
+  parentIds: Array<string>,
   showAll = false,
 ) {
   if (!isBrowser() || parentIds.length === 0) return new Map<string, number>();

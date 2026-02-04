@@ -4,10 +4,10 @@ import { DEFAULT_RELAYS } from '@/lib/relayConfig';
 import { queryCachedEvents, storeEvents } from '@/lib/nostrEventCache';
 
 type NostrQueryClient = {
-  query(
-    filters: NostrFilter[],
-    opts?: { signal?: AbortSignal; relays?: string[] },
-  ): Promise<NostrEvent[]>;
+  query: (
+    filters: Array<NostrFilter>,
+    opts?: { signal?: AbortSignal; relays?: Array<string> },
+  ) => Promise<Array<NostrEvent>>;
 };
 
 type QueryOptions = {
@@ -23,7 +23,7 @@ const DEFAULT_FALLBACK_WINDOW = 7 * DAY_SECONDS;
 const VOTE_FALLBACK_WINDOW = 2 * DAY_SECONDS;
 const PROFILE_FALLBACK_WINDOW = 30 * DAY_SECONDS;
 
-function getFallbackWindowSeconds(filters: NostrFilter[]): number {
+function getFallbackWindowSeconds(filters: Array<NostrFilter>): number {
   const kinds = new Set<number>();
   for (const filter of filters) {
     if (filter.kinds) filter.kinds.forEach((kind) => kinds.add(kind));
@@ -33,7 +33,7 @@ function getFallbackWindowSeconds(filters: NostrFilter[]): number {
   return DEFAULT_FALLBACK_WINDOW;
 }
 
-function getLatestSeen(events: NostrEvent[]): number | null {
+function getLatestSeen(events: Array<NostrEvent>): number | null {
   if (events.length === 0) return null;
   let latest = 0;
   for (const event of events) {
@@ -42,7 +42,10 @@ function getLatestSeen(events: NostrEvent[]): number | null {
   return latest > 0 ? latest : null;
 }
 
-function shouldEscalateFallback(events: NostrEvent[], filters: NostrFilter[]): boolean {
+function shouldEscalateFallback(
+  events: Array<NostrEvent>,
+  filters: Array<NostrFilter>,
+): boolean {
   const latest = getLatestSeen(events);
   if (!latest) return false;
   const windowSeconds = getFallbackWindowSeconds(filters);
@@ -51,7 +54,7 @@ function shouldEscalateFallback(events: NostrEvent[], filters: NostrFilter[]): b
 }
 
 function combineSignals(signal?: AbortSignal, timeoutMs?: number): AbortSignal | undefined {
-  const signals: AbortSignal[] = [];
+  const signals: Array<AbortSignal> = [];
   if (signal) signals.push(signal);
   if (typeof timeoutMs === 'number' && timeoutMs > 0) {
     signals.push(AbortSignal.timeout(timeoutMs));
@@ -63,11 +66,11 @@ function combineSignals(signal?: AbortSignal, timeoutMs?: number): AbortSignal |
 
 export async function queryWithFallback(
   nostr: NostrQueryClient,
-  filters: NostrFilter[],
+  filters: Array<NostrFilter>,
   options: QueryOptions = {},
-): Promise<NostrEvent[]> {
+): Promise<Array<NostrEvent>> {
   const signal = combineSignals(options.signal, options.timeoutMs);
-  let cached: NostrEvent[] = [];
+  let cached: Array<NostrEvent> = [];
   try {
     cached = await queryCachedEvents(filters);
   } catch {
@@ -77,7 +80,7 @@ export async function queryWithFallback(
   const offline = typeof navigator !== 'undefined' && navigator.onLine === false;
   if (offline && cached.length > 0) return cached;
 
-  let primary: NostrEvent[] = [];
+  let primary: Array<NostrEvent> = [];
   try {
     primary = await nostr.query(filters, { signal });
   } catch {
@@ -110,7 +113,7 @@ export async function queryWithFallback(
       ? [...new Set([...configuredRelays, ...DEFAULT_RELAYS])]
       : configuredRelays;
   if (allRelays.length <= 1) return cached.length > 0 ? cached : primary;
-  let fallback: NostrEvent[] = [];
+  let fallback: Array<NostrEvent> = [];
   try {
     fallback = await nostr.query(filters, { signal, relays: allRelays });
   } catch {

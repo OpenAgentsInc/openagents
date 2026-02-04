@@ -47,7 +47,7 @@ export const upsertAgentUser = internalMutation({
         patch.kind = 'agent';
       }
       if (Object.keys(patch).length > 1) {
-        await ctx.db.patch(existing._id, patch);
+        await ctx.db.patch('users', existing._id, patch);
       }
       return {
         user_id: existing.user_id,
@@ -81,7 +81,7 @@ export const upsertAgentUser = internalMutation({
     }
 
     const userId = await ctx.db.insert('users', record);
-    const created = await ctx.db.get(userId);
+    const created = await ctx.db.get('users', userId);
     const user = requireFound(created, 'NOT_FOUND', 'User not found after creation');
     return {
       user_id: user.user_id,

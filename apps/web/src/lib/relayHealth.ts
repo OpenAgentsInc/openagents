@@ -18,8 +18,9 @@ function loadState(): RelayHealthState {
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
     if (!raw) return {};
-    const parsed = JSON.parse(raw) as RelayHealthState;
-    return parsed ?? {};
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== 'object') return {};
+    return parsed as RelayHealthState;
   } catch {
     return {};
   }
@@ -87,7 +88,7 @@ function getRelayScore(entry: RelayHealth | undefined, index: number): number {
   return base + success - penalty - latencyPenalty - index;
 }
 
-export function pickReadRelays(relays: string[]): string[] {
+export function pickReadRelays(relays: Array<string>): Array<string> {
   if (relays.length <= 1) return relays;
   const state = loadState();
   const ranked = [...relays]

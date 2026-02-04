@@ -1,7 +1,8 @@
 import { v } from 'convex/values';
-import { internalMutation, internalQuery, query, type MutationCtx, type QueryCtx } from './_generated/server';
-import type { Doc } from './_generated/dataModel';
+import { internalMutation, internalQuery, query } from './_generated/server';
 import { fail, requireFound } from './lib/errors';
+import type { Doc } from './_generated/dataModel';
+import type { MutationCtx, QueryCtx } from './_generated/server';
 
 const STATUS_VALUES = new Set(['provisioning', 'ready', 'error', 'deleted']);
 const ENCRYPTION_ALGO = 'AES-GCM';
@@ -219,9 +220,9 @@ export const upsertInstance = internalMutation({
         updated_at: now,
       });
       if (Object.keys(patch).length > 0) {
-        await ctx.db.patch(existing._id, patch);
+        await ctx.db.patch('openclaw_instances', existing._id, patch);
       }
-      return (await ctx.db.get(existing._id)) ?? existing;
+      return (await ctx.db.get('openclaw_instances', existing._id)) ?? existing;
     }
 
     const record: Record<string, unknown> = {
@@ -248,7 +249,7 @@ export const upsertInstance = internalMutation({
     }
 
     const instanceId = await ctx.db.insert('openclaw_instances', record as InstanceDoc);
-    const instance = await ctx.db.get(instanceId);
+    const instance = await ctx.db.get('openclaw_instances', instanceId);
     return requireFound(instance, 'NOT_FOUND', 'Instance not found after creation');
   },
 });
@@ -272,8 +273,8 @@ export const setInstanceStatus = internalMutation({
       patch.last_ready_at = now;
     }
 
-    await ctx.db.patch(record._id, patch);
-    return (await ctx.db.get(record._id)) ?? record;
+    await ctx.db.patch('openclaw_instances', record._id, patch);
+    return (await ctx.db.get('openclaw_instances', record._id)) ?? record;
   },
 });
 
@@ -289,8 +290,9 @@ export const storeEncryptedSecret = internalMutation({
     const fields = getSecretFields(args.key);
     if (!fields) {
       fail('BAD_REQUEST', `Unsupported secret key: ${args.key}`);
+      return { ok: false };
     }
-    const f = fields!;
+    const f = fields;
 
     const encrypted = await encryptValue(args.value);
     const patch = {
@@ -300,7 +302,7 @@ export const storeEncryptedSecret = internalMutation({
       updated_at: Date.now(),
     } as Record<string, unknown>;
 
-    await ctx.db.patch(record._id, patch);
+    await ctx.db.patch('openclaw_instances', record._id, patch);
     return { ok: true };
   },
 });
@@ -319,9 +321,9 @@ export const getDecryptedSecret = internalQuery({
     if (!fields) {
       return null;
     }
-    const f = fields!;
+    const f = fields;
 
-    const record = instance as unknown as Record<string, string | null | undefined>;
+    const record = instance;
     const ciphertext = record[f.cipher];
     const iv = record[f.iv];
     const alg = record[f.alg] ?? ENCRYPTION_ALGO;
@@ -331,5 +333,19 @@ export const getDecryptedSecret = internalQuery({
     }
 
     return decryptValue({ ciphertext, iv, alg });
+  },
+});
+
+export const deleteInstance = internalMutation({
+  args: {
+    user_id: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const instance = await getInstanceByUserId(ctx, args.user_id);
+    if (!instance) {
+      return { deleted: false };
+    }
+    await ctx.db.delete(instance._id);
+    return { deleted: true };
   },
 });

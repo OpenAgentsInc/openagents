@@ -1,12 +1,14 @@
-import type { NostrEvent } from '@nostrify/nostrify';
 import { NBrowserSigner } from '@nostrify/nostrify';
-import type { NPool } from '@nostrify/nostrify';
+import type { NPool, NostrEvent } from '@nostrify/nostrify';
 import { createPostTags, createReplyTags } from '@/lib/clawstr';
+
+type Tag = Array<string>;
+type Tags = Array<Tag>;
 
 function buildUnsignedEvent(
   kind: 1111,
   content: string,
-  tags: string[][],
+  tags: Tags,
 ): Omit<NostrEvent, 'id' | 'pubkey' | 'sig'> {
   return {
     kind,

@@ -8,18 +8,18 @@ export interface RelayEntry {
 }
 
 export interface RelayMetadata {
-  relays: RelayEntry[];
+  relays: Array<RelayEntry>;
   updatedAt: number;
 }
 
-const DEFAULT_RELAY_URLS = [
+const DEFAULT_RELAY_URLS: Array<string> = [
   'wss://relay.damus.io',
   'wss://nos.lol',
   'wss://relay.nostr.band',
   'wss://relay.primal.net',
 ];
 
-export const DEFAULT_RELAYS = [...DEFAULT_RELAY_URLS];
+export const DEFAULT_RELAYS: Array<string> = [...DEFAULT_RELAY_URLS];
 
 export const DEFAULT_RELAY_METADATA: RelayMetadata = {
   relays: DEFAULT_RELAY_URLS.map((url) => ({
@@ -47,7 +47,7 @@ export function normalizeRelayUrl(url: string): string | null {
   return `wss://${trimmed}`;
 }
 
-function sanitizeRelayEntries(entries: RelayEntry[]): RelayEntry[] {
+function sanitizeRelayEntries(entries: Array<RelayEntry>): Array<RelayEntry> {
   const normalized = new Map<string, RelayEntry>();
   for (const entry of entries) {
     const url = normalizeRelayUrl(entry.url);
@@ -99,7 +99,7 @@ function coerceRelayMetadata(raw: unknown): RelayMetadata | null {
   return { relays: sanitized, updatedAt };
 }
 
-export function buildRelayMetadataFromUrls(urls: string[]): RelayMetadata {
+export function buildRelayMetadataFromUrls(urls: Array<string>): RelayMetadata {
   const relays = sanitizeRelayEntries(
     urls.map((url) => ({
       url,
@@ -145,7 +145,7 @@ export function setStoredRelayMetadata(metadata: RelayMetadata): void {
   }
 }
 
-export function getStoredRelays(): string[] {
+export function getStoredRelays(): Array<string> {
   const metadata = getStoredRelayMetadata();
   const readRelays = metadata.relays
     .filter((relay) => relay.read)

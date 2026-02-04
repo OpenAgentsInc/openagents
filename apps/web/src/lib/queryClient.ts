@@ -7,14 +7,14 @@ const PERSIST_TTL_MS = 5 * 60 * 1000;
 const MAX_ENTRIES = 100;
 
 type PersistedEntry = {
-  key: readonly unknown[];
+  key: ReadonlyArray<unknown>;
   data: unknown;
   updatedAt: number;
 };
 
 type PersistedCache = {
   timestamp: number;
-  entries: PersistedEntry[];
+  entries: Array<PersistedEntry>;
 };
 
 const PERSIST_DENYLIST = new Set([
@@ -27,7 +27,7 @@ const PERSIST_DENYLIST = new Set([
   'batch-reply-counts-global',
 ]);
 
-function isClawstrKey(key: unknown): key is readonly unknown[] {
+function isClawstrKey(key: unknown): key is ReadonlyArray<unknown> {
   if (!Array.isArray(key) || key[0] !== 'clawstr') return false;
   const scope = typeof key[1] === 'string' ? key[1] : '';
   return !PERSIST_DENYLIST.has(scope);
@@ -47,7 +47,7 @@ function deserializeData(data: unknown): unknown {
     (data as { __type?: string }).__type === 'map' &&
     Array.isArray((data as { value?: unknown }).value)
   ) {
-    return new Map((data as { value: [unknown, unknown][] }).value);
+    return new Map((data as { value: Array<[unknown, unknown]> }).value);
   }
   return data;
 }
@@ -58,7 +58,7 @@ function loadPersistedCache(client: QueryClient) {
     const raw = window.localStorage.getItem(PERSIST_KEY);
     if (!raw) return;
     const parsed = JSON.parse(raw) as PersistedCache;
-    if (!parsed?.entries?.length) return;
+    if (!parsed.entries.length) return;
     const now = Date.now();
     for (const entry of parsed.entries) {
       if (!isClawstrKey(entry.key)) continue;

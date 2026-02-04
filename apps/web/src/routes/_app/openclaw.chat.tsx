@@ -1,10 +1,13 @@
 import { useMemo, useRef, useState } from 'react';
 import { createFileRoute } from '@tanstack/react-router';
 import { getAuth } from '@workos/authkit-tanstack-react-start';
+import { useAction, useQuery } from 'convex/react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
 import { resolveApiBase, resolveInternalKey } from '@/lib/openclawApi';
+import { consumeOpenClawStream } from '@/lib/openclawStream';
+import { api } from '../../../convex/_generated/api';
 
 const DEFAULT_AGENT_ID = 'main';
 
@@ -117,74 +120,29 @@ type ChatMessage = {
   content: string;
 };
 
-type StreamEvent = {
-  type?: string;
-  delta?: string;
-  text?: string;
-  error?: { message?: string };
-};
-
-async function consumeOpenClawStream(
-  stream: ReadableStream<Uint8Array>,
-  onDelta: (delta: string) => void,
-): Promise<void> {
-  const reader = stream.getReader();
-  const decoder = new TextDecoder();
-  let buffer = '';
-
-  for (;;) {
-    const { value, done } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true }).replace(/\r\n/g, '\n');
-
-    let splitIndex = buffer.indexOf('\n\n');
-    while (splitIndex !== -1) {
-      const rawEvent = buffer.slice(0, splitIndex).trim();
-      buffer = buffer.slice(splitIndex + 2);
-      if (rawEvent) {
-        const lines = rawEvent.split('\n');
-        for (const line of lines) {
-          if (!line.startsWith('data:')) continue;
-          const data = line.slice(5).trim();
-          if (!data) continue;
-          if (data === '[DONE]') return;
-          let parsed: StreamEvent | null = null;
-          try {
-            parsed = JSON.parse(data) as StreamEvent;
-          } catch {
-            // ignore malformed chunks
-          }
-          if (!parsed) continue;
-          if (parsed.error?.message) {
-            throw new Error(parsed.error.message);
-          }
-          if (typeof parsed.delta === 'string' && parsed.delta.length > 0) {
-            onDelta(parsed.delta);
-            continue;
-          }
-          if (
-            typeof parsed.text === 'string' &&
-            parsed.text.length > 0 &&
-            parsed.type?.includes('output_text')
-          ) {
-            onDelta(parsed.text);
-          }
-        }
-      }
-      splitIndex = buffer.indexOf('\n\n');
-    }
-  }
-}
-
 function OpenClawChatPage() {
   const [messages, setMessages] = useState<Array<ChatMessage>>([]);
   const [input, setInput] = useState('');
   const [status, setStatus] = useState<'idle' | 'streaming'>('idle');
   const [error, setError] = useState<string | null>(null);
   const [sessionKey, setSessionKey] = useState('');
+  const [instanceBusy, setInstanceBusy] = useState<'creating' | 'deleting' | null>(null);
+  const [instanceError, setInstanceError] = useState<string | null>(null);
+  const [instanceOverride, setInstanceOverride] = useState<{
+    status: string;
+    runtime_name?: string | null;
+  } | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
-  const canSend = status !== 'streaming' && input.trim().length > 0;
+  const instanceQuery = useQuery(api.openclaw.getInstanceForCurrentUser);
+  const createInstance = useAction(api.openclawApi.createInstance);
+  const deleteInstance = useAction(api.openclawApi.deleteInstance);
+  const instance = instanceQuery ?? instanceOverride;
+
+  const canSend =
+    status !== 'streaming' &&
+    input.trim().length > 0 &&
+    instanceBusy !== 'deleting';
 
   const threadTitle = useMemo(() => {
     if (sessionKey.trim()) return `Session: ${sessionKey.trim()}`;
@@ -201,9 +159,52 @@ function OpenClawChatPage() {
     );
   };
 
+  const ensureInstanceReady = async (): Promise<boolean> => {
+    if (instance?.status === 'ready') return true;
+    setInstanceError(null);
+    setInstanceBusy('creating');
+    try {
+      const created = await createInstance();
+      setInstanceOverride(created ?? null);
+      if (created?.status === 'ready') {
+        return true;
+      }
+      setInstanceError('OpenClaw is still provisioning. Try again in a moment.');
+      return false;
+    } catch (err) {
+      setInstanceError(err instanceof Error ? err.message : 'Failed to provision OpenClaw');
+      return false;
+    } finally {
+      setInstanceBusy(null);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!instance) return;
+    const confirmed = globalThis.confirm?.(
+      'Delete your OpenClaw instance? This removes the record and clears secrets. You can re-provision later.',
+    );
+    if (!confirmed) return;
+    setInstanceError(null);
+    setInstanceBusy('deleting');
+    try {
+      await deleteInstance();
+      setInstanceOverride(null);
+      setMessages([]);
+      setSessionKey('');
+    } catch (err) {
+      setInstanceError(err instanceof Error ? err.message : 'Failed to delete OpenClaw');
+    } finally {
+      setInstanceBusy(null);
+    }
+  };
+
   const handleSend = async () => {
     if (!canSend) return;
     setError(null);
+
+    const ready = await ensureInstanceReady();
+    if (!ready) return;
 
     const trimmed = input.trim();
     setInput('');
@@ -275,15 +276,44 @@ function OpenClawChatPage() {
         <div>
           <h1 className="text-lg font-semibold text-foreground">OpenClaw Chat</h1>
           <p className="text-xs text-muted-foreground">{threadTitle}</p>
+          <p className="text-xs text-muted-foreground">
+            Instance: {instance ? instance.status : 'not provisioned'}
+            {instance?.runtime_name ? ` · ${instance.runtime_name}` : ''}
+          </p>
         </div>
-        {status === 'streaming' ? (
-          <Button size="sm" variant="secondary" onClick={handleAbort}>
-            Stop
-          </Button>
-        ) : null}
+        <div className="flex items-center gap-2">
+          {!instance ? (
+            <Button
+              size="sm"
+              onClick={() => void ensureInstanceReady()}
+              disabled={instanceBusy === 'creating'}
+            >
+              {instanceBusy === 'creating' ? 'Provisioning…' : 'Create OpenClaw'}
+            </Button>
+          ) : (
+            <Button
+              size="sm"
+              variant="destructive"
+              onClick={handleDelete}
+              disabled={instanceBusy === 'deleting' || status === 'streaming'}
+            >
+              {instanceBusy === 'deleting' ? 'Deleting…' : 'Delete OpenClaw'}
+            </Button>
+          )}
+          {status === 'streaming' ? (
+            <Button size="sm" variant="secondary" onClick={handleAbort}>
+              Stop
+            </Button>
+          ) : null}
+        </div>
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4 py-4">
+        {instanceError ? (
+          <div className="rounded-lg border border-red-400/30 bg-red-500/5 p-4 text-sm text-red-400">
+            {instanceError}
+          </div>
+        ) : null}
         {messages.length === 0 ? (
           <div className="rounded-lg border border-dashed border-border p-4 text-sm text-muted-foreground">
             Start a conversation with your OpenClaw gateway. Messages are stored in OpenClaw

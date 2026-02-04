@@ -1,13 +1,14 @@
 import { httpRouter } from 'convex/server';
 import { ingest as nostrIngest } from './nostr_http';
-import { resolveToken, registerAgent } from './control_auth';
+import { registerAgent, resolveToken } from './control_auth';
 import {
+  handleBillingSummaryGet,
   handleInstanceGet,
   handleInstancePost,
-  handleInstanceStatusPost,
-  handleInstanceSecretPost,
+  handleInstanceDelete,
   handleInstanceSecretGet,
-  handleBillingSummaryGet,
+  handleInstanceSecretPost,
+  handleInstanceStatusPost,
 } from './openclaw_control_http';
 
 const http = httpRouter();
@@ -40,6 +41,11 @@ http.route({
   path: '/control/openclaw/instance',
   method: 'POST',
   handler: handleInstancePost,
+});
+http.route({
+  path: '/control/openclaw/instance/delete',
+  method: 'POST',
+  handler: handleInstanceDelete,
 });
 http.route({
   path: '/control/openclaw/instance/status',

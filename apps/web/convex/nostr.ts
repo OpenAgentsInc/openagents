@@ -1,6 +1,6 @@
+import { v } from 'convex/values';
 import { internalMutation, query } from './_generated/server';
 import type { Doc } from './_generated/dataModel';
-import { v } from 'convex/values';
 
 const CLAWSTR_BASE_URL = 'https://clawstr.com';
 const OPENAGENTS_BASE_URL = 'https://openagents.com';
@@ -9,19 +9,22 @@ const COMMUNITY_BASE_URLS = [CLAWSTR_BASE_URL, OPENAGENTS_BASE_URL] as const;
 /** Hardcoded blacklist of community slugs (keep in sync with src/lib/communityBlacklist.ts). */
 const COMMUNITY_BLACKLIST = new Set(['clawcloud-api']);
 
-function extractTag(tags: string[][], name: string): string | undefined {
+type Tag = Array<string>;
+type Tags = Array<Tag>;
+
+function extractTag(tags: Tags, name: string): string | undefined {
   return tags.find(([tag]) => tag === name)?.[1];
 }
 
-function extractIdentifier(tags: string[][]): string | undefined {
+function extractIdentifier(tags: Tags): string | undefined {
   return extractTag(tags, 'I') ?? extractTag(tags, 'i');
 }
 
-function extractParentId(tags: string[][]): string | undefined {
+function extractParentId(tags: Tags): string | undefined {
   return extractTag(tags, 'e');
 }
 
-function isTopLevelPost(tags: string[][]): boolean {
+function isTopLevelPost(tags: Tags): boolean {
   const I = extractTag(tags, 'I') ?? extractTag(tags, 'i');
   const i = extractTag(tags, 'i');
   const e = extractTag(tags, 'e');
@@ -32,7 +35,7 @@ function isTopLevelPost(tags: string[][]): boolean {
   return true;
 }
 
-function hasAiLabel(tags: string[][]): boolean {
+function hasAiLabel(tags: Tags): boolean {
   const L = extractTag(tags, 'L');
   const l = extractTag(tags, 'l');
   return L === 'agent' || l === 'ai';
@@ -69,7 +72,7 @@ export const ingestEvents = internalMutation({
         pubkey?: string;
         created_at?: number;
         content?: string;
-        tags?: string[][];
+        tags?: Tags;
       };
 
       if (!event.id || typeof event.kind !== 'number' || !event.pubkey) {
@@ -130,7 +133,7 @@ export const ingestEvents = internalMutation({
             updated_at: event.created_at ?? 0,
           });
         } else if ((event.created_at ?? 0) >= existingProfile.updated_at) {
-          await ctx.db.patch(existingProfile._id, {
+          await ctx.db.patch('nostr_profiles', existingProfile._id, {
             name: meta.name,
             picture: meta.picture,
             about: meta.about,
@@ -273,11 +276,11 @@ export const listThread = query({
 
     const fetched = new Map<string, Doc<'nostr_events'>>();
     const queriedParents = new Set<string>();
-    let toQuery: string[] = [args.root_id];
+    let toQuery: Array<string> = [args.root_id];
     let depth = 0;
 
     while (toQuery.length > 0 && depth < MAX_DEPTH) {
-      const next: string[] = [];
+      const next: Array<string> = [];
       for (const parentId of toQuery) {
         const rows = await ctx.db
           .query('nostr_events')
@@ -309,7 +312,7 @@ export const listEventsByParent = query({
   },
   handler: async (ctx, args) => {
     const limit = args.limit ?? 200;
-    const result: Record<string, Doc<'nostr_events'>[]> = {};
+    const result: Record<string, Array<Doc<'nostr_events'>>> = {};
     for (const parentId of args.parentIds) {
       const rows = await ctx.db
         .query('nostr_events')

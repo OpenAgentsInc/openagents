@@ -1,5 +1,5 @@
-import type { NostrEvent, NostrFilter } from '@nostrify/nostrify';
 import { matchFilters } from 'nostr-tools';
+import type { NostrEvent, NostrFilter } from '@nostrify/nostrify';
 
 const DB_NAME = 'openagents-events-v1';
 const STORE_NAME = 'events';
@@ -13,6 +13,9 @@ type CachedEvent = NostrEvent & {
   identifier?: string;
   parent_id?: string;
 };
+
+type Tag = Array<string>;
+type Tags = Array<Tag>;
 
 type MetricEntry = {
   key: string;
@@ -64,12 +67,12 @@ function waitForTx(tx: IDBTransaction): Promise<void> {
   });
 }
 
-function getIdentifier(tags: string[][]): string | undefined {
+function getIdentifier(tags: Tags): string | undefined {
   const tag = tags.find(([name]) => name === 'I') ?? tags.find(([name]) => name === 'i');
   return tag?.[1];
 }
 
-function getParentId(tags: string[][]): string | undefined {
+function getParentId(tags: Tags): string | undefined {
   const tag = tags.find(([name]) => name === 'e');
   return tag?.[1];
 }
@@ -82,7 +85,7 @@ function toCachedEvent(event: NostrEvent): CachedEvent {
   };
 }
 
-function toLimit(filters: NostrFilter[]): number {
+function toLimit(filters: Array<NostrFilter>): number {
   let limit = DEFAULT_LIMIT;
   for (const filter of filters) {
     if (typeof filter.limit === 'number') {
@@ -92,7 +95,7 @@ function toLimit(filters: NostrFilter[]): number {
   return limit;
 }
 
-export async function storeEvents(events: NostrEvent[]): Promise<void> {
+export async function storeEvents(events: Array<NostrEvent>): Promise<void> {
   const db = await openDb();
   if (!db || events.length === 0) return;
   const tx = db.transaction(STORE_NAME, 'readwrite');
@@ -143,9 +146,9 @@ async function collectFromIndex(
   range: IDBKeyRange,
   limit: number,
   direction: IDBCursorDirection = 'next',
-): Promise<CachedEvent[]> {
+): Promise<Array<CachedEvent>> {
   return new Promise((resolve) => {
-    const result: CachedEvent[] = [];
+    const result: Array<CachedEvent> = [];
     const index = store.index(indexName);
     const request = index.openCursor(range, direction);
     request.onsuccess = () => {
@@ -161,8 +164,11 @@ async function collectFromIndex(
   });
 }
 
-async function collectByIds(store: IDBObjectStore, ids: string[]): Promise<CachedEvent[]> {
-  const results: CachedEvent[] = [];
+async function collectByIds(
+  store: IDBObjectStore,
+  ids: Array<string>,
+): Promise<Array<CachedEvent>> {
+  const results: Array<CachedEvent> = [];
   for (const id of ids) {
     const request = store.get(id);
     const value = await new Promise<CachedEvent | undefined>((resolve) => {
@@ -178,7 +184,7 @@ async function candidatesForFilter(
   store: IDBObjectStore,
   filter: NostrFilter,
   limit: number,
-): Promise<CachedEvent[]> {
+): Promise<Array<CachedEvent>> {
   if (filter.ids?.length) {
     return collectByIds(store, filter.ids);
   }
@@ -215,7 +221,9 @@ async function candidatesForFilter(
   return [];
 }
 
-export async function queryCachedEvents(filters: NostrFilter[]): Promise<NostrEvent[]> {
+export async function queryCachedEvents(
+  filters: Array<NostrFilter>,
+): Promise<Array<NostrEvent>> {
   const db = await openDb();
   if (!db) return [];
   const tx = db.transaction(STORE_NAME, 'readonly');
@@ -239,10 +247,10 @@ export async function queryCachedEvents(filters: NostrFilter[]): Promise<NostrEv
 }
 
 export async function getCachedMetrics<T>(
-  eventIds: string[],
+  eventIds: Array<string>,
   type: MetricEntry['type'],
   maxAgeMs: number,
-): Promise<{ data: Map<string, T>; missing: string[] }> {
+): Promise<{ data: Map<string, T>; missing: Array<string> }> {
   const db = await openDb();
   if (!db || eventIds.length === 0) {
     return { data: new Map(), missing: eventIds };
@@ -251,7 +259,7 @@ export async function getCachedMetrics<T>(
   const store = tx.objectStore(METRICS_STORE);
   const now = Date.now();
   const data = new Map<string, T>();
-  const missing: string[] = [];
+  const missing: Array<string> = [];
 
   for (const id of eventIds) {
     const key = `${type}:${id}`;

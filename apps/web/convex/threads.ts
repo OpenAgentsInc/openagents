@@ -42,7 +42,7 @@ export const get = query({
   handler: async (ctx, args) => {
     const identity = (await ctx.auth.getUserIdentity()) as { subject?: string } | null;
     if (!identity?.subject) return null;
-    const doc = await ctx.db.get(args.threadId);
+    const doc = await ctx.db.get('threads', args.threadId);
     if (!doc || doc.user_id !== identity.subject) return null;
     return {
       _id: doc._id,
@@ -87,9 +87,9 @@ export const updateTitle = mutation({
   handler: async (ctx, args) => {
     const identity = (await ctx.auth.getUserIdentity()) as { subject?: string } | null;
     if (!identity?.subject) throw new Error('not authenticated');
-    const doc = await ctx.db.get(args.threadId);
+    const doc = await ctx.db.get('threads', args.threadId);
     if (!doc || doc.user_id !== identity.subject) throw new Error('thread not found');
-    await ctx.db.patch(args.threadId, {
+    await ctx.db.patch('threads', args.threadId, {
       title: args.title.trim() || doc.title,
       updated_at: Date.now(),
     });
@@ -105,9 +105,9 @@ export const archive = mutation({
   handler: async (ctx, args) => {
     const identity = (await ctx.auth.getUserIdentity()) as { subject?: string } | null;
     if (!identity?.subject) throw new Error('not authenticated');
-    const doc = await ctx.db.get(args.threadId);
+    const doc = await ctx.db.get('threads', args.threadId);
     if (!doc || doc.user_id !== identity.subject) throw new Error('thread not found');
-    await ctx.db.patch(args.threadId, {
+    await ctx.db.patch('threads', args.threadId, {
       archived: args.archived,
       updated_at: Date.now(),
     });

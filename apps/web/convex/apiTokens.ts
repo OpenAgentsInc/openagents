@@ -1,6 +1,6 @@
 import { v } from 'convex/values';
 import { internalMutation, internalQuery, mutation, query } from './_generated/server';
-import { requireUser, getUser } from './lib/users';
+import { getUser, requireUser } from './lib/users';
 import { fail, requireFound } from './lib/errors';
 
 const generateToken = (): string => {
@@ -65,14 +65,14 @@ export const revokeApiToken = mutation({
   handler: async (ctx, args) => {
     const user = await requireUser(ctx);
 
-    const token = await ctx.db.get(args.tokenId);
+    const token = await ctx.db.get('api_tokens', args.tokenId);
     const tokenRecord = requireFound(token, 'NOT_FOUND', 'Token not found');
 
     if (tokenRecord.user_id !== user.user_id) {
       fail('UNAUTHORIZED', 'Unauthorized');
     }
 
-    await ctx.db.delete(args.tokenId);
+    await ctx.db.delete('api_tokens', args.tokenId);
     return null;
   },
 });
@@ -114,7 +114,7 @@ export const updateApiTokenLastUsed = internalMutation({
       .first();
 
     if (token) {
-      await ctx.db.patch(token._id, {
+      await ctx.db.patch('api_tokens', token._id, {
         last_used_at: Date.now(),
       });
     }

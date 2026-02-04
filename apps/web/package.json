@@ -25,7 +25,8 @@
     "deploy:convex": "bash -c 'set -a; [ -f .env.production ] && . ./.env.production; set +a; npx convex deploy --yes'",
     "cf-typegen": "wrangler types",
     "format": "prettier --write .",
-    "lint": "tsc && eslint .  --ext ts,tsx --report-unused-disable-directives --max-warnings 0"
+    "lint": "tsc && eslint .  --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
+    "test": "vitest run --reporter=dot"
   },
   "dependencies": {
     "@ai-sdk/openai": "^3.0.19",
@@ -85,6 +86,7 @@
     "typescript": "^5.9.3",
     "vite": "^7.3.1",
     "vite-tsconfig-paths": "^6.0.5",
+    "vitest": "^2.1.8",
     "wrangler": "^4.61.1"
   }
 }

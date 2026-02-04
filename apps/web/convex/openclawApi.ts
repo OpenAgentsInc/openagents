@@ -68,6 +68,10 @@ type RestartResult = {
   message: string;
 };
 
+type DeleteInstanceResult = {
+  deleted: boolean;
+};
+
 function getApiBase(): string {
   const base =
     process.env.OPENAGENTS_API_URL ??
@@ -91,7 +95,7 @@ async function requestOpenclaw<T>(params: {
   internalKey: string;
   userId: string;
   path: string;
-  method?: 'GET' | 'POST';
+  method?: 'GET' | 'POST' | 'DELETE';
   body?: string;
   label: string;
 }): Promise<T> {
@@ -263,6 +267,31 @@ export const createInstance = action({
       throw new Error('No data in response');
     }
     return data;
+  },
+});
+
+export const deleteInstance = action({
+  args: {},
+  returns: v.object({
+    deleted: v.boolean(),
+  }),
+  handler: async (ctx) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity?.subject) {
+      throw new Error('not authenticated');
+    }
+    const access = await ctx.runQuery(api.access.getStatus, {});
+    if (!access.allowed) {
+      throw new Error('access denied');
+    }
+    return requestOpenclaw<DeleteInstanceResult>({
+      apiBase: getApiBase(),
+      internalKey: getInternalKey(),
+      userId: identity.subject,
+      path: '/openclaw/instance',
+      method: 'DELETE',
+      label: 'deleteInstance',
+    });
   },
 });
 

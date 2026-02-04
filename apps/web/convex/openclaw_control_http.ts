@@ -138,6 +138,38 @@ export const handleInstancePost = httpAction(async (ctx, request) => {
   }
 });
 
+export const handleInstanceDelete = httpAction(async (ctx, request) => {
+  if (request.method !== 'POST') {
+    return new Response('Method Not Allowed', { status: 405 });
+  }
+  const authError = requireControlKey(request);
+  if (authError) return authError;
+
+  let body: Record<string, unknown> = {};
+  try {
+    const text = await request.text();
+    if (text.trim()) {
+      body = JSON.parse(text) as Record<string, unknown>;
+    }
+  } catch {
+    return jsonResponse({ ok: false, error: 'Invalid JSON' }, 400);
+  }
+
+  const user_id = typeof body.user_id === 'string' ? body.user_id.trim() : '';
+  if (!user_id) {
+    return jsonResponse({ ok: false, error: 'user_id required' }, 400);
+  }
+
+  try {
+    const result = await ctx.runMutation(internal.openclaw.deleteInstance, { user_id });
+    return jsonResponse({ ok: true, data: result }, 200);
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    console.error('[openclaw control POST /instance/delete]', e);
+    return jsonResponse({ ok: false, error: message }, 500);
+  }
+});
+
 export const handleInstanceStatusPost = httpAction(async (ctx, request) => {
   if (request.method !== 'POST') {
     return new Response('Method Not Allowed', { status: 405 });
