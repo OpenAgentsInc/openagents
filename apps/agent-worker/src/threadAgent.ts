@@ -51,6 +51,7 @@ type ThreadStateV1 = {
   running: boolean;
   messages: UIMessage[];
   approvals: Record<string, StoredApproval>;
+  lastUserMessageId?: string;
 };
 
 type ChatRequestBody = {
@@ -115,17 +116,19 @@ function extractTextFromUiMessage(message: UIMessage): string {
   return text.trim();
 }
 
-function getLastUserText(messages: UIMessage[] | undefined): string | null {
-  if (!messages || messages.length === 0) return null;
+function getLastUserMessage(messages: UIMessage[] | undefined): { id?: string; text?: string } {
+  if (!messages || messages.length === 0) return {};
   for (let i = messages.length - 1; i >= 0; i -= 1) {
     const msg = messages[i];
     if (msg?.role === 'user') {
       const text = extractTextFromUiMessage(msg);
-      if (text.length > 0) return text;
-      return null;
+      return {
+        id: typeof msg.id === 'string' && msg.id.trim().length > 0 ? msg.id : undefined,
+        text: text.length > 0 ? text : undefined,
+      };
     }
   }
-  return null;
+  return {};
 }
 
 function clampMessages(messages: UIMessage[], maxMessages: number): UIMessage[] {
@@ -201,6 +204,7 @@ export class ThreadAgent {
       running: false,
       messages: [],
       approvals: {},
+      lastUserMessageId: undefined,
     };
   }
 
@@ -287,10 +291,12 @@ export class ThreadAgent {
     }
 
     const input = (body.input ?? '').trim();
-    const userText = input.length > 0 ? input : getLastUserText(body.messages);
+    const lastUser = getLastUserMessage(body.messages);
+    const userText = input.length > 0 ? input : lastUser.text;
     if (!userText) {
       return jsonError(400, 'bad_request', 'missing user input');
     }
+    const incomingMessageId = lastUser.id;
 
     const openai = createOpenAI({
       apiKey: this.env.OPENAI_API_KEY,
@@ -318,12 +324,20 @@ export class ThreadAgent {
 
         const last = state.messages[state.messages.length - 1];
         const lastUserText = last?.role === 'user' ? extractTextFromUiMessage(last) : null;
-        if (lastUserText !== userText) {
+        const shouldAppend =
+          incomingMessageId != null
+            ? incomingMessageId !== state.lastUserMessageId
+            : lastUserText !== userText;
+
+        if (shouldAppend) {
           state.messages.push({
             id: crypto.randomUUID(),
             role: 'user',
             parts: [{ type: 'text', text: userText }],
           });
+          if (incomingMessageId) {
+            state.lastUserMessageId = incomingMessageId;
+          }
         }
 
         state.running = true;

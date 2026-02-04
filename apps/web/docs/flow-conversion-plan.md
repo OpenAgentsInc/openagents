@@ -269,6 +269,7 @@ The goal is to make the **Flow canvas** the primary UI across the app:
 - [ ] Introduce a “thread graph”: message turns + tool calls + approvals as nodes.
 - [ ] Keep the existing composer UX, but surface execution/progress as graph edges/nodes.
 - [ ] Make the durable DO thread id the canonical thread identity (agent-worker thread ⇄ UI thread).
+- [ ] If we migrate ThreadAgent → `AIChatAgent`, use the SDK’s persisted messages + resumable stream metadata as the source for the thread subgraph.
 
 ### Phase 4 — OpenClaw subgraph
 

@@ -64,11 +64,12 @@ This doc is supporting/background context: what we have today, recommended archi
 
 ### Current limitations
 
-- Server chat is still effectively **stateless per request** (the client sends message history; the server doesn’t own durable thread state).
+- Durable chat **exists** when `AGENT_WORKER_URL` is set (ThreadAgent DO), but it’s a **custom** DO—not the Agents SDK `Agent`/`AIChatAgent` yet.
+- No built-in **resumable streaming** or **state sync** (Agents SDK features) because we’re not using `AIChatAgent` or `agents/react`.
 - “Long-running” actions can be initiated via tools, but we don’t yet have a first-class:
   - background job model
   - progress event stream that persists/replays
-  - human approval workflow for sensitive tool calls
+  - durable, workflow-level approval gates
 - Our domain routing constraints (Rust API owns `/api/*`) mean we must be careful where we mount any new endpoints.
 
 ## Goal: make remote agents feel native in the website
@@ -233,6 +234,37 @@ Implementation note: this is much easier if the agent owns a durable event log a
 Status (apps/web + agent-worker):
 - Sensitive OpenClaw tools now return `approval_required` payloads, and the web UI renders approval cards/modals.
 - `/approvals` server route forwards `approval.respond` to the agent worker (or local fallback when `AGENT_WORKER_URL` is unset).
+
+## Agents SDK review (2026-02-04)
+
+Reviewed `~/code/agents` (Cloudflare Agents SDK). Our current agent worker is **compatible** with the platform primitives, but we are **not yet using** the `agents`/`@cloudflare/ai-chat` packages. Here’s the alignment and gaps:
+
+### What matches best practices
+
+- **Separate worker + DO per thread**: `openagents-agent-worker` uses a `ThreadAgent` DO keyed by `threadId`.
+- **`nodejs_compat` enabled**: required by Agents SDK; we already have it in `apps/agent-worker/wrangler.jsonc`.
+- **Durable state + concurrency protection**: `blockConcurrencyWhile` wraps state updates, and DO storage persists thread state.
+- **Human approval gates**: sensitive actions require explicit approval before tool execution.
+
+### Gaps vs Agents SDK recommended patterns
+
+- **No `Agent`/`AIChatAgent` base** → no automatic state sync, no built-in message persistence, no resumable streaming.
+- **No WebSocket client** (`agents/react` / `useAgentChat`) → approvals + state are not live-synced across clients.
+- **No queue/schedule/workflows** → long-running tasks lack durable orchestration and replayable progress.
+- **No structured observability events** → only ad-hoc logs, no `observability` emitter for receipts/latency.
+- **No `/agents/*` routing** (`routeAgentRequest`) → can’t use the SDK client without a separate bridge.
+
+### Clear integration opportunities
+
+1. **Migrate ThreadAgent → `AIChatAgent`**  
+   - Gains resumable streaming + automatic message persistence.  
+   - Requires `new_sqlite_classes` migration and adapting `/chat` to use `createUIMessageStream`.
+2. **Expose `/agents/*` (or `basePath`)** for direct `agents/react` usage.  
+   - Enables state sync and `@callable` approval endpoints without extra API routes.
+3. **Adopt `queue`/`schedule`/Workflows** for long tasks and durable approvals (`waitForApproval`).
+4. **Add `observability` emitter** to emit receipts, tool latencies, and approvals as structured events.
+
+These are optional, but they align with the SDK’s strongest guarantees (resumable streaming + durable state sync).
 
 ## Background work (minutes to days)
 
