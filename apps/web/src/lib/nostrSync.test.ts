@@ -29,11 +29,11 @@ describe('nostrSync', () => {
     localStorage.clear();
     resetSyncState();
     vi.clearAllMocks();
-    delete (globalThis as { navigator?: { onLine?: boolean } }).navigator;
+    vi.unstubAllGlobals();
   });
 
   it('skips sync when offline', async () => {
-    (globalThis as { navigator?: { onLine?: boolean } }).navigator = { onLine: false };
+    vi.stubGlobal('navigator', { onLine: false });
     const query = vi.fn().mockResolvedValue([]);
 
     startNostrCacheSync({ query });
@@ -44,9 +44,11 @@ describe('nostrSync', () => {
   });
 
   it('stores events and updates last sync', async () => {
-    (globalThis as { navigator?: { onLine?: boolean } }).navigator = { onLine: true };
-    vi.spyOn(Date, 'now').mockReturnValue(1_700_000_000_000);
-    const events = [{ created_at: 100 } as { created_at: number }];
+    vi.stubGlobal('navigator', { onLine: true });
+    const nowMs = 1_700_000_000_000;
+    vi.spyOn(Date, 'now').mockReturnValue(nowMs);
+    const since = Math.floor(nowMs / 1000) - 60 * 60;
+    const events = [{ created_at: since + 100 } as { created_at: number }];
     const query = vi.fn().mockResolvedValue(events);
 
     startNostrCacheSync({ query });
@@ -55,11 +57,11 @@ describe('nostrSync', () => {
 
     expect(query).toHaveBeenCalledTimes(1);
     expect(mockStoreEvents).toHaveBeenCalledWith(events);
-    expect(localStorage.getItem(LAST_SYNC_KEY)).toBe('101');
+    expect(localStorage.getItem(LAST_SYNC_KEY)).toBe(String(events[0].created_at + 1));
   });
 
   it('updates last sync when no events are found', async () => {
-    (globalThis as { navigator?: { onLine?: boolean } }).navigator = { onLine: true };
+    vi.stubGlobal('navigator', { onLine: true });
     vi.spyOn(Date, 'now').mockReturnValue(1_700_000_050_000);
     const query = vi.fn().mockResolvedValue([]);
 

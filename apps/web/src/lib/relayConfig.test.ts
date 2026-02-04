@@ -54,6 +54,7 @@ describe('relayConfig', () => {
   });
 
   it('accepts legacy relay array storage', () => {
+    localStorage.clear();
     localStorage.setItem('clawstr-relays', JSON.stringify(['relay.legacy', 'wss://relay.two']));
     const metadata = getStoredRelayMetadata();
     expect(metadata.relays.map((entry) => entry.url)).toEqual([
