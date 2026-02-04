@@ -74,6 +74,8 @@ type DeleteInstanceResult = {
 
 function getApiBase(): string {
   const base =
+    process.env.OPENCLAW_API_BASE ??
+    process.env.OPENCLAW_API_URL ??
     process.env.OPENAGENTS_API_URL ??
     process.env.PUBLIC_API_URL ??
     DEFAULT_API_BASE;
@@ -130,6 +132,11 @@ async function requestOpenclaw<T>(params: {
   if (!res.ok || !body.ok) {
     const msg = body.error ?? `Request failed (${res.status})`;
     console.error(`[openclawApi ${params.label}] API error response:`, res.status, msg);
+    if (res.status === 401) {
+      throw new Error(
+        `${msg} (check OA_INTERNAL_KEY in Convex matches the API worker, and PUBLIC_API_URL/OPENCLAW_API_BASE points to the same API)`,
+      );
+    }
     throw new Error(msg);
   }
   if (body.data == null) {
@@ -196,6 +203,11 @@ export const getInstance = action({
     }
     if (!res.ok || !body.ok) {
       const msg = body.error ?? `Request failed (${res.status})`;
+      if (res.status === 401) {
+        throw new Error(
+          `${msg} (check OA_INTERNAL_KEY in Convex matches the API worker, and PUBLIC_API_URL/OPENCLAW_API_BASE points to the same API)`,
+        );
+      }
       throw new Error(msg);
     }
     return body.data ?? null;
@@ -260,6 +272,11 @@ export const createInstance = action({
     if (!res.ok || !body.ok) {
       const msg = body.error ?? `Request failed (${res.status})`;
       console.error('[openclawApi createInstance] API error response:', res.status, msg);
+      if (res.status === 401) {
+        throw new Error(
+          `${msg} (check OA_INTERNAL_KEY in Convex matches the API worker, and PUBLIC_API_URL/OPENCLAW_API_BASE points to the same API)`,
+        );
+      }
       throw new Error(msg);
     }
     const data = body.data;
