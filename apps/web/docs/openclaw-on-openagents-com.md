@@ -236,11 +236,15 @@ This is the “single roadmap” for:
 Ship these first:
 
 1. **Durable chat threads** on the website (persisted across reloads/devices).
-2. **OpenClaw Cloud controls** in the UI (provision/status/devices/approve/backup/restart/billing).
-3. **One “OpenClaw chat” experience** in the site that is durable + streaming:
+2. **Onboarding + access gating**:
+   - waitlist with manual approvals
+   - `/admin` admin panel to flip access on/off per user or waitlist email
+   - Hatchery shows a “create OpenClaw” onboarding flow only when access is enabled
+3. **OpenClaw Cloud controls** in the UI (provision/status/devices/approve/backup/restart/billing).
+4. **One “OpenClaw chat” experience** in the site that is durable + streaming:
    - Mode A first (website agent + OpenClaw tool proxy), then
    - Mode B as the follow-up (true OpenClaw WebChat via OpenResponses).
-4. **Human approvals** for the risky actions (provision, device approve, restart; later DM pairing / exec approvals).
+5. **Human approvals** for the risky actions (provision, device approve, restart; later DM pairing / exec approvals).
 
 Defer (post-MVP):
 - full multi-client state sync (Agent SDK client hooks)
@@ -282,6 +286,31 @@ Changes:
 Acceptance criteria:
 - With `AGENT_WORKER_URL` unset, behavior is unchanged.
 - With `AGENT_WORKER_URL` set, chat is durable + streaming and still works with `@assistant-ui/*`.
+
+### Milestone 2.5: Onboarding + access control (waitlist + admin panel)
+
+**Goal:** Move from “waitlist-only” to controlled onboarding with explicit approvals.
+
+Changes:
+- Add access flags and waitlist approvals in Convex:
+  - `users.access_enabled` (+ audit fields)
+  - `waitlist.approved` (+ audit fields)
+- Admin panel at `/admin`:
+  - lists all users and waitlist entries
+  - toggle access for users
+  - approve/revoke waitlist entries (manual, one-by-one)
+- Hatchery gating:
+  - if access is **off**, show the waitlist overlay
+  - if access is **on**, show the real Hatchery UI starting at “Create your OpenClaw”
+- Server proxy for onboarding:
+  - `GET /openclaw/instance` (status)
+  - `POST /openclaw/instance` (provision)
+  - server-side auth + access check before calling `/api/openclaw/*`
+
+Acceptance criteria:
+- Admin can approve/revoke waitlist entries and enable access from `/admin`.
+- Users with access enabled can provision an OpenClaw instance from Hatchery.
+- Users without access only see the waitlist overlay.
 
 ### Milestone 3: Make the left sidebar real (thread index + “OpenClaw” section)
 

@@ -1,6 +1,20 @@
 import { v } from 'convex/values';
-import { internalMutation } from './_generated/server';
+import { internalMutation, mutation } from './_generated/server';
 import { requireFound } from './lib/errors';
+import { requireUser } from './lib/users';
+
+export const ensureUser = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const user = await requireUser(ctx);
+    return {
+      user_id: user.user_id,
+      email: user.email ?? null,
+      name: user.name ?? null,
+      access_enabled: user.access_enabled ?? false,
+    };
+  },
+});
 
 export const upsertAgentUser = internalMutation({
   args: {

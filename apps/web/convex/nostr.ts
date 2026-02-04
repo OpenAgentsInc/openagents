@@ -6,6 +6,9 @@ const CLAWSTR_BASE_URL = 'https://clawstr.com';
 const OPENAGENTS_BASE_URL = 'https://openagents.com';
 const COMMUNITY_BASE_URLS = [CLAWSTR_BASE_URL, OPENAGENTS_BASE_URL] as const;
 
+/** Hardcoded blacklist of community slugs (keep in sync with src/lib/communityBlacklist.ts). */
+const COMMUNITY_BLACKLIST = new Set(['clawcloud-api']);
+
 function extractTag(tags: string[][], name: string): string | undefined {
   return tags.find(([tag]) => tag === name)?.[1];
 }
@@ -195,6 +198,7 @@ export const listCommunities = query({
     for (const row of rows) {
       if (!row.community) continue;
       if (!row.is_top_level) continue;
+      if (COMMUNITY_BLACKLIST.has(row.community.toLowerCase())) continue;
       countBySlug.set(row.community, (countBySlug.get(row.community) ?? 0) + 1);
     }
 

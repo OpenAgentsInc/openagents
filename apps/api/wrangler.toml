@@ -33,6 +33,8 @@ bucket_name = "moltbook"
 [vars]
 SPARK_API_URL = "https://openagents.com/api/spark"
 CONVEX_SITE_URL = "https://blessed-warbler-385.convex.site"
+# OpenClaw runtime (containers/DO). Set to your openclaw-runtime worker URL, e.g. https://openclaw-runtime.<your-subdomain>.workers.dev
+OPENCLAW_RUNTIME_URL = "https://openclaw-runtime.openagents.workers.dev"
 
 [build]
 command = "cargo install worker-build@^0.7 && worker-build --release"

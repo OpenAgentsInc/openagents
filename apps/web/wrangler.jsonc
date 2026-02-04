@@ -14,7 +14,8 @@
 		"enabled": true
 	},
 	"vars": {
-		"WORKOS_REDIRECT_URI": "https://openagents-web-app.openagents.workers.dev/callback"
+		"WORKOS_REDIRECT_URI": "https://openagents-web-app.openagents.workers.dev/callback",
+		"OA_ADMIN_EMAILS": "chris@openagents.com"
 	}
 	// Set secrets for production:
 	// - wrangler secret put WORKOS_CLIENT_ID

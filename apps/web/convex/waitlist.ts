@@ -16,13 +16,18 @@ export const joinWaitlist = mutation({
       .withIndex('by_email', (q) => q.eq('email', normalized))
       .first();
     if (existing) {
-      return { id: existing._id, joined: false };
+      return {
+        id: existing._id,
+        joined: false,
+        approved: existing.approved ?? false,
+      };
     }
     const id = await ctx.db.insert('waitlist', {
       email: normalized,
       source: args.source ?? 'hatchery',
       created_at: Date.now(),
+      approved: false,
     });
-    return { id, joined: true };
+    return { id, joined: true, approved: false };
   },
 });
