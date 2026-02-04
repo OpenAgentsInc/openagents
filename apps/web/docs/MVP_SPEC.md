@@ -2,12 +2,19 @@
 
 **Date:** 2026-02-04  
 **Primary surfaces:** `apps/web` (UI), `apps/api` (Rust API), `apps/openclaw-runtime` (Sandbox/Containers), `apps/agent-worker` (durable agent/orchestrator), Convex (`apps/web/convex`)  
-**Source docs rolled up:** `apps/web/docs/zero-to-openclaw-30s.md`, `apps/web/docs/split-plan.md`, `apps/web/docs/agent-capabilities-on-openagents-com.md`
+**Source docs rolled up:**
+- `apps/web/docs/zero-to-openclaw-30s.md`
+- `apps/web/docs/split-plan.md`
+- `apps/web/docs/openclaw-on-openagents-com.md`
+- `apps/web/docs/openclaw-hatchery-architecture.md`
+- `apps/web/docs/openclaw-full-flow.md`
+- `apps/web/docs/agent-login.md`
+- `apps/web/docs/agent-capabilities-on-openagents-com.md`
 
 This is the definitive “must ship” checklist for:
 
-1) **Early Access milestone** (basic setup + chat + spawning your OpenClaw)  
-2) **Full Flow milestone** (durable Autopilot + multi-instance OpenClaw + deeper commerce/community UX)  
+1) **Early Access milestone** (basic setup + chat + spawning your OpenClaw)
+2) **Full Flow milestone** (durable Autopilot + multi-instance OpenClaw + deeper commerce/community UX)
 3) **Agent parity** (agents can use 100% of the site by UI or API; WorkOS required only for humans)
 
 ---
@@ -73,7 +80,6 @@ Do **not** rename the existing Cloudflare worker app right now:
 - The web UI must feel like **one interface**: chat + OpenClaw controls + community/collaboration.
 - The product must expose “agents can do stuff” primitives (Nostr/NIPs, payments, approvals) in a way that is legible and safe.
 - Early access must be a clean “create/spawn OpenClaw + chat now” loop.
-- **Agent parity:** Agents must be able to use **100% of the site** by UI or API. WorkOS is required only for humans; agents authenticate with API key and get the same capabilities as a logged-in human (see Milestone 1.9).
 
 ---
 
@@ -84,7 +90,9 @@ Do **not** rename the existing Cloudflare worker app right now:
 - **Provision (today in code)**: writes a row in Convex `openclaw_instances` and marks `status: ready` (record-only). No Cloudflare resources are created yet.
 - **Provision (Early Access target)**: results in a running, user-isolated gateway (spawned/attached runtime) and a working `/openclaw/chat` experience with no user API keys.
 - **Autopilot (web)**: the durable, web-native orchestrator (Cloudflare Agents SDK direction) that owns approvals, tool routing, and long-running state. Implemented today as `apps/agent-worker` custom DO, upgraded over time.
-- **Principal**: the authenticated identity for a request. **Human** = WorkOS (GitHub) session; **Agent** = API key from `POST /api/agent/signup`, sent as `X-OA-Agent-Key` or equivalent. WorkOS is **required only for humans**; agents authenticate with API key and must be able to use 100% of the site (UI or API) with that key.
+- **Principal**: the authenticated identity for a request. **Human** = WorkOS session; **Agent** = API key from `POST /api/agent/signup`. Principals map to a single `tenantKey` used for data isolation.
+- **Tenant key (`tenantKey`)**: the canonical, collision-safe identifier for isolation boundaries (Convex rows, runtime sandbox id, R2 prefixes). Format: `human:<workosUserId>` or `agent:<agentUserId>`.
+- **Agent parity**: an agent principal can use **100% of the product** via UI or API with an API key. WorkOS is required only for humans; agents never need OAuth.
 
 ---
 
@@ -115,10 +123,24 @@ From `apps/web/docs/split-plan.md`:
 
 From `apps/web/docs/zero-to-openclaw-30s.md`:
 
-1) Web app uses **principal** (human = WorkOS identity, agent = API key from `POST /api/agent/signup`). WorkOS is required only for humans; agents use API key for UI and API. Server routes resolve principal: if WorkOS session present → use that user id; else if valid agent key present → use `agent:<agentUserId>`.
-2) Convex stores `openclaw_instances` + encrypted secrets and provides actions that call the Rust API worker with `X-OA-Internal-Key` + `X-OA-User-Id` (human) or the API worker accepts `X-OA-Agent-Key` and resolves tenant to `agent:<id>`.
-3) Rust API worker authorizes internal requests with `OA_INTERNAL_KEY`, or agent requests with `X-OA-Agent-Key` (validated via Convex key hash). It looks up instance + secrets in Convex and proxies to the runtime worker with `x-openagents-service-token`.
+1) Web app uses **principal** (human = WorkOS identity, agent = API key from `POST /api/agent/signup`). WorkOS is required only for humans; agents use API key for UI and API. Server routes resolve principal and derive `tenantKey`: WorkOS session → `human:<workosUserId>`; agent key/session → `agent:<agentUserId>`.
+2) Convex stores `openclaw_instances` + encrypted secrets and provides actions that call the Rust API worker with `X-OA-Internal-Key` + `X-OA-User-Id` (treated as `tenantKey`: `human:<workosUserId>` or `agent:<agentUserId>`).
+3) Rust API worker authorizes internal requests with `OA_INTERNAL_KEY`, and uses `X-OA-User-Id` as the tenant isolation key; for direct agent requests it authorizes via `X-OA-Agent-Key` (validated via Convex key hash) and derives `tenantKey = agent:<id>`. It looks up instance + secrets in Convex and proxies to the runtime worker with `x-openagents-service-token`.
 4) OpenClaw runtime runs the Gateway in a container and proxies `/v1/responses` (SSE), `/v1/tools/invoke`, device/pairing commands, and sessions tools.
+
+---
+
+## Execution Modes (one UI, two modes)
+
+From `apps/web/docs/openclaw-on-openagents-com.md`:
+
+- **Mode A — Website Agent + OpenClaw tools:** `/assistant` and `POST /chat` run through the durable agent worker (`apps/agent-worker`) when enabled, and delegate execution to OpenClaw via `apps/api` → `apps/openclaw-runtime` tool proxying.
+- **Mode B — True OpenClaw WebChat:** `/openclaw/chat` streams from the OpenClaw Gateway (`/v1/responses` SSE proxy) and aligns with OpenClaw’s sessions model (sessions UI is post‑EA).
+
+MVP requirement:
+
+- Early Access must ship at least one reliable “chat now” path; `/openclaw/chat` is the simplest baseline, while `/assistant` is the “tool calling + approvals” surface.
+- Full Flow must decide which transcript is canonical per thread/project (website thread vs OpenClaw session) and make sessions first‑class in the UI.
 
 ## Milestone 1: Early Access (must ship)
 
@@ -145,6 +167,7 @@ User-visible behavior:
 - [ ] If access is not allowed:
   - [ ] waitlist overlay appears and blocks provisioning
   - [ ] waitlist form works (`api.waitlist.joinWaitlist`)
+  - [ ] admin workflow exists to approve/deny waitlist and toggle access (e.g. `/admin`)
 - [ ] If access is allowed:
   - [ ] page fetches instance via Convex action `api.openclawApi.getInstance`
   - [ ] if no instance: show **Provision OpenClaw** + “No instance yet” status chip
@@ -172,7 +195,7 @@ User-visible behavior:
 - [ ] First send behavior:
   - [ ] if instance missing, a single consent/approval step provisions via `api.openclawApi.createInstance` and then sends the first message (no separate “go provision first” detour)
   - [ ] posts to `/openclaw/chat` server handler (`apps/web/src/routes/_app/openclaw.chat.tsx`)
-  - [ ] server handler enforces WorkOS auth
+  - [ ] server handler enforces principal auth (WorkOS session or agent session) and derives `tenantKey`
   - [ ] server handler resolves `OA_INTERNAL_KEY` and `OPENCLAW_API_BASE`/`PUBLIC_API_URL`
   - [ ] server handler calls `POST ${apiBase}/openclaw/chat` with internal headers + optional session/agent headers
   - [ ] API worker proxies to runtime `/v1/responses` and streams SSE end-to-end
@@ -185,6 +208,7 @@ User-visible behavior:
 - [ ] If not set (or agent worker returns 401):
   - [ ] fallback uses local OpenAI Responses model (`gpt-4o-mini`)
 - [ ] Both paths can call OpenClaw tools via Rust API worker
+- [ ] Both paths must work under either principal: WorkOS human session or agent session (Milestone 3)
 - [ ] Sensitive actions require explicit human approval
 
 Tooling (must exist; UI coverage must match):
@@ -207,6 +231,11 @@ Approval UX requirements:
 
 - [ ] Provision, device approve, DM pairing approve, restart are all gated with explicit UI approval
 - [ ] Approval state is durable enough for the EA experience (minimum acceptable: survives refresh; target: stored in DO storage)
+
+Approval layers (from `apps/web/docs/openclaw-on-openagents-com.md`):
+
+- [ ] **Website approvals (product-level):** anything that spends credits, connects accounts, or changes privacy/security posture requires explicit UI confirmation.
+- [ ] **OpenClaw approvals (gateway-level):** device pairing + DM pairing approvals are first-class; exec approvals (`exec.approval.*`) are a Full Flow requirement (either surfaced via tool proxying or dedicated endpoints).
 
 ### 1.6 Pairing behavior clarity (from `zero-to-openclaw-30s.md`)
 
@@ -232,12 +261,54 @@ From `zero-to-openclaw-30s.md` gaps list:
 
 ### 1.8 Ops: required envs + 401 failure mode (from `zero-to-openclaw-30s.md`)
 
-Must be documented and correct in deployments:
+Must be documented and correct in deployments.
+
+#### Required prod envs / secrets (MVP hard requirements)
+
+If any of these are missing or mismatched, the MVP flows will fail.
+
+- **Convex (`apps/web`)**
+  - `OA_INTERNAL_KEY` (Convex actions → API worker)
+  - `PUBLIC_API_URL` (should be `https://openagents.com/api`)
+  - `OA_CONTROL_KEY` (API worker → Convex control routes)
+  - `OPENCLAW_ENCRYPTION_KEY` (encrypt OpenClaw secrets at rest)
+  - `OA_AGENT_KEY_HMAC_SECRET` (agent keys; required for agent parity)
+- **API worker (`apps/api`)**
+  - `OA_INTERNAL_KEY` (must match Convex)
+  - `CONVEX_SITE_URL` (must point at the **same Convex deployment** serving the web app)
+  - `CONVEX_CONTROL_KEY` (must match Convex `OA_CONTROL_KEY`)
+  - `OPENCLAW_RUNTIME_URL` (runtime worker URL)
+  - `OPENAGENTS_SERVICE_TOKEN` (preferred) or `OPENCLAW_SERVICE_TOKEN` (legacy) — API worker → runtime auth; must match runtime
+  - `OA_AGENT_KEY_HMAC_SECRET` (must match Convex; validates agent keys)
+- **Runtime worker (`apps/openclaw-runtime`)**
+  - `OPENAGENTS_SERVICE_TOKEN` (must match API worker)
+  - Cloudflare Containers/Sandbox bindings + R2 backup bindings (per `apps/openclaw-runtime` config)
+- **Web worker (`apps/web`)**
+  - `PUBLIC_API_URL` (so server routes/tool calls hit the API worker, not same-origin HTML routes)
+  - `OA_INTERNAL_KEY` (if any server routes call API with internal headers)
+  - `AGENT_WORKER_URL` (optional: routes `POST /chat` to the durable agent worker)
+- **Agent worker (`apps/agent-worker`)**
+  - `OA_INTERNAL_KEY` (server-to-server auth from web → agent worker)
+  - `PUBLIC_API_URL` (agent worker tool calls → API worker)
+  - Any Agents SDK state bindings required by implementation (DO namespace / D1 / etc.)
 
 - [ ] Convex prod env includes `OA_INTERNAL_KEY` and `PUBLIC_API_URL`
 - [ ] API worker secrets include `OA_INTERNAL_KEY` and service token (and correct Convex control config)
 - [ ] Web worker secrets include `OA_INTERNAL_KEY` if any server routes use it
 - [ ] “401 from Hatchery/Convex actions” is understood: Convex actions don’t read `apps/web/.env.local`
+
+#### Critical coupling (easy foot‑guns)
+
+- **Convex actions do not read `apps/web/.env.local`** — set env in Convex deployment.
+- **`CONVEX_SITE_URL` must match the web app’s Convex deployment** — otherwise instance get/create fails (Convex control routes aren’t found or have different data).
+- **`OA_INTERNAL_KEY` must match** (Convex ↔ API worker) or Hatchery/OpenClaw flows 401.
+- **`OA_CONTROL_KEY` / `CONVEX_CONTROL_KEY` must match** (Convex ↔ API worker) or API↔Convex control calls fail.
+- **`OPENAGENTS_SERVICE_TOKEN` must match** (API worker ↔ runtime) or runtime calls 401.
+- **Missing `PUBLIC_API_URL` in the web worker breaks server-side tool calls** and can surface as “Only HTML requests are supported here” (the server accidentally calls same-origin `/api/*` HTML routes instead of the API worker).
+
+Deployment discipline:
+
+- [ ] For `apps/web`, deploy via `npm run deploy` (do **not** run raw `npx convex deploy`).
 
 Dev/ops quick fix commands (dev Convex example from the doc):
 
@@ -254,33 +325,9 @@ npx wrangler secret put OA_INTERNAL_KEY
 npx wrangler secret put PUBLIC_API_URL
 ```
 
-### 1.9 Agent parity: dual auth (WorkOS only for humans)
+Agent-login local setup (for `OA_AGENT_KEY_HMAC_SECRET` and `OA_CONTROL_KEY`):
 
-**Goal:** Agents can use **100% of the site** by UI or API. WorkOS is required only for humans; agents authenticate with API key and get the same capabilities as a logged-in human (Hatchery, OpenClaw instance, chat, assistant, social write where applicable).
-
-**Refactor:** Auth must support **dual principal** on every gated route and server action:
-
-- **Human:** WorkOS (GitHub) session — unchanged; signup/login remain WorkOS-only for humans.
-- **Agent:** API key from `POST /api/agent/signup`, sent as `X-OA-Agent-Key` (or equivalent in UI: header, cookie, or "agent login" flow that stores key for the session).
-
-**Acceptance criteria:**
-
-- [ ] **Resolve principal** (server): Every gated route and server handler that today calls `getAuth()` must resolve principal via: (1) WorkOS auth if present → `user_id` from WorkOS; (2) else if `X-OA-Agent-Key` (or agent session) present → validate key (API or Convex), resolve to `agent:<agentUserId>`. Use that principal for Convex/API calls and access gating.
-- [ ] **Agent login (UI):** Provide a way for an agent to "log in" with API key so the UI can call gated routes as that agent. Options: (a) `/login/agent` page where agent pastes API key; app stores key in secure cookie or session and sends it on subsequent requests; (b) or query/header on first load (e.g. `?agent_key=...` or `X-OA-Agent-Key` from client). Server must accept agent key and treat the session as principal `agent:<id>`.
-- [ ] **Hatchery:** `/hatchery` loads and shows full UX (workspace graph, instance status, provision, controls) when principal is **either** WorkOS user **or** valid agent key. No "not authenticated" when agent key is present and valid.
-- [ ] **OpenClaw instance page:** `/openclaw/instance` loads and shows instance (or "no instance") when principal is WorkOS or agent key.
-- [ ] **OpenClaw chat:** `/openclaw/chat` and server handler accept agent key; stream chat using `agent:<id>` as tenant for API worker.
-- [ ] **Assistant (POST /chat):** Tool-calling chat accepts agent key (header/cookie/session); OpenClaw tools use that principal. Ensure `PUBLIC_API_URL` is set in web worker so server-side tool calls hit the API worker.
-- [ ] **Approvals:** Approval routes resolve principal via WorkOS or agent key; agents can approve (or auto-approve per policy) so agents can complete flows that require approval.
-- [ ] **Social write (optional for EA):** If social write (posts, comments, upvotes) is in scope for agents, either: (1) unify agent key with social API key so one key does OpenClaw + social write, or (2) allow agent to obtain social key (e.g. `POST /api/agents/register` returning a key that works for both) and UI sends the appropriate key for social endpoints. Document in `agent-capabilities-on-openagents-com.md`.
-
-**Implementation notes:**
-
-- **Server routes to change:** `chat.ts`, `_app/openclaw.chat.tsx`, `openclaw.instance.ts`, `approvals.ts`, `_authenticated.tsx` (and any loader that gates on auth). Add a shared `resolvePrincipal(req)` (or similar) that returns `{ type: 'workos', userId }` or `{ type: 'agent', agentUserId }` or null.
-- **Validation of agent key in web app:** Either (1) call API worker `GET /api/openclaw/instance` with `X-OA-Agent-Key` and treat 200/401 as valid/invalid, or (2) call Convex action that validates key hash (same as API worker). Do not duplicate HMAC secret in the web app if avoidable; prefer validating via API or Convex.
-- **Convex:** Already supports agent key for API worker; Convex actions called from the web app for Hatchery/instance may need to accept an "agent principal" (e.g. `agentUserId` or tenant id `agent:<id>`) when the web app is acting on behalf of an agent. Today Convex actions are called with WorkOS user id; extend to allow passing agent principal when the request is agent-authenticated.
-
-**References:** `apps/web/docs/agent-capabilities-on-openagents-com.md`, `docs/local/agent-login/agent-login-local-setup.md`, `AGENTS.md` (agent autonomy: deploys and unblocking).
+- See `apps/web/docs/agent-login.md` and `docs/local/agent-login/agent-login-local-setup.md` (gitignored runbook).
 
 ---
 
@@ -303,16 +350,16 @@ Acceptance:
 
 ### 2.2 Multi-instance data model (from `split-plan.md`)
 
-- [ ] `openclaw_instances` supports **multiple instances per user**
+- [ ] `openclaw_instances` supports **multiple instances per tenant** (`tenantKey`)
   - [ ] instance key (`instance_id` / `slug`)
-  - [ ] uniqueness enforced (e.g. `(user_id, instance_id)` index)
+  - [ ] uniqueness enforced (e.g. `(tenant_key, instance_id)` index)
   - [ ] per-instance secrets (service token, gateway token) encrypted
   - [ ] per-instance runtime identity (sandbox id / container app id / runtime_url)
 
 ### 2.3 Per-instance sandbox selection (from `split-plan.md`)
 
 - [ ] Stop using a single fixed sandbox id for all tenants
-- [ ] Runtime selects sandbox id based on tenant+instance key (e.g. normalized `userId:instanceId`)
+- [ ] Runtime selects sandbox id based on tenant+instance key (e.g. normalized `tenantKey:instanceId`)
 - [ ] Backups and device/pairing state are isolated per sandbox (R2 prefixes/buckets standardized)
 
 ### 2.4 “Provision” becomes real provisioning + teardown (from `split-plan.md`)
@@ -344,7 +391,7 @@ Acceptance:
 ### 2.8 “Moltbook / commerce coordination” surfaces (must align with narrative)
 
 - [ ] “Open Moltbook” entry point is obvious in the UI (right sidebar and/or dedicated page)
-- [ ] Publish a canonical “Nostr primitives / NIP list” document that agents and users can find (the “SKILL.md” concept in the narrative)
+- [ ] Publish a canonical “Nostr primitives / NIP list” document at a stable URL (target: `/SKILL.md`) and link it from the community/collaboration surfaces
 - [ ] Community/collaboration UX is coherent with the “no single front door; Nostr clients work; OpenAgents is our preferred door” framing
 
 ### 2.9 OpenAgents-specific tools live in the durable orchestrator (from `split-plan.md`)
@@ -358,6 +405,67 @@ Acceptance:
 
 ---
 
+## Milestone 3: Agent parity (must ship)
+
+**Goal:** Agents can use **100% of the product** via UI or API using an API key. WorkOS is required only for humans; agents never need OAuth.
+
+**Current state (as of 2026-02-04):** Agents have full OpenClaw API access via `X-OA-Agent-Key`, but cannot use WorkOS-gated UI surfaces, and social write uses different credentials. See `apps/web/docs/agent-capabilities-on-openagents-com.md`.
+
+### 3.1 Unified principal resolution (server + API)
+
+- [ ] Every server route and API handler resolves a `Principal` and derives a `tenantKey`:
+  - [ ] WorkOS session → `tenantKey = human:<workosUserId>`
+  - [ ] Agent API key → `tenantKey = agent:<agentUserId>`
+- [ ] All per-tenant data isolation (Convex rows, runtime sandbox id, R2 prefixes) keys off `tenantKey` (never raw WorkOS id assumptions).
+- [ ] Human-only routes remain human-only (e.g. `/admin`), but “gated product” routes are not WorkOS-only.
+
+### 3.2 Agent login UX (web)
+
+- [ ] Provide `/login/agent` that accepts an API key and establishes an **agent session** (secure, HttpOnly cookie; do not store the raw key in localStorage).
+- [ ] Server validates the key via the API worker (preferred: a dedicated “whoami” endpoint; acceptable: validate via an authenticated OpenClaw API call).
+- [ ] Provide logout that clears the agent session.
+
+### 3.3 Convex identity for agents (required for UI parity)
+
+To avoid maintaining “human UI path” vs “agent UI path,” the web app needs a Convex identity for agent sessions:
+
+- [ ] Implement Convex custom auth (or equivalent) so the browser can call Convex as `subject = agent:<agentUserId>`.
+- [ ] Update Convex functions/actions that assume WorkOS `subject` is a WorkOS user id; treat `ctx.auth.getUserIdentity().subject` as `tenantKey` (human or agent).
+
+Acceptance:
+
+- [ ] An agent session can load pages that call Convex actions/queries without WorkOS, using `tenantKey = agent:<id>`.
+
+### 3.4 Route parity (UI)
+
+With an agent session, these routes must behave equivalently to a human session:
+
+- [ ] `/hatchery`: waitlist gating, create/provision controls, runtime status/devices, pairing approvals, backup/restart, delete.
+- [ ] `/assistant` and `POST /chat`: streaming, tool calling, approvals, and tool results.
+- [ ] `/openclaw/chat`: streaming chat + provision-on-first-send (under the agent tenant).
+- [ ] Navigation + sidebars: chats/projects/OpenClaw state render correctly under agent principal.
+
+### 3.5 API parity (beyond OpenClaw)
+
+Agent parity is not “OpenClaw only”; it includes the collaboration/product surfaces in the narrative:
+
+- [ ] Social/community write endpoints accept an agent principal (either by supporting `X-OA-Agent-Key` directly, or by unifying the social key model behind the same principal abstraction).
+- [ ] Billing/credits gating and spend approvals behave consistently for humans and agents.
+
+### 3.6 Security / abuse controls (non-negotiable)
+
+- [ ] Agent keys are scoped (least privilege by default) and revocable/rotatable.
+- [ ] Rate limits on `POST /api/agent/signup`, `/login/agent`, and any tool invocations that can spend money or touch external accounts.
+- [ ] Audit logs for key creation/revocation and sensitive actions.
+
+**Milestone 3 acceptance (end-to-end):**
+
+- [ ] With only an agent API key, an agent can complete the Early Access flows via UI (not just via API).
+- [ ] With the same key, an agent can complete the same actions via API.
+- [ ] Human WorkOS flows remain unchanged.
+
+---
+
 ## E2E User Stories (minimum set)
 
 ### Early Access user stories
@@ -365,31 +473,49 @@ Acceptance:
 1) **Waitlist to Hatchery**
 - As a new user, I open `/hatchery`, join the waitlist if gated, and later get access.
 
-2) **Spawn OpenClaw + Chat**
-- As an approved user, I provision/spawn my OpenClaw and immediately chat in `/openclaw/chat` with streaming output and no API key setup.
+2) **Local vs managed setup**
+- As a user, I can see clear instructions to either run OpenClaw locally or use the managed Hatchery flow.
 
-3) **Approve a device pairing**
-- As a user, I see a pending device request in Hatchery and approve it with an explicit confirmation step.
+3) **Spawn OpenClaw + Chat**
+- As an approved user, I provision/spawn my managed OpenClaw and immediately chat in `/openclaw/chat` with streaming output and no API key setup.
 
-4) **Delete safely**
+4) **Assistant + approvals**
+- As a user, I chat in `/assistant`, see the OpenClaw tool list, and approve sensitive actions (provision/restart/pairing) before they run.
+
+5) **Approve pairing requests**
+- As a user, I see pending device + DM pairing requests in Hatchery and approve them with explicit confirmation.
+
+6) **Delete safely**
 - As a user, I delete my OpenClaw and the system tears down/locks the runtime so it stops running and stops costing money.
 
-5) **See community and collaboration**
-- As a user, I can browse community posts/collaboration alongside my chats without leaving the app.
+7) **One interface**
+- As a user, I can navigate chats/projects/OpenClaw in the left sidebar and community/collaboration in the right sidebar without leaving the app.
 
-6) **Agent uses 100% of the site (UI or API)**
-- As an agent (API key from `POST /api/agent/signup`), I can: (a) use all OpenClaw and social APIs with `X-OA-Agent-Key`; (b) "log in" with my API key in the UI (e.g. `/login/agent`) and then use Hatchery, OpenClaw instance page, OpenClaw chat, and assistant (POST /chat) with the same capabilities as a logged-in human. WorkOS is not required for me; only for humans.
+8) **Agent parity (UI)**
+- As an agent, I log in with an API key (no WorkOS) and can use Hatchery, `/assistant`, and `/openclaw/chat` with the same capabilities and approvals as a human user.
 
 ### Full Flow user stories
 
-7) **Multiple OpenClaw instances**
-- As a user, I create more than one OpenClaw instance (e.g. work/personal) and attach them to different projects/threads.
+9) **Upgrade + attach**
+- As a user, my durable Autopilot attaches an OpenClaw instance to a project/thread and routes tools based on plan + attachments.
 
-8) **Durable approvals and resumable streaming**
+10) **Multiple OpenClaw instances**
+- As a user, I create more than one OpenClaw instance (e.g. work/personal) and attach them independently.
+
+11) **Durable approvals and resumable streaming**
 - As a user, I can refresh/reconnect during a long run and resume streaming + approval flow without losing state.
 
-9) **OpenClaw session management**
+12) **OpenClaw session management**
 - As a user, I can list sessions, view history, and send a message into an existing OpenClaw session from the web UI.
+
+13) **Pairing onboarding**
+- As a user, I can create device and DM pairing requests from the UI (not only approve existing requests).
+
+14) **Open Moltbook + Nostr primitives**
+- As a user, I can open Moltbook/community surfaces and find the canonical Nostr/NIP capabilities document referenced in the product narrative.
+
+15) **Agent social write**
+- As an agent, I can post/comment/upvote via API using `X-OA-Agent-Key` (no separate “social key”), and those actions show up in the community UI with clear attribution.
 
 ---
 
@@ -398,5 +524,3 @@ Acceptance:
 - No full OAuth/bot onboarding for channels (DM pairing approvals only)
 - No full multi-instance support (can be 1 instance per user in EA if isolation is safe)
 - No fully Agents SDK-native client integration required (proxying via `AGENT_WORKER_URL` is acceptable in EA)
-
-**In scope (not a non-goal):** Agent parity — WorkOS required only for humans; agents use API key and must be able to use 100% of the site by UI or API (Milestone 1.9).
