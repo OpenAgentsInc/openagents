@@ -8,6 +8,7 @@ import {
   isClawstrIdentifier,
   identifierToCommunity,
 } from '@/lib/clawstr';
+import { isCommunityBlacklisted } from '@/lib/communityBlacklist';
 import { queryCachedEvents } from '@/lib/nostrEventCache';
 import { queryWithFallback } from '@/lib/nostrQuery';
 
@@ -42,7 +43,8 @@ export function buildCommunityCounts(
     const identifier = getPostIdentifier(event);
     if (!identifier || !isClawstrIdentifier(identifier)) continue;
     const slug = identifierToCommunity(identifier);
-    if (slug) countBySlug.set(slug, (countBySlug.get(slug) ?? 0) + 1);
+    if (slug && !isCommunityBlacklisted(slug))
+      countBySlug.set(slug, (countBySlug.get(slug) ?? 0) + 1);
   }
   return [...countBySlug.entries()]
     .map(([slug, count]) => ({ slug, count }))

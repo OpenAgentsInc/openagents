@@ -1,6 +1,8 @@
 import * as React from 'react';
 import { Link, useRouterState } from '@tanstack/react-router';
 import { useAuth } from '@workos/authkit-tanstack-react-start/client';
+import { useQuery } from 'convex/react';
+import { api } from '../../../convex/_generated/api';
 import {
   Sidebar,
   SidebarContent,
@@ -15,7 +17,7 @@ import {
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { BookOpen } from 'lucide-react';
+import { BookOpen, Shield } from 'lucide-react';
 import { ThreadList } from '@/components/assistant-ui/thread-list';
 import { cn } from '@/lib/utils';
 
@@ -109,6 +111,26 @@ function SidebarNavUser() {
   );
 }
 
+function SidebarAdminLink() {
+  const { user } = useAuth();
+  const adminStatus = useQuery(api.admin.getAdminStatus);
+  const fallbackAdmin = user?.email?.toLowerCase() === 'chris@openagents.com';
+  if (!adminStatus?.isAdmin && !fallbackAdmin) return null;
+
+  return (
+    <SidebarMenuItem>
+      <SidebarMenuButton asChild>
+        <Link to="/admin">
+          <SidebarIcon>
+            <Shield className="size-4" />
+          </SidebarIcon>
+          <span>Admin</span>
+        </Link>
+      </SidebarMenuButton>
+    </SidebarMenuItem>
+  );
+}
+
 export function ThreadListSidebar(
   props: React.ComponentProps<typeof Sidebar>,
 ) {
@@ -153,6 +175,7 @@ export function ThreadListSidebar(
       <SidebarRail />
       <SidebarFooter className="aui-sidebar-footer group-data-[collapsible=icon]:hidden">
         <SidebarMenu className="w-full">
+          <SidebarAdminLink />
           <SidebarNavUser />
         </SidebarMenu>
       </SidebarFooter>

@@ -163,7 +163,13 @@ pub async fn handle_instance_get(req: Request, ctx: RouteContext<()>) -> Result<
         Err(response) => return Ok(response),
     };
 
-    let instance = convex::get_instance(&ctx.env, &user_id).await?;
+    let instance = match convex::get_instance(&ctx.env, &user_id).await {
+        Ok(opt) => opt,
+        Err(err) => {
+            let msg = format!("openclaw getInstance: {}", err);
+            return crate::json_error(&msg, 500);
+        }
+    };
     let summary = instance.as_ref().map(instance_summary);
     json_ok(summary)
 }
@@ -174,34 +180,49 @@ pub async fn handle_instance_post(req: Request, ctx: RouteContext<()>) -> Result
         Err(response) => return Ok(response),
     };
 
-    if let Some(existing) = convex::get_instance(&ctx.env, &user_id).await? {
-        if existing.status != "error" && existing.status != "deleted" {
-            return json_ok(Some(instance_summary(&existing)));
+    let existing = match convex::get_instance(&ctx.env, &user_id).await {
+        Ok(opt) => opt,
+        Err(err) => {
+            let msg = format!("openclaw createInstance get_instance: {}", err);
+            return crate::json_error(&msg, 500);
+        }
+    };
+    if let Some(ex) = existing {
+        if ex.status != "error" && ex.status != "deleted" {
+            return json_ok(Some(instance_summary(&ex)));
         }
     }
 
-    let _ = convex::upsert_instance(
+    if let Err(err) = convex::upsert_instance(
         &ctx.env,
         serde_json::json!({
             "user_id": user_id,
             "status": "provisioning",
         }),
     )
-    .await?;
+    .await
+    {
+        let msg = format!("openclaw createInstance upsert (provisioning): {}", err);
+        return crate::json_error(&msg, 500);
+    }
 
     let provisioned = match cf::provision_instance(&ctx.env, &user_id).await {
         Ok(value) => value,
         Err(err) => {
             let _ = convex::set_status(&ctx.env, &user_id, "error").await;
-            return crate::json_error(&err.to_string(), 500);
+            let msg = format!("openclaw createInstance provision_instance: {}", err);
+            return crate::json_error(&msg, 500);
         }
     };
 
     let service_token = service_token_from_env(&ctx.env)
         .unwrap_or_else(|| crate::random_token("oa_svc_", 32));
-    convex::store_secret(&ctx.env, &user_id, "service_token", &service_token).await?;
+    if let Err(err) = convex::store_secret(&ctx.env, &user_id, "service_token", &service_token).await {
+        let msg = format!("openclaw createInstance store_secret: {}", err);
+        return crate::json_error(&msg, 500);
+    }
 
-    let updated = convex::upsert_instance(
+    let updated = match convex::upsert_instance(
         &ctx.env,
         serde_json::json!({
             "user_id": user_id,
@@ -216,7 +237,14 @@ pub async fn handle_instance_post(req: Request, ctx: RouteContext<()>) -> Result
             "r2_bucket_name": provisioned.r2_bucket_name,
         }),
     )
-    .await?;
+    .await
+    {
+        Ok(u) => u,
+        Err(err) => {
+            let msg = format!("openclaw createInstance upsert (ready): {}", err);
+            return crate::json_error(&msg, 500);
+        }
+    };
 
     json_ok(Some(instance_summary(&updated)))
 }

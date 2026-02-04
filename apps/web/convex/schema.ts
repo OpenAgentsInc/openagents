@@ -14,6 +14,9 @@ export default defineSchema({
     image: v.optional(v.string()),
     metadata: v.optional(v.any()),
     nostr_pubkey: v.optional(v.string()),
+    access_enabled: v.optional(v.boolean()),
+    access_updated_at: v.optional(v.number()),
+    access_updated_by: v.optional(v.string()),
     created_at: v.number(),
     updated_at: v.number(),
   }).index('by_user_id', ['user_id']),
@@ -100,6 +103,9 @@ export default defineSchema({
     email: v.string(),
     source: v.optional(v.string()),
     created_at: v.number(),
+    approved: v.optional(v.boolean()),
+    approved_at: v.optional(v.number()),
+    approved_by: v.optional(v.string()),
   })
     .index('by_email', ['email'])
     .index('by_created_at', ['created_at']),

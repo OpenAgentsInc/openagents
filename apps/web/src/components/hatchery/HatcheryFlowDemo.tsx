@@ -1,8 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link } from '@tanstack/react-router';
-import { useMutation } from 'convex/react';
+import { useAction, useMutation, useQuery } from 'convex/react';
+import { useAuth } from '@workos/authkit-tanstack-react-start/client';
 import { api } from '../../../convex/_generated/api';
 import { posthogCapture } from '@/lib/posthog';
+import type { InstanceSummary } from '@/lib/openclawApi';
 import {
   InfiniteCanvas,
   isLeafNode,
@@ -263,25 +265,62 @@ const HOME_TREE: FlowNode = {
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export function HatcheryFlowDemo() {
+  const { user, loading: authLoading } = useAuth();
+  const accessStatus = useQuery(api.access.getStatus);
   const [selectedNode, setSelectedNode] = useState<FlowNode | null>(null);
-  const [showOverlay, setShowOverlay] = useState(true);
   const [email, setEmail] = useState('');
   const [waitlistStatus, setWaitlistStatus] = useState<'idle' | 'submitting' | 'success' | 'error'>('idle');
   const [waitlistError, setWaitlistError] = useState<string | null>(null);
   const joinWaitlistMutation = useMutation(api.waitlist.joinWaitlist);
+  const [instance, setInstance] = useState<InstanceSummary | null>(null);
+  const [instanceStatus, setInstanceStatus] = useState<'idle' | 'loading' | 'creating' | 'ready' | 'error'>('idle');
+  const [instanceError, setInstanceError] = useState<string | null>(null);
+  const overlaySeen = useRef(false);
   const apiTree: FlowNode | null = HOME_TREE;
   const currentTree = apiTree ?? SKELETON_TREE;
   const isShowingSkeleton = currentTree === SKELETON_TREE;
+
+  const accessAllowed = accessStatus?.allowed === true;
+  const waitlistEntry = accessStatus?.waitlistEntry ?? null;
+  const waitlistApproved = accessStatus?.waitlistApproved === true;
+  const overlayVisible = !accessAllowed;
+
+  const getOpenclawInstance = useAction(api.openclawApi.getInstance);
+  const createOpenclawInstance = useAction(api.openclawApi.createInstance);
 
   useEffect(() => {
     posthogCapture('hatchery_view');
   }, []);
 
   useEffect(() => {
-    if (showOverlay) {
+    if (overlayVisible && !overlaySeen.current) {
+      overlaySeen.current = true;
       posthogCapture('hatchery_overlay_view', { source: 'hatchery' });
     }
-  }, []); // fire once on mount when overlay is visible (showOverlay initial true)
+  }, [overlayVisible]);
+
+  useEffect(() => {
+    if (!accessAllowed) return;
+    let active = true;
+    const load = async () => {
+      setInstanceStatus('loading');
+      setInstanceError(null);
+      try {
+        const data = await getOpenclawInstance();
+        if (!active) return;
+        setInstance(data ?? null);
+        setInstanceStatus('ready');
+      } catch (error) {
+        if (!active) return;
+        setInstanceError(error instanceof Error ? error.message : 'Failed to load instance');
+        setInstanceStatus('error');
+      }
+    };
+    void load();
+    return () => {
+      active = false;
+    };
+  }, [accessAllowed]);
 
   function renderFlowNode(node: FlowNode) {
     const selected = selectedNode?.id === node.id;
@@ -338,7 +377,7 @@ export function HatcheryFlowDemo() {
   return (
     <div className="relative flex min-h-0 flex-1 flex-col">
       {/* Overlay: Join the waitlist or sneak peek */}
-      {showOverlay && (
+      {overlayVisible && (
         <>
           <div
             className="pointer-events-auto absolute inset-0 z-20 bg-black/80"
@@ -347,13 +386,22 @@ export function HatcheryFlowDemo() {
           <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center p-4">
             <Card className="pointer-events-auto w-full max-w-md border border-[#1a1525] bg-[#0d0a14]/95 px-10 py-8 shadow-xl ring-1 ring-[#252030]/50">
               <CardContent className="flex flex-col items-center gap-6 p-0 text-center">
-                {waitlistStatus === 'success' ? (
+                {authLoading ? (
+                  <div className="flex flex-col items-center gap-3">
+                    <span className="font-square721 text-xl font-medium text-zinc-100">
+                      Checking access…
+                    </span>
+                    <span className="font-square721 text-base text-zinc-300">
+                      Hang tight while we load your status.
+                    </span>
+                  </div>
+                ) : waitlistApproved || waitlistStatus === 'success' || waitlistEntry ? (
                   <div className="flex flex-col items-center gap-3">
                     <span className="font-square721 text-xl font-medium text-zinc-100">
                       You're on the list
                     </span>
                     <span className="font-square721 text-base text-zinc-300">
-                      Thanks! We'll email you in the next few days to create your account.
+                      Thanks! We'll email you as soon as access opens.
                     </span>
                   </div>
                 ) : (
@@ -363,14 +411,14 @@ export function HatcheryFlowDemo() {
                         Coming Soon: The Hatchery
                       </span>
                       <span className="font-square721 text-base text-zinc-300">
-                        Create your OpenClaw with a few easy clicks
+                        Request access to create your OpenClaw with a few easy clicks.
                       </span>
                     </div>
                     <form
                       className="flex w-full flex-col gap-3"
                       onSubmit={async (e) => {
                         e.preventDefault();
-                        const trimmed = email.trim();
+                        const trimmed = (user?.email ?? email).trim();
                         if (!trimmed) {
                           setWaitlistError('Enter your email');
                           return;
@@ -397,16 +445,23 @@ export function HatcheryFlowDemo() {
                         }
                       }}
                     >
-                      <input
-                        type="email"
-                        placeholder="you@example.com"
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
-                        disabled={waitlistStatus === 'submitting'}
-                        className="font-square721 w-full rounded-md border border-[#1e1830] bg-[#12101a] px-4 py-3 text-base text-zinc-100 placeholder:text-zinc-500 focus:border-[#252030] focus:outline-none focus:ring-1 focus:ring-[#252030] disabled:opacity-60"
-                        autoComplete="email"
-                        autoFocus
-                      />
+                      {!user?.email && (
+                        <input
+                          type="email"
+                          placeholder="you@example.com"
+                          value={email}
+                          onChange={(e) => setEmail(e.target.value)}
+                          disabled={waitlistStatus === 'submitting'}
+                          className="font-square721 w-full rounded-md border border-[#1e1830] bg-[#12101a] px-4 py-3 text-base text-zinc-100 placeholder:text-zinc-500 focus:border-[#252030] focus:outline-none focus:ring-1 focus:ring-[#252030] disabled:opacity-60"
+                          autoComplete="email"
+                          autoFocus
+                        />
+                      )}
+                      {user?.email && (
+                        <div className="rounded-md border border-[#1e1830] bg-[#12101a] px-4 py-3 text-sm text-zinc-300">
+                          {user.email}
+                        </div>
+                      )}
                       <Button
                         type="submit"
                         size="default"
@@ -428,6 +483,63 @@ export function HatcheryFlowDemo() {
         </>
       )}
 
+      {/* Logged in: only Create your OpenClaw pane */}
+      {accessAllowed && (
+        <div className="flex min-h-0 flex-1 flex-col p-4">
+          <div className="mx-auto w-full max-w-lg flex min-h-0 flex-col overflow-hidden rounded-lg border border-border bg-card">
+            <div className="flex items-center gap-2 border-b border-border px-4 py-3">
+              <ServerIcon className="h-4 w-4 text-muted-foreground" />
+              <span className="text-sm font-semibold text-card-foreground">Create your OpenClaw</span>
+            </div>
+            <CardContent className="flex min-h-0 flex-1 flex-col gap-4 p-4">
+              <p className="text-xs leading-relaxed text-muted-foreground">
+                Provision a managed OpenClaw instance on openagents.com. One gateway per user; tools, sessions, and pairing in one place.
+              </p>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="rounded-md border border-border bg-muted/50 px-2 py-0.5 font-mono text-xs text-muted-foreground">
+                  Instance: Standard
+                </span>
+                <span className="rounded-md border border-border bg-muted/50 px-2 py-0.5 text-xs text-muted-foreground">
+                  {instance
+                    ? `Status: ${instance.status}`
+                    : instanceStatus === 'loading'
+                      ? 'Checking instance…'
+                      : 'No instance yet'}
+                </span>
+              </div>
+              <div className="mt-auto flex flex-wrap gap-2">
+                <Button
+                  size="sm"
+                  disabled={instanceStatus === 'creating' || instanceStatus === 'loading' || !!instance}
+                  onClick={async () => {
+                    setInstanceStatus('creating');
+                    setInstanceError(null);
+                try {
+                  const data = await createOpenclawInstance();
+                  setInstance(data ?? null);
+                  setInstanceStatus('ready');
+                } catch (error) {
+                      setInstanceError(error instanceof Error ? error.message : 'Failed to provision');
+                      setInstanceStatus('error');
+                    }
+                  }}
+                >
+                  {instance ? 'Provisioned' : instanceStatus === 'creating' ? 'Provisioning…' : 'Provision OpenClaw'}
+                </Button>
+                <Button asChild size="sm" variant="secondary">
+                  <Link to="/kb/openclaw-wallets">Learn more</Link>
+                </Button>
+              </div>
+              {instanceError && (
+                <p className="text-xs text-red-400">{instanceError}</p>
+              )}
+            </CardContent>
+          </div>
+        </div>
+      )}
+
+      {/* Unauthed: all 4 panes (demo) */}
+      {!accessAllowed && (
       <div className="grid min-h-0 flex-1 grid-cols-1 grid-rows-4 gap-3 p-4 md:grid-cols-2 md:grid-rows-2">
         {/* Panel 1: Workspace graph */}
       <div className="relative min-h-[240px] min-h-0 overflow-hidden rounded-lg border border-border bg-card md:min-h-0">
@@ -472,7 +584,7 @@ export function HatcheryFlowDemo() {
         </div>
       </div>
 
-      {/* Panel 2: Create your OpenClaw */}
+      {/* Panel 2: Create your OpenClaw (demo) */}
       <div className="flex min-h-0 flex-col overflow-hidden rounded-lg border border-border bg-card">
         <div className="flex items-center gap-2 border-b border-border px-4 py-3">
           <ServerIcon className="h-4 w-4 text-muted-foreground" />
@@ -482,22 +594,12 @@ export function HatcheryFlowDemo() {
           <p className="text-xs leading-relaxed text-muted-foreground">
             Provision a managed OpenClaw instance on openagents.com. One gateway per user; tools, sessions, and pairing in one place.
           </p>
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="rounded-md border border-border bg-muted/50 px-2 py-0.5 font-mono text-xs text-muted-foreground">
-              Instance: Standard
-            </span>
-            <span className="rounded-md border border-border bg-muted/50 px-2 py-0.5 text-xs text-muted-foreground">
-              No instance yet
-            </span>
+          <div className="rounded-md border border-dashed border-border/60 px-3 py-2 text-xs text-muted-foreground">
+            Sign in and get access to provision your instance.
           </div>
-          <div className="mt-auto flex flex-wrap gap-2">
-            <Button size="sm" disabled>
-              Provision OpenClaw
-            </Button>
-            <Button asChild size="sm" variant="secondary">
-              <Link to="/kb/openclaw-wallets">Learn more</Link>
-            </Button>
-          </div>
+          <Button asChild size="sm" variant="secondary" className="mt-auto">
+            <Link to="/kb/openclaw-wallets">Learn more</Link>
+          </Button>
         </CardContent>
       </div>
 
@@ -570,7 +672,7 @@ export function HatcheryFlowDemo() {
         </CardContent>
       </div>
       </div>
+      )}
     </div>
   );
 }
-

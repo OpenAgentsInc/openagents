@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Outlet, useRouterState } from '@tanstack/react-router';
 import { posthogCapture } from '@/lib/posthog';
 import { AssistantRuntimeProvider } from '@assistant-ui/react';
@@ -6,6 +6,9 @@ import {
   useChatRuntime,
   AssistantChatTransport,
 } from '@assistant-ui/react-ai-sdk';
+import { useMutation } from 'convex/react';
+import { useAuth } from '@workos/authkit-tanstack-react-start/client';
+import { api } from '../../../convex/_generated/api';
 import {
   SidebarInset,
   SidebarProvider,
@@ -26,6 +29,9 @@ export function AppLayout() {
   const [rightTriggerContainer, setRightTriggerContainer] =
     useState<HTMLElement | null>(null);
   const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const { user, loading } = useAuth();
+  const ensureUser = useMutation(api.users.ensureUser);
+  const ensuredUserId = useRef<string | null>(null);
   const runtime = useChatRuntime({
     transport: new AssistantChatTransport({ api: '/api/chat' }),
   });
@@ -33,6 +39,19 @@ export function AppLayout() {
   useEffect(() => {
     posthogCapture('page_view', { path: pathname });
   }, [pathname]);
+
+  useEffect(() => {
+    if (loading) return;
+    if (!user) {
+      ensuredUserId.current = null;
+      return;
+    }
+    if (ensuredUserId.current === user.id) return;
+    ensuredUserId.current = user.id;
+    void ensureUser({}).catch((err) => {
+      console.error('Failed to ensure user:', err);
+    });
+  }, [user, loading, ensureUser]);
 
   return (
     <AssistantRuntimeProvider runtime={runtime}>

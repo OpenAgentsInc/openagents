@@ -17,12 +17,14 @@ import { Route as CallbackRouteImport } from './routes/callback'
 import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
 import { Route as AppRouteImport } from './routes/_app'
 import { Route as AppIndexRouteImport } from './routes/_app/index'
+import { Route as OpenclawInstanceRouteImport } from './routes/openclaw.instance'
 import { Route as AuthenticatedAuthenticatedRouteImport } from './routes/_authenticated/authenticated'
 import { Route as AppKbRouteImport } from './routes/_app/kb'
 import { Route as AppHatcheryRouteImport } from './routes/_app/hatchery'
 import { Route as AppFeedRouteImport } from './routes/_app/feed'
 import { Route as AppCRouteImport } from './routes/_app/c'
 import { Route as AppAssistantRouteImport } from './routes/_app/assistant'
+import { Route as AppAdminRouteImport } from './routes/_app/admin'
 import { Route as AppKbIndexRouteImport } from './routes/_app/kb/index'
 import { Route as AppCIndexRouteImport } from './routes/_app/c.index'
 import { Route as AppUNpubRouteImport } from './routes/_app/u.$npub'
@@ -69,6 +71,11 @@ const AppIndexRoute = AppIndexRouteImport.update({
   path: '/',
   getParentRoute: () => AppRoute,
 } as any)
+const OpenclawInstanceRoute = OpenclawInstanceRouteImport.update({
+  id: '/openclaw/instance',
+  path: '/openclaw/instance',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AuthenticatedAuthenticatedRoute =
   AuthenticatedAuthenticatedRouteImport.update({
     id: '/authenticated',
@@ -98,6 +105,11 @@ const AppCRoute = AppCRouteImport.update({
 const AppAssistantRoute = AppAssistantRouteImport.update({
   id: '/assistant',
   path: '/assistant',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppAdminRoute = AppAdminRouteImport.update({
+  id: '/admin',
+  path: '/admin',
   getParentRoute: () => AppRoute,
 } as any)
 const AppKbIndexRoute = AppKbIndexRouteImport.update({
@@ -143,12 +155,14 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/setup': typeof SetupRoute
   '/signup': typeof SignupRoute
+  '/admin': typeof AppAdminRoute
   '/assistant': typeof AppAssistantRoute
   '/c': typeof AppCRouteWithChildren
   '/feed': typeof AppFeedRoute
   '/hatchery': typeof AppHatcheryRoute
   '/kb': typeof AppKbRouteWithChildren
   '/authenticated': typeof AuthenticatedAuthenticatedRoute
+  '/openclaw/instance': typeof OpenclawInstanceRoute
   '/c/$community': typeof AppCCommunityRoute
   '/event/$id': typeof AppEventIdRoute
   '/kb/$slug': typeof AppKbSlugRoute
@@ -164,10 +178,12 @@ export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/setup': typeof SetupRoute
   '/signup': typeof SignupRoute
+  '/admin': typeof AppAdminRoute
   '/assistant': typeof AppAssistantRoute
   '/feed': typeof AppFeedRoute
   '/hatchery': typeof AppHatcheryRoute
   '/authenticated': typeof AuthenticatedAuthenticatedRoute
+  '/openclaw/instance': typeof OpenclawInstanceRoute
   '/c/$community': typeof AppCCommunityRoute
   '/event/$id': typeof AppEventIdRoute
   '/kb/$slug': typeof AppKbSlugRoute
@@ -185,12 +201,14 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/setup': typeof SetupRoute
   '/signup': typeof SignupRoute
+  '/_app/admin': typeof AppAdminRoute
   '/_app/assistant': typeof AppAssistantRoute
   '/_app/c': typeof AppCRouteWithChildren
   '/_app/feed': typeof AppFeedRoute
   '/_app/hatchery': typeof AppHatcheryRoute
   '/_app/kb': typeof AppKbRouteWithChildren
   '/_authenticated/authenticated': typeof AuthenticatedAuthenticatedRoute
+  '/openclaw/instance': typeof OpenclawInstanceRoute
   '/_app/': typeof AppIndexRoute
   '/_app/c/$community': typeof AppCCommunityRoute
   '/_app/event/$id': typeof AppEventIdRoute
@@ -209,12 +227,14 @@ export interface FileRouteTypes {
     | '/login'
     | '/setup'
     | '/signup'
+    | '/admin'
     | '/assistant'
     | '/c'
     | '/feed'
     | '/hatchery'
     | '/kb'
     | '/authenticated'
+    | '/openclaw/instance'
     | '/c/$community'
     | '/event/$id'
     | '/kb/$slug'
@@ -230,10 +250,12 @@ export interface FileRouteTypes {
     | '/login'
     | '/setup'
     | '/signup'
+    | '/admin'
     | '/assistant'
     | '/feed'
     | '/hatchery'
     | '/authenticated'
+    | '/openclaw/instance'
     | '/c/$community'
     | '/event/$id'
     | '/kb/$slug'
@@ -250,12 +272,14 @@ export interface FileRouteTypes {
     | '/login'
     | '/setup'
     | '/signup'
+    | '/_app/admin'
     | '/_app/assistant'
     | '/_app/c'
     | '/_app/feed'
     | '/_app/hatchery'
     | '/_app/kb'
     | '/_authenticated/authenticated'
+    | '/openclaw/instance'
     | '/_app/'
     | '/_app/c/$community'
     | '/_app/event/$id'
@@ -274,6 +298,7 @@ export interface RootRouteChildren {
   LoginRoute: typeof LoginRoute
   SetupRoute: typeof SetupRoute
   SignupRoute: typeof SignupRoute
+  OpenclawInstanceRoute: typeof OpenclawInstanceRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -334,6 +359,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppIndexRouteImport
       parentRoute: typeof AppRoute
     }
+    '/openclaw/instance': {
+      id: '/openclaw/instance'
+      path: '/openclaw/instance'
+      fullPath: '/openclaw/instance'
+      preLoaderRoute: typeof OpenclawInstanceRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/_authenticated/authenticated': {
       id: '/_authenticated/authenticated'
       path: '/authenticated'
@@ -374,6 +406,13 @@ declare module '@tanstack/react-router' {
       path: '/assistant'
       fullPath: '/assistant'
       preLoaderRoute: typeof AppAssistantRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/admin': {
+      id: '/_app/admin'
+      path: '/admin'
+      fullPath: '/admin'
+      preLoaderRoute: typeof AppAdminRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/kb/': {
@@ -453,6 +492,7 @@ const AppKbRouteChildren: AppKbRouteChildren = {
 const AppKbRouteWithChildren = AppKbRoute._addFileChildren(AppKbRouteChildren)
 
 interface AppRouteChildren {
+  AppAdminRoute: typeof AppAdminRoute
   AppAssistantRoute: typeof AppAssistantRoute
   AppCRoute: typeof AppCRouteWithChildren
   AppFeedRoute: typeof AppFeedRoute
@@ -465,6 +505,7 @@ interface AppRouteChildren {
 }
 
 const AppRouteChildren: AppRouteChildren = {
+  AppAdminRoute: AppAdminRoute,
   AppAssistantRoute: AppAssistantRoute,
   AppCRoute: AppCRouteWithChildren,
   AppFeedRoute: AppFeedRoute,
@@ -498,6 +539,7 @@ const rootRouteChildren: RootRouteChildren = {
   LoginRoute: LoginRoute,
   SetupRoute: SetupRoute,
   SignupRoute: SignupRoute,
+  OpenclawInstanceRoute: OpenclawInstanceRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
