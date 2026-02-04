@@ -251,10 +251,10 @@ Ordered by dependency; see `openclaw-on-openagents-com.md` for full roadmap.
    - Stand up `openagents-agent-worker` (DO + internal chat endpoint).  
    - Wire `apps/web` chat route to agent worker when `AGENT_WORKER_URL` is set; keep in-process fallback.
 
-5. **Milestone 4 (Mode A — OpenClaw tools)**  
-   - Runtime worker: proxy Gateway HTTP (tools/invoke, sessions list/history/send).  
-   - API: stable endpoints for tools + sessions.  
-   - Agent worker: OpenClaw tools (instance/status/devices/approve/backup/restart/billing + sessions).
+5. **Milestone 4 (Mode A — OpenClaw tools)** — **Done.**  
+   - Runtime worker proxies Gateway HTTP (tools/invoke, sessions list/history/send).  
+   - API exposes stable endpoints for tools + sessions.  
+   - Agent worker includes OpenClaw tools (instance/status/devices/approve/backup/restart/billing + sessions).
 
 6. **Milestone 5 (Mode B — true WebChat)**  
    - Runtime: enable OpenResponses, proxy `POST /v1/responses`.  

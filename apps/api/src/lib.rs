@@ -215,6 +215,16 @@ async fn main(mut req: Request, env: Env, _ctx: Context) -> Result<Response> {
         )
         .post_async("/openclaw/runtime/backup", openclaw::http::handle_runtime_backup)
         .post_async("/openclaw/runtime/restart", openclaw::http::handle_runtime_restart)
+        .post_async("/openclaw/tools/invoke", openclaw::http::handle_tools_invoke)
+        .get_async("/openclaw/sessions", openclaw::http::handle_sessions_list)
+        .get_async(
+            "/openclaw/sessions/:key/history",
+            openclaw::http::handle_sessions_history,
+        )
+        .post_async(
+            "/openclaw/sessions/:key/send",
+            openclaw::http::handle_sessions_send,
+        )
         .get_async("/openclaw/billing/summary", openclaw::http::handle_billing_summary)
         .post_async("/auth/agent/register", handle_auth_agent_register)
         .post_async("/register", handle_control_register)

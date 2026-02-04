@@ -1,8 +1,24 @@
 import { createOpenAI } from '@ai-sdk/openai';
-import { convertToModelMessages, streamText, type UIMessage } from 'ai';
+import { jsonSchema } from '@ai-sdk/provider-utils';
+import { convertToModelMessages, stepCountIs, streamText, type UIMessage } from 'ai';
 import type { AgentWorkerEnv } from './types';
 import { err, ok } from './response';
 import { isInternalKeyValid } from './auth/internalKey';
+import type { OpenclawApiConfig } from './openclawApi';
+import {
+  approveRuntimeDevice,
+  backupRuntime,
+  buildApiConfig,
+  createOpenclawInstance,
+  getBillingSummary,
+  getOpenclawInstance,
+  getRuntimeDevices,
+  getRuntimeStatus,
+  getSessionHistory,
+  listSessions,
+  restartRuntime,
+  sendSessionMessage,
+} from './openclawApi';
 
 type ApprovalDecision = 'approved' | 'rejected';
 
@@ -166,6 +182,14 @@ export class ThreadAgent {
       baseURL: this.env.OPENAI_BASE_URL,
     });
 
+    let apiConfig: OpenclawApiConfig;
+    try {
+      apiConfig = buildApiConfig(this.env, userId);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'OpenClaw API base not configured';
+      return jsonError(500, 'config_error', message);
+    }
+
     let conversationMessages: UIMessage[] = [];
 
     try {
@@ -206,6 +230,100 @@ export class ThreadAgent {
       system:
         'You are OpenAgents. Be concise. If you need to take a sensitive action, ask for approval first.',
       messages: await convertToModelMessages(conversationMessages),
+      stopWhen: stepCountIs(10),
+      tools: {
+        openclaw_get_instance: {
+          description: "Get the current user's OpenClaw instance summary (or null if none).",
+          inputSchema: jsonSchema({ type: 'object', properties: {} }),
+          execute: async () => getOpenclawInstance(apiConfig),
+        },
+        openclaw_provision: {
+          description: 'Provision an OpenClaw instance for the current user.',
+          inputSchema: jsonSchema({ type: 'object', properties: {} }),
+          execute: async () => createOpenclawInstance(apiConfig),
+        },
+        openclaw_get_status: {
+          description: "Get runtime status for the current user's OpenClaw instance.",
+          inputSchema: jsonSchema({ type: 'object', properties: {} }),
+          execute: async () => getRuntimeStatus(apiConfig),
+        },
+        openclaw_list_devices: {
+          description: "List pending and paired devices for the current user's OpenClaw instance.",
+          inputSchema: jsonSchema({ type: 'object', properties: {} }),
+          execute: async () => getRuntimeDevices(apiConfig),
+        },
+        openclaw_approve_device: {
+          description: 'Approve a pending device by requestId.',
+          inputSchema: jsonSchema({
+            type: 'object',
+            properties: { requestId: { type: 'string', minLength: 1 } },
+            required: ['requestId'],
+          }),
+          execute: async ({ requestId }: { requestId: string }) =>
+            approveRuntimeDevice(apiConfig, requestId),
+        },
+        openclaw_backup_now: {
+          description: "Trigger a backup/sync for the current user's OpenClaw instance.",
+          inputSchema: jsonSchema({ type: 'object', properties: {} }),
+          execute: async () => backupRuntime(apiConfig),
+        },
+        openclaw_restart: {
+          description: 'Restart the OpenClaw gateway process.',
+          inputSchema: jsonSchema({ type: 'object', properties: {} }),
+          execute: async () => restartRuntime(apiConfig),
+        },
+        openclaw_get_billing_summary: {
+          description: 'Get current credit balance summary.',
+          inputSchema: jsonSchema({ type: 'object', properties: {} }),
+          execute: async () => getBillingSummary(apiConfig),
+        },
+        openclaw_list_sessions: {
+          description: 'List OpenClaw sessions with optional filters.',
+          inputSchema: jsonSchema({
+            type: 'object',
+            properties: {
+              kinds: { type: 'array', items: { type: 'string' } },
+              limit: { type: 'number', minimum: 1 },
+              activeMinutes: { type: 'number', minimum: 1 },
+              messageLimit: { type: 'number', minimum: 0 },
+            },
+          }),
+          execute: async (args: {
+            kinds?: string[];
+            limit?: number;
+            activeMinutes?: number;
+            messageLimit?: number;
+          }) => listSessions(apiConfig, args),
+        },
+        openclaw_get_session_history: {
+          description: 'Fetch history for a specific OpenClaw session.',
+          inputSchema: jsonSchema({
+            type: 'object',
+            properties: {
+              sessionKey: { type: 'string', minLength: 1 },
+              limit: { type: 'number', minimum: 1 },
+              includeTools: { type: 'boolean' },
+            },
+            required: ['sessionKey'],
+          }),
+          execute: async (args: { sessionKey: string; limit?: number; includeTools?: boolean }) =>
+            getSessionHistory(apiConfig, args),
+        },
+        openclaw_send_session_message: {
+          description: 'Send a message into another OpenClaw session.',
+          inputSchema: jsonSchema({
+            type: 'object',
+            properties: {
+              sessionKey: { type: 'string', minLength: 1 },
+              message: { type: 'string', minLength: 1 },
+              timeoutSeconds: { type: 'number', minimum: 0 },
+            },
+            required: ['sessionKey', 'message'],
+          }),
+          execute: async (args: { sessionKey: string; message: string; timeoutSeconds?: number }) =>
+            sendSessionMessage(apiConfig, args),
+        },
+      } as any,
       onFinish: ({ text }) => {
         this.state.waitUntil(
           (async () => {

@@ -1,4 +1,5 @@
 use serde::Deserialize;
+use url::form_urlencoded;
 use worker::{Headers, Method, Request, RequestInit, Result};
 
 use crate::openclaw::SERVICE_TOKEN_HEADER;
@@ -60,6 +61,42 @@ impl RuntimeClient {
         self.request_json(Method::Post, "/v1/gateway/restart", None).await
     }
 
+    pub async fn tools_invoke(
+        &self,
+        payload: serde_json::Value,
+    ) -> Result<RuntimeResult<serde_json::Value>> {
+        self.request_json(Method::Post, "/v1/tools/invoke", Some(payload))
+            .await
+    }
+
+    pub async fn sessions_list(
+        &self,
+        query: Option<&str>,
+    ) -> Result<RuntimeResult<serde_json::Value>> {
+        let path = build_path_with_query("/v1/sessions", query);
+        self.request_json(Method::Get, &path, None).await
+    }
+
+    pub async fn sessions_history(
+        &self,
+        session_key: &str,
+        query: Option<&str>,
+    ) -> Result<RuntimeResult<serde_json::Value>> {
+        let encoded = encode_path_segment(session_key);
+        let path = build_path_with_query(&format!("/v1/sessions/{encoded}/history"), query);
+        self.request_json(Method::Get, &path, None).await
+    }
+
+    pub async fn sessions_send(
+        &self,
+        session_key: &str,
+        body: serde_json::Value,
+    ) -> Result<RuntimeResult<serde_json::Value>> {
+        let encoded = encode_path_segment(session_key);
+        let path = format!("/v1/sessions/{encoded}/send");
+        self.request_json(Method::Post, &path, Some(body)).await
+    }
+
     async fn request_json(
         &self,
         method: Method,
@@ -104,5 +141,16 @@ impl RuntimeClient {
         };
 
         Ok(RuntimeResult { status, envelope })
+    }
+}
+
+fn encode_path_segment(value: &str) -> String {
+    form_urlencoded::byte_serialize(value.as_bytes()).collect()
+}
+
+fn build_path_with_query(path: &str, query: Option<&str>) -> String {
+    match query {
+        Some(q) if !q.trim().is_empty() => format!("{path}?{q}"),
+        _ => path.to_string(),
     }
 }

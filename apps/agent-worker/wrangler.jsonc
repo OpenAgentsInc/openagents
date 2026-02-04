@@ -7,6 +7,9 @@
   "observability": {
     "enabled": true
   },
+  "vars": {
+    "OPENCLAW_API_BASE": "https://openagents.com/api"
+  },
   "durable_objects": {
     "bindings": [
       {
@@ -22,4 +25,3 @@
     }
   ]
 }
-
