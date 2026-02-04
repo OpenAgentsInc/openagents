@@ -159,13 +159,25 @@ async function execCli(sandbox: Sandbox, command: string): Promise<ExecResult> {
 }
 
 export async function listDevices(sandbox: Sandbox, env: OpenClawEnv): Promise<{ pending: unknown[]; paired: unknown[] }> {
-  await ensureGateway(sandbox, env);
+  try {
+    await ensureGateway(sandbox, env);
+  } catch (error) {
+    console.log('listDevices ensureGateway failed:', error instanceof Error ? error.message : String(error));
+    return { pending: [], paired: [] };
+  }
   const result = await execCli(sandbox, `openclaw devices list --json --url ${GATEWAY_WS_URL}`);
   const stdout = result.stdout ?? '';
   const stderr = result.stderr ?? '';
   const parsed = parseDeviceJson(stdout, stderr);
   if (parsed.parseError) {
-    throw new Error(parsed.parseError);
+    console.log('listDevices parse error:', parsed.parseError);
+    if (stderr.trim()) {
+      console.log('listDevices stderr:', stderr.trim());
+    }
+    if (stdout.trim()) {
+      console.log('listDevices stdout (truncated):', stdout.trim().slice(0, 500));
+    }
+    return { pending: [], paired: [] };
   }
   return { pending: parsed.pending, paired: parsed.paired };
 }
