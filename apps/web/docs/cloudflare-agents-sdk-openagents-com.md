@@ -202,6 +202,10 @@ In the Agents SDK design:
   - `/api/openclaw/runtime/backup`
   - `/api/openclaw/runtime/restart`
   - `/api/openclaw/billing/summary`
+  - `/api/openclaw/tools/invoke`
+  - `/api/openclaw/sessions` + `/api/openclaw/sessions/:key/history` + `/api/openclaw/sessions/:key/send`
+
+Status: implemented in `apps/agent-worker` with OpenClaw tools wired through the API worker.
 
 ## Human-in-the-loop approvals
 

@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@ai-sdk/openai": "^3.0.19",
+    "@ai-sdk/provider-utils": "^4.0.9",
     "ai": "^6.0.50"
   },
   "devDependencies": {

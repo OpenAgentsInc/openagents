@@ -330,6 +330,76 @@ pub async fn handle_runtime_restart(req: Request, ctx: RouteContext<()>) -> Resu
     json_runtime_result(result)
 }
 
+pub async fn handle_tools_invoke(mut req: Request, ctx: RouteContext<()>) -> Result<Response> {
+    let user_id = match require_openclaw_user(&req, &ctx.env).await {
+        Ok(value) => value,
+        Err(response) => return Ok(response),
+    };
+
+    let body: serde_json::Value = req.json().await.unwrap_or(serde_json::Value::Null);
+    let client = match runtime_client_for_user(&ctx.env, &user_id).await {
+        Ok(client) => client,
+        Err(err) => return runtime_setup_error(err),
+    };
+    let result = client.tools_invoke(body).await?;
+    json_runtime_result(result)
+}
+
+pub async fn handle_sessions_list(req: Request, ctx: RouteContext<()>) -> Result<Response> {
+    let user_id = match require_openclaw_user(&req, &ctx.env).await {
+        Ok(value) => value,
+        Err(response) => return Ok(response),
+    };
+
+    let query = req.url()?.query().map(|value| value.to_string());
+    let client = match runtime_client_for_user(&ctx.env, &user_id).await {
+        Ok(client) => client,
+        Err(err) => return runtime_setup_error(err),
+    };
+    let result = client.sessions_list(query.as_deref()).await?;
+    json_runtime_result(result)
+}
+
+pub async fn handle_sessions_history(req: Request, ctx: RouteContext<()>) -> Result<Response> {
+    let user_id = match require_openclaw_user(&req, &ctx.env).await {
+        Ok(value) => value,
+        Err(response) => return Ok(response),
+    };
+
+    let session_key = ctx.param("key").map(|value| value.as_str()).unwrap_or("");
+    if session_key.trim().is_empty() {
+        return crate::json_error("missing session key", 400);
+    }
+
+    let query = req.url()?.query().map(|value| value.to_string());
+    let client = match runtime_client_for_user(&ctx.env, &user_id).await {
+        Ok(client) => client,
+        Err(err) => return runtime_setup_error(err),
+    };
+    let result = client.sessions_history(session_key, query.as_deref()).await?;
+    json_runtime_result(result)
+}
+
+pub async fn handle_sessions_send(mut req: Request, ctx: RouteContext<()>) -> Result<Response> {
+    let user_id = match require_openclaw_user(&req, &ctx.env).await {
+        Ok(value) => value,
+        Err(response) => return Ok(response),
+    };
+
+    let session_key = ctx.param("key").map(|value| value.as_str()).unwrap_or("");
+    if session_key.trim().is_empty() {
+        return crate::json_error("missing session key", 400);
+    }
+
+    let body: serde_json::Value = req.json().await.unwrap_or(serde_json::Value::Null);
+    let client = match runtime_client_for_user(&ctx.env, &user_id).await {
+        Ok(client) => client,
+        Err(err) => return runtime_setup_error(err),
+    };
+    let result = client.sessions_send(session_key, body).await?;
+    json_runtime_result(result)
+}
+
 pub async fn handle_billing_summary(req: Request, ctx: RouteContext<()>) -> Result<Response> {
     let user_id = match require_openclaw_user(&req, &ctx.env).await {
         Ok(value) => value,
@@ -352,6 +422,10 @@ pub async fn handle_openclaw_index(req: Request, _ctx: RouteContext<()>) -> Resu
             "runtime_devices": "/api/openclaw/runtime/devices",
             "runtime_backup": "/api/openclaw/runtime/backup",
             "runtime_restart": "/api/openclaw/runtime/restart",
+            "tools_invoke": "/api/openclaw/tools/invoke",
+            "sessions": "/api/openclaw/sessions",
+            "sessions_history": "/api/openclaw/sessions/:key/history",
+            "sessions_send": "/api/openclaw/sessions/:key/send",
             "billing_summary": "/api/openclaw/billing/summary"
         })),
         error: None,

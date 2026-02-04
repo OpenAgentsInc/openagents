@@ -17,11 +17,11 @@ function toBase64(data: Uint8Array): string {
 export async function backupToR2(sandbox: Sandbox, env: OpenClawEnv): Promise<string> {
   const timestamp = new Date().toISOString();
 
-  await sandbox.exec(`mkdir -p ${BACKUP_DIR} ${CONFIG_DIR} ${SKILLS_DIR}`, { timeoutMs: BACKUP_TIMEOUT_MS });
-  await sandbox.exec(`rsync -a --delete ${CONFIG_DIR}/ ${BACKUP_DIR}/clawdbot/`, { timeoutMs: BACKUP_TIMEOUT_MS });
-  await sandbox.exec(`rsync -a --delete ${SKILLS_DIR}/ ${BACKUP_DIR}/skills/`, { timeoutMs: BACKUP_TIMEOUT_MS });
-  await sandbox.exec(`printf '${timestamp}' > ${BACKUP_DIR}/.last-sync`, { timeoutMs: BACKUP_TIMEOUT_MS });
-  await sandbox.exec(`tar -czf ${BACKUP_ARCHIVE} -C ${BACKUP_DIR} clawdbot skills .last-sync`, { timeoutMs: BACKUP_TIMEOUT_MS });
+  await sandbox.exec(`mkdir -p ${BACKUP_DIR} ${CONFIG_DIR} ${SKILLS_DIR}`, { timeout: BACKUP_TIMEOUT_MS });
+  await sandbox.exec(`rsync -a --delete ${CONFIG_DIR}/ ${BACKUP_DIR}/clawdbot/`, { timeout: BACKUP_TIMEOUT_MS });
+  await sandbox.exec(`rsync -a --delete ${SKILLS_DIR}/ ${BACKUP_DIR}/skills/`, { timeout: BACKUP_TIMEOUT_MS });
+  await sandbox.exec(`printf '${timestamp}' > ${BACKUP_DIR}/.last-sync`, { timeout: BACKUP_TIMEOUT_MS });
+  await sandbox.exec(`tar -czf ${BACKUP_ARCHIVE} -C ${BACKUP_DIR} clawdbot skills .last-sync`, { timeout: BACKUP_TIMEOUT_MS });
 
   const stream = await sandbox.readFileStream(BACKUP_ARCHIVE);
   const { content } = await collectFile(stream);
@@ -42,11 +42,11 @@ export async function restoreFromR2(sandbox: Sandbox, env: OpenClawEnv): Promise
   if (!obj) return false;
 
   const data = new Uint8Array(await obj.arrayBuffer());
-  await sandbox.exec(`mkdir -p ${BACKUP_DIR} ${CONFIG_DIR} ${SKILLS_DIR}`, { timeoutMs: BACKUP_TIMEOUT_MS });
+  await sandbox.exec(`mkdir -p ${BACKUP_DIR} ${CONFIG_DIR} ${SKILLS_DIR}`, { timeout: BACKUP_TIMEOUT_MS });
   await sandbox.writeFile(BACKUP_ARCHIVE, toBase64(data), { encoding: 'base64' });
-  await sandbox.exec(`tar -xzf ${BACKUP_ARCHIVE} -C ${BACKUP_DIR}`, { timeoutMs: BACKUP_TIMEOUT_MS });
-  await sandbox.exec(`rsync -a ${BACKUP_DIR}/clawdbot/ ${CONFIG_DIR}/`, { timeoutMs: BACKUP_TIMEOUT_MS });
-  await sandbox.exec(`rsync -a ${BACKUP_DIR}/skills/ ${SKILLS_DIR}/`, { timeoutMs: BACKUP_TIMEOUT_MS });
+  await sandbox.exec(`tar -xzf ${BACKUP_ARCHIVE} -C ${BACKUP_DIR}`, { timeout: BACKUP_TIMEOUT_MS });
+  await sandbox.exec(`rsync -a ${BACKUP_DIR}/clawdbot/ ${CONFIG_DIR}/`, { timeout: BACKUP_TIMEOUT_MS });
+  await sandbox.exec(`rsync -a ${BACKUP_DIR}/skills/ ${SKILLS_DIR}/`, { timeout: BACKUP_TIMEOUT_MS });
 
   return true;
 }

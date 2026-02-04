@@ -1,6 +1,13 @@
 import type { Sandbox, Process, ExecResult } from '@cloudflare/sandbox';
 import type { OpenClawEnv } from '../types';
-import { CLI_TIMEOUT_MS, GATEWAY_PORT, GATEWAY_WS_URL, STARTUP_TIMEOUT_MS } from '../config';
+import {
+  CLI_TIMEOUT_MS,
+  GATEWAY_HTTP_TIMEOUT_MS,
+  GATEWAY_HTTP_URL,
+  GATEWAY_PORT,
+  GATEWAY_WS_URL,
+  STARTUP_TIMEOUT_MS,
+} from '../config';
 import { restoreFromR2 } from './backup';
 
 const GATEWAY_START_COMMAND = '/usr/local/bin/start-openclaw.sh';
@@ -115,7 +122,7 @@ function parseDeviceJson(stdout: string, stderr: string): DeviceListResult {
 }
 
 async function execCli(sandbox: Sandbox, command: string): Promise<ExecResult> {
-  return sandbox.exec(command, { timeoutMs: CLI_TIMEOUT_MS });
+  return sandbox.exec(command, { timeout: CLI_TIMEOUT_MS });
 }
 
 export async function listDevices(sandbox: Sandbox, env: OpenClawEnv): Promise<{ pending: unknown[]; paired: unknown[] }> {
@@ -137,6 +144,126 @@ export async function approveDevice(sandbox: Sandbox, env: OpenClawEnv, requestI
   const stderr = result.stderr ?? '';
   const approved = result.exitCode === 0 || stdout.toLowerCase().includes('approved');
   return { approved, requestId, stdout, stderr };
+}
+
+type GatewayInvokeOk = { ok: true; result: unknown };
+type GatewayInvokeErr = { ok: false; error?: { type?: string; message?: string } };
+export type GatewayInvokeResponse = GatewayInvokeOk | GatewayInvokeErr;
+
+const GATEWAY_STATUS_MARKER = '__OPENCLAW_GATEWAY_STATUS__';
+const GATEWAY_HEADER_ALLOWLIST = new Set(['x-openclaw-message-channel', 'x-openclaw-account-id']);
+
+function escapeShellArg(value: string): string {
+  return `'${value.replace(/'/g, `'\\''`)}'`;
+}
+
+function normalizeGatewayHeaders(
+  headers: Record<string, unknown> | undefined,
+): Record<string, string> {
+  if (!headers) return {};
+  const normalized: Record<string, string> = {};
+  for (const [key, value] of Object.entries(headers)) {
+    const headerKey = key.trim().toLowerCase();
+    if (!GATEWAY_HEADER_ALLOWLIST.has(headerKey)) continue;
+    if (typeof value !== 'string') continue;
+    const headerValue = value.trim();
+    if (!headerValue) continue;
+    normalized[headerKey] = headerValue;
+  }
+  return normalized;
+}
+
+function splitGatewayOutput(output: string): { body: string; status: number | null } {
+  const index = output.lastIndexOf(GATEWAY_STATUS_MARKER);
+  if (index === -1) {
+    return { body: output.trim(), status: null };
+  }
+  const body = output.slice(0, index).trimEnd();
+  const statusRaw = output.slice(index + GATEWAY_STATUS_MARKER.length).trim();
+  const status = Number.parseInt(statusRaw, 10);
+  return { body, status: Number.isFinite(status) ? status : null };
+}
+
+export async function invokeGatewayTool(
+  sandbox: Sandbox,
+  env: OpenClawEnv,
+  opts: {
+    tool: string;
+    action?: string;
+    args?: Record<string, unknown>;
+    sessionKey?: string;
+    headers?: Record<string, unknown>;
+    dryRun?: boolean;
+    timeoutMs?: number;
+  },
+): Promise<{ response: GatewayInvokeResponse; status: number | null }> {
+  await ensureGateway(sandbox, env);
+
+  const payload: Record<string, unknown> = { tool: opts.tool };
+  if (typeof opts.action === 'string' && opts.action.trim()) {
+    payload.action = opts.action.trim();
+  }
+  if (opts.args && Object.keys(opts.args).length > 0) {
+    payload.args = opts.args;
+  }
+  if (typeof opts.sessionKey === 'string' && opts.sessionKey.trim()) {
+    payload.sessionKey = opts.sessionKey.trim();
+  }
+  if (typeof opts.dryRun === 'boolean') {
+    payload.dryRun = opts.dryRun;
+  }
+
+  const headers = normalizeGatewayHeaders(opts.headers);
+  const headerArgs: string[] = [
+    '-H',
+    escapeShellArg('content-type: application/json'),
+    '-H',
+    escapeShellArg('accept: application/json'),
+  ];
+
+  if (env.OPENCLAW_GATEWAY_TOKEN && env.OPENCLAW_GATEWAY_TOKEN.trim()) {
+    headerArgs.push('-H', escapeShellArg(`authorization: Bearer ${env.OPENCLAW_GATEWAY_TOKEN.trim()}`));
+  }
+
+  for (const [key, value] of Object.entries(headers)) {
+    headerArgs.push('-H', escapeShellArg(`${key}: ${value}`));
+  }
+
+  const bodyText = JSON.stringify(payload);
+  const format = `\\n${GATEWAY_STATUS_MARKER}%{http_code}`;
+  const cmd = [
+    'curl',
+    '-sS',
+    '-X',
+    'POST',
+    `${GATEWAY_HTTP_URL}/tools/invoke`,
+    ...headerArgs,
+    '--data',
+    escapeShellArg(bodyText),
+    '-w',
+    escapeShellArg(format),
+  ].join(' ');
+
+  const result = await sandbox.exec(cmd, { timeout: opts.timeoutMs ?? GATEWAY_HTTP_TIMEOUT_MS });
+  const stdout = result.stdout ?? '';
+  const stderr = result.stderr ?? '';
+  if (!stdout.trim() && result.exitCode !== 0) {
+    throw new Error(`gateway invoke failed: ${stderr || 'unknown error'}`);
+  }
+
+  const { body, status } = splitGatewayOutput(stdout);
+  if (!body.trim()) {
+    throw new Error(`gateway invoke returned empty response: ${stderr || 'no body'}`);
+  }
+
+  let parsed: GatewayInvokeResponse;
+  try {
+    parsed = JSON.parse(body) as GatewayInvokeResponse;
+  } catch (error) {
+    throw new Error(`gateway invoke returned invalid json: ${error instanceof Error ? error.message : 'parse error'}`);
+  }
+
+  return { response: parsed, status };
 }
 
 let cachedVersion: string | null = null;

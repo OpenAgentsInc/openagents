@@ -60,6 +60,8 @@ As of the last update, the following is implemented and deployed:
 
 **Milestone 3 (sidebar + OpenClaw) — mostly done:** Left sidebar has an “OpenClaw Cloud” section (status from Convex, link to Hatchery, link to Chat when ready) and a “Chats” section backed by Convex `threads` (list, “New chat” creates a thread and navigates to `/assistant?threadId=...`). `/assistant` now switches to the requested threadId. Threads table: `user_id`, `title`, `kind` (chat/project/openclaw), `archived`, `created_at`, `updated_at`. Remaining: Hatchery “Your workspace graph” from Convex threads.
 
+**Milestone 4 (Mode A — OpenClaw tools) — done:** Runtime worker now proxies Gateway HTTP (`/v1/tools/invoke`, sessions list/history/send); API exposes stable endpoints under `/api/openclaw/tools` + `/api/openclaw/sessions`; agent worker adds OpenClaw tool set (instance/status/devices/approve/backup/restart/billing + sessions list/history/send).
+
 ## Product surface: what users should experience on openagents.com
 
 ### Primary UI: Hatchery (Flow canvas)
@@ -343,7 +345,7 @@ Acceptance criteria:
 - “OpenClaw” is always reachable from the left sidebar.
 - `/assistant` switches to the requested `threadId` (search param).
 
-### Milestone 4: Mode A — OpenClaw tools behind the durable agent (bridge without WS)
+### Milestone 4: Mode A — OpenClaw tools behind the durable agent (bridge without WS) — Done
 
 **Goal:** Users can “use OpenClaw” from the website even before we proxy the full Gateway WS surface.
 
@@ -368,6 +370,8 @@ Changes (agent worker):
 Acceptance criteria:
 - From the website, user can browse OpenClaw sessions, open one, and send a message into it.
 - No OpenClaw gateway tokens ever hit the browser.
+Status:
+- Implemented in `apps/openclaw-runtime` (`/v1/tools/invoke` + sessions proxy), `apps/api` (`/api/openclaw/tools` + `/api/openclaw/sessions`), and `apps/agent-worker` tool set.
 
 ### Milestone 5: Mode B — True OpenClaw WebChat (OpenResponses streaming)
 
