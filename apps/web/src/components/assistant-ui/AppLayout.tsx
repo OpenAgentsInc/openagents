@@ -33,7 +33,7 @@ export function AppLayout() {
   const ensureUser = useMutation(api.users.ensureUser);
   const ensuredUserId = useRef<string | null>(null);
   const runtime = useChatRuntime({
-    transport: new AssistantChatTransport({ api: '/api/chat' }),
+    transport: new AssistantChatTransport({ api: '/chat' }),
   });
 
   useEffect(() => {

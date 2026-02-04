@@ -56,6 +56,12 @@ This doc is supporting/background context: what we have today, recommended archi
   - The main chat thread UI is `apps/web/src/components/assistant-ui/thread.tsx`.
   - Layout matches the “left chat / right community” plan: `apps/web/src/components/assistant-ui/AppLayout.tsx` + `apps/web/src/components/assistant-ui/right-sidebar.tsx`.
 
+### OpenClaw instance flow (Hatchery, current)
+
+- **Hatchery** (when the user has access) shows a “Create your OpenClaw” panel. It calls **Convex actions** `openclawApi.getInstance` and `openclawApi.createInstance` (not the API directly from the client), which in turn `fetch(openagents.com/api/openclaw/instance)` with `X-OA-Internal-Key` and `X-OA-User-Id`.
+- The **API worker** handles GET/POST `/openclaw/instance` and calls **Convex HTTP** at `CONVEX_SITE_URL` (e.g. `https://<deployment>.convex.site`) with paths like `control/openclaw/instance` and header `x-oa-control-key: CONVEX_CONTROL_KEY`. **`CONVEX_SITE_URL` must point at the same Convex deployment that serves the web app**, or getInstance/createInstance return 500.
+- Convex stores the instance in `openclaw_instances`; “provision” today only writes metadata and runtime URL (no per-user container). Full architecture, env vars, and debugging: `apps/web/docs/openclaw-hatchery-architecture.md`. Product status: `apps/web/docs/openclaw-on-openagents-com.md` (“Current implementation status”).
+
 ### Current limitations
 
 - Server chat is still effectively **stateless per request** (the client sends message history; the server doesn’t own durable thread state).

@@ -1,6 +1,7 @@
-import { createFileRoute } from '@tanstack/react-router';
+import { createFileRoute, redirect } from '@tanstack/react-router';
 import { openai } from '@ai-sdk/openai';
-import { convertToModelMessages, streamText } from 'ai';
+import { jsonSchema } from '@ai-sdk/provider-utils';
+import { convertToModelMessages, streamText, stepCountIs } from 'ai';
 import type { UIMessage } from 'ai';
 import { z } from 'zod';
 import { getAuth } from '@workos/authkit-tanstack-react-start';
@@ -23,6 +24,10 @@ import type { OpenclawApiConfig } from '@/lib/openclawApi';
  * IMPORTANT: do NOT mount under `/api/*` because the Rust worker owns `/api/*` in production.
  */
 export const Route = createFileRoute('/chat')({
+  beforeLoad: () => {
+    // GET /chat has no UI; send users to the assistant.
+    throw redirect({ to: '/assistant' });
+  },
   server: {
     handlers: {
       POST: async ({ request }) => {
@@ -91,51 +96,61 @@ export const Route = createFileRoute('/chat')({
           userId: userIdStr,
         };
 
+        // OpenAI Responses API requires parameters to be JSON Schema with type: "object".
+        // Explicit jsonSchema() ensures type: "object" (Zod empty object can emit type: "None").
+        const emptySchema = jsonSchema({ type: 'object', properties: {} });
+        const approveDeviceSchema = jsonSchema({
+          type: 'object',
+          properties: { requestId: { type: 'string', minLength: 1 } },
+          required: ['requestId'],
+        });
+
         const result = streamText({
           model: openai.responses('gpt-4o-mini'),
           messages: await convertToModelMessages(messages),
-          // Note: we keep tool typing loose here to avoid version-specific TS friction.
-          // The runtime behavior is what matters; tighten types later.
+          // Allow multiple tool-call rounds (default is 1) so model can e.g. get instance → provision → list devices → approve.
+          stopWhen: stepCountIs(10),
+          // Tool names must match OpenAI pattern: ^[a-zA-Z0-9_-]+$ (no dots).
           tools: {
-            'openclaw.getInstance': {
+            openclaw_get_instance: {
               description: "Get the current user's OpenClaw instance summary (or null if none).",
-              parameters: z.object({}),
+              inputSchema: emptySchema,
               execute: async () => getOpenclawInstance(apiConfig),
             },
-            'openclaw.provision': {
+            openclaw_provision: {
               description: 'Provision an OpenClaw instance for the current user.',
-              parameters: z.object({}),
+              inputSchema: emptySchema,
               execute: async () => createOpenclawInstance(apiConfig),
             },
-            'openclaw.getStatus': {
+            openclaw_get_status: {
               description: "Get runtime status for the current user's OpenClaw instance.",
-              parameters: z.object({}),
+              inputSchema: emptySchema,
               execute: async () => getRuntimeStatus(apiConfig),
             },
-            'openclaw.listDevices': {
+            openclaw_list_devices: {
               description: "List pending and paired devices for the current user's OpenClaw instance.",
-              parameters: z.object({}),
+              inputSchema: emptySchema,
               execute: async () => getRuntimeDevices(apiConfig),
             },
-            'openclaw.approveDevice': {
+            openclaw_approve_device: {
               description: 'Approve a pending device by requestId.',
-              parameters: z.object({ requestId: z.string().min(1) }),
+              inputSchema: approveDeviceSchema,
               execute: async ({ requestId }: { requestId: string }) =>
                 approveRuntimeDevice(apiConfig, requestId),
             },
-            'openclaw.backupNow': {
+            openclaw_backup_now: {
               description: "Trigger a backup/sync for the current user's OpenClaw instance.",
-              parameters: z.object({}),
+              inputSchema: emptySchema,
               execute: async () => backupRuntime(apiConfig),
             },
-            'openclaw.restart': {
+            openclaw_restart: {
               description: 'Restart the OpenClaw gateway process.',
-              parameters: z.object({}),
+              inputSchema: emptySchema,
               execute: async () => restartRuntime(apiConfig),
             },
-            'openclaw.getBillingSummary': {
+            openclaw_get_billing_summary: {
               description: 'Get current credit balance summary.',
-              parameters: z.object({}),
+              inputSchema: emptySchema,
               execute: async () => getBillingSummary(apiConfig),
             },
           } as any,

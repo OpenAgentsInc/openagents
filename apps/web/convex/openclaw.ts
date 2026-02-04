@@ -1,5 +1,5 @@
 import { v } from 'convex/values';
-import { internalMutation, internalQuery, type MutationCtx, type QueryCtx } from './_generated/server';
+import { internalMutation, internalQuery, query, type MutationCtx, type QueryCtx } from './_generated/server';
 import type { Doc } from './_generated/dataModel';
 import { fail, requireFound } from './lib/errors';
 
@@ -166,6 +166,24 @@ export const getInstanceForUser = internalQuery({
   },
   handler: async (ctx, args) => {
     return getInstanceByUserId(ctx, args.user_id);
+  },
+});
+
+/** Public query: current user's OpenClaw instance summary (for sidebar, etc.). Returns null if not authenticated or no instance. */
+export const getInstanceForCurrentUser = query({
+  args: {},
+  handler: async (ctx) => {
+    const identity = (await ctx.auth.getUserIdentity()) as { subject?: string } | null;
+    if (!identity?.subject) return null;
+    const doc = await getInstanceByUserId(ctx, identity.subject);
+    if (!doc) return null;
+    return {
+      status: doc.status,
+      runtime_name: doc.runtime_name ?? null,
+      created_at: doc.created_at,
+      updated_at: doc.updated_at,
+      last_ready_at: doc.last_ready_at ?? null,
+    };
   },
 });
 

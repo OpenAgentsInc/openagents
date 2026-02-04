@@ -15,6 +15,14 @@ export default defineConfig({
   server: {
     port: 3000,
   },
+  resolve: {
+    // Single React instance so hooks work after optimizing deps (e.g. @ai-sdk/provider-utils).
+    dedupe: ['react', 'react-dom', 'react/jsx-runtime'],
+  },
+  ssr: {
+    // Force one React in SSR bundle to avoid "Invalid hook call" / useState null.
+    noExternal: ['react', 'react-dom', 'react/jsx-runtime'],
+  },
   plugins: [
     cloudflare({ viteEnvironment: { name: 'ssr' } }),
     tsConfigPaths({

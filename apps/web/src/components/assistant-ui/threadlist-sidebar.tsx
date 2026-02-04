@@ -1,7 +1,7 @@
 import * as React from 'react';
-import { Link, useRouterState } from '@tanstack/react-router';
+import { Link, useNavigate, useRouterState } from '@tanstack/react-router';
 import { useAuth } from '@workos/authkit-tanstack-react-start/client';
-import { useQuery } from 'convex/react';
+import { useMutation, useQuery } from 'convex/react';
 import { api } from '../../../convex/_generated/api';
 import {
   Sidebar,
@@ -17,7 +17,7 @@ import {
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { BookOpen, Shield } from 'lucide-react';
+import { BookOpen, MessageSquarePlus, ServerIcon, Shield } from 'lucide-react';
 import { ThreadList } from '@/components/assistant-ui/thread-list';
 import { cn } from '@/lib/utils';
 
@@ -131,6 +131,88 @@ function SidebarAdminLink() {
   );
 }
 
+function SidebarOpenClawSection() {
+  const instance = useQuery(api.openclaw.getInstanceForCurrentUser);
+  const hatcheryActive = useIsActive('/hatchery');
+  const assistantActive = useIsActive('/assistant');
+  return (
+    <SidebarMenu className="pt-2">
+      <div className="px-2 pb-1">
+        <span className="text-xs font-medium text-sidebar-foreground/70">OpenClaw Cloud</span>
+      </div>
+      <SidebarMenuItem>
+        <SidebarMenuButton asChild isActive={hatcheryActive}>
+          <Link to="/hatchery">
+            <SidebarIcon>
+              <ServerIcon className="size-4" />
+            </SidebarIcon>
+            <span>
+              {instance === undefined
+                ? 'OpenClaw…'
+                : instance
+                  ? `OpenClaw: ${instance.status}`
+                  : 'OpenClaw'}
+            </span>
+          </Link>
+        </SidebarMenuButton>
+      </SidebarMenuItem>
+      {instance?.status === 'ready' && (
+        <SidebarMenuItem>
+          <SidebarMenuButton asChild isActive={assistantActive}>
+            <Link to="/assistant">
+              <span className="pl-6 text-sm text-sidebar-foreground/80">Chat</span>
+            </Link>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
+      )}
+    </SidebarMenu>
+  );
+}
+
+function SidebarChatsSection() {
+  const threads = useQuery(api.threads.list, { archived: false, limit: 20 });
+  const createThread = useMutation(api.threads.create);
+  const navigate = useNavigate();
+  const assistantActive = useIsActive('/assistant');
+
+  const handleNewChat = async () => {
+    try {
+      await createThread({ title: 'New Chat', kind: 'chat' });
+      navigate({ to: '/assistant' });
+    } catch {
+      // ignore
+    }
+  };
+
+  return (
+    <SidebarMenu className="pt-2">
+      <div className="flex items-center justify-between px-2 pb-1">
+        <span className="text-xs font-medium text-sidebar-foreground/70">Chats</span>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-6 w-6 p-0 text-sidebar-foreground/70 hover:text-sidebar-foreground"
+          onClick={handleNewChat}
+          aria-label="New chat"
+        >
+          <MessageSquarePlus className="size-3.5" />
+        </Button>
+      </div>
+      {threads?.length ? (
+        threads.slice(0, 10).map((t) => (
+          <SidebarMenuItem key={t._id}>
+            <SidebarMenuButton asChild isActive={assistantActive}>
+              <Link to="/assistant" search={{ threadId: t._id }}>
+                <span className="truncate text-sm">{t.title}</span>
+              </Link>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        ))
+      ) : null}
+    </SidebarMenu>
+  );
+}
+
 export function ThreadListSidebar(
   props: React.ComponentProps<typeof Sidebar>,
 ) {
@@ -170,6 +252,8 @@ export function ThreadListSidebar(
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
+        <SidebarOpenClawSection />
+        <SidebarChatsSection />
         <ThreadList />
       </SidebarContent>
       <SidebarRail />
