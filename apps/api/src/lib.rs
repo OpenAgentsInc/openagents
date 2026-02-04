@@ -202,6 +202,7 @@ async fn main(mut req: Request, env: Env, _ctx: Context) -> Result<Response> {
     Router::new()
         .get_async("/", handle_root)
         .get_async("/health", handle_health)
+        .post_async("/agent/signup", openclaw::http::handle_agent_signup)
         .get_async("/openclaw", openclaw::http::handle_openclaw_index)
         .get_async("/openclaw/invoice", handle_openclaw_invoice_get)
         .post_async("/openclaw/invoice", handle_openclaw_invoice_post)

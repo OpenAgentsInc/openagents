@@ -188,10 +188,16 @@ If we allow public agent signup:
 - spend limits / budgets per agent (ties into marketplace model)
 - audit logs: key creation, last-used, revoked, scope changes
 
+## Implemented (Phase 1)
+
+- **Convex:** `agent_users` and `agent_api_keys` tables; `agentUsers.createAgentUserAndKey`, `getAgentByKeyHash`, `touchAgentKeyLastUsed`; HTTP routes `/control/agent/signup`, `/control/agent/by-key-hash`, `/control/agent/touch` (all require `x-oa-control-key`).
+- **API worker:** `POST /agent/signup` (body: `handle?`, `owner_workos_user_id?`, `scopes?`, `description?`) → returns `agentUserId`, `apiKey`, `keyId`. Auth: `X-OA-Agent-Key` or `Authorization: Agent <key>`; resolved principal is tenant id `agent:<id>` for OpenClaw and Convex lookups.
+- **Required env:** Convex: `OA_AGENT_KEY_HMAC_SECRET`, `OA_CONTROL_KEY`. API worker: `OA_AGENT_KEY_HMAC_SECRET` (same value), `CONVEX_SITE_URL`, `CONVEX_CONTROL_KEY`.
+
 ## Migration plan
 
-1. **Phase 0 (docs + link)**: add KB + repo design doc + signup link.
-2. **Phase 1 (API-only keys)**: implement `agent_users` + `agent_api_keys` + `/agent/signup` + auth middleware in `apps/api`.
+1. **Phase 0 (docs + link)**: add KB + repo design doc + signup link. ✅
+2. **Phase 1 (API-only keys)**: implement `agent_users` + `agent_api_keys` + `/agent/signup` + auth middleware in `apps/api`. ✅
 3. **Phase 2 (OpenClaw tenantKey)**: allow `agent:<id>` tenant keys end-to-end.
 4. **Phase 3 (UI for key management)**: logged-in humans can create/rotate agent keys.
 5. **Phase 4 (optional Convex custom auth)**: only if we truly need agent principals to be “native Convex identities”.

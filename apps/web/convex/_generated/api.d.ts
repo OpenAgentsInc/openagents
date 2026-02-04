@@ -10,6 +10,8 @@
 
 import type * as access from "../access.js";
 import type * as admin from "../admin.js";
+import type * as agentUsers from "../agentUsers.js";
+import type * as agent_control_http from "../agent_control_http.js";
 import type * as apiTokens from "../apiTokens.js";
 import type * as billing from "../billing.js";
 import type * as control_auth from "../control_auth.js";
@@ -37,6 +39,8 @@ import type {
 declare const fullApi: ApiFromModules<{
   access: typeof access;
   admin: typeof admin;
+  agentUsers: typeof agentUsers;
+  agent_control_http: typeof agent_control_http;
   apiTokens: typeof apiTokens;
   billing: typeof billing;
   control_auth: typeof control_auth;

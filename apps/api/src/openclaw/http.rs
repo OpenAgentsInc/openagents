@@ -1,4 +1,6 @@
+use hmac::{Hmac, Mac};
 use serde::Serialize;
+use sha2::Sha256;
 use worker::{Env, Method, Request, Response, RouteContext, Result};
 
 use crate::openclaw::billing;
@@ -7,6 +9,11 @@ use crate::openclaw::convex;
 use crate::openclaw::runtime_client::{RuntimeClient, RuntimeResult};
 use crate::openclaw::{INTERNAL_KEY_HEADER, USER_ID_HEADER};
 use crate::ApiResponse;
+
+type HmacSha256 = Hmac<Sha256>;
+
+const AGENT_KEY_HEADER: &str = "x-oa-agent-key";
+const AGENT_AUTH_PREFIX: &str = "agent ";
 
 #[derive(Debug, Serialize)]
 struct InstanceSummary {
@@ -68,6 +75,40 @@ fn internal_key_from_request(req: &Request) -> Option<String> {
     None
 }
 
+/// Agent API key from X-OA-Agent-Key or Authorization: Agent <key>.
+fn agent_key_from_request(req: &Request) -> Option<String> {
+    if let Ok(Some(v)) = req.headers().get(AGENT_KEY_HEADER) {
+        let s = v.trim();
+        if !s.is_empty() {
+            return Some(s.to_string());
+        }
+    }
+    if let Ok(Some(auth)) = req.headers().get("authorization") {
+        let auth = auth.trim();
+        if auth.len() > AGENT_AUTH_PREFIX.len()
+            && auth[..AGENT_AUTH_PREFIX.len()].eq_ignore_ascii_case(AGENT_AUTH_PREFIX)
+        {
+            let key = auth[AGENT_AUTH_PREFIX.len()..].trim();
+            if !key.is_empty() {
+                return Some(key.to_string());
+            }
+        }
+    }
+    None
+}
+
+fn agent_key_hash(secret: &str, key: &str) -> String {
+    let mut mac =
+        HmacSha256::new_from_slice(secret.as_bytes()).expect("HMAC key length");
+    mac.update(key.as_bytes());
+    let result = mac.finalize();
+    result
+        .into_bytes()
+        .iter()
+        .map(|b| format!("{:02x}", b))
+        .collect::<String>()
+}
+
 fn resolve_internal_user(req: &Request, env: &Env) -> std::result::Result<Option<String>, Response> {
     let provided = internal_key_from_request(req);
     let Some(provided) = provided else {
@@ -119,9 +160,52 @@ fn resolve_internal_user(req: &Request, env: &Env) -> std::result::Result<Option
     Ok(Some(user_id))
 }
 
+/// Resolve agent principal by API key. Returns tenant_id = "agent:<id>" and scopes.
+async fn resolve_agent_principal(
+    req: &Request,
+    env: &Env,
+) -> std::result::Result<Option<String>, Response> {
+    let key = match agent_key_from_request(req) {
+        Some(k) => k,
+        None => return Ok(None),
+    };
+    let secret = match env.var("OA_AGENT_KEY_HMAC_SECRET") {
+        Ok(v) => v.to_string(),
+        Err(_) => {
+            worker::console_log!("agent auth: OA_AGENT_KEY_HMAC_SECRET not set");
+            return Ok(None);
+        }
+    };
+    let key_hash = agent_key_hash(secret.trim(), key.trim());
+    let principal = match convex::get_agent_by_key_hash(env, &key_hash).await {
+        Ok(Some(p)) => p,
+        Ok(None) => {
+            worker::console_log!("agent auth: key not found or revoked");
+            return Err(crate::json_unauthorized("invalid or revoked agent key"));
+        }
+        Err(err) => {
+            worker::console_log!("agent auth: convex error {}", err);
+            let response = crate::json_error("agent auth failed", 502)
+                .unwrap_or_else(|_| Response::error("agent auth failed", 502).unwrap());
+            return Err(response);
+        }
+    };
+    let tenant_id = format!("agent:{}", principal.agent_user_id);
+    if let Err(e) = convex::touch_agent_key_last_used(env, &key_hash).await {
+        worker::console_log!("agent auth: touch last_used failed {}", e);
+    }
+    Ok(Some(tenant_id))
+}
+
 async fn require_openclaw_user(req: &Request, env: &Env) -> std::result::Result<String, Response> {
     match resolve_internal_user(req, env) {
         Ok(Some(user_id)) => return Ok(user_id),
+        Ok(None) => {}
+        Err(response) => return Err(response),
+    }
+
+    match resolve_agent_principal(req, env).await {
+        Ok(Some(tenant_id)) => return Ok(tenant_id),
         Ok(None) => {}
         Err(response) => return Err(response),
     }
@@ -230,6 +314,31 @@ async fn runtime_client_for_user(env: &Env, user_id: &str) -> Result<RuntimeClie
             .ok_or_else(|| worker::Error::RustError("service token not set".to_string()))?
     };
     Ok(RuntimeClient::new(runtime_url, service_token))
+}
+
+pub async fn handle_agent_signup(mut req: Request, ctx: RouteContext<()>) -> Result<Response> {
+    if req.method() != Method::Post {
+        return crate::json_error("method not allowed", 405);
+    }
+    let body: serde_json::Value = req.json().await.unwrap_or(serde_json::Value::Null);
+    let payload = if body.is_object() {
+        body
+    } else {
+        serde_json::json!({})
+    };
+    let result = match convex::agent_signup(&ctx.env, payload).await {
+        Ok(r) => r,
+        Err(err) => {
+            let msg = format!("agent signup failed: {}", err);
+            return crate::json_error(&msg, 500);
+        }
+    };
+    let data = serde_json::json!({
+        "agentUserId": result.agent_user_id,
+        "apiKey": result.api_key,
+        "keyId": result.key_id,
+    });
+    json_ok(Some(data))
 }
 
 pub async fn handle_instance_get(req: Request, ctx: RouteContext<()>) -> Result<Response> {
