@@ -241,13 +241,13 @@ Approval layers (from `apps/web/docs/openclaw-on-openagents-com.md`):
 
 Device pairing (nodes):
 
-- [ ] User can see pending device pairing requests and approve them in Hatchery
-- [ ] The UI clearly explains “you approve requests that already exist; onboarding to create requests is post-EA”
+- [x] User can see pending device pairing requests and approve them in Hatchery
+- [x] The UI clearly explains “you approve requests that already exist; onboarding to create requests is post-EA”
 
 DM pairing (channels):
 
-- [ ] User can list pending pairing requests (by channel) and approve codes in Hatchery
-- [ ] The UI clearly explains “OAuth/bot setup to create pairing requests is post-EA”
+- [x] User can list pending pairing requests (by channel) and approve codes in Hatchery
+- [x] The UI clearly explains “OAuth/bot setup to create pairing requests is post-EA”
 
 ### 1.7 “Zero to OpenClaw in 30 seconds” blockers (must be resolved for EA)
 
@@ -556,3 +556,10 @@ Agent parity is not “OpenClaw only”; it includes the collaboration/product s
   **Deploys:** `apps/web` (`npm run deploy`, version `49e23ba3-2cd8-4503-8db4-f911b79dab82`).  
   **Production checks:** API: POST `/api/agent/signup` → POST/GET `/api/openclaw/instance` returned `status: ready`. UI GETs `/feed`, `/c`, `/hatchery`, `/openclaw/chat` returned 200; `/chat` returned 307 → `/assistant`; `/assistant` returned 307 → `/chat/new`. OpenClaw chat streaming via `POST /api/openclaw/chat` returned no SSE data within 12s (logged in `docs/local/testing/agent-testing-errors.md`).  
   **Known issues / next:** OpenClaw chat streaming still returns no data (likely tied to MVP 1.7 provider key/runtime config). Next unchecked items are **1.6 Pairing behavior clarity** and **1.7 provider keys**.
+
+- **2026-02-04 23:55 UTC (branch: `main`)** – Completed MVP 1.6 pairing clarity: added explicit “approvals only” copy for device and DM pairing in Hatchery.  
+  **Key files:** `apps/web/src/components/hatchery/HatcheryFlowDemo.tsx`.  
+  **Tests:** `npm run test` ✅; `npm run lint` ❌ (pre-existing repo-wide lint issues); `npm run test:e2e` ✅ (openclaw spec skipped without auth state).  
+  **Deploys:** `apps/web` (`npm run deploy`, version `92de298e-136c-4dbf-b223-584473a19d82`).  
+  **Production checks:** API: `POST /api/agent/signup` → `POST/GET /api/openclaw/instance` returned `status: ready`. UI GETs `/feed`, `/c`, `/hatchery`, `/openclaw/chat` returned 200; `/assistant` returned 307 → `/chat/new`; `/chat` returned 307 → `/assistant`.  
+  **Known issues / next:** OpenClaw chat streaming still returns no data within 12s (see `docs/local/testing/agent-testing-errors.md`). Next unchecked items are **1.7 “Zero to OpenClaw in 30 seconds” blockers** (provider keys, spawning, teardown).
