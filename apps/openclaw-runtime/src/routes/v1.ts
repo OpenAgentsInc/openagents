@@ -15,6 +15,7 @@ import {
   listDevices,
   listPairingRequests,
   restartGateway,
+  stopGateway,
   streamGatewayResponses,
 } from '../sandbox/process';
 
@@ -113,6 +114,16 @@ v1.post('/gateway/restart', async (c) => {
     return c.json(ok({ message: 'restarting' }));
   } catch (error) {
     return c.json(err('internal_error', 'failed to restart gateway', { message: String(error) }), 500);
+  }
+});
+
+v1.post('/gateway/stop', async (c) => {
+  const sandbox = getOpenClawSandbox(c.env);
+  try {
+    await stopGateway(sandbox);
+    return c.json(ok({ stopped: true }));
+  } catch (error) {
+    return c.json(err('internal_error', 'failed to stop gateway', { message: String(error) }), 500);
   }
 });
 

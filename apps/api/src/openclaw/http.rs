@@ -439,6 +439,53 @@ pub async fn handle_instance_delete(req: Request, ctx: RouteContext<()>) -> Resu
         Err(response) => return Ok(response),
     };
 
+    let instance = match convex::get_instance(&ctx.env, &user_id).await {
+        Ok(opt) => opt,
+        Err(err) => {
+            let msg = format!("openclaw deleteInstance: {}", err);
+            return crate::json_error(&msg, 500);
+        }
+    };
+
+    if let Some(record) = instance {
+        if let Some(runtime_url) = record.runtime_url.clone() {
+            let service_token = if let Some(token) = service_token_from_env(&ctx.env) {
+                token
+            } else {
+                match convex::get_secret(&ctx.env, &user_id, "service_token").await {
+                    Ok(Some(token)) => token,
+                    Ok(None) => {
+                        return crate::json_error(
+                            "openclaw stop runtime: service token not set",
+                            500,
+                        );
+                    }
+                    Err(err) => {
+                        let msg = format!("openclaw stop runtime: {}", err);
+                        return crate::json_error(&msg, 500);
+                    }
+                }
+            };
+            let client = RuntimeClient::new(runtime_url, service_token);
+            let stop_result = match client.stop().await {
+                Ok(res) => res,
+                Err(err) => {
+                    let msg = format!("openclaw stop runtime: {}", err);
+                    return crate::json_error(&msg, 500);
+                }
+            };
+            if !stop_result.envelope.ok {
+                let message = stop_result
+                    .envelope
+                    .error
+                    .map(|err| err.message)
+                    .unwrap_or_else(|| "failed to stop runtime".to_string());
+                let msg = format!("openclaw stop runtime: {}", message);
+                return crate::json_error(&msg, 500);
+            }
+        }
+    }
+
     let result = match convex::delete_instance(&ctx.env, &user_id).await {
         Ok(res) => res,
         Err(err) => {

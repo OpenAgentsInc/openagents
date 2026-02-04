@@ -85,6 +85,10 @@ impl RuntimeClient {
         self.request_json(Method::Post, "/v1/gateway/restart", None).await
     }
 
+    pub async fn stop(&self) -> Result<RuntimeResult<serde_json::Value>> {
+        self.request_json(Method::Post, "/v1/gateway/stop", None).await
+    }
+
     pub async fn tools_invoke(
         &self,
         payload: serde_json::Value,

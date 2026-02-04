@@ -1090,7 +1090,7 @@ export function HatcheryFlowDemo() {
                           openApprovalDialog({
                             title: 'Delete OpenClaw instance',
                             description:
-                              'Deleting removes your OpenClaw record and clears secrets. You can re-provision later.',
+                              'Deleting stops your OpenClaw gateway, removes the record, and clears secrets. You can re-provision later.',
                             confirmLabel: 'Delete OpenClaw',
                             confirmVariant: 'destructive',
                             action: handleDelete,

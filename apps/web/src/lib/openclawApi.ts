@@ -14,6 +14,7 @@ export type InstanceSummary = {
 
 export type DeleteInstanceResult = {
   deleted: boolean;
+  stopped?: boolean;
 };
 
 export type RuntimeStatusData = {
