@@ -225,6 +225,7 @@ async fn main(mut req: Request, env: Env, _ctx: Context) -> Result<Response> {
             "/openclaw/sessions/:key/send",
             openclaw::http::handle_sessions_send,
         )
+        .post_async("/openclaw/chat", openclaw::http::handle_openclaw_chat)
         .get_async("/openclaw/billing/summary", openclaw::http::handle_billing_summary)
         .post_async("/auth/agent/register", handle_auth_agent_register)
         .post_async("/register", handle_control_register)

@@ -29,6 +29,7 @@ import { Route as AppKbIndexRouteImport } from './routes/_app/kb/index'
 import { Route as AppCIndexRouteImport } from './routes/_app/c.index'
 import { Route as AppUNpubRouteImport } from './routes/_app/u.$npub'
 import { Route as AppPostsIdRouteImport } from './routes/_app/posts.$id'
+import { Route as AppOpenclawChatRouteImport } from './routes/_app/openclaw.chat'
 import { Route as AppKbSlugRouteImport } from './routes/_app/kb/$slug'
 import { Route as AppEventIdRouteImport } from './routes/_app/event.$id'
 import { Route as AppCCommunityRouteImport } from './routes/_app/c.$community'
@@ -132,6 +133,11 @@ const AppPostsIdRoute = AppPostsIdRouteImport.update({
   path: '/posts/$id',
   getParentRoute: () => AppRoute,
 } as any)
+const AppOpenclawChatRoute = AppOpenclawChatRouteImport.update({
+  id: '/openclaw/chat',
+  path: '/openclaw/chat',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppKbSlugRoute = AppKbSlugRouteImport.update({
   id: '/$slug',
   path: '/$slug',
@@ -166,6 +172,7 @@ export interface FileRoutesByFullPath {
   '/c/$community': typeof AppCCommunityRoute
   '/event/$id': typeof AppEventIdRoute
   '/kb/$slug': typeof AppKbSlugRoute
+  '/openclaw/chat': typeof AppOpenclawChatRoute
   '/posts/$id': typeof AppPostsIdRoute
   '/u/$npub': typeof AppUNpubRoute
   '/c/': typeof AppCIndexRoute
@@ -187,6 +194,7 @@ export interface FileRoutesByTo {
   '/c/$community': typeof AppCCommunityRoute
   '/event/$id': typeof AppEventIdRoute
   '/kb/$slug': typeof AppKbSlugRoute
+  '/openclaw/chat': typeof AppOpenclawChatRoute
   '/posts/$id': typeof AppPostsIdRoute
   '/u/$npub': typeof AppUNpubRoute
   '/c': typeof AppCIndexRoute
@@ -213,6 +221,7 @@ export interface FileRoutesById {
   '/_app/c/$community': typeof AppCCommunityRoute
   '/_app/event/$id': typeof AppEventIdRoute
   '/_app/kb/$slug': typeof AppKbSlugRoute
+  '/_app/openclaw/chat': typeof AppOpenclawChatRoute
   '/_app/posts/$id': typeof AppPostsIdRoute
   '/_app/u/$npub': typeof AppUNpubRoute
   '/_app/c/': typeof AppCIndexRoute
@@ -238,6 +247,7 @@ export interface FileRouteTypes {
     | '/c/$community'
     | '/event/$id'
     | '/kb/$slug'
+    | '/openclaw/chat'
     | '/posts/$id'
     | '/u/$npub'
     | '/c/'
@@ -259,6 +269,7 @@ export interface FileRouteTypes {
     | '/c/$community'
     | '/event/$id'
     | '/kb/$slug'
+    | '/openclaw/chat'
     | '/posts/$id'
     | '/u/$npub'
     | '/c'
@@ -284,6 +295,7 @@ export interface FileRouteTypes {
     | '/_app/c/$community'
     | '/_app/event/$id'
     | '/_app/kb/$slug'
+    | '/_app/openclaw/chat'
     | '/_app/posts/$id'
     | '/_app/u/$npub'
     | '/_app/c/'
@@ -443,6 +455,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppPostsIdRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/openclaw/chat': {
+      id: '/_app/openclaw/chat'
+      path: '/openclaw/chat'
+      fullPath: '/openclaw/chat'
+      preLoaderRoute: typeof AppOpenclawChatRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/kb/$slug': {
       id: '/_app/kb/$slug'
       path: '/$slug'
@@ -500,6 +519,7 @@ interface AppRouteChildren {
   AppKbRoute: typeof AppKbRouteWithChildren
   AppIndexRoute: typeof AppIndexRoute
   AppEventIdRoute: typeof AppEventIdRoute
+  AppOpenclawChatRoute: typeof AppOpenclawChatRoute
   AppPostsIdRoute: typeof AppPostsIdRoute
   AppUNpubRoute: typeof AppUNpubRoute
 }
@@ -513,6 +533,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppKbRoute: AppKbRouteWithChildren,
   AppIndexRoute: AppIndexRoute,
   AppEventIdRoute: AppEventIdRoute,
+  AppOpenclawChatRoute: AppOpenclawChatRoute,
   AppPostsIdRoute: AppPostsIdRoute,
   AppUNpubRoute: AppUNpubRoute,
 }

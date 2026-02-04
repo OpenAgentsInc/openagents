@@ -144,6 +144,28 @@ fn runtime_setup_error(err: worker::Error) -> Result<Response> {
     crate::json_error(&message, status)
 }
 
+fn forward_gateway_headers(req: &Request) -> Vec<(String, String)> {
+    let allowlist = [
+        "x-openclaw-session-key",
+        "x-openclaw-agent-id",
+        "x-openclaw-message-channel",
+        "x-openclaw-account-id",
+    ];
+    let mut collected = Vec::new();
+    for (name, value) in req.headers().entries() {
+        let normalized = name.to_lowercase();
+        if !allowlist.contains(&normalized.as_str()) {
+            continue;
+        }
+        let trimmed = value.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        collected.push((normalized, trimmed.to_string()));
+    }
+    collected
+}
+
 async fn runtime_client_for_user(env: &Env, user_id: &str) -> Result<RuntimeClient> {
     let instance = convex::get_instance(env, user_id)
         .await?
@@ -400,6 +422,41 @@ pub async fn handle_sessions_send(mut req: Request, ctx: RouteContext<()>) -> Re
     json_runtime_result(result)
 }
 
+pub async fn handle_openclaw_chat(mut req: Request, ctx: RouteContext<()>) -> Result<Response> {
+    let user_id = match require_openclaw_user(&req, &ctx.env).await {
+        Ok(value) => value,
+        Err(response) => return Ok(response),
+    };
+
+    let body_text = req.text().await.unwrap_or_default();
+    if body_text.trim().is_empty() {
+        return crate::json_error("missing request body", 400);
+    }
+
+    let extra_headers = forward_gateway_headers(&req);
+    let client = match runtime_client_for_user(&ctx.env, &user_id).await {
+        Ok(client) => client,
+        Err(err) => return runtime_setup_error(err),
+    };
+
+    let mut upstream = client.responses_stream(body_text, &extra_headers).await?;
+    let status = upstream.status_code();
+    if status >= 400 {
+        let message = upstream.text().await.unwrap_or_else(|_| "runtime error".to_string());
+        return crate::json_error(&message, status);
+    }
+
+    let body = upstream.body().clone();
+    let mut response = Response::from_body(body)?.with_status(status);
+    response
+        .headers_mut()
+        .set("content-type", "text/event-stream; charset=utf-8")?;
+    response.headers_mut().set("cache-control", "no-cache")?;
+    response.headers_mut().set("connection", "keep-alive")?;
+    crate::apply_cors(&mut response)?;
+    Ok(response)
+}
+
 pub async fn handle_billing_summary(req: Request, ctx: RouteContext<()>) -> Result<Response> {
     let user_id = match require_openclaw_user(&req, &ctx.env).await {
         Ok(value) => value,
@@ -426,6 +483,7 @@ pub async fn handle_openclaw_index(req: Request, _ctx: RouteContext<()>) -> Resu
             "sessions": "/api/openclaw/sessions",
             "sessions_history": "/api/openclaw/sessions/:key/history",
             "sessions_send": "/api/openclaw/sessions/:key/send",
+            "chat": "/api/openclaw/chat",
             "billing_summary": "/api/openclaw/billing/summary"
         })),
         error: None,

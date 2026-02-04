@@ -30,7 +30,6 @@ if [ ! -f "$CONFIG_FILE" ]; then
 EOFCONFIG
 fi
 
-if [ -n "$OPENCLAW_GATEWAY_TOKEN" ]; then
 node << 'EOFNODE'
 const fs = require('fs');
 const configPath = '/root/.clawdbot/clawdbot.json';
@@ -42,11 +41,16 @@ try {
   config = {};
 }
 config.gateway = config.gateway || {};
-config.gateway.auth = config.gateway.auth || {};
-config.gateway.auth.token = token;
+config.gateway.http = config.gateway.http || {};
+config.gateway.http.endpoints = config.gateway.http.endpoints || {};
+config.gateway.http.endpoints.responses = config.gateway.http.endpoints.responses || {};
+config.gateway.http.endpoints.responses.enabled = true;
+if (token) {
+  config.gateway.auth = config.gateway.auth || {};
+  config.gateway.auth.token = token;
+}
 fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
 EOFNODE
-fi
 
 if [ -n "$OPENCLAW_GATEWAY_TOKEN" ]; then
   exec openclaw gateway --port 18789 --allow-unconfigured --bind "$BIND_MODE" --token "$OPENCLAW_GATEWAY_TOKEN"

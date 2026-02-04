@@ -13,6 +13,7 @@ import {
   invokeGatewayTool,
   listDevices,
   restartGateway,
+  streamGatewayResponses,
 } from '../sandbox/process';
 
 const v1 = new Hono<{ Bindings: OpenClawEnv }>();
@@ -56,6 +57,24 @@ function toStatusCode(status: number | null | undefined, fallback: ContentfulSta
     return status as ContentfulStatusCode;
   }
   return fallback;
+}
+
+function extractGatewayResponseHeaders(headers: Headers): Record<string, string> {
+  const allowlist = new Set([
+    'x-openclaw-session-key',
+    'x-openclaw-agent-id',
+    'x-openclaw-message-channel',
+    'x-openclaw-account-id',
+  ]);
+  const result: Record<string, string> = {};
+  for (const [key, value] of headers.entries()) {
+    const normalized = key.toLowerCase();
+    if (!allowlist.has(normalized)) continue;
+    const trimmed = value.trim();
+    if (!trimmed) continue;
+    result[normalized] = trimmed;
+  }
+  return result;
 }
 
 v1.get('/status', async (c) => {
@@ -302,6 +321,43 @@ v1.post('/sessions/:sessionKey/send', async (c) => {
   } catch (error) {
     return c.json(
       err('internal_error', 'failed to send session message', { message: String(error) }),
+      500,
+    );
+  }
+});
+
+v1.post('/responses', async (c) => {
+  const sandbox = getOpenClawSandbox(c.env);
+  let bodyText = '';
+  try {
+    bodyText = await c.req.text();
+  } catch {
+    return c.json(err('invalid_request', 'invalid request body'), 400);
+  }
+
+  if (!bodyText.trim()) {
+    return c.json(err('invalid_request', 'request body is required'), 400);
+  }
+
+  const headers = extractGatewayResponseHeaders(c.req.raw.headers);
+
+  try {
+    const stream = await streamGatewayResponses(sandbox, c.env, {
+      body: bodyText,
+      headers,
+      signal: c.req.raw.signal,
+    });
+    return new Response(stream, {
+      status: 200,
+      headers: {
+        'content-type': 'text/event-stream; charset=utf-8',
+        'cache-control': 'no-cache',
+        connection: 'keep-alive',
+      },
+    });
+  } catch (error) {
+    return c.json(
+      err('internal_error', 'failed to proxy responses', { message: String(error) }),
       500,
     );
   }

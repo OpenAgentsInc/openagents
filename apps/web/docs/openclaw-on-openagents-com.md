@@ -55,12 +55,13 @@ As of the last update, the following is implemented and deployed:
 - **Hatchery:** “Create your OpenClaw” panel (when access is allowed). Calls Convex actions `openclawApi.getInstance` and `openclawApi.createInstance`; shows instance status, Provision button, and when status is `ready` a “Provisioning complete” blurb with a link to the main Chat. No TanStack server function for instance (avoids “Only HTML” issues).
 - **Convex:** Actions in `openclawApi.ts` that `fetch(PUBLIC_API_URL/openclaw/instance)` with internal key and user id; HTTP routes in `http.ts` for `/control/openclaw/instance`, `/control/openclaw/instance/status`, `/control/openclaw/instance/secret`, `/control/openclaw/billing/summary`; handlers in `openclaw_control_http.ts` that verify `x-oa-control-key` and call internal openclaw/billing functions. Env: `OA_INTERNAL_KEY`, `OA_CONTROL_KEY`, `PUBLIC_API_URL`, `OPENCLAW_ENCRYPTION_KEY`.
 - **API worker (Rust):** GET/POST `/openclaw/instance` with `X-OA-Internal-Key` and `X-OA-User-Id`; all Convex calls go to `CONVEX_SITE_URL` with `CONVEX_CONTROL_KEY` (must match the same Convex deployment as the web app). Explicit error handling with prefixed messages (e.g. `openclaw getInstance: ...`). Env: `OA_INTERNAL_KEY`, `CONVEX_SITE_URL`, `CONVEX_CONTROL_KEY`, `OPENCLAW_RUNTIME_URL`.
-- **What “ready” means:** Instance row in Convex with `status: ready` and `runtime_url` from API env. No per-user container is started; provision only records metadata. OpenClaw Chat (streaming) and device pairing are planned for later milestones.
+- **What “ready” means:** Instance row in Convex with `status: ready` and `runtime_url` from API env. No per-user container is started; provision only records metadata. OpenClaw Chat (streaming) is now available via `/openclaw/chat`; device pairing remains a later milestone.
 - **Docs:** Full architecture, env vars, flows, and debugging: `apps/web/docs/openclaw-hatchery-architecture.md`.
 
 **Milestone 3 (sidebar + OpenClaw) — mostly done:** Left sidebar has an “OpenClaw Cloud” section (status from Convex, link to Hatchery, link to Chat when ready) and a “Chats” section backed by Convex `threads` (list, “New chat” creates a thread and navigates to `/assistant?threadId=...`). `/assistant` now switches to the requested threadId. Threads table: `user_id`, `title`, `kind` (chat/project/openclaw), `archived`, `created_at`, `updated_at`. Remaining: Hatchery “Your workspace graph” from Convex threads.
 
 **Milestone 4 (Mode A — OpenClaw tools) — done:** Runtime worker now proxies Gateway HTTP (`/v1/tools/invoke`, sessions list/history/send); API exposes stable endpoints under `/api/openclaw/tools` + `/api/openclaw/sessions`; agent worker adds OpenClaw tool set (instance/status/devices/approve/backup/restart/billing + sessions list/history/send).
+**Milestone 5 (Mode B — OpenClaw WebChat) — done:** Runtime proxies `POST /v1/responses` (SSE), API exposes `/api/openclaw/chat`, and the site ships `/openclaw/chat` wired to the OpenClaw gateway stream.
 
 ## Product surface: what users should experience on openagents.com
 
@@ -373,7 +374,7 @@ Acceptance criteria:
 Status:
 - Implemented in `apps/openclaw-runtime` (`/v1/tools/invoke` + sessions proxy), `apps/api` (`/api/openclaw/tools` + `/api/openclaw/sessions`), and `apps/agent-worker` tool set.
 
-### Milestone 5: Mode B — True OpenClaw WebChat (OpenResponses streaming)
+### Milestone 5: Mode B — True OpenClaw WebChat (OpenResponses streaming) — Done
 
 **Goal:** The website can be a real OpenClaw WebChat client, backed by the OpenClaw Gateway session model and streaming semantics.
 
@@ -393,6 +394,8 @@ Changes (web UI):
 Acceptance criteria:
 - Streaming works end-to-end (site ↔ api ↔ runtime ↔ gateway).
 - OpenClaw sessions are the source of truth for transcript/history in this mode.
+Status:
+- Runtime `/v1/responses` proxy + gateway config enabled, API `/api/openclaw/chat` streaming endpoint, and `/openclaw/chat` UI route shipped.
 
 ### Milestone 6: Human approvals (end-to-end)
 
