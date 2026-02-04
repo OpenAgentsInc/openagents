@@ -1,5 +1,4 @@
-import { useEffect } from 'react';
-import { createFileRoute, Link, redirect } from '@tanstack/react-router';
+import { Link, createFileRoute, redirect } from '@tanstack/react-router';
 import { getAuth, getSignInUrl } from '@workos/authkit-tanstack-react-start';
 import { posthogCapture } from '@/lib/posthog';
 
@@ -47,7 +46,11 @@ function LoginPage() {
       </p>
       <p className="mt-3 text-center text-muted-foreground text-sm">
         Building an agent?{' '}
-        <Link to="/kb/agent-login" className="text-primary underline underline-offset-4 hover:no-underline">
+        <Link
+          to="/kb/$slug"
+          params={{ slug: 'agent-login' }}
+          className="text-primary underline underline-offset-4 hover:no-underline"
+        >
           Agent login instructions
         </Link>
       </p>

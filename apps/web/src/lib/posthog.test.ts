@@ -12,7 +12,6 @@ describe('posthog helpers', () => {
   it('calls posthog with page context', () => {
     const capture = vi.fn();
     const identify = vi.fn();
-    // @ts-expect-error test shim
     window.posthog = { capture, identify };
     history.replaceState({}, '', '/test?x=1');
 
