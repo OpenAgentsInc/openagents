@@ -28,7 +28,8 @@ export function AppLayout() {
     useState<HTMLElement | null>(null);
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const location = useRouterState({ select: (s) => s.location });
-  const showRightSidebar = !pathname.startsWith('/autopilot');
+  // Right sidebar (Feed/Communities) hidden – social code in packages/social
+  const showRightSidebar = false;
   const showCodexConnect =
     pathname.startsWith('/chat') || pathname.startsWith('/assistant');
   const { user, loading } = useAuth();

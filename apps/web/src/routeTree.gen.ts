@@ -22,19 +22,12 @@ import { Route as AppIndexRouteImport } from './routes/_app/index'
 import { Route as AuthenticatedAuthenticatedRouteImport } from './routes/_authenticated/authenticated'
 import { Route as AppKbRouteImport } from './routes/_app/kb'
 import { Route as AppHatcheryRouteImport } from './routes/_app/hatchery'
-import { Route as AppFeedRouteImport } from './routes/_app/feed'
-import { Route as AppCRouteImport } from './routes/_app/c'
 import { Route as AppAutopilotRouteImport } from './routes/_app/autopilot'
 import { Route as AppAssistantRouteImport } from './routes/_app/assistant'
 import { Route as AppAdminRouteImport } from './routes/_app/admin'
 import { Route as AppKbIndexRouteImport } from './routes/_app/kb/index'
-import { Route as AppCIndexRouteImport } from './routes/_app/c.index'
-import { Route as AppUNpubRouteImport } from './routes/_app/u.$npub'
-import { Route as AppPostsIdRouteImport } from './routes/_app/posts.$id'
 import { Route as AppKbSlugRouteImport } from './routes/_app/kb/$slug'
-import { Route as AppEventIdRouteImport } from './routes/_app/event.$id'
 import { Route as AppChatChatIdRouteImport } from './routes/_app/chat.$chatId'
-import { Route as AppCCommunityRouteImport } from './routes/_app/c.$community'
 
 const SignupRoute = SignupRouteImport.update({
   id: '/signup',
@@ -100,16 +93,6 @@ const AppHatcheryRoute = AppHatcheryRouteImport.update({
   path: '/hatchery',
   getParentRoute: () => AppRoute,
 } as any)
-const AppFeedRoute = AppFeedRouteImport.update({
-  id: '/feed',
-  path: '/feed',
-  getParentRoute: () => AppRoute,
-} as any)
-const AppCRoute = AppCRouteImport.update({
-  id: '/c',
-  path: '/c',
-  getParentRoute: () => AppRoute,
-} as any)
 const AppAutopilotRoute = AppAutopilotRouteImport.update({
   id: '/autopilot',
   path: '/autopilot',
@@ -130,40 +113,15 @@ const AppKbIndexRoute = AppKbIndexRouteImport.update({
   path: '/',
   getParentRoute: () => AppKbRoute,
 } as any)
-const AppCIndexRoute = AppCIndexRouteImport.update({
-  id: '/',
-  path: '/',
-  getParentRoute: () => AppCRoute,
-} as any)
-const AppUNpubRoute = AppUNpubRouteImport.update({
-  id: '/u/$npub',
-  path: '/u/$npub',
-  getParentRoute: () => AppRoute,
-} as any)
-const AppPostsIdRoute = AppPostsIdRouteImport.update({
-  id: '/posts/$id',
-  path: '/posts/$id',
-  getParentRoute: () => AppRoute,
-} as any)
 const AppKbSlugRoute = AppKbSlugRouteImport.update({
   id: '/$slug',
   path: '/$slug',
   getParentRoute: () => AppKbRoute,
 } as any)
-const AppEventIdRoute = AppEventIdRouteImport.update({
-  id: '/event/$id',
-  path: '/event/$id',
-  getParentRoute: () => AppRoute,
-} as any)
 const AppChatChatIdRoute = AppChatChatIdRouteImport.update({
   id: '/chat/$chatId',
   path: '/chat/$chatId',
   getParentRoute: () => AppRoute,
-} as any)
-const AppCCommunityRoute = AppCCommunityRouteImport.update({
-  id: '/$community',
-  path: '/$community',
-  getParentRoute: () => AppCRoute,
 } as any)
 
 export interface FileRoutesByFullPath {
@@ -178,18 +136,11 @@ export interface FileRoutesByFullPath {
   '/admin': typeof AppAdminRoute
   '/assistant': typeof AppAssistantRoute
   '/autopilot': typeof AppAutopilotRoute
-  '/c': typeof AppCRouteWithChildren
-  '/feed': typeof AppFeedRoute
   '/hatchery': typeof AppHatcheryRoute
   '/kb': typeof AppKbRouteWithChildren
   '/authenticated': typeof AuthenticatedAuthenticatedRoute
-  '/c/$community': typeof AppCCommunityRoute
   '/chat/$chatId': typeof AppChatChatIdRoute
-  '/event/$id': typeof AppEventIdRoute
   '/kb/$slug': typeof AppKbSlugRoute
-  '/posts/$id': typeof AppPostsIdRoute
-  '/u/$npub': typeof AppUNpubRoute
-  '/c/': typeof AppCIndexRoute
   '/kb/': typeof AppKbIndexRoute
 }
 export interface FileRoutesByTo {
@@ -204,16 +155,10 @@ export interface FileRoutesByTo {
   '/admin': typeof AppAdminRoute
   '/assistant': typeof AppAssistantRoute
   '/autopilot': typeof AppAutopilotRoute
-  '/feed': typeof AppFeedRoute
   '/hatchery': typeof AppHatcheryRoute
   '/authenticated': typeof AuthenticatedAuthenticatedRoute
-  '/c/$community': typeof AppCCommunityRoute
   '/chat/$chatId': typeof AppChatChatIdRoute
-  '/event/$id': typeof AppEventIdRoute
   '/kb/$slug': typeof AppKbSlugRoute
-  '/posts/$id': typeof AppPostsIdRoute
-  '/u/$npub': typeof AppUNpubRoute
-  '/c': typeof AppCIndexRoute
   '/kb': typeof AppKbIndexRoute
 }
 export interface FileRoutesById {
@@ -230,19 +175,12 @@ export interface FileRoutesById {
   '/_app/admin': typeof AppAdminRoute
   '/_app/assistant': typeof AppAssistantRoute
   '/_app/autopilot': typeof AppAutopilotRoute
-  '/_app/c': typeof AppCRouteWithChildren
-  '/_app/feed': typeof AppFeedRoute
   '/_app/hatchery': typeof AppHatcheryRoute
   '/_app/kb': typeof AppKbRouteWithChildren
   '/_authenticated/authenticated': typeof AuthenticatedAuthenticatedRoute
   '/_app/': typeof AppIndexRoute
-  '/_app/c/$community': typeof AppCCommunityRoute
   '/_app/chat/$chatId': typeof AppChatChatIdRoute
-  '/_app/event/$id': typeof AppEventIdRoute
   '/_app/kb/$slug': typeof AppKbSlugRoute
-  '/_app/posts/$id': typeof AppPostsIdRoute
-  '/_app/u/$npub': typeof AppUNpubRoute
-  '/_app/c/': typeof AppCIndexRoute
   '/_app/kb/': typeof AppKbIndexRoute
 }
 export interface FileRouteTypes {
@@ -259,18 +197,11 @@ export interface FileRouteTypes {
     | '/admin'
     | '/assistant'
     | '/autopilot'
-    | '/c'
-    | '/feed'
     | '/hatchery'
     | '/kb'
     | '/authenticated'
-    | '/c/$community'
     | '/chat/$chatId'
-    | '/event/$id'
     | '/kb/$slug'
-    | '/posts/$id'
-    | '/u/$npub'
-    | '/c/'
     | '/kb/'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -285,16 +216,10 @@ export interface FileRouteTypes {
     | '/admin'
     | '/assistant'
     | '/autopilot'
-    | '/feed'
     | '/hatchery'
     | '/authenticated'
-    | '/c/$community'
     | '/chat/$chatId'
-    | '/event/$id'
     | '/kb/$slug'
-    | '/posts/$id'
-    | '/u/$npub'
-    | '/c'
     | '/kb'
   id:
     | '__root__'
@@ -310,19 +235,12 @@ export interface FileRouteTypes {
     | '/_app/admin'
     | '/_app/assistant'
     | '/_app/autopilot'
-    | '/_app/c'
-    | '/_app/feed'
     | '/_app/hatchery'
     | '/_app/kb'
     | '/_authenticated/authenticated'
     | '/_app/'
-    | '/_app/c/$community'
     | '/_app/chat/$chatId'
-    | '/_app/event/$id'
     | '/_app/kb/$slug'
-    | '/_app/posts/$id'
-    | '/_app/u/$npub'
-    | '/_app/c/'
     | '/_app/kb/'
   fileRoutesById: FileRoutesById
 }
@@ -431,20 +349,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppHatcheryRouteImport
       parentRoute: typeof AppRoute
     }
-    '/_app/feed': {
-      id: '/_app/feed'
-      path: '/feed'
-      fullPath: '/feed'
-      preLoaderRoute: typeof AppFeedRouteImport
-      parentRoute: typeof AppRoute
-    }
-    '/_app/c': {
-      id: '/_app/c'
-      path: '/c'
-      fullPath: '/c'
-      preLoaderRoute: typeof AppCRouteImport
-      parentRoute: typeof AppRoute
-    }
     '/_app/autopilot': {
       id: '/_app/autopilot'
       path: '/autopilot'
@@ -473,40 +377,12 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppKbIndexRouteImport
       parentRoute: typeof AppKbRoute
     }
-    '/_app/c/': {
-      id: '/_app/c/'
-      path: '/'
-      fullPath: '/c/'
-      preLoaderRoute: typeof AppCIndexRouteImport
-      parentRoute: typeof AppCRoute
-    }
-    '/_app/u/$npub': {
-      id: '/_app/u/$npub'
-      path: '/u/$npub'
-      fullPath: '/u/$npub'
-      preLoaderRoute: typeof AppUNpubRouteImport
-      parentRoute: typeof AppRoute
-    }
-    '/_app/posts/$id': {
-      id: '/_app/posts/$id'
-      path: '/posts/$id'
-      fullPath: '/posts/$id'
-      preLoaderRoute: typeof AppPostsIdRouteImport
-      parentRoute: typeof AppRoute
-    }
     '/_app/kb/$slug': {
       id: '/_app/kb/$slug'
       path: '/$slug'
       fullPath: '/kb/$slug'
       preLoaderRoute: typeof AppKbSlugRouteImport
       parentRoute: typeof AppKbRoute
-    }
-    '/_app/event/$id': {
-      id: '/_app/event/$id'
-      path: '/event/$id'
-      fullPath: '/event/$id'
-      preLoaderRoute: typeof AppEventIdRouteImport
-      parentRoute: typeof AppRoute
     }
     '/_app/chat/$chatId': {
       id: '/_app/chat/$chatId'
@@ -515,27 +391,8 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppChatChatIdRouteImport
       parentRoute: typeof AppRoute
     }
-    '/_app/c/$community': {
-      id: '/_app/c/$community'
-      path: '/$community'
-      fullPath: '/c/$community'
-      preLoaderRoute: typeof AppCCommunityRouteImport
-      parentRoute: typeof AppCRoute
-    }
   }
 }
-
-interface AppCRouteChildren {
-  AppCCommunityRoute: typeof AppCCommunityRoute
-  AppCIndexRoute: typeof AppCIndexRoute
-}
-
-const AppCRouteChildren: AppCRouteChildren = {
-  AppCCommunityRoute: AppCCommunityRoute,
-  AppCIndexRoute: AppCIndexRoute,
-}
-
-const AppCRouteWithChildren = AppCRoute._addFileChildren(AppCRouteChildren)
 
 interface AppKbRouteChildren {
   AppKbSlugRoute: typeof AppKbSlugRoute
@@ -553,30 +410,20 @@ interface AppRouteChildren {
   AppAdminRoute: typeof AppAdminRoute
   AppAssistantRoute: typeof AppAssistantRoute
   AppAutopilotRoute: typeof AppAutopilotRoute
-  AppCRoute: typeof AppCRouteWithChildren
-  AppFeedRoute: typeof AppFeedRoute
   AppHatcheryRoute: typeof AppHatcheryRoute
   AppKbRoute: typeof AppKbRouteWithChildren
   AppIndexRoute: typeof AppIndexRoute
   AppChatChatIdRoute: typeof AppChatChatIdRoute
-  AppEventIdRoute: typeof AppEventIdRoute
-  AppPostsIdRoute: typeof AppPostsIdRoute
-  AppUNpubRoute: typeof AppUNpubRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
   AppAdminRoute: AppAdminRoute,
   AppAssistantRoute: AppAssistantRoute,
   AppAutopilotRoute: AppAutopilotRoute,
-  AppCRoute: AppCRouteWithChildren,
-  AppFeedRoute: AppFeedRoute,
   AppHatcheryRoute: AppHatcheryRoute,
   AppKbRoute: AppKbRouteWithChildren,
   AppIndexRoute: AppIndexRoute,
   AppChatChatIdRoute: AppChatChatIdRoute,
-  AppEventIdRoute: AppEventIdRoute,
-  AppPostsIdRoute: AppPostsIdRoute,
-  AppUNpubRoute: AppUNpubRoute,
 }
 
 const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)

@@ -73,7 +73,7 @@ function ChatPage() {
       <div className="flex min-h-[50vh] flex-col items-center justify-center gap-4 p-4 text-center text-sm text-muted-foreground">
         <p>Chat not found.</p>
         <Link
-          to="/autopilot"
+          to="/"
           search={{ focus: undefined }}
           className="text-primary underline"
         >
