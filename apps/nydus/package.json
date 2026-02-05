@@ -3,7 +3,9 @@
   "module": "index.ts",
   "type": "module",
   "scripts": {
-    "handshake": "bun run index.ts"
+    "handshake": "bun run index.ts handshake",
+    "cloud": "bun run index.ts cloud",
+    "full": "bun run index.ts full"
   },
   "devDependencies": {
     "@types/bun": "latest"

@@ -699,6 +699,7 @@ Production smoke (minimum):
 ---
 
 ## Log
+- 2026-02-05: Extended `apps/nydus` to include a cloud-driven demo (LiteClaw agent message triggers local workspace tools via tunnel), documented new modes and export receipt checks.
 - 2026-02-05: Added Bun-based tunnel handshake script (`apps/nydus`) and expanded tunnel docs with Access service token header guidance and Bun handshake usage.
 - 2026-02-05: Implemented LiteClaw web wiring (Hatchery spawn now uses get-or-create, /assistant and /chat/new funnel to the single LiteClaw thread, chat transport switched to Agents SDK), updated welcome copy, and hid new-chat affordances.
 - 2026-02-05: Ran LiteClaw worker + web tests, deployed liteclaw worker and openagents-web-app, and pushed Convex functions for the LiteClaw web flow.

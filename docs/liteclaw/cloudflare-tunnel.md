@@ -181,6 +181,16 @@ CF_ACCESS_CLIENT_SECRET=optional \
 bun run index.ts
 ```
 
+To drive tools from a cloud LiteClaw message (end-to-end demo), use the cloud mode:
+
+```bash
+cd apps/nydus
+LITECLAW_AGENT_BASE_URL=https://openagents.com \
+LITECLAW_TOOL_ADMIN_SECRET=replace-me \
+NYDUS_LOCAL_ROOT=/path/to/your/repo \
+bun run index.ts cloud
+```
+
 ## End-to-End Handshake (LiteClaw)
 
 Once your Access policy and tunnel are configured:
