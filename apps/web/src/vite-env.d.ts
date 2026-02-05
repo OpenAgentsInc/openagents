@@ -2,7 +2,7 @@
 
 interface ImportMetaEnv {
   readonly VITE_CONVEX_URL: string;
-  readonly VITE_LITECLAW_WORKER_URL?: string;
+  readonly VITE_AUTOPILOT_WORKER_URL?: string;
 }
 
 interface ImportMeta {

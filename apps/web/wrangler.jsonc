@@ -21,7 +21,7 @@
 	// - wrangler secret put WORKOS_CLIENT_ID
 	// - wrangler secret put WORKOS_API_KEY
 	// - wrangler secret put WORKOS_COOKIE_PASSWORD
-	// - wrangler secret put LITECLAW_CODEX_SECRET
+	// - wrangler secret put AUTOPILOT_CODEX_SECRET
 	// Agent worker / API:
 	// - wrangler secret put OA_INTERNAL_KEY   # used for internal server-to-server auth
 	// - wrangler secret put PUBLIC_API_URL    # API base (e.g. https://openagents.com/api)

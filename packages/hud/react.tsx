@@ -5,6 +5,7 @@ export type { ImageProps } from './src/Image';
 export {
   greenPreset,
   purplePreset,
+  whitePreset,
   colorPresets,
 } from './src/colorPresets';
 export type {

@@ -36,9 +36,20 @@ export const purplePreset: DotsGridColorPreset = Object.freeze({
   distance: 40,
 });
 
+/** White preset (dark bg with white dots/grid). */
+export const whitePreset: DotsGridColorPreset = Object.freeze({
+  backgroundColor: '#050508',
+  backgroundImage:
+    'radial-gradient(85% 85% at 50% 50%, hsla(0, 0%, 100%, 0.06) 0%, hsla(0, 0%, 100%, 0.02) 50%, transparent 100%)',
+  dotsColor: 'hsla(0, 0%, 100%, 0.06)',
+  lineColor: 'hsla(0, 0%, 100%, 0.06)',
+  distance: 40,
+});
+
 export const colorPresets = Object.freeze({
   green: greenPreset,
   purple: purplePreset,
+  white: whitePreset,
 } as const);
 
 export type ColorPresetName = keyof typeof colorPresets;

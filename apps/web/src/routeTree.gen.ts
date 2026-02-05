@@ -12,10 +12,10 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as SignupRouteImport } from './routes/signup'
 import { Route as SetupRouteImport } from './routes/setup'
 import { Route as LoginRouteImport } from './routes/login'
+import { Route as CodexTokenRouteImport } from './routes/codex-token'
 import { Route as ChatRouteImport } from './routes/chat'
 import { Route as CallbackRouteImport } from './routes/callback'
 import { Route as ApprovalsRouteImport } from './routes/approvals'
-import { Route as CodexTokenRouteImport } from './routes/codex-token'
 import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
 import { Route as AppRouteImport } from './routes/_app'
 import { Route as AppIndexRouteImport } from './routes/_app/index'
@@ -24,6 +24,7 @@ import { Route as AppKbRouteImport } from './routes/_app/kb'
 import { Route as AppHatcheryRouteImport } from './routes/_app/hatchery'
 import { Route as AppFeedRouteImport } from './routes/_app/feed'
 import { Route as AppCRouteImport } from './routes/_app/c'
+import { Route as AppAutopilotRouteImport } from './routes/_app/autopilot'
 import { Route as AppAssistantRouteImport } from './routes/_app/assistant'
 import { Route as AppAdminRouteImport } from './routes/_app/admin'
 import { Route as AppKbIndexRouteImport } from './routes/_app/kb/index'
@@ -50,6 +51,11 @@ const LoginRoute = LoginRouteImport.update({
   path: '/login',
   getParentRoute: () => rootRouteImport,
 } as any)
+const CodexTokenRoute = CodexTokenRouteImport.update({
+  id: '/codex-token',
+  path: '/codex-token',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ChatRoute = ChatRouteImport.update({
   id: '/chat',
   path: '/chat',
@@ -63,11 +69,6 @@ const CallbackRoute = CallbackRouteImport.update({
 const ApprovalsRoute = ApprovalsRouteImport.update({
   id: '/approvals',
   path: '/approvals',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const CodexTokenRoute = CodexTokenRouteImport.update({
-  id: '/codex-token',
-  path: '/codex-token',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AuthenticatedRoute = AuthenticatedRouteImport.update({
@@ -107,6 +108,11 @@ const AppFeedRoute = AppFeedRouteImport.update({
 const AppCRoute = AppCRouteImport.update({
   id: '/c',
   path: '/c',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppAutopilotRoute = AppAutopilotRouteImport.update({
+  id: '/autopilot',
+  path: '/autopilot',
   getParentRoute: () => AppRoute,
 } as any)
 const AppAssistantRoute = AppAssistantRouteImport.update({
@@ -163,14 +169,15 @@ const AppCCommunityRoute = AppCCommunityRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof AppIndexRoute
   '/approvals': typeof ApprovalsRoute
-  '/codex-token': typeof CodexTokenRoute
   '/callback': typeof CallbackRoute
   '/chat': typeof ChatRoute
+  '/codex-token': typeof CodexTokenRoute
   '/login': typeof LoginRoute
   '/setup': typeof SetupRoute
   '/signup': typeof SignupRoute
   '/admin': typeof AppAdminRoute
   '/assistant': typeof AppAssistantRoute
+  '/autopilot': typeof AppAutopilotRoute
   '/c': typeof AppCRouteWithChildren
   '/feed': typeof AppFeedRoute
   '/hatchery': typeof AppHatcheryRoute
@@ -188,14 +195,15 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof AppIndexRoute
   '/approvals': typeof ApprovalsRoute
-  '/codex-token': typeof CodexTokenRoute
   '/callback': typeof CallbackRoute
   '/chat': typeof ChatRoute
+  '/codex-token': typeof CodexTokenRoute
   '/login': typeof LoginRoute
   '/setup': typeof SetupRoute
   '/signup': typeof SignupRoute
   '/admin': typeof AppAdminRoute
   '/assistant': typeof AppAssistantRoute
+  '/autopilot': typeof AppAutopilotRoute
   '/feed': typeof AppFeedRoute
   '/hatchery': typeof AppHatcheryRoute
   '/authenticated': typeof AuthenticatedAuthenticatedRoute
@@ -213,14 +221,15 @@ export interface FileRoutesById {
   '/_app': typeof AppRouteWithChildren
   '/_authenticated': typeof AuthenticatedRouteWithChildren
   '/approvals': typeof ApprovalsRoute
-  '/codex-token': typeof CodexTokenRoute
   '/callback': typeof CallbackRoute
   '/chat': typeof ChatRoute
+  '/codex-token': typeof CodexTokenRoute
   '/login': typeof LoginRoute
   '/setup': typeof SetupRoute
   '/signup': typeof SignupRoute
   '/_app/admin': typeof AppAdminRoute
   '/_app/assistant': typeof AppAssistantRoute
+  '/_app/autopilot': typeof AppAutopilotRoute
   '/_app/c': typeof AppCRouteWithChildren
   '/_app/feed': typeof AppFeedRoute
   '/_app/hatchery': typeof AppHatcheryRoute
@@ -241,14 +250,15 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/approvals'
-    | '/codex-token'
     | '/callback'
     | '/chat'
+    | '/codex-token'
     | '/login'
     | '/setup'
     | '/signup'
     | '/admin'
     | '/assistant'
+    | '/autopilot'
     | '/c'
     | '/feed'
     | '/hatchery'
@@ -266,14 +276,15 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/approvals'
-    | '/codex-token'
     | '/callback'
     | '/chat'
+    | '/codex-token'
     | '/login'
     | '/setup'
     | '/signup'
     | '/admin'
     | '/assistant'
+    | '/autopilot'
     | '/feed'
     | '/hatchery'
     | '/authenticated'
@@ -290,14 +301,15 @@ export interface FileRouteTypes {
     | '/_app'
     | '/_authenticated'
     | '/approvals'
-    | '/codex-token'
     | '/callback'
     | '/chat'
+    | '/codex-token'
     | '/login'
     | '/setup'
     | '/signup'
     | '/_app/admin'
     | '/_app/assistant'
+    | '/_app/autopilot'
     | '/_app/c'
     | '/_app/feed'
     | '/_app/hatchery'
@@ -318,9 +330,9 @@ export interface RootRouteChildren {
   AppRoute: typeof AppRouteWithChildren
   AuthenticatedRoute: typeof AuthenticatedRouteWithChildren
   ApprovalsRoute: typeof ApprovalsRoute
-  CodexTokenRoute: typeof CodexTokenRoute
   CallbackRoute: typeof CallbackRoute
   ChatRoute: typeof ChatRoute
+  CodexTokenRoute: typeof CodexTokenRoute
   LoginRoute: typeof LoginRoute
   SetupRoute: typeof SetupRoute
   SignupRoute: typeof SignupRoute
@@ -349,6 +361,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LoginRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/codex-token': {
+      id: '/codex-token'
+      path: '/codex-token'
+      fullPath: '/codex-token'
+      preLoaderRoute: typeof CodexTokenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/chat': {
       id: '/chat'
       path: '/chat'
@@ -368,13 +387,6 @@ declare module '@tanstack/react-router' {
       path: '/approvals'
       fullPath: '/approvals'
       preLoaderRoute: typeof ApprovalsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/codex-token': {
-      id: '/codex-token'
-      path: '/codex-token'
-      fullPath: '/codex-token'
-      preLoaderRoute: typeof CodexTokenRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_authenticated': {
@@ -431,6 +443,13 @@ declare module '@tanstack/react-router' {
       path: '/c'
       fullPath: '/c'
       preLoaderRoute: typeof AppCRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/autopilot': {
+      id: '/_app/autopilot'
+      path: '/autopilot'
+      fullPath: '/autopilot'
+      preLoaderRoute: typeof AppAutopilotRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/assistant': {
@@ -533,6 +552,7 @@ const AppKbRouteWithChildren = AppKbRoute._addFileChildren(AppKbRouteChildren)
 interface AppRouteChildren {
   AppAdminRoute: typeof AppAdminRoute
   AppAssistantRoute: typeof AppAssistantRoute
+  AppAutopilotRoute: typeof AppAutopilotRoute
   AppCRoute: typeof AppCRouteWithChildren
   AppFeedRoute: typeof AppFeedRoute
   AppHatcheryRoute: typeof AppHatcheryRoute
@@ -547,6 +567,7 @@ interface AppRouteChildren {
 const AppRouteChildren: AppRouteChildren = {
   AppAdminRoute: AppAdminRoute,
   AppAssistantRoute: AppAssistantRoute,
+  AppAutopilotRoute: AppAutopilotRoute,
   AppCRoute: AppCRouteWithChildren,
   AppFeedRoute: AppFeedRoute,
   AppHatcheryRoute: AppHatcheryRoute,
@@ -576,9 +597,9 @@ const rootRouteChildren: RootRouteChildren = {
   AppRoute: AppRouteWithChildren,
   AuthenticatedRoute: AuthenticatedRouteWithChildren,
   ApprovalsRoute: ApprovalsRoute,
-  CodexTokenRoute: CodexTokenRoute,
   CallbackRoute: CallbackRoute,
   ChatRoute: ChatRoute,
+  CodexTokenRoute: CodexTokenRoute,
   LoginRoute: LoginRoute,
   SetupRoute: SetupRoute,
   SignupRoute: SignupRoute,

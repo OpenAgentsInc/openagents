@@ -40,14 +40,14 @@ const SUMMARY_MAX_TOKENS = 256;
 const MAX_OUTPUT_TOKENS = 512;
 const RATE_LIMIT_WINDOW_MS = 60_000;
 const RATE_LIMIT_MAX_MESSAGES = 20;
-const LEGACY_STATE_ROW_ID = "liteclaw_state";
+const LEGACY_STATE_ROW_ID = "autopilot_state";
 const SKY_MEMORY_SCHEMA_VERSION = 1;
 const SKY_EVENT_SCHEMA_VERSION = 1;
 const SKY_RUN_SCHEMA_VERSION = 1;
 const SKY_RECEIPT_SCHEMA_VERSION = 1;
-const LITECLAW_SESSION_VERSION = 1;
+const AUTOPILOT_SESSION_VERSION = 1;
 const SKY_VERSION = "0.1.0";
-const RATE_LIMIT_ROW_ID = "liteclaw_rate_limit";
+const RATE_LIMIT_ROW_ID = "autopilot_rate_limit";
 const DEFAULT_TOOL_MAX_CALLS = 4;
 const DEFAULT_TOOL_MAX_OUTBOUND_BYTES = 200_000;
 const DEFAULT_HTTP_TIMEOUT_MS = 8_000;
@@ -60,7 +60,7 @@ const OPENCODE_AUTH_PATH = `${OPENCODE_DATA_ROOT}/opencode/auth.json`;
 const OPENCODE_ROUTE_PREFIX = "/sandbox/opencode";
 const CODEX_AUTH_SCHEMA_VERSION = 1;
 
-class LiteClawEffectError extends Data.TaggedError("LiteClawEffectError")<{
+class AutopilotEffectError extends Data.TaggedError("AutopilotEffectError")<{
   message: string;
   cause?: unknown;
 }> {}
@@ -70,10 +70,10 @@ class SandboxEffectError extends Data.TaggedError("SandboxEffectError")<{
 }> {}
 
 const SYSTEM_PROMPT =
-  "You are LiteClaw, a persistent personal AI agent. " +
+  "You are Autopilot, a persistent personal AI agent. " +
   "Be concise, helpful, and remember the ongoing conversation.";
 const SUMMARY_PROMPT = [
-  "You update LiteClaw's memory summary.",
+  "You update Autopilot's memory summary.",
   "Summarize durable facts, user preferences, ongoing tasks, and decisions.",
   "Be concise and use short bullet points.",
   "Avoid quotes or chatty phrasing."
@@ -91,7 +91,7 @@ const MODEL_REGISTRY = [
 ];
 
 type ChatMetricLog = {
-  event: "liteclaw_chat_metrics";
+  event: "autopilot_chat_metrics";
   agent_name: string;
   model_id: string;
   message_count: number;
@@ -103,7 +103,7 @@ type ChatMetricLog = {
 };
 
 type ExtensionMetricLog = {
-  event: "liteclaw_extension_metrics";
+  event: "autopilot_extension_metrics";
   extension_id: string;
   extension_version: string;
   hook: ExtensionHookName;
@@ -113,7 +113,7 @@ type ExtensionMetricLog = {
 };
 
 type ExtensionToolMetricLog = {
-  event: "liteclaw_extension_tool_metrics";
+  event: "autopilot_extension_tool_metrics";
   extension_id: string;
   extension_version: string;
   tool_name: string;
@@ -196,7 +196,7 @@ type ExtensionRuntime = {
   ) => Promise<void> | void;
 };
 
-type LegacyLiteClawStateRow = {
+type LegacyAutopilotStateRow = {
   id: string;
   schema_version: number;
   summary: string | null;
@@ -502,7 +502,7 @@ const parseSandboxTimestamp = (value: string | undefined) => {
 const extractSandboxToken = (request: Request) => {
   const header =
     request.headers.get("authorization") ??
-    request.headers.get("x-liteclaw-sandbox-token");
+    request.headers.get("x-autopilot-sandbox-token");
   if (!header) return null;
   if (header.toLowerCase().startsWith("bearer ")) {
     return header.slice("bearer ".length).trim();
@@ -512,14 +512,14 @@ const extractSandboxToken = (request: Request) => {
 
 const buildCorsHeaders = (request: Request, env: Env) => {
   const origin = request.headers.get("origin");
-  const configured = env.LITECLAW_CODEX_CORS_ORIGIN;
+  const configured = env.AUTOPILOT_CODEX_CORS_ORIGIN;
   const allowOrigin = configured || origin;
   if (!allowOrigin) return null;
   return {
     "access-control-allow-origin": allowOrigin,
     "access-control-allow-methods": "POST, OPTIONS",
     "access-control-allow-headers":
-      "authorization, content-type, x-liteclaw-sandbox-token",
+      "authorization, content-type, x-autopilot-sandbox-token",
     "access-control-max-age": "86400",
     vary: "origin"
   };
@@ -586,7 +586,7 @@ const readOpencodeAuth = async (
   }
 };
 
-const getCodexSecret = (env: Env) => env.LITECLAW_CODEX_SECRET ?? null;
+const getCodexSecret = (env: Env) => env.AUTOPILOT_CODEX_SECRET ?? null;
 
 const requireCodexSecret = (env: Env) => {
   const secret = getCodexSecret(env);
@@ -600,9 +600,9 @@ const fetchCodexAuthPayload = async (env: Env, threadId: string) => {
   const secret = getCodexSecret(env);
   if (!secret) return null;
   const stub = await getAgentByName(env.Chat, threadId);
-  const response = await stub.fetch("https://liteclaw.internal/codex-auth", {
+  const response = await stub.fetch("https://autopilot.internal/codex-auth", {
     method: "GET",
-    headers: { "x-liteclaw-codex-secret": secret }
+    headers: { "x-autopilot-codex-secret": secret }
   });
   if (!response.ok) {
     throw new Error(`Codex auth lookup failed (${response.status}).`);
@@ -623,11 +623,11 @@ const storeCodexAuthPayload = async (
 ) => {
   const secret = requireCodexSecret(env);
   const stub = await getAgentByName(env.Chat, threadId);
-  const response = await stub.fetch("https://liteclaw.internal/codex-auth", {
+  const response = await stub.fetch("https://autopilot.internal/codex-auth", {
     method: "POST",
     headers: {
       "content-type": "application/json",
-      "x-liteclaw-codex-secret": secret
+      "x-autopilot-codex-secret": secret
     },
     body: JSON.stringify({ payload })
   });
@@ -878,14 +878,14 @@ export class Chat extends AIChatAgent<Env> {
     if (this.stateLoaded) return;
 
     this.sql`
-      create table if not exists liteclaw_rate_limit (
+      create table if not exists autopilot_rate_limit (
         id text primary key,
         window_start integer not null,
         count integer not null
       )
     `;
     this.sql`
-      create table if not exists liteclaw_state (
+      create table if not exists autopilot_state (
         id text primary key,
         schema_version integer not null,
         summary text,
@@ -986,9 +986,9 @@ export class Chat extends AIChatAgent<Env> {
     `;
 
     if (!memoryRows.length) {
-      const legacyRows = this.sql<LegacyLiteClawStateRow>`
+      const legacyRows = this.sql<LegacyAutopilotStateRow>`
         select id, schema_version, summary, updated_at
-        from liteclaw_state
+        from autopilot_state
         where id = ${LEGACY_STATE_ROW_ID}
       `;
       const legacyRow = legacyRows[0];
@@ -1034,11 +1034,11 @@ export class Chat extends AIChatAgent<Env> {
   }
 
   private isSkyModeEnabled() {
-    return this.env.LITECLAW_SKY_MODE === "1";
+    return this.env.AUTOPILOT_SKY_MODE === "1";
   }
 
   private getToolPolicy(): ToolPolicy {
-    const defaultPolicy = parseToolPolicy(this.env.LITECLAW_TOOL_POLICY);
+    const defaultPolicy = parseToolPolicy(this.env.AUTOPILOT_TOOL_POLICY);
     const rows = this.sql<{ policy: string }>`
       select policy
       from sky_tool_policy
@@ -1085,7 +1085,7 @@ export class Chat extends AIChatAgent<Env> {
   }
 
   private getExtensionPolicy(): string[] {
-    const defaults = parseExtensionList(this.env.LITECLAW_EXTENSION_DEFAULTS);
+    const defaults = parseExtensionList(this.env.AUTOPILOT_EXTENSION_DEFAULTS);
     const rows = this.sql<ExtensionPolicyRow>`
       select thread_id, enabled_json, updated_at
       from sky_extension_policy
@@ -1125,7 +1125,7 @@ export class Chat extends AIChatAgent<Env> {
   }
 
   private getCodexSecret() {
-    const secret = this.env.LITECLAW_CODEX_SECRET;
+    const secret = this.env.AUTOPILOT_CODEX_SECRET;
     if (!secret) {
       throw new Error("Codex secret is not configured.");
     }
@@ -1147,7 +1147,7 @@ export class Chat extends AIChatAgent<Env> {
     try {
       return await decryptPayload(this.getCodexSecret(), row.payload_json);
     } catch (error) {
-      console.warn("[LiteClaw] Failed to decrypt Codex auth payload", error);
+      console.warn("[Autopilot] Failed to decrypt Codex auth payload", error);
       return null;
     }
   }
@@ -1166,11 +1166,11 @@ export class Chat extends AIChatAgent<Env> {
 
   private async handleCodexAuthRequest(request: Request) {
     this.ensureStateLoaded();
-    const secret = this.env.LITECLAW_CODEX_SECRET;
+    const secret = this.env.AUTOPILOT_CODEX_SECRET;
     if (!secret) {
       return new Response("Codex secret is not configured.", { status: 501 });
     }
-    const provided = request.headers.get("x-liteclaw-codex-secret");
+    const provided = request.headers.get("x-autopilot-codex-secret");
     if (!provided || provided !== secret) {
       return new Response("Unauthorized", { status: 401 });
     }
@@ -1223,16 +1223,16 @@ export class Chat extends AIChatAgent<Env> {
           catalog.set(manifest.id, manifest);
         }
       } catch (error) {
-        console.warn("[LiteClaw] Failed to parse extension manifest", error);
+        console.warn("[Autopilot] Failed to parse extension manifest", error);
       }
     }
 
-    const catalogJson = this.env.LITECLAW_EXTENSION_CATALOG_JSON;
-    const catalogUrl = this.env.LITECLAW_EXTENSION_CATALOG_URL;
+    const catalogJson = this.env.AUTOPILOT_EXTENSION_CATALOG_JSON;
+    const catalogUrl = this.env.AUTOPILOT_EXTENSION_CATALOG_URL;
     const catalogKey =
-      this.env.LITECLAW_EXTENSION_CATALOG_KEY ?? "extensions/catalog.json";
-    const catalogKv = this.env.LITECLAW_EXTENSION_KV;
-    const catalogBucket = this.env.LITECLAW_EXTENSION_BUCKET;
+      this.env.AUTOPILOT_EXTENSION_CATALOG_KEY ?? "extensions/catalog.json";
+    const catalogKv = this.env.AUTOPILOT_EXTENSION_KV;
+    const catalogBucket = this.env.AUTOPILOT_EXTENSION_BUCKET;
 
     let externalCatalog: unknown | null = null;
 
@@ -1240,7 +1240,7 @@ export class Chat extends AIChatAgent<Env> {
       try {
         externalCatalog = JSON.parse(catalogJson);
       } catch (error) {
-        console.warn("[LiteClaw] Failed to parse extension catalog JSON", error);
+        console.warn("[Autopilot] Failed to parse extension catalog JSON", error);
       }
     } else if (catalogKv) {
       try {
@@ -1249,7 +1249,7 @@ export class Chat extends AIChatAgent<Env> {
           externalCatalog = JSON.parse(value);
         }
       } catch (error) {
-        console.warn("[LiteClaw] Failed to load extension catalog from KV", error);
+        console.warn("[Autopilot] Failed to load extension catalog from KV", error);
       }
     } else if (catalogBucket) {
       try {
@@ -1259,14 +1259,14 @@ export class Chat extends AIChatAgent<Env> {
           externalCatalog = JSON.parse(text);
         }
       } catch (error) {
-        console.warn("[LiteClaw] Failed to load extension catalog from R2", error);
+        console.warn("[Autopilot] Failed to load extension catalog from R2", error);
       }
     } else if (catalogUrl) {
       try {
         const response = await fetch(catalogUrl);
         externalCatalog = await response.json();
       } catch (error) {
-        console.warn("[LiteClaw] Failed to fetch extension catalog URL", error);
+        console.warn("[Autopilot] Failed to fetch extension catalog URL", error);
       }
     }
 
@@ -1285,7 +1285,7 @@ export class Chat extends AIChatAgent<Env> {
           `;
         }
       } catch (error) {
-        console.warn("[LiteClaw] Failed to load extension catalog", error);
+        console.warn("[Autopilot] Failed to load extension catalog", error);
       }
     }
 
@@ -1295,7 +1295,7 @@ export class Chat extends AIChatAgent<Env> {
 
   private async resolveActiveExtensions(): Promise<ExtensionRuntime[]> {
     const enabledRefs = this.getExtensionPolicy();
-    const allowlist = parseExtensionList(this.env.LITECLAW_EXTENSION_ALLOWLIST);
+    const allowlist = parseExtensionList(this.env.AUTOPILOT_EXTENSION_ALLOWLIST);
     if (!enabledRefs.length || allowlist.length === 0) {
       return [];
     }
@@ -1321,7 +1321,7 @@ export class Chat extends AIChatAgent<Env> {
 
       if (manifest.tools && manifest.tools.length > 0) {
         console.warn(
-          `[LiteClaw] Extension ${manifest.id} has tools but no runtime implementation.`
+          `[Autopilot] Extension ${manifest.id} has tools but no runtime implementation.`
         );
       }
     };
@@ -1336,7 +1336,7 @@ export class Chat extends AIChatAgent<Env> {
       const { id, version } = parseExtensionRef(ref);
       if (!version) {
         console.warn(
-          `[LiteClaw] Extension ${id || ref} missing version; skipping.`
+          `[Autopilot] Extension ${id || ref} missing version; skipping.`
         );
         continue;
       }
@@ -1371,7 +1371,7 @@ export class Chat extends AIChatAgent<Env> {
       try {
         await handler({ ...payload, extension: extension.manifest });
         this.logExtensionMetrics({
-          event: "liteclaw_extension_metrics",
+          event: "autopilot_extension_metrics",
           extension_id: extension.manifest.id,
           extension_version: extension.manifest.version,
           hook,
@@ -1382,7 +1382,7 @@ export class Chat extends AIChatAgent<Env> {
         const message =
           error instanceof Error ? error.message : "extension_hook_error";
         this.logExtensionMetrics({
-          event: "liteclaw_extension_metrics",
+          event: "autopilot_extension_metrics",
           extension_id: extension.manifest.id,
           extension_version: extension.manifest.version,
           hook,
@@ -1395,10 +1395,10 @@ export class Chat extends AIChatAgent<Env> {
   }
 
   private getExecutorKind(): ExecutorKind {
-    if (this.env.LITECLAW_EXECUTOR_KIND) {
-      return parseExecutorKind(this.env.LITECLAW_EXECUTOR_KIND);
+    if (this.env.AUTOPILOT_EXECUTOR_KIND) {
+      return parseExecutorKind(this.env.AUTOPILOT_EXECUTOR_KIND);
     }
-    if (this.env.LITECLAW_TUNNEL_URL && this.env.LITECLAW_TUNNEL_TOKEN) {
+    if (this.env.AUTOPILOT_TUNNEL_URL && this.env.AUTOPILOT_TUNNEL_TOKEN) {
       return "tunnel";
     }
     return "workers";
@@ -1552,26 +1552,26 @@ export class Chat extends AIChatAgent<Env> {
       return { extensions: extensionRuntimes };
     }
 
-    const allowlist = parseAllowlist(this.env.LITECLAW_HTTP_ALLOWLIST);
+    const allowlist = parseAllowlist(this.env.AUTOPILOT_HTTP_ALLOWLIST);
     const httpTimeoutMs = parseNumberEnv(
-      this.env.LITECLAW_HTTP_TIMEOUT_MS,
+      this.env.AUTOPILOT_HTTP_TIMEOUT_MS,
       DEFAULT_HTTP_TIMEOUT_MS
     );
     const httpMaxBytes = parseNumberEnv(
-      this.env.LITECLAW_HTTP_MAX_BYTES,
+      this.env.AUTOPILOT_HTTP_MAX_BYTES,
       DEFAULT_HTTP_MAX_BYTES
     );
     const executorKind = this.getExecutorKind();
-    const tunnelUrl = this.env.LITECLAW_TUNNEL_URL;
-    const tunnelToken = this.env.LITECLAW_TUNNEL_TOKEN;
+    const tunnelUrl = this.env.AUTOPILOT_TUNNEL_URL;
+    const tunnelToken = this.env.AUTOPILOT_TUNNEL_TOKEN;
     const accessClientId =
-      this.env.LITECLAW_TUNNEL_ACCESS_CLIENT_ID ??
+      this.env.AUTOPILOT_TUNNEL_ACCESS_CLIENT_ID ??
       this.env.CF_ACCESS_CLIENT_ID;
     const accessClientSecret =
-      this.env.LITECLAW_TUNNEL_ACCESS_CLIENT_SECRET ??
+      this.env.AUTOPILOT_TUNNEL_ACCESS_CLIENT_SECRET ??
       this.env.CF_ACCESS_CLIENT_SECRET;
     const tunnelTimeoutMs = parseNumberEnv(
-      this.env.LITECLAW_TUNNEL_TIMEOUT_MS,
+      this.env.AUTOPILOT_TUNNEL_TIMEOUT_MS,
       DEFAULT_TUNNEL_TIMEOUT_MS
     );
 
@@ -1931,7 +1931,7 @@ export class Chat extends AIChatAgent<Env> {
         const extensionOwner = extensionToolOwners.get(toolName);
         if (extensionOwner) {
           this.logExtensionToolMetrics({
-            event: "liteclaw_extension_tool_metrics",
+            event: "autopilot_extension_tool_metrics",
             extension_id: extensionOwner.manifest.id,
             extension_version: extensionOwner.manifest.version,
             tool_name: toolName,
@@ -1983,7 +1983,7 @@ export class Chat extends AIChatAgent<Env> {
         const extensionOwner = extensionToolOwners.get(toolName);
         if (extensionOwner) {
           this.logExtensionToolMetrics({
-            event: "liteclaw_extension_tool_metrics",
+            event: "autopilot_extension_tool_metrics",
             extension_id: extensionOwner.manifest.id,
             extension_version: extensionOwner.manifest.version,
             tool_name: toolName,
@@ -2191,7 +2191,7 @@ export class Chat extends AIChatAgent<Env> {
         }
       }),
       "workspace.read": tool({
-        description: "Read a file from the LiteClaw workspace.",
+        description: "Read a file from the Autopilot workspace.",
         inputSchema: jsonSchema({
           type: "object",
           properties: {
@@ -2265,7 +2265,7 @@ export class Chat extends AIChatAgent<Env> {
       }),
       "workspace.write": tool({
         description:
-          "Write a file to the LiteClaw workspace (overwrites existing content).",
+          "Write a file to the Autopilot workspace (overwrites existing content).",
         inputSchema: jsonSchema({
           type: "object",
           properties: {
@@ -2569,13 +2569,13 @@ export class Chat extends AIChatAgent<Env> {
             !extension.manifest.tools.includes(toolName)
           ) {
             console.warn(
-              `[LiteClaw] Extension ${extension.manifest.id} attempted to register undeclared tool ${toolName}`
+              `[Autopilot] Extension ${extension.manifest.id} attempted to register undeclared tool ${toolName}`
             );
             continue;
           }
           if (tools[toolName]) {
             console.warn(
-              `[LiteClaw] Extension ${extension.manifest.id} attempted to override tool ${toolName}`
+              `[Autopilot] Extension ${extension.manifest.id} attempted to override tool ${toolName}`
             );
             continue;
           }
@@ -2731,14 +2731,14 @@ export class Chat extends AIChatAgent<Env> {
   }
 
   private checkExtensionAdmin(request: Request): { ok: boolean; status: number } {
-    return this.checkAdmin(request, this.env.LITECLAW_EXTENSION_ADMIN_SECRET);
+    return this.checkAdmin(request, this.env.AUTOPILOT_EXTENSION_ADMIN_SECRET);
   }
 
   private checkToolAdmin(request: Request): { ok: boolean; status: number } {
     return this.checkAdmin(
       request,
-      this.env.LITECLAW_TOOL_ADMIN_SECRET ??
-        this.env.LITECLAW_EXTENSION_ADMIN_SECRET
+      this.env.AUTOPILOT_TOOL_ADMIN_SECRET ??
+        this.env.AUTOPILOT_EXTENSION_ADMIN_SECRET
     );
   }
 
@@ -2751,7 +2751,7 @@ export class Chat extends AIChatAgent<Env> {
     }
 
     const provided =
-      request.headers.get("x-liteclaw-admin-secret") ??
+      request.headers.get("x-autopilot-admin-secret") ??
       request.headers.get("authorization") ??
       "";
     const token = provided.startsWith("Bearer ")
@@ -2814,7 +2814,7 @@ export class Chat extends AIChatAgent<Env> {
         return this.jsonError(400, "missing_enabled", "Missing enabled array");
       }
 
-      const allowlist = parseExtensionList(this.env.LITECLAW_EXTENSION_ALLOWLIST);
+      const allowlist = parseExtensionList(this.env.AUTOPILOT_EXTENSION_ALLOWLIST);
       if (!allowlist.length) {
         return this.jsonError(
           400,
@@ -2924,9 +2924,9 @@ export class Chat extends AIChatAgent<Env> {
       this.extensionCatalog = null;
 
       const catalogKey =
-        this.env.LITECLAW_EXTENSION_CATALOG_KEY ?? "extensions/catalog.json";
-      const catalogKv = this.env.LITECLAW_EXTENSION_KV;
-      const catalogBucket = this.env.LITECLAW_EXTENSION_BUCKET;
+        this.env.AUTOPILOT_EXTENSION_CATALOG_KEY ?? "extensions/catalog.json";
+      const catalogKv = this.env.AUTOPILOT_EXTENSION_KV;
+      const catalogBucket = this.env.AUTOPILOT_EXTENSION_BUCKET;
       if (catalogKv || catalogBucket) {
         const rows = this.sql<ExtensionCatalogRow>`
           select extension_id, manifest_json, updated_at
@@ -3086,8 +3086,8 @@ export class Chat extends AIChatAgent<Env> {
     const lines: string[] = [];
     lines.push(
       JSON.stringify({
-        type: "liteclaw.export",
-        liteclaw_session_version: LITECLAW_SESSION_VERSION,
+        type: "autopilot.export",
+        autopilot_session_version: AUTOPILOT_SESSION_VERSION,
         cf_sky_version: SKY_VERSION,
         schema_versions: {
           sky_run: SKY_RUN_SCHEMA_VERSION,
@@ -3207,13 +3207,13 @@ export class Chat extends AIChatAgent<Env> {
     const now = Date.now();
     const rows = this.sql<RateLimitRow>`
       select id, window_start, count
-      from liteclaw_rate_limit
+      from autopilot_rate_limit
       where id = ${RATE_LIMIT_ROW_ID}
     `;
 
     if (!rows.length) {
       this.sql`
-        insert into liteclaw_rate_limit (id, window_start, count)
+        insert into autopilot_rate_limit (id, window_start, count)
         values (${RATE_LIMIT_ROW_ID}, ${now}, 1)
       `;
       return;
@@ -3225,7 +3225,7 @@ export class Chat extends AIChatAgent<Env> {
 
     if (Number.isNaN(windowStart) || now - windowStart >= RATE_LIMIT_WINDOW_MS) {
       this.sql`
-        insert into liteclaw_rate_limit (id, window_start, count)
+        insert into autopilot_rate_limit (id, window_start, count)
         values (${RATE_LIMIT_ROW_ID}, ${now}, 1)
         on conflict(id) do update set
           window_start = excluded.window_start,
@@ -3240,7 +3240,7 @@ export class Chat extends AIChatAgent<Env> {
     }
 
     this.sql`
-      update liteclaw_rate_limit
+      update autopilot_rate_limit
       set count = ${count + 1}
       where id = ${RATE_LIMIT_ROW_ID}
     `;
@@ -3286,7 +3286,7 @@ export class Chat extends AIChatAgent<Env> {
         this.persistSummary(nextSummary);
       }
     } catch (error) {
-      console.warn("[LiteClaw] Summary generation failed", error);
+      console.warn("[Autopilot] Summary generation failed", error);
     }
 
     this.pruneMessages(messagesToKeep);
@@ -3334,12 +3334,12 @@ export class Chat extends AIChatAgent<Env> {
     const toolState: ToolRunState = {
       calls: 0,
       maxCalls: parseNumberEnv(
-        this.env.LITECLAW_TOOL_MAX_CALLS,
+        this.env.AUTOPILOT_TOOL_MAX_CALLS,
         DEFAULT_TOOL_MAX_CALLS
       ),
       outboundBytes: 0,
       maxOutboundBytes: parseNumberEnv(
-        this.env.LITECLAW_TOOL_MAX_OUTBOUND_BYTES,
+        this.env.AUTOPILOT_TOOL_MAX_OUTBOUND_BYTES,
         DEFAULT_TOOL_MAX_OUTBOUND_BYTES
       )
     };
@@ -3394,7 +3394,7 @@ export class Chat extends AIChatAgent<Env> {
       workersai,
       extensions
     });
-    const toolChoice = tools ? parseToolChoice(this.env.LITECLAW_TOOL_CHOICE) : undefined;
+    const toolChoice = tools ? parseToolChoice(this.env.AUTOPILOT_TOOL_CHOICE) : undefined;
 
     const finalize = (params: {
       ok: boolean;
@@ -3409,7 +3409,7 @@ export class Chat extends AIChatAgent<Env> {
       const durationMs = Date.now() - startTime;
       const ttftMs = firstTokenAt ? firstTokenAt - startTime : null;
       const metrics: ChatMetricLog = {
-        event: "liteclaw_chat_metrics",
+        event: "autopilot_chat_metrics",
         agent_name: this.name,
         model_id: MODEL_ID,
         message_count: this.messages.length,
@@ -3593,9 +3593,9 @@ export class Chat extends AIChatAgent<Env> {
             });
             finalize({ ok: true, error: message, finishReason });
           } catch (fallbackError) {
-            console.error("[LiteClaw] Fallback generation failed", fallbackError);
+            console.error("[Autopilot] Fallback generation failed", fallbackError);
             firstTokenAt ??= Date.now();
-            finalText = "LiteClaw hit an error. Please try again.";
+            finalText = "Autopilot hit an error. Please try again.";
             finishReason = "error";
             await this.writeStaticMessage(writer, finalText);
             emitSkyEvent("run.error", { error: message });
@@ -3720,7 +3720,7 @@ const handleOpencodeOauthRequest = (request: Request, env: Env) => {
     );
 
     const timeoutMs = parseNumberEnv(
-      env.LITECLAW_CODEX_CALLBACK_TIMEOUT_MS,
+      env.AUTOPILOT_CODEX_CALLBACK_TIMEOUT_MS,
       DEFAULT_CODEX_CALLBACK_TIMEOUT_MS
     );
     const shouldTimeout = action === "callback";
@@ -3736,7 +3736,7 @@ const handleOpencodeOauthRequest = (request: Request, env: Env) => {
       const headers = new Headers(opencodeBaseRequest.headers);
       headers.set("content-type", "application/json");
       headers.delete("authorization");
-      headers.delete("x-liteclaw-sandbox-token");
+      headers.delete("x-autopilot-sandbox-token");
 
     const opencodeRequest = new Request(opencodeBaseRequest, { headers });
       opencodeResponse = yield* sandboxEffect(
@@ -3757,7 +3757,7 @@ const handleOpencodeOauthRequest = (request: Request, env: Env) => {
               fetchPromise.then(resolve, reject);
             });
           } catch (error) {
-            console.error("[LiteClaw] OpenCode OAuth proxy failed", error);
+            console.error("[Autopilot] OpenCode OAuth proxy failed", error);
             throw error;
           }
         }
@@ -3873,7 +3873,7 @@ const handleRequest = (request: Request, env: Env) =>
     const response = yield* Effect.tryPromise({
       try: () => routeAgentRequest(request, env),
       catch: (cause) =>
-        new LiteClawEffectError({ message: "Route handler failed", cause })
+        new AutopilotEffectError({ message: "Route handler failed", cause })
     });
     return response ?? new Response("Not found", { status: 404 });
   });

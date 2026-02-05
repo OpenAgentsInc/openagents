@@ -1,6 +1,6 @@
-# LiteClaw Early Access — One-Pager MVP Spec
+# Autopilot Early Access — One-Pager MVP Spec
 
-- **Product name:** LiteClaw
+- **Product name:** Autopilot
 - **Platform:** Cloudflare Workers + Durable Objects + Cloudflare Agents SDK
 - **Explicit constraint:** No containers, no per-user infra billing, no multi-runtime orchestration.
 
@@ -22,7 +22,7 @@ It is a **persistent chat agent that works every time**.
 
 ## North Star
 
-> A user can go from invite → chatting with their LiteClaw in under **3 seconds**, refresh the page, and keep going.
+> A user can go from invite → chatting with their Autopilot in under **3 seconds**, refresh the page, and keep going.
 
 ---
 
@@ -43,59 +43,59 @@ If these aren’t green, nothing else ships.
 
 ## The Golden Path (happy path)
 
-1. User opens `/hatchery`
+1. User opens `/autopilot`
 2. If gated → join waitlist
-3. If approved → click **Spawn a LiteClaw**
+3. If approved → click **Spawn an Autopilot**
 4. Spawn redirects user to `/chat/{id}`
-5. In `/chat/{id}`, the existing chat UI streams responses from the LiteClaw agent
-6. User refreshes → conversation and memory persist (per LiteClaw)
-7. User returns tomorrow → open a LiteClaw from Hatchery and keep going
+5. In `/chat/{id}`, the existing chat UI streams responses from the Autopilot agent
+6. User refreshes → conversation and memory persist (per Autopilot)
+7. User returns tomorrow → open an Autopilot from the Autopilot page and keep going
 
 That’s it.
 
-No modes. No configuration. Multiple LiteClaws are just independent threads.
+No modes. No configuration. Multiple Autopilots are just independent threads.
 
 ---
 
 ## Screens (max 2)
 
-### 1. Hatchery (LiteClaw Spawn)
+### 1. Autopilot (Spawn)
 
-* Basic “what is LiteClaw?” copy
-* Status: `spawning | ready | error` (plus a count of existing LiteClaws)
-* List of existing LiteClaws (each links to `/chat/{id}`)
-* Primary CTA: **Spawn a LiteClaw** (creates a new one)
-* (Optional) “Reset LiteClaw memory” is currently disabled until memory semantics are clearer
+* Basic “what is Autopilot?” copy
+* Status: `spawning | ready | error` (plus a count of existing Autopilots)
+* List of existing Autopilots (each links to `/chat/{id}`)
+* Primary CTA: **Spawn an Autopilot** (creates a new one)
+* (Optional) “Reset Autopilot memory” is currently disabled until memory semantics are clearer
 
 ### 2. Chat (Existing UI)
 
 * Route: `/chat/{id}`
 * Uses the existing OpenAgents chat UI
-* The backend is **LiteClaw (Agents SDK + Durable Object)**, not OpenClaw
+* The backend is **Autopilot (Agents SDK + Durable Object)**, not OpenClaw
 * Streaming responses (resumable)
 * Stop button works
 
-Waitlist gating is an overlay/state on Hatchery (not a separate dashboard).
+Waitlist gating is an overlay/state on the Autopilot page (not a separate dashboard).
 
-No dashboards. Keep the existing **left sidebar**. The right/community sidebar is not part of the LiteClaw golden path (and is hidden on `/hatchery`).
+No dashboards. Keep the existing **left sidebar**. The right/community sidebar is not part of the Autopilot golden path (and is hidden on `/autopilot`).
 
-**Chrome decision (immediate):** `/hatchery` uses the existing left sidebar layout but hides the right sidebar.
+**Chrome decision (immediate):** `/autopilot` uses the existing left sidebar layout but hides the right sidebar.
 
 ---
 
-## What LiteClaw *Is*
+## What Autopilot *Is*
 
-* One **Cloudflare Agent instance per LiteClaw** (each backed by its own Durable Object)
-* Users can spawn multiple LiteClaws (separate transcripts + memory)
+* One **Cloudflare Agent instance per Autopilot** (each backed by its own Durable Object)
+* Users can spawn multiple Autopilots (separate transcripts + memory)
 * Powered by the **Cloudflare Agents SDK**
 * Stateful across requests
 * Stateless when idle (hibernates automatically)
 
-Each LiteClaw is **one agent**, not a fleet.
+Each Autopilot is **one agent**, not a fleet.
 
 ---
 
-## What LiteClaw Is *Not* (Hard Cuts)
+## What Autopilot Is *Not* (Hard Cuts)
 
 Explicitly out of scope for Early Access:
 
@@ -120,16 +120,16 @@ If it’s not required to chat + remember, it doesn’t exist.
 ### Core components
 
 * **OpenAgents Web (existing worker)**
-  * Owns the UI routes: `/hatchery`, `/chat/{id}`
+  * Owns the UI routes: `/autopilot`, `/chat/{id}`
   * Owns auth + gating (WorkOS + existing waitlist/access checks)
   * Can keep using Convex for:
     * waitlist/access state
     * thread index (so the left sidebar + `/chat/{id}` keep working)
-* **LiteClaw runtime (Cloudflare Worker + Agents SDK)**
+* **Autopilot runtime (Cloudflare Worker + Agents SDK)**
   * Owns the agent websocket endpoints (Agents SDK / PartySocket)
   * Owns chat streaming + persistence (via Durable Object SQLite)
-* **Durable Object (LiteClaw agent)**
-  * One DO per LiteClaw thread id (one chat id per LiteClaw)
+* **Durable Object (Autopilot agent)**
+  * One DO per Autopilot thread id (one chat id per Autopilot)
   * DO id is derived from the chat id we redirect to: `/chat/{id}`
   * Owns:
     * conversation history (canonical)
@@ -189,7 +189,7 @@ The goal is **predictable cost = $0 marginal infra**.
 * No enterprise positioning
 * No platform abstractions
 
-LiteClaw is intentionally humble.
+Autopilot is intentionally humble.
 
 ---
 
@@ -197,7 +197,7 @@ LiteClaw is intentionally humble.
 
 Early Access is done when:
 
-* Users intuitively understand what LiteClaw is in <10 seconds
+* Users intuitively understand what Autopilot is in <10 seconds
 * Chat works every time
 * Memory persistence feels real
 * Users come back unprompted
@@ -210,15 +210,15 @@ Architecture elegance, extensibility, and parity **do not count** as success cri
 
 If we don’t explicitly choose these, the “simple” plan will still stall.
 
-* **Identity (LiteClaw id):** each Spawn creates a new Convex thread for the user (kind: `liteclaw`); the Convex `threadId` becomes the LiteClaw id and is the `{id}` in `/chat/{id}`.
-* **DO key:** the LiteClaw agent DO uses the same id/room name as the chat id (e.g. `chat:{threadId}`), so `/chat/{id}` deterministically maps to one DO instance.
-* **Concurrency:** one in-flight message per LiteClaw id; sending a new message while streaming cancels the previous stream.
+* **Identity (Autopilot id):** each Spawn creates a new Convex thread for the user (kind: `autopilot`); the Convex `threadId` becomes the Autopilot id and is the `{id}` in `/chat/{id}`.
+* **DO key:** the Autopilot agent DO uses the same id/room name as the chat id (e.g. `chat:{threadId}`), so `/chat/{id}` deterministically maps to one DO instance.
+* **Concurrency:** one in-flight message per Autopilot id; sending a new message while streaming cancels the previous stream.
 * **Routes (minimum):**
-  * `GET /hatchery` (UI: spawn + status + waitlist)
+  * `GET /autopilot` (UI: spawn + status + waitlist)
   * `GET /chat/{id}` (UI: existing Thread)
-  * `WS /agents/chat/{id}` (LiteClaw agent websocket; chat requests + streaming)
+  * `WS /agents/chat/{id}` (Autopilot agent websocket; chat requests + streaming)
   * `GET /agents/chat/{id}/get-messages` (rehydrate transcript; AIChatAgent built-in)
-  * Reset is a websocket command (`CF_AGENT_CHAT_CLEAR`), but the Hatchery reset button is currently disabled.
+  * Reset is a websocket command (`CF_AGENT_CHAT_CLEAR`), but the Autopilot page reset button is currently disabled.
 * **Approval mechanism:** keep it dumb—either a server-side allowlist (env var) or a tiny admin endpoint protected by a single secret header.
 * **DO state shape (versioned):**
   * `schema_version`
@@ -243,54 +243,54 @@ This spec:
 * Avoids premature abstraction
 * Lets you observe real usage before naming futures
 
-If users don’t care about a persistent LiteClaw, no amount of agent infrastructure will matter.
+If users don’t care about a persistent Autopilot, no amount of agent infrastructure will matter.
 
 ---
 
 ## Repo Map (Where The Code Lives)
 
-LiteClaw EA is intentionally small. This section is here so we don’t scatter logic.
+Autopilot EA is intentionally small. This section is here so we don’t scatter logic.
 
 ### Spec (source of truth)
 
-- `docs/liteclaw/spec.md` (this doc)
+- `docs/autopilot/spec.md` (this doc)
 
 ### OpenAgents web shell (existing)
 
-We keep using the existing OpenAgents UI chrome for navigation and gating, but **remove the right/community sidebar from Hatchery**.
+We keep using the existing OpenAgents UI chrome for navigation and gating, but **remove the right/community sidebar from the Autopilot page**.
 
 - Route entrypoints:
-  - `apps/web/src/routes/_app/hatchery.tsx`
+  - `apps/web/src/routes/_app/autopilot.tsx`
   - `apps/web/src/routes/_app/chat.$chatId.tsx`
 - App chrome:
-  - `apps/web/src/components/assistant-ui/AppLayout.tsx` (right sidebar hidden on `/hatchery`)
+  - `apps/web/src/components/assistant-ui/AppLayout.tsx` (right sidebar hidden on `/autopilot`)
   - `apps/web/src/components/assistant-ui/threadlist-sidebar.tsx` (left sidebar)
 - Chat UI:
   - `apps/web/src/components/assistant-ui/thread.tsx` (message UI)
-  - `apps/web/src/components/assistant-ui/openagents-chat-runtime.tsx` (chat runtime hook; will be updated for LiteClaw)
-- Hatchery content (LiteClaw):
-  - `apps/web/src/components/hatchery/HatcheryFlowDemo.tsx` (currently implements the LiteClaw spawn/waitlist UI; rename to `LiteClawHatchery.tsx` when we touch it next)
+  - `apps/web/src/components/assistant-ui/openagents-chat-runtime.tsx` (chat runtime hook; will be updated for Autopilot)
+- Autopilot page content:
+  - `apps/web/src/components/hatchery/AutopilotPage.tsx` (implements the Autopilot spawn/waitlist UI)
 
 ### Legacy durable chat worker (removed)
 
 The OpenClaw-era “durable /chat proxy” worker (`apps/agent-worker/`, custom DO + `/internal/chat`) has been **removed**. Chat is cut over to the Agents SDK worker under `/agents/*`; `/chat` and approvals no longer use `AGENT_WORKER_URL`.
 
-### LiteClaw runtime (Agents SDK worker)
+### Autopilot runtime (Agents SDK worker)
 
 This is the “real product”: **Workers + Durable Object + Agents SDK**. It owns chat state and streaming.
 
-- Shipped worker folder (LiteClaw runtime):
-  - `apps/liteclaw-worker/` (Cloudflare Worker + DO; **no UI assets**)
+- Shipped worker folder (Autopilot runtime):
+  - `apps/autopilot-worker/` (Cloudflare Worker + DO; **no UI assets**)
 - Reference folder (do not ship):
   - `apps/cloudflare-agent-sdk-demo/` (unmodified `agents-starter` template; used only to copy patterns)
 
-### LiteClaw local agent (tunnel executor)
+### Autopilot local agent (tunnel executor)
 
 Local executor for Phase 4 tunnel-backed tools.
 
-- `apps/liteclaw-local-agent/` (Node HTTP server for `workspace.read/write/edit`)
+- `apps/autopilot-local-agent/` (Node HTTP server for `workspace.read/write/edit`)
 
-What moves from `apps/cloudflare-agent-sdk-demo/` → `apps/liteclaw-worker/`:
+What moves from `apps/cloudflare-agent-sdk-demo/` → `apps/autopilot-worker/`:
 
 - Copy/keep (worker runtime only):
   - `package.json` (but **trim dependencies** to worker-only: `agents`, `@cloudflare/ai-chat`, `ai`, + one model provider)
@@ -299,7 +299,7 @@ What moves from `apps/cloudflare-agent-sdk-demo/` → `apps/liteclaw-worker/`:
   - `.dev.vars.example` (never commit real secrets)
   - `env.d.ts` (generated via `wrangler types`; should match bindings we actually use)
   - `src/server.ts` pattern:
-    - `Chat extends AIChatAgent` (or rename to `LiteClawAgent`)
+    - `Chat extends AIChatAgent` (or rename to `AutopilotAgent`)
     - `export default { fetch(...) { return routeAgentRequest(request, env) || 404 } }`
   - `vitest.config.ts` + `tests/index.test.ts` (basic smoke tests are fine)
 - Do not copy (demo UI + build tooling):
@@ -312,14 +312,14 @@ What moves from `apps/cloudflare-agent-sdk-demo/` → `apps/liteclaw-worker/`:
 
 ### Agents SDK source (reference only)
 
-We keep a local checkout of the Agents SDK **only as a reference** (to read how things are built), not as a build dependency for LiteClaw.
+We keep a local checkout of the Agents SDK **only as a reference** (to read how things are built), not as a build dependency for Autopilot.
 
 - Local repo path on this machine:
   - `/Users/christopherdavid/code/agents`
 
-LiteClaw should depend on the published npm package and pin it:
+Autopilot should depend on the published npm package and pin it:
 
-- `apps/liteclaw-worker/package.json` → `agents` (npm package) pinned to an explicit version.
+- `apps/autopilot-worker/package.json` → `agents` (npm package) pinned to an explicit version.
 
 Do **not** use a `file:` dependency pointing at the local repo.
 
@@ -329,26 +329,26 @@ Do **not** use a `file:` dependency pointing at the local repo.
 
 This is the “keep it dirt simple” plan: take the proven Agents SDK + AIChatAgent pattern from the starter, and render it through our existing `/chat/{id}` UI.
 
-### Hatchery (LiteClaw spawn UI)
+### Hatchery (Autopilot spawn UI)
 
-- `/hatchery` becomes a simple LiteClaw page (not a graph/canvas).
-- `apps/web/src/routes/_app/hatchery.tsx` should render a new minimal component (e.g. `apps/web/src/components/hatchery/LiteClawHatchery.tsx`).
+- `/autopilot` becomes a simple Autopilot page (not a graph/canvas).
+- `apps/web/src/routes/_app/autopilot.tsx` renders `apps/web/src/components/hatchery/AutopilotPage.tsx`.
 - It should reuse the existing gating primitives:
   - `apps/web/convex/access.ts` (`api.access.getStatus`)
   - `apps/web/convex/waitlist.ts` (`api.waitlist.joinWaitlist`)
-- Clicking **Spawn a LiteClaw** should:
-  - create a new Convex thread for this user (kind: `liteclaw`)
+- Clicking **Spawn an Autopilot** should:
+  - create a new Convex thread for this user (kind: `autopilot`)
   - navigate to `/chat/{threadId}`
-- Hatchery should list all existing `kind: 'liteclaw'` threads and let the user open any of them.
-- `/chat/new` should create a new LiteClaw thread and redirect to `/chat/{id}`.
-- `/assistant` may redirect to the most-recent LiteClaw thread (creating one if missing).
+- The Autopilot page should list all existing `kind: 'autopilot'` threads and let the user open any of them.
+- `/chat/new` should create a new Autopilot thread and redirect to `/chat/{id}`.
+- `/assistant` may redirect to the most-recent Autopilot thread (creating one if missing).
 
 Recommended Convex shape (minimal):
 
 - We already have the basics:
-  - `apps/web/convex/schema.ts` includes thread `kind: 'liteclaw'`
-  - `apps/web/convex/threads.ts` includes `getLiteclawThread` + `create({ kind: 'liteclaw' })`
-- `apps/web/convex/threads.ts` also includes `getOrCreateLiteclawThread` for “open most recent or create if missing” flows (e.g. `/assistant`).
+  - `apps/web/convex/schema.ts` includes thread `kind: 'autopilot'`
+  - `apps/web/convex/threads.ts` includes `getAutopilotThread` + `create({ kind: 'autopilot' })`
+- `apps/web/convex/threads.ts` also includes `getOrCreateAutopilotThread` for “open most recent or create if missing” flows (e.g. `/assistant`).
 
 ### Chat (existing `/chat/{id}` UI)
 
@@ -359,12 +359,12 @@ We keep the UI. We swap the backend.
 - UI stays:
   - `apps/web/src/components/assistant-ui/thread.tsx`
   - `apps/web/src/components/assistant-ui/AppLayout.tsx` (chrome)
-  - Update the empty-thread welcome state to be LiteClaw-first (today it is OpenClaw-first):
+  - Update the empty-thread welcome state to be Autopilot-first (today it is OpenClaw-first):
     - `apps/web/src/components/assistant-ui/thread.tsx` (`ThreadWelcome`, suggestions, and setup cards)
 
-LiteClaw chat backing:
+Autopilot chat backing:
 
-- The chat runtime for `/chat/{id}` should connect to the LiteClaw agent DO via Agents SDK:
+- The chat runtime for `/chat/{id}` should connect to the Autopilot agent DO via Agents SDK:
   - `useAgent({ agent: "chat", name: threadId })` (WebSocket: `/agents/chat/{threadId}`)
   - `useAgentChat({ agent })` (streaming, persistence, resume)
 - Transcript rehydration comes from AIChatAgent’s built-in endpoint:
@@ -377,14 +377,14 @@ Where the wiring lives (web):
 
 Implementation note:
 
-- Today, `/chat` (the HTTP endpoint) is a legacy OpenClaw-era surface. LiteClaw should not depend on it; LiteClaw uses the Agent websocket transport.
+- Today, `/chat` (the HTTP endpoint) is a legacy OpenClaw-era surface. Autopilot should not depend on it; Autopilot uses the Agent websocket transport.
 
-### LiteClaw worker (Agents SDK runtime)
+### Autopilot worker (Agents SDK runtime)
 
 We adapt code from:
 
 - Reference: `apps/cloudflare-agent-sdk-demo/src/server.ts` (AIChatAgent + `routeAgentRequest`)
-- Shipped code: `apps/liteclaw-worker/src/server.ts`
+- Shipped code: `apps/autopilot-worker/src/server.ts`
 
 EA changes required in the worker:
 
@@ -396,49 +396,49 @@ EA changes required in the worker:
 
 ### Cloudflare routing (production)
 
-- `/hatchery` and `/chat/*` stay on `openagents-web-app`.
-- `/agents/*` must route to the LiteClaw worker so the browser can open the Agent websocket:
-  - `openagents.com/agents*` → worker `liteclaw`
+- `/autopilot` and `/chat/*` stay on `openagents-web-app`.
+- `/agents/*` must route to the Autopilot worker so the browser can open the Agent websocket:
+  - `openagents.com/agents*` → worker `autopilot`
 
 ### Implementation Checklist (Paths)
 
 Web (UI):
 
-- Modify: `apps/web/src/routes/_app/hatchery.tsx` (render LiteClaw spawn UI)
-- Optional: rename `apps/web/src/components/hatchery/HatcheryFlowDemo.tsx` → `apps/web/src/components/hatchery/LiteClawHatchery.tsx`
-- Modify: `apps/web/src/routes/_app/chat.$chatId.tsx` (support `/chat/new` spawning a new LiteClaw; allow navigating to any LiteClaw thread id)
-- Modify: `apps/web/src/routes/_app/assistant.tsx` (redirect to most-recent LiteClaw; create one if missing)
-- Optional: `apps/web/src/components/assistant-ui/threadlist-sidebar.tsx` (keep “New chat” hidden; spawn happens in Hatchery)
-- Modify: `apps/web/src/components/assistant-ui/thread.tsx` (LiteClaw welcome copy)
+- Modify: `apps/web/src/routes/_app/autopilot.tsx` (render Autopilot spawn UI)
+- Autopilot page component: `apps/web/src/components/hatchery/AutopilotPage.tsx`
+- Modify: `apps/web/src/routes/_app/chat.$chatId.tsx` (support `/chat/new` spawning a new Autopilot; allow navigating to any Autopilot thread id)
+- Modify: `apps/web/src/routes/_app/assistant.tsx` (redirect to most-recent Autopilot; create one if missing)
+- Optional: `apps/web/src/components/assistant-ui/threadlist-sidebar.tsx` (keep “New chat” hidden; spawn happens on the Autopilot page)
+- Modify: `apps/web/src/components/assistant-ui/thread.tsx` (Autopilot welcome copy)
 - Modify: `apps/web/src/components/assistant-ui/openagents-chat-runtime.tsx` (use `useAgent` + `useAgentChat`)
 
 Web (Convex metadata):
 
-- Already: `apps/web/convex/schema.ts` (thread kind union includes `liteclaw`)
-- Already: `apps/web/convex/threads.ts` (`list`, `create`, `getLiteclawThread`, `getOrCreateLiteclawThread`)
+- Already: `apps/web/convex/schema.ts` (thread kind union includes `autopilot`)
+- Already: `apps/web/convex/threads.ts` (`list`, `create`, `getAutopilotThread`, `getOrCreateAutopilotThread`)
 
-LiteClaw worker (Agents SDK runtime):
+Autopilot worker (Agents SDK runtime):
 
-- Implement: `apps/liteclaw-worker/src/server.ts` (chat + memory only)
-- Configure: `apps/liteclaw-worker/wrangler.jsonc` (DO binding + observability)
+- Implement: `apps/autopilot-worker/src/server.ts` (chat + memory only)
+- Configure: `apps/autopilot-worker/wrangler.jsonc` (DO binding + observability)
 
 Cloudflare routes:
 
-- Configure: `openagents.com/agents*` → worker `liteclaw`
+- Configure: `openagents.com/agents*` → worker `autopilot`
 
 ---
 
 ## Explicit Include / Exclude (To Prevent Scope Creep)
 
-This is the “what do we delete/disable” list (useful because LiteClaw starts from an `agents-starter` pattern).
+This is the “what do we delete/disable” list (useful because Autopilot starts from an `agents-starter` pattern).
 
 ### Include (EA)
 
-- One DO per LiteClaw thread id (multiple LiteClaws per user)
+- One DO per Autopilot thread id (multiple Autopilots per user)
 - Streaming responses with a 10s “first bytes” guarantee (fallback to non-streamed)
 - Waitlist gating (simple allowlist or “approved users” table; no billing)
 - Metrics logging: `ttft_ms`, `duration_ms`, `ok/error`, message counts
-- (Optional) Reset action is available as `CF_AGENT_CHAT_CLEAR`, but the Hatchery reset button is disabled for now.
+- (Optional) Reset action is available as `CF_AGENT_CHAT_CLEAR`, but the Autopilot page reset button is disabled for now.
 
 ### Exclude (EA)
 
@@ -446,22 +446,22 @@ This is the “what do we delete/disable” list (useful because LiteClaw starts
 - Scheduling/cron tasks
 - Multi-agent/fleet features
 - Any “community” surfaces in the golden path
-- Cross-LiteClaw shared memory (each LiteClaw is isolated)
+- Cross-Autopilot shared memory (each Autopilot is isolated)
 
 ---
 
-## Starter Template Cleanup (apps/liteclaw-worker)
+## Starter Template Cleanup (apps/autopilot-worker)
 
-When creating `apps/liteclaw-worker/`, start from the `agents-starter` pattern but **do not ship** anything that contradicts the “persistent chat only” promise.
+When creating `apps/autopilot-worker/`, start from the `agents-starter` pattern but **do not ship** anything that contradicts the “persistent chat only” promise.
 
 Remove/disable for EA (concrete filepaths):
 
 - Tool calling + confirmations:
-  - do not include `apps/liteclaw-worker/src/tools.ts`
-  - do not include `apps/liteclaw-worker/src/utils.ts` (tool-call processing helpers)
+  - do not include `apps/autopilot-worker/src/tools.ts`
+  - do not include `apps/autopilot-worker/src/utils.ts` (tool-call processing helpers)
   - do not include any tool-confirmation UI components
 - Scheduling:
-  - `apps/liteclaw-worker/src/server.ts` (remove `agents/schedule` and any schedule prompt)
+  - `apps/autopilot-worker/src/server.ts` (remove `agents/schedule` and any schedule prompt)
 
 We can keep the files around during prototyping, but **don’t ship them in the EA golden path** (and don’t accidentally mention them in UX copy).
 
@@ -471,50 +471,50 @@ We can keep the files around during prototyping, but **don’t ship them in the 
 
 ### Domain routing
 
-We want `/hatchery` + `/chat/*` to stay on the main web worker, but the **Agents SDK websocket endpoints** to hit the LiteClaw worker.
+We want `/autopilot` + `/chat/*` to stay on the main web worker, but the **Agents SDK websocket endpoints** to hit the Autopilot worker.
 
 - Add a Workers route for Agents SDK:
-  - `openagents.com/agents*` → worker `liteclaw`
+  - `openagents.com/agents*` → worker `autopilot`
 - Keep the main site route:
   - `openagents.com/*` → worker `openagents-web-app`
 
 ### Durable Object bindings
 
-LiteClaw uses **one DO namespace**:
+Autopilot uses **one DO namespace**:
 
-- Binding: `Chat` (or rename to `LiteClawAgent`)
-- Class: `Chat` (or rename to `LiteClawAgent`)
-- Config location: `apps/liteclaw-worker/wrangler.jsonc`
+- Binding: `Chat` (or rename to `AutopilotAgent`)
+- Class: `Chat` (or rename to `AutopilotAgent`)
+- Config location: `apps/autopilot-worker/wrangler.jsonc`
 
-### Secrets / env vars (LiteClaw worker)
+### Secrets / env vars (Autopilot worker)
 
 We will choose one model provider path:
 
 - Cloudflare Workers AI binding (preferred for “no keys”):
-  - `AI` binding in `apps/liteclaw-worker/wrangler.jsonc`
+  - `AI` binding in `apps/autopilot-worker/wrangler.jsonc`
 - OR server-owned provider key:
-  - `OPENAI_API_KEY` or `OPENROUTER_API_KEY` set as a Wrangler secret for `apps/liteclaw-worker`
+  - `OPENAI_API_KEY` or `OPENROUTER_API_KEY` set as a Wrangler secret for `apps/autopilot-worker`
 
 Waitlist gating:
 
-- `LITECLAW_ADMIN_SECRET` (single shared secret for a tiny approval endpoint), or
-- `LITECLAW_ALLOWED_EMAILS` (comma-separated allowlist) for the absolute simplest version.
+- `AUTOPILOT_ADMIN_SECRET` (single shared secret for a tiny approval endpoint), or
+- `AUTOPILOT_ALLOWED_EMAILS` (comma-separated allowlist) for the absolute simplest version.
 
 ---
 
-## Local Dev / Test / Deploy (LiteClaw worker)
+## Local Dev / Test / Deploy (Autopilot worker)
 
 Commands live with the app:
 
-- `cd apps/liteclaw-worker && npm run dev`
-- `cd apps/liteclaw-worker && npm run test`
-- `cd apps/liteclaw-worker && npm run deploy`
+- `cd apps/autopilot-worker && npm run dev`
+- `cd apps/autopilot-worker && npm run test`
+- `cd apps/autopilot-worker && npm run deploy`
 
 ---
 
 ## Testing + Agent Automation (Required)
 
-Goal: LiteClaw must be fully testable and usable via scripts without the web UI.
+Goal: Autopilot must be fully testable and usable via scripts without the web UI.
 
 Programmatic surfaces (stable + documented):
 - `WS /agents/chat/{id}` for streaming chat.
@@ -526,14 +526,14 @@ Programmatic surfaces (stable + documented):
 - Tool receipts emitted for every tool call (include `patch_hash`/`local_receipt` when relevant).
 
 Automation harness (must exist in-repo):
-- Provide a minimal smoke script (example: `apps/liteclaw-worker/scripts/liteclaw-smoke.ts`, run via `npm run smoke`) that runs against `wrangler dev`.
+- Provide a minimal smoke script (example: `apps/autopilot-worker/scripts/autopilot-smoke.ts`, run via `npm run smoke`) that runs against `wrangler dev`.
 - Provide a minimal tunnel handshake script (example: `apps/nydus/index.ts`) that checks `/health` and runs `workspace.write/read/edit` through the tunnel, including Access service token headers when configured.
 - Smoke step: create or pick a thread id, send one user message, and verify first token < 10s.
 - Smoke step: wait for completion and assert a final assistant message.
 - Smoke step: call `/export` and validate every line against the Sky schemas.
 - Smoke step: toggle tool policy and confirm tool budget + allowlist enforcement.
-- Smoke step: exercise `workspace.read/write/edit` with `LITECLAW_EXECUTOR_KIND=workers`.
-- Smoke step: exercise `workspace.read/write/edit` with tunnel executor when `liteclaw-local-agent` is running.
+- Smoke step: exercise `workspace.read/write/edit` with `AUTOPILOT_EXECUTOR_KIND=workers`.
+- Smoke step: exercise `workspace.read/write/edit` with tunnel executor when `autopilot-local-agent` is running.
 - Smoke step: validate `/extensions` + `/extensions/catalog` admin flows and allowlist enforcement.
 
 Determinism rules:
@@ -543,39 +543,39 @@ Determinism rules:
 Machine-readable errors:
 - Programmatic endpoints should return JSON errors with `code` + `message`.
 - Include `run_id` and `thread_id` on run-scoped errors.
-- Admin endpoints should accept `x-liteclaw-admin-secret` using `LITECLAW_TOOL_ADMIN_SECRET` (or `LITECLAW_EXTENSION_ADMIN_SECRET` fallback).
+- Admin endpoints should accept `x-autopilot-admin-secret` using `AUTOPILOT_TOOL_ADMIN_SECRET` (or `AUTOPILOT_EXTENSION_ADMIN_SECRET` fallback).
 
 CI gating:
-- `npm run test` (apps/liteclaw-worker) on every worker change.
+- `npm run test` (apps/autopilot-worker) on every worker change.
 - `npm run test` (apps/web) when chat UI changes.
 - Optional: `npm run test:e2e` when UI surfaces change.
 
 ## Coding Agent Roadmap (Do This In Order)
 
-This section is intentionally procedural. If you’re the coding agent implementing LiteClaw, follow this order and don’t “improve” scope.
+This section is intentionally procedural. If you’re the coding agent implementing Autopilot, follow this order and don’t “improve” scope.
 
-### 1) Create `apps/liteclaw-worker/` (Shipped Runtime)
+### 1) Create `apps/autopilot-worker/` (Shipped Runtime)
 
 Goal: a Cloudflare Worker that serves the Agents SDK websocket endpoints under `/agents/*` and persists chat in a Durable Object (SQLite).
 
 Target tree (minimum):
 
-- `apps/liteclaw-worker/package.json`
-- `apps/liteclaw-worker/wrangler.jsonc`
-- `apps/liteclaw-worker/tsconfig.json`
-- `apps/liteclaw-worker/env.d.ts` (generated by `wrangler types`)
-- `apps/liteclaw-worker/src/server.ts`
-- `apps/liteclaw-worker/tests/index.test.ts`
-- `apps/liteclaw-worker/vitest.config.ts`
-- `apps/liteclaw-worker/.dev.vars.example` (never commit secrets)
+- `apps/autopilot-worker/package.json`
+- `apps/autopilot-worker/wrangler.jsonc`
+- `apps/autopilot-worker/tsconfig.json`
+- `apps/autopilot-worker/env.d.ts` (generated by `wrangler types`)
+- `apps/autopilot-worker/src/server.ts`
+- `apps/autopilot-worker/tests/index.test.ts`
+- `apps/autopilot-worker/vitest.config.ts`
+- `apps/autopilot-worker/.dev.vars.example` (never commit secrets)
 
 What to copy from `apps/cloudflare-agent-sdk-demo/` (and how to simplify it):
 
-- Copy `wrangler.jsonc` → `apps/liteclaw-worker/wrangler.jsonc`
+- Copy `wrangler.jsonc` → `apps/autopilot-worker/wrangler.jsonc`
   - Keep: `compatibility_date`, `nodejs_compat`, `durable_objects.bindings`, `migrations` (sqlite), `observability.enabled`
   - Keep (preferred): `"ai": { "binding": "AI", "remote": true }`
   - Remove: `"assets": { ... }` (no UI in this worker)
-  - Set `"name": "liteclaw"` (this is the worker that receives `openagents.com/agents*`)
+  - Set `"name": "autopilot"` (this is the worker that receives `openagents.com/agents*`)
 - Copy `src/server.ts` patterns (don’t copy verbatim):
   - Keep: `routeAgentRequest(request, env)` + `AIChatAgent` subclass
   - Remove: scheduling (`agents/schedule`, `getSchedulePrompt`, `executeTask`)
@@ -609,39 +609,38 @@ Acceptance checks:
 - `GET /agents/*` routes through `routeAgentRequest` (no 500s)
 - Durable Object migrations are configured (sqlite class is declared in `migrations`)
 
-### 2) Add Production Route: `openagents.com/agents*` → `liteclaw`
+### 2) Add Production Route: `openagents.com/agents*` → `autopilot`
 
-Goal: ensure the browser websocket connects to the LiteClaw worker.
+Goal: ensure the browser websocket connects to the Autopilot worker.
 
 - Cloudflare Dashboard → Routes:
-  - `openagents.com/agents*` → worker `liteclaw`
+  - `openagents.com/agents*` → worker `autopilot`
   - `openagents.com/*` → worker `openagents-web-app`
 
 Acceptance checks:
 
-- In production, opening `/hatchery` then navigating to `/chat/{id}` results in a websocket connection to `/agents/chat/{id}` that upgrades successfully (101).
+- In production, opening `/autopilot` then navigating to `/chat/{id}` results in a websocket connection to `/agents/chat/{id}` that upgrades successfully (101).
 
-### 3) Web: Make `/hatchery` The LiteClaw Spawn UI (Left Sidebar Only)
+### 3) Web: Make `/autopilot` The Autopilot Spawn UI (Left Sidebar Only)
 
-Goal: `/hatchery` is a simple page that lists your LiteClaws and lets you spawn more (each maps to one DO-backed chat).
+Goal: `/autopilot` is a simple page that lists your Autopilots and lets you spawn more (each maps to one DO-backed chat).
 
-- Confirm `/hatchery` is under the `_app` layout:
-  - Route: `apps/web/src/routes/_app/hatchery.tsx`
+- Confirm `/autopilot` is under the `_app` layout:
+  - Route: `apps/web/src/routes/_app/autopilot.tsx`
   - Layout: `apps/web/src/components/assistant-ui/AppLayout.tsx`
-- Ensure the right/community sidebar is hidden on `/hatchery`:
-  - `AppLayout.tsx` should not render `RightSidebar` when `pathname.startsWith('/hatchery')`
-- Implement Hatchery UI (keep it boring):
-  - Current implementation lives in `apps/web/src/components/hatchery/HatcheryFlowDemo.tsx`
-  - Optional cleanup: rename to `LiteClawHatchery.tsx`
+- Ensure the right/community sidebar is hidden on `/autopilot`:
+  - `AppLayout.tsx` should not render `RightSidebar` when `pathname.startsWith('/autopilot')`
+- Implement Autopilot page UI (keep it boring):
+  - Implementation: `apps/web/src/components/hatchery/AutopilotPage.tsx`
 - Spawn behavior:
-  - Use `api.threads.list` to list existing `kind: 'liteclaw'` threads
-  - Use `api.threads.create({ kind: 'liteclaw' })` to create a new LiteClaw thread
+  - Use `api.threads.list` to list existing `kind: 'autopilot'` threads
+  - Use `api.threads.create({ kind: 'autopilot' })` to create a new Autopilot thread
   - Redirect to `/chat/{threadId}`
 
 Acceptance checks:
 
-- `/hatchery` shows left sidebar and no right sidebar
-- Clicking “Spawn a LiteClaw” takes you to `/chat/{id}`
+- `/autopilot` shows left sidebar and no right sidebar
+- Clicking “Spawn an Autopilot” takes you to `/chat/{id}`
 
 ### 4) Web: Switch `/chat/{id}` Transport To Agents SDK (Keep The UI)
 
@@ -663,84 +662,84 @@ Acceptance checks:
 - In production, POSTing a message from `/chat/{id}` results in streamed tokens via the websocket
 - Refreshing `/chat/{id}` restores the transcript (DO-backed)
 
-### 5) Support Multiple LiteClaws Per User
+### 5) Support Multiple Autopilots Per User
 
-Goal: let users spawn multiple independent LiteClaws and navigate between them.
+Goal: let users spawn multiple independent Autopilots and navigate between them.
 
-- Hatchery should list all LiteClaws and provide “Spawn another LiteClaw”.
-- `apps/web/src/routes/_app/chat.$chatId.tsx` should allow navigating to any existing LiteClaw thread id.
-- Navigating to `/chat/new` should create a new LiteClaw thread and redirect to `/chat/{id}`.
-- `/assistant` may redirect to the most-recent LiteClaw thread (creating one if missing).
+- The Autopilot page should list all Autopilots and provide “Spawn another Autopilot”.
+- `apps/web/src/routes/_app/chat.$chatId.tsx` should allow navigating to any existing Autopilot thread id.
+- Navigating to `/chat/new` should create a new Autopilot thread and redirect to `/chat/{id}`.
+- `/assistant` may redirect to the most-recent Autopilot thread (creating one if missing).
 
 Acceptance checks:
 
-- You can create multiple `kind: 'liteclaw'` threads for a single user
-- Navigating to `/chat/{id}` opens that specific LiteClaw
-- Navigating to `/chat/new` creates a new LiteClaw thread
+- You can create multiple `kind: 'autopilot'` threads for a single user
+- Navigating to `/chat/{id}` opens that specific Autopilot
+- Navigating to `/chat/new` creates a new Autopilot thread
 
 ### 6) Verification + Deploy
 
 Goal: ship with confidence.
 
-- LiteClaw worker:
-  - `cd apps/liteclaw-worker && npm run test`
-  - `cd apps/liteclaw-worker && npm run deploy`
+- Autopilot worker:
+  - `cd apps/autopilot-worker && npm run test`
+  - `cd apps/autopilot-worker && npm run deploy`
 - Web:
   - `cd apps/web && npm run test`
   - `cd apps/web && npm run deploy`
 
 Production smoke (minimum):
 
-- `/hatchery` loads (left sidebar only)
-- Spawn creates/uses a LiteClaw thread and redirects to `/chat/{id}`
+- `/autopilot` loads (left sidebar only)
+- Spawn creates/uses a Autopilot thread and redirects to `/chat/{id}`
 - `/chat/{id}` connects websocket to `/agents/chat/{id}` and streams
 - Refresh restores transcript
 
 ---
 
 ## Log
-- 2026-02-05: Converted Nydus + LiteClaw worker + Cloudflare agent demo to Effect-based orchestration, added Effect language-service setup and tsconfig hardening, and documented Sky tool demo flow.
+- 2026-02-05: Converted Nydus + Autopilot worker + Cloudflare agent demo to Effect-based orchestration, added Effect language-service setup and tsconfig hardening, and documented Sky tool demo flow.
 - 2026-02-05: Updated nydus cloud demo to mirror tool inputs locally when the worker executes tools on Workers (or tool outputs are missing), and documented the behavior.
 - 2026-02-05: Defaulted executor kind to `tunnel` when tunnel URL/token are configured (unless explicitly overridden), and updated docs.
-- 2026-02-05: Switched LiteClaw default model to `@cf/openai/gpt-oss-120b` (tool-capable) and updated docs to reflect the tool model expectation.
-- 2026-02-05: Added `LITECLAW_TOOL_CHOICE` env for forcing tool usage, updated nydus cloud demo with fallback tool parsing/execution, reran LiteClaw worker tests, and redeployed liteclaw worker.
-- 2026-02-05: Extended `apps/nydus` to include a cloud-driven demo (LiteClaw agent message triggers local workspace tools via tunnel), documented new modes and export receipt checks.
+- 2026-02-05: Switched Autopilot default model to `@cf/openai/gpt-oss-120b` (tool-capable) and updated docs to reflect the tool model expectation.
+- 2026-02-05: Added `AUTOPILOT_TOOL_CHOICE` env for forcing tool usage, updated nydus cloud demo with fallback tool parsing/execution, reran Autopilot worker tests, and redeployed autopilot worker.
+- 2026-02-05: Extended `apps/nydus` to include a cloud-driven demo (Autopilot agent message triggers local workspace tools via tunnel), documented new modes and export receipt checks.
 - 2026-02-05: Added Bun-based tunnel handshake script (`apps/nydus`) and expanded tunnel docs with Access service token header guidance and Bun handshake usage.
-- 2026-02-05: Implemented LiteClaw web wiring (Hatchery lists LiteClaws and can spawn multiple; `/assistant` opens most recent; `/chat/new` spawns new; chat transport switched to Agents SDK), updated welcome copy.
-- 2026-02-05: Ran LiteClaw worker + web tests, deployed liteclaw worker and openagents-web-app, and pushed Convex functions for the LiteClaw web flow.
-- 2026-02-05: Added Hatchery "Reset LiteClaw memory" action (CF_AGENT_CHAT_CLEAR) and later disabled it in the UI pending clearer memory semantics; reran web tests.
-- 2026-02-05: Added LiteClaw worker metrics logging (ttft_ms, duration_ms, ok/error, message_count) and reran worker tests.
-- 2026-02-05: Added LiteClaw worker guardrails (per-user rate limit, rolling summary + trimming, cancel in-flight streams, fallback to non-streamed response on stream failure), reran worker tests, and deployed liteclaw worker.
-- 2026-02-05: Implemented Sky-mode scaffolding in the LiteClaw worker (sky tables + memory storage, run/event/receipt logging behind `LITECLAW_SKY_MODE`, `/agents/chat/{id}/export` JSONL output), reran worker tests, and deployed liteclaw worker.
-- 2026-02-05: Added Phase 1 Sky contracts (TypeBox + AJV schemas for messages/events/receipts, tool args streaming contract, R2 ref normalization, compatibility doc), reran worker tests, and deployed liteclaw worker.
-- 2026-02-05: Implemented Phase 2 tool registry (http.fetch + summarize + extract), added tool policy/budgets, tool event + receipt logging, updated Sky receipt schema to include tool receipts, reran worker tests, and deployed liteclaw worker.
-- 2026-02-05: Implemented Phase 3 workspace tools (read/write/edit) with executor gating and diff receipts (patch_hash), updated Sky contracts + compatibility doc, reran LiteClaw worker tests, and deployed liteclaw worker (version `1f9c5eb4-7bb6-4d52-bf07-ada1cfea2665`).
-- 2026-02-05: Implemented Phase 4 tunnel executor scaffolding (LiteClaw local agent for read/write/edit, tunnel dispatch + signed local receipts), updated Sky contracts + compatibility doc, reran LiteClaw worker tests, and deployed liteclaw worker (version `1be3086a-c2af-4645-a4e0-135a83cc1db5`).
-- 2026-02-05: Implemented Phase 5 extension scaffolding (manifest allowlists + per-thread policy endpoint, extension hooks + metrics, and a sample `sky.echo` tool extension), reran LiteClaw worker tests, and deployed liteclaw worker (version `ef9a671d-e0b6-4352-a440-365f37cdcc9a`).
-- 2026-02-05: Added extension catalog admin endpoint (`/extensions/catalog`) for managing manifests, reran LiteClaw worker tests, and deployed liteclaw worker (version `d4f0cdf3-bb51-4763-9400-70d2392760b5`).
-- 2026-02-05: Added per-extension tool-call metrics logging for extension-owned tools, reran LiteClaw worker tests, and deployed liteclaw worker (version `699014ce-d654-4241-8467-30f5f6ffdec2`).
-- 2026-02-05: Enforced extension tool declarations (tools must be listed in `manifest.tools`), reran LiteClaw worker tests, and deployed liteclaw worker (version `40ccc90a-82d3-4bed-84a7-8ee7c9be20dd`).
-- 2026-02-05: Enforced extension policy updates against allowlist + catalog, reran LiteClaw worker tests, and deployed liteclaw worker (version `d09184b1-f77d-42e4-aa75-cc08f9b5119a`).
-- 2026-02-05: Added KV/R2-backed extension catalog loading with configurable key, reran LiteClaw worker tests, and deployed liteclaw worker (version `a9e3b627-3359-4ed8-904a-b0e9d4c914fe`).
-- 2026-02-05: Enforced pinned extension versions in policy updates, reran LiteClaw worker tests, and deployed liteclaw worker (version `bd986663-714a-4a5d-811c-848e3d616e30`).
-- 2026-02-05: Added manifest-only extension support (system prompt only, no tools), reran LiteClaw worker tests, and deployed liteclaw worker (version `3ee02e40-97b6-4205-baab-3c0ab7ed1e58`).
-- 2026-02-05: Synced extension catalog admin updates into KV/R2 when configured, reran LiteClaw worker tests, and deployed liteclaw worker (version `10ea4afb-c422-4b94-822e-a0ee7fcf5529`).
+- 2026-02-05: Implemented Autopilot web wiring (Autopilot page lists Autopilots and can spawn multiple; `/assistant` opens most recent; `/chat/new` spawns new; chat transport switched to Agents SDK), updated welcome copy.
+- 2026-02-05: Ran Autopilot worker + web tests, deployed autopilot worker and openagents-web-app, and pushed Convex functions for the Autopilot web flow.
+- 2026-02-05: Added Autopilot page “Reset Autopilot memory" action (CF_AGENT_CHAT_CLEAR) and later disabled it in the UI pending clearer memory semantics; reran web tests.
+- 2026-02-05: Added Autopilot worker metrics logging (ttft_ms, duration_ms, ok/error, message_count) and reran worker tests.
+- 2026-02-05: Added Autopilot worker guardrails (per-user rate limit, rolling summary + trimming, cancel in-flight streams, fallback to non-streamed response on stream failure), reran worker tests, and deployed autopilot worker.
+- 2026-02-05: Implemented Sky-mode scaffolding in the Autopilot worker (sky tables + memory storage, run/event/receipt logging behind `AUTOPILOT_SKY_MODE`, `/agents/chat/{id}/export` JSONL output), reran worker tests, and deployed autopilot worker.
+- 2026-02-05: Added Phase 1 Sky contracts (TypeBox + AJV schemas for messages/events/receipts, tool args streaming contract, R2 ref normalization, compatibility doc), reran worker tests, and deployed autopilot worker.
+- 2026-02-05: Implemented Phase 2 tool registry (http.fetch + summarize + extract), added tool policy/budgets, tool event + receipt logging, updated Sky receipt schema to include tool receipts, reran worker tests, and deployed autopilot worker.
+- 2026-02-05: Implemented Phase 3 workspace tools (read/write/edit) with executor gating and diff receipts (patch_hash), updated Sky contracts + compatibility doc, reran Autopilot worker tests, and deployed autopilot worker (version `1f9c5eb4-7bb6-4d52-bf07-ada1cfea2665`).
+- 2026-02-05: Implemented Phase 4 tunnel executor scaffolding (Autopilot local agent for read/write/edit, tunnel dispatch + signed local receipts), updated Sky contracts + compatibility doc, reran Autopilot worker tests, and deployed autopilot worker (version `1be3086a-c2af-4645-a4e0-135a83cc1db5`).
+- 2026-02-05: Implemented Phase 5 extension scaffolding (manifest allowlists + per-thread policy endpoint, extension hooks + metrics, and a sample `sky.echo` tool extension), reran Autopilot worker tests, and deployed autopilot worker (version `ef9a671d-e0b6-4352-a440-365f37cdcc9a`).
+- 2026-02-05: Added extension catalog admin endpoint (`/extensions/catalog`) for managing manifests, reran Autopilot worker tests, and deployed autopilot worker (version `d4f0cdf3-bb51-4763-9400-70d2392760b5`).
+- 2026-02-05: Added per-extension tool-call metrics logging for extension-owned tools, reran Autopilot worker tests, and deployed autopilot worker (version `699014ce-d654-4241-8467-30f5f6ffdec2`).
+- 2026-02-05: Enforced extension tool declarations (tools must be listed in `manifest.tools`), reran Autopilot worker tests, and deployed autopilot worker (version `40ccc90a-82d3-4bed-84a7-8ee7c9be20dd`).
+- 2026-02-05: Enforced extension policy updates against allowlist + catalog, reran Autopilot worker tests, and deployed autopilot worker (version `d09184b1-f77d-42e4-aa75-cc08f9b5119a`).
+- 2026-02-05: Added KV/R2-backed extension catalog loading with configurable key, reran Autopilot worker tests, and deployed autopilot worker (version `a9e3b627-3359-4ed8-904a-b0e9d4c914fe`).
+- 2026-02-05: Enforced pinned extension versions in policy updates, reran Autopilot worker tests, and deployed autopilot worker (version `bd986663-714a-4a5d-811c-848e3d616e30`).
+- 2026-02-05: Added manifest-only extension support (system prompt only, no tools), reran Autopilot worker tests, and deployed autopilot worker (version `3ee02e40-97b6-4205-baab-3c0ab7ed1e58`).
+- 2026-02-05: Synced extension catalog admin updates into KV/R2 when configured, reran Autopilot worker tests, and deployed autopilot worker (version `10ea4afb-c422-4b94-822e-a0ee7fcf5529`).
 - 2026-02-05: Added programmatic testing + agent automation requirements section (smoke scripts, stable endpoints, contract checks).
-- 2026-02-05: Added tool-policy admin endpoint + JSON error responses for programmatic endpoints, implemented `apps/liteclaw-worker/scripts/liteclaw-smoke.ts` smoke harness (`npm run smoke`), updated env vars, and reran LiteClaw worker tests.
-- 2026-02-05: Added JSON error handling for `/get-messages` + `/export` and hardened export message parsing for programmatic clients, then reran LiteClaw worker tests.
-- 2026-02-05: Added LiteClaw documentation (`docs/liteclaw/README.md` + `docs/liteclaw/tunnel.md`) covering runtime flow, endpoints, tools, extensions, and tunnel usage.
-- 2026-02-05: Added Cloudflare Tunnel documentation (`docs/liteclaw/cloudflare-tunnel.md`), updated tunnel references, and added a local-agent tunnel smoke script (`apps/liteclaw-local-agent/scripts/tunnel-smoke.js`).
+- 2026-02-05: Added tool-policy admin endpoint + JSON error responses for programmatic endpoints, implemented `apps/autopilot-worker/scripts/autopilot-smoke.ts` smoke harness (`npm run smoke`), updated env vars, and reran Autopilot worker tests.
+- 2026-02-05: Added JSON error handling for `/get-messages` + `/export` and hardened export message parsing for programmatic clients, then reran Autopilot worker tests.
+- 2026-02-05: Added Autopilot documentation (`docs/autopilot/README.md` + `docs/autopilot/tunnel.md`) covering runtime flow, endpoints, tools, extensions, and tunnel usage.
+- 2026-02-05: Added Cloudflare Tunnel documentation (`docs/autopilot/cloudflare-tunnel.md`), updated tunnel references, and added a local-agent tunnel smoke script (`apps/autopilot-local-agent/scripts/tunnel-smoke.js`).
 - 2026-02-05: Added optional Cloudflare Access headers for tunnel executor calls and documented Access env vars.
 - 2026-02-05: Documented Access API gotchas (service_token.token_id), account token verify endpoint, and end-to-end tunnel handshake steps.
 - 2026-02-05: Updated Access service token policy guidance to use `decision=non_identity` for Service Auth.
 
 ---
 
-## Post-EA Roadmap: Cloudflare-Native Sky (LiteClaw-First)
+## Post-EA Roadmap: Cloudflare-Native Sky (Autopilot-First)
 
-Goal: build our own **Sky** runtime on Workers + Durable Objects, while keeping the LiteClaw product surface stable.
+Goal: build our own **Sky** runtime on Workers + Durable Objects, while keeping the Autopilot product surface stable.
 
-Non-goal: replacing the LiteClaw UI or transport. The UI (`/chat/{id}`) and transport (`/agents/chat/*`) stay constant; only the runtime beneath evolves.
+Non-goal: replacing the Autopilot UI or transport. The UI (`/chat/{id}`) and transport (`/agents/chat/*`) stay constant; only the runtime beneath evolves.
 
 ### Why Sky-style (what changes vs AIChatAgent)
 
@@ -751,7 +750,7 @@ AIChatAgent is great for “chat that persists.” Sky adds:
 - Determinism and observability (run IDs, step IDs, timings, typed errors)
 - Portability (export/import into OpenClaw, later reuse skills/extensions)
 
-Principle: LiteClaw remains the UX; Sky becomes the engine.
+Principle: Autopilot remains the UX; Sky becomes the engine.
 
 ---
 
@@ -761,7 +760,7 @@ These primitives are standardized first so later phases do not thrash.
 
 #### 1) IDs (always present)
 
-- `thread_id` (LiteClaw id)
+- `thread_id` (Autopilot id)
 - `run_id` (one per user send)
 - `step_id` (model step or tool step)
 - `event_id` (monotonic per run)
@@ -797,13 +796,13 @@ Receipts are the base layer for replay, billing later, debugging, and trust.
 
 #### 5) Versioning policy
 
-- `liteclaw_session_version` (int) on every transcript export
+- `autopilot_session_version` (int) on every transcript export
 - `cf_sky_version` (semver) on every run receipt
 - Backward compatibility: read old forever, write new only
 
 ---
 
-### Phase 0 - Proof of Concept: LiteClaw-Sky Core in the Worker
+### Phase 0 - Proof of Concept: Autopilot-Sky Core in the Worker
 
 Intent: build the core engine and adapters while keeping endpoints identical.
 
@@ -828,7 +827,7 @@ Persistence layout (DO SQLite)
 - `sky_memory(thread_id, summary, updated_at, schema_version)`
 
 Feature flag
-- `LITECLAW_SKY_MODE=1` routes `onChatMessage` through `cf-sky`
+- `AUTOPILOT_SKY_MODE=1` routes `onChatMessage` through `cf-sky`
 - Same websocket endpoints, same UI rendering path
 
 Export
@@ -858,8 +857,8 @@ Intent: turn Phase 0 “it works” into a stable contract for tools and skills.
 #### Done when
 
 - Every event payload validates against schemas in tests.
-- Export includes `liteclaw_session_version` and schema versions.
-- A compatibility doc exists: what LiteClaw exports guarantee.
+- Export includes `autopilot_session_version` and schema versions.
+- A compatibility doc exists: what Autopilot exports guarantee.
 
 ---
 
@@ -920,7 +919,7 @@ Intent: add coding tools via containers without changing the contract.
 
 ### Phase 4 - Tunnel-Backed Local Tools (Your Repo)
 
-Intent: make LiteClaw useful on real repos without Cloud infra.
+Intent: make Autopilot useful on real repos without Cloud infra.
 
 #### What we build
 
@@ -943,7 +942,7 @@ Intent: make LiteClaw useful on real repos without Cloud infra.
 
 ### Phase 5 - Skills + Extensions (Sky-Compatible)
 
-Intent: reuse OpenClaw skills/extensions without changing LiteClaw UX.
+Intent: reuse OpenClaw skills/extensions without changing Autopilot UX.
 
 #### Extension model
 

@@ -1,6 +1,6 @@
 /**
  * Convex-backed thread index (chats/projects).
- * Used by the left sidebar and (later) Hatchery workspace graph.
+ * Used by the left sidebar and (later) Autopilot workspace graph.
  */
 import { v } from 'convex/values';
 import { mutation, query } from './_generated/server';
@@ -35,8 +35,8 @@ export const list = query({
   },
 });
 
-/** Returns the most-recent LiteClaw thread for the user (if any). */
-export const getLiteclawThread = query({
+/** Returns the most-recent Autopilot thread for the user (if any). Includes legacy 'liteclaw' kind. */
+export const getAutopilotThread = query({
   args: {},
   handler: async (ctx) => {
     const identity = (await ctx.auth.getUserIdentity()) as { subject?: string } | null;
@@ -48,13 +48,15 @@ export const getLiteclawThread = query({
       )
       .order('desc')
       .take(50);
-    const liteclaw = docs.find((d) => d.kind === 'liteclaw');
-    return liteclaw?._id ?? null;
+    const autopilot = docs.find(
+      (d) => d.kind === 'autopilot' || d.kind === 'liteclaw',
+    );
+    return autopilot?._id ?? null;
   },
 });
 
-/** Return the most-recent LiteClaw thread, creating one if missing. */
-export const getOrCreateLiteclawThread = mutation({
+/** Return the most-recent Autopilot thread, creating one if missing. */
+export const getOrCreateAutopilotThread = mutation({
   args: {},
   handler: async (ctx) => {
     const identity = (await ctx.auth.getUserIdentity()) as { subject?: string } | null;
@@ -66,13 +68,15 @@ export const getOrCreateLiteclawThread = mutation({
       )
       .order('desc')
       .take(50);
-    const liteclaw = docs.find((d) => d.kind === 'liteclaw');
-    if (liteclaw) return liteclaw._id;
+    const autopilot = docs.find(
+      (d) => d.kind === 'autopilot' || d.kind === 'liteclaw',
+    );
+    if (autopilot) return autopilot._id;
     const now = Date.now();
     const id = await ctx.db.insert('threads', {
       user_id: identity.subject,
-      title: 'LiteClaw',
-      kind: 'liteclaw',
+      title: 'Autopilot',
+      kind: 'autopilot',
       archived: false,
       created_at: now,
       updated_at: now,
@@ -106,7 +110,14 @@ export const get = query({
 export const create = mutation({
   args: {
     title: v.optional(v.string()),
-    kind: v.optional(v.union(v.literal('chat'), v.literal('project'), v.literal('liteclaw'))),
+    kind: v.optional(
+    v.union(
+      v.literal('chat'),
+      v.literal('project'),
+      v.literal('liteclaw'),
+      v.literal('autopilot'),
+    ),
+  ),
   },
   handler: async (ctx, args) => {
     const identity = (await ctx.auth.getUserIdentity()) as { subject?: string } | null;

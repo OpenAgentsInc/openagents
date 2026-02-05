@@ -81,7 +81,7 @@ export const Route = createFileRoute('/codex-token')({
           );
         }
 
-        const secret = process.env.LITECLAW_CODEX_SECRET;
+        const secret = process.env.AUTOPILOT_CODEX_SECRET;
         if (!secret) {
           return Response.json(
             { ok: false, error: 'codex_secret_missing' },
