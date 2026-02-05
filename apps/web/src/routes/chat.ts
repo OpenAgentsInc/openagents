@@ -15,7 +15,15 @@ export const Route = createFileRoute('/chat')({
     handlers: {
       POST: async ({ request }) => {
         const body = (await request.json().catch(() => null)) as
-          | { id?: unknown; messages?: Array<{ id?: string; role: string; content: string }>;[key: string]: unknown }
+          | {
+              id?: unknown;
+              messages?: Array<{
+                id?: string;
+                role: string;
+                content: string;
+              }>;
+              [key: string]: unknown;
+            }
           | null;
         const messages = body?.messages;
         if (!body || !Array.isArray(messages)) {
@@ -34,10 +42,24 @@ export const Route = createFileRoute('/chat')({
           );
         }
 
+        const normalizeRole = (
+          role: string,
+        ): 'user' | 'assistant' | 'system' =>
+          role === 'user' || role === 'assistant' || role === 'system'
+            ? role
+            : 'assistant';
+
+        const uiMessages = messages.map((message) => ({
+          role: normalizeRole(message.role),
+          parts: message.content
+            ? [{ type: 'text' as const, text: message.content }]
+            : [],
+        }));
+
         const result = streamText({
           model: openai.responses('gpt-4o-mini'),
           system: 'You are OpenAgents. Be concise.',
-          messages: await convertToModelMessages(messages),
+          messages: await convertToModelMessages(uiMessages),
         });
 
         const res = result.toUIMessageStreamResponse();

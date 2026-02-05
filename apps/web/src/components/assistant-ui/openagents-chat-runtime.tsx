@@ -66,8 +66,10 @@ const useChatThreadRuntime = <UI_MESSAGE extends UIMessage = UIMessage>(
 
   const chat = useAgentChat({
     agent,
-    ...chatOptions,
-  });
+    ...(chatOptions as Omit<typeof chatOptions, 'onToolCall'>),
+  }) as unknown as ReturnType<
+    typeof import('@ai-sdk/react').useChat<UI_MESSAGE>
+  >;
 
   return useAISDKRuntime(chat, {
     adapters,
