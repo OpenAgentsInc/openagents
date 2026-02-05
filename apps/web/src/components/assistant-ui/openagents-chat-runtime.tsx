@@ -14,6 +14,7 @@ import {
   type UseChatRuntimeOptions,
 } from '@assistant-ui/react-ai-sdk';
 import { createAssistantStream } from 'assistant-stream';
+import { useAuth } from '@workos/authkit-tanstack-react-start/client';
 import { api } from '../../../convex/_generated/api';
 import type { Id } from '../../../convex/_generated/dataModel';
 import type { UIMessage } from '@ai-sdk/react';
@@ -77,23 +78,29 @@ const useChatThreadRuntime = <UI_MESSAGE extends UIMessage = UIMessage>(
   });
 };
 
-const useConvexThreadListAdapter = (): unstable_RemoteThreadListAdapter => {
+const useConvexThreadListAdapter = (
+  isAuthenticated: boolean,
+): unstable_RemoteThreadListAdapter => {
   const convex = useConvex();
 
   return useMemo(() => {
     const asThreadId = (value: string): ThreadId => value as ThreadId;
 
     const ensureLiteclawThread = async () => {
+      if (!isAuthenticated) return;
       try {
         await convex.mutation(api.threads.getOrCreateLiteclawThread, {});
       } catch {
-        // Ignore failures (likely unauthenticated); list will return empty.
+        // Ignore failures (e.g. session expired); list will return empty.
       }
     };
 
     return {
       list: async () => {
         await ensureLiteclawThread();
+        if (!isAuthenticated) {
+          return { threads: [] };
+        }
         const [regular, archived] = await Promise.all([
           convex.query(api.threads.list, { archived: false, limit: 200 }),
           convex.query(api.threads.list, { archived: true, limit: 200 }),
@@ -121,6 +128,9 @@ const useConvexThreadListAdapter = (): unstable_RemoteThreadListAdapter => {
         };
       },
       initialize: async (threadId) => {
+        if (!isAuthenticated) {
+          throw new Error('Sign in to create a thread');
+        }
         const remoteId = await convex.mutation(
           api.threads.getOrCreateLiteclawThread,
           {},
@@ -181,13 +191,14 @@ const useConvexThreadListAdapter = (): unstable_RemoteThreadListAdapter => {
         });
       },
     };
-  }, [convex]);
+  }, [convex, isAuthenticated]);
 };
 
 export const useOpenAgentsChatRuntime = <UI_MESSAGE extends UIMessage = UIMessage>(
   options?: UseChatRuntimeOptions<UI_MESSAGE>,
 ) => {
-  const adapter = useConvexThreadListAdapter();
+  const { user } = useAuth();
+  const adapter = useConvexThreadListAdapter(Boolean(user));
 
   return unstable_useRemoteThreadListRuntime({
     runtimeHook: () => useChatThreadRuntime(options),
