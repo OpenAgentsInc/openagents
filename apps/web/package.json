@@ -24,6 +24,7 @@
     "lint": "tsc && eslint .  --ext ts,tsx --report-unused-disable-directives --max-warnings 0"
   },
   "dependencies": {
+    "@openagentsinc/hud": "file:../../packages/hud",
     "@convex-dev/react-query": "^0.1.0",
     "@tanstack/react-query": "^5.90.20",
     "@tanstack/react-router": "^1.158.0",
