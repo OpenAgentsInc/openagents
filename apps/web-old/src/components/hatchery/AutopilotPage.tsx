@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { useMutation, useQuery } from 'convex/react';
 import { useAuth } from '@workos/authkit-tanstack-react-start/client';
-import { DotsGridBackground, whitePreset } from '@openagentsinc/hud/react';
+import { DotsBackground, whitePreset } from '@openagentsinc/hud/react';
 import { AssemblingFrame } from './AssemblingFrame';
 import { api } from '../../../convex/_generated/api';
 import { posthogCapture } from '@/lib/posthog';
@@ -102,7 +102,7 @@ export function AutopilotPage() {
       style={{ fontFamily: 'var(--font-square721)' }}
     >
       <div className="relative flex min-h-0 flex-1 flex-col pt-4">
-        {/* Arwes-style dots + grid background (white preset) + vignette */}
+        {/* Dots only (no grid), Arwes-style. White preset + vignette. */}
         <div
           className="absolute inset-0"
           style={{
@@ -113,10 +113,10 @@ export function AutopilotPage() {
             ].join(', '),
           }}
         >
-          <DotsGridBackground
+          <DotsBackground
             distance={whitePreset.distance}
-            dotsColor={whitePreset.dotsColor}
-            lineColor={whitePreset.lineColor}
+            dotsColor="hsla(0, 0%, 100%, 0.03)"
+            dotsSettings={{ type: 'circle', size: 2 }}
           />
         </div>
         <div className="relative z-10 flex flex-1 flex-col p-4">

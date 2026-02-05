@@ -1,7 +1,10 @@
-import { HeadContent, Outlet, Scripts, createRootRouteWithContext } from '@tanstack/react-router';
+import { HeadContent, Outlet, Scripts, createRootRouteWithContext, useRouter } from '@tanstack/react-router';
 import { createServerFn } from '@tanstack/react-start';
 import { getAuth } from '@workos/authkit-tanstack-react-start';
+import { AuthKitProvider } from '@workos/authkit-tanstack-react-start/client';
+import { ConvexProviderWithAuth } from 'convex/react';
 import appCssUrl from '../app.css?url';
+import { useAuthFromWorkOS } from '../useAuthFromWorkOS';
 import type { QueryClient } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 import type { ConvexReactClient } from 'convex/react';
@@ -32,12 +35,12 @@ export const Route = createRootRouteWithContext<{
         content: 'width=device-width, initial-scale=1',
       },
       {
-        title: 'Convex + TanStack Start + WorkOS AuthKit',
+        title: 'OpenAgents Autopilot',
       },
     ],
     links: [
       { rel: 'stylesheet', href: appCssUrl },
-      { rel: 'icon', href: '/convex.svg' },
+      { rel: 'icon', href: '/favicon.ico' },
     ],
   }),
   component: RootComponent,
@@ -56,10 +59,17 @@ export const Route = createRootRouteWithContext<{
 });
 
 function RootComponent() {
+  const router = useRouter();
+  const { convexClient } = router.options.context;
+
   return (
-    <RootDocument>
-      <Outlet />
-    </RootDocument>
+    <AuthKitProvider>
+      <ConvexProviderWithAuth client={convexClient} useAuth={useAuthFromWorkOS}>
+        <RootDocument>
+          <Outlet />
+        </RootDocument>
+      </ConvexProviderWithAuth>
+    </AuthKitProvider>
   );
 }
 
