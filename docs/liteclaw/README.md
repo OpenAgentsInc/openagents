@@ -17,6 +17,7 @@ Related docs:
 - `docs/liteclaw/spec.md` for scope and roadmap.
 - `docs/liteclaw/sky-export-compat.md` for export compatibility.
 - `docs/liteclaw/tunnel.md` for tunnel setup and security.
+- `docs/liteclaw/cloudflare-tunnel.md` for Cloudflare Tunnel architecture and Access patterns.
 
 ## Runtime Flow
 
@@ -158,6 +159,15 @@ The smoke harness is implemented in `apps/liteclaw-worker/scripts/liteclaw-smoke
 - Tool receipts and export JSONL schema validation.
 - Extension policy and catalog updates.
 - Tunnel receipts when `LITECLAW_EXECUTOR_KIND=tunnel`.
+
+Tunnel smoke harness (local agent only):
+
+```bash
+cd apps/liteclaw-local-agent
+LITECLAW_TUNNEL_URL=https://local-tools.example.com \
+LITECLAW_TUNNEL_TOKEN=replace-me \
+node scripts/tunnel-smoke.js
+```
 
 ## Data Model Highlights
 

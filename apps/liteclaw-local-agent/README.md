@@ -18,6 +18,16 @@ Optional env vars:
 - `LITECLAW_LOCAL_MAX_BYTES` (default: `200000`)
 - `LITECLAW_LOCAL_MAX_BODY_BYTES` (default: `1000000`)
 
+## Tunnel smoke test
+
+Use the tunnel smoke script after publishing the tunnel hostname:
+
+```bash
+LITECLAW_TUNNEL_URL=https://local-tools.example.com \
+LITECLAW_TUNNEL_TOKEN=replace-me \
+node scripts/tunnel-smoke.js
+```
+
 ## Worker configuration
 
 Set these on the LiteClaw worker to route workspace tools through the tunnel:
