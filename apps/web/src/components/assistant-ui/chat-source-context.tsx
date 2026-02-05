@@ -4,7 +4,7 @@ import React, { createContext, useCallback, useContext, useState } from 'react';
 
 const CHAT_SOURCE_HEADER = 'X-Chat-Source';
 
-export type ChatSource = 'agent-worker' | 'local-fallback' | null;
+export type ChatSource = 'local-fallback' | null;
 
 type ChatSourceContextValue = {
   lastSource: ChatSource;
@@ -22,7 +22,7 @@ export function ChatSourceProvider({ children }: { children: React.ReactNode }) 
     return async (url: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
       const res = await fetch(url, init);
       const source = res.headers.get(CHAT_SOURCE_HEADER);
-      if (source === 'agent-worker' || source === 'local-fallback') {
+      if (source === 'local-fallback') {
         setLastSource(source);
       }
       return res;
