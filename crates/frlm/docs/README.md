@@ -2,7 +2,7 @@
 
 - **Status:** Accurate
 - **Last verified:** (see commit)
-- **Source of truth:** terminology → [GLOSSARY.md](../../../GLOSSARY.md), behavior → code
+- **Source of truth:** terminology → [GLOSSARY.md](../../../docs/GLOSSARY.md), behavior → code
 - **If this doc conflicts with code, code wins.**
 
 FRLM extends the RLM (Recursive Language Model) execution model with federation capabilities, enabling distributed sub-query execution across a swarm of providers via NIP-90.

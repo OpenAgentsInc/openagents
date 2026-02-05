@@ -98,7 +98,7 @@ Backward compatibility:
 
 ## References
 
-- [GLOSSARY.md](../../GLOSSARY.md) — Adapter vs Execution Runtime definitions
+- [GLOSSARY.md](../GLOSSARY.md) — Adapter vs Execution Runtime definitions
 - [crates/dsrs/docs/ADAPTERS.md](../../crates/dsrs/docs/ADAPTERS.md)
 - [crates/dsrs/docs/TOOLS.md](../../crates/dsrs/docs/TOOLS.md)
 - [crates/dsrs/docs/REPLAY.md](../../crates/dsrs/docs/REPLAY.md)

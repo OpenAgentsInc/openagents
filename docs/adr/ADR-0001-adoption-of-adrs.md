@@ -24,7 +24,7 @@ OpenAgents needs a system to capture architectural decisions in a discoverable, 
 1. ADRs live in `docs/adr/` with monotonic numbering (`ADR-0001-title.md`)
 2. Numbers are never reused, even for superseded ADRs
 3. Status values: `Proposed`, `Accepted`, `Superseded`, `Deprecated`
-4. All ADRs must use canonical terminology from [GLOSSARY.md](../../GLOSSARY.md)
+4. All ADRs must use canonical terminology from [GLOSSARY.md](../GLOSSARY.md)
 
 ### Authority Hierarchy
 
@@ -33,10 +33,10 @@ OpenAgents documentation follows a 5-tier authority hierarchy:
 | Priority | Concern | Authoritative Source |
 |----------|---------|---------------------|
 | 1 | **Behavior** | Code wins — if docs say X but code does Y, code is truth |
-| 2 | **Terminology** | [GLOSSARY.md](../../GLOSSARY.md) wins — canonical names and definitions |
+| 2 | **Terminology** | [GLOSSARY.md](../GLOSSARY.md) wins — canonical names and definitions |
 | 3 | **Architecture intent** | ADRs win — invariants, interfaces, contracts, tradeoffs |
 | 4 | **Implementation status** | Crate sources + [SYNTHESIS_EXECUTION.md](../../SYNTHESIS_EXECUTION.md) — what's wired |
-| 5 | **Priorities/sequencing** | [ROADMAP.md](../../ROADMAP.md) — what's next |
+| 5 | **Priorities/sequencing** | [ROADMAP.md](../ROADMAP.md) — what's next |
 
 ### When ADRs Are Required
 
@@ -81,6 +81,6 @@ Implementation-only changes (bug fixes, perf tweaks) do not require ADRs.
 
 - [docs/adr/README.md](./README.md) — ADR process documentation
 - [docs/adr/TEMPLATE.md](./TEMPLATE.md) — ADR template
-- [GLOSSARY.md](../../GLOSSARY.md) — Canonical terminology
+- [GLOSSARY.md](../GLOSSARY.md) — Canonical terminology
 - [SYNTHESIS_EXECUTION.md](../../SYNTHESIS_EXECUTION.md) — Implementation status
-- [ROADMAP.md](../../ROADMAP.md) — Priorities
+- [ROADMAP.md](../ROADMAP.md) — Priorities

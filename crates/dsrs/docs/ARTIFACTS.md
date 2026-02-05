@@ -8,7 +8,7 @@
 - **Doc owner:** adjutant
 - **If this doc conflicts with code, code wins.**
 
-The "Verified Patch Bundle" - a forge-agnostic artifact set describing a code change, including verification transcripts and cryptographic provenance. For terminology, see [GLOSSARY.md](../../../GLOSSARY.md).
+The "Verified Patch Bundle" - a forge-agnostic artifact set describing a code change, including verification transcripts and cryptographic provenance. For terminology, see [GLOSSARY.md](../../../docs/GLOSSARY.md).
 
 ## Overview
 

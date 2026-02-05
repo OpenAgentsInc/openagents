@@ -85,7 +85,7 @@ What are the results of this decision?
 ## References
 
 - [Relevant code path](../../crates/example/src/file.rs)
-- [GLOSSARY.md](../../GLOSSARY.md) — Canonical terminology
+- [GLOSSARY.md](../GLOSSARY.md) — Canonical terminology
 - [PROTOCOL_SURFACE.md](../protocol/PROTOCOL_SURFACE.md) — Protocol details
 
 ---

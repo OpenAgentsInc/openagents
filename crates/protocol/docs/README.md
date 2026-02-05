@@ -2,7 +2,7 @@
 
 - **Status:** Accurate
 - **Last verified:** (see commit)
-- **Source of truth:** terminology → [GLOSSARY.md](../../../GLOSSARY.md), protocol → [docs/protocol/PROTOCOL_SURFACE.md](../../../docs/protocol/PROTOCOL_SURFACE.md), behavior → code
+- **Source of truth:** terminology → [GLOSSARY.md](../../../docs/GLOSSARY.md), protocol → [docs/protocol/PROTOCOL_SURFACE.md](../../../docs/protocol/PROTOCOL_SURFACE.md), behavior → code
 - **If this doc conflicts with code, code wins.**
 
 The `protocol` crate provides the Rust API for OpenAgents job schemas. Protocol policy lives in [PROTOCOL_SURFACE.md](../../../docs/protocol/PROTOCOL_SURFACE.md); this doc covers crate-specific usage.

@@ -125,4 +125,4 @@ Backward compatibility:
 - [crates/dsrs/docs/REPLAY.md](../../crates/dsrs/docs/REPLAY.md) — Canonical REPLAY.jsonl v1 specification
 - [crates/dsrs/docs/ARTIFACTS.md](../../crates/dsrs/docs/ARTIFACTS.md) — Artifact overview
 - [ADR-0002](./ADR-0002-verified-patch-bundle.md) — Verified Patch Bundle contract
-- [GLOSSARY.md](../../GLOSSARY.md) — `REPLAY.jsonl`, `ReplayBundle`
+- [GLOSSARY.md](../GLOSSARY.md) — `REPLAY.jsonl`, `ReplayBundle`

@@ -2,7 +2,7 @@
 
 - **Status:** Accurate
 - **Last verified:** (see commit)
-- **Source of truth:** terminology → [GLOSSARY.md](../../../GLOSSARY.md), protocol → [PROTOCOL_SURFACE.md](../../../docs/protocol/PROTOCOL_SURFACE.md), behavior → code
+- **Source of truth:** terminology → [GLOSSARY.md](../../../docs/GLOSSARY.md), protocol → [PROTOCOL_SURFACE.md](../../../docs/protocol/PROTOCOL_SURFACE.md), behavior → code
 - **If this doc conflicts with code, code wins.**
 
 Pylon is the local runtime for sovereign AI agents in the OpenAgents ecosystem. It serves two purposes:

@@ -166,7 +166,7 @@ Backward compatibility:
 ## References
 
 - [crates/dsrs/docs/PRIVACY.md](../../crates/dsrs/docs/PRIVACY.md) — canonical preset definitions
-- [GLOSSARY.md](../../GLOSSARY.md) — terminology
+- [GLOSSARY.md](../GLOSSARY.md) — terminology
 - [ADR-0004](./ADR-0004-lane-taxonomy.md) — lane taxonomy (Swarm lane)
 - [ADR-0017](./ADR-0017-telemetry-trace-contract.md) — Layer C redaction references this policy
 - `crates/dsrs/src/privacy/policy.rs` — implementation

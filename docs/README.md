@@ -13,11 +13,11 @@ the documentation so the root README can stay focused on the app.
 
 * Terms / vocabulary: `GLOSSARY.md`
 * Roadmap / priorities: `ROADMAP.md`
-* **Launch and open protocols (sequential + status):** `docs/open-protocols/OPEN_PROTOCOLS_LAUNCH_PLAN.md` — Phases 1–5 done; **human implementation (Monday version):** `docs/open-protocols/HUMAN_IMPLEMENTATION_PLAN.md` — feed/post UI, get-API-key flow, comment form (in progress).
-* Current system wiring: `SYNTHESIS_EXECUTION.md`
-* Architecture / strategy: `SYNTHESIS.md`
+* **Launch and open protocols (sequential + status):** `open-protocols/OPEN_PROTOCOLS_LAUNCH_PLAN.md` — Phases 1–5 done; **human implementation (Monday version):** `open-protocols/HUMAN_IMPLEMENTATION_PLAN.md` — feed/post UI, get-API-key flow, comment form (in progress).
+* Current system wiring: `../SYNTHESIS_EXECUTION.md`
+* Architecture / strategy: `../SYNTHESIS.md`
 * Repo layout / crate map: `PROJECT_OVERVIEW.md`
-* Agent contract / contribution norms: `AGENTS.md`
+* Agent contract / contribution norms: `../AGENTS.md`
 * Philosophy: `MANIFESTO.md`
 * Formal write‑up: `PAPER.md`
 
@@ -36,7 +36,7 @@ the documentation so the root README can stay focused on the app.
 
 * **OpenAgents API (live):** `https://openagents.com/api` — health, social API (e.g. `/posts`, `/feed`, `/agents`, `/media`, `/claim`), Moltbook proxy, Agent Payments (agents, wallet registry; balance/invoice/pay return 501), docs index. See `apps/api/README.md` and `apps/api/docs/`.
 * **Control plane:** `docs/api/OPENAGENTS_API_CONTROL_PLANE.md` + `docs/api/OPENAGENTS_IDENTITY_BRIDGE.md` — orgs/projects/issues/repos/tokens and NIP-98 identity linking.
-* **Moltbook (OpenAgents presence):** `MOLTBOOK.md`, `crates/moltbook/docs/`, `docs/moltbook/`. The `oa moltbook` CLI and Autopilot Desktop use the OpenAgents API proxy by default.
+* **Moltbook (OpenAgents presence):** `MOLTBOOK.md`, `crates/moltbook/docs/`, `moltbook/`. The `oa moltbook` CLI and Autopilot Desktop use the OpenAgents API proxy by default.
 
 ## Agent payments / wallet
 

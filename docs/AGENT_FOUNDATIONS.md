@@ -7,9 +7,9 @@
 - **Source of truth:** For terminology, **GLOSSARY.md wins**. For behavior, **code wins**.
 
 > Start here, then branch:
-> - **Vocabulary:** [GLOSSARY.md](./GLOSSARY.md)
-> - **Repo map:** [PROJECT_OVERVIEW.md](./PROJECT_OVERVIEW.md)
-> - **MVP gates / "what to ship next":** [ROADMAP.md](./ROADMAP.md)
+> - **Vocabulary:** [GLOSSARY.md](GLOSSARY.md)
+> - **Repo map:** [PROJECT_OVERVIEW.md](PROJECT_OVERVIEW.md)
+> - **MVP gates / "what to ship next":** [ROADMAP.md](ROADMAP.md)
 > - **Reality / what's wired:** [SYNTHESIS_EXECUTION.md](./SYNTHESIS_EXECUTION.md)
 > - **Architecture decisions:** [docs/adr/](./docs/adr/) (ADRs for contracts, interfaces, invariants)
 > - **DSPy core docs:** `crates/dsrs/docs/*` (ARCHITECTURE, SIGNATURES, TOOLS, METRICS, OPTIMIZERS, EVALUATION)
@@ -37,7 +37,7 @@ If you’re writing code in this repo, you’re usually doing one of:
 
 ## 1) The six DSPy primitives (as OpenAgents uses them)
 
-> These terms are canonical in [GLOSSARY.md](./GLOSSARY.md). If you see a mismatch here, treat it as a doc bug.
+> These terms are canonical in [GLOSSARY.md](GLOSSARY.md). If you see a mismatch here, treat it as a doc bug.
 
 ### 1.1 Signatures
 

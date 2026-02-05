@@ -31,7 +31,7 @@ We need a single plan intermediate representation that:
 - **Current implementations:**
   - Adjutant: `SubtaskPlanningSignature.subtasks` → maps to `PlanIR.steps`
   - Autopilot: `PlanningSignature.implementation_steps` → maps to `PlanIR.steps`
-- Canonical terminology: [GLOSSARY.md](../../GLOSSARY.md) (`PlanIR`, `StepIntent`, `verification_delta`)
+- Canonical terminology: [GLOSSARY.md](../GLOSSARY.md) (`PlanIR`, `StepIntent`, `verification_delta`)
 - Execution/replay integration: [crates/dsrs/docs/REPLAY.md](../../crates/dsrs/docs/REPLAY.md) (step_id linkage)
 
 ### PlanIR (Normative shape)
@@ -110,7 +110,7 @@ Backward compatibility:
 
 ## References
 
-- [GLOSSARY.md](../../GLOSSARY.md) — `PlanIR`, `StepIntent`
+- [GLOSSARY.md](../GLOSSARY.md) — `PlanIR`, `StepIntent`
 - [crates/dsrs/docs/REPLAY.md](../../crates/dsrs/docs/REPLAY.md) — step_id linkage
 - `crates/adjutant/src/dspy/module.rs` (current planning outputs)
 - `crates/autopilot-core/docs/EXECUTION_FLOW.md` (legacy plan flow)

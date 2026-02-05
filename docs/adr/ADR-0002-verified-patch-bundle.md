@@ -129,7 +129,7 @@ The Verified Patch Bundle is the internal format. Forge Adapters export to:
 
 ## References
 
-- [GLOSSARY.md](../../GLOSSARY.md) — `Verified Patch Bundle`, `policy_bundle_id`
+- [GLOSSARY.md](../GLOSSARY.md) — `Verified Patch Bundle`, `policy_bundle_id`
 - [crates/dsrs/docs/ARTIFACTS.md](../../crates/dsrs/docs/ARTIFACTS.md) — Canonical artifact schemas
 - [crates/dsrs/docs/REPLAY.md](../../crates/dsrs/docs/REPLAY.md) — Canonical replay schema
 - [ADR-0003](./ADR-0003-replay-formats.md) — Replay format specification

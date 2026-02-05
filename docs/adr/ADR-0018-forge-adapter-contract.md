@@ -40,7 +40,7 @@ Without a contract:
 - Trait definition: TBD (target: `crates/adjutant/src/forge/mod.rs`)
 - Bundle format: [crates/dsrs/docs/ARTIFACTS.md](../../crates/dsrs/docs/ARTIFACTS.md)
 - GitAfter tags: [crates/nostr/GIT_AFTER.md](../../crates/nostr/GIT_AFTER.md)
-- Terminology: [GLOSSARY.md](../../GLOSSARY.md) (`Forge Adapter`)
+- Terminology: [GLOSSARY.md](../GLOSSARY.md) (`Forge Adapter`)
 
 ### ForgeAdapter trait (Illustrative)
 
@@ -247,7 +247,7 @@ Backward compatibility:
 
 ## References
 
-- [GLOSSARY.md](../../GLOSSARY.md) — `Forge Adapter` definition
+- [GLOSSARY.md](../GLOSSARY.md) — `Forge Adapter` definition
 - [crates/dsrs/docs/ARTIFACTS.md](../../crates/dsrs/docs/ARTIFACTS.md) — Verified Patch Bundle format
 - [crates/nostr/GIT_AFTER.md](../../crates/nostr/GIT_AFTER.md) — GitAfter design and tag format
 - [docs/protocol/PROTOCOL_SURFACE.md](../protocol/PROTOCOL_SURFACE.md) — `trajectory_hash` in receipt schema

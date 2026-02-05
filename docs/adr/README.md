@@ -97,7 +97,7 @@ When a PR touches a contract, the author must:
 
 - [ ] Update existing ADR **or** create new ADR (status: Proposed)
 - [ ] Update [INDEX.md](./INDEX.md) with new/changed ADR
-- [ ] Update [GLOSSARY.md](../../GLOSSARY.md) if terminology changes
+- [ ] Update [GLOSSARY.md](../GLOSSARY.md) if terminology changes
 - [ ] Update affected canonical specs (ARTIFACTS.md, REPLAY.md, PROTOCOL_SURFACE.md)
 - [ ] Mention ADR in PR_SUMMARY.md (if agent-generated)
 
@@ -122,7 +122,7 @@ When a decision changes:
 
 ## Required Terminology
 
-All ADRs must use canonical terms from [GLOSSARY.md](../../GLOSSARY.md):
+All ADRs must use canonical terms from [GLOSSARY.md](../GLOSSARY.md):
 
 | Use | Not |
 |-----|-----|

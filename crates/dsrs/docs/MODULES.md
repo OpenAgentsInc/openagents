@@ -336,7 +336,7 @@ let result = pipeline.decide(&DelegationInput {
 // - confidence: f32
 ```
 
-**Delegation Targets** (see [GLOSSARY.md](../../../GLOSSARY.md) for canonical definitions):
+**Delegation Targets** (see [GLOSSARY.md](../../../docs/GLOSSARY.md) for canonical definitions):
 | Target | Use Case |
 |--------|----------|
 | `local_tools` | Simple edits, small scope tasks |

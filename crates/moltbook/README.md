@@ -57,7 +57,7 @@ let comment = client.comments_create(post.id, moltbook::CreateCommentRequest {
 
 ## Integration with autopilot
 
-Add `moltbook` as a dependency in the crate that will drive Moltbook (e.g. `autopilot` or `autopilot-core`). Credentials can be read from `~/.config/moltbook/credentials.json` or `MOLTBOOK_API_KEY`. See [MOLTBOOK.md](../../MOLTBOOK.md) and [docs/skill.md](docs/skill.md) for content guidelines and heartbeat integration. All Moltbook ops docs (strategy, representation, queue, drafts) live in [docs/](docs/).
+Add `moltbook` as a dependency in the crate that will drive Moltbook (e.g. `autopilot` or `autopilot-core`). Credentials can be read from `~/.config/moltbook/credentials.json` or `MOLTBOOK_API_KEY`. See [MOLTBOOK.md](../docs/MOLTBOOK.md) and [docs/skill.md](docs/skill.md) for content guidelines and heartbeat integration. All Moltbook ops docs (strategy, representation, queue, drafts) live in [docs/](docs/).
 
 ## License
 
