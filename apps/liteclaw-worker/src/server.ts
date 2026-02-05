@@ -1123,6 +1123,12 @@ export class Chat extends AIChatAgent<Env> {
     const executorKind = this.getExecutorKind();
     const tunnelUrl = this.env.LITECLAW_TUNNEL_URL;
     const tunnelToken = this.env.LITECLAW_TUNNEL_TOKEN;
+    const accessClientId =
+      this.env.LITECLAW_TUNNEL_ACCESS_CLIENT_ID ??
+      this.env.CF_ACCESS_CLIENT_ID;
+    const accessClientSecret =
+      this.env.LITECLAW_TUNNEL_ACCESS_CLIENT_SECRET ??
+      this.env.CF_ACCESS_CLIENT_SECRET;
     const tunnelTimeoutMs = parseNumberEnv(
       this.env.LITECLAW_TUNNEL_TIMEOUT_MS,
       DEFAULT_TUNNEL_TIMEOUT_MS
@@ -1196,11 +1202,18 @@ export class Chat extends AIChatAgent<Env> {
       );
 
       try {
+        const accessHeaders: Record<string, string> = {};
+        if (accessClientId && accessClientSecret) {
+          accessHeaders["cf-access-client-id"] = accessClientId;
+          accessHeaders["cf-access-client-secret"] = accessClientSecret;
+        }
+
         const response = await fetch(endpoint.toString(), {
           method: "POST",
           headers: {
             "content-type": "application/json",
-            authorization: `Bearer ${tunnelToken}`
+            authorization: `Bearer ${tunnelToken}`,
+            ...accessHeaders
           },
           body: JSON.stringify(payload),
           signal

@@ -39,6 +39,8 @@ cloudflared tunnel --url http://localhost:8787
 LITECLAW_EXECUTOR_KIND=tunnel
 LITECLAW_TUNNEL_URL=https://<your-tunnel-host>
 LITECLAW_TUNNEL_TOKEN=replace-me
+LITECLAW_TUNNEL_ACCESS_CLIENT_ID=optional
+LITECLAW_TUNNEL_ACCESS_CLIENT_SECRET=optional
 ```
 
 4. Ensure tool policy allows write tools.
