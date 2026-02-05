@@ -664,7 +664,7 @@ Production smoke (minimum):
 
 ## Post-EA Roadmap: Cloudflare-Native Sky (LiteClaw-First)
 
-Goal: build our own Sky-style runtime on Workers + Durable Objects (no pi-mono runtime dependency), while keeping LiteClaw as the product surface. LiteClaw UI and `/agents/chat/*` transport stay the same; the runtime evolves underneath.
+Goal: build our own Pi-style runtime, branded as **Sky**, on Workers + Durable Objects (no pi-mono runtime dependency), while keeping LiteClaw as the product surface. LiteClaw UI and `/agents/chat/*` transport stay the same; the runtime evolves underneath.
 
 ### Phase 0 - Proof of Concept: LiteClaw-Sky Core in the Worker
 
