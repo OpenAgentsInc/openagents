@@ -77,6 +77,16 @@ type ChatMetricLog = {
   finish_reason?: string | null;
 };
 
+type ExtensionMetricLog = {
+  event: "liteclaw_extension_metrics";
+  extension_id: string;
+  extension_version: string;
+  hook: ExtensionHookName;
+  duration_ms: number;
+  ok: boolean;
+  error?: string;
+};
+
 type ToolPolicy = "none" | "read-only" | "read-write";
 type ExecutorKind = "workers" | "container" | "tunnel";
 
@@ -85,6 +95,63 @@ type ToolRunState = {
   maxCalls: number;
   outboundBytes: number;
   maxOutboundBytes: number;
+};
+
+type ExtensionManifest = {
+  id: string;
+  name: string;
+  version: string;
+  description?: string;
+  tools?: string[];
+  system_prompt?: string;
+  permissions?: Record<string, unknown>;
+  ui?: Record<string, unknown>;
+};
+
+type ExtensionHookName =
+  | "onRunStart"
+  | "onMessage"
+  | "onToolCall"
+  | "onRunComplete";
+
+type ExtensionHookPayload = {
+  thread_id: string;
+  run_id: string;
+  message?: UIMessage;
+  tool_name?: string;
+  status?: string;
+  error?: string | null;
+  duration_ms?: number;
+  finish_reason?: string | null;
+};
+
+type ExtensionToolFactory = (options: {
+  name: string;
+  description: string;
+  mode: "read" | "write";
+  inputSchema: Record<string, unknown>;
+  handler: (input: unknown, toolOptions: ToolExecutionOptions) => Promise<unknown>;
+}) => ReturnType<typeof tool>;
+
+type ExtensionToolContext = {
+  createTool: ExtensionToolFactory;
+};
+
+type ExtensionRuntime = {
+  manifest: ExtensionManifest;
+  buildTools?: (context: ExtensionToolContext) => ToolSet;
+  onRunStart?: (
+    payload: ExtensionHookPayload & { extension: ExtensionManifest }
+  ) => Promise<void> | void;
+  onMessage?: (
+    payload: ExtensionHookPayload & { extension: ExtensionManifest }
+  ) => Promise<void> | void;
+  onToolCall?: (
+    payload: ExtensionHookPayload & { extension: ExtensionManifest }
+  ) => Promise<void> | void;
+  onRunComplete?: (
+    payload: ExtensionHookPayload & { extension: ExtensionManifest }
+  ) => Promise<void> | void;
 };
 
 type LegacyLiteClawStateRow = {
@@ -132,6 +199,18 @@ type RateLimitRow = {
   id: string;
   window_start: number;
   count: number;
+};
+
+type ExtensionCatalogRow = {
+  extension_id: string;
+  manifest_json: string;
+  updated_at: number;
+};
+
+type ExtensionPolicyRow = {
+  thread_id: string;
+  enabled_json: string;
+  updated_at: number;
 };
 
 type WorkspaceRow = {
@@ -254,6 +333,68 @@ const parseAllowlist = (value: string | undefined) =>
         .filter(Boolean)
     : [];
 
+const parseExtensionList = (value: string | undefined) => parseAllowlist(value);
+
+const parseExtensionRef = (value: string) => {
+  const [id, version] = value.split("@");
+  return {
+    id: id.trim(),
+    version: version ? version.trim() : null
+  };
+};
+
+const parseExtensionManifest = (value: unknown): ExtensionManifest | null => {
+  if (!value || typeof value !== "object") return null;
+  const record = value as Record<string, unknown>;
+  if (
+    typeof record.id !== "string" ||
+    typeof record.name !== "string" ||
+    typeof record.version !== "string"
+  ) {
+    return null;
+  }
+
+  return {
+    id: record.id,
+    name: record.name,
+    version: record.version,
+    description:
+      typeof record.description === "string" ? record.description : undefined,
+    tools: Array.isArray(record.tools)
+      ? record.tools.filter((tool) => typeof tool === "string")
+      : undefined,
+    system_prompt:
+      typeof record.system_prompt === "string"
+        ? record.system_prompt
+        : undefined,
+    permissions:
+      record.permissions && typeof record.permissions === "object"
+        ? (record.permissions as Record<string, unknown>)
+        : undefined,
+    ui:
+      record.ui && typeof record.ui === "object"
+        ? (record.ui as Record<string, unknown>)
+        : undefined
+  };
+};
+
+const parseExtensionCatalog = (value: unknown): ExtensionManifest[] => {
+  if (Array.isArray(value)) {
+    return value
+      .map((entry) => parseExtensionManifest(entry))
+      .filter(Boolean) as ExtensionManifest[];
+  }
+  if (value && typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    if (Array.isArray(record.extensions)) {
+      return record.extensions
+        .map((entry) => parseExtensionManifest(entry))
+        .filter(Boolean) as ExtensionManifest[];
+    }
+  }
+  return [];
+};
+
 const isHostAllowed = (host: string, allowlist: Array<string>) => {
   if (allowlist.length === 0) {
     return false;
@@ -268,6 +409,49 @@ const isHostAllowed = (host: string, allowlist: Array<string>) => {
     }
     return host === entry;
   });
+};
+
+const BUILTIN_EXTENSION_MANIFESTS: Record<string, ExtensionManifest> = {
+  "sky.echo": {
+    id: "sky.echo",
+    name: "Sky Echo",
+    version: "0.1.0",
+    description: "Adds a simple echo tool for extension wiring.",
+    tools: ["extension.echo"],
+    system_prompt:
+      "Extension sky.echo is enabled. Use extension.echo to repeat text when debugging."
+  }
+};
+
+const buildBuiltinExtensionRuntime = (
+  manifest: ExtensionManifest
+): ExtensionRuntime | null => {
+  if (manifest.id !== "sky.echo") {
+    return null;
+  }
+
+  return {
+    manifest,
+    buildTools: ({ createTool }) => ({
+      "extension.echo": createTool({
+        name: "extension.echo",
+        description: "Echoes back provided text.",
+        mode: "read",
+        inputSchema: {
+          type: "object",
+          properties: {
+            text: { type: "string" }
+          },
+          required: ["text"],
+          additionalProperties: false
+        },
+        handler: async (input) => {
+          const payload = input as { text?: string };
+          return { text: typeof payload.text === "string" ? payload.text : "" };
+        }
+      })
+    })
+  };
 };
 
 const normalizeMessageForExport = (message: UIMessage): UIMessage => {
@@ -300,8 +484,13 @@ export class Chat extends AIChatAgent<Env> {
   private summary: string | null = null;
   private stateLoaded = false;
   private activeAbortController: AbortController | null = null;
+  private extensionCatalog: Map<string, ExtensionManifest> | null = null;
 
   private logChatMetrics(payload: ChatMetricLog) {
+    console.log(JSON.stringify(payload));
+  }
+
+  private logExtensionMetrics(payload: ExtensionMetricLog) {
     console.log(JSON.stringify(payload));
   }
 
@@ -367,6 +556,20 @@ export class Chat extends AIChatAgent<Env> {
       create table if not exists sky_tool_policy (
         thread_id text primary key,
         policy text not null,
+        updated_at integer not null
+      )
+    `;
+    this.sql`
+      create table if not exists sky_extensions (
+        extension_id text primary key,
+        manifest_json text not null,
+        updated_at integer not null
+      )
+    `;
+    this.sql`
+      create table if not exists sky_extension_policy (
+        thread_id text primary key,
+        enabled_json text not null,
         updated_at integer not null
       )
     `;
@@ -471,6 +674,193 @@ export class Chat extends AIChatAgent<Env> {
       `;
     }
     return policy;
+  }
+
+  private setExtensionPolicy(enabled: string[]) {
+    const normalized = Array.from(
+      new Set(enabled.map((entry) => entry.trim()).filter(Boolean))
+    );
+    this.sql`
+      insert into sky_extension_policy (thread_id, enabled_json, updated_at)
+      values (${this.name}, ${JSON.stringify(normalized)}, ${Date.now()})
+      on conflict(thread_id) do update set
+        enabled_json = excluded.enabled_json,
+        updated_at = excluded.updated_at
+    `;
+    return normalized;
+  }
+
+  private getExtensionPolicy(): string[] {
+    const defaults = parseExtensionList(this.env.LITECLAW_EXTENSION_DEFAULTS);
+    const rows = this.sql<ExtensionPolicyRow>`
+      select thread_id, enabled_json, updated_at
+      from sky_extension_policy
+      where thread_id = ${this.name}
+    `;
+
+    if (!rows.length) {
+      return this.setExtensionPolicy(defaults);
+    }
+
+    const row = rows[0];
+    let enabled: string[] | null = null;
+    try {
+      const parsed = JSON.parse(row.enabled_json);
+      if (Array.isArray(parsed)) {
+        enabled = parsed.filter((entry) => typeof entry === "string");
+      }
+    } catch {
+      enabled = null;
+    }
+
+    if (!enabled) {
+      return this.setExtensionPolicy(defaults);
+    }
+
+    return enabled;
+  }
+
+  private async loadExtensionCatalog(): Promise<Map<string, ExtensionManifest>> {
+    if (this.extensionCatalog) {
+      return this.extensionCatalog;
+    }
+
+    const catalog = new Map<string, ExtensionManifest>();
+    for (const manifest of Object.values(BUILTIN_EXTENSION_MANIFESTS)) {
+      catalog.set(manifest.id, manifest);
+    }
+
+    const rows = this.sql<ExtensionCatalogRow>`
+      select extension_id, manifest_json, updated_at
+      from sky_extensions
+      order by updated_at desc
+    `;
+
+    for (const row of rows) {
+      try {
+        const parsed = JSON.parse(row.manifest_json);
+        const manifest = parseExtensionManifest(parsed);
+        if (manifest) {
+          catalog.set(manifest.id, manifest);
+        }
+      } catch (error) {
+        console.warn("[LiteClaw] Failed to parse extension manifest", error);
+      }
+    }
+
+    const catalogJson = this.env.LITECLAW_EXTENSION_CATALOG_JSON;
+    const catalogUrl = this.env.LITECLAW_EXTENSION_CATALOG_URL;
+
+    if (catalogJson || catalogUrl) {
+      try {
+        const parsed = catalogJson
+          ? JSON.parse(catalogJson)
+          : await fetch(catalogUrl ?? "").then((response) => response.json());
+        const manifests = parseExtensionCatalog(parsed);
+        const now = Date.now();
+        for (const manifest of manifests) {
+          catalog.set(manifest.id, manifest);
+          this.sql`
+            insert into sky_extensions (extension_id, manifest_json, updated_at)
+            values (${manifest.id}, ${JSON.stringify(manifest)}, ${now})
+            on conflict(extension_id) do update set
+              manifest_json = excluded.manifest_json,
+              updated_at = excluded.updated_at
+          `;
+        }
+      } catch (error) {
+        console.warn("[LiteClaw] Failed to load extension catalog", error);
+      }
+    }
+
+    this.extensionCatalog = catalog;
+    return catalog;
+  }
+
+  private async resolveActiveExtensions(): Promise<ExtensionRuntime[]> {
+    const enabledRefs = this.getExtensionPolicy();
+    const allowlist = parseExtensionList(this.env.LITECLAW_EXTENSION_ALLOWLIST);
+    if (!enabledRefs.length || allowlist.length === 0) {
+      return [];
+    }
+
+    const allowAll = allowlist.includes("*");
+    const catalog = await this.loadExtensionCatalog();
+    const runtimes: ExtensionRuntime[] = [];
+
+    const addManifest = (manifest: ExtensionManifest) => {
+      if (!allowAll) {
+        const allowed =
+          allowlist.includes(manifest.id) ||
+          allowlist.includes(`${manifest.id}@${manifest.version}`);
+        if (!allowed) return;
+      }
+      const runtime = buildBuiltinExtensionRuntime(manifest);
+      if (runtime) {
+        runtimes.push(runtime);
+      }
+    };
+
+    for (const ref of enabledRefs) {
+      if (ref.trim() === "*") {
+        for (const manifest of catalog.values()) {
+          addManifest(manifest);
+        }
+        continue;
+      }
+      const { id, version } = parseExtensionRef(ref);
+      const manifest = catalog.get(id);
+      if (!manifest) continue;
+      if (version && manifest.version !== version) continue;
+      addManifest(manifest);
+    }
+
+    return runtimes;
+  }
+
+  private buildExtensionSystemPrompt(extensions: ExtensionRuntime[]) {
+    const prompts = extensions
+      .map((extension) => extension.manifest.system_prompt)
+      .filter((prompt): prompt is string => Boolean(prompt));
+    if (!prompts.length) return "";
+    return `\n\nExtensions:\n${prompts.join("\n\n")}`;
+  }
+
+  private async runExtensionHooks(
+    hook: ExtensionHookName,
+    extensions: ExtensionRuntime[],
+    payload: ExtensionHookPayload
+  ) {
+    if (!extensions.length) return;
+
+    for (const extension of extensions) {
+      const handler = extension[hook];
+      if (!handler) continue;
+      const startedAt = Date.now();
+      try {
+        await handler({ ...payload, extension: extension.manifest });
+        this.logExtensionMetrics({
+          event: "liteclaw_extension_metrics",
+          extension_id: extension.manifest.id,
+          extension_version: extension.manifest.version,
+          hook,
+          duration_ms: Date.now() - startedAt,
+          ok: true
+        });
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : "extension_hook_error";
+        this.logExtensionMetrics({
+          event: "liteclaw_extension_metrics",
+          extension_id: extension.manifest.id,
+          extension_version: extension.manifest.version,
+          hook,
+          duration_ms: Date.now() - startedAt,
+          ok: false,
+          error: message
+        });
+      }
+    }
   }
 
   private getExecutorKind(): ExecutorKind {
@@ -614,12 +1004,15 @@ export class Chat extends AIChatAgent<Env> {
     emitSkyEvent: (type: string, payload: unknown) => void;
     toolState: ToolRunState;
     workersai: ReturnType<typeof createWorkersAI>;
+    extensions: ExtensionRuntime[];
   }): {
     tools?: ToolSet;
     activeTools?: Array<string>;
+    extensions: ExtensionRuntime[];
   } {
+    const extensionRuntimes = options.extensions;
     if (options.policy === "none") {
-      return {};
+      return { extensions: extensionRuntimes };
     }
 
     const allowlist = parseAllowlist(this.env.LITECLAW_HTTP_ALLOWLIST);
@@ -914,6 +1307,14 @@ export class Chat extends AIChatAgent<Env> {
           status: "success"
         });
 
+        await this.runExtensionHooks("onToolCall", extensionRuntimes, {
+          thread_id: this.name,
+          run_id: options.runId,
+          tool_name: toolName,
+          status: "success",
+          duration_ms: durationMs
+        });
+
         return output;
       } catch (error) {
         const errorMessage =
@@ -946,9 +1347,38 @@ export class Chat extends AIChatAgent<Env> {
           errorCode: errorMessage
         });
 
+        await this.runExtensionHooks("onToolCall", extensionRuntimes, {
+          thread_id: this.name,
+          run_id: options.runId,
+          tool_name: toolName,
+          status: "error",
+          error: errorMessage,
+          duration_ms: durationMs
+        });
+
         throw error;
       }
     };
+
+    const createExtensionTool: ExtensionToolFactory = ({
+      name,
+      description,
+      mode,
+      inputSchema,
+      handler
+    }) =>
+      tool({
+        description,
+        inputSchema: jsonSchema(inputSchema),
+        execute: async (input, toolOptions) =>
+          executeToolWithLogging(
+            name,
+            mode,
+            input,
+            toolOptions,
+            () => handler(input, toolOptions)
+          )
+      });
 
     const tools: ToolSet = {
       "http.fetch": tool({
@@ -1300,9 +1730,27 @@ export class Chat extends AIChatAgent<Env> {
       })
     };
 
+    if (extensionRuntimes.length) {
+      for (const extension of extensionRuntimes) {
+        if (!extension.buildTools) continue;
+        const extensionTools = extension.buildTools({
+          createTool: createExtensionTool
+        });
+        for (const [toolName, toolDef] of Object.entries(extensionTools)) {
+          if (tools[toolName]) {
+            console.warn(
+              `[LiteClaw] Extension ${extension.manifest.id} attempted to override tool ${toolName}`
+            );
+            continue;
+          }
+          tools[toolName] = toolDef;
+        }
+      }
+    }
+
     const activeTools = Object.keys(tools);
 
-    return { tools, activeTools };
+    return { tools, activeTools, extensions: extensionRuntimes };
   }
 
   private insertSkyRun(runId: string, startedAt: number) {
@@ -1445,6 +1893,52 @@ export class Chat extends AIChatAgent<Env> {
     });
   }
 
+  private async handleExtensionPolicyRequest(request: Request) {
+    this.ensureStateLoaded();
+    const secret = this.env.LITECLAW_EXTENSION_ADMIN_SECRET;
+    if (!secret) {
+      return new Response("Not found", { status: 404 });
+    }
+
+    const provided =
+      request.headers.get("x-liteclaw-admin-secret") ??
+      request.headers.get("authorization") ??
+      "";
+    const token = provided.startsWith("Bearer ")
+      ? provided.slice(7)
+      : provided;
+    if (token !== secret) {
+      return new Response("Forbidden", { status: 403 });
+    }
+
+    if (request.method === "GET") {
+      return Response.json({ enabled: this.getExtensionPolicy() });
+    }
+
+    if (request.method === "POST") {
+      let body: unknown = null;
+      try {
+        body = await request.json();
+      } catch {
+        return new Response("Invalid JSON", { status: 400 });
+      }
+
+      const record = body as Record<string, unknown>;
+      const enabled = Array.isArray(record.enabled)
+        ? record.enabled.filter((entry) => typeof entry === "string")
+        : null;
+
+      if (!enabled) {
+        return new Response("Missing enabled array", { status: 400 });
+      }
+
+      const updated = this.setExtensionPolicy(enabled);
+      return Response.json({ ok: true, enabled: updated });
+    }
+
+    return new Response("Method not allowed", { status: 405 });
+  }
+
   private exportSkyJsonl() {
     this.ensureStateLoaded();
 
@@ -1574,6 +2068,9 @@ export class Chat extends AIChatAgent<Env> {
     if (url.pathname.endsWith("/export")) {
       return this.exportSkyJsonl();
     }
+    if (url.pathname.endsWith("/extensions")) {
+      return this.handleExtensionPolicyRequest(request);
+    }
     return super.onRequest(request);
   }
 
@@ -1701,6 +2198,10 @@ export class Chat extends AIChatAgent<Env> {
     const runId = skyEnabled ? generateId() : "";
     let skyEventId = 0;
     const toolPolicy = this.getToolPolicy();
+    const extensions = await this.resolveActiveExtensions();
+    const extensionIds = extensions.map(
+      (extension) => `${extension.manifest.id}@${extension.manifest.version}`
+    );
     const toolState: ToolRunState = {
       calls: 0,
       maxCalls: parseNumberEnv(
@@ -1742,12 +2243,27 @@ export class Chat extends AIChatAgent<Env> {
       });
     }
 
+    await this.runExtensionHooks("onRunStart", extensions, {
+      thread_id: this.name,
+      run_id: runId
+    });
+
+    const latestMessage = this.messages[this.messages.length - 1];
+    if (latestMessage?.role === "user") {
+      await this.runExtensionHooks("onMessage", extensions, {
+        thread_id: this.name,
+        run_id: runId,
+        message: latestMessage
+      });
+    }
+
     const { tools, activeTools } = this.buildToolRegistry({
       policy: toolPolicy,
       runId,
       emitSkyEvent,
       toolState,
-      workersai
+      workersai,
+      extensions
     });
 
     const finalize = (params: {
@@ -1774,13 +2290,20 @@ export class Chat extends AIChatAgent<Env> {
         finish_reason: params.finishReason ?? null
       });
 
+      const status = params.ok
+        ? params.finishReason === "cancelled"
+          ? "cancelled"
+          : "completed"
+        : "error";
+      void this.runExtensionHooks("onRunComplete", extensions, {
+        thread_id: this.name,
+        run_id: runId,
+        status,
+        finish_reason: params.finishReason ?? null
+      });
+
       if (skyEnabled) {
         const completedAt = Date.now();
-        const status = params.ok
-          ? params.finishReason === "cancelled"
-            ? "cancelled"
-            : "completed"
-          : "error";
         emitSkyEvent("run.completed", {
           status,
           finish_reason: params.finishReason ?? null,
@@ -1855,7 +2378,8 @@ export class Chat extends AIChatAgent<Env> {
         ? hashJson({
             summary: this.summary,
             messages: this.messages.slice(-MAX_CONTEXT_MESSAGES),
-            model_config_id: MODEL_CONFIG_ID
+            model_config_id: MODEL_CONFIG_ID,
+            extensions: extensionIds
           })
         : null;
       const stream = createUIMessageStream({
@@ -1874,12 +2398,14 @@ export class Chat extends AIChatAgent<Env> {
 
     await this.maybeSummarizeAndTrim(workersai);
     const recentMessages = this.messages.slice(-MAX_CONTEXT_MESSAGES);
-    const systemPrompt = buildSystemPrompt(this.summary);
+    const systemPrompt = buildSystemPrompt(this.summary) +
+      this.buildExtensionSystemPrompt(extensions);
     inputHashPromise = skyEnabled
       ? hashJson({
           summary: this.summary,
           messages: recentMessages,
-          model_config_id: MODEL_CONFIG_ID
+          model_config_id: MODEL_CONFIG_ID,
+          extensions: extensionIds
         })
       : null;
 
