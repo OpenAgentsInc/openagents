@@ -16,8 +16,9 @@
     "dev": "npm-run-all --parallel dev:frontend dev:backend",
     "dev:frontend": "vite dev",
     "dev:backend": "convex dev",
-    "predev": "convex dev --until-success && convex dashboard",
+    "predev": "convex dev --until-success",
     "build": "vite build",
+    "build:prod": "bash -c 'set -a; [ -f .env ] && . ./.env; [ -f .env.production ] && . ./.env.production; set +a; vite build'",
     "start": "vite start",
     "format": "prettier --write .",
     "lint": "tsc && eslint .  --ext ts,tsx --report-unused-disable-directives --max-warnings 0"
