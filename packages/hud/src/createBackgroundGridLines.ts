@@ -28,6 +28,7 @@ export function createBackgroundGridLines(
 ): BackgroundGridLines {
   const ctx = canvas.getContext('2d');
   if (!ctx) return { cancel: () => {} };
+  const context = ctx;
 
   const dpr = Math.min(typeof window !== 'undefined' ? window.devicePixelRatio : 1, 2);
   let resizeObserver: ResizeObserver | undefined;
@@ -45,8 +46,8 @@ export function createBackgroundGridLines(
       canvas.width = w * dpr;
       canvas.height = h * dpr;
     }
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.scale(dpr, dpr);
+    context.setTransform(1, 0, 0, 1, 0, 0);
+    context.scale(dpr, dpr);
   }
 
   function draw(): void {
@@ -60,28 +61,28 @@ export function createBackgroundGridLines(
     const xMargin = width % distance;
     const yMargin = height % distance;
 
-    ctx.clearRect(0, 0, width, height);
-    ctx.lineWidth = lineWidth;
-    ctx.strokeStyle = lineColor;
+    context.clearRect(0, 0, width, height);
+    context.lineWidth = lineWidth;
+    context.strokeStyle = lineColor;
 
-    ctx.setLineDash(horizontalLineDash);
+    context.setLineDash(horizontalLineDash);
     for (let yi = 0; yi < yLength; yi++) {
       const y = yMargin / 2 + yi * distance;
-      ctx.beginPath();
-      ctx.moveTo(0, y);
-      ctx.lineTo(width, y);
-      ctx.stroke();
-      ctx.closePath();
+      context.beginPath();
+      context.moveTo(0, y);
+      context.lineTo(width, y);
+      context.stroke();
+      context.closePath();
     }
 
-    ctx.setLineDash(verticalLineDash);
+    context.setLineDash(verticalLineDash);
     for (let xi = 0; xi < xLength; xi++) {
       const x = xMargin / 2 + xi * distance;
-      ctx.beginPath();
-      ctx.moveTo(x, 0);
-      ctx.lineTo(x, height);
-      ctx.stroke();
-      ctx.closePath();
+      context.beginPath();
+      context.moveTo(x, 0);
+      context.lineTo(x, height);
+      context.stroke();
+      context.closePath();
     }
   }
 

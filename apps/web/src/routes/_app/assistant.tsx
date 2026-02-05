@@ -36,7 +36,7 @@ function AssistantRedirect() {
     return (
       <div className="flex min-h-[50vh] flex-col items-center justify-center gap-4 p-4 text-center text-sm text-muted-foreground">
         <p>Sign in to use LiteClaw.</p>
-        <Link to="/login" className="text-primary underline">
+        <Link to="/login" search={{ redirect: '/assistant' }} className="text-primary underline">
           Sign in
         </Link>
       </div>

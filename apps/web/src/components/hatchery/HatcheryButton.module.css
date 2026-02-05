@@ -3,6 +3,7 @@
   display: inline-flex;
   align-items: stretch;
   justify-content: stretch;
+  max-width: 100%;
   margin: 0;
   border: none;
   padding: 0;
@@ -54,16 +55,18 @@
 
 .content {
   position: relative;
-  display: flex;
-  flex: 1 1 0;
-  width: 100%;
+  display: inline-flex;
+  flex-wrap: wrap;
   min-width: 0;
+  max-width: 100%;
   align-items: center;
   justify-content: center;
-  /* Tighter horizontal padding so content fills the frame */
-  padding: 0 1rem;
-  line-height: 2rem;
+  padding: 0.5rem 1rem;
+  line-height: 1.2;
   gap: 0.5rem;
+  white-space: normal;
+  text-align: center;
+  overflow-wrap: anywhere;
 }
 
 .outline .bg {

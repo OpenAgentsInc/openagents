@@ -34,13 +34,22 @@ export function AssemblingFrame({
     if (!container || typeof ResizeObserver === 'undefined') {
       return;
     }
+    const threshold = 2; // ignore sub-2px changes (decipher animation causes jitter)
     const observer = new ResizeObserver((entries) => {
       const entry = entries[0];
       if (!entry) {
         return;
       }
       const { width, height } = entry.contentRect;
-      setSize({ width, height });
+      setSize((prev) => {
+        if (
+          Math.abs(prev.width - width) < threshold &&
+          Math.abs(prev.height - height) < threshold
+        ) {
+          return prev;
+        }
+        return { width, height };
+      });
     });
     observer.observe(container);
     return () => observer.disconnect();

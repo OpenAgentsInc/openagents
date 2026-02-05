@@ -1,9 +1,7 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from '@tanstack/react-router';
-import { useAgent } from 'agents/react';
 import { useMutation, useQuery } from 'convex/react';
 import { useAuth } from '@workos/authkit-tanstack-react-start/client';
-import { MessageType } from '@cloudflare/ai-chat/types';
 import { DotsGridBackground, purplePreset } from '@openagentsinc/hud/react';
 import { AssemblingFrame } from './AssemblingFrame';
 import { api } from '../../../convex/_generated/api';
@@ -12,25 +10,21 @@ import { HatcheryButton } from './HatcheryButton';
 import { HatcheryH1, HatcheryH2, HatcheryP } from './HatcheryTypography';
 import { HatcheryPuffs } from './HatcheryPuffs';
 import { Input } from '@/components/ui/input';
-import { MessageSquareIcon, ServerIcon } from 'lucide-react';
+import { ServerIcon } from 'lucide-react';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export function LiteClawHatchery() {
   const { user, loading: authLoading } = useAuth();
   const accessStatus = useQuery(api.access.getStatus);
-  const liteclawThreadId = useQuery(api.threads.getLiteclawThread);
-  const getOrCreateLiteclawThread = useMutation(
-    api.threads.getOrCreateLiteclawThread,
-  );
+  const threads = useQuery(api.threads.list, { archived: false, limit: 200 });
+  const createThread = useMutation(api.threads.create);
   const [email, setEmail] = useState('');
   const [waitlistStatus, setWaitlistStatus] = useState<'idle' | 'submitting' | 'success' | 'error'>('idle');
   const [waitlistError, setWaitlistError] = useState<string | null>(null);
   const joinWaitlistMutation = useMutation(api.waitlist.joinWaitlist);
   const [spawnStatus, setSpawnStatus] = useState<'idle' | 'spawning' | 'ready' | 'error'>('idle');
   const [spawnError, setSpawnError] = useState<string | null>(null);
-  const [resetStatus, setResetStatus] = useState<'idle' | 'resetting' | 'success' | 'error'>('idle');
-  const [resetError, setResetError] = useState<string | null>(null);
   const [frameVisible, setFrameVisible] = useState(false);
   const [frameReady, setFrameReady] = useState(false);
   const navigate = useNavigate();
@@ -50,49 +44,11 @@ export function LiteClawHatchery() {
   const waitlistEntry = accessStatus?.waitlistEntry ?? null;
   const waitlistApproved = accessStatus?.waitlistApproved === true;
   const overlayVisible = !accessAllowed;
-  const hasLiteclaw = liteclawThreadId != null;
-  const canConnectAgent = accessAllowed && Boolean(liteclawThreadId);
-
-  const agent = useAgent({
-    agent: 'chat',
-    name: liteclawThreadId ?? 'pending',
-    startClosed: !canConnectAgent,
-  });
-
-  const sendClearCommand = useCallback(async () => {
-    if (agent.readyState === WebSocket.OPEN) {
-      agent.send(JSON.stringify({ type: MessageType.CF_AGENT_CHAT_CLEAR }));
-      return;
-    }
-
-    await new Promise<void>((resolve, reject) => {
-      const timeout = setTimeout(() => {
-        cleanup();
-        reject(new Error('Timed out waiting for LiteClaw connection.'));
-      }, 8000);
-
-      const cleanup = () => {
-        clearTimeout(timeout);
-        agent.removeEventListener('open', handleOpen);
-        agent.removeEventListener('error', handleError);
-      };
-
-      const handleOpen = () => {
-        cleanup();
-        agent.send(JSON.stringify({ type: MessageType.CF_AGENT_CHAT_CLEAR }));
-        resolve();
-      };
-
-      const handleError = () => {
-        cleanup();
-        reject(new Error('Failed to connect to LiteClaw.'));
-      };
-
-      agent.addEventListener('open', handleOpen);
-      agent.addEventListener('error', handleError);
-      agent.reconnect();
-    });
-  }, [agent]);
+  const liteclaws = useMemo(() => {
+    const items = (threads ?? []).filter((thread) => thread.kind === 'liteclaw');
+    items.sort((a, b) => b.updated_at - a.updated_at);
+    return items;
+  }, [threads]);
 
   const handleJoinWaitlist = async () => {
     const trimmed = email.trim();
@@ -116,39 +72,18 @@ export function LiteClawHatchery() {
   };
 
   const handleSpawn = async () => {
-    if (hasLiteclaw && liteclawThreadId) {
-      navigate({ to: '/chat/$chatId', params: { chatId: liteclawThreadId } });
-      return;
-    }
     setSpawnStatus('spawning');
     setSpawnError(null);
     try {
-      const threadId = await getOrCreateLiteclawThread({});
+      const title =
+        liteclaws.length > 0 ? `LiteClaw ${liteclaws.length + 1}` : 'LiteClaw';
+      const threadId = await createThread({ title, kind: 'liteclaw' });
       setSpawnStatus('ready');
-      posthogCapture('hatchery_liteclaw_spawn');
+      posthogCapture('hatchery_liteclaw_spawn', { kind: 'new' });
       navigate({ to: '/chat/$chatId', params: { chatId: threadId } });
     } catch (error) {
       setSpawnError(error instanceof Error ? error.message : 'Failed to spawn LiteClaw');
       setSpawnStatus('error');
-    }
-  };
-
-  const handleReset = async () => {
-    if (!canConnectAgent || !liteclawThreadId) {
-      setResetError('LiteClaw is not ready yet.');
-      setResetStatus('error');
-      return;
-    }
-    setResetStatus('resetting');
-    setResetError(null);
-    try {
-      await sendClearCommand();
-      setResetStatus('success');
-      posthogCapture('hatchery_liteclaw_reset');
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to reset LiteClaw';
-      setResetError(message);
-      setResetStatus('error');
     }
   };
 
@@ -252,71 +187,109 @@ export function LiteClawHatchery() {
                   <HatcheryP className="mt-1">
                     Spawn your LiteClaw — a persistent chat agent that remembers context.
                   </HatcheryP>
-                </div>
-                <div className="flex flex-col gap-4">
-                  <div className="flex items-center gap-3">
-                    <ServerIcon className="size-8 text-muted-foreground" />
-                    <div>
-                      <HatcheryH2>LiteClaw</HatcheryH2>
-                      <HatcheryP>
-                        Status:{' '}
-                        {liteclawThreadId === undefined
-                          ? '…'
-                          : hasLiteclaw
-                            ? 'ready'
-                            : spawnStatus === 'spawning'
-                              ? 'spawning'
-                              : spawnStatus === 'error'
-                                ? 'error'
-                                : 'not spawned'}
-                      </HatcheryP>
-                    </div>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    <HatcheryButton
-                      onClick={handleSpawn}
-                      disabled={spawnStatus === 'spawning'}
-                    >
-                      {hasLiteclaw ? (
-                        <>
-                          <MessageSquareIcon className="mr-2 size-4" />
-                          Go to chat
-                        </>
-                      ) : spawnStatus === 'spawning' ? (
-                        'Spawning…'
-                      ) : (
-                        'Spawn your LiteClaw'
-                      )}
-                    </HatcheryButton>
-                    <HatcheryButton
-                      variant="outline"
-                      onClick={handleReset}
-                      disabled={!hasLiteclaw || resetStatus === 'resetting'}
-                    >
-                      {resetStatus === 'resetting' ? 'Resetting…' : 'Reset LiteClaw memory'}
-                    </HatcheryButton>
-                  </div>
-                  {spawnError && (
-                    <HatcheryP className="text-destructive">{spawnError}</HatcheryP>
-                  )}
-                  {resetError && (
-                    <HatcheryP className="text-destructive">{resetError}</HatcheryP>
-                  )}
-                  {resetStatus === 'success' && !resetError && (
-                    <HatcheryP>LiteClaw memory cleared.</HatcheryP>
-                  )}
-                  {hasLiteclaw && liteclawThreadId && (
-                    <Link
-                      to="/chat/$chatId"
-                      params={{ chatId: liteclawThreadId }}
-                      className="text-muted-foreground hover:text-foreground text-sm underline"
-                    >
-                      Open chat →
-                    </Link>
-                  )}
-                </div>
-              </div>
-            )}
+	                </div>
+	                <div className="flex flex-col gap-4">
+	                  <div className="flex items-center gap-3">
+	                    <ServerIcon className="size-8 text-muted-foreground" />
+	                    <div>
+	                      <HatcheryH2>LiteClaw</HatcheryH2>
+	                      <HatcheryP>
+	                        Status:{' '}
+	                        {threads === undefined
+	                          ? '…'
+	                          : spawnStatus === 'spawning'
+	                            ? 'spawning'
+	                            : spawnStatus === 'error'
+	                              ? 'error'
+	                              : liteclaws.length
+	                                ? `${liteclaws.length} active`
+	                                : 'none yet'}
+	                      </HatcheryP>
+	                    </div>
+	                  </div>
+
+	                  <div className="flex flex-col gap-3 rounded-2xl border border-white/10 bg-black/20 p-4">
+	                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+	                      <div>
+	                        <HatcheryH2 durationMs={450}>Your LiteClaws</HatcheryH2>
+	                        <HatcheryP className="mt-1">
+	                          Each LiteClaw is its own persistent agent with separate memory.
+	                        </HatcheryP>
+	                      </div>
+	                      <HatcheryButton
+	                        onClick={handleSpawn}
+	                        disabled={spawnStatus === 'spawning'}
+	                      >
+	                        {spawnStatus === 'spawning'
+	                          ? 'Spawning…'
+	                          : liteclaws.length
+	                            ? 'Spawn another LiteClaw'
+	                            : 'Spawn your first LiteClaw'}
+	                      </HatcheryButton>
+	                    </div>
+
+	                    {threads === undefined ? (
+	                      <HatcheryP>Loading…</HatcheryP>
+	                    ) : liteclaws.length ? (
+	                      <div className="flex flex-col gap-2">
+	                        {liteclaws.map((thread) => (
+	                          <div
+	                            key={thread._id}
+	                            className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-black/15 px-3 py-2"
+	                          >
+	                            <div className="min-w-0">
+	                              <div className="truncate text-sm font-medium text-foreground">
+	                                {thread.title}
+	                              </div>
+	                              <div className="text-xs text-muted-foreground">
+	                                Updated{' '}
+	                                {new Date(thread.updated_at).toLocaleString()}
+	                              </div>
+	                            </div>
+	                            <HatcheryButton
+	                              variant="outline"
+	                              onClick={() =>
+	                                navigate({
+	                                  to: '/chat/$chatId',
+	                                  params: { chatId: thread._id },
+	                                })
+	                              }
+	                            >
+	                              Open chat
+	                            </HatcheryButton>
+	                          </div>
+	                        ))}
+	                      </div>
+	                    ) : (
+	                      <HatcheryP>No LiteClaws yet. Spawn one to start.</HatcheryP>
+	                    )}
+	                  </div>
+
+	                  {spawnError && (
+	                    <HatcheryP className="text-destructive">{spawnError}</HatcheryP>
+	                  )}
+
+	                  {/* Reset LiteClaw memory is intentionally disabled for now.
+	                      (We may reintroduce this once “memory” semantics are clearer:
+	                      transcript vs summary vs tool-state.) */}
+	                  {/*
+	                  <HatcheryButton variant="outline" disabled>
+	                    Reset LiteClaw memory
+	                  </HatcheryButton>
+	                  */}
+
+	                  {liteclaws.length ? (
+	                    <Link
+	                      to="/chat/$chatId"
+	                      params={{ chatId: liteclaws[0]!._id }}
+	                      className="text-muted-foreground hover:text-foreground text-sm underline"
+	                    >
+	                      Open most recent chat →
+	                    </Link>
+	                  ) : null}
+	                </div>
+	              </div>
+	            )}
 
             {!user && accessStatus !== undefined && !overlayVisible && (
               <HatcheryP className="text-center">

@@ -25,7 +25,12 @@ export function HatcheryButton({
         .filter(Boolean)
         .join(' ')}
     >
-      <svg className={styles.frame} viewBox="0 0 100 40" role="presentation">
+      <svg
+        className={styles.frame}
+        viewBox="0 0 100 40"
+        preserveAspectRatio="none"
+        role="presentation"
+      >
         <polygon
           className={styles.bg}
           points="6,0 94,0 100,6 100,34 94,40 6,40 0,34 0,6"

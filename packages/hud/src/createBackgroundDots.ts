@@ -36,6 +36,7 @@ export function createBackgroundDots(
 ): BackgroundDots {
   const ctx = canvas.getContext('2d');
   if (!ctx) return { cancel: () => {} };
+  const context = ctx;
 
   const dpr = Math.min(typeof window !== 'undefined' ? window.devicePixelRatio : 1, 2);
   let resizeObserver: ResizeObserver | undefined;
@@ -53,8 +54,8 @@ export function createBackgroundDots(
       canvas.width = w * dpr;
       canvas.height = h * dpr;
     }
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.scale(dpr, dpr);
+    context.setTransform(1, 0, 0, 1, 0, 0);
+    context.scale(dpr, dpr);
   }
 
   function draw(): void {
@@ -68,7 +69,7 @@ export function createBackgroundDots(
     const xMargin = width % distance;
     const yMargin = height % distance;
 
-    ctx.clearRect(0, 0, width, height);
+    context.clearRect(0, 0, width, height);
 
     for (let xi = 0; xi < xLength; xi++) {
       const x = xMargin / 2 + xi * distance;
@@ -83,35 +84,35 @@ export function createBackgroundDots(
           origin,
         );
         const alpha = originInverted ? progress : 1 - progress;
-        ctx.globalAlpha = Math.max(0, Math.min(1, alpha));
+        context.globalAlpha = Math.max(0, Math.min(1, alpha));
 
-        ctx.beginPath();
+        context.beginPath();
         if (type === 'circle') {
-          ctx.arc(x, y, size, 0, 2 * Math.PI);
+          context.arc(x, y, size, 0, 2 * Math.PI);
         } else if (type === 'cross') {
           const l = size / 2;
           const b = crossSize / 2;
-          ctx.moveTo(x - l, y + b);
-          ctx.lineTo(x - l, y - b);
-          ctx.lineTo(x - b, y - b);
-          ctx.lineTo(x - b, y - l);
-          ctx.lineTo(x + b, y - l);
-          ctx.lineTo(x + b, y - b);
-          ctx.lineTo(x + l, y - b);
-          ctx.lineTo(x + l, y + b);
-          ctx.lineTo(x + b, y + b);
-          ctx.lineTo(x + b, y + l);
-          ctx.lineTo(x - b, y + l);
-          ctx.lineTo(x - b, y + b);
+          context.moveTo(x - l, y + b);
+          context.lineTo(x - l, y - b);
+          context.lineTo(x - b, y - b);
+          context.lineTo(x - b, y - l);
+          context.lineTo(x + b, y - l);
+          context.lineTo(x + b, y - b);
+          context.lineTo(x + l, y - b);
+          context.lineTo(x + l, y + b);
+          context.lineTo(x + b, y + b);
+          context.lineTo(x + b, y + l);
+          context.lineTo(x - b, y + l);
+          context.lineTo(x - b, y + b);
         } else {
-          ctx.rect(x - size / 2, y - size / 2, size, size);
+          context.rect(x - size / 2, y - size / 2, size, size);
         }
-        ctx.fillStyle = color;
-        ctx.fill();
-        ctx.closePath();
+        context.fillStyle = color;
+        context.fill();
+        context.closePath();
       }
     }
-    ctx.globalAlpha = 1;
+    context.globalAlpha = 1;
   }
 
   function run(): void {

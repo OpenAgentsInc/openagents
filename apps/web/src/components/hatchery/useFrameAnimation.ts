@@ -10,7 +10,7 @@ type FrameAnimationOptions = {
 };
 
 const useFrameAnimation = (
-  svgRef: RefObject<SVGElement | HTMLElement>,
+  svgRef: RefObject<SVGElement | HTMLElement | null>,
   active: boolean,
   options: FrameAnimationOptions = {},
 ) => {
