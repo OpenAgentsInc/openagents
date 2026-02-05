@@ -40,9 +40,9 @@ const openAiKey = process.env.OPENAI_API_KEY?.trim();
 const anthropicKey = process.env.ANTHROPIC_API_KEY?.trim();
 
 const defaultModel = envDefaultModel
-  || (openRouterKey ? 'openrouter/anthropic/claude-sonnet-4-5' : '')
+  || (openRouterKey ? 'openai/gpt-4o-mini' : '')
   || (openAiKey ? 'openai/gpt-4o-mini' : '')
-  || (anthropicKey ? 'anthropic/claude-sonnet-4-5' : '');
+  || (anthropicKey ? 'anthropic/claude-sonnet-4.5' : '');
 
 let config = {};
 try {
@@ -50,6 +50,21 @@ try {
 } catch {
   config = {};
 }
+
+// Remove legacy "agent" config block; newer gateway versions reject it.
+if (Object.prototype.hasOwnProperty.call(config, 'agent')) {
+  if (config.agent && typeof config.agent === 'object') {
+    config.agents = config.agents || {};
+    config.agents.defaults = config.agents.defaults || {};
+    for (const [key, value] of Object.entries(config.agent)) {
+      if (config.agents.defaults[key] === undefined) {
+        config.agents.defaults[key] = value;
+      }
+    }
+  }
+  delete config.agent;
+}
+
 config.gateway = config.gateway || {};
 config.gateway.http = config.gateway.http || {};
 config.gateway.http.endpoints = config.gateway.http.endpoints || {};
@@ -80,12 +95,12 @@ if (defaultModel) {
   config.agents = config.agents || {};
   config.agents.defaults = config.agents.defaults || {};
   ensureModelDefaults(config.agents.defaults);
-
-  config.agent = config.agent || {};
-  ensureModelDefaults(config.agent);
 }
 fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
 EOFNODE
+
+# Normalize any legacy config keys (e.g. agent -> agents.defaults) before gateway boot.
+clawdbot doctor --fix >/dev/null 2>&1 || true
 
 if [ -n "$OPENCLAW_GATEWAY_TOKEN" ]; then
   exec openclaw gateway --port 18789 --allow-unconfigured --bind "$BIND_MODE" --token "$OPENCLAW_GATEWAY_TOKEN"

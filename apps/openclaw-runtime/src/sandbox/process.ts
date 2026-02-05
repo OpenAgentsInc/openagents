@@ -516,9 +516,16 @@ export async function streamGatewayResponses(
 
   const encoder = new TextEncoder();
   let controller: ReadableStreamDefaultController<Uint8Array> | null = null;
-  const abortController = new AbortController();
+  let cancelled = false;
   if (opts.signal) {
-    opts.signal.addEventListener('abort', () => abortController.abort());
+    opts.signal.addEventListener('abort', () => {
+      cancelled = true;
+      try {
+        controller?.close();
+      } catch {
+        // ignore
+      }
+    });
   }
 
   const stream = new ReadableStream<Uint8Array>({
@@ -536,8 +543,8 @@ export async function streamGatewayResponses(
         .exec(cmd, {
           timeout: opts.timeoutMs ?? GATEWAY_STREAM_TIMEOUT_MS,
           stream: true,
-          signal: abortController.signal,
           onOutput: (streamName, data) => {
+            if (cancelled) return;
             if (streamName === 'stderr') {
               if (data.trim()) console.log('gateway responses stderr:', data);
               return;
@@ -545,6 +552,7 @@ export async function streamGatewayResponses(
             safeEnqueue(encoder.encode(data));
           },
           onError: (error) => {
+            if (cancelled) return;
             try {
               controller?.error(error);
             } catch {
@@ -552,6 +560,7 @@ export async function streamGatewayResponses(
             }
           },
           onComplete: () => {
+            if (cancelled) return;
             try {
               controller?.close();
             } catch {
@@ -560,6 +569,7 @@ export async function streamGatewayResponses(
           },
         })
         .catch((error) => {
+          if (cancelled) return;
           try {
             controller?.error(error);
           } catch {
@@ -568,7 +578,12 @@ export async function streamGatewayResponses(
         });
     },
     cancel() {
-      abortController.abort();
+      cancelled = true;
+      try {
+        controller?.close();
+      } catch {
+        // ignore
+      }
     },
   });
 
