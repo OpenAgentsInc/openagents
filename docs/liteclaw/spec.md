@@ -280,19 +280,18 @@ This is the “real product”: **Workers + Durable Object + Agents SDK**. It ow
   - `apps/liteclaw/src/client.tsx`
   - `apps/liteclaw/src/styles.css`
 
-### Agents SDK source (local dev dependency)
+### Agents SDK source (reference only)
 
-For development, we want to build against the local Agents SDK checkout.
+We keep a local checkout of the Agents SDK **only as a reference** (to read how things are built), not as a build dependency for LiteClaw.
 
 - Local repo path on this machine:
   - `/Users/christopherdavid/code/agents`
-- Package we depend on:
-  - `/Users/christopherdavid/code/agents/packages/agents` (npm package name: `agents`)
 
-Implementation detail (pick one):
+LiteClaw should depend on the published npm package and pin it:
 
-- Option A: pin to npm `agents@^0.3.x` in `apps/liteclaw/package.json`.
-- Option B (local dev convenience; don’t commit on main): set `apps/liteclaw/package.json` → `"agents": "file:../../../agents/packages/agents"`.
+- `apps/liteclaw/package.json` → `agents` (npm package) pinned to an explicit version.
+
+Do **not** use a `file:` dependency pointing at the local repo.
 
 ---
 
