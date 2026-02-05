@@ -1,7 +1,8 @@
 import { useEffect, useRef } from 'react';
-import { createFileRoute, useNavigate } from '@tanstack/react-router';
+import { createFileRoute, Link, useNavigate } from '@tanstack/react-router';
 import { useAssistantRuntime } from '@assistant-ui/react';
 import { useMutation, useQuery } from 'convex/react';
+import { useAuth } from '@workos/authkit-tanstack-react-start/client';
 import { api } from '../../../convex/_generated/api';
 import { Thread } from '@/components/assistant-ui/thread';
 import { posthogCapture } from '@/lib/posthog';
@@ -13,6 +14,7 @@ export const Route = createFileRoute('/_app/chat/$chatId')({
 function ChatPage() {
   const { chatId } = Route.useParams();
   const navigate = useNavigate();
+  const { user, loading: authLoading } = useAuth();
   const runtime = useAssistantRuntime({ optional: true });
   const liteclawThread = useQuery(api.threads.getLiteclawThread);
   const getOrCreateLiteclawThread = useMutation(
@@ -25,7 +27,7 @@ function ChatPage() {
   }, [chatId]);
 
   useEffect(() => {
-    if (liteclawThread === undefined) return;
+    if (authLoading || !user || liteclawThread === undefined) return;
     if (chatId === 'new') {
       if (creatingRef.current) return;
       creatingRef.current = true;
@@ -58,7 +60,18 @@ function ChatPage() {
     }
     creatingRef.current = false;
     if (runtime) void runtime.switchToThread(chatId);
-  }, [chatId, runtime, navigate, liteclawThread, getOrCreateLiteclawThread]);
+  }, [user, authLoading, chatId, runtime, navigate, liteclawThread, getOrCreateLiteclawThread]);
+
+  if (!authLoading && !user) {
+    return (
+      <div className="flex min-h-[50vh] flex-col items-center justify-center gap-4 p-4 text-center text-sm text-muted-foreground">
+        <p>Sign in to use LiteClaw.</p>
+        <Link to="/login" className="text-primary underline">
+          Sign in
+        </Link>
+      </div>
+    );
+  }
 
   if (chatId === 'new' || liteclawThread === undefined || chatId !== liteclawThread) {
     return (
