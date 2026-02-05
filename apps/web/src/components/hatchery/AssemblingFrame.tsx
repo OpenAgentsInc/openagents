@@ -166,7 +166,7 @@ export function AssemblingFrame({
               <path
                 data-name="bg"
                 d={paths.bg}
-                fill="hsla(0, 0%, 100%, 0.08)"
+                fill="hsla(0, 0%, 100%, 0.05)"
                 stroke="none"
               />
               <path
