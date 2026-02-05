@@ -3753,7 +3753,14 @@ const handleOpencodeOauthRequest = (request: Request, env: Env) => {
     });
       opencodeResponse = yield* sandboxEffect(
         "OpenCode OAuth proxy failed",
-        () => sandbox.containerFetch(opencodeRequest, server.port)
+        async () => {
+          try {
+            return await sandbox.containerFetch(opencodeRequest, server.port);
+          } catch (error) {
+            console.error("[LiteClaw] OpenCode OAuth proxy failed", error);
+            throw error;
+          }
+        }
       );
     } finally {
       if (timeoutId) {
