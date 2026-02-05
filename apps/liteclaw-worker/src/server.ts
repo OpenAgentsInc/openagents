@@ -1,4 +1,4 @@
-import { routeAgentRequest } from "agents";
+import { getAgentByName, routeAgentRequest } from "agents";
 
 import { AIChatAgent } from "@cloudflare/ai-chat";
 import { getSandbox } from "@cloudflare/sandbox";
@@ -599,7 +599,7 @@ const requireCodexSecret = (env: Env) => {
 const fetchCodexAuthPayload = async (env: Env, threadId: string) => {
   const secret = getCodexSecret(env);
   if (!secret) return null;
-  const stub = env.Chat.get(env.Chat.idFromName(threadId));
+  const stub = await getAgentByName(env.Chat, threadId);
   const response = await stub.fetch("https://liteclaw.internal/codex-auth", {
     method: "GET",
     headers: { "x-liteclaw-codex-secret": secret }
@@ -622,7 +622,7 @@ const storeCodexAuthPayload = async (
   payload: string
 ) => {
   const secret = requireCodexSecret(env);
-  const stub = env.Chat.get(env.Chat.idFromName(threadId));
+  const stub = await getAgentByName(env.Chat, threadId);
   const response = await stub.fetch("https://liteclaw.internal/codex-auth", {
     method: "POST",
     headers: {
