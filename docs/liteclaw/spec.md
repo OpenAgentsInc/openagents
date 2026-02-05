@@ -671,6 +671,7 @@ Production smoke (minimum):
 - 2026-02-05: Implemented Phase 2 tool registry (http.fetch + summarize + extract), added tool policy/budgets, tool event + receipt logging, updated Sky receipt schema to include tool receipts, reran worker tests, and deployed liteclaw worker.
 - 2026-02-05: Implemented Phase 3 workspace tools (read/write/edit) with executor gating and diff receipts (patch_hash), updated Sky contracts + compatibility doc, reran LiteClaw worker tests, and deployed liteclaw worker (version `1f9c5eb4-7bb6-4d52-bf07-ada1cfea2665`).
 - 2026-02-05: Implemented Phase 4 tunnel executor scaffolding (LiteClaw local agent for read/write/edit, tunnel dispatch + signed local receipts), updated Sky contracts + compatibility doc, reran LiteClaw worker tests, and deployed liteclaw worker (version `1be3086a-c2af-4645-a4e0-135a83cc1db5`).
+- 2026-02-05: Implemented Phase 5 extension scaffolding (manifest allowlists + per-thread policy endpoint, extension hooks + metrics, and a sample `sky.echo` tool extension), reran LiteClaw worker tests, and deployed liteclaw worker (version `ef9a671d-e0b6-4352-a440-365f37cdcc9a`).
 
 ---
 
