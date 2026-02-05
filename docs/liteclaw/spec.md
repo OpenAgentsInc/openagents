@@ -673,6 +673,7 @@ Production smoke (minimum):
 - 2026-02-05: Implemented Phase 4 tunnel executor scaffolding (LiteClaw local agent for read/write/edit, tunnel dispatch + signed local receipts), updated Sky contracts + compatibility doc, reran LiteClaw worker tests, and deployed liteclaw worker (version `1be3086a-c2af-4645-a4e0-135a83cc1db5`).
 - 2026-02-05: Implemented Phase 5 extension scaffolding (manifest allowlists + per-thread policy endpoint, extension hooks + metrics, and a sample `sky.echo` tool extension), reran LiteClaw worker tests, and deployed liteclaw worker (version `ef9a671d-e0b6-4352-a440-365f37cdcc9a`).
 - 2026-02-05: Added extension catalog admin endpoint (`/extensions/catalog`) for managing manifests, reran LiteClaw worker tests, and deployed liteclaw worker (version `d4f0cdf3-bb51-4763-9400-70d2392760b5`).
+- 2026-02-05: Added per-extension tool-call metrics logging for extension-owned tools, reran LiteClaw worker tests, and deployed liteclaw worker (version `699014ce-d654-4241-8467-30f5f6ffdec2`).
 
 ---
 
