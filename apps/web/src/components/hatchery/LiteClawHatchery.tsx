@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { useMutation, useQuery } from 'convex/react';
 import { useAuth } from '@workos/authkit-tanstack-react-start/client';
-import { DotsGridBackground, purplePreset } from '@openagentsinc/hud/react';
+import { DotsGridBackground, purplePreset, Image } from '@openagentsinc/hud/react';
+import liteclawPng from '@openagentsinc/hud/assets/liteclaw.png';
 import { AssemblingFrame } from './AssemblingFrame';
 import { api } from '../../../convex/_generated/api';
 import { posthogCapture } from '@/lib/posthog';
@@ -103,6 +104,13 @@ export function LiteClawHatchery() {
       <nav className="absolute left-0 right-0 top-0 z-20 select-none pt-4 md:pt-5">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-2">
           <div className="flex items-center gap-2">
+            <Image
+              src={liteclawPng}
+              alt="LiteClaw"
+              className="size-8 object-contain"
+              width={32}
+              height={32}
+            />
             <span className="text-xl font-bold text-foreground">Hatchery</span>
           </div>
         </div>

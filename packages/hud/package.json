@@ -7,7 +7,8 @@
   "types": "index.ts",
   "exports": {
     ".": "./index.ts",
-    "./react": "./react.tsx"
+    "./react": "./react.tsx",
+    "./assets/liteclaw.png": "./assets/liteclaw.png"
   },
   "peerDependencies": {
     "react": ">=18",
