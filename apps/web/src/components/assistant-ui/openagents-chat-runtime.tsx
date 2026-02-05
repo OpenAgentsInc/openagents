@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useRef } from 'react';
-import { useChat, type UIMessage } from '@ai-sdk/react';
-import type { ChatTransport } from 'ai';
-import { useConvex, useMutation, useQuery } from 'convex/react';
+import { useMemo } from 'react';
+import { useAgent } from 'agents/react';
+import { useAgentChat } from '@cloudflare/ai-chat/react';
+import { useConvex } from 'convex/react';
 import {
   AssistantRuntime,
   useAuiState,
@@ -10,13 +10,13 @@ import {
   type ThreadMessage,
 } from '@assistant-ui/react';
 import {
-  AssistantChatTransport,
   useAISDKRuntime,
   type UseChatRuntimeOptions,
 } from '@assistant-ui/react-ai-sdk';
 import { createAssistantStream } from 'assistant-stream';
 import { api } from '../../../convex/_generated/api';
 import type { Id } from '../../../convex/_generated/dataModel';
+import type { UIMessage } from '@ai-sdk/react';
 
 type ThreadId = Id<'threads'>;
 
@@ -26,19 +26,14 @@ function isLocalThreadId(id: string | undefined): boolean {
   return typeof id === 'string' && id.startsWith(LOCAL_THREAD_ID_PREFIX);
 }
 
-/** Only pass to Convex when id is a real Convex thread id (not a local temp id). */
-function convexThreadId(id: string | undefined): ThreadId | null {
-  if (!id || isLocalThreadId(id)) return null;
-  return id as ThreadId;
-}
-
-const DEFAULT_NEW_TITLE = 'New Chat';
 const TITLE_LIMIT = 60;
 
 const trimTitle = (value: string): string => {
   const trimmed = value.trim().replace(/\s+/g, ' ');
   if (!trimmed) return '';
-  return trimmed.length > TITLE_LIMIT ? `${trimmed.slice(0, TITLE_LIMIT - 1)}…` : trimmed;
+  return trimmed.length > TITLE_LIMIT
+    ? `${trimmed.slice(0, TITLE_LIMIT - 1)}…`
+    : trimmed;
 };
 
 const deriveTitleFromMessages = (messages: readonly ThreadMessage[]): string => {
@@ -54,74 +49,30 @@ const deriveTitleFromMessages = (messages: readonly ThreadMessage[]): string => 
   return '';
 };
 
-const useDynamicChatTransport = <UI_MESSAGE extends UIMessage = UIMessage>(
-  transport: ChatTransport<UI_MESSAGE>,
-): ChatTransport<UI_MESSAGE> => {
-  const transportRef = useRef<ChatTransport<UI_MESSAGE>>(transport);
-  useEffect(() => {
-    transportRef.current = transport;
-  }, [transport]);
-  return useMemo(
-    () =>
-      new Proxy(transportRef.current, {
-        get(_, prop) {
-          const res = transportRef.current[prop as keyof ChatTransport<UI_MESSAGE>];
-          return typeof res === 'function' ? res.bind(transportRef.current) : res;
-        },
-      }),
-    [],
-  );
-};
-
 const useChatThreadRuntime = <UI_MESSAGE extends UIMessage = UIMessage>(
   options?: UseChatRuntimeOptions<UI_MESSAGE>,
 ): AssistantRuntime => {
-  const { adapters, transport: transportOptions, toCreateMessage, ...chatOptions } = options ?? {};
-  const transport = useDynamicChatTransport(
-    transportOptions ?? new AssistantChatTransport(),
-  );
+  const { adapters, toCreateMessage, ...chatOptions } = options ?? {};
+  const threadState = useAuiState((state) => state.threadListItem);
+  const isPending = threadState.status === 'new' || isLocalThreadId(threadState.id);
+  const agentName =
+    isPending ? 'pending' : threadState.remoteId ?? threadState.id;
 
-  const id = useAuiState(({ threadListItem }) => threadListItem.id) as ThreadId | undefined;
-  const convexId = convexThreadId(id);
-  const savedMessages = useQuery(
-    api.threadMessages.list,
-    convexId ? { threadId: convexId } : 'skip',
-  );
-  const setMessagesMutation = useMutation(api.threadMessages.setMessages);
-
-  const initialMessages = (savedMessages ?? []) as UI_MESSAGE[];
-
-  const chat = useChat({
-    ...chatOptions,
-    id: id ?? '',
-    transport,
-    messages: initialMessages,
-    onFinish: async ({ messages }) => {
-      const tid = convexThreadId(id);
-      if (tid && Array.isArray(messages) && messages.length > 0) {
-        await setMessagesMutation({
-          threadId: tid,
-          messages: messages.map((m) => ({
-            id: m.id,
-            role: m.role,
-            parts: m.parts ?? [],
-            metadata: m.metadata,
-          })),
-        });
-      }
-    },
+  const agent = useAgent({
+    agent: 'chat',
+    name: agentName,
+    startClosed: isPending,
   });
 
-  const runtime = useAISDKRuntime(chat, {
+  const chat = useAgentChat({
+    agent,
+    ...chatOptions,
+  });
+
+  return useAISDKRuntime(chat, {
     adapters,
     ...(toCreateMessage && { toCreateMessage }),
   });
-
-  if (transport instanceof AssistantChatTransport) {
-    transport.setRuntime(runtime);
-  }
-
-  return runtime;
 };
 
 const useConvexThreadListAdapter = (): unstable_RemoteThreadListAdapter => {
@@ -130,8 +81,17 @@ const useConvexThreadListAdapter = (): unstable_RemoteThreadListAdapter => {
   return useMemo(() => {
     const asThreadId = (value: string): ThreadId => value as ThreadId;
 
+    const ensureLiteclawThread = async () => {
+      try {
+        await convex.mutation(api.threads.getOrCreateLiteclawThread, {});
+      } catch {
+        // Ignore failures (likely unauthenticated); list will return empty.
+      }
+    };
+
     return {
       list: async () => {
+        await ensureLiteclawThread();
         const [regular, archived] = await Promise.all([
           convex.query(api.threads.list, { archived: false, limit: 200 }),
           convex.query(api.threads.list, { archived: true, limit: 200 }),
@@ -149,16 +109,20 @@ const useConvexThreadListAdapter = (): unstable_RemoteThreadListAdapter => {
 
         return {
           threads: [
-            ...regular.map((thread) => toMetadata(thread, 'regular')),
-            ...archived.map((thread) => toMetadata(thread, 'archived')),
+            ...regular
+              .filter((thread) => thread.kind === 'liteclaw')
+              .map((thread) => toMetadata(thread, 'regular')),
+            ...archived
+              .filter((thread) => thread.kind === 'liteclaw')
+              .map((thread) => toMetadata(thread, 'archived')),
           ],
         };
       },
       initialize: async (threadId) => {
-        const remoteId = await convex.mutation(api.threads.create, {
-          title: DEFAULT_NEW_TITLE,
-          kind: 'chat',
-        });
+        const remoteId = await convex.mutation(
+          api.threads.getOrCreateLiteclawThread,
+          {},
+        );
         return { remoteId, externalId: threadId };
       },
       rename: async (remoteId, newTitle) => {

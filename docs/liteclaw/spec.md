@@ -651,3 +651,8 @@ Production smoke (minimum):
 - Spawn creates/uses a LiteClaw thread and redirects to `/chat/{id}`
 - `/chat/{id}` connects websocket to `/agents/chat/{id}` and streams
 - Refresh restores transcript
+
+---
+
+## Log
+- 2026-02-05: Implemented LiteClaw web wiring (Hatchery spawn now uses get-or-create, /assistant and /chat/new funnel to the single LiteClaw thread, chat transport switched to Agents SDK), updated welcome copy, and hid new-chat affordances.

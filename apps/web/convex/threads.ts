@@ -53,6 +53,34 @@ export const getLiteclawThread = query({
   },
 });
 
+/** Create the LiteClaw thread if missing, otherwise return the existing thread id. */
+export const getOrCreateLiteclawThread = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const identity = (await ctx.auth.getUserIdentity()) as { subject?: string } | null;
+    if (!identity?.subject) throw new Error('not authenticated');
+    const docs = await ctx.db
+      .query('threads')
+      .withIndex('by_user_id_archived', (q) =>
+        q.eq('user_id', identity.subject!).eq('archived', false)
+      )
+      .order('desc')
+      .take(50);
+    const liteclaw = docs.find((d) => d.kind === 'liteclaw');
+    if (liteclaw) return liteclaw._id;
+    const now = Date.now();
+    const id = await ctx.db.insert('threads', {
+      user_id: identity.subject,
+      title: 'LiteClaw',
+      kind: 'liteclaw',
+      archived: false,
+      created_at: now,
+      updated_at: now,
+    });
+    return id;
+  },
+});
+
 export const get = query({
   args: {
     threadId: v.id('threads'),

@@ -1,8 +1,8 @@
 import { createFileRoute } from '@tanstack/react-router';
-import { HatcheryFlowDemo } from '@/components/hatchery/HatcheryFlowDemo';
+import { LiteClawHatchery } from '@/components/hatchery/LiteClawHatchery';
 
 export const Route = createFileRoute('/_app/hatchery')({
-  component: HatcheryFlowDemo,
+  component: LiteClawHatchery,
   validateSearch: (search: Record<string, unknown>) => ({
     focus: typeof search.focus === 'string' ? search.focus : undefined,
   }),

@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import { AssistantRuntimeProvider } from '@assistant-ui/react';
-import { AssistantChatTransport } from '@assistant-ui/react-ai-sdk';
 import { useRouterState } from '@tanstack/react-router';
 import { Thread } from '@/components/assistant-ui/thread';
 import {
@@ -17,11 +16,7 @@ export function Assistant({ layout = true }: { layout?: boolean }) {
   const [rightTriggerContainer, setRightTriggerContainer] =
     useState<HTMLElement | null>(null);
   const location = useRouterState({ select: (s) => s.location });
-  const runtime = useOpenAgentsChatRuntime({
-    transport: new AssistantChatTransport({
-      api: '/chat',
-    }),
-  });
+  const runtime = useOpenAgentsChatRuntime();
 
   useEffect(() => {
     const params = new URLSearchParams(location.search ?? '');

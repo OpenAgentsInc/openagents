@@ -11,11 +11,13 @@ import { MessageSquareIcon, ServerIcon } from 'lucide-react';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-export function HatcheryFlowDemo() {
+export function LiteClawHatchery() {
   const { user, loading: authLoading } = useAuth();
   const accessStatus = useQuery(api.access.getStatus);
   const liteclawThreadId = useQuery(api.threads.getLiteclawThread);
-  const createThread = useMutation(api.threads.create);
+  const getOrCreateLiteclawThread = useMutation(
+    api.threads.getOrCreateLiteclawThread,
+  );
   const [email, setEmail] = useState('');
   const [waitlistStatus, setWaitlistStatus] = useState<'idle' | 'submitting' | 'success' | 'error'>('idle');
   const [waitlistError, setWaitlistError] = useState<string | null>(null);
@@ -59,7 +61,7 @@ export function HatcheryFlowDemo() {
     setSpawnStatus('spawning');
     setSpawnError(null);
     try {
-      const threadId = await createThread({ title: 'LiteClaw', kind: 'liteclaw' });
+      const threadId = await getOrCreateLiteclawThread({});
       setSpawnStatus('ready');
       posthogCapture('hatchery_liteclaw_spawn');
       navigate({ to: '/chat/$chatId', params: { chatId: threadId } });

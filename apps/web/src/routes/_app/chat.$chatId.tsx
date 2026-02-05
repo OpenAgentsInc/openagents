@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { useAssistantRuntime } from '@assistant-ui/react';
-import { useMutation } from 'convex/react';
+import { useMutation, useQuery } from 'convex/react';
 import { api } from '../../../convex/_generated/api';
 import { Thread } from '@/components/assistant-ui/thread';
 import { posthogCapture } from '@/lib/posthog';
@@ -14,7 +14,10 @@ function ChatPage() {
   const { chatId } = Route.useParams();
   const navigate = useNavigate();
   const runtime = useAssistantRuntime({ optional: true });
-  const createThread = useMutation(api.threads.create);
+  const liteclawThread = useQuery(api.threads.getLiteclawThread);
+  const getOrCreateLiteclawThread = useMutation(
+    api.threads.getOrCreateLiteclawThread,
+  );
   const creatingRef = useRef(false);
 
   useEffect(() => {
@@ -22,10 +25,11 @@ function ChatPage() {
   }, [chatId]);
 
   useEffect(() => {
+    if (liteclawThread === undefined) return;
     if (chatId === 'new') {
-      if (!runtime || creatingRef.current) return;
+      if (creatingRef.current) return;
       creatingRef.current = true;
-      createThread({ title: 'New Chat', kind: 'chat' })
+      getOrCreateLiteclawThread({})
         .then((threadId) => {
           navigate({ to: '/chat/$chatId', params: { chatId: threadId } });
         })
@@ -35,14 +39,31 @@ function ChatPage() {
         });
       return;
     }
+    if (!liteclawThread) {
+      if (creatingRef.current) return;
+      creatingRef.current = true;
+      getOrCreateLiteclawThread({})
+        .then((threadId) => {
+          navigate({ to: '/chat/$chatId', params: { chatId: threadId } });
+        })
+        .catch((err) => {
+          console.error('Failed to create LiteClaw thread:', err);
+          creatingRef.current = false;
+        });
+      return;
+    }
+    if (chatId !== liteclawThread) {
+      navigate({ to: '/chat/$chatId', params: { chatId: liteclawThread } });
+      return;
+    }
     creatingRef.current = false;
     if (runtime) void runtime.switchToThread(chatId);
-  }, [chatId, runtime, navigate, createThread]);
+  }, [chatId, runtime, navigate, liteclawThread, getOrCreateLiteclawThread]);
 
-  if (chatId === 'new') {
+  if (chatId === 'new' || liteclawThread === undefined || chatId !== liteclawThread) {
     return (
       <div className="flex min-h-0 flex-1 flex-col items-center justify-center overflow-hidden text-muted-foreground">
-        Creating new chat…
+        Loading LiteClaw…
       </div>
     );
   }
