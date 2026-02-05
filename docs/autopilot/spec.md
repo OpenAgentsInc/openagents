@@ -78,3 +78,10 @@ Explicitly out of scope:
 - Chat redirect: `apps/web-old/src/routes/_app/assistant.tsx`
 - Chat page: `apps/web-old/src/routes/_app/chat.$chatId.tsx`
 - Autopilot worker (Agents SDK): `apps/liteclaw-worker/src/server.ts` (name is historical)
+
+---
+
+## Notes
+
+- Effect migration starting points for the current `apps/web` app: `docs/autopilot/effect-migration-web.md`
+- Effect-centric telemetry/logging service spec: `docs/autopilot/effect-telemetry-service.md`
