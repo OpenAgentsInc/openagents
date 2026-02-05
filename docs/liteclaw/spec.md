@@ -659,3 +659,54 @@ Production smoke (minimum):
 - 2026-02-05: Ran LiteClaw worker + web tests, deployed liteclaw worker and openagents-web-app, and pushed Convex functions for the LiteClaw web flow.
 - 2026-02-05: Added Hatchery "Reset LiteClaw memory" action that sends CF_AGENT_CHAT_CLEAR via Agents SDK and reran web tests.
 - 2026-02-05: Added LiteClaw worker metrics logging (ttft_ms, duration_ms, ok/error, message_count) and reran worker tests.
+
+---
+
+## Post-EA Roadmap: Cloudflare-Native Pi (LiteClaw-First)
+
+Goal: build our own Pi-style runtime on Workers + Durable Objects (no pi-mono runtime dependency), while keeping LiteClaw as the product surface. LiteClaw UI and `/agents/chat/*` transport stay the same; the runtime evolves underneath.
+
+### Phase 0 - Proof of Concept: LiteClaw-Pi Core in the Worker
+
+What we build:
+- A `cf-pi` core module inside `apps/liteclaw-worker/` that owns a model abstraction (`stream(context, options)`), message conversion, and event streaming.
+- A message contract aligned with Pi's `AgentMessage` and tool result shapes, with adapters to and from `AIChatAgent` messages.
+- A simple compaction hook (rolling summary + last N turns) stored in DO SQLite alongside existing AIChat tables.
+- A LiteClaw toggle (`LITECLAW_PI_MODE=1` or equivalent) that routes `onChatMessage` through the cf-pi core while keeping the same endpoints and UI.
+- A transcript export endpoint that emits Pi-compatible JSONL for a single thread (for OpenClaw import/testing).
+
+Definition of done:
+- `/chat/{id}` works end-to-end when the flag is enabled, with streaming, persistence, and resume intact.
+- Exported transcripts load in OpenClaw's Pi session tooling without conversion errors.
+- Tests cover the cf-pi stream adapter and message conversion.
+
+### Phase 1 - Contracts + Portability
+
+- Formalize tool schemas with TypeBox/AJV and stream partial tool args (Pi-style).
+- Add attachment normalization (images/docs) to match Pi's message transformer.
+- Introduce a model registry config (id -> provider + model + options) to align with OpenClaw's model selection.
+- Store a versioned `liteclaw_session_version` to keep transcript compatibility stable.
+
+### Phase 2 - Cloud-Only Tools (Workers Native)
+
+- Implement a tool runtime for R2/KV/D1/HTTP with strict schemas and receipts.
+- Add tool event streaming and UI rendering in the existing chat UI.
+- Enforce tool permissions per thread (read-only vs write) and rate limits.
+
+### Phase 3 - Sandboxed Coding Tools (Containers)
+
+- Add a container-backed tool executor for `read`, `edit`, `write`, `bash` on ephemeral workspaces.
+- Define workspace snapshot import/export (R2 tarball or repo-sync service).
+- Emit deterministic tool receipts (params hash, output hash, diff hash) for replayability.
+
+### Phase 4 - Tunnel-Backed Local Tools (Your Repo)
+
+- Ship a lightweight local agent + Cloudflare Tunnel endpoint for tool execution on the user's machine.
+- Reuse the same tool schemas and receipts as Phase 3.
+- Add per-tool allowlists and directory scoping to keep access explicit and auditable.
+
+### Phase 5 - Skills + Extensions (Pi-Compatible)
+
+- Load skills/extensions from R2/KV with explicit manifests.
+- Align extension hooks with Pi's Extension API so OpenClaw skills can be reused.
+- Add policy-driven enablement and per-skill metrics.
