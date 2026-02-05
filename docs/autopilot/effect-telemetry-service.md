@@ -61,6 +61,24 @@ The control plane keys off `namespace` prefixes (so you can disable an entire su
 
 ---
 
+## Mapping to actual Effect APIs (so this stays real)
+
+Effect already has first-class building blocks for most of this:
+
+- **Services**: define Telemetry as a `Context.Tag("@app/Telemetry")<...>() {}` and provide implementations with `Layer.*` (see `effect-solutions show services-and-layers`).
+- **Log levels + structured logs**:
+  - Use `Effect.logDebug` / `Effect.logInfo` / `Effect.logWarning` / `Effect.logError`.
+  - Use `Logger` + `LogLevel` to set minimum levels and formatting (`Logger.pretty` is a good default in dev).
+  - In tests, logging is suppressed by default in `@effect/vitest`; you can explicitly provide a logger (`Logger.pretty`) when you want output (see `effect-solutions show testing`).
+- **Namespace / per-service “switching”**:
+  - Prefer modeling namespace as a **log annotation** (e.g. `namespace: "auth.workos"`) plus spans for lifecycle boundaries.
+  - Use `Effect.annotateLogs({ namespace })` (or a thin helper) and `Effect.withSpan("...")` / `Effect.fn("...")` to create spans.
+  - Filtering “per namespace prefix” can be implemented as a custom Logger that drops messages based on the `namespace` annotation + `LogLevel`.
+
+Practical implication for this spec: the Telemetry contract can be a thin façade over Effect’s Logger + annotations, while still supporting additional sinks (PostHog, etc.) in parallel.
+
+---
+
 ## Event model (what gets emitted)
 
 Normalize all telemetry into a single internal shape before sending to sinks:
@@ -190,4 +208,3 @@ After that, *every other service* should depend on Telemetry rather than calling
 2. Add PostHog sink using the web-old pattern (client-only, safe no-ops).
 3. Gradually replace direct `console.*` + `posthogCapture` calls with Telemetry.
 4. Add richer sinks (OTLP/Sentry) only once the event taxonomy stabilizes.
-
