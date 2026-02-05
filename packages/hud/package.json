@@ -1,0 +1,21 @@
+{
+  "name": "@openagentsinc/hud",
+  "version": "0.0.1",
+  "type": "module",
+  "main": "index.ts",
+  "module": "index.ts",
+  "types": "index.ts",
+  "exports": {
+    ".": "./index.ts",
+    "./react": "./react.tsx",
+    "./assets/liteclaw.png": "./assets/liteclaw.png"
+  },
+  "peerDependencies": {
+    "react": ">=18",
+    "typescript": "^5"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/react": "^19"
+  }
+}

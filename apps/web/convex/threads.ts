@@ -35,7 +35,7 @@ export const list = query({
   },
 });
 
-/** One LiteClaw thread per user (EA: exactly one chat id per user). */
+/** Returns the most-recent LiteClaw thread for the user (if any). */
 export const getLiteclawThread = query({
   args: {},
   handler: async (ctx) => {
@@ -53,7 +53,7 @@ export const getLiteclawThread = query({
   },
 });
 
-/** Create the LiteClaw thread if missing, otherwise return the existing thread id. */
+/** Return the most-recent LiteClaw thread, creating one if missing. */
 export const getOrCreateLiteclawThread = mutation({
   args: {},
   handler: async (ctx) => {

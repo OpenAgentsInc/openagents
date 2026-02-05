@@ -96,11 +96,6 @@ const ThreadWelcome: FC = () => {
             Your persistent personal agent, always on.
           </p>
         </div>
-        <div className="mt-6 w-full px-4">
-          <p className="text-sm text-muted-foreground">
-            Try a starter prompt:
-          </p>
-        </div>
       </div>
       <ThreadSuggestions />
     </div>
