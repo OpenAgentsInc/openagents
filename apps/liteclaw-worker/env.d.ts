@@ -6,5 +6,6 @@ declare global {
   interface Env {
     Chat: DurableObjectNamespace;
     AI: Ai;
+    LITECLAW_SKY_MODE?: string;
   }
 }

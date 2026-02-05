@@ -19,14 +19,20 @@ import {
 import { createWorkersAI } from "workers-ai-provider";
 
 const MODEL_ID = "@cf/meta/llama-3.1-8b-instruct";
+const MODEL_CONFIG_ID = "workers-ai:llama-3.1-8b-instruct";
 const MAX_CONTEXT_MESSAGES = 25;
 const SUMMARY_TRIGGER_MESSAGES = 35;
 const SUMMARY_MAX_TOKENS = 256;
 const MAX_OUTPUT_TOKENS = 512;
 const RATE_LIMIT_WINDOW_MS = 60_000;
 const RATE_LIMIT_MAX_MESSAGES = 20;
-const STATE_SCHEMA_VERSION = 1;
-const STATE_ROW_ID = "liteclaw_state";
+const LEGACY_STATE_ROW_ID = "liteclaw_state";
+const SKY_MEMORY_SCHEMA_VERSION = 1;
+const SKY_EVENT_SCHEMA_VERSION = 1;
+const SKY_RUN_SCHEMA_VERSION = 1;
+const SKY_RECEIPT_SCHEMA_VERSION = 1;
+const LITECLAW_SESSION_VERSION = 1;
+const SKY_VERSION = "0.1.0";
 const RATE_LIMIT_ROW_ID = "liteclaw_rate_limit";
 
 const SYSTEM_PROMPT =
@@ -38,6 +44,17 @@ const SUMMARY_PROMPT = [
   "Be concise and use short bullet points.",
   "Avoid quotes or chatty phrasing."
 ].join(" ");
+
+const MODEL_REGISTRY = [
+  {
+    id: MODEL_CONFIG_ID,
+    provider: "workers-ai",
+    model: MODEL_ID,
+    options: {
+      max_output_tokens: MAX_OUTPUT_TOKENS
+    }
+  }
+];
 
 type ChatMetricLog = {
   event: "liteclaw_chat_metrics";
@@ -51,11 +68,45 @@ type ChatMetricLog = {
   finish_reason?: string | null;
 };
 
-type LiteClawStateRow = {
+type LegacyLiteClawStateRow = {
   id: string;
   schema_version: number;
   summary: string | null;
   updated_at: number | null;
+};
+
+type SkyMemoryRow = {
+  thread_id: string;
+  summary: string | null;
+  updated_at: number | null;
+  schema_version: number;
+};
+
+type SkyRunRow = {
+  run_id: string;
+  thread_id: string;
+  started_at: number;
+  completed_at: number | null;
+  status: string;
+  model_config_id: string;
+  error_code: string | null;
+  schema_version: number;
+};
+
+type SkyEventRow = {
+  run_id: string;
+  event_id: number;
+  type: string;
+  payload_json: string;
+  created_at: number;
+  schema_version: number;
+};
+
+type SkyReceiptRow = {
+  run_id: string;
+  receipt_json: string;
+  created_at: number;
+  schema_version: number;
 };
 
 type RateLimitRow = {
@@ -110,6 +161,23 @@ const combineAbortSignals = (
   return controller.signal;
 };
 
+const textEncoder = new TextEncoder();
+
+const toHex = (buffer: ArrayBuffer) =>
+  [...new Uint8Array(buffer)]
+    .map((value) => value.toString(16).padStart(2, "0"))
+    .join("");
+
+const hashText = async (text: string) => {
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    textEncoder.encode(text)
+  );
+  return toHex(digest);
+};
+
+const hashJson = async (value: unknown) => hashText(JSON.stringify(value));
+
 export class Chat extends AIChatAgent<Env> {
   private summary: string | null = null;
   private stateLoaded = false;
@@ -123,6 +191,13 @@ export class Chat extends AIChatAgent<Env> {
     if (this.stateLoaded) return;
 
     this.sql`
+      create table if not exists liteclaw_rate_limit (
+        id text primary key,
+        window_start integer not null,
+        count integer not null
+      )
+    `;
+    this.sql`
       create table if not exists liteclaw_state (
         id text primary key,
         schema_version integer not null,
@@ -131,33 +206,77 @@ export class Chat extends AIChatAgent<Env> {
       )
     `;
     this.sql`
-      create table if not exists liteclaw_rate_limit (
-        id text primary key,
-        window_start integer not null,
-        count integer not null
+      create table if not exists sky_runs (
+        run_id text primary key,
+        thread_id text not null,
+        started_at integer not null,
+        completed_at integer,
+        status text not null,
+        model_config_id text not null,
+        error_code text,
+        schema_version integer not null
+      )
+    `;
+    this.sql`
+      create table if not exists sky_events (
+        run_id text not null,
+        event_id integer not null,
+        type text not null,
+        payload_json text not null,
+        created_at integer not null,
+        schema_version integer not null,
+        primary key (run_id, event_id)
+      )
+    `;
+    this.sql`
+      create table if not exists sky_receipts (
+        run_id text not null,
+        receipt_json text not null,
+        created_at integer not null,
+        schema_version integer not null,
+        primary key (run_id, created_at)
+      )
+    `;
+    this.sql`
+      create table if not exists sky_memory (
+        thread_id text primary key,
+        summary text,
+        updated_at integer,
+        schema_version integer not null
       )
     `;
 
-    const rows = this.sql<LiteClawStateRow>`
-      select id, schema_version, summary, updated_at
-      from liteclaw_state
-      where id = ${STATE_ROW_ID}
+    const memoryRows = this.sql<SkyMemoryRow>`
+      select thread_id, summary, updated_at, schema_version
+      from sky_memory
+      where thread_id = ${this.name}
     `;
 
-    if (!rows.length) {
-      this.sql`
-        insert into liteclaw_state (id, schema_version, summary, updated_at)
-        values (${STATE_ROW_ID}, ${STATE_SCHEMA_VERSION}, null, ${Date.now()})
+    if (!memoryRows.length) {
+      const legacyRows = this.sql<LegacyLiteClawStateRow>`
+        select id, schema_version, summary, updated_at
+        from liteclaw_state
+        where id = ${LEGACY_STATE_ROW_ID}
       `;
-      this.summary = null;
+      const legacyRow = legacyRows[0];
+      this.summary = legacyRow?.summary ?? null;
+      this.sql`
+        insert into sky_memory (thread_id, summary, updated_at, schema_version)
+        values (
+          ${this.name},
+          ${this.summary},
+          ${legacyRow?.updated_at ?? Date.now()},
+          ${SKY_MEMORY_SCHEMA_VERSION}
+        )
+      `;
     } else {
-      const row = rows[0];
+      const row = memoryRows[0];
       this.summary = row.summary ?? null;
-      if (row.schema_version !== STATE_SCHEMA_VERSION) {
+      if (row.schema_version !== SKY_MEMORY_SCHEMA_VERSION) {
         this.sql`
-          update liteclaw_state
-          set schema_version = ${STATE_SCHEMA_VERSION}
-          where id = ${STATE_ROW_ID}
+          update sky_memory
+          set schema_version = ${SKY_MEMORY_SCHEMA_VERSION}
+          where thread_id = ${this.name}
         `;
       }
     }
@@ -167,13 +286,290 @@ export class Chat extends AIChatAgent<Env> {
 
   private persistSummary(summary: string | null) {
     this.sql`
-      insert into liteclaw_state (id, schema_version, summary, updated_at)
-      values (${STATE_ROW_ID}, ${STATE_SCHEMA_VERSION}, ${summary}, ${Date.now()})
-      on conflict(id) do update set
+      insert into sky_memory (thread_id, summary, updated_at, schema_version)
+      values (
+        ${this.name},
+        ${summary},
+        ${Date.now()},
+        ${SKY_MEMORY_SCHEMA_VERSION}
+      )
+      on conflict(thread_id) do update set
         schema_version = excluded.schema_version,
         summary = excluded.summary,
         updated_at = excluded.updated_at
     `;
+  }
+
+  private isSkyModeEnabled() {
+    return this.env.LITECLAW_SKY_MODE === "1";
+  }
+
+  private insertSkyRun(runId: string, startedAt: number) {
+    this.sql`
+      insert into sky_runs (
+        run_id,
+        thread_id,
+        started_at,
+        completed_at,
+        status,
+        model_config_id,
+        error_code,
+        schema_version
+      )
+      values (
+        ${runId},
+        ${this.name},
+        ${startedAt},
+        null,
+        'started',
+        ${MODEL_CONFIG_ID},
+        null,
+        ${SKY_RUN_SCHEMA_VERSION}
+      )
+    `;
+  }
+
+  private updateSkyRun(options: {
+    runId: string;
+    status: string;
+    completedAt: number;
+    errorCode?: string | null;
+  }) {
+    this.sql`
+      update sky_runs
+      set
+        status = ${options.status},
+        completed_at = ${options.completedAt},
+        error_code = ${options.errorCode ?? null}
+      where run_id = ${options.runId}
+    `;
+  }
+
+  private insertSkyEvent(options: {
+    runId: string;
+    eventId: number;
+    type: string;
+    payload: unknown;
+    createdAt: number;
+  }) {
+    this.sql`
+      insert into sky_events (
+        run_id,
+        event_id,
+        type,
+        payload_json,
+        created_at,
+        schema_version
+      )
+      values (
+        ${options.runId},
+        ${options.eventId},
+        ${options.type},
+        ${JSON.stringify(options.payload)},
+        ${options.createdAt},
+        ${SKY_EVENT_SCHEMA_VERSION}
+      )
+    `;
+  }
+
+  private insertSkyReceipt(options: {
+    runId: string;
+    receipt: unknown;
+    createdAt: number;
+  }) {
+    this.sql`
+      insert into sky_receipts (
+        run_id,
+        receipt_json,
+        created_at,
+        schema_version
+      )
+      values (
+        ${options.runId},
+        ${JSON.stringify(options.receipt)},
+        ${options.createdAt},
+        ${SKY_RECEIPT_SCHEMA_VERSION}
+      )
+    `;
+  }
+
+  private async finalizeSkyRun(options: {
+    runId: string;
+    status: string;
+    startedAt: number;
+    completedAt: number;
+    finishReason: string | null;
+    errorCode?: string | null;
+    inputHashPromise: Promise<string> | null;
+    outputText: string | null;
+  }) {
+    this.updateSkyRun({
+      runId: options.runId,
+      status: options.status,
+      completedAt: options.completedAt,
+      errorCode: options.errorCode ?? null
+    });
+
+    let inputHash: string | null = null;
+    let outputHash: string | null = null;
+
+    if (options.inputHashPromise) {
+      inputHash = await options.inputHashPromise;
+    }
+    if (options.outputText) {
+      outputHash = await hashText(options.outputText);
+    }
+
+    const receipt = {
+      schema_version: SKY_RECEIPT_SCHEMA_VERSION,
+      run_id: options.runId,
+      thread_id: this.name,
+      model_config_id: MODEL_CONFIG_ID,
+      input_hash: inputHash,
+      output_hash: outputHash,
+      started_at: options.startedAt,
+      completed_at: options.completedAt,
+      duration_ms: options.completedAt - options.startedAt,
+      status: options.status,
+      finish_reason: options.finishReason,
+      error_code: options.errorCode ?? null
+    };
+
+    this.insertSkyReceipt({
+      runId: options.runId,
+      receipt,
+      createdAt: options.completedAt
+    });
+  }
+
+  private exportSkyJsonl() {
+    this.ensureStateLoaded();
+
+    const threadId = this.name;
+    const now = Date.now();
+    const messageRows = this.sql<{ message: string }>`
+      select message
+      from cf_ai_chat_agent_messages
+      order by created_at asc
+    `;
+    const messages = messageRows.map((row) => JSON.parse(row.message));
+
+    const runs = this.sql<SkyRunRow>`
+      select run_id, thread_id, started_at, completed_at, status, model_config_id, error_code, schema_version
+      from sky_runs
+      where thread_id = ${threadId}
+      order by started_at asc
+    `;
+
+    const memoryRows = this.sql<SkyMemoryRow>`
+      select thread_id, summary, updated_at, schema_version
+      from sky_memory
+      where thread_id = ${threadId}
+    `;
+
+    const lines: string[] = [];
+    lines.push(
+      JSON.stringify({
+        type: "liteclaw.export",
+        liteclaw_session_version: LITECLAW_SESSION_VERSION,
+        cf_sky_version: SKY_VERSION,
+        schema_versions: {
+          sky_run: SKY_RUN_SCHEMA_VERSION,
+          sky_event: SKY_EVENT_SCHEMA_VERSION,
+          sky_receipt: SKY_RECEIPT_SCHEMA_VERSION,
+          sky_memory: SKY_MEMORY_SCHEMA_VERSION
+        },
+        thread_id: threadId,
+        exported_at: now,
+        model_registry: MODEL_REGISTRY
+      })
+    );
+
+    if (memoryRows.length) {
+      const memory = memoryRows[0];
+      lines.push(
+        JSON.stringify({
+          type: "memory",
+          payload: memory
+        })
+      );
+    }
+
+    for (const message of messages) {
+      lines.push(
+        JSON.stringify({
+          type: "message",
+          payload: message
+        })
+      );
+    }
+
+    for (const run of runs) {
+      lines.push(
+        JSON.stringify({
+          type: "run",
+          payload: run
+        })
+      );
+
+      const events = this.sql<SkyEventRow>`
+        select run_id, event_id, type, payload_json, created_at, schema_version
+        from sky_events
+        where run_id = ${run.run_id}
+        order by event_id asc
+      `;
+
+      for (const event of events) {
+        lines.push(
+          JSON.stringify({
+            type: "event",
+            payload: {
+              run_id: event.run_id,
+              event_id: event.event_id,
+              type: event.type,
+              payload: JSON.parse(event.payload_json),
+              created_at: event.created_at,
+              schema_version: event.schema_version
+            }
+          })
+        );
+      }
+
+      const receipts = this.sql<SkyReceiptRow>`
+        select run_id, receipt_json, created_at, schema_version
+        from sky_receipts
+        where run_id = ${run.run_id}
+        order by created_at asc
+      `;
+
+      for (const receipt of receipts) {
+        lines.push(
+          JSON.stringify({
+            type: "receipt",
+            payload: {
+              run_id: receipt.run_id,
+              receipt: JSON.parse(receipt.receipt_json),
+              created_at: receipt.created_at,
+              schema_version: receipt.schema_version
+            }
+          })
+        );
+      }
+    }
+
+    return new Response(lines.join("\n"), {
+      headers: {
+        "content-type": "application/jsonl; charset=utf-8"
+      }
+    });
+  }
+
+  async onRequest(request: Request) {
+    const url = new URL(request.url);
+    if (url.pathname.endsWith("/export")) {
+      return this.exportSkyJsonl();
+    }
+    return super.onRequest(request);
   }
 
   private consumeRateLimit() {
@@ -296,9 +692,37 @@ export class Chat extends AIChatAgent<Env> {
     this.ensureStateLoaded();
     const workersai = createWorkersAI({ binding: this.env.AI });
     const startTime = Date.now();
+    const skyEnabled = this.isSkyModeEnabled();
+    const runId = skyEnabled ? generateId() : "";
+    let skyEventId = 0;
+    let inputHashPromise: Promise<string> | null = null;
+    let finishReason: string | null = null;
+    let finalText: string | null = null;
     let firstTokenAt: number | null = null;
     let finalized = false;
     const { controller, signal } = this.createAbortSignal(options);
+
+    const emitSkyEvent = (type: string, payload: unknown) => {
+      if (!skyEnabled) return;
+      skyEventId += 1;
+      this.insertSkyEvent({
+        runId,
+        eventId: skyEventId,
+        type,
+        payload,
+        createdAt: Date.now()
+      });
+    };
+
+    if (skyEnabled) {
+      this.insertSkyRun(runId, startTime);
+      emitSkyEvent("run.started", {
+        thread_id: this.name,
+        model_config_id: MODEL_CONFIG_ID,
+        started_at: startTime,
+        schema_version: SKY_RUN_SCHEMA_VERSION
+      });
+    }
 
     const finalize = (params: {
       ok: boolean;
@@ -323,31 +747,71 @@ export class Chat extends AIChatAgent<Env> {
         error: params.error,
         finish_reason: params.finishReason ?? null
       });
+
+      if (skyEnabled) {
+        const completedAt = Date.now();
+        const status = params.ok
+          ? params.finishReason === "cancelled"
+            ? "cancelled"
+            : "completed"
+          : "error";
+        emitSkyEvent("run.completed", {
+          status,
+          finish_reason: params.finishReason ?? null,
+          duration_ms: durationMs
+        });
+        void this.finalizeSkyRun({
+          runId,
+          status,
+          startedAt: startTime,
+          completedAt,
+          finishReason: params.finishReason ?? null,
+          errorCode: params.error ?? null,
+          inputHashPromise,
+          outputText: finalText
+        });
+      }
     };
 
     const handleChunk: StreamTextOnChunkCallback<ToolSet> = ({ chunk }) => {
-      if (firstTokenAt) return;
       if (
-        chunk.type === "text-delta" ||
-        chunk.type === "reasoning-delta" ||
-        chunk.type === "raw"
+        !firstTokenAt &&
+        (chunk.type === "text-delta" ||
+          chunk.type === "reasoning-delta" ||
+          chunk.type === "raw")
       ) {
         firstTokenAt = Date.now();
+      }
+
+      if (chunk.type === "text-delta" || chunk.type === "reasoning-delta") {
+        emitSkyEvent("model.delta", {
+          kind: chunk.type,
+          delta: chunk.delta
+        });
       }
     };
 
     const handleError: StreamTextOnErrorCallback = ({ error }) => {
       if (signal?.aborted) {
-        finalize({ ok: true, finishReason: "cancelled" });
+        finishReason = "cancelled";
+        finalize({ ok: true, finishReason });
         return;
       }
       const message =
         error instanceof Error ? error.message : "StreamText error";
-      finalize({ ok: false, error: message });
+      emitSkyEvent("run.error", { error: message });
+      finishReason = "error";
+      finalize({ ok: false, error: message, finishReason });
     };
 
     const handleFinish: StreamTextOnFinishCallback<ToolSet> = (event) => {
-      finalize({ ok: true, finishReason: event.finishReason });
+      finishReason = event.finishReason ?? null;
+      finalText = event.text ?? null;
+      emitSkyEvent("model.completed", {
+        finish_reason: finishReason,
+        text_length: finalText?.length ?? 0
+      });
+      finalize({ ok: true, finishReason });
       return onFinish(event);
     };
 
@@ -358,11 +822,25 @@ export class Chat extends AIChatAgent<Env> {
         error instanceof RateLimitError
           ? error.message
           : "Rate limit exceeded. Please try again shortly.";
+      finalText = message;
+      finishReason = "rate_limited";
+      emitSkyEvent("run.error", { error: "rate_limited" });
+      inputHashPromise = skyEnabled
+        ? hashJson({
+            summary: this.summary,
+            messages: this.messages.slice(-MAX_CONTEXT_MESSAGES),
+            model_config_id: MODEL_CONFIG_ID
+          })
+        : null;
       const stream = createUIMessageStream({
         execute: async ({ writer }) => {
           firstTokenAt ??= Date.now();
           await this.writeStaticMessage(writer, message);
-          finalize({ ok: false, error: "rate_limited", finishReason: "error" });
+          finalize({
+            ok: false,
+            error: "rate_limited",
+            finishReason: "rate_limited"
+          });
         }
       });
       return createUIMessageStreamResponse({ stream });
@@ -371,6 +849,13 @@ export class Chat extends AIChatAgent<Env> {
     await this.maybeSummarizeAndTrim(workersai);
     const recentMessages = this.messages.slice(-MAX_CONTEXT_MESSAGES);
     const systemPrompt = buildSystemPrompt(this.summary);
+    inputHashPromise = skyEnabled
+      ? hashJson({
+          summary: this.summary,
+          messages: recentMessages,
+          model_config_id: MODEL_CONFIG_ID
+        })
+      : null;
 
     const stream = createUIMessageStream({
       execute: async ({ writer }) => {
@@ -399,15 +884,22 @@ export class Chat extends AIChatAgent<Env> {
             });
             firstTokenAt ??= Date.now();
             await this.writeStaticMessage(writer, fallback.text);
-            finalize({ ok: true, error: message, finishReason: "fallback" });
+            finalText = fallback.text;
+            finishReason = "fallback";
+            emitSkyEvent("model.completed", {
+              finish_reason: finishReason,
+              fallback: true,
+              text_length: finalText.length
+            });
+            finalize({ ok: true, error: message, finishReason });
           } catch (fallbackError) {
             console.error("[LiteClaw] Fallback generation failed", fallbackError);
             firstTokenAt ??= Date.now();
-            await this.writeStaticMessage(
-              writer,
-              "LiteClaw hit an error. Please try again."
-            );
-            finalize({ ok: false, error: message, finishReason: "error" });
+            finalText = "LiteClaw hit an error. Please try again.";
+            finishReason = "error";
+            await this.writeStaticMessage(writer, finalText);
+            emitSkyEvent("run.error", { error: message });
+            finalize({ ok: false, error: message, finishReason });
           }
           return;
         }
